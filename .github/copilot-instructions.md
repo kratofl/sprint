@@ -8,46 +8,299 @@
 
 ## Project Overview
 
-A sim racing telemetry platform with two components:
+A sim racing telemetry platform with four components:
 
-1. **Web app** (`/web` or similar) — Next.js frontend for analyzing telemetry, comparing setups, and sharing data with other users.
-2. **Data client** (`/client` or similar) — A Go program that runs locally on the user's machine, reads live telemetry from sim racing games, converts it to a unified DTO format, and sends it to the web app.
+1. **Desktop app** (`/app`) — A [Wails](https://wails.io) application (Go backend + React/TypeScript frontend) that runs on the driver's local machine. It reads live telemetry from sim racing games, renders images for the VoCore steering wheel display, hosts a Race Engineer WebSocket server, and syncs with the API server.
+2. **API server** (`/api`) — A Go HTTP/WebSocket server that stores telemetry sessions, setups, and layouts in a database, relays WebSocket connections for remote race engineers, and handles user authentication.
+3. **Web app** (`/web`) — A Next.js frontend for analyzing telemetry, managing dash layouts and setups, running the Race Engineer portal, and sharing sessions with other users. Talks to the API server; contains no backend logic itself.
+4. **Shared Go packages** (`/pkg`) — Unified DTO types and game adapter interfaces, imported by both the desktop app and the API server.
+5. **Shared TypeScript packages** (`/packages`) — UI components, types, and design tokens shared between the desktop and web frontends.
 
 ## Architecture
 
 ```
 Sim Game (e.g. LeMansUltimate)
-        ↓  UDP/shared memory
-  Go Data Client (local)
-        ↓  unified DTO → HTTP/WebSocket
-    Next.js Web App
-        ↓
-    Backend/API (Next.js API routes or separate service)
-        ↓
-    Database (user data, sessions, comparisons)
+        ↓  UDP / shared memory
+┌────────────────────────────────────────────────────┐
+│  Wails Desktop App  (/app)                        │
+│                                                    │
+│  Go backend  (/app/internal):                      │
+│    - Game telemetry reader + DTO pipeline          │
+│    - VoCore image renderer  (PNG → wheel screen via USB)   │
+│    - Wheel button detector  (set target lap, etc.) │
+│    - Setup manager                                 │
+│    - Race Engineer hub  (WebSocket server, LAN)    │
+│    - Sync client  (API server ↕)                  │
+│                                                    │
+│  React/TS frontend  (/app/frontend):               │
+│    - Live telemetry view                           │
+│    - Dash layout + target lap editor               │
+│    - Setup loader / manager                        │
+│    - Race Engineer session status panel            │
+└────────────────────────────────────────────────────┘
+        │                        │
+        ↓  PNG frames (USB serial)  ↓  WebSocket
+  VoCore Screen            Race Engineer Client (LAN)
+  (steering wheel)         direct IP:port connection
+
+        ↓  HTTP/WebSocket (sync + telemetry stream)
+┌────────────────────────────────────────────────────┐
+│  Go API Server  (/api)                             │
+│    - REST API  (sessions, setups, layouts, auth)   │
+│    - WebSocket relay  (remote engineer access)     │
+│    - Database  (sessions, layouts, setups, users)  │
+│                                                    │
+│  Imports shared DTO types from /pkg                │
+└────────────────────────────────────────────────────┘
+        ↓  serves API
+┌────────────────────────────────────────────────────┐
+│  Next.js Web App  (/web)                          │
+│    - Telemetry analysis, session history           │
+│    - Dash layout editor  (syncs ↕ via API)        │
+│    - Setup management    (syncs ↕ via API)        │
+│    - Race Engineer portal (live view + commands)   │
+│    - Multi-user session sharing                    │
+│    - Pure frontend — no backend logic              │
+└────────────────────────────────────────────────────┘
 ```
 
-### Key Architectural Decisions
+## Key Features
 
-- **Unified DTO**: All game-specific telemetry is normalized into a single shared data format before being sent to the web app. New games are added by writing an adapter that maps raw game data to this DTO — the rest of the pipeline stays unchanged.
-- **Currently supported games**: LeMansUltimate. New games should only require a new adapter, not changes to the core pipeline.
-- **Multi-user**: Users can upload telemetry sessions and compare data with others on the platform.
+### VoCore Wheel Display
+The Go backend renders PNG image frames and sends them to the VoCore screen (a small Linux-based display embedded in the steering wheel) over **USB serial (CDC ACM)**. The VoCore device presents as a serial port when connected via USB (`/dev/cu.usbmodemXXXX` on macOS, `/dev/ttyACM0` on Linux, `COM3` on Windows). Frames are sent as length-prefixed PNG data. Rendering uses a Go 2D graphics library. Layout and content of the rendered image are controlled by the dash layout configuration.
 
-## Go Data Client Conventions
+### Wheel Button — Set Target Lap
+The Go backend monitors a configurable button channel from game telemetry. On press, it finds the most recent **valid lap** and sets it as the delta reference. A valid lap satisfies all of:
+- Not an out lap or in lap
+- No yellow flag or safety car active during the lap
+- No track limits violation reported by the game
+- Lap time within a configurable tolerance of the session best (default ±5%)
 
-- Game integrations live in their own packages (one per game). Each implements a common interface so new games can be added without touching the core.
-- The unified DTO is the contract between game adapters and the rest of the system — changes to it affect both the client and the web app.
-- Prefer composition over large monolithic structs for telemetry data models.
+The change triggers an immediate VoCore re-render and is broadcast to all connected engineers.
 
-## Next.js Web App Conventions
+### Race Engineer Mode
+- The driver shares a live session link — LAN (direct IP:port) or remote (invite link via web app)
+- Engineers connect and receive the same live telemetry WebSocket stream as the driver
+- Engineers can push commands: change target laptime, send pit notes, adjust dash parameters
+- The local Wails app is always **authoritative** — it applies engineer commands and can reject or override them
+- Engineers see their command status (pending → applied / rejected) in real time
 
-- This is a Next.js project. Use the App Router unless the project was scaffolded with the Pages Router.
-- API routes handle communication with the Go client and data storage.
-- Telemetry comparison and race engineer features are core UI concerns.
+### Sync Protocol
+
+| Direction | Transport | Trigger | Data |
+|---|---|---|---|
+| Desktop → VoCore | USB serial | Every telemetry frame | PNG image |
+| Desktop → Engineers (LAN) | WebSocket | Every telemetry frame | Unified DTO |
+| Engineer (LAN) → Desktop | WebSocket | On command | Command payload |
+| Desktop → API | HTTP | On save / session end | Layout, setup, or full session |
+| API → Desktop | HTTP | On web-side save | Layout / setup diff |
+| Desktop → API | WebSocket | Real-time opt-in | Live telemetry stream |
+| API → Engineers (remote) | WebSocket | Relayed from desktop | Unified DTO |
+| Engineer (remote) → API → Desktop | WebSocket | On command | Command payload |
+
+## Directory Structure
+
+```
+/sprint                              ← repo root
+│
+├── package.json                     ← pnpm workspace root
+├── pnpm-workspace.yaml              ← workspaces: packages/*, web, app/frontend
+├── turbo.json                       ← task graph: tokens → ui/types → [web, desktop]
+├── go.work                          ← Go workspace: ./app ./api ./pkg
+│
+├── .github/
+│   ├── copilot-instructions.md
+│   ├── instructions/
+│   ├── skills/
+│   └── workflows/
+│       ├── ci.yml                   ← lint + test + build all packages on PR
+│       ├── desktop-release.yml      ← build Wails .exe, attach to GitHub Release
+│       └── web-deploy.yml           ← deploy /web on push to main
+│
+├── pkg/                             ← shared Go module (imported by app + api)
+│   ├── go.mod                       ← github.com/kratofl/sprint/pkg
+│   ├── dto/
+│   │   ├── telemetry.go             ← unified telemetry DTO structs
+│   │   └── engineer.go              ← command/event types for engineer protocol
+│   └── games/
+│       ├── adapter.go               ← GameAdapter interface
+│       └── lemansultimate/
+│           ├── adapter.go
+│           └── udp.go
+│
+├── api/                             ← Go API server module
+│   ├── go.mod                       ← github.com/kratofl/sprint/api
+│   ├── main.go                      ← HTTP server entry point
+│   └── internal/                    ← api-private packages
+│       ├── server/                  ← HTTP server setup + route wiring
+│       ├── handler/                 ← API route handlers (sessions, setups, layouts)
+│       ├── relay/                   ← WebSocket relay hub for remote engineers
+│       ├── store/                   ← database layer
+│       └── auth/                    ← authentication middleware
+│
+├── packages/                        ← shared TypeScript (imported by web + desktop)
+│   ├── ui/                          ← @sprint/ui — shared React components
+│   │   ├── src/components/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── types/                       ← @sprint/types — shared TypeScript types
+│   │   ├── src/
+│   │   │   ├── telemetry.ts         ← DTO types mirroring Go pkg/dto
+│   │   │   └── engineer.ts
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── tokens/                      ← @sprint/tokens — single design-token source
+│       ├── tailwind.config.ts
+│       ├── globals.css
+│       └── package.json
+│
+├── web/                             ← Next.js web app (pure frontend)
+│   ├── app/
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── sessions/                ← session history and telemetry analysis
+│   │   ├── engineer/                ← race engineer portal (live view + commands)
+│   │   ├── setups/                  ← setup management
+│   │   ├── dash/                    ← dash layout editor
+│   │   └── api/health/              ← health check (proxies to Go API)
+│   ├── components/
+│   ├── lib/
+│   ├── hooks/
+│   ├── next.config.ts               ← rewrites /api/* → Go API server
+│   ├── tailwind.config.ts
+│   └── package.json
+│
+└── app/                             ← Wails desktop app
+    ├── go.mod                       ← github.com/kratofl/sprint/app
+    ├── main.go                      ← Wails entry point (embed all:frontend/dist)
+    ├── app.go                       ← App struct bound to frontend
+    ├── wails.json
+    ├── internal/                    ← app-private packages
+    │   ├── coordinator/             ← wires all services; no business logic
+    │   ├── vocore/                  ← PNG renderer + USB serial sender to wheel screen
+    │   ├── engineer/                ← WebSocket server for LAN engineers
+    │   ├── wheel/                   ← button detector, valid-lap finder
+    │   ├── sync/                    ← sync client (API server ↕)
+    │   └── setup/                   ← local setup file manager
+    └── frontend/                    ← Wails React/TS frontend (dist/ embedded by main.go)
+        ├── src/
+        │   ├── App.tsx
+        │   ├── views/
+        │   ├── components/
+        │   ├── hooks/
+        │   └── lib/wails.ts
+        ├── package.json
+        ├── vite.config.ts
+        ├── tailwind.config.ts
+        └── index.html
+```
+
+### Turborepo Task Order
+
+```
+@sprint/tokens
+    ├── @sprint/ui     (depends on tokens)
+    └── @sprint/types
+            ├── web            (depends on ui + types + tokens)
+            └── app/frontend   (depends on ui + types + tokens)
+```
+
+### Go Workspace (`go.work`)
+
+```
+go 1.25
+
+use (
+    ./app
+    ./api
+    ./pkg
+)
+```
+
+Three Go modules sharing `pkg/dto` and `pkg/games` via workspace resolution. Set
+`GOPRIVATE=github.com/kratofl/*` in your shell so `go mod tidy` skips the sum check
+for this private repo.
+
+## Shared Go Module (`/pkg`)
+
+- `pkg/dto/` is the **single source of truth** for telemetry and engineer protocol types. Both `/app` and `/api` import it.
+- `pkg/games/` defines the `GameAdapter` interface and contains game-specific adapters (one package per game).
+- No application logic in `/pkg` — only data types, interfaces, and adapters.
+
+## Go Desktop App Conventions (`/app`)
+
+- Single binary, standard Wails scaffold: `main.go` + `app.go` at module root.
+- All app-private logic under `internal/` (coordinator, vocore, engineer, wheel, sync, setup).
+- Imports shared types from `github.com/kratofl/sprint/pkg/dto` and `pkg/games`.
+- The coordinator is thin — it wires components together, it does not contain business logic.
+
+## Go API Server Conventions (`/api`)
+
+- Single binary HTTP server using the standard library (`net/http`).
+- All server-private logic under `internal/` (server, handler, relay, store, auth).
+- Imports shared types from `github.com/kratofl/sprint/pkg/dto`.
+- The relay package manages WebSocket connections for remote engineers — desktop app connects and pushes telemetry, engineers connect and receive it.
+- The store package handles all database operations; no SQL outside this package.
+
+## Wails Desktop App Conventions (`/app`)
+
+- The Wails app exposes Go backend methods to the frontend via Wails bindings. Keep bindings thin — they call internal services, they do not contain logic.
+- The React frontend (`/app/frontend`) uses the same design system as `/web` via shared components in `/packages`.
+- The desktop frontend has access to native capabilities through Wails (file system, OS notifications) — use them when the web app equivalent would require a browser permission prompt.
+- Desktop-only features (VoCore config, wheel button mapping, direct LAN engineer invite) live in `/app/frontend` and are not part of `/packages`.
+
+## Next.js Web App Conventions (`/web`)
+
+- Use the App Router. The web app is a **pure frontend** — all data comes from the Go API server.
+- API calls go through `next.config.ts` rewrites that proxy `/api/*` to the Go API server.
+- The Race Engineer portal is a real-time page — connects to the API server's WebSocket relay for live telemetry and command channel.
+- Telemetry comparison, session history, and setup management are core UI concerns.
+
+## Shared TypeScript Packages (`/packages`)
+
+- UI components used by both the desktop and web frontends live here (telemetry charts, dash layout editor, lap table, stat cards).
+- Design tokens (CSS variables, Tailwind config) are defined once here and imported by both apps.
+- No platform-specific code (no `window.go`, no Next.js imports) in `/packages`.
+
+## Design System
+
+Full reference: [`docs/DESIGN_SYSTEM.md`](../docs/DESIGN_SYSTEM.md)
+Stitch brief (aesthetic/narrative): [`.stitch/DESIGN.md`](../.stitch/DESIGN.md)
+
+### Key tokens (inline for quick reference)
+
+**Colors:**
+| Role | Hex | Usage |
+|---|---|---|
+| Background | `#080809` | Page background (+ subtle orange radial gradient) |
+| Orange (primary) | `#EF8118` | Driver actions, primary buttons, active nav, focus rings |
+| Teal (secondary) | `#1EA58C` | Engineer actions, comparison highlights, secondary CTAs |
+| Foreground | `#F2F2F3` | Primary text |
+| Muted foreground | `#8A8A95` | Labels, timestamps, helper text |
+| Disabled | `#52525C` | Placeholders, inactive elements |
+| Success | `#34D399` | Personal bests, improvements, online status |
+| Warning | `#FBBF24` | Caution, yellow flag |
+| Danger | `#F87171` | Errors, time losses |
+
+**Glass surface utility classes** (defined in both `web/app/globals.css` and `app/frontend/src/index.css`):
+```
+.glass           → rgba(255,255,255,0.04)  blur(12px)  — cards, panels
+.glass-elevated  → rgba(255,255,255,0.07)  blur(20px)  — dropdowns, tooltips
+.glass-overlay   → rgba(255,255,255,0.10)  blur(32px)  — modals, sheets
+.glass-highlight → inset 0 1px 0 rgba(255,255,255,0.10) — top edge glow, pair with .glass
+```
+
+**Typography:**
+- Font: `Inter` (variable, 100–900). Telemetry numbers: `font-mono tabular-nums` to prevent layout shift.
+- Hero stat values (lap times, top speed): `text-3xl font-bold font-mono tabular-nums`
+
+**Orange = driver-owned / primary action. Teal = engineer-originated / comparison. Never use both at the same visual weight on the same element.**
 
 ## Data Flow for New Game Support
 
-1. Create a new package under the games directory (e.g., `games/iracing/`).
-2. Implement the game adapter interface to read raw telemetry from the game.
-3. Map the raw data to the shared unified DTO.
-4. Register the adapter in the client's game selector — no changes needed downstream.
+1. Create a new package under `app/internal/games/` (e.g., `games/iracing/`).
+2. Implement the `GameAdapter` interface to read raw telemetry from the game.
+3. Map raw data to the unified DTO in `internal/dto/`.
+4. Register the adapter in the coordinator.
+5. No changes needed to the VoCore renderer, engineer hub, web app, or sync client.
+

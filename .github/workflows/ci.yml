@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go:
+    name: Go (test + vet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+
+      - name: Vet API
+        run: go vet ./api/... ./pkg/...
+
+      - name: Vet desktop app
+        run: |
+          cd app/frontend && npm install && npm run build
+          cd ../.. && cd app && go vet ./...
+        continue-on-error: true  # requires Wails + built frontend
+
+      - name: Test API
+        run: go test ./api/...
+
+      - name: Test shared packages
+        run: go test ./pkg/...
+
+  typescript:
+    name: TypeScript (lint + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: |
+          pnpm --filter @sprint/types build
+          pnpm --filter @sprint/ui build
+
+      - name: Type check web
+        run: pnpm --filter @sprint/web type-check
+
+      - name: Build web
+        run: pnpm --filter @sprint/web build
+
+      - name: Build desktop frontend
+        run: pnpm --filter @sprint/desktop build

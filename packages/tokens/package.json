@@ -1,0 +1,13 @@
+{
+  "name": "@sprint/tokens",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    "./tailwind": "./tailwind.config.ts",
+    "./globals.css": "./globals.css"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

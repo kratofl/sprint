@@ -1,0 +1,27 @@
+.git
+.github
+.stitch
+.env
+.env.*
+!.env.example
+*.md
+docs/
+LICENSE
+Makefile
+turbo.json
+
+# Go
+api/
+app/
+pkg/
+go.work
+go.work.sum
+bin/
+
+# Build output
+.next/
+node_modules/
+
+# OS
+.DS_Store
+*.swp
