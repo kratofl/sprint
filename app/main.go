@@ -7,7 +7,6 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
@@ -38,15 +37,15 @@ func main() {
 			WindowIsTranslucent:  true,
 			DisableWindowIcon:    false,
 		},
-		Mac: &mac.Options{
-			TitleBar:             mac.TitleBarHiddenInset(),
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
-			About: &mac.AboutInfo{
-				Title:   "Sprint",
-				Message: "Sim racing telemetry platform",
-			},
-		},
+		// Mac: &mac.Options{
+		// 	TitleBar:             mac.TitleBarHiddenInset(),
+		// 	WebviewIsTransparent: true,
+		// 	WindowIsTranslucent:  true,
+		// 	About: &mac.AboutInfo{
+		// 		Title:   "Sprint",
+		// 		Message: "Sim racing telemetry platform",
+		// 	},
+		// },
 	})
 	if err != nil {
 		log.Fatal(err)

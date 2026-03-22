@@ -76,6 +76,42 @@ func (m *Manager) List(car, track string) ([]*Setup, error) {
 	return setups, nil
 }
 
+// ListAll returns every setup found under the root directory, across all cars and tracks.
+func (m *Manager) ListAll() ([]*Setup, error) {
+	var setups []*Setup
+	err := filepath.Walk(m.dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || filepath.Ext(path) != ".json" {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil // skip unreadable files
+		}
+		var s Setup
+		if err := json.Unmarshal(data, &s); err != nil {
+			return nil // skip malformed files
+		}
+		setups = append(setups, &s)
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return []*Setup{}, nil
+	}
+	return setups, err
+}
+
+// Delete removes a setup file from disk.
+func (m *Manager) Delete(car, track, id string) error {
+	path := m.setupPath(car, track, id)
+	if err := os.Remove(path); err != nil {
+		return fmt.Errorf("setup: delete: %w", err)
+	}
+	// Remove empty parent directories (track then car) if possible — ignore errors.
+	_ = os.Remove(m.setupDir(car, track))
+	_ = os.Remove(filepath.Join(m.dir, sanitise(car)))
+	return nil
+}
+
 func (m *Manager) setupDir(car, track string) string {
 	return filepath.Join(m.dir, sanitise(car), sanitise(track))
 }
