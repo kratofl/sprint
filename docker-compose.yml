@@ -23,7 +23,8 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${PORT:-8080}
-      DATABASE_URL: ${DATABASE_URL:-postgres://sprint:sprint@db:5432/sprint?sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgres://sprint:changeme@db:5432/sprint?sslmode=disable}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     ports:
       - "${PORT:-8080}:8080"
     depends_on:

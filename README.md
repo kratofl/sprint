@@ -195,4 +195,4 @@ The UI uses a glassmorphism dark theme — frosted glass surfaces over a near-bl
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)

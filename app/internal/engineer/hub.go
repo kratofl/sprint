@@ -5,7 +5,7 @@ package engineer
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/kratofl/sprint/pkg/dto"
@@ -23,25 +23,27 @@ type Client struct {
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]*Client
+	logger  *slog.Logger
 
 	// Commands received from engineers, forwarded to the wheel detector / coordinator.
 	Commands chan *dto.EngineerCommand
 }
 
 // NewHub creates an empty Hub.
-func NewHub() *Hub {
+func NewHub(logger *slog.Logger) *Hub {
 	return &Hub{
 		clients:  make(map[string]*Client),
 		Commands: make(chan *dto.EngineerCommand, 64),
+		logger:   logger,
 	}
 }
 
 // Run starts the hub's event loop. Blocks until ctx is cancelled.
 func (h *Hub) Run(ctx context.Context) {
-	log.Println("engineer: hub running")
+	h.logger.Info("hub running")
 	// TODO: start WebSocket listener on configurable port
 	<-ctx.Done()
-	log.Println("engineer: hub stopped")
+	h.logger.Info("hub stopped")
 }
 
 // Broadcast pushes an event to all connected engineer clients.
@@ -52,7 +54,7 @@ func (h *Hub) Broadcast(evt *dto.EngineerEvent) {
 		select {
 		case c.send <- evt:
 		default:
-			log.Printf("engineer: client %s send buffer full, dropping event", c.ID)
+			h.logger.Warn("send buffer full, dropping event", "client_id", c.ID)
 		}
 	}
 }
@@ -62,7 +64,7 @@ func (h *Hub) register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c.ID] = c
-	log.Printf("engineer: client connected: %s (%s)", c.Name, c.ID)
+	h.logger.Info("client connected", "name", c.Name, "client_id", c.ID)
 }
 
 // unregister removes a client from the hub and closes its send channel.
@@ -72,6 +74,6 @@ func (h *Hub) unregister(c *Client) {
 	if _, ok := h.clients[c.ID]; ok {
 		delete(h.clients, c.ID)
 		close(c.send)
-		log.Printf("engineer: client disconnected: %s (%s)", c.Name, c.ID)
+		h.logger.Info("client disconnected", "name", c.Name, "client_id", c.ID)
 	}
 }

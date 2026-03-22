@@ -12,10 +12,10 @@ const (
 // EngineerCommand is a message pushed from an engineer client to the driver's Wails app.
 // The Payload field is decoded according to Type.
 type EngineerCommand struct {
-	ID        string      // UUID, set by sender
+	ID        string // UUID, set by sender
 	Type      CommandType
-	Payload   any   // SetTargetLapPayload | NotePayload
-	Timestamp int64 // Unix milliseconds
+	Payload   any    // SetTargetLapPayload | NotePayload
+	Timestamp int64  // Unix milliseconds
 	From      string // engineer display name or client ID
 }
 

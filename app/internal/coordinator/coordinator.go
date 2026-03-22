@@ -4,7 +4,7 @@ package coordinator
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/app/internal/setup"
@@ -15,6 +15,7 @@ import (
 
 // Coordinator is the top-level wiring of all backend subsystems.
 type Coordinator struct {
+	logger   *slog.Logger
 	engineer *engineer.Hub
 	vocore   *vocore.Renderer
 	wheel    *wheel.Detector
@@ -22,20 +23,22 @@ type Coordinator struct {
 	setup    *setup.Manager
 }
 
-// New creates a Coordinator with default configuration.
-func New() *Coordinator {
+// New creates a Coordinator. logger is the root application logger;
+// each subsystem receives a child logger tagged with its component name.
+func New(logger *slog.Logger) *Coordinator {
 	return &Coordinator{
-		engineer: engineer.NewHub(),
-		vocore:   vocore.NewRenderer(),
-		wheel:    wheel.NewDetector(),
-		sync:     sync.NewClient(),
+		logger:   logger,
+		engineer: engineer.NewHub(logger.With("component", "engineer")),
+		vocore:   vocore.NewRenderer(logger.With("component", "vocore")),
+		wheel:    wheel.NewDetector(logger.With("component", "wheel")),
+		sync:     sync.NewClient(logger.With("component", "sync")),
 		setup:    setup.NewManager(),
 	}
 }
 
 // Start launches all subsystems. ctx governs their lifetime.
 func (c *Coordinator) Start(ctx context.Context) {
-	log.Println("coordinator: starting subsystems")
+	c.logger.Info("starting subsystems")
 	go c.engineer.Run(ctx)
 	go c.vocore.Run(ctx)
 	go c.wheel.Run(ctx, c.engineer)
@@ -44,5 +47,5 @@ func (c *Coordinator) Start(ctx context.Context) {
 
 // Stop shuts down all subsystems gracefully.
 func (c *Coordinator) Stop() {
-	log.Println("coordinator: stopping")
+	c.logger.Info("stopping")
 }

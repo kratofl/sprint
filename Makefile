@@ -3,7 +3,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help dev-api dev-web build-api build-web build-app build \
+.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build \
         test test-api test-pkg lint fmt \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -11,6 +11,11 @@
 BINARY_DIR := bin
 API_BINARY := $(BINARY_DIR)/sprint-api
 APP_DIR    := app
+
+# Prevent Go from hitting sum.golang.org for private modules in this workspace.
+# Can also be set permanently: go env -w GONOSUMDB=github.com/kratofl/*
+export GONOSUMDB := github.com/kratofl/*
+export GONOPROXY := github.com/kratofl/*
 
 # ─── Help ─────────────────────────────────────────────────────────────────────
 
@@ -20,7 +25,17 @@ help: ## Show this help message
 		sort
 	@echo ""
 
+# ─── Setup ────────────────────────────────────────────────────────────────────
+
+setup: ## One-time dev setup: configure Go env for private modules
+	go env -w GONOSUMDB=github.com/kratofl/*
+	go env -w GONOPROXY=github.com/kratofl/*
+	@echo "✓ Go env configured for private modules"
+
 # ─── Development ──────────────────────────────────────────────────────────────
+
+dev-app: ## Run the Wails desktop app in dev mode
+	cd $(APP_DIR) && GONOSUMDB=github.com/kratofl/* GONOPROXY=github.com/kratofl/* wails dev
 
 dev-api: ## Run the API server locally (hot-reload with go run)
 	go run ./api

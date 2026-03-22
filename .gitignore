@@ -84,6 +84,8 @@ secrets/
 
 # ─── Wails ────────────────────────────────────────────────────────────────────
 app/build/
+app/app
+app/app.exe
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/
@@ -96,7 +98,7 @@ app/frontend/dist/
 .turbo/
 
 # ─── Go Workspace ────────────────────────────────────────────────────────────
-go.work.sum
+# go.work.sum should be committed (Go docs: commit it like go.sum)
 
 # ─── Logs & Temp ─────────────────────────────────────────────────────────────
 *.log

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/kratofl/sprint/app/internal/coordinator"
+	"github.com/kratofl/sprint/app/internal/logger"
 )
 
 // App is the Wails application struct. Its exported methods are bound to the
@@ -22,7 +23,8 @@ func NewApp() *App {
 // runtime calls such as opening dialogs or emitting events.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
-	a.coord = coordinator.New()
+	log := logger.Init(logger.DefaultConfig())
+	a.coord = coordinator.New(log)
 	a.coord.Start(ctx)
 }
 

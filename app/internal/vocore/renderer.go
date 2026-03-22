@@ -12,7 +12,7 @@ package vocore
 
 import (
 	"context"
-	"log"
+	"log/slog"
 )
 
 // Config holds the USB serial port settings for the VoCore screen.
@@ -31,19 +31,20 @@ func DefaultConfig() Config {
 
 // Renderer encodes the current dash layout to PNG frames and sends them to the VoCore over USB.
 type Renderer struct {
-	cfg Config
+	cfg    Config
+	logger *slog.Logger
 }
 
 // NewRenderer creates a Renderer with the default configuration.
-func NewRenderer() *Renderer {
-	return &Renderer{cfg: DefaultConfig()}
+func NewRenderer(logger *slog.Logger) *Renderer {
+	return &Renderer{cfg: DefaultConfig(), logger: logger}
 }
 
 // Run starts the render loop. Blocks until ctx is cancelled.
 func (r *Renderer) Run(ctx context.Context) {
-	log.Printf("vocore: renderer starting — USB port %s @ %d baud", r.cfg.Port, r.cfg.BaudRate)
+	r.logger.Info("renderer starting", "port", r.cfg.Port, "baud_rate", r.cfg.BaudRate)
 	<-ctx.Done()
-	log.Println("vocore: renderer stopped")
+	r.logger.Info("renderer stopped")
 }
 
 // SetConfig updates the USB port settings. Safe to call before Run.

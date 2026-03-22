@@ -5,6 +5,7 @@
 - Do **not** install system-level programs, applications, or packages on the host machine without explicit user consent.
 - Do **not** read, write, or execute anything outside the `/Users/kratofl/Projects/sprint` directory.
 - Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation and understanding. Fall back to file read operations (grep, glob, cat) only as a last resort.
+- Do **not** run `git commit` automatically. Commits must be made manually by the user. You may stage files with `git add` and show a suggested commit message, but never commit.
 
 ## Project Overview
 
@@ -15,6 +16,19 @@ A sim racing telemetry platform with four components:
 3. **Web app** (`/web`) — A Next.js frontend for analyzing telemetry, managing dash layouts and setups, running the Race Engineer portal, and sharing sessions with other users. Talks to the API server; contains no backend logic itself.
 4. **Shared Go packages** (`/pkg`) — Unified DTO types and game adapter interfaces, imported by both the desktop app and the API server.
 5. **Shared TypeScript packages** (`/packages`) — UI components, types, and design tokens shared between the desktop and web frontends.
+
+## Current Development Focus
+
+> **The desktop app (`/app`) is the primary focus right now.**
+>
+> Build order priority:
+> 1. **Desktop app** — full-featured and stable before anything else.
+> 2. **Race Engineer features** — some functionality (engineer hub, WebSocket session) is implemented alongside the desktop app because it is tightly coupled to the live telemetry pipeline.
+> 3. **API server & web app** — deferred. Most `/api` handlers and all `/web` UI pages are stubs or TODOs. Do not expand them unless the user explicitly asks.
+>
+> When suggesting new features or next steps, default to the desktop app scope. Avoid expanding the web or API surface area unless it is directly required by a desktop feature.
+>
+> **However:** when a major change affects shared concerns — design tokens, shared components (`@sprint/ui`), DTO types (`@sprint/types`), API contracts, or the data model — the web app must not be left behind. Apply the change to both surfaces or note explicitly what the web app will need when it is built out.
 
 ## Architecture
 
@@ -258,8 +272,23 @@ for this private repo.
 
 ## Shared TypeScript Packages (`/packages`)
 
-- UI components used by both the desktop and web frontends live here (telemetry charts, dash layout editor, lap table, stat cards).
-- Design tokens (CSS variables, Tailwind config) are defined once here and imported by both apps.
+- Design tokens (CSS variables, Tailwind config) → `@sprint/tokens` — imported by both apps. Single source of truth.
+- TypeScript mirrors of Go DTOs → `@sprint/types` — kept in sync manually with `pkg/dto/*.go`.
+- Shared UI components and utils → `@sprint/ui` — **write components here first**.
+
+### Component ownership rules
+
+| Location | For |
+|---|---|
+| `packages/ui/src/components/primitives/` | Reusable visual atoms: `Button`, `Badge`, `Card` |
+| `packages/ui/src/components/telemetry/` | Domain display: `LapTime`, `DeltaBar`, `TireTemp` |
+| `app/frontend/src/components/` | **Desktop-only** — Wails bindings, native chrome, drag regions |
+| `web/components/` | **Web-only** — Next.js server components, routing-aware layouts |
+
+**Rule:** When building a new visual component, put it in `packages/ui` unless it requires Wails- or Next.js-specific APIs. Both apps import from `@sprint/ui`.
+
+**Tailwind reminder:** Both apps' `tailwind.config.ts` include `../../packages/ui/src/**/*.{ts,tsx}` in `content` — classes in shared components are not purged.
+
 - No platform-specific code (no `window.go`, no Next.js imports) in `/packages`.
 
 ## Design System
@@ -282,7 +311,7 @@ Stitch brief (aesthetic/narrative): [`.stitch/DESIGN.md`](../.stitch/DESIGN.md)
 | Warning | `#FBBF24` | Caution, yellow flag |
 | Danger | `#F87171` | Errors, time losses |
 
-**Glass surface utility classes** (defined in both `web/app/globals.css` and `app/frontend/src/index.css`):
+**Glass surface utility classes** (defined in `packages/tokens/globals.css`, imported by both apps):
 ```
 .glass           → rgba(255,255,255,0.04)  blur(12px)  — cards, panels
 .glass-elevated  → rgba(255,255,255,0.07)  blur(20px)  — dropdowns, tooltips

@@ -5,7 +5,7 @@ package dto
 
 // TelemetryFrame is the canonical telemetry snapshot emitted once per game tick.
 type TelemetryFrame struct {
-	Timestamp int64      // Unix nanoseconds
+	Timestamp int64 // Unix nanoseconds
 	Session   Session
 	Car       CarState
 	Tires     [4]TireState // indexed by TirePosition constants (FL=0, FR=1, RL=2, RR=3)
@@ -76,18 +76,18 @@ type TireState struct {
 
 // LapState holds lap timing and validity data for the current lap.
 type LapState struct {
-	CurrentLap    int
+	CurrentLap     int
 	CurrentLapTime float64 // seconds since lap start
-	LastLapTime   float64 // seconds; 0 if no completed lap this session
-	BestLapTime   float64 // personal best seconds; 0 if none
-	TargetLapTime float64 // seconds; set by driver or engineer; 0 means unset
-	Sector        int     // current sector (1-based)
-	Sector1Time   float64 // last completed lap sector 1, seconds; 0 if unavailable
-	Sector2Time   float64 // last completed lap sector 2, seconds
-	IsInLap       bool
-	IsOutLap      bool
-	IsValid       bool    // false on track limit or other infringement
-	TrackPosition float32 // 0–1, fraction of lap distance completed
+	LastLapTime    float64 // seconds; 0 if no completed lap this session
+	BestLapTime    float64 // personal best seconds; 0 if none
+	TargetLapTime  float64 // seconds; set by driver or engineer; 0 means unset
+	Sector         int     // current sector (1-based)
+	Sector1Time    float64 // last completed lap sector 1, seconds; 0 if unavailable
+	Sector2Time    float64 // last completed lap sector 2, seconds
+	IsInLap        bool
+	IsOutLap       bool
+	IsValid        bool    // false on track limit or other infringement
+	TrackPosition  float32 // 0–1, fraction of lap distance completed
 }
 
 // Flags holds the current flag state on track.

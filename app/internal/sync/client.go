@@ -5,7 +5,7 @@ package sync
 
 import (
 	"context"
-	"log"
+	"log/slog"
 )
 
 // Config holds the web app connection details.
@@ -16,13 +16,14 @@ type Config struct {
 
 // Client handles syncing state between the local app and the web app.
 type Client struct {
-	cfg Config
+	cfg    Config
+	logger *slog.Logger
 }
 
 // NewClient creates a Client with an empty configuration.
 // Call SetConfig before Run to provide the web app URL and token.
-func NewClient() *Client {
-	return &Client{}
+func NewClient(logger *slog.Logger) *Client {
+	return &Client{logger: logger}
 }
 
 // SetConfig updates the web app connection details.
@@ -33,14 +34,14 @@ func (c *Client) SetConfig(cfg Config) {
 // Run starts the sync loop. Blocks until ctx is cancelled.
 func (c *Client) Run(ctx context.Context) {
 	if c.cfg.WebAppURL == "" {
-		log.Println("sync: no web app URL configured — sync disabled")
+		c.logger.Warn("no web app URL configured — sync disabled")
 		<-ctx.Done()
 		return
 	}
-	log.Printf("sync: starting — target %s", c.cfg.WebAppURL)
+	c.logger.Info("sync starting", "target", c.cfg.WebAppURL)
 	// TODO: establish WebSocket connection to web app
 	// TODO: push layout/setup changes on save
 	// TODO: stream live telemetry when opted in
 	<-ctx.Done()
-	log.Println("sync: stopped")
+	c.logger.Info("sync stopped")
 }

@@ -5,7 +5,7 @@ package wheel
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/pkg/dto"
@@ -30,22 +30,23 @@ type LapRecord struct {
 // On a target-lap button press it selects the best recent valid lap and
 // broadcasts a SetTargetLap command to all connected engineers.
 type Detector struct {
-	laps       []LapRecord
+	laps        []LapRecord
 	sessionBest float64
+	logger      *slog.Logger
 }
 
 // NewDetector creates a Detector with no lap history.
-func NewDetector() *Detector {
-	return &Detector{}
+func NewDetector(logger *slog.Logger) *Detector {
+	return &Detector{logger: logger}
 }
 
 // Run starts the detector loop. hub is used to broadcast target changes.
 func (d *Detector) Run(ctx context.Context, hub *engineer.Hub) {
-	log.Println("wheel: detector running")
+	d.logger.Info("detector running")
 	// TODO: subscribe to telemetry frame channel to record completed laps
 	// TODO: subscribe to wheel button event channel to trigger SetTargetLap
 	<-ctx.Done()
-	log.Println("wheel: detector stopped")
+	d.logger.Info("detector stopped")
 }
 
 // RecordLap appends a completed lap to the history and updates sessionBest.
