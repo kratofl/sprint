@@ -13,6 +13,8 @@ package vocore
 import (
 	"context"
 	"log/slog"
+
+	"github.com/kratofl/sprint/pkg/dto"
 )
 
 // Config holds the USB serial port settings for the VoCore screen.
@@ -47,7 +49,8 @@ func (r *Renderer) Run(ctx context.Context) {
 	r.logger.Info("renderer stopped")
 }
 
-// SetConfig updates the USB port settings. Safe to call before Run.
-func (r *Renderer) SetConfig(cfg Config) {
-	r.cfg = cfg
+// OnFrame is called by the coordinator's telemetry loop on every new frame.
+// The renderer is a stub until the VoCore PNG pipeline is implemented.
+func (r *Renderer) OnFrame(_ *dto.TelemetryFrame) {
+	// TODO: encode frame to PNG and write to VoCore over USB serial
 }

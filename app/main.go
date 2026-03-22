@@ -31,6 +31,7 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
+		AlwaysOnTop: true,
 		// Glassmorphism requires transparency support
 		Windows: &windows.Options{
 			WebviewIsTransparent: true,

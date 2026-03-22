@@ -1,145 +1,194 @@
-import { useTelemetry } from '@/hooks/useTelemetry'
+import {
+  DeltaBar,
+  FlagBanner,
+  FuelWidget,
+  GearDisplay,
+  InputTrace,
+  LapTime,
+  RPMBar,
+  SectorTimes,
+  SessionHeader,
+  TireTemp,
+} from '@sprint/ui'
+import type { TireData } from '@sprint/ui'
+import type { TelemetryFrame } from '@sprint/types'
 
-export default function Telemetry() {
-  const { frame, connected } = useTelemetry()
+export interface TelemetryProps {
+  frame: TelemetryFrame | null
+  connected: boolean
+  fps: number
+}
 
+export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Live Telemetry</h1>
-        <div className="flex items-center gap-2 text-xs">
-          <span className={[
-            'h-1.5 w-1.5 rounded-full',
-            connected ? 'bg-teal animate-pulse' : 'bg-text-disabled',
-          ].join(' ')} />
-          <span className="text-text-secondary">{connected ? 'Connected' : 'Waiting for game…'}</span>
-        </div>
-      </div>
+    <div className="flex flex-1 flex-col gap-3 overflow-auto p-4">
+      {/* Session header */}
+      <SessionHeader
+        session={frame?.session ?? emptySession}
+        connected={connected}
+        fps={fps}
+      />
 
-      {/* Top row — key stats */}
-      <div className="grid grid-cols-4 gap-3">
-        <StatCard label="Speed" value={frame ? `${(frame.car.speedMS * 3.6).toFixed(0)}` : '—'} unit="km/h" />
-        <StatCard label="Gear"  value={frame ? gearLabel(frame.car.gear) : '—'} />
-        <StatCard label="RPM"   value={frame ? frame.car.rpm.toFixed(0) : '—'} />
-        <StatCard label="Fuel"  value={frame ? frame.car.fuel.toFixed(1) : '—'} unit="L" />
-      </div>
+      {/* Flag banner — only rendered when a flag is active */}
+      {frame && <FlagBanner flags={frame.flags} />}
 
-      {/* Lap times */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Current Lap" value={frame ? formatTime(frame.lap.currentLapTime) : '—:---.---'} mono />
-        <StatCard label="Last Lap"    value={frame ? formatTime(frame.lap.lastLapTime)    : '—:---.---'} mono />
-        <StatCard label="Target"      value={frame ? formatTime(frame.lap.targetLapTime)  : '—:---.---'} mono accent="teal" />
-      </div>
+      {/* ── Main two-column grid ── */}
+      <div className="grid flex-1 grid-cols-2 gap-3">
+        {/* ── LEFT: car state ── */}
+        <div className="glass flex flex-col gap-4 rounded-lg p-4">
+          {/* Gear + speed */}
+          <GearDisplay
+            gear={frame?.car.gear ?? 0}
+            speedKph={frame ? frame.car.speedMS * 3.6 : 0}
+          />
 
-      {/* Inputs */}
-      <div className="glass rounded-lg p-4">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-muted">Driver Inputs</p>
-        <div className="space-y-2">
-          <InputBar label="Throttle" value={frame?.car.throttle ?? 0} color="bg-teal" />
-          <InputBar label="Brake"    value={frame?.car.brake    ?? 0} color="bg-accent" />
-          <InputBar label="Steering" value={frame ? (frame.car.steering + 1) / 2 : 0.5} color="bg-text-secondary" center />
-        </div>
-      </div>
+          {/* RPM bar */}
+          <RPMBar
+            rpm={frame?.car.rpm ?? 0}
+            maxRpm={frame?.car.maxRPM ?? 10000}
+          />
 
-      {/* Tyre temps */}
-      <div className="glass rounded-lg p-4">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-muted">Tyre Temperatures (°C)</p>
-        <div className="grid grid-cols-2 gap-3">
-          {(['FL', 'FR', 'RL', 'RR'] as const).map((corner, i) => (
-            <TyreCard
-              key={corner}
-              label={corner}
-              temp={frame?.tires[i]?.tempSurface}
+          {/* Driver inputs */}
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+              Inputs
+            </p>
+            <InputTrace
+              throttle={frame?.car.throttle ?? 0}
+              brake={frame?.car.brake ?? 0}
+              clutch={frame?.car.clutch ?? 0}
+              steering={frame?.car.steering ?? 0}
             />
-          ))}
+          </div>
+        </div>
+
+        {/* ── RIGHT: timing + fuel ── */}
+        <div className="flex flex-col gap-3">
+          {/* Lap times */}
+          <div className="glass rounded-lg p-4">
+            <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+              Lap Times
+            </p>
+            <div className="space-y-2">
+              <LapRow label="Current" time={frame?.lap.currentLapTime} />
+              <LapRow label="Last"    time={frame?.lap.lastLapTime}    />
+              <LapRow label="Best"    time={frame?.lap.bestLapTime}    accent="teal" />
+            </div>
+
+            {/* Delta bar — only when a target is set */}
+            {frame && frame.lap.targetLapTime > 0 && (
+              <div className="mt-3">
+                <p className="mb-1 text-[11px] text-text-muted">Δ Target</p>
+                <DeltaBar
+                  delta={frame.lap.currentLapTime - frame.lap.targetLapTime}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Sector times */}
+          <div className="glass rounded-lg p-3">
+            <SectorTimes
+              sector1Time={frame?.lap.sector1Time ?? 0}
+              sector2Time={frame?.lap.sector2Time ?? 0}
+              bestSector1={0}
+              bestSector2={0}
+              currentSector={frame?.lap.sector ?? 1}
+              currentSectorTime={frame?.lap.currentLapTime ?? 0}
+            />
+          </div>
+
+          {/* Fuel */}
+          <div className="glass rounded-lg p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+              Fuel
+            </p>
+            <FuelWidget
+              fuel={frame?.car.fuel ?? 0}
+              capacity={110}
+              fuelPerLap={frame?.car.fuelPerLap ?? 0}
+            />
+          </div>
         </div>
       </div>
-    </div>
-  )
-}
 
-function StatCard({
-  label, value, unit, mono, accent,
-}: {
-  label: string; value: string; unit?: string; mono?: boolean; accent?: 'orange' | 'teal'
-}) {
-  return (
-    <div className="glass rounded-lg p-4">
-      <p className="text-xs text-text-muted mb-1">{label}</p>
-      <p className={[
-        'text-2xl font-semibold tabular',
-        mono ? 'font-mono' : '',
-        accent === 'teal' ? 'text-teal' : accent === 'orange' ? 'text-accent' : 'text-text-primary',
-      ].join(' ')}>
-        {value}
-        {unit && <span className="ml-1 text-sm font-normal text-text-muted">{unit}</span>}
-      </p>
-    </div>
-  )
-}
-
-function InputBar({
-  label, value, color, center,
-}: {
-  label: string; value: number; color: string; center?: boolean
-}) {
-  const pct = Math.max(0, Math.min(1, value)) * 100
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-14 text-xs text-text-secondary">{label}</span>
-      <div className="relative h-2 flex-1 rounded-full bg-bg-elevated">
-        {center ? (
-          <div
-            className={`absolute top-0 h-full rounded-full ${color} opacity-70`}
-            style={{
-              left: `${Math.min(pct, 50)}%`,
-              width: `${Math.abs(pct - 50)}%`,
-            }}
-          />
-        ) : (
-          <div
-            className={`absolute left-0 top-0 h-full rounded-full ${color} opacity-70`}
-            style={{ width: `${pct}%` }}
-          />
-        )}
+      {/* ── Tyre temps — full width ── */}
+      <div className="glass rounded-lg p-4">
+        <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+          Tyre Temperatures
+        </p>
+        <TireTemp tires={buildTires(frame)} />
       </div>
-      <span className="w-10 text-right text-xs tabular text-text-secondary">
-        {center
-          ? `${((value * 2 - 1) * 100).toFixed(0)}%`
-          : `${(value * 100).toFixed(0)}%`}
-      </span>
     </div>
   )
 }
 
-function TyreCard({ label, temp }: { label: string; temp?: number }) {
-  const display = temp != null ? temp.toFixed(1) : '—'
-  const color = temp != null ? tyreColor(temp) : 'text-text-disabled'
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const emptySession = {
+  game: '',
+  track: '',
+  car: '',
+  sessionType: 'unknown' as const,
+  sessionTime: 0,
+  bestLapTime: 0,
+}
+
+function LapRow({
+  label,
+  time,
+  accent,
+}: {
+  label: string
+  time?: number
+  accent?: 'teal' | 'orange'
+}) {
   return (
-    <div className="flex items-center justify-between rounded-md bg-bg-elevated px-3 py-2">
-      <span className="text-xs text-text-secondary">{label}</span>
-      <span className={`text-sm font-semibold tabular ${color}`}>{display}</span>
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-text-muted">{label}</span>
+      <LapTime
+        seconds={time}
+        className={[
+          'text-sm',
+          accent === 'teal'   ? 'text-teal'   :
+          accent === 'orange' ? 'text-accent'  :
+          'text-text-primary',
+        ].join(' ')}
+      />
     </div>
   )
 }
 
-function tyreColor(temp: number): string {
-  if (temp < 60)  return 'text-blue-400'
-  if (temp < 80)  return 'text-teal'
-  if (temp < 100) return 'text-accent'
-  return 'text-red-400'
+const emptyTire: TireData = {
+  tempInner: 0,
+  tempMiddle: 0,
+  tempOuter: 0,
+  wearPercent: 0,
+  compound: '—',
 }
 
-function gearLabel(gear: number): string {
-  if (gear === -1) return 'R'
-  if (gear === 0)  return 'N'
-  return gear.toString()
+function buildTires(frame: TelemetryFrame | null) {
+  if (!frame) {
+    return {
+      frontLeft:  emptyTire,
+      frontRight: emptyTire,
+      rearLeft:   emptyTire,
+      rearRight:  emptyTire,
+    }
+  }
+  const t = frame.tires
+  const toData = (i: number): TireData => ({
+    tempInner:   t[i].tempInner,
+    tempMiddle:  t[i].tempMiddle,
+    tempOuter:   t[i].tempOuter,
+    wearPercent: t[i].wearPercent,
+    compound:    t[i].compound,
+  })
+  return {
+    frontLeft:  toData(0),
+    frontRight: toData(1),
+    rearLeft:   toData(2),
+    rearRight:  toData(3),
+  }
 }
 
-function formatTime(seconds: number): string {
-  if (!seconds) return '—:---.---'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toFixed(3).padStart(6, '0')}`
-}

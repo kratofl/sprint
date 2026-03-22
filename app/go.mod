@@ -4,9 +4,11 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/kratofl/sprint/pkg v0.0.0-20260322142936-417b3fc33078
+	github.com/kratofl/sprint/pkg v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.11.0
 )
+
+replace github.com/kratofl/sprint/pkg => ../pkg
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect

@@ -33,6 +33,9 @@ type Detector struct {
 	laps        []LapRecord
 	sessionBest float64
 	logger      *slog.Logger
+
+	prevLap     int  // last known lap number for detecting lap completion
+	prevLapTime float64
 }
 
 // NewDetector creates a Detector with no lap history.
@@ -40,13 +43,35 @@ func NewDetector(logger *slog.Logger) *Detector {
 	return &Detector{logger: logger}
 }
 
-// Run starts the detector loop. hub is used to broadcast target changes.
+// Run starts the wheel button event loop. hub is used to broadcast target changes.
+// Lap recording is handled via OnFrame from the coordinator's telemetry loop.
 func (d *Detector) Run(ctx context.Context, hub *engineer.Hub) {
 	d.logger.Info("detector running")
-	// TODO: subscribe to telemetry frame channel to record completed laps
 	// TODO: subscribe to wheel button event channel to trigger SetTargetLap
 	<-ctx.Done()
 	d.logger.Info("detector stopped")
+}
+
+// OnFrame is called by the coordinator's telemetry loop on every new frame.
+// It records completed laps for the target-lap selection logic.
+func (d *Detector) OnFrame(frame *dto.TelemetryFrame) {
+	lap := frame.Lap
+	// A new lap starts when the lap counter increments.
+	if lap.CurrentLap > d.prevLap && d.prevLap != 0 && d.prevLapTime > 0 {
+		d.RecordLap(LapRecord{
+			LapNum:   d.prevLap,
+			LapTime:  d.prevLapTime,
+			IsInLap:  lap.IsInLap,
+			IsOutLap: lap.IsOutLap,
+			IsValid:  lap.IsValid && !frame.Flags.Yellow && !frame.Flags.SafetyCar,
+		})
+	}
+	if lap.CurrentLap != d.prevLap {
+		d.prevLap = lap.CurrentLap
+	}
+	if lap.LastLapTime > 0 {
+		d.prevLapTime = lap.LastLapTime
+	}
 }
 
 // RecordLap appends a completed lap to the history and updates sessionBest.

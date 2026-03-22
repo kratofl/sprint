@@ -3,6 +3,7 @@ import Telemetry from '@/views/Telemetry'
 import DashEditor from '@/views/DashEditor'
 import Setups from '@/views/Setups'
 import EngineerStatus from '@/views/EngineerStatus'
+import { useTelemetry } from '@/hooks/useTelemetry'
 
 type View = 'telemetry' | 'dash' | 'setups' | 'engineer'
 
@@ -15,6 +16,7 @@ const NAV: { id: View; label: string }[] = [
 
 export default function App() {
   const [view, setView] = useState<View>('telemetry')
+  const { frame, connected, fps } = useTelemetry()
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#080809] text-text-primary font-sans">
@@ -43,18 +45,27 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Connection badge */}
+        {/* Live connection indicator */}
         <div className="px-4 py-4">
           <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span className="h-1.5 w-1.5 rounded-full bg-text-disabled" />
-            Not connected
+            <span
+              className={[
+                'h-1.5 w-1.5 rounded-full',
+                connected ? 'bg-teal animate-pulse' : 'bg-text-disabled',
+              ].join(' ')}
+            />
+            {connected ? (
+              <span className="text-teal">Live</span>
+            ) : (
+              <span>Not connected</span>
+            )}
           </div>
         </div>
       </aside>
 
       {/* Main content */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        {view === 'telemetry' && <Telemetry />}
+        {view === 'telemetry' && <Telemetry frame={frame} connected={connected} fps={fps} />}
         {view === 'dash'      && <DashEditor />}
         {view === 'setups'    && <Setups />}
         {view === 'engineer'  && <EngineerStatus />}
