@@ -5,7 +5,7 @@
 - Do **not** install system-level programs, applications, or packages on the host machine without explicit user consent.
 - Do **not** read, write, or execute anything outside the `/Users/kratofl/Projects/sprint` directory.
 - Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation and understanding. Fall back to file read operations (grep, glob, cat) only as a last resort.
-- Do **not** run `git commit` automatically. Commits must be made manually by the user. You may stage files with `git add` and show a suggested commit message, but never commit.
+- You **may** run `git commit` automatically. Every commit must include the co-author trailer: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 
 ## Project Overview
 
