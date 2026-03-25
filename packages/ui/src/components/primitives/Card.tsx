@@ -1,78 +1,109 @@
-import * as React from 'react'
-import { cn } from '../../lib/utils'
+import * as React from "react"
 
-// ── Card ──────────────────────────────────────────────────────────────────────
+import { cn } from "../../lib/utils"
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Elevate the glass level for modal/overlay contexts */
-  elevated?: boolean
-}
+export type CardProps = React.ComponentProps<"div"> & { size?: "default" | "sm" }
+export type CardHeaderProps = React.ComponentProps<"div">
+export type CardTitleProps = React.ComponentProps<"div">
+export type CardDescriptionProps = React.ComponentProps<"div">
+export type CardActionProps = React.ComponentProps<"div">
+export type CardContentProps = React.ComponentProps<"div">
+export type CardFooterProps = React.ComponentProps<"div">
 
-export function Card({ elevated = false, className, children, ...props }: CardProps) {
+function Card({
+  className,
+  size = "default",
+  ...props
+}: CardProps) {
   return (
     <div
+      data-slot="card"
+      data-size={size}
       className={cn(
-        'rounded-lg',
-        elevated ? 'glass-elevated' : 'glass',
-        className,
+        "group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-card py-4 text-xs/relaxed text-card-foreground ring-1 ring-foreground/10 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
+        className
       )}
       {...props}
-    >
-      {children}
-    </div>
+    />
   )
 }
 
-// ── CardHeader ────────────────────────────────────────────────────────────────
-
-export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardHeader({ className, children, ...props }: CardHeaderProps) {
+function CardHeader({ className, ...props }: CardHeaderProps) {
   return (
     <div
-      className={cn('flex items-center justify-between px-4 py-3 border-b border-border-glass', className)}
+      data-slot="card-header"
+      className={cn(
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-lg px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+        className
+      )}
       {...props}
-    >
-      {children}
-    </div>
+    />
   )
 }
 
-// ── CardTitle ─────────────────────────────────────────────────────────────────
-
-export interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {}
-
-export function CardTitle({ className, children, ...props }: CardTitleProps) {
-  return (
-    <h3 className={cn('text-sm font-semibold text-text-primary', className)} {...props}>
-      {children}
-    </h3>
-  )
-}
-
-// ── CardContent ───────────────────────────────────────────────────────────────
-
-export interface CardContentProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardContent({ className, children, ...props }: CardContentProps) {
-  return (
-    <div className={cn('p-4', className)} {...props}>
-      {children}
-    </div>
-  )
-}
-
-// ── CardFooter ────────────────────────────────────────────────────────────────
-
-export interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
-
-export function CardFooter({ className, children, ...props }: CardFooterProps) {
+function CardTitle({ className, ...props }: CardTitleProps) {
   return (
     <div
-      className={cn('flex items-center px-4 py-3 border-t border-border-glass', className)}
+      data-slot="card-title"
+      className={cn("text-sm font-medium", className)}
       {...props}
-    >
-      {children}
-    </div>
+    />
   )
 }
+
+function CardDescription({ className, ...props }: CardDescriptionProps) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-xs/relaxed text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+function CardAction({ className, ...props }: CardActionProps) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: CardContentProps) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-4 group-data-[size=sm]/card:px-3", className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: CardFooterProps) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn(
+        "flex items-center rounded-b-lg px-4 group-data-[size=sm]/card:px-3 [.border-t]:pt-4 group-data-[size=sm]/card:[.border-t]:pt-3",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}
+

@@ -1,49 +1,70 @@
-import * as React from 'react'
-import { cn } from '../../lib/utils'
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+import { Slot } from "radix-ui"
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'destructive'
-export type ButtonSize = 'sm' | 'md' | 'lg'
+import { cn } from "../../lib/utils"
 
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant
-  size?: ButtonSize
-}
-
-const variantClasses: Record<ButtonVariant, string> = {
-  primary:
-    'bg-accent text-white hover:bg-accent-hover active:opacity-90 shadow-glow/30',
-  secondary:
-    'bg-teal text-white hover:bg-teal-hover active:opacity-90 shadow-glow-teal/30',
-  ghost:
-    'bg-transparent text-text-secondary border border-border-glass hover:bg-bg-surface hover:text-text-primary',
-  destructive:
-    'bg-red-600/80 text-white hover:bg-red-500 active:opacity-90',
-}
-
-const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'h-7 px-3 text-xs rounded-sm',
-  md: 'h-9 px-4 text-sm rounded',
-  lg: 'h-11 px-6 text-base rounded-md',
-}
-
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', className, children, disabled, ...props }, ref) => (
-    <button
-      ref={ref}
-      disabled={disabled}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 font-medium transition-all duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
-        'disabled:opacity-40 disabled:pointer-events-none',
-        variantClasses[variant],
-        sizeClasses[size],
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
+const buttonVariants = cva(
+  "group/button inline-flex shrink-0 items-center justify-center rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        outline:
+          "border-border hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-input/30",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        ghost:
+          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        destructive:
+          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default:
+          "h-7 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+        xs: "h-5 gap-1 rounded-sm px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
+        sm: "h-6 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        lg: "h-8 gap-1 px-2.5 text-xs/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
+        icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
+        "icon-xs": "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
+        "icon-sm": "size-6 [&_svg:not([class*='size-'])]:size-3",
+        "icon-lg": "size-8 [&_svg:not([class*='size-'])]:size-4",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
 )
 
-Button.displayName = 'Button'
+export type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>
+export type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>
+export type ButtonProps = React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: ButtonProps) {
+  const Comp = asChild ? Slot.Root : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+

@@ -9,6 +9,34 @@ const tokens: Partial<Config> = {
   theme: {
     extend: {
       colors: {
+        primary: {
+          DEFAULT: '#EF8118',
+          foreground: '#FFFFFF',
+        },
+        secondary: {
+          DEFAULT: '#1EA58C',
+          foreground: '#FFFFFF',
+        },
+        destructive: {
+          DEFAULT: '#F87171',
+          foreground: '#FFFFFF',
+        },
+        card: {
+          DEFAULT: 'rgba(255,255,255,0.04)',
+          foreground: '#F4F4F5',
+        },
+        popover: {
+          DEFAULT: 'rgba(255,255,255,0.10)',
+          foreground: '#F4F4F5',
+        },
+        muted: {
+          DEFAULT: 'rgba(255,255,255,0.07)',
+          foreground: '#A1A1AA',
+        },
+        input: '#27272D',
+        ring: '#EF8118',
+        foreground: '#F4F4F5',
+        background: '#080809',
         accent: {
           DEFAULT: '#EF8118',
           hover: '#F59332',
