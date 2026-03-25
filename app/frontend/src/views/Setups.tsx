@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Setup, SetupSettings, setupAPI, newSetup } from '@/lib/setup'
+import { Button } from '@sprint/ui'
 
 // ── Setups view ───────────────────────────────────────────────────────────────
 
@@ -84,12 +85,12 @@ export default function Setups() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-glass">
           <h1 className="text-sm font-semibold text-text-primary">Setups</h1>
-          <button
+          <Button
             onClick={handleNew}
             className="rounded px-2 py-1 text-xs font-medium text-accent border border-accent/40 hover:bg-accent/10 transition-colors"
           >
             + New
-          </button>
+          </Button>
         </div>
 
         {/* Filters */}
