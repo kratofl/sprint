@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussions
+    url: https://github.com/kratofl/sprint/discussions
+    about: Ask questions and discuss ideas before opening implementation issues.
+  - name: Security vulnerabilities
+    url: https://github.com/kratofl/sprint/security/policy
+    about: Please report security issues through the security policy flow.

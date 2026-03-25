@@ -1,0 +1,71 @@
+name: Feature request
+description: Propose a new capability or enhancement
+title: "[Feature] "
+labels:
+  - type/feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user/problem are we solving?
+      placeholder: "As a driver/engineer, I need..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior, UX, and data flow you want.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope (Project field mirror)
+      description: Use this to mirror your Project Scope/Area custom field.
+      options:
+        - Desktop app
+        - Race engineer
+        - Telemetry analysis
+        - Setup management
+        - Wheel & dash
+        - API/Sync
+        - Web app
+        - Cross-cutting
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide a clear checklist to define done.
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and related issues
+      description: Reference related issues (for example #24, #27).
+      placeholder: "#123"
+    validations:
+      required: true
+

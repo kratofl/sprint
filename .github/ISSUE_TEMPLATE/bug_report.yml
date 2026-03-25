@@ -1,0 +1,74 @@
+name: Bug report
+description: Report something that is broken
+title: "[Bug] "
+labels:
+  - type/bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a deterministic repro sequence.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope (Project field mirror)
+      description: Mirror your Project Scope/Area field value.
+      options:
+        - Desktop app
+        - Race engineer
+        - Telemetry analysis
+        - Setup management
+        - Wheel & dash
+        - API/Sync
+        - Web app
+        - Cross-cutting
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS/version and app build/commit.
+      placeholder: "Windows 11, app commit abc123, LMU 1.0.x"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or recordings
+      description: Paste relevant output or add links/files.
+    validations:
+      required: false
+

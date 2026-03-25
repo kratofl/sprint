@@ -1,0 +1,83 @@
+name: Engineering task
+description: Create an implementation/refactor/maintenance task
+title: "[Task] "
+labels:
+  - type/task
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What outcome should this task produce?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: task_type
+    attributes:
+      label: Task type
+      options:
+        - Refactor
+        - Cleanup
+        - Tooling/CI
+        - Performance
+        - Reliability
+        - Test coverage
+        - Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope (Project field mirror)
+      options:
+        - Desktop app
+        - Race engineer
+        - Telemetry analysis
+        - Setup management
+        - Wheel & dash
+        - API/Sync
+        - Web app
+        - Cross-cutting
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation notes
+      description: Constraints, approach, and non-goals.
+    validations:
+      required: true
+
+  - type: textarea
+    id: definition_of_done
+    attributes:
+      label: Definition of done
+      placeholder: |
+        - [ ] Code complete
+        - [ ] Tests updated/added
+        - [ ] Docs updated if needed
+    validations:
+      required: true
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues/PRs
+      placeholder: "#123"
+    validations:
+      required: true
+
