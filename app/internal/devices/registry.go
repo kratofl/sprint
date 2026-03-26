@@ -49,8 +49,8 @@ var KnownModels = []WheelModel{
 		// VoCore M-PRO Screen — vendor-specific USB, accessed via gousb/libusb.
 		ScreenVID:    0xC872,
 		ScreenPID:    0x1004,
-		ScreenWidth:  480,
-		ScreenHeight: 272,
+		ScreenWidth:  800,
+		ScreenHeight: 480,
 		DefaultBaud:  115200,
 	},
 }

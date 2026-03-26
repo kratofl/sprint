@@ -34,7 +34,7 @@ type Detector struct {
 	sessionBest float64
 	logger      *slog.Logger
 
-	prevLap     int  // last known lap number for detecting lap completion
+	prevLap     int // last known lap number for detecting lap completion
 	prevLapTime float64
 }
 
