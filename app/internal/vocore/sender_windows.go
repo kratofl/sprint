@@ -34,6 +34,7 @@ var (
 	procWinUsbFree            = modWinUSB.NewProc("WinUsb_Free")
 	procWinUsbControlTransfer = modWinUSB.NewProc("WinUsb_ControlTransfer")
 	procWinUsbWritePipe       = modWinUSB.NewProc("WinUsb_WritePipe")
+	procWinUsbResetPipe       = modWinUSB.NewProc("WinUsb_ResetPipe")
 )
 
 // GUID_DEVINTERFACE_USB_DEVICE {A5DCBF10-6530-11D2-901F-00C04FB951ED}
@@ -123,16 +124,29 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 	}
 
 	// Query the screen model to determine actual native dimensions.
-	if model, err := s.queryScreenModel(); err != nil {
-		logger.Warn("could not query screen model, using configured dimensions", "err", err)
-	} else {
+	// This uses non-standard USB requests (0xB5/0xB6/0xB7) that older firmware
+	// may not support. If the query fails or panics, we fall back to the
+	// configured dimensions and reset the USB pipe to recover.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Warn("screen model query panicked, using configured dimensions", "panic", r)
+			}
+		}()
+		model, err := s.queryScreenModel()
+		if err != nil {
+			logger.Warn("could not query screen model, using configured dimensions", "err", err)
+			// Reset the default control pipe in case the query stalled it.
+			s.resetPipe(0x00)
+			return
+		}
 		nw, nh := mproModelDimensions(model)
 		logger.Info("VoCore screen model detected",
 			"model_id", fmt.Sprintf("0x%08X", model),
 			"native", fmt.Sprintf("%dx%d", nw, nh))
 		s.nativeW = nw
 		s.nativeH = nh
-	}
+	}()
 
 	screenSize, err := validateScreenSize(s.nativeW, s.nativeH)
 	if err != nil {
@@ -231,6 +245,11 @@ func (s *winusbSender) close() {
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)
 	s.logger.Info("VoCore screen closed")
+}
+
+// resetPipe resets the specified USB pipe to recover from a stall condition.
+func (s *winusbSender) resetPipe(pipeID byte) {
+	procWinUsbResetPipe.Call(s.winusbHandle, uintptr(pipeID))
 }
 
 // controlIn performs a vendor-specific USB control IN transfer (read from device).
