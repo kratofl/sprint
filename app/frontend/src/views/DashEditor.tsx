@@ -1,34 +1,104 @@
+import {
+  Button,
+  Card, CardContent, CardHeader, CardTitle,
+  Tabs, TabsContent, TabsList, TabsTrigger,
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@sprint/ui'
+
 export default function DashEditor() {
   return (
     <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Dash Editor</h1>
-        <button className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors">
+        <Button variant="default" size="sm">
           Save Layout
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-1 gap-4">
         {/* Canvas area */}
-        <div className="glass flex flex-1 items-center justify-center rounded-lg">
-          <p className="text-sm text-text-muted">Dash canvas — coming soon</p>
-        </div>
+        <Card className="flex-1 min-h-0">
+          <CardContent className="flex h-full items-center justify-center">
+            <p className="text-sm text-text-muted">Dash canvas — coming soon</p>
+          </CardContent>
+        </Card>
 
         {/* Widget panel */}
-        <aside className="glass w-56 rounded-lg p-4">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-muted">Widgets</p>
-          <div className="space-y-1">
-            {['Speed', 'Gear', 'RPM Bar', 'Delta', 'Fuel', 'Tyre Temp', 'Lap Time', 'Sector'].map(w => (
-              <div
-                key={w}
-                draggable
-                className="cursor-grab rounded-md px-3 py-2 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary transition-colors active:cursor-grabbing"
-              >
-                {w}
-              </div>
-            ))}
-          </div>
-        </aside>
+        <Card className="w-56 flex-shrink-0">
+          <CardHeader className="border-b border-border-glass">
+            <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
+              Widgets
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-3">
+            <TooltipProvider>
+              <Tabs defaultValue="timing">
+                <TabsList variant="line" className="w-full mb-3">
+                  <TabsTrigger value="timing" className="flex-1">Timing</TabsTrigger>
+                  <TabsTrigger value="car" className="flex-1">Car</TabsTrigger>
+                  <TabsTrigger value="race" className="flex-1">Race</TabsTrigger>
+                </TabsList>
+                <TabsContent value="timing">
+                  <div className="space-y-1">
+                    {['Lap Time', 'Sector', 'Delta'].map(w => (
+                      <Tooltip key={w}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            draggable
+                            className="w-full justify-start cursor-grab active:cursor-grabbing"
+                          >
+                            {w}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Drag onto canvas</TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </TabsContent>
+                <TabsContent value="car">
+                  <div className="space-y-1">
+                    {['Speed', 'Gear', 'RPM Bar'].map(w => (
+                      <Tooltip key={w}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            draggable
+                            className="w-full justify-start cursor-grab active:cursor-grabbing"
+                          >
+                            {w}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Drag onto canvas</TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </TabsContent>
+                <TabsContent value="race">
+                  <div className="space-y-1">
+                    {['Fuel', 'Tyre Temp'].map(w => (
+                      <Tooltip key={w}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            draggable
+                            className="w-full justify-start cursor-grab active:cursor-grabbing"
+                          >
+                            {w}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Drag onto canvas</TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </TooltipProvider>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

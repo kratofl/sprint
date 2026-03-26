@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/coordinator"
+	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/kratofl/sprint/app/internal/setup"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -14,9 +15,10 @@ import (
 // App is the Wails application struct. Its exported methods are bound to the
 // frontend and callable from TypeScript via the generated Wails bindings.
 type App struct {
-	ctx    context.Context
-	coord  *coordinator.Coordinator
-	setups *setup.Manager
+	ctx     context.Context
+	coord   *coordinator.Coordinator
+	setups  *setup.Manager
+	devices *devices.Manager
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -31,7 +33,8 @@ func NewApp() *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	log := logger.Init(logger.DefaultConfig())
-	a.coord = coordinator.New(log)
+	a.devices = devices.NewManager()
+	a.coord = coordinator.New(log, a.devices)
 	a.coord.SetEmit(func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
 	})
@@ -93,6 +96,45 @@ func (a *App) SetupSave(s setup.Setup) (setup.Setup, error) {
 func (a *App) SetupDelete(car, track, id string) error {
 	if err := a.setups.Delete(car, track, id); err != nil {
 		return fmt.Errorf("SetupDelete: %w", err)
+	}
+	return nil
+}
+
+// ── Device bindings ──────────────────────────────────────────────────────────
+
+// DeviceListKnownModels returns all wheel models supported by the registry.
+func (a *App) DeviceListKnownModels() []devices.WheelModel {
+	return devices.KnownModels
+}
+
+// DeviceListPorts scans all serial ports and returns them annotated with
+// matched wheel models. Matched ports are listed first.
+func (a *App) DeviceListPorts() ([]devices.DetectedPort, error) {
+	ports, err := devices.ListPorts()
+	if err != nil {
+		return nil, fmt.Errorf("DeviceListPorts: %w", err)
+	}
+	return ports, nil
+}
+
+// DeviceGetAll returns all user-configured devices.
+func (a *App) DeviceGetAll() []devices.DeviceConfig {
+	return a.devices.GetAll()
+}
+
+// DeviceSave adds or updates a device. A new UUID is assigned if d.ID is empty.
+func (a *App) DeviceSave(d devices.DeviceConfig) (devices.DeviceConfig, error) {
+	saved, err := a.devices.Save(d)
+	if err != nil {
+		return devices.DeviceConfig{}, fmt.Errorf("DeviceSave: %w", err)
+	}
+	return saved, nil
+}
+
+// DeviceDelete removes a configured device by its ID.
+func (a *App) DeviceDelete(id string) error {
+	if err := a.devices.Delete(id); err != nil {
+		return fmt.Errorf("DeviceDelete: %w", err)
 	}
 	return nil
 }

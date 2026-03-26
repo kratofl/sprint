@@ -1,6 +1,6 @@
 //go:build windows
 
-package lemansultimate
+package shm
 
 import (
 	"fmt"
@@ -32,26 +32,36 @@ func openFileMapping(access uint32, inherit bool, name *uint16) (windows.Handle,
 	return windows.Handle(r), nil
 }
 
-func (r *shmReader) open() error {
-	name, err := windows.UTF16PtrFromString(lmuShmName)
+// Open maps the named shared memory region for reading.
+func (r *Reader) Open() error {
+	namePtr, err := windows.UTF16PtrFromString(r.name)
 	if err != nil {
-		return fmt.Errorf("lemansultimate: UTF16PtrFromString: %w", err)
+		return fmt.Errorf("shm: UTF16PtrFromString %q: %w", r.name, err)
 	}
-	handle, err := openFileMapping(windows.FILE_MAP_READ, false, name)
+	handle, err := openFileMapping(windows.FILE_MAP_READ, false, namePtr)
 	if err != nil {
-		return fmt.Errorf("lemansultimate: OpenFileMapping %q: LMU is probably not running: %w", lmuShmName, err)
+		return fmt.Errorf("shm: OpenFileMapping %q: %w", r.name, err)
 	}
 	ptr, err := windows.MapViewOfFile(handle, windows.FILE_MAP_READ, 0, 0, uintptr(r.bufSize))
 	if err != nil {
 		_ = windows.CloseHandle(handle)
-		return fmt.Errorf("lemansultimate: MapViewOfFile: %w", err)
+		return fmt.Errorf("shm: MapViewOfFile %q: %w", r.name, err)
 	}
 	r.handle = uintptr(handle)
-	r.view = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), r.bufSize)
+	// Build the slice header via a struct pointer (unsafe.Pointer rule 1) rather
+	// than converting the uintptr directly (which go vet flags as unsafe rule violation).
+	type sliceHeader struct {
+		data uintptr
+		len  int
+		cap  int
+	}
+	sh := sliceHeader{data: ptr, len: r.bufSize, cap: r.bufSize}
+	r.view = *(*[]byte)(unsafe.Pointer(&sh))
 	return nil
 }
 
-func (r *shmReader) close() error {
+// Close unmaps the shared memory region and releases the handle.
+func (r *Reader) Close() error {
 	var errs []error
 	if r.view != nil {
 		if err := windows.UnmapViewOfFile(uintptr(unsafe.Pointer(&r.view[0]))); err != nil {
@@ -66,7 +76,7 @@ func (r *shmReader) close() error {
 		r.handle = 0
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("lemansultimate: close shm: %v", errs)
+		return fmt.Errorf("shm: close %q: %v", r.name, errs)
 	}
 	return nil
 }

@@ -3,15 +3,18 @@ import Telemetry from '@/views/Telemetry'
 import DashEditor from '@/views/DashEditor'
 import Setups from '@/views/Setups'
 import EngineerStatus from '@/views/EngineerStatus'
+import Devices from '@/views/Devices'
 import { useTelemetry } from '@/hooks/useTelemetry'
+import { Button, Badge, cn } from '@sprint/ui'
 
-type View = 'telemetry' | 'dash' | 'setups' | 'engineer'
+type View = 'telemetry' | 'dash' | 'setups' | 'engineer' | 'devices'
 
 const NAV: { id: View; label: string }[] = [
   { id: 'telemetry', label: 'Telemetry' },
   { id: 'dash',      label: 'Dash Editor' },
   { id: 'setups',    label: 'Setups' },
   { id: 'engineer',  label: 'Engineer' },
+  { id: 'devices',   label: 'Devices' },
 ]
 
 export default function App() {
@@ -30,36 +33,36 @@ export default function App() {
         {/* Nav */}
         <nav className="flex-1 px-3 py-2">
           {NAV.map(({ id, label }) => (
-            <button
+            <Button
               key={id}
+              variant="ghost"
               onClick={() => setView(id)}
-              className={[
-                'flex w-full items-center rounded-md px-3 py-2 text-sm transition-colors',
+              className={cn(
+                'flex w-full items-center justify-start rounded-md px-3 py-2 text-sm transition-colors',
                 view === id
-                  ? 'bg-accent/10 text-accent font-medium'
+                  ? 'bg-accent/10 text-accent font-medium hover:bg-accent/10 hover:text-accent'
                   : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
-              ].join(' ')}
+              )}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </nav>
 
         {/* Live connection indicator */}
         <div className="px-4 py-4">
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <span
-              className={[
-                'h-1.5 w-1.5 rounded-full',
-                connected ? 'bg-teal animate-pulse' : 'bg-text-disabled',
-              ].join(' ')}
-            />
-            {connected ? (
-              <span className="text-teal">Live</span>
-            ) : (
-              <span>Not connected</span>
+          <Badge
+            className={cn(
+              connected
+                ? 'bg-teal/15 text-teal border border-teal/30'
+                : 'bg-transparent text-text-muted border-border-glass',
             )}
-          </div>
+          >
+            {connected && (
+              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-teal animate-pulse inline-block" />
+            )}
+            {connected ? 'Live' : 'Not connected'}
+          </Badge>
         </div>
       </aside>
 
@@ -69,6 +72,7 @@ export default function App() {
         {view === 'dash'      && <DashEditor />}
         {view === 'setups'    && <Setups />}
         {view === 'engineer'  && <EngineerStatus />}
+        {view === 'devices'   && <Devices />}
       </main>
     </div>
   )

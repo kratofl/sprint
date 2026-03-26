@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/app/internal/setup"
 	"github.com/kratofl/sprint/app/internal/sync"
@@ -44,12 +45,23 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 
 // New creates a Coordinator. logger is the root application logger;
 // each subsystem receives a child logger tagged with its component name.
-func New(logger *slog.Logger) *Coordinator {
+func New(logger *slog.Logger, devs *devices.Manager) *Coordinator {
+	r := vocore.NewRenderer(logger.With("component", "vocore"))
+	if active := devs.GetActive(); active != nil {
+		if model := devices.FindModel(active.ModelID); model != nil && model.ScreenVID != 0 {
+			r.SetScreen(vocore.ScreenConfig{
+				VID:    model.ScreenVID,
+				PID:    model.ScreenPID,
+				Width:  model.ScreenWidth,
+				Height: model.ScreenHeight,
+			})
+		}
+	}
 	return &Coordinator{
 		logger:   logger,
 		adapter:  lemansultimate.New(),
 		engineer: engineer.NewHub(logger.With("component", "engineer")),
-		vocore:   vocore.NewRenderer(logger.With("component", "vocore")),
+		vocore:   r,
 		wheel:    wheel.NewDetector(logger.With("component", "wheel")),
 		sync:     sync.NewClient(logger.With("component", "sync")),
 		setup:    setup.NewManager(),

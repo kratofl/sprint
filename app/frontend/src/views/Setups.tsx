@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Setup, SetupSettings, setupAPI, newSetup } from '@/lib/setup'
-import { Button } from '@sprint/ui'
+import {
+  Button,
+  Card, CardContent, CardHeader, CardTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Input,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Skeleton,
+} from '@sprint/ui'
 
 // ── Setups view ───────────────────────────────────────────────────────────────
 
@@ -45,14 +52,18 @@ export default function Setups() {
 
   const handleEdit = (s: Setup) => setEditing({ ...s, settings: { ...s.settings } })
 
-  const handleDelete = async (s: Setup) => {
-    if (!confirm(`Delete "${s.name}"?`)) return
+  const [deleteTarget, setDeleteTarget] = useState<Setup | null>(null)
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
     try {
-      await setupAPI.delete(s.car, s.track, s.id)
-      setSetups(prev => prev.filter(x => x.id !== s.id))
-      if (editing?.id === s.id) setEditing(null)
+      await setupAPI.delete(deleteTarget.car, deleteTarget.track, deleteTarget.id)
+      setSetups(prev => prev.filter(x => x.id !== deleteTarget.id))
+      if (editing?.id === deleteTarget.id) setEditing(null)
     } catch (e) {
       setError(String(e))
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -86,8 +97,10 @@ export default function Setups() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-glass">
           <h1 className="text-sm font-semibold text-text-primary">Setups</h1>
           <Button
+            variant="outline"
+            size="sm"
             onClick={handleNew}
-            className="rounded px-2 py-1 text-xs font-medium text-accent border border-accent/40 hover:bg-accent/10 transition-colors"
+            className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
           >
             + New
           </Button>
@@ -112,7 +125,14 @@ export default function Setups() {
         {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading && (
-            <p className="px-4 py-8 text-center text-xs text-text-muted">Loading…</p>
+            <div className="space-y-0">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="px-4 py-3 border-b border-border-glass/50">
+                  <Skeleton className="h-4 w-28 mb-1.5" />
+                  <Skeleton className="h-3 w-36" />
+                </div>
+              ))}
+            </div>
           )}
           {!loading && filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-xs text-text-muted">
@@ -125,7 +145,7 @@ export default function Setups() {
               setup={s}
               active={editing?.id === s.id}
               onEdit={() => handleEdit(s)}
-              onDelete={() => handleDelete(s)}
+              onDelete={() => setDeleteTarget(s)}
             />
           ))}
         </div>
@@ -149,6 +169,26 @@ export default function Setups() {
           <EmptyState onNew={handleNew} />
         )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete Setup</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &ldquo;{deleteTarget?.name}&rdquo;? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -175,13 +215,15 @@ function SetupRow({
           </p>
           <p className="truncate text-xs text-text-muted mt-0.5">{setup.car} · {setup.track}</p>
         </div>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={e => { e.stopPropagation(); onDelete() }}
-          className="flex-shrink-0 opacity-0 group-hover:opacity-100 rounded p-1 text-text-disabled hover:text-red-400 hover:bg-red-500/10 transition-all"
+          className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-text-disabled hover:text-red-400 hover:bg-red-500/10"
           title="Delete"
         >
           <TrashIcon />
-        </button>
+        </Button>
       </div>
     </button>
   )
@@ -195,14 +237,18 @@ function FilterSelect({
   value: string; onChange: (v: string) => void; options: string[]; placeholder: string
 }) {
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className="w-full rounded bg-bg-elevated border border-border-glass px-2 py-1.5 text-xs text-text-secondary focus:outline-none focus:border-accent/50 appearance-none"
+    <Select
+      value={value || '__all__'}
+      onValueChange={v => onChange(v === '__all__' ? '' : v)}
     >
-      <option value="">{placeholder}</option>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
+      <SelectTrigger size="sm" className="w-full">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__all__">{placeholder}</SelectItem>
+        {options.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -233,19 +279,12 @@ function SetupEditor({
           {isNew ? 'New Setup' : `Edit — ${setup.name}`}
         </h2>
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded px-3 py-1.5 text-xs text-text-secondary border border-border-glass hover:bg-bg-elevated transition-colors"
-          >
+          <Button variant="outline" size="sm" onClick={onCancel}>
             Cancel
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="rounded px-3 py-1.5 text-xs font-medium bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
-          >
+          </Button>
+          <Button size="sm" onClick={onSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -287,15 +326,19 @@ function SetupEditor({
             <PressureField label="RR Pressure" value={setup.settings.tyrePressureRR} onChange={v => updateSetting('tyrePressureRR', v)} />
           </div>
           <Field label="Compound">
-            <select
+            <Select
               value={setup.settings.tyreCompound}
-              onChange={e => updateSetting('tyreCompound', e.target.value)}
-              className="w-full rounded bg-bg-elevated border border-border-glass px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent/50"
+              onValueChange={v => updateSetting('tyreCompound', v)}
             >
-              {(['Soft', 'Medium', 'Hard', 'Wet'] as const).map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+              <SelectTrigger size="sm" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(['Soft', 'Medium', 'Hard', 'Wet'] as const).map(c => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         </Section>
 
@@ -332,12 +375,16 @@ function SetupEditor({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="glass rounded-lg overflow-hidden">
-      <div className="px-4 py-2 border-b border-border-glass">
-        <p className="text-xs font-medium uppercase tracking-wider text-text-muted">{title}</p>
-      </div>
-      <div className="p-4 space-y-3">{children}</div>
-    </div>
+    <Card>
+      <CardHeader className="border-b border-border-glass">
+        <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
+          {title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {children}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -352,12 +399,11 @@ function Field({ label, children, span }: { label: string; children: React.React
 
 function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <input
+    <Input
       type="text"
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded bg-bg-elevated border border-border-glass px-2 py-1.5 text-xs text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent/50 transition-colors"
     />
   )
 }
@@ -389,12 +435,12 @@ function PressureField({ label, value, onChange }: { label: string; value: numbe
     <div>
       <label className="block text-xs text-text-muted mb-1">{label}</label>
       <div className="flex items-center gap-1.5">
-        <input
+        <Input
           type="number"
           min={160} max={230} step={0.5}
           value={value}
           onChange={e => onChange(Number(e.target.value))}
-          className="w-full rounded bg-bg-elevated border border-border-glass px-2 py-1.5 text-xs font-mono tabular-nums text-text-primary focus:outline-none focus:border-accent/50 transition-colors"
+          className="font-mono tabular-nums"
         />
         <span className="text-xs text-text-muted">kPa</span>
       </div>
@@ -412,12 +458,13 @@ function EmptyState({ onNew }: { onNew: () => void }) {
         <p className="text-sm font-medium text-text-secondary">Select a setup to edit</p>
         <p className="text-xs text-text-muted mt-1">or create a new one to get started</p>
       </div>
-      <button
+      <Button
+        variant="outline"
         onClick={onNew}
-        className="rounded-md border border-accent/40 px-4 py-2 text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
+        className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
       >
         + New Setup
-      </button>
+      </Button>
     </div>
   )
 }

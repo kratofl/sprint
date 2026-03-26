@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kratofl/sprint/pkg/dto"
+	"github.com/kratofl/sprint/pkg/shm"
 )
 
 const pollInterval = 10 * time.Millisecond
@@ -107,7 +108,7 @@ func init() {
 
 // Adapter implements games.GameAdapter for Le Mans Ultimate via shared memory.
 type Adapter struct {
-	shm  *shmReader
+	shm  *shm.Reader
 	buf  []byte        // pre-allocated copy of the shared memory region
 	done chan struct{} // closed by Disconnect to unblock Read
 
@@ -121,7 +122,7 @@ type Adapter struct {
 // New creates a new LeMansUltimate adapter. Call Connect before reading.
 func New() *Adapter {
 	return &Adapter{
-		shm:  newShmReader(totalBufSize),
+		shm:  shm.New(lmuShmName, totalBufSize),
 		buf:  make([]byte, totalBufSize),
 		done: make(chan struct{}),
 	}
@@ -132,7 +133,7 @@ func (a *Adapter) Name() string { return "LeMansUltimate" }
 
 // Connect maps the LMU shared memory region. Returns an error if LMU is not running.
 func (a *Adapter) Connect() error {
-	if a.shm.isOpen() {
+	if a.shm.IsOpen() {
 		return nil
 	}
 	// Recreate the done channel so Read() works after a prior Disconnect.
@@ -141,7 +142,7 @@ func (a *Adapter) Connect() error {
 		a.done = make(chan struct{})
 	default:
 	}
-	return a.shm.open()
+	return a.shm.Open()
 }
 
 // Disconnect unmaps the shared memory and unblocks any pending Read call.
@@ -152,7 +153,7 @@ func (a *Adapter) Disconnect() error {
 	default:
 		close(a.done)
 	}
-	return a.shm.close()
+	return a.shm.Close()
 }
 
 // ErrDisconnected is returned by Read when Disconnect is called while polling.
@@ -161,7 +162,7 @@ var ErrDisconnected = errors.New("lemansultimate: adapter disconnected")
 // Read polls the shared memory until a new telemetry frame is available, then
 // decodes and returns it. Blocks until data arrives or Disconnect is called.
 func (a *Adapter) Read() (*dto.TelemetryFrame, error) {
-	if !a.shm.isOpen() {
+	if !a.shm.IsOpen() {
 		return nil, fmt.Errorf("lemansultimate: not connected — call Connect first")
 	}
 	for {
@@ -171,7 +172,7 @@ func (a *Adapter) Read() (*dto.TelemetryFrame, error) {
 		case <-time.After(pollInterval):
 		}
 
-		a.shm.copyBuffer(a.buf)
+		a.shm.CopyBuffer(a.buf)
 
 		// Fetch the player vehicle index.
 		if len(a.buf) <= playerIdxOffset {
