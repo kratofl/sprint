@@ -1,9 +1,12 @@
-// Package vocore renders telemetry frames to PNG images and transmits them to
-// the VoCore M-PRO Screen embedded in the steering wheel.
+// Package vocore renders telemetry frames and transmits them to the VoCore
+// M-PRO Screen embedded in the steering wheel.
 //
-// The screen is identified by USB VID/PID and accessed via USB bulk transfer
-// using the gousb (libusb) library. Frames are sent as raw RGB565 pixel data
-// following the mpro_drm protocol (vendor control request 0xB0 + bulk OUT).
+// The screen is identified by USB VID/PID. On Windows, frames are sent via the
+// native WinUSB API (no CGO, no libusb). On Linux, gousb/libusb is used.
+// The device's screen model is queried at connect time to determine native
+// resolution; portrait-native screens are handled via automatic 90° CW
+// software rotation so the landscape-rendered dashboard displays correctly
+// on a physically sideways-mounted panel.
 //
 // The wheel also has a separate LED controller serial port (VID 0x16D0 /
 // PID 0x127B) — that device must never receive image data.
@@ -11,6 +14,7 @@ package vocore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -37,9 +41,10 @@ type ScreenConfig struct {
 // Renderer drives the VoCore screen: renders telemetry into RGB565 frames
 // and sends them over USB bulk transfer at ~30 fps.
 type Renderer struct {
-	screen ScreenConfig
-	logger *slog.Logger
-	dash   *DashRenderer
+	screen     ScreenConfig
+	frameBytes int // expected RGB565 frame size (width*height*2), validated at SetScreen
+	logger     *slog.Logger
+	dash       *DashRenderer
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
 	hasNewFrame atomic.Bool
@@ -56,6 +61,9 @@ func (r *Renderer) SetScreen(cfg ScreenConfig) {
 	r.screen = cfg
 	if cfg.Width > 0 && cfg.Height > 0 {
 		r.dash = NewDashRenderer(cfg.Width, cfg.Height)
+		if fb, err := validateScreenSize(cfg.Width, cfg.Height); err == nil {
+			r.frameBytes = fb
+		}
 	}
 }
 
@@ -100,6 +108,11 @@ func (r *Renderer) Run(ctx context.Context) {
 		sender, err := openScreen(r.screen.VID, r.screen.PID,
 			r.screen.Width, r.screen.Height, r.logger)
 		if err != nil {
+			if errors.Is(err, errScreenTransportUnsupported) {
+				r.logger.Warn("renderer transport unavailable; running in no-op mode", "err", err)
+				<-ctx.Done()
+				return
+			}
 			r.logger.Debug("screen not available, retrying", "err", err)
 			if !waitOrCancel(ctx, screenRetryInterval) {
 				return
@@ -122,9 +135,27 @@ func (r *Renderer) renderLoop(ctx context.Context, sender frameSender) {
 	ticker := time.NewTicker(frameInterval)
 	defer ticker.Stop()
 
-	// Pre-allocate RGB565 buffer (2 bytes per pixel, reused every frame).
-	rgb565 := make([]byte, r.screen.Width*r.screen.Height*2)
+	// Determine if software rotation is needed. If the sender reports portrait
+	// native dimensions (height > width) but we're rendering in landscape
+	// (config width > height), we rotate the rendered image 90° CW. The physical
+	// screen mounting (90° CCW) undoes the rotation for the viewer.
+	nativeW, nativeH := sender.nativeSize()
+	needsRotation := nativeH > nativeW && r.screen.Width > r.screen.Height
+	if needsRotation {
+		r.logger.Info("portrait screen detected, enabling 90° CW rotation",
+			"native", fmt.Sprintf("%dx%d", nativeW, nativeH),
+			"render", fmt.Sprintf("%dx%d", r.screen.Width, r.screen.Height))
+	}
+
+	// Frame buffer size matches the native screen (rotation doesn't change total pixels).
+	frameBytes, err := validateScreenSize(nativeW, nativeH)
+	if err != nil {
+		r.logger.Error("invalid native screen size", "err", err)
+		return
+	}
+	rgb565 := make([]byte, frameBytes)
 	var framesSent int
+	var framesSkipped int
 	lastLog := time.Now()
 
 	for {
@@ -142,13 +173,26 @@ func (r *Renderer) renderLoop(ctx context.Context, sender frameSender) {
 			continue
 		}
 
+		sendStart := time.Now()
+
 		img, err := r.dash.RenderFrame(frame)
 		if err != nil {
 			r.logger.Warn("render error", "err", err)
 			continue
 		}
 
-		imageToRGB565(img, rgb565)
+		// Convert rendered image to RGB565, applying rotation if needed.
+		if needsRotation {
+			imageToRGB565CW90(img, rgb565)
+		} else {
+			imageToRGB565(img, rgb565)
+		}
+
+		if len(rgb565) != frameBytes {
+			r.logger.Error("frame size mismatch",
+				"got", len(rgb565), "want", frameBytes)
+			return
+		}
 
 		if err := sender.send(rgb565); err != nil {
 			r.logger.Warn("send error", "err", err)
@@ -156,11 +200,24 @@ func (r *Renderer) renderLoop(ctx context.Context, sender frameSender) {
 		}
 
 		framesSent++
+
+		// Backpressure: if render+send took longer than one frame interval,
+		// drain any buffered tick so we don't immediately send a stale frame.
+		if time.Since(sendStart) > frameInterval {
+			framesSkipped++
+			select {
+			case <-ticker.C:
+			default:
+			}
+		}
 		if elapsed := time.Since(lastLog); elapsed >= 5*time.Second {
 			r.logger.Info("render stats",
 				"fps", fmt.Sprintf("%.1f", float64(framesSent)/elapsed.Seconds()),
-				"frame_bytes", len(rgb565))
+				"frame_bytes", frameBytes,
+				"skipped", framesSkipped,
+				"rotated", needsRotation)
 			framesSent = 0
+			framesSkipped = 0
 			lastLog = time.Now()
 		}
 	}

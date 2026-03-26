@@ -4,8 +4,8 @@ export interface WheelModel {
   id: string
   name: string
   manufacturer: string
-  uSBVID: number   // Wails serialises uint16 fields with Go field name casing
-  uSBPID: number
+  usbVID: number
+  usbPID: number
   screenVID: number
   screenPID: number
   screenWidth: number
@@ -46,11 +46,15 @@ function call<T>(method: string, ...args: unknown[]): Promise<T> {
 // ── API ───────────────────────────────────────────────────────────────────────
 
 export const deviceAPI = {
-  listKnownModels: (): Promise<WheelModel[]> =>
-    call<WheelModel[]>('DeviceListKnownModels'),
+  listKnownModels: async (): Promise<WheelModel[]> => {
+    const items = await call<RawWheelModel[]>('DeviceListKnownModels')
+    return items.map(toWheelModel)
+  },
 
-  listPorts: (): Promise<DetectedPort[]> =>
-    call<DetectedPort[]>('DeviceListPorts'),
+  listPorts: async (): Promise<DetectedPort[]> => {
+    const items = await call<RawDetectedPort[]>('DeviceListPorts')
+    return items.map(toDetectedPort)
+  },
 
   getAll: (): Promise<DeviceConfig[]> =>
     call<DeviceConfig[]>('DeviceGetAll'),
@@ -64,8 +68,63 @@ export const deviceAPI = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+interface RawWheelModel {
+  id?: string
+  ID?: string
+  name?: string
+  Name?: string
+  manufacturer?: string
+  Manufacturer?: string
+  usbVID?: number
+  USBVID?: number
+  usbPID?: number
+  USBPID?: number
+  screenVID?: number
+  ScreenVID?: number
+  screenPID?: number
+  ScreenPID?: number
+  screenWidth?: number
+  ScreenWidth?: number
+  screenHeight?: number
+  ScreenHeight?: number
+  defaultBaud?: number
+  DefaultBaud?: number
+}
+
+interface RawDetectedPort {
+  name?: string
+  isUsb?: boolean
+  matchedModel?: RawWheelModel | null
+  description?: string
+}
+
+function toWheelModel(raw: RawWheelModel): WheelModel {
+  return {
+    id: raw.id ?? raw.ID ?? '',
+    name: raw.name ?? raw.Name ?? '',
+    manufacturer: raw.manufacturer ?? raw.Manufacturer ?? '',
+    usbVID: raw.usbVID ?? raw.USBVID ?? 0,
+    usbPID: raw.usbPID ?? raw.USBPID ?? 0,
+    screenVID: raw.screenVID ?? raw.ScreenVID ?? 0,
+    screenPID: raw.screenPID ?? raw.ScreenPID ?? 0,
+    screenWidth: raw.screenWidth ?? raw.ScreenWidth ?? 0,
+    screenHeight: raw.screenHeight ?? raw.ScreenHeight ?? 0,
+    defaultBaud: raw.defaultBaud ?? raw.DefaultBaud ?? 0,
+  }
+}
+
+function toDetectedPort(raw: RawDetectedPort): DetectedPort {
+  return {
+    name: raw.name ?? '',
+    isUsb: raw.isUsb ?? false,
+    matchedModel: raw.matchedModel ? toWheelModel(raw.matchedModel) : null,
+    description: raw.description ?? '',
+  }
+}
+
 export function modelDisplayName(model: WheelModel): string {
-  return `${model.manufacturer} ${model.name}`
+  const label = `${model.manufacturer} ${model.name}`.trim()
+  return label || model.id
 }
 
 export function deviceDisplayName(d: DeviceConfig, models: WheelModel[]): string {

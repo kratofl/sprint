@@ -250,6 +250,17 @@ function DeviceDialog({
     if (match) setForm(f => ({ ...f, port: match.name }))
   }, [ports, form.modelId, form.port])
 
+  // Auto-select model + port when exactly one known wheel is detected.
+  useEffect(() => {
+    if (form.modelId || form.port) return
+    const matches = ports.filter(p => p.matchedModel?.id)
+    if (matches.length !== 1) return
+    const match = matches[0]
+    const modelId = match.matchedModel?.id
+    if (!modelId) return
+    setForm(f => ({ ...f, modelId, port: match.name }))
+  }, [ports, form.modelId, form.port])
+
   // Scan on open
   useEffect(() => { scanPorts() }, [scanPorts])
 

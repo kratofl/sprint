@@ -1,12 +1,12 @@
-//go:build !(linux || windows)
+//go:build !(linux && cgo) && !windows
 
 package vocore
 
 import (
-	"errors"
+	"fmt"
 	"log/slog"
 )
 
 func openScreenImpl(_, _ uint16, _, _ int, _ *slog.Logger) (frameSender, error) {
-	return nil, errors.New("VoCore USB screen not supported on this platform (Windows/Linux only)")
+	return nil, fmt.Errorf("%w (requires Linux with CGO, or Windows with WinUSB)", errScreenTransportUnsupported)
 }

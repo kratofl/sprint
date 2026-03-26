@@ -1,4 +1,4 @@
-//go:build linux || windows
+//go:build linux && cgo
 
 package vocore
 
@@ -9,19 +9,13 @@ import (
 	"github.com/google/gousb"
 )
 
-// VoCore M-PRO screen USB protocol constants (from mpro_drm driver).
-const (
-	usbBulkEndpoint = 2    // bulk OUT endpoint for pixel data
-	usbVendorReq    = 0xB0 // vendor-specific control request
-	usbReqTypeOut   = 0x40 // USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE
-)
-
 type usbSender struct {
 	ctx    *gousb.Context
 	dev    *gousb.Device
 	intf   *gousb.Interface
 	outEP  *gousb.OutEndpoint
-	cmd    [12]byte // draw command (mpro partial-update format)
+	cmd    [6]byte // 6-byte full-frame draw command
+	nativeW, nativeH int
 	logger *slog.Logger
 	done   func()
 }
@@ -56,34 +50,55 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 		return nil, fmt.Errorf("bulk OUT endpoint %d: %w", usbBulkEndpoint, err)
 	}
 
-	screenSize := width * height * 2 // RGB565
-
-	s := &usbSender{
-		ctx:    ctx,
-		dev:    dev,
-		intf:   intf,
-		outEP:  outEP,
-		logger: logger,
-		done:   done,
+	// Query screen model for native dimensions.
+	nativeW, nativeH := width, height
+	cmdGetScreen := [5]byte{0x51, 0x02, 0x04, 0x1F, 0xFC}
+	if _, err := dev.Control(usbReqTypeOut, 0xB5, 0, 0, cmdGetScreen[:]); err == nil {
+		var status [1]byte
+		if _, err := dev.Control(0xC0, 0xB6, 0, 0, status[:]); err == nil {
+			var resp [5]byte
+			if n, err := dev.Control(0xC0, 0xB7, 0, 0, resp[:]); err == nil && n >= 5 {
+				model := uint32(resp[1]) | uint32(resp[2])<<8 | uint32(resp[3])<<16 | uint32(resp[4])<<24
+				nativeW, nativeH = mproModelDimensions(model)
+				logger.Info("VoCore screen model detected",
+					"model_id", fmt.Sprintf("0x%08X", model),
+					"native", fmt.Sprintf("%dx%d", nativeW, nativeH))
+			}
+		}
 	}
 
-	// Full-frame draw command (12-byte mpro format).
-	// Bytes 0-5: command header + data length.
-	// Bytes 6-11: x, y offsets and width for partial update.
-	s.cmd[0] = 0x00
-	s.cmd[1] = 0x2C
+	screenSize, err := validateScreenSize(nativeW, nativeH)
+	if err != nil {
+		done()
+		dev.Close()
+		ctx.Close()
+		return nil, err
+	}
+
+	s := &usbSender{
+		ctx:     ctx,
+		dev:     dev,
+		intf:    intf,
+		outEP:   outEP,
+		nativeW: nativeW,
+		nativeH: nativeH,
+		logger:  logger,
+		done:    done,
+	}
+
+	// 6-byte full-frame draw command: mode + Memory Write + data length.
+	s.cmd[0] = 0x00 // mode: RGB565
+	s.cmd[1] = 0x2C // Memory Write
 	s.cmd[2] = byte(screenSize)
 	s.cmd[3] = byte(screenSize >> 8)
 	s.cmd[4] = byte(screenSize >> 16)
 	s.cmd[5] = 0x00
-	s.cmd[6] = 0x00              // x lo
-	s.cmd[7] = 0x00              // x hi
-	s.cmd[8] = 0x00              // y lo
-	s.cmd[9] = 0x00              // y hi
-	s.cmd[10] = byte(width)      // width lo
-	s.cmd[11] = byte(width >> 8) // width hi
 
-	// Wake the display (exit sleep mode).
+	// Wake the display: Sleep Out + Display ON.
+	sleepOut := [6]byte{0x00, 0x11, 0x00, 0x00, 0x00, 0x00}
+	if _, err := dev.Control(usbReqTypeOut, usbVendorReq, 0, 0, sleepOut[:]); err != nil {
+		logger.Warn("sleep-out failed (non-fatal)", "err", err)
+	}
 	wake := [6]byte{0x00, 0x29, 0x00, 0x00, 0x00, 0x00}
 	if _, err := dev.Control(usbReqTypeOut, usbVendorReq, 0, 0, wake[:]); err != nil {
 		logger.Warn("display wake failed (non-fatal)", "err", err)
@@ -92,22 +107,24 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 	logger.Info("VoCore screen opened",
 		"vid", fmt.Sprintf("0x%04X", vid),
 		"pid", fmt.Sprintf("0x%04X", pid),
-		"resolution", fmt.Sprintf("%dx%d", width, height),
+		"native", fmt.Sprintf("%dx%d", nativeW, nativeH),
 		"frame_bytes", screenSize)
 
 	return s, nil
 }
 
 func (s *usbSender) send(rgb565 []byte) error {
-	// Send draw command via USB control transfer.
 	if _, err := s.dev.Control(usbReqTypeOut, usbVendorReq, 0, 0, s.cmd[:]); err != nil {
 		return fmt.Errorf("control transfer: %w", err)
 	}
-	// Send pixel data via USB bulk transfer.
 	if _, err := s.outEP.Write(rgb565); err != nil {
 		return fmt.Errorf("bulk write: %w", err)
 	}
 	return nil
+}
+
+func (s *usbSender) nativeSize() (int, int) {
+	return s.nativeW, s.nativeH
 }
 
 func (s *usbSender) close() {
