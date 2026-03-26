@@ -18,9 +18,9 @@ type WheelModel struct {
 	USBVID uint16
 	USBPID uint16
 
-	// ScreenVID / ScreenPID identify the VoCore display's USB interface.
-	// The renderer locates the screen's serial port by matching these IDs
-	// and sends length-prefixed PNG frames over CDC-ACM serial.
+	// ScreenVID / ScreenPID identify the VoCore M-PRO display's USB interface.
+	// The renderer locates the device by these IDs and sends raw RGB565 frames
+	// via USB bulk transfer (vendor request 0xB0 + endpoint 0x02).
 	ScreenVID uint16
 	ScreenPID uint16
 
@@ -46,7 +46,7 @@ var KnownModels = []WheelModel{
 		// on macOS, /dev/ttyACMx on Linux, COMx on Windows.
 		USBVID: 0x16D0,
 		USBPID: 0x127B,
-		// VoCore M-PRO Screen — presents as CDC-ACM serial on Windows/Linux.
+		// VoCore M-PRO Screen — vendor-specific USB, accessed via gousb/libusb.
 		ScreenVID:    0xC872,
 		ScreenPID:    0x1004,
 		ScreenWidth:  480,

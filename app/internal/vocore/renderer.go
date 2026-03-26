@@ -1,18 +1,17 @@
 // Package vocore renders telemetry frames to PNG images and transmits them to
 // the VoCore M-PRO Screen embedded in the steering wheel.
 //
-// The screen is identified by USB VID/PID and located via serial port
-// enumeration. Frames are sent as length-prefixed PNG data over CDC-ACM serial.
+// The screen is identified by USB VID/PID and accessed via USB bulk transfer
+// using the gousb (libusb) library. Frames are sent as raw RGB565 pixel data
+// following the mpro_drm protocol (vendor control request 0xB0 + bulk OUT).
 //
 // The wheel also has a separate LED controller serial port (VID 0x16D0 /
-// PID 0x127B) — that device must never receive PNG data.
+// PID 0x127B) — that device must never receive image data.
 package vocore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/png"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -35,13 +34,12 @@ type ScreenConfig struct {
 	Height int    // native screen height in pixels
 }
 
-// Renderer drives the VoCore screen: renders telemetry into PNG images and
-// sends them over the serial connection at ~30 fps.
+// Renderer drives the VoCore screen: renders telemetry into RGB565 frames
+// and sends them over USB bulk transfer at ~30 fps.
 type Renderer struct {
 	screen ScreenConfig
 	logger *slog.Logger
 	dash   *DashRenderer
-	enc    png.Encoder
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
 	hasNewFrame atomic.Bool
@@ -49,10 +47,7 @@ type Renderer struct {
 
 // NewRenderer creates a Renderer. The screen is not opened until Run is called.
 func NewRenderer(logger *slog.Logger) *Renderer {
-	return &Renderer{
-		logger: logger,
-		enc:    png.Encoder{CompressionLevel: png.BestSpeed},
-	}
+	return &Renderer{logger: logger}
 }
 
 // SetScreen configures which VoCore screen device to target.
@@ -102,26 +97,18 @@ func (r *Renderer) Run(ctx context.Context) {
 		default:
 		}
 
-		portPath, err := findScreenPort(r.screen.VID, r.screen.PID)
+		sender, err := openScreen(r.screen.VID, r.screen.PID,
+			r.screen.Width, r.screen.Height, r.logger)
 		if err != nil {
-			r.logger.Debug("screen not found, retrying", "err", err)
+			r.logger.Debug("screen not available, retrying", "err", err)
 			if !waitOrCancel(ctx, screenRetryInterval) {
 				return
 			}
 			continue
 		}
 
-		conn, err := openScreen(portPath, r.logger)
-		if err != nil {
-			r.logger.Warn("failed to open screen", "port", portPath, "err", err)
-			if !waitOrCancel(ctx, screenRetryInterval) {
-				return
-			}
-			continue
-		}
-
-		r.renderLoop(ctx, conn)
-		conn.close()
+		r.renderLoop(ctx, sender)
+		sender.close()
 
 		r.logger.Info("screen connection lost, will reconnect")
 		if !waitOrCancel(ctx, screenRetryInterval) {
@@ -131,11 +118,12 @@ func (r *Renderer) Run(ctx context.Context) {
 }
 
 // renderLoop renders and sends frames at targetFPS until disconnect or cancel.
-func (r *Renderer) renderLoop(ctx context.Context, conn *screenConn) {
+func (r *Renderer) renderLoop(ctx context.Context, sender frameSender) {
 	ticker := time.NewTicker(frameInterval)
 	defer ticker.Stop()
 
-	var buf bytes.Buffer
+	// Pre-allocate RGB565 buffer (2 bytes per pixel, reused every frame).
+	rgb565 := make([]byte, r.screen.Width*r.screen.Height*2)
 	var framesSent int
 	lastLog := time.Now()
 
@@ -160,13 +148,9 @@ func (r *Renderer) renderLoop(ctx context.Context, conn *screenConn) {
 			continue
 		}
 
-		buf.Reset()
-		if err := r.enc.Encode(&buf, img); err != nil {
-			r.logger.Warn("PNG encode error", "err", err)
-			continue
-		}
+		imageToRGB565(img, rgb565)
 
-		if err := conn.sendFrame(buf.Bytes()); err != nil {
+		if err := sender.send(rgb565); err != nil {
 			r.logger.Warn("send error", "err", err)
 			return // triggers reconnect
 		}
@@ -175,7 +159,7 @@ func (r *Renderer) renderLoop(ctx context.Context, conn *screenConn) {
 		if elapsed := time.Since(lastLog); elapsed >= 5*time.Second {
 			r.logger.Info("render stats",
 				"fps", fmt.Sprintf("%.1f", float64(framesSent)/elapsed.Seconds()),
-				"png_bytes", buf.Len())
+				"frame_bytes", len(rgb565))
 			framesSent = 0
 			lastLog = time.Now()
 		}

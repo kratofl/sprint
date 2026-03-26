@@ -3,6 +3,8 @@ module github.com/kratofl/sprint/app
 go 1.26.0
 
 require (
+	github.com/fogleman/gg v1.3.0
+	github.com/google/gousb v1.1.3
 	github.com/google/uuid v1.6.0
 	github.com/kratofl/sprint/pkg v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.11.0
@@ -14,7 +16,6 @@ replace github.com/kratofl/sprint/pkg => ../pkg
 require (
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/creack/goselect v0.1.2 // indirect
-	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
