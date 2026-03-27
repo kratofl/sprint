@@ -127,10 +127,11 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
 │   ├── copilot-instructions.md
 │   ├── instructions/
 │   ├── skills/
+│   ├── hooks/
+│   ├── prompts/
 │   └── workflows/
 │       ├── ci.yml                   ← lint + test + build all packages on PR
-│       ├── desktop-release.yml      ← build Wails .exe, attach to GitHub Release
-│       └── web-deploy.yml           ← deploy /web on push to main
+│       └── desktop-release.yml      ← build desktop + API, attach to GitHub Release
 │
 ├── pkg/                             ← shared Go module (imported by app + api)
 │   ├── go.mod                       ← github.com/kratofl/sprint/pkg
@@ -149,7 +150,9 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
 │   └── internal/                    ← api-private packages
 │       ├── server/                  ← HTTP server setup + route wiring
 │       ├── handler/                 ← API route handlers (sessions, setups, layouts)
+│       ├── authhandler/             ← authentication route handlers (register, login)
 │       ├── relay/                   ← WebSocket relay hub for remote engineers
+│       ├── invite/                  ← session invite code generation + validation
 │       ├── store/                   ← database layer
 │       └── auth/                    ← authentication middleware
 │
@@ -192,9 +195,11 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
     ├── wails.json
     ├── internal/                    ← app-private packages
     │   ├── coordinator/             ← wires all services; no business logic
+    │   ├── devices/                 ← wheel device detection, serial port management
     │   ├── vocore/                  ← PNG renderer + USB serial sender to wheel screen
     │   ├── engineer/                ← WebSocket server for LAN engineers
     │   ├── wheel/                   ← button detector, valid-lap finder
+    │   ├── logger/                  ← structured logging setup
     │   ├── sync/                    ← sync client (API server ↕)
     │   └── setup/                   ← local setup file manager
     └── frontend/                    ← Wails React/TS frontend (dist/ embedded by main.go)
@@ -223,7 +228,7 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
 ### Go Workspace (`go.work`)
 
 ```
-go 1.25
+go 1.26.0
 
 use (
     ./app
@@ -232,9 +237,9 @@ use (
 )
 ```
 
-Three Go modules sharing `pkg/dto` and `pkg/games` via workspace resolution. Set
-`GOPRIVATE=github.com/kratofl/*` in your shell so `go mod tidy` skips the sum check
-for this private repo.
+Three Go modules sharing `pkg/dto` and `pkg/games` via workspace resolution. The
+Makefile sets `GONOSUMDB=github.com/kratofl/*` and `GONOPROXY=github.com/kratofl/*`
+so `go mod tidy` skips the sum check for this private repo.
 
 ## Shared Go Module (`/pkg`)
 
@@ -245,14 +250,14 @@ for this private repo.
 ## Go Desktop App Conventions (`/app`)
 
 - Single binary, standard Wails scaffold: `main.go` + `app.go` at module root.
-- All app-private logic under `internal/` (coordinator, vocore, engineer, wheel, sync, setup).
+- All app-private logic under `internal/` (coordinator, devices, vocore, engineer, wheel, logger, sync, setup).
 - Imports shared types from `github.com/kratofl/sprint/pkg/dto` and `pkg/games`.
 - The coordinator is thin — it wires components together, it does not contain business logic.
 
 ## Go API Server Conventions (`/api`)
 
 - Single binary HTTP server using the standard library (`net/http`).
-- All server-private logic under `internal/` (server, handler, relay, store, auth).
+- All server-private logic under `internal/` (server, handler, authhandler, relay, invite, store, auth).
 - Imports shared types from `github.com/kratofl/sprint/pkg/dto`.
 - The relay package manages WebSocket connections for remote engineers — desktop app connects and pushes telemetry, engineers connect and receive it.
 - The store package handles all database operations; no SQL outside this package.
@@ -295,7 +300,6 @@ for this private repo.
 ## Design System
 
 Full reference: [`docs/DESIGN_SYSTEM.md`](../docs/DESIGN_SYSTEM.md)
-Stitch brief (aesthetic/narrative): [`.stitch/DESIGN.md`](../.stitch/DESIGN.md)
 
 ### Key tokens (inline for quick reference)
 
@@ -328,9 +332,9 @@ Stitch brief (aesthetic/narrative): [`.stitch/DESIGN.md`](../.stitch/DESIGN.md)
 
 ## Data Flow for New Game Support
 
-1. Create a new package under `app/internal/games/` (e.g., `games/iracing/`).
-2. Implement the `GameAdapter` interface to read raw telemetry from the game.
-3. Map raw data to the unified DTO in `internal/dto/`.
-4. Register the adapter in the coordinator.
+1. Create a new package under `pkg/games/` (e.g., `pkg/games/iracing/`).
+2. Implement the `GameAdapter` interface from `pkg/games/adapter.go`.
+3. Map raw data to the unified DTO in `pkg/dto/`.
+4. Register the adapter in `app/internal/coordinator/`.
 5. No changes needed to the VoCore renderer, engineer hub, web app, or sync client.
 
