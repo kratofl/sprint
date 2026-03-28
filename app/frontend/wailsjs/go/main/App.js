@@ -22,6 +22,10 @@ export function DeviceSave(arg1) {
   return window['go']['main']['App']['DeviceSave'](arg1);
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function IsConnected() {
   return window['go']['main']['App']['IsConnected']();
 }

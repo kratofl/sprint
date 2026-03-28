@@ -12,13 +12,17 @@ import (
 	"github.com/kratofl/sprint/api/internal/server"
 )
 
+// Version is injected at build time via -ldflags "-X main.Version=x.y.z".
+// Falls back to "dev" for local builds.
+var Version = "dev"
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	srv := server.New(port)
+	srv := server.New(port, Version)
 
 	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

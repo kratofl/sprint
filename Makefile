@@ -12,6 +12,14 @@ BINARY_DIR := bin
 API_BINARY := $(BINARY_DIR)/sprint-api
 APP_DIR    := app
 
+# Version: read from the most recent git tag (strips leading "v").
+# Override with: make build-app VERSION=1.2.3
+# Extract version from the most recent git tag, stripping the leading "v".
+# Uses Make's built-in patsubst for cross-platform compatibility (no sed/tr).
+# Override with: make build-api VERSION=1.2.3
+_RAW_VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+VERSION ?= $(patsubst v%,%,$(_RAW_VERSION))
+
 # Prevent Go from hitting sum.golang.org for private modules in this workspace.
 # Can also be set permanently: go env -w GONOSUMDB=github.com/kratofl/*
 export GONOSUMDB := github.com/kratofl/*
@@ -49,13 +57,13 @@ $(BINARY_DIR):
 	mkdir -p $(BINARY_DIR)
 
 build-api: $(BINARY_DIR) ## Build the API server binary → bin/sprint-api
-	go build -trimpath -ldflags="-s -w" -o $(API_BINARY) ./api
+	go build -trimpath -ldflags="-s -w -X main.Version=$(VERSION)" -o $(API_BINARY) ./api
 
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
 build-app: ## Build the Wails desktop app (requires Wails CLI)
-	cd $(APP_DIR) && wails build -clean
+	cd $(APP_DIR) && wails build -clean -ldflags "-X main.Version=$(VERSION)"
 
 build: build-api build-web ## Build all (API + web)
 

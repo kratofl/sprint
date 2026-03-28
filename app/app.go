@@ -16,14 +16,15 @@ import (
 // frontend and callable from TypeScript via the generated Wails bindings.
 type App struct {
 	ctx     context.Context
+	version string
 	coord   *coordinator.Coordinator
 	setups  *setup.Manager
 	devices *devices.Manager
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
-func NewApp() *App {
-	return &App{}
+func NewApp(version string) *App {
+	return &App{version: version}
 }
 
 // Startup is called when the Wails app starts. The context is used for
@@ -53,6 +54,11 @@ func (a *App) DomReady(ctx context.Context) {
 // relying on a potentially-missed telemetry:connected event.
 func (a *App) IsConnected() bool {
 	return a.coord.IsConnected()
+}
+
+// GetVersion returns the application version string injected at build time.
+func (a *App) GetVersion() string {
+	return a.version
 }
 
 // Shutdown is called when the app is closing.

@@ -13,7 +13,7 @@ import (
 )
 
 // New creates an http.Server with all API routes configured.
-func New(port string) *http.Server {
+func New(port, version string) *http.Server {
 	mux := http.NewServeMux()
 
 	invites := invite.NewStore()
@@ -21,7 +21,7 @@ func New(port string) *http.Server {
 	go wsRelay.Run()
 
 	// ── Public routes (no auth required) ─────────────────────────────────────
-	mux.HandleFunc("GET /api/health", handler.Health)
+	mux.HandleFunc("GET /api/health", handler.HealthHandler(version))
 	mux.HandleFunc("POST /api/auth/register", authhandler.Register)
 	mux.HandleFunc("POST /api/auth/login", authhandler.Login)
 

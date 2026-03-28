@@ -9,5 +9,12 @@
   "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "kratofl"
+  },
+  "info": {
+    "companyName": "kratofl",
+    "productName": "Sprint",
+    "productVersion": "0.0.0",
+    "copyright": "© 2025 kratofl",
+    "comments": "Sim racing telemetry platform"
   }
 }

@@ -58,7 +58,7 @@ Sim Game (e.g. LeMansUltimate)
 | `/api` | Go | HTTP/WebSocket API server |
 | `/web` | TypeScript | Next.js web frontend |
 | `/pkg` | Go | Shared DTO types + game adapter interfaces |
-| `/packages` | TypeScript | Shared UI components + design tokens *(planned)* |
+| `/packages` | TypeScript | Shared UI components, types + design tokens |
 
 The three Go modules (`app`, `api`, `pkg`) are linked by a `go.work` workspace. The two TypeScript apps (`web`, `app/frontend`) share a pnpm workspace managed by Turborepo.
 
@@ -68,7 +68,7 @@ The three Go modules (`app`, `api`, `pkg`) are linked by a `go.work` workspace. 
 
 | Tool | Version | Required for |
 |---|---|---|
-| [Go](https://go.dev) | ≥ 1.25 | API server, desktop app backend |
+| [Go](https://go.dev) | ≥ 1.26 | API server, desktop app backend |
 | [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v2 | Desktop app build |
 | [Node.js](https://nodejs.org) | ≥ 20 | Web app, desktop frontend |
 | [pnpm](https://pnpm.io) | ≥ 9 | Package manager |

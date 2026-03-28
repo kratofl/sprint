@@ -14,9 +14,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// Health returns a simple ok response.
-func Health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+// Health returns a liveness response including the running binary version.
+func HealthHandler(version string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"status":  "ok",
+			"version": version,
+		})
+	}
 }
 
 // ── Telemetry Sessions ──────────────────────────────────────────────────────

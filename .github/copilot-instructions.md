@@ -3,7 +3,7 @@
 ## General Rules
 
 - Do **not** install system-level programs, applications, or packages on the host machine without explicit user consent.
-- Do **not** read, write, or execute anything outside the `/Users/kratofl/Projects/sprint` directory.
+- Do **not** read, write, or execute anything outside the repository root directory.
 - Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation and understanding. Fall back to file read operations (grep, glob, cat) only as a last resort.
 - Use the GitHub CLI (`gh`) for GitHub operations by default instead of built-in MCP GitHub tools, unless explicitly requested otherwise.
 - You **may** run `git commit` automatically. Every commit must include the co-author trailer: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`

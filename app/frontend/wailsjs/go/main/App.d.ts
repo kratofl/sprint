@@ -13,6 +13,8 @@ export function DeviceListPorts():Promise<Array<devices.DetectedPort>>;
 
 export function DeviceSave(arg1:devices.DeviceConfig):Promise<devices.DeviceConfig>;
 
+export function GetVersion():Promise<string>;
+
 export function IsConnected():Promise<boolean>;
 
 export function SetupDelete(arg1:string,arg2:string,arg3:string):Promise<void>;

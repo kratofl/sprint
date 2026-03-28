@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-desktop:
+    name: Desktop (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version (strip leading v)
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: app/go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Update wails.json productVersion
+        shell: pwsh
+        working-directory: app
+        run: |
+          $config = Get-Content wails.json -Raw | ConvertFrom-Json
+          $config.info.productVersion = "${{ env.VERSION }}"
+          $config | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
+
+      - name: Build desktop app
+        working-directory: app
+        run: wails build -clean -ldflags "-X main.Version=${{ env.VERSION }}"
+
+      - name: Rename artifact
+        shell: pwsh
+        run: |
+          Move-Item app/build/bin/Sprint.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe
+          generate_release_notes: true
+
+  build-api:
+    name: API server (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version (strip leading v)
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+
+      - name: Build API binary
+        run: |
+          go build -trimpath \
+            -ldflags="-s -w -X main.Version=${{ env.VERSION }}" \
+            -o "sprint-api-${{ github.ref_name }}-linux-amd64" \
+            ./api
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sprint-api-${{ github.ref_name }}-linux-amd64
+          generate_release_notes: false
