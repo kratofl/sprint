@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/kratofl/sprint/app/internal/dash"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -67,7 +68,14 @@ func (r *Renderer) SetScreen(cfg ScreenConfig) {
 	}
 }
 
-// OnFrame stores the latest telemetry frame for rendering.
+// SetLayout sets the dashboard layout that the renderer should use.
+// Passing nil falls back to the built-in hardcoded layout.
+// Safe to call at any time; takes effect on the next rendered frame.
+func (r *Renderer) SetLayout(layout *dash.DashLayout) {
+	if r.dash != nil {
+		r.dash.SetLayout(layout)
+	}
+}
 // Non-blocking; safe to call from the coordinator's hot telemetry loop.
 func (r *Renderer) OnFrame(frame *dto.TelemetryFrame) {
 	r.latestFrame.Store(frame)

@@ -15,7 +15,7 @@ export interface InputTraceProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const GRADIENTS = {
-  throttle: 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 100%)',
+  throttle: 'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)',
   brake:    'linear-gradient(90deg, #D96A10 0%, #F5922A 100%)',
   clutch:   'linear-gradient(90deg, #3B3B42 0%, #52525C 100%)',
   steering: 'linear-gradient(90deg, #71717A 0%, #A1A1AA 100%)',

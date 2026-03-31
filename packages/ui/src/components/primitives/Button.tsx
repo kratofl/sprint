@@ -14,7 +14,7 @@ const buttonVariants = cva(
         outline:
           "border-border-base bg-transparent text-text-primary hover:bg-bg-subtle",
         secondary:
-          "bg-[linear-gradient(135deg,#25C4A8_0%,#15847A_100%)] text-white uppercase italic font-bold tracking-wide hover:shadow-glow-teal",
+          "bg-[linear-gradient(135deg,#8afcff_0%,#2ae4e8_100%)] text-black uppercase italic font-bold tracking-wide hover:shadow-glow-teal",
         ghost:
           "bg-transparent text-text-secondary hover:bg-bg-subtle hover:text-text-primary",
         destructive:

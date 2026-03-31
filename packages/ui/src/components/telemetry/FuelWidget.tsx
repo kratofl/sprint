@@ -21,7 +21,7 @@ export function FuelWidget({ fuel, capacity, fuelPerLap, className, ...props }: 
   const fillGradient =
     fillPct < 10 ? 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)' :
     fillPct < 25 ? 'linear-gradient(90deg, #D96A10 0%, #F5922A 100%)' :
-    'linear-gradient(90deg, #1EA58C 0%, #25C4A8 100%)'
+    'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)'
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>

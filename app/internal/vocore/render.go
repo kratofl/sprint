@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fogleman/gg"
+	"github.com/kratofl/sprint/app/internal/dash"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -38,6 +40,9 @@ type DashRenderer struct {
 	width, height int
 	fontDir       string
 	fontOnce      sync.Once
+
+	// layout is the user-configured layout; nil means use the hardcoded default.
+	layout atomic.Pointer[dash.DashLayout]
 }
 
 // NewDashRenderer creates a renderer for the given screen dimensions.
@@ -45,10 +50,248 @@ func NewDashRenderer(width, height int) *DashRenderer {
 	return &DashRenderer{width: width, height: height}
 }
 
+// SetLayout atomically sets the layout to use on the next rendered frame.
+// Passing nil reverts to the hardcoded default layout.
+func (dr *DashRenderer) SetLayout(layout *dash.DashLayout) {
+	// atomic.Pointer stores a pointer; nil is stored as-is.
+	if layout == nil {
+		dr.layout.Store((*dash.DashLayout)(nil))
+	} else {
+		dr.layout.Store(layout)
+	}
+}
+
 // RenderFrame renders a complete dashboard image for the given telemetry frame.
+// If a custom layout has been set via SetLayout, it is used; otherwise the
+// built-in default layout is rendered.
 func (dr *DashRenderer) RenderFrame(frame *dto.TelemetryFrame) (image.Image, error) {
 	dr.fontOnce.Do(func() { dr.extractFonts() })
 
+	if layout := dr.layout.Load(); layout != nil {
+		return dr.renderCustomLayout(frame, layout)
+	}
+	return dr.renderDefaultLayout(frame)
+}
+
+// renderCustomLayout renders the user-defined widget layout.
+func (dr *DashRenderer) renderCustomLayout(frame *dto.TelemetryFrame, layout *dash.DashLayout) (image.Image, error) {
+	w, h := float64(dr.width), float64(dr.height)
+	dc := gg.NewContext(dr.width, dr.height)
+
+	dc.SetColor(colBg)
+	dc.Clear()
+
+	// Subtle orange glow at top (always drawn).
+	for i := 0; i < 80; i++ {
+		a := 0.035 * (1.0 - float64(i)/80.0)
+		dc.SetRGBA255(239, 129, 24, int(a*255))
+		dc.DrawEllipse(w/2, 0, w*0.5-float64(i)*2, 80-float64(i))
+		dc.Fill()
+	}
+
+	for _, widget := range layout.Widgets {
+		dr.renderWidget(dc, frame, widget)
+	}
+
+	dr.applyFlagOverlay(dc, frame, w, h)
+	return dc.Image(), nil
+}
+
+// renderWidget draws a single DashWidget inside its bounding box.
+func (dr *DashRenderer) renderWidget(dc *gg.Context, frame *dto.TelemetryFrame, w dash.DashWidget) {
+	x, y, ww, wh := float64(w.X), float64(w.Y), float64(w.W), float64(w.H)
+	drawPanel(dc, x, y, ww, wh, 8)
+
+	switch w.Type {
+	case dash.WidgetGear:
+		dr.drawWidgetGear(dc, frame, x, y, ww, wh)
+	case dash.WidgetSpeed:
+		dr.drawWidgetSpeed(dc, frame, x, y, ww, wh)
+	case dash.WidgetRPMBar:
+		dr.drawWidgetRPMBar(dc, frame, x, y, ww, wh)
+	case dash.WidgetLapTime:
+		dr.drawWidgetLapTime(dc, frame, x, y, ww, wh)
+	case dash.WidgetDelta:
+		dr.drawWidgetDelta(dc, frame, x, y, ww, wh)
+	case dash.WidgetSector:
+		dr.drawWidgetSector(dc, frame, x, y, ww, wh)
+	case dash.WidgetFuel:
+		dr.drawWidgetFuel(dc, frame, x, y, ww, wh)
+	case dash.WidgetTyreTemp:
+		dr.drawWidgetTyreTemp(dc, frame, x, y, ww, wh)
+	}
+}
+
+func (dr *DashRenderer) drawWidgetGear(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	gear := frame.Car.Gear
+	gearStr := "N"
+	if gear > 0 {
+		gearStr = fmt.Sprintf("%d", gear)
+	} else if gear < 0 {
+		gearStr = "R"
+	}
+	dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.7)
+	dc.SetColor(colTextPri)
+	dc.DrawStringAnchored(gearStr, x+w/2, y+h*0.45, 0.5, 0.5)
+}
+
+func (dr *DashRenderer) drawWidgetSpeed(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	speed := float64(frame.Car.SpeedMS) * 3.6
+	dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.45)
+	dc.SetColor(colTextPri)
+	dc.DrawStringAnchored(fmt.Sprintf("%.0f", speed), x+w/2, y+h*0.4, 0.5, 0.5)
+	dr.face(dc, "Inter-Regular.ttf", h*0.18)
+	dc.SetColor(colTextMuted)
+	dc.DrawStringAnchored("km/h", x+w/2, y+h*0.72, 0.5, 0.5)
+}
+
+func (dr *DashRenderer) drawWidgetRPMBar(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	rpmPct := clamp01(float64(frame.Car.RPM) / float64(frame.Car.MaxRPM))
+	segs := 20
+	segH := (h - 12) / float64(segs)
+	filled := int(float64(segs) * rpmPct)
+	for i := 0; i < segs; i++ {
+		sy := y + 6 + (h - 12) - float64(i+1)*segH
+		pct := float64(i) / float64(segs)
+		col := colRPMGreen
+		if pct > 0.85 {
+			col = colDanger
+		} else if pct > 0.65 {
+			col = colWarning
+		}
+		if i >= filled {
+			col = dimColor(col, 0.15)
+		}
+		dc.SetColor(col)
+		dc.DrawRoundedRectangle(x+5, sy+1, w-10, segH-2, 2)
+		dc.Fill()
+	}
+}
+
+func (dr *DashRenderer) drawWidgetLapTime(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	type lapEntry struct {
+		label string
+		time  float64
+		col   color.RGBA
+	}
+	laps := []lapEntry{
+		{"Current", frame.Lap.CurrentLapTime, colTextPri},
+		{"Last", frame.Lap.LastLapTime, colTextPri},
+		{"Best", frame.Lap.BestLapTime, colTeal},
+	}
+	dr.face(dc, "Inter-Regular.ttf", h*0.1)
+	dc.SetColor(colTextMuted)
+	dc.DrawString("LAP TIMES", x+12, y+h*0.15)
+	for i, l := range laps {
+		ly := y + h*0.25 + float64(i)*(h*0.22)
+		dr.face(dc, "Inter-Regular.ttf", h*0.12)
+		dc.SetColor(colTextSec)
+		dc.DrawString(l.label, x+12, ly)
+		dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.16)
+		dc.SetColor(l.col)
+		dc.DrawStringAnchored(fmtLap(l.time), x+w-12, ly-4, 1, 0)
+	}
+}
+
+func (dr *DashRenderer) drawWidgetDelta(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	if frame.Lap.TargetLapTime <= 0 {
+		dr.face(dc, "Inter-Regular.ttf", h*0.15)
+		dc.SetColor(colTextMuted)
+		dc.DrawStringAnchored("No target", x+w/2, y+h/2, 0.5, 0.5)
+		return
+	}
+	delta := frame.Lap.CurrentLapTime - frame.Lap.TargetLapTime
+	dbh := h * 0.3
+	dby := y + h*0.4
+	dbw := w - 24
+	dc.SetColor(color.RGBA{30, 30, 35, 255})
+	dc.DrawRoundedRectangle(x+12, dby, dbw, dbh, 3)
+	dc.Fill()
+
+	maxD := 2.0
+	pct := math.Max(-1, math.Min(1, delta/maxD))
+	mid := x + 12 + dbw/2
+	fw := math.Abs(pct) * dbw / 2
+	if delta > 0 {
+		dc.SetColor(colDanger)
+		dc.DrawRoundedRectangle(mid, dby+1, fw, dbh-2, 2)
+	} else {
+		dc.SetColor(colTeal)
+		dc.DrawRoundedRectangle(mid-fw, dby+1, fw, dbh-2, 2)
+	}
+	dc.Fill()
+
+	sign, col := "+", colDanger
+	if delta < 0 {
+		sign, col = "-", colTeal
+	}
+	dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.18)
+	dc.SetColor(col)
+	dc.DrawStringAnchored(fmt.Sprintf("%s%.3f", sign, math.Abs(delta)), x+w/2, dby+dbh+h*0.15, 0.5, 0.5)
+}
+
+func (dr *DashRenderer) drawWidgetSector(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	dr.face(dc, "Inter-Regular.ttf", h*0.12)
+	dc.SetColor(colTextMuted)
+	dc.DrawString("SECTORS", x+12, y+h*0.2)
+
+	sw := (w - 36) / 3
+	for i, st := range []float64{frame.Lap.Sector1Time, frame.Lap.Sector2Time} {
+		sx := x + 12 + float64(i)*sw
+		dr.face(dc, "Inter-Regular.ttf", h*0.12)
+		dc.SetColor(colTextMuted)
+		dc.DrawString(fmt.Sprintf("S%d", i+1), sx, y+h*0.5)
+		dr.face(dc, "JetBrainsMono-Regular.ttf", h*0.22)
+		dc.SetColor(colTextPri)
+		dc.DrawString(fmtSector(st), sx, y+h*0.78)
+	}
+	dr.face(dc, "Inter-Regular.ttf", h*0.12)
+	dc.SetColor(colAccent)
+	dc.DrawString(fmt.Sprintf("S%d ●", frame.Lap.Sector), x+12+2*sw, y+h*0.5)
+}
+
+func (dr *DashRenderer) drawWidgetFuel(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	dr.face(dc, "Inter-Regular.ttf", h*0.12)
+	dc.SetColor(colTextMuted)
+	dc.DrawString("FUEL", x+12, y+h*0.22)
+	dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.32)
+	dc.SetColor(colTextPri)
+	dc.DrawString(fmt.Sprintf("%.1f L", frame.Car.Fuel), x+12, y+h*0.58)
+	dr.face(dc, "JetBrainsMono-Regular.ttf", h*0.16)
+	dc.SetColor(colTextSec)
+	dc.DrawStringAnchored(fmt.Sprintf("%.2f L/lap", frame.Car.FuelPerLap), x+w-12, y+h*0.56, 1, 0)
+	if frame.Car.FuelPerLap > 0 {
+		rem := float64(frame.Car.Fuel) / float64(frame.Car.FuelPerLap)
+		dr.face(dc, "Inter-Regular.ttf", h*0.14)
+		dc.SetColor(colTextMuted)
+		dc.DrawString(fmt.Sprintf("~%.0f laps", rem), x+12, y+h-10)
+	}
+}
+
+func (dr *DashRenderer) drawWidgetTyreTemp(dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64) {
+	dr.face(dc, "Inter-Regular.ttf", h*0.1)
+	dc.SetColor(colTextMuted)
+	dc.DrawString("TYRE TEMPS", x+12, y+h*0.18)
+	tireLabels := [4]string{"FL", "FR", "RL", "RR"}
+	tw := (w - 36) / 2
+	for i, tire := range frame.Tires {
+		col := i % 2
+		row := i / 2
+		tx := x + 12 + float64(col)*(tw+12)
+		ty := y + h*0.3 + float64(row)*(h*0.32)
+		avgTemp := (float64(tire.TempInner) + float64(tire.TempMiddle) + float64(tire.TempOuter)) / 3
+		dr.face(dc, "Inter-Regular.ttf", h*0.12)
+		dc.SetColor(colTextMuted)
+		dc.DrawString(tireLabels[i], tx, ty)
+		dr.face(dc, "JetBrainsMono-Bold.ttf", h*0.2)
+		dc.SetColor(tyreColor(avgTemp))
+		dc.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tw, ty-2, 1, 0)
+	}
+}
+
+// renderDefaultLayout renders the built-in hardcoded dashboard layout.
+func (dr *DashRenderer) renderDefaultLayout(frame *dto.TelemetryFrame) (image.Image, error) {
+	dr.fontOnce.Do(func() { dr.extractFonts() })
 	w, h := float64(dr.width), float64(dr.height)
 	dc := gg.NewContext(dr.width, dr.height)
 
@@ -317,30 +560,34 @@ func (dr *DashRenderer) RenderFrame(frame *dto.TelemetryFrame) (image.Image, err
 		dc.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tw, ty-2, 1, 0)
 	}
 
-	// ── Flag overlay ─────────────────────────────────────────────────────
-	if frame.Flags.Yellow || frame.Flags.Red || frame.Flags.SafetyCar {
-		var flagCol color.RGBA
-		var flagText string
-		switch {
-		case frame.Flags.Red:
-			flagCol, flagText = colDanger, "RED FLAG"
-		case frame.Flags.SafetyCar:
-			flagCol, flagText = colWarning, "SAFETY CAR"
-		default:
-			flagCol, flagText = colWarning, "YELLOW FLAG"
-		}
-		dc.SetRGBA255(int(flagCol.R), int(flagCol.G), int(flagCol.B), 25)
-		dc.DrawRectangle(0, 0, w, h)
-		dc.Fill()
-		dc.SetColor(flagCol)
-		dc.DrawRectangle(0, h-30, w, 30)
-		dc.Fill()
-		dr.face(dc, "Inter-Bold.ttf", 14)
-		dc.SetColor(colBg)
-		dc.DrawStringAnchored(flagText, w/2, h-15, 0.5, 0.5)
-	}
-
+	dr.applyFlagOverlay(dc, frame, w, h)
 	return dc.Image(), nil
+}
+
+// applyFlagOverlay draws the flag status banner over the rendered frame when a flag is active.
+func (dr *DashRenderer) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFrame, w, h float64) {
+	if !frame.Flags.Yellow && !frame.Flags.Red && !frame.Flags.SafetyCar {
+		return
+	}
+	var flagCol color.RGBA
+	var flagText string
+	switch {
+	case frame.Flags.Red:
+		flagCol, flagText = colDanger, "RED FLAG"
+	case frame.Flags.SafetyCar:
+		flagCol, flagText = colWarning, "SAFETY CAR"
+	default:
+		flagCol, flagText = colWarning, "YELLOW FLAG"
+	}
+	dc.SetRGBA255(int(flagCol.R), int(flagCol.G), int(flagCol.B), 25)
+	dc.DrawRectangle(0, 0, w, h)
+	dc.Fill()
+	dc.SetColor(flagCol)
+	dc.DrawRectangle(0, h-30, w, 30)
+	dc.Fill()
+	dr.face(dc, "Inter-Bold.ttf", 14)
+	dc.SetColor(colBg)
+	dc.DrawStringAnchored(flagText, w/2, h-15, 0.5, 0.5)
 }
 
 // ── drawing helpers ──────────────────────────────────────────────────────────

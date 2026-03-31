@@ -58,7 +58,7 @@ export function NavRail({
         data-slot="nav-rail"
         data-collapsed={isCollapsed}
         className={cn(
-          "relative flex flex-col bg-bg-surface shadow-[4px_0_8px_rgba(0,0,0,0.5)]",
+          "relative flex flex-col bg-bg-container border-r border-border-base",
           "transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]",
           isCollapsed ? "w-[3.25rem]" : "w-[12.5rem]",
           className
@@ -96,15 +96,15 @@ export function NavRail({
                 onClick={() => onSelect(item.id)}
                 className={cn(
                   // Layout
-                  "group relative flex h-8 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded-md",
-                  "px-2 text-xs font-medium whitespace-nowrap transition-all duration-100",
+                  "group relative flex h-8 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded",
+                  "px-3 text-[11px] font-bold whitespace-nowrap uppercase tracking-[0.1em] transition-all duration-100",
                   "outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
                   // Inactive
-                  !isActive && "text-text-secondary hover:bg-bg-subtle",
-                  // Active: solid left accent border + subtle bg
+                  !isActive && "text-on-surface-variant hover:bg-white/[0.02] hover:text-foreground",
+                  // Active: right accent border + subtle bg (matches HTML reference)
                   isActive && [
-                    "text-text-primary bg-bg-subtle",
-                    "border-l-2 border-accent pl-[calc(0.5rem-2px)]",
+                    "text-accent bg-accent/5",
+                    "border-r-2 border-accent",
                   ]
                 )}
               >

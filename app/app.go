@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/coordinator"
+	"github.com/kratofl/sprint/app/internal/dash"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/kratofl/sprint/app/internal/setup"
@@ -20,6 +21,7 @@ type App struct {
 	coord   *coordinator.Coordinator
 	setups  *setup.Manager
 	devices *devices.Manager
+	dash    *dash.Manager
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -35,7 +37,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	log := logger.Init(logger.DefaultConfig())
 	a.devices = devices.NewManager()
-	a.coord = coordinator.New(log, a.devices)
+	a.dash = dash.NewManager()
+	a.coord = coordinator.New(log, a.devices, a.dash)
 	a.coord.SetEmit(func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
 	})
@@ -142,5 +145,61 @@ func (a *App) DeviceDelete(id string) error {
 	if err := a.devices.Delete(id); err != nil {
 		return fmt.Errorf("DeviceDelete: %w", err)
 	}
+	return nil
+}
+
+// ── VoCore screen bindings ────────────────────────────────────────────────────
+
+// VoCoreScanScreens scans USB for connected VoCore M-PRO screens and returns
+// the list. On unsupported platforms (e.g. macOS without gousb) this returns
+// an empty list without an error.
+func (a *App) VoCoreScanScreens() ([]devices.DetectedVoCoreScreen, error) {
+	screens, err := devices.ScanVoCoreScreens()
+	if err != nil {
+		return nil, fmt.Errorf("VoCoreScanScreens: %w", err)
+	}
+	return screens, nil
+}
+
+// VoCoreGetSelected returns the currently saved VoCore screen configuration.
+// Returns nil (no error) if no screen has been selected yet.
+func (a *App) VoCoreGetSelected() (*devices.VoCoreConfig, error) {
+	cfg, err := devices.LoadVoCoreConfig()
+	if err != nil {
+		return nil, fmt.Errorf("VoCoreGetSelected: %w", err)
+	}
+	return cfg, nil
+}
+
+// VoCoreSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
+// then hot-reloads the renderer so the new screen takes effect immediately.
+func (a *App) VoCoreSelectScreen(vid, pid uint16, width, height int) error {
+	cfg := &devices.VoCoreConfig{VID: vid, PID: pid, Width: width, Height: height}
+	if err := devices.SaveVoCoreConfig(cfg); err != nil {
+		return fmt.Errorf("VoCoreSelectScreen: %w", err)
+	}
+	a.coord.SetVoCoreConfig(cfg)
+	return nil
+}
+
+// ── Dash layout bindings ──────────────────────────────────────────────────────
+
+// DashLoadLayout reads the saved dashboard layout from disk. Returns nil when no
+// layout has been saved yet (the frontend should show the empty canvas default).
+func (a *App) DashLoadLayout() (*dash.DashLayout, error) {
+	layout, err := a.dash.Load()
+	if err != nil {
+		return nil, fmt.Errorf("DashLoadLayout: %w", err)
+	}
+	return layout, nil
+}
+
+// DashSaveLayout writes the layout to disk and hot-reloads the VoCore renderer.
+func (a *App) DashSaveLayout(layout dash.DashLayout) error {
+	if err := a.dash.Save(&layout); err != nil {
+		return fmt.Errorf("DashSaveLayout: %w", err)
+	}
+	a.coord.SetDashLayout(&layout)
+	runtime.EventsEmit(a.ctx, "dash:layout-updated", layout)
 	return nil
 }

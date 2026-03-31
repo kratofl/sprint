@@ -1,3 +1,60 @@
+export namespace dash {
+	
+	export class DashWidget {
+	    id: string;
+	    type: string;
+	    x: number;
+	    y: number;
+	    w: number;
+	    h: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DashWidget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.w = source["w"];
+	        this.h = source["h"];
+	    }
+	}
+	export class DashLayout {
+	    widgets: DashWidget[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DashLayout(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.widgets = this.convertValues(source["widgets"], DashWidget);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace devices {
 	
 	export class WheelModel {
@@ -66,6 +123,28 @@ export namespace devices {
 		    return a;
 		}
 	}
+	export class DetectedVoCoreScreen {
+	    vid: number;
+	    pid: number;
+	    serial?: string;
+	    width: number;
+	    height: number;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetectedVoCoreScreen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.serial = source["serial"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.description = source["description"];
+	    }
+	}
 	export class DeviceConfig {
 	    id: string;
 	    modelId: string;
@@ -82,6 +161,24 @@ export namespace devices {
 	        this.modelId = source["modelId"];
 	        this.alias = source["alias"];
 	        this.port = source["port"];
+	    }
+	}
+	export class VoCoreConfig {
+	    vid: number;
+	    pid: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VoCoreConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.width = source["width"];
+	        this.height = source["height"];
 	    }
 	}
 

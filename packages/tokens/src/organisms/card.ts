@@ -1,15 +1,16 @@
 /**
  * Card organism tokens.
- * Tonal depth — no border on base cards. Background contrast vs page base provides depth.
- * Use the `accent`/`teal` border variants only for intentional call-out emphasis.
+ * Cards have a solid outline border (#2a2a2a) — structural, always visible.
+ * Accent/teal border variants are opt-in emphasis on top of the outline.
  */
 import { borders } from '../molecules/borders'
 import { surfaces } from '../molecules/surfaces'
 
 export const card = {
-  background: surfaces.surface,
-  /** Highlighted card (active session, selected item) — opt-in accent border */
+  background: surfaces.container,
+  border:     borders.outline,
+  /** Highlighted card (active session, selected item) — accent border */
   accentBorder: borders.accent,
-  /** Teal variant — engineer-originated call-out */
+  /** Cyan variant — secondary call-out */
   tealBorder: borders.teal,
 } as const

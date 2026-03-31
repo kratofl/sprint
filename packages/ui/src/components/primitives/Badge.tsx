@@ -12,7 +12,7 @@ const badgeVariants = cva(
         default:
           "bg-[linear-gradient(135deg,#ff906c_0%,#ff784d_100%)] text-white",
         secondary:
-          "bg-[linear-gradient(135deg,#25C4A8_0%,#15847A_100%)] text-white",
+          "bg-[linear-gradient(135deg,#8afcff_0%,#2ae4e8_100%)] text-black",
         /** Telemetry alert chips: Live, Pit, Gear */
         tertiary:
           "bg-tertiary/20 text-tertiary border border-tertiary/30",

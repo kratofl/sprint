@@ -10,27 +10,34 @@ export const orange = {
   700: '#E55C30',
 } as const
 
-export const teal = {
-  400: '#25C4A8',
-  500: '#1EA58C',
-  600: '#15847A',
-  700: '#0E6B63',
+/** Vibrant cyan — secondary accent, system status, comparison data */
+export const cyan = {
+  400: '#8afcff',
+  500: '#5af8fb',
+  600: '#2ae4e8',
+  700: '#18c4c8',
 } as const
+
+/**
+ * @deprecated Use `cyan` for the secondary accent.
+ * Kept as alias for any references that haven't been migrated.
+ */
+export const teal = cyan
 
 /** Near-neutral with a faint warm undertone to complement the orange accent. */
 export const neutral = {
-  950: '#0e0e0e',
-  900: '#131313',
-  850: '#181717',
-  800: '#1a1919',
+  950: '#0a0a0a',
+  900: '#0f0f0f',
+  850: '#141414',
+  800: '#1a1a1a',
   750: '#1f1f1f',
-  700: '#262626',
-  600: '#333333',
-  500: '#52525C',
-  400: '#71717A',
+  700: '#2a2a2a',
+  600: '#3a3a3a',
+  500: '#525252',
+  400: '#808080',
   300: '#A1A1AA',
   200: '#D4D4D8',
-  100: '#F4F4F5',
+  100: '#ffffff',
 } as const
 
 export const semantic = {
@@ -44,10 +51,10 @@ export const semantic = {
 
 /** Six-color data visualization palette — verified ≥3:1 contrast on dark bg. */
 export const dataViz = {
-  1: '#60A5FA', // sky blue
-  2: '#A78BFA', // violet
+  1: '#ff906c', // primary orange — ref/best lap
+  2: '#5af8fb', // cyan
   3: '#34D399', // emerald
   4: '#FBBF24', // amber
   5: '#F472B6', // pink
-  6: '#22D3EE', // cyan
+  6: '#A78BFA', // violet
 } as const

@@ -25,7 +25,7 @@ const TEMP_HOT   = 110
 /** Returns a warm-gradient style based on temperature */
 function tempGradient(temp: number): string {
   if (temp < TEMP_COLD)  return 'linear-gradient(180deg, #60A5FA 0%, #3B82F6 100%)'
-  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, #25C4A8 0%, #1EA58C 100%)'
+  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, #8afcff 0%, #5af8fb 100%)'
   if (temp < TEMP_HOT)   return 'linear-gradient(180deg, #FFAA8A 0%, #ff906c 100%)'
   return 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)'
 }
@@ -33,7 +33,7 @@ function tempGradient(temp: number): string {
 function wearGradient(wear: number): string {
   if (wear > 80) return 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
   if (wear > 50) return 'linear-gradient(90deg, #ff784d 0%, #ff906c 100%)'
-  return 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 100%)'
+  return 'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)'
 }
 
 function TireCell({ data, label }: { data: TireData; label: string }) {

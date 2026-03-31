@@ -35,50 +35,47 @@ Implemented as CSS custom properties on `:root` (dark theme only).
 
 ### 2.1 Surface Hierarchy
 
-Depth is achieved through **tonal background shifts** — stacking surfaces of progressively lighter tones. No 1px solid borders are used for sectioning.
+Surfaces stack from dark base to lighter containers. A structural `outline` border (`#2a2a2a`) is used for all section edges — header bars, sidebar, card borders, table rows, chart containers.
 
 | Role | Token | Hex | Usage |
 |---|---|---|---|
-| Base | `--bg-base` | `#0e0e0e` | Page background |
-| Surface | `--bg-surface` | `#1a1919` | Cards, panels, sidebar |
+| Base | `--bg-base` | `#0a0a0a` | Page background |
+| Container | `--bg-container` | `#141414` | Cards, panels, sidebar |
 | Elevated | `--bg-elevated` | `#1f1f1f` | Active widgets, emphasized cards |
-| Overlay | `--bg-overlay` | `#262626` | Top-level emphasized elements |
-
-> Treat the UI as a series of nested mechanical parts. Each layer sits _above_ the previous by getting tonally lighter.
+| Overlay | `--bg-overlay` | `#262626` | Top-level emphasis |
+| Outline | `--outline` | `#2a2a2a` | All structural borders and dividers |
 
 ### 2.2 Primary Accent — Orange
 
-`#ff906c` is the primary action color — a warm, heat-treated coral that represents the friction of the track. Use it sparingly so it always signals interactivity.
+`#ff906c` is the primary action color — a warm coral that represents the friction of the track.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--accent` | `#ff906c` | Primary buttons, links, active nav items, focus rings |
-| `--accent-dark` | `#ff784d` | Gradient end, pressed / active state |
-| `--accent-muted` | `rgba(255,144,108,0.12)` | Tinted backgrounds (selected row, badge fill) |
-| `--accent-border` | `rgba(255,144,108,0.30)` | Optional accent call-out border |
+| `--accent` | `#ff906c` | Primary buttons, links, active nav, focus rings |
+| `--accent-dark` | `#ff784d` | Gradient end, pressed state |
+| `--accent-muted` | `rgba(255,144,108,0.08)` | Tinted backgrounds (active nav item bg) |
 
-**CTA Gradient:** Primary buttons use a 135° gradient from `#ff906c` to `#ff784d` to simulate the shimmer of heat-treated metal.
+**CTA Gradient:** Primary buttons use a 135° gradient from `#ff906c` to `#ff784d`.
 
 ```css
 background: linear-gradient(135deg, #ff906c 0%, #ff784d 100%);
 ```
 
-### 2.3 Secondary Accent — Teal
+### 2.3 Secondary Accent — Cyan
 
-`#1EA58C` is the secondary action color — sharp teal representing technical precision and fluid cooling.
+`#5af8fb` is the secondary color — electric cyan representing system status, technical data, and comparison highlights.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--teal` | `#1EA58C` | Secondary buttons, comparison highlights |
-| `--teal-hover` | `#25C4A8` | Hover state |
-| `--teal-dark` | `#15847A` | Gradient end |
-| `--teal-muted` | `rgba(30,165,140,0.12)` | Tinted backgrounds |
+| `--secondary` | `#5af8fb` | System status, secondary buttons, comparison data, chart series 2 |
+| `--secondary-dark` | `#2ae4e8` | Gradient end |
+| `--secondary-muted` | `rgba(90,248,251,0.08)` | Tinted backgrounds |
 
-> **Orange vs Teal:** Orange = primary action / driver-owned data. Teal = secondary action / engineer-originated / comparative context. Never use both at the same visual weight on the same element.
+> **Orange vs Cyan:** Orange = primary action / driver-owned data. Cyan = system status / engineer-originated / comparison. Never use both at the same visual weight on the same element.
 
 ### 2.4 Tertiary — Alert Purple
 
-`#f1afff` is a technical alert accent reserved for telemetry chip badges (e.g. "Live", "Pit", "Gear") that need contrast against both orange and teal.
+`#f1afff` is a technical alert accent reserved for telemetry chip badges (e.g. "LIVE", "PIT", "GEAR").
 
 | Token | Hex | Usage |
 |---|---|---|
@@ -88,10 +85,9 @@ background: linear-gradient(135deg, #ff906c 0%, #ff784d 100%);
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--foreground` | `#F4F4F5` | Primary text |
-| `--text-secondary` | `#A1A1AA` | Labels, timestamps, secondary metadata |
-| `--text-muted` | `#71717A` | Helper text, disabled labels |
-| `--text-disabled` | `#52525C` | Placeholders, inactive elements |
+| `--on-surface` | `#ffffff` | Primary text |
+| `--on-surface-variant` | `#808080` | Labels, timestamps, secondary metadata, inactive nav |
+| `--text-disabled` | `#525252` | Placeholders, inactive elements |
 
 ### 2.6 Semantic Colors
 
@@ -102,86 +98,78 @@ background: linear-gradient(135deg, #ff906c 0%, #ff784d 100%);
 | `--destructive` | `#F87171` | Errors, deleted items, sector time losses |
 | `--info` | `#60A5FA` | Informational badges, neutral highlights |
 
-### 2.7 Border Rules
+### 2.7 Border / Outline Rules
 
-**Solid 1px outlines for sectioning are strictly prohibited.** Boundaries must be defined through tonal surface transitions.
+The `outline` token (`#2a2a2a`) is the structural separator for all section edges:
+- Header bar bottom border
+- Sidebar right border
+- Card and panel edges
+- Table row dividers
+- Chart container borders
 
-Borders are permitted only for functional separation:
+`border border-outline` (= `border border-border-base`) is the standard pattern.
+
+For accent call-outs, use colored transparent borders on top:
 
 | Use case | Value | Token |
 |---|---|---|
-| Input fields (resting) | `rgba(255,255,255,0.15)` | `border-ghost` |
-| Input fields (focused) | 2px bottom bar in `--accent` | inline |
-| Table row dividers | `rgba(255,255,255,0.08)` | `border-ghost-subtle` |
-| Accent call-out cards | `rgba(255,144,108,0.30)` | `border-accent` |
-| Teal call-out cards | `rgba(30,165,140,0.30)` | `border-teal` |
+| All structural borders | `#2a2a2a` | `border-border-base` / `border-outline` |
+| Accent call-out card | `rgba(255,144,108,0.30)` | `border-accent-border` |
+| Cyan call-out card | `rgba(90,248,251,0.30)` | `border-teal-border` |
+| Subtle divider | `rgba(255,255,255,0.08)` | `border-border-subtle` |
 
-> The "Ghost Border" rule: if a border is truly required, use a semi-transparent white at ≤15% opacity. Never use a fully opaque line.
+### 2.8 Tech Grid
 
-### 2.8 Glassmorphism — Floating Surfaces Only
-
-Glass blur effects are reserved exclusively for **floating overlays**: navigation bars, modals, sheets, dropdowns, tooltips. Base cards and panels use solid tonal fills.
+The main content workspace uses a subtle grid texture to convey a technical HUD feel.
 
 ```css
-/* globals.css — glass utility (overlays only) */
-.glass {
-  background: rgba(26, 25, 25, 0.60);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-}
-
-.glass-overlay {
-  background: rgba(38, 38, 38, 0.70);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+.tech-grid {
+  background-image:
+    linear-gradient(to right,  #1a1a1a 1px, transparent 1px),
+    linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 ```
 
-### 2.9 CSS Variable Block
+Apply `.tech-grid` to the main workspace container, not to cards or sidebars.
+
+### 2.9 Glassmorphism — Floating Surfaces Only
+
+Glass blur effects are reserved for **floating overlays**: modals, sheets, command palette.
+
+```css
+.glass-overlay {
+  background: rgba(26, 26, 26, 0.80);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid #2a2a2a;
+}
+```
+
+### 2.10 CSS Variable Block
 
 ```css
 :root {
   /* Surfaces */
-  --bg-base:     #0e0e0e;
-  --bg-surface:  #1a1919;
-  --bg-elevated: #1f1f1f;
-  --bg-overlay:  #262626;
+  --bg-base:       #0a0a0a;
+  --bg-container:  #141414;
+  --bg-elevated:   #1f1f1f;
+  --bg-overlay:    #262626;
+
+  /* Structural border */
+  --outline:       #2a2a2a;
 
   /* Primary — orange */
   --accent:        #ff906c;
   --accent-dark:   #ff784d;
-  --accent-muted:  rgba(255, 144, 108, 0.12);
-  --accent-border: rgba(255, 144, 108, 0.30);
 
-  /* Secondary — teal */
-  --teal:       #1EA58C;
-  --teal-hover: #25C4A8;
-  --teal-dark:  #15847A;
-  --teal-muted: rgba(30, 165, 140, 0.12);
-
-  /* Tertiary — alert purple */
-  --tertiary: #f1afff;
+  /* Secondary — cyan */
+  --secondary:     #5af8fb;
+  --secondary-dark:#2ae4e8;
 
   /* Text */
-  --foreground:      #F4F4F5;
-  --text-secondary:  #A1A1AA;
-  --text-muted:      #71717A;
-  --text-disabled:   #52525C;
-
-  /* Ghost borders */
-  --border-ghost-subtle: rgba(255, 255, 255, 0.08);
-  --border-ghost:        rgba(255, 255, 255, 0.15);
-
-  /* Semantic */
-  --success:     #34D399;
-  --warning:     #FBBF24;
-  --destructive: #F87171;
-  --info:        #60A5FA;
-
-  /* Radius — everything sharp */
-  --radius: 0px;
+  --on-surface:          #ffffff;
+  --on-surface-variant:  #808080;
 }
 ```
 
@@ -481,19 +469,18 @@ Use **teal** (`--teal`) consistently for all engineer-originated actions — it 
 
 | Decision | Value |
 |---|---|
-| Background | `#0e0e0e` |
-| Surface | `#1a1919` |
-| Elevated | `#1f1f1f` / `#262626` |
-| Primary accent | `#ff906c` (Coral Orange) |
-| Secondary accent | `#1EA58C` (Deep Teal) |
+| Background | `#0a0a0a` |
+| Container surface | `#141414` |
+| Structural border | `#2a2a2a` (`border-border-base`) |
+| Primary accent | `#ff906c` → `#ff784d` (Coral Orange gradient) |
+| Secondary accent | `#5af8fb` → `#2ae4e8` (Electric Cyan) |
 | Tertiary accent | `#f1afff` (Alert Purple) |
 | Primary font | Space Grotesk (variable, 300–700) |
 | Mono / data font | JetBrains Mono |
-| Heading style | Bold · Italic · All Caps |
+| Heading style | Bold · Italic · All Caps · wide tracking |
+| Label format | UPPER_CASE with underscores (terminal HUD style) |
 | Border radius | `0px` everywhere |
-| Border rule | No solid 1px sectioning borders |
-| Ghost border | `rgba(255,255,255,0.15)` — inputs only |
-| Overlay glass | `bg surface 60% opacity + blur(20px)` |
+| Tech grid | `.tech-grid` on main workspace area |
 | Base spacing unit | 4px |
 | Sidebar width | 52px (collapsed) / 200px (expanded) |
 | Max content width | 1280px |

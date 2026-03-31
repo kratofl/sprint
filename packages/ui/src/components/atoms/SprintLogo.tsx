@@ -5,7 +5,7 @@ import { cn } from '../../lib/utils'
  * Sprint logo — "The Sector Spike"
  *
  * Icon mark: a forward-leaning triangular spike (orange #ff906c) over a teal
- * baseline (#1EA58C). Asymmetric geometry — steep left rise, gradual right
+ * baseline (#5af8fb). Asymmetric geometry — steep left rise, gradual right
  * fall — creates directionality (speed, forward motion).
  *
  * Orange = driver/primary. Teal = engineer/analytical.
@@ -114,7 +114,7 @@ function SprintMark() {
       {/* Teal baseline */}
       <line
         x1="0" y1="28" x2="48" y2="28"
-        stroke="#1EA58C"
+        stroke="#5af8fb"
         strokeWidth="2"
         strokeLinecap="square"
       />

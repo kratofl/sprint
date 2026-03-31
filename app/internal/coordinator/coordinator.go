@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/kratofl/sprint/app/internal/dash"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/app/internal/setup"
@@ -45,9 +46,21 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 
 // New creates a Coordinator. logger is the root application logger;
 // each subsystem receives a child logger tagged with its component name.
-func New(logger *slog.Logger, devs *devices.Manager) *Coordinator {
+// dashMgr is used to load the saved layout on startup; it may be nil (no
+// saved layout — the renderer falls back to its hardcoded default layout).
+func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coordinator {
 	r := vocore.NewRenderer(logger.With("component", "vocore"))
-	if active := devs.GetActive(); active != nil {
+
+	// Load VoCore screen config from disk. Falls back to model registry only if
+	// no screen.json is present (backward compat with pre-alpha installs).
+	if cfg, err := devices.LoadVoCoreConfig(); err == nil && cfg != nil {
+		r.SetScreen(vocore.ScreenConfig{
+			VID:    cfg.VID,
+			PID:    cfg.PID,
+			Width:  cfg.Width,
+			Height: cfg.Height,
+		})
+	} else if active := devs.GetActive(); active != nil {
 		if model := devices.FindModel(active.ModelID); model != nil && model.ScreenVID != 0 {
 			r.SetScreen(vocore.ScreenConfig{
 				VID:    model.ScreenVID,
@@ -57,6 +70,14 @@ func New(logger *slog.Logger, devs *devices.Manager) *Coordinator {
 			})
 		}
 	}
+
+	// Load saved dash layout; renderer will use the hardcoded default if nil.
+	if dashMgr != nil {
+		if layout, err := dashMgr.Load(); err == nil && layout != nil {
+			r.SetLayout(layout)
+		}
+	}
+
 	return &Coordinator{
 		logger:   logger,
 		adapter:  lemansultimate.New(),
@@ -75,6 +96,27 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 	if fn != nil {
 		c.emit = fn
 	}
+}
+
+// SetVoCoreConfig updates the VoCore screen configuration and reconfigures the
+// renderer. Safe to call after startup; the renderer will reconnect on the next
+// tick if the VID/PID changed.
+func (c *Coordinator) SetVoCoreConfig(cfg *devices.VoCoreConfig) {
+	if cfg == nil {
+		return
+	}
+	c.vocore.SetScreen(vocore.ScreenConfig{
+		VID:    cfg.VID,
+		PID:    cfg.PID,
+		Width:  cfg.Width,
+		Height: cfg.Height,
+	})
+}
+
+// SetDashLayout updates the layout used by the VoCore renderer. Takes effect
+// on the next rendered frame.
+func (c *Coordinator) SetDashLayout(layout *dash.DashLayout) {
+	c.vocore.SetLayout(layout)
 }
 
 // Start launches all subsystems. ctx governs their lifetime.

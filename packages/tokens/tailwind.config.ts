@@ -1,16 +1,16 @@
 import type { Config } from 'tailwindcss'
 
 // ── Atomic token imports ───────────────────────────────────────────────────
-import { orange, teal, neutral, semantic, dataViz } from './src/atoms/colors'
+import { orange, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
-import { surfaces }                                  from './src/molecules/surfaces'
+import { surfaces, outlineColor }                    from './src/molecules/surfaces'
 import { borders }                                   from './src/molecules/borders'
 
 /**
  * Shared design tokens for the Sprint platform.
- * "Kinetic Monolith" aesthetic: tonal depth, no-border rule, Space Grotesk,
- * glassmorphism for overlays only.
+ * "Kinetic Monolith" aesthetic: HUD terminal look, Space Grotesk, solid outline borders,
+ * orange primary (#ff906c) + cyan secondary (#5af8fb).
  */
 const tokens: Partial<Config> = {
   darkMode: 'class',
@@ -18,19 +18,19 @@ const tokens: Partial<Config> = {
     extend: {
       colors: {
         // ── Shadcn-compatible semantic aliases ───────────────────────────
-        primary:     { DEFAULT: orange[500], foreground: '#FFFFFF' },
-        secondary:   { DEFAULT: teal[500],   foreground: '#FFFFFF' },
+        primary:     { DEFAULT: orange[500], foreground: '#000000' },
+        secondary:   { DEFAULT: cyan[500],   foreground: '#000000' },
         tertiary:    { DEFAULT: semantic.tertiary, foreground: '#000000' },
-        destructive: { DEFAULT: semantic.destructive, foreground: '#FFFFFF' },
-        success:     { DEFAULT: semantic.success,     foreground: '#FFFFFF' },
+        destructive: { DEFAULT: semantic.destructive, foreground: '#ffffff' },
+        success:     { DEFAULT: semantic.success,     foreground: '#000000' },
         warning:     { DEFAULT: semantic.warning,     foreground: '#000000' },
 
-        // ── Surface hierarchy (tonal depth) ─────────────────────────────
+        // ── Surface hierarchy ────────────────────────────────────────────
         background: surfaces.base,
         foreground: neutral[100],
-        card:    { DEFAULT: surfaces.surface,  foreground: neutral[100] },
-        popover: { DEFAULT: surfaces.overlay,  foreground: neutral[100] },
-        muted:   { DEFAULT: surfaces.elevated, foreground: neutral[300] },
+        card:    { DEFAULT: surfaces.container, foreground: neutral[100] },
+        popover: { DEFAULT: surfaces.overlay,   foreground: neutral[100] },
+        muted:   { DEFAULT: surfaces.elevated,  foreground: neutral[400] },
         input:   surfaces.elevated,
         ring:    orange[500],
 
@@ -39,28 +39,30 @@ const tokens: Partial<Config> = {
           DEFAULT:    orange[500],
           hover:      orange[400],
           dark:       orange[600],
-          muted:      'rgba(255,144,108,0.12)',
+          muted:      'rgba(255,144,108,0.08)',
           border:     'rgba(255,144,108,0.30)',
-          foreground: '#FFFFFF',
+          foreground: '#000000',
         },
 
-        // ── Teal variants — teal (engineer-originated / secondary) ───────
+        // ── Cyan / secondary variants ────────────────────────────────────
         teal: {
-          DEFAULT:    teal[500],
-          hover:      teal[400],
-          dark:       teal[600],
-          muted:      'rgba(30,165,140,0.12)',
-          border:     'rgba(30,165,140,0.30)',
-          foreground: '#FFFFFF',
+          DEFAULT:    cyan[500],
+          hover:      cyan[400],
+          dark:       cyan[600],
+          muted:      'rgba(90,248,251,0.08)',
+          border:     'rgba(90,248,251,0.30)',
+          foreground: '#000000',
         },
 
-        // ── Background scale ─────────────────────────────────────────────
+        // ── Background / surface scale ───────────────────────────────────
         bg: {
-          base:     surfaces.base,
-          subtle:   neutral[900],
-          surface:  surfaces.surface,
-          elevated: surfaces.elevated,
-          overlay:  surfaces.overlay,
+          base:      surfaces.base,
+          container: surfaces.container,
+          // backward-compat aliases
+          surface:   surfaces.container,
+          subtle:    neutral[900],
+          elevated:  surfaces.elevated,
+          overlay:   surfaces.overlay,
         },
 
         // ── Text hierarchy ───────────────────────────────────────────────
@@ -71,15 +73,21 @@ const tokens: Partial<Config> = {
           disabled:  neutral[500],
         },
 
-        // ── Ghost borders — functional separation only ────────────────────
+        // ── 'on-surface' aliases (matches HTML reference naming) ─────────
+        'on-surface':         neutral[100],
+        'on-surface-variant': neutral[400],
+
+        // ── Border / outline ─────────────────────────────────────────────
         border: {
-          DEFAULT:     borders.ghost,
-          base:        borders.ghost,
-          subtle:      borders.ghostSubtle,
-          strong:      borders.ghostStrong,
-          accent:      borders.accent,
-          teal:        borders.teal,
+          DEFAULT: borders.outline,
+          base:    borders.outline,
+          subtle:  borders.outlineSubtle,
+          // keep 'strong' alias for any focus ring overrides
+          strong:  '#3a3a3a',
+          accent:  borders.accent,
+          teal:    borders.teal,
         },
+        outline: outlineColor,
 
         // ── Data visualization palette ───────────────────────────────────
         'data-1': dataViz[1],
@@ -93,17 +101,18 @@ const tokens: Partial<Config> = {
       borderRadius,
 
       fontFamily: {
-        display: fontFamily.display,
-        sans:    fontFamily.sans,
-        mono:    fontFamily.mono,
+        display:  fontFamily.display,
+        sans:     fontFamily.sans,
+        mono:     fontFamily.mono,
+        headline: fontFamily.display,
+        body:     fontFamily.sans,
       },
 
       boxShadow: {
-        // Tinted ambient shadows for floating surfaces only
-        overlay:    '0 8px 24px rgba(0,0,0,0.32)',
-        panel:      '0 2px 8px rgba(0,0,0,0.22)',
-        glow:       '0 0 14px rgba(255,144,108,0.22)',
-        'glow-teal':'0 0 14px rgba(30,165,140,0.22)',
+        overlay:    '0 8px 24px rgba(0,0,0,0.40)',
+        panel:      '0 2px 8px rgba(0,0,0,0.30)',
+        glow:       '0 0 14px rgba(255,144,108,0.25)',
+        'glow-teal':'0 0 14px rgba(90,248,251,0.20)',
       },
     },
   },

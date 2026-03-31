@@ -1,25 +1,21 @@
 /**
- * Border tokens — ghost borders only.
+ * Border tokens.
  *
- * Rule: 1px solid borders for sectioning are prohibited. Solid outlines make
- * the system look like a wireframe. Use tonal background shifts for depth.
+ * `outline` is the structural separator used everywhere — header bars, sidebar,
+ * card edges, table rows, chart areas. Value matches the HTML reference: #2a2a2a.
  *
- * Borders are reserved for functional separation:
- *   - Input fields (resting + focused states)
- *   - Table row dividers
- *   - Accent/teal call-out cards (intentional emphasis)
+ * Ghost borders (semi-transparent) are reserved for interactive state overlays
+ * and hover highlights only.
  */
-import { orange, teal } from '../atoms/colors'
+import { orange, cyan } from '../atoms/colors'
 
 export const borders = {
-  /** Subtle ghost — table row dividers, inset decorations */
-  ghostSubtle: 'rgba(255, 255, 255, 0.08)',
-  /** Standard ghost — input field resting state */
-  ghost:       'rgba(255, 255, 255, 0.15)',
-  /** Strong ghost — input focused state, elevated overlays */
-  ghostStrong: 'rgba(255, 255, 255, 0.22)',
-  /** Accent — orange tint, highlighted/active card call-outs */
+  /** Structural outline — header, sidebar, cards, table rows, chart areas */
+  outline:     '#2a2a2a',
+  /** Subtle variant — dividers inside surfaces */
+  outlineSubtle: 'rgba(255, 255, 255, 0.08)',
+  /** Accent — orange tint on highlighted/active cards */
   accent:      'rgba(255, 144, 108, 0.30)',
-  /** Teal — engineer-originated call-out highlights */
-  teal:        'rgba(30, 165, 140, 0.30)',
+  /** Cyan — secondary call-out highlights */
+  teal:        'rgba(90, 248, 251, 0.30)',
 } as const

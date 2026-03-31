@@ -9,30 +9,28 @@
 
 /* ── CSS variables ───────────────────────────────────────────────────────── */
 :root {
-  /* Accent — orange (driver-owned / primary) */
+  /* Primary — orange (driver-owned actions / active state) */
   --accent:        #ff906c;
   --accent-dark:   #ff784d;
-  --accent-muted:  rgba(255, 144, 108, 0.12);
-  --accent-border: rgba(255, 144, 108, 0.30);
+  --accent-muted:  rgba(255, 144, 108, 0.08);
 
-  /* Teal (engineer-originated / secondary) */
-  --teal:          #1EA58C;
-  --teal-hover:    #25C4A8;
-  --teal-dark:     #15847A;
+  /* Secondary — cyan (system status / engineer-originated / comparison data) */
+  --secondary:     #5af8fb;
+  --secondary-dark:#2ae4e8;
+  --secondary-muted: rgba(90, 248, 251, 0.08);
 
-  /* Tertiary — alert purple (telemetry chips: Live, Pit, Gear) */
-  --tertiary:      #f1afff;
-
-  /* Surfaces — tonal depth, no transparency */
-  --bg-base:       #0e0e0e;
-  --bg-surface:    #1a1919;
+  /* Surfaces */
+  --bg-base:       #0a0a0a;
+  --bg-container:  #141414;
   --bg-elevated:   #1f1f1f;
   --bg-overlay:    #262626;
 
-  /* Ghost borders — functional separation only, never for sectioning */
-  --border-ghost-subtle: rgba(255, 255, 255, 0.08);
-  --border-ghost:        rgba(255, 255, 255, 0.15);
-  --border-ghost-strong: rgba(255, 255, 255, 0.22);
+  /* Structural border — used for all section/card/table dividers */
+  --outline:       #2a2a2a;
+
+  /* Text */
+  --on-surface:    #ffffff;
+  --on-surface-variant: #808080;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
@@ -44,41 +42,50 @@ body {
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Surface utility classes ─────────────────────────────────────────────── */
-/*
- * Tonal surfaces — depth comes from background value difference.
- * No borders, no blur. Glassmorphism is for overlays only.
- */
+/* ── Terminal heading style (ALL CAPS + letter spacing) ──────────────────── */
+.terminal-header {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Surface utilities ───────────────────────────────────────────────────── */
 @layer utilities {
-  /* Mid-level surface — cards, panels, sidebar */
+  /* Container surface — cards, panels, sidebar */
   .surface {
-    background: var(--bg-surface);
+    background: var(--bg-container);
   }
 
-  /* Elevated — active widgets, emphasized cards */
+  /* Elevated surface — active widgets, emphasized cards */
   .surface-elevated {
     background: var(--bg-elevated);
   }
 
-  /* Top-level — highest emphasis elements */
+  /* Top-level overlay */
   .surface-overlay {
     background: var(--bg-overlay);
   }
 
-  /* Glass — floating overlays ONLY (modals, dropdowns, nav bar) */
+  /* Floating glass overlays — modals, dropdowns, nav bar */
   .glass {
-    background: rgba(26, 25, 25, 0.60);
+    background: rgba(20, 20, 20, 0.70);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    border: 1px solid var(--outline);
   }
 
-  /* Glass overlay — modals, sheets, command palette */
   .glass-overlay {
-    background: rgba(38, 38, 38, 0.70);
+    background: rgba(26, 26, 26, 0.80);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--outline);
+  }
+
+  /* Tech-grid — applied to main content areas for HUD texture */
+  .tech-grid {
+    background-image:
+      linear-gradient(to right,  #1a1a1a 1px, transparent 1px),
+      linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
+    background-size: 20px 20px;
   }
 }
 
