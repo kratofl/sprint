@@ -1,6 +1,6 @@
 //go:build windows
 
-package vocore
+package devices
 
 import (
 	"fmt"
@@ -48,7 +48,7 @@ const (
 
 // scanScreensImpl enumerates all USB devices and returns those whose device path
 // contains the VoCore VID (C872). Uses SetupDI (Windows, no CGO, no libusb).
-func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
+func scanScreensImpl() ([]DetectedScreen, error) {
 	vidHex := fmt.Sprintf("vid_%04x", voCoreVID)
 
 	r, _, err := procSetupDiGetClassDevsWDevices.Call(
@@ -57,7 +57,7 @@ func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 		uintptr(digcfPresentScan|digcfDeviceInterfaceScan),
 	)
 	if r == 0 || syscall.Handle(r) == syscall.InvalidHandle {
-		return nil, fmt.Errorf("vocore: SetupDiGetClassDevs: %w", err)
+		return nil, fmt.Errorf("devices: SetupDiGetClassDevs: %w", err)
 	}
 	hDevInfo := r
 	defer procSetupDiDestroyDeviceInfoListDevices.Call(hDevInfo)
@@ -66,7 +66,7 @@ func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 	ifData.CbSize = uint32(unsafe.Sizeof(ifData))
 
 	pidCounts := make(map[uint16]int)
-	var screens []DetectedVoCoreScreen
+	var screens []DetectedScreen
 
 	for i := uint32(0); ; i++ {
 		r, _, _ := procSetupDiEnumDeviceInterfacesDevices.Call(
@@ -131,7 +131,7 @@ func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 			continue
 		}
 
-		screens = append(screens, voCoreScreenFromPID(pid, ""))
+		screens = append(screens, screenFromPID(pid, ""))
 	}
 
 	return screens, nil

@@ -1,6 +1,6 @@
 //go:build linux && cgo
 
-package vocore
+package devices
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 // scanScreensImpl returns all VoCore M-PRO screens currently connected via USB.
 // Implements USB enumeration via gousb/libusb (Linux with CGO).
-func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
+func scanScreensImpl() ([]DetectedScreen, error) {
 	ctx := gousb.NewContext()
 	defer ctx.Close()
 
@@ -29,7 +29,7 @@ func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 		}
 	}()
 
-	var screens []DetectedVoCoreScreen
+	var screens []DetectedScreen
 	seen := make(map[uint16]bool)
 	for _, d := range devs {
 		pid := uint16(d.Desc.Product)
@@ -39,12 +39,11 @@ func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 		seen[pid] = true
 
 		serial, _ := d.SerialNumber()
-		screen := voCoreScreenFromPID(pid, serial)
-		screens = append(screens, screen)
+		screens = append(screens, screenFromPID(pid, serial))
 	}
 
 	if len(screens) == 0 && err != nil {
-		return nil, fmt.Errorf("vocore: scan screens: %w", err)
+		return nil, fmt.Errorf("devices: scan screens: %w", err)
 	}
 	return screens, nil
 }

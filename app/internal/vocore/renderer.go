@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/dash"
+	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -34,7 +35,7 @@ const (
 // Renderer drives the VoCore screen: renders telemetry into RGB565 frames
 // and sends them over USB bulk transfer at ~30 fps.
 type Renderer struct {
-	screen     VoCoreConfig
+	screen     devices.ScreenConfig
 	frameBytes int // expected RGB565 frame size (width*height*2), validated at SetScreen
 	logger     *slog.Logger
 	dash       *DashRenderer
@@ -50,7 +51,7 @@ func NewRenderer(logger *slog.Logger) *Renderer {
 
 // SetScreen configures which VoCore screen device to target.
 // Must be called before Run. If VID/PID are zero the renderer stays inert.
-func (r *Renderer) SetScreen(cfg VoCoreConfig) {
+func (r *Renderer) SetScreen(cfg devices.ScreenConfig) {
 	r.screen = cfg
 	if cfg.Width > 0 && cfg.Height > 0 {
 		r.dash = NewDashRenderer(cfg.Width, cfg.Height)

@@ -8,7 +8,7 @@ import {
   modelDisplayName,
   newDeviceConfig,
 } from '@/lib/devices'
-import { type DetectedVoCoreScreen, type VoCoreConfig, voCoreAPI } from '@/lib/dash'
+import { type DetectedScreen, type ScreenConfig, deviceScreenAPI } from '@/lib/dash'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   Input,
@@ -159,29 +159,29 @@ export default function Devices() {
 // ── VoCoreScreenSection ───────────────────────────────────────────────────────
 
 function VoCoreScreenSection() {
-  const [screens, setScreens]           = useState<DetectedVoCoreScreen[]>([])
-  const [selected, setSelected]         = useState<VoCoreConfig | null>(null)
+  const [screens, setScreens]           = useState<DetectedScreen[]>([])
+  const [selected, setSelected]         = useState<ScreenConfig | null>(null)
   const [scanning, setScanning]         = useState(false)
   const [selecting, setSelecting]       = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
   const [autoSelected, setAutoSelected] = useState(false)
 
-  const screenKey = (s: DetectedVoCoreScreen) => `${s.vid}-${s.pid}-${s.serial}`
+  const screenKey = (s: DetectedScreen) => `${s.vid}-${s.pid}-${s.serial}`
 
   const scan = useCallback(async () => {
     setScanning(true)
     setError(null)
     try {
       const [found, cfg] = await Promise.all([
-        voCoreAPI.scanScreens(),
-        voCoreAPI.getSelected(),
+        deviceScreenAPI.scanScreens(),
+        deviceScreenAPI.getScreen(),
       ])
       setScreens(found)
       setSelected(cfg)
 
       if (!cfg && found.length === 1) {
         const s = found[0]
-        await voCoreAPI.selectScreen(s.vid, s.pid, s.width, s.height)
+        await deviceScreenAPI.selectScreen(s.vid, s.pid, s.width, s.height)
         setSelected({ vid: s.vid, pid: s.pid, width: s.width, height: s.height })
         setAutoSelected(true)
       }
@@ -194,12 +194,12 @@ function VoCoreScreenSection() {
 
   useEffect(() => { scan() }, [scan])
 
-  const handleSelect = async (screen: DetectedVoCoreScreen) => {
+  const handleSelect = async (screen: DetectedScreen) => {
     const key = screenKey(screen)
     setSelecting(key)
     setError(null)
     try {
-      await voCoreAPI.selectScreen(screen.vid, screen.pid, screen.width, screen.height)
+      await deviceScreenAPI.selectScreen(screen.vid, screen.pid, screen.width, screen.height)
       setSelected({ vid: screen.vid, pid: screen.pid, width: screen.width, height: screen.height })
       setAutoSelected(false)
     } catch (e) {
@@ -209,7 +209,7 @@ function VoCoreScreenSection() {
     }
   }
 
-  const isSelected = (s: DetectedVoCoreScreen) =>
+  const isSelected = (s: DetectedScreen) =>
     selected?.vid === s.vid && selected?.pid === s.pid
 
   return (

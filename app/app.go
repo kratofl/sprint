@@ -10,7 +10,6 @@ import (
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/kratofl/sprint/app/internal/setup"
-	"github.com/kratofl/sprint/app/internal/vocore"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -151,33 +150,33 @@ func (a *App) DeviceDelete(id string) error {
 
 // ── VoCore screen bindings ────────────────────────────────────────────────────
 
-// VoCoreScanScreens scans USB for connected VoCore M-PRO screens and returns
+// DeviceScanScreens scans USB for connected VoCore M-PRO screens and returns
 // the list. On unsupported platforms (e.g. macOS without gousb) this returns
 // an empty list without an error.
-func (a *App) VoCoreScanScreens() ([]vocore.DetectedVoCoreScreen, error) {
-	screens, err := vocore.ScanScreens()
+func (a *App) DeviceScanScreens() ([]devices.DetectedScreen, error) {
+	screens, err := devices.ScanScreens()
 	if err != nil {
-		return nil, fmt.Errorf("VoCoreScanScreens: %w", err)
+		return nil, fmt.Errorf("DeviceScanScreens: %w", err)
 	}
 	return screens, nil
 }
 
-// VoCoreGetSelected returns the currently saved VoCore screen configuration.
+// DeviceGetScreen returns the currently saved VoCore screen configuration.
 // Returns nil (no error) if no screen has been selected yet.
-func (a *App) VoCoreGetSelected() (*vocore.VoCoreConfig, error) {
-	cfg, err := vocore.LoadVoCoreConfig()
+func (a *App) DeviceGetScreen() (*devices.ScreenConfig, error) {
+	cfg, err := devices.LoadScreenConfig()
 	if err != nil {
-		return nil, fmt.Errorf("VoCoreGetSelected: %w", err)
+		return nil, fmt.Errorf("DeviceGetScreen: %w", err)
 	}
 	return cfg, nil
 }
 
-// VoCoreSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
+// DeviceSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
 // then hot-reloads the renderer so the new screen takes effect immediately.
-func (a *App) VoCoreSelectScreen(vid, pid uint16, width, height int) error {
-	cfg := &vocore.VoCoreConfig{VID: vid, PID: pid, Width: width, Height: height}
-	if err := vocore.SaveVoCoreConfig(cfg); err != nil {
-		return fmt.Errorf("VoCoreSelectScreen: %w", err)
+func (a *App) DeviceSelectScreen(vid, pid uint16, width, height int) error {
+	cfg := &devices.ScreenConfig{VID: vid, PID: pid, Width: width, Height: height}
+	if err := devices.SaveScreenConfig(cfg); err != nil {
+		return fmt.Errorf("DeviceSelectScreen: %w", err)
 	}
 	a.coord.SetVoCoreConfig(cfg)
 	return nil

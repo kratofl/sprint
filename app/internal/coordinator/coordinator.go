@@ -44,18 +44,17 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 
 // New creates a Coordinator. logger is the root application logger;
 // each subsystem receives a child logger tagged with its component name.
-// dashMgr is used to load the saved layout on startup; it may be nil (no
-// saved layout — the renderer falls back to its hardcoded default layout).
+// dashMgr is used to load the saved layout on startup.
 func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coordinator {
 	r := vocore.NewRenderer(logger.With("component", "vocore"))
 
 	// Load VoCore screen config from disk. Falls back to model registry only if
 	// no screen.json is present (backward compat with pre-alpha installs).
-	if cfg, err := vocore.LoadVoCoreConfig(); err == nil && cfg != nil {
+	if cfg, err := devices.LoadScreenConfig(); err == nil && cfg != nil {
 		r.SetScreen(*cfg)
 	} else if active := devs.GetActive(); active != nil {
 		if model := devices.FindModel(active.ModelID); model != nil && model.ScreenVID != 0 {
-			r.SetScreen(vocore.VoCoreConfig{
+			r.SetScreen(devices.ScreenConfig{
 				VID:    model.ScreenVID,
 				PID:    model.ScreenPID,
 				Width:  model.ScreenWidth,
@@ -64,7 +63,8 @@ func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coo
 		}
 	}
 
-	// Load saved dash layout; renderer will use the hardcoded default if nil.
+	// Load saved dash layout; Load() returns the embedded default when no
+	// user layout file exists, so the renderer always has a layout to use.
 	if dashMgr != nil {
 		if layout, err := dashMgr.Load(); err == nil && layout != nil {
 			r.SetLayout(layout)
@@ -93,7 +93,7 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 // SetVoCoreConfig updates the VoCore screen configuration and reconfigures the
 // renderer. Safe to call after startup; the renderer will reconnect on the next
 // tick if the VID/PID changed.
-func (c *Coordinator) SetVoCoreConfig(cfg *vocore.VoCoreConfig) {
+func (c *Coordinator) SetVoCoreConfig(cfg *devices.ScreenConfig) {
 	if cfg == nil {
 		return
 	}

@@ -14,7 +14,7 @@ export interface DashLayout {
   widgets: DashWidget[]
 }
 
-export interface DetectedVoCoreScreen {
+export interface DetectedScreen {
   vid: number
   pid: number
   serial: string
@@ -23,7 +23,7 @@ export interface DetectedVoCoreScreen {
   description: string
 }
 
-export interface VoCoreConfig {
+export interface ScreenConfig {
   vid: number
   pid: number
   width: number
@@ -33,6 +33,7 @@ export interface VoCoreConfig {
 // ── Widget catalogue ──────────────────────────────────────────────────────────
 
 export const WIDGET_TYPES = [
+  { type: 'header',    label: 'Header',    category: 'layout', defaultW: 784, defaultH: 38  },
   { type: 'lap_time',  label: 'Lap Time',  category: 'timing', defaultW: 220, defaultH: 130 },
   { type: 'sector',    label: 'Sector',    category: 'timing', defaultW: 200, defaultH: 80  },
   { type: 'delta',     label: 'Delta',     category: 'timing', defaultW: 220, defaultH: 100 },
@@ -80,7 +81,7 @@ function normLayout(raw: any): DashLayout {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normScreen(raw: any): DetectedVoCoreScreen {
+function normScreen(raw: any): DetectedScreen {
   return {
     vid:         raw.vid         ?? raw.VID         ?? 0,
     pid:         raw.pid         ?? raw.PID         ?? 0,
@@ -92,7 +93,7 @@ function normScreen(raw: any): DetectedVoCoreScreen {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normConfig(raw: any): VoCoreConfig {
+function normScreenConfig(raw: any): ScreenConfig {
   return {
     vid:    raw.vid    ?? raw.VID    ?? 0,
     pid:    raw.pid    ?? raw.PID    ?? 0,
@@ -114,25 +115,28 @@ export const dashAPI = {
   },
 }
 
-// ── VoCore screen API ─────────────────────────────────────────────────────────
+// ── Device screen API ─────────────────────────────────────────────────────────
 
-export const voCoreAPI = {
-  async scanScreens(): Promise<DetectedVoCoreScreen[]> {
-    const raw = await call<unknown[]>('VoCoreScanScreens')
+export const deviceScreenAPI = {
+  async scanScreens(): Promise<DetectedScreen[]> {
+    const raw = await call<unknown[]>('DeviceScanScreens')
     return Array.isArray(raw) ? raw.map(normScreen) : []
   },
 
-  async getSelected(): Promise<VoCoreConfig | null> {
+  async getScreen(): Promise<ScreenConfig | null> {
     try {
-      const raw = await call<unknown>('VoCoreGetSelected')
+      const raw = await call<unknown>('DeviceGetScreen')
       if (!raw) return null
-      return normConfig(raw)
+      return normScreenConfig(raw)
     } catch {
       return null
     }
   },
 
   async selectScreen(vid: number, pid: number, width: number, height: number): Promise<void> {
-    await call<void>('VoCoreSelectScreen', vid, pid, width, height)
+    await call<void>('DeviceSelectScreen', vid, pid, width, height)
   },
 }
+
+/** @deprecated Use deviceScreenAPI instead */
+export const voCoreAPI = deviceScreenAPI

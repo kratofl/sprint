@@ -5,7 +5,7 @@ import {
   cn,
 } from '@sprint/ui'
 import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
-import { type DashLayout, type DashWidget, WIDGET_TYPES, dashAPI, voCoreAPI, type VoCoreConfig } from '@/lib/dash'
+import { type DashLayout, type DashWidget, WIDGET_TYPES, dashAPI, deviceScreenAPI, type ScreenConfig } from '@/lib/dash'
 
 // ── Widget by category ────────────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ const RACE_WIDGETS   = WIDGET_TYPES.filter(w => w.category === 'race')
 export default function DashEditor() {
   const [layout, setLayout]         = useState<DashLayout>({ widgets: [] })
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [screen, setScreen]         = useState<VoCoreConfig | null>(null)
+  const [screen, setScreen]         = useState<ScreenConfig | null>(null)
   const [saving, setSaving]         = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
   const [loadError, setLoadError]   = useState<string | null>(null)
@@ -26,7 +26,7 @@ export default function DashEditor() {
   // Load saved layout and screen config on mount.
   useEffect(() => {
     let cancelled = false
-    Promise.all([dashAPI.loadLayout(), voCoreAPI.getSelected()])
+    Promise.all([dashAPI.loadLayout(), deviceScreenAPI.getScreen()])
       .then(([savedLayout, cfg]) => {
         if (cancelled) return
         setLayout(savedLayout)
