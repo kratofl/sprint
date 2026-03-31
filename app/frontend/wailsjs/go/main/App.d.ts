@@ -3,6 +3,7 @@
 import {dash} from '../models';
 import {devices} from '../models';
 import {setup} from '../models';
+import {vocore} from '../models';
 
 export function DashLoadLayout():Promise<dash.DashLayout>;
 
@@ -28,8 +29,8 @@ export function SetupListAll():Promise<Array<setup.Setup>>;
 
 export function SetupSave(arg1:setup.Setup):Promise<setup.Setup>;
 
-export function VoCoreGetSelected():Promise<devices.VoCoreConfig>;
+export function VoCoreGetSelected():Promise<vocore.VoCoreConfig>;
 
-export function VoCoreScanScreens():Promise<Array<devices.DetectedVoCoreScreen>>;
+export function VoCoreScanScreens():Promise<Array<vocore.DetectedVoCoreScreen>>;
 
 export function VoCoreSelectScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;

@@ -12,6 +12,7 @@ const (
 	WidgetDelta      WidgetType = "delta"
 	WidgetSpeed      WidgetType = "speed"
 	WidgetGear       WidgetType = "gear"
+	WidgetGearSpeed  WidgetType = "gear_speed"
 	WidgetRPMBar     WidgetType = "rpm_bar"
 	WidgetFuel       WidgetType = "fuel"
 	WidgetTyreTemp   WidgetType = "tyre_temp"
@@ -25,6 +26,7 @@ var WidgetLabel = map[WidgetType]string{
 	WidgetDelta:      "Delta",
 	WidgetSpeed:      "Speed",
 	WidgetGear:       "Gear",
+	WidgetGearSpeed:  "Gear + Speed",
 	WidgetRPMBar:     "RPM Bar",
 	WidgetFuel:       "Fuel",
 	WidgetTyreTemp:   "Tyre Temp",
@@ -34,7 +36,7 @@ var WidgetLabel = map[WidgetType]string{
 // WidgetCategory groups widget types for the editor palette.
 var WidgetCategory = map[string][]WidgetType{
 	"Timing": {WidgetLapTime, WidgetSector, WidgetDelta},
-	"Car":    {WidgetSpeed, WidgetGear, WidgetRPMBar, WidgetInputTrace},
+	"Car":    {WidgetSpeed, WidgetGear, WidgetGearSpeed, WidgetRPMBar, WidgetInputTrace},
 	"Race":   {WidgetFuel, WidgetTyreTemp},
 }
 

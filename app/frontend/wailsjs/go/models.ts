@@ -123,28 +123,6 @@ export namespace devices {
 		    return a;
 		}
 	}
-	export class DetectedVoCoreScreen {
-	    vid: number;
-	    pid: number;
-	    serial?: string;
-	    width: number;
-	    height: number;
-	    description: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedVoCoreScreen(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.serial = source["serial"];
-	        this.width = source["width"];
-	        this.height = source["height"];
-	        this.description = source["description"];
-	    }
-	}
 	export class DeviceConfig {
 	    id: string;
 	    modelId: string;
@@ -161,24 +139,6 @@ export namespace devices {
 	        this.modelId = source["modelId"];
 	        this.alias = source["alias"];
 	        this.port = source["port"];
-	    }
-	}
-	export class VoCoreConfig {
-	    vid: number;
-	    pid: number;
-	    width: number;
-	    height: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new VoCoreConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.width = source["width"];
-	        this.height = source["height"];
 	    }
 	}
 
@@ -204,6 +164,51 @@ export namespace setup {
 	        this.car = source["car"];
 	        this.track = source["track"];
 	        this.settings = source["settings"];
+	    }
+	}
+
+}
+
+export namespace vocore {
+	
+	export class DetectedVoCoreScreen {
+	    vid: number;
+	    pid: number;
+	    serial?: string;
+	    width: number;
+	    height: number;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetectedVoCoreScreen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.serial = source["serial"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.description = source["description"];
+	    }
+	}
+	export class VoCoreConfig {
+	    vid: number;
+	    pid: number;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VoCoreConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.width = source["width"];
+	        this.height = source["height"];
 	    }
 	}
 

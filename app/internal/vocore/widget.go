@@ -63,7 +63,7 @@ type WidgetCtx struct {
 
 // Panel draws the standard elevated panel background for this widget's bounding
 // box with the default corner radius (8 px).
-func (c WidgetCtx) Panel() { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 8) }
+func (c WidgetCtx) Panel() { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0) }
 
 // PanelR draws a panel with a custom corner radius r.
 func (c WidgetCtx) PanelR(r float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r) }

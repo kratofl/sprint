@@ -24,9 +24,9 @@ var fontsFS embed.FS
 // Sprint design tokens — mirroring packages/tokens/src/atoms/colors.ts + molecules/surfaces.ts.
 var (
 	// Surfaces — matches surfaces.base / container / elevated
-	colBg       = color.RGBA{10, 10, 10, 255}  // #0a0a0a  surfaces.base
-	colSurface  = color.RGBA{20, 20, 20, 255}  // #141414  surfaces.container
-	colElevated = color.RGBA{31, 31, 31, 255}  // #1f1f1f  surfaces.elevated
+	colBg       = color.RGBA{10, 10, 10, 255} // #0a0a0a  surfaces.base
+	colSurface  = color.RGBA{20, 20, 20, 255} // #141414  surfaces.container
+	colElevated = color.RGBA{31, 31, 31, 255} // #1f1f1f  surfaces.elevated
 	// Borders — structural outline #2a2a2a (borders.outline), not semi-transparent white
 	colBorder = color.RGBA{42, 42, 42, 255} // #2a2a2a
 	// Accents
@@ -56,9 +56,9 @@ type DashRenderer struct {
 	fontFiles map[string]*opentype.Font
 	fontFaces map[string]font.Face
 
-	// bgImg is the pre-baked static background: bg fill + orange glow ellipses.
-	// Rendered once on the first frame; copied into ctx at the start of each frame
-	// so the 80-iteration glow loop does not run every tick.
+	// bgImg is the pre-baked static background (solid colBg fill).
+	// Rendered once on the first frame; copied into ctx at the start of each
+	// frame so clearing the canvas does not run every tick.
 	bgImg *image.RGBA
 
 	// ctx is the reusable gg.Context. Allocated once per screen size and reset
@@ -136,12 +136,14 @@ func (dr *DashRenderer) renderWidget(dc *gg.Context, frame *dto.TelemetryFrame, 
 }
 
 // renderDefaultLayout renders the built-in hardcoded dashboard layout.
+// It draws a header bar with session info (not a widget — unique per-session
+// context), then dispatches every content widget through the shared registry,
+// using the same code path as a user-configured custom layout.
 func (dr *DashRenderer) renderDefaultLayout(frame *dto.TelemetryFrame) (image.Image, error) {
-	dr.fontOnce.Do(func() { dr.extractFonts() })
 	w, h := float64(dr.width), float64(dr.height)
 	dc := dr.getContext()
 
-	// ── Header ──────────────────────────────────────────────────────────
+	// ── Header (session info — not a widget) ─────────────────────────────
 	hdrH := 38.0
 	drawPanel(dc, 8, 6, w-16, hdrH, 8)
 
@@ -165,251 +167,41 @@ func (dr *DashRenderer) renderDefaultLayout(frame *dto.TelemetryFrame) (image.Im
 	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
 	dc.DrawStringAnchored("LIVE", w-18, 6+hdrH/2, 0, 0.5)
 
-	// ── Layout ──────────────────────────────────────────────────────────
+	// ── Content widgets ───────────────────────────────────────────────────
 	topY := hdrH + 14.0
 	pad := 8.0
-	contentH := h - topY - pad
+	ch := h - topY - pad // usable content height
 
 	rpmW := 40.0
 	leftW := 340.0
-	centerX := pad + rpmW + pad
-	centerW := leftW - rpmW - pad
-	rightX := pad + leftW + pad
-	rightW := w - rightX - pad
+	cx := pad + rpmW + pad   // center column X
+	cw := leftW - rpmW - pad // center column W
+	rx := pad + leftW + pad  // right column X
+	rw := w - rx - pad       // right column W
 
-	// ── RPM bar ─────────────────────────────────────────────────────────
-	drawPanel(dc, pad, topY, rpmW, contentH, 8)
-	rpmPct := clamp01(float64(frame.Car.RPM) / float64(frame.Car.MaxRPM))
-	segs := 24
-	segH := (contentH - 12) / float64(segs)
-	filled := int(float64(segs) * rpmPct)
-	for i := 0; i < segs; i++ {
-		sy := topY + 6 + (contentH - 12) - float64(i+1)*segH
-		pct := float64(i) / float64(segs)
-		col := colTeal
-		if pct > 0.92 {
-			col = colRPMRed
-		} else if pct > 0.85 {
-			col = colRPMOrange
-		}
-		if i >= filled {
-			col = dimColor(col, 0.15)
-		}
-		dc.SetColor(col)
-		dc.DrawRoundedRectangle(pad+5, sy+1, rpmW-10, segH-2, 2)
-		dc.Fill()
-	}
-	dr.face(dc, "JetBrainsMono-Regular.ttf", 9)
-	dc.SetColor(colTextMuted)
-	dc.DrawStringAnchored(fmt.Sprintf("%.0f", frame.Car.RPM), pad+rpmW/2, topY+contentH-4, 0.5, 1)
+	gearH := ch * 0.52
+	inputH := ch*0.28 - 4
+	sectorH := math.Max(24, ch-gearH-pad-inputH-pad-pad)
 
-	// ── Gear + Speed ────────────────────────────────────────────────────
-	gearH := contentH * 0.52
-	drawPanel(dc, centerX, topY, centerW, gearH, 8)
+	lapH := ch * 0.42
+	lapTimeH := lapH * 0.75
+	deltaH := lapH - lapTimeH - pad
+	fuelH := ch*0.28 - 4
+	tyreH := math.Max(40, ch-lapH-pad-fuelH-pad-pad)
 
-	gear := frame.Car.Gear
-	gearStr := "N"
-	if gear > 0 {
-		gearStr = fmt.Sprintf("%d", gear)
-	} else if gear < 0 {
-		gearStr = "R"
-	}
-	dr.face(dc, "JetBrainsMono-Bold.ttf", 110)
-	dc.SetColor(colTextPri)
-	dc.DrawStringAnchored(gearStr, centerX+centerW/2, topY+gearH*0.38, 0.5, 0.5)
+	ri := func(v float64) int { return int(math.Round(v)) }
 
-	speed := float64(frame.Car.SpeedMS) * 3.6
-	dr.face(dc, "JetBrainsMono-Bold.ttf", 30)
-	dc.DrawStringAnchored(fmt.Sprintf("%.0f", speed), centerX+centerW/2, topY+gearH*0.72, 0.5, 0.5)
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 11)
-	dc.SetColor(colTextMuted)
-	dc.DrawStringAnchored("km/h", centerX+centerW/2, topY+gearH*0.84, 0.5, 0.5)
-
-	// ── Throttle / Brake / Clutch / Steering ────────────────────────────
-	inputY := topY + gearH + pad
-	inputH := contentH*0.28 - 4
-	drawPanel(dc, centerX, inputY, centerW, inputH, 8)
-
-	barX := centerX + 58.0
-	barW := centerW - 70.0
-	barH := 8.0
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 9)
-	rowH := inputH / 4
-	type inputRow struct {
-		label string
-		value float64
-		col   color.RGBA
-	}
-	// Steering is -1…+1; normalise to 0…1 for the bar, then reflect as centred.
-	steerNorm := (float64(frame.Car.Steering) + 1.0) / 2.0
-	rows := []inputRow{
-		{"THR", float64(frame.Car.Throttle), colSuccess},
-		{"BRK", float64(frame.Car.Brake), colDanger},
-		{"CLU", float64(frame.Car.Clutch), colTextSec},
-		{"STR", steerNorm, colTextSec},
-	}
-	for i, row := range rows {
-		cy := inputY + rowH*(float64(i)+0.5)
-		dc.SetColor(colTextMuted)
-		dc.DrawStringAnchored(row.label, centerX+32, cy, 0.5, 0.5)
-		if i == 3 {
-			// Steering: centred bar (0 = full left, 0.5 = centre, 1 = full right).
-			drawHBarCentered(dc, barX, cy-barH/2, barW, barH, row.value, row.col)
-		} else {
-			drawHBar(dc, barX, cy-barH/2, barW, barH, row.value, row.col)
-		}
-	}
-
-	// ── Sectors ──────────────────────────────────────────────────────────
-	sectorY := inputY + inputH + pad
-	sectorH := contentH - gearH - pad - inputH - pad - pad
-	if sectorH < 24 {
-		sectorH = 24
-	}
-	drawPanel(dc, centerX, sectorY, centerW, sectorH, 8)
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-	dc.SetColor(colTextMuted)
-	dc.DrawString("SECTORS", centerX+12, sectorY+16)
-
-	sw := (centerW - 36) / 3
-	for i, st := range []float64{frame.Lap.Sector1Time, frame.Lap.Sector2Time} {
-		sx := centerX + 12 + float64(i)*sw
-		dr.face(dc, "SpaceGrotesk-Regular.ttf", 9)
-		dc.SetColor(colTextMuted)
-		dc.DrawString(fmt.Sprintf("S%d", i+1), sx, sectorY+34)
-		dr.face(dc, "JetBrainsMono-Regular.ttf", 14)
-		dc.SetColor(colTextPri)
-		dc.DrawString(fmtSector(st), sx, sectorY+52)
-	}
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 9)
-	dc.SetColor(colAccent)
-	dc.DrawString(fmt.Sprintf("S%d ●", frame.Lap.Sector), centerX+12+2*sw, sectorY+34)
-
-	// ── Lap Times ───────────────────────────────────────────────────────
-	lapH := contentH * 0.42
-	drawPanel(dc, rightX, topY, rightW, lapH, 8)
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-	dc.SetColor(colTextMuted)
-	dc.DrawString("LAP TIMES", rightX+12, topY+18)
-
-	type lapEntry struct {
-		label string
-		time  float64
-		col   color.RGBA
-	}
-	laps := []lapEntry{
-		{"Current", frame.Lap.CurrentLapTime, colTextPri},
-		{"Last", frame.Lap.LastLapTime, colTextPri},
-		{"Best", frame.Lap.BestLapTime, colTeal},
-	}
-	for i, l := range laps {
-		ly := topY + 36 + float64(i)*28
-		dr.face(dc, "SpaceGrotesk-Regular.ttf", 11)
-		dc.SetColor(colTextSec)
-		dc.DrawString(l.label, rightX+12, ly)
-		dr.face(dc, "JetBrainsMono-Bold.ttf", 16)
-		dc.SetColor(l.col)
-		dc.DrawStringAnchored(fmtLap(l.time), rightX+rightW-12, ly-4, 1, 0)
-	}
-
-	// Delta bar
-	if frame.Lap.TargetLapTime > 0 {
-		dy := topY + 36 + 3*28 + 4
-		delta := frame.Lap.CurrentLapTime - frame.Lap.TargetLapTime
-
-		dr.face(dc, "SpaceGrotesk-Regular.ttf", 9)
-		dc.SetColor(colTextMuted)
-		dc.DrawString("Δ Target", rightX+12, dy)
-
-		dby := dy + 8
-		dbw := rightW - 24
-		dbh := 14.0
-		dc.SetColor(colSurface)
-		dc.DrawRoundedRectangle(rightX+12, dby, dbw, dbh, 3)
-		dc.Fill()
-
-		maxD := 2.0
-		pct := math.Max(-1, math.Min(1, delta/maxD))
-		mid := rightX + 12 + dbw/2
-		fw := math.Abs(pct) * dbw / 2
-		if delta > 0 {
-			dc.SetColor(colDanger)
-			dc.DrawRoundedRectangle(mid, dby+1, fw, dbh-2, 2)
-		} else {
-			dc.SetColor(colTeal)
-			dc.DrawRoundedRectangle(mid-fw, dby+1, fw, dbh-2, 2)
-		}
-		dc.Fill()
-
-		dc.SetColor(colTextMuted)
-		dc.SetLineWidth(1)
-		dc.DrawLine(mid, dby, mid, dby+dbh)
-		dc.Stroke()
-
-		sign, col := "+", colDanger
-		if delta < 0 {
-			sign, col = "-", colTeal
-		}
-		dr.face(dc, "JetBrainsMono-Bold.ttf", 12)
-		dc.SetColor(col)
-		dc.DrawStringAnchored(fmt.Sprintf("%s%.3f", sign, math.Abs(delta)), mid, dby+dbh+14, 0.5, 0.5)
-	}
-
-	// ── Fuel ─────────────────────────────────────────────────────────────
-	fuelY := topY + lapH + pad
-	fuelH := contentH*0.28 - 4
-	drawPanel(dc, rightX, fuelY, rightW, fuelH, 8)
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-	dc.SetColor(colTextMuted)
-	dc.DrawString("FUEL", rightX+12, fuelY+18)
-
-	dr.face(dc, "JetBrainsMono-Bold.ttf", 22)
-	dc.SetColor(colTextPri)
-	dc.DrawString(fmt.Sprintf("%.1f L", frame.Car.Fuel), rightX+12, fuelY+46)
-
-	dr.face(dc, "JetBrainsMono-Regular.ttf", 12)
-	dc.SetColor(colTextSec)
-	dc.DrawStringAnchored(fmt.Sprintf("%.2f L/lap", frame.Car.FuelPerLap), rightX+rightW-12, fuelY+44, 1, 0)
-
-	if frame.Car.FuelPerLap > 0 {
-		rem := float64(frame.Car.Fuel) / float64(frame.Car.FuelPerLap)
-		dr.face(dc, "SpaceGrotesk-Regular.ttf", 11)
-		dc.SetColor(colTextMuted)
-		dc.DrawString(fmt.Sprintf("~%.0f laps remaining", rem), rightX+12, fuelY+fuelH-10)
-	}
-
-	// ── Tyre temps ───────────────────────────────────────────────────────
-	tyreY := fuelY + fuelH + pad
-	tyreH := contentH - lapH - pad - fuelH - pad - pad
-	if tyreH < 40 {
-		tyreH = 40
-	}
-	drawPanel(dc, rightX, tyreY, rightW, tyreH, 8)
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-	dc.SetColor(colTextMuted)
-	dc.DrawString("TYRE TEMPS", rightX+12, tyreY+18)
-
-	tireLabels := [4]string{"FL", "FR", "RL", "RR"}
-	for i, tire := range frame.Tires {
-		col := i % 2
-		row := i / 2
-		tw := (rightW - 36) / 2
-		tx := rightX + 12 + float64(col)*(tw+12)
-		ty := tyreY + 30 + float64(row)*32
-		avgTemp := (float64(tire.TempInner) + float64(tire.TempMiddle) + float64(tire.TempOuter)) / 3
-
-		dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-		dc.SetColor(colTextMuted)
-		dc.DrawString(tireLabels[i], tx, ty)
-
-		dr.face(dc, "JetBrainsMono-Bold.ttf", 15)
-		dc.SetColor(tyreColor(avgTemp))
-		dc.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tw, ty-2, 1, 0)
+	for _, wd := range []dash.DashWidget{
+		{Type: dash.WidgetRPMBar,     X: ri(pad), Y: ri(topY),                               W: ri(rpmW), H: ri(ch)},
+		{Type: dash.WidgetGearSpeed,  X: ri(cx),  Y: ri(topY),                               W: ri(cw),   H: ri(gearH)},
+		{Type: dash.WidgetInputTrace, X: ri(cx),  Y: ri(topY + gearH + pad),                 W: ri(cw),   H: ri(inputH)},
+		{Type: dash.WidgetSector,     X: ri(cx),  Y: ri(topY + gearH + pad + inputH + pad),  W: ri(cw),   H: ri(sectorH)},
+		{Type: dash.WidgetLapTime,    X: ri(rx),  Y: ri(topY),                               W: ri(rw),   H: ri(lapTimeH)},
+		{Type: dash.WidgetDelta,      X: ri(rx),  Y: ri(topY + lapTimeH + pad),              W: ri(rw),   H: ri(deltaH)},
+		{Type: dash.WidgetFuel,       X: ri(rx),  Y: ri(topY + lapH + pad),                  W: ri(rw),   H: ri(fuelH)},
+		{Type: dash.WidgetTyreTemp,   X: ri(rx),  Y: ri(topY + lapH + pad + fuelH + pad),    W: ri(rw),   H: ri(tyreH)},
+	} {
+		dr.renderWidget(dc, frame, wd)
 	}
 
 	dr.applyFlagOverlay(dc, frame, w, h)
