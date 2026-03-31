@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -86,9 +85,9 @@ func (dr *DashRenderer) SetLayout(layout *dash.DashLayout) {
 	}
 }
 
-// RenderFrame renders a complete dashboard image for the given telemetry frame.
-// If a custom layout has been set via SetLayout, it is used; otherwise the
-// built-in default layout is rendered.
+// RenderFrame renders a complete dashboard image for the given telemetry frame
+// using the active layout. The layout is always set — the coordinator loads it
+// from disk (falling back to the embedded default) before the first frame.
 func (dr *DashRenderer) RenderFrame(frame *dto.TelemetryFrame) (image.Image, error) {
 	dr.fontOnce.Do(func() {
 		dr.extractFonts()
@@ -97,19 +96,13 @@ func (dr *DashRenderer) RenderFrame(frame *dto.TelemetryFrame) (image.Image, err
 	})
 	dr.ensureBg()
 
-	if layout := dr.layout.Load(); layout != nil {
-		return dr.renderCustomLayout(frame, layout)
-	}
-	return dr.renderDefaultLayout(frame)
-}
-
-// renderCustomLayout renders the user-defined widget layout.
-func (dr *DashRenderer) renderCustomLayout(frame *dto.TelemetryFrame, layout *dash.DashLayout) (image.Image, error) {
 	w, h := float64(dr.width), float64(dr.height)
 	dc := dr.getContext()
 
-	for _, widget := range layout.Widgets {
-		dr.renderWidget(dc, frame, widget)
+	if layout := dr.layout.Load(); layout != nil {
+		for _, widget := range layout.Widgets {
+			dr.renderWidget(dc, frame, widget)
+		}
 	}
 
 	dr.applyFlagOverlay(dc, frame, w, h)
@@ -133,79 +126,6 @@ func (dr *DashRenderer) renderWidget(dc *gg.Context, frame *dto.TelemetryFrame, 
 		H:     float64(w.H),
 		dr:    dr,
 	})
-}
-
-// renderDefaultLayout renders the built-in hardcoded dashboard layout.
-// It draws a header bar with session info (not a widget — unique per-session
-// context), then dispatches every content widget through the shared registry,
-// using the same code path as a user-configured custom layout.
-func (dr *DashRenderer) renderDefaultLayout(frame *dto.TelemetryFrame) (image.Image, error) {
-	w, h := float64(dr.width), float64(dr.height)
-	dc := dr.getContext()
-
-	// ── Header (session info — not a widget) ─────────────────────────────
-	hdrH := 38.0
-	drawPanel(dc, 8, 6, w-16, hdrH, 8)
-
-	dr.face(dc, "SpaceGrotesk-Bold.ttf", 13)
-	dc.SetColor(colTextMuted)
-	dc.DrawStringAnchored("SPRINT", 24, 6+hdrH/2, 0, 0.5)
-
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 12)
-	dc.SetColor(colTextPri)
-	dc.DrawStringAnchored(frame.Session.Track, 108, 6+hdrH/2, 0, 0.5)
-	dc.SetColor(colTextSec)
-	dc.DrawStringAnchored(frame.Session.Car, 290, 6+hdrH/2, 0, 0.5)
-	dc.DrawStringAnchored(string(frame.Session.SessionType), 500, 6+hdrH/2, 0, 0.5)
-
-	dr.face(dc, "JetBrainsMono-Regular.ttf", 12)
-	dc.SetColor(colTextMuted)
-	dc.DrawStringAnchored(fmt.Sprintf("L%d", frame.Lap.CurrentLap), w-80, 6+hdrH/2, 0, 0.5)
-	dc.SetColor(colTeal)
-	dc.DrawCircle(w-30, 6+hdrH/2, 4)
-	dc.Fill()
-	dr.face(dc, "SpaceGrotesk-Regular.ttf", 10)
-	dc.DrawStringAnchored("LIVE", w-18, 6+hdrH/2, 0, 0.5)
-
-	// ── Content widgets ───────────────────────────────────────────────────
-	topY := hdrH + 14.0
-	pad := 8.0
-	ch := h - topY - pad // usable content height
-
-	rpmW := 40.0
-	leftW := 340.0
-	cx := pad + rpmW + pad   // center column X
-	cw := leftW - rpmW - pad // center column W
-	rx := pad + leftW + pad  // right column X
-	rw := w - rx - pad       // right column W
-
-	gearH := ch * 0.52
-	inputH := ch*0.28 - 4
-	sectorH := math.Max(24, ch-gearH-pad-inputH-pad-pad)
-
-	lapH := ch * 0.42
-	lapTimeH := lapH * 0.75
-	deltaH := lapH - lapTimeH - pad
-	fuelH := ch*0.28 - 4
-	tyreH := math.Max(40, ch-lapH-pad-fuelH-pad-pad)
-
-	ri := func(v float64) int { return int(math.Round(v)) }
-
-	for _, wd := range []dash.DashWidget{
-		{Type: dash.WidgetRPMBar,     X: ri(pad), Y: ri(topY),                               W: ri(rpmW), H: ri(ch)},
-		{Type: dash.WidgetGearSpeed,  X: ri(cx),  Y: ri(topY),                               W: ri(cw),   H: ri(gearH)},
-		{Type: dash.WidgetInputTrace, X: ri(cx),  Y: ri(topY + gearH + pad),                 W: ri(cw),   H: ri(inputH)},
-		{Type: dash.WidgetSector,     X: ri(cx),  Y: ri(topY + gearH + pad + inputH + pad),  W: ri(cw),   H: ri(sectorH)},
-		{Type: dash.WidgetLapTime,    X: ri(rx),  Y: ri(topY),                               W: ri(rw),   H: ri(lapTimeH)},
-		{Type: dash.WidgetDelta,      X: ri(rx),  Y: ri(topY + lapTimeH + pad),              W: ri(rw),   H: ri(deltaH)},
-		{Type: dash.WidgetFuel,       X: ri(rx),  Y: ri(topY + lapH + pad),                  W: ri(rw),   H: ri(fuelH)},
-		{Type: dash.WidgetTyreTemp,   X: ri(rx),  Y: ri(topY + lapH + pad + fuelH + pad),    W: ri(rw),   H: ri(tyreH)},
-	} {
-		dr.renderWidget(dc, frame, wd)
-	}
-
-	dr.applyFlagOverlay(dc, frame, w, h)
-	return dc.Image(), nil
 }
 
 // applyFlagOverlay draws the flag status banner over the rendered frame when a flag is active.

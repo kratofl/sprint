@@ -185,8 +185,9 @@ func (a *App) VoCoreSelectScreen(vid, pid uint16, width, height int) error {
 
 // ── Dash layout bindings ──────────────────────────────────────────────────────
 
-// DashLoadLayout reads the saved dashboard layout from disk. Returns nil when no
-// layout has been saved yet (the frontend should show the empty canvas default).
+// DashLoadLayout reads the saved dashboard layout from disk. If no layout has
+// been saved yet, the embedded default layout is returned so the editor always
+// has something to start from.
 func (a *App) DashLoadLayout() (*dash.DashLayout, error) {
 	layout, err := a.dash.Load()
 	if err != nil {

@@ -2,10 +2,14 @@ package dash
 
 import (
 	"encoding/json"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 )
+
+//go:embed default.json
+var defaultLayoutJSON []byte
 
 // Manager handles persistence of the active DashLayout.
 // The single active layout is stored at ~/.config/Sprint/layout.json.
@@ -31,13 +35,14 @@ func (m *Manager) Save(layout *DashLayout) error {
 	return os.WriteFile(m.path, data, 0644)
 }
 
-// Load reads the saved layout from disk. Returns nil (no error) if no layout
-// has been saved yet; the caller should fall back to the default layout.
+// Load reads the saved layout from disk.
+// If no layout has been saved yet, the embedded default layout is returned so
+// the caller always receives a valid, ready-to-use layout.
 func (m *Manager) Load() (*DashLayout, error) {
 	data, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return defaultLayout()
 		}
 		return nil, fmt.Errorf("dash: read layout: %w", err)
 	}
@@ -47,3 +52,13 @@ func (m *Manager) Load() (*DashLayout, error) {
 	}
 	return &layout, nil
 }
+
+// defaultLayout unmarshals and returns the embedded default layout.
+func defaultLayout() (*DashLayout, error) {
+	var layout DashLayout
+	if err := json.Unmarshal(defaultLayoutJSON, &layout); err != nil {
+		return nil, fmt.Errorf("dash: parse embedded default layout: %w", err)
+	}
+	return &layout, nil
+}
+

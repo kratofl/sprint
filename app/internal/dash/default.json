@@ -1,0 +1,13 @@
+{
+  "widgets": [
+    {"id": "header",     "type": "header",      "x":   8, "y":   6, "w": 784, "h":  38},
+    {"id": "rpm_bar",    "type": "rpm_bar",     "x":   8, "y":  52, "w":  40, "h": 420},
+    {"id": "gear_speed", "type": "gear_speed",  "x":  56, "y":  52, "w": 292, "h": 218},
+    {"id": "inputs",     "type": "input_trace", "x":  56, "y": 278, "w": 292, "h": 114},
+    {"id": "sectors",    "type": "sector",      "x":  56, "y": 400, "w": 292, "h":  64},
+    {"id": "lap_time",   "type": "lap_time",    "x": 356, "y":  52, "w": 436, "h": 132},
+    {"id": "delta",      "type": "delta",       "x": 356, "y": 192, "w": 436, "h":  36},
+    {"id": "fuel",       "type": "fuel",        "x": 356, "y": 236, "w": 436, "h": 114},
+    {"id": "tyre_temp",  "type": "tyre_temp",   "x": 356, "y": 358, "w": 436, "h": 106}
+  ]
+}

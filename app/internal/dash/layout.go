@@ -7,6 +7,7 @@ package dash
 type WidgetType string
 
 const (
+	WidgetHeader     WidgetType = "header"
 	WidgetLapTime    WidgetType = "lap_time"
 	WidgetSector     WidgetType = "sector"
 	WidgetDelta      WidgetType = "delta"
@@ -21,6 +22,7 @@ const (
 
 // WidgetLabel is a human-readable display name for each widget type.
 var WidgetLabel = map[WidgetType]string{
+	WidgetHeader:     "Header",
 	WidgetLapTime:    "Lap Time",
 	WidgetSector:     "Sector",
 	WidgetDelta:      "Delta",
@@ -35,9 +37,10 @@ var WidgetLabel = map[WidgetType]string{
 
 // WidgetCategory groups widget types for the editor palette.
 var WidgetCategory = map[string][]WidgetType{
-	"Timing": {WidgetLapTime, WidgetSector, WidgetDelta},
-	"Car":    {WidgetSpeed, WidgetGear, WidgetGearSpeed, WidgetRPMBar, WidgetInputTrace},
-	"Race":   {WidgetFuel, WidgetTyreTemp},
+	"Layout":  {WidgetHeader},
+	"Timing":  {WidgetLapTime, WidgetSector, WidgetDelta},
+	"Car":     {WidgetSpeed, WidgetGear, WidgetGearSpeed, WidgetRPMBar, WidgetInputTrace},
+	"Race":    {WidgetFuel, WidgetTyreTemp},
 }
 
 // DashWidget is a single widget placed on the dashboard canvas.
