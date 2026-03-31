@@ -10,12 +10,8 @@ import {
 } from '@/lib/devices'
 import { type DetectedVoCoreScreen, type VoCoreConfig, voCoreAPI } from '@/lib/dash'
 import {
-  Badge,
-  Button,
-  Card, CardContent, CardHeader, CardTitle,
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
   Input,
-  Separator,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   Skeleton,
   cn,
@@ -73,76 +69,78 @@ export default function Devices() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">
-      {/* Header */}
-      <h1 className="text-lg font-semibold">Devices</h1>
+    <div className="flex flex-1 flex-col overflow-hidden">
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {/* Section header */}
+      <div className="border-b border-[#2a2a2a] px-6 py-4 flex-shrink-0">
+        <h2 className="terminal-header text-sm font-bold tracking-[0.2em]">DEVICE_CONFIG</h2>
+        {error && <p className="mt-1 font-mono text-[10px] text-[#F87171]">{error}</p>}
+      </div>
 
-      {/* VoCore screen selector */}
-      <VoCoreScreenSection />
+      <div className="flex-1 overflow-y-auto">
+        {/* VoCore screen selector */}
+        <VoCoreScreenSection />
 
-      {/* Advanced: serial wheel config */}
-      <div>
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen(o => !o)}
-          className="flex w-full items-center gap-2 text-xs text-text-muted hover:text-text-primary transition-colors mb-2"
-        >
-          <svg
-            className={cn('h-3 w-3 transition-transform', advancedOpen && 'rotate-90')}
-            viewBox="0 0 6 10" fill="none" stroke="currentColor" strokeWidth="1.5"
+        {/* Advanced: serial wheel config */}
+        <div className="border-t border-[#2a2a2a]">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen(o => !o)}
+            className="flex w-full items-center gap-3 border-b border-[#2a2a2a] px-6 py-3 transition-colors hover:bg-[#141414]"
           >
-            <path d="M1 1l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Advanced — Serial / Wheel Model
-        </button>
+            <svg
+              className={cn('h-3 w-3 transition-transform text-[#808080]', advancedOpen && 'rotate-90')}
+              viewBox="0 0 6 10" fill="none" stroke="currentColor" strokeWidth="1.5"
+            >
+              <path d="M1 1l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="terminal-header text-[10px] font-bold text-[#808080]">
+              ADVANCED — SERIAL_WHEEL_MODEL
+            </span>
+          </button>
 
-        {advancedOpen && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-text-muted">
-                Legacy serial configuration. Not required when using USB VoCore auto-detection.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditing(newDeviceConfig())}
-                className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent flex-shrink-0 ml-4"
-              >
-                + Add Wheel
-              </Button>
-            </div>
+          {advancedOpen && (
+            <div>
+              <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-3">
+                <p className="font-mono text-[9px] text-[#808080]">
+                  Legacy serial config. Not required when using USB VoCore auto-detection.
+                </p>
+                <button
+                  onClick={() => setEditing(newDeviceConfig())}
+                  className="terminal-header ml-4 flex-shrink-0 border border-[#ff906c] px-2.5 py-1 text-[9px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
+                >
+                  + ADD_WHEEL
+                </button>
+              </div>
 
-            {loading ? (
-              <div className="space-y-3">
-                {[0, 1].map(i => (
-                  <Card key={i}>
-                    <CardContent className="py-4">
-                      <Skeleton className="h-4 w-48 mb-2" />
+              {loading ? (
+                <div className="space-y-0">
+                  {[0, 1].map(i => (
+                    <div key={i} className="border-b border-[#2a2a2a] px-6 py-4">
+                      <Skeleton className="mb-2 h-4 w-48" />
                       <Skeleton className="h-3 w-32" />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : devices.length === 0 ? (
-              <EmptyState onAdd={() => setEditing(newDeviceConfig())} />
-            ) : (
-              <div className="space-y-3">
-                {devices.map((d, i) => (
-                  <DeviceCard
-                    key={d.id}
-                    device={d}
-                    models={models}
-                    isPrimary={i === 0}
-                    onEdit={() => setEditing({ ...d })}
-                    onDelete={() => handleDelete(d.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                    </div>
+                  ))}
+                </div>
+              ) : devices.length === 0 ? (
+                <EmptyState onAdd={() => setEditing(newDeviceConfig())} />
+              ) : (
+                <div>
+                  {devices.map((d, i) => (
+                    <DeviceCard
+                      key={d.id}
+                      device={d}
+                      models={models}
+                      isPrimary={i === 0}
+                      onEdit={() => setEditing({ ...d })}
+                      onDelete={() => handleDelete(d.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add / edit dialog */}
@@ -181,7 +179,6 @@ function VoCoreScreenSection() {
       setScreens(found)
       setSelected(cfg)
 
-      // Auto-select if exactly one screen found and nothing saved yet.
       if (!cfg && found.length === 1) {
         const s = found[0]
         await voCoreAPI.selectScreen(s.vid, s.pid, s.width, s.height)
@@ -195,7 +192,6 @@ function VoCoreScreenSection() {
     }
   }, [])
 
-  // Scan on mount.
   useEffect(() => { scan() }, [scan])
 
   const handleSelect = async (screen: DetectedVoCoreScreen) => {
@@ -217,33 +213,31 @@ function VoCoreScreenSection() {
     selected?.vid === s.vid && selected?.pid === s.pid
 
   return (
-    <Card>
-      <CardHeader className="border-b border-border-base">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">VoCore Screen</CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={scan}
-            disabled={scanning}
-            className="text-text-muted hover:text-text-primary h-7"
-          >
-            {scanning ? 'Scanning…' : '↻ Scan'}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-4">
-        {error && <p className="mb-3 text-xs text-red-400">{error}</p>}
+    <div>
+      {/* Section header */}
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-3">
+        <h4 className="terminal-header text-[10px] font-bold text-[#808080]">VOCORE_SCREEN</h4>
+        <button
+          onClick={scan}
+          disabled={scanning}
+          className="terminal-header border border-[#2a2a2a] px-2.5 py-1 text-[9px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white disabled:opacity-50"
+        >
+          {scanning ? 'SCANNING…' : '↻ SCAN'}
+        </button>
+      </div>
+
+      <div className="px-6 py-4">
+        {error && <p className="mb-3 font-mono text-[10px] text-[#F87171]">{error}</p>}
 
         {scanning && screens.length === 0 ? (
           <div className="space-y-2">
-            <Skeleton className="h-14 w-full rounded-md" />
+            <Skeleton className="h-14 w-full" />
           </div>
         ) : screens.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <p className="text-sm text-text-muted">No VoCore screens detected</p>
-            <p className="text-xs text-text-disabled">
-              Connect your steering wheel via USB and press Scan
+            <p className="terminal-header text-[10px] text-[#808080]">NO_SCREENS_DETECTED</p>
+            <p className="font-mono text-[9px] text-[#808080]">
+              Connect steering wheel via USB and press SCAN
             </p>
           </div>
         ) : (
@@ -258,35 +252,30 @@ function VoCoreScreenSection() {
                   onClick={() => handleSelect(s)}
                   disabled={selecting === key}
                   className={cn(
-                    'w-full flex items-center justify-between rounded-md px-3 py-2.5',
-                    'border transition-all text-left',
+                    'w-full flex items-center justify-between border px-4 py-3 text-left transition-all',
                     active
-                      ? 'border-accent bg-accent/8 ring-1 ring-accent/30'
-                      : 'border-b border-border-base bg-bg-surface hover:bg-bg-elevated',
+                      ? 'border-[#ff906c] bg-[#ff906c]/5'
+                      : 'border-[#2a2a2a] hover:bg-[#141414]',
                   )}
                 >
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm text-text-primary font-medium">
+                    <span className="font-mono text-[11px] font-bold">
                       {s.description || `VoCore Screen (PID 0x${s.pid.toString(16).toUpperCase()})`}
                     </span>
-                    <span className="text-xs font-mono text-text-muted tabular-nums">
+                    <span className="font-mono text-[9px] text-[#808080]">
                       {s.width}×{s.height}
-                      {s.serial && (
-                        <span className="ml-2 text-text-disabled">S/N: {s.serial}</span>
-                      )}
+                      {s.serial && <span className="ml-2">S/N: {s.serial}</span>}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                  <div className="ml-4 flex flex-shrink-0 items-center gap-2">
                     {active && autoSelected && (
-                      <Badge className="bg-teal/15 text-teal border border-teal/30 text-[10px]">
-                        Auto-detected
-                      </Badge>
+                      <span className="terminal-header text-[9px] text-[#5af8fb]">AUTO-DETECTED</span>
                     )}
                     {active && (
-                      <div className="h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-accent/30" />
+                      <div className="h-2 w-2 rounded-full bg-[#ff906c]" />
                     )}
                     {selecting === key && (
-                      <span className="text-xs text-text-muted">Connecting…</span>
+                      <span className="font-mono text-[9px] text-[#808080]">CONNECTING…</span>
                     )}
                   </div>
                 </button>
@@ -296,12 +285,12 @@ function VoCoreScreenSection() {
         )}
 
         {selected && (
-          <p className="mt-3 text-[11px] text-text-disabled">
-            Active: {selected.width}×{selected.height} · VID 0x{selected.vid.toString(16).toUpperCase()} PID 0x{selected.pid.toString(16).toUpperCase()}
+          <p className="mt-3 font-mono text-[9px] text-[#808080]">
+            ACTIVE: {selected.width}×{selected.height} · VID 0x{selected.vid.toString(16).toUpperCase()} PID 0x{selected.pid.toString(16).toUpperCase()}
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -319,66 +308,40 @@ function DeviceCard({
   const model = models.find(m => m.id === device.modelId)
 
   return (
-    <Card>
-      <CardHeader className="border-b border-border-base">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium text-text-primary">
-              {deviceDisplayName(device, models)}
-            </CardTitle>
-            {isPrimary && (
-              <Badge className="bg-accent/15 text-accent border border-accent/30 text-[10px]">
-                Active
-              </Badge>
-            )}
-          </div>
-          <div className="flex gap-1.5">
-            <Button variant="ghost" size="sm" onClick={onEdit}>
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onDelete}
-              className="text-text-disabled hover:text-red-400 hover:bg-red-500/10"
-            >
-              Remove
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-3">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
-          {model && (
-            <InfoRow label="Model" value={modelDisplayName(model)} />
-          )}
-          <InfoRow label="Port" value={device.port || '—'} mono />
-          {model && (
-            <InfoRow
-              label="Screen"
-              value={`${model.screenWidth}×${model.screenHeight}`}
-            />
-          )}
-          {model && (
-            <InfoRow label="Baud" value={`${model.defaultBaud}`} mono />
+    <div className="border-b border-[#2a2a2a]">
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-3">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[11px] font-bold">
+            {deviceDisplayName(device, models)}
+          </span>
+          {isPrimary && (
+            <span className="terminal-header text-[9px] text-[#ff906c]">ACTIVE</span>
           )}
         </div>
-      </CardContent>
-    </Card>
+        <div className="flex gap-2">
+          <button onClick={onEdit} className="terminal-header text-[9px] text-[#808080] transition-colors hover:text-white">
+            EDIT
+          </button>
+          <button onClick={onDelete} className="terminal-header text-[9px] text-[#808080] transition-colors hover:text-[#F87171]">
+            REMOVE
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 px-6 py-3">
+        {model && <InfoRow label="MODEL" value={modelDisplayName(model)} />}
+        <InfoRow label="PORT" value={device.port || '—'} mono />
+        {model && <InfoRow label="SCREEN" value={`${model.screenWidth}×${model.screenHeight}`} />}
+        {model && <InfoRow label="BAUD" value={`${model.defaultBaud}`} mono />}
+      </div>
+    </div>
   )
 }
 
-function InfoRow({
-  label, value, mono,
-}: {
-  label: string
-  value: string
-  mono?: boolean
-}) {
+function InfoRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-text-muted">{label}</span>
-      <span className={cn('text-text-primary', mono && 'font-mono tabular-nums')}>
+      <span className="terminal-header text-[9px] text-[#808080]">{label}</span>
+      <span className={cn('font-mono text-[10px]', mono && 'tabular-nums')}>
         {value}
       </span>
     </div>
@@ -416,15 +379,13 @@ function DeviceDialog({
     }
   }, [])
 
-  // Pre-select port if scanning reveals a matched port for the chosen model
   useEffect(() => {
     if (!form.modelId || ports.length === 0) return
-    if (form.port) return // already set
+    if (form.port) return
     const match = ports.find(p => p.matchedModel?.id === form.modelId)
     if (match) setForm(f => ({ ...f, port: match.name }))
   }, [ports, form.modelId, form.port])
 
-  // Auto-select model + port when exactly one known wheel is detected.
   useEffect(() => {
     if (form.modelId || form.port) return
     const matches = ports.filter(p => p.matchedModel?.id)
@@ -435,7 +396,6 @@ function DeviceDialog({
     setForm(f => ({ ...f, modelId, port: match.name }))
   }, [ports, form.modelId, form.port])
 
-  // Scan on open
   useEffect(() => { scanPorts() }, [scanPorts])
 
   const canSave = !!form.modelId && !!form.port
@@ -450,13 +410,14 @@ function DeviceDialog({
     <Dialog open onOpenChange={open => { if (!open) onClose() }}>
       <DialogContent showCloseButton={false} className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{isNew ? 'Add Wheel' : 'Edit Wheel'}</DialogTitle>
+          <DialogTitle className="terminal-header text-sm tracking-[0.15em]">
+            {isNew ? 'ADD_WHEEL' : 'EDIT_WHEEL'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Model */}
           <div>
-            <label className="mb-1.5 block text-xs text-text-muted">Wheel Model</label>
+            <label className="terminal-header mb-1.5 block text-[9px] text-[#808080]">WHEEL_MODEL</label>
             <Select
               value={form.modelId}
               onValueChange={v => setForm(f => ({ ...f, modelId: v, port: '' }))}
@@ -466,31 +427,24 @@ function DeviceDialog({
               </SelectTrigger>
               <SelectContent>
                 {models.map(m => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {modelDisplayName(m)}
-                  </SelectItem>
+                  <SelectItem key={m.id} value={m.id}>{modelDisplayName(m)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Port */}
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs text-text-muted">Serial Port</label>
-              <Button
-                variant="ghost"
-                size="xs"
+              <label className="terminal-header text-[9px] text-[#808080]">SERIAL_PORT</label>
+              <button
                 onClick={scanPorts}
                 disabled={scanningPorts}
-                className="h-5 px-2 text-[10px] text-text-muted hover:text-text-primary"
+                className="terminal-header text-[9px] text-[#808080] transition-colors hover:text-white disabled:opacity-50"
               >
-                {scanningPorts ? 'Scanning…' : '↻ Refresh'}
-              </Button>
+                {scanningPorts ? 'SCANNING…' : '↻ REFRESH'}
+              </button>
             </div>
-            {portsError && (
-              <p className="mb-1.5 text-[11px] text-red-400">{portsError}</p>
-            )}
+            {portsError && <p className="mb-1.5 font-mono text-[10px] text-[#F87171]">{portsError}</p>}
             <Select
               value={form.port}
               onValueChange={v => setForm(f => ({ ...f, port: v }))}
@@ -507,7 +461,7 @@ function DeviceDialog({
                     <span className="flex items-center gap-2">
                       {p.name}
                       {p.matchedModel && (
-                        <span className="text-[10px] text-teal">
+                        <span className="text-[10px] text-[#5af8fb]">
                           {p.matchedModel.manufacturer} {p.matchedModel.name}
                         </span>
                       )}
@@ -518,12 +472,9 @@ function DeviceDialog({
             </Select>
           </div>
 
-          <Separator className="bg-border-subtle" />
-
-          {/* Alias */}
           <div>
-            <label className="mb-1.5 block text-xs text-text-muted">
-              Nickname <span className="text-text-disabled">(optional)</span>
+            <label className="terminal-header mb-1.5 block text-[9px] text-[#808080]">
+              NICKNAME <span className="text-[#808080]/50">(optional)</span>
             </label>
             <Input
               value={form.alias}
@@ -540,12 +491,19 @@ function DeviceDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={handleSave} disabled={!canSave || saving}>
-            {saving ? 'Saving…' : isNew ? 'Add Wheel' : 'Save'}
-          </Button>
+          <button
+            onClick={onClose}
+            className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!canSave || saving}
+            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
+          >
+            {saving ? 'SAVING…' : isNew ? 'ADD_WHEEL' : 'SAVE'}
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -556,21 +514,18 @@ function DeviceDialog({
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
-      <div className="surface-elevated rounded p-4">
-        <WheelIcon className="h-8 w-8 text-text-muted" />
-      </div>
+    <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+      <WheelIcon className="h-8 w-8 text-[#808080]" />
       <div>
-        <p className="text-sm font-medium text-text-secondary">No wheels configured</p>
-        <p className="mt-1 text-xs text-text-muted">Add your steering wheel to enable serial features</p>
+        <p className="terminal-header text-[10px] font-bold text-[#808080]">NO_WHEELS_CONFIGURED</p>
+        <p className="mt-1 font-mono text-[9px] text-[#808080]">Add your steering wheel to enable serial features</p>
       </div>
-      <Button
-        variant="outline"
+      <button
         onClick={onAdd}
-        className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
+        className="terminal-header border border-[#ff906c] px-4 py-2 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
       >
-        + Add Wheel
-      </Button>
+        + ADD_WHEEL
+      </button>
     </div>
   )
 }
@@ -584,3 +539,4 @@ function WheelIcon({ className }: { className?: string }) {
     </svg>
   )
 }
+

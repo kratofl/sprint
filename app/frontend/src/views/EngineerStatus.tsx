@@ -1,74 +1,85 @@
 import { useState } from 'react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, LapTime, Separator } from '@sprint/ui'
+import { Button, LapTime } from '@sprint/ui'
 
 export default function EngineerStatus() {
   const [connected] = useState(false)
 
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-auto p-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Race Engineer</h1>
-        <Badge
-            variant="outline"
-            className={connected
-              ? 'border-teal/30 bg-teal/15 text-teal'
-              : 'border-border-base bg-bg-elevated text-text-muted'}
-          >
-            {connected ? 'Engineer Online' : 'No Engineer'}
-          </Badge>
+    <div className="flex flex-1 flex-col overflow-hidden">
+
+      {/* Section header */}
+      <div className="border-b border-[#2a2a2a] p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="terminal-header mb-1 text-sm font-bold tracking-[0.2em]">
+              ENGINEER_HUB
+            </h2>
+            <p className="font-mono text-[10px] text-[#808080]">
+              STATUS: {connected ? 'ENGINEER_ONLINE' : 'AWAITING_CONNECTION'}
+            </p>
+          </div>
+          <span className={`terminal-header text-[10px] font-bold font-mono ${connected ? 'text-[#5af8fb]' : 'text-[#808080]'}`}>
+            {connected ? '● ONLINE' : '○ OFFLINE'}
+          </span>
+        </div>
       </div>
 
-      {/* Connection info */}
-      <Card>
-        <CardHeader className="border-b border-border-base">
-          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Connection</CardTitle>
-        </CardHeader>
-        <Separator className="bg-border-subtle" />
-        <CardContent className="pt-4">
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Local address</span>
-              <span className="tabular text-text-primary font-mono text-xs">ws://192.168.1.x:9090</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Engineers connected</span>
-              <span className="tabular text-text-primary">0</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Two-column body */}
+      <div className="grid flex-1 grid-cols-2 overflow-hidden">
 
-      {/* Target lap */}
-      <Card>
-        <CardHeader className="border-b border-border-base">
-          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Delta Target</CardTitle>
-        </CardHeader>
-        <Separator className="bg-border-subtle" />
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between">
-            <LapTime seconds={undefined} className="text-2xl font-semibold text-teal" />
-            <Button variant="outline" size="sm" className="border-teal/30 text-teal hover:bg-teal/10 hover:text-teal">
-              Clear Target
-            </Button>
+        {/* Left: connection details */}
+        <div className="flex flex-col border-r border-[#2a2a2a]">
+          <div className="border-b border-[#2a2a2a] p-4">
+            <h4 className="terminal-header mb-3 text-[10px] font-bold text-[#808080]">
+              LINK_CONFIG
+            </h4>
+            <div className="space-y-3 font-mono text-[10px]">
+              <div className="flex items-center justify-between">
+                <span className="text-[#808080]">LOCAL_ADDR</span>
+                <span>ws://192.168.1.x:9090</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#808080]">ENGINEERS</span>
+                <span>0</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#808080]">PROTOCOL</span>
+                <span>WEBSOCKET_V2</span>
+              </div>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-text-muted">
-            Press the target button on the wheel to set from last valid lap.
-          </p>
-        </CardContent>
-      </Card>
 
-      {/* Message log */}
-      <Card className="flex-1">
-        <CardHeader className="border-b border-border-base">
-          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Engineer Messages</CardTitle>
-        </CardHeader>
-        <Separator className="bg-border-subtle" />
-        <CardContent className="pt-4">
-          <div className="space-y-1 text-xs text-text-muted italic">
-            <p>No messages yet.</p>
+          <div className="p-4">
+            <h4 className="terminal-header mb-3 text-[10px] font-bold text-[#808080]">
+              DELTA_TARGET
+            </h4>
+            <div className="flex items-center justify-between">
+              <LapTime seconds={undefined} className="font-mono text-2xl font-bold text-[#5af8fb]" />
+              <Button variant="outline" size="sm" className="border-[#ff906c]/30 text-[#ff906c] hover:bg-[#ff906c]/10">
+                CLEAR_TARGET
+              </Button>
+            </div>
+            <p className="mt-2 font-mono text-[9px] text-[#808080]">
+              Press wheel button to set from last valid lap.
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Right: message log */}
+        <div className="flex flex-col overflow-hidden">
+          <div className="border-b border-[#2a2a2a] px-4 py-3">
+            <h4 className="terminal-header text-[10px] font-bold text-[#808080]">
+              MESSAGE_LOG
+            </h4>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-1 font-mono text-[9px] text-[#808080]">
+              <p>AWAITING_MESSAGES...</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   )
 }

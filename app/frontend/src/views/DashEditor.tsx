@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Button,
-  Card, CardContent, CardHeader, CardTitle,
   Tabs, TabsContent, TabsList, TabsTrigger,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
   cn,
@@ -84,44 +82,48 @@ export default function DashEditor() {
   const screenH = screen?.height ?? DEFAULT_SCREEN_H
 
   return (
-    <div className="flex flex-1 flex-col gap-4 overflow-hidden p-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0">
-        <h1 className="terminal-header text-sm text-foreground">Dash Studio</h1>
-        <div className="flex items-center gap-2">
+    <div className="flex flex-1 flex-col overflow-hidden">
+
+      {/* Section header */}
+      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-4 flex-shrink-0">
+        <div>
+          <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
+          <p className="font-mono text-[10px] text-[#808080]">
+            {layout.widgets.length} widget{layout.widgets.length !== 1 ? 's' : ''} · {screenW}×{screenH}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
           {saveStatus === 'saved' && (
-            <span className="text-xs text-success">Saved</span>
+            <span className="terminal-header text-[10px] text-[#34D399]">SAVED</span>
           )}
           {saveStatus === 'error' && (
-            <span className="text-xs text-danger">Save failed</span>
+            <span className="terminal-header text-[10px] text-[#F87171]">SAVE_FAILED</span>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
             onClick={handleClearLayout}
-            className="text-text-muted hover:text-text-primary"
+            className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
           >
-            Clear
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
+            CLEAR
+          </button>
+          <button
             onClick={handleSave}
             disabled={saving}
+            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save Layout'}
-          </Button>
+            {saving ? 'SAVING…' : 'SAVE_LAYOUT'}
+          </button>
         </div>
       </div>
 
       {loadError && (
-        <p className="text-xs text-red-400 flex-shrink-0">{loadError}</p>
+        <div className="border-b border-[#2a2a2a] px-6 py-2 font-mono text-[10px] text-[#F87171]">{loadError}</div>
       )}
 
       {/* Main area */}
-      <div className="flex flex-1 gap-4 min-h-0 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden min-h-0">
+
         {/* Canvas column */}
-        <div className="flex flex-1 flex-col gap-2 min-w-0">
+        <div className="flex flex-1 flex-col overflow-hidden border-r border-[#2a2a2a] p-6 gap-3 min-w-0">
           <DashCanvas
             layout={layout}
             selectedId={selectedId}
@@ -131,69 +133,61 @@ export default function DashEditor() {
             onUpdate={handleUpdate}
           />
 
-          {/* Selected widget info bar */}
-          <div className="flex-shrink-0 h-8 flex items-center gap-3 px-1">
+          {/* Selected widget status bar */}
+          <div className="flex h-7 flex-shrink-0 items-center gap-4 font-mono text-[10px]">
             {selectedWidget ? (
               <>
-                <span className="text-xs text-text-muted">
-                  {selectedWidget.type}
+                <span className="terminal-header text-[#ff906c]">{selectedWidget.type}</span>
+                <span className="text-[#808080]">
+                  X:{selectedWidget.x} Y:{selectedWidget.y} W:{selectedWidget.w} H:{selectedWidget.h}
                 </span>
-                <span className="text-xs font-mono text-text-disabled tabular-nums">
-                  x={selectedWidget.x} y={selectedWidget.y} w={selectedWidget.w} h={selectedWidget.h}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
-                    setLayout(prev => ({
-                      widgets: prev.widgets.filter((_, i) => i !== selectedId),
-                    }))
-                    setSelectedId(null)
-                  }}
-                  className="ml-auto text-text-disabled hover:text-danger hover:bg-danger/10 h-6"
+                <button
+                  onClick={() => { setLayout(prev => ({ widgets: prev.widgets.filter((_, i) => i !== selectedId) })); setSelectedId(null) }}
+                  className="ml-auto text-[#808080] hover:text-[#F87171] transition-colors"
                 >
-                  Remove
-                </Button>
+                  REMOVE
+                </button>
               </>
             ) : (
-              <span className="text-xs text-text-disabled">
-                {layout.widgets.length === 0
-                  ? 'Drag a widget from the palette onto the canvas'
-                  : `${layout.widgets.length} widget${layout.widgets.length !== 1 ? 's' : ''} — click to select`}
+              <span className="text-[#808080]">
+                {layout.widgets.length === 0 ? 'DRAG_WIDGET_TO_CANVAS' : `${layout.widgets.length}_WIDGETS — CLICK_TO_SELECT`}
               </span>
             )}
           </div>
         </div>
 
         {/* Widget palette */}
-        <Card className="w-52 flex-shrink-0 flex flex-col overflow-hidden">
-          <CardHeader className="border-b border-border-base flex-shrink-0">
-            <CardTitle className="terminal-header text-[10px] text-on-surface-variant">
-              Widgets
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto pt-3">
+        <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden">
+          <div className="border-b border-[#2a2a2a] px-4 py-3">
+            <h4 className="terminal-header text-[10px] font-bold text-[#808080]">WIDGET_PALETTE</h4>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
             <TooltipProvider>
               <Tabs defaultValue="timing">
-                <TabsList variant="line" className="w-full mb-3">
-                  <TabsTrigger value="timing" className="flex-1 text-xs">Timing</TabsTrigger>
-                  <TabsTrigger value="car"    className="flex-1 text-xs">Car</TabsTrigger>
-                  <TabsTrigger value="race"   className="flex-1 text-xs">Race</TabsTrigger>
-                </TabsList>
+                <div className="border-b border-[#2a2a2a]">
+                  <TabsList variant="line" className="w-full">
+                    <TabsTrigger value="timing" className="flex-1 text-[10px]">TIMING</TabsTrigger>
+                    <TabsTrigger value="car"    className="flex-1 text-[10px]">CAR</TabsTrigger>
+                    <TabsTrigger value="race"   className="flex-1 text-[10px]">RACE</TabsTrigger>
+                  </TabsList>
+                </div>
 
-                <TabsContent value="timing">
-                  <WidgetList widgets={TIMING_WIDGETS} />
-                </TabsContent>
-                <TabsContent value="car">
-                  <WidgetList widgets={CAR_WIDGETS} />
-                </TabsContent>
-                <TabsContent value="race">
-                  <WidgetList widgets={RACE_WIDGETS} />
-                </TabsContent>
+                <div className="p-3">
+                  <TabsContent value="timing">
+                    <WidgetList widgets={TIMING_WIDGETS} />
+                  </TabsContent>
+                  <TabsContent value="car">
+                    <WidgetList widgets={CAR_WIDGETS} />
+                  </TabsContent>
+                  <TabsContent value="race">
+                    <WidgetList widgets={RACE_WIDGETS} />
+                  </TabsContent>
+                </div>
               </Tabs>
             </TooltipProvider>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -219,11 +213,9 @@ function WidgetList({
                   e.dataTransfer.setData('widget-type', w.type)
                 }}
                 className={cn(
-                  'flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm',
-                  'cursor-grab active:cursor-grabbing select-none',
-                  'text-text-secondary hover:text-text-primary',
-                  'hover:bg-bg-subtle border border-transparent hover:border-border-base',
-                  'transition-colors',
+                  'flex w-full cursor-grab select-none items-center gap-2 border border-[#2a2a2a] px-2 py-1.5 active:cursor-grabbing',
+                  'font-mono text-[10px] text-[#808080] transition-colors',
+                  'hover:border-[#3a3a3a] hover:text-white',
                 )}
               >
                 <WidgetDragIcon />

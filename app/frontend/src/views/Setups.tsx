@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Setup, SetupSettings, setupAPI, newSetup } from '@/lib/setup'
 import {
-  Button,
-  Card, CardContent, CardHeader, CardTitle,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Input,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -92,34 +90,22 @@ export default function Setups() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Left: setup list ─────────────────────────────────────────────── */}
-      <div className="flex w-72 flex-shrink-0 flex-col border-r border-border-base">
+      <div className="flex w-72 flex-shrink-0 flex-col border-r border-[#2a2a2a]">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-base">
-          <h1 className="text-sm font-semibold text-text-primary">Setups</h1>
-          <Button
-            variant="outline"
-            size="sm"
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a]">
+          <h2 className="terminal-header text-sm font-bold tracking-[0.15em]">SETUPS_DB</h2>
+          <button
             onClick={handleNew}
-            className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
+            className="terminal-header border border-[#ff906c] px-2.5 py-1 text-[9px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
           >
-            + New
-          </Button>
+            + NEW
+          </button>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-2 px-3 py-3 border-b border-border-base">
-          <FilterSelect
-            value={filterCar}
-            onChange={setFilterCar}
-            options={cars}
-            placeholder="All cars"
-          />
-          <FilterSelect
-            value={filterTrack}
-            onChange={setFilterTrack}
-            options={tracks}
-            placeholder="All tracks"
-          />
+        <div className="flex flex-col gap-2 border-b border-[#2a2a2a] px-3 py-3">
+          <FilterSelect value={filterCar}   onChange={setFilterCar}   options={cars}   placeholder="All cars" />
+          <FilterSelect value={filterTrack} onChange={setFilterTrack} options={tracks} placeholder="All tracks" />
         </div>
 
         {/* List */}
@@ -127,16 +113,16 @@ export default function Setups() {
           {loading && (
             <div className="space-y-0">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="px-4 py-3 border-b border-border-base/40">
-                  <Skeleton className="h-4 w-28 mb-1.5" />
+                <div key={i} className="border-b border-[#2a2a2a]/40 px-4 py-3">
+                  <Skeleton className="mb-1.5 h-4 w-28" />
                   <Skeleton className="h-3 w-36" />
                 </div>
               ))}
             </div>
           )}
           {!loading && filtered.length === 0 && (
-            <p className="px-4 py-8 text-center text-xs text-text-muted">
-              {setups.length === 0 ? 'No setups yet. Create one!' : 'No results for filters.'}
+            <p className="px-4 py-8 text-center font-mono text-[10px] text-[#808080]">
+              {setups.length === 0 ? 'NO_SETUPS_YET' : 'NO_RESULTS'}
             </p>
           )}
           {filtered.map(s => (
@@ -151,7 +137,7 @@ export default function Setups() {
         </div>
 
         {error && (
-          <p className="px-3 py-2 text-xs text-red-400 border-t border-border-base">{error}</p>
+          <p className="border-t border-[#2a2a2a] px-3 py-2 font-mono text-[10px] text-[#F87171]">{error}</p>
         )}
       </div>
 
@@ -180,12 +166,18 @@ export default function Setups() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" size="sm" onClick={handleDeleteConfirm}>
-              Delete
-            </Button>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+            >
+              CANCEL
+            </button>
+            <button
+              onClick={handleDeleteConfirm}
+              className="terminal-header border border-[#F87171] px-3 py-1.5 text-[10px] text-[#F87171] transition-colors hover:bg-[#F87171] hover:text-[#0a0a0a]"
+            >
+              DELETE
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -204,26 +196,24 @@ function SetupRow({
     <button
       onClick={onEdit}
       className={[
-        'w-full text-left px-4 py-3 border-b border-border-base/40 transition-colors group',
-        active ? 'bg-accent/10' : 'hover:bg-bg-elevated',
+        'w-full text-left border-b border-[#2a2a2a]/40 px-4 py-3 transition-colors group',
+        active ? 'bg-[#ff906c]/5' : 'hover:bg-[#141414]',
       ].join(' ')}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className={`truncate text-sm font-medium ${active ? 'text-accent' : 'text-text-primary'}`}>
-            {setup.name || 'Untitled'}
+          <p className={`truncate font-mono text-[11px] font-bold ${active ? 'text-[#ff906c]' : 'text-white'}`}>
+            {setup.name || 'UNTITLED'}
           </p>
-          <p className="truncate text-xs text-text-muted mt-0.5">{setup.car} · {setup.track}</p>
+          <p className="truncate font-mono text-[9px] text-[#808080] mt-0.5">{setup.car} · {setup.track}</p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
+        <button
           onClick={e => { e.stopPropagation(); onDelete() }}
-          className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-text-disabled hover:text-red-400 hover:bg-red-500/10"
+          className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-[#808080] hover:text-[#F87171] transition-colors p-0.5"
           title="Delete"
         >
           <TrashIcon />
-        </Button>
+        </button>
       </div>
     </button>
   )
@@ -272,19 +262,26 @@ function SetupEditor({
     onChange({ ...setup, settings: { ...setup.settings, [key]: value } })
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       {/* Editor header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border-base flex-shrink-0">
-        <h2 className="text-sm font-semibold text-text-primary">
-          {isNew ? 'New Setup' : `Edit — ${setup.name}`}
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-[#2a2a2a] px-5 py-3">
+        <h2 className="terminal-header text-sm font-bold tracking-[0.15em]">
+          {isNew ? 'NEW_SETUP' : `EDIT — ${setup.name.toUpperCase()}`}
         </h2>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
+          <button
+            onClick={onCancel}
+            className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
+          >
+            {saving ? 'SAVING…' : 'SAVE'}
+          </button>
         </div>
       </div>
 
@@ -375,16 +372,16 @@ function SetupEditor({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Card>
-      <CardHeader className="border-b border-border-base">
-        <CardTitle className="terminal-header text-[10px] text-on-surface-variant">
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="border border-[#2a2a2a]">
+      <div className="border-b border-[#2a2a2a] px-4 py-2">
+        <h4 className="terminal-header text-[10px] font-bold text-[#808080]">
+          {title.toUpperCase().replace(/ /g, '_')}
+        </h4>
+      </div>
+      <div className="space-y-3 p-4">
         {children}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -450,21 +447,18 @@ function PressureField({ label, value, onChange }: { label: string; value: numbe
 
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center p-8">
-      <div className="surface-elevated rounded p-4">
-        <WrenchIcon className="h-8 w-8 text-text-muted" />
-      </div>
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+      <WrenchIcon className="h-8 w-8 text-[#808080]" />
       <div>
-        <p className="text-sm font-medium text-text-secondary">Select a setup to edit</p>
-        <p className="text-xs text-text-muted mt-1">or create a new one to get started</p>
+        <p className="terminal-header text-[10px] font-bold text-[#808080]">SELECT_SETUP</p>
+        <p className="mt-1 font-mono text-[9px] text-[#808080]">or create a new one to get started</p>
       </div>
-      <Button
-        variant="outline"
+      <button
         onClick={onNew}
-        className="border-accent/40 text-accent hover:bg-accent/10 hover:text-accent"
+        className="terminal-header border border-[#ff906c] px-4 py-2 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
       >
-        + New Setup
-      </Button>
+        + NEW_SETUP
+      </button>
     </div>
   )
 }
