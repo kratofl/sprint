@@ -1,4 +1,25 @@
-export namespace dash {
+export namespace commands {
+	
+	export class CommandMeta {
+	    id: string;
+	    label: string;
+	    category: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommandMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.label = source["label"];
+	        this.category = source["category"];
+	    }
+	}
+
+}
+
+export namespace dashboard {
 	
 	export class DashWidget {
 	    id: string;
@@ -55,54 +76,77 @@ export namespace dash {
 
 }
 
-export namespace devices {
+export namespace hardware {
 	
-	export class WheelModel {
-	    ID: string;
-	    Name: string;
-	    Manufacturer: string;
-	    USBVID: number;
-	    USBPID: number;
-	    ScreenVID: number;
-	    ScreenPID: number;
-	    ScreenWidth: number;
-	    ScreenHeight: number;
-	    DefaultBaud: number;
+	export class VoCoreConfig {
+	    vid: number;
+	    pid: number;
+	    width: number;
+	    height: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new WheelModel(source);
+	        return new VoCoreConfig(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.ID = source["ID"];
-	        this.Name = source["Name"];
-	        this.Manufacturer = source["Manufacturer"];
-	        this.USBVID = source["USBVID"];
-	        this.USBPID = source["USBPID"];
-	        this.ScreenVID = source["ScreenVID"];
-	        this.ScreenPID = source["ScreenPID"];
-	        this.ScreenWidth = source["ScreenWidth"];
-	        this.ScreenHeight = source["ScreenHeight"];
-	        this.DefaultBaud = source["DefaultBaud"];
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.width = source["width"];
+	        this.height = source["height"];
 	    }
 	}
-	export class DetectedPort {
-	    name: string;
-	    isUsb: boolean;
-	    matchedModel?: WheelModel;
+	export class VoCoreScreen {
+	    vid: number;
+	    pid: number;
+	    serial?: string;
+	    width: number;
+	    height: number;
 	    description: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new DetectedPort(source);
+	        return new VoCoreScreen(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.isUsb = source["isUsb"];
-	        this.matchedModel = this.convertValues(source["matchedModel"], WheelModel);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.serial = source["serial"];
+	        this.width = source["width"];
+	        this.height = source["height"];
 	        this.description = source["description"];
+	    }
+	}
+
+}
+
+export namespace input {
+	
+	export class Binding {
+	    button: number;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Binding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.button = source["button"];
+	        this.command = source["command"];
+	    }
+	}
+	export class Config {
+	    bindings: Binding[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bindings = this.convertValues(source["bindings"], Binding);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -122,24 +166,6 @@ export namespace devices {
 		    }
 		    return a;
 		}
-	}
-	export class DeviceConfig {
-	    id: string;
-	    modelId: string;
-	    alias?: string;
-	    port: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DeviceConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.modelId = source["modelId"];
-	        this.alias = source["alias"];
-	        this.port = source["port"];
-	    }
 	}
 
 }
@@ -169,46 +195,22 @@ export namespace setup {
 
 }
 
-export namespace vocore {
+export namespace widgets {
 	
-	export class DetectedVoCoreScreen {
-	    vid: number;
-	    pid: number;
-	    serial?: string;
-	    width: number;
-	    height: number;
-	    description: string;
+	export class WidgetMeta {
+	    type: string;
+	    label: string;
+	    category: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new DetectedVoCoreScreen(source);
+	        return new WidgetMeta(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.serial = source["serial"];
-	        this.width = source["width"];
-	        this.height = source["height"];
-	        this.description = source["description"];
-	    }
-	}
-	export class VoCoreConfig {
-	    vid: number;
-	    pid: number;
-	    width: number;
-	    height: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new VoCoreConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.width = source["width"];
-	        this.height = source["height"];
+	        this.type = source["type"];
+	        this.label = source["label"];
+	        this.category = source["category"];
 	    }
 	}
 

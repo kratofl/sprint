@@ -11,6 +11,24 @@ import {
   EventsEmit,
 } from '../../wailsjs/runtime/runtime'
 
+// ── App method caller ─────────────────────────────────────────────────────────
+
+/**
+ * Calls a method on the Wails-bound App struct.
+ * Returns a rejected promise if the Wails runtime is not available (e.g. in
+ * browser dev mode outside the Wails shell).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function call<T>(method: string, ...args: unknown[]): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const app = (window as any)?.go?.main?.App ?? null
+  if (!app || typeof app[method] !== 'function') {
+    return Promise.reject(new Error(`Wails method not available: ${method}`))
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (app[method] as (...a: any[]) => Promise<T>)(...args)
+}
+
 // ── Runtime helpers ───────────────────────────────────────────────────────
 
 /**

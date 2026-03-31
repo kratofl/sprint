@@ -1,5 +1,7 @@
 // Types and Wails bindings for Dash Studio and VoCore screen selection.
 
+import { call } from '@/lib/wails'
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DashWidget {
@@ -30,8 +32,15 @@ export interface ScreenConfig {
   height: number
 }
 
-// ── Widget catalogue ──────────────────────────────────────────────────────────
+// ── Widget catalogue entry (mirrors widgets.WidgetMeta from Go) ───────────────
 
+export interface WidgetCatalogEntry {
+  type: string
+  label: string
+  category: string
+}
+
+/** @deprecated Use widgetCatalogAPI.getWidgetCatalog() — the backend is now the source of truth. */
 export const WIDGET_TYPES = [
   { type: 'header',    label: 'Header',    category: 'layout', defaultW: 784, defaultH: 38  },
   { type: 'lap_time',  label: 'Lap Time',  category: 'timing', defaultW: 220, defaultH: 130 },
@@ -47,17 +56,6 @@ export const WIDGET_TYPES = [
 export type WidgetType = (typeof WIDGET_TYPES)[number]['type']
 
 // ── Wails binding helper ──────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function call<T>(method: string, ...args: unknown[]): Promise<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const app = (window as any)?.go?.main?.App ?? null
-  if (!app || typeof app[method] !== 'function') {
-    return Promise.reject(new Error(`Wails method not available: ${method}`))
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (app[method] as (...a: any[]) => Promise<T>)(...args)
-}
 
 // Wails returns Go struct fields with capital letters; normalise to camelCase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,3 +138,18 @@ export const deviceScreenAPI = {
 
 /** @deprecated Use deviceScreenAPI instead */
 export const voCoreAPI = deviceScreenAPI
+
+// ── Widget catalog API ────────────────────────────────────────────────────────
+
+export const widgetCatalogAPI = {
+  async getWidgetCatalog(): Promise<WidgetCatalogEntry[]> {
+    const raw = await call<unknown[]>('GetWidgetCatalog')
+    if (!Array.isArray(raw)) return []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return raw.map((r: any): WidgetCatalogEntry => ({
+      type:     r.type     ?? '',
+      label:    r.label    ?? '',
+      category: r.category ?? '',
+    }))
+  },
+}

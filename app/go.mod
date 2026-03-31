@@ -8,7 +8,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/kratofl/sprint/pkg v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.11.0
-	go.bug.st/serial v1.6.4
 	golang.org/x/image v0.12.0
 )
 
@@ -16,7 +15,6 @@ replace github.com/kratofl/sprint/pkg => ../pkg
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect
-	github.com/creack/goselect v0.1.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect

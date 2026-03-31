@@ -4,6 +4,7 @@ import DashEditor from '@/views/DashEditor'
 import Setups from '@/views/Setups'
 import EngineerStatus from '@/views/EngineerStatus'
 import Devices from '@/views/Devices'
+import Controls from '@/views/Controls'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import { cn } from '@sprint/ui'
 import {
@@ -14,9 +15,10 @@ import {
   IconUsb,
   IconSettings,
   IconBell,
+  IconKeyboard,
 } from '@tabler/icons-react'
 
-type View = 'telemetry' | 'dash' | 'setups' | 'engineer' | 'devices'
+type View = 'telemetry' | 'dash' | 'setups' | 'engineer' | 'devices' | 'controls'
 
 const NAV: { id: View; label: string; icon: typeof IconGauge }[] = [
   { id: 'telemetry', label: 'Live_Session',  icon: IconGauge },
@@ -24,6 +26,7 @@ const NAV: { id: View; label: string; icon: typeof IconGauge }[] = [
   { id: 'setups',    label: 'Setups_DB',    icon: IconAdjustmentsHorizontal },
   { id: 'engineer',  label: 'Engineer_Hub', icon: IconHeadset },
   { id: 'devices',   label: 'Devices',      icon: IconUsb },
+  { id: 'controls',  label: 'Controls',     icon: IconKeyboard },
 ]
 
 export default function App() {
@@ -163,6 +166,7 @@ export default function App() {
           {view === 'setups'    && <Setups />}
           {view === 'engineer'  && <EngineerStatus />}
           {view === 'devices'   && <Devices />}
+          {view === 'controls'  && <Controls />}
         </main>
       </div>
 

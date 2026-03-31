@@ -10,32 +10,40 @@ export function DashSaveLayout(arg1) {
   return window['go']['main']['App']['DashSaveLayout'](arg1);
 }
 
-export function DeviceDelete(arg1) {
-  return window['go']['main']['App']['DeviceDelete'](arg1);
+export function DeviceGetScreen() {
+  return window['go']['main']['App']['DeviceGetScreen']();
 }
 
-export function DeviceGetAll() {
-  return window['go']['main']['App']['DeviceGetAll']();
+export function DeviceScanScreens() {
+  return window['go']['main']['App']['DeviceScanScreens']();
 }
 
-export function DeviceListKnownModels() {
-  return window['go']['main']['App']['DeviceListKnownModels']();
+export function DeviceSelectScreen(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceSelectScreen'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceListPorts() {
-  return window['go']['main']['App']['DeviceListPorts']();
+export function GetBindings() {
+  return window['go']['main']['App']['GetBindings']();
 }
 
-export function DeviceSave(arg1) {
-  return window['go']['main']['App']['DeviceSave'](arg1);
+export function GetCommandCatalog() {
+  return window['go']['main']['App']['GetCommandCatalog']();
 }
 
 export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
+export function GetWidgetCatalog() {
+  return window['go']['main']['App']['GetWidgetCatalog']();
+}
+
 export function IsConnected() {
   return window['go']['main']['App']['IsConnected']();
+}
+
+export function SaveBindings(arg1) {
+  return window['go']['main']['App']['SaveBindings'](arg1);
 }
 
 export function SetupDelete(arg1, arg2, arg3) {
@@ -48,16 +56,4 @@ export function SetupListAll() {
 
 export function SetupSave(arg1) {
   return window['go']['main']['App']['SetupSave'](arg1);
-}
-
-export function VoCoreGetSelected() {
-  return window['go']['main']['App']['VoCoreGetSelected']();
-}
-
-export function VoCoreScanScreens() {
-  return window['go']['main']['App']['VoCoreScanScreens']();
-}
-
-export function VoCoreSelectScreen(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['VoCoreSelectScreen'](arg1, arg2, arg3, arg4);
 }

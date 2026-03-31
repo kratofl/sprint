@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/google/uuid"
-	"github.com/kratofl/sprint/app/internal/coordinator"
-	"github.com/kratofl/sprint/app/internal/dash"
-	"github.com/kratofl/sprint/app/internal/devices"
+	"github.com/kratofl/sprint/app/internal/core"
+	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/kratofl/sprint/app/internal/setup"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -18,10 +15,9 @@ import (
 type App struct {
 	ctx     context.Context
 	version string
-	coord   *coordinator.Coordinator
+	coord   *core.Coordinator
 	setups  *setup.Manager
-	devices *devices.Manager
-	dash    *dash.Manager
+	dash    *dashboard.Manager
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -36,9 +32,8 @@ func NewApp(version string) *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	log := logger.Init(logger.DefaultConfig())
-	a.devices = devices.NewManager()
-	a.dash = dash.NewManager()
-	a.coord = coordinator.New(log, a.devices, a.dash)
+	a.dash = dashboard.NewManager()
+	a.coord = core.New(log, a.dash)
 	a.coord.SetEmit(func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
 	})
@@ -69,138 +64,4 @@ func (a *App) Shutdown(_ context.Context) {
 	if a.coord != nil {
 		a.coord.Stop()
 	}
-}
-
-// ── Setup bindings ──────────────────────────────────────────────────────────
-// All exported methods below are automatically bound to the frontend by Wails.
-
-// SetupListAll returns every setup stored on disk, across all cars and tracks.
-func (a *App) SetupListAll() ([]setup.Setup, error) {
-	items, err := a.setups.ListAll()
-	if err != nil {
-		return nil, fmt.Errorf("SetupListAll: %w", err)
-	}
-	result := make([]setup.Setup, 0, len(items))
-	for _, s := range items {
-		result = append(result, *s)
-	}
-	return result, nil
-}
-
-// SetupSave writes a setup to disk. If s.ID is empty a new UUID is assigned.
-func (a *App) SetupSave(s setup.Setup) (setup.Setup, error) {
-	if s.ID == "" {
-		s.ID = uuid.NewString()
-	}
-	if s.Name == "" || s.Car == "" || s.Track == "" {
-		return setup.Setup{}, fmt.Errorf("name, car and track are required")
-	}
-	if err := a.setups.Save(&s); err != nil {
-		return setup.Setup{}, fmt.Errorf("SetupSave: %w", err)
-	}
-	return s, nil
-}
-
-// SetupDelete removes a setup file from disk.
-func (a *App) SetupDelete(car, track, id string) error {
-	if err := a.setups.Delete(car, track, id); err != nil {
-		return fmt.Errorf("SetupDelete: %w", err)
-	}
-	return nil
-}
-
-// ── Device bindings ──────────────────────────────────────────────────────────
-
-// DeviceListKnownModels returns all wheel models supported by the registry.
-func (a *App) DeviceListKnownModels() []devices.WheelModel {
-	return devices.KnownModels
-}
-
-// DeviceListPorts scans all serial ports and returns them annotated with
-// matched wheel models. Matched ports are listed first.
-func (a *App) DeviceListPorts() ([]devices.DetectedPort, error) {
-	ports, err := devices.ListPorts()
-	if err != nil {
-		return nil, fmt.Errorf("DeviceListPorts: %w", err)
-	}
-	return ports, nil
-}
-
-// DeviceGetAll returns all user-configured devices.
-func (a *App) DeviceGetAll() []devices.DeviceConfig {
-	return a.devices.GetAll()
-}
-
-// DeviceSave adds or updates a device. A new UUID is assigned if d.ID is empty.
-func (a *App) DeviceSave(d devices.DeviceConfig) (devices.DeviceConfig, error) {
-	saved, err := a.devices.Save(d)
-	if err != nil {
-		return devices.DeviceConfig{}, fmt.Errorf("DeviceSave: %w", err)
-	}
-	return saved, nil
-}
-
-// DeviceDelete removes a configured device by its ID.
-func (a *App) DeviceDelete(id string) error {
-	if err := a.devices.Delete(id); err != nil {
-		return fmt.Errorf("DeviceDelete: %w", err)
-	}
-	return nil
-}
-
-// ── VoCore screen bindings ────────────────────────────────────────────────────
-
-// DeviceScanScreens scans USB for connected VoCore M-PRO screens and returns
-// the list. On unsupported platforms (e.g. macOS without gousb) this returns
-// an empty list without an error.
-func (a *App) DeviceScanScreens() ([]devices.DetectedScreen, error) {
-	screens, err := devices.ScanScreens()
-	if err != nil {
-		return nil, fmt.Errorf("DeviceScanScreens: %w", err)
-	}
-	return screens, nil
-}
-
-// DeviceGetScreen returns the currently saved VoCore screen configuration.
-// Returns nil (no error) if no screen has been selected yet.
-func (a *App) DeviceGetScreen() (*devices.ScreenConfig, error) {
-	cfg, err := devices.LoadScreenConfig()
-	if err != nil {
-		return nil, fmt.Errorf("DeviceGetScreen: %w", err)
-	}
-	return cfg, nil
-}
-
-// DeviceSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
-// then hot-reloads the renderer so the new screen takes effect immediately.
-func (a *App) DeviceSelectScreen(vid, pid uint16, width, height int) error {
-	cfg := &devices.ScreenConfig{VID: vid, PID: pid, Width: width, Height: height}
-	if err := devices.SaveScreenConfig(cfg); err != nil {
-		return fmt.Errorf("DeviceSelectScreen: %w", err)
-	}
-	a.coord.SetVoCoreConfig(cfg)
-	return nil
-}
-
-// ── Dash layout bindings ──────────────────────────────────────────────────────
-
-// DashLoadLayout reads the saved dashboard layout from disk. If no layout has
-// been saved yet, the embedded default layout is returned so the editor always
-// has something to start from.
-func (a *App) DashLoadLayout() (*dash.DashLayout, error) {
-	layout, err := a.dash.Load()
-	if err != nil {
-		return nil, fmt.Errorf("DashLoadLayout: %w", err)
-	}
-	return layout, nil
-}
-
-// DashSaveLayout writes the layout to disk and hot-reloads the VoCore renderer.
-func (a *App) DashSaveLayout(layout dash.DashLayout) error {
-	if err := a.dash.Save(&layout); err != nil {
-		return fmt.Errorf("DashSaveLayout: %w", err)
-	}
-	a.coord.SetDashLayout(&layout)
-	runtime.EventsEmit(a.ctx, "dash:layout-updated", layout)
-	return nil
 }

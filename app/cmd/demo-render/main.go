@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/kratofl/sprint/app/internal/render"
+	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	frame := demoFrame()
-	painter := render.NewPainter(800, 480)
+	painter := dashboard.NewPainter(800, 480)
 
 	img, err := painter.Paint(frame)
 	if err != nil {
