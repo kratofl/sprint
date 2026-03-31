@@ -28,7 +28,7 @@ type Coordinator struct {
 	logger   *slog.Logger
 	adapter  games.GameAdapter
 	engineer *engineer.Hub
-	vocore   *vocore.Renderer
+	vocore   *vocore.Driver
 	wheel    *wheel.Detector
 	sync     *sync.Client
 
@@ -46,7 +46,7 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 // each subsystem receives a child logger tagged with its component name.
 // dashMgr is used to load the saved layout on startup.
 func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coordinator {
-	r := vocore.NewRenderer(logger.With("component", "vocore"))
+	r := vocore.NewDriver(logger.With("component", "vocore"))
 
 	// Load VoCore screen config from disk. Falls back to model registry only if
 	// no screen.json is present (backward compat with pre-alpha installs).

@@ -1,4 +1,4 @@
-package vocore
+package render
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"github.com/kratofl/sprint/app/internal/dash"
 )
 
-func init() { registerWidget(dash.WidgetGear, drawWidgetGear) }
+func init() { RegisterWidget(dash.WidgetGear, drawWidgetGear) }
 
 func drawWidgetGear(c WidgetCtx) {
 	c.Panel()
@@ -18,6 +18,6 @@ func drawWidgetGear(c WidgetCtx) {
 		gearStr = "R"
 	}
 	c.FontNumber(c.H * 0.7)
-	c.DC.SetColor(colTextPri)
+	c.DC.SetColor(ColTextPri)
 	c.DC.DrawStringAnchored(gearStr, c.CX(), c.Y+c.H*0.45, 0.5, 0.5)
 }

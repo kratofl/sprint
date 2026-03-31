@@ -1,4 +1,4 @@
-package vocore
+package render
 
 import (
 	"fmt"
@@ -10,16 +10,15 @@ import (
 )
 
 // WidgetFn is the drawing function signature for a dashboard widget.
-// All registered widget renderers implement this type.
 type WidgetFn func(WidgetCtx)
 
 // widgetRegistry maps widget types to their drawing functions.
 // Populated by init() functions in each widget_*.go file.
 var widgetRegistry = map[dash.WidgetType]WidgetFn{}
 
-// registerWidget adds a widget renderer to the registry.
+// RegisterWidget adds a widget renderer to the registry.
 // Call this from an init() function in your widget file.
-func registerWidget(t dash.WidgetType, fn WidgetFn) {
+func RegisterWidget(t dash.WidgetType, fn WidgetFn) {
 	widgetRegistry[t] = fn
 }
 
@@ -28,23 +27,23 @@ func registerWidget(t dash.WidgetType, fn WidgetFn) {
 // widget's bounding box, and convenience helpers for common draw patterns.
 //
 // Widget bounding box coordinates (X, Y, W, H) are in screen pixels, with
-// (0, 0) at the top-left corner of the VoCore screen.
+// (0, 0) at the top-left corner of the screen.
 //
 // # Adding a new widget
 //
 //  1. Add a WidgetType constant + metadata entry in app/internal/dash/layout.go.
-//  2. Create app/internal/vocore/widget_<name>.go with an init() that calls
-//     registerWidget and a draw function that accepts WidgetCtx.
+//  2. Create app/internal/render/widget_<name>.go with an init() that calls
+//     RegisterWidget and a draw function that accepts WidgetCtx.
 //  3. No other files need to change.
 //
 // Example — minimal widget:
 //
-//	func init() { registerWidget(dash.WidgetMyThing, drawMyThing) }
+//	func init() { RegisterWidget(dash.WidgetMyThing, drawMyThing) }
 //
 //	func drawMyThing(c WidgetCtx) {
 //	    c.Panel()
 //	    c.FontNumber(c.H * 0.5)
-//	    c.DC.SetColor(colTextPri)
+//	    c.DC.SetColor(ColTextPri)
 //	    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.CY(), 0.5, 0.5)
 //	}
 type WidgetCtx struct {
@@ -55,14 +54,14 @@ type WidgetCtx struct {
 	// X, Y, W, H define the widget's bounding box in screen pixels.
 	X, Y, W, H float64
 
-	// dr provides access to the font cache. Use the FontXxx helpers instead.
-	dr *DashRenderer
+	// p provides access to the font cache. Use the FontXxx helpers instead.
+	p *Painter
 }
 
 // ── Layout helpers ────────────────────────────────────────────────────────────
 
 // Panel draws the standard elevated panel background for this widget's bounding
-// box with the default corner radius (8 px).
+// box with no corner radius.
 func (c WidgetCtx) Panel() { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0) }
 
 // PanelR draws a panel with a custom corner radius r.
@@ -80,19 +79,19 @@ func (c WidgetCtx) CY() float64 { return c.Y + c.H/2 }
 
 // FontLabel sets SpaceGrotesk-Regular at size.
 // Use for UI labels, captions, and metadata text.
-func (c WidgetCtx) FontLabel(size float64) { c.dr.face(c.DC, "SpaceGrotesk-Regular.ttf", size) }
+func (c WidgetCtx) FontLabel(size float64) { c.p.face(c.DC, "SpaceGrotesk-Regular.ttf", size) }
 
 // FontBold sets SpaceGrotesk-Bold at size.
 // Use for section headers and category titles.
-func (c WidgetCtx) FontBold(size float64) { c.dr.face(c.DC, "SpaceGrotesk-Bold.ttf", size) }
+func (c WidgetCtx) FontBold(size float64) { c.p.face(c.DC, "SpaceGrotesk-Bold.ttf", size) }
 
 // FontNumber sets JetBrainsMono-Bold at size.
 // Use for large primary telemetry values: gear display, speed, lap time hero.
-func (c WidgetCtx) FontNumber(size float64) { c.dr.face(c.DC, "JetBrainsMono-Bold.ttf", size) }
+func (c WidgetCtx) FontNumber(size float64) { c.p.face(c.DC, "JetBrainsMono-Bold.ttf", size) }
 
 // FontMono sets JetBrainsMono-Regular at size.
 // Use for secondary mono-spaced numbers: sector times, auxiliary values.
-func (c WidgetCtx) FontMono(size float64) { c.dr.face(c.DC, "JetBrainsMono-Regular.ttf", size) }
+func (c WidgetCtx) FontMono(size float64) { c.p.face(c.DC, "JetBrainsMono-Regular.ttf", size) }
 
 // ── Bar helpers ───────────────────────────────────────────────────────────────
 
@@ -113,10 +112,10 @@ func (c WidgetCtx) HBarCentered(x, y, w, h, pct float64, col color.RGBA) {
 // ── Formatter helpers ─────────────────────────────────────────────────────────
 
 // FmtLap formats t (seconds) as "M:SS.mmm". Returns "-.---.---" when t ≤ 0.
-func (c WidgetCtx) FmtLap(t float64) string { return fmtLap(t) }
+func (c WidgetCtx) FmtLap(t float64) string { return FmtLap(t) }
 
 // FmtSector formats t (seconds) as "SS.mmm". Returns "--.---" when t ≤ 0.
-func (c WidgetCtx) FmtSector(t float64) string { return fmtSector(t) }
+func (c WidgetCtx) FmtSector(t float64) string { return FmtSector(t) }
 
 // FmtSpeed converts ms (m/s) to km/h and returns it as an integer string.
 func (c WidgetCtx) FmtSpeed(ms float64) string { return fmt.Sprintf("%.0f", ms*3.6) }

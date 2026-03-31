@@ -1,20 +1,18 @@
 //go:build windows
 
-// sender_windows.go implements the VoCore screen USB transport for Windows
-// using the native WinUSB API. No CGO, no libusb installation required.
+// usb.go implements the VoCore screen USB transport for Windows using the
+// native WinUSB API. No CGO, no libusb installation required.
 //
 // Prerequisites:
 //   - The VoCore device must have the WinUSB driver bound to it. SimHub's
 //     VOCOREScreenSetup does this automatically. If not installed, use
 //     Zadig (https://zadig.akeo.ie) to bind the VoCore to WinUSB.
-//
-// This implementation uses SetupDI to enumerate USB device interfaces,
-// finds the VoCore by VID/PID, opens it with CreateFile, and communicates
-// via WinUSB control and bulk transfers.
 package vocore
 
 import (
+	"errors"
 	"fmt"
+	"image"
 	"log/slog"
 	"strings"
 	"syscall"
@@ -67,17 +65,47 @@ const (
 	detailDataCbSize = 8
 )
 
-// winusbSender sends frames to the VoCore screen via native Windows WinUSB API.
-type winusbSender struct {
-	devHandle    syscall.Handle
-	winusbHandle uintptr
-	cmd          [12]byte
-	nativeW      int // native screen width (from device query)
-	nativeH      int // native screen height
-	logger       *slog.Logger
+// VoCore M-PRO screen USB protocol constants (from mpro_drm driver).
+const (
+	usbBulkEndpoint = 0x02 // bulk OUT endpoint for pixel data
+	usbVendorReq    = 0xB0 // vendor-specific control request
+	usbReqTypeOut   = 0x40 // USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE
+
+	// maxScreenPixels is a sanity cap to prevent integer overflow in
+	// width*height*2. 4096×4096 = 16 M pixels × 2 = 32 MB, well above
+	// any real VoCore screen (800×480 = 768 KB).
+	maxScreenPixels = 4096 * 4096
+)
+
+// errScreenTransportUnsupported indicates that no platform transport is
+// implemented for sending frames to the VoCore screen.
+var errScreenTransportUnsupported = errors.New("vocore screen transport unsupported on this platform")
+
+// screenTransport sends rendered frames to the VoCore screen over USB.
+type screenTransport interface {
+	send(rgb565 []byte) error
+	close()
+	// nativeSize returns the screen's actual native pixel dimensions as
+	// reported by the device. These may differ from the configured
+	// ScreenConfig (e.g. 480×800 portrait vs 800×480 landscape).
+	nativeSize() (width, height int)
 }
 
-func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (frameSender, error) {
+// validateScreenSize checks that width/height are positive and that
+// width*height*2 (RGB565) does not overflow a reasonable buffer size.
+func validateScreenSize(width, height int) (frameBytes int, err error) {
+	if width <= 0 || height <= 0 {
+		return 0, fmt.Errorf("invalid screen dimensions: %dx%d", width, height)
+	}
+	pixels := width * height
+	if pixels > maxScreenPixels || pixels/width != height {
+		return 0, fmt.Errorf("screen dimensions too large: %dx%d (%d pixels)", width, height, pixels)
+	}
+	return pixels * 2, nil
+}
+
+// openScreen opens a USB connection to the VoCore screen by VID/PID.
+func openScreen(vid, pid uint16, width, height int, logger *slog.Logger) (screenTransport, error) {
 	if err := modWinUSB.Load(); err != nil {
 		return nil, fmt.Errorf("WinUSB not available: %w", err)
 	}
@@ -123,19 +151,10 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 		logger:       logger,
 	}
 
-	// Clear any stale STALL/HALT condition on the bulk OUT endpoint (0x02).
-	// WinUsb_Initialize does NOT reset endpoint stall bits — they persist across
-	// software restarts as long as the device stays physically connected. Without
-	// this reset, the first WinUsbWritePipe call will fail if the pipe was stalled
-	// when the previous session exited, causing an infinite open→fail→retry loop.
-	// Physical unplug/replug clears stalls via USB re-enumeration; this covers the
-	// "already connected at startup" case without requiring a reconnect.
+	// Clear any stale STALL/HALT condition on the bulk OUT endpoint.
 	s.resetPipe(usbBulkEndpoint)
 
 	// Query the screen model to determine actual native dimensions.
-	// This uses non-standard USB requests (0xB5/0xB6/0xB7) that older firmware
-	// may not support. If the query fails or panics, we fall back to the
-	// configured dimensions and reset the USB pipe to recover.
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -145,7 +164,6 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 		model, err := s.queryScreenModel()
 		if err != nil {
 			logger.Warn("could not query screen model, using configured dimensions", "err", err)
-			// Reset the default control pipe in case the query stalled it.
 			s.resetPipe(0x00)
 			return
 		}
@@ -175,8 +193,6 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 	}
 
 	// Build the 6-byte full-frame draw command (mode + Memory Write + size).
-	// The firmware uses its native resolution to interpret the pixel data,
-	// so we don't specify x/y/width in the command.
 	s.cmd[0] = 0x00 // mode: RGB565
 	s.cmd[1] = 0x2C // Memory Write
 	s.cmd[2] = byte(screenSize)
@@ -193,14 +209,21 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 	return s, nil
 }
 
+// winusbSender sends frames to the VoCore screen via native Windows WinUSB API.
+type winusbSender struct {
+	devHandle    syscall.Handle
+	winusbHandle uintptr
+	cmd          [12]byte
+	nativeW      int
+	nativeH      int
+	logger       *slog.Logger
+}
+
 // controlOut sends a vendor-specific USB control OUT transfer (request 0xB0).
 func (s *winusbSender) controlOut(data []byte) error {
-	// Pack the 8-byte WINUSB_SETUP_PACKET (passed by value on x64).
 	var pkt [8]byte
 	pkt[0] = usbReqTypeOut
 	pkt[1] = usbVendorReq
-	// pkt[2:3] = wValue (0)
-	// pkt[4:5] = wIndex (0)
 	pkt[6] = byte(len(data))
 	pkt[7] = byte(len(data) >> 8)
 
@@ -225,12 +248,10 @@ func (s *winusbSender) controlOut(data []byte) error {
 }
 
 func (s *winusbSender) send(rgb565 []byte) error {
-	// Send 6-byte draw command via USB control transfer.
 	if err := s.controlOut(s.cmd[:6]); err != nil {
 		return fmt.Errorf("control transfer: %w", err)
 	}
 
-	// Send pixel data via USB bulk OUT transfer.
 	var transferred uint32
 	r, _, err := procWinUsbWritePipe.Call(
 		s.winusbHandle,
@@ -251,16 +272,12 @@ func (s *winusbSender) nativeSize() (int, int) {
 }
 
 func (s *winusbSender) close() {
-	// Reset the bulk OUT pipe before freeing the handle. This leaves the device
-	// endpoint in a clean state for the next open, regardless of how this session
-	// ends (normal exit, send error, ctx cancel, etc.).
 	s.resetPipe(usbBulkEndpoint)
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)
 	s.logger.Info("VoCore screen closed")
 }
 
-// resetPipe resets the specified USB pipe to recover from a stall condition.
 func (s *winusbSender) resetPipe(pipeID byte) {
 	procWinUsbResetPipe.Call(s.winusbHandle, uintptr(pipeID))
 }
@@ -270,8 +287,6 @@ func (s *winusbSender) controlIn(request byte, buf []byte) (int, error) {
 	var pkt [8]byte
 	pkt[0] = 0xC0 // USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE
 	pkt[1] = request
-	// pkt[2:3] = wValue (0)
-	// pkt[4:5] = wIndex (0)
 	pkt[6] = byte(len(buf))
 	pkt[7] = byte(len(buf) >> 8)
 
@@ -296,22 +311,18 @@ func (s *winusbSender) controlIn(request byte, buf []byte) (int, error) {
 }
 
 // queryScreenModel queries the VoCore device for its screen model ID using
-// the mpro protocol (control transfers 0xB5/0xB6/0xB7). Returns the 4-byte
-// model identifier used by mproModelDimensions to look up native resolution.
+// the mpro protocol (control transfers 0xB5/0xB6/0xB7).
 func (s *winusbSender) queryScreenModel() (uint32, error) {
-	// Step 1: Send the "get screen" command (OUT, request 0xB5).
 	cmdGetScreen := [5]byte{0x51, 0x02, 0x04, 0x1F, 0xFC}
 	if err := s.controlOutReq(0xB5, cmdGetScreen[:]); err != nil {
 		return 0, fmt.Errorf("send get_screen cmd: %w", err)
 	}
 
-	// Step 2: Read 1-byte status (IN, request 0xB6).
 	var status [1]byte
 	if _, err := s.controlIn(0xB6, status[:]); err != nil {
 		return 0, fmt.Errorf("read status: %w", err)
 	}
 
-	// Step 3: Read 5-byte response (IN, request 0xB7). Model ID is at bytes 1-4.
 	var resp [5]byte
 	n, err := s.controlIn(0xB7, resp[:])
 	if err != nil {
@@ -325,11 +336,10 @@ func (s *winusbSender) queryScreenModel() (uint32, error) {
 	return model, nil
 }
 
-// controlOutReq sends a vendor-specific USB control OUT transfer with a custom
-// request code (not the default 0xB0 used by controlOut).
+// controlOutReq sends a vendor-specific USB control OUT transfer with a custom request code.
 func (s *winusbSender) controlOutReq(request byte, data []byte) error {
 	var pkt [8]byte
-	pkt[0] = usbReqTypeOut // 0x40
+	pkt[0] = usbReqTypeOut
 	pkt[1] = request
 	pkt[6] = byte(len(data))
 	pkt[7] = byte(len(data) >> 8)
@@ -385,7 +395,6 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 			break
 		}
 
-		// First call: get required buffer size.
 		var requiredSize uint32
 		procSetupDiGetDeviceInterfaceDetailW.Call(
 			hDevInfo,
@@ -398,7 +407,6 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 			continue
 		}
 
-		// Allocate buffer and populate cbSize for SP_DEVICE_INTERFACE_DETAIL_DATA_W.
 		buf := make([]byte, requiredSize)
 		*(*uint32)(unsafe.Pointer(&buf[0])) = detailDataCbSize
 
@@ -413,7 +421,6 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 			continue
 		}
 
-		// DevicePath starts at byte offset 4 (after the cbSize DWORD), encoded as UTF-16.
 		pathBytes := buf[4:]
 		pathUTF16 := make([]uint16, len(pathBytes)/2)
 		for j := range pathUTF16 {
@@ -431,4 +438,103 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 	}
 
 	return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
+}
+
+// imageToRGB565 converts an image to RGB565 little-endian, writing into dst.
+// dst must be at least width*height*2 bytes. Uses a fast path for *image.RGBA
+// which is the output type of fogleman/gg.
+func imageToRGB565(img image.Image, dst []byte) {
+	bounds := img.Bounds()
+
+	if rgba, ok := img.(*image.RGBA); ok {
+		i := 0
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			off := (y - rgba.Rect.Min.Y) * rgba.Stride
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				j := off + (x-rgba.Rect.Min.X)*4
+				r := uint16(rgba.Pix[j]) >> 3
+				g := uint16(rgba.Pix[j+1]) >> 2
+				b := uint16(rgba.Pix[j+2]) >> 3
+				px := (r << 11) | (g << 5) | b
+				dst[i] = byte(px)
+				dst[i+1] = byte(px >> 8)
+				i += 2
+			}
+		}
+		return
+	}
+
+	i := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			r5 := uint16(r >> 11)
+			g6 := uint16(g >> 10)
+			b5 := uint16(b >> 11)
+			px := (r5 << 11) | (g6 << 5) | b5
+			dst[i] = byte(px)
+			dst[i+1] = byte(px >> 8)
+			i += 2
+		}
+	}
+}
+
+// imageToRGB565CW90 converts an image to RGB565 little-endian with a 90° CW
+// rotation. Source image W×H becomes output H×W.
+// dst must be at least W*H*2 bytes.
+func imageToRGB565CW90(img image.Image, dst []byte) {
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	if rgba, ok := img.(*image.RGBA); ok {
+		i := 0
+		for dy := 0; dy < srcW; dy++ {
+			for dx := 0; dx < srcH; dx++ {
+				sx := dy
+				sy := srcH - 1 - dx
+				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
+				r := uint16(rgba.Pix[j]) >> 3
+				g := uint16(rgba.Pix[j+1]) >> 2
+				b := uint16(rgba.Pix[j+2]) >> 3
+				px := (r << 11) | (g << 5) | b
+				dst[i] = byte(px)
+				dst[i+1] = byte(px >> 8)
+				i += 2
+			}
+		}
+		return
+	}
+
+	i := 0
+	for dy := 0; dy < srcW; dy++ {
+		for dx := 0; dx < srcH; dx++ {
+			sx := bounds.Min.X + dy
+			sy := bounds.Min.Y + srcH - 1 - dx
+			r, g, b, _ := img.At(sx, sy).RGBA()
+			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
+			dst[i] = byte(px)
+			dst[i+1] = byte(px >> 8)
+			i += 2
+		}
+	}
+}
+
+// mproModelDimensions returns the native pixel dimensions for the given mpro
+// screen model ID. Values from the mpro_drm Linux driver.
+func mproModelDimensions(model uint32) (width, height int) {
+	switch model {
+	case 0x00000005: // MPRO-5 (5")
+		return 480, 854
+	case 0x00001005: // MPRO-5H (5" OLED)
+		return 720, 1280
+	case 0x00000007: // MPRO-6IN8 (6.8" — native landscape)
+		return 800, 480
+	case 0x00000403: // MPRO-3IN4 (3.4" — square)
+		return 800, 800
+	case 0x0000000a: // MPRO-10 (10")
+		return 1024, 600
+	default:
+		return 480, 800
+	}
 }

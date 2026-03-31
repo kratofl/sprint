@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/kratofl/sprint/app/internal/vocore"
+	"github.com/kratofl/sprint/app/internal/render"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -22,9 +22,9 @@ func main() {
 	flag.Parse()
 
 	frame := demoFrame()
-	renderer := vocore.NewDashRenderer(800, 480)
+	painter := render.NewPainter(800, 480)
 
-	img, err := renderer.RenderFrame(frame)
+	img, err := painter.Paint(frame)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "render failed: %v\n", err)
 		os.Exit(1)

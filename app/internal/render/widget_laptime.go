@@ -1,4 +1,4 @@
-package vocore
+package render
 
 import (
 	"image/color"
@@ -6,7 +6,7 @@ import (
 	"github.com/kratofl/sprint/app/internal/dash"
 )
 
-func init() { registerWidget(dash.WidgetLapTime, drawWidgetLapTime) }
+func init() { RegisterWidget(dash.WidgetLapTime, drawWidgetLapTime) }
 
 func drawWidgetLapTime(c WidgetCtx) {
 	c.Panel()
@@ -16,17 +16,17 @@ func drawWidgetLapTime(c WidgetCtx) {
 		col   color.RGBA
 	}
 	laps := []lapEntry{
-		{"Current", c.Frame.Lap.CurrentLapTime, colTextPri},
-		{"Last", c.Frame.Lap.LastLapTime, colTextPri},
-		{"Best", c.Frame.Lap.BestLapTime, colTeal},
+		{"Current", c.Frame.Lap.CurrentLapTime, ColTextPri},
+		{"Last", c.Frame.Lap.LastLapTime, ColTextPri},
+		{"Best", c.Frame.Lap.BestLapTime, ColTeal},
 	}
 	c.FontLabel(c.H * 0.1)
-	c.DC.SetColor(colTextMuted)
+	c.DC.SetColor(ColTextMuted)
 	c.DC.DrawString("LAP TIMES", c.X+12, c.Y+c.H*0.15)
 	for i, l := range laps {
 		ly := c.Y + c.H*0.25 + float64(i)*(c.H*0.22)
 		c.FontLabel(c.H * 0.12)
-		c.DC.SetColor(colTextSec)
+		c.DC.SetColor(ColTextSec)
 		c.DC.DrawString(l.label, c.X+12, ly)
 		c.FontNumber(c.H * 0.16)
 		c.DC.SetColor(l.col)
