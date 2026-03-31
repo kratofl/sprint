@@ -164,7 +164,7 @@ export function DashCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden rounded bg-bg-base border border-border-base tech-grid"
+      className="relative w-full overflow-hidden rounded bg-bg-base border border-border-base"
       style={{ aspectRatio: `${screenW} / ${screenH}` }}
       onDragOver={handleDragOver}
       onDrop={handleCombinedDrop}
