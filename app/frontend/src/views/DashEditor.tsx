@@ -87,7 +87,7 @@ export default function DashEditor() {
     <div className="flex flex-1 flex-col gap-4 overflow-hidden p-5">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
-        <h1 className="text-lg font-semibold">Dash Studio</h1>
+        <h1 className="terminal-header text-sm text-foreground">Dash Studio</h1>
         <div className="flex items-center gap-2">
           {saveStatus === 'saved' && (
             <span className="text-xs text-success">Saved</span>
@@ -168,7 +168,7 @@ export default function DashEditor() {
         {/* Widget palette */}
         <Card className="w-52 flex-shrink-0 flex flex-col overflow-hidden">
           <CardHeader className="border-b border-border-base flex-shrink-0">
-            <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
+            <CardTitle className="terminal-header text-[10px] text-on-surface-variant">
               Widgets
             </CardTitle>
           </CardHeader>

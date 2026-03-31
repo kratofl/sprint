@@ -35,38 +35,46 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
   const sessionLabel = SESSION_LABEL[session.sessionType] ?? 'Session'
 
   return (
-    <div className={cn('flex items-center justify-between gap-4', className)} {...props}>
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 rounded border border-[var(--outline)] bg-bg-container px-4 py-2.5',
+        className,
+      )}
+      {...props}
+    >
       {/* Left: track + car */}
-      <div className="flex min-w-0 flex-col">
-        <span className="truncate font-display text-base font-semibold text-text-primary">
-          {session.track || 'No Track'}
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate font-bold uppercase tracking-wide text-foreground text-sm">
+          {session.track || 'No_Track'}
         </span>
-        <span className="truncate text-xs text-text-muted">{session.car || '—'}</span>
+        <span className="truncate terminal-header text-[10px] text-on-surface-variant">
+          {session.car || '——'}
+        </span>
       </div>
 
       {/* Centre: session type + time */}
       <div className="flex shrink-0 items-center gap-2">
-        <Badge variant="default">{sessionLabel}</Badge>
+        <Badge variant="default">{sessionLabel.toUpperCase()}</Badge>
         {session.sessionTime > 0 && (
-          <span className="font-mono text-xs tabular-nums text-text-secondary">
+          <span className="font-mono text-xs tabular-nums text-on-surface-variant">
             {formatSessionTime(session.sessionTime)}
           </span>
         )}
       </div>
 
       {/* Right: connection indicator */}
-      <div className="flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
+      <div className="flex shrink-0 items-center gap-1.5">
         <span
           className={cn(
             'h-1.5 w-1.5 rounded-full',
-            connected ? 'bg-teal animate-pulse' : 'bg-text-disabled',
+            connected ? 'bg-secondary animate-pulse' : 'bg-on-surface-variant',
           )}
         />
-        {connected
-          ? fps !== undefined
-            ? <span className="text-text-secondary">{fps} fps</span>
-            : <span>Live</span>
-          : <span>Waiting…</span>}
+        <span className={cn('terminal-header text-[10px]', connected ? 'text-secondary' : 'text-on-surface-variant')}>
+          {connected
+            ? fps !== undefined ? `${fps}_FPS` : 'LIVE'
+            : 'OFFLINE'}
+        </span>
       </div>
     </div>
   )

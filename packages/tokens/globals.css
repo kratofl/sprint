@@ -50,19 +50,22 @@ body {
 
 /* ── Surface utilities ───────────────────────────────────────────────────── */
 @layer utilities {
-  /* Container surface — cards, panels, sidebar */
+  /* Container surface — cards, panels, section areas */
   .surface {
     background: var(--bg-container);
+    border: 1px solid var(--outline);
   }
 
   /* Elevated surface — active widgets, emphasized cards */
   .surface-elevated {
     background: var(--bg-elevated);
+    border: 1px solid var(--outline);
   }
 
   /* Top-level overlay */
   .surface-overlay {
     background: var(--bg-overlay);
+    border: 1px solid var(--outline);
   }
 
   /* Floating glass overlays — modals, dropdowns, nav bar */

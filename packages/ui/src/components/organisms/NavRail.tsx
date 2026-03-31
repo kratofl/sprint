@@ -31,7 +31,7 @@ export interface NavRailProps {
  *
  * Collapsed (52px): icons only, labels appear as tooltips.
  * Expanded (200px): icons + labels, left-aligned.
- * Active item: left accent bar + muted orange tint background.
+ * Active item: left-side 2px accent bar + faint orange tint.
  */
 export function NavRail({
   items,
@@ -58,16 +58,16 @@ export function NavRail({
         data-slot="nav-rail"
         data-collapsed={isCollapsed}
         className={cn(
-          "relative flex flex-col bg-bg-container border-r border-border-base",
+          "relative flex flex-col bg-bg-container border-r border-[var(--outline)]",
           "transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]",
           isCollapsed ? "w-[3.25rem]" : "w-[12.5rem]",
           className
         )}
       >
-        {/* Header */}
+        {/* Header — logo area with bottom divider */}
         <div
           className={cn(
-            "flex h-12 shrink-0 items-center overflow-hidden",
+            "flex h-12 shrink-0 items-center border-b border-[var(--outline)] overflow-hidden",
             isCollapsed ? "justify-center px-0" : "px-4",
             "[app-region:drag]"
           )}
@@ -79,11 +79,8 @@ export function NavRail({
           )}
         </div>
 
-        {/* Divider spacing */}
-        <div className="mx-3 mb-1" />
-
         {/* Nav items */}
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-hidden px-2 py-2">
+        <nav className="flex flex-1 flex-col gap-px overflow-hidden py-2">
           {items.map((item) => {
             const isActive = item.id === activeId
             const Icon = item.icon
@@ -95,16 +92,19 @@ export function NavRail({
                 data-active={isActive}
                 onClick={() => onSelect(item.id)}
                 className={cn(
-                  // Layout
-                  "group relative flex h-8 w-full shrink-0 items-center gap-2.5 overflow-hidden rounded",
-                  "px-3 text-[11px] font-bold whitespace-nowrap uppercase tracking-[0.1em] transition-all duration-100",
-                  "outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+                  // Layout — full width, no horizontal container padding so border-l reaches edge
+                  "group relative flex h-9 w-full shrink-0 items-center gap-3",
+                  "text-[11px] font-bold whitespace-nowrap uppercase tracking-[0.1em]",
+                  "transition-colors duration-100 outline-none",
+                  isCollapsed ? "justify-center px-0" : "pl-4 pr-3",
                   // Inactive
-                  !isActive && "text-on-surface-variant hover:bg-white/[0.02] hover:text-foreground",
-                  // Active: right accent border + subtle bg (matches HTML reference)
+                  !isActive && "text-on-surface-variant hover:bg-white/[0.04] hover:text-foreground",
+                  // Active: left accent bar + subtle tint
                   isActive && [
-                    "text-accent bg-accent/5",
-                    "border-r-2 border-accent",
+                    "text-accent bg-accent/[0.06]",
+                    "border-l-2 border-accent",
+                    // Compensate left padding so icon stays aligned
+                    !isCollapsed && "pl-[calc(1rem-2px)]",
                   ]
                 )}
               >
@@ -112,18 +112,15 @@ export function NavRail({
                   size={16}
                   className={cn(
                     "shrink-0 transition-colors",
-                    isActive ? "text-accent" : "text-text-secondary group-hover:text-text-primary"
+                    isActive ? "text-accent" : "text-on-surface-variant group-hover:text-foreground"
                   )}
                 />
                 {/* Label — hidden when collapsed */}
-                <span
-                  className={cn(
-                    "transition-[opacity,max-width] duration-150 overflow-hidden",
-                    isCollapsed ? "max-w-0 opacity-0" : "max-w-full opacity-100"
-                  )}
-                >
-                  {item.label}
-                </span>
+                {!isCollapsed && (
+                  <span className="overflow-hidden">
+                    {item.label}
+                  </span>
+                )}
               </button>
             )
 
@@ -131,7 +128,7 @@ export function NavRail({
               return (
                 <Tooltip key={item.id}>
                   <TooltipTrigger asChild>{itemContent}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={8} className="surface-elevated">
+                  <TooltipContent side="right" sideOffset={8} className="bg-bg-elevated border border-[var(--outline)] text-foreground">
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
@@ -146,7 +143,7 @@ export function NavRail({
         {footer && (
           <div
             className={cn(
-              "overflow-hidden px-2 py-2 transition-all duration-150",
+              "border-t border-[var(--outline)] px-2 py-2 overflow-hidden transition-all duration-150",
               isCollapsed ? "flex justify-center" : ""
             )}
           >
@@ -155,21 +152,21 @@ export function NavRail({
         )}
 
         {/* Collapse toggle */}
-        <div className="px-2 pb-3 pt-2">
+        <div className="border-t border-[var(--outline)] px-2 py-2">
           <button
             onClick={toggle}
             aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
             className={cn(
-              "flex h-8 w-full items-center rounded-md px-2 text-text-muted",
-              "transition-colors duration-100 hover:bg-bg-subtle hover:text-text-secondary",
-              "outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
-              isCollapsed ? "justify-center" : "justify-end gap-1.5 text-[0.625rem]"
+              "flex h-7 w-full items-center rounded text-on-surface-variant",
+              "transition-colors duration-100 hover:bg-white/[0.04] hover:text-foreground",
+              "outline-none focus-visible:ring-1 focus-visible:ring-accent/40",
+              isCollapsed ? "justify-center" : "justify-end gap-1.5 pr-1 text-[0.625rem] uppercase tracking-widest"
             )}
           >
             {!isCollapsed && <span>Collapse</span>}
             {isCollapsed
-              ? <IconChevronRight size={14} />
-              : <IconChevronLeft size={14} />
+              ? <IconChevronRight size={13} />
+              : <IconChevronLeft size={13} />
             }
           </button>
         </div>

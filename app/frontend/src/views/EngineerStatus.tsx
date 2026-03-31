@@ -21,7 +21,7 @@ export default function EngineerStatus() {
       {/* Connection info */}
       <Card>
         <CardHeader className="border-b border-border-base">
-          <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Connection</CardTitle>
+          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Connection</CardTitle>
         </CardHeader>
         <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">
@@ -41,7 +41,7 @@ export default function EngineerStatus() {
       {/* Target lap */}
       <Card>
         <CardHeader className="border-b border-border-base">
-          <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Delta Target</CardTitle>
+          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Delta Target</CardTitle>
         </CardHeader>
         <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">
@@ -60,7 +60,7 @@ export default function EngineerStatus() {
       {/* Message log */}
       <Card className="flex-1">
         <CardHeader className="border-b border-border-base">
-          <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Engineer Messages</CardTitle>
+          <CardTitle className="terminal-header text-[10px] text-on-surface-variant">Engineer Messages</CardTitle>
         </CardHeader>
         <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">

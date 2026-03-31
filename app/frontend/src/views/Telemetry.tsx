@@ -50,8 +50,8 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
 
           {/* Driver inputs */}
           <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
-              Inputs
+            <p className="mb-2 terminal-header text-[10px] text-on-surface-variant">
+              Driver_Inputs
             </p>
             <InputTrace
               throttle={frame?.car.throttle ?? 0}
@@ -63,7 +63,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
 
           {/* Electronics */}
           <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+            <p className="mb-2 terminal-header text-[10px] text-on-surface-variant">
               Electronics
             </p>
             <div className="space-y-1.5">
@@ -87,8 +87,8 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
         <div className="flex flex-col gap-3">
           {/* Lap times */}
           <div className="surface rounded p-4">
-            <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
-              Lap Times
+            <p className="mb-3 terminal-header text-[10px] text-on-surface-variant">
+              Lap_Times
             </p>
             <div className="space-y-2">
               <LapRow label="Current" time={frame?.lap.currentLapTime} />
@@ -99,7 +99,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
             {/* Delta bar — only when a target is set */}
             {frame && frame.lap.targetLapTime > 0 && (
               <div className="mt-3">
-                <p className="mb-1 text-[11px] text-text-muted">Δ Target</p>
+                <p className="mb-1 terminal-header text-[10px] text-on-surface-variant">Δ_Target</p>
                 <DeltaBar
                   delta={frame.lap.currentLapTime - frame.lap.targetLapTime}
                 />
@@ -121,8 +121,8 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
 
           {/* Fuel */}
           <div className="surface rounded p-4">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
-              Fuel
+            <p className="mb-2 terminal-header text-[10px] text-on-surface-variant">
+              Fuel_Status
             </p>
             <FuelWidget
               fuel={frame?.car.fuel ?? 0}
@@ -135,8 +135,8 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
 
       {/* ── Tyre temps — full width ── */}
       <div className="surface rounded p-4">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
-          Tyre Temperatures
+        <p className="mb-3 terminal-header text-[10px] text-on-surface-variant">
+          Tyre_Temperatures
         </p>
         <TireTemp tires={buildTires(frame)} />
       </div>

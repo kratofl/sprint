@@ -58,7 +58,7 @@ export default function App() {
       />
 
       {/* Main content */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex flex-1 flex-col overflow-hidden tech-grid">
         {view === 'telemetry' && <Telemetry frame={frame} connected={connected} fps={fps} />}
         {view === 'dash'      && <DashEditor />}
         {view === 'setups'    && <Setups />}

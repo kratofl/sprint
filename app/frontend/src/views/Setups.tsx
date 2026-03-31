@@ -377,7 +377,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <Card>
       <CardHeader className="border-b border-border-base">
-        <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
+        <CardTitle className="terminal-header text-[10px] text-on-surface-variant">
           {title}
         </CardTitle>
       </CardHeader>
