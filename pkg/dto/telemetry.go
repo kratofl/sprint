@@ -5,12 +5,13 @@ package dto
 
 // TelemetryFrame is the canonical telemetry snapshot emitted once per game tick.
 type TelemetryFrame struct {
-	Timestamp int64        `json:"timestamp"` // Unix nanoseconds
-	Session   Session      `json:"session"`
-	Car       CarState     `json:"car"`
-	Tires     [4]TireState `json:"tires"` // indexed by TirePosition constants (FL=0, FR=1, RL=2, RR=3)
-	Lap       LapState     `json:"lap"`
-	Flags     Flags        `json:"flags"`
+	Timestamp   int64        `json:"timestamp"` // Unix nanoseconds
+	Session     Session      `json:"session"`
+	Car         CarState     `json:"car"`
+	Tires       [4]TireState `json:"tires"` // indexed by TirePosition constants (FL=0, FR=1, RL=2, RR=3)
+	Lap         LapState     `json:"lap"`
+	Flags       Flags        `json:"flags"`
+	Electronics Electronics  `json:"electronics"`
 }
 
 // Session holds metadata about the current game session.
@@ -98,5 +99,15 @@ type Flags struct {
 	SafetyCar    bool `json:"safetyCar"`
 	VSC          bool `json:"vsc"` // virtual safety car
 	Checkered    bool `json:"checkered"`
+}
+
+// Electronics holds the real-time state of driver aid systems.
+type Electronics struct {
+	TCActive  bool  `json:"tcActive"`  // TC currently intervening (cutting power)
+	TC        uint8 `json:"tc"`        // TC setting; 0 = off
+	TCMax     uint8 `json:"tcMax"`     // maximum TC setting available for this car
+	ABSActive bool  `json:"absActive"` // ABS currently intervening
+	ABS       uint8 `json:"abs"`       // ABS setting; 0 = off
+	ABSMax    uint8 `json:"absMax"`    // maximum ABS setting available for this car
 }
 

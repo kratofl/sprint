@@ -70,6 +70,15 @@ export interface Flags {
   checkered: boolean
 }
 
+export interface Electronics {
+  tcActive: boolean
+  tc: number
+  tcMax: number
+  absActive: boolean
+  abs: number
+  absMax: number
+}
+
 export interface TelemetryFrame {
   timestamp: number
   session: Session
@@ -77,4 +86,5 @@ export interface TelemetryFrame {
   tires: [TireState, TireState, TireState, TireState]
   lap: LapState
   flags: Flags
+  electronics: Electronics
 }

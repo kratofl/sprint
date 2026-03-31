@@ -335,6 +335,14 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 			Checkered: s.MFinishStatus == 1,
 			// DoubleYellow and VSC: no reliable LMU signal; left false for now.
 		},
+		Electronics: dto.Electronics{
+			TCActive:  t.MTCActive,
+			TC:        t.MTC,
+			TCMax:     t.MTCMax,
+			ABSActive: t.MABSActive,
+			ABS:       t.MABS,
+			ABSMax:    t.MABSMax,
+		},
 	}
 }
 

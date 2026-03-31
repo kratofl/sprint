@@ -60,6 +60,27 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
               steering={frame?.car.steering ?? 0}
             />
           </div>
+
+          {/* Electronics */}
+          <div>
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
+              Electronics
+            </p>
+            <div className="space-y-1.5">
+              <ElectronicsRow
+                label="TC"
+                setting={frame?.electronics.tc ?? 0}
+                max={frame?.electronics.tcMax ?? 0}
+                active={frame?.electronics.tcActive ?? false}
+              />
+              <ElectronicsRow
+                label="ABS"
+                setting={frame?.electronics.abs ?? 0}
+                max={frame?.electronics.absMax ?? 0}
+                active={frame?.electronics.absActive ?? false}
+              />
+            </div>
+          </div>
         </div>
 
         {/* ── RIGHT: timing + fuel ── */}
@@ -190,5 +211,35 @@ function buildTires(frame: TelemetryFrame | null) {
     rearLeft:   toData(2),
     rearRight:  toData(3),
   }
+}
+
+function ElectronicsRow({
+  label,
+  setting,
+  max,
+  active,
+}: {
+  label: string
+  setting: number
+  max: number
+  active: boolean
+}) {
+  const off = setting === 0
+  return (
+    <div className="flex items-center justify-between">
+      <span className="w-8 text-xs text-text-muted">{label}</span>
+      <span className={['text-xs font-mono tabular-nums', off ? 'text-disabled' : 'text-text-primary'].join(' ')}>
+        {off ? 'OFF' : max > 0 ? `${setting} / ${max}` : String(setting)}
+      </span>
+      {/* Active indicator — orange dot when the system is currently intervening */}
+      <span
+        className={[
+          'h-2 w-2 rounded-full',
+          active ? 'bg-accent' : 'bg-disabled',
+        ].join(' ')}
+        title={active ? `${label} active` : `${label} inactive`}
+      />
+    </div>
+  )
 }
 
