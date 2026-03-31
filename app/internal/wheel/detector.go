@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -43,9 +42,10 @@ func NewDetector(logger *slog.Logger) *Detector {
 	return &Detector{logger: logger}
 }
 
-// Run starts the wheel button event loop. hub is used to broadcast target changes.
+// Run starts the wheel button event loop. onTargetChanged is called when the
+// driver triggers a target-lap change; the coordinator broadcasts it to engineers.
 // Lap recording is handled via OnFrame from the coordinator's telemetry loop.
-func (d *Detector) Run(ctx context.Context, hub *engineer.Hub) {
+func (d *Detector) Run(ctx context.Context, onTargetChanged func(*dto.EngineerEvent)) {
 	d.logger.Info("detector running")
 	// TODO: subscribe to wheel button event channel to trigger SetTargetLap
 	<-ctx.Done()

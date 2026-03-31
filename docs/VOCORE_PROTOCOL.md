@@ -174,7 +174,7 @@ renderer.OnFrame(frame)              ← atomic store (non-blocking)
 renderer.renderLoop()                ← runs in its own goroutine at 30fps
     │
     ├─ DashRenderer.RenderFrame()    ← Go 2D graphics (fogleman/gg)
-    │      produces image.Image         uses embedded Inter + JetBrains Mono fonts
+    │      produces image.Image         uses Space Grotesk + JetBrains Mono (embedded TTF)
     │      (800×480, RGBA)              draws RPM, gear, speed, temps, etc.
     │
     ├─ imageToRGB565(img, buf)       ← converts RGBA → RGB565 in-place
@@ -210,9 +210,10 @@ firmware (≥v0.24) has WCID support and installs it automatically. For
 older firmware, use [Zadig](https://zadig.akeo.ie/) to replace the
 "MPRO Screen" driver with WinUSB.
 
-### Device Registry
+### Device Registry & Package Layout
 
-The `devices/registry.go` file maps wheel models to their USB identifiers:
+The `devices/registry.go` file maps wheel models to their USB identifiers.
+These entries are used for automatic screen detection when no saved config exists:
 
 ```go
 {
@@ -220,7 +221,7 @@ The `devices/registry.go` file maps wheel models to their USB identifiers:
     Manufacturer: "BavarianSimTec",
     USBVID:       0x16D0,  // LED controller (for wheel detection only)
     USBPID:       0x127B,
-    ScreenVID:    0xC872,  // ← passed to gousb.OpenDeviceWithVIDPID
+    ScreenVID:    0xC872,  // ← passed to vocore.Renderer.SetScreen()
     ScreenPID:    0x1004,
     ScreenWidth:  800,     // ← determines frame buffer size
     ScreenHeight: 480,
@@ -229,6 +230,26 @@ The `devices/registry.go` file maps wheel models to their USB identifiers:
 
 The **coordinator** reads the active device from the registry and passes
 `ScreenVID`/`ScreenPID`/`Width`/`Height` to `vocore.Renderer.SetScreen()`.
+
+**Package ownership** — all VoCore-specific code lives inside `app/internal/vocore/`:
+
+| File | Responsibility |
+|---|---|
+| `config.go` | `VoCoreConfig`, `SaveVoCoreConfig`, `LoadVoCoreConfig` — screen config persistence |
+| `screen_scan.go` | `DetectedVoCoreScreen`, PID→dimension table, `ScanScreens()` |
+| `screen_scan_windows.go` | Windows SetupDI USB enumeration (no CGO) |
+| `screen_scan_usb.go` | Linux gousb/libusb USB enumeration (CGO) |
+| `screen_scan_stub.go` | Fallback stub for unsupported platforms |
+| `renderer.go` | `Renderer` struct, render loop, double-buffer pipeline |
+| `render.go` | `DashRenderer`, color tokens, drawing helpers, `renderDefaultLayout` |
+| `widget.go` | `WidgetCtx` toolkit, widget registry, font/bar/formatter helpers |
+| `widget_*.go` | One file per widget type — each registers itself via `init()` |
+| `sender_windows.go` | WinUSB bulk transfer implementation |
+| `sender_usb.go` | gousb bulk transfer implementation |
+| `sender_stub.go` | Stub for unsupported platforms |
+
+The `devices` package owns only **wheel serial-port** concerns: `WheelModel`, `DeviceConfig`,
+`Manager`, `ListPorts`. VoCore screen code has no place there.
 
 ### Auto-Reconnect
 
@@ -259,6 +280,6 @@ The code **only** communicates with VID `0xC872` / PID `0x1004`.
 ### Adding a New Wheel Model
 
 1. Find the screen's VID/PID (Device Manager on Windows, `lsusb` on Linux)
-2. Add an entry to `KnownModels` in `devices/registry.go`
-3. Set `ScreenWidth`/`ScreenHeight` to the native resolution
-4. No code changes needed — the renderer auto-adapts to any resolution
+2. Add an entry to `KnownModels` in `devices/registry.go` with `ScreenVID`/`ScreenPID`/`ScreenWidth`/`ScreenHeight`
+3. Optionally add the PID to `voCorePIDDimensions` in `vocore/screen_scan.go` if the screen has non-standard dimensions
+4. No code changes needed elsewhere — the renderer auto-adapts to any resolution

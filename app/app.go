@@ -10,6 +10,7 @@ import (
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/kratofl/sprint/app/internal/setup"
+	"github.com/kratofl/sprint/app/internal/vocore"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -153,8 +154,8 @@ func (a *App) DeviceDelete(id string) error {
 // VoCoreScanScreens scans USB for connected VoCore M-PRO screens and returns
 // the list. On unsupported platforms (e.g. macOS without gousb) this returns
 // an empty list without an error.
-func (a *App) VoCoreScanScreens() ([]devices.DetectedVoCoreScreen, error) {
-	screens, err := devices.ScanVoCoreScreens()
+func (a *App) VoCoreScanScreens() ([]vocore.DetectedVoCoreScreen, error) {
+	screens, err := vocore.ScanScreens()
 	if err != nil {
 		return nil, fmt.Errorf("VoCoreScanScreens: %w", err)
 	}
@@ -163,8 +164,8 @@ func (a *App) VoCoreScanScreens() ([]devices.DetectedVoCoreScreen, error) {
 
 // VoCoreGetSelected returns the currently saved VoCore screen configuration.
 // Returns nil (no error) if no screen has been selected yet.
-func (a *App) VoCoreGetSelected() (*devices.VoCoreConfig, error) {
-	cfg, err := devices.LoadVoCoreConfig()
+func (a *App) VoCoreGetSelected() (*vocore.VoCoreConfig, error) {
+	cfg, err := vocore.LoadVoCoreConfig()
 	if err != nil {
 		return nil, fmt.Errorf("VoCoreGetSelected: %w", err)
 	}
@@ -174,8 +175,8 @@ func (a *App) VoCoreGetSelected() (*devices.VoCoreConfig, error) {
 // VoCoreSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
 // then hot-reloads the renderer so the new screen takes effect immediately.
 func (a *App) VoCoreSelectScreen(vid, pid uint16, width, height int) error {
-	cfg := &devices.VoCoreConfig{VID: vid, PID: pid, Width: width, Height: height}
-	if err := devices.SaveVoCoreConfig(cfg); err != nil {
+	cfg := &vocore.VoCoreConfig{VID: vid, PID: pid, Width: width, Height: height}
+	if err := vocore.SaveVoCoreConfig(cfg); err != nil {
 		return fmt.Errorf("VoCoreSelectScreen: %w", err)
 	}
 	a.coord.SetVoCoreConfig(cfg)

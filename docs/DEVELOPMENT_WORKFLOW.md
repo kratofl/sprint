@@ -195,7 +195,110 @@ pnpm start  # serve the production build locally
 
 ---
 
-## Typical task: adding a new feature to the desktop app
+## `app/internal/` package responsibilities
+
+| Package | Owns | Does NOT own |
+|---|---|---|
+| `coordinator` | Wires all subsystems together; no business logic | Any domain logic |
+| `vocore` | VoCore screen config, USB scan, rendering pipeline, widget toolkit | Wheel serial ports |
+| `devices` | Wheel serial-port detection, `DeviceConfig`, `Manager`, `ListPorts` | VoCore screen code |
+| `engineer` | WebSocket hub for LAN race engineers; broadcasts `EngineerEvent` | Wheel button logic |
+| `wheel` | Button detector, valid-lap selector; fires `onTargetChanged` callback | `engineer.Hub` (decoupled) |
+| `setup` | Local car/track setup file manager | Everything else |
+| `sync` | API server sync client (HTTP) | Everything else |
+| `dash` | `DashLayout`, `DashWidget`, `WidgetType` constants | Rendering |
+| `logger` | Structured logging initialisation | Everything else |
+
+---
+
+## Adding a new VoCore widget
+
+New widgets are self-registering. You only touch two files:
+
+### Step 1 — `app/internal/dash/layout.go`
+
+Add a `WidgetType` constant and register it in the metadata maps:
+
+```go
+const (
+    WidgetMyThing WidgetType = "my_thing"
+    // ...
+)
+
+var widgetLabels = map[WidgetType]string{
+    WidgetMyThing: "My Thing",
+    // ...
+}
+
+var widgetCategories = map[WidgetType]string{
+    WidgetMyThing: "telemetry", // or "controls", "info", etc.
+}
+```
+
+### Step 2 — `app/internal/vocore/widget_my_thing.go`
+
+Create a new file. Register the renderer via `init()`. Use `WidgetCtx` helpers:
+
+```go
+package vocore
+
+import "github.com/kratofl/sprint/app/internal/dash"
+
+func init() { registerWidget(dash.WidgetMyThing, drawMyThing) }
+
+func drawMyThing(c WidgetCtx) {
+    c.Panel()                              // standard elevated panel background
+
+    c.FontNumber(c.H * 0.5)               // JetBrainsMono-Bold, scaled to widget height
+    c.DC.SetColor(colTextPri)
+    c.DC.DrawStringAnchored(
+        c.FmtSpeed(float64(c.Frame.Car.SpeedMS)),
+        c.CX(), c.CY(), 0.5, 0.5,
+    )
+
+    c.FontLabel(c.H * 0.15)              // SpaceGrotesk-Regular for labels
+    c.DC.SetColor(colTextMuted)
+    c.DC.DrawString("MY LABEL", c.X+10, c.Y+c.H*0.85)
+}
+```
+
+That's it. No other files need to change.
+
+### `WidgetCtx` API reference
+
+| Helper | Description |
+|---|---|
+| `c.Panel()` | Draws the standard elevated panel bg for this widget's bounding box |
+| `c.PanelR(r)` | Panel with custom corner radius |
+| `c.CX()` / `c.CY()` | Centre X / Y of the bounding box |
+| `c.FontLabel(sz)` | SpaceGrotesk-Regular — UI labels and captions |
+| `c.FontBold(sz)` | SpaceGrotesk-Bold — section headers |
+| `c.FontNumber(sz)` | JetBrainsMono-Bold — large telemetry values (gear, speed) |
+| `c.FontMono(sz)` | JetBrainsMono-Regular — smaller mono values (sector times) |
+| `c.HBar(x,y,w,h,pct,col)` | Left-aligned progress bar; pct clamped to [0,1] |
+| `c.HBarCentered(x,y,w,h,pct,col)` | Centre-origin bar; 0=full left, 0.5=neutral, 1=full right |
+| `c.FmtLap(t)` | Formats seconds as `M:SS.mmm` |
+| `c.FmtSector(t)` | Formats seconds as `SS.mmm` |
+| `c.FmtSpeed(ms)` | Converts m/s → km/h, returns integer string |
+
+**Design token colour constants** (accessible in all `widget_*.go` files):
+
+| Constant | Hex | Use |
+|---|---|---|
+| `colTextPri` | `#ffffff` | Primary text |
+| `colTextSec` | `#A1A1AA` | Secondary text |
+| `colTextMuted` | `#808080` | Labels, timestamps |
+| `colAccent` | `#ff906c` | Driver-owned actions, highlights |
+| `colTeal` | `#5af8fb` | Engineer-originated data, best lap |
+| `colSuccess` | `#34D399` | Personal bests, throttle bar |
+| `colDanger` | `#F87171` | Errors, brake bar, time loss |
+| `colWarning` | `#FBBF24` | Yellow flag, caution |
+| `colSurface` | `#141414` | Widget fill (container level) |
+| `colElevated` | `#1f1f1f` | Panel background (elevated level) |
+
+---
+
+
 
 Here's the mental model for a typical desktop feature:
 

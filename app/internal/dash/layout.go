@@ -7,32 +7,34 @@ package dash
 type WidgetType string
 
 const (
-	WidgetLapTime  WidgetType = "lap_time"
-	WidgetSector   WidgetType = "sector"
-	WidgetDelta    WidgetType = "delta"
-	WidgetSpeed    WidgetType = "speed"
-	WidgetGear     WidgetType = "gear"
-	WidgetRPMBar   WidgetType = "rpm_bar"
-	WidgetFuel     WidgetType = "fuel"
-	WidgetTyreTemp WidgetType = "tyre_temp"
+	WidgetLapTime    WidgetType = "lap_time"
+	WidgetSector     WidgetType = "sector"
+	WidgetDelta      WidgetType = "delta"
+	WidgetSpeed      WidgetType = "speed"
+	WidgetGear       WidgetType = "gear"
+	WidgetRPMBar     WidgetType = "rpm_bar"
+	WidgetFuel       WidgetType = "fuel"
+	WidgetTyreTemp   WidgetType = "tyre_temp"
+	WidgetInputTrace WidgetType = "input_trace"
 )
 
 // WidgetLabel is a human-readable display name for each widget type.
 var WidgetLabel = map[WidgetType]string{
-	WidgetLapTime:  "Lap Time",
-	WidgetSector:   "Sector",
-	WidgetDelta:    "Delta",
-	WidgetSpeed:    "Speed",
-	WidgetGear:     "Gear",
-	WidgetRPMBar:   "RPM Bar",
-	WidgetFuel:     "Fuel",
-	WidgetTyreTemp: "Tyre Temp",
+	WidgetLapTime:    "Lap Time",
+	WidgetSector:     "Sector",
+	WidgetDelta:      "Delta",
+	WidgetSpeed:      "Speed",
+	WidgetGear:       "Gear",
+	WidgetRPMBar:     "RPM Bar",
+	WidgetFuel:       "Fuel",
+	WidgetTyreTemp:   "Tyre Temp",
+	WidgetInputTrace: "Inputs",
 }
 
 // WidgetCategory groups widget types for the editor palette.
 var WidgetCategory = map[string][]WidgetType{
 	"Timing": {WidgetLapTime, WidgetSector, WidgetDelta},
-	"Car":    {WidgetSpeed, WidgetGear, WidgetRPMBar},
+	"Car":    {WidgetSpeed, WidgetGear, WidgetRPMBar, WidgetInputTrace},
 	"Race":   {WidgetFuel, WidgetTyreTemp},
 }
 

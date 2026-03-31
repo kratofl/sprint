@@ -10,17 +10,17 @@ export interface TelemetryProps {
   frame: TelemetryFrame | null
 }
 
-function fmt(ms: number | undefined): string {
-  if (!ms || ms <= 0) return '—:——.———'
-  const total = ms / 1000
-  const m = Math.floor(total / 60)
-  const s = (total % 60).toFixed(3).padStart(6, '0')
+// Go LapState sends times in seconds (float64).
+function fmt(sec: number | undefined): string {
+  if (!sec || sec <= 0) return '—:——.———'
+  const m = Math.floor(sec / 60)
+  const s = (sec % 60).toFixed(3).padStart(6, '0')
   return `${m}:${s}`
 }
 
-function fmtDelta(ms: number): string {
-  const s = (ms / 1000).toFixed(3)
-  return ms >= 0 ? `+${s}` : s
+function fmtDelta(sec: number): string {
+  const s = Math.abs(sec).toFixed(3)
+  return sec >= 0 ? `+${s}` : `-${s}`
 }
 
 export default function Telemetry({ frame }: TelemetryProps) {
@@ -61,7 +61,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
               <div className="text-right">
                 <span className="terminal-header block mb-1 text-[9px] text-[#808080]">T_Angular</span>
                 <span className="font-mono text-3xl font-bold leading-none text-[#ff906c]">
-                  {frame ? frame.car.rpm.toLocaleString() : '——'}
+                  {frame ? Math.round(frame.car.rpm).toLocaleString('en-US') : '——'}
                   <span className="text-[10px] text-[#808080]"> RPM</span>
                 </span>
               </div>
@@ -76,7 +76,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
 
           {/* RPM bar + inputs */}
           <div className="flex flex-col gap-4 flex-shrink-0">
-            <RPMBar rpm={frame?.car.rpm ?? 0} maxRpm={frame?.car.maxRPM ?? 10000} />
+            <RPMBar rpm={frame?.car.rpm ?? 0} maxRpm={frame?.car.maxRPM || 10000} />
             <div>
               <span className="terminal-header mb-2 block text-[9px] text-[#808080]">DRIVER_INPUTS</span>
               <InputTrace

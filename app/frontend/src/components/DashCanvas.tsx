@@ -62,7 +62,10 @@ export function DashCanvas({
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
+    // effectAllowed is set in dragstart; dropEffect must be compatible or the browser
+    // silently cancels the drop event (no onDrop fires). Widget moves use 'move';
+    // palette drops use 'copy'.
+    e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy'
   }
 
   const handleDrop = useCallback(

@@ -1,6 +1,6 @@
 //go:build windows
 
-package devices
+package vocore
 
 import (
 	"fmt"
@@ -46,9 +46,9 @@ const (
 	detailDataCbSizeScan     = 8
 )
 
-// ScanVoCoreScreens enumerates all USB devices and returns those whose device
-// path contains the VoCore VID (C872). Uses SetupDI (Windows, no CGO, no libusb).
-func ScanVoCoreScreens() ([]DetectedVoCoreScreen, error) {
+// scanScreensImpl enumerates all USB devices and returns those whose device path
+// contains the VoCore VID (C872). Uses SetupDI (Windows, no CGO, no libusb).
+func scanScreensImpl() ([]DetectedVoCoreScreen, error) {
 	vidHex := fmt.Sprintf("vid_%04x", voCoreVID)
 
 	r, _, err := procSetupDiGetClassDevsWDevices.Call(
@@ -57,7 +57,7 @@ func ScanVoCoreScreens() ([]DetectedVoCoreScreen, error) {
 		uintptr(digcfPresentScan|digcfDeviceInterfaceScan),
 	)
 	if r == 0 || syscall.Handle(r) == syscall.InvalidHandle {
-		return nil, fmt.Errorf("devices: SetupDiGetClassDevs: %w", err)
+		return nil, fmt.Errorf("vocore: SetupDiGetClassDevs: %w", err)
 	}
 	hDevInfo := r
 	defer procSetupDiDestroyDeviceInfoListDevices.Call(hDevInfo)

@@ -9,6 +9,7 @@ require (
 	github.com/kratofl/sprint/pkg v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.11.0
 	go.bug.st/serial v1.6.4
+	golang.org/x/image v0.12.0
 )
 
 replace github.com/kratofl/sprint/pkg => ../pkg
@@ -39,7 +40,6 @@ require (
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/image v0.12.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect

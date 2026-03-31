@@ -1,4 +1,4 @@
-package devices
+package vocore
 
 import (
 	"encoding/json"
@@ -28,11 +28,11 @@ func voCoreConfigPath() string {
 func SaveVoCoreConfig(cfg *VoCoreConfig) error {
 	path := voCoreConfigPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("devices: mkdir: %w", err)
+		return fmt.Errorf("vocore: mkdir: %w", err)
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return fmt.Errorf("devices: marshal VoCoreConfig: %w", err)
+		return fmt.Errorf("vocore: marshal VoCoreConfig: %w", err)
 	}
 	return os.WriteFile(path, data, 0644)
 }
@@ -46,11 +46,11 @@ func LoadVoCoreConfig() (*VoCoreConfig, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("devices: read screen config: %w", err)
+		return nil, fmt.Errorf("vocore: read screen config: %w", err)
 	}
 	var cfg VoCoreConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("devices: parse screen config: %w", err)
+		return nil, fmt.Errorf("vocore: parse screen config: %w", err)
 	}
 	return &cfg, nil
 }

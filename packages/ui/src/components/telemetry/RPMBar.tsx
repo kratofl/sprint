@@ -55,8 +55,8 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
       </div>
       {/* Numeric */}
       <div className="flex justify-between text-[10px] tabular-nums text-text-muted">
-        <span>{Math.round(rpm).toLocaleString()} rpm</span>
-        <span>{Math.round(maxRpm).toLocaleString()}</span>
+        <span>{Math.round(rpm).toLocaleString('en-US')} rpm</span>
+        <span>{Math.round(maxRpm).toLocaleString('en-US')}</span>
       </div>
     </div>
   )

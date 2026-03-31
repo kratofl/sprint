@@ -123,6 +123,15 @@ func openScreenImpl(vid, pid uint16, width, height int, logger *slog.Logger) (fr
 		logger:       logger,
 	}
 
+	// Clear any stale STALL/HALT condition on the bulk OUT endpoint (0x02).
+	// WinUsb_Initialize does NOT reset endpoint stall bits — they persist across
+	// software restarts as long as the device stays physically connected. Without
+	// this reset, the first WinUsbWritePipe call will fail if the pipe was stalled
+	// when the previous session exited, causing an infinite open→fail→retry loop.
+	// Physical unplug/replug clears stalls via USB re-enumeration; this covers the
+	// "already connected at startup" case without requiring a reconnect.
+	s.resetPipe(usbBulkEndpoint)
+
 	// Query the screen model to determine actual native dimensions.
 	// This uses non-standard USB requests (0xB5/0xB6/0xB7) that older firmware
 	// may not support. If the query fails or panics, we fall back to the
@@ -242,6 +251,10 @@ func (s *winusbSender) nativeSize() (int, int) {
 }
 
 func (s *winusbSender) close() {
+	// Reset the bulk OUT pipe before freeing the handle. This leaves the device
+	// endpoint in a clean state for the next open, regardless of how this session
+	// ends (normal exit, send error, ctx cancel, etc.).
+	s.resetPipe(usbBulkEndpoint)
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)
 	s.logger.Info("VoCore screen closed")

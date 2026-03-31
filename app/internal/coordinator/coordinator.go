@@ -11,7 +11,6 @@ import (
 	"github.com/kratofl/sprint/app/internal/dash"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/engineer"
-	"github.com/kratofl/sprint/app/internal/setup"
 	"github.com/kratofl/sprint/app/internal/sync"
 	"github.com/kratofl/sprint/app/internal/vocore"
 	"github.com/kratofl/sprint/app/internal/wheel"
@@ -32,7 +31,6 @@ type Coordinator struct {
 	vocore   *vocore.Renderer
 	wheel    *wheel.Detector
 	sync     *sync.Client
-	setup    *setup.Manager
 
 	emit EmitFn // Wails runtime event emitter; no-op until SetEmit is called
 
@@ -53,16 +51,11 @@ func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coo
 
 	// Load VoCore screen config from disk. Falls back to model registry only if
 	// no screen.json is present (backward compat with pre-alpha installs).
-	if cfg, err := devices.LoadVoCoreConfig(); err == nil && cfg != nil {
-		r.SetScreen(vocore.ScreenConfig{
-			VID:    cfg.VID,
-			PID:    cfg.PID,
-			Width:  cfg.Width,
-			Height: cfg.Height,
-		})
+	if cfg, err := vocore.LoadVoCoreConfig(); err == nil && cfg != nil {
+		r.SetScreen(*cfg)
 	} else if active := devs.GetActive(); active != nil {
 		if model := devices.FindModel(active.ModelID); model != nil && model.ScreenVID != 0 {
-			r.SetScreen(vocore.ScreenConfig{
+			r.SetScreen(vocore.VoCoreConfig{
 				VID:    model.ScreenVID,
 				PID:    model.ScreenPID,
 				Width:  model.ScreenWidth,
@@ -85,7 +78,6 @@ func New(logger *slog.Logger, devs *devices.Manager, dashMgr *dash.Manager) *Coo
 		vocore:   r,
 		wheel:    wheel.NewDetector(logger.With("component", "wheel")),
 		sync:     sync.NewClient(logger.With("component", "sync")),
-		setup:    setup.NewManager(),
 		emit:     func(string, ...any) {}, // safe no-op before Wails startup
 	}
 }
@@ -101,16 +93,11 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 // SetVoCoreConfig updates the VoCore screen configuration and reconfigures the
 // renderer. Safe to call after startup; the renderer will reconnect on the next
 // tick if the VID/PID changed.
-func (c *Coordinator) SetVoCoreConfig(cfg *devices.VoCoreConfig) {
+func (c *Coordinator) SetVoCoreConfig(cfg *vocore.VoCoreConfig) {
 	if cfg == nil {
 		return
 	}
-	c.vocore.SetScreen(vocore.ScreenConfig{
-		VID:    cfg.VID,
-		PID:    cfg.PID,
-		Width:  cfg.Width,
-		Height: cfg.Height,
-	})
+	c.vocore.SetScreen(*cfg)
 }
 
 // SetDashLayout updates the layout used by the VoCore renderer. Takes effect
@@ -133,7 +120,9 @@ func (c *Coordinator) Start(ctx context.Context) {
 
 	go c.engineer.Run(ctx)
 	go c.vocore.Run(ctx)
-	go c.wheel.Run(ctx, c.engineer)
+	go c.wheel.Run(ctx, func(evt *dto.EngineerEvent) {
+		c.engineer.Broadcast(evt)
+	})
 	go c.sync.Run(ctx)
 	go c.runTelemetryLoop(ctx)
 }
