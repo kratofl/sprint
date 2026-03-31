@@ -8,7 +8,7 @@ Visual design system for the Sprint sim racing telemetry platform.
 
 ## 1. Design Philosophy
 
-### Creative North Star: "The Kinetic Monolith"
+### Creative North Star: "Pitwall"
 
 The UI should feel like a telemetry dashboard mounted on a carbon-fibre chassis — engineered for speed, precision, and aggressive technical dominance. We move away from the soft aesthetics of modern SaaS and embrace the uncompromising rigidity of elite motorsport engineering.
 

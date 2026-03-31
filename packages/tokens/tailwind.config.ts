@@ -9,7 +9,7 @@ import { borders }                                   from './src/molecules/borde
 
 /**
  * Shared design tokens for the Sprint platform.
- * "Kinetic Monolith" aesthetic: HUD terminal look, Space Grotesk, solid outline borders,
+ * "Pitwall" aesthetic: HUD terminal look, Space Grotesk, solid outline borders,
  * orange primary (#ff906c) + cyan secondary (#5af8fb).
  */
 const tokens: Partial<Config> = {
