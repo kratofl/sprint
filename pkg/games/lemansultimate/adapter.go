@@ -280,8 +280,10 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 	rearCompound := nullString(t.MRearTireCompoundName[:])
 
 	// Flags.
-	anyLocalYellow := si.MSectorFlag[0] != 0 || si.MSectorFlag[1] != 0 || si.MSectorFlag[2] != 0
-	yellow := anyLocalYellow || s.MUnderYellow
+	// Yellow is only set for a full-course yellow (FCY) via MUnderYellow.
+	// Local sector flags (MSectorFlag != 0) fire very frequently in LMU during
+	// normal racing and are not surfaced here to avoid a permanent overlay.
+	yellow := s.MUnderYellow
 	safetyCar := si.MGamePhase == 6 // 6 = full course yellow / safety car
 
 	return &dto.TelemetryFrame{

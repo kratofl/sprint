@@ -146,7 +146,7 @@ func (dr *DashRenderer) renderDefaultLayout(frame *dto.TelemetryFrame) (image.Im
 	drawPanel(dc, 8, 6, w-16, hdrH, 8)
 
 	dr.face(dc, "SpaceGrotesk-Bold.ttf", 13)
-	dc.SetColor(colAccent)
+	dc.SetColor(colTextMuted)
 	dc.DrawStringAnchored("SPRINT", 24, 6+hdrH/2, 0, 0.5)
 
 	dr.face(dc, "SpaceGrotesk-Regular.ttf", 12)
@@ -444,23 +444,15 @@ func (dr *DashRenderer) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFra
 
 // ── drawing helpers ──────────────────────────────────────────────────────────
 
-// ensureBg pre-renders the static background (bg fill + orange glow) into bgImg
-// once per renderer lifetime. Subsequent frames blit this image instead of
-// re-running 80+ ellipse draw calls.
+// ensureBg pre-renders the static background into bgImg once per renderer
+// lifetime. Subsequent frames blit this image instead of clearing manually.
 func (dr *DashRenderer) ensureBg() {
 	if dr.bgImg != nil {
 		return
 	}
-	w := float64(dr.width)
 	tmp := gg.NewContext(dr.width, dr.height)
 	tmp.SetColor(colBg)
 	tmp.Clear()
-	for i := 0; i < 80; i++ {
-		a := 0.035 * (1.0 - float64(i)/80.0)
-		tmp.SetRGBA255(int(colAccent.R), int(colAccent.G), int(colAccent.B), int(a*255))
-		tmp.DrawEllipse(w/2, 0, w*0.5-float64(i)*2, 80-float64(i))
-		tmp.Fill()
-	}
 	src := tmp.Image().(*image.RGBA)
 	dr.bgImg = image.NewRGBA(src.Rect)
 	copy(dr.bgImg.Pix, src.Pix)
