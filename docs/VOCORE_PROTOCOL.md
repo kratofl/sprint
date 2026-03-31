@@ -168,19 +168,19 @@ rgb565 := (r << 11) | (g << 5) | b
 coordinator.fanOut()
     │
     ▼
-renderer.OnFrame(frame)              ← atomic store (non-blocking)
+driver.OnFrame(frame)                ← atomic store (non-blocking)
     │                                   never blocks the telemetry loop
     ▼
-renderer.renderLoop()                ← runs in its own goroutine at 30fps
+driver.driveLoop()                   ← runs in its own goroutine at 30fps
     │
-    ├─ DashRenderer.RenderFrame()    ← Go 2D graphics (fogleman/gg)
+    ├─ painter.Paint(frame)          ← Go 2D graphics (fogleman/gg)
     │      produces image.Image         uses Space Grotesk + JetBrains Mono (embedded TTF)
     │      (800×480, RGBA)              draws RPM, gear, speed, temps, etc.
     │
     ├─ imageToRGB565(img, buf)       ← converts RGBA → RGB565 in-place
     │      800×480×2 = 768,000 bytes    zero allocation (reuses pre-allocated buffer)
     │
-    └─ sender.send(buf)             ← USB transfer
+    └─ transport.send(buf)          ← USB transfer
            │
            ├─ Control: 0xB0 + draw command (6 bytes)
            └─ Bulk OUT: endpoint 0x02 (768,000 bytes)
@@ -190,7 +190,7 @@ renderer.renderLoop()                ← runs in its own goroutine at 30fps
 
 | Step | Approx. time |
 |---|---|
-| RenderFrame (gg drawing) | ~2–5 ms |
+| `painter.Paint()` (gg drawing) | ~2–5 ms |
 | RGBA → RGB565 conversion | ~1 ms |
 | USB control transfer | <1 ms |
 | USB bulk transfer (768 KB) | ~2–5 ms (USB 2.0 HS) |
@@ -201,9 +201,8 @@ renderer.renderLoop()                ← runs in its own goroutine at 30fps
 
 | Platform | Implementation | File |
 |---|---|---|
-| **Windows** | WinUSB via gousb/libusb | `sender_windows.go` |
-| **Linux** | libusb via gousb (CGO) | `sender_usb.go` |
-| **macOS** | Stub (returns error) | `sender_stub.go` |
+| **Windows** | Native WinUSB (no CGO) | `vocore/usb.go` |
+| Linux / macOS | Not yet implemented | — |
 
 On Windows, the VoCore screen needs the **WinUSB driver**. Newer VoCore
 firmware (≥v0.24) has WCID support and installs it automatically. For
