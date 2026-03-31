@@ -195,10 +195,12 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
     ├── wails.json
     ├── internal/                    ← app-private packages
     │   ├── coordinator/             ← wires all services; no business logic
-    │   ├── devices/                 ← wheel device detection, serial port management
-    │   ├── vocore/                  ← PNG renderer + USB serial sender to wheel screen
+    │   ├── devices/                 ← wheel device detection, screen config
+    │   ├── render/                  ← dashboard image painter (Painter, widgets)
+    │   ├── vocore/                  ← VoCore USB screen driver (Driver, WinUSB)
     │   ├── engineer/                ← WebSocket server for LAN engineers
     │   ├── wheel/                   ← button detector, valid-lap finder
+    │   ├── dash/                    ← layout types and manager
     │   ├── logger/                  ← structured logging setup
     │   ├── sync/                    ← sync client (API server ↕)
     │   └── setup/                   ← local setup file manager

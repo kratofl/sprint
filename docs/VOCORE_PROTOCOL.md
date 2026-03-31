@@ -229,27 +229,18 @@ These entries are used for automatic screen detection when no saved config exist
 ```
 
 The **coordinator** reads the active device from the registry and passes
-`ScreenVID`/`ScreenPID`/`Width`/`Height` to `vocore.Renderer.SetScreen()`.
+`ScreenVID`/`ScreenPID`/`Width`/`Height` to `vocore.Driver.SetScreen()`.
 
-**Package ownership** — all VoCore-specific code lives inside `app/internal/vocore/`:
+**Package ownership:**
 
-| File | Responsibility |
-|---|---|
-| `config.go` | `VoCoreConfig`, `SaveVoCoreConfig`, `LoadVoCoreConfig` — screen config persistence |
-| `screen_scan.go` | `DetectedVoCoreScreen`, PID→dimension table, `ScanScreens()` |
-| `screen_scan_windows.go` | Windows SetupDI USB enumeration (no CGO) |
-| `screen_scan_usb.go` | Linux gousb/libusb USB enumeration (CGO) |
-| `screen_scan_stub.go` | Fallback stub for unsupported platforms |
-| `renderer.go` | `Renderer` struct, render loop, double-buffer pipeline |
-| `render.go` | `DashRenderer`, color tokens, drawing helpers, `renderDefaultLayout` |
-| `widget.go` | `WidgetCtx` toolkit, widget registry, font/bar/formatter helpers |
-| `widget_*.go` | One file per widget type — each registers itself via `init()` |
-| `sender_windows.go` | WinUSB bulk transfer implementation |
-| `sender_usb.go` | gousb bulk transfer implementation |
-| `sender_stub.go` | Stub for unsupported platforms |
-
-The `devices` package owns only **wheel serial-port** concerns: `WheelModel`, `DeviceConfig`,
-`Manager`, `ListPorts`. VoCore screen code has no place there.
+| Package | File(s) | Responsibility |
+|---|---|---|
+| `app/internal/devices` | `screen.go`, `scan_windows.go` | `ScreenConfig`, `DetectedScreen`, `ScanScreens()`, PID→dimensions table |
+| `app/internal/devices` | `registry.go`, `manager.go` | Wheel model registry, serial port manager |
+| `app/internal/render` | `painter.go` | `Painter`, color tokens, drawing helpers, `Paint()` |
+| `app/internal/render` | `widget.go`, `widget_*.go` | `WidgetCtx` toolkit, widget registry, one file per widget |
+| `app/internal/vocore` | `driver.go` | `Driver`, render-and-send loop, double-buffer pipeline |
+| `app/internal/vocore` | `usb.go` | WinUSB bulk transfer, `screenTransport`, RGB565 conversion |
 
 ### Auto-Reconnect
 
@@ -281,5 +272,5 @@ The code **only** communicates with VID `0xC872` / PID `0x1004`.
 
 1. Find the screen's VID/PID (Device Manager on Windows, `lsusb` on Linux)
 2. Add an entry to `KnownModels` in `devices/registry.go` with `ScreenVID`/`ScreenPID`/`ScreenWidth`/`ScreenHeight`
-3. Optionally add the PID to `voCorePIDDimensions` in `vocore/screen_scan.go` if the screen has non-standard dimensions
+3. Optionally add the PID to `mproModelDimensions` in `vocore/usb.go` if the screen has non-standard dimensions
 4. No code changes needed elsewhere — the renderer auto-adapts to any resolution

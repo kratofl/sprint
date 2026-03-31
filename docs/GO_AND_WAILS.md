@@ -124,10 +124,13 @@ app/
 ├── wails.json      ← Wails config (app name, window size, frontend build cmd)
 └── internal/       ← Go packages NOT visible to outside modules
     ├── coordinator/    ← wires services together
-    ├── vocore/         ← USB serial sender to steering wheel screen
+    ├── render/         ← dashboard image painting (Painter, widgets)
+    ├── vocore/         ← VoCore USB screen driver (Driver, WinUSB transport)
+    ├── devices/        ← USB device detection, screen config
     ├── engineer/       ← WebSocket server for remote engineers
     ├── wheel/          ← button detection, valid-lap logic
     ├── sync/           ← sync client to the API server
+    ├── dash/           ← layout types and manager
     └── setup/          ← local setup file manager
 └── frontend/       ← the React app (built by vite, served by Wails)
     ├── src/

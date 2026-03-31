@@ -39,10 +39,12 @@ The coordinator (`internal/coordinator/`) wires all subsystems:
 
 ## Internal Package Conventions
 
-- `internal/vocore/` — PNG renderer + USB serial sender
+- `internal/render/` — dashboard image painter (`Painter`, widget registry, all widget implementations)
+- `internal/vocore/` — VoCore USB screen driver (`Driver`, WinUSB transport, RGB565 conversion)
+- `internal/devices/` — USB device detection, screen config, serial port management
 - `internal/engineer/` — WebSocket server for LAN race engineers
 - `internal/wheel/` — button detector, valid-lap finder
-- `internal/devices/` — serial port detection and device config
+- `internal/dash/` — layout types and manager
 - `internal/setup/` — local car/track setup file manager
 - `internal/sync/` — API server sync client
 - `internal/logger/` — structured logging via `slog`

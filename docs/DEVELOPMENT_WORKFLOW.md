@@ -235,29 +235,29 @@ var widgetCategories = map[WidgetType]string{
 }
 ```
 
-### Step 2 — `app/internal/vocore/widget_my_thing.go`
+### Step 2 — `app/internal/render/widget_my_thing.go`
 
 Create a new file. Register the renderer via `init()`. Use `WidgetCtx` helpers:
 
 ```go
-package vocore
+package render
 
 import "github.com/kratofl/sprint/app/internal/dash"
 
-func init() { registerWidget(dash.WidgetMyThing, drawMyThing) }
+func init() { RegisterWidget(dash.WidgetMyThing, drawMyThing) }
 
 func drawMyThing(c WidgetCtx) {
     c.Panel()                              // standard elevated panel background
 
     c.FontNumber(c.H * 0.5)               // JetBrainsMono-Bold, scaled to widget height
-    c.DC.SetColor(colTextPri)
+    c.DC.SetColor(ColTextPri)
     c.DC.DrawStringAnchored(
         c.FmtSpeed(float64(c.Frame.Car.SpeedMS)),
         c.CX(), c.CY(), 0.5, 0.5,
     )
 
     c.FontLabel(c.H * 0.15)              // SpaceGrotesk-Regular for labels
-    c.DC.SetColor(colTextMuted)
+    c.DC.SetColor(ColTextMuted)
     c.DC.DrawString("MY LABEL", c.X+10, c.Y+c.H*0.85)
 }
 ```
@@ -281,20 +281,20 @@ That's it. No other files need to change.
 | `c.FmtSector(t)` | Formats seconds as `SS.mmm` |
 | `c.FmtSpeed(ms)` | Converts m/s → km/h, returns integer string |
 
-**Design token colour constants** (accessible in all `widget_*.go` files):
+**Design token colour constants** (accessible in all `widget_*.go` files in `package render`):
 
 | Constant | Hex | Use |
 |---|---|---|
-| `colTextPri` | `#ffffff` | Primary text |
-| `colTextSec` | `#A1A1AA` | Secondary text |
-| `colTextMuted` | `#808080` | Labels, timestamps |
-| `colAccent` | `#ff906c` | Driver-owned actions, highlights |
-| `colTeal` | `#5af8fb` | Engineer-originated data, best lap |
-| `colSuccess` | `#34D399` | Personal bests, throttle bar |
-| `colDanger` | `#F87171` | Errors, brake bar, time loss |
-| `colWarning` | `#FBBF24` | Yellow flag, caution |
-| `colSurface` | `#141414` | Widget fill (container level) |
-| `colElevated` | `#1f1f1f` | Panel background (elevated level) |
+| `ColTextPri` | `#ffffff` | Primary text |
+| `ColTextSec` | `#A1A1AA` | Secondary text |
+| `ColTextMuted` | `#808080` | Labels, timestamps |
+| `ColAccent` | `#ff906c` | Driver-owned actions, highlights |
+| `ColTeal` | `#5af8fb` | Engineer-originated data, best lap |
+| `ColSuccess` | `#34D399` | Personal bests, throttle bar |
+| `ColDanger` | `#F87171` | Errors, brake bar, time loss |
+| `ColWarning` | `#FBBF24` | Yellow flag, caution |
+| `ColSurface` | `#141414` | Widget fill (container level) |
+| `ColElevated` | `#1f1f1f` | Panel background (elevated level) |
 
 ---
 

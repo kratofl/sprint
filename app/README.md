@@ -20,9 +20,12 @@ app/
 ├── wails.json              ← Wails config
 ├── internal/
 │   ├── coordinator/        ← Wires all services together
-│   ├── vocore/             ← PNG renderer + USB serial sender
+│   ├── render/             ← Dashboard image painter (Painter, widgets)
+│   ├── vocore/             ← VoCore USB screen driver (Driver, WinUSB)
+│   ├── devices/            ← USB device detection, screen config
 │   ├── engineer/           ← WebSocket hub for LAN engineers
 │   ├── wheel/              ← Button detector + valid lap finder
+│   ├── dash/               ← Layout types and manager
 │   ├── sync/               ← API server sync client
 │   └── setup/              ← Local setup file manager
 └── frontend/               ← React/TS frontend (Vite)
