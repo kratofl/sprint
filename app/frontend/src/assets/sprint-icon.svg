@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32" fill="none" role="img" aria-label="Sprint">
+  <!-- Teal baseline -->
+  <line x1="0" y1="28" x2="48" y2="28" stroke="#1EA58C" stroke-width="2" stroke-linecap="square"/>
+  <!-- Orange forward-leaning spike: rise x4→19 (steep), fall x19→42 (gradual) -->
+  <polygon points="4,28 19,4 42,28" fill="#EF8118"/>
+</svg>

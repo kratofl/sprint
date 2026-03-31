@@ -38,7 +38,7 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
     <div className={cn('flex items-center justify-between gap-4', className)} {...props}>
       {/* Left: track + car */}
       <div className="flex min-w-0 flex-col">
-        <span className="truncate text-base font-semibold text-text-primary">
+        <span className="truncate font-display text-base font-semibold text-text-primary">
           {session.track || 'No Track'}
         </span>
         <span className="truncate text-xs text-text-muted">{session.car || '—'}</span>

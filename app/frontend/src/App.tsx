@@ -5,66 +5,57 @@ import Setups from '@/views/Setups'
 import EngineerStatus from '@/views/EngineerStatus'
 import Devices from '@/views/Devices'
 import { useTelemetry } from '@/hooks/useTelemetry'
-import { Button, Badge, cn } from '@sprint/ui'
+import { Badge, NavRail, NavRailItem, cn } from '@sprint/ui'
+import {
+  IconGauge,
+  IconLayout,
+  IconAdjustmentsHorizontal,
+  IconHeadset,
+  IconUsb,
+} from '@tabler/icons-react'
 
 type View = 'telemetry' | 'dash' | 'setups' | 'engineer' | 'devices'
 
-const NAV: { id: View; label: string }[] = [
-  { id: 'telemetry', label: 'Telemetry' },
-  { id: 'dash',      label: 'Dash Editor' },
-  { id: 'setups',    label: 'Setups' },
-  { id: 'engineer',  label: 'Engineer' },
-  { id: 'devices',   label: 'Devices' },
+const NAV: NavRailItem[] = [
+  { id: 'telemetry', label: 'Telemetry',   icon: IconGauge },
+  { id: 'dash',      label: 'Dash Editor', icon: IconLayout },
+  { id: 'setups',    label: 'Setups',      icon: IconAdjustmentsHorizontal },
+  { id: 'engineer',  label: 'Engineer',    icon: IconHeadset },
+  { id: 'devices',   label: 'Devices',     icon: IconUsb },
 ]
 
 export default function App() {
   const [view, setView] = useState<View>('telemetry')
   const { frame, connected, fps } = useTelemetry()
 
+  const connectionFooter = (
+    <Badge
+      variant="outline"
+      className={cn(
+        'w-full justify-start gap-1.5 rounded-md px-2',
+        connected
+          ? 'border-teal/30 bg-teal/10 text-teal'
+          : 'border-border-base text-text-disabled',
+      )}
+    >
+      <span
+        className={cn(
+          'h-1.5 w-1.5 shrink-0 rounded-full',
+          connected ? 'bg-teal animate-pulse' : 'bg-text-disabled',
+        )}
+      />
+      {connected ? 'Live' : 'Offline'}
+    </Badge>
+  )
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#080809] text-text-primary font-sans">
-      {/* Sidebar */}
-      <aside className="flex w-52 flex-col border-r border-border-glass bg-bg-surface backdrop-blur-glass">
-        {/* App title */}
-        <div className="flex h-14 items-center px-5 [app-region:drag]">
-          <span className="text-sm font-semibold tracking-widest text-accent">SPRINT</span>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-2">
-          {NAV.map(({ id, label }) => (
-            <Button
-              key={id}
-              variant="ghost"
-              onClick={() => setView(id)}
-              className={cn(
-                'flex w-full items-center justify-start rounded-md px-3 py-2 text-sm transition-colors',
-                view === id
-                  ? 'bg-accent/10 text-accent font-medium hover:bg-accent/10 hover:text-accent'
-                  : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
-              )}
-            >
-              {label}
-            </Button>
-          ))}
-        </nav>
-
-        {/* Live connection indicator */}
-        <div className="px-4 py-4">
-          <Badge
-            className={cn(
-              connected
-                ? 'bg-teal/15 text-teal border border-teal/30'
-                : 'bg-transparent text-text-muted border-border-glass',
-            )}
-          >
-            {connected && (
-              <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-teal animate-pulse inline-block" />
-            )}
-            {connected ? 'Live' : 'Not connected'}
-          </Badge>
-        </div>
-      </aside>
+    <div className="flex h-screen w-screen overflow-hidden bg-bg-base text-text-primary font-sans">
+      <NavRail
+        items={NAV}
+        activeId={view}
+        onSelect={(id) => setView(id as View)}
+        footer={connectionFooter}
+      />
 
       {/* Main content */}
       <main className="flex flex-1 flex-col overflow-hidden">

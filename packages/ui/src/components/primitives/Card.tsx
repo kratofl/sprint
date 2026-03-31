@@ -2,7 +2,12 @@ import * as React from "react"
 
 import { cn } from "../../lib/utils"
 
-export type CardProps = React.ComponentProps<"div"> & { size?: "default" | "sm" }
+export type CardVariant = "default" | "accent" | "teal"
+export type CardProps = React.ComponentProps<"div"> & {
+  size?: "default" | "sm"
+  /** `accent`: orange-tinted border — active session, highlighted item */
+  variant?: CardVariant
+}
 export type CardHeaderProps = React.ComponentProps<"div">
 export type CardTitleProps = React.ComponentProps<"div">
 export type CardDescriptionProps = React.ComponentProps<"div">
@@ -13,14 +18,23 @@ export type CardFooterProps = React.ComponentProps<"div">
 function Card({
   className,
   size = "default",
+  variant = "default",
   ...props
 }: CardProps) {
   return (
     <div
       data-slot="card"
       data-size={size}
+      data-variant={variant}
       className={cn(
-        "group/card flex flex-col gap-4 overflow-hidden rounded-lg bg-card py-4 text-xs/relaxed text-card-foreground ring-1 ring-foreground/10 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
+        // Base: border is the primary depth signal
+        "group/card flex flex-col gap-4 overflow-hidden rounded bg-bg-surface text-xs/relaxed text-foreground py-4",
+        "border border-border-base",
+        "has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3",
+        "*:[img:first-child]:rounded-t *:[img:last-child]:rounded-b",
+        // Variant borders
+        variant === "accent" && "border-accent-border",
+        variant === "teal"   && "border-teal-border",
         className
       )}
       {...props}
@@ -33,7 +47,7 @@ function CardHeader({ className, ...props }: CardHeaderProps) {
     <div
       data-slot="card-header"
       className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-lg px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
         className
       )}
       {...props}
@@ -89,7 +103,7 @@ function CardFooter({ className, ...props }: CardFooterProps) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b-lg px-4 group-data-[size=sm]/card:px-3 [.border-t]:pt-4 group-data-[size=sm]/card:[.border-t]:pt-3",
+        "flex items-center rounded-b px-4 group-data-[size=sm]/card:px-3 [.border-t]:pt-4 group-data-[size=sm]/card:[.border-t]:pt-3",
         className
       )}
       {...props}

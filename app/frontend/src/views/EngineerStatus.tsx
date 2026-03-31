@@ -12,7 +12,7 @@ export default function EngineerStatus() {
             variant="outline"
             className={connected
               ? 'border-teal/30 bg-teal/15 text-teal'
-              : 'border-border-glass bg-bg-elevated text-text-muted'}
+              : 'border-border-base bg-bg-elevated text-text-muted'}
           >
             {connected ? 'Engineer Online' : 'No Engineer'}
           </Badge>
@@ -20,7 +20,7 @@ export default function EngineerStatus() {
 
       {/* Connection info */}
       <Card>
-        <CardHeader className="border-b border-border-glass">
+        <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Connection</CardTitle>
         </CardHeader>
         <Separator className="bg-border-glass" />
@@ -40,7 +40,7 @@ export default function EngineerStatus() {
 
       {/* Target lap */}
       <Card>
-        <CardHeader className="border-b border-border-glass">
+        <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Delta Target</CardTitle>
         </CardHeader>
         <Separator className="bg-border-glass" />
@@ -59,7 +59,7 @@ export default function EngineerStatus() {
 
       {/* Message log */}
       <Card className="flex-1">
-        <CardHeader className="border-b border-border-glass">
+        <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Engineer Messages</CardTitle>
         </CardHeader>
         <Separator className="bg-border-glass" />

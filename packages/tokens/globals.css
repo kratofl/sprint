@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+/* ── Fonts ────────────────────────────────────────────────────────────────── */
+/* Barlow Condensed: primary UI font — condensed, technical, racing data feel */
+/* JetBrains Mono:  all numbers, telemetry values, monospaced content         */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,60 +9,66 @@
 
 /* ── CSS variables ───────────────────────────────────────────────────────── */
 :root {
-  --accent:         #EF8118;
-  --accent-hover:   #F59332;
-  --teal:           #1EA58C;
-  --teal-hover:     #25C4A8;
-  --bg-base:        #080809;
+  /* Accent — orange (driver-owned / primary) */
+  --accent:        #EF8118;
+  --accent-hover:  #FB923C;
+  --accent-dark:   #D96A10;
+
+  /* Teal (engineer-originated / secondary) */
+  --teal:          #1EA58C;
+  --teal-hover:    #25C4A8;
+  --teal-dark:     #15847A;
+
+  /* Surfaces — solid, no transparency */
+  --bg-base:       #09090B;
+  --bg-surface:    #111114;
+  --bg-elevated:   #191920;
+  --bg-subtle:     #1E1E23;
+
+  /* Borders — the primary structural element */
+  --border-muted:  #1C1C21;
+  --border-base:   #26262B;
+  --border-strong: #3A3A42;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 body {
   background-color: var(--bg-base);
-  background-image: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(239, 129, 24, 0.06),
-    transparent 70%
-  );
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Glass utility classes ───────────────────────────────────────────────── */
+/* ── Surface utility classes ─────────────────────────────────────────────── */
+/*
+ * Flat solid surfaces — depth comes from color difference + borders.
+ * No blur, no transparency, no decorative shadows.
+ */
 @layer utilities {
-  .glass {
-    background: rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  /* Base surface — cards, panels, sidebar */
+  .surface {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-base);
   }
 
-  .glass-elevated {
-    background: rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.10),
-      0 4px 16px rgba(0, 0, 0, 0.4);
+  /* Elevated — dropdowns, popovers, select menus */
+  .surface-elevated {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-base);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
 
-  .glass-overlay {
-    background: rgba(255, 255, 255, 0.10);
-    backdrop-filter: blur(32px);
-    -webkit-backdrop-filter: blur(32px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      0 8px 32px rgba(0, 0, 0, 0.5);
+  /* Overlay — modals, sheets, command palette */
+  .surface-overlay {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   }
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+::-webkit-scrollbar         { width: 4px; height: 4px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }

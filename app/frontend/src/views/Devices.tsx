@@ -146,7 +146,7 @@ function DeviceCard({
 
   return (
     <Card>
-      <CardHeader className="border-b border-border-glass">
+      <CardHeader className="border-b border-border-base">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CardTitle className="text-sm font-medium text-text-primary">

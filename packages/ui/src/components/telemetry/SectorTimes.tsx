@@ -32,7 +32,7 @@ const STATE_CLASS: Record<SectorState, string> = {
   faster:   'text-teal',
   slower:   'text-accent',
   inactive: 'text-text-disabled',
-  active:   'text-text-primary animate-pulse',
+  active:   'text-text-primary',
 }
 
 interface SectorCellProps {
@@ -79,9 +79,9 @@ export function SectorTimes({
   return (
     <div className={cn('flex justify-around', className)} {...props}>
       <SectorCell label="S1" time={currentSector === 1 ? currentSectorTime : sector1Time} state={s1State} />
-      <div className="w-px self-stretch bg-border-glass" />
+      <div className="w-px self-stretch bg-border-base" />
       <SectorCell label="S2" time={currentSector === 2 ? currentSectorTime : sector2Time} state={s2State} />
-      <div className="w-px self-stretch bg-border-glass" />
+      <div className="w-px self-stretch bg-border-base" />
       <SectorCell label="S3" time={currentSector === 3 ? currentSectorTime : 0} state={s3State} />
     </div>
   )

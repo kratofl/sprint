@@ -22,12 +22,18 @@ const TEMP_COLD  = 70
 const TEMP_IDEAL = 90
 const TEMP_HOT   = 110
 
-/** Returns a Tailwind colour class based on temperature. */
-function tempColour(temp: number): string {
-  if (temp < TEMP_COLD)  return 'bg-blue-400'
-  if (temp < TEMP_IDEAL) return 'bg-teal'
-  if (temp < TEMP_HOT)   return 'bg-accent'
-  return 'bg-red-500'
+/** Returns a warm-gradient style based on temperature */
+function tempGradient(temp: number): string {
+  if (temp < TEMP_COLD)  return 'linear-gradient(180deg, #60A5FA 0%, #3B82F6 100%)'
+  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, #25C4A8 0%, #1EA58C 100%)'
+  if (temp < TEMP_HOT)   return 'linear-gradient(180deg, #F5922A 0%, #EF8118 100%)'
+  return 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)'
+}
+
+function wearGradient(wear: number): string {
+  if (wear > 80) return 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
+  if (wear > 50) return 'linear-gradient(90deg, #D96A10 0%, #F5922A 100%)'
+  return 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 100%)'
 }
 
 function TireCell({ data, label }: { data: TireData; label: string }) {
@@ -35,32 +41,33 @@ function TireCell({ data, label }: { data: TireData; label: string }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] text-text-muted font-medium uppercase tracking-wider">{label}</span>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</span>
 
       {/* Three-zone temp strip */}
-      <div className="flex gap-0.5 h-10">
+      <div className="flex h-10 gap-0.5">
         {[data.tempOuter, data.tempMiddle, data.tempInner].map((t, i) => (
           <div
             key={i}
-            className={cn('w-3 rounded-sm opacity-80 transition-colors duration-300', tempColour(t))}
+            className="w-3 rounded-sm transition-colors duration-300"
+            style={{ background: tempGradient(t) }}
             title={`${t.toFixed(0)}°C`}
           />
         ))}
       </div>
 
       {/* Avg temp */}
-      <span className="text-xs font-mono tabular-nums text-text-secondary">
+      <span className="font-mono text-xs tabular-nums text-text-secondary">
         {avgTemp.toFixed(0)}°
       </span>
 
       {/* Wear */}
-      <div className="w-full bg-bg-surface rounded-full h-1 overflow-hidden">
+      <div className="h-1 w-full overflow-hidden rounded-full bg-bg-surface">
         <div
-          className={cn(
-            'h-full rounded-full transition-all duration-300',
-            data.wearPercent > 80 ? 'bg-red-500' : data.wearPercent > 50 ? 'bg-accent' : 'bg-teal',
-          )}
-          style={{ width: `${Math.min(100, data.wearPercent)}%` }}
+          className="h-full rounded-full transition-all duration-300"
+          style={{
+            width: `${Math.min(100, data.wearPercent)}%`,
+            background: wearGradient(data.wearPercent),
+          }}
         />
       </div>
     </div>

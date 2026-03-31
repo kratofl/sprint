@@ -1,11 +1,12 @@
 {
   "name": "@sprint/tokens",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     "./tailwind": "./tailwind.config.ts",
-    "./globals.css": "./globals.css"
+    "./globals.css": "./globals.css",
+    "./src": "./src/index.ts"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17"

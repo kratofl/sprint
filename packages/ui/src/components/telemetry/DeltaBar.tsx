@@ -29,17 +29,18 @@ export function DeltaBar({ delta, maxDelta = 2.0, className, ...props }: DeltaBa
       {/* Bar track */}
       <div className="relative h-2 w-full rounded-full bg-bg-surface overflow-hidden">
         {/* Centre line */}
-        <div className="absolute left-1/2 top-0 h-full w-px bg-border-glass -translate-x-px" />
+        <div className="absolute left-1/2 top-0 h-full w-px bg-border-base -translate-x-px" />
         {/* Fill */}
         {clamped !== 0 && (
           <div
-            className={cn(
-              'absolute top-0 h-full transition-all duration-100',
-              isFaster
-                ? 'right-1/2 bg-teal'
-                : 'left-1/2 bg-accent',
-            )}
-            style={{ width: `${pct}%` }}
+            className="absolute top-0 h-full rounded-full transition-all duration-100"
+            style={{
+              ...(isFaster
+                ? { right: '50%', background: 'linear-gradient(270deg, #25C4A8 0%, #15847A 100%)' }
+                : { left:  '50%', background: 'linear-gradient(90deg, #F5922A 0%, #D96A10 100%)' }
+              ),
+              width: `${pct}%`,
+            }}
           />
         )}
       </div>

@@ -8,7 +8,7 @@ export default function Setups() {
             Manage and share car setups across sessions.
           </p>
         </div>
-        <button className="rounded-md border border-border-glass px-3 py-1.5 text-xs text-text-secondary hover:border-accent hover:text-accent transition-colors">
+        <button className="rounded-md border border-border-base px-3 py-1.5 text-xs text-text-secondary hover:border-accent hover:text-accent transition-colors">
           + Upload Setup
         </button>
       </div>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Nav from '@/components/nav'
+import WebNavRail from '@/components/WebNavRail'
 
 export const metadata: Metadata = {
   title: 'Sprint',
@@ -14,9 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#080809] text-text-primary font-sans antialiased">
-        <Nav />
-        <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      <body className="flex h-screen overflow-hidden bg-bg-base text-text-primary font-sans antialiased">
+        <WebNavRail />
+        <main className="flex-1 overflow-y-auto px-6 py-6">
           {children}
         </main>
       </body>

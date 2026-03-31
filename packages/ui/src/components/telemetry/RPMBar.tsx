@@ -27,37 +27,30 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
   const fraction = Math.max(0, Math.min(1, rpm / safeMax))
   const pct = fraction * 100
 
-  // Determine colour based on thresholds
   const warnThreshold = 0.85
   const redThreshold  = shiftPoint
-
-  let barColor: string
-  if (fraction >= redThreshold) {
-    barColor = 'bg-red-500'
-  } else if (fraction >= warnThreshold) {
-    barColor = 'bg-accent'
-  } else {
-    barColor = 'bg-teal'
-  }
 
   return (
     <div className={cn('flex flex-col gap-1', className)} {...props}>
       {/* Track */}
-      <div className="relative h-3 w-full overflow-hidden rounded-full bg-bg-elevated">
+      <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-bg-elevated">
         {/* Warn zone marker */}
         <div
-          className="absolute top-0 h-full w-px bg-accent/30"
+          className="absolute top-0 h-full w-px bg-accent/25"
           style={{ left: `${warnThreshold * 100}%` }}
         />
-        {/* Red zone marker */}
+        {/* Redline marker */}
         <div
-          className="absolute top-0 h-full w-px bg-red-500/40"
+          className="absolute top-0 h-full w-px bg-red-500/30"
           style={{ left: `${redThreshold * 100}%` }}
         />
-        {/* Fill */}
+        {/* Gradient fill — single gradient covers all zones, reveals with width */}
         <div
-          className={cn('absolute left-0 top-0 h-full rounded-full transition-[width] duration-75', barColor)}
-          style={{ width: `${pct}%` }}
+          className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-75"
+          style={{
+            width: `${pct}%`,
+            background: 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 62%, #EF8118 80%, #F5922A 88%, #DC2626 96%)',
+          }}
         />
       </div>
       {/* Numeric */}

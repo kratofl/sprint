@@ -14,6 +14,7 @@
     "@sprint/tokens": "workspace:*",
     "@sprint/types": "workspace:*",
     "@sprint/ui": "workspace:*",
+    "@tabler/icons-react": "^3.40.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -25,7 +25,7 @@ export default function DashEditor() {
 
         {/* Widget panel */}
         <Card className="w-56 flex-shrink-0">
-          <CardHeader className="border-b border-border-glass">
+          <CardHeader className="border-b border-border-base">
             <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
               Widgets
             </CardTitle>

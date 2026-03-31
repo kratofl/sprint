@@ -26,7 +26,7 @@ export function GearDisplay({ gear, speedKph, className, ...props }: GearDisplay
     <div className={cn('flex flex-col items-center', className)} {...props}>
       <span
         className={cn(
-          'font-mono font-bold leading-none tabular-nums text-accent',
+          'font-display font-bold leading-none tabular-nums text-accent',
           'text-[5rem]',
         )}
       >

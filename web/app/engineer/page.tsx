@@ -8,7 +8,7 @@ export default function Engineer() {
             Connect to a live session to view telemetry and send commands.
           </p>
         </div>
-        <span className="rounded-full bg-bg-elevated px-3 py-1 text-xs text-text-muted border border-border-glass">
+        <span className="rounded-full bg-bg-elevated px-3 py-1 text-xs text-text-muted border border-border-base">
           Disconnected
         </span>
       </div>
@@ -18,7 +18,7 @@ export default function Engineer() {
           <input
             type="text"
             placeholder="Session code…"
-            className="rounded-md bg-bg-elevated border border-border-glass px-4 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-teal transition-colors w-64"
+            className="rounded-md bg-bg-elevated border border-border-base px-4 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-teal transition-colors w-64"
           />
         </div>
       </div>

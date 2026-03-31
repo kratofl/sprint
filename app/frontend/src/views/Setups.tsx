@@ -92,9 +92,9 @@ export default function Setups() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Left: setup list ─────────────────────────────────────────────── */}
-      <div className="flex w-72 flex-shrink-0 flex-col border-r border-border-glass">
+      <div className="flex w-72 flex-shrink-0 flex-col border-r border-border-base">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border-glass">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border-base">
           <h1 className="text-sm font-semibold text-text-primary">Setups</h1>
           <Button
             variant="outline"
@@ -107,7 +107,7 @@ export default function Setups() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-2 px-3 py-3 border-b border-border-glass">
+        <div className="flex flex-col gap-2 px-3 py-3 border-b border-border-base">
           <FilterSelect
             value={filterCar}
             onChange={setFilterCar}
@@ -127,7 +127,7 @@ export default function Setups() {
           {loading && (
             <div className="space-y-0">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="px-4 py-3 border-b border-border-glass/50">
+                <div key={i} className="px-4 py-3 border-b border-border-base/40">
                   <Skeleton className="h-4 w-28 mb-1.5" />
                   <Skeleton className="h-3 w-36" />
                 </div>
@@ -151,7 +151,7 @@ export default function Setups() {
         </div>
 
         {error && (
-          <p className="px-3 py-2 text-xs text-red-400 border-t border-border-glass">{error}</p>
+          <p className="px-3 py-2 text-xs text-red-400 border-t border-border-base">{error}</p>
         )}
       </div>
 
@@ -204,7 +204,7 @@ function SetupRow({
     <button
       onClick={onEdit}
       className={[
-        'w-full text-left px-4 py-3 border-b border-border-glass/50 transition-colors group',
+        'w-full text-left px-4 py-3 border-b border-border-base/40 transition-colors group',
         active ? 'bg-accent/10' : 'hover:bg-bg-elevated',
       ].join(' ')}
     >
@@ -274,7 +274,7 @@ function SetupEditor({
   return (
     <div className="flex flex-col h-full">
       {/* Editor header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border-glass flex-shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border-base flex-shrink-0">
         <h2 className="text-sm font-semibold text-text-primary">
           {isNew ? 'New Setup' : `Edit — ${setup.name}`}
         </h2>
@@ -376,7 +376,7 @@ function SetupEditor({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Card>
-      <CardHeader className="border-b border-border-glass">
+      <CardHeader className="border-b border-border-base">
         <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">
           {title}
         </CardTitle>
