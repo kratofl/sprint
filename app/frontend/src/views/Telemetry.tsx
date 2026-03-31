@@ -35,7 +35,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
       {/* ── Main two-column grid ── */}
       <div className="grid flex-1 grid-cols-2 gap-3">
         {/* ── LEFT: car state ── */}
-        <div className="glass flex flex-col gap-4 rounded-lg p-4">
+        <div className="surface flex flex-col gap-4 rounded p-4">
           {/* Gear + speed */}
           <GearDisplay
             gear={frame?.car.gear ?? 0}
@@ -86,7 +86,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
         {/* ── RIGHT: timing + fuel ── */}
         <div className="flex flex-col gap-3">
           {/* Lap times */}
-          <div className="glass rounded-lg p-4">
+          <div className="surface rounded p-4">
             <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
               Lap Times
             </p>
@@ -108,7 +108,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
           </div>
 
           {/* Sector times */}
-          <div className="glass rounded-lg p-3">
+          <div className="surface rounded p-3">
             <SectorTimes
               sector1Time={frame?.lap.sector1Time ?? 0}
               sector2Time={frame?.lap.sector2Time ?? 0}
@@ -120,7 +120,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
           </div>
 
           {/* Fuel */}
-          <div className="glass rounded-lg p-4">
+          <div className="surface rounded p-4">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-text-muted">
               Fuel
             </p>
@@ -134,7 +134,7 @@ export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
       </div>
 
       {/* ── Tyre temps — full width ── */}
-      <div className="glass rounded-lg p-4">
+      <div className="surface rounded p-4">
         <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-text-muted">
           Tyre Temperatures
         </p>

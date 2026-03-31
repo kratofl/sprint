@@ -12,7 +12,7 @@ export default function DashEditor() {
           Save Layout
         </button>
       </div>
-      <div className="glass rounded-lg p-8 text-center min-h-[400px] flex items-center justify-center">
+      <div className="surface rounded p-8 text-center min-h-[400px] flex items-center justify-center">
         <p className="text-sm text-text-muted">Dash layout editor — coming soon</p>
       </div>
     </div>

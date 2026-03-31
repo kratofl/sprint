@@ -12,7 +12,7 @@ export default function Engineer() {
           Disconnected
         </span>
       </div>
-      <div className="glass rounded-lg p-8 text-center">
+      <div className="surface rounded p-8 text-center">
         <p className="text-sm text-text-muted">Enter a session code or link to connect as a race engineer.</p>
         <div className="mt-4 flex justify-center">
           <input

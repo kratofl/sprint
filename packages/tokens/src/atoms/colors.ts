@@ -4,10 +4,10 @@
  */
 
 export const orange = {
-  400: '#FB923C',
-  500: '#EF8118',
-  600: '#D96A10',
-  700: '#C2570D',
+  400: '#FFAA8A',
+  500: '#ff906c',
+  600: '#ff784d',
+  700: '#E55C30',
 } as const
 
 export const teal = {
@@ -19,13 +19,13 @@ export const teal = {
 
 /** Near-neutral with a faint warm undertone to complement the orange accent. */
 export const neutral = {
-  950: '#080809',
-  900: '#0F0F11',
-  850: '#151518',
-  800: '#1C1C21',
-  750: '#242429',
-  700: '#2E2E35',
-  600: '#3B3B42',
+  950: '#0e0e0e',
+  900: '#131313',
+  850: '#181717',
+  800: '#1a1919',
+  750: '#1f1f1f',
+  700: '#262626',
+  600: '#333333',
   500: '#52525C',
   400: '#71717A',
   300: '#A1A1AA',
@@ -38,6 +38,8 @@ export const semantic = {
   warning:     '#FBBF24',
   destructive: '#F87171',
   info:        '#60A5FA',
+  /** Telemetry alert chips (Live, Pit, Gear) */
+  tertiary:    '#f1afff',
 } as const
 
 /** Six-color data visualization palette — verified ≥3:1 contrast on dark bg. */

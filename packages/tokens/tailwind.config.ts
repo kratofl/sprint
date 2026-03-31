@@ -4,11 +4,13 @@ import type { Config } from 'tailwindcss'
 import { orange, teal, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
-import { surfaces, solidBorder }                     from './src/molecules/surfaces'
+import { surfaces }                                  from './src/molecules/surfaces'
+import { borders }                                   from './src/molecules/borders'
 
 /**
  * Shared design tokens for the Sprint platform.
- * Flat data-app aesthetic: solid surfaces, visible borders, near-zero radius.
+ * "Kinetic Monolith" aesthetic: tonal depth, no-border rule, Space Grotesk,
+ * glassmorphism for overlays only.
  */
 const tokens: Partial<Config> = {
   darkMode: 'class',
@@ -18,11 +20,12 @@ const tokens: Partial<Config> = {
         // ── Shadcn-compatible semantic aliases ───────────────────────────
         primary:     { DEFAULT: orange[500], foreground: '#FFFFFF' },
         secondary:   { DEFAULT: teal[500],   foreground: '#FFFFFF' },
+        tertiary:    { DEFAULT: semantic.tertiary, foreground: '#000000' },
         destructive: { DEFAULT: semantic.destructive, foreground: '#FFFFFF' },
         success:     { DEFAULT: semantic.success,     foreground: '#FFFFFF' },
         warning:     { DEFAULT: semantic.warning,     foreground: '#000000' },
 
-        // ── Surface hierarchy ────────────────────────────────────────────
+        // ── Surface hierarchy (tonal depth) ─────────────────────────────
         background: surfaces.base,
         foreground: neutral[100],
         card:    { DEFAULT: surfaces.surface,  foreground: neutral[100] },
@@ -36,8 +39,8 @@ const tokens: Partial<Config> = {
           DEFAULT:    orange[500],
           hover:      orange[400],
           dark:       orange[600],
-          muted:      'rgba(239,129,24,0.12)',
-          border:     'rgba(239,129,24,0.45)',
+          muted:      'rgba(255,144,108,0.12)',
+          border:     'rgba(255,144,108,0.30)',
           foreground: '#FFFFFF',
         },
 
@@ -47,7 +50,7 @@ const tokens: Partial<Config> = {
           hover:      teal[400],
           dark:       teal[600],
           muted:      'rgba(30,165,140,0.12)',
-          border:     'rgba(30,165,140,0.45)',
+          border:     'rgba(30,165,140,0.30)',
           foreground: '#FFFFFF',
         },
 
@@ -68,14 +71,14 @@ const tokens: Partial<Config> = {
           disabled:  neutral[500],
         },
 
-        // ── Borders — solid, structural ───────────────────────────────────
+        // ── Ghost borders — functional separation only ────────────────────
         border: {
-          DEFAULT: solidBorder.DEFAULT,
-          base:    solidBorder.DEFAULT,
-          muted:   solidBorder.muted,
-          strong:  solidBorder.strong,
-          accent:  'rgba(239,129,24,0.45)',
-          teal:    'rgba(30,165,140,0.45)',
+          DEFAULT:     borders.ghost,
+          base:        borders.ghost,
+          subtle:      borders.ghostSubtle,
+          strong:      borders.ghostStrong,
+          accent:      borders.accent,
+          teal:        borders.teal,
         },
 
         // ── Data visualization palette ───────────────────────────────────
@@ -95,11 +98,12 @@ const tokens: Partial<Config> = {
         mono:    fontFamily.mono,
       },
 
-      // No custom shadows — borders carry all elevation information
       boxShadow: {
-        // Only for floating surfaces that need spatial separation
-        overlay: '0 8px 24px rgba(0,0,0,0.5)',
-        panel:   '0 2px 8px rgba(0,0,0,0.35)',
+        // Tinted ambient shadows for floating surfaces only
+        overlay:    '0 8px 24px rgba(0,0,0,0.32)',
+        panel:      '0 2px 8px rgba(0,0,0,0.22)',
+        glow:       '0 0 14px rgba(255,144,108,0.22)',
+        'glow-teal':'0 0 14px rgba(30,165,140,0.22)',
       },
     },
   },

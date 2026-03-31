@@ -1,12 +1,13 @@
 /**
  * Typography atoms.
- * Barlow Condensed: primary UI font — condensed, technical, racing data feel.
+ * Space Grotesk: primary UI font — forward-leaning, technical, racing aesthetic.
+ *   Headings use Bold + Italic + All Caps.
  * JetBrains Mono: all numeric/monospace content — tabular, data-accurate.
  */
 
 export const fontFamily = {
-  display: ['Barlow Condensed', 'system-ui', 'sans-serif'],
-  sans:    ['Barlow Condensed', 'system-ui', 'sans-serif'],
+  display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+  sans:    ['Space Grotesk', 'system-ui', 'sans-serif'],
   mono:    ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
 } as const
 

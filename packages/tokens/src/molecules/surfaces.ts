@@ -1,18 +1,14 @@
 /**
- * Surface tokens — solid background fills for flat data-app design.
- * Depth is expressed through solid color differences + borders, not blur/transparency.
+ * Surface tokens — solid background fills for the tonal depth system.
+ * Depth is expressed through stacking progressively lighter tones.
+ * No blur/transparency for base surfaces — glassmorphism reserved for overlays only.
  */
 
 export const surfaces = {
-  base:     '#09090B',
-  surface:  '#111114',
-  elevated: '#191920',
-  overlay:  '#1E1E25',
-} as const
-
-/** Solid border values — the primary structural element. */
-export const solidBorder = {
-  muted:   '#1C1C21',
-  DEFAULT: '#26262B',
-  strong:  '#3A3A42',
+  base:     '#0e0e0e',
+  surface:  '#1a1919',
+  elevated: '#1f1f1f',
+  overlay:  '#262626',
+  /** 60% opacity variant — for glassmorphic floating surfaces (modals, dropdowns, nav) */
+  variant:  'rgba(26, 25, 25, 0.60)',
 } as const

@@ -4,7 +4,7 @@ import { cn } from '../../lib/utils'
 /**
  * Sprint logo — "The Sector Spike"
  *
- * Icon mark: a forward-leaning triangular spike (orange #EF8118) over a teal
+ * Icon mark: a forward-leaning triangular spike (orange #ff906c) over a teal
  * baseline (#1EA58C). Asymmetric geometry — steep left rise, gradual right
  * fall — creates directionality (speed, forward motion).
  *
@@ -48,8 +48,8 @@ export function SprintLogo({ iconOnly = false, size = 'md', className }: SprintL
     )
   }
 
-  // Estimate wordmark width: Barlow Condensed Bold ≈ 0.53× fontSize per char
-  const textW = Math.ceil('SPRINT'.length * fontSize * 0.53 + 5 * letterSpacing)
+  // Estimate wordmark width: Space Grotesk Bold ≈ 0.60× fontSize per char
+  const textW = Math.ceil('SPRINT'.length * fontSize * 0.60 + 5 * letterSpacing)
   const totalW = iconW + gap + textW
 
   return (
@@ -68,7 +68,7 @@ export function SprintLogo({ iconOnly = false, size = 'md', className }: SprintL
       <text
         x={iconW + gap}
         y={iconH - 1}
-        fontFamily="Barlow Condensed, system-ui, sans-serif"
+        fontFamily="Space Grotesk, system-ui, sans-serif"
         fontWeight="700"
         fontSize={fontSize}
         letterSpacing={letterSpacing}
@@ -119,7 +119,7 @@ function SprintMark() {
         strokeLinecap="square"
       />
       {/* Orange spike — forward-leaning asymmetric triangle */}
-      <polygon points="4,28 19,4 42,28" fill="#EF8118" />
+      <polygon points="4,28 19,4 42,28" fill="#ff906c" />
     </>
   )
 }

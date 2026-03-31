@@ -1,16 +1,15 @@
 /**
  * Card organism tokens.
- * Border is the primary depth signal — no drop shadow on base cards.
- * Use the `accent` border variant to highlight important cards.
+ * Tonal depth — no border on base cards. Background contrast vs page base provides depth.
+ * Use the `accent`/`teal` border variants only for intentional call-out emphasis.
  */
 import { borders } from '../molecules/borders'
 import { surfaces } from '../molecules/surfaces'
 
 export const card = {
   background: surfaces.surface,
-  border:     borders.glass,
-  /** Highlighted card (active session, selected item) */
+  /** Highlighted card (active session, selected item) — opt-in accent border */
   accentBorder: borders.accent,
-  /** Inset top-edge glow — simulates overhead light on glass */
-  insetHighlight: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+  /** Teal variant — engineer-originated call-out */
+  tealBorder: borders.teal,
 } as const

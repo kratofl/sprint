@@ -10,11 +10,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-accent text-white hover:bg-accent-hover",
+          "bg-[linear-gradient(135deg,#ff906c_0%,#ff784d_100%)] text-white uppercase italic font-bold tracking-wide hover:shadow-glow",
         outline:
-          "border-border-strong bg-transparent text-text-primary hover:bg-bg-subtle",
+          "border-border-base bg-transparent text-text-primary hover:bg-bg-subtle",
         secondary:
-          "bg-teal text-white hover:bg-teal-hover",
+          "bg-[linear-gradient(135deg,#25C4A8_0%,#15847A_100%)] text-white uppercase italic font-bold tracking-wide hover:shadow-glow-teal",
         ghost:
           "bg-transparent text-text-secondary hover:bg-bg-subtle hover:text-text-primary",
         destructive:

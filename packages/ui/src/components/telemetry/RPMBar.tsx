@@ -49,7 +49,7 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
           className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-75"
           style={{
             width: `${pct}%`,
-            background: 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 62%, #EF8118 80%, #F5922A 88%, #DC2626 96%)',
+            background: 'linear-gradient(90deg, #1EA58C 0%, #25C4A8 62%, #ff906c 80%, #FFAA8A 88%, #DC2626 96%)',
           }}
         />
       </div>

@@ -421,7 +421,7 @@ function SliderField({
         min={min} max={max} step={step}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="flex-1 accent-[#EF8118] h-1.5 cursor-pointer"
+        className="flex-1 accent-[#ff906c] h-1.5 cursor-pointer"
       />
       <span className="w-16 text-right text-xs font-mono tabular-nums text-text-primary">
         {Number.isInteger(step) ? value.toFixed(0) : value.toFixed(1)}{unit && ` ${unit}`}
@@ -451,7 +451,7 @@ function PressureField({ label, value, onChange }: { label: string; value: numbe
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center p-8">
-      <div className="glass rounded-full p-4">
+      <div className="surface-elevated rounded p-4">
         <WrenchIcon className="h-8 w-8 text-text-muted" />
       </div>
       <div>

@@ -23,7 +23,7 @@ export default function EngineerStatus() {
         <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Connection</CardTitle>
         </CardHeader>
-        <Separator className="bg-border-glass" />
+        <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">
           <div className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
@@ -43,7 +43,7 @@ export default function EngineerStatus() {
         <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Delta Target</CardTitle>
         </CardHeader>
-        <Separator className="bg-border-glass" />
+        <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">
           <div className="flex items-center justify-between">
             <LapTime seconds={undefined} className="text-2xl font-semibold text-teal" />
@@ -62,7 +62,7 @@ export default function EngineerStatus() {
         <CardHeader className="border-b border-border-base">
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-text-muted">Engineer Messages</CardTitle>
         </CardHeader>
-        <Separator className="bg-border-glass" />
+        <Separator className="bg-border-subtle" />
         <CardContent className="pt-4">
           <div className="space-y-1 text-xs text-text-muted italic">
             <p>No messages yet.</p>

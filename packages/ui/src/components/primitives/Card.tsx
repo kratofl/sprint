@@ -27,14 +27,13 @@ function Card({
       data-size={size}
       data-variant={variant}
       className={cn(
-        // Base: border is the primary depth signal
+        // Base: tonal depth — background contrast vs page base provides depth, no border
         "group/card flex flex-col gap-4 overflow-hidden rounded bg-bg-surface text-xs/relaxed text-foreground py-4",
-        "border border-border-base",
         "has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3",
         "*:[img:first-child]:rounded-t *:[img:last-child]:rounded-b",
-        // Variant borders
-        variant === "accent" && "border-accent-border",
-        variant === "teal"   && "border-teal-border",
+        // Variant borders — opt-in call-outs only
+        variant === "accent" && "border border-accent-border",
+        variant === "teal"   && "border border-teal-border",
         className
       )}
       {...props}

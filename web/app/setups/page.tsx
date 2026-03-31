@@ -12,7 +12,7 @@ export default function Setups() {
           + Upload Setup
         </button>
       </div>
-      <div className="glass rounded-lg p-8 text-center">
+      <div className="surface rounded p-8 text-center">
         <p className="text-sm text-text-muted">No setups uploaded yet. Sync from the desktop app or upload manually.</p>
       </div>
     </div>

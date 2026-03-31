@@ -1,91 +1,99 @@
 # Design System
 
-Visual design system for the sprint sim racing telemetry platform.
+Visual design system for the Sprint sim racing telemetry platform.
 
-**Stack:** Next.js · shadcn/ui · Tailwind CSS · Radix UI · Inter
+**Stack:** Next.js · shadcn/ui · Tailwind CSS · Radix UI · Space Grotesk + JetBrains Mono
 
 ---
 
 ## 1. Design Philosophy
 
+### Creative North Star: "The Kinetic Monolith"
+
+The UI should feel like a telemetry dashboard mounted on a carbon-fibre chassis — engineered for speed, precision, and aggressive technical dominance. We move away from the soft aesthetics of modern SaaS and embrace the uncompromising rigidity of elite motorsport engineering.
+
+**Aggressive Asymmetry** — break the standard centred grid in favour of forward-leaning compositions, italicised momentum, and overlapping technical layers. Every element should look as if it were wind-tunnel tested.
+
 ### Principles
 
 - **Data first.** Every visual decision serves legibility of telemetry data. Decoration is a liability.
-- **Density without clutter.** Sim racers need many data points at a glance. Use spacing and hierarchy to separate signal from noise — not whitespace for its own sake.
-- **Dark as default.** Racers use this app after sessions, often in low-light environments and alongside game software. Dark reduces eye strain and frames data visualizations better.
-- **Layered depth.** Surfaces float above the background through blur and translucency, not just color. The background shows through glass panels, creating a sense of physical space.
-- **Predictable, not surprising.** Interactions behave consistently. A button always looks like a button. A chart always reads the same direction.
+- **Density without clutter.** Sim racers need many data points at a glance. Use spacing and visual hierarchy to separate signal from noise — not whitespace for its own sake.
+- **Dark as default.** Racers use this app after sessions, in low-light environments alongside game software. Dark reduces eye strain and frames data visualisations better.
+- **Tonal depth, not borders.** Depth is expressed by stacking surfaces of different tonal values — no 1px solid outlines for sectioning. Borders are reserved for functional separation only.
+- **Purposeful motion.** Transitions communicate state changes, not aesthetics. When in doubt, don't animate.
 - **Speed matters.** UI transitions must feel instant or intentional — never sluggish.
 
 ### Inspiration
 
-Apple's visionOS and macOS Sonoma glass aesthetic — translucent frosted surfaces, generous border radius, soft layered shadows — combined with the information-dense minimal character of linear.app. Surfaces feel physical and layered; content stays front and center.
+Elite motorsport HUDs, carbon-fibre instrument panels, and high-contrast race data systems. Typography is forward-leaning (italic) and authoritative (all caps for headings). The palette is built on the tension between heat (orange) and technical precision (teal).
 
 ---
 
 ## 2. Color System
 
-Implemented as CSS custom properties on `:root` (dark theme only), following the shadcn/ui variable convention.
+Implemented as CSS custom properties on `:root` (dark theme only).
 
-### 2.1 Background
+### 2.1 Surface Hierarchy
 
-The page background is not flat black — a subtle radial gradient gives glass surfaces something to blur against, creating perceived depth.
+Depth is achieved through **tonal background shifts** — stacking surfaces of progressively lighter tones. No 1px solid borders are used for sectioning.
 
-```css
-body {
-  background-color: #080809;
-  background-image: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(239, 129, 24, 0.06) 0%,
-    transparent 70%
-  );
-  min-height: 100vh;
-}
-```
+| Role | Token | Hex | Usage |
+|---|---|---|---|
+| Base | `--bg-base` | `#0e0e0e` | Page background |
+| Surface | `--bg-surface` | `#1a1919` | Cards, panels, sidebar |
+| Elevated | `--bg-elevated` | `#1f1f1f` | Active widgets, emphasized cards |
+| Overlay | `--bg-overlay` | `#262626` | Top-level emphasized elements |
 
-| Token | Value | Usage |
-|---|---|---|
-| `--background` | `#080809` | Page background color |
-| Gradient | Accent-tinted radial, 6% opacity | Depth behind glass surfaces |
+> Treat the UI as a series of nested mechanical parts. Each layer sits _above_ the previous by getting tonally lighter.
 
-### 2.2 Accent — Orange (Primary)
+### 2.2 Primary Accent — Orange
 
-`#EF8118` is the primary action color. Use it sparingly so it always signals interactivity or important data.
+`#ff906c` is the primary action color — a warm, heat-treated coral that represents the friction of the track. Use it sparingly so it always signals interactivity.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--accent` | `#EF8118` | Primary buttons, links, active nav items, focus rings |
-| `--accent-hover` | `#F59132` | Hover state |
-| `--accent-active` | `#D4700F` | Pressed / active state |
-| `--accent-subtle` | `#EF811815` | Tinted backgrounds (selected row, badge fill) |
-| `--accent-foreground` | `#0A0A0B` | Text on `--accent` backgrounds |
+| `--accent` | `#ff906c` | Primary buttons, links, active nav items, focus rings |
+| `--accent-dark` | `#ff784d` | Gradient end, pressed / active state |
+| `--accent-muted` | `rgba(255,144,108,0.12)` | Tinted backgrounds (selected row, badge fill) |
+| `--accent-border` | `rgba(255,144,108,0.30)` | Optional accent call-out border |
+
+**CTA Gradient:** Primary buttons use a 135° gradient from `#ff906c` to `#ff784d` to simulate the shimmer of heat-treated metal.
+
+```css
+background: linear-gradient(135deg, #ff906c 0%, #ff784d 100%);
+```
 
 ### 2.3 Secondary Accent — Teal
 
-`#1EA58C` is the secondary action color. A cool teal counterpart to the warm orange — use it for secondary CTAs, comparison mode highlights, and alternate interactive states.
+`#1EA58C` is the secondary action color — sharp teal representing technical precision and fluid cooling.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--secondary` | `#1EA58C` | Secondary buttons, comparison highlights, alternate badges |
-| `--secondary-hover` | `#22BC9F` | Hover state |
-| `--secondary-active` | `#198A76` | Pressed / active state |
-| `--secondary-subtle` | `#1EA58C15` | Tinted backgrounds (secondary selected states) |
-| `--secondary-foreground` | `#F2F2F3` | Text on `--secondary` backgrounds |
+| `--teal` | `#1EA58C` | Secondary buttons, comparison highlights |
+| `--teal-hover` | `#25C4A8` | Hover state |
+| `--teal-dark` | `#15847A` | Gradient end |
+| `--teal-muted` | `rgba(30,165,140,0.12)` | Tinted backgrounds |
 
-> **Orange vs Teal:** Orange = primary action / user-owned data. Teal = secondary action / comparative or alternative context. Never use both at the same visual weight on the same element.
+> **Orange vs Teal:** Orange = primary action / driver-owned data. Teal = secondary action / engineer-originated / comparative context. Never use both at the same visual weight on the same element.
 
-### 2.4 Neutral Palette
+### 2.4 Tertiary — Alert Purple
 
-| Token | Value | Usage |
+`#f1afff` is a technical alert accent reserved for telemetry chip badges (e.g. "Live", "Pit", "Gear") that need contrast against both orange and teal.
+
+| Token | Hex | Usage |
 |---|---|---|
-| `--foreground` | `#F2F2F3` | Primary text |
-| `--muted-foreground` | `#8A8A95` | Secondary text, labels, timestamps |
-| `--subtle-foreground` | `#52525C` | Disabled text, placeholders |
-| `--border` | `rgba(255, 255, 255, 0.08)` | Glass surface borders, dividers |
-| `--border-solid` | `#27272D` | Non-glass borders (table rows, inputs) |
-| `--input` | `rgba(255, 255, 255, 0.06)` | Form field backgrounds |
+| `--tertiary` | `#f1afff` | Telemetry status chips, alert badges |
 
-### 2.5 Semantic Colors
+### 2.5 Neutrals
+
+| Token | Hex | Usage |
+|---|---|---|
+| `--foreground` | `#F4F4F5` | Primary text |
+| `--text-secondary` | `#A1A1AA` | Labels, timestamps, secondary metadata |
+| `--text-muted` | `#71717A` | Helper text, disabled labels |
+| `--text-disabled` | `#52525C` | Placeholders, inactive elements |
+
+### 2.6 Semantic Colors
 
 | Token | Hex | Usage |
 |---|---|---|
@@ -94,140 +102,128 @@ body {
 | `--destructive` | `#F87171` | Errors, deleted items, sector time losses |
 | `--info` | `#60A5FA` | Informational badges, neutral highlights |
 
-### 2.6 Data Visualization Palette
+### 2.7 Border Rules
 
-Used exclusively for chart series, lap comparisons, and driver color coding. These colors are chosen to be distinct from the `#EF8118` accent and from each other, and to remain distinguishable for common color vision deficiencies.
+**Solid 1px outlines for sectioning are strictly prohibited.** Boundaries must be defined through tonal surface transitions.
 
-| Index | Hex | Name | Primary use |
-|---|---|---|---|
-| `--data-1` | `#60A5FA` | Sky blue | Lap 1 / Driver A / Reference |
-| `--data-2` | `#A78BFA` | Violet | Lap 2 / Driver B |
-| `--data-3` | `#34D399` | Emerald | Lap 3 / Driver C / Best |
-| `--data-4` | `#FBBF24` | Amber | Lap 4 / Driver D |
-| `--data-5` | `#F472B6` | Pink | Lap 5 / Driver E |
-| `--data-6` | `#22D3EE` | Cyan | Lap 6 / Driver F |
+Borders are permitted only for functional separation:
 
-> Never use `--accent` (`#EF8118`) as a data series color — it is reserved for UI interactivity.
+| Use case | Value | Token |
+|---|---|---|
+| Input fields (resting) | `rgba(255,255,255,0.15)` | `border-ghost` |
+| Input fields (focused) | 2px bottom bar in `--accent` | inline |
+| Table row dividers | `rgba(255,255,255,0.08)` | `border-ghost-subtle` |
+| Accent call-out cards | `rgba(255,144,108,0.30)` | `border-accent` |
+| Teal call-out cards | `rgba(30,165,140,0.30)` | `border-teal` |
 
-### 2.7 Glass Surfaces
+> The "Ghost Border" rule: if a border is truly required, use a semi-transparent white at ≤15% opacity. Never use a fully opaque line.
 
-Three glass levels replace the previous solid surface scale. Each uses `backdrop-filter: blur()` over the gradient background, a translucent white fill, and a thin light border.
+### 2.8 Glassmorphism — Floating Surfaces Only
 
-| Level | Fill | Blur | Border | Usage |
-|---|---|---|---|---|
-| **Base glass** | `rgba(255,255,255,0.04)` | `blur(12px)` | `rgba(255,255,255,0.08)` | Cards, main panels, sidebar |
-| **Elevated glass** | `rgba(255,255,255,0.07)` | `blur(20px)` | `rgba(255,255,255,0.10)` | Dropdowns, popovers, tooltips |
-| **Overlay glass** | `rgba(255,255,255,0.10)` | `blur(32px)` | `rgba(255,255,255,0.14)` | Modals, sheets, command palette |
+Glass blur effects are reserved exclusively for **floating overlays**: navigation bars, modals, sheets, dropdowns, tooltips. Base cards and panels use solid tonal fills.
 
 ```css
-/* globals.css — glass utility classes */
+/* globals.css — glass utility (overlays only) */
 .glass {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-elevated {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(26, 25, 25, 0.60);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .glass-overlay {
-  background: rgba(255, 255, 255, 0.10);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
+  background: rgba(38, 38, 38, 0.70);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 ```
 
-> **Tables and data rows** use solid non-glass surfaces (`--border-solid`) to maintain text legibility when content updates rapidly.
-
-### 2.8 CSS Variable Block
+### 2.9 CSS Variable Block
 
 ```css
 :root {
-  /* Background */
-  --background: 0 0% 3%;          /* #080809 */
+  /* Surfaces */
+  --bg-base:     #0e0e0e;
+  --bg-surface:  #1a1919;
+  --bg-elevated: #1f1f1f;
+  --bg-overlay:  #262626;
 
-  /* Glass surface tokens (used via utility classes above) */
-  --glass-base: rgba(255, 255, 255, 0.04);
-  --glass-elevated: rgba(255, 255, 255, 0.07);
-  --glass-overlay: rgba(255, 255, 255, 0.10);
+  /* Primary — orange */
+  --accent:        #ff906c;
+  --accent-dark:   #ff784d;
+  --accent-muted:  rgba(255, 144, 108, 0.12);
+  --accent-border: rgba(255, 144, 108, 0.30);
 
-  /* Primary accent — Orange */
-  --primary: 28 88% 52%;          /* #EF8118 */
-  --primary-foreground: 0 0% 3%;
+  /* Secondary — teal */
+  --teal:       #1EA58C;
+  --teal-hover: #25C4A8;
+  --teal-dark:  #15847A;
+  --teal-muted: rgba(30, 165, 140, 0.12);
 
-  /* Secondary accent — Teal */
-  --secondary: 168 68% 38%;       /* #1EA58C */
-  --secondary-foreground: 240 5% 95%;
+  /* Tertiary — alert purple */
+  --tertiary: #f1afff;
 
-  /* Neutrals */
-  --foreground: 240 5% 95%;       /* #F2F2F3 */
-  --muted: 240 4% 16%;
-  --muted-foreground: 240 4% 56%; /* #8A8A95 */
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.06);
-  --ring: 28 88% 52%;             /* Focus ring = primary accent */
+  /* Text */
+  --foreground:      #F4F4F5;
+  --text-secondary:  #A1A1AA;
+  --text-muted:      #71717A;
+  --text-disabled:   #52525C;
+
+  /* Ghost borders */
+  --border-ghost-subtle: rgba(255, 255, 255, 0.08);
+  --border-ghost:        rgba(255, 255, 255, 0.15);
 
   /* Semantic */
-  --destructive: 0 91% 71%;       /* #F87171 */
-  --destructive-foreground: 0 0% 3%;
+  --success:     #34D399;
+  --warning:     #FBBF24;
+  --destructive: #F87171;
+  --info:        #60A5FA;
 
-  /* Radius */
-  --radius: 0.75rem;              /* 12px default */
+  /* Radius — everything sharp */
+  --radius: 0px;
 }
 ```
 
 ---
 
-## 3. Shadow & Depth
+## 3. Elevation & Depth
 
-Apple-style shadows are soft, layered, and never hard. They work with glass to reinforce the sense of physical elevation.
+Depth is purely architectural — achieved through the **Tonal Scale**, not drop shadows.
 
-### 3.1 Shadow Scale
+### 3.1 Layering Principle
 
-| Level | CSS | Usage |
+To lift a card or widget, change its background token, not its shadow or border:
+
+| Level | Token | Hex |
 |---|---|---|
-| **Subtle** | `0 1px 2px rgba(0,0,0,0.4)` | Inline elements, badges |
-| **Card** | `0 4px 16px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3)` | Base glass cards, panels |
-| **Elevated** | `0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.4)` | Dropdowns, popovers |
-| **Modal** | `0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.5)` | Modals, sheets |
+| Page base | `bg-bg-base` | `#0e0e0e` |
+| Cards / panels | `bg-bg-surface` | `#1a1919` |
+| Active widgets | `bg-bg-elevated` | `#1f1f1f` |
+| Top-level emphasis | `bg-bg-overlay` | `#262626` |
 
-```css
-.shadow-card     { box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3); }
-.shadow-elevated { box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.4); }
-.shadow-modal    { box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.5); }
-```
+### 3.2 Ambient Shadows (floating elements only)
 
-### 3.2 Inset Glow (glass highlight)
+If a floating element (Tooltip, Popover) requires separation from a busy background, use a **tinted ambient shadow** at low opacity — never a hard grey shadow:
 
-A subtle inset top border simulates the light refraction on real frosted glass.
+| Element | Shadow |
+|---|---|
+| Dropdown / Popover | `0 2px 8px rgba(0,0,0,0.22)` |
+| Modal / Sheet | `0 8px 24px rgba(0,0,0,0.32)` |
+| Primary CTA glow | `0 0 14px rgba(255,144,108,0.22)` |
+| Teal CTA glow | `0 0 14px rgba(30,165,140,0.22)` |
 
-```css
-.glass-highlight {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
-}
-```
+### 3.3 Border Radius
 
-Apply `.glass-highlight` on cards and panels alongside `.glass` for the full glass effect:
-```tsx
-<div className="glass glass-highlight rounded-2xl shadow-card p-4">
-```
-
-### 3.3 Border Radius Scale
+Everything is sharp. Roundness kills the aerodynamic intent.
 
 | Token | Value | Usage |
 |---|---|---|
-| `rounded-lg` | `0.75rem` (12px) | Default — buttons, badges, inputs, small cards |
-| `rounded-xl` | `1rem` (16px) | Cards, panels, table wrappers |
-| `rounded-2xl` | `1.25rem` (20px) | Modals, large panels, sidebar |
-| `rounded-full` | `9999px` | Avatars, dot indicators, pill badges |
-
-`--radius` is set to `0.75rem` in the CSS variable block. shadcn/ui uses `--radius` as its base — components will automatically use 12px corners.
+| `rounded-sm` | `0px` | — |
+| `rounded` | `2px` | Default — minimal softening |
+| `rounded-md` | `2px` | Same |
+| `rounded-lg` | `3px` | Larger components |
+| `rounded-full` | `9999px` | Avatars, dot indicators only |
 
 ---
 
@@ -235,361 +231,169 @@ Apply `.glass-highlight` on cards and panels alongside `.glass` for the full gla
 
 ### 4.1 Typeface
 
-**Inter** — loaded via `next/font/google` with the variable font (`wght` 100–900).
+**Space Grotesk** — primary UI font. Bold, italic, all-caps for headings to convey forward-leaning movement at 200 mph. Loaded via Google Fonts.
 
-```tsx
-// app/layout.tsx
-import { Inter } from 'next/font/google'
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-})
+```css
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 ```
 
-Apply as `className={inter.variable}` on `<html>` and reference as `font-sans` (configured in Tailwind config).
+**JetBrains Mono** — all numeric and monospaced content: lap times, speed readouts, sector data. Ensures consistent column alignment and a precise, technical feel.
 
-For raw data values (lap times, sector times, speed, g-force), use **Inter Mono** or Tailwind's `font-mono` class to ensure consistent numeric column alignment.
+### 4.2 Usage Rules
 
-### 4.2 Type Scale
+- **Display / headings:** `font-display font-bold italic uppercase` — the italicised slant acts as a visual cue for movement
+- **Body / labels:** `font-sans` — Space Grotesk at normal weight, no italic
+- **Numbers / data readouts:** `font-mono tabular-nums` — JetBrains Mono, always tabular
 
-| Class | Size | Line height | Weight | Usage |
+> **Do not mix fonts.** The system's strength lies in its consistency. Space Grotesk everywhere except raw data values.
+
+### 4.3 Type Scale
+
+| Role | Class | Size | Weight | Style |
 |---|---|---|---|---|
-| `text-xs` | 12px | 16px | 400 | Fine print, axis labels, metadata |
-| `text-sm` | 14px | 20px | 400 | Body text, table rows, descriptions |
-| `text-base` | 16px | 24px | 400 | Default prose |
-| `text-lg` | 18px | 28px | 500 | Section subheadings |
-| `text-xl` | 20px | 28px | 600 | Card titles, panel headers |
-| `text-2xl` | 24px | 32px | 600 | Page headings |
-| `text-3xl` | 30px | 36px | 700 | Hero values (best lap display) |
+| Hero stat (lap time, top speed) | `text-3xl font-bold font-mono tabular-nums` | 1.875rem | 700 | — |
+| Section heading | `text-sm font-bold italic uppercase tracking-wide` | 0.875rem | 700 | italic + CAPS |
+| Card title | `text-sm font-medium` | 0.875rem | 500 | — |
+| Body / label | `text-xs/relaxed` | 0.75rem | 400 | — |
+| Caption / timestamp | `text-[0.625rem] text-text-muted` | 10px | 400 | — |
 
-### 4.3 Usage Rules
+### 4.4 All-Caps Headings
 
-- **Primary text:** `text-foreground` (`--foreground`)
-- **Secondary/label text:** `text-muted-foreground` — used for column headers, timestamps, helper text
-- **Disabled/placeholder:** `text-subtle-foreground`
-- **Telemetry numbers:** always `font-mono tabular-nums` to prevent layout shift as values update
-- **Large stat values** (lap times, top speed): `text-3xl font-bold font-mono tabular-nums`
-- **Avoid mixing weights within a sentence.** Use muted color to create hierarchy, not font-weight variation.
-
----
-
-## 5. Spacing & Layout
-
-### 5.1 Base Grid
-
-Tailwind's default 4px base unit. Stick to the scale — do not use arbitrary values unless unavoidable.
-
-| Tailwind | px | Use |
-|---|---|---|
-| `p-1` | 4px | Icon padding, tight badge insets |
-| `p-2` | 8px | Small component insets |
-| `p-3` | 12px | Compact table cell padding |
-| `p-4` | 16px | Standard card padding |
-| `p-6` | 24px | Panel/section padding |
-| `p-8` | 32px | Page-level padding |
-| `gap-2` | 8px | Tight item spacing (tags, icons) |
-| `gap-4` | 16px | Standard component gap |
-| `gap-6` | 24px | Section gap |
-
-### 5.2 Page Layout
-
-```
-┌─────────────────────────────────────────────────────┐
-│  Sidebar  │           Main Content                  │
-│  240px    │  max-w-screen-xl  px-8  py-6           │
-│  fixed    │                                         │
-└─────────────────────────────────────────────────────┘
-```
-
-| Token | Value | Notes |
-|---|---|---|
-| Sidebar width | `240px` | Collapses to `64px` (icon-only) on compact mode |
-| Content max-width | `1280px` (`max-w-screen-xl`) | Centered in remaining space |
-| Content horizontal padding | `px-8` (32px) | |
-| Content vertical padding | `py-6` (24px) | |
-| Top nav height | `48px` | If a top bar is used instead of / alongside sidebar |
-
-### 5.3 Common Container Patterns
+Section labels and card headers use All Caps with wide letter spacing to maximise the "heads-up display" (HUD) feel:
 
 ```tsx
-// Page wrapper
-<main className="ml-60 px-8 py-6 max-w-screen-xl">
-
-// Glass card
-<div className="glass glass-highlight rounded-xl shadow-card p-4">
-
-// Section with header
-<section className="space-y-4">
-  <h2 className="text-xl font-semibold">Section Title</h2>
-  {/* content */}
-</section>
-
-// Stat row (label + value inline) — solid border for data legibility
-<div className="flex items-center justify-between py-2 border-b border-[#27272D]">
-  <span className="text-sm text-muted-foreground">Best Lap</span>
-  <span className="font-mono tabular-nums text-sm">1:42.831</span>
-</div>
+<h2 className="text-[0.625rem] font-bold italic uppercase tracking-widest text-text-muted">
+  SECTOR TIMES
+</h2>
 ```
 
 ---
 
-### 6. Component Patterns
+## 5. Components
 
-### 6.1 shadcn/ui Theme Config
+### 5.1 Buttons: High-Velocity CTAs
 
-All shadcn/ui components consume the CSS variables defined in §2.8. No direct color values in component code.
-
-Install and configure:
-```bash
-npx shadcn@latest init
-# Style: Default | Base color: Zinc | CSS variables: yes
-```
-
-Then override the generated `globals.css` with the color tokens from §2.8 and add the `.glass`, `.glass-elevated`, `.glass-overlay`, `.glass-highlight`, `.shadow-card`, `.shadow-elevated`, `.shadow-modal` utility classes from §2.7 and §3.
-
-### 6.2 Button
-
-| Variant | Use |
-|---|---|
-| `default` | Primary action — filled orange accent |
-| `secondary` | Secondary action — filled teal accent |
-| `outline` | Tertiary / glass-bordered |
-| `ghost` | Nav items, icon buttons, inline actions |
-| `destructive` | Delete / irreversible actions |
+- **Primary:** All Caps · Bold · Italic · 0px radius · Gradient fill (`#ff906c → #ff784d` at 135°)
+- **Secondary:** Ghost style — `outline-variant` at 20% opacity, teal text
+- **Interaction:** On hover, a warm `primary` glow appears; gradient angle shifts slightly
 
 ```tsx
 // Primary CTA
-<Button>Start Session</Button>
+<Button variant="default">LOAD SESSION</Button>
 
 // Secondary CTA
-<Button variant="secondary">Compare Laps</Button>
-
-// Icon button
-<Button variant="ghost" size="icon">
-  <Settings className="h-4 w-4" />
-</Button>
+<Button variant="secondary">Compare Lap</Button>
 ```
 
-Minimum tap target: `h-9` (36px) for all interactive elements.
+### 5.2 Cards: Tonal Depth, No Dividers
 
-### 6.3 Badge
-
-Used for lap type, sector delta, session status.
+Cards use background tonal contrast against the page base for depth — no border. The `accent` and `teal` border variants are explicit opt-in call-outs for highlighted items.
 
 ```tsx
-// Lap type
-<Badge variant="outline">Out Lap</Badge>
+// Standard card — no border, tonal contrast only
+<Card>…</Card>
 
-// Personal best — primary accent
-<Badge className="bg-[#EF8118]/15 text-[#EF8118] border-[#EF8118]/20">PB</Badge>
-
-// Comparison active — secondary accent
-<Badge className="bg-[#1EA58C]/15 text-[#1EA58C] border-[#1EA58C]/20">Comparing</Badge>
-
-// Time loss — destructive
-<Badge className="bg-destructive/15 text-destructive border-destructive/20">-0.342</Badge>
+// Highlighted (active session)
+<Card variant="accent">…</Card>
 ```
 
-### 6.4 Card
+List items within cards are separated by **vertical spacing** (`gap-3`/`gap-4`) or **alternating row tones** — never by `<Separator>` or horizontal rules.
 
-Cards use base glass — translucent frosted surface with inset highlight and soft shadow.
+### 5.3 Input Fields: Technical Entry
+
+- **Shape:** 0px radius
+- **Resting state:** ghost border bottom only (`rgba(255,255,255,0.15)`)
+- **Focused state:** 2px bottom bar in `primary` accent (`#ff906c`)
+- **Labels:** All Caps, `font-medium tracking-wide`, positioned inside the top-left for a HUD feel
+- **No full-box border** on inputs
 
 ```tsx
-<div className="glass glass-highlight rounded-xl shadow-card p-4">
-  <CardHeader>
-    <CardTitle>Last Session</CardTitle>
-    <CardDescription>Spa-Francorchamps · 24 laps</CardDescription>
-  </CardHeader>
-  <CardContent>
-    {/* content */}
-  </CardContent>
-</div>
+<label className="text-[0.625rem] uppercase tracking-widest text-text-muted">LAP TARGET</label>
+<Input placeholder="1:42.000" />
 ```
 
-For nested content within a card that needs further separation, use `glass-elevated` with `rounded-lg`.
+### 5.4 Badges
 
-### 6.5 Table
+| Variant | Style | Usage |
+|---|---|---|
+| `default` | Orange fill | Driver-owned status |
+| `secondary` | Teal fill | Engineer-originated status |
+| `tertiary` | `#f1afff` fill | Telemetry alerts (Live, Pit, Gear) |
+| `outline` | Ghost border | Neutral labels |
+| `destructive` | Red tint | Errors, violations |
 
-Tables stay on solid surfaces — glass + rapidly-updating numbers = illegible. Always use `font-mono tabular-nums` for numeric columns.
+### 5.5 Modals & Sheets
+
+Floating surfaces use glassmorphism — not solid fills. Apply `.glass-overlay` with a `blur(24px)` backdrop:
 
 ```tsx
-<div className="rounded-xl border border-[#27272D] overflow-hidden">
-  <Table>
-    <TableHeader className="bg-white/[0.03]">
-      <TableRow className="border-[#27272D]">
-        <TableHead className="w-12">Lap</TableHead>
-        <TableHead>Time</TableHead>
-        <TableHead>S1</TableHead>
-        <TableHead>S2</TableHead>
-        <TableHead>S3</TableHead>
-        <TableHead>Delta</TableHead>
-      </TableRow>
-    </TableHeader>
-    <TableBody>
-      <TableRow className="font-mono tabular-nums text-sm border-[#27272D] hover:bg-white/[0.03]">
-        <TableCell className="text-muted-foreground">12</TableCell>
-        <TableCell className="font-medium">1:42.831</TableCell>
-        {/* ... */}
-      </TableRow>
-    </TableBody>
-  </Table>
-</div>
+<div className="glass-overlay rounded p-6">…</div>
 ```
 
-### 6.6 Telemetry-Specific Patterns
-
-#### Stat Card — single key metric
-
-```tsx
-<div className="glass glass-highlight rounded-xl shadow-card p-4 space-y-1">
-  <p className="text-xs text-muted-foreground uppercase tracking-wide">Best Lap</p>
-  <p className="text-3xl font-bold font-mono tabular-nums">1:42.831</p>
-  <p className="text-sm text-[#1EA58C]">↓ 0.241s from last session</p>
-</div>
-```
-
-#### Session List Item
-
-```tsx
-<div className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer">
-  <div className="w-2 h-2 rounded-full bg-[#1EA58C]" /> {/* online indicator */}
-  <div className="flex-1 min-w-0">
-    <p className="text-sm font-medium truncate">Spa-Francorchamps</p>
-    <p className="text-xs text-muted-foreground">LeMans Ultimate · 24 laps</p>
-  </div>
-  <span className="font-mono tabular-nums text-sm text-muted-foreground">1:42.831</span>
-</div>
-```
-
-#### Comparison Panel — side-by-side driver/lap data
-
-```tsx
-<div className="glass glass-highlight rounded-xl shadow-card overflow-hidden">
-  <div className="grid grid-cols-2 divide-x divide-white/[0.06]">
-    <div className="p-4">
-      <p className="text-xs text-[#EF8118] font-medium mb-3 uppercase tracking-wide">LAP 1</p>
-      {/* stats */}
-    </div>
-    <div className="p-4">
-      <p className="text-xs text-[#1EA58C] font-medium mb-3 uppercase tracking-wide">LAP 2</p>
-      {/* stats */}
-    </div>
-  </div>
-</div>
-```
-
-> The comparison panel uses orange (primary) for the user's reference lap and teal (secondary) for the compared lap — reinforcing the two-accent semantic distinction.
+The dark overlay behind modals uses `bg-black/80` with `backdrop-blur-xs` for the scrim.
 
 ---
 
-## 7. Data Visualization
+## 6. Data Visualization
 
-### 6.1 Chart Library
+### 6.1 Data Visualization Palette
 
-Use **Recharts** (included in shadcn/ui charts via `shadcn add chart`). Consume the `--data-N` CSS variables for all series colors.
+Used exclusively for chart series, lap comparisons, and driver color coding. Chosen for distinctness from `#ff906c` and common color vision deficiency compatibility.
 
-```tsx
-const CHART_COLORS = [
-  'var(--data-1)', // Sky blue  — Lap 1 / Driver A
-  'var(--data-2)', // Violet    — Lap 2 / Driver B
-  'var(--data-3)', // Emerald   — Lap 3 / Driver C
-  'var(--data-4)', // Amber     — Lap 4 / Driver D
-  'var(--data-5)', // Pink      — Lap 5 / Driver E
-  'var(--data-6)', // Cyan      — Lap 6 / Driver F
-]
-```
+| Index | Hex | Name | Primary use |
+|---|---|---|---|
+| `data-1` | `#60A5FA` | Sky blue | Lap 1 / Driver A / Reference |
+| `data-2` | `#A78BFA` | Violet | Lap 2 / Driver B |
+| `data-3` | `#34D399` | Emerald | Lap 3 / Driver C / Best |
+| `data-4` | `#FBBF24` | Amber | Lap 4 / Driver D |
+| `data-5` | `#F472B6` | Pink | Lap 5 / Driver E |
+| `data-6` | `#22D3EE` | Cyan | Lap 6 / Driver F |
 
-### 6.2 Chart Styling Defaults
+> Never use `--accent` (`#ff906c`) as a data series color — it is reserved for UI interactivity.
 
-```tsx
-// Common props for all Recharts charts
-const chartDefaults = {
-  style: { background: 'transparent' },
-  margin: { top: 8, right: 8, bottom: 8, left: 8 },
-}
-
-// CartesianGrid
-<CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-
-// Axes
-<XAxis stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-<YAxis stroke="var(--border)" tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }} />
-
-// Tooltip — glass style
-<Tooltip
-  contentStyle={{
-    background: 'rgba(255, 255, 255, 0.07)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    border: '1px solid rgba(255, 255, 255, 0.10)',
-    borderRadius: '12px',
-    fontSize: 12,
-  }}
-/>
-```
-
-### 6.3 Chart Type Guidelines
+### 6.2 Chart Type Guidelines
 
 | Data | Chart type | Notes |
 |---|---|---|
 | Delta time (lap vs lap) | Line chart | Zero line at `y=0`; positive = slower, negative = faster |
 | Sector times | Grouped bar chart | One bar per sector per lap/driver |
-| Speed trace | Line chart | Multiple series (one per lap); highlight braking zones |
-| Tire wear | Radial progress or gauge | 4 corners; color shifts from `--success` → `--warning` → `--destructive` |
+| Speed trace | Line chart | Multiple series; highlight braking zones |
+| Tire wear | Radial progress / gauge | 4 corners; shifts `--success` → `--warning` → `--destructive` |
 | Fuel load | Linear progress bar | `--accent` fill, depletes left to right |
 | Lap time trend | Line chart | Dots at each lap; connect outliers with dashed line |
-| Mini sector breakdown | Horizontal stacked bar | S1, S2, S3 segments in different data colors |
 
-### 6.4 Accessibility Rules
+### 6.3 Accessibility Rules
 
 - Never use color alone to convey meaning — add labels, patterns, or shapes.
 - All charts must have a legend when showing multiple series.
-- Tooltip must always identify the series by name, not just color.
-- The six `--data-N` colors have been chosen for contrast against `--background` (verified ≥ 3:1 contrast ratio).
+- Tooltips must always identify the series by name, not just color.
+- The six `data-N` colors are verified ≥3:1 contrast ratio against `--bg-base`.
 
 ---
 
-## 8. Icons
+## 7. Icons
 
-**Library:** [Lucide React](https://lucide.dev) — bundled with shadcn/ui.
+**Library:** [Lucide React](https://lucide.dev)
 
 ### 7.1 Size Conventions
 
-| Context | Size class | px |
+| Context | Class | px |
 |---|---|---|
-| Inline with text | `h-3 w-3` | 12px |
-| Inline action / button | `h-4 w-4` | 16px |
-| Standard button icon | `h-5 w-5` | 20px |
-| Navigation items | `h-5 w-5` | 20px |
-| Empty state / illustration | `h-8 w-8` or `h-12 w-12` | 32–48px |
+| Inline with text | `size-3` | 12px |
+| Inline action / button | `size-3.5` | 14px |
+| Standard button icon | `size-4` | 16px |
+| Navigation items | `size-4` | 16px |
+| Empty state / illustration | `size-8` or `size-12` | 32–48px |
 
 ### 7.2 Usage Rules
 
-- Always pair icons with text labels in primary navigation (not icon-only unless space is critically constrained).
+- Always pair icons with text labels in primary navigation.
 - In icon-only contexts, always add `aria-label` or wrap in a `<Tooltip>`.
-- Match icon stroke width to the text weight in context (Lucide default `strokeWidth={2}` is appropriate for most cases; use `strokeWidth={1.5}` for large/display sizes).
-
-```tsx
-import { Timer, Gauge, Flag, TrendingDown } from 'lucide-react'
-
-// Nav item
-<a className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-overlay text-sm">
-  <Timer className="h-5 w-5" />
-  Sessions
-</a>
-
-// Inline with stat
-<div className="flex items-center gap-1.5 text-success text-sm">
-  <TrendingDown className="h-4 w-4" />
-  -0.241s
-</div>
-```
+- Use `strokeWidth={1.5}` for large/display sizes; default `strokeWidth={2}` elsewhere.
 
 ---
 
-## 9. Motion & Animation
+## 8. Motion & Animation
 
 ### 8.1 Principle
 
@@ -600,135 +404,98 @@ Motion is purposeful. It communicates state changes, not aesthetics. When in dou
 | Name | Duration | Use |
 |---|---|---|
 | Instant | `0ms` | Data value updates, live telemetry numbers |
-| Fast | `100ms` | Tooltips appearing, badge transitions |
-| Normal | `200ms` | Modals, drawers, dropdowns, sidebar collapse |
-| Slow | `300ms` | Page transitions (if used) |
-
-```css
-/* Tailwind config additions */
-transitionDuration: {
-  'fast': '100ms',
-  'normal': '200ms',
-}
-transitionTimingFunction: {
-  'ui': 'cubic-bezier(0.4, 0, 0.2, 1)',
-}
-```
+| Fast | `100ms` | Tooltips, badge transitions |
+| Normal | `150ms` | Modals, drawers, dropdowns, nav collapse |
+| Slow | `200ms` | Page transitions (if used) |
 
 ### 8.3 What Animates
 
 | Element | Animation |
 |---|---|
 | Modal / Sheet | Fade + slide in from bottom (`normal`, `ease-out`) |
-| Dropdown / Popover | Fade + scale from `0.95` → `1` (`fast`) |
-| Sidebar collapse | Width transition (`normal`) |
+| Dropdown / Popover | Fade + scale `0.95 → 1` (`fast`) |
+| Nav collapse | Width transition (`normal`) |
 | Toast / notification | Slide in from edge (`fast`) |
 | Button press | Scale to `0.97` on active (`instant`) |
 
 ### 8.4 What Does NOT Animate
 
-- Live telemetry value updates (numbers must update instantly — no counter animations)
-- Chart data redraws on new session data
+- Live telemetry value updates (numbers must update instantly)
+- Chart data redraws
 - Table row content changes
 - Any element that updates more than once per second
 
 ---
 
-## 10. Desktop App (Wails)
+## 9. Desktop App (Wails)
 
-The Wails desktop frontend shares the same design system as the web app — same tokens, same components from `/packages`, same glassmorphism patterns. A few platform-specific considerations apply.
+The Wails desktop frontend shares the same design system as the web app — same tokens, same components from `/packages`. A few platform-specific considerations apply.
 
-### 10.1 Window & Chrome
+### 9.1 Window & Chrome
 
-- The Wails window uses a **frameless** or **transparent title bar** to let the glass aesthetic extend to the window edge.
-- Minimum window size: `1024 × 680px`. Designed primarily for desktop monitors and secondary displays.
-- A custom drag region sits at the top of the sidebar for window movement.
+- Frameless or transparent title bar — the dark surface extends to the window edge.
+- Minimum window size: `1024 × 680px`.
+- Custom drag region at the top of the sidebar.
 
-### 10.2 Compact Mode
+### 9.2 Compact Mode
 
-When the window is narrower than `1280px` (e.g. on a secondary monitor), the layout switches to compact mode:
-- Sidebar collapses to icon-only (`64px`)
+When the window is narrower than `1280px`:
+- Sidebar collapses to icon-only (`52px`)
 - Stat cards reduce padding to `p-3`
 - Chart height reduced to `h-40` minimum
 
-### 10.3 Desktop-Only Surfaces
-
-These UI sections only exist in the desktop app and are not part of the shared `/packages`:
-
-| Surface | Purpose |
-|---|---|
-| VoCore config panel | Set VoCore IP, port, frame rate, image dimensions |
-| Wheel button mapping | Assign game buttons to actions (set target lap, etc.) |
-| LAN engineer invite | Display local IP + port, show QR code for engineer to scan |
-| Game selector | Choose active game adapter |
-
-### 10.4 Race Engineer Session UI
+### 9.3 Race Engineer Session UI
 
 #### Engineer Status Bar
 
-A persistent status bar at the bottom of the desktop app when an engineer session is active.
-
 ```tsx
-<div className="fixed bottom-0 left-0 right-0 h-9 glass border-t border-white/[0.06]
-                flex items-center px-4 gap-3 text-sm z-50">
-  <div className="w-2 h-2 rounded-full bg-[#1EA58C] animate-pulse" />
-  <span className="text-muted-foreground">Race Engineer:</span>
+<div className="fixed bottom-0 left-0 right-0 h-9 glass border-t border-white/10
+                flex items-center px-4 gap-3 text-xs z-50">
+  <div className="size-2 rounded-full bg-teal animate-pulse" />
+  <span className="text-text-muted uppercase tracking-widest text-[0.625rem]">Race Engineer</span>
   <span className="font-medium">Marco</span>
-  <span className="text-muted-foreground ml-auto">Connected · 42ms</span>
+  <span className="text-text-muted ml-auto">Connected · 42ms</span>
 </div>
 ```
 
-#### Target Lap Indicator (on VoCore + local GUI)
-
-Shows the currently active reference lap for delta calculation. Updated by engineer command or wheel button press.
+#### Target Lap Indicator
 
 ```tsx
-<div className="glass glass-highlight rounded-xl shadow-card p-4 flex items-center gap-4">
+<div className="surface rounded p-4 flex items-center gap-4">
   <div>
-    <p className="text-xs text-muted-foreground uppercase tracking-wide">Target Lap</p>
+    <p className="text-[0.625rem] uppercase tracking-widest text-text-muted">TARGET LAP</p>
     <p className="text-2xl font-bold font-mono tabular-nums">1:42.831</p>
-    <p className="text-xs text-muted-foreground">Lap 12 · Set by wheel button</p>
+    <p className="text-[0.625rem] text-text-muted">Lap 12 · Set by wheel button</p>
   </div>
   <Button variant="ghost" size="icon" className="ml-auto">
-    <RefreshCw className="h-4 w-4" />
+    <RefreshCw />
   </Button>
 </div>
 ```
 
-#### Engineer Command Toast
-
-When an engineer pushes a command, the driver sees a non-blocking toast notification.
-
-```tsx
-// Applied command
-<Toast className="glass glass-highlight border-[#1EA58C]/30">
-  <div className="flex items-center gap-3">
-    <div className="w-2 h-2 rounded-full bg-[#1EA58C]" />
-    <div>
-      <p className="text-sm font-medium">Target lap updated</p>
-      <p className="text-xs text-muted-foreground">Marco set target to Lap 8 · 1:43.204</p>
-    </div>
-  </div>
-</Toast>
-```
-
-Use the **teal secondary accent** (`#1EA58C`) consistently for all engineer-originated actions — it visually distinguishes "engineer did this" from "driver did this" (orange accent).
+Use **teal** (`--teal`) consistently for all engineer-originated actions — it visually distinguishes "engineer did this" from "driver did this" (orange accent).
 
 ---
 
-
+## Quick Reference
 
 | Decision | Value |
 |---|---|
-| Background | `#080809` + accent-tinted radial gradient |
-| Glass surface (base) | `rgba(255,255,255,0.04)` + `blur(12px)` |
-| Primary accent | `#EF8118` (Burnt Sienna Orange) |
+| Background | `#0e0e0e` |
+| Surface | `#1a1919` |
+| Elevated | `#1f1f1f` / `#262626` |
+| Primary accent | `#ff906c` (Coral Orange) |
 | Secondary accent | `#1EA58C` (Deep Teal) |
-| Font | Inter (variable) |
-| Mono font | Inter Mono / `font-mono` |
-| Border radius | `0.75rem` default / `1rem` cards / `1.25rem` modals |
+| Tertiary accent | `#f1afff` (Alert Purple) |
+| Primary font | Space Grotesk (variable, 300–700) |
+| Mono / data font | JetBrains Mono |
+| Heading style | Bold · Italic · All Caps |
+| Border radius | `0px` everywhere |
+| Border rule | No solid 1px sectioning borders |
+| Ghost border | `rgba(255,255,255,0.15)` — inputs only |
+| Overlay glass | `bg surface 60% opacity + blur(20px)` |
 | Base spacing unit | 4px |
-| Sidebar width | 240px |
+| Sidebar width | 52px (collapsed) / 200px (expanded) |
 | Max content width | 1280px |
 | Icon library | Lucide React |
 | Chart library | Recharts (via shadcn/ui chart) |

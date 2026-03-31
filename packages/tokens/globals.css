@@ -1,7 +1,7 @@
 /* ── Fonts ────────────────────────────────────────────────────────────────── */
-/* Barlow Condensed: primary UI font — condensed, technical, racing data feel */
+/* Space Grotesk:   primary UI font — forward-leaning, technical, racing      */
 /* JetBrains Mono:  all numbers, telemetry values, monospaced content         */
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -10,25 +10,29 @@
 /* ── CSS variables ───────────────────────────────────────────────────────── */
 :root {
   /* Accent — orange (driver-owned / primary) */
-  --accent:        #EF8118;
-  --accent-hover:  #FB923C;
-  --accent-dark:   #D96A10;
+  --accent:        #ff906c;
+  --accent-dark:   #ff784d;
+  --accent-muted:  rgba(255, 144, 108, 0.12);
+  --accent-border: rgba(255, 144, 108, 0.30);
 
   /* Teal (engineer-originated / secondary) */
   --teal:          #1EA58C;
   --teal-hover:    #25C4A8;
   --teal-dark:     #15847A;
 
-  /* Surfaces — solid, no transparency */
-  --bg-base:       #09090B;
-  --bg-surface:    #111114;
-  --bg-elevated:   #191920;
-  --bg-subtle:     #1E1E23;
+  /* Tertiary — alert purple (telemetry chips: Live, Pit, Gear) */
+  --tertiary:      #f1afff;
 
-  /* Borders — the primary structural element */
-  --border-muted:  #1C1C21;
-  --border-base:   #26262B;
-  --border-strong: #3A3A42;
+  /* Surfaces — tonal depth, no transparency */
+  --bg-base:       #0e0e0e;
+  --bg-surface:    #1a1919;
+  --bg-elevated:   #1f1f1f;
+  --bg-overlay:    #262626;
+
+  /* Ghost borders — functional separation only, never for sectioning */
+  --border-ghost-subtle: rgba(255, 255, 255, 0.08);
+  --border-ghost:        rgba(255, 255, 255, 0.15);
+  --border-ghost-strong: rgba(255, 255, 255, 0.22);
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
@@ -42,28 +46,39 @@ body {
 
 /* ── Surface utility classes ─────────────────────────────────────────────── */
 /*
- * Flat solid surfaces — depth comes from color difference + borders.
- * No blur, no transparency, no decorative shadows.
+ * Tonal surfaces — depth comes from background value difference.
+ * No borders, no blur. Glassmorphism is for overlays only.
  */
 @layer utilities {
-  /* Base surface — cards, panels, sidebar */
+  /* Mid-level surface — cards, panels, sidebar */
   .surface {
     background: var(--bg-surface);
-    border: 1px solid var(--border-base);
   }
 
-  /* Elevated — dropdowns, popovers, select menus */
+  /* Elevated — active widgets, emphasized cards */
   .surface-elevated {
     background: var(--bg-elevated);
-    border: 1px solid var(--border-base);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
 
-  /* Overlay — modals, sheets, command palette */
+  /* Top-level — highest emphasis elements */
   .surface-overlay {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-strong);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    background: var(--bg-overlay);
+  }
+
+  /* Glass — floating overlays ONLY (modals, dropdowns, nav bar) */
+  .glass {
+    background: rgba(26, 25, 25, 0.60);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+  }
+
+  /* Glass overlay — modals, sheets, command palette */
+  .glass-overlay {
+    background: rgba(38, 38, 38, 0.70);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
   }
 }
 
