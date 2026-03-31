@@ -87,38 +87,6 @@ export default function Telemetry({ frame }: TelemetryProps) {
               />
             </div>
           </div>
-
-          {/* Chart area */}
-          <div className="mt-4 flex-1 min-h-0 border border-[#2a2a2a] bg-black/40 relative overflow-hidden">
-            <svg className="w-full h-full" viewBox="0 0 1000 300" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="sprintFade" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#ff906c" stopOpacity="0.05" />
-                  <stop offset="100%" stopColor="#ff906c" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {/* Subtle grid lines */}
-              {[75, 150, 225].map(y => (
-                <line key={y} x1="0" x2="1000" y1={y} y2={y} stroke="white" strokeOpacity="0.03" strokeWidth="1" />
-              ))}
-              {/* RPM line (cyan) */}
-              <path d="M0 280 Q 150 160 300 220 T 600 110 T 900 85 L 1000 75" fill="none" stroke="#5af8fb" strokeOpacity="0.4" strokeWidth="1" />
-              {/* Speed line (orange) */}
-              <path d="M0 290 Q 200 230 400 240 T 700 75 T 1000 40" fill="none" stroke="#ff906c" strokeWidth="1.5" />
-              <path d="M0 290 Q 200 230 400 240 T 700 75 T 1000 40 L 1000 300 L 0 300 Z" fill="url(#sprintFade)" />
-            </svg>
-            {/* Legend */}
-            <div className="absolute right-2 top-2 flex gap-4 font-mono text-[9px]">
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 bg-[#ff906c]" />
-                SPD_INDEX
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 bg-[#5af8fb]/50" />
-                ENG_RPM
-              </div>
-            </div>
-          </div>
         </section>
 
         {/* Right: chrono — col-span-3 */}
