@@ -108,11 +108,17 @@ Follow idiomatic Go practices and community standards when writing Go code. Thes
 ### Package Organization
 
 - Follow standard Go project layout conventions
-- Keep `main` packages in `cmd/` directory
+- Each deployable binary is its own Go module with `main.go` at the module root (e.g., `app/main.go`, `api/main.go`) — this is required by Wails and suits the multi-module workspace layout
 - Put reusable packages in `pkg/` or `internal/`
 - Use `internal/` for packages that shouldn't be imported by external projects
 - Group related functionality into packages
 - Avoid circular dependencies
+
+### Go Workspace
+
+- Use `go.work` to link all modules (`app`, `api`, `pkg`) so local changes are resolved without publishing
+- Run `go work sync` after updating any module's `go.mod`
+- Set `GONOSUMDB` and `GONOPROXY` for private modules (e.g., `github.com/kratofl/*`) so `go mod tidy` skips the sum check
 
 ### Dependency Management
 
@@ -174,15 +180,14 @@ Follow idiomatic Go practices and community standards when writing Go code. Thes
 - Use `sync.RWMutex` when you have many readers
 - Choose between channels and mutexes based on the use case: use channels for communication, mutexes for protecting state
 - Use `sync.Once` for one-time initialization
-- WaitGroup usage by Go version:
-	- If `go >= 1.25` in `go.mod`, use the new `WaitGroup.Go` method ([documentation](https://pkg.go.dev/sync#WaitGroup)):
-		```go
-		var wg sync.WaitGroup
-		wg.Go(task1)
-		wg.Go(task2)
-		wg.Wait()
-		```
-	- If `go < 1.25`, use the classic `Add`/`Done` pattern
+- Use `WaitGroup.Go` to launch goroutines tracked by a WaitGroup ([documentation](https://pkg.go.dev/sync#WaitGroup)):
+	```go
+	var wg sync.WaitGroup
+	wg.Go(task1)
+	wg.Go(task2)
+	wg.Wait()
+	```
+- Use `atomic.Pointer[T]` and `atomic.Bool` for lock-free reads/writes on hot paths (e.g., latest telemetry frame, flags checked every render tick) — prefer atomics over mutexes when the shared state is a single value read far more often than written
 
 ## Error Handling Patterns
 
@@ -210,9 +215,7 @@ Follow idiomatic Go practices and community standards when writing Go code. Thes
 - Use middleware for cross-cutting concerns
 - Set appropriate status codes and headers
 - Handle errors gracefully and return appropriate error responses
-- Router usage by Go version:
-	- If `go >= 1.22`, prefer the enhanced `net/http` `ServeMux` with pattern-based routing and method matching
-	- If `go < 1.22`, use the classic `ServeMux` and handle methods/paths manually (or use a third-party router when justified)
+- Use the enhanced `net/http` `ServeMux` with pattern-based routing and method matching (e.g., `mux.HandleFunc("GET /api/health", handler)`, `mux.HandleFunc("POST /api/auth/register", handler)`)
 
 ### JSON APIs
 
@@ -267,6 +270,20 @@ Follow idiomatic Go practices and community standards when writing Go code. Thes
 	- In a goroutine: write all parts to `mw` in the correct order; on error `pw.CloseWithError(err)`; on success `mw.Close()` then `pw.Close()`
 	- Do not store request/in-flight form state on a long-lived client; build per call
 	- Streamed bodies are not rewindable; for retries/redirects, buffer small payloads or provide `GetBody`
+
+### Logging
+
+- Use `log/slog` for structured logging throughout the codebase
+- Create tagged child loggers per subsystem: `logger.With("component", "vocore")`
+- Use `slog.NewJSONHandler` for file output and `slog.NewTextHandler` for console output
+- Set log level via environment variable (e.g., `LOG_LEVEL=debug`)
+- Avoid `log.Printf` in new code — use `slog.Info`, `slog.Error`, etc. with structured key-value pairs
+
+### Platform-Specific Code
+
+- Use Go build tag file naming for platform-specific implementations: `_windows.go`, `_linux.go`, `_darwin.go`
+- Provide a stub file (e.g., `_stub.go`) with a `//go:build` constraint for unsupported platforms when needed
+- Keep the platform-independent interface in a shared file (e.g., `shm.go`) and put implementations in per-OS files
 
 ### Profiling
 
