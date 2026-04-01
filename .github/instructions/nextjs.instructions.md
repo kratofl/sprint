@@ -9,8 +9,6 @@ _Last updated: January 2026 (aligned to Next.js 16.1.1)_
 
 This document summarizes the latest, authoritative best practices for building, structuring, and maintaining Next.js applications. It is intended for use by LLMs and developers to ensure code quality, maintainability, and scalability.
 
----
-
 ## 1. Project Structure & Organization
 
 - **Use the `app/` directory** (App Router) for all new projects. Prefer it over the legacy `pages/` directory.
@@ -72,8 +70,6 @@ Always move client-only UI into a Client Component and import it directly in you
 - **Assume request-bound data is async in Server Components and Route Handlers.** In Next.js 16, APIs like `cookies()`, `headers()`, and `draftMode()` are async in the App Router.
 - **Be careful with route props:** `params` / `searchParams` may be Promises in Server Components. Prefer `await`ing them instead of treating them as plain objects.
 - **Avoid dynamic rendering by accident:** Accessing request data (cookies/headers/searchParams) opts the route into dynamic behavior. Read them intentionally and isolate dynamic parts behind `Suspense` boundaries when appropriate.
-
----
 
 ## 3. Component Best Practices
 
