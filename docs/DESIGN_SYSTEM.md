@@ -4,6 +4,16 @@ Visual design system for the Sprint sim racing telemetry platform.
 
 **Stack:** Next.js · shadcn/ui · Tailwind CSS · Radix UI · Space Grotesk + JetBrains Mono
 
+## Implementation conventions
+
+- Prefer Tailwind utility classes in JSX over ad-hoc CSS. Reach for shared utilities and token-backed classes first.
+- Keep styling aligned with the shared token source in `packages/tokens/` and the rules in this document. If a new reusable color, spacing, surface, or typography primitive is needed, add it to the shared tokens instead of hardcoding one-off values.
+- Reusable shared visual components belong in `packages/ui/` and are consumed from `@sprint/ui`.
+- `app/frontend/src/components/` is for desktop- and Wails-specific UI only.
+- `web/components/` is for web- and Next.js-specific UI only.
+- If a component is shared by desktop and web — or is likely to become shared — extract it to `packages/ui/` instead of duplicating it.
+- Both apps scan `packages/ui/src/**/*.{ts,tsx}` in Tailwind content, so Tailwind classes used in shared components are available on both surfaces.
+
 ---
 
 ## 1. Design Philosophy
@@ -417,7 +427,7 @@ Motion is purposeful. It communicates state changes, not aesthetics. When in dou
 
 ## 9. Desktop App (Wails)
 
-The Wails desktop frontend shares the same design system as the web app — same tokens, same components from `/packages`. A few platform-specific considerations apply.
+The Wails desktop frontend shares the same design system as the web app — the same tokens from `packages/tokens/` and the same reusable visual components from `packages/ui/`, consumed via `@sprint/ui`. A few platform-specific considerations apply.
 
 ### 9.1 Window & Chrome
 

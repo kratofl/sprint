@@ -7,13 +7,21 @@ applyTo: 'app/frontend/**/*.tsx,app/frontend/**/*.ts,packages/ui/**/*.tsx,packag
 
 ## Shared UI System (`@sprint/ui`)
 
-All reusable visual components live in `packages/ui/`. Both `app/frontend` and `web` import from `@sprint/ui`.
+All reusable visual components live in `packages/ui/`, are exported from
+`@sprint/ui`, and are consumed from `@sprint/ui` by both `app/frontend`
+and `web`.
 
 ### Component Patterns
 
-- **CVA (class-variance-authority)** for variant management — define variants and sizes declaratively
+- **Tailwind-first styling** — prefer Tailwind utility classes in JSX/TSX
+  over ad-hoc CSS for component styling
+- **Token reuse** — use shared tokens and utilities from `@sprint/tokens`
+  before introducing one-off visual values
+- **CVA (class-variance-authority)** for shared component variants — define
+  variants and sizes declaratively
 - **Radix UI `Slot`** for `asChild` polymorphism — components can render as any element
-- **`cn()` utility** for Tailwind class merging (`clsx` + `tailwind-merge`)
+- **`cn()` utility** for Tailwind class composition and merging (`clsx` +
+  `tailwind-merge`)
 - Export both the component and its variants type (e.g., `Button`, `ButtonProps`, `ButtonVariants`)
 
 ### Naming & Structure
@@ -23,6 +31,9 @@ packages/ui/src/components/
   primitives/    → Button, Badge, Card, Input (visual atoms)
   telemetry/     → LapTime, DeltaBar, TireTemp (domain display)
 ```
+
+If a component is needed on both desktop and web surfaces, extract it to
+`packages/ui` and consume it via `@sprint/ui` instead of duplicating it.
 
 ### Accessibility
 
@@ -45,7 +56,9 @@ Components in `app/frontend/src/components/` that depend on Wails runtime or nat
 - Device configuration panels
 - Wails event listeners
 
-These must NOT be moved to `@sprint/ui`.
+`app/frontend/src/components/` is for Wails-specific UI only. If a component
+does not need Wails APIs and is reusable, move it to `packages/ui` and
+consume it via `@sprint/ui`.
 
 ## TypeScript Types (`@sprint/types`)
 
@@ -56,7 +69,13 @@ These must NOT be moved to `@sprint/ui`.
 
 ## Styling
 
+- Prefer Tailwind utility classes in JSX/TSX over ad-hoc CSS for component
+  styling
 - Tailwind CSS with shared config from `@sprint/tokens`
+- Reuse tokens, CSS variables, and shared utilities from `@sprint/tokens`
+  before adding one-off colors, spacing, blur, or shadow values
+- Use `cn()` for conditional class composition and CVA for shared component
+  variants
 - Both apps include `../../packages/ui/src/**/*.{ts,tsx}` in Tailwind `content` — shared component classes are not purged
 - Glassmorphism: `backdrop-blur-glass`, `border-border-glass`, `.glass` utility classes
 - Font: `Inter` variable (100–900). Telemetry numbers: `font-mono tabular-nums`

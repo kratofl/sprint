@@ -280,9 +280,12 @@ so `go mod tidy` skips the sum check for this private repo.
 
 ## Shared TypeScript Packages (`/packages`)
 
-- Design tokens (CSS variables, Tailwind config) → `@sprint/tokens` — imported by both apps. Single source of truth.
+- Design tokens (CSS variables, Tailwind config, shared utilities) →
+  `@sprint/tokens` — imported by both apps. Single source of truth.
 - TypeScript mirrors of Go DTOs → `@sprint/types` — kept in sync manually with `pkg/dto/*.go`.
-- Shared UI components and utils → `@sprint/ui` — **write components here first**.
+- Shared UI components and utils → `@sprint/ui` — **write reusable visual
+  components here first, export them here, and consume them via
+  `@sprint/ui`**.
 
 ### Component ownership rules
 
@@ -290,13 +293,21 @@ so `go mod tidy` skips the sum check for this private repo.
 |---|---|
 | `packages/ui/src/components/primitives/` | Reusable visual atoms: `Button`, `Badge`, `Card` |
 | `packages/ui/src/components/telemetry/` | Domain display: `LapTime`, `DeltaBar`, `TireTemp` |
-| `app/frontend/src/components/` | **Desktop-only** — Wails bindings, native chrome, drag regions |
-| `web/components/` | **Web-only** — Next.js server components, routing-aware layouts |
+| `app/frontend/src/components/` | **Desktop-only / Wails-only** — Wails bindings, native chrome, drag regions |
+| `web/components/` | **Web-only / Next.js-only** — Next.js server components, routing-aware layouts |
 
-**Rule:** When building a new visual component, put it in `packages/ui` unless it requires Wails- or Next.js-specific APIs. Both apps import from `@sprint/ui`.
+**Rule:** Prefer Tailwind utility classes in JSX/TSX, reuse
+`@sprint/tokens`, and put new reusable visual components in `packages/ui`
+unless they require Wails- or Next.js-specific APIs. Both apps consume
+shared components via `@sprint/ui`.
+
+**Extraction rule:** If both `app/frontend` and `web` need a component,
+extract it to `packages/ui` instead of duplicating it in app-local or
+web-local folders.
 
 **Tailwind reminder:** Both apps' `tailwind.config.ts` include `../../packages/ui/src/**/*.{ts,tsx}` in `content` — classes in shared components are not purged.
 
+- Prefer `cn()` for class composition and CVA for shared component variants.
 - No platform-specific code (no `window.go`, no Next.js imports) in `/packages`.
 
 ## Design System

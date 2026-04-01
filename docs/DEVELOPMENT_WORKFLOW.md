@@ -90,11 +90,18 @@ cd packages/ui && pnpm build
 
 ### Working on shared UI components
 
+`packages/ui/` is the home for reusable shared visual components. If a component is meant to be used by both the desktop app and the web app, add it in `packages/ui/src/components/` and consume it from `@sprint/ui`.
+
+Keep `app/frontend/src/components/` for desktop-only UI (Wails bindings, window chrome, native integrations) and `web/components/` for web-only UI (Next.js routing boundaries, browser-specific behavior). If a platform-specific component later becomes shared, extract the reusable visual piece into `packages/ui/`.
+
+For styling, prefer Tailwind utility classes plus the shared tokens and utilities from `packages/tokens/`. Keep class choices aligned with `docs/DESIGN_SYSTEM.md` instead of introducing ad-hoc CSS or hardcoded one-off values. Both apps include `packages/ui/src/**/*.{ts,tsx}` in Tailwind's content scan, so classes used in shared components are preserved on both surfaces.
+
 When you edit a component in `packages/ui/src/`:
 
 1. Edit the component source in `packages/ui/src/components/`
-2. Run `cd packages/ui && pnpm build` (or keep a `pnpm dev`/`pnpm build --watch` running if the package supports it)
-3. Wails dev / Next.js dev will pick up the changes
+2. Keep styling token-backed and Tailwind-first
+3. Run `cd packages/ui && pnpm build` (or keep a watch build running if the package supports it)
+4. Wails dev / Next.js dev will pick up the rebuilt package
 
 ### Go backend changes
 
@@ -315,9 +322,9 @@ Here's the mental model for a typical desktop feature:
       └─ Wails auto-generates the TypeScript binding
 
 4. Build the UI
-   └─ Build the React component in /app/frontend/src/
-      └─ If it's reusable → put it in /packages/ui/ instead
-         └─ Then rebuild: cd packages/ui && pnpm build
+   ├─ Shared visual component? Create/update it in /packages/ui/ and consume it from @sprint/ui
+   │  └─ Then rebuild: cd packages/ui && pnpm build
+   └─ Platform-specific UI stays in /app/frontend/src/components/ or /web/components/
 ```
 
 ---
