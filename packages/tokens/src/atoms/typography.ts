@@ -5,11 +5,11 @@
  * JetBrains Mono: all numeric/monospace content — tabular, data-accurate.
  */
 
-export const fontFamily = {
+export const fontFamily: Record<'display' | 'sans' | 'mono', string[]> = {
   display: ['Space Grotesk', 'system-ui', 'sans-serif'],
-  sans:    ['Space Grotesk', 'system-ui', 'sans-serif'],
-  mono:    ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
-} as const
+  sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+  mono: ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
+}
 
 export const fontWeight = {
   normal:    '400',

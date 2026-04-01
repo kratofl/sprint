@@ -96,21 +96,21 @@ type WidgetCtx struct {
 	FontLoader func(dc *gg.Context, name string, size float64)
 }
 
-// ── Layout helpers ────────────────────────────────────────────────────────────
+// Layout helpers.
 
 func (c WidgetCtx) Panel()           { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0) }
 func (c WidgetCtx) PanelR(r float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r) }
 func (c WidgetCtx) CX() float64      { return c.X + c.W/2 }
 func (c WidgetCtx) CY() float64      { return c.Y + c.H/2 }
 
-// ── Font helpers ──────────────────────────────────────────────────────────────
+// Font helpers.
 
 func (c WidgetCtx) FontLabel(size float64)  { c.FontLoader(c.DC, "SpaceGrotesk-Regular.ttf", size) }
 func (c WidgetCtx) FontBold(size float64)   { c.FontLoader(c.DC, "SpaceGrotesk-Bold.ttf", size) }
 func (c WidgetCtx) FontNumber(size float64) { c.FontLoader(c.DC, "JetBrainsMono-Bold.ttf", size) }
 func (c WidgetCtx) FontMono(size float64)   { c.FontLoader(c.DC, "JetBrainsMono-Regular.ttf", size) }
 
-// ── Bar helpers ───────────────────────────────────────────────────────────────
+// Bar helpers.
 
 func (c WidgetCtx) HBar(x, y, w, h, pct float64, col color.RGBA) {
 	drawHBar(c.DC, x, y, w, h, pct, col)
@@ -120,7 +120,7 @@ func (c WidgetCtx) HBarCentered(x, y, w, h, pct float64, col color.RGBA) {
 	drawHBarCentered(c.DC, x, y, w, h, pct, col)
 }
 
-// ── Formatter helpers ─────────────────────────────────────────────────────────
+// Formatter helpers.
 
 func (c WidgetCtx) FmtLap(t float64) string    { return FmtLap(t) }
 func (c WidgetCtx) FmtSector(t float64) string { return FmtSector(t) }

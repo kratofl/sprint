@@ -7,6 +7,7 @@
 - Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation and understanding. Fall back to file read operations (grep, glob, cat) only as a last resort.
 - Use the GitHub CLI (`gh`) for GitHub operations by default instead of built-in MCP GitHub tools, unless explicitly requested otherwise.
 - You **may** run `git commit` automatically. Every commit must include the co-author trailer: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+- In source and config files, do **not** use decorative separator comment lines or banner comments such as `# -------------` or `# ─── Section ───`. Prefer normal comments, headings, and self-explanatory structure instead.
 
 ## Project Overview
 
@@ -319,29 +320,35 @@ Full reference: [`docs/DESIGN_SYSTEM.md`](../docs/DESIGN_SYSTEM.md)
 **Colors:**
 | Role | Hex | Usage |
 |---|---|---|
-| Background | `#080809` | Page background (+ subtle orange radial gradient) |
-| Orange (primary) | `#EF8118` | Driver actions, primary buttons, active nav, focus rings |
-| Teal (secondary) | `#1EA58C` | Engineer actions, comparison highlights, secondary CTAs |
-| Foreground | `#F2F2F3` | Primary text |
-| Muted foreground | `#8A8A95` | Labels, timestamps, helper text |
-| Disabled | `#52525C` | Placeholders, inactive elements |
+| Background | `#0a0a0a` | Page background |
+| Orange (primary) | `#ff906c` | Driver actions, primary buttons, active nav, focus rings |
+| Cyan (secondary) | `#5af8fb` | Engineer actions, comparison highlights, secondary CTAs |
+| Foreground | `#ffffff` | Primary text |
+| Muted foreground | `#808080` | Labels, timestamps, helper text |
+| Disabled | `#525252` | Placeholders, inactive elements |
 | Success | `#34D399` | Personal bests, improvements, online status |
 | Warning | `#FBBF24` | Caution, yellow flag |
 | Danger | `#F87171` | Errors, time losses |
 
-**Glass surface utility classes** (defined in `packages/tokens/globals.css`, imported by both apps):
+**Surface utility classes** (defined in `packages/tokens/globals.css`, imported by both apps):
 ```
-.glass           → rgba(255,255,255,0.04)  blur(12px)  — cards, panels
-.glass-elevated  → rgba(255,255,255,0.07)  blur(20px)  — dropdowns, tooltips
-.glass-overlay   → rgba(255,255,255,0.10)  blur(32px)  — modals, sheets
-.glass-highlight → inset 0 1px 0 rgba(255,255,255,0.10) — top edge glow, pair with .glass
+.surface              → base card/panel surface with structural outline
+.surface-elevated     → elevated surface for emphasized widgets/cards
+.surface-overlay      → top-level overlay surface
+.surface-active       → orange-tinted active/selected state
+.surface-secondary    → cyan-tinted comparison/system state
+.surface-success      → success-tinted state
+.surface-warning      → warning-tinted state
+.surface-destructive  → destructive-tinted state
+.surface-tertiary     → tertiary-tinted state
+.glass / .glass-overlay → floating overlays only
 ```
 
 **Typography:**
-- Font: `Inter` (variable, 100–900). Telemetry numbers: `font-mono tabular-nums` to prevent layout shift.
+- Font: `Space Grotesk` for UI, `JetBrains Mono` for telemetry/data readouts.
 - Hero stat values (lap times, top speed): `text-3xl font-bold font-mono tabular-nums`
 
-**Orange = driver-owned / primary action. Teal = engineer-originated / comparison. Never use both at the same visual weight on the same element.**
+**Orange = driver-owned / primary action. Cyan = engineer-originated / comparison. Never use both at the same visual weight on the same element.**
 
 ## Data Flow for New Game Support
 

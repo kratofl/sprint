@@ -90,6 +90,7 @@ Follow idiomatic Go practices and community standards when writing Go code. Thes
 - Package comments should start with "Package [name]"
 - Use line comments (`//`) for most comments
 - Use block comments (`/* */`) sparingly, mainly for package documentation
+- Do not use decorative separator comment lines or banner comments made of repeated hyphens, box-drawing characters, or similar glyphs; prefer normal comments and self-explanatory structure
 - Document why, not what, unless the what is complex
 - Avoid emoji in comments and code
 

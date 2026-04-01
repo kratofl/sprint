@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
+  Badge, Button,
   Tabs, TabsContent, TabsList, TabsTrigger,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
   cn,
@@ -19,7 +20,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   race:   'RACE',
 }
 
-// ── DashEditor ────────────────────────────────────────────────────────────────
+// DashEditor.
 
 export default function DashEditor() {
   const [layout, setLayout]         = useState<DashLayout>({ widgets: [] })
@@ -97,45 +98,47 @@ export default function DashEditor() {
     <div className="flex flex-1 flex-col overflow-hidden">
 
       {/* Section header */}
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-4 flex-shrink-0">
+      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
         <div>
           <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
-          <p className="font-mono text-[10px] text-[#808080]">
+          <p className="font-mono text-[10px] text-text-muted">
             {layout.widgets.length} widget{layout.widgets.length !== 1 ? 's' : ''} · {screenW}×{screenH}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {saveStatus === 'saved' && (
-            <span className="terminal-header text-[10px] text-[#34D399]">SAVED</span>
+            <Badge variant="success" className="terminal-header">SAVED</Badge>
           )}
           {saveStatus === 'error' && (
-            <span className="terminal-header text-[10px] text-[#F87171]">SAVE_FAILED</span>
+            <Badge variant="destructive" className="terminal-header">SAVE_FAILED</Badge>
           )}
-          <button
+          <Button
             onClick={handleClearLayout}
-            className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+            variant="neutral"
+            className="terminal-header font-bold"
           >
             CLEAR
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleSave}
             disabled={saving}
-            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
+            variant="primary"
+            className="terminal-header font-bold"
           >
             {saving ? 'SAVING…' : 'SAVE_LAYOUT'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {loadError && (
-        <div className="border-b border-[#2a2a2a] px-6 py-2 font-mono text-[10px] text-[#F87171]">{loadError}</div>
+        <div className="border-b border-border px-6 py-2 font-mono text-[10px] text-destructive">{loadError}</div>
       )}
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden min-h-0">
 
         {/* Canvas column */}
-        <div className="flex flex-1 flex-col overflow-hidden border-r border-[#2a2a2a] p-6 gap-3 min-w-0">
+        <div className="flex flex-1 flex-col overflow-hidden border-r border-border p-6 gap-3 min-w-0">
           <DashCanvas
             layout={layout}
             selectedId={selectedId}
@@ -149,19 +152,21 @@ export default function DashEditor() {
           <div className="flex h-7 flex-shrink-0 items-center gap-4 font-mono text-[10px]">
             {selectedWidget ? (
               <>
-                <span className="terminal-header text-[#ff906c]">{selectedWidget.type}</span>
-                <span className="text-[#808080]">
+                <Badge variant="active" className="terminal-header">{selectedWidget.type}</Badge>
+                <span className="text-text-muted">
                   X:{selectedWidget.x} Y:{selectedWidget.y} W:{selectedWidget.w} H:{selectedWidget.h}
                 </span>
-                <button
+                <Button
                   onClick={() => { setLayout(prev => ({ widgets: prev.widgets.filter((_, i) => i !== selectedId) })); setSelectedId(null) }}
-                  className="ml-auto text-[#808080] hover:text-[#F87171] transition-colors"
+                  variant="ghost"
+                  size="xs"
+                  className="ml-auto h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
                 >
                   REMOVE
-                </button>
+                </Button>
               </>
             ) : (
-              <span className="text-[#808080]">
+              <span className="text-text-muted">
                 {layout.widgets.length === 0 ? 'DRAG_WIDGET_TO_CANVAS' : `${layout.widgets.length}_WIDGETS — CLICK_TO_SELECT`}
               </span>
             )}
@@ -170,8 +175,8 @@ export default function DashEditor() {
 
         {/* Widget palette */}
         <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden">
-          <div className="border-b border-[#2a2a2a] px-4 py-3">
-            <h4 className="terminal-header text-[10px] font-bold text-[#808080]">WIDGET_PALETTE</h4>
+          <div className="border-b border-border px-4 py-3">
+            <h4 className="terminal-header text-[10px] font-bold text-text-muted">WIDGET_PALETTE</h4>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -185,7 +190,7 @@ export default function DashEditor() {
   )
 }
 
-// ── WidgetPalette ─────────────────────────────────────────────────────────────
+// WidgetPalette.
 
 function WidgetPalette({ catalog }: { catalog: WidgetCatalogEntry[] }) {
   // Derive ordered categories from the catalog; filter to known order first,
@@ -197,7 +202,7 @@ function WidgetPalette({ catalog }: { catalog: WidgetCatalogEntry[] }) {
 
   if (catalog.length === 0) {
     return (
-      <div className="p-4 text-center font-mono text-[10px] text-[#808080]">
+      <div className="p-4 text-center font-mono text-[10px] text-text-muted">
         LOADING_CATALOG…
       </div>
     )
@@ -207,7 +212,7 @@ function WidgetPalette({ catalog }: { catalog: WidgetCatalogEntry[] }) {
 
   return (
     <Tabs defaultValue={defaultTab}>
-      <div className="border-b border-[#2a2a2a]">
+      <div className="border-b border-border">
         <TabsList variant="line" className="w-full">
           {categories.map(cat => (
             <TabsTrigger key={cat} value={cat} className="flex-1 text-[10px]">
@@ -245,9 +250,9 @@ function WidgetList({
                   e.dataTransfer.setData('widget-type', w.type)
                 }}
                 className={cn(
-                  'flex w-full cursor-grab select-none items-center gap-2 border border-[#2a2a2a] px-2 py-1.5 active:cursor-grabbing',
-                  'font-mono text-[10px] text-[#808080] transition-colors',
-                  'hover:border-[#3a3a3a] hover:text-white',
+                  'flex w-full cursor-grab select-none items-center gap-2 border border-border px-2 py-1.5 active:cursor-grabbing',
+                  'font-mono text-[10px] text-text-muted transition-colors',
+                  'hover:border-border-strong hover:text-foreground',
                 )}
               >
                 <WidgetDragIcon />

@@ -150,7 +150,7 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 		return
 	}
 
-	// ── Double-buffer pipeline ────────────────────────────────────────────────
+	// Double-buffer pipeline.
 	// Three pre-allocated RGB565 buffers. Ownership flows:
 	//   render → sendCh → sendLoop → returnCh → render
 	// When sendCh is full the stale pending frame is displaced and its buffer
@@ -187,8 +187,6 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 		close(sendCh)
 		senderWg.Wait()
 	}()
-	// ─────────────────────────────────────────────────────────────────────────
-
 	var framesSent int
 	var framesSkipped int
 	var totalRenderNs, totalConvertNs int64

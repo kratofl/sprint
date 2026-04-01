@@ -13,9 +13,7 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
 # Early exit if disabled
-# ---------------------------------------------------------------------------
 if [[ "${SKIP_LICENSE_CHECK:-}" == "true" ]]; then
   echo "⏭️  License check skipped (SKIP_LICENSE_CHECK=true)"
   exit 0
@@ -27,9 +25,7 @@ if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   exit 0
 fi
 
-# ---------------------------------------------------------------------------
 # Configuration
-# ---------------------------------------------------------------------------
 MODE="${LICENSE_MODE:-warn}"
 LOG_DIR="${LICENSE_LOG_DIR:-logs/copilot/license-checker}"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -50,9 +46,7 @@ if [[ -n "${LICENSE_ALLOWLIST:-}" ]]; then
   IFS=',' read -ra ALLOWLIST <<< "$LICENSE_ALLOWLIST"
 fi
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
 }
@@ -86,9 +80,7 @@ is_blocked_license() {
   return 1
 }
 
-# ---------------------------------------------------------------------------
 # Phase 1: Detect new dependencies per ecosystem
-# ---------------------------------------------------------------------------
 NEW_DEPS=()
 
 # npm / yarn / pnpm — package.json
@@ -171,9 +163,7 @@ fi
 
 echo "🔍 Checking licenses for ${#NEW_DEPS[@]} new dependency(ies)..."
 
-# ---------------------------------------------------------------------------
 # Phase 2: Check license per dependency
-# ---------------------------------------------------------------------------
 RESULTS=()
 
 get_license() {
@@ -272,9 +262,7 @@ for dep in "${NEW_DEPS[@]}"; do
   RESULTS+=("$ecosystem	$pkg	$license")
 done
 
-# ---------------------------------------------------------------------------
 # Phase 3 & 4: Check against blocked list and allowlist
-# ---------------------------------------------------------------------------
 VIOLATIONS=()
 
 for result in "${RESULTS[@]}"; do
@@ -292,9 +280,7 @@ for result in "${RESULTS[@]}"; do
   fi
 done
 
-# ---------------------------------------------------------------------------
 # Phase 5: Output & logging
-# ---------------------------------------------------------------------------
 echo ""
 printf "  %-30s %-12s %-30s %s\n" "PACKAGE" "ECOSYSTEM" "LICENSE" "STATUS"
 printf "  %-30s %-12s %-30s %s\n" "-------" "---------" "-------" "------"

@@ -1,5 +1,4 @@
 # Sprint — Sim Racing Telemetry Platform
-# ──────────────────────────────────────────────────────────────────────────────
 # Usage: make <target>
 # Run `make help` to list all available targets.
 

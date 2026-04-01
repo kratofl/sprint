@@ -2,7 +2,7 @@
 
 import { call } from '@/lib/wails'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Types.
 
 export interface DashWidget {
   type: string
@@ -32,7 +32,7 @@ export interface ScreenConfig {
   height: number
 }
 
-// ── Widget catalogue entry (mirrors widgets.WidgetMeta from Go) ───────────────
+// Widget catalogue entry mirroring widgets.WidgetMeta from Go.
 
 export interface WidgetCatalogEntry {
   type: string
@@ -55,7 +55,7 @@ export const WIDGET_TYPES = [
 
 export type WidgetType = (typeof WIDGET_TYPES)[number]['type']
 
-// ── Wails binding helper ──────────────────────────────────────────────────────
+// Wails binding helper.
 
 // Wails returns Go struct fields with capital letters; normalise to camelCase.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,7 +100,7 @@ function normScreenConfig(raw: any): ScreenConfig {
   }
 }
 
-// ── Dash API ──────────────────────────────────────────────────────────────────
+// Dash API.
 
 export const dashAPI = {
   async loadLayout(): Promise<DashLayout> {
@@ -113,7 +113,7 @@ export const dashAPI = {
   },
 }
 
-// ── Device screen API ─────────────────────────────────────────────────────────
+// Device screen API.
 
 export const deviceScreenAPI = {
   async scanScreens(): Promise<DetectedScreen[]> {
@@ -139,7 +139,7 @@ export const deviceScreenAPI = {
 /** @deprecated Use deviceScreenAPI instead */
 export const voCoreAPI = deviceScreenAPI
 
-// ── Widget catalog API ────────────────────────────────────────────────────────
+// Widget catalog API.
 
 export const widgetCatalogAPI = {
   async getWidgetCatalog(): Promise<WidgetCatalogEntry[]> {

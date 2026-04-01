@@ -50,7 +50,7 @@ func Init(cfg Config) *slog.Logger {
 
 	var handlers []slog.Handler
 
-	// ── File handler (JSON) ──────────────────────────────────────────────────
+	// File handler (JSON).
 	logPath := cfg.LogFile
 	if logPath == "" {
 		logPath = DefaultLogFile()
@@ -59,7 +59,7 @@ func Init(cfg Config) *slog.Logger {
 		handlers = append(handlers, slog.NewJSONHandler(f, &slog.HandlerOptions{Level: level}))
 	}
 
-	// ── Stdout handler (text) ────────────────────────────────────────────────
+	// Stdout handler (text).
 	if cfg.Console {
 		handlers = append(handlers, slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 	}

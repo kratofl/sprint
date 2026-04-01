@@ -271,9 +271,9 @@ Section labels and card headers use All Caps with wide letter spacing to maximis
 
 ### 5.1 Buttons: High-Velocity CTAs
 
-- **Primary:** All Caps · Bold · Italic · 0px radius · Gradient fill (`#ff906c → #ff784d` at 135°)
-- **Secondary:** Ghost style — `outline-variant` at 20% opacity, teal text
-- **Interaction:** On hover, a warm `primary` glow appears; gradient angle shifts slightly
+- **Primary:** All Caps · Bold · outlined orange text with orange fill on hover
+- **Secondary:** outlined cyan treatment for system / comparison actions
+- **Interaction:** Hover states strengthen border/text emphasis without adding local one-off styling
 
 ```tsx
 // Primary CTA
@@ -494,6 +494,6 @@ Use **teal** (`--teal`) consistently for all engineer-originated actions — it 
 | Base spacing unit | 4px |
 | Sidebar width | 52px (collapsed) / 200px (expanded) |
 | Max content width | 1280px |
-| Icon library | Lucide React |
+| Icon library | Tabler Icons |
 | Chart library | Recharts (via shadcn/ui chart) |
 | Component library | shadcn/ui + Radix UI |

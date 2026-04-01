@@ -24,7 +24,7 @@ func HealthHandler(version string) http.HandlerFunc {
 	}
 }
 
-// ── Telemetry Sessions ──────────────────────────────────────────────────────
+// Telemetry sessions.
 
 func CreateSession(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
@@ -48,7 +48,7 @@ func GetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"id": id, "status": "stub"})
 }
 
-// ── Setups ──────────────────────────────────────────────────────────────────
+// Setups.
 
 func ListSetups(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())
@@ -72,7 +72,7 @@ func GetSetup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"id": id, "status": "stub"})
 }
 
-// ── Layouts ─────────────────────────────────────────────────────────────────
+// Layouts.
 
 func ListLayouts(w http.ResponseWriter, r *http.Request) {
 	userID := auth.UserIDFromContext(r.Context())

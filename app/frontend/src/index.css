@@ -1,12 +1,12 @@
-/* ── Shared design tokens ─────────────────────────────────────────────────── */
+/* Shared design tokens. */
 @import '@sprint/tokens/globals.css';
 
-/* ── Wails-specific ──────────────────────────────────────────────────────── */
+/* Wails-specific rules. */
 html, body, #root {
   height: 100%;
   margin: 0;
 }
 
-/* ── Wails drag region helper ────────────────────────────────────────────── */
+/* Wails drag region helper. */
 [app-region="drag"] { -webkit-app-region: drag; }
 [app-region="no-drag"] { -webkit-app-region: no-drag; }

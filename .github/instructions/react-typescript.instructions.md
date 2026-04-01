@@ -34,6 +34,9 @@ packages/ui/src/components/
 
 If a component is needed on both desktop and web surfaces, extract it to
 `packages/ui` and consume it via `@sprint/ui` instead of duplicating it.
+Do not use decorative separator comment lines or banner comments made of
+repeated hyphens, box-drawing characters, or similar glyphs; prefer normal
+comments, headings, and self-explanatory structure.
 
 ### Accessibility
 
@@ -76,14 +79,21 @@ consume it via `@sprint/ui`.
   before adding one-off colors, spacing, blur, or shadow values
 - Use `cn()` for conditional class composition and CVA for shared component
   variants
-- Both apps include `../../packages/ui/src/**/*.{ts,tsx}` in Tailwind `content` — shared component classes are not purged
-- Glassmorphism: `backdrop-blur-glass`, `border-border-glass`, `.glass` utility classes
-- Font: `Inter` variable (100–900). Telemetry numbers: `font-mono tabular-nums`
+- Both apps include `../../packages/ui/src/**/*.{ts,tsx}` in Tailwind
+  `content` — shared component classes are not purged
+- Use the shared surface utilities from `@sprint/tokens` (`.surface`,
+  `.surface-elevated`, `.surface-overlay`, `.surface-active`,
+  `.surface-secondary`, `.surface-success`, `.surface-warning`,
+  `.surface-destructive`, `.surface-tertiary`) instead of inventing local
+  surface treatments
+- Reserve `.glass` and `.glass-overlay` for floating overlays only
+- Font stack: `Space Grotesk` for UI and `JetBrains Mono` for telemetry/data
+  readouts with `font-mono tabular-nums`
 
 ## Design System Semantics
 
-- **Orange `#EF8118`** — driver-owned actions, primary buttons
-- **Teal `#1EA58C`** — engineer-originated actions, comparison data
+- **Orange `#ff906c`** — driver-owned actions, primary buttons
+- **Cyan `#5af8fb`** — engineer-originated actions, comparison data
 - Never use both at the same visual weight on the same element
 
 ## Hooks Conventions

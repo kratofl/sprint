@@ -20,12 +20,12 @@ func New(port, version string) *http.Server {
 	wsRelay := relay.NewHub(invites)
 	go wsRelay.Run()
 
-	// ── Public routes (no auth required) ─────────────────────────────────────
+	// Public routes (no auth required).
 	mux.HandleFunc("GET /api/health", handler.HealthHandler(version))
 	mux.HandleFunc("POST /api/auth/register", authhandler.Register)
 	mux.HandleFunc("POST /api/auth/login", authhandler.Login)
 
-	// ── Protected routes (JWT required) ──────────────────────────────────────
+	// Protected routes (JWT required).
 	protected := http.NewServeMux()
 
 	// Invite codes — driver creates a code from their desktop app

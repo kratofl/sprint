@@ -1,4 +1,4 @@
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Types.
 
 export interface SetupSettings {
   // Tyres
@@ -30,7 +30,7 @@ export interface Setup {
   settings: SetupSettings
 }
 
-// ── Defaults ──────────────────────────────────────────────────────────────────
+// Defaults.
 
 export function defaultSettings(): SetupSettings {
   return {
@@ -62,7 +62,7 @@ export function newSetup(overrides?: Partial<Omit<Setup, 'settings'>>): Setup {
   }
 }
 
-// ── Wails Go binding helpers ───────────────────────────────────────────────────
+// Wails Go binding helpers.
 // Wails injects window.go.main.App at runtime. We call it directly rather than
 // importing the generated wailsjs/ bundle, so Vite doesn't try to bundle the
 // Wails runtime (which is injected by the native shell, not npm).
@@ -82,7 +82,7 @@ function call<T>(method: string, ...args: unknown[]): Promise<T> {
   return app[method](...args) as Promise<T>
 }
 
-// ── Raw Wails response type ───────────────────────────────────────────────────
+// Raw Wails response type.
 
 interface RawSetup {
   id: string
@@ -92,7 +92,7 @@ interface RawSetup {
   settings: Record<string, unknown>
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// API.
 
 function toSetup(raw: RawSetup): Setup {
   return {

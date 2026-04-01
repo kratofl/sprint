@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { cn } from '@sprint/ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, cn } from '@sprint/ui'
 import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
 
 // Category display order.
@@ -9,7 +9,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   lap:  'LAP',
 }
 
-// ── Controls ──────────────────────────────────────────────────────────────────
+// Controls.
 
 export default function Controls() {
   const [catalog,     setCatalog]     = useState<CommandMeta[]>([])
@@ -66,32 +66,33 @@ export default function Controls() {
     <div className="flex flex-1 flex-col overflow-hidden">
 
       {/* Section header */}
-      <div className="flex items-center justify-between border-b border-[#2a2a2a] px-6 py-4 flex-shrink-0">
+      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
         <div>
           <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">CONTROLS</h2>
-          <p className="font-mono text-[10px] text-[#808080]">
+          <p className="font-mono text-[10px] text-text-muted">
             Assign wheel buttons to commands
           </p>
         </div>
         <div className="flex items-center gap-3">
           {saveStatus === 'saved' && (
-            <span className="terminal-header text-[10px] text-[#34D399]">SAVED</span>
+            <Badge variant="success" className="terminal-header">SAVED</Badge>
           )}
           {saveStatus === 'error' && (
-            <span className="terminal-header text-[10px] text-[#F87171]">SAVE_FAILED</span>
+            <Badge variant="destructive" className="terminal-header">SAVE_FAILED</Badge>
           )}
-          <button
+          <Button
             onClick={handleSave}
             disabled={saving || catalog.length === 0}
-            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
+            variant="primary"
+            className="terminal-header font-bold"
           >
             {saving ? 'SAVING…' : 'SAVE_BINDINGS'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {loadError && (
-        <div className="border-b border-[#2a2a2a] px-6 py-2 font-mono text-[10px] text-[#F87171]">
+        <div className="border-b border-border px-6 py-2 font-mono text-[10px] text-destructive">
           {loadError}
         </div>
       )}
@@ -99,19 +100,22 @@ export default function Controls() {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {catalog.length === 0 && !loadError ? (
-          <div className="flex items-center justify-center py-12 font-mono text-[10px] text-[#808080]">
+          <div className="flex items-center justify-center py-12 font-mono text-[10px] text-text-muted">
             LOADING_COMMANDS…
           </div>
         ) : (
-          <div className="px-6 py-4 space-y-6">
-
+          <div className="space-y-6 px-6 py-4">
             {/* How-to note */}
-            <div className="border border-[#2a2a2a] bg-[#141414] px-4 py-3 font-mono text-[10px] text-[#808080] space-y-1">
-              <p className="text-white font-bold terminal-header">HOW_TO_USE</p>
-              <p>Enter the wheel button channel number next to each command.</p>
-              <p>Leave at 0 (or blank) to leave a command unbound.</p>
-              <p>Button numbers are game-specific — check your telemetry stream for channel IDs.</p>
-            </div>
+            <Card size="sm" className="gap-0 py-0">
+              <CardHeader className="border-b border-border px-4 py-2.5">
+                <CardTitle className="text-foreground">HOW_TO_USE</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
+                <p>Enter the wheel button channel number next to each command.</p>
+                <p>Leave at 0 (or blank) to leave a command unbound.</p>
+                <p>Button numbers are game-specific — check your telemetry stream for channel IDs.</p>
+              </CardContent>
+            </Card>
 
             {/* Command groups */}
             {categories.map(cat => (
@@ -130,7 +134,7 @@ export default function Controls() {
   )
 }
 
-// ── CommandGroup ──────────────────────────────────────────────────────────────
+// CommandGroup.
 
 function CommandGroup({
   label,
@@ -145,7 +149,7 @@ function CommandGroup({
 }) {
   return (
     <div>
-      <h4 className="terminal-header mb-2 text-[10px] font-bold text-[#808080]">{label}</h4>
+      <h4 className="terminal-header mb-2 text-[10px] font-bold text-text-muted">{label}</h4>
       <div className="space-y-1">
         {commands.map(cmd => (
           <CommandRow
@@ -160,7 +164,7 @@ function CommandGroup({
   )
 }
 
-// ── CommandRow ────────────────────────────────────────────────────────────────
+// CommandRow.
 
 function CommandRow({
   cmd,
@@ -174,43 +178,42 @@ function CommandRow({
   const bound = button > 0
 
   return (
-    <div className={cn(
-      'flex items-center justify-between border px-4 py-2.5 transition-colors',
-      bound ? 'border-[#ff906c]/40 bg-[#ff906c]/[0.03]' : 'border-[#2a2a2a]',
-    )}>
-      <div className="flex flex-col gap-0.5">
-        <span className={cn(
-          'font-mono text-[11px] font-bold',
-          bound ? 'text-white' : 'text-[#808080]',
-        )}>
-          {cmd.label}
-        </span>
-        <span className="font-mono text-[9px] text-[#808080] opacity-60">{cmd.id}</span>
-      </div>
+    <Card
+      size="sm"
+      variant={bound ? 'selected' : 'default'}
+      className="gap-0 py-0"
+    >
+      <CardContent className="flex items-center justify-between px-4 py-2.5">
+        <div className="flex flex-col gap-0.5">
+          <span className={cn(
+            'font-mono text-[11px] font-bold',
+            bound ? 'text-white' : 'text-text-muted',
+          )}>
+            {cmd.label}
+          </span>
+          <span className="font-mono text-[9px] text-text-muted opacity-60">{cmd.id}</span>
+        </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-        {bound && (
-          <span className="terminal-header text-[9px] text-[#ff906c]">BTN_{button}</span>
-        )}
-        <input
-          type="number"
-          min={0}
-          max={255}
-          value={button === 0 ? '' : button}
-          placeholder="—"
-          onChange={e => {
-            const v = parseInt(e.target.value, 10)
-            onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
-          }}
-          className={cn(
-            'w-14 border bg-transparent px-2 py-1 text-center font-mono text-[10px] outline-none transition-colors',
-            'placeholder:text-[#808080]',
-            bound
-              ? 'border-[#ff906c]/50 text-[#ff906c] focus:border-[#ff906c]'
-              : 'border-[#2a2a2a] text-[#808080] focus:border-[#3a3a3a] focus:text-white',
+        <div className="ml-4 flex flex-shrink-0 items-center gap-2">
+          {bound && (
+            <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
           )}
-        />
-      </div>
-    </div>
+          <Input
+            type="number"
+            min={0}
+            max={255}
+            value={button === 0 ? '' : button}
+            placeholder="—"
+            data-readout="true"
+            data-status={bound ? 'accent' : 'neutral'}
+            onChange={e => {
+              const v = parseInt(e.target.value, 10)
+              onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
+            }}
+            className="w-14 text-center font-mono text-[10px] tabular-nums"
+          />
+        </div>
+      </CardContent>
+    </Card>
   )
 }

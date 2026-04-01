@@ -2,19 +2,19 @@ import { useRef, useCallback } from 'react'
 import { cn } from '@sprint/ui'
 import { type DashWidget, type DashLayout, WIDGET_TYPES } from '@/lib/dash'
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// Constants.
 
 // Default screen dimensions used when no VoCore screen is configured.
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// Helpers.
 
 function widgetLabel(type: string): string {
   return WIDGET_TYPES.find(w => w.type === type)?.label ?? type
 }
 
-// ── DashCanvas ────────────────────────────────────────────────────────────────
+// DashCanvas.
 
 export interface DashCanvasProps {
   layout: DashLayout
@@ -58,7 +58,7 @@ export function DashCanvas({
     [screenW, screenH],
   )
 
-  // ── Drop new widget from palette ──────────────────────────────────────────
+  // Drop a new widget from the palette.
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -95,7 +95,7 @@ export function DashCanvas({
     [layout.widgets, toScreenCoords, screenW, screenH, onUpdate, onSelect],
   )
 
-  // ── Drag to reposition existing widget ───────────────────────────────────
+  // Drag to reposition an existing widget.
 
   const handleWidgetDragStart = useCallback(
     (e: React.DragEvent, idx: number) => {
@@ -176,7 +176,7 @@ export function DashCanvas({
       {/* Subtle orange glow */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-20 opacity-30"
-        style={{ background: 'radial-gradient(ellipse 60% 80px at 50% 0, #ff906c 0%, transparent 100%)' }}
+        style={{ background: 'radial-gradient(ellipse 60% 80px at 50% 0, var(--accent) 0%, transparent 100%)' }}
       />
 
       {/* Screen resolution label */}
@@ -220,5 +220,5 @@ export function DashCanvas({
   )
 }
 
-// ── ResizeHandle (future) — placeholder for alpha ─────────────────────────────
+// ResizeHandle is a placeholder for a future alpha implementation.
 // Widget resize via corner handles is deferred to post-alpha.

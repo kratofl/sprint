@@ -11,7 +11,7 @@ import {
   EventsEmit,
 } from '../../wailsjs/runtime/runtime'
 
-// ── App method caller ─────────────────────────────────────────────────────────
+// App method caller.
 
 /**
  * Calls a method on the Wails-bound App struct.
@@ -29,7 +29,7 @@ export function call<T>(method: string, ...args: unknown[]): Promise<T> {
   return (app[method] as (...a: any[]) => Promise<T>)(...args)
 }
 
-// ── Runtime helpers ───────────────────────────────────────────────────────
+// Runtime helpers.
 
 /**
  * Emits a Wails event to the backend.

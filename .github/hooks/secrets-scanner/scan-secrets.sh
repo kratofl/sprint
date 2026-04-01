@@ -13,12 +13,10 @@
 
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
 # Secret detection patterns (edit this list to add or remove patterns)
 #
 # Each entry: "PATTERN_NAME|SEVERITY|REGEX"
 # Severity levels: critical, high, medium
-# ---------------------------------------------------------------------------
 PATTERNS=(
   # Cloud provider credentials
   "AWS_ACCESS_KEY|critical|AKIA[0-9A-Z]{16}"

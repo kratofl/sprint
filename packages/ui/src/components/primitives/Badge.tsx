@@ -5,23 +5,35 @@ import { Slot } from "radix-ui"
 import { cn } from "../../lib/utils"
 
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent px-2 py-0.5 text-[0.625rem] font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
+  "group/badge terminal-label inline-flex min-h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border px-2 py-0.5 text-[9px] whitespace-nowrap text-foreground transition-colors focus-visible:border-ring focus-visible:outline-none has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
   {
     variants: {
       variant: {
         default:
-          "bg-[linear-gradient(135deg,#ff906c_0%,#ff784d_100%)] text-white",
+          "surface-active text-primary",
+        primary:
+          "surface-active text-primary",
         secondary:
-          "bg-[linear-gradient(135deg,#8afcff_0%,#2ae4e8_100%)] text-black",
+          "surface-secondary text-secondary",
+        connected:
+          "surface-secondary text-secondary",
         /** Telemetry alert chips: Live, Pit, Gear */
         tertiary:
-          "bg-tertiary/20 text-tertiary border border-tertiary/30",
+          "surface-tertiary text-tertiary",
+        success:
+          "surface-success text-success",
+        warning:
+          "surface-warning text-warning",
         destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "surface-destructive text-destructive [a]:hover:text-destructive",
         outline:
-          "border-border-base text-text-secondary",
+          "border-border text-text-muted",
+        neutral:
+          "border-border text-text-muted",
+        active:
+          "surface-active text-primary",
         ghost:
-          "hover:bg-bg-elevated hover:text-foreground dark:hover:bg-bg-elevated",
+          "border-transparent text-text-muted",
         link: "text-accent underline-offset-4 hover:underline",
       },
     },

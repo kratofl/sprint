@@ -121,7 +121,7 @@ func (p *Painter) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFrame, w,
 	dc.DrawStringAnchored(flagText, w/2, h-15, 0.5, 0.5)
 }
 
-// ── drawing helpers ──────────────────────────────────────────────────────────
+// Drawing helpers.
 
 // ensureBg pre-renders the static background into bgImg once per painter
 // lifetime. Subsequent frames blit this image instead of clearing manually.
@@ -167,7 +167,7 @@ func (p *Painter) Close() {
 	p.fontFiles = nil
 }
 
-// ── font management ──────────────────────────────────────────────────────────
+// Font management.
 
 // face sets the font face on dc, using a cache to avoid re-parsing the TTF on
 // every draw call.

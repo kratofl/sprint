@@ -1,6 +1,6 @@
 import type { Config } from 'tailwindcss'
 
-// ── Atomic token imports ───────────────────────────────────────────────────
+// Atomic token imports.
 import { orange, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
@@ -17,7 +17,7 @@ const tokens: Partial<Config> = {
   theme: {
     extend: {
       colors: {
-        // ── Shadcn-compatible semantic aliases ───────────────────────────
+        // Shadcn-compatible semantic aliases.
         primary:     { DEFAULT: orange[500], foreground: '#000000' },
         secondary:   { DEFAULT: cyan[500],   foreground: '#000000' },
         tertiary:    { DEFAULT: semantic.tertiary, foreground: '#000000' },
@@ -25,7 +25,7 @@ const tokens: Partial<Config> = {
         success:     { DEFAULT: semantic.success,     foreground: '#000000' },
         warning:     { DEFAULT: semantic.warning,     foreground: '#000000' },
 
-        // ── Surface hierarchy ────────────────────────────────────────────
+        // Surface hierarchy.
         background: surfaces.base,
         foreground: neutral[100],
         card:    { DEFAULT: surfaces.container, foreground: neutral[100] },
@@ -34,7 +34,7 @@ const tokens: Partial<Config> = {
         input:   surfaces.elevated,
         ring:    orange[500],
 
-        // ── Accent variants — orange (driver-owned / primary) ────────────
+        // Accent variants for driver-owned primary actions.
         accent: {
           DEFAULT:    orange[500],
           hover:      orange[400],
@@ -44,7 +44,7 @@ const tokens: Partial<Config> = {
           foreground: '#000000',
         },
 
-        // ── Cyan / secondary variants ────────────────────────────────────
+        // Secondary cyan variants.
         teal: {
           DEFAULT:    cyan[500],
           hover:      cyan[400],
@@ -54,7 +54,7 @@ const tokens: Partial<Config> = {
           foreground: '#000000',
         },
 
-        // ── Background / surface scale ───────────────────────────────────
+        // Background and surface scale.
         bg: {
           base:      surfaces.base,
           container: surfaces.container,
@@ -65,7 +65,7 @@ const tokens: Partial<Config> = {
           overlay:   surfaces.overlay,
         },
 
-        // ── Text hierarchy ───────────────────────────────────────────────
+        // Text hierarchy.
         text: {
           primary:   neutral[100],
           secondary: neutral[300],
@@ -73,11 +73,11 @@ const tokens: Partial<Config> = {
           disabled:  neutral[500],
         },
 
-        // ── 'on-surface' aliases (matches HTML reference naming) ─────────
+        // "On-surface" aliases matching the HTML reference naming.
         'on-surface':         neutral[100],
         'on-surface-variant': neutral[400],
 
-        // ── Border / outline ─────────────────────────────────────────────
+        // Border and outline tokens.
         border: {
           DEFAULT: borders.outline,
           base:    borders.outline,
@@ -89,7 +89,7 @@ const tokens: Partial<Config> = {
         },
         outline: outlineColor,
 
-        // ── Data visualization palette ───────────────────────────────────
+        // Data visualization palette.
         'data-1': dataViz[1],
         'data-2': dataViz[2],
         'data-3': dataViz[3],

@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Setup, SetupSettings, setupAPI, newSetup } from '@/lib/setup'
 import {
+  Button,
+  Card, CardContent, CardHeader, CardTitle,
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
   Input,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   Skeleton,
 } from '@sprint/ui'
 
-// ── Setups view ───────────────────────────────────────────────────────────────
+// Setups view.
 
 export default function Setups() {
   const [setups, setSetups]     = useState<Setup[]>([])
@@ -44,7 +46,7 @@ export default function Setups() {
     (!filterTrack || s.track === filterTrack),
   )
 
-  // ── Actions ────────────────────────────────────────────────────────────────
+  // Actions.
 
   const handleNew = () => setEditing(newSetup())
 
@@ -85,25 +87,27 @@ export default function Setups() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // Render.
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* ── Left: setup list ─────────────────────────────────────────────── */}
-      <div className="flex w-72 flex-shrink-0 flex-col border-r border-[#2a2a2a]">
+      {/* Left: setup list */}
+      <div className="flex w-72 flex-shrink-0 flex-col border-r border-border">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a]">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h2 className="terminal-header text-sm font-bold tracking-[0.15em]">SETUPS_DB</h2>
-          <button
+          <Button
             onClick={handleNew}
-            className="terminal-header border border-[#ff906c] px-2.5 py-1 text-[9px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
+            variant="primary"
+            size="sm"
+            className="terminal-header font-bold"
           >
             + NEW
-          </button>
+          </Button>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-col gap-2 border-b border-[#2a2a2a] px-3 py-3">
+        <div className="flex flex-col gap-2 border-b border-border px-3 py-3">
           <FilterSelect value={filterCar}   onChange={setFilterCar}   options={cars}   placeholder="All cars" />
           <FilterSelect value={filterTrack} onChange={setFilterTrack} options={tracks} placeholder="All tracks" />
         </div>
@@ -113,7 +117,7 @@ export default function Setups() {
           {loading && (
             <div className="space-y-0">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="border-b border-[#2a2a2a]/40 px-4 py-3">
+                <div key={i} className="border-b border-border/40 px-4 py-3">
                   <Skeleton className="mb-1.5 h-4 w-28" />
                   <Skeleton className="h-3 w-36" />
                 </div>
@@ -121,7 +125,7 @@ export default function Setups() {
             </div>
           )}
           {!loading && filtered.length === 0 && (
-            <p className="px-4 py-8 text-center font-mono text-[10px] text-[#808080]">
+            <p className="px-4 py-8 text-center font-mono text-[10px] text-text-muted">
               {setups.length === 0 ? 'NO_SETUPS_YET' : 'NO_RESULTS'}
             </p>
           )}
@@ -137,11 +141,11 @@ export default function Setups() {
         </div>
 
         {error && (
-          <p className="border-t border-[#2a2a2a] px-3 py-2 font-mono text-[10px] text-[#F87171]">{error}</p>
+          <p className="border-t border-border px-3 py-2 font-mono text-[10px] text-destructive">{error}</p>
         )}
       </div>
 
-      {/* ── Right: editor ──────────────────────────────────────────────────── */}
+      {/* Right: editor */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {editing ? (
           <SetupEditor
@@ -166,18 +170,20 @@ export default function Setups() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <button
+            <Button
               onClick={() => setDeleteTarget(null)}
-              className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+              variant="neutral"
+              className="terminal-header font-bold"
             >
               CANCEL
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleDeleteConfirm}
-              className="terminal-header border border-[#F87171] px-3 py-1.5 text-[10px] text-[#F87171] transition-colors hover:bg-[#F87171] hover:text-[#0a0a0a]"
+              variant="destructive"
+              className="terminal-header font-bold"
             >
               DELETE
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -185,41 +191,60 @@ export default function Setups() {
   )
 }
 
-// ── SetupRow ──────────────────────────────────────────────────────────────────
+// SetupRow.
 
 function SetupRow({
   setup, active, onEdit, onDelete,
 }: {
   setup: Setup; active: boolean; onEdit: () => void; onDelete: () => void
 }) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onEdit()
+    }
+  }
+
   return (
-    <button
+    <Card
+      size="sm"
+      variant={active ? 'selected' : 'default'}
+      role="button"
+      tabIndex={0}
       onClick={onEdit}
+      onKeyDown={handleKeyDown}
       className={[
-        'w-full text-left border-b border-[#2a2a2a]/40 px-4 py-3 transition-colors group',
-        active ? 'bg-[#ff906c]/5' : 'hover:bg-[#141414]',
+        'group w-full cursor-pointer gap-0 rounded-none border-x-0 border-t-0 border-border/40 px-4 py-3 text-left transition-colors focus-visible:border-primary focus-visible:outline-none',
+        !active ? 'hover:bg-card' : '',
       ].join(' ')}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className={`truncate font-mono text-[11px] font-bold ${active ? 'text-[#ff906c]' : 'text-white'}`}>
-            {setup.name || 'UNTITLED'}
-          </p>
-          <p className="truncate font-mono text-[9px] text-[#808080] mt-0.5">{setup.car} · {setup.track}</p>
+      <CardContent className="px-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className={`truncate font-mono text-[11px] font-bold ${active ? 'text-primary' : 'text-white'}`}>
+              {setup.name || 'UNTITLED'}
+            </p>
+            <p className="mt-0.5 truncate font-mono text-[9px] text-text-muted">{setup.car} · {setup.track}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            onKeyDown={e => e.stopPropagation()}
+            className="shrink-0 opacity-0 text-text-muted transition-colors group-hover:opacity-100 hover:bg-transparent hover:text-destructive focus-visible:opacity-100"
+            title="Delete"
+            aria-label={`Delete ${setup.name || 'setup'}`}
+          >
+            <TrashIcon />
+          </Button>
         </div>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete() }}
-          className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-[#808080] hover:text-[#F87171] transition-colors p-0.5"
-          title="Delete"
-        >
-          <TrashIcon />
-        </button>
-      </div>
-    </button>
+      </CardContent>
+    </Card>
   )
 }
 
-// ── FilterSelect ──────────────────────────────────────────────────────────────
+// FilterSelect.
 
 function FilterSelect({
   value, onChange, options, placeholder,
@@ -242,7 +267,7 @@ function FilterSelect({
   )
 }
 
-// ── SetupEditor ───────────────────────────────────────────────────────────────
+// SetupEditor.
 
 function SetupEditor({
   setup, saving, onChange, onSave, onCancel,
@@ -264,24 +289,26 @@ function SetupEditor({
   return (
     <div className="flex h-full flex-col">
       {/* Editor header */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-[#2a2a2a] px-5 py-3">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-3">
         <h2 className="terminal-header text-sm font-bold tracking-[0.15em]">
           {isNew ? 'NEW_SETUP' : `EDIT — ${setup.name.toUpperCase()}`}
         </h2>
         <div className="flex gap-2">
-          <button
+          <Button
             onClick={onCancel}
-            className="terminal-header border border-[#2a2a2a] px-3 py-1.5 text-[10px] text-[#808080] transition-colors hover:border-[#3a3a3a] hover:text-white"
+            variant="neutral"
+            className="terminal-header font-bold"
           >
             CANCEL
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onSave}
             disabled={saving}
-            className="terminal-header border border-[#ff906c] px-3 py-1.5 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a] disabled:opacity-50"
+            variant="primary"
+            className="terminal-header font-bold"
           >
             {saving ? 'SAVING…' : 'SAVE'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -368,20 +395,20 @@ function SetupEditor({
   )
 }
 
-// ── Small reusable editor components ─────────────────────────────────────────
+// Small reusable editor components.
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border border-[#2a2a2a]">
-      <div className="border-b border-[#2a2a2a] px-4 py-2">
-        <h4 className="terminal-header text-[10px] font-bold text-[#808080]">
+    <Card size="sm" className="gap-0 bg-transparent py-0">
+      <CardHeader className="border-b border-border px-4 py-2">
+        <CardTitle>
           {title.toUpperCase().replace(/ /g, '_')}
-        </h4>
-      </div>
-      <div className="space-y-3 p-4">
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4 py-4">
         {children}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -418,7 +445,7 @@ function SliderField({
         min={min} max={max} step={step}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="flex-1 accent-[#ff906c] h-1.5 cursor-pointer"
+        className="flex-1 accent-primary h-1.5 cursor-pointer"
       />
       <span className="w-16 text-right text-xs font-mono tabular-nums text-text-primary">
         {Number.isInteger(step) ? value.toFixed(0) : value.toFixed(1)}{unit && ` ${unit}`}
@@ -448,22 +475,23 @@ function PressureField({ label, value, onChange }: { label: string; value: numbe
 function EmptyState({ onNew }: { onNew: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-      <WrenchIcon className="h-8 w-8 text-[#808080]" />
+      <WrenchIcon className="h-8 w-8 text-text-muted" />
       <div>
-        <p className="terminal-header text-[10px] font-bold text-[#808080]">SELECT_SETUP</p>
-        <p className="mt-1 font-mono text-[9px] text-[#808080]">or create a new one to get started</p>
+        <p className="terminal-header text-[10px] font-bold text-text-muted">SELECT_SETUP</p>
+        <p className="mt-1 font-mono text-[9px] text-text-muted">or create a new one to get started</p>
       </div>
-      <button
+      <Button
         onClick={onNew}
-        className="terminal-header border border-[#ff906c] px-4 py-2 text-[10px] text-[#ff906c] transition-colors hover:bg-[#ff906c] hover:text-[#0a0a0a]"
+        variant="primary"
+        className="terminal-header font-bold"
       >
         + NEW_SETUP
-      </button>
+      </Button>
     </div>
   )
 }
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
+// Icons.
 
 function TrashIcon() {
   return (

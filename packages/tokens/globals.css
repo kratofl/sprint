@@ -1,23 +1,30 @@
-/* ── Fonts ────────────────────────────────────────────────────────────────── */
-/* Space Grotesk:   primary UI font — forward-leaning, technical, racing      */
-/* JetBrains Mono:  all numbers, telemetry values, monospaced content         */
+/* Fonts */
+/* Space Grotesk is the primary UI font. JetBrains Mono is for telemetry data. */
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS variables ───────────────────────────────────────────────────────── */
+/* CSS variables */
 :root {
   /* Primary — orange (driver-owned actions / active state) */
   --accent:        #ff906c;
   --accent-dark:   #ff784d;
   --accent-muted:  rgba(255, 144, 108, 0.08);
+  --accent-surface: rgba(255, 144, 108, 0.05);
 
   /* Secondary — cyan (system status / engineer-originated / comparison data) */
   --secondary:     #5af8fb;
   --secondary-dark:#2ae4e8;
   --secondary-muted: rgba(90, 248, 251, 0.08);
+  --secondary-surface: rgba(90, 248, 251, 0.05);
+
+  /* Status surfaces */
+  --success-surface: rgba(52, 211, 153, 0.10);
+  --warning-surface: rgba(251, 191, 36, 0.10);
+  --destructive-surface: rgba(248, 113, 113, 0.10);
+  --tertiary-surface: rgba(241, 175, 255, 0.10);
 
   /* Surfaces */
   --bg-base:       #0a0a0a;
@@ -33,7 +40,7 @@
   --on-surface-variant: #808080;
 }
 
-/* ── Base ─────────────────────────────────────────────────────────────────── */
+/* Base styles */
 body {
   background-color: var(--bg-base);
   -webkit-font-smoothing: antialiased;
@@ -42,13 +49,25 @@ body {
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* ── Terminal heading style (ALL CAPS + letter spacing) ──────────────────── */
+/* Typography helpers */
 .terminal-header {
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
-/* ── Surface utilities ───────────────────────────────────────────────────── */
+.terminal-label {
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.status-readout {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+/* Surface utilities */
 @layer utilities {
   /* Container surface — cards, panels, section areas */
   .surface {
@@ -66,6 +85,36 @@ body {
   .surface-overlay {
     background: var(--bg-overlay);
     border: 1px solid var(--outline);
+  }
+
+  .surface-active {
+    background: var(--accent-surface);
+    border-color: var(--accent);
+  }
+
+  .surface-secondary {
+    background: var(--secondary-surface);
+    border-color: var(--secondary);
+  }
+
+  .surface-success {
+    background: var(--success-surface);
+    border-color: #34D399;
+  }
+
+  .surface-warning {
+    background: var(--warning-surface);
+    border-color: #FBBF24;
+  }
+
+  .surface-destructive {
+    background: var(--destructive-surface);
+    border-color: #F87171;
+  }
+
+  .surface-tertiary {
+    background: var(--tertiary-surface);
+    border-color: #f1afff;
   }
 
   /* Floating glass overlays — modals, dropdowns, nav bar */
@@ -92,7 +141,7 @@ body {
   }
 }
 
-/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+/* Scrollbar */
 ::-webkit-scrollbar         { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track   { background: transparent; }
 ::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }

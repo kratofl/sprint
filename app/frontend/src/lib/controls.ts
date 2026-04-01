@@ -2,7 +2,7 @@
 
 import { call } from '@/lib/wails'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Types.
 
 export interface CommandMeta {
   id: string
@@ -21,7 +21,7 @@ export interface ControlsConfig {
   bindings: Binding[]
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
+// API.
 
 export const controlsAPI = {
   async getCommandCatalog(): Promise<CommandMeta[]> {

@@ -1,27 +1,50 @@
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@sprint/ui'
+
 export default function Engineer() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Race Engineer</h1>
-          <p className="mt-1 text-sm text-text-secondary">
+          <p className="text-sm text-text-secondary">
             Connect to a live session to view telemetry and send commands.
           </p>
         </div>
-        <span className="rounded-full bg-bg-elevated px-3 py-1 text-xs text-text-muted border border-border-base">
-          Disconnected
-        </span>
+        <Badge variant="neutral">Disconnected</Badge>
       </div>
-      <div className="surface rounded p-8 text-center">
-        <p className="text-sm text-text-muted">Enter a session code or link to connect as a race engineer.</p>
-        <div className="mt-4 flex justify-center">
-          <input
-            type="text"
-            placeholder="Session code…"
-            className="rounded-md bg-bg-elevated border border-border-base px-4 py-2 text-sm text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-teal transition-colors w-64"
-          />
-        </div>
-      </div>
+
+      <Card className="max-w-2xl">
+        <CardHeader>
+          <CardTitle>Join live session</CardTitle>
+          <CardDescription>
+            Enter a session code or shared link to connect as a race engineer.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <label
+              htmlFor="session-code"
+              className="text-xs text-text-muted"
+            >
+              Session code or link
+            </label>
+            <Input
+              id="session-code"
+              type="text"
+              placeholder="Session code…"
+              className="max-w-md"
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
