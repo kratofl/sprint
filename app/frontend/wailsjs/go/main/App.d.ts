@@ -12,6 +12,8 @@ export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
 
 export function DeviceGetScreen():Promise<hardware.VoCoreConfig>;
 
+export function DeviceGetScreenStatus():Promise<string>;
+
 export function DeviceScanScreens():Promise<Array<hardware.VoCoreScreen>>;
 
 export function DeviceSelectScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<void>;

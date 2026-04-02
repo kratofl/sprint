@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { type DetectedScreen, type ScreenConfig, deviceScreenAPI } from '@/lib/dash'
+import { onEvent } from '@/lib/wails'
 import { Badge, Button, Skeleton, cn } from '@sprint/ui'
 
 // Devices view.
@@ -26,6 +27,8 @@ function VoCoreScreenSection() {
   const [selecting, setSelecting]       = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
   const [autoSelected, setAutoSelected] = useState(false)
+  const [screenStatus, setScreenStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
+  const [screenError, setScreenError]   = useState<string | null>(null)
 
   const screenKey = (s: DetectedScreen) => `${s.vid}-${s.pid}-${s.serial}`
 
@@ -54,6 +57,16 @@ function VoCoreScreenSection() {
   }, [])
 
   useEffect(() => { scan() }, [scan])
+
+  useEffect(() => {
+    deviceScreenAPI.getScreenStatus().then(setScreenStatus)
+    const unsubs = [
+      onEvent('screen:connected',    () => { setScreenStatus('connected'); setScreenError(null) }),
+      onEvent('screen:disconnected', () => setScreenStatus('disconnected')),
+      onEvent('screen:error',        (msg: string) => { setScreenStatus('disconnected'); setScreenError(msg) }),
+    ]
+    return () => unsubs.forEach(fn => fn())
+  }, [])
 
   const handleSelect = async (screen: DetectedScreen) => {
     const key = screenKey(screen)
@@ -131,6 +144,12 @@ function VoCoreScreenSection() {
                     {active && autoSelected && (
                       <Badge variant="connected" className="terminal-header">AUTO-DETECTED</Badge>
                     )}
+                    {active && screenStatus === 'connected' && (
+                      <Badge variant="connected" className="terminal-header">CONNECTED</Badge>
+                    )}
+                    {active && screenStatus === 'disconnected' && (
+                      <Badge variant="neutral" className="terminal-header">OFFLINE</Badge>
+                    )}
                     {active && (
                       <div className="h-2 w-2 rounded-full bg-primary" />
                     )}
@@ -147,6 +166,11 @@ function VoCoreScreenSection() {
         {selected && (
           <p className="mt-3 font-mono text-[9px] text-text-muted">
             ACTIVE: {selected.width}×{selected.height} · VID 0x{selected.vid.toString(16).toUpperCase()} PID 0x{selected.pid.toString(16).toUpperCase()}
+          </p>
+        )}
+        {screenError && (
+          <p className="mt-1 font-mono text-[9px] text-destructive">
+            SCREEN_ERR: {screenError}
           </p>
         )}
       </div>

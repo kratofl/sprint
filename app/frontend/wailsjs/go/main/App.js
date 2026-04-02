@@ -14,6 +14,10 @@ export function DeviceGetScreen() {
   return window['go']['main']['App']['DeviceGetScreen']();
 }
 
+export function DeviceGetScreenStatus() {
+  return window['go']['main']['App']['DeviceGetScreenStatus']();
+}
+
 export function DeviceScanScreens() {
   return window['go']['main']['App']['DeviceScanScreens']();
 }

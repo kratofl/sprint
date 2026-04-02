@@ -90,6 +90,9 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager) *Coordinator {
 func (c *Coordinator) SetEmit(fn EmitFn) {
 	if fn != nil {
 		c.emit = fn
+		if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
+			vd.SetEmit(fn)
+		}
 	}
 }
 
@@ -103,6 +106,18 @@ func (c *Coordinator) SetScreenConfig(cfg *hardware.VoCoreConfig) {
 	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
 		vd.SetScreen(*cfg)
 	}
+}
+
+// GetScreenStatus returns "connected" if the VoCore USB link is active,
+// "disconnected" otherwise. Used by the frontend on mount for initial state.
+func (c *Coordinator) GetScreenStatus() string {
+	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
+		if vd.IsScreenConnected() {
+			return "connected"
+		}
+		return "disconnected"
+	}
+	return "unknown"
 }
 
 // SetDashLayout updates the layout used by the VoCore renderer. Takes effect

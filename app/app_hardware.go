@@ -27,7 +27,11 @@ func (a *App) DeviceGetScreen() (*hardware.VoCoreConfig, error) {
 	return cfg, nil
 }
 
-// DeviceSelectScreen saves the chosen VoCore screen by VID/PID and dimensions,
+// DeviceGetScreenStatus returns the live VoCore screen connection state:
+// "connected" when the USB link is active, "disconnected" otherwise.
+func (a *App) DeviceGetScreenStatus() string {
+	return a.coord.GetScreenStatus()
+}
 // then hot-reloads the renderer so the new screen takes effect immediately.
 func (a *App) DeviceSelectScreen(vid, pid uint16, width, height int) error {
 	cfg := &hardware.VoCoreConfig{VID: vid, PID: pid, Width: width, Height: height}

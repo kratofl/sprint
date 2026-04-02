@@ -134,6 +134,16 @@ export const deviceScreenAPI = {
   async selectScreen(vid: number, pid: number, width: number, height: number): Promise<void> {
     await call<void>('DeviceSelectScreen', vid, pid, width, height)
   },
+
+  async getScreenStatus(): Promise<'connected' | 'disconnected' | 'unknown'> {
+    try {
+      const s = await call<string>('DeviceGetScreenStatus')
+      if (s === 'connected' || s === 'disconnected') return s
+      return 'unknown'
+    } catch {
+      return 'unknown'
+    }
+  },
 }
 
 /** @deprecated Use deviceScreenAPI instead */

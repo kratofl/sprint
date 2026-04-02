@@ -39,11 +39,31 @@ type VoCoreDriver struct {
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
 	hasNewFrame atomic.Bool
+
+	screenConnected atomic.Bool
+	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
 }
 
 // NewVoCoreDriver creates a VoCoreDriver. The screen is not opened until Run is called.
 func NewVoCoreDriver(logger *slog.Logger) *VoCoreDriver {
 	return &VoCoreDriver{logger: logger}
+}
+
+// SetEmit provides an event emitter so the driver can report connection state
+// changes to the frontend. Call from the coordinator after Wails startup.
+func (d *VoCoreDriver) SetEmit(fn func(string, ...any)) {
+	d.emit = fn
+}
+
+// IsScreenConnected reports whether the USB screen connection is currently active.
+func (d *VoCoreDriver) IsScreenConnected() bool {
+	return d.screenConnected.Load()
+}
+
+func (d *VoCoreDriver) emitEvent(event string, data ...any) {
+	if d.emit != nil {
+		d.emit(event, data...)
+	}
 }
 
 // SetScreen configures which VoCore screen device to target.
@@ -112,15 +132,20 @@ func (d *VoCoreDriver) Run(ctx context.Context) {
 				<-ctx.Done()
 				return
 			}
-			d.logger.Debug("screen not available, retrying", "err", err)
+			d.logger.Warn("screen not available, retrying", "err", err)
+			d.emitEvent("screen:error", err.Error())
 			if !waitOrCancel(ctx, screenRetryInterval) {
 				return
 			}
 			continue
 		}
 
+		d.screenConnected.Store(true)
+		d.emitEvent("screen:connected")
 		d.driveLoop(ctx, transport)
 		transport.close()
+		d.screenConnected.Store(false)
+		d.emitEvent("screen:disconnected")
 
 		d.logger.Info("screen connection lost, will reconnect")
 		if !waitOrCancel(ctx, screenRetryInterval) {
