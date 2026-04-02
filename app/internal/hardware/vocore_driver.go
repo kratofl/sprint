@@ -164,7 +164,21 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 	returnCh <- b2
 	renderBuf := b0
 
-	sendErrCh := make(chan error, 1)
+	// Claim the screen immediately with a standby frame so it shows Sprint's
+	// layout rather than whatever the previous app left behind. Sent before the
+	// async sender goroutine starts so transport.send is safe to call directly.
+	if img, err := d.painter.Paint(&dto.TelemetryFrame{}); err == nil {
+		if needsRotation {
+			imageToRGB565CW90(img, renderBuf)
+		} else {
+			imageToRGB565(img, renderBuf)
+		}
+		if err := transport.send(renderBuf); err != nil {
+			d.logger.Warn("standby frame send failed", "err", err)
+		}
+	}
+
+	sendErrCh:= make(chan error, 1)
 	var senderWg sync.WaitGroup
 	senderWg.Add(1)
 	go func() {
