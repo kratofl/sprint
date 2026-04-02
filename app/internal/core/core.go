@@ -10,7 +10,6 @@ import (
 
 	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/engineer"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/input"
 	springsync "github.com/kratofl/sprint/app/internal/sync"
@@ -25,12 +24,12 @@ type EmitFn func(event string, data ...any)
 
 // Coordinator is the top-level wiring of all backend subsystems.
 type Coordinator struct {
-	logger   *slog.Logger
-	adapter  games.GameAdapter
-	engineer *engineer.Hub
-	screen   *hardware.VoCoreDriver
-	input    *input.Detector
-	sync     *springsync.Client
+	logger  *slog.Logger
+	adapter games.GameAdapter
+	screen  hardware.ScreenDriver
+	input   *input.Detector
+	lapSvc  *LapService
+	sync    *springsync.Client
 
 	emit EmitFn // Wails runtime event emitter; no-op until SetEmit is called
 
@@ -61,30 +60,26 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager) *Coordinator {
 		}
 	}
 
+	lapSvc := NewLapService(logger.With("component", "lapsvc"))
+
 	c := &Coordinator{
-		logger:   logger,
-		adapter:  lemansultimate.New(),
-		engineer: engineer.NewHub(logger.With("component", "engineer")),
-		screen:   screen,
-		input:    input.NewDetector(logger.With("component", "input")),
-		sync:     springsync.NewClient(logger.With("component", "sync")),
-		emit:     func(string, ...any) {}, // safe no-op before Wails startup
+		logger:  logger,
+		adapter: lemansultimate.New(),
+		screen:  screen,
+		input:   input.NewDetector(logger.With("component", "input")),
+		lapSvc:  lapSvc,
+		sync:    springsync.NewClient(logger.With("component", "sync")),
+		emit:    func(string, ...any) {}, // safe no-op before Wails startup
 	}
 
-	// Register command handlers — core has access to all subsystems.
-	commands.Handle(dashboard.CmdSetTargetLap, func(payload any) {
-		lap, ok := payload.(input.LapRecord)
+	commands.Handle(dashboard.CmdSetTargetLap, func(_ any) {
+		lap, ok := c.lapSvc.SelectTargetLap()
 		if !ok {
+			c.logger.Info("no valid target lap available")
 			return
 		}
-		c.engineer.Broadcast(&dto.EngineerEvent{
-			Type: dto.EvtTargetChanged,
-			Payload: dto.SetTargetLapPayload{
-				LapTime: lap.LapTime,
-				LapNum:  lap.LapNum,
-			},
-			Timestamp: time.Now().UnixMilli(),
-		})
+		c.emit("engineer:targetLap", lap)
+		c.logger.Info("target lap selected", "lap_num", lap.LapNum, "lap_time", lap.LapTime)
 	})
 
 	return c
@@ -105,7 +100,9 @@ func (c *Coordinator) SetScreenConfig(cfg *hardware.VoCoreConfig) {
 	if cfg == nil {
 		return
 	}
-	c.screen.SetScreen(*cfg)
+	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
+		vd.SetScreen(*cfg)
+	}
 }
 
 // SetDashLayout updates the layout used by the VoCore renderer. Takes effect
@@ -126,7 +123,6 @@ func (c *Coordinator) Start(ctx context.Context) {
 		}
 	}()
 
-	go c.engineer.Run(ctx)
 	go c.screen.Run(ctx)
 	go c.input.Run(ctx)
 	go c.sync.Run(ctx)
@@ -218,13 +214,8 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 // fanOut distributes a telemetry frame to all live subsystems.
 // Internal subsystems receive every frame; the frontend is throttled to ~30 Hz.
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
-	c.engineer.Broadcast(&dto.EngineerEvent{
-		Type:      dto.EvtTelemetryFrame,
-		Payload:   frame,
-		Timestamp: time.Now().UnixMilli(),
-	})
 	c.screen.OnFrame(frame)
-	c.input.OnFrame(frame)
+	c.lapSvc.OnFrame(frame)
 
 	// Throttled emit to Wails frontend
 	now := time.Now()

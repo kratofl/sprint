@@ -5,7 +5,6 @@ import {hardware} from '../models';
 import {input} from '../models';
 import {commands} from '../models';
 import {widgets} from '../models';
-import {setup} from '../models';
 
 export function DashLoadLayout():Promise<dashboard.DashLayout>;
 
@@ -28,9 +27,3 @@ export function GetWidgetCatalog():Promise<Array<widgets.WidgetMeta>>;
 export function IsConnected():Promise<boolean>;
 
 export function SaveBindings(arg1:input.Config):Promise<void>;
-
-export function SetupDelete(arg1:string,arg2:string,arg3:string):Promise<void>;
-
-export function SetupListAll():Promise<Array<setup.Setup>>;
-
-export function SetupSave(arg1:setup.Setup):Promise<setup.Setup>;

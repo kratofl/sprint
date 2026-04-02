@@ -6,7 +6,6 @@ import (
 	"github.com/kratofl/sprint/app/internal/core"
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/logger"
-	"github.com/kratofl/sprint/app/internal/setup"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -16,7 +15,6 @@ type App struct {
 	ctx     context.Context
 	version string
 	coord   *core.Coordinator
-	setups  *setup.Manager
 	dash    *dashboard.Manager
 }
 
@@ -37,7 +35,6 @@ func (a *App) Startup(ctx context.Context) {
 	a.coord.SetEmit(func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
 	})
-	a.setups = setup.NewManager()
 }
 
 // DomReady is called after the frontend DOM is fully loaded and scripts have

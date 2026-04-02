@@ -45,15 +45,3 @@ export function IsConnected() {
 export function SaveBindings(arg1) {
   return window['go']['main']['App']['SaveBindings'](arg1);
 }
-
-export function SetupDelete(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SetupDelete'](arg1, arg2, arg3);
-}
-
-export function SetupListAll() {
-  return window['go']['main']['App']['SetupListAll']();
-}
-
-export function SetupSave(arg1) {
-  return window['go']['main']['App']['SetupSave'](arg1);
-}
