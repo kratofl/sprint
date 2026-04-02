@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Telemetry from '@/views/Telemetry'
 import DashEditor from '@/views/DashEditor'
 import Setups from '@/views/Setups'
@@ -6,6 +6,8 @@ import EngineerStatus from '@/views/EngineerStatus'
 import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
 import { useTelemetry } from '@/hooks/useTelemetry'
+import SplashScreen from '@/components/SplashScreen'
+import { onEvent } from '@/lib/wails'
 import { Badge, Button, Progress, cn } from '@sprint/ui'
 import {
   IconGauge,
@@ -30,12 +32,25 @@ const NAV: { id: View; label: string; icon: typeof IconGauge }[] = [
 ]
 
 export default function App() {
-  const [view, setView] = useState<View>('telemetry')
+  const [view, setView] = useState<View>(import.meta.env.DEV ? 'telemetry' : 'dash')
+  const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry')
   const { frame, connected, fps } = useTelemetry()
   const telemetryLevel = connected ? Math.min(((fps ?? 0) / 60) * 100, 100) : 0
 
+  const [booting, setBooting] = useState(true)
+  const [splashMounted, setSplashMounted] = useState(true)
+
+  useEffect(() => {
+    const unsub = onEvent('app:ready', () => setBooting(false))
+    const fallback = setTimeout(() => setBooting(false), 3000)
+    return () => { unsub(); clearTimeout(fallback) }
+  }, [])
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
+      {splashMounted && (
+        <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
+      )}
 
       {/* Fixed top header bar */}
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4 [app-region:drag]">
@@ -45,7 +60,7 @@ export default function App() {
             SPRINT.V2
           </h1>
           <nav className="flex h-full items-center gap-4 terminal-header text-[10px] font-bold [app-region:no-drag]">
-            {NAV.map(item => (
+            {visibleNav.map(item => (
               <Button
                 key={item.id}
                 onClick={() => setView(item.id)}
@@ -106,7 +121,7 @@ export default function App() {
 
           {/* Nav items */}
           <nav className="flex flex-col border-b border-border">
-            {NAV.map(item => {
+            {visibleNav.map(item => {
               const Icon = item.icon
               const isActive = view === item.id
               return (

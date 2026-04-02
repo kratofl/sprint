@@ -45,6 +45,7 @@ func (a *App) Startup(ctx context.Context) {
 // coordinator are not lost before React has mounted its event listeners.
 func (a *App) DomReady(ctx context.Context) {
 	a.coord.Start(ctx)
+	runtime.EventsEmit(ctx, "app:ready")
 }
 
 // IsConnected reports whether the game adapter is currently connected.
