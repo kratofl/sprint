@@ -38,12 +38,6 @@ Do not use decorative separator comment lines or banner comments made of
 repeated hyphens, box-drawing characters, or similar glyphs; prefer normal
 comments, headings, and self-explanatory structure.
 
-### Accessibility
-
-- Use `aria-invalid`, `focus-visible:ring` patterns
-- Add `data-slot` and `data-variant` attributes for CSS hooks
-- Support keyboard navigation on interactive components
-
 ## Desktop Frontend (`app/frontend/`)
 
 - View state managed via enum: `'telemetry' | 'dash' | 'setups' | 'engineer' | 'devices'`
@@ -98,9 +92,7 @@ consume it via `@sprint/ui`.
 
 ## Hooks Conventions
 
-- Prefix with `use` (standard React convention)
 - Live data hooks should handle WebSocket lifecycle (connect/disconnect/reconnect)
-- Return stable references (use `useCallback`/`useMemo` for objects passed to children)
 
 ## State Management
 
