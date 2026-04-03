@@ -5,6 +5,7 @@ import (
 
 	"github.com/kratofl/sprint/app/internal/core"
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -16,6 +17,7 @@ type App struct {
 	version string
 	coord   *core.Coordinator
 	dash    *dashboard.Manager
+	devMgr  *devices.Manager
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -31,7 +33,8 @@ func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	log := logger.Init(logger.DefaultConfig())
 	a.dash = dashboard.NewManager()
-	a.coord = core.New(log, a.dash)
+	a.devMgr = devices.NewManager()
+	a.coord = core.New(log, a.dash, a.devMgr)
 	a.coord.SetEmit(func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
 	})

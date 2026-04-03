@@ -10,6 +10,10 @@ export function DashSaveLayout(arg1) {
   return window['go']['main']['App']['DashSaveLayout'](arg1);
 }
 
+export function DeviceGetSavedScreens() {
+  return window['go']['main']['App']['DeviceGetSavedScreens']();
+}
+
 export function DeviceGetScreen() {
   return window['go']['main']['App']['DeviceGetScreen']();
 }
@@ -18,12 +22,20 @@ export function DeviceGetScreenStatus() {
   return window['go']['main']['App']['DeviceGetScreenStatus']();
 }
 
+export function DeviceRenameScreen(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceRenameScreen'](arg1, arg2, arg3, arg4);
+}
+
 export function DeviceScanScreens() {
   return window['go']['main']['App']['DeviceScanScreens']();
 }
 
-export function DeviceSelectScreen(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['DeviceSelectScreen'](arg1, arg2, arg3, arg4);
+export function DeviceSelectScreen(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['DeviceSelectScreen'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceSetScreenRotation'](arg1, arg2, arg3, arg4);
 }
 
 export function GetBindings() {

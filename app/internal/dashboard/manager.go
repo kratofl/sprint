@@ -6,21 +6,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/kratofl/sprint/app/internal/appdata"
 )
 
 //go:embed default.json
 var defaultLayoutJSON []byte
 
 // Manager handles persistence of the active DashLayout.
-// The single active layout is stored at ~/.config/Sprint/layout.json.
+// The single active layout is stored at %LOCALAPPDATA%\Sprint\layout.json (Windows)
+// or the OS-equivalent local data directory.
 type Manager struct {
 	path string
 }
 
 // NewManager creates a Manager using the standard config directory.
 func NewManager() *Manager {
-	dir, _ := os.UserConfigDir()
-	return &Manager{path: filepath.Join(dir, "Sprint", "layout.json")}
+	return &Manager{path: filepath.Join(appdata.Dir(), "layout.json")}
 }
 
 // Save writes the layout to disk, creating parent directories if needed.

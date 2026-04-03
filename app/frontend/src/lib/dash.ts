@@ -16,6 +16,8 @@ export interface DashLayout {
   widgets: DashWidget[]
 }
 
+export type DriverType = 'vocore' | 'usbd480'
+
 export interface DetectedScreen {
   vid: number
   pid: number
@@ -23,6 +25,18 @@ export interface DetectedScreen {
   width: number
   height: number
   description: string
+  driver: DriverType
+}
+
+export interface SavedScreen {
+  vid: number
+  pid: number
+  serial: string
+  width: number
+  height: number
+  name: string
+  rotation: number  // 0 | 90 | 180 | 270
+  driver: DriverType
 }
 
 export interface ScreenConfig {
@@ -30,6 +44,8 @@ export interface ScreenConfig {
   pid: number
   width: number
   height: number
+  rotation: number
+  driver: DriverType
 }
 
 // Widget catalogue entry mirroring widgets.WidgetMeta from Go.
@@ -79,7 +95,7 @@ function normLayout(raw: any): DashLayout {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normScreen(raw: any): DetectedScreen {
+function normDetectedScreen(raw: any): DetectedScreen {
   return {
     vid:         raw.vid         ?? raw.VID         ?? 0,
     pid:         raw.pid         ?? raw.PID         ?? 0,
@@ -87,16 +103,21 @@ function normScreen(raw: any): DetectedScreen {
     width:       raw.width       ?? raw.Width       ?? 0,
     height:      raw.height      ?? raw.Height      ?? 0,
     description: raw.description ?? raw.Description ?? '',
+    driver:      raw.driver      ?? raw.Driver      ?? 'vocore',
   }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normScreenConfig(raw: any): ScreenConfig {
+function normSavedScreen(raw: any): SavedScreen {
   return {
-    vid:    raw.vid    ?? raw.VID    ?? 0,
-    pid:    raw.pid    ?? raw.PID    ?? 0,
-    width:  raw.width  ?? raw.Width  ?? 0,
-    height: raw.height ?? raw.Height ?? 0,
+    vid:      raw.vid      ?? raw.VID      ?? 0,
+    pid:      raw.pid      ?? raw.PID      ?? 0,
+    serial:   raw.serial   ?? raw.Serial   ?? '',
+    width:    raw.width    ?? raw.Width    ?? 0,
+    height:   raw.height   ?? raw.Height   ?? 0,
+    name:     raw.name     ?? raw.Name     ?? '',
+    rotation: raw.rotation ?? raw.Rotation ?? 0,
+    driver:   raw.driver   ?? raw.Driver   ?? 'vocore',
   }
 }
 
@@ -118,21 +139,37 @@ export const dashAPI = {
 export const deviceScreenAPI = {
   async scanScreens(): Promise<DetectedScreen[]> {
     const raw = await call<unknown[]>('DeviceScanScreens')
-    return Array.isArray(raw) ? raw.map(normScreen) : []
+    return Array.isArray(raw) ? raw.map(normDetectedScreen) : []
   },
 
-  async getScreen(): Promise<ScreenConfig | null> {
+  async getSavedScreens(): Promise<SavedScreen[]> {
+    const raw = await call<unknown[]>('DeviceGetSavedScreens')
+    return Array.isArray(raw) ? raw.map(normSavedScreen) : []
+  },
+
+  async getScreen(): Promise<SavedScreen | null> {
     try {
       const raw = await call<unknown>('DeviceGetScreen')
       if (!raw) return null
-      return normScreenConfig(raw)
+      return normSavedScreen(raw)
     } catch {
       return null
     }
   },
 
-  async selectScreen(vid: number, pid: number, width: number, height: number): Promise<void> {
-    await call<void>('DeviceSelectScreen', vid, pid, width, height)
+  async selectScreen(
+    vid: number, pid: number, serial: string,
+    width: number, height: number, driver: DriverType,
+  ): Promise<void> {
+    await call<void>('DeviceSelectScreen', vid, pid, serial, width, height, driver)
+  },
+
+  async renameScreen(vid: number, pid: number, serial: string, name: string): Promise<void> {
+    await call<void>('DeviceRenameScreen', vid, pid, serial, name)
+  },
+
+  async setScreenRotation(vid: number, pid: number, serial: string, rotation: number): Promise<void> {
+    await call<void>('DeviceSetScreenRotation', vid, pid, serial, rotation)
   },
 
   async getScreenStatus(): Promise<'connected' | 'disconnected' | 'unknown'> {

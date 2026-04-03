@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/kratofl/sprint/app/internal/commands"
 )
 
@@ -22,8 +23,7 @@ type Config struct {
 
 // configPath returns the path to the persisted controls config file.
 func configPath() string {
-	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "Sprint", "controls.json")
+	return filepath.Join(appdata.Dir(), "controls.json")
 }
 
 // LoadConfig reads the persisted binding config.

@@ -1,11 +1,6 @@
 package hardware
 
-import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-)
+import "fmt"
 
 // voCoreVID is the USB Vendor ID shared by all VoCore M-PRO display devices.
 const voCoreVID uint16 = 0xC872
@@ -22,52 +17,19 @@ var voCorePIDDimensions = map[uint16][2]int{
 	0x100A: {1024, 600}, // M-PRO 10"
 }
 
-// VoCoreConfig stores the user's selected VoCore screen configuration.
-// Persisted to ~/.config/Sprint/screen.json.
+// VoCoreConfig is the driver's view of a configured screen.
+// Derived from devices.SavedScreen via devices.ToScreenConfig → core.voCoreConfigFrom.
 type VoCoreConfig struct {
-	// VID / PID identify the selected VoCore USB device.
+	// VID / PID identify the USB device.
 	VID uint16 `json:"vid"`
 	PID uint16 `json:"pid"`
 	// Width / Height are the landscape render dimensions for the renderer.
 	Width  int `json:"width"`
 	Height int `json:"height"`
-}
-
-// screenConfigPath returns the path to the persisted screen config file.
-func screenConfigPath() string {
-	dir, _ := os.UserConfigDir()
-	return filepath.Join(dir, "Sprint", "screen.json")
-}
-
-// SaveVoCoreConfig persists cfg to disk.
-func SaveVoCoreConfig(cfg *VoCoreConfig) error {
-	path := screenConfigPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("devices: mkdir: %w", err)
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("devices: marshal VoCoreConfig: %w", err)
-	}
-	return os.WriteFile(path, data, 0644)
-}
-
-// LoadVoCoreConfig reads the persisted screen config. Returns nil (no error) if
-// no config has been saved yet.
-func LoadVoCoreConfig() (*VoCoreConfig, error) {
-	path := screenConfigPath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("devices: read screen config: %w", err)
-	}
-	var cfg VoCoreConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("devices: parse screen config: %w", err)
-	}
-	return &cfg, nil
+	// Rotation is the user-configured rotation in degrees: 0, 90, 180, or 270.
+	Rotation int `json:"rotation"`
+	// DriverType selects the USB transport: "vocore" (default) or "usbd480".
+	DriverType string `json:"driver_type"`
 }
 
 // VoCoreScreen describes a VoCore M-PRO display found by USB enumeration.

@@ -3,7 +3,9 @@ package main
 import (
 	"embed"
 	"log"
+	"path/filepath"
 
+	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -38,9 +40,15 @@ func main() {
 		AlwaysOnTop: true,
 		// Glassmorphism requires transparency support
 		Windows: &windows.Options{
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true,
+			WebviewUserDataPath:  filepath.Join(appdata.Dir(), "WebView2"),
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
+			CustomTheme: &windows.ThemeSettings{
+				DarkModeTitleBar:  windows.RGB(10, 10, 10),
+				DarkModeTitleText: windows.RGB(161, 161, 170),
+				DarkModeBorder:    windows.RGB(42, 42, 42),
+			},
 		},
 		// Mac: &mac.Options{
 		// 	TitleBar:             mac.TitleBarHiddenInset(),

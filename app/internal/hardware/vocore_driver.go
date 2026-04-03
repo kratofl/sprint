@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -32,10 +33,11 @@ const (
 // VoCoreDriver drives the VoCore screen: renders telemetry into RGB565 frames
 // and sends them over USB bulk transfer at ~30 fps.
 type VoCoreDriver struct {
-	screen     VoCoreConfig
-	frameBytes int // expected RGB565 frame size (width*height*2), validated at SetScreen
-	logger     *slog.Logger
-	painter    *dashboard.Painter
+	screen      VoCoreConfig
+	cfgRotation atomic.Int32 // user-configured rotation; updated by SetScreen for hot-reload
+	frameBytes  int          // expected RGB565 frame size (width*height*2), validated at SetScreen
+	logger      *slog.Logger
+	painter     *dashboard.Painter
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
 	hasNewFrame atomic.Bool
@@ -68,8 +70,11 @@ func (d *VoCoreDriver) emitEvent(event string, data ...any) {
 
 // SetScreen configures which VoCore screen device to target.
 // Must be called before Run. If VID/PID are zero the driver stays inert.
+// cfgRotation is stored atomically so that changes applied via SetScreen
+// while the render loop is running take effect on the next frame.
 func (d *VoCoreDriver) SetScreen(cfg VoCoreConfig) {
 	d.screen = cfg
+	d.cfgRotation.Store(int32(cfg.Rotation))
 	if cfg.Width > 0 && cfg.Height > 0 {
 		d.painter = dashboard.NewPainter(cfg.Width, cfg.Height)
 		if fb, err := validateScreenSize(cfg.Width, cfg.Height); err == nil {
@@ -124,8 +129,7 @@ func (d *VoCoreDriver) Run(ctx context.Context) {
 		default:
 		}
 
-		transport, err := openScreen(d.screen.VID, d.screen.PID,
-			d.screen.Width, d.screen.Height, d.logger)
+		transport, err := openScreen(d.screen, d.logger)
 		if err != nil {
 			if errors.Is(err, errScreenTransportUnsupported) {
 				d.logger.Warn("vocore transport unavailable; running in no-op mode", "err", err)
@@ -162,11 +166,12 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 	defer ticker.Stop()
 
 	nativeW, nativeH := transport.nativeSize()
-	needsRotation := nativeH > nativeW && d.screen.Width > d.screen.Height
-	if needsRotation {
-		d.logger.Info("portrait screen detected, enabling 90° CW rotation",
+	rotation := resolveRotation(int(d.cfgRotation.Load()), d.screen.Width, d.screen.Height, nativeW, nativeH)
+	if rotation != 0 {
+		d.logger.Info("screen rotation configured",
 			"native", fmt.Sprintf("%dx%d", nativeW, nativeH),
-			"render", fmt.Sprintf("%dx%d", d.screen.Width, d.screen.Height))
+			"render", fmt.Sprintf("%dx%d", d.screen.Width, d.screen.Height),
+			"rotation_deg", rotation)
 	}
 
 	frameBytes, err := validateScreenSize(nativeW, nativeH)
@@ -193,11 +198,7 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 	// layout rather than whatever the previous app left behind. Sent before the
 	// async sender goroutine starts so transport.send is safe to call directly.
 	if img, err := d.painter.Paint(&dto.TelemetryFrame{}); err == nil {
-		if needsRotation {
-			imageToRGB565CW90(img, renderBuf)
-		} else {
-			imageToRGB565(img, renderBuf)
-		}
+		applyRGB565Rotation(img, renderBuf, rotation)
 		if err := transport.send(renderBuf); err != nil {
 			d.logger.Warn("standby frame send failed", "err", err)
 		}
@@ -253,6 +254,9 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 			continue
 		}
 
+		// Re-read rotation each tick so hot-reloads via SetScreen take effect immediately.
+		rotation = resolveRotation(int(d.cfgRotation.Load()), d.screen.Width, d.screen.Height, nativeW, nativeH)
+
 		renderStart := time.Now()
 
 		img, err := d.painter.Paint(frame)
@@ -262,11 +266,7 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 		}
 		renderDone := time.Now()
 
-		if needsRotation {
-			imageToRGB565CW90(img, renderBuf)
-		} else {
-			imageToRGB565(img, renderBuf)
-		}
+		applyRGB565Rotation(img, renderBuf, rotation)
 		convertDone := time.Now()
 
 		if len(renderBuf) != frameBytes {
@@ -322,7 +322,7 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 				"convert_ms", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
 				"frame_bytes", frameBytes,
 				"skipped", framesSkipped,
-				"rotated", needsRotation)
+				"rotation_deg", rotation)
 			framesSent = 0
 			framesSkipped = 0
 			totalRenderNs, totalConvertNs = 0, 0
@@ -331,7 +331,64 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 	}
 }
 
-// waitOrCancel sleeps for d or returns false if ctx is cancelled first.
+// resolveRotation returns the effective rotation angle (0, 90, 180, or 270) for
+// the given configuration and hardware dimensions.
+//
+// It validates that the chosen rotation produces output whose row stride
+// (painterW for 0°/180°, painterH for 90°/270°) matches nativeW — the number
+// of pixels per row the screen hardware expects. If the stored value is
+// incompatible it is silently corrected:
+//   - landscape screen (nativeW > nativeH): 90°/270° would produce portrait
+//     stride → corrected to 0°/180° respectively.
+//   - portrait screen (nativeH > nativeW): 0°/180° would produce landscape
+//     stride → corrected to 90°/270° respectively.
+func resolveRotation(cfgRotation, painterW, painterH, nativeW, nativeH int) int {
+	r := cfgRotation
+	switch r {
+	case 90, 180, 270:
+	default:
+		r = 0
+	}
+
+	// stride is the number of pixels per output row after applying rotation r.
+	stride := painterW
+	if r == 90 || r == 270 {
+		stride = painterH
+	}
+
+	if stride == nativeW {
+		return r
+	}
+
+	// The stored rotation is incompatible with the physical screen orientation.
+	// Pick the nearest valid rotation that produces the correct stride.
+	if painterH == nativeW {
+		// painterH pixels/row matches: use 90° or 270°.
+		if r == 270 {
+			return 270
+		}
+		return 90
+	}
+	// painterW pixels/row matches (or fallback): use 0° or 180°.
+	if r == 180 {
+		return 180
+	}
+	return 0
+}
+
+// applyRGB565Rotation converts img into RGB565 with the given rotation angle.
+func applyRGB565Rotation(img image.Image, dst []byte, rotation int) {
+	switch rotation {
+	case 90:
+		imageToRGB565CW90(img, dst)
+	case 180:
+		imageToRGB565CW180(img, dst)
+	case 270:
+		imageToRGB565CW270(img, dst)
+	default:
+		imageToRGB565(img, dst)
+	}
+}
 func waitOrCancel(ctx context.Context, d time.Duration) bool {
 	select {
 	case <-ctx.Done():

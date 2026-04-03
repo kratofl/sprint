@@ -76,36 +76,19 @@ export namespace dashboard {
 
 }
 
-export namespace hardware {
+export namespace devices {
 	
-	export class VoCoreConfig {
-	    vid: number;
-	    pid: number;
-	    width: number;
-	    height: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new VoCoreConfig(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.width = source["width"];
-	        this.height = source["height"];
-	    }
-	}
-	export class VoCoreScreen {
+	export class DetectedScreen {
 	    vid: number;
 	    pid: number;
 	    serial?: string;
 	    width: number;
 	    height: number;
 	    description: string;
+	    driver: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new VoCoreScreen(source);
+	        return new DetectedScreen(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -116,6 +99,33 @@ export namespace hardware {
 	        this.width = source["width"];
 	        this.height = source["height"];
 	        this.description = source["description"];
+	        this.driver = source["driver"];
+	    }
+	}
+	export class SavedScreen {
+	    vid: number;
+	    pid: number;
+	    serial?: string;
+	    width: number;
+	    height: number;
+	    name: string;
+	    rotation: number;
+	    driver: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SavedScreen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.serial = source["serial"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.name = source["name"];
+	        this.rotation = source["rotation"];
+	        this.driver = source["driver"];
 	    }
 	}
 

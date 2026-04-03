@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/input"
 	springsync "github.com/kratofl/sprint/app/internal/sync"
@@ -28,7 +28,6 @@ type Coordinator struct {
 	adapter games.GameAdapter
 	screen  hardware.ScreenDriver
 	input   *input.Detector
-	lapSvc  *LapService
 	sync    *springsync.Client
 
 	emit EmitFn // Wails runtime event emitter; no-op until SetEmit is called
@@ -43,13 +42,17 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 
 // New creates a Coordinator. logger is the root application logger;
 // each subsystem receives a child logger tagged with its component name.
-// dashMgr is used to load the saved layout on startup.
-func New(logger *slog.Logger, dashMgr *dashboard.Manager) *Coordinator {
+// dashMgr and devMgr are used to restore the saved layout and screen on startup.
+func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
 	screen := hardware.NewVoCoreDriver(logger.With("component", "screen"))
 
-	// Load VoCore screen config from disk.
-	if cfg, err := hardware.LoadVoCoreConfig(); err == nil && cfg != nil {
-		screen.SetScreen(*cfg)
+	// Load screen config from the device registry.
+	if devMgr != nil {
+		if reg, err := devMgr.Load(); err == nil {
+			if active := devices.ActiveScreen(reg); active != nil {
+				screen.SetScreen(voCoreConfigFrom(devices.ToScreenConfig(active)))
+			}
+		}
 	}
 
 	// Load saved dash layout; Load() returns the embedded default when no
@@ -60,27 +63,14 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager) *Coordinator {
 		}
 	}
 
-	lapSvc := NewLapService(logger.With("component", "lapsvc"))
-
 	c := &Coordinator{
 		logger:  logger,
 		adapter: lemansultimate.New(),
 		screen:  screen,
 		input:   input.NewDetector(logger.With("component", "input")),
-		lapSvc:  lapSvc,
 		sync:    springsync.NewClient(logger.With("component", "sync")),
 		emit:    func(string, ...any) {}, // safe no-op before Wails startup
 	}
-
-	commands.Handle(dashboard.CmdSetTargetLap, func(_ any) {
-		lap, ok := c.lapSvc.SelectTargetLap()
-		if !ok {
-			c.logger.Info("no valid target lap available")
-			return
-		}
-		c.emit("engineer:targetLap", lap)
-		c.logger.Info("target lap selected", "lap_num", lap.LapNum, "lap_time", lap.LapTime)
-	})
 
 	return c
 }
@@ -96,15 +86,24 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 	}
 }
 
-// SetScreenConfig updates the VoCore screen configuration and reconfigures the
+// SetScreenConfig updates the active screen configuration and reconfigures the
 // renderer. Safe to call after startup; the renderer will reconnect on the next
 // tick if the VID/PID changed.
-func (c *Coordinator) SetScreenConfig(cfg *hardware.VoCoreConfig) {
-	if cfg == nil {
-		return
-	}
+func (c *Coordinator) SetScreenConfig(cfg devices.ScreenConfig) {
 	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
-		vd.SetScreen(*cfg)
+		vd.SetScreen(voCoreConfigFrom(cfg))
+	}
+}
+
+// voCoreConfigFrom converts a hardware-agnostic ScreenConfig to a VoCoreConfig.
+func voCoreConfigFrom(cfg devices.ScreenConfig) hardware.VoCoreConfig {
+	return hardware.VoCoreConfig{
+		VID:        cfg.VID,
+		PID:        cfg.PID,
+		Width:      cfg.Width,
+		Height:     cfg.Height,
+		Rotation:   cfg.Rotation,
+		DriverType: string(cfg.Driver),
 	}
 }
 
@@ -230,7 +229,6 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 // Internal subsystems receive every frame; the frontend is throttled to ~30 Hz.
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
 	c.screen.OnFrame(frame)
-	c.lapSvc.OnFrame(frame)
 
 	// Throttled emit to Wails frontend
 	now := time.Now()

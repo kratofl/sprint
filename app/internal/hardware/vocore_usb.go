@@ -104,8 +104,16 @@ func validateScreenSize(width, height int) (frameBytes int, err error) {
 	return pixels * 2, nil
 }
 
-// openScreen opens a USB connection to the VoCore screen by VID/PID.
-func openScreen(vid, pid uint16, width, height int, logger *slog.Logger) (screenTransport, error) {
+// openScreen dispatches to the appropriate USB transport based on cfg.DriverType.
+func openScreen(cfg VoCoreConfig, logger *slog.Logger) (screenTransport, error) {
+	if cfg.DriverType == "usbd480" {
+		return openUSBD480Screen(cfg.VID, cfg.PID, cfg.Width, cfg.Height, logger)
+	}
+	return openVoCoreScreen(cfg.VID, cfg.PID, cfg.Width, cfg.Height, logger)
+}
+
+// openVoCoreScreen opens a USB connection to the VoCore screen by VID/PID.
+func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (screenTransport, error) {
 	if err := modWinUSB.Load(); err != nil {
 		return nil, fmt.Errorf("WinUSB not available: %w", err)
 	}
@@ -520,7 +528,87 @@ func imageToRGB565CW90(img image.Image, dst []byte) {
 	}
 }
 
-// mproModelDimensions returns the native pixel dimensions for the given mpro
+// imageToRGB565CW180 converts an image to RGB565 little-endian with a 180°
+// rotation. Output dimensions match input (W×H).
+// dst must be at least W*H*2 bytes.
+func imageToRGB565CW180(img image.Image, dst []byte) {
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	if rgba, ok := img.(*image.RGBA); ok {
+		i := 0
+		for y := srcH - 1; y >= 0; y-- {
+			for x := srcW - 1; x >= 0; x-- {
+				sy := bounds.Min.Y + y
+				sx := bounds.Min.X + x
+				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
+				r := uint16(rgba.Pix[j]) >> 3
+				g := uint16(rgba.Pix[j+1]) >> 2
+				b := uint16(rgba.Pix[j+2]) >> 3
+				px := (r << 11) | (g << 5) | b
+				dst[i] = byte(px)
+				dst[i+1] = byte(px >> 8)
+				i += 2
+			}
+		}
+		return
+	}
+
+	i := 0
+	for y := srcH - 1; y >= 0; y-- {
+		for x := srcW - 1; x >= 0; x-- {
+			sx := bounds.Min.X + x
+			sy := bounds.Min.Y + y
+			r, g, b, _ := img.At(sx, sy).RGBA()
+			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
+			dst[i] = byte(px)
+			dst[i+1] = byte(px >> 8)
+			i += 2
+		}
+	}
+}
+
+// imageToRGB565CW270 converts an image to RGB565 little-endian with a 270° CW
+// (90° CCW) rotation. Source image W×H becomes output H×W.
+// dst must be at least W*H*2 bytes.
+func imageToRGB565CW270(img image.Image, dst []byte) {
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	if rgba, ok := img.(*image.RGBA); ok {
+		i := 0
+		for dy := 0; dy < srcW; dy++ {
+			for dx := 0; dx < srcH; dx++ {
+				sx := bounds.Min.X + (srcW - 1 - dy)
+				sy := bounds.Min.Y + dx
+				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
+				r := uint16(rgba.Pix[j]) >> 3
+				g := uint16(rgba.Pix[j+1]) >> 2
+				b := uint16(rgba.Pix[j+2]) >> 3
+				px := (r << 11) | (g << 5) | b
+				dst[i] = byte(px)
+				dst[i+1] = byte(px >> 8)
+				i += 2
+			}
+		}
+		return
+	}
+
+	i := 0
+	for dy := 0; dy < srcW; dy++ {
+		for dx := 0; dx < srcH; dx++ {
+			sx := bounds.Min.X + (srcW - 1 - dy)
+			sy := bounds.Min.Y + dx
+			r, g, b, _ := img.At(sx, sy).RGBA()
+			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
+			dst[i] = byte(px)
+			dst[i+1] = byte(px >> 8)
+			i += 2
+		}
+	}
+}
 // screen model ID. Values from the mpro_drm Linux driver.
 func mproModelDimensions(model uint32) (width, height int) {
 	switch model {
