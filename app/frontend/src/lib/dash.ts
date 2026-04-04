@@ -13,7 +13,14 @@ export interface DashWidget {
 }
 
 export interface DashLayout {
+  id: string
+  name: string
   widgets: DashWidget[]
+}
+
+export interface LayoutMeta {
+  id: string
+  name: string
 }
 
 export type DriverType = 'vocore' | 'usbd480'
@@ -37,6 +44,7 @@ export interface SavedScreen {
   name: string
   rotation: number  // 0 | 90 | 180 | 270
   driver: DriverType
+  dashId: string    // assigned layout ID; empty = use default
 }
 
 export interface ScreenConfig {
@@ -88,9 +96,19 @@ function normWidget(raw: any): DashWidget {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normLayout(raw: any): DashLayout {
   return {
+    id:      raw.id      ?? raw.ID      ?? '',
+    name:    raw.name    ?? raw.Name    ?? '',
     widgets: Array.isArray(raw?.widgets ?? raw?.Widgets)
       ? (raw.widgets ?? raw.Widgets).map(normWidget)
       : [],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normLayoutMeta(raw: any): LayoutMeta {
+  return {
+    id:   raw.id   ?? raw.ID   ?? '',
+    name: raw.name ?? raw.Name ?? '',
   }
 }
 
@@ -118,19 +136,39 @@ function normSavedScreen(raw: any): SavedScreen {
     name:     raw.name     ?? raw.Name     ?? '',
     rotation: raw.rotation ?? raw.Rotation ?? 0,
     driver:   raw.driver   ?? raw.Driver   ?? 'vocore',
+    dashId:   raw.dash_id  ?? raw.DashID   ?? raw.dashId ?? '',
   }
 }
 
 // Dash API.
 
 export const dashAPI = {
+  async listLayouts(): Promise<LayoutMeta[]> {
+    const raw = await call<unknown[]>('DashListLayouts')
+    return Array.isArray(raw) ? raw.map(normLayoutMeta) : []
+  },
+
   async loadLayout(): Promise<DashLayout> {
     const raw = await call<unknown>('DashLoadLayout')
     return normLayout(raw)
   },
 
+  async loadLayoutByID(id: string): Promise<DashLayout> {
+    const raw = await call<unknown>('DashLoadLayoutByID', id)
+    return normLayout(raw)
+  },
+
   async saveLayout(layout: DashLayout): Promise<void> {
     await call<void>('DashSaveLayout', layout)
+  },
+
+  async createLayout(name: string): Promise<DashLayout> {
+    const raw = await call<unknown>('DashCreateLayout', name)
+    return normLayout(raw)
+  },
+
+  async deleteLayout(id: string): Promise<void> {
+    await call<void>('DashDeleteLayout', id)
   },
 }
 
@@ -170,6 +208,22 @@ export const deviceScreenAPI = {
 
   async setScreenRotation(vid: number, pid: number, serial: string, rotation: number): Promise<void> {
     await call<void>('DeviceSetScreenRotation', vid, pid, serial, rotation)
+  },
+
+  async setDashLayout(vid: number, pid: number, serial: string, dashId: string): Promise<void> {
+    await call<void>('DeviceSetDashLayout', vid, pid, serial, dashId)
+  },
+
+  async setScreenPaused(paused: boolean): Promise<void> {
+    await call<void>('DeviceSetScreenPaused', paused)
+  },
+
+  async getScreenPaused(): Promise<boolean> {
+    try {
+      return await call<boolean>('DeviceGetScreenPaused')
+    } catch {
+      return false
+    }
   },
 
   async getScreenStatus(): Promise<'connected' | 'disconnected' | 'unknown'> {

@@ -7,7 +7,7 @@ import {
 } from '@sprint/ui'
 import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
 import {
-  type DashLayout, type DashWidget, type WidgetCatalogEntry,
+  type DashLayout, type DashWidget, type WidgetCatalogEntry, type LayoutMeta,
   dashAPI, deviceScreenAPI, widgetCatalogAPI, type ScreenConfig,
 } from '@/lib/dash'
 
@@ -23,27 +23,45 @@ const CATEGORY_LABEL: Record<string, string> = {
 // DashEditor.
 
 export default function DashEditor() {
-  const [layout, setLayout]         = useState<DashLayout>({ widgets: [] })
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [screen, setScreen]         = useState<ScreenConfig | null>(null)
-  const [saving, setSaving]         = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
-  const [loadError, setLoadError]   = useState<string | null>(null)
-  const [catalog, setCatalog]       = useState<WidgetCatalogEntry[]>([])
+  const [layouts, setLayouts]           = useState<LayoutMeta[]>([])
+  const [activeID, setActiveID]         = useState<string>('')
+  const [layout, setLayout]             = useState<DashLayout>({ id: '', name: '', widgets: [] })
+  const [selectedId, setSelectedId]     = useState<number | null>(null)
+  const [screen, setScreen]             = useState<ScreenConfig | null>(null)
+  const [saving, setSaving]             = useState(false)
+  const [saveStatus, setSaveStatus]     = useState<'idle' | 'saved' | 'error'>('idle')
+  const [loadError, setLoadError]       = useState<string | null>(null)
+  const [catalog, setCatalog]           = useState<WidgetCatalogEntry[]>([])
+  const [creatingNew, setCreatingNew]   = useState(false)
+  const [newName, setNewName]           = useState('')
+  const [showNewInput, setShowNewInput] = useState(false)
 
-  // Load saved layout, screen config and widget catalog on mount.
+  const loadLayoutList = useCallback(async () => {
+    const metas = await dashAPI.listLayouts()
+    setLayouts(metas)
+    return metas
+  }, [])
+
+  // Load layout list, first layout, screen config and widget catalog on mount.
   useEffect(() => {
     let cancelled = false
     Promise.all([
-      dashAPI.loadLayout(),
+      dashAPI.listLayouts(),
       deviceScreenAPI.getScreen(),
       widgetCatalogAPI.getWidgetCatalog(),
     ])
-      .then(([savedLayout, cfg, widgets]) => {
+      .then(async ([metas, cfg, widgets]) => {
         if (cancelled) return
-        setLayout(savedLayout)
+        setLayouts(metas)
         setScreen(cfg)
         setCatalog(widgets)
+
+        const firstID = metas[0]?.id ?? ''
+        setActiveID(firstID)
+        if (firstID) {
+          const loaded = await dashAPI.loadLayoutByID(firstID)
+          if (!cancelled) setLayout(loaded)
+        }
       })
       .catch(e => {
         if (!cancelled) setLoadError(String(e))
@@ -51,13 +69,24 @@ export default function DashEditor() {
     return () => { cancelled = true }
   }, [])
 
+  const switchLayout = useCallback(async (id: string) => {
+    setActiveID(id)
+    setSelectedId(null)
+    try {
+      const loaded = await dashAPI.loadLayoutByID(id)
+      setLayout(loaded)
+    } catch (e) {
+      setLoadError(String(e))
+    }
+  }, [])
+
   // Delete selected widget with keyboard.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null) {
-        // Avoid deleting when an input is focused.
         if (document.activeElement?.tagName === 'INPUT') return
         setLayout(prev => ({
+          ...prev,
           widgets: prev.widgets.filter((_, i) => i !== selectedId),
         }))
         setSelectedId(null)
@@ -68,7 +97,7 @@ export default function DashEditor() {
   }, [selectedId])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
-    setLayout({ widgets })
+    setLayout(prev => ({ ...prev, widgets }))
   }, [])
 
   const handleSave = async () => {
@@ -86,8 +115,47 @@ export default function DashEditor() {
   }
 
   const handleClearLayout = () => {
-    setLayout({ widgets: [] })
+    setLayout(prev => ({ ...prev, widgets: [] }))
     setSelectedId(null)
+  }
+
+  const handleCreateLayout = async () => {
+    const name = newName.trim() || 'Untitled'
+    setCreatingNew(true)
+    try {
+      const created = await dashAPI.createLayout(name)
+      const metas = await loadLayoutList()
+      setLayouts(metas)
+      setActiveID(created.id)
+      setLayout(created)
+      setSelectedId(null)
+      setNewName('')
+      setShowNewInput(false)
+    } catch (e) {
+      setLoadError(String(e))
+    } finally {
+      setCreatingNew(false)
+    }
+  }
+
+  const handleDeleteLayout = async () => {
+    if (!activeID || layouts.length <= 1) return
+    try {
+      await dashAPI.deleteLayout(activeID)
+      const metas = await loadLayoutList()
+      setLayouts(metas)
+      const next = metas[0]?.id ?? ''
+      setActiveID(next)
+      if (next) {
+        const loaded = await dashAPI.loadLayoutByID(next)
+        setLayout(loaded)
+      } else {
+        setLayout({ id: '', name: '', widgets: [] })
+      }
+      setSelectedId(null)
+    } catch (e) {
+      setLoadError(String(e))
+    }
   }
 
   const selectedWidget = selectedId !== null ? layout.widgets[selectedId] : null
@@ -121,12 +189,87 @@ export default function DashEditor() {
           </Button>
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !activeID}
             variant="primary"
             className="terminal-header font-bold"
           >
             {saving ? 'SAVING…' : 'SAVE_LAYOUT'}
           </Button>
+        </div>
+      </div>
+
+      {/* Layout selector bar */}
+      <div className="flex items-center gap-2 border-b border-border px-6 py-2 flex-shrink-0 overflow-x-auto">
+        <span className="font-mono text-[9px] text-text-muted flex-shrink-0">LAYOUT:</span>
+        <div className="flex items-center gap-1 flex-1 min-w-0">
+          {layouts.map(m => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => switchLayout(m.id)}
+              className={cn(
+                'rounded px-2 py-0.5 font-mono text-[9px] transition-colors whitespace-nowrap border',
+                m.id === activeID
+                  ? 'bg-primary text-background border-primary'
+                  : 'bg-background text-text-muted border-border hover:text-foreground',
+              )}
+            >
+              {m.name}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {showNewInput ? (
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleCreateLayout()
+                  if (e.key === 'Escape') { setShowNewInput(false); setNewName('') }
+                }}
+                placeholder="Layout name"
+                className="w-28 rounded bg-background px-1 font-mono text-[9px] outline outline-1 outline-primary"
+              />
+              <Button
+                size="xs"
+                variant="primary"
+                className="terminal-header h-5 px-1.5 text-[9px]"
+                onClick={handleCreateLayout}
+                disabled={creatingNew}
+              >
+                OK
+              </Button>
+              <Button
+                size="xs"
+                variant="neutral"
+                className="terminal-header h-5 px-1.5 text-[9px]"
+                onClick={() => { setShowNewInput(false); setNewName('') }}
+              >
+                ✕
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="xs"
+              variant="neutral"
+              className="terminal-header h-5 px-1.5 text-[9px]"
+              onClick={() => setShowNewInput(true)}
+            >
+              + NEW
+            </Button>
+          )}
+          {layouts.length > 1 && activeID && (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="terminal-header h-5 px-1.5 text-[9px] text-destructive hover:bg-destructive/10"
+              onClick={handleDeleteLayout}
+            >
+              DEL
+            </Button>
+          )}
         </div>
       </div>
 
@@ -157,7 +300,7 @@ export default function DashEditor() {
                   X:{selectedWidget.x} Y:{selectedWidget.y} W:{selectedWidget.w} H:{selectedWidget.h}
                 </span>
                 <Button
-                  onClick={() => { setLayout(prev => ({ widgets: prev.widgets.filter((_, i) => i !== selectedId) })); setSelectedId(null) }}
+                  onClick={() => { setLayout(prev => ({ ...prev, widgets: prev.widgets.filter((_, i) => i !== selectedId) })); setSelectedId(null) }}
                   variant="ghost"
                   size="xs"
                   className="ml-auto h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
@@ -193,8 +336,6 @@ export default function DashEditor() {
 // WidgetPalette.
 
 function WidgetPalette({ catalog }: { catalog: WidgetCatalogEntry[] }) {
-  // Derive ordered categories from the catalog; filter to known order first,
-  // then append any unknown categories that come from new widgets.
   const knownCategories = CATEGORY_ORDER.filter(c => catalog.some(w => w.category === c))
   const extraCategories = [...new Set(catalog.map(w => w.category))]
     .filter(c => !CATEGORY_ORDER.includes(c))
@@ -279,4 +420,5 @@ function WidgetDragIcon() {
     </svg>
   )
 }
+
 

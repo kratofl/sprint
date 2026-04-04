@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 
 	"github.com/kratofl/sprint/app/internal/core"
 	"github.com/kratofl/sprint/app/internal/dashboard"
@@ -58,6 +59,38 @@ func (a *App) IsConnected() bool {
 // GetVersion returns the application version string injected at build time.
 func (a *App) GetVersion() string {
 	return a.version
+}
+
+// GetBuildChannel returns the release channel derived from the version string:
+// "dev" for local builds, "alpha", "beta" if the version contains those words,
+// or "release" for any other versioned build.
+func (a *App) GetBuildChannel() string {
+	v := strings.ToLower(a.version)
+	switch {
+	case v == "dev":
+		return "dev"
+	case strings.Contains(v, "alpha"):
+		return "alpha"
+	case strings.Contains(v, "beta"):
+		return "beta"
+	default:
+		return "release"
+	}
+}
+
+// WindowMinimise minimises the application window.
+func (a *App) WindowMinimise() {
+	runtime.WindowMinimise(a.ctx)
+}
+
+// WindowMaximise toggles the application window between maximised and normal.
+func (a *App) WindowMaximise() {
+	runtime.WindowToggleMaximise(a.ctx)
+}
+
+// WindowClose closes the application window.
+func (a *App) WindowClose() {
+	runtime.Quit(a.ctx)
 }
 
 // Shutdown is called when the app is closing.

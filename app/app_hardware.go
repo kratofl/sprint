@@ -135,3 +135,39 @@ func (a *App) DeviceSetScreenRotation(vid, pid uint16, serial string, rotation i
 	return nil
 }
 
+// DeviceSetDashLayout assigns a dash layout to the given screen and hot-reloads
+// the renderer if it is the active screen.
+func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceSetDashLayout: load: %w", err)
+	}
+	id := devices.ScreenID(vid, pid, serial)
+	if err := devices.SetDashLayout(reg, id, dashID); err != nil {
+		return fmt.Errorf("DeviceSetDashLayout: %w", err)
+	}
+	if err := a.devMgr.Save(reg); err != nil {
+		return fmt.Errorf("DeviceSetDashLayout: save: %w", err)
+	}
+	if reg.ActiveID == id {
+		layout, loadErr := a.dash.Load(dashID)
+		if loadErr != nil {
+			return fmt.Errorf("DeviceSetDashLayout: load layout: %w", loadErr)
+		}
+		a.coord.SetDashLayout(layout)
+	}
+	return nil
+}
+
+// DeviceSetScreenPaused pauses or resumes Sprint's screen output.
+// When paused, the USB handle is released so another application (e.g., SimHub)
+// can drive the screen. Sprint resumes automatically when called with false.
+func (a *App) DeviceSetScreenPaused(paused bool) {
+	a.coord.SetScreenPaused(paused)
+}
+
+// DeviceGetScreenPaused reports whether Sprint's screen output is currently paused.
+func (a *App) DeviceGetScreenPaused() bool {
+	return a.coord.GetScreenPaused()
+}
+

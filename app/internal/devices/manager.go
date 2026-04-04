@@ -44,6 +44,7 @@ type SavedScreen struct {
 	Name     string     `json:"name"`
 	Rotation int        `json:"rotation"` // 0=0°, 90=CW90, 180=180°, 270=CW270
 	Driver   DriverType `json:"driver"`
+	DashID   string     `json:"dash_id,omitempty"` // assigned dash layout ID; empty = use default
 }
 
 // ScreenConfig is the hardware-agnostic config the coordinator uses to activate
@@ -166,6 +167,17 @@ func SetRotation(reg *ScreenRegistry, id string, rotation int) error {
 	for i := range reg.Screens {
 		if ScreenID(reg.Screens[i].VID, reg.Screens[i].PID, reg.Screens[i].Serial) == id {
 			reg.Screens[i].Rotation = rotation
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: screen %q not found", id)
+}
+
+// SetDashLayout assigns a dash layout ID to the screen with the given composite ID.
+func SetDashLayout(reg *ScreenRegistry, id, dashID string) error {
+	for i := range reg.Screens {
+		if ScreenID(reg.Screens[i].VID, reg.Screens[i].PID, reg.Screens[i].Serial) == id {
+			reg.Screens[i].DashID = dashID
 			return nil
 		}
 	}

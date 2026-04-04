@@ -26,6 +26,10 @@ type DashWidget struct {
 
 // DashLayout is the full set of widgets for one dashboard screen.
 type DashLayout struct {
+	// ID is the unique identifier of the layout (UUID string).
+	ID string `json:"id"`
+	// Name is the user-visible name of the layout.
+	Name string `json:"name"`
 	// Widgets is the ordered list of widgets to render (back to front).
 	Widgets []DashWidget `json:"widgets"`
 }

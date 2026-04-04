@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
@@ -23,9 +24,10 @@ func main() {
 	app := NewApp(Version)
 
 	err := wails.Run(&options.App{
-		Title:  "Sprint",
-		Width:  1440,
-		Height: 900,
+		Title:     "Sprint",
+		Width:     1440,
+		Height:    900,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -38,27 +40,21 @@ func main() {
 			app,
 		},
 		AlwaysOnTop: true,
-		// Glassmorphism requires transparency support
 		Windows: &windows.Options{
 			WebviewUserDataPath:  filepath.Join(appdata.Dir(), "WebView2"),
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
-			DisableWindowIcon:    false,
-			CustomTheme: &windows.ThemeSettings{
-				DarkModeTitleBar:  windows.RGB(10, 10, 10),
-				DarkModeTitleText: windows.RGB(161, 161, 170),
-				DarkModeBorder:    windows.RGB(42, 42, 42),
+			DisableWindowIcon:    true,
+		},
+		Mac: &mac.Options{
+			TitleBar:             mac.TitleBarHiddenInset(),
+			WebviewIsTransparent: false,
+			WindowIsTranslucent:  false,
+			About: &mac.AboutInfo{
+				Title:   "Sprint",
+				Message: "Sim racing telemetry platform",
 			},
 		},
-		// Mac: &mac.Options{
-		// 	TitleBar:             mac.TitleBarHiddenInset(),
-		// 	WebviewIsTransparent: true,
-		// 	WindowIsTranslucent:  true,
-		// 	About: &mac.AboutInfo{
-		// 		Title:   "Sprint",
-		// 		Message: "Sim racing telemetry platform",
-		// 	},
-		// },
 	})
 	if err != nil {
 		log.Fatal(err)

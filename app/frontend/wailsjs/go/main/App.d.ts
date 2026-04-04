@@ -6,13 +6,23 @@ import {input} from '../models';
 import {commands} from '../models';
 import {widgets} from '../models';
 
+export function DashCreateLayout(arg1:string):Promise<dashboard.DashLayout>;
+
+export function DashDeleteLayout(arg1:string):Promise<void>;
+
+export function DashListLayouts():Promise<Array<dashboard.LayoutMeta>>;
+
 export function DashLoadLayout():Promise<dashboard.DashLayout>;
+
+export function DashLoadLayoutByID(arg1:string):Promise<dashboard.DashLayout>;
 
 export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
 
 export function DeviceGetSavedScreens():Promise<Array<devices.SavedScreen>>;
 
 export function DeviceGetScreen():Promise<devices.SavedScreen>;
+
+export function DeviceGetScreenPaused():Promise<boolean>;
 
 export function DeviceGetScreenStatus():Promise<string>;
 
@@ -22,9 +32,15 @@ export function DeviceScanScreens():Promise<Array<devices.DetectedScreen>>;
 
 export function DeviceSelectScreen(arg1:number,arg2:number,arg3:string,arg4:number,arg5:number,arg6:string):Promise<void>;
 
+export function DeviceSetDashLayout(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+
+export function DeviceSetScreenPaused(arg1:boolean):Promise<void>;
+
 export function DeviceSetScreenRotation(arg1:number,arg2:number,arg3:string,arg4:number):Promise<void>;
 
 export function GetBindings():Promise<input.Config>;
+
+export function GetBuildChannel():Promise<string>;
 
 export function GetCommandCatalog():Promise<Array<commands.CommandMeta>>;
 
@@ -35,3 +51,9 @@ export function GetWidgetCatalog():Promise<Array<widgets.WidgetMeta>>;
 export function IsConnected():Promise<boolean>;
 
 export function SaveBindings(arg1:input.Config):Promise<void>;
+
+export function WindowClose():Promise<void>;
+
+export function WindowMaximise():Promise<void>;
+
+export function WindowMinimise():Promise<void>;

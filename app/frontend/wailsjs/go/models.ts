@@ -44,6 +44,8 @@ export namespace dashboard {
 	    }
 	}
 	export class DashLayout {
+	    id: string;
+	    name: string;
 	    widgets: DashWidget[];
 	
 	    static createFrom(source: any = {}) {
@@ -52,6 +54,8 @@ export namespace dashboard {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
 	        this.widgets = this.convertValues(source["widgets"], DashWidget);
 	    }
 	
@@ -72,6 +76,21 @@ export namespace dashboard {
 		    }
 		    return a;
 		}
+	}
+	
+	export class LayoutMeta {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LayoutMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
 	}
 
 }
@@ -111,6 +130,7 @@ export namespace devices {
 	    name: string;
 	    rotation: number;
 	    driver: string;
+	    dash_id?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SavedScreen(source);
@@ -126,6 +146,7 @@ export namespace devices {
 	        this.name = source["name"];
 	        this.rotation = source["rotation"];
 	        this.driver = source["driver"];
+	        this.dash_id = source["dash_id"];
 	    }
 	}
 

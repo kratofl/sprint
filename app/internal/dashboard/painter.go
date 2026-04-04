@@ -54,6 +54,11 @@ func NewPainter(width, height int) *Painter {
 	return &Painter{width: width, height: height}
 }
 
+// Dims returns the pixel dimensions of this Painter's canvas.
+func (p *Painter) Dims() (int, int) {
+	return p.width, p.height
+}
+
 // SetLayout atomically sets the layout to use on the next rendered frame.
 // Passing nil is a no-op (the caller should always pass a valid layout).
 func (p *Painter) SetLayout(layout *DashLayout) {

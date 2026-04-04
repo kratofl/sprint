@@ -46,19 +46,23 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
 	screen := hardware.NewVoCoreDriver(logger.With("component", "screen"))
 
-	// Load screen config from the device registry.
+	// Load screen config and its assigned dash layout from the device registry.
 	if devMgr != nil {
 		if reg, err := devMgr.Load(); err == nil {
 			if active := devices.ActiveScreen(reg); active != nil {
 				screen.SetScreen(voCoreConfigFrom(devices.ToScreenConfig(active)))
+				if dashMgr != nil {
+					if layout, err := dashMgr.Load(active.DashID); err == nil && layout != nil {
+						screen.SetLayout(layout)
+					}
+				}
 			}
 		}
 	}
 
-	// Load saved dash layout; Load() returns the embedded default when no
-	// user layout file exists, so the renderer always has a layout to use.
-	if dashMgr != nil {
-		if layout, err := dashMgr.Load(); err == nil && layout != nil {
+	// If no active screen, still load the default dash layout.
+	if dashMgr != nil && devMgr == nil {
+		if layout, err := dashMgr.Load(""); err == nil && layout != nil {
 			screen.SetLayout(layout)
 		}
 	}
@@ -117,6 +121,17 @@ func (c *Coordinator) GetScreenStatus() string {
 		return "disconnected"
 	}
 	return "unknown"
+}
+
+// SetScreenPaused pauses or resumes screen rendering. When paused, the USB
+// handle is released so another application (e.g., SimHub) can drive the screen.
+func (c *Coordinator) SetScreenPaused(paused bool) {
+	c.screen.SetPaused(paused)
+}
+
+// GetScreenPaused reports whether screen rendering is currently paused.
+func (c *Coordinator) GetScreenPaused() bool {
+	return c.screen.GetPaused()
 }
 
 // SetDashLayout updates the layout used by the VoCore renderer. Takes effect

@@ -63,6 +63,10 @@ const (
 	digcfDeviceInterface = 0x10
 	// SP_DEVICE_INTERFACE_DETAIL_DATA_W.CbSize on x64.
 	detailDataCbSize = 8
+	// fileShareDelete allows other processes to delete (uninstall) the device
+	// interface while this handle is open. Required on some Windows 10/11
+	// configurations to open pre-connected WinUSB devices without ACCESS_DENIED.
+	fileShareDelete = 0x00000004
 )
 
 // VoCore M-PRO screen USB protocol constants (from mpro_drm driver).
@@ -131,13 +135,16 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	devHandle, err := syscall.CreateFile(
 		pathUTF16,
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE,
+		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|fileShareDelete,
 		nil,
 		syscall.OPEN_EXISTING,
 		syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
 		0,
 	)
 	if err != nil {
+		if errno, ok := err.(syscall.Errno); ok && errno == 5 {
+			return nil, fmt.Errorf("open device: access denied (another application may have exclusive access to the screen — close SimHub or other USB tools)")
+		}
 		return nil, fmt.Errorf("open device: %w", err)
 	}
 

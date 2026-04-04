@@ -13,4 +13,6 @@ type ScreenDriver interface {
 	SetLayout(layout *dashboard.DashLayout)
 	OnFrame(frame *dto.TelemetryFrame)
 	Run(ctx context.Context)
+	SetPaused(paused bool)
+	GetPaused() bool
 }
