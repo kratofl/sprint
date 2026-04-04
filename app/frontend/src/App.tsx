@@ -5,34 +5,45 @@ import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import SplashScreen from '@/components/SplashScreen'
-import { onEvent } from '@/lib/wails'
-import { Badge, Button, Progress, cn } from '@sprint/ui'
+import { onEvent, call } from '@/lib/wails'
+import { Badge, Button, NavRail, type NavRailItem, cn } from '@sprint/ui'
 import {
   IconGauge,
   IconLayout,
   IconUsb,
-  IconSettings,
-  IconBell,
   IconKeyboard,
+  IconBell,
+  IconMinus,
+  IconSquare,
+  IconX,
 } from '@tabler/icons-react'
 
 type View = 'telemetry' | 'dash' | 'devices' | 'controls'
+type BuildChannel = 'dev' | 'alpha' | 'beta' | 'release'
 
-const NAV: { id: View; label: string; icon: typeof IconGauge }[] = [
-  { id: 'telemetry', label: 'Live_Session',  icon: IconGauge },
+const NAV: NavRailItem[] = [
+  { id: 'telemetry', label: 'Live_Session', icon: IconGauge },
   { id: 'dash',      label: 'Dash_Editor',  icon: IconLayout },
   { id: 'devices',   label: 'Devices',      icon: IconUsb },
   { id: 'controls',  label: 'Controls',     icon: IconKeyboard },
 ]
 
+const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 'neutral' | 'active' | 'connected' }> = {
+  dev:     { label: 'DEV',     variant: 'warning' },
+  alpha:   { label: 'ALPHA',   variant: 'active' },
+  beta:    { label: 'BETA',    variant: 'neutral' },
+  release: { label: 'RELEASE', variant: 'connected' },
+}
+
 export default function App() {
   const [view, setView] = useState<View>(import.meta.env.DEV ? 'telemetry' : 'dash')
   const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry')
   const { frame, connected, fps } = useTelemetry()
-  const telemetryLevel = connected ? Math.min(((fps ?? 0) / 60) * 100, 100) : 0
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
+  const [version, setVersion] = useState('dev')
+  const [channel, setChannel] = useState<BuildChannel>('dev')
 
   useEffect(() => {
     const unsub = onEvent('app:ready', () => setBooting(false))
@@ -40,139 +51,73 @@ export default function App() {
     return () => { unsub(); clearTimeout(fallback) }
   }, [])
 
+  useEffect(() => {
+    call<string>('GetVersion').then(setVersion).catch(() => {})
+    call<string>('GetBuildChannel').then(v => setChannel(v as BuildChannel)).catch(() => {})
+  }, [])
+
+  const channelBadge = CHANNEL_BADGE[channel] ?? CHANNEL_BADGE.dev
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground border-t border-border">
       {splashMounted && (
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      {/* Fixed top header bar */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4 [app-region:drag]">
-        {/* Brand + nav */}
-        <div className="flex items-center gap-8">
-          <h1 className="terminal-header text-base font-bold tracking-[0.2em] text-primary italic [app-region:no-drag]">
-            SPRINT.V2
-          </h1>
-          <nav className="flex h-full items-center gap-4 terminal-header text-[10px] font-bold [app-region:no-drag]">
-            {visibleNav.map(item => (
-              <Button
-                key={item.id}
-                onClick={() => setView(item.id)}
-                variant={view === item.id ? 'active' : 'ghost'}
-                size="xs"
-                className={cn(
-                  'terminal-header h-auto rounded-none border-x-0 border-t-0 px-0 py-1 text-[10px] font-bold',
-                  view === item.id
-                    ? 'bg-transparent hover:bg-transparent'
-                    : 'border-transparent hover:bg-transparent hover:text-foreground',
-                )}
-              >
-                {item.label.toUpperCase()}
-              </Button>
-            ))}
-          </nav>
+      {/* Thin title bar — drag region with channel badge + window controls */}
+      <header className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]">
+        <div className="flex items-center [--wails-draggable:nodrag]">
+          {channel !== 'release' && (
+            <Badge variant={channelBadge.variant} className="terminal-header font-mono text-[9px]">
+              {channelBadge.label}
+            </Badge>
+          )}
         </div>
 
-        {/* Right: status + actions */}
-        <div className="flex items-center gap-4 [app-region:no-drag]">
-          <div className="mr-2 flex items-center gap-2 font-mono text-[10px] text-text-muted">
-            <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-              {connected ? 'SYS_OK' : 'SYS_OFFLINE'}
-            </Badge>
-            <span className="opacity-30">|</span>
-            <span>{fps ?? 0}_FPS</span>
-          </div>
+        {/* Right: notifications + window controls */}
+        <div className="ml-auto flex items-center gap-1 [--wails-draggable:nodrag]">
           <Button variant="ghost" size="icon-sm" className="text-text-muted" aria-label="Notifications">
-            <IconBell size={16} />
+            <IconBell size={15} />
           </Button>
-          <Button variant="ghost" size="icon-sm" className="text-text-muted" aria-label="Settings">
-            <IconSettings size={16} />
-          </Button>
-          <div className="h-6 w-6 border border-border bg-card" />
+          <div className="flex items-center gap-1 pl-2 border-l border-border">
+            <button
+              onClick={() => call('WindowMinimise')}
+              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              aria-label="Minimise"
+            >
+              <IconMinus size={12} />
+            </button>
+            <button
+              onClick={() => call('WindowMaximise')}
+              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              aria-label="Maximise"
+            >
+              <IconSquare size={12} />
+            </button>
+            <button
+              onClick={() => call('WindowClose')}
+              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-destructive/80 hover:text-white transition-all"
+              aria-label="Close"
+            >
+              <IconX size={12} />
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Body: sidebar + main */}
+      {/* Body: nav rail + main */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Sidebar */}
-        <aside className="flex w-64 shrink-0 flex-col border-r border-border overflow-y-auto">
-          {/* Chassis header */}
-          <div className="border-b border-border p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
-              )} />
-              <span className="terminal-header text-[10px] font-bold font-mono text-secondary">
-                {connected ? 'CHASSIS_01 ACTIVE' : 'CHASSIS_01 OFFLINE'}
-              </span>
-            </div>
-            <p className="font-mono text-[10px] text-text-muted">
-              NODE: {frame?.session.track ? frame.session.track.toUpperCase().replace(/\s+/g, '_') : 'AWAITING_LINK'}
-            </p>
-          </div>
-
-          {/* Nav items */}
-          <nav className="flex flex-col border-b border-border">
-            {visibleNav.map(item => {
-              const Icon = item.icon
-              const isActive = view === item.id
-              return (
-                <Button
-                  key={item.id}
-                  onClick={() => setView(item.id)}
-                  variant={isActive ? 'active' : 'ghost'}
-                  size="sm"
-                  className={cn(
-                    'terminal-header h-auto w-full justify-start gap-3 rounded-none px-4 py-3 text-left text-[11px] font-bold transition-all',
-                    isActive
-                      ? 'border-l-0 border-y-0 border-r-2 border-primary bg-accent/5 text-primary hover:bg-accent/5'
-                      : 'border-0 text-text-muted hover:bg-foreground/[0.02] hover:text-foreground',
-                  )}
-                >
-                  <Icon size={15} className="shrink-0" />
-                  {item.label.replace('_', ' ')}
-                </Button>
-              )
-            })}
-          </nav>
-
-          {/* System status */}
-          <div className="p-4">
-            <h4 className="terminal-header mb-3 text-[10px] font-bold text-text-muted">
-              SYSTEM_STATUS
-            </h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between font-mono text-[10px]">
-                <span className="text-text-muted">TELEMETRY</span>
-                <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-                  {connected ? 'LIVE' : 'OFFLINE'}
-                </Badge>
-              </div>
-              <Progress
-                value={telemetryLevel}
-                className={cn(
-                  'h-1 w-full bg-border [&_[data-slot=progress-indicator]]:bg-border-strong',
-                  connected && '[&_[data-slot=progress-indicator]]:bg-secondary',
-                )}
-              />
-              <div className="flex items-center justify-between font-mono text-[10px]">
-                <span className="text-text-muted">LINK_QUAL</span>
-                <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-                  {connected ? 'EXCELLENT' : '——'}
-                </Badge>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom CTA */}
-          <div className="mt-auto border-t border-border p-4">
-            <Button variant="primary" className="w-full terminal-header font-bold">
-              INIT_BROADCAST
-            </Button>
-          </div>
-        </aside>
+        <NavRail
+          items={visibleNav}
+          activeId={view}
+          onSelect={id => setView(id as View)}
+          footer={
+            <span className="font-mono text-[10px] text-text-muted opacity-50 whitespace-nowrap overflow-hidden">
+              SPRINT v{version}
+            </span>
+          }
+        />
 
         {/* Main content */}
         <main className="flex flex-1 flex-col overflow-hidden bg-background">
@@ -201,9 +146,12 @@ export default function App() {
             <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span className="italic tracking-widest text-primary">
-              {connected ? 'RECORDING SESSION: ACTIVE' : 'AWAITING CONNECTION'}
-            </span>
+            <span className="italic tracking-widest opacity-40">SPRINT v{version}</span>
+            {channel !== 'release' && (
+              <Badge variant={channelBadge.variant} className="terminal-header font-mono text-[9px]">
+                {channelBadge.label}
+              </Badge>
+            )}
           </div>
         </div>
       </footer>
@@ -211,3 +159,4 @@ export default function App() {
     </div>
   )
 }
+
