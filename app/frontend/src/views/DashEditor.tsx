@@ -20,12 +20,20 @@ const CATEGORY_LABEL: Record<string, string> = {
   race:   'RACE',
 }
 
+const EMPTY_LAYOUT: DashLayout = {
+  id: '', name: '', default: false,
+  gridCols: 20, gridRows: 12,
+  idlePage: { id: '', name: 'Idle', widgets: [] },
+  pages:    [{ id: '', name: 'Main', widgets: [] }],
+  alerts:   { tcChange: false, absChange: false, engineMapChange: false },
+}
+
 // DashEditor.
 
 export default function DashEditor() {
   const [layouts, setLayouts]           = useState<LayoutMeta[]>([])
   const [activeID, setActiveID]         = useState<string>('')
-  const [layout, setLayout]             = useState<DashLayout>({ id: '', name: '', widgets: [] })
+  const [layout, setLayout]             = useState<DashLayout>(EMPTY_LAYOUT)
   const [selectedId, setSelectedId]     = useState<number | null>(null)
   const [screen, setScreen]             = useState<ScreenConfig | null>(null)
   const [saving, setSaving]             = useState(false)
@@ -35,6 +43,10 @@ export default function DashEditor() {
   const [creatingNew, setCreatingNew]   = useState(false)
   const [newName, setNewName]           = useState('')
   const [showNewInput, setShowNewInput] = useState(false)
+  const [activePage, _setActivePage]    = useState(0)
+
+  const activePageWidgets = layout.pages[activePage]?.widgets ?? []
+  const widgetCount = activePageWidgets.length
 
   const loadLayoutList = useCallback(async () => {
     const metas = await dashAPI.listLayouts()
@@ -87,18 +99,23 @@ export default function DashEditor() {
         if (document.activeElement?.tagName === 'INPUT') return
         setLayout(prev => ({
           ...prev,
-          widgets: prev.widgets.filter((_, i) => i !== selectedId),
+          pages: prev.pages.map((p, i) =>
+            i === activePage ? { ...p, widgets: p.widgets.filter((_, wi) => wi !== selectedId) } : p
+          ),
         }))
         setSelectedId(null)
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedId])
+  }, [selectedId, activePage])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
-    setLayout(prev => ({ ...prev, widgets }))
-  }, [])
+    setLayout(prev => ({
+      ...prev,
+      pages: prev.pages.map((p, i) => i === activePage ? { ...p, widgets } : p),
+    }))
+  }, [activePage])
 
   const handleSave = async () => {
     setSaving(true)
@@ -115,7 +132,10 @@ export default function DashEditor() {
   }
 
   const handleClearLayout = () => {
-    setLayout(prev => ({ ...prev, widgets: [] }))
+    setLayout(prev => ({
+      ...prev,
+      pages: prev.pages.map((p, i) => i === activePage ? { ...p, widgets: [] } : p),
+    }))
     setSelectedId(null)
   }
 
@@ -150,7 +170,7 @@ export default function DashEditor() {
         const loaded = await dashAPI.loadLayoutByID(next)
         setLayout(loaded)
       } else {
-        setLayout({ id: '', name: '', widgets: [] })
+        setLayout(EMPTY_LAYOUT)
       }
       setSelectedId(null)
     } catch (e) {
@@ -158,7 +178,7 @@ export default function DashEditor() {
     }
   }
 
-  const selectedWidget = selectedId !== null ? layout.widgets[selectedId] : null
+  const selectedWidget = selectedId !== null ? activePageWidgets[selectedId] : null
   const screenW = screen?.width  ?? DEFAULT_SCREEN_W
   const screenH = screen?.height ?? DEFAULT_SCREEN_H
 
@@ -170,7 +190,7 @@ export default function DashEditor() {
         <div>
           <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
           <p className="font-mono text-[10px] text-text-muted">
-            {layout.widgets.length} widget{layout.widgets.length !== 1 ? 's' : ''} · {screenW}×{screenH}
+            {widgetCount} widget{widgetCount !== 1 ? 's' : ''} · {screenW}×{screenH}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -283,7 +303,9 @@ export default function DashEditor() {
         {/* Canvas column */}
         <div className="flex flex-1 flex-col overflow-hidden border-r border-border p-6 gap-3 min-w-0">
           <DashCanvas
-            layout={layout}
+            widgets={activePageWidgets}
+            gridCols={layout.gridCols}
+            gridRows={layout.gridRows}
             selectedId={selectedId}
             screenW={screenW}
             screenH={screenH}
@@ -297,10 +319,18 @@ export default function DashEditor() {
               <>
                 <Badge variant="active" className="terminal-header">{selectedWidget.type}</Badge>
                 <span className="text-text-muted">
-                  X:{selectedWidget.x} Y:{selectedWidget.y} W:{selectedWidget.w} H:{selectedWidget.h}
+                  COL:{selectedWidget.col} ROW:{selectedWidget.row} W:{selectedWidget.colSpan} H:{selectedWidget.rowSpan}
                 </span>
                 <Button
-                  onClick={() => { setLayout(prev => ({ ...prev, widgets: prev.widgets.filter((_, i) => i !== selectedId) })); setSelectedId(null) }}
+                  onClick={() => {
+                    setLayout(prev => ({
+                      ...prev,
+                      pages: prev.pages.map((p, i) =>
+                        i === activePage ? { ...p, widgets: p.widgets.filter((_, wi) => wi !== selectedId) } : p
+                      ),
+                    }))
+                    setSelectedId(null)
+                  }}
                   variant="ghost"
                   size="xs"
                   className="ml-auto h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
@@ -310,7 +340,7 @@ export default function DashEditor() {
               </>
             ) : (
               <span className="text-text-muted">
-                {layout.widgets.length === 0 ? 'DRAG_WIDGET_TO_CANVAS' : `${layout.widgets.length}_WIDGETS — CLICK_TO_SELECT`}
+                {widgetCount === 0 ? 'DRAG_WIDGET_TO_CANVAS' : `${widgetCount}_WIDGETS — CLICK_TO_SELECT`}
               </span>
             )}
           </div>
