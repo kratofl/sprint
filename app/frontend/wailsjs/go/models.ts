@@ -4,6 +4,8 @@ export namespace commands {
 	    id: string;
 	    label: string;
 	    category: string;
+	    capturable: boolean;
+	    deviceOnly: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CommandMeta(source);
@@ -14,6 +16,8 @@ export namespace commands {
 	        this.id = source["id"];
 	        this.label = source["label"];
 	        this.category = source["category"];
+	        this.capturable = source["capturable"];
+	        this.deviceOnly = source["deviceOnly"];
 	    }
 	}
 
@@ -194,6 +198,20 @@ export namespace devices {
 	        this.driver = source["driver"];
 	    }
 	}
+	export class DeviceBinding {
+	    button: number;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeviceBinding(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.button = source["button"];
+	        this.command = source["command"];
+	    }
+	}
 	export class SavedScreen {
 	    vid: number;
 	    pid: number;
@@ -204,6 +222,7 @@ export namespace devices {
 	    rotation: number;
 	    driver: string;
 	    dash_id?: string;
+	    bindings?: DeviceBinding[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SavedScreen(source);
@@ -220,7 +239,26 @@ export namespace devices {
 	        this.rotation = source["rotation"];
 	        this.driver = source["driver"];
 	        this.dash_id = source["dash_id"];
+	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -338,6 +376,7 @@ export namespace widgets {
 	    defaultColSpan: number;
 	    defaultRowSpan: number;
 	    idleCapable: boolean;
+	    defaultUpdateHz: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new WidgetMeta(source);
@@ -353,6 +392,7 @@ export namespace widgets {
 	        this.defaultColSpan = source["defaultColSpan"];
 	        this.defaultRowSpan = source["defaultRowSpan"];
 	        this.idleCapable = source["idleCapable"];
+	        this.defaultUpdateHz = source["defaultUpdateHz"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

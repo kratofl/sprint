@@ -6,6 +6,8 @@ import {input} from '../models';
 import {commands} from '../models';
 import {widgets} from '../models';
 
+export function CaptureNextButton(arg1:number):Promise<number>;
+
 export function DashCreateLayout(arg1:string):Promise<dashboard.DashLayout>;
 
 export function DashCyclePage(arg1:number):Promise<void>;
@@ -24,6 +26,8 @@ export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
 
 export function DashSetDefault(arg1:string):Promise<void>;
 
+export function DeviceGetDeviceBindings(arg1:number,arg2:number,arg3:string):Promise<Array<devices.DeviceBinding>>;
+
 export function DeviceGetSavedScreens():Promise<Array<devices.SavedScreen>>;
 
 export function DeviceGetScreen():Promise<devices.SavedScreen>;
@@ -33,6 +37,8 @@ export function DeviceGetScreenPaused():Promise<boolean>;
 export function DeviceGetScreenStatus():Promise<string>;
 
 export function DeviceRenameScreen(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+
+export function DeviceSaveDeviceBindings(arg1:number,arg2:number,arg3:string,arg4:Array<devices.DeviceBinding>):Promise<void>;
 
 export function DeviceScanScreens():Promise<Array<devices.DetectedScreen>>;
 

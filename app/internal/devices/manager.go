@@ -34,17 +34,26 @@ type DetectedScreen struct {
 	Driver      DriverType `json:"driver"`
 }
 
+// DeviceBinding maps a hardware button channel to an application command for a
+// specific device. Stored alongside the device's screen configuration so each
+// screen can have its own physical button assignments.
+type DeviceBinding struct {
+	Button  int    `json:"button"`
+	Command string `json:"command"`
+}
+
 // SavedScreen is a persisted entry with user metadata that survives disconnection.
 type SavedScreen struct {
-	VID      uint16     `json:"vid"`
-	PID      uint16     `json:"pid"`
-	Serial   string     `json:"serial,omitempty"`
-	Width    int        `json:"width"`
-	Height   int        `json:"height"`
-	Name     string     `json:"name"`
-	Rotation int        `json:"rotation"` // 0=0°, 90=CW90, 180=180°, 270=CW270
-	Driver   DriverType `json:"driver"`
-	DashID   string     `json:"dash_id,omitempty"` // assigned dash layout ID; empty = use default
+	VID      uint16          `json:"vid"`
+	PID      uint16          `json:"pid"`
+	Serial   string          `json:"serial,omitempty"`
+	Width    int             `json:"width"`
+	Height   int             `json:"height"`
+	Name     string          `json:"name"`
+	Rotation int             `json:"rotation"` // 0=0°, 90=CW90, 180=180°, 270=CW270
+	Driver   DriverType      `json:"driver"`
+	DashID   string          `json:"dash_id,omitempty"`        // assigned dash layout ID; empty = use default
+	Bindings []DeviceBinding `json:"bindings,omitempty"` // per-device button→command bindings
 }
 
 // ScreenConfig is the hardware-agnostic config the coordinator uses to activate
@@ -184,6 +193,18 @@ func SetDashLayout(reg *ScreenRegistry, id, dashID string) error {
 	return fmt.Errorf("devices: screen %q not found", id)
 }
 
+// SetDeviceBindings updates the button→command bindings for the screen with
+// the given composite ID.
+func SetDeviceBindings(reg *ScreenRegistry, id string, bindings []DeviceBinding) error {
+	for i := range reg.Screens {
+		if ScreenID(reg.Screens[i].VID, reg.Screens[i].PID, reg.Screens[i].Serial) == id {
+			reg.Screens[i].Bindings = bindings
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: screen %q not found", id)
+}
+
 // FindByID returns the SavedScreen with the given composite ID, or nil.
 func FindByID(reg *ScreenRegistry, id string) *SavedScreen {
 	for i := range reg.Screens {
@@ -255,4 +276,3 @@ func (m *Manager) migrate() (*ScreenRegistry, error) {
 	reg.ActiveID = ScreenID(legacy.VID, legacy.PID, "")
 	return reg, nil
 }
-

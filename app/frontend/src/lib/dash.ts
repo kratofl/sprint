@@ -329,6 +329,33 @@ export const deviceScreenAPI = {
 /** @deprecated Use deviceScreenAPI instead */
 export const voCoreAPI = deviceScreenAPI
 
+// Device binding API.
+
+export interface DeviceBinding {
+  button: number
+  command: string
+}
+
+export const deviceBindingsAPI = {
+  async getDeviceBindings(vid: number, pid: number, serial: string): Promise<DeviceBinding[]> {
+    try {
+      const raw = await call<unknown[]>('DeviceGetDeviceBindings', vid, pid, serial)
+      if (!Array.isArray(raw)) return []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return raw.map((r: any): DeviceBinding => ({
+        button:  r.button  ?? 0,
+        command: r.command ?? '',
+      }))
+    } catch {
+      return []
+    }
+  },
+
+  async saveDeviceBindings(vid: number, pid: number, serial: string, bindings: DeviceBinding[]): Promise<void> {
+    await call<void>('DeviceSaveDeviceBindings', vid, pid, serial, bindings)
+  },
+}
+
 // Widget catalog API.
 
 export const widgetCatalogAPI = {
