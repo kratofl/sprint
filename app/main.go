@@ -44,7 +44,7 @@ func main() {
 			WebviewUserDataPath:  filepath.Join(appdata.Dir(), "WebView2"),
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
-			DisableWindowIcon:    true,
+			DisableWindowIcon:    false,
 		},
 		Mac: &mac.Options{
 			TitleBar:             mac.TitleBarHiddenInset(),

@@ -43,10 +43,10 @@ export default function SplashScreen({ visible, onDone }: SplashScreenProps) {
         )}
       >
         <h1 className="terminal-header text-5xl font-bold italic tracking-[0.2em] text-primary">
-          SPRINT.V2
+          SPRINT
         </h1>
         <p className="mt-2 font-mono text-[10px] tracking-[0.4em] text-text-muted">
-          TELEMETRY PLATFORM
+          TELEMETRY SYSTEM
         </p>
 
         <div className="mt-10 h-px w-64 overflow-hidden bg-border">
