@@ -153,42 +153,42 @@ type lmuVehicleTelemetry struct {
 	MElectricBoostMotorRPM         float64
 	MElectricBoostMotorTemperature float64
 	MElectricBoostWaterTemperature float64
-	MElectricBoostMotorState    uint8
-	MLapInvalidated             bool    // lap invalidated by game
-	MABSActive                  bool    // ABS currently intervening
-	MTCActive                   bool    // TC currently intervening
-	MSpeedLimiterActive         bool    // pit lane speed limiter active
-	MWiperState                 uint8
-	MTC                         uint8 // TC setting (0 = off)
-	MTCMax                      uint8 // max TC setting for this car
-	MTCSlip                     uint8
-	MTCSlipMax                  uint8
-	MTCCut                      uint8
-	MTCCutMax                   uint8
-	MABS                        uint8 // ABS setting (0 = off)
-	MABSMax                     uint8 // max ABS setting for this car
-	MMotorMap                   uint8
-	MMotorMapMax                uint8
-	MMigration                  uint8
-	MMigrationMax               uint8
-	MFrontAntiSway              uint8
-	MFrontAntiSwayMax           uint8
-	MRearAntiSway               uint8
-	MRearAntiSwayMax            uint8
-	MLiftAndCoastProgress       uint8
-	MTrackLimitsSteps           uint8   // normalized track limit penalty points
-	MRegen                      float32 // regen power in kW
-	MSoC                        float32 // ERS state of charge
-	MVirtualEnergy              float32
-	MTimeGapCarAhead            float32 // time gap to car directly ahead (s)
-	MTimeGapCarBehind           float32 // time gap to car directly behind (s)
-	MTimeGapPlaceAhead          float32 // time gap to next place ahead (s)
-	MTimeGapPlaceBehind         float32 // time gap to next place behind (s)
-	MVehicleModel               [30]byte
-	MVehicleClass               uint8 // IP_VehicleClass enum (0=Hypercar, 2=LMP2_ELMS, 5=GT3…)
-	MVehicleChampionship        uint8 // IP_VehicleChampionship enum (0=WEC_2023…)
-	MExpansion                  [20]uint8
-	MWheels                     [4]lmuWheel
+	MElectricBoostMotorState       uint8
+	MLapInvalidated                bool // lap invalidated by game
+	MABSActive                     bool // ABS currently intervening
+	MTCActive                      bool // TC currently intervening
+	MSpeedLimiterActive            bool // pit lane speed limiter active
+	MWiperState                    uint8
+	MTC                            uint8 // TC setting (0 = off)
+	MTCMax                         uint8 // max TC setting for this car
+	MTCSlip                        uint8
+	MTCSlipMax                     uint8
+	MTCCut                         uint8
+	MTCCutMax                      uint8
+	MABS                           uint8 // ABS setting (0 = off)
+	MABSMax                        uint8 // max ABS setting for this car
+	MMotorMap                      uint8
+	MMotorMapMax                   uint8
+	MMigration                     uint8
+	MMigrationMax                  uint8
+	MFrontAntiSway                 uint8
+	MFrontAntiSwayMax              uint8
+	MRearAntiSway                  uint8
+	MRearAntiSwayMax               uint8
+	MLiftAndCoastProgress          uint8
+	MTrackLimitsSteps              uint8   // normalized track limit penalty points
+	MRegen                         float32 // regen power in kW
+	MSoC                           float32 // ERS state of charge
+	MVirtualEnergy                 float32
+	MTimeGapCarAhead               float32 // time gap to car directly ahead (s)
+	MTimeGapCarBehind              float32 // time gap to car directly behind (s)
+	MTimeGapPlaceAhead             float32 // time gap to next place ahead (s)
+	MTimeGapPlaceBehind            float32 // time gap to next place behind (s)
+	MVehicleModel                  [30]byte
+	MVehicleClass                  uint8 // IP_VehicleClass enum (0=Hypercar, 2=LMP2_ELMS, 5=GT3…)
+	MVehicleChampionship           uint8 // IP_VehicleChampionship enum (0=WEC_2023…)
+	MExpansion                     [20]uint8
+	MWheels                        [4]lmuWheel
 }
 
 // lmuVehicleScoring mirrors VehicleScoringInfoV01 from InternalsPlugin.hpp.

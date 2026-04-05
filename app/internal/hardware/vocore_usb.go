@@ -616,6 +616,7 @@ func imageToRGB565CW270(img image.Image, dst []byte) {
 		}
 	}
 }
+
 // screen model ID. Values from the mpro_drm Linux driver.
 func mproModelDimensions(model uint32) (width, height int) {
 	switch model {

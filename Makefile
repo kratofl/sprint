@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build \
+.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app icons build \
         test test-api test-pkg lint fmt \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -61,7 +61,10 @@ build-api: $(BINARY_DIR) ## Build the API server binary → bin/sprint-api
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: ## Build the Wails desktop app (requires Wails CLI)
+icons: ## Generate app/build icons from app/frontend/src/assets/sprint_logo_icon.png
+	cd $(APP_DIR) && go run ./cmd/genicons
+
+build-app: icons ## Build the Wails desktop app (requires Wails CLI)
 	cd $(APP_DIR) && wails build -clean -ldflags "-X main.Version=$(VERSION)"
 
 build: build-api build-web ## Build all (API + web)

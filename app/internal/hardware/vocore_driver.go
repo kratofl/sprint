@@ -49,15 +49,15 @@ type VoCoreDriver struct {
 	currentLayout atomic.Pointer[dashboard.DashLayout]
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
-	hasNewFrame  atomic.Bool
-	forceRedraw  atomic.Bool // set by layout/idle/page changes to trigger a repaint even with no game
+	hasNewFrame atomic.Bool
+	forceRedraw atomic.Bool // set by layout/idle/page changes to trigger a repaint even with no game
 
 	currentIdle       atomic.Bool
 	currentActivePage atomic.Int32
 
 	screenConnected atomic.Bool
 	paused          atomic.Bool
-	pauseSignal     chan struct{} // buffered 1; signals driveLoop to stop and release USB
+	pauseSignal     chan struct{}        // buffered 1; signals driveLoop to stop and release USB
 	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
 }
 
@@ -320,7 +320,7 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 		}
 	}
 
-	sendErrCh:= make(chan error, 1)
+	sendErrCh := make(chan error, 1)
 	var senderWg sync.WaitGroup
 	senderWg.Add(1)
 	go func() {
