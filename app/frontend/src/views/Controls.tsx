@@ -57,9 +57,10 @@ export default function Controls() {
     }
   }
 
-  // Derive ordered categories from catalog.
-  const knownCategories  = CATEGORY_ORDER.filter(c => catalog.some(cmd => cmd.category === c))
-  const extraCategories  = [...new Set(catalog.map(cmd => cmd.category))].filter(c => !CATEGORY_ORDER.includes(c))
+  // Derive ordered categories — exclude device-only commands (those live in Devices tab).
+  const bindableCatalog  = catalog.filter(c => !c.deviceOnly)
+  const knownCategories  = CATEGORY_ORDER.filter(c => bindableCatalog.some(cmd => cmd.category === c))
+  const extraCategories  = [...new Set(bindableCatalog.map(cmd => cmd.category))].filter(c => !CATEGORY_ORDER.includes(c))
   const categories       = [...knownCategories, ...extraCategories]
 
   return (
@@ -122,7 +123,7 @@ export default function Controls() {
               <CommandGroup
                 key={cat}
                 label={CATEGORY_LABEL[cat] ?? cat.toUpperCase()}
-                commands={catalog.filter(c => c.category === cat)}
+                commands={bindableCatalog.filter(c => c.category === cat)}
                 getButton={getButton}
                 setButton={setButton}
               />
@@ -237,25 +238,30 @@ function CommandRow({
           {bound && (
             <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
           )}
-
-          {cmd.deviceOnly ? (
-            <Badge variant="default" className="terminal-header text-text-muted">DEVICE_ONLY</Badge>
-          ) : (
-            <Input
-              type="number"
-              min={0}
-              max={255}
-              value={button === 0 ? '' : button}
-              placeholder="—"
-              data-readout="true"
-              data-status={bound ? 'accent' : 'neutral'}
-              onChange={e => {
-                const v = parseInt(e.target.value, 10)
-                onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
-              }}
-              className="w-14 text-center font-mono text-[10px] tabular-nums"
-            />
+          {bound && (
+            <button
+              onClick={() => onButtonChange(0)}
+              className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
+              title="Clear binding"
+            >
+              ×
+            </button>
           )}
+
+          <Input
+            type="number"
+            min={0}
+            max={255}
+            value={button === 0 ? '' : button}
+            placeholder="—"
+            data-readout="true"
+            data-status={bound ? 'accent' : 'neutral'}
+            onChange={e => {
+              const v = parseInt(e.target.value, 10)
+              onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
+            }}
+            className="w-14 text-center font-mono text-[10px] tabular-nums"
+          />
 
           {cmd.capturable && (
             <Button

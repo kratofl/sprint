@@ -19,6 +19,10 @@ var ErrCaptureInProgress = errors.New("input: capture already in progress")
 
 const capturePollInterval = 10 * time.Millisecond
 
+// axisEventCh receives virtual button numbers emitted by joystick_windows.go
+// when a relative-axis encoder value changes. Buffered to absorb bursts.
+var axisEventCh = make(chan int, 64)
+
 // Detector listens to wheel button events and dispatches the bound command.
 type Detector struct {
 	logger    *slog.Logger
@@ -38,11 +42,14 @@ func (d *Detector) Run(ctx context.Context) {
 	d.logger.Info("detector stopped")
 }
 
-// CaptureNextButton waits for the first new button press on any connected
-// gamepad/joystick device and returns its 1-indexed button number.
-// It polls the OS gamepad API every capturePollInterval and detects transitions
-// from unpressed to pressed relative to the baseline snapshot taken on entry.
-// Returns ErrCaptureTimeout if no press occurs within timeout, or
+// CaptureNextButton waits for the first new button press (or encoder axis
+// change) on any connected HID device and returns its 1-indexed button number.
+//
+// Physical buttons return their HID usage number (1-64).
+// Relative-axis encoders return a virtual number ≥ 65 (stable per axis
+// direction for a given device firmware).
+//
+// Returns ErrCaptureTimeout if no input occurs within timeout, or
 // ErrCaptureInProgress if another capture is already running.
 func (d *Detector) CaptureNextButton(ctx context.Context, timeout time.Duration) (int, error) {
 	if !d.capturing.CompareAndSwap(false, true) {
@@ -50,20 +57,38 @@ func (d *Detector) CaptureNextButton(ctx context.Context, timeout time.Duration)
 	}
 	defer d.capturing.Store(false)
 
-	baseline := readButtonMask()
+	// Drain any stale axis events that arrived before this capture session.
+	for {
+		select {
+		case <-axisEventCh:
+		default:
+			goto drained
+		}
+	}
+drained:
+
+	baseline := readInputMask()
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
+		remaining := time.Until(deadline)
+		wait := capturePollInterval
+		if remaining < wait {
+			wait = remaining
+		}
+
 		select {
 		case <-ctx.Done():
 			return 0, ctx.Err()
-		case <-time.After(capturePollInterval):
+		case virtualBtn := <-axisEventCh:
+			return virtualBtn, nil
+		case <-time.After(wait):
 		}
 
-		current := readButtonMask()
-		newPresses := current &^ baseline // bits that transitioned 0→1
+		current := readInputMask()
+		newPresses := current &^ baseline
 		if newPresses != 0 {
-			for bit := 0; bit < 32; bit++ {
+			for bit := 0; bit < 64; bit++ {
 				if newPresses&(1<<bit) != 0 {
 					return bit + 1, nil
 				}

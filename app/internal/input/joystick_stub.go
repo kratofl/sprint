@@ -2,8 +2,8 @@
 
 package input
 
-// readButtonMask returns 0 on non-Windows platforms where joystick capture
+// readInputMask returns 0 on non-Windows platforms where HID input capture
 // is not yet implemented.
-func readButtonMask() uint32 {
+func readInputMask() uint64 {
 	return 0
 }
