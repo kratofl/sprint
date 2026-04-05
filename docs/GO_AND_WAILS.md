@@ -120,19 +120,21 @@ EventsOn('telemetry:frame', (frame: TelemetryFrame) => {
 app/
 ├── go.mod          ← Go module declaration
 ├── main.go         ← entry point; starts Wails with app options
-├── app.go          ← App struct: all methods exposed to the frontend
+├── app.go          ← App struct: lifecycle methods (Startup, DomReady, Shutdown)
+├── app_dashboard.go ← Wails bindings for dash layout management
+├── app_hardware.go  ← Wails bindings for screen/device management
 ├── wails.json      ← Wails config (app name, window size, frontend build cmd)
 └── internal/       ← Go packages NOT visible to outside modules
-    ├── coordinator/    ← wires services together
-    ├── render/         ← dashboard image painting (Painter, widgets)
-    ├── vocore/         ← VoCore USB screen driver (Driver, WinUSB transport)
-    ├── devices/        ← USB device detection, screen config
-    ├── engineer/       ← WebSocket server for remote engineers
-    ├── wheel/          ← button detection, valid-lap logic
+    ├── core/           ← coordinator: wires all subsystems together
+    ├── dashboard/      ← layout schema, painter, widget registry, manager
+    │   └── widgets/    ← one file per widget type (gear, speed, lap_time, …)
+    ├── hardware/       ← VoCore USB screen driver (WinUSB transport, RGB565)
+    ├── devices/        ← screen registry (VID/PID, rotation, assigned dash)
+    ├── input/          ← wheel button detector, valid-lap finder
     ├── sync/           ← sync client to the API server
-    ├── dash/           ← layout types and manager
-    └── setup/          ← local setup file manager
-└── frontend/       ← the React app (built by vite, served by Wails)
+    ├── appdata/        ← OS-specific config/data directory resolution
+    └── logger/         ← structured slog setup
+└── frontend/       ← the React app (built by Vite, served by Wails)
     ├── src/
     └── dist/       ← built output; Wails embeds this into the binary
 ```
@@ -211,4 +213,39 @@ This makes it easy to add new game support: implement the three methods, and the
 
 ### `internal/` packages
 
-Go enforces that packages inside an `internal/` directory can only be imported by code in the parent tree. So `app/internal/vocore` can be imported by code in `app/`, but not by `api/`. This keeps the modules properly encapsulated.
+Go enforces that packages inside an `internal/` directory can only be imported by code in the parent tree. So `app/internal/hardware` can be imported by code in `app/`, but not by `api/`. This keeps the modules properly encapsulated.
+
+---
+
+## Adding a new dashboard widget
+
+Each widget is a single Go file in `app/internal/dashboard/widgets/`. The registration pattern uses `func init()`:
+
+```go
+// app/internal/dashboard/widgets/widget_speed.go
+package widgets
+
+func init() {
+    RegisterWidget("speed", "Speed", CategoryCar,
+        WidgetMeta{
+            DefaultColSpan: 4,
+            DefaultRowSpan: 3,
+            IdleCapable:    false,
+            ConfigDefs: []ConfigDef{},
+        },
+        func(frame *dto.TelemetryFrame, cfg map[string]any) WidgetDrawFn {
+            return func(dc *gg.Context, w, h float64) {
+                // draw using gg (2D graphics context)
+            }
+        },
+    )
+}
+```
+
+Steps:
+1. Create `app/internal/dashboard/widgets/widget_<name>.go`
+2. Call `RegisterWidget` from `func init()` with the widget type, label, category constant, meta, and draw function
+3. Add the widget to `WIDGET_TYPES` in `app/frontend/src/lib/dash.ts` (label, category, default size, idleCapable)
+4. The widget will appear automatically in the Dash Designer palette under its category
+
+Available categories: `CategoryLayout`, `CategoryTiming`, `CategoryCar`, `CategoryRace` (defined in `widget.go`).

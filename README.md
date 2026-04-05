@@ -146,14 +146,14 @@ Misc
 2. Implement the `GameAdapter` interface from `pkg/games/adapter.go`:
    ```go
    type GameAdapter interface {
-       Name()  string
-       Start() error
-       Stop()  error
-       // Frames are sent to the coordinator via a channel
+       Name()       string
+       Connect()    error
+       Disconnect() error
+       Read()       (*dto.TelemetryFrame, error)
    }
    ```
 3. Map raw game data to the unified DTO in `pkg/dto/telemetry.go` — **no other files need to change**
-4. Register the adapter in `app/internal/coordinator/coordinator.go`
+4. Register the adapter in `app/internal/core/core.go`
 
 The VoCore renderer, engineer hub, web app, and sync client all consume the unified DTO and are unaffected by the new adapter.
 
@@ -162,7 +162,15 @@ The VoCore renderer, engineer hub, web app, and sync client all consume the unif
 ## Key features
 
 ### VoCore wheel display
-The Go backend renders PNG image frames and sends them to a VoCore screen embedded in the steering wheel over **USB serial (CDC ACM)**. The VoCore presents as a serial port when plugged in — `/dev/cu.usbmodemXXXX` on macOS, `/dev/ttyACM0` on Linux, `COM3` on Windows. Layout and content are controlled by the dash layout configuration editable in both the desktop app and the web app.
+The Go backend renders PNG image frames and sends them to a VoCore screen embedded in the steering wheel over **USB serial (CDC ACM)**. The VoCore presents as a serial port when plugged in — `/dev/cu.usbmodemXXXX` on macOS, `/dev/ttyACM0` on Linux, `COM3` on Windows. Layout and content are controlled by the dash layout configuration editable in the desktop app's **Dash Designer**.
+
+### Dash Designer
+A built-in visual editor lets you build custom wheel display layouts without writing any code:
+- **Widget palette** — drag widgets from categorised groups (Layout, Timing, Car, Race) onto a grid canvas
+- **Grid canvas** — 20×12 grid matching the 800×480 native screen. Widgets snap to cells; ghost overlay shows valid (orange) or invalid (red) placements in real-time
+- **Properties panel** — configure widget-specific parameters (TC level 1/2/3, etc.)
+- **Multiple pages** — cycle between pages via a wheel button; a dedicated Idle page is shown when no session is running
+- **Live hot-reload** — saving a layout immediately updates the VoCore screen without restarting
 
 ### Wheel button — set target lap
 Press a configurable wheel button to set the current delta reference to the most recent **valid lap**. A valid lap must pass all of:
@@ -188,8 +196,8 @@ Full specification: [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md)
 
 The UI uses a glassmorphism dark theme — frosted glass surfaces over a near-black background, with two accent colors that carry semantic meaning throughout both apps:
 
-- **Orange `#EF8118`** — driver actions, primary buttons, driver-owned data
-- **Teal `#1EA58C`** — engineer actions, comparison highlights, secondary CTAs
+- **Orange `#ff906c`** — driver actions, primary buttons, driver-owned data
+- **Cyan `#5af8fb`** — engineer actions, comparison highlights, secondary CTAs
 
 ---
 
