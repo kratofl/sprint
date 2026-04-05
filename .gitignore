@@ -50,7 +50,7 @@ venv/
 env/
 *.egg-info/
 dist/
-build/
+__pycache__/build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -83,7 +83,7 @@ Cargo.lock
 secrets/
 
 # ─── Wails ────────────────────────────────────────────────────────────────────
-app/build/
+app/build/bin/
 app/app
 app/app.exe
 

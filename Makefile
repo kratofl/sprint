@@ -108,5 +108,5 @@ docker-logs: ## Tail logs from all running services
 clean: ## Remove build artifacts
 	rm -rf $(BINARY_DIR)/
 	rm -rf web/.next/
-	rm -rf app/build/
+	rm -rf app/build/bin/
 	rm -rf app/frontend/dist/
