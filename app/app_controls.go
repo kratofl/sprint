@@ -18,7 +18,11 @@ func (a *App) GetBindings() (*input.Config, error) {
 
 // SaveBindings persists the given button→command bindings to disk.
 func (a *App) SaveBindings(cfg input.Config) error {
-	return input.SaveConfig(&cfg)
+	if err := input.SaveConfig(&cfg); err != nil {
+		return err
+	}
+	a.coord.ReloadInputBindings()
+	return nil
 }
 
 // CaptureNextButton waits for the first new wheel button press detected by the

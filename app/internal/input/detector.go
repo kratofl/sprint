@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/kratofl/sprint/app/internal/commands"
 )
 
 // ErrCaptureTimeout is returned by CaptureNextButton when no button press is
@@ -27,19 +30,59 @@ var inputEventCh = make(chan int, 128)
 type Detector struct {
 	logger    *slog.Logger
 	capturing atomic.Bool
+
+	bindMu  sync.RWMutex
+	bindMap map[int]commands.Command // button number → command
 }
 
 // NewDetector creates a Detector.
 func NewDetector(logger *slog.Logger) *Detector {
-	return &Detector{logger: logger}
+	return &Detector{logger: logger, bindMap: map[int]commands.Command{}}
 }
 
-// Run starts the input button event loop.
+// SetBindings atomically replaces the complete button→command mapping.
+// Safe to call from any goroutine at any time.
+func (d *Detector) SetBindings(bindings []Binding) {
+	m := make(map[int]commands.Command, len(bindings))
+	for _, b := range bindings {
+		if b.Button > 0 && b.Command != "" {
+			m[b.Button] = b.Command
+		}
+	}
+	d.bindMu.Lock()
+	d.bindMap = m
+	d.bindMu.Unlock()
+	d.logger.Info("input bindings updated", "count", len(m))
+}
+
+// lookup returns the command bound to btn, or an empty string if none.
+func (d *Detector) lookup(btn int) commands.Command {
+	d.bindMu.RLock()
+	cmd := d.bindMap[btn]
+	d.bindMu.RUnlock()
+	return cmd
+}
+
+// Run reads button events from the Raw Input loop and dispatches bound commands.
+// Events are suppressed while a CaptureNextButton call is in progress.
 func (d *Detector) Run(ctx context.Context) {
 	d.logger.Info("detector running")
-	// TODO: subscribe to inputEventCh to dispatch bound commands (issue #14)
-	<-ctx.Done()
-	d.logger.Info("detector stopped")
+	for {
+		select {
+		case <-ctx.Done():
+			d.logger.Info("detector stopped")
+			return
+		case btn := <-inputEventCh:
+			if d.capturing.Load() {
+				// CaptureNextButton is consuming events — do not dispatch.
+				continue
+			}
+			if cmd := d.lookup(btn); cmd != "" {
+				d.logger.Debug("dispatching command", "button", btn, "command", cmd)
+				commands.Dispatch(cmd, nil)
+			}
+		}
+	}
 }
 
 // CaptureNextButton waits for the first physical button press or encoder tick

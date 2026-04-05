@@ -159,7 +159,40 @@ func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error 
 	return nil
 }
 
-// DeviceSetScreenPaused pauses or resumes Sprint's screen output.
+// DeviceGetDeviceBindings returns the button→command bindings for the given screen.
+func (a *App) DeviceGetDeviceBindings(vid, pid uint16, serial string) ([]devices.DeviceBinding, error) {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return nil, fmt.Errorf("DeviceGetDeviceBindings: %w", err)
+	}
+	id := devices.ScreenID(vid, pid, serial)
+	s := devices.FindByID(reg, id)
+	if s == nil {
+		return nil, fmt.Errorf("DeviceGetDeviceBindings: screen %q not found", id)
+	}
+	if s.Bindings == nil {
+		return []devices.DeviceBinding{}, nil
+	}
+	return s.Bindings, nil
+}
+
+// DeviceSaveDeviceBindings persists button→command bindings for the given screen.
+func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings []devices.DeviceBinding) error {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceSaveDeviceBindings: load: %w", err)
+	}
+	id := devices.ScreenID(vid, pid, serial)
+	if err := devices.SetDeviceBindings(reg, id, bindings); err != nil {
+		return fmt.Errorf("DeviceSaveDeviceBindings: %w", err)
+	}
+	if err := a.devMgr.Save(reg); err != nil {
+		return fmt.Errorf("DeviceSaveDeviceBindings: save: %w", err)
+	}
+	// Push updated bindings to the input dispatcher immediately.
+	a.coord.ReloadInputBindings()
+	return nil
+}
 // When paused, the USB handle is released so another application (e.g., SimHub)
 // can drive the screen. Sprint resumes automatically when called with false.
 func (a *App) DeviceSetScreenPaused(paused bool) {
@@ -170,4 +203,3 @@ func (a *App) DeviceSetScreenPaused(paused bool) {
 func (a *App) DeviceGetScreenPaused() bool {
 	return a.coord.GetScreenPaused()
 }
-

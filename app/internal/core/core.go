@@ -30,6 +30,7 @@ type Coordinator struct {
 	screen  hardware.ScreenDriver
 	input   *input.Detector
 	sync    *springsync.Client
+	devMgr  *devices.Manager // for reloading device bindings on demand
 
 	emit EmitFn // Wails runtime event emitter; no-op until SetEmit is called
 
@@ -83,6 +84,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 		input:         input.NewDetector(logger.With("component", "input")),
 		sync:          springsync.NewClient(logger.With("component", "sync")),
 		emit:          func(string, ...any) {}, // safe no-op before Wails startup
+		devMgr:        devMgr,
 		currentLayout: initialLayout,
 		idleState:     true,
 	}
@@ -205,6 +207,42 @@ func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
 	}
 }
 
+// ReloadInputBindings merges the global controls config with the active screen's
+// device bindings and pushes the combined table to the input detector.
+// Call after any save that changes either source.
+func (c *Coordinator) ReloadInputBindings() {
+	var merged []input.Binding
+
+	// Global controls config (SetTargetLap, etc.)
+	if cfg, err := input.LoadConfig(); err == nil {
+		for _, b := range cfg.Bindings {
+			merged = append(merged, b)
+		}
+	} else {
+		c.logger.Warn("input: failed to load controls config", "err", err)
+	}
+
+	// Active screen device bindings (NextPage, PrevPage, etc.)
+	if c.devMgr != nil {
+		if reg, err := c.devMgr.Load(); err == nil {
+			if active := devices.ActiveScreen(reg); active != nil {
+				for _, db := range active.Bindings {
+					if db.Button > 0 && db.Command != "" {
+						merged = append(merged, input.Binding{
+							Button:  db.Button,
+							Command: commands.Command(db.Command),
+						})
+					}
+				}
+			}
+		} else {
+			c.logger.Warn("input: failed to load device registry for bindings", "err", err)
+		}
+	}
+
+	c.input.SetBindings(merged)
+}
+
 // Start launches all subsystems. ctx governs their lifetime.
 func (c *Coordinator) Start(ctx context.Context) {
 	c.logger.Info("starting subsystems")
@@ -221,6 +259,9 @@ func (c *Coordinator) Start(ctx context.Context) {
 	go c.input.Run(ctx)
 	go c.sync.Run(ctx)
 	go c.runTelemetryLoop(ctx)
+
+	// Load persisted bindings into the detector after all subsystems are running.
+	c.ReloadInputBindings()
 }
 
 // CaptureNextButton waits for the first new wheel button press detected by the
