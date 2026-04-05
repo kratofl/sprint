@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { type DetectedScreen, type SavedScreen, type LayoutMeta, deviceScreenAPI, dashAPI } from '@/lib/dash'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { type DetectedScreen, type SavedScreen, type LayoutMeta, type DeviceBinding, deviceScreenAPI, deviceBindingsAPI, dashAPI } from '@/lib/dash'
+import { type CommandMeta, controlsAPI } from '@/lib/controls'
 import { onEvent } from '@/lib/wails'
 import { Badge, Button, Skeleton, cn } from '@sprint/ui'
 
@@ -39,6 +40,7 @@ function VoCoreScreenSection() {
   const [activeScreenKey, setActiveScreenKey] = useState<string | null>(null)
   const [selectedKey, setSelectedKey]       = useState<string | null>(null)
   const [layouts, setLayouts]               = useState<LayoutMeta[]>([])
+  const [deviceOnlyCmds, setDeviceOnlyCmds] = useState<CommandMeta[]>([])
 
   const loadSaved = useCallback(async () => {
     try {
@@ -91,6 +93,9 @@ function VoCoreScreenSection() {
     deviceScreenAPI.getScreen().then(active => {
       if (active) setActiveScreenKey(screenKey(active))
     })
+    controlsAPI.getCommandCatalog()
+      .then(cmds => setDeviceOnlyCmds(cmds.filter(c => c.deviceOnly)))
+      .catch(() => {})
   }, [scan, loadLayouts])
 
   useEffect(() => {
@@ -229,6 +234,7 @@ function VoCoreScreenSection() {
             isActive={screenKey(selectedScreen) === activeScreenKey}
             selecting={selecting === screenKey(selectedScreen)}
             layouts={layouts}
+            deviceOnlyCmds={deviceOnlyCmds}
             onActivate={() => handleSelect(selectedScreen)}
             onTogglePause={handleTogglePause}
             onSaved={loadSaved}
@@ -266,6 +272,7 @@ interface ScreenDetailProps {
   isActive: boolean
   selecting: boolean
   layouts: LayoutMeta[]
+  deviceOnlyCmds: CommandMeta[]
   onActivate: () => void
   onTogglePause: () => void
   onSaved: () => Promise<SavedScreen[]>
@@ -274,20 +281,50 @@ interface ScreenDetailProps {
 
 function ScreenDetail({
   screen, online, screenStatus, screenError, screenPaused, isActive, selecting, layouts,
-  onActivate, onTogglePause, onSaved, onError,
+  deviceOnlyCmds, onActivate, onTogglePause, onSaved, onError,
 }: ScreenDetailProps) {
   const [draft, setDraft]           = useState(screen.name)
   const [renaming, setRenaming]     = useState(false)
   const [rotation, setRotation]     = useState<Rotation>(screen.rotation as Rotation)
   const [dashId, setDashId]         = useState(screen.dashId)
   const [savingDash, setSavingDash] = useState(false)
+  const [bindings, setBindings]     = useState<DeviceBinding[]>([])
+  const [savingBindings, setSavingBindings] = useState(false)
+  const [bindingsSaved, setBindingsSaved]   = useState(false)
 
   useEffect(() => {
     setDraft(screen.name)
     setRotation(screen.rotation as Rotation)
     setDashId(screen.dashId)
     setRenaming(false)
+    deviceBindingsAPI.getDeviceBindings(screen.vid, screen.pid, screen.serial)
+      .then(setBindings)
+      .catch(() => setBindings([]))
   }, [screen.vid, screen.pid, screen.serial, screen.name, screen.rotation, screen.dashId])
+
+  const getDeviceButton = (commandId: string) =>
+    bindings.find(b => b.command === commandId)?.button ?? 0
+
+  const setDeviceButton = (commandId: string, button: number) => {
+    setBindings(prev => {
+      const rest = prev.filter(b => b.command !== commandId)
+      if (button > 0) rest.push({ command: commandId, button })
+      return rest
+    })
+  }
+
+  const handleSaveBindings = async () => {
+    setSavingBindings(true)
+    try {
+      await deviceBindingsAPI.saveDeviceBindings(screen.vid, screen.pid, screen.serial, bindings)
+      setBindingsSaved(true)
+      setTimeout(() => setBindingsSaved(false), 2000)
+    } catch (e) {
+      onError(String(e))
+    } finally {
+      setSavingBindings(false)
+    }
+  }
 
   const commitRename = async () => {
     const trimmed = draft.trim()
@@ -489,6 +526,127 @@ function ScreenDetail({
             ))}
           </select>
         )}
+      </div>
+
+      {/* Button bindings — device-only commands assigned per screen */}
+      {deviceOnlyCmds.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-[9px] font-bold text-text-muted">BUTTON_BINDINGS</p>
+            <div className="flex items-center gap-2">
+              {bindingsSaved && (
+                <span className="terminal-header font-mono text-[9px] text-success">SAVED</span>
+              )}
+              <Button
+                size="sm"
+                variant="primary"
+                className="terminal-header h-6 px-2 text-[9px]"
+                disabled={savingBindings}
+                onClick={handleSaveBindings}
+              >
+                {savingBindings ? 'SAVING…' : 'SAVE'}
+              </Button>
+            </div>
+          </div>
+          <p className="font-mono text-[8px] text-text-muted">
+            Click CAPTURE then press the physical button on this screen's wheel.
+          </p>
+          <div className="space-y-1">
+            {deviceOnlyCmds.map(cmd => {
+              const btn = getDeviceButton(cmd.id)
+              const bound = btn > 0
+              return (
+                <DeviceCommandRow
+                  key={cmd.id}
+                  cmd={cmd}
+                  button={btn}
+                  bound={bound}
+                  onButtonChange={b => setDeviceButton(cmd.id, b)}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// DeviceCommandRow — a single device-only command with CAPTURE button.
+
+type DeviceCaptureState = 'idle' | 'capturing' | 'timeout'
+
+function DeviceCommandRow({
+  cmd,
+  button,
+  bound,
+  onButtonChange,
+}: {
+  cmd: CommandMeta
+  button: number
+  bound: boolean
+  onButtonChange: (b: number) => void
+}) {
+  const [captureState, setCaptureState] = useState<DeviceCaptureState>('idle')
+  const [countdown, setCountdown]       = useState(3)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearTimer = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+  }
+
+  const handleCapture = async () => {
+    if (captureState === 'capturing') return
+    setCaptureState('capturing')
+    setCountdown(3)
+    timerRef.current = setInterval(() => {
+      setCountdown(p => { if (p <= 1) { clearTimer(); return 0 } return p - 1 })
+    }, 1000)
+    try {
+      const btn = await controlsAPI.captureButton(3)
+      clearTimer()
+      onButtonChange(btn)
+      setCaptureState('idle')
+    } catch {
+      clearTimer()
+      setCaptureState('timeout')
+      setTimeout(() => setCaptureState('idle'), 1200)
+    }
+  }
+
+  useEffect(() => () => clearTimer(), [])
+
+  return (
+    <div className={cn(
+      'flex items-center justify-between rounded border px-4 py-2.5',
+      bound ? 'border-primary/40 bg-primary/5' : 'border-border bg-card',
+    )}>
+      <div className="flex flex-col gap-0.5">
+        <span className={cn('font-mono text-[11px] font-bold', bound ? 'text-white' : 'text-text-muted')}>
+          {cmd.label}
+        </span>
+        <span className="font-mono text-[9px] text-text-muted opacity-60">{cmd.id}</span>
+      </div>
+      <div className="ml-4 flex flex-shrink-0 items-center gap-2">
+        {bound && (
+          <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
+        )}
+        <Button
+          variant={captureState === 'capturing' ? 'ghost' : 'secondary'}
+          size="sm"
+          disabled={captureState === 'capturing'}
+          onClick={handleCapture}
+          className={cn(
+            'terminal-header w-24 font-bold text-[9px]',
+            captureState === 'timeout' && 'text-destructive',
+          )}
+        >
+          {captureState === 'capturing'
+            ? `LISTENING_${countdown}`
+            : captureState === 'timeout'
+              ? 'NO_INPUT'
+              : 'CAPTURE'}
+        </Button>
       </div>
     </div>
   )
