@@ -10,7 +10,7 @@ const (
 )
 
 func init() {
-	commands.RegisterMeta(CmdNextDashPage, "Next Dash Page", "Dashboard")
-	commands.RegisterMeta(CmdPrevDashPage, "Prev Dash Page", "Dashboard")
-	commands.RegisterMeta(CmdSetTargetLap, "Set Target Lap", "Dashboard")
+	commands.RegisterMeta(CmdNextDashPage, "Next Dash Page", "Dashboard", true, true)
+	commands.RegisterMeta(CmdPrevDashPage, "Prev Dash Page", "Dashboard", true, true)
+	commands.RegisterMeta(CmdSetTargetLap, "Set Target Lap", "Dashboard", true, false)
 }

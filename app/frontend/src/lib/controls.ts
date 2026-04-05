@@ -8,6 +8,8 @@ export interface CommandMeta {
   id: string
   label: string
   category: string
+  capturable: boolean
+  deviceOnly: boolean
 }
 
 export interface Binding {
@@ -29,9 +31,11 @@ export const controlsAPI = {
     if (!Array.isArray(raw)) return []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return raw.map((r: any): CommandMeta => ({
-      id:       r.id       ?? '',
-      label:    r.label    ?? '',
-      category: r.category ?? '',
+      id:         r.id         ?? '',
+      label:      r.label      ?? '',
+      category:   r.category   ?? '',
+      capturable: r.capturable ?? false,
+      deviceOnly: r.deviceOnly ?? false,
     }))
   },
 
@@ -50,5 +54,9 @@ export const controlsAPI = {
 
   async saveBindings(cfg: ControlsConfig): Promise<void> {
     await call<void>('SaveBindings', cfg)
+  },
+
+  async captureButton(timeoutSecs: number): Promise<number> {
+    return call<number>('CaptureNextButton', timeoutSecs)
   },
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, cn } from '@sprint/ui'
 import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
 
@@ -111,9 +111,9 @@ export default function Controls() {
                 <CardTitle className="text-foreground">HOW_TO_USE</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
-                <p>Enter the wheel button channel number next to each command.</p>
-                <p>Leave at 0 (or blank) to leave a command unbound.</p>
-                <p>Button numbers are game-specific — check your telemetry stream for channel IDs.</p>
+                <p>Click <span className="text-foreground">[ CAPTURE ]</span> next to a command, then press the physical button on your wheel.</p>
+                <p>The channel is detected automatically. Leave a command unbound to disable it.</p>
+                <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
               </CardContent>
             </Card>
 
@@ -166,6 +166,8 @@ function CommandGroup({
 
 // CommandRow.
 
+type CaptureState = 'idle' | 'capturing' | 'timeout'
+
 function CommandRow({
   cmd,
   button,
@@ -176,6 +178,43 @@ function CommandRow({
   onButtonChange: (button: number) => void
 }) {
   const bound = button > 0
+  const [captureState, setCaptureState] = useState<CaptureState>('idle')
+  const [countdown, setCountdown] = useState(3)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  const handleCapture = async () => {
+    if (captureState === 'capturing') return
+    setCaptureState('capturing')
+    setCountdown(3)
+
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) { clearTimer(); return 0 }
+        return prev - 1
+      })
+    }, 1000)
+
+    try {
+      const btn = await controlsAPI.captureButton(3)
+      clearTimer()
+      onButtonChange(btn)
+      setCaptureState('idle')
+    } catch {
+      clearTimer()
+      setCaptureState('timeout')
+      setTimeout(() => setCaptureState('idle'), 1200)
+    }
+  }
+
+  // Clean up interval on unmount.
+  useEffect(() => () => clearTimer(), [])
 
   return (
     <Card
@@ -198,20 +237,44 @@ function CommandRow({
           {bound && (
             <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
           )}
-          <Input
-            type="number"
-            min={0}
-            max={255}
-            value={button === 0 ? '' : button}
-            placeholder="—"
-            data-readout="true"
-            data-status={bound ? 'accent' : 'neutral'}
-            onChange={e => {
-              const v = parseInt(e.target.value, 10)
-              onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
-            }}
-            className="w-14 text-center font-mono text-[10px] tabular-nums"
-          />
+
+          {cmd.deviceOnly ? (
+            <Badge variant="default" className="terminal-header text-text-muted">DEVICE_ONLY</Badge>
+          ) : (
+            <Input
+              type="number"
+              min={0}
+              max={255}
+              value={button === 0 ? '' : button}
+              placeholder="—"
+              data-readout="true"
+              data-status={bound ? 'accent' : 'neutral'}
+              onChange={e => {
+                const v = parseInt(e.target.value, 10)
+                onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
+              }}
+              className="w-14 text-center font-mono text-[10px] tabular-nums"
+            />
+          )}
+
+          {cmd.capturable && (
+            <Button
+              variant={captureState === 'capturing' ? 'ghost' : 'secondary'}
+              size="sm"
+              disabled={captureState === 'capturing'}
+              onClick={handleCapture}
+              className={cn(
+                'terminal-header w-24 font-bold text-[9px]',
+                captureState === 'timeout' && 'text-destructive',
+              )}
+            >
+              {captureState === 'capturing'
+                ? `LISTENING_${countdown}`
+                : captureState === 'timeout'
+                  ? 'NO_INPUT'
+                  : 'CAPTURE'}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

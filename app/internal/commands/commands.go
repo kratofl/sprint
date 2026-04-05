@@ -15,9 +15,11 @@ type Command string
 
 // CommandMeta describes a command for the controls binding UI.
 type CommandMeta struct {
-	ID       Command `json:"id"`
-	Label    string  `json:"label"`
-	Category string  `json:"category"`
+	ID         Command `json:"id"`
+	Label      string  `json:"label"`
+	Category   string  `json:"category"`
+	Capturable bool    `json:"capturable"` // can be bound to a wheel button via capture
+	DeviceOnly bool    `json:"deviceOnly"` // must be triggered from a hardware button; no software alternative
 }
 
 // HandlerFn is the function invoked when a command is dispatched.
@@ -31,10 +33,18 @@ var (
 
 // RegisterMeta adds a command to the catalog. Call from init() functions in
 // feature packages — this is safe to call before the Wails runtime starts.
-func RegisterMeta(id Command, label, category string) {
+// capturable indicates the command can be bound to a hardware button via capture.
+// deviceOnly indicates the command must be triggered from a hardware button.
+func RegisterMeta(id Command, label, category string, capturable, deviceOnly bool) {
 	mu.Lock()
 	defer mu.Unlock()
-	catalog = append(catalog, CommandMeta{ID: id, Label: label, Category: category})
+	catalog = append(catalog, CommandMeta{
+		ID:         id,
+		Label:      label,
+		Category:   category,
+		Capturable: capturable,
+		DeviceOnly: deviceOnly,
+	})
 }
 
 // Handle registers a handler for id. Multiple handlers per command are allowed.

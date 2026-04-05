@@ -167,13 +167,14 @@ func (c *Coordinator) CurrentLayoutID() string {
 	}
 	return c.currentLayout.ID
 }
+
 // Wraps around. No-op if layout is nil or has no pages.
 func (c *Coordinator) CyclePage(direction int) {
 	if c.currentLayout == nil || len(c.currentLayout.Pages) == 0 {
 		return
 	}
 	n := len(c.currentLayout.Pages)
-	c.activePageIndex = ((c.activePageIndex + direction) % n + n) % n
+	c.activePageIndex = ((c.activePageIndex+direction)%n + n) % n
 	c.screen.SetActivePage(c.activePageIndex)
 	c.emit("dash:page-changed", map[string]any{
 		"pageIndex": c.activePageIndex,
@@ -219,6 +220,19 @@ func (c *Coordinator) Start(ctx context.Context) {
 	go c.input.Run(ctx)
 	go c.sync.Run(ctx)
 	go c.runTelemetryLoop(ctx)
+}
+
+// CaptureNextButton waits for the first new wheel button press detected by the
+// OS gamepad API. Returns the 1-indexed button number or an error.
+// timeoutSecs is clamped to the range [1, 10].
+func (c *Coordinator) CaptureNextButton(ctx context.Context, timeoutSecs int) (int, error) {
+	if timeoutSecs < 1 {
+		timeoutSecs = 1
+	}
+	if timeoutSecs > 10 {
+		timeoutSecs = 10
+	}
+	return c.input.CaptureNextButton(ctx, time.Duration(timeoutSecs)*time.Second)
 }
 
 // Stop shuts down all subsystems gracefully.
@@ -313,6 +327,7 @@ func firstPageName(layout *dashboard.DashLayout) string {
 	}
 	return ""
 }
+
 // Internal subsystems receive every frame; the frontend is throttled to ~30 Hz.
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
 	c.updateIdleState(frame)
