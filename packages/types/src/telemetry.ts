@@ -10,6 +10,7 @@ export interface Session {
   sessionTime: number
   bestLapTime: number
   maxLaps: number // total laps for this session; 0 for time-based sessions
+  inCar: boolean  // true only when the player has an active vehicle on track
 }
 
 export interface CarState {

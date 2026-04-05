@@ -26,6 +26,7 @@ type Session struct {
 	SessionTime float64     `json:"sessionTime"` // seconds elapsed in the session
 	BestLapTime float64     `json:"bestLapTime"` // session best in seconds; 0 if no lap completed yet
 	MaxLaps     int32       `json:"maxLaps"`     // total laps for this session; 0 for time-based sessions
+	InCar       bool        `json:"inCar"`       // true only when the player has an active vehicle on track
 }
 
 // SessionType classifies the current session.
@@ -41,17 +42,17 @@ const (
 
 // CarState holds the real-time state of the player's car.
 type CarState struct {
-	SpeedMS       float32 `json:"speedMS"`       // speed in m/s
-	Gear          int8    `json:"gear"`           // -1 = reverse, 0 = neutral, 1–8 = forward gears
+	SpeedMS       float32 `json:"speedMS"` // speed in m/s
+	Gear          int8    `json:"gear"`    // -1 = reverse, 0 = neutral, 1–8 = forward gears
 	RPM           float32 `json:"rpm"`
 	MaxRPM        float32 `json:"maxRPM"`
-	Throttle      float32 `json:"throttle"`      // 0–1
-	Brake         float32 `json:"brake"`         // 0–1
-	Clutch        float32 `json:"clutch"`        // 0–1
-	Steering      float32 `json:"steering"`      // -1 (full left) to 1 (full right)
-	Fuel          float32 `json:"fuel"`          // litres remaining
-	FuelPerLap    float32 `json:"fuelPerLap"`    // rolling average litres per lap
-	PositionX     float32 `json:"positionX"`     // world coordinates in metres
+	Throttle      float32 `json:"throttle"`   // 0–1
+	Brake         float32 `json:"brake"`      // 0–1
+	Clutch        float32 `json:"clutch"`     // 0–1
+	Steering      float32 `json:"steering"`   // -1 (full left) to 1 (full right)
+	Fuel          float32 `json:"fuel"`       // litres remaining
+	FuelPerLap    float32 `json:"fuelPerLap"` // rolling average litres per lap
+	PositionX     float32 `json:"positionX"`  // world coordinates in metres
 	PositionY     float32 `json:"positionY"`
 	PositionZ     float32 `json:"positionZ"`
 	BrakeBiasRear float32 `json:"brakeBiasRear"` // rear brake bias fraction (0–1); 0 = front biased
@@ -108,19 +109,19 @@ type Flags struct {
 
 // Electronics holds the real-time state of driver aid systems.
 type Electronics struct {
-	TCActive   bool  `json:"tcActive"`   // TC currently intervening (cutting power)
-	TC         uint8 `json:"tc"`         // TC setting; 0 = off
-	TCMax      uint8 `json:"tcMax"`      // maximum TC setting available for this car
-	ABSActive  bool  `json:"absActive"`  // ABS currently intervening
-	ABS        uint8 `json:"abs"`        // ABS setting; 0 = off
-	ABSMax     uint8 `json:"absMax"`     // maximum ABS setting available for this car
-	TCCut      uint8 `json:"tcCut"`      // TC cut level (TC2); 0 = off
-	TCCutMax   uint8 `json:"tcCutMax"`   // maximum TC cut level for this car
-	TCSlip     uint8 `json:"tcSlip"`     // TC slip level (TC3); 0 = off
-	TCSlipMax  uint8 `json:"tcSlipMax"`  // maximum TC slip level for this car
-	MotorMap   uint8 `json:"motorMap"`   // engine/motor map setting
+	TCActive    bool  `json:"tcActive"`    // TC currently intervening (cutting power)
+	TC          uint8 `json:"tc"`          // TC setting; 0 = off
+	TCMax       uint8 `json:"tcMax"`       // maximum TC setting available for this car
+	ABSActive   bool  `json:"absActive"`   // ABS currently intervening
+	ABS         uint8 `json:"abs"`         // ABS setting; 0 = off
+	ABSMax      uint8 `json:"absMax"`      // maximum ABS setting available for this car
+	TCCut       uint8 `json:"tcCut"`       // TC cut level (TC2); 0 = off
+	TCCutMax    uint8 `json:"tcCutMax"`    // maximum TC cut level for this car
+	TCSlip      uint8 `json:"tcSlip"`      // TC slip level (TC3); 0 = off
+	TCSlipMax   uint8 `json:"tcSlipMax"`   // maximum TC slip level for this car
+	MotorMap    uint8 `json:"motorMap"`    // engine/motor map setting
 	MotorMapMax uint8 `json:"motorMapMax"` // maximum motor map setting for this car
-	DRSActive  bool  `json:"drsActive"`  // DRS currently deployed
+	DRSActive   bool  `json:"drsActive"`   // DRS currently deployed
 }
 
 // RaceState holds real-time race position and gap information.
@@ -145,4 +146,3 @@ type Penalties struct {
 	TrackLimitSteps uint8 `json:"trackLimitSteps"` // track limit penalty accumulation steps
 	PitStops        int16 `json:"pitStops"`        // completed pit stops this session
 }
-

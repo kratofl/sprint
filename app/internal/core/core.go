@@ -183,9 +183,10 @@ func (c *Coordinator) CyclePage(direction int) {
 }
 
 // updateIdleState detects session idle/active transitions and propagates them
-// to the screen. Idle when SessionType is unknown or session time is 0.
+// to the screen. Idle whenever the player does not have an active vehicle on
+// track — covers game not running, garage, pre-session menu, and post-session.
 func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
-	isIdle := frame.Session.SessionType == dto.SessionUnknown || frame.Session.SessionTime == 0
+	isIdle := !frame.Session.InCar
 	if isIdle != c.idleState {
 		c.idleState = isIdle
 		c.screen.SetIdle(isIdle)
