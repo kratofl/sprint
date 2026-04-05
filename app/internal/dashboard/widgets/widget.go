@@ -18,13 +18,51 @@ type WidgetType string
 // WidgetFn is the drawing function signature for a dashboard widget.
 type WidgetFn func(WidgetCtx)
 
+// ConfigDef describes one configurable parameter for a widget instance.
+type ConfigDef struct {
+	Key     string   `json:"key"`
+	Label   string   `json:"label"`
+	Type    string   `json:"type"`    // "select", "number", "boolean", "text"
+	Options []Option `json:"options,omitempty"`
+	Default string   `json:"default"` // string representation of default value
+}
+
+// Option is one choice in a "select" ConfigDef.
+type Option struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// Category is the palette grouping for a widget.
+type Category string
+
+const (
+	CategoryLayout Category = "layout"
+	CategoryTiming Category = "timing"
+	CategoryCar    Category = "car"
+	CategoryRace   Category = "race"
+)
+
+// categoryLabels maps canonical category IDs to display labels.
+var categoryLabels = map[Category]string{
+	CategoryLayout: "Layout",
+	CategoryTiming: "Timing",
+	CategoryCar:    "Car",
+	CategoryRace:   "Race",
+}
+
 // WidgetMeta holds the type, display name, palette category, and draw function.
 // The Fn field is never serialised; it is used only by the render pipeline.
 type WidgetMeta struct {
-	Type     WidgetType `json:"type"`
-	Label    string     `json:"label"`
-	Category string     `json:"category"`
-	Fn       WidgetFn   `json:"-"`
+	Type           WidgetType  `json:"type"`
+	Label          string      `json:"label"`
+	Category       Category    `json:"category"`
+	CategoryLabel  string      `json:"categoryLabel"`
+	ConfigDefs     []ConfigDef `json:"configDefs,omitempty"`
+	DefaultColSpan int         `json:"defaultColSpan"`
+	DefaultRowSpan int         `json:"defaultRowSpan"`
+	IdleCapable    bool        `json:"idleCapable"`
+	Fn             WidgetFn    `json:"-"`
 }
 
 var (
@@ -32,11 +70,27 @@ var (
 	widgetMeta     = map[WidgetType]WidgetMeta{}
 )
 
-// RegisterWidget adds a widget renderer and its metadata to the registry.
-// Call from an init() function in your widget_*.go file.
-func RegisterWidget(t WidgetType, label, category string, fn WidgetFn) {
+// RegisterWidget registers a widget with its metadata.
+// category is normalised to lowercase; the display label is looked up from categoryLabels.
+// Call from init() in widget_*.go files.
+func RegisterWidget(t WidgetType, label string, category Category, defaultColSpan, defaultRowSpan int, idleCapable bool, configDefs []ConfigDef, fn WidgetFn) {
+	catLabel, ok := categoryLabels[category]
+	if !ok {
+		catLabel = string(category)
+	}
+	meta := WidgetMeta{
+		Type:           t,
+		Label:          label,
+		Category:       category,
+		CategoryLabel:  catLabel,
+		ConfigDefs:     configDefs,
+		DefaultColSpan: defaultColSpan,
+		DefaultRowSpan: defaultRowSpan,
+		IdleCapable:    idleCapable,
+		Fn:             fn,
+	}
 	widgetRegistry[t] = fn
-	widgetMeta[t] = WidgetMeta{Type: t, Label: label, Category: category, Fn: fn}
+	widgetMeta[t] = meta
 }
 
 // WidgetCatalog returns metadata for every registered widget.
@@ -51,7 +105,7 @@ func WidgetCatalog() []WidgetMeta {
 // Dispatch calls the registered draw function for the given widget type.
 // w provides the bounding box; FontLoader is the painter's font-loading function.
 // Unknown types are silently skipped.
-func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64, fontLoader func(*gg.Context, string, float64)) {
+func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64, fontLoader func(*gg.Context, string, float64), config map[string]any) {
 	fn, ok := widgetRegistry[t]
 	if !ok {
 		return
@@ -64,6 +118,7 @@ func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, 
 		W:          w,
 		H:          h,
 		FontLoader: fontLoader,
+		Config:     config,
 	})
 }
 
@@ -79,7 +134,7 @@ func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, 
 //
 //	const WidgetMyThing WidgetType = "my_thing"
 //
-//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", drawMyThing) }
+//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", 4, 3, false, nil, drawMyThing) }
 //
 //	func drawMyThing(c WidgetCtx) {
 //	    c.Panel()
@@ -94,9 +149,55 @@ type WidgetCtx struct {
 	// FontLoader loads a named font face at the given size onto dc.
 	// Provided by the Painter — use the FontXxx helpers instead of calling directly.
 	FontLoader func(dc *gg.Context, name string, size float64)
+	// Config holds optional widget-specific configuration from the layout.
+	Config map[string]any
 }
 
 // Layout helpers.
+
+// ConfigString returns a string config value by key, or defaultVal if absent.
+func (c WidgetCtx) ConfigString(key, defaultVal string) string {
+	if c.Config == nil {
+		return defaultVal
+	}
+	if v, ok := c.Config[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return defaultVal
+}
+
+// ConfigBool returns a bool config value by key, or defaultVal if absent.
+func (c WidgetCtx) ConfigBool(key string, defaultVal bool) bool {
+	if c.Config == nil {
+		return defaultVal
+	}
+	if v, ok := c.Config[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return defaultVal
+}
+
+// ConfigFloat returns a float64 config value by key, or defaultVal if absent.
+func (c WidgetCtx) ConfigFloat(key string, defaultVal float64) float64 {
+	if c.Config == nil {
+		return defaultVal
+	}
+	if v, ok := c.Config[key]; ok {
+		switch n := v.(type) {
+		case float64:
+			return n
+		case float32:
+			return float64(n)
+		case int:
+			return float64(n)
+		}
+	}
+	return defaultVal
+}
 
 func (c WidgetCtx) Panel()           { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0) }
 func (c WidgetCtx) PanelR(r float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r) }

@@ -8,7 +8,11 @@ import {widgets} from '../models';
 
 export function DashCreateLayout(arg1:string):Promise<dashboard.DashLayout>;
 
+export function DashCyclePage(arg1:number):Promise<void>;
+
 export function DashDeleteLayout(arg1:string):Promise<void>;
+
+export function DashGetPreview(arg1:string):Promise<string>;
 
 export function DashListLayouts():Promise<Array<dashboard.LayoutMeta>>;
 
@@ -17,6 +21,8 @@ export function DashLoadLayout():Promise<dashboard.DashLayout>;
 export function DashLoadLayoutByID(arg1:string):Promise<dashboard.DashLayout>;
 
 export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
+
+export function DashSetDefault(arg1:string):Promise<void>;
 
 export function DeviceGetSavedScreens():Promise<Array<devices.SavedScreen>>;
 

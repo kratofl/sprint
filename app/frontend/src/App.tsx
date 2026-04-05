@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import Telemetry from '@/views/Telemetry'
-import DashEditor from '@/views/DashEditor'
+import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import SplashScreen from '@/components/SplashScreen'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { onEvent, call } from '@/lib/wails'
 import { Badge, Button, NavRail, type NavRailItem, cn } from '@sprint/ui'
 import {
@@ -45,6 +46,33 @@ export default function App() {
   const [version, setVersion] = useState('dev')
   const [channel, setChannel] = useState<BuildChannel>('dev')
 
+  const dashEditorRef = useRef<DashEditorHandle>(null)
+  const [pendingView, setPendingView] = useState<View | null>(null)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+
+  const switchView = useCallback((newView: View) => {
+    if (newView === view) return
+    if (view === 'dash' && dashEditorRef.current?.isDirty) {
+      setPendingView(newView)
+      setShowLeaveConfirm(true)
+      return
+    }
+    setView(newView)
+  }, [view])
+
+  const confirmLeave = useCallback(() => {
+    setShowLeaveConfirm(false)
+    if (pendingView) {
+      setView(pendingView)
+      setPendingView(null)
+    }
+  }, [pendingView])
+
+  const cancelLeave = useCallback(() => {
+    setShowLeaveConfirm(false)
+    setPendingView(null)
+  }, [])
+
   useEffect(() => {
     const unsub = onEvent('app:ready', () => setBooting(false))
     const fallback = setTimeout(() => setBooting(false), 3000)
@@ -66,12 +94,10 @@ export default function App() {
 
       {/* Thin title bar — drag region with channel badge + window controls */}
       <header className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]">
-        <div className="flex items-center [--wails-draggable:nodrag]">
-          {channel !== 'release' && (
-            <Badge variant={channelBadge.variant} className="terminal-header font-mono text-[9px]">
-              {channelBadge.label}
-            </Badge>
-          )}
+        <div className="flex items-center gap-2 [--wails-draggable:nodrag]">
+          <span className="font-sans italic text-sm font-bold uppercase tracking-[2px] text-accent select-none">
+            Sprint
+          </span>
         </div>
 
         {/* Right: notifications + window controls */}
@@ -111,18 +137,13 @@ export default function App() {
         <NavRail
           items={visibleNav}
           activeId={view}
-          onSelect={id => setView(id as View)}
-          footer={
-            <span className="font-mono text-[10px] text-text-muted opacity-50 whitespace-nowrap overflow-hidden">
-              SPRINT v{version}
-            </span>
-          }
+          onSelect={id => switchView(id as View)}
         />
 
         {/* Main content */}
         <main className="flex flex-1 flex-col overflow-hidden bg-background">
           {view === 'telemetry' && <Telemetry frame={frame} />}
-          {view === 'dash'      && <DashEditor />}
+          {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
           {view === 'devices'   && <Devices />}
           {view === 'controls'  && <Controls />}
         </main>
@@ -155,6 +176,15 @@ export default function App() {
           </div>
         </div>
       </footer>
+      <ConfirmDialog
+        open={showLeaveConfirm}
+        title="Discard changes?"
+        message="You have unsaved changes that will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep Editing"
+        onConfirm={confirmLeave}
+        onCancel={cancelLeave}
+      />
 
     </div>
   )

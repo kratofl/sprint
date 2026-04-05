@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
+	"os"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
@@ -35,12 +37,12 @@ func (a *App) DashLoadLayout() (*dashboard.DashLayout, error) {
 }
 
 // DashSaveLayout writes the layout to disk and hot-reloads the VoCore renderer
-// if the saved layout is the one currently assigned to the active screen.
+// if the saved layout is the one currently active in the coordinator.
 func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
 	if err := a.dash.Save(&layout); err != nil {
 		return fmt.Errorf("DashSaveLayout: %w", err)
 	}
-	if a.isLayoutActive(layout.ID) {
+	if a.coord.CurrentLayoutID() == layout.ID {
 		a.coord.SetDashLayout(&layout)
 		runtime.EventsEmit(a.ctx, "dash:layout-updated", layout)
 	}
@@ -57,9 +59,25 @@ func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 }
 
 // DashDeleteLayout deletes the layout with the given ID.
+// If the deleted layout was active on the current screen, the default layout
+// is loaded and pushed to the coordinator so the screen doesn't go blank.
 func (a *App) DashDeleteLayout(id string) error {
+	wasActive := a.isLayoutActive(id)
 	if err := a.dash.Delete(id); err != nil {
 		return fmt.Errorf("DashDeleteLayout: %w", err)
+	}
+	if wasActive {
+		if defaultLayout, err := a.dash.Load(""); err == nil {
+			a.coord.SetDashLayout(defaultLayout)
+		}
+	}
+	return nil
+}
+
+// DashSetDefault marks the layout with the given ID as the default.
+func (a *App) DashSetDefault(id string) error {
+	if err := a.dash.SetDefault(id); err != nil {
+		return fmt.Errorf("DashSetDefault: %w", err)
 	}
 	return nil
 }
@@ -67,6 +85,21 @@ func (a *App) DashDeleteLayout(id string) error {
 // GetWidgetCatalog returns metadata for all registered widgets (for the editor palette).
 func (a *App) GetWidgetCatalog() []widgets.WidgetMeta {
 	return widgets.WidgetCatalog()
+}
+
+// DashGetPreview returns a base64-encoded PNG preview image for the given layout ID.
+// Returns an empty string if no preview is available.
+func (a *App) DashGetPreview(id string) string {
+	data, err := os.ReadFile(a.dash.PreviewPath(id))
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+// DashCyclePage cycles the active dash page by direction: +1 for next, -1 for prev.
+func (a *App) DashCyclePage(direction int) {
+	a.coord.CyclePage(direction)
 }
 
 // isLayoutActive reports whether the given layout ID is assigned to the active screen.

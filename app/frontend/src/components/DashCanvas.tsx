@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { cn } from '@sprint/ui'
 import { type DashWidget, WIDGET_TYPES } from '@/lib/dash'
 
@@ -14,6 +14,21 @@ interface ActiveResize {
   widgetIdx: number
   handle: ResizeHandle
   startWidget: DashWidget
+}
+
+interface ActiveMove {
+  widgetIdx: number
+  grabOffsetCol: number
+  grabOffsetRow: number
+  startWidget: DashWidget
+}
+
+interface Ghost {
+  col: number
+  row: number
+  colSpan: number
+  rowSpan: number
+  valid: boolean
 }
 
 const HANDLE_CURSORS: Record<ResizeHandle, string> = {
@@ -34,6 +49,27 @@ function widgetLabel(type: string): string {
   return WIDGET_TYPES.find(w => w.type === type)?.label ?? type
 }
 
+function overlaps(
+  a: { col: number; row: number; colSpan: number; rowSpan: number },
+  b: { col: number; row: number; colSpan: number; rowSpan: number },
+): boolean {
+  return (
+    a.col < b.col + b.colSpan && a.col + a.colSpan > b.col &&
+    a.row < b.row + b.rowSpan && a.row + a.rowSpan > b.row
+  )
+}
+
+function isValidPlacement(
+  p: { col: number; row: number; colSpan: number; rowSpan: number },
+  widgets: DashWidget[],
+  excludeIdx: number | null,
+  cols: number,
+  rows: number,
+): boolean {
+  if (p.col < 0 || p.row < 0 || p.col + p.colSpan > cols || p.row + p.rowSpan > rows) return false
+  return widgets.every((w, i) => i === excludeIdx || !overlaps(p, w))
+}
+
 export interface DashCanvasProps {
   widgets: DashWidget[]
   selectedId: number | null
@@ -41,6 +77,7 @@ export interface DashCanvasProps {
   gridRows?: number
   screenW?: number
   screenH?: number
+  paletteDropType?: string | null
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -52,12 +89,28 @@ export function DashCanvas({
   selectedId,
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
+  paletteDropType = null,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
+  const containerRef  = useRef<HTMLDivElement>(null)
+  const widgetsRef    = useRef(widgets)
+  widgetsRef.current  = widgets
 
+  const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
+  const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
+  const [ghost,        setGhost]        = useState<Ghost        | null>(null)
+
+  const gridPos = useCallback((clientX: number, clientY: number) => {
+    if (!containerRef.current) return { col: 0, row: 0 }
+    const r = containerRef.current.getBoundingClientRect()
+    return {
+      col: (clientX - r.left) / r.width  * gridCols,
+      row: (clientY - r.top)  / r.height * gridRows,
+    }
+  }, [gridCols, gridRows])
+
+  // ── Resize ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeResize) return
     const { widgetIdx, handle, startWidget } = activeResize
@@ -65,107 +118,115 @@ export function DashCanvas({
     const bottom = startWidget.row + startWidget.rowSpan
 
     const onMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return
-      const rect = containerRef.current.getBoundingClientRect()
-      const col  = Math.round((e.clientX - rect.left) / rect.width  * gridCols)
-      const row  = Math.round((e.clientY - rect.top)  / rect.height * gridRows)
+      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
+      const col = Math.round(rawCol)
+      const row = Math.round(rawRow)
 
       const w = { ...startWidget }
       if (handle.includes('e')) w.colSpan = Math.max(1, col - w.col)
       if (handle.includes('s')) w.rowSpan = Math.max(1, row - w.row)
       if (handle.includes('w')) { w.col = Math.max(0, Math.min(col, right - 1)); w.colSpan = right - w.col }
       if (handle.includes('n')) { w.row = Math.max(0, Math.min(row, bottom - 1)); w.rowSpan = bottom - w.row }
-
       w.col     = Math.max(0, w.col)
       w.row     = Math.max(0, w.row)
       w.colSpan = Math.max(1, Math.min(w.colSpan, gridCols - w.col))
       w.rowSpan = Math.max(1, Math.min(w.rowSpan, gridRows - w.row))
 
-      onUpdate(widgets.map((ww, i) => (i === widgetIdx ? w : ww)))
+      const valid = isValidPlacement(w, widgetsRef.current, widgetIdx, gridCols, gridRows)
+      setGhost({ col: w.col, row: w.row, colSpan: w.colSpan, rowSpan: w.rowSpan, valid })
+      onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? w : ww)))
     }
 
-    const onMouseUp = () => setActiveResize(null)
+    const onMouseUp = () => {
+      // If the final position overlaps another widget, revert to start
+      const cur = widgetsRef.current[widgetIdx]
+      if (cur && !isValidPlacement(cur, widgetsRef.current, widgetIdx, gridCols, gridRows)) {
+        onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? startWidget : ww)))
+      }
+      setActiveResize(null)
+      setGhost(null)
+    }
 
     window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('mouseup',   onMouseUp)
     return () => {
       window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('mouseup',   onMouseUp)
     }
-  }, [activeResize, widgets, gridCols, gridRows, onUpdate])
+  // widgetsRef.current is used intentionally to avoid re-registering on every frame
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeResize, gridCols, gridRows, onUpdate, gridPos])
 
-  const handleDragOver = (e: React.DragEvent) => {
+  // ── Move (mouse-based — no HTML5 drag ghost) ────────────────────────────────
+  useEffect(() => {
+    if (!activeMove) return
+    const { widgetIdx, grabOffsetCol, grabOffsetRow, startWidget } = activeMove
+
+    const onMouseMove = (e: MouseEvent) => {
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
+      const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
+      const proposed = { ...startWidget, col: snapCol, row: snapRow }
+      const valid    = isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows)
+      setGhost({ col: snapCol, row: snapRow, colSpan: startWidget.colSpan, rowSpan: startWidget.rowSpan, valid })
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
+      const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
+      const proposed = { ...startWidget, col: snapCol, row: snapRow }
+      if (isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows)) {
+        onUpdate(widgetsRef.current.map((w, i) => (i === widgetIdx ? proposed : w)))
+      }
+      setActiveMove(null)
+      setGhost(null)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup',   onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup',   onMouseUp)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMove, gridCols, gridRows, onUpdate, gridPos])
+
+  // ── Palette drop ──────────────────────────────────────────────────────────
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = e.dataTransfer.effectAllowed === 'move' ? 'move' : 'copy'
-  }
+    if (!paletteDropType) return
+    e.dataTransfer.dropEffect = 'copy'
+    const meta    = WIDGET_TYPES.find(wt => wt.type === paletteDropType)
+    const colSpan = meta?.defaultColSpan ?? 4
+    const rowSpan = meta?.defaultRowSpan ?? 2
+    const { col, row } = gridPos(e.clientX, e.clientY)
+    const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
+    const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
+    const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
+    setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows) })
+  }, [paletteDropType, gridCols, gridRows, gridPos])
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setGhost(null)
+    const widgetType = e.dataTransfer.getData('widget-type')
+    if (!widgetType) return
+    const meta    = WIDGET_TYPES.find(wt => wt.type === widgetType)
+    const colSpan = meta?.defaultColSpan ?? 4
+    const rowSpan = meta?.defaultRowSpan ?? 2
+    const { col, row } = gridPos(e.clientX, e.clientY)
+    const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
+    const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
+    const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
+    if (!isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows)) return
+    const newWidget: DashWidget = { id: crypto.randomUUID(), type: widgetType, ...proposed }
+    const updated = [...widgetsRef.current, newWidget]
+    onUpdate(updated)
+    onSelect(updated.length - 1)
+  }, [gridCols, gridRows, onUpdate, onSelect, gridPos])
 
-      const moveIdx = e.dataTransfer.getData('move-idx')
-      if (moveIdx) {
-        const idx           = parseInt(moveIdx, 10)
-        const grabOffsetCol = parseFloat(e.dataTransfer.getData('grab-offset-col') || '0')
-        const grabOffsetRow = parseFloat(e.dataTransfer.getData('grab-offset-row') || '0')
-        if (!containerRef.current) return
-        const rect = containerRef.current.getBoundingClientRect()
-        const col  = (e.clientX - rect.left) / rect.width  * gridCols - grabOffsetCol
-        const row  = (e.clientY - rect.top)  / rect.height * gridRows - grabOffsetRow
-        const w    = widgets[idx]
-        onUpdate(widgets.map((ww, i) =>
-          i === idx
-            ? {
-                ...ww,
-                col: Math.max(0, Math.min(Math.round(col), gridCols - w.colSpan)),
-                row: Math.max(0, Math.min(Math.round(row), gridRows - w.rowSpan)),
-              }
-            : ww,
-        ))
-        return
-      }
-
-      const widgetType = e.dataTransfer.getData('widget-type')
-      if (!widgetType) return
-
-      const meta           = WIDGET_TYPES.find(wt => wt.type === widgetType)
-      const defaultColSpan = meta?.defaultColSpan ?? 4
-      const defaultRowSpan = meta?.defaultRowSpan ?? 2
-      if (!containerRef.current) return
-      const rect = containerRef.current.getBoundingClientRect()
-      const col  = Math.floor((e.clientX - rect.left) / rect.width  * gridCols)
-      const row  = Math.floor((e.clientY - rect.top)  / rect.height * gridRows)
-
-      const newWidget: DashWidget = {
-        id:      crypto.randomUUID(),
-        type:    widgetType,
-        col:     Math.max(0, Math.min(col, gridCols - defaultColSpan)),
-        row:     Math.max(0, Math.min(row, gridRows - defaultRowSpan)),
-        colSpan: defaultColSpan,
-        rowSpan: defaultRowSpan,
-      }
-      const updated = [...widgets, newWidget]
-      onUpdate(updated)
-      onSelect(updated.length - 1)
-    },
-    [widgets, gridCols, gridRows, onUpdate, onSelect],
-  )
-
-  const handleWidgetDragStart = useCallback(
-    (e: React.DragEvent, idx: number) => {
-      const widget = widgets[idx]
-      if (!containerRef.current) return
-      const rect          = containerRef.current.getBoundingClientRect()
-      const grabOffsetCol = (e.clientX - rect.left) / rect.width  * gridCols - widget.col
-      const grabOffsetRow = (e.clientY - rect.top)  / rect.height * gridRows - widget.row
-      e.dataTransfer.effectAllowed = 'move'
-      e.dataTransfer.setData('move-idx',        String(idx))
-      e.dataTransfer.setData('grab-offset-col', String(grabOffsetCol))
-      e.dataTransfer.setData('grab-offset-row', String(grabOffsetRow))
-      onSelect(idx)
-    },
-    [widgets, gridCols, gridRows, onSelect],
-  )
+  const isDragging = activeMove !== null || activeResize !== null
 
   return (
     <div
@@ -178,44 +239,69 @@ export function DashCanvas({
           'linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)',
         ].join(','),
         backgroundSize: `${100 / gridCols}% ${100 / gridRows}%`,
+        cursor: activeMove ? 'grabbing' : undefined,
       }}
       onDragOver={handleDragOver}
+      onDragLeave={() => setGhost(null)}
       onDrop={handleDrop}
-      onClick={() => onSelect(null)}
+      onClick={() => { if (!isDragging) onSelect(null) }}
     >
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 opacity-20"
-        style={{
-          height: 80,
-          background: 'radial-gradient(ellipse 60% 80px at 50% 0, var(--accent) 0%, transparent 100%)',
-        }}
-      />
 
       <span className="pointer-events-none absolute bottom-1.5 right-2 font-mono text-[10px] text-white/20">
         {screenW}×{screenH}
       </span>
 
+      {/* Drop / move / resize ghost */}
+      {ghost && (
+        <div
+          className="pointer-events-none absolute rounded"
+          style={{
+            left:       `${(ghost.col     / gridCols) * 100}%`,
+            top:        `${(ghost.row     / gridRows) * 100}%`,
+            width:      `${(ghost.colSpan / gridCols) * 100}%`,
+            height:     `${(ghost.rowSpan / gridRows) * 100}%`,
+            zIndex:     50,
+            border:     `2px dashed ${ghost.valid ? 'var(--accent)' : '#F87171'}`,
+            background:  ghost.valid ? 'rgba(255,144,108,0.12)' : 'rgba(248,113,113,0.12)',
+          }}
+        />
+      )}
+
       {widgets.map((widget, idx) => {
-        const isSelected = selectedId === idx
-        const left   = `${(widget.col     / gridCols) * 100}%`
-        const top    = `${(widget.row     / gridRows) * 100}%`
-        const width  = `${(widget.colSpan / gridCols) * 100}%`
-        const height = `${(widget.rowSpan / gridRows) * 100}%`
+        const isSelected   = selectedId === idx
+        const isBeingMoved = activeMove?.widgetIdx === idx
 
         return (
           <div
             key={idx}
             className="absolute"
-            style={{ left, top, width, height, zIndex: isSelected ? 10 : undefined }}
-            onClick={e => { e.stopPropagation(); onSelect(idx) }}
+            style={{
+              left:    `${(widget.col     / gridCols) * 100}%`,
+              top:     `${(widget.row     / gridRows) * 100}%`,
+              width:   `${(widget.colSpan / gridCols) * 100}%`,
+              height:  `${(widget.rowSpan / gridRows) * 100}%`,
+              zIndex:  isSelected ? 10 : undefined,
+              opacity: isBeingMoved ? 0.2 : 1,
+            }}
+            onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(idx) }}
           >
             <div
-              draggable={activeResize === null}
-              onDragStart={e => handleWidgetDragStart(e, idx)}
+              onMouseDown={e => {
+                if (e.button !== 0 || activeResize) return
+                e.preventDefault()
+                e.stopPropagation()
+                const { col, row } = gridPos(e.clientX, e.clientY)
+                setActiveMove({
+                  widgetIdx: idx,
+                  grabOffsetCol: col - widget.col,
+                  grabOffsetRow: row - widget.row,
+                  startWidget: { ...widget },
+                })
+                onSelect(idx)
+              }}
               className={cn(
-                'absolute inset-0 flex flex-col items-start justify-start overflow-hidden rounded',
-                'select-none border',
-                isSelected ? 'cursor-default' : 'cursor-move',
+                'absolute inset-0 flex flex-col items-start justify-start overflow-hidden rounded select-none border',
+                activeMove ? 'cursor-grabbing' : 'cursor-grab',
                 isSelected
                   ? 'bg-white/8 border-accent ring-1 ring-accent/30'
                   : 'bg-white/5 border-white/10 hover:border-white/20',

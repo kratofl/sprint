@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
@@ -36,6 +37,10 @@ type Coordinator struct {
 	lastFrontendEmit time.Time
 
 	connected bool // true while the game adapter is live
+
+	activePageIndex int
+	currentLayout   *dashboard.DashLayout
+	idleState       bool
 }
 
 const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
@@ -46,6 +51,8 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
 	screen := hardware.NewVoCoreDriver(logger.With("component", "screen"))
 
+	var initialLayout *dashboard.DashLayout
+
 	// Load screen config and its assigned dash layout from the device registry.
 	if devMgr != nil {
 		if reg, err := devMgr.Load(); err == nil {
@@ -53,6 +60,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 				screen.SetScreen(voCoreConfigFrom(devices.ToScreenConfig(active)))
 				if dashMgr != nil {
 					if layout, err := dashMgr.Load(active.DashID); err == nil && layout != nil {
+						initialLayout = layout
 						screen.SetLayout(layout)
 					}
 				}
@@ -63,18 +71,26 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 	// If no active screen, still load the default dash layout.
 	if dashMgr != nil && devMgr == nil {
 		if layout, err := dashMgr.Load(""); err == nil && layout != nil {
+			initialLayout = layout
 			screen.SetLayout(layout)
 		}
 	}
 
 	c := &Coordinator{
-		logger:  logger,
-		adapter: lemansultimate.New(),
-		screen:  screen,
-		input:   input.NewDetector(logger.With("component", "input")),
-		sync:    springsync.NewClient(logger.With("component", "sync")),
-		emit:    func(string, ...any) {}, // safe no-op before Wails startup
+		logger:        logger,
+		adapter:       lemansultimate.New(),
+		screen:        screen,
+		input:         input.NewDetector(logger.With("component", "input")),
+		sync:          springsync.NewClient(logger.With("component", "sync")),
+		emit:          func(string, ...any) {}, // safe no-op before Wails startup
+		currentLayout: initialLayout,
+		idleState:     true,
 	}
+
+	c.screen.SetIdle(true)
+
+	commands.Handle(dashboard.CmdNextDashPage, func(_ any) { c.CyclePage(+1) })
+	commands.Handle(dashboard.CmdPrevDashPage, func(_ any) { c.CyclePage(-1) })
 
 	return c
 }
@@ -134,10 +150,57 @@ func (c *Coordinator) GetScreenPaused() bool {
 	return c.screen.GetPaused()
 }
 
-// SetDashLayout updates the layout used by the VoCore renderer. Takes effect
-// on the next rendered frame.
+// SetDashLayout updates the layout used by the VoCore renderer. Resets the
+// active page to 0. Takes effect on the next rendered frame.
 func (c *Coordinator) SetDashLayout(layout *dashboard.DashLayout) {
+	c.activePageIndex = 0
+	c.currentLayout = layout
 	c.screen.SetLayout(layout)
+	c.screen.SetActivePage(0)
+}
+
+// CurrentLayoutID returns the ID of the layout currently loaded into the
+// renderer, or an empty string if no layout is loaded.
+func (c *Coordinator) CurrentLayoutID() string {
+	if c.currentLayout == nil {
+		return ""
+	}
+	return c.currentLayout.ID
+}
+// Wraps around. No-op if layout is nil or has no pages.
+func (c *Coordinator) CyclePage(direction int) {
+	if c.currentLayout == nil || len(c.currentLayout.Pages) == 0 {
+		return
+	}
+	n := len(c.currentLayout.Pages)
+	c.activePageIndex = ((c.activePageIndex + direction) % n + n) % n
+	c.screen.SetActivePage(c.activePageIndex)
+	c.emit("dash:page-changed", map[string]any{
+		"pageIndex": c.activePageIndex,
+		"pageName":  c.currentLayout.Pages[c.activePageIndex].Name,
+	})
+}
+
+// updateIdleState detects session idle/active transitions and propagates them
+// to the screen. Idle when SessionType is unknown or session time is 0.
+func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
+	isIdle := frame.Session.SessionType == dto.SessionUnknown || frame.Session.SessionTime == 0
+	if isIdle != c.idleState {
+		c.idleState = isIdle
+		c.screen.SetIdle(isIdle)
+		c.emit("dash:idle-changed", map[string]any{"idle": isIdle})
+
+		// When a session becomes active, snap back to the first page so the
+		// driver sees live telemetry data immediately rather than the idle screen.
+		if !isIdle {
+			c.activePageIndex = 0
+			c.screen.SetActivePage(0)
+			c.emit("dash:page-changed", map[string]any{
+				"pageIndex": 0,
+				"pageName":  firstPageName(c.currentLayout),
+			})
+		}
+	}
 }
 
 // Start launches all subsystems. ctx governs their lifetime.
@@ -199,6 +262,8 @@ func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
 
 		c.connected = false
 		c.emit("telemetry:disconnected")
+		c.screen.SetIdle(true)
+		c.idleState = true
 		c.logger.Info("game adapter disconnected, will reconnect", "delay", reconnectDelay)
 		select {
 		case <-ctx.Done():
@@ -240,9 +305,17 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 	}
 }
 
-// fanOut distributes a telemetry frame to all live subsystems.
+// firstPageName returns the name of the first page in the layout, or an empty
+// string if the layout is nil or has no pages.
+func firstPageName(layout *dashboard.DashLayout) string {
+	if layout != nil && len(layout.Pages) > 0 {
+		return layout.Pages[0].Name
+	}
+	return ""
+}
 // Internal subsystems receive every frame; the frontend is throttled to ~30 Hz.
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
+	c.updateIdleState(frame)
 	c.screen.OnFrame(frame)
 
 	// Throttled emit to Wails frontend

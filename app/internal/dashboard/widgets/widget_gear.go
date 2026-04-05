@@ -6,7 +6,7 @@ import (
 
 const WidgetGear WidgetType = "gear"
 
-func init() { RegisterWidget(WidgetGear, "Gear", "Car", drawWidgetGear) }
+func init() { RegisterWidget(WidgetGear, "Gear", CategoryCar, 3, 3, false, nil, drawWidgetGear) }
 
 func drawWidgetGear(c WidgetCtx) {
 	c.Panel()

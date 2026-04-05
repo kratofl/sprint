@@ -1,13 +1,37 @@
 {
-  "widgets": [
-    {"id": "header",     "type": "header",      "x":   8, "y":   6, "w": 784, "h":  38},
-    {"id": "rpm_bar",    "type": "rpm_bar",     "x":   8, "y":  52, "w":  40, "h": 420},
-    {"id": "gear_speed", "type": "gear_speed",  "x":  56, "y":  52, "w": 292, "h": 218},
-    {"id": "inputs",     "type": "input_trace", "x":  56, "y": 278, "w": 292, "h": 114},
-    {"id": "sectors",    "type": "sector",      "x":  56, "y": 400, "w": 292, "h":  64},
-    {"id": "lap_time",   "type": "lap_time",    "x": 356, "y":  52, "w": 436, "h": 132},
-    {"id": "delta",      "type": "delta",       "x": 356, "y": 192, "w": 436, "h":  36},
-    {"id": "fuel",       "type": "fuel",        "x": 356, "y": 236, "w": 436, "h": 114},
-    {"id": "tyre_temp",  "type": "tyre_temp",   "x": 356, "y": 358, "w": 436, "h": 106}
-  ]
+  "id": "default",
+  "name": "Default",
+  "default": true,
+  "gridCols": 20,
+  "gridRows": 12,
+  "idlePage": {
+    "id": "idle-default",
+    "name": "Idle",
+    "widgets": [
+      {"id": "idle-name", "type": "text", "col": 4, "row": 3, "colSpan": 12, "rowSpan": 3, "config": {"content": "Sprint"}},
+      {"id": "idle-number", "type": "text", "col": 6, "row": 6, "colSpan": 8, "rowSpan": 2, "config": {"content": "#00"}}
+    ]
+  },
+  "pages": [
+    {
+      "id": "main-default",
+      "name": "Main",
+      "widgets": [
+        {"id": "header",     "type": "header",      "col":  0, "row":  0, "colSpan": 20, "rowSpan":  1},
+        {"id": "rpm_bar",    "type": "rpm_bar",     "col":  0, "row":  1, "colSpan":  1, "rowSpan": 11},
+        {"id": "gear_speed", "type": "gear_speed",  "col":  1, "row":  1, "colSpan":  7, "rowSpan":  5},
+        {"id": "inputs",     "type": "input_trace", "col":  1, "row":  7, "colSpan":  7, "rowSpan":  3},
+        {"id": "sectors",    "type": "sector",      "col":  1, "row": 10, "colSpan":  7, "rowSpan":  2},
+        {"id": "lap_time",   "type": "lap_time",    "col":  9, "row":  1, "colSpan": 11, "rowSpan":  3},
+        {"id": "delta",      "type": "delta",       "col":  9, "row":  5, "colSpan": 11, "rowSpan":  1},
+        {"id": "fuel",       "type": "fuel",        "col":  9, "row":  6, "colSpan": 11, "rowSpan":  3},
+        {"id": "tyre_temp",  "type": "tyre_temp",   "col":  9, "row":  9, "colSpan": 11, "rowSpan":  3}
+      ]
+    }
+  ],
+  "alerts": {
+    "tcChange": true,
+    "absChange": true,
+    "engineMapChange": true
+  }
 }

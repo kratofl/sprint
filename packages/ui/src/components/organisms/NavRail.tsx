@@ -4,7 +4,7 @@ import * as React from "react"
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 import { cn } from "../../lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/tooltip"
-import { SprintLogo, SprintIcon } from "../atoms/SprintLogo"
+
 
 export interface NavRailItem {
   id: string
@@ -58,26 +58,24 @@ export function NavRail({
         data-slot="nav-rail"
         data-collapsed={isCollapsed}
         className={cn(
-          "relative flex flex-col bg-bg-container border-r border-[var(--outline)]",
+          "relative flex flex-col bg-background border-r border-[var(--outline)]",
           "transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]",
           isCollapsed ? "w-[3.25rem]" : "w-[12.5rem]",
           className
         )}
       >
-        {/* Header — logo area with bottom divider */}
-        <div
-          className={cn(
-            "flex h-12 shrink-0 items-center border-b border-[var(--outline)] overflow-hidden",
-            isCollapsed ? "justify-center px-0" : "px-4",
-            "[app-region:drag]"
-          )}
-        >
-          {header ?? (
-            isCollapsed
-              ? <SprintIcon size={22} />
-              : <SprintLogo size="sm" />
-          )}
-        </div>
+        {/* Header — optional slot, rendered only when provided */}
+        {header != null && (
+          <div
+            className={cn(
+              "flex h-12 shrink-0 items-center border-b border-[var(--outline)] overflow-hidden",
+              isCollapsed ? "justify-center px-0" : "px-4",
+              "[app-region:drag]"
+            )}
+          >
+            {header}
+          </div>
+        )}
 
         {/* Nav items */}
         <nav className="flex flex-1 flex-col gap-px overflow-hidden py-2">

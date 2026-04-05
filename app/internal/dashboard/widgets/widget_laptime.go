@@ -6,7 +6,7 @@ import (
 
 const WidgetLapTime WidgetType = "lap_time"
 
-func init() { RegisterWidget(WidgetLapTime, "Lap Time", "Timing", drawWidgetLapTime) }
+func init() { RegisterWidget(WidgetLapTime, "Lap Time", CategoryTiming, 5, 3, false, nil, drawWidgetLapTime) }
 
 func drawWidgetLapTime(c WidgetCtx) {
 	c.Panel()

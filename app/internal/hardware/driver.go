@@ -11,6 +11,8 @@ import (
 // VoCoreDriver implements this; future drivers (e.g., USBD480) will too.
 type ScreenDriver interface {
 	SetLayout(layout *dashboard.DashLayout)
+	SetActivePage(index int)
+	SetIdle(idle bool)
 	OnFrame(frame *dto.TelemetryFrame)
 	Run(ctx context.Context)
 	SetPaused(paused bool)

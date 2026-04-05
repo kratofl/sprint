@@ -45,8 +45,18 @@ type Painter struct {
 	// per tick (800×480 RGBA).
 	ctx *gg.Context
 
+	// alert is the currently active parameter-change overlay (not atomic —
+	// only accessed from the render goroutine).
+	alert    alertState
+	prevElec dto.Electronics
+
 	// layout is the user-configured layout.
 	layout atomic.Pointer[DashLayout]
+
+	// activePageIndex is the index into layout.Pages to render (0-based).
+	activePageIndex atomic.Int32
+	// idle indicates whether to render the idle page instead of an active page.
+	idle atomic.Bool
 }
 
 // NewPainter creates a Painter for the given screen dimensions.
@@ -69,6 +79,21 @@ func (p *Painter) SetLayout(layout *DashLayout) {
 	}
 }
 
+// SetActivePage sets the active page index (0-based) for the next rendered frame.
+// Index is clamped to valid range; out-of-range values silently use page 0.
+func (p *Painter) SetActivePage(index int) {
+	if index < 0 {
+		index = 0
+	}
+	p.activePageIndex.Store(int32(index))
+}
+
+// SetIdle controls whether the idle page is rendered.
+// When true, the idle page is shown regardless of active page index.
+func (p *Painter) SetIdle(idle bool) {
+	p.idle.Store(idle)
+}
+
 // Paint renders a complete dashboard image for the given telemetry frame
 // using the active layout.
 func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
@@ -79,25 +104,53 @@ func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
 	})
 	p.ensureBg()
 
-	w, h := float64(p.width), float64(p.height)
 	dc := p.getContext()
 
 	if layout := p.layout.Load(); layout != nil {
-		for _, widget := range layout.Widgets {
-			p.dispatchWidget(dc, frame, widget)
+		p.checkAlerts(frame, layout)
+		var pageWidgets []DashWidget
+		if p.idle.Load() {
+			pageWidgets = layout.IdlePage.Widgets
+		} else {
+			idx := int(p.activePageIndex.Load())
+			if idx >= len(layout.Pages) {
+				idx = 0
+			}
+			if len(layout.Pages) > 0 {
+				pageWidgets = layout.Pages[idx].Widgets
+			}
 		}
+		for _, widget := range pageWidgets {
+			p.dispatchWidget(dc, frame, widget, layout)
+		}
+		p.applyAlertOverlay(dc, float64(p.width), float64(p.height))
 	}
 
-	p.applyFlagOverlay(dc, frame, w, h)
+	p.applyFlagOverlay(dc, frame, float64(p.width), float64(p.height))
 	return dc.Image(), nil
 }
 
-// dispatchWidget dispatches to the registered widget renderer for w.Type.
-// Unknown widget types are silently skipped.
-func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w DashWidget) {
-	widgets.Dispatch(w.Type, dc, frame,
-		float64(w.X), float64(w.Y), float64(w.W), float64(w.H),
-		p.face)
+// dispatchWidget converts grid coordinates to pixels and dispatches to the
+// registered widget renderer for w.Type. Unknown widget types are silently skipped.
+func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w DashWidget, layout *DashLayout) {
+	cols := layout.GridCols
+	rows := layout.GridRows
+	if cols <= 0 {
+		cols = DefaultGridCols
+	}
+	if rows <= 0 {
+		rows = DefaultGridRows
+	}
+
+	cellW := float64(p.width) / float64(cols)
+	cellH := float64(p.height) / float64(rows)
+
+	x := float64(w.Col) * cellW
+	y := float64(w.Row) * cellH
+	pw := float64(w.ColSpan) * cellW
+	ph := float64(w.RowSpan) * cellH
+
+	widgets.Dispatch(w.Type, dc, frame, x, y, pw, ph, p.face, w.Config)
 }
 
 // applyFlagOverlay draws the flag status banner over the rendered frame when a flag is active.

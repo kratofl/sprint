@@ -7,7 +7,7 @@ import (
 
 const WidgetDelta WidgetType = "delta"
 
-func init() { RegisterWidget(WidgetDelta, "Delta", "Timing", drawWidgetDelta) }
+func init() { RegisterWidget(WidgetDelta, "Delta", CategoryTiming, 4, 3, false, nil, drawWidgetDelta) }
 
 func drawWidgetDelta(c WidgetCtx) {
 	c.Panel()

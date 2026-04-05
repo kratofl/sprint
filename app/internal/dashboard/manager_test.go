@@ -97,7 +97,7 @@ func TestDeleteDefaultLayout(t *testing.T) {
 	}
 
 	defaultLayout := &DashLayout{
-		ID:       "default-layout",
+		ID:       EmbeddedDefaultID,
 		Name:     "Default",
 		Default:  true,
 		GridCols: DefaultGridCols,

@@ -6,8 +6,16 @@ export function DashCreateLayout(arg1) {
   return window['go']['main']['App']['DashCreateLayout'](arg1);
 }
 
+export function DashCyclePage(arg1) {
+  return window['go']['main']['App']['DashCyclePage'](arg1);
+}
+
 export function DashDeleteLayout(arg1) {
   return window['go']['main']['App']['DashDeleteLayout'](arg1);
+}
+
+export function DashGetPreview(arg1) {
+  return window['go']['main']['App']['DashGetPreview'](arg1);
 }
 
 export function DashListLayouts() {
@@ -24,6 +32,10 @@ export function DashLoadLayoutByID(arg1) {
 
 export function DashSaveLayout(arg1) {
   return window['go']['main']['App']['DashSaveLayout'](arg1);
+}
+
+export function DashSetDefault(arg1) {
+  return window['go']['main']['App']['DashSetDefault'](arg1);
 }
 
 export function DeviceGetSavedScreens() {

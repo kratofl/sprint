@@ -49,7 +49,11 @@ type VoCoreDriver struct {
 	currentLayout atomic.Pointer[dashboard.DashLayout]
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
-	hasNewFrame atomic.Bool
+	hasNewFrame  atomic.Bool
+	forceRedraw  atomic.Bool // set by layout/idle/page changes to trigger a repaint even with no game
+
+	currentIdle       atomic.Bool
+	currentActivePage atomic.Int32
 
 	screenConnected atomic.Bool
 	paused          atomic.Bool
@@ -105,6 +109,29 @@ func (d *VoCoreDriver) emitEvent(event string, data ...any) {
 	}
 }
 
+// SetActivePage sets the active page index on the current painter and caches
+// the value so it is re-applied whenever a new painter is created.
+func (d *VoCoreDriver) SetActivePage(index int) {
+	if index < 0 {
+		index = 0
+	}
+	d.currentActivePage.Store(int32(index))
+	if p := d.painter.Load(); p != nil {
+		p.SetActivePage(index)
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetIdle controls the idle state on the current painter and caches the value
+// so it is re-applied whenever a new painter is created.
+func (d *VoCoreDriver) SetIdle(idle bool) {
+	d.currentIdle.Store(idle)
+	if p := d.painter.Load(); p != nil {
+		p.SetIdle(idle)
+	}
+	d.forceRedraw.Store(true)
+}
+
 // SetScreen configures which VoCore screen device to target.
 // Must be called before Run. If VID/PID are zero the driver stays inert.
 // cfgRotation is stored atomically so that changes applied via SetScreen
@@ -114,6 +141,7 @@ func (d *VoCoreDriver) emitEvent(event string, data ...any) {
 func (d *VoCoreDriver) SetScreen(cfg VoCoreConfig) {
 	d.screen = cfg
 	d.cfgRotation.Store(int32(cfg.Rotation))
+	d.forceRedraw.Store(true)
 }
 
 // SetLayout stores the dashboard layout and applies it to the current Painter
@@ -123,6 +151,7 @@ func (d *VoCoreDriver) SetLayout(layout *dashboard.DashLayout) {
 	if p := d.painter.Load(); p != nil {
 		p.SetLayout(layout)
 	}
+	d.forceRedraw.Store(true)
 }
 
 // ensurePainter guarantees the active Painter has canvas dimensions w×h.
@@ -141,6 +170,8 @@ func (d *VoCoreDriver) ensurePainter(w, h int) {
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 	}
+	p.SetIdle(d.currentIdle.Load())
+	p.SetActivePage(int(d.currentActivePage.Load()))
 	d.painter.Store(p)
 	// Re-apply currentLayout in case SetLayout raced between our Load and Store.
 	if layout := d.currentLayout.Load(); layout != nil {
@@ -334,12 +365,14 @@ func (d *VoCoreDriver) driveLoop(ctx context.Context, transport screenTransport)
 		default:
 		}
 
-		if !d.hasNewFrame.CompareAndSwap(true, false) {
+		newFrame := d.hasNewFrame.CompareAndSwap(true, false)
+		redraw := d.forceRedraw.CompareAndSwap(true, false)
+		if !newFrame && !redraw {
 			continue
 		}
 		frame := d.latestFrame.Load()
 		if frame == nil {
-			continue
+			frame = &dto.TelemetryFrame{}
 		}
 
 		// Re-read rotation each tick so hot-reloads via SetScreen take effect

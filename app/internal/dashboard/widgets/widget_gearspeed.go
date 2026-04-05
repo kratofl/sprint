@@ -6,7 +6,7 @@ import (
 
 const WidgetGearSpeed WidgetType = "gear_speed"
 
-func init() { RegisterWidget(WidgetGearSpeed, "Gear + Speed", "Car", drawWidgetGearSpeed) }
+func init() { RegisterWidget(WidgetGearSpeed, "Gear + Speed", CategoryCar, 5, 3, false, nil, drawWidgetGearSpeed) }
 
 // drawWidgetGearSpeed renders the combined gear + speed panel: a large gear
 // number in the upper portion and the current speed with a "km/h" label below.
