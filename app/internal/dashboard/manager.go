@@ -407,4 +407,3 @@ func defaultLayout() (*DashLayout, error) {
 	}
 	return &layout, nil
 }
-

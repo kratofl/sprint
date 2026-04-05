@@ -6,7 +6,7 @@ import (
 
 const WidgetHeader WidgetType = "header"
 
-func init() { RegisterWidget(WidgetHeader, "Header", CategoryLayout, 20, 2, true, nil, drawWidgetHeader) }
+func init() { RegisterWidget(WidgetHeader, "Header", CategoryLayout, 20, 2, true, 5, nil, drawWidgetHeader) }
 
 // drawWidgetHeader renders the session info bar across the top of the screen:
 // app name, track, car, session type, lap counter, and live indicator.

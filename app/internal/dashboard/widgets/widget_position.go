@@ -4,9 +4,7 @@ import "fmt"
 
 const WidgetPosition WidgetType = "position"
 
-func init() {
-	RegisterWidget(WidgetPosition, "Position", CategoryRace, 3, 2, false, nil, drawWidgetPosition)
-}
+func init() { RegisterWidget(WidgetPosition, "Position", CategoryRace, 3, 2, false, 2, nil, drawWidgetPosition) }
 
 func drawWidgetPosition(c WidgetCtx) {
 	c.Panel()

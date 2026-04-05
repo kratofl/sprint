@@ -4,9 +4,7 @@ import "fmt"
 
 const WidgetSessionTimer WidgetType = "session_timer"
 
-func init() {
-	RegisterWidget(WidgetSessionTimer, "Session Timer", CategoryTiming, 4, 2, false, nil, drawWidgetSessionTimer)
-}
+func init() { RegisterWidget(WidgetSessionTimer, "Session Timer", CategoryTiming, 4, 2, false, 5, nil, drawWidgetSessionTimer) }
 
 func fmtSessionTime(secs float64) string {
 	t := int(secs)

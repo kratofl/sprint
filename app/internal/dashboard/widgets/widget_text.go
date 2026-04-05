@@ -3,7 +3,7 @@ package widgets
 const WidgetText WidgetType = "text"
 
 func init() {
-	RegisterWidget(WidgetText, "Text", CategoryLayout, 4, 2, true, []ConfigDef{
+	RegisterWidget(WidgetText, "Text", CategoryLayout, 4, 2, true, 5, []ConfigDef{
 		{
 			Key:     "content",
 			Label:   "Text",

@@ -4,9 +4,7 @@ import "fmt"
 
 const WidgetEngineMap WidgetType = "engine_map"
 
-func init() {
-	RegisterWidget(WidgetEngineMap, "Engine Map", CategoryCar, 3, 2, false, nil, drawWidgetEngineMap)
-}
+func init() { RegisterWidget(WidgetEngineMap, "Engine Map", CategoryCar, 3, 2, false, 15, nil, drawWidgetEngineMap) }
 
 func drawWidgetEngineMap(c WidgetCtx) {
 	c.Panel()

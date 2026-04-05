@@ -22,7 +22,7 @@ type WidgetFn func(WidgetCtx)
 type ConfigDef struct {
 	Key     string   `json:"key"`
 	Label   string   `json:"label"`
-	Type    string   `json:"type"`    // "select", "number", "boolean", "text"
+	Type    string   `json:"type"` // "select", "number", "boolean", "text"
 	Options []Option `json:"options,omitempty"`
 	Default string   `json:"default"` // string representation of default value
 }
@@ -54,15 +54,16 @@ var categoryLabels = map[Category]string{
 // WidgetMeta holds the type, display name, palette category, and draw function.
 // The Fn field is never serialised; it is used only by the render pipeline.
 type WidgetMeta struct {
-	Type           WidgetType  `json:"type"`
-	Label          string      `json:"label"`
-	Category       Category    `json:"category"`
-	CategoryLabel  string      `json:"categoryLabel"`
-	ConfigDefs     []ConfigDef `json:"configDefs,omitempty"`
-	DefaultColSpan int         `json:"defaultColSpan"`
-	DefaultRowSpan int         `json:"defaultRowSpan"`
-	IdleCapable    bool        `json:"idleCapable"`
-	Fn             WidgetFn    `json:"-"`
+	Type            WidgetType  `json:"type"`
+	Label           string      `json:"label"`
+	Category        Category    `json:"category"`
+	CategoryLabel   string      `json:"categoryLabel"`
+	ConfigDefs      []ConfigDef `json:"configDefs,omitempty"`
+	DefaultColSpan  int         `json:"defaultColSpan"`
+	DefaultRowSpan  int         `json:"defaultRowSpan"`
+	IdleCapable     bool        `json:"idleCapable"`
+	DefaultUpdateHz float64     `json:"defaultUpdateHz"`
+	Fn              WidgetFn    `json:"-"`
 }
 
 var (
@@ -73,24 +74,52 @@ var (
 // RegisterWidget registers a widget with its metadata.
 // category is normalised to lowercase; the display label is looked up from categoryLabels.
 // Call from init() in widget_*.go files.
-func RegisterWidget(t WidgetType, label string, category Category, defaultColSpan, defaultRowSpan int, idleCapable bool, configDefs []ConfigDef, fn WidgetFn) {
+func RegisterWidget(t WidgetType, label string, category Category, defaultColSpan, defaultRowSpan int, idleCapable bool, defaultUpdateHz float64, configDefs []ConfigDef, fn WidgetFn) {
 	catLabel, ok := categoryLabels[category]
 	if !ok {
 		catLabel = string(category)
 	}
+	allDefs := make([]ConfigDef, 0, len(configDefs)+1)
+	allDefs = append(allDefs, configDefs...)
+	allDefs = append(allDefs, updateRateConfigDef(defaultUpdateHz))
 	meta := WidgetMeta{
-		Type:           t,
-		Label:          label,
-		Category:       category,
-		CategoryLabel:  catLabel,
-		ConfigDefs:     configDefs,
-		DefaultColSpan: defaultColSpan,
-		DefaultRowSpan: defaultRowSpan,
-		IdleCapable:    idleCapable,
-		Fn:             fn,
+		Type:            t,
+		Label:           label,
+		Category:        category,
+		CategoryLabel:   catLabel,
+		ConfigDefs:      allDefs,
+		DefaultColSpan:  defaultColSpan,
+		DefaultRowSpan:  defaultRowSpan,
+		IdleCapable:     idleCapable,
+		DefaultUpdateHz: defaultUpdateHz,
+		Fn:              fn,
 	}
 	widgetRegistry[t] = fn
 	widgetMeta[t] = meta
+}
+
+// GetMeta returns the WidgetMeta for the given widget type.
+func GetMeta(t WidgetType) (WidgetMeta, bool) {
+	m, ok := widgetMeta[t]
+	return m, ok
+}
+
+// updateRateConfigDef returns the standard update_rate select ConfigDef with the given default Hz.
+func updateRateConfigDef(hz float64) ConfigDef {
+	return ConfigDef{
+		Key:   "update_rate",
+		Label: "Update Rate",
+		Type:  "select",
+		Options: []Option{
+			{Value: "30", Label: "30 fps"},
+			{Value: "15", Label: "15 fps"},
+			{Value: "10", Label: "10 fps"},
+			{Value: "5", Label: "5 fps"},
+			{Value: "2", Label: "2 fps"},
+			{Value: "1", Label: "1 fps"},
+		},
+		Default: fmt.Sprintf("%.0f", hz),
+	}
 }
 
 // WidgetCatalog returns metadata for every registered widget.
@@ -134,7 +163,7 @@ func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, 
 //
 //	const WidgetMyThing WidgetType = "my_thing"
 //
-//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", 4, 3, false, nil, drawMyThing) }
+//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", 4, 3, false, 15, nil, drawMyThing) }
 //
 //	func drawMyThing(c WidgetCtx) {
 //	    c.Panel()
@@ -143,8 +172,8 @@ func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, 
 //	    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.CY(), 0.5, 0.5)
 //	}
 type WidgetCtx struct {
-	DC          *gg.Context
-	Frame       *dto.TelemetryFrame
+	DC         *gg.Context
+	Frame      *dto.TelemetryFrame
 	X, Y, W, H float64
 	// FontLoader loads a named font face at the given size onto dc.
 	// Provided by the Painter — use the FontXxx helpers instead of calling directly.

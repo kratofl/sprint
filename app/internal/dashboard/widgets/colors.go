@@ -9,9 +9,9 @@ import (
 // Sprint design tokens — mirroring packages/tokens/src/atoms/colors.ts + molecules/surfaces.ts.
 var (
 	// Surfaces — matches surfaces.base / container / elevated
-	ColBg       = color.RGBA{10, 10, 10, 255}  // #0a0a0a  surfaces.base
-	ColSurface  = color.RGBA{20, 20, 20, 255}  // #141414  surfaces.container
-	ColElevated = color.RGBA{31, 31, 31, 255}  // #1f1f1f  surfaces.elevated
+	ColBg       = color.RGBA{10, 10, 10, 255} // #0a0a0a  surfaces.base
+	ColSurface  = color.RGBA{20, 20, 20, 255} // #141414  surfaces.container
+	ColElevated = color.RGBA{31, 31, 31, 255} // #1f1f1f  surfaces.elevated
 	// Borders — structural outline #2a2a2a (borders.outline), not semi-transparent white
 	ColBorder = color.RGBA{42, 42, 42, 255} // #2a2a2a
 	// Accents

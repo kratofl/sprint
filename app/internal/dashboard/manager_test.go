@@ -134,8 +134,8 @@ func TestPixelToGrid(t *testing.T) {
 		{40, 1},
 		{80, 2},
 		{160, 4},
-		{20, 1},   // rounds up from 0.5
-		{19, 0},   // rounds down
+		{20, 1}, // rounds up from 0.5
+		{19, 0}, // rounds down
 		{200, 5},
 	}
 	for _, c := range cases {

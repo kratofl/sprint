@@ -53,7 +53,7 @@ type DashLayout struct {
 	GridCols int         `json:"gridCols"`
 	GridRows int         `json:"gridRows"`
 	IdlePage DashPage    `json:"idlePage"`
-	Pages    []DashPage  `json:"pages"`  // at least 1 required
+	Pages    []DashPage  `json:"pages"` // at least 1 required
 	Alerts   AlertConfig `json:"alerts"`
 }
 

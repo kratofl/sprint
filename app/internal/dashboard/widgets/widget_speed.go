@@ -2,7 +2,7 @@ package widgets
 
 const WidgetSpeed WidgetType = "speed"
 
-func init() { RegisterWidget(WidgetSpeed, "Speed", CategoryCar, 4, 3, false, nil, drawWidgetSpeed) }
+func init() { RegisterWidget(WidgetSpeed, "Speed", CategoryCar, 4, 3, false, 30, nil, drawWidgetSpeed) }
 
 func drawWidgetSpeed(c WidgetCtx) {
 	c.Panel()

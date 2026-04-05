@@ -4,9 +4,7 @@ import "fmt"
 
 const WidgetGap WidgetType = "gap"
 
-func init() {
-	RegisterWidget(WidgetGap, "Gap", CategoryRace, 4, 3, false, nil, drawWidgetGap)
-}
+func init() { RegisterWidget(WidgetGap, "Gap", CategoryRace, 4, 3, false, 15, nil, drawWidgetGap) }
 
 func fmtGap(g float32) string {
 	if g == 0 {

@@ -66,6 +66,29 @@ func TestWidgetCatalog(t *testing.T) {
 		}
 	})
 
+	t.Run("all widgets have positive DefaultUpdateHz", func(t *testing.T) {
+		for _, m := range catalog {
+			if m.DefaultUpdateHz <= 0 {
+				t.Errorf("widget %q has DefaultUpdateHz=%.1f, want > 0", m.Type, m.DefaultUpdateHz)
+			}
+		}
+	})
+
+	t.Run("all widgets have update_rate configDef", func(t *testing.T) {
+		for _, m := range catalog {
+			var found bool
+			for _, def := range m.ConfigDefs {
+				if def.Key == "update_rate" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("widget %q missing auto-injected update_rate configDef", m.Type)
+			}
+		}
+	})
+
 	t.Run("all widgets have draw function", func(t *testing.T) {
 		for _, m := range catalog {
 			if m.Fn == nil {

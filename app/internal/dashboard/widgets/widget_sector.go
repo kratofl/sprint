@@ -6,7 +6,7 @@ import (
 
 const WidgetSector WidgetType = "sector"
 
-func init() { RegisterWidget(WidgetSector, "Sector", CategoryTiming, 6, 3, false, nil, drawWidgetSector) }
+func init() { RegisterWidget(WidgetSector, "Sector", CategoryTiming, 6, 3, false, 15, nil, drawWidgetSector) }
 
 func drawWidgetSector(c WidgetCtx) {
 	c.Panel()

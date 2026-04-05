@@ -4,9 +4,7 @@ import "image/color"
 
 const WidgetFlags WidgetType = "flags"
 
-func init() {
-	RegisterWidget(WidgetFlags, "Flags", CategoryRace, 4, 2, false, nil, drawWidgetFlags)
-}
+func init() { RegisterWidget(WidgetFlags, "Flags", CategoryRace, 4, 2, true, 30, nil, drawWidgetFlags) }
 
 func drawWidgetFlags(c WidgetCtx) {
 	c.Panel()

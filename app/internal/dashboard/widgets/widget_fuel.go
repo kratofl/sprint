@@ -6,7 +6,7 @@ import (
 
 const WidgetFuel WidgetType = "fuel"
 
-func init() { RegisterWidget(WidgetFuel, "Fuel", CategoryRace, 5, 3, false, nil, drawWidgetFuel) }
+func init() { RegisterWidget(WidgetFuel, "Fuel", CategoryRace, 5, 3, false, 5, nil, drawWidgetFuel) }
 
 func drawWidgetFuel(c WidgetCtx) {
 	c.Panel()

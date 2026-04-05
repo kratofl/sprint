@@ -4,9 +4,7 @@ import "fmt"
 
 const WidgetBrakeBias WidgetType = "brake_bias"
 
-func init() {
-	RegisterWidget(WidgetBrakeBias, "Brake Bias", CategoryCar, 3, 2, false, nil, drawWidgetBrakeBias)
-}
+func init() { RegisterWidget(WidgetBrakeBias, "Brake Bias", CategoryCar, 3, 2, false, 15, nil, drawWidgetBrakeBias) }
 
 func drawWidgetBrakeBias(c WidgetCtx) {
 	c.Panel()
