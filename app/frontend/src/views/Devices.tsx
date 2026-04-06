@@ -1,10 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { type DetectedScreen, type SavedScreen, type LayoutMeta, type DeviceBinding, deviceScreenAPI, deviceBindingsAPI, dashAPI } from '@/lib/dash'
+import {
+  type SavedDevice, type CatalogEntry, type DeviceType, type LayoutMeta, type DeviceBinding,
+  deviceAPI, deviceBindingsAPI, dashAPI, deviceHasScreen, deviceID,
+} from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
 import { onEvent } from '@/lib/wails'
 import { Badge, Button, Skeleton, cn } from '@sprint/ui'
 
-// Devices view — master-detail layout.
+const DEVICE_TYPES: DeviceType[] = ['wheel', 'screen', 'buttonbox']
+const SECTION_LABELS: Record<DeviceType, string> = {
+  wheel:     'WHEELS',
+  screen:    'SCREENS',
+  buttonbox: 'BUTTON_BOXES',
+}
+
+function deviceKey(d: SavedDevice) {
+  return `${d.vid}-${d.pid}-${d.serial}`
+}
+
+type PanelView =
+  | { tag: 'empty' }
+  | { tag: 'catalog'; filterType: DeviceType }
+  | { tag: 'detail'; key: string }
 
 export default function Devices() {
   return (
@@ -13,247 +30,185 @@ export default function Devices() {
         <h2 className="terminal-header text-sm font-bold tracking-[0.2em]">DEVICE_CONFIG</h2>
       </div>
       <div className="flex flex-1 overflow-hidden min-h-0">
-        <VoCoreScreenSection />
+        <DeviceSection />
       </div>
     </div>
   )
 }
 
-const ROTATION_OPTIONS = [0, 90, 180, 270] as const
-type Rotation = (typeof ROTATION_OPTIONS)[number]
-
-function screenKey(s: SavedScreen | DetectedScreen) {
-  return `${s.vid}-${s.pid}-${'serial' in s ? s.serial : ''}`
-}
-
-// VoCoreScreenSection — list + detail panel.
-
-function VoCoreScreenSection() {
-  const [saved, setSaved]                   = useState<SavedScreen[]>([])
-  const [detected, setDetected]             = useState<DetectedScreen[]>([])
-  const [scanning, setScanning]             = useState(false)
-  const [selecting, setSelecting]           = useState<string | null>(null)
-  const [error, setError]                   = useState<string | null>(null)
-  const [screenStatus, setScreenStatus]     = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
-  const [screenError, setScreenError]       = useState<string | null>(null)
-  const [screenPaused, setScreenPaused]     = useState(false)
-  const [activeScreenKey, setActiveScreenKey] = useState<string | null>(null)
-  const [selectedKey, setSelectedKey]       = useState<string | null>(null)
-  const [layouts, setLayouts]               = useState<LayoutMeta[]>([])
+function DeviceSection() {
+  const [devices, setDevices]         = useState<SavedDevice[]>([])
+  const [catalog, setCatalog]         = useState<CatalogEntry[]>([])
+  const [layouts, setLayouts]         = useState<LayoutMeta[]>([])
   const [deviceOnlyCmds, setDeviceOnlyCmds] = useState<CommandMeta[]>([])
+  const [screenStatus, setScreenStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState<string | null>(null)
+  const [panel, setPanel]             = useState<PanelView>({ tag: 'empty' })
 
-  const loadSaved = useCallback(async () => {
+  const loadDevices = useCallback(async () => {
     try {
-      const screens = await deviceScreenAPI.getSavedScreens()
-      setSaved(screens)
-      return screens
+      const devs = await deviceAPI.getSavedDevices()
+      setDevices(devs)
+      return devs
     } catch (e) {
       setError(String(e))
       return []
     }
   }, [])
 
-  const loadLayouts = useCallback(async () => {
-    try {
-      const metas = await dashAPI.listLayouts()
-      setLayouts(metas)
-    } catch {
-      // non-critical
-    }
-  }, [])
-
-  const scan = useCallback(async () => {
-    setScanning(true)
-    setError(null)
-    try {
-      const [found, screens] = await Promise.all([
-        deviceScreenAPI.scanScreens(),
-        deviceScreenAPI.getSavedScreens(),
-      ])
-      setDetected(found)
-      setSaved(screens)
-
-      if (screens.length === 0 && found.length === 1) {
-        const s = found[0]
-        await deviceScreenAPI.selectScreen(s.vid, s.pid, s.serial, s.width, s.height, s.driver)
-        const updated = await deviceScreenAPI.getSavedScreens()
-        setSaved(updated)
-      }
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setScanning(false)
-    }
-  }, [])
+  useEffect(() => {
+    Promise.all([
+      loadDevices(),
+      deviceAPI.getCatalog().then(setCatalog).catch(() => {}),
+      dashAPI.listLayouts().then(setLayouts).catch(() => {}),
+      deviceAPI.getScreenStatus().then(setScreenStatus),
+      controlsAPI.getCommandCatalog()
+        .then(cmds => setDeviceOnlyCmds(cmds.filter(c => c.deviceOnly)))
+        .catch(() => {}),
+    ]).finally(() => setLoading(false))
+  }, [loadDevices])
 
   useEffect(() => {
-    scan()
-    loadLayouts()
-    deviceScreenAPI.getScreenPaused().then(setScreenPaused)
-    deviceScreenAPI.getScreen().then(active => {
-      if (active) setActiveScreenKey(screenKey(active))
-    })
-    controlsAPI.getCommandCatalog()
-      .then(cmds => setDeviceOnlyCmds(cmds.filter(c => c.deviceOnly)))
-      .catch(() => {})
-  }, [scan, loadLayouts])
-
-  useEffect(() => {
-    deviceScreenAPI.getScreenStatus().then(setScreenStatus)
     const unsubs = [
-      onEvent('screen:connected',    () => { setScreenStatus('connected'); setScreenError(null) }),
+      onEvent('screen:connected',    () => setScreenStatus('connected')),
       onEvent('screen:disconnected', () => setScreenStatus('disconnected')),
-      onEvent('screen:error',        (msg: string) => { setScreenStatus('disconnected'); setScreenError(msg) }),
-      onEvent('screen:paused',       () => setScreenPaused(true)),
-      onEvent('screen:resumed',      () => setScreenPaused(false)),
     ]
     return () => unsubs.forEach(fn => fn())
   }, [])
 
-  const isOnline = (s: SavedScreen) =>
-    detected.some(d => d.vid === s.vid && d.pid === s.pid && d.serial === s.serial)
-
-  const handleSelect = async (s: SavedScreen) => {
-    const key = screenKey(s)
-    setSelecting(key)
-    setError(null)
-    try {
-      await deviceScreenAPI.selectScreen(s.vid, s.pid, s.serial, s.width, s.height, s.driver)
-      setActiveScreenKey(key)
-      await loadSaved()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setSelecting(null)
-    }
+  const handleAddForType = (type: DeviceType) => {
+    setPanel({ tag: 'catalog', filterType: type })
   }
 
-  const handleScanAndRegister = async () => {
-    setScanning(true)
-    setError(null)
-    try {
-      const found = await deviceScreenAPI.scanScreens()
-      setDetected(found)
-      for (const s of found) {
-        const alreadySaved = saved.some(x => screenKey(x) === screenKey(s))
-        if (!alreadySaved) {
-          await deviceScreenAPI.selectScreen(s.vid, s.pid, s.serial, s.width, s.height, s.driver)
-        }
-      }
-      await loadSaved()
-    } catch (e) {
-      setError(String(e))
-    } finally {
-      setScanning(false)
-    }
+  const handleDeviceClick = (d: SavedDevice) => {
+    setPanel({ tag: 'detail', key: deviceKey(d) })
   }
 
-  const handleTogglePause = async () => {
-    const next = !screenPaused
-    setScreenPaused(next)
-    try {
-      await deviceScreenAPI.setScreenPaused(next)
-    } catch (e) {
-      setError(String(e))
-      setScreenPaused(screenPaused)
-    }
+  const handleCatalogAdd = async (catalogID: string) => {
+    await deviceAPI.addDevice(catalogID)
+    const updated = await loadDevices()
+    const entry = catalog.find(c => c.id === catalogID)
+    // Auto-select the newly added device in the detail panel.
+    const newDev = entry
+      ? updated.find(d =>
+          entry.vid === 0 && entry.pid === 0
+            ? deviceKey(d) !== deviceKey(devices.find(x => deviceKey(x) === deviceKey(d)) ?? d) // new entry
+            : d.vid === entry.vid && d.pid === entry.pid,
+        )
+      : undefined
+    const target = newDev ?? updated[updated.length - 1]
+    if (target) setPanel({ tag: 'detail', key: deviceKey(target) })
+    else setPanel({ tag: 'empty' })
   }
 
-  const selectedScreen = saved.find(s => screenKey(s) === selectedKey) ?? null
+  const handleRemove = async (d: SavedDevice) => {
+    await deviceAPI.removeDevice(d.vid, d.pid, d.serial)
+    await loadDevices()
+    setPanel({ tag: 'empty' })
+  }
+
+  const selectedDevice =
+    panel.tag === 'detail' ? devices.find(d => deviceKey(d) === panel.key) ?? null : null
+
+  const catalogForType =
+    panel.tag === 'catalog' ? catalog.filter(e => e.type === panel.filterType) : []
 
   return (
     <div className="flex flex-1 overflow-hidden min-h-0">
       {/* List panel */}
-      <div className="flex w-56 flex-shrink-0 flex-col border-r border-border overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h4 className="terminal-header text-[10px] font-bold text-text-muted">SCREENS</h4>
-          <Button
-            onClick={handleScanAndRegister}
-            disabled={scanning}
-            variant="neutral"
-            size="sm"
-            className="terminal-header h-6 px-2 text-[9px]"
-          >
-            {scanning ? '…' : '↻'}
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-          {error && <p className="mb-2 font-mono text-[9px] text-destructive">{error}</p>}
-
-          {scanning && saved.length === 0 ? (
-            <div className="space-y-1.5">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : saved.length === 0 ? (
-            <div className="flex flex-col items-center gap-1.5 py-6 text-center">
-              <p className="terminal-header text-[9px] text-text-muted">NO_SCREENS</p>
-              <p className="font-mono text-[8px] text-text-muted">Connect via USB · press ↻</p>
-            </div>
-          ) : (
-            saved.map(s => {
-              const key = screenKey(s)
-              const online = isOnline(s)
-              const panelSelected = selectedKey === key
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSelectedKey(key)}
-                  className={cn(
-                    'w-full rounded border px-3 py-2 text-left transition-colors',
-                    panelSelected
-                      ? 'border-primary/60 bg-primary/10'
-                      : 'border-border bg-card hover:border-border-strong hover:bg-card/80',
-                  )}
-                >
-                  <p className="truncate font-mono text-[10px] font-bold">{s.name}</p>
-                  <p className="font-mono text-[8px] text-text-muted uppercase">
-                    {s.driver}
-                    <span className={cn('ml-1.5', online ? 'text-success' : 'text-text-disabled')}>
-                      · {online ? 'CONNECTED' : 'OFFLINE'}
-                    </span>
-                  </p>
-                </button>
-              )
-            })
+      <div className="flex w-60 flex-shrink-0 flex-col border-r border-border overflow-hidden">
+        <div className="flex-1 overflow-y-auto py-2">
+          {error && (
+            <p className="mx-3 mb-2 font-mono text-[9px] text-destructive">{error}</p>
           )}
+
+          {DEVICE_TYPES.map(type => {
+            const group = devices.filter(d =>
+              d.type === type || (type === 'screen' && (d.type === '' || d.type === undefined)),
+            )
+            return (
+              <div key={type} className="mb-3">
+                <div className="flex items-center justify-between px-4 py-1.5">
+                  <span className="terminal-header text-[9px] font-bold text-text-muted">
+                    {SECTION_LABELS[type]}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1.5 font-mono text-[9px]"
+                    onClick={() => handleAddForType(type)}
+                  >
+                    + ADD
+                  </Button>
+                </div>
+
+                <div className="px-3 space-y-1">
+                  {loading && group.length === 0 ? (
+                    <Skeleton className="h-9 w-full" />
+                  ) : group.length === 0 ? (
+                    <p className="px-1 font-mono text-[8px] text-text-disabled">None added yet</p>
+                  ) : (
+                    group.map(d => {
+                      const key = deviceKey(d)
+                      const selected = panel.tag === 'detail' && panel.key === key
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => handleDeviceClick(d)}
+                          className={cn(
+                            'w-full rounded border px-3 py-2 text-left transition-colors',
+                            selected
+                              ? 'border-primary/60 bg-primary/10'
+                              : 'border-border bg-card hover:border-border-strong hover:bg-card/80',
+                          )}
+                        >
+                          <p className="truncate font-mono text-[10px] font-bold">{d.name}</p>
+                          <p className="font-mono text-[8px] uppercase text-text-muted">
+                            {d.driver || d.type || 'unknown'}
+                          </p>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Detail panel */}
+      {/* Right panel */}
       <div className="flex flex-1 flex-col overflow-y-auto">
-        {selectedScreen ? (
-          <ScreenDetail
-            screen={selectedScreen}
-            online={isOnline(selectedScreen)}
-            screenStatus={isOnline(selectedScreen) ? screenStatus : 'disconnected'}
-            screenError={screenError}
-            screenPaused={screenPaused}
-            isActive={screenKey(selectedScreen) === activeScreenKey}
-            selecting={selecting === screenKey(selectedScreen)}
-            layouts={layouts}
-            deviceOnlyCmds={deviceOnlyCmds}
-            onActivate={() => handleSelect(selectedScreen)}
-            onTogglePause={handleTogglePause}
-            onSaved={loadSaved}
+        {panel.tag === 'catalog' && (
+          <CatalogPanel
+            entries={catalogForType}
+            deviceType={panel.filterType}
+            onAdd={handleCatalogAdd}
+            onClose={() => setPanel({ tag: 'empty' })}
             onError={setError}
           />
-        ) : (
+        )}
+
+        {panel.tag === 'detail' && selectedDevice && (
+          <DeviceDetail
+            device={selectedDevice}
+            screenStatus={screenStatus}
+            layouts={layouts}
+            deviceOnlyCmds={deviceOnlyCmds}
+            onSaved={loadDevices}
+            onRemove={() => handleRemove(selectedDevice)}
+            onError={setError}
+          />
+        )}
+
+        {panel.tag === 'empty' && (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-            <p className="terminal-header text-[10px] text-text-muted">SELECT_A_SCREEN</p>
-            <p className="font-mono text-[9px] text-text-muted">Choose a screen from the list to configure it</p>
-            {screenError && (
-              <div className="mt-2 max-w-xs space-y-1">
-                <p className="font-mono text-[9px] text-destructive">SCREEN_ERR: {screenError}</p>
-                {screenError.toLowerCase().includes('access denied') && (
-                  <p className="font-mono text-[8px] text-text-muted">
-                    Close SimHub or other USB tools — Sprint will reconnect automatically.
-                  </p>
-                )}
-              </div>
-            )}
+            <p className="terminal-header text-[10px] text-text-muted">SELECT_OR_ADD</p>
+            <p className="font-mono text-[9px] text-text-muted">
+              Pick a device from the list, or click + ADD to register a new one
+            </p>
           </div>
         )}
       </div>
@@ -261,46 +216,182 @@ function VoCoreScreenSection() {
   )
 }
 
-// ScreenDetail — right panel shown when a screen is selected.
+// CatalogPanel — right panel showing available catalog entries to add.
 
-interface ScreenDetailProps {
-  screen: SavedScreen
-  online: boolean
-  screenStatus: 'connected' | 'disconnected' | 'unknown'
-  screenError: string | null
-  screenPaused: boolean
-  isActive: boolean
-  selecting: boolean
-  layouts: LayoutMeta[]
-  deviceOnlyCmds: CommandMeta[]
-  onActivate: () => void
-  onTogglePause: () => void
-  onSaved: () => Promise<SavedScreen[]>
+interface CatalogPanelProps {
+  entries: CatalogEntry[]
+  deviceType: DeviceType
+  onAdd: (catalogID: string) => Promise<void>
+  onClose: () => void
   onError: (msg: string) => void
 }
 
-function ScreenDetail({
-  screen, online, screenStatus, screenError, screenPaused, isActive, selecting, layouts,
-  deviceOnlyCmds, onActivate, onTogglePause, onSaved, onError,
-}: ScreenDetailProps) {
-  const [draft, setDraft]           = useState(screen.name)
-  const [renaming, setRenaming]     = useState(false)
-  const [rotation, setRotation]     = useState<Rotation>(screen.rotation as Rotation)
-  const [dashId, setDashId]         = useState(screen.dashId)
-  const [savingDash, setSavingDash] = useState(false)
-  const [bindings, setBindings]     = useState<DeviceBinding[]>([])
-  const [savingBindings, setSavingBindings] = useState(false)
-  const [bindingsSaved, setBindingsSaved]   = useState(false)
+function CatalogPanel({ entries, deviceType, onAdd, onClose, onError }: CatalogPanelProps) {
+  const [adding, setAdding] = useState<string | null>(null)
+
+  const handleAdd = async (id: string) => {
+    setAdding(id)
+    try {
+      await onAdd(id)
+    } catch (e) {
+      onError(String(e))
+      setAdding(null)
+    }
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="terminal-header text-[10px] font-bold">
+          ADD_{SECTION_LABELS[deviceType]}
+        </h3>
+        <Button variant="ghost" size="sm" className="h-6 px-2 font-mono text-[9px]" onClick={onClose}>
+          ✕ CANCEL
+        </Button>
+      </div>
+
+      {entries.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <p className="terminal-header text-[9px] text-text-muted">NO_CATALOG_ENTRIES</p>
+          <p className="font-mono text-[8px] text-text-muted max-w-xs">
+            No {deviceType} devices in the catalog yet.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(e => (
+            <div
+              key={e.id}
+              className="flex items-start justify-between gap-3 rounded border border-border bg-card px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] font-bold">{e.name}</p>
+                <p className="mt-0.5 font-mono text-[8px] text-text-muted">{e.description}</p>
+                {e.vid === 0 && e.pid === 0 ? (
+                  <p className="mt-0.5 font-mono text-[8px] text-text-disabled">
+                    Scans USB for first detected {e.driver} device
+                  </p>
+                ) : (
+                  <p className="mt-0.5 font-mono text-[8px] text-text-disabled uppercase">
+                    {e.driver} · {e.width}×{e.height}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+                disabled={adding !== null}
+                onClick={() => handleAdd(e.id)}
+              >
+                {adding === e.id ? 'ADDING…' : 'ADD'}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// DeviceDetail — right panel shown when a device is selected.
+
+const ROTATION_OPTIONS = [0, 90, 180, 270] as const
+type Rotation = (typeof ROTATION_OPTIONS)[number]
+
+interface DeviceDetailProps {
+  device: SavedDevice
+  screenStatus: 'connected' | 'disconnected' | 'unknown'
+  layouts: LayoutMeta[]
+  deviceOnlyCmds: CommandMeta[]
+  onSaved: () => Promise<SavedDevice[]>
+  onRemove: () => Promise<void>
+  onError: (msg: string) => void
+}
+
+function DeviceDetail({
+  device, screenStatus, layouts, deviceOnlyCmds, onSaved, onRemove, onError,
+}: DeviceDetailProps) {
+  const isScreen = deviceHasScreen(device.type)
+  const id = deviceID(device.vid, device.pid, device.serial)
+
+  const [draft, setDraft]                       = useState(device.name)
+  const [renaming, setRenaming]                 = useState(false)
+  const [rotation, setRotation]                 = useState<Rotation>(device.rotation as Rotation)
+  const [dashId, setDashId]                     = useState(device.dashId)
+  const [savingDash, setSavingDash]             = useState(false)
+  const [paused, setPaused]                     = useState(false)
+  const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
+  const [savingBindings, setSavingBindings]     = useState(false)
+  const [bindingsSaved, setBindingsSaved]       = useState(false)
+  const [removing, setRemoving]                 = useState(false)
 
   useEffect(() => {
-    setDraft(screen.name)
-    setRotation(screen.rotation as Rotation)
-    setDashId(screen.dashId)
+    setDraft(device.name)
+    setRotation(device.rotation as Rotation)
+    setDashId(device.dashId)
     setRenaming(false)
-    deviceBindingsAPI.getDeviceBindings(screen.vid, screen.pid, screen.serial)
+    if (isScreen) {
+      deviceAPI.getDevicePaused(id).then(setPaused).catch(() => {})
+    }
+    deviceBindingsAPI
+      .getDeviceBindings(device.vid, device.pid, device.serial)
       .then(setBindings)
       .catch(() => setBindings([]))
-  }, [screen.vid, screen.pid, screen.serial, screen.name, screen.rotation, screen.dashId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const commitRename = async () => {
+    const trimmed = draft.trim()
+    if (!trimmed || trimmed === device.name) {
+      setDraft(device.name)
+      setRenaming(false)
+      return
+    }
+    try {
+      await deviceAPI.renameDevice(device.vid, device.pid, device.serial, trimmed)
+      await onSaved()
+    } catch (e) {
+      onError(String(e))
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  const handleRotation = async (r: Rotation) => {
+    setRotation(r)
+    try {
+      await deviceAPI.setScreenRotation(device.vid, device.pid, device.serial, r)
+    } catch (e) {
+      onError(String(e))
+      setRotation(device.rotation as Rotation)
+    }
+  }
+
+  const handleDashChange = async (newId: string) => {
+    setDashId(newId)
+    setSavingDash(true)
+    try {
+      await deviceAPI.setDashLayout(device.vid, device.pid, device.serial, newId)
+      await onSaved()
+    } catch (e) {
+      onError(String(e))
+      setDashId(device.dashId)
+    } finally {
+      setSavingDash(false)
+    }
+  }
+
+  const handleTogglePause = async () => {
+    const next = !paused
+    setPaused(next)
+    try {
+      await deviceAPI.setDevicePaused(id, next)
+    } catch (e) {
+      onError(String(e))
+      setPaused(paused)
+    }
+  }
 
   const getDeviceButton = (commandId: string) =>
     bindings.find(b => b.command === commandId)?.button ?? 0
@@ -316,7 +407,7 @@ function ScreenDetail({
   const handleSaveBindings = async () => {
     setSavingBindings(true)
     try {
-      await deviceBindingsAPI.saveDeviceBindings(screen.vid, screen.pid, screen.serial, bindings)
+      await deviceBindingsAPI.saveDeviceBindings(device.vid, device.pid, device.serial, bindings)
       setBindingsSaved(true)
       setTimeout(() => setBindingsSaved(false), 2000)
     } catch (e) {
@@ -326,86 +417,35 @@ function ScreenDetail({
     }
   }
 
-  const commitRename = async () => {
-    const trimmed = draft.trim()
-    if (!trimmed || trimmed === screen.name) {
-      setDraft(screen.name)
-      setRenaming(false)
-      return
-    }
+  const handleRemove = async () => {
+    setRemoving(true)
     try {
-      await deviceScreenAPI.renameScreen(screen.vid, screen.pid, screen.serial, trimmed)
-      await onSaved()
+      await onRemove()
     } catch (e) {
       onError(String(e))
-    } finally {
-      setRenaming(false)
-    }
-  }
-
-  const handleRotation = async (r: Rotation) => {
-    setRotation(r)
-    try {
-      await deviceScreenAPI.setScreenRotation(screen.vid, screen.pid, screen.serial, r)
-    } catch (e) {
-      onError(String(e))
-      setRotation(screen.rotation as Rotation)
-    }
-  }
-
-  const handleDashChange = async (id: string) => {
-    setDashId(id)
-    setSavingDash(true)
-    try {
-      await deviceScreenAPI.setDashLayout(screen.vid, screen.pid, screen.serial, id)
-      await onSaved()
-    } catch (e) {
-      onError(String(e))
-      setDashId(screen.dashId)
-    } finally {
-      setSavingDash(false)
+      setRemoving(false)
     }
   }
 
   const activeDashId = dashId || layouts[0]?.id || ''
 
-  // Derive screen control state.
-  const controlState: 'not-active' | 'rendering' | 'paused' =
-    !isActive ? 'not-active' : screenPaused ? 'paused' : 'rendering'
-
-  const controlLabel = {
-    'not-active': 'USE THIS SCREEN',
-    'rendering':  'PAUSE SPRINT',
-    'paused':     'RESUME SPRINT',
-  }[controlState]
-
-  const controlDescription = {
-    'not-active': 'Sprint is not using this screen',
-    'rendering':  'Sprint is sending frames — click to release so another app can use the screen',
-    'paused':     'USB released — SimHub or another app can control this screen',
-  }[controlState]
-
-  const controlVariant: 'primary' | 'neutral' | 'outline' =
-    controlState === 'paused' ? 'primary' : controlState === 'rendering' ? 'neutral' : 'outline'
-
-  const handleControlAction = () => {
-    if (controlState === 'not-active') onActivate()
-    else onTogglePause()
-  }
+  const typeLabel =
+    device.type === 'wheel' ? 'WHEEL' :
+    device.type === 'buttonbox' ? 'BUTTON_BOX' : 'SCREEN'
 
   return (
     <div className="p-6 space-y-6">
       {/* Name row */}
       <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1 min-w-0">
+        <div className="flex flex-col gap-1.5 min-w-0">
           {renaming ? (
             <input
               autoFocus
               value={draft}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter') commitRename()
-                if (e.key === 'Escape') { setDraft(screen.name); setRenaming(false) }
+                if (e.key === 'Enter')  commitRename()
+                if (e.key === 'Escape') { setDraft(device.name); setRenaming(false) }
               }}
               onBlur={commitRename}
               className="rounded bg-background px-1 font-mono text-sm font-bold outline outline-1 outline-primary"
@@ -417,118 +457,115 @@ function ScreenDetail({
               className="group flex items-center gap-1.5 text-left"
             >
               <span className="font-mono text-sm font-bold group-hover:text-primary transition-colors">
-                {screen.name}
+                {device.name}
               </span>
               <PencilIcon className="text-text-disabled group-hover:text-primary transition-colors flex-shrink-0" />
             </button>
           )}
-          <span className="font-mono text-[9px] text-text-muted">
-            {screen.width}×{screen.height}
-            {screen.serial && <span className="ml-2">S/N: {screen.serial}</span>}
-            <span className="ml-2 uppercase">{screen.driver}</span>
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="neutral" className="terminal-header">{typeLabel}</Badge>
+            {isScreen && device.driver && (
+              <span className="font-mono text-[9px] text-text-muted uppercase">{device.driver}</span>
+            )}
+            {isScreen && device.width > 0 && (
+              <span className="font-mono text-[9px] text-text-muted">
+                {device.width}×{device.height}
+              </span>
+            )}
+            {device.serial && (
+              <span className="font-mono text-[9px] text-text-muted">S/N: {device.serial}</span>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2">
-          {online && screenStatus === 'connected' ? (
+          {isScreen && screenStatus === 'connected' && (
             <Badge variant="connected" className="terminal-header">CONNECTED</Badge>
-          ) : !online ? (
-            <Badge variant="neutral" className="terminal-header">OFFLINE</Badge>
-          ) : null}
+          )}
         </div>
       </div>
 
-      {/* Screen control — combined activate + pause card */}
-      <div className="flex items-center justify-between rounded border border-border bg-card px-4 py-3 gap-3">
-        <div className="min-w-0">
-          <p className={cn(
-            'font-mono text-[10px] font-bold',
-            controlState === 'rendering' && 'text-success',
-            controlState === 'paused'    && 'text-text-muted',
-          )}>
-            {controlState === 'not-active' && 'NOT IN USE'}
-            {controlState === 'rendering'  && 'RENDERING'}
-            {controlState === 'paused'     && 'PAUSED'}
-          </p>
-          <p className="font-mono text-[9px] text-text-muted leading-snug">
-            {controlDescription}
-          </p>
-          {selecting && (
-            <p className="font-mono text-[9px] text-text-muted mt-0.5">Activating…</p>
-          )}
-          {screenError && controlState !== 'rendering' && (
-            <div className="mt-1 space-y-0.5">
-              <p className="font-mono text-[9px] text-destructive">{screenError}</p>
-              {screenError.toLowerCase().includes('access denied') && (
-                <p className="font-mono text-[8px] text-text-muted">
-                  Close SimHub or other USB tools — Sprint will reconnect automatically.
-                </p>
-              )}
+      {/* Screen-specific controls */}
+      {isScreen && (
+        <>
+          {/* Pause/Resume */}
+          <div className="flex items-center justify-between rounded border border-border bg-card px-4 py-3 gap-3">
+            <div className="min-w-0">
+              <p className={cn(
+                'font-mono text-[10px] font-bold',
+                !paused ? 'text-success' : 'text-text-muted',
+              )}>
+                {paused ? 'PAUSED' : 'RENDERING'}
+              </p>
+              <p className="font-mono text-[9px] text-text-muted leading-snug">
+                {paused
+                  ? 'USB released — another app can control this screen'
+                  : 'Sprint is actively sending frames to this screen'}
+              </p>
             </div>
-          )}
-        </div>
-        <Button
-          size="sm"
-          variant={controlVariant}
-          className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
-          onClick={handleControlAction}
-          disabled={selecting}
-        >
-          {controlLabel}
-        </Button>
-      </div>
-
-      {/* Rotation */}
-      <div className="space-y-1.5">
-        <p className="font-mono text-[9px] font-bold text-text-muted">ROTATION</p>
-        <div className="flex gap-1.5">
-          {ROTATION_OPTIONS.map(r => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => handleRotation(r)}
-              className={cn(
-                'rounded px-3 py-1 font-mono text-[10px] transition-colors border',
-                rotation === r
-                  ? 'bg-primary text-background border-primary'
-                  : 'bg-background text-text-muted border-border hover:text-foreground',
-              )}
+            <Button
+              size="sm"
+              variant={paused ? 'primary' : 'neutral'}
+              className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+              onClick={handleTogglePause}
             >
-              {r}°
-            </button>
-          ))}
-        </div>
-      </div>
+              {paused ? 'RESUME' : 'PAUSE'}
+            </Button>
+          </div>
 
-      {/* Dash layout assignment */}
-      <div className="space-y-1.5">
-        <p className="font-mono text-[9px] font-bold text-text-muted">
-          DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
-        </p>
-        {layouts.length === 0 ? (
-          <p className="font-mono text-[9px] text-text-muted">
-            No layouts saved yet — create one in DASH_STUDIO
-          </p>
-        ) : (
-          <select
-            value={activeDashId}
-            onChange={e => handleDashChange(e.target.value)}
-            disabled={savingDash}
-            className={cn(
-              'w-full rounded border border-border bg-background px-3 py-1.5',
-              'font-mono text-[10px] text-foreground',
-              'focus:outline-none focus:ring-1 focus:ring-primary',
-              'disabled:opacity-50',
+          {/* Rotation */}
+          <div className="space-y-1.5">
+            <p className="font-mono text-[9px] font-bold text-text-muted">ROTATION</p>
+            <div className="flex gap-1.5">
+              {ROTATION_OPTIONS.map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => handleRotation(r)}
+                  className={cn(
+                    'rounded border px-3 py-1 font-mono text-[10px] transition-colors',
+                    rotation === r
+                      ? 'border-primary bg-primary text-background'
+                      : 'border-border bg-background text-text-muted hover:text-foreground',
+                  )}
+                >
+                  {r}°
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Dash layout assignment */}
+          <div className="space-y-1.5">
+            <p className="font-mono text-[9px] font-bold text-text-muted">
+              DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
+            </p>
+            {layouts.length === 0 ? (
+              <p className="font-mono text-[9px] text-text-muted">
+                No layouts saved yet — create one in DASH_STUDIO
+              </p>
+            ) : (
+              <select
+                value={activeDashId}
+                onChange={e => handleDashChange(e.target.value)}
+                disabled={savingDash}
+                className={cn(
+                  'w-full rounded border border-border bg-background px-3 py-1.5',
+                  'font-mono text-[10px] text-foreground',
+                  'focus:outline-none focus:ring-1 focus:ring-primary',
+                  'disabled:opacity-50',
+                )}
+              >
+                {layouts.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
             )}
-          >
-            {layouts.map(m => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
-      {/* Button bindings — device-only commands assigned per screen */}
+      {/* Button bindings */}
       {deviceOnlyCmds.length > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -549,18 +586,17 @@ function ScreenDetail({
             </div>
           </div>
           <p className="font-mono text-[8px] text-text-muted">
-            Click CAPTURE then press the physical button on this screen's wheel.
+            Click CAPTURE then press the physical button on this device.
           </p>
           <div className="space-y-1">
             {deviceOnlyCmds.map(cmd => {
               const btn = getDeviceButton(cmd.id)
-              const bound = btn > 0
               return (
                 <DeviceCommandRow
                   key={cmd.id}
                   cmd={cmd}
                   button={btn}
-                  bound={bound}
+                  bound={btn > 0}
                   onButtonChange={b => setDeviceButton(cmd.id, b)}
                 />
               )
@@ -568,6 +604,19 @@ function ScreenDetail({
           </div>
         </div>
       )}
+
+      {/* Remove device */}
+      <div className="border-t border-border pt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="terminal-header h-7 px-3 text-[9px] text-destructive hover:border-destructive hover:bg-destructive/10"
+          disabled={removing}
+          onClick={handleRemove}
+        >
+          {removing ? 'REMOVING…' : 'REMOVE_DEVICE'}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -577,10 +626,7 @@ function ScreenDetail({
 type DeviceCaptureState = 'idle' | 'capturing' | 'timeout'
 
 function DeviceCommandRow({
-  cmd,
-  button,
-  bound,
-  onButtonChange,
+  cmd, button, bound, onButtonChange,
 }: {
   cmd: CommandMeta
   button: number
@@ -663,19 +709,10 @@ function DeviceCommandRow({
 
 function PencilIcon({ className }: { className?: string }) {
   return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 11 11"
-      fill="none"
-      className={className}
-    >
+    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" className={className}>
       <path
         d="M7.5 1.5 L9.5 3.5 L3.5 9.5 L1 10 L1.5 7.5 Z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"
       />
       <path d="M6.5 2.5 L8.5 4.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
     </svg>

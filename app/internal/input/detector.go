@@ -20,11 +20,20 @@ var ErrCaptureTimeout = errors.New("input: no button pressed within timeout")
 // session is already active.
 var ErrCaptureInProgress = errors.New("input: capture already in progress")
 
-// inputEventCh receives button numbers from the Raw Input event loop.
-// Physical button presses send their HID usage number (1–65535).
-// Relative-axis encoder ticks send virtual numbers (axisVirtualBase+).
+// ButtonEvent carries a button press together with the VID and PID of the
+// HID device that fired it. VID and PID are zero on platforms where device
+// identity is not available (non-Windows stubs).
+type ButtonEvent struct {
+	VID    uint16
+	PID    uint16
+	Button int
+}
+
+// inputEventCh receives button events from the Raw Input event loop.
+// Physical button presses carry their HID usage number (1–65535).
+// Relative-axis encoder ticks carry virtual numbers (axisVirtualBase+).
 // Buffered to absorb bursts from multi-mode wheels.
-var inputEventCh = make(chan int, 128)
+var inputEventCh = make(chan ButtonEvent, 128)
 
 // Detector listens to wheel button events and dispatches the bound command.
 type Detector struct {
@@ -32,21 +41,38 @@ type Detector struct {
 	capturing atomic.Bool
 
 	bindMu  sync.RWMutex
-	bindMap map[int]commands.Command // button number → command
+	bindMap map[deviceKey]bindTarget
+}
+
+// deviceKey identifies a specific button on a specific HID device by VID+PID.
+// VID/PID zero is a wildcard that matches any device.
+type deviceKey struct {
+	VID    uint16
+	PID    uint16
+	Button int
+}
+
+// bindTarget is the resolved command and optional screen ID for a binding.
+// ScreenID is non-empty for per-device bindings (integrated wheel+screen);
+// empty for global bindings that apply regardless of source device.
+type bindTarget struct {
+	Command  commands.Command
+	ScreenID string
 }
 
 // NewDetector creates a Detector.
 func NewDetector(logger *slog.Logger) *Detector {
-	return &Detector{logger: logger, bindMap: map[int]commands.Command{}}
+	return &Detector{logger: logger, bindMap: map[deviceKey]bindTarget{}}
 }
 
 // SetBindings atomically replaces the complete button→command mapping.
 // Safe to call from any goroutine at any time.
 func (d *Detector) SetBindings(bindings []Binding) {
-	m := make(map[int]commands.Command, len(bindings))
+	m := make(map[deviceKey]bindTarget, len(bindings))
 	for _, b := range bindings {
 		if b.Button > 0 && b.Command != "" {
-			m[b.Button] = b.Command
+			key := deviceKey{VID: b.DeviceVID, PID: b.DevicePID, Button: b.Button}
+			m[key] = bindTarget{Command: b.Command, ScreenID: b.ScreenID}
 		}
 	}
 	d.bindMu.Lock()
@@ -55,12 +81,16 @@ func (d *Detector) SetBindings(bindings []Binding) {
 	d.logger.Info("input bindings updated", "count", len(m))
 }
 
-// lookup returns the command bound to btn, or an empty string if none.
-func (d *Detector) lookup(btn int) commands.Command {
+// lookup returns the command target for the given button event.
+// Tries exact VID/PID match first, then falls back to the VID=0/PID=0 wildcard.
+func (d *Detector) lookup(evt ButtonEvent) (bindTarget, bool) {
 	d.bindMu.RLock()
-	cmd := d.bindMap[btn]
-	d.bindMu.RUnlock()
-	return cmd
+	defer d.bindMu.RUnlock()
+	if t, ok := d.bindMap[deviceKey{VID: evt.VID, PID: evt.PID, Button: evt.Button}]; ok {
+		return t, true
+	}
+	t, ok := d.bindMap[deviceKey{VID: 0, PID: 0, Button: evt.Button}]
+	return t, ok
 }
 
 // Run reads button events from the Raw Input loop and dispatches bound commands.
@@ -72,14 +102,14 @@ func (d *Detector) Run(ctx context.Context) {
 		case <-ctx.Done():
 			d.logger.Info("detector stopped")
 			return
-		case btn := <-inputEventCh:
+		case evt := <-inputEventCh:
 			if d.capturing.Load() {
 				// CaptureNextButton is consuming events — do not dispatch.
 				continue
 			}
-			if cmd := d.lookup(btn); cmd != "" {
-				d.logger.Debug("dispatching command", "button", btn, "command", cmd)
-				commands.Dispatch(cmd, nil)
+			if target, ok := d.lookup(evt); ok {
+				d.logger.Debug("dispatching command", "button", evt.Button, "vid", evt.VID, "pid", evt.PID, "command", target.Command, "screen", target.ScreenID)
+				commands.Dispatch(target.Command, target.ScreenID)
 			}
 		}
 	}
@@ -116,8 +146,8 @@ drained:
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()
-	case btn := <-inputEventCh:
-		return btn, nil
+	case evt := <-inputEventCh:
+		return evt.Button, nil
 	case <-timer.C:
 		return 0, ErrCaptureTimeout
 	}

@@ -18,35 +18,33 @@ export function DashGetPreview(arg1:string):Promise<string>;
 
 export function DashListLayouts():Promise<Array<dashboard.LayoutMeta>>;
 
-export function DashLoadLayout():Promise<dashboard.DashLayout>;
-
 export function DashLoadLayoutByID(arg1:string):Promise<dashboard.DashLayout>;
 
 export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
 
 export function DashSetDefault(arg1:string):Promise<void>;
 
+export function DeviceAdd(arg1:string):Promise<void>;
+
+export function DeviceGetCatalog():Promise<Array<devices.CatalogEntry>>;
+
 export function DeviceGetDeviceBindings(arg1:number,arg2:number,arg3:string):Promise<Array<devices.DeviceBinding>>;
 
-export function DeviceGetSavedScreens():Promise<Array<devices.SavedScreen>>;
+export function DeviceGetDevicePaused(arg1:string):Promise<boolean>;
 
-export function DeviceGetScreen():Promise<devices.SavedScreen>;
-
-export function DeviceGetScreenPaused():Promise<boolean>;
+export function DeviceGetSavedDevices():Promise<Array<devices.SavedDevice>>;
 
 export function DeviceGetScreenStatus():Promise<string>;
 
-export function DeviceRenameScreen(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
+export function DeviceRemoveDevice(arg1:number,arg2:number,arg3:string):Promise<void>;
+
+export function DeviceRenameDevice(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
 
 export function DeviceSaveDeviceBindings(arg1:number,arg2:number,arg3:string,arg4:Array<devices.DeviceBinding>):Promise<void>;
 
-export function DeviceScanScreens():Promise<Array<devices.DetectedScreen>>;
-
-export function DeviceSelectScreen(arg1:number,arg2:number,arg3:string,arg4:number,arg5:number,arg6:string):Promise<void>;
-
 export function DeviceSetDashLayout(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
 
-export function DeviceSetScreenPaused(arg1:boolean):Promise<void>;
+export function DeviceSetDevicePaused(arg1:string,arg2:boolean):Promise<void>;
 
 export function DeviceSetScreenRotation(arg1:number,arg2:number,arg3:string,arg4:number):Promise<void>;
 

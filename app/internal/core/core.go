@@ -1,47 +1,55 @@
 // Package core wires all backend services together.
-// It owns no business logic — it starts, stops, and connects the other packages.
+// It owns no business logic - it starts, stops, and connects the other packages.
 package core
 
 import (
-	"context"
-	"errors"
-	"log/slog"
-	"time"
+"context"
+"errors"
+"log/slog"
+"sync"
+"time"
 
-	"github.com/kratofl/sprint/app/internal/commands"
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/devices"
-	"github.com/kratofl/sprint/app/internal/hardware"
-	"github.com/kratofl/sprint/app/internal/input"
-	springsync "github.com/kratofl/sprint/app/internal/sync"
-	"github.com/kratofl/sprint/pkg/dto"
-	"github.com/kratofl/sprint/pkg/games"
-	"github.com/kratofl/sprint/pkg/games/lemansultimate"
+"github.com/kratofl/sprint/app/internal/commands"
+"github.com/kratofl/sprint/app/internal/dashboard"
+"github.com/kratofl/sprint/app/internal/devices"
+"github.com/kratofl/sprint/app/internal/hardware"
+"github.com/kratofl/sprint/app/internal/input"
+"github.com/kratofl/sprint/pkg/dto"
+"github.com/kratofl/sprint/pkg/games"
+"github.com/kratofl/sprint/pkg/games/lemansultimate"
 )
 
 // EmitFn is a function that emits a named event with arbitrary data to the
 // Wails frontend. It matches the signature of runtime.EventsEmit.
 type EmitFn func(event string, data ...any)
 
+// deviceEntry holds the runtime state for a single registered device.
+type deviceEntry struct {
+driver        hardware.ScreenDriver  // nil for button-box type devices
+pageIndex     int
+layoutID      string
+currentLayout *dashboard.DashLayout // stored for page count during CyclePage
+cancel        context.CancelFunc
+}
+
 // Coordinator is the top-level wiring of all backend subsystems.
 type Coordinator struct {
-	logger  *slog.Logger
-	adapter games.GameAdapter
-	screen  hardware.ScreenDriver
-	input   *input.Detector
-	sync    *springsync.Client
-	devMgr  *devices.Manager // for reloading device bindings on demand
+logger  *slog.Logger
+adapter games.GameAdapter
+input   *input.Detector
+devMgr  *devices.Manager
 
-	emit EmitFn // Wails runtime event emitter; no-op until SetEmit is called
+emit EmitFn
 
-	// Throttle: frontend receives at most one frame per frontendFrameInterval.
-	lastFrontendEmit time.Time
+lastFrontendEmit time.Time
 
-	connected bool // true while the game adapter is live
+connected bool
+idleState bool
 
-	activePageIndex int
-	currentLayout   *dashboard.DashLayout
-	idleState       bool
+mu      sync.RWMutex
+entries map[string]*deviceEntry // deviceID -> entry
+
+rootCtx context.Context // set by Start; used when adding devices at runtime
 }
 
 const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
@@ -50,335 +58,435 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 // each subsystem receives a child logger tagged with its component name.
 // dashMgr and devMgr are used to restore the saved layout and screen on startup.
 func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
-	screen := hardware.NewVoCoreDriver(logger.With("component", "screen"))
-
-	var initialLayout *dashboard.DashLayout
-
-	// Load screen config and its assigned dash layout from the device registry.
-	if devMgr != nil {
-		if reg, err := devMgr.Load(); err == nil {
-			if active := devices.ActiveScreen(reg); active != nil {
-				screen.SetScreen(voCoreConfigFrom(devices.ToScreenConfig(active)))
-				if dashMgr != nil {
-					if layout, err := dashMgr.Load(active.DashID); err == nil && layout != nil {
-						initialLayout = layout
-						screen.SetLayout(layout)
-					}
-				}
-			}
-		}
-	}
-
-	// If no active screen, still load the default dash layout.
-	if dashMgr != nil && devMgr == nil {
-		if layout, err := dashMgr.Load(""); err == nil && layout != nil {
-			initialLayout = layout
-			screen.SetLayout(layout)
-		}
-	}
-
-	c := &Coordinator{
-		logger:        logger,
-		adapter:       lemansultimate.New(),
-		screen:        screen,
-		input:         input.NewDetector(logger.With("component", "input")),
-		sync:          springsync.NewClient(logger.With("component", "sync")),
-		emit:          func(string, ...any) {}, // safe no-op before Wails startup
-		devMgr:        devMgr,
-		currentLayout: initialLayout,
-		idleState:     true,
-	}
-
-	c.screen.SetIdle(true)
-
-	commands.Handle(dashboard.CmdNextDashPage, func(_ any) { c.CyclePage(+1) })
-	commands.Handle(dashboard.CmdPrevDashPage, func(_ any) { c.CyclePage(-1) })
-
-	return c
+c := &Coordinator{
+logger:    logger,
+adapter:   lemansultimate.New(),
+input:     input.NewDetector(logger.With("component", "input")),
+emit:      func(string, ...any) {},
+devMgr:    devMgr,
+entries:   map[string]*deviceEntry{},
+idleState: true,
 }
 
-// SetEmit provides the Wails runtime event emitter after the Wails context is
-// available. Call this from App.Startup before Start.
+if devMgr != nil {
+if reg, err := devMgr.Load(); err == nil {
+for i := range reg.Devices {
+d := &reg.Devices[i]
+if !d.HasScreen() {
+continue
+}
+id := devices.DeviceID(d.VID, d.PID, d.Serial)
+drv, drvErr := hardware.NewDriver(d.Driver, logger.With("component", "screen", "device", id))
+if drvErr != nil {
+logger.Warn("unsupported driver, defaulting to vocore", "device", id, "err", drvErr)
+drv = hardware.NewVoCoreDriver(logger.With("component", "screen", "device", id))
+}
+drv.Configure(toHardwareScreenConfig(devices.ToScreenConfig(d)))
+
+entry := &deviceEntry{driver: drv, cancel: func() {}}
+if dashMgr != nil {
+if layout, lerr := dashMgr.Load(d.DashID); lerr == nil && layout != nil {
+drv.SetLayout(layout)
+entry.layoutID = layout.ID
+entry.currentLayout = layout
+}
+}
+drv.SetIdle(true)
+c.entries[id] = entry
+}
+}
+}
+
+commands.Handle(dashboard.CmdNextDashPage, func(p any) {
+screenID, _ := p.(string)
+c.CyclePage(screenID, +1)
+})
+commands.Handle(dashboard.CmdPrevDashPage, func(p any) {
+screenID, _ := p.(string)
+c.CyclePage(screenID, -1)
+})
+
+return c
+}
+
+// SetEmit provides the Wails runtime event emitter. Call from App.Startup before Start.
 func (c *Coordinator) SetEmit(fn EmitFn) {
-	if fn != nil {
-		c.emit = fn
-		if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
-			vd.SetEmit(fn)
-		}
-	}
+if fn == nil {
+return
 }
-
-// SetScreenConfig updates the active screen configuration and reconfigures the
-// renderer. Safe to call after startup; the renderer will reconnect on the next
-// tick if the VID/PID changed.
-func (c *Coordinator) SetScreenConfig(cfg devices.ScreenConfig) {
-	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
-		vd.SetScreen(voCoreConfigFrom(cfg))
-	}
+c.emit = fn
+c.mu.RLock()
+defer c.mu.RUnlock()
+for _, e := range c.entries {
+if e.driver != nil {
+e.driver.SetEmit(fn)
 }
-
-// voCoreConfigFrom converts a hardware-agnostic ScreenConfig to a VoCoreConfig.
-func voCoreConfigFrom(cfg devices.ScreenConfig) hardware.VoCoreConfig {
-	return hardware.VoCoreConfig{
-		VID:        cfg.VID,
-		PID:        cfg.PID,
-		Width:      cfg.Width,
-		Height:     cfg.Height,
-		Rotation:   cfg.Rotation,
-		DriverType: string(cfg.Driver),
-	}
 }
-
-// GetScreenStatus returns "connected" if the VoCore USB link is active,
-// "disconnected" otherwise. Used by the frontend on mount for initial state.
-func (c *Coordinator) GetScreenStatus() string {
-	if vd, ok := c.screen.(*hardware.VoCoreDriver); ok {
-		if vd.IsScreenConnected() {
-			return "connected"
-		}
-		return "disconnected"
-	}
-	return "unknown"
-}
-
-// SetScreenPaused pauses or resumes screen rendering. When paused, the USB
-// handle is released so another application (e.g., SimHub) can drive the screen.
-func (c *Coordinator) SetScreenPaused(paused bool) {
-	c.screen.SetPaused(paused)
-}
-
-// GetScreenPaused reports whether screen rendering is currently paused.
-func (c *Coordinator) GetScreenPaused() bool {
-	return c.screen.GetPaused()
-}
-
-// SetDashLayout updates the layout used by the VoCore renderer. Resets the
-// active page to 0. Takes effect on the next rendered frame.
-func (c *Coordinator) SetDashLayout(layout *dashboard.DashLayout) {
-	c.activePageIndex = 0
-	c.currentLayout = layout
-	c.screen.SetLayout(layout)
-	c.screen.SetActivePage(0)
-}
-
-// CurrentLayoutID returns the ID of the layout currently loaded into the
-// renderer, or an empty string if no layout is loaded.
-func (c *Coordinator) CurrentLayoutID() string {
-	if c.currentLayout == nil {
-		return ""
-	}
-	return c.currentLayout.ID
-}
-
-// Wraps around. No-op if layout is nil or has no pages.
-func (c *Coordinator) CyclePage(direction int) {
-	if c.currentLayout == nil || len(c.currentLayout.Pages) == 0 {
-		return
-	}
-	n := len(c.currentLayout.Pages)
-	c.activePageIndex = ((c.activePageIndex+direction)%n + n) % n
-	c.screen.SetActivePage(c.activePageIndex)
-	c.emit("dash:page-changed", map[string]any{
-		"pageIndex": c.activePageIndex,
-		"pageName":  c.currentLayout.Pages[c.activePageIndex].Name,
-	})
-}
-
-// updateIdleState detects session idle/active transitions and propagates them
-// to the screen. Idle whenever the player does not have an active vehicle on
-// track — covers game not running, garage, pre-session menu, and post-session.
-func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
-	isIdle := !frame.Session.InCar
-	if isIdle != c.idleState {
-		c.idleState = isIdle
-		c.screen.SetIdle(isIdle)
-		c.emit("dash:idle-changed", map[string]any{"idle": isIdle})
-
-		// When a session becomes active, snap back to the first page so the
-		// driver sees live telemetry data immediately rather than the idle screen.
-		if !isIdle {
-			c.activePageIndex = 0
-			c.screen.SetActivePage(0)
-			c.emit("dash:page-changed", map[string]any{
-				"pageIndex": 0,
-				"pageName":  firstPageName(c.currentLayout),
-			})
-		}
-	}
-}
-
-// ReloadInputBindings merges the global controls config with the active screen's
-// device bindings and pushes the combined table to the input detector.
-// Call after any save that changes either source.
-func (c *Coordinator) ReloadInputBindings() {
-	var merged []input.Binding
-
-	// Global controls config (SetTargetLap, etc.)
-	if cfg, err := input.LoadConfig(); err == nil {
-		for _, b := range cfg.Bindings {
-			merged = append(merged, b)
-		}
-	} else {
-		c.logger.Warn("input: failed to load controls config", "err", err)
-	}
-
-	// Active screen device bindings (NextPage, PrevPage, etc.)
-	if c.devMgr != nil {
-		if reg, err := c.devMgr.Load(); err == nil {
-			if active := devices.ActiveScreen(reg); active != nil {
-				for _, db := range active.Bindings {
-					if db.Button > 0 && db.Command != "" {
-						merged = append(merged, input.Binding{
-							Button:  db.Button,
-							Command: commands.Command(db.Command),
-						})
-					}
-				}
-			}
-		} else {
-			c.logger.Warn("input: failed to load device registry for bindings", "err", err)
-		}
-	}
-
-	c.input.SetBindings(merged)
 }
 
 // Start launches all subsystems. ctx governs their lifetime.
 func (c *Coordinator) Start(ctx context.Context) {
-	c.logger.Info("starting subsystems")
+c.logger.Info("starting subsystems")
 
-	// Disconnect the adapter when ctx is cancelled so Read() unblocks.
-	go func() {
-		<-ctx.Done()
-		if err := c.adapter.Disconnect(); err != nil {
-			c.logger.Warn("adapter disconnect", "err", err)
-		}
-	}()
+c.mu.Lock()
+c.rootCtx = ctx
+// Assign a child context + cancel to each pre-loaded entry.
+for _, e := range c.entries {
+if e.driver == nil {
+continue
+}
+childCtx, cancel := context.WithCancel(ctx)
+e.cancel = cancel
+go e.driver.Run(childCtx)
+}
+c.mu.Unlock()
 
-	go c.screen.Run(ctx)
-	go c.input.Run(ctx)
-	go c.sync.Run(ctx)
-	go c.runTelemetryLoop(ctx)
+go func() {
+<-ctx.Done()
+if err := c.adapter.Disconnect(); err != nil {
+c.logger.Warn("adapter disconnect", "err", err)
+}
+}()
 
-	// Load persisted bindings into the detector after all subsystems are running.
-	c.ReloadInputBindings()
+go c.input.Run(ctx)
+go c.runTelemetryLoop(ctx)
+
+c.ReloadInputBindings()
 }
 
-// CaptureNextButton waits for the first new wheel button press detected by the
-// OS gamepad API. Returns the 1-indexed button number or an error.
-// timeoutSecs is clamped to the range [1, 10].
+// SetScreenConfig updates the configuration for a specific device. If the
+// device is new (not yet in the map), a driver is created and started.
+func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
+if !d.HasScreen() {
+return
+}
+cfg := toHardwareScreenConfig(devices.ToScreenConfig(&d))
+
+c.mu.Lock()
+e, exists := c.entries[deviceID]
+if exists && e.driver != nil {
+e.driver.Configure(cfg)
+c.mu.Unlock()
+c.ReloadInputBindings()
+return
+}
+
+drv, err := hardware.NewDriver(d.Driver, c.logger.With("component", "screen", "device", deviceID))
+if err != nil {
+c.logger.Warn("unsupported driver, defaulting to vocore", "device", deviceID, "err", err)
+drv = hardware.NewVoCoreDriver(c.logger.With("component", "screen", "device", deviceID))
+}
+drv.Configure(cfg)
+drv.SetIdle(c.idleState)
+drv.SetEmit(c.emit)
+
+var cancel context.CancelFunc = func() {}
+if c.rootCtx != nil {
+childCtx, cf := context.WithCancel(c.rootCtx)
+cancel = cf
+go drv.Run(childCtx)
+}
+
+if exists {
+e.driver = drv
+e.cancel = cancel
+} else {
+c.entries[deviceID] = &deviceEntry{driver: drv, cancel: cancel}
+}
+c.mu.Unlock()
+
+c.ReloadInputBindings()
+}
+
+// SetDashLayout assigns a dash layout to a specific screen-capable device.
+func (c *Coordinator) SetDashLayout(deviceID string, layout *dashboard.DashLayout) {
+c.mu.Lock()
+defer c.mu.Unlock()
+e, ok := c.entries[deviceID]
+if !ok || e.driver == nil {
+return
+}
+e.driver.SetLayout(layout)
+e.layoutID = layout.ID
+e.currentLayout = layout
+e.pageIndex = 0
+e.driver.SetActivePage(0)
+}
+
+// UpdateLayout hot-reloads any screen whose current layout matches layout.ID.
+func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
+c.mu.Lock()
+defer c.mu.Unlock()
+for _, e := range c.entries {
+if e.driver != nil && e.layoutID == layout.ID {
+e.driver.SetLayout(layout)
+e.currentLayout = layout
+}
+}
+}
+
+// CyclePage advances the page on deviceID, or all screen-capable devices when
+// deviceID is empty. Each device advances within its own layout page count.
+func (c *Coordinator) CyclePage(deviceID string, direction int) {
+c.mu.Lock()
+defer c.mu.Unlock()
+for id, e := range c.entries {
+if deviceID != "" && id != deviceID {
+continue
+}
+if e.driver == nil || e.currentLayout == nil || len(e.currentLayout.Pages) == 0 {
+continue
+}
+n := len(e.currentLayout.Pages)
+e.pageIndex = ((e.pageIndex+direction)%n + n) % n
+e.driver.SetActivePage(e.pageIndex)
+c.emit("dash:page-changed", map[string]any{
+"deviceID":  id,
+"pageIndex": e.pageIndex,
+"pageName":  e.currentLayout.Pages[e.pageIndex].Name,
+})
+}
+}
+
+// GetScreenStatus returns "connected" if any screen-capable driver is connected.
+func (c *Coordinator) GetScreenStatus() string {
+c.mu.RLock()
+defer c.mu.RUnlock()
+for _, e := range c.entries {
+if e.driver != nil && e.driver.IsConnected() {
+return "connected"
+}
+}
+return "disconnected"
+}
+
+// SetDevicePaused pauses or resumes rendering for the given device.
+func (c *Coordinator) SetDevicePaused(deviceID string, paused bool) {
+c.mu.RLock()
+defer c.mu.RUnlock()
+if e, ok := c.entries[deviceID]; ok && e.driver != nil {
+e.driver.SetPaused(paused)
+}
+}
+
+// GetDevicePaused reports whether the given device's rendering is paused.
+func (c *Coordinator) GetDevicePaused(deviceID string) bool {
+c.mu.RLock()
+defer c.mu.RUnlock()
+if e, ok := c.entries[deviceID]; ok && e.driver != nil {
+return e.driver.GetPaused()
+}
+return false
+}
+
+// RemoveDevice stops and removes the device entry with the given ID.
+func (c *Coordinator) RemoveDevice(deviceID string) {
+c.mu.Lock()
+e, ok := c.entries[deviceID]
+if ok {
+delete(c.entries, deviceID)
+}
+c.mu.Unlock()
+if ok && e.cancel != nil {
+e.cancel()
+}
+c.ReloadInputBindings()
+}
+
+// IsConnected reports whether the game adapter is currently connected.
+func (c *Coordinator) IsConnected() bool {
+return c.connected
+}
+
+// ReloadInputBindings merges global controls config with per-device bindings
+// and pushes the combined table to the input detector.
+func (c *Coordinator) ReloadInputBindings() {
+var merged []input.Binding
+
+if cfg, err := input.LoadConfig(); err == nil {
+for _, b := range cfg.Bindings {
+merged = append(merged, b) // VID/PID zero = wildcard
+}
+} else {
+c.logger.Warn("input: failed to load controls config", "err", err)
+}
+
+if c.devMgr != nil {
+if reg, err := c.devMgr.Load(); err == nil {
+for _, d := range reg.Devices {
+id := devices.DeviceID(d.VID, d.PID, d.Serial)
+for _, db := range d.Bindings {
+if db.Button > 0 && db.Command != "" {
+merged = append(merged, input.Binding{
+Button:    db.Button,
+Command:   commands.Command(db.Command),
+DeviceVID: d.VID,
+DevicePID: d.PID,
+ScreenID:  id,
+})
+}
+}
+}
+} else {
+c.logger.Warn("input: failed to load device registry for bindings", "err", err)
+}
+}
+
+c.input.SetBindings(merged)
+}
+
+// CaptureNextButton waits for the first new wheel button press.
+// timeoutSecs is clamped to [1, 10].
 func (c *Coordinator) CaptureNextButton(ctx context.Context, timeoutSecs int) (int, error) {
-	if timeoutSecs < 1 {
-		timeoutSecs = 1
-	}
-	if timeoutSecs > 10 {
-		timeoutSecs = 10
-	}
-	return c.input.CaptureNextButton(ctx, time.Duration(timeoutSecs)*time.Second)
+if timeoutSecs < 1 {
+timeoutSecs = 1
+}
+if timeoutSecs > 10 {
+timeoutSecs = 10
+}
+return c.input.CaptureNextButton(ctx, time.Duration(timeoutSecs)*time.Second)
 }
 
 // Stop shuts down all subsystems gracefully.
 func (c *Coordinator) Stop() {
-	c.logger.Info("stopping")
+c.logger.Info("stopping")
 }
 
 const reconnectDelay = 5 * time.Second
 
-// IsConnected reports whether the game adapter is currently connected.
-func (c *Coordinator) IsConnected() bool {
-	return c.connected
-}
-
-// runTelemetryLoop connects to the game adapter and streams telemetry frames to
-// all subsystems. On read error it logs and retries after reconnectDelay.
-// Returns when ctx is cancelled.
 func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if err := c.adapter.Connect(); err != nil {
-			c.logger.Warn("game adapter connect failed, retrying",
-				"game", c.adapter.Name(), "err", err, "delay", reconnectDelay)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(reconnectDelay):
-			}
-			continue
-		}
-		c.logger.Info("game adapter connected", "game", c.adapter.Name())
-		c.connected = true
-		c.emit("telemetry:connected")
-
-		c.readLoop(ctx)
-
-		c.connected = false
-		c.emit("telemetry:disconnected")
-		c.screen.SetIdle(true)
-		c.idleState = true
-		c.logger.Info("game adapter disconnected, will reconnect", "delay", reconnectDelay)
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(reconnectDelay):
-		}
-	}
+for {
+select {
+case <-ctx.Done():
+return
+default:
 }
 
-// readLoop reads telemetry frames until the adapter errors or ctx is cancelled.
+if err := c.adapter.Connect(); err != nil {
+c.logger.Warn("game adapter connect failed, retrying",
+"game", c.adapter.Name(), "err", err, "delay", reconnectDelay)
+select {
+case <-ctx.Done():
+return
+case <-time.After(reconnectDelay):
+}
+continue
+}
+c.logger.Info("game adapter connected", "game", c.adapter.Name())
+c.connected = true
+c.emit("telemetry:connected")
+
+c.readLoop(ctx)
+
+c.connected = false
+c.emit("telemetry:disconnected")
+c.setAllIdle(true)
+c.idleState = true
+c.logger.Info("game adapter disconnected, will reconnect", "delay", reconnectDelay)
+select {
+case <-ctx.Done():
+return
+case <-time.After(reconnectDelay):
+}
+}
+}
+
 func (c *Coordinator) readLoop(ctx context.Context) {
-	var frameCount int
-	lastLog := time.Now()
+var frameCount int
+lastLog := time.Now()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		frame, err := c.adapter.Read()
-		if err != nil {
-			if errors.Is(err, lemansultimate.ErrDisconnected) {
-				return // adapter was intentionally closed (ctx cancelled)
-			}
-			c.logger.Warn("telemetry read error", "err", err)
-			return // trigger reconnect
-		}
-
-		frameCount++
-		if elapsed := time.Since(lastLog); elapsed >= 5*time.Second {
-			c.logger.Info("telemetry frames", "count", frameCount, "rate", frameCount/int(elapsed.Seconds()))
-			frameCount = 0
-			lastLog = time.Now()
-		}
-
-		c.fanOut(frame)
-	}
+for {
+select {
+case <-ctx.Done():
+return
+default:
 }
 
-// firstPageName returns the name of the first page in the layout, or an empty
-// string if the layout is nil or has no pages.
-func firstPageName(layout *dashboard.DashLayout) string {
-	if layout != nil && len(layout.Pages) > 0 {
-		return layout.Pages[0].Name
-	}
-	return ""
+frame, err := c.adapter.Read()
+if err != nil {
+if errors.Is(err, lemansultimate.ErrDisconnected) {
+return
+}
+c.logger.Warn("telemetry read error", "err", err)
+return
 }
 
-// Internal subsystems receive every frame; the frontend is throttled to ~30 Hz.
+frameCount++
+if elapsed := time.Since(lastLog); elapsed >= 5*time.Second {
+c.logger.Info("telemetry frames", "count", frameCount, "rate", frameCount/int(elapsed.Seconds()))
+frameCount = 0
+lastLog = time.Now()
+}
+
+c.fanOut(frame)
+}
+}
+
+func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
+isIdle := !frame.Session.InCar
+if isIdle == c.idleState {
+return
+}
+c.idleState = isIdle
+c.setAllIdle(isIdle)
+
+if !isIdle {
+// Snap all screens back to page 0 on session start.
+c.mu.Lock()
+for id, e := range c.entries {
+if e.driver == nil {
+continue
+}
+e.pageIndex = 0
+e.driver.SetActivePage(0)
+pageName := ""
+if e.currentLayout != nil && len(e.currentLayout.Pages) > 0 {
+pageName = e.currentLayout.Pages[0].Name
+}
+c.emit("dash:page-changed", map[string]any{
+"deviceID":  id,
+"pageIndex": 0,
+"pageName":  pageName,
+})
+}
+c.mu.Unlock()
+}
+}
+
+func (c *Coordinator) setAllIdle(idle bool) {
+c.mu.RLock()
+defer c.mu.RUnlock()
+for _, e := range c.entries {
+if e.driver != nil {
+e.driver.SetIdle(idle)
+}
+}
+}
+
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
-	c.updateIdleState(frame)
-	c.screen.OnFrame(frame)
+c.updateIdleState(frame)
 
-	// Throttled emit to Wails frontend
-	now := time.Now()
-	if now.Sub(c.lastFrontendEmit) >= frontendFrameInterval {
-		c.emit("telemetry:frame", frame)
-		c.lastFrontendEmit = now
-	}
+c.mu.RLock()
+for _, e := range c.entries {
+if e.driver != nil {
+e.driver.OnFrame(frame)
+}
+}
+c.mu.RUnlock()
+
+now := time.Now()
+if now.Sub(c.lastFrontendEmit) >= frontendFrameInterval {
+c.emit("telemetry:frame", frame)
+c.lastFrontendEmit = now
+}
+}
+
+func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
+return hardware.ScreenConfig{
+VID:      cfg.VID,
+PID:      cfg.PID,
+Width:    cfg.Width,
+Height:   cfg.Height,
+Rotation: cfg.Rotation,
+}
 }

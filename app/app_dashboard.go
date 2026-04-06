@@ -8,7 +8,6 @@ import (
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/app/internal/devices"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DashListLayouts returns metadata for all saved dash layouts.
@@ -30,22 +29,13 @@ func (a *App) DashLoadLayoutByID(id string) (*dashboard.DashLayout, error) {
 	return layout, nil
 }
 
-// DashLoadLayout reads the first available dash layout (or the embedded default).
-// Kept for backward compatibility with any existing callers.
-func (a *App) DashLoadLayout() (*dashboard.DashLayout, error) {
-	return a.DashLoadLayoutByID("")
-}
-
-// DashSaveLayout writes the layout to disk and hot-reloads the VoCore renderer
-// if the saved layout is the one currently active in the coordinator.
+// DashSaveLayout writes the layout to disk and hot-reloads all screens whose
+// current layout matches the saved ID.
 func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
 	if err := a.dash.Save(&layout); err != nil {
 		return fmt.Errorf("DashSaveLayout: %w", err)
 	}
-	if a.coord.CurrentLayoutID() == layout.ID {
-		a.coord.SetDashLayout(&layout)
-		runtime.EventsEmit(a.ctx, "dash:layout-updated", layout)
-	}
+	a.coord.UpdateLayout(&layout)
 	return nil
 }
 
@@ -59,16 +49,27 @@ func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 }
 
 // DashDeleteLayout deletes the layout with the given ID.
-// If the deleted layout was active on the current screen, the default layout
-// is loaded and pushed to the coordinator so the screen doesn't go blank.
+// Any screen currently showing that layout is switched to the default.
 func (a *App) DashDeleteLayout(id string) error {
-	wasActive := a.isLayoutActive(id)
 	if err := a.dash.Delete(id); err != nil {
 		return fmt.Errorf("DashDeleteLayout: %w", err)
 	}
-	if wasActive {
-		if defaultLayout, err := a.dash.Load(""); err == nil {
-			a.coord.SetDashLayout(defaultLayout)
+	defaultLayout, _ := a.dash.Load("")
+	if defaultLayout == nil {
+		return nil
+	}
+	reg, _ := a.devMgr.Load()
+	if reg == nil {
+		return nil
+	}
+	for i := range reg.Devices {
+		d := &reg.Devices[i]
+		if !d.HasScreen() {
+			continue
+		}
+		if d.DashID == id || d.DashID == "" {
+			deviceID := devices.DeviceID(d.VID, d.PID, d.Serial)
+			a.coord.SetDashLayout(deviceID, defaultLayout)
 		}
 	}
 	return nil
@@ -98,23 +99,24 @@ func (a *App) DashGetPreview(id string) string {
 }
 
 // DashCyclePage cycles the active dash page by direction: +1 for next, -1 for prev.
+// Broadcasts to all connected screen-capable devices.
 func (a *App) DashCyclePage(direction int) {
-	a.coord.CyclePage(direction)
+	a.coord.CyclePage("", direction)
 }
 
-// isLayoutActive reports whether the given layout ID is assigned to the active screen.
+// isLayoutActive reports whether any screen-capable device is currently using layoutID.
 func (a *App) isLayoutActive(layoutID string) bool {
 	reg, err := a.devMgr.Load()
 	if err != nil {
 		return false
 	}
-	active := devices.ActiveScreen(reg)
-	if active == nil {
-		return false
-	}
-	// An empty DashID means "use default" — treat any layout as active if no assignment.
-	if active.DashID == "" || active.DashID == layoutID {
-		return true
+	for _, d := range reg.Devices {
+		if !d.HasScreen() {
+			continue
+		}
+		if d.DashID == "" || d.DashID == layoutID {
+			return true
+		}
 	}
 	return false
 }

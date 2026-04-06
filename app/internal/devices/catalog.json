@@ -1,0 +1,41 @@
+[
+  {
+    "id": "bavarian-omega-v2-pro",
+    "name": "BavarianSimTec Omega PRO V2",
+    "description": "Integrated wheel with VoCore screen and button inputs",
+    "type": "wheel",
+    "vid": 51314,
+    "pid": 4100,
+    "width": 800,
+    "height": 480,
+    "rotation": 90,
+    "driver": "vocore",
+    "led_count": 22
+  },
+  {
+    "id": "generic-vocore",
+    "name": "Generic VoCore Screen",
+    "description": "Any VoCore display — Sprint will find the first unregistered device",
+    "type": "screen",
+    "vid": 0,
+    "pid": 0,
+    "width": 0,
+    "height": 0,
+    "rotation": 0,
+    "driver": "vocore",
+    "bindings": []
+  },
+  {
+    "id": "generic-usbd480",
+    "name": "Generic USBD480 Screen",
+    "description": "Any USBD480 display — Sprint will find the first unregistered device",
+    "type": "screen",
+    "vid": 0,
+    "pid": 0,
+    "width": 0,
+    "height": 0,
+    "rotation": 0,
+    "driver": "usbd480",
+    "bindings": []
+  }
+]

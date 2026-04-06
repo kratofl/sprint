@@ -1,18 +1,19 @@
 package dashboard
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"math"
+	"image/png"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/appdata"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/commands"
+	"github.com/kratofl/sprint/pkg/dto"
 )
 
 //go:embed default.json
@@ -30,41 +31,38 @@ type LayoutMeta struct {
 }
 
 // Manager handles persistence of named DashLayouts.
-// Each layout is stored as data/layouts/<id>.json.
-// Legacy data/layout.json is migrated on first List/Load call.
+// Each layout is stored as data/layouts/<id>/config.json with an optional
+// data/layouts/<id>/thumbnail.png preview image.
 type Manager struct {
-	dir     string
-	oldPath string // legacy single-file migration source
+	dir string
 }
 
 // NewManager creates a Manager using the standard config directory.
 func NewManager() *Manager {
 	base := appdata.Dir()
 	return &Manager{
-		dir:     filepath.Join(base, "layouts"),
-		oldPath: filepath.Join(base, "layout.json"),
+		dir: filepath.Join(base, "layouts"),
 	}
 }
 
 // List returns metadata for all stored layouts.
-// Migrates a legacy layout.json on first call if no layouts directory exists.
 func (m *Manager) List() ([]LayoutMeta, error) {
-	if err := m.migrate(); err != nil {
-		return nil, err
-	}
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // fresh install — no layouts yet
+		}
 		return nil, fmt.Errorf("dash: list layouts: %w", err)
 	}
 	var metas []LayoutMeta
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() {
 			continue
 		}
-		id := strings.TrimSuffix(e.Name(), ".json")
+		id := e.Name()
 		layout, err := m.Load(id)
 		if err != nil {
-			continue // skip corrupt files
+			continue // skip corrupt entries
 		}
 		metas = append(metas, LayoutMeta{
 			ID:               layout.ID,
@@ -88,9 +86,6 @@ func (m *Manager) List() ([]LayoutMeta, error) {
 // Load reads a layout by ID from disk.
 // If id is empty, the first available layout (or embedded default) is returned.
 func (m *Manager) Load(id string) (*DashLayout, error) {
-	if err := m.migrate(); err != nil {
-		return nil, err
-	}
 	if id == "" {
 		return m.loadFirst()
 	}
@@ -101,8 +96,11 @@ func (m *Manager) Load(id string) (*DashLayout, error) {
 		}
 		return nil, fmt.Errorf("dash: read layout %q: %w", id, err)
 	}
-	path := m.filePath(id)
-	return migrateLayoutFormat(data, path)
+	var layout DashLayout
+	if err := json.Unmarshal(data, &layout); err != nil {
+		return nil, fmt.Errorf("dash: parse layout %q: %w", id, err)
+	}
+	return &layout, nil
 }
 
 // Save validates and writes a layout to disk. A new UUID is assigned if layout.ID is empty.
@@ -154,13 +152,13 @@ const EmbeddedDefaultID = "default"
 
 // Delete removes a layout by ID.
 // The embedded default layout (ID "default") can never be deleted.
-// Returns nil if the layout file does not exist.
+// Returns nil if the layout directory does not exist.
 func (m *Manager) Delete(id string) error {
 	if id == EmbeddedDefaultID {
 		return fmt.Errorf("dash: cannot delete the built-in default layout")
 	}
-	err := os.Remove(m.filePath(id))
-	if err != nil && !os.IsNotExist(err) {
+	err := os.RemoveAll(m.layoutDir(id))
+	if err != nil {
 		return fmt.Errorf("dash: delete layout %q: %w", id, err)
 	}
 	return nil
@@ -174,10 +172,10 @@ func (m *Manager) SetDefault(id string) error {
 	}
 	found := false
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() {
 			continue
 		}
-		lid := strings.TrimSuffix(e.Name(), ".json")
+		lid := e.Name()
 		layout, err := m.Load(lid)
 		if err != nil {
 			continue
@@ -216,14 +214,19 @@ func (m *Manager) EnsureDefault() error {
 	return m.Save(layout)
 }
 
-// filePath returns the full path for the layout file with the given ID.
+// layoutDir returns the directory path for the layout with the given ID.
+func (m *Manager) layoutDir(id string) string {
+	return filepath.Join(m.dir, id)
+}
+
+// filePath returns the full path for the layout config file with the given ID.
 func (m *Manager) filePath(id string) string {
-	return filepath.Join(m.dir, id+".json")
+	return filepath.Join(m.layoutDir(id), "config.json")
 }
 
 // PreviewPath returns the full path for the preview PNG for the given layout ID.
 func (m *Manager) PreviewPath(id string) string {
-	return filepath.Join(m.dir, id+".png")
+	return filepath.Join(m.layoutDir(id), "thumbnail.png")
 }
 
 // previewExists reports whether a preview PNG exists for the given layout ID.
@@ -236,10 +239,10 @@ func (m *Manager) previewExists(id string) bool {
 func (m *Manager) loadFirst() (*DashLayout, error) {
 	entries, _ := os.ReadDir(m.dir)
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if !e.IsDir() {
 			continue
 		}
-		id := strings.TrimSuffix(e.Name(), ".json")
+		id := e.Name()
 		if layout, err := m.Load(id); err == nil {
 			return layout, nil
 		}
@@ -248,136 +251,11 @@ func (m *Manager) loadFirst() (*DashLayout, error) {
 	return defaultLayout()
 }
 
-// migrate moves a legacy layout.json into the layouts/ directory.
-// If no legacy file exists this is a no-op (fresh install).
-func (m *Manager) migrate() error {
-	if _, err := os.Stat(m.dir); err == nil {
-		return nil // already migrated
-	}
-	if err := os.MkdirAll(m.dir, 0755); err != nil {
-		return fmt.Errorf("dash: mkdir on migrate: %w", err)
-	}
-	data, err := os.ReadFile(m.oldPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // no legacy file — fresh install
-		}
-		return fmt.Errorf("dash: read legacy layout: %w", err)
-	}
-	layout, err := migrateLayoutFormat(data, "")
-	if err != nil {
-		return nil // corrupt legacy file; ignore and start fresh
-	}
-	layout.ID = uuid.NewString()
-	layout.Name = "Default"
-	layout.Default = true
-	return m.writeFile(layout)
-}
-
-// migrateLayoutFormat detects and converts a legacy pixel-based layout to the
-// current grid format. If the data already contains "pages" or "gridCols" it is
-// already in the new multi-page format and is returned unchanged. Otherwise the
-// flat "widgets" array with pixel x/y/w/h fields is converted: each pixel value
-// is divided by 40 and rounded to the nearest grid unit.
-// If path is non-empty and conversion occurred, the file is overwritten in-place.
-func migrateLayoutFormat(data []byte, path string) (*DashLayout, error) {
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return nil, fmt.Errorf("dash: parse layout: %w", err)
-	}
-	_, hasPages := probe["pages"]
-	_, hasGridCols := probe["gridCols"]
-	if hasPages || hasGridCols {
-		var layout DashLayout
-		if err := json.Unmarshal(data, &layout); err != nil {
-			return nil, fmt.Errorf("dash: parse layout: %w", err)
-		}
-		return &layout, nil
-	}
-
-	type legacyWidget struct {
-		ID     string             `json:"id"`
-		Type   widgets.WidgetType `json:"type"`
-		X      int                `json:"x"`
-		Y      int                `json:"y"`
-		W      int                `json:"w"`
-		H      int                `json:"h"`
-		Config map[string]any     `json:"config,omitempty"`
-	}
-	type legacyLayout struct {
-		ID      string         `json:"id"`
-		Name    string         `json:"name"`
-		Widgets []legacyWidget `json:"widgets"`
-	}
-	var legacy legacyLayout
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return nil, fmt.Errorf("dash: parse legacy layout: %w", err)
-	}
-
-	mainPage := NewPage("Main")
-	for _, lw := range legacy.Widgets {
-		col := pixelToGrid(lw.X)
-		if col < 0 {
-			col = 0
-		}
-		row := pixelToGrid(lw.Y)
-		if row < 0 {
-			row = 0
-		}
-		colSpan := pixelToGrid(lw.W)
-		if colSpan < 1 {
-			colSpan = 1
-		}
-		rowSpan := pixelToGrid(lw.H)
-		if rowSpan < 1 {
-			rowSpan = 1
-		}
-		mainPage.Widgets = append(mainPage.Widgets, DashWidget{
-			ID:      lw.ID,
-			Type:    lw.Type,
-			Col:     col,
-			Row:     row,
-			ColSpan: colSpan,
-			RowSpan: rowSpan,
-			Config:  lw.Config,
-		})
-	}
-	id := legacy.ID
-	if id == "" {
-		id = uuid.NewString()
-	}
-	name := legacy.Name
-	if name == "" {
-		name = "Untitled"
-	}
-	layout := &DashLayout{
-		ID:       id,
-		Name:     name,
-		Default:  false,
-		GridCols: DefaultGridCols,
-		GridRows: DefaultGridRows,
-		IdlePage: NewPage("Idle"),
-		Pages:    []DashPage{mainPage},
-		Alerts:   AlertConfig{},
-	}
-	if path != "" {
-		if out, err := json.MarshalIndent(layout, "", "  "); err == nil {
-			_ = os.WriteFile(path, out, 0644)
-		}
-	}
-	return layout, nil
-}
-
-// pixelToGrid converts a pixel coordinate to a grid unit by dividing by the
-// 40-pixel cell size and rounding to the nearest integer.
-func pixelToGrid(px int) int {
-	return int(math.Round(float64(px) / 40))
-}
-
 // writeFile marshals and writes a layout to disk without validation.
 // After a successful write it generates a preview thumbnail (best-effort).
 func (m *Manager) writeFile(layout *DashLayout) error {
-	if err := os.MkdirAll(m.dir, 0755); err != nil {
+	dir := m.layoutDir(layout.ID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("dash: mkdir: %w", err)
 	}
 	data, err := json.MarshalIndent(layout, "", "  ")
@@ -406,4 +284,52 @@ func defaultLayout() (*DashLayout, error) {
 		layout.Name = "Default"
 	}
 	return &layout, nil
+}
+
+// Dashboard commands — fired by input bindings or direct app actions.
+const (
+	CmdNextDashPage commands.Command = "dash.page.next"
+	CmdPrevDashPage commands.Command = "dash.page.prev"
+	CmdSetTargetLap commands.Command = "dash.target.set"
+)
+
+func init() {
+	commands.RegisterMeta(CmdNextDashPage, "Next Dash Page", "Dashboard", true, true)
+	commands.RegisterMeta(CmdPrevDashPage, "Prev Dash Page", "Dashboard", true, true)
+	commands.RegisterMeta(CmdSetTargetLap, "Set Target Lap", "Dashboard", true, false)
+}
+
+// previewWidth and previewHeight are the dimensions for preview thumbnails.
+// Smaller than the actual screen for fast generation and small file size.
+const (
+	previewWidth  = 400
+	previewHeight = 240
+)
+
+// renderPreview renders a PNG thumbnail of the layout's first active page.
+// Uses a zero-value TelemetryFrame (all fields zero/false) so no live data needed.
+// Returns nil without error if layout has no pages.
+func renderPreview(layout *DashLayout) ([]byte, error) {
+	if len(layout.Pages) == 0 {
+		return nil, nil
+	}
+
+	painter := NewPainter(previewWidth, previewHeight)
+	defer painter.Close()
+
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	frame := &dto.TelemetryFrame{}
+	img, err := painter.Paint(frame)
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

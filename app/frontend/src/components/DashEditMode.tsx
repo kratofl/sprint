@@ -6,7 +6,7 @@ import {
 } from '@sprint/ui'
 import {
   type DashLayout, type DashPage, type DashWidget, type WidgetCatalogEntry,
-  widgetCatalogAPI, deviceScreenAPI,
+  widgetCatalogAPI, deviceAPI, deviceHasScreen,
 } from '@/lib/dash'
 import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
@@ -47,10 +47,11 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   useEffect(() => {
     Promise.all([
       widgetCatalogAPI.getWidgetCatalog(),
-      deviceScreenAPI.getScreen(),
-    ]).then(([widgets, cfg]) => {
+      deviceAPI.getSavedDevices(),
+    ]).then(([widgets, devs]) => {
       setCatalog(widgets)
-      if (cfg) { setScreenW(cfg.width); setScreenH(cfg.height) }
+      const screen = devs.find(d => deviceHasScreen(d.type))
+      if (screen) { setScreenW(screen.width); setScreenH(screen.height) }
     }).catch(() => {})
   }, [])
 
@@ -260,6 +261,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             gridCols={layout.gridCols}
             gridRows={layout.gridRows}
             selectedId={selectedId}
+            catalog={catalog}
             screenW={screenW}
             screenH={screenH}
             paletteDropType={paletteDropType}

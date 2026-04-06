@@ -88,6 +88,7 @@ riButtons  = map[uintptr]map[uint16]bool{}    // hDevice -> currently-pressed bu
 riParsed   = map[uintptr][]byte{}              // hDevice -> preparsed HID data
 riValCaps  = map[uintptr][]hidpValueCap{}      // hDevice -> relative value caps
 riAxisPrev = map[uintptr]map[uint16]uint32{}   // hDevice -> HID usage -> last axis value
+riVIDPID   = map[uintptr][2]uint16{}           // hDevice -> [VID, PID]
 )
 
 func init() {
@@ -219,10 +220,11 @@ prev := riButtons[hdr.hDevice]
 riButtons[hdr.hDevice] = pressed
 riMu.Unlock()
 
+vid, pid := getOrFetchVIDPID(hdr.hDevice)
 for btn := range pressed {
 if !prev[btn] {
 select {
-case inputEventCh <- int(btn):
+case inputEventCh <- ButtonEvent{VID: vid, PID: pid, Button: int(btn)}:
 default:
 }
 }
@@ -265,6 +267,8 @@ defer riMu.Unlock()
 if riAxisPrev[hDevice] == nil {
 riAxisPrev[hDevice] = map[uint16]uint32{}
 }
+pair := riVIDPID[hDevice]
+vid, pid := pair[0], pair[1]
 for _, r := range readings {
 prev := riAxisPrev[hDevice][r.usage]
 riAxisPrev[hDevice][r.usage] = r.value
@@ -276,7 +280,7 @@ if int32(r.value)-int32(prev) < 0 {
 virtualBtn++
 }
 select {
-case inputEventCh <- virtualBtn:
+case inputEventCh <- ButtonEvent{VID: vid, PID: pid, Button: virtualBtn}:
 default:
 }
 }
@@ -346,4 +350,39 @@ riMu.Lock()
 riValCaps[hDevice] = relative
 riMu.Unlock()
 return relative
+}
+
+// getOrFetchVIDPID returns the USB VID and PID for the given device handle,
+// querying the OS once and caching the result. Returns 0,0 on failure.
+func getOrFetchVIDPID(hDevice uintptr) (vid, pid uint16) {
+riMu.Lock()
+if pair, ok := riVIDPID[hDevice]; ok {
+riMu.Unlock()
+return pair[0], pair[1]
+}
+riMu.Unlock()
+
+// RID_DEVICE_INFO layout (64-bit): cbSize(4) + dwType(4) + union(16) = 24 bytes.
+// For RIM_TYPEHID the union is RID_DEVICE_INFO_HID:
+//   dwVendorId(4) + dwProductId(4) + dwVersionNumber(4) + usUsagePage(2) + usUsage(2)
+const ridiDeviceInfo = 0x2000000B
+var info [24]byte
+size := uint32(len(info))
+*(*uint32)(unsafe.Pointer(&info[0])) = size // cbSize must be set before call
+ret, _, _ := procGetRawInputDeviceInfoW.Call(hDevice, ridiDeviceInfo, uintptr(unsafe.Pointer(&info[0])), uintptr(unsafe.Pointer(&size)))
+if ret == ^uintptr(0) {
+return 0, 0
+}
+// dwType is at offset 4; for RIM_TYPEHID (2), VID is at offset 8 and PID at offset 12.
+dwType := *(*uint32)(unsafe.Pointer(&info[4]))
+if dwType != rimTypeHID {
+return 0, 0
+}
+vid = uint16(*(*uint32)(unsafe.Pointer(&info[8])))
+pid = uint16(*(*uint32)(unsafe.Pointer(&info[12])))
+
+riMu.Lock()
+riVIDPID[hDevice] = [2]uint16{vid, pid}
+riMu.Unlock()
+return vid, pid
 }

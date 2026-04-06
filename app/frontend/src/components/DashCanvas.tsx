@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { cn } from '@sprint/ui'
-import { type DashWidget, WIDGET_TYPES } from '@/lib/dash'
+import { type DashWidget, type WidgetCatalogEntry } from '@/lib/dash'
 
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
@@ -45,8 +45,8 @@ const HANDLE_OFFSETS: Record<ResizeHandle, [string, string]> = {
 
 const ALL_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
-function widgetLabel(type: string): string {
-  return WIDGET_TYPES.find(w => w.type === type)?.label ?? type
+function widgetLabel(type: string, catalog: WidgetCatalogEntry[]): string {
+  return catalog.find(w => w.type === type)?.label ?? type
 }
 
 function overlaps(
@@ -73,6 +73,7 @@ function isValidPlacement(
 export interface DashCanvasProps {
   widgets: DashWidget[]
   selectedId: number | null
+  catalog?: WidgetCatalogEntry[]
   gridCols?: number
   gridRows?: number
   screenW?: number
@@ -87,6 +88,7 @@ export function DashCanvas({
   gridCols = DEFAULT_GRID_COLS,
   gridRows = DEFAULT_GRID_ROWS,
   selectedId,
+  catalog = [],
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
@@ -197,7 +199,7 @@ export function DashCanvas({
     e.preventDefault()
     if (!paletteDropType) return
     e.dataTransfer.dropEffect = 'copy'
-    const meta    = WIDGET_TYPES.find(wt => wt.type === paletteDropType)
+    const meta    = catalog.find(wt => wt.type === paletteDropType)
     const colSpan = meta?.defaultColSpan ?? 4
     const rowSpan = meta?.defaultRowSpan ?? 2
     const { col, row } = gridPos(e.clientX, e.clientY)
@@ -205,14 +207,14 @@ export function DashCanvas({
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
     setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows) })
-  }, [paletteDropType, gridCols, gridRows, gridPos])
+  }, [paletteDropType, catalog, gridCols, gridRows, gridPos])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setGhost(null)
     const widgetType = e.dataTransfer.getData('widget-type')
     if (!widgetType) return
-    const meta    = WIDGET_TYPES.find(wt => wt.type === widgetType)
+    const meta    = catalog.find(wt => wt.type === widgetType)
     const colSpan = meta?.defaultColSpan ?? 4
     const rowSpan = meta?.defaultRowSpan ?? 2
     const { col, row } = gridPos(e.clientX, e.clientY)
@@ -224,7 +226,7 @@ export function DashCanvas({
     const updated = [...widgetsRef.current, newWidget]
     onUpdate(updated)
     onSelect(updated.length - 1)
-  }, [gridCols, gridRows, onUpdate, onSelect, gridPos])
+  }, [catalog, gridCols, gridRows, onUpdate, onSelect, gridPos])
 
   const isDragging = activeMove !== null || activeResize !== null
 
@@ -308,7 +310,7 @@ export function DashCanvas({
               )}
             >
               <span className="w-full truncate px-1 pt-0.5 font-mono text-[9px] uppercase leading-none tracking-wide text-white/40">
-                {widgetLabel(widget.type)}
+                {widgetLabel(widget.type, catalog)}
               </span>
             </div>
 

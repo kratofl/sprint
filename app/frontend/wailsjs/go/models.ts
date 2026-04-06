@@ -174,30 +174,6 @@ export namespace dashboard {
 
 export namespace devices {
 	
-	export class DetectedScreen {
-	    vid: number;
-	    pid: number;
-	    serial?: string;
-	    width: number;
-	    height: number;
-	    description: string;
-	    driver: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DetectedScreen(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.vid = source["vid"];
-	        this.pid = source["pid"];
-	        this.serial = source["serial"];
-	        this.width = source["width"];
-	        this.height = source["height"];
-	        this.description = source["description"];
-	        this.driver = source["driver"];
-	    }
-	}
 	export class DeviceBinding {
 	    button: number;
 	    command: string;
@@ -212,10 +188,62 @@ export namespace devices {
 	        this.command = source["command"];
 	    }
 	}
-	export class SavedScreen {
+	export class CatalogEntry {
+	    id: string;
+	    name: string;
+	    description: string;
+	    type: string;
+	    vid: number;
+	    pid: number;
+	    width: number;
+	    height: number;
+	    rotation: number;
+	    driver: string;
+	    bindings: DeviceBinding[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CatalogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.type = source["type"];
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.rotation = source["rotation"];
+	        this.driver = source["driver"];
+	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class SavedDevice {
 	    vid: number;
 	    pid: number;
 	    serial?: string;
+	    type?: string;
 	    width: number;
 	    height: number;
 	    name: string;
@@ -225,7 +253,7 @@ export namespace devices {
 	    bindings?: DeviceBinding[];
 	
 	    static createFrom(source: any = {}) {
-	        return new SavedScreen(source);
+	        return new SavedDevice(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -233,6 +261,7 @@ export namespace devices {
 	        this.vid = source["vid"];
 	        this.pid = source["pid"];
 	        this.serial = source["serial"];
+	        this.type = source["type"];
 	        this.width = source["width"];
 	        this.height = source["height"];
 	        this.name = source["name"];

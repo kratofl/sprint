@@ -17,21 +17,6 @@ var voCorePIDDimensions = map[uint16][2]int{
 	0x100A: {1024, 600}, // M-PRO 10"
 }
 
-// VoCoreConfig is the driver's view of a configured screen.
-// Derived from devices.SavedScreen via devices.ToScreenConfig → core.voCoreConfigFrom.
-type VoCoreConfig struct {
-	// VID / PID identify the USB device.
-	VID uint16 `json:"vid"`
-	PID uint16 `json:"pid"`
-	// Width / Height are the landscape render dimensions for the renderer.
-	Width  int `json:"width"`
-	Height int `json:"height"`
-	// Rotation is the user-configured rotation in degrees: 0, 90, 180, or 270.
-	Rotation int `json:"rotation"`
-	// DriverType selects the USB transport: "vocore" (default) or "usbd480".
-	DriverType string `json:"driver_type"`
-}
-
 // VoCoreScreen describes a VoCore M-PRO display found by USB enumeration.
 type VoCoreScreen struct {
 	// VID is the USB Vendor ID (always 0xC872).

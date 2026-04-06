@@ -10,9 +10,7 @@
 package hardware
 
 import (
-	"errors"
 	"fmt"
-	"image"
 	"log/slog"
 	"strings"
 	"syscall"
@@ -74,47 +72,7 @@ const (
 	usbBulkEndpoint = 0x02 // bulk OUT endpoint for pixel data
 	usbVendorReq    = 0xB0 // vendor-specific control request
 	usbReqTypeOut   = 0x40 // USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE
-
-	// maxScreenPixels is a sanity cap to prevent integer overflow in
-	// width*height*2. 4096×4096 = 16 M pixels × 2 = 32 MB, well above
-	// any real VoCore screen (800×480 = 768 KB).
-	maxScreenPixels = 4096 * 4096
 )
-
-// errScreenTransportUnsupported indicates that no platform transport is
-// implemented for sending frames to the VoCore screen.
-var errScreenTransportUnsupported = errors.New("vocore screen transport unsupported on this platform")
-
-// screenTransport sends rendered frames to the VoCore screen over USB.
-type screenTransport interface {
-	send(rgb565 []byte) error
-	close()
-	// nativeSize returns the screen's actual native pixel dimensions as
-	// reported by the device. These may differ from the configured
-	// ScreenConfig (e.g. 480×800 portrait vs 800×480 landscape).
-	nativeSize() (width, height int)
-}
-
-// validateScreenSize checks that width/height are positive and that
-// width*height*2 (RGB565) does not overflow a reasonable buffer size.
-func validateScreenSize(width, height int) (frameBytes int, err error) {
-	if width <= 0 || height <= 0 {
-		return 0, fmt.Errorf("invalid screen dimensions: %dx%d", width, height)
-	}
-	pixels := width * height
-	if pixels > maxScreenPixels || pixels/width != height {
-		return 0, fmt.Errorf("screen dimensions too large: %dx%d (%d pixels)", width, height, pixels)
-	}
-	return pixels * 2, nil
-}
-
-// openScreen dispatches to the appropriate USB transport based on cfg.DriverType.
-func openScreen(cfg VoCoreConfig, logger *slog.Logger) (screenTransport, error) {
-	if cfg.DriverType == "usbd480" {
-		return openUSBD480Screen(cfg.VID, cfg.PID, cfg.Width, cfg.Height, logger)
-	}
-	return openVoCoreScreen(cfg.VID, cfg.PID, cfg.Width, cfg.Height, logger)
-}
 
 // openVoCoreScreen opens a USB connection to the VoCore screen by VID/PID.
 func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (screenTransport, error) {
@@ -453,168 +411,6 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 	}
 
 	return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
-}
-
-// imageToRGB565 converts an image to RGB565 little-endian, writing into dst.
-// dst must be at least width*height*2 bytes. Uses a fast path for *image.RGBA
-// which is the output type of fogleman/gg.
-func imageToRGB565(img image.Image, dst []byte) {
-	bounds := img.Bounds()
-
-	if rgba, ok := img.(*image.RGBA); ok {
-		i := 0
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			off := (y - rgba.Rect.Min.Y) * rgba.Stride
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				j := off + (x-rgba.Rect.Min.X)*4
-				r := uint16(rgba.Pix[j]) >> 3
-				g := uint16(rgba.Pix[j+1]) >> 2
-				b := uint16(rgba.Pix[j+2]) >> 3
-				px := (r << 11) | (g << 5) | b
-				dst[i] = byte(px)
-				dst[i+1] = byte(px >> 8)
-				i += 2
-			}
-		}
-		return
-	}
-
-	i := 0
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			r, g, b, _ := img.At(x, y).RGBA()
-			r5 := uint16(r >> 11)
-			g6 := uint16(g >> 10)
-			b5 := uint16(b >> 11)
-			px := (r5 << 11) | (g6 << 5) | b5
-			dst[i] = byte(px)
-			dst[i+1] = byte(px >> 8)
-			i += 2
-		}
-	}
-}
-
-// imageToRGB565CW90 converts an image to RGB565 little-endian with a 90° CW
-// rotation. Source image W×H becomes output H×W.
-// dst must be at least W*H*2 bytes.
-func imageToRGB565CW90(img image.Image, dst []byte) {
-	bounds := img.Bounds()
-	srcW := bounds.Dx()
-	srcH := bounds.Dy()
-
-	if rgba, ok := img.(*image.RGBA); ok {
-		i := 0
-		for dy := 0; dy < srcW; dy++ {
-			for dx := 0; dx < srcH; dx++ {
-				sx := dy
-				sy := srcH - 1 - dx
-				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
-				r := uint16(rgba.Pix[j]) >> 3
-				g := uint16(rgba.Pix[j+1]) >> 2
-				b := uint16(rgba.Pix[j+2]) >> 3
-				px := (r << 11) | (g << 5) | b
-				dst[i] = byte(px)
-				dst[i+1] = byte(px >> 8)
-				i += 2
-			}
-		}
-		return
-	}
-
-	i := 0
-	for dy := 0; dy < srcW; dy++ {
-		for dx := 0; dx < srcH; dx++ {
-			sx := bounds.Min.X + dy
-			sy := bounds.Min.Y + srcH - 1 - dx
-			r, g, b, _ := img.At(sx, sy).RGBA()
-			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
-			dst[i] = byte(px)
-			dst[i+1] = byte(px >> 8)
-			i += 2
-		}
-	}
-}
-
-// imageToRGB565CW180 converts an image to RGB565 little-endian with a 180°
-// rotation. Output dimensions match input (W×H).
-// dst must be at least W*H*2 bytes.
-func imageToRGB565CW180(img image.Image, dst []byte) {
-	bounds := img.Bounds()
-	srcW := bounds.Dx()
-	srcH := bounds.Dy()
-
-	if rgba, ok := img.(*image.RGBA); ok {
-		i := 0
-		for y := srcH - 1; y >= 0; y-- {
-			for x := srcW - 1; x >= 0; x-- {
-				sy := bounds.Min.Y + y
-				sx := bounds.Min.X + x
-				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
-				r := uint16(rgba.Pix[j]) >> 3
-				g := uint16(rgba.Pix[j+1]) >> 2
-				b := uint16(rgba.Pix[j+2]) >> 3
-				px := (r << 11) | (g << 5) | b
-				dst[i] = byte(px)
-				dst[i+1] = byte(px >> 8)
-				i += 2
-			}
-		}
-		return
-	}
-
-	i := 0
-	for y := srcH - 1; y >= 0; y-- {
-		for x := srcW - 1; x >= 0; x-- {
-			sx := bounds.Min.X + x
-			sy := bounds.Min.Y + y
-			r, g, b, _ := img.At(sx, sy).RGBA()
-			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
-			dst[i] = byte(px)
-			dst[i+1] = byte(px >> 8)
-			i += 2
-		}
-	}
-}
-
-// imageToRGB565CW270 converts an image to RGB565 little-endian with a 270° CW
-// (90° CCW) rotation. Source image W×H becomes output H×W.
-// dst must be at least W*H*2 bytes.
-func imageToRGB565CW270(img image.Image, dst []byte) {
-	bounds := img.Bounds()
-	srcW := bounds.Dx()
-	srcH := bounds.Dy()
-
-	if rgba, ok := img.(*image.RGBA); ok {
-		i := 0
-		for dy := 0; dy < srcW; dy++ {
-			for dx := 0; dx < srcH; dx++ {
-				sx := bounds.Min.X + (srcW - 1 - dy)
-				sy := bounds.Min.Y + dx
-				j := (sy-rgba.Rect.Min.Y)*rgba.Stride + (sx-rgba.Rect.Min.X)*4
-				r := uint16(rgba.Pix[j]) >> 3
-				g := uint16(rgba.Pix[j+1]) >> 2
-				b := uint16(rgba.Pix[j+2]) >> 3
-				px := (r << 11) | (g << 5) | b
-				dst[i] = byte(px)
-				dst[i+1] = byte(px >> 8)
-				i += 2
-			}
-		}
-		return
-	}
-
-	i := 0
-	for dy := 0; dy < srcW; dy++ {
-		for dx := 0; dx < srcH; dx++ {
-			sx := bounds.Min.X + (srcW - 1 - dy)
-			sy := bounds.Min.Y + dx
-			r, g, b, _ := img.At(sx, sy).RGBA()
-			px := (uint16(r>>11) << 11) | (uint16(g>>10) << 5) | uint16(b>>11)
-			dst[i] = byte(px)
-			dst[i+1] = byte(px >> 8)
-			i += 2
-		}
-	}
 }
 
 // screen model ID. Values from the mpro_drm Linux driver.

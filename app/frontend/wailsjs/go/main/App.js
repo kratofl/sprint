@@ -26,10 +26,6 @@ export function DashListLayouts() {
   return window['go']['main']['App']['DashListLayouts']();
 }
 
-export function DashLoadLayout() {
-  return window['go']['main']['App']['DashLoadLayout']();
-}
-
 export function DashLoadLayoutByID(arg1) {
   return window['go']['main']['App']['DashLoadLayoutByID'](arg1);
 }
@@ -42,48 +38,48 @@ export function DashSetDefault(arg1) {
   return window['go']['main']['App']['DashSetDefault'](arg1);
 }
 
+export function DeviceAdd(arg1) {
+  return window['go']['main']['App']['DeviceAdd'](arg1);
+}
+
+export function DeviceGetCatalog() {
+  return window['go']['main']['App']['DeviceGetCatalog']();
+}
+
 export function DeviceGetDeviceBindings(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeviceGetDeviceBindings'](arg1, arg2, arg3);
 }
 
-export function DeviceGetSavedScreens() {
-  return window['go']['main']['App']['DeviceGetSavedScreens']();
+export function DeviceGetDevicePaused(arg1) {
+  return window['go']['main']['App']['DeviceGetDevicePaused'](arg1);
 }
 
-export function DeviceGetScreen() {
-  return window['go']['main']['App']['DeviceGetScreen']();
-}
-
-export function DeviceGetScreenPaused() {
-  return window['go']['main']['App']['DeviceGetScreenPaused']();
+export function DeviceGetSavedDevices() {
+  return window['go']['main']['App']['DeviceGetSavedDevices']();
 }
 
 export function DeviceGetScreenStatus() {
   return window['go']['main']['App']['DeviceGetScreenStatus']();
 }
 
-export function DeviceRenameScreen(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['DeviceRenameScreen'](arg1, arg2, arg3, arg4);
+export function DeviceRemoveDevice(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeviceRemoveDevice'](arg1, arg2, arg3);
+}
+
+export function DeviceRenameDevice(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceRenameDevice'](arg1, arg2, arg3, arg4);
 }
 
 export function DeviceSaveDeviceBindings(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSaveDeviceBindings'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceScanScreens() {
-  return window['go']['main']['App']['DeviceScanScreens']();
-}
-
-export function DeviceSelectScreen(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['main']['App']['DeviceSelectScreen'](arg1, arg2, arg3, arg4, arg5, arg6);
-}
-
 export function DeviceSetDashLayout(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetDashLayout'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceSetScreenPaused(arg1) {
-  return window['go']['main']['App']['DeviceSetScreenPaused'](arg1);
+export function DeviceSetDevicePaused(arg1, arg2) {
+  return window['go']['main']['App']['DeviceSetDevicePaused'](arg1, arg2);
 }
 
 export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {

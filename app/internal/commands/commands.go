@@ -28,7 +28,7 @@ type HandlerFn func(payload any)
 var (
 	mu       sync.RWMutex
 	catalog  []CommandMeta
-	handlers = map[Command][]HandlerFn{}
+	handlers = map[Command]HandlerFn{}
 )
 
 // RegisterMeta adds a command to the catalog. Call from init() functions in
@@ -47,21 +47,23 @@ func RegisterMeta(id Command, label, category string, capturable, deviceOnly boo
 	})
 }
 
-// Handle registers a handler for id. Multiple handlers per command are allowed.
+// Handle registers a handler for id. Only one handler per command is supported;
+// registering a second handler overwrites the first.
 // Call from core/ after all subsystems are constructed.
 func Handle(id Command, fn HandlerFn) {
 	mu.Lock()
 	defer mu.Unlock()
-	handlers[id] = append(handlers[id], fn)
+	handlers[id] = fn
 }
 
-// Dispatch fires id to all registered handlers synchronously.
+// Dispatch fires id to the registered handler synchronously.
 // payload may be nil if the command carries no data.
+// No-op if no handler is registered.
 func Dispatch(id Command, payload any) {
 	mu.RLock()
-	fns := handlers[id]
+	fn := handlers[id]
 	mu.RUnlock()
-	for _, fn := range fns {
+	if fn != nil {
 		fn(payload)
 	}
 }

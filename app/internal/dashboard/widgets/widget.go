@@ -255,3 +255,21 @@ func (c WidgetCtx) HBarCentered(x, y, w, h, pct float64, col color.RGBA) {
 func (c WidgetCtx) FmtLap(t float64) string    { return FmtLap(t) }
 func (c WidgetCtx) FmtSector(t float64) string { return FmtSector(t) }
 func (c WidgetCtx) FmtSpeed(ms float64) string { return fmt.Sprintf("%.0f", ms*3.6) }
+
+// FmtLap formats t (seconds) as "M:SS.mmm". Returns "-.---.---" when t ≤ 0.
+func FmtLap(seconds float64) string {
+	if seconds <= 0 {
+		return "-.---.---"
+	}
+	m := int(seconds) / 60
+	s := seconds - float64(m*60)
+	return fmt.Sprintf("%d:%06.3f", m, s)
+}
+
+// FmtSector formats t (seconds) as "SS.mmm". Returns "--.---" when t ≤ 0.
+func FmtSector(seconds float64) string {
+	if seconds <= 0 {
+		return "--.---"
+	}
+	return fmt.Sprintf("%.3f", seconds)
+}

@@ -1,4 +1,4 @@
-// Types and Wails bindings for Dash Studio and VoCore screen selection.
+// Types and Wails bindings for Dash Studio and device management.
 
 import { call } from '@/lib/wails'
 
@@ -46,36 +46,39 @@ export interface LayoutMeta {
 }
 
 export type DriverType = 'vocore' | 'usbd480'
+export type DeviceType = 'wheel' | 'screen' | 'buttonbox'
 
-export interface DetectedScreen {
-  vid: number
-  pid: number
-  serial: string
-  width: number
-  height: number
-  description: string
-  driver: DriverType
+export interface DeviceBinding {
+  button: number
+  command: string
 }
 
-export interface SavedScreen {
+export interface SavedDevice {
   vid: number
   pid: number
   serial: string
+  type: DeviceType | ''    // '' = legacy entry treated as screen
   width: number
   height: number
   name: string
-  rotation: number  // 0 | 90 | 180 | 270
+  rotation: number          // 0 | 90 | 180 | 270
   driver: DriverType
-  dashId: string    // assigned layout ID; empty = use default
+  dashId: string            // assigned layout ID; empty = use default
+  bindings?: DeviceBinding[]
 }
 
-export interface ScreenConfig {
+export interface CatalogEntry {
+  id: string
+  name: string
+  description: string
+  type: DeviceType
   vid: number
   pid: number
   width: number
   height: number
   rotation: number
   driver: DriverType
+  bindings: DeviceBinding[]
 }
 
 export interface ConfigDef {
@@ -97,34 +100,17 @@ export interface WidgetCatalogEntry {
   idleCapable: boolean
 }
 
-/** @deprecated Use widgetCatalogAPI.getWidgetCatalog() — the backend is now the source of truth. */
-export const WIDGET_TYPES = [
-  { type: 'text',            label: 'Text',              category: 'layout', defaultColSpan: 4,  defaultRowSpan: 2,  idleCapable: true  },
-  { type: 'header',         label: 'Header',           category: 'layout', defaultColSpan: 20, defaultRowSpan: 2,  idleCapable: false },
-  { type: 'lap_time',       label: 'Lap Time',          category: 'timing', defaultColSpan: 5,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'sector',         label: 'Sector',            category: 'timing', defaultColSpan: 6,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'delta',          label: 'Delta',             category: 'timing', defaultColSpan: 4,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'speed',          label: 'Speed',             category: 'car',    defaultColSpan: 4,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'gear',           label: 'Gear',              category: 'car',    defaultColSpan: 3,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'gear_speed',     label: 'Gear + Speed',      category: 'car',    defaultColSpan: 5,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'rpm_bar',        label: 'RPM Bar',           category: 'car',    defaultColSpan: 2,  defaultRowSpan: 8,  idleCapable: false },
-  { type: 'fuel',           label: 'Fuel',              category: 'race',   defaultColSpan: 5,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'tyre_temp',      label: 'Tyre Temp',         category: 'race',   defaultColSpan: 10, defaultRowSpan: 4,  idleCapable: false },
-  { type: 'input_trace',    label: 'Input Trace',       category: 'car',    defaultColSpan: 6,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'lap_counter',    label: 'Lap Counter',       category: 'timing', defaultColSpan: 4,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'session_timer',  label: 'Session Timer',     category: 'timing', defaultColSpan: 4,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'gap',            label: 'Gap',               category: 'race',   defaultColSpan: 4,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'position',       label: 'Position',          category: 'race',   defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'brake_bias',     label: 'Brake Bias',        category: 'car',    defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'tc',             label: 'Traction Control',  category: 'car',    defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'abs',            label: 'ABS',               category: 'car',    defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'engine_map',     label: 'Engine Map',        category: 'car',    defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'virtual_energy', label: 'Virtual Energy',    category: 'race',   defaultColSpan: 4,  defaultRowSpan: 3,  idleCapable: false },
-  { type: 'incidents',      label: 'Incidents',         category: 'race',   defaultColSpan: 3,  defaultRowSpan: 2,  idleCapable: false },
-  { type: 'flags',          label: 'Flags',             category: 'race',   defaultColSpan: 4,  defaultRowSpan: 2,  idleCapable: true  },
-] as const
+// Helper: does this device have a screen?
+export function deviceHasScreen(type: DeviceType | ''): boolean {
+  return type === 'wheel' || type === 'screen' || type === ''
+}
 
-export type WidgetType = (typeof WIDGET_TYPES)[number]['type']
+// Helper: compute the coordinator device ID from vid/pid/serial.
+export function deviceID(vid: number, pid: number, serial: string): string {
+  const v = vid.toString(16).padStart(4, '0')
+  const p = pid.toString(16).padStart(4, '0')
+  return serial ? `${v}-${p}-${serial}` : `${v}-${p}`
+}
 
 // Wails binding helpers — normalise raw Go struct fields (PascalCase or camelCase) to TS types.
 
@@ -189,31 +175,41 @@ function normLayoutMeta(raw: unknown): LayoutMeta {
   }
 }
 
-function normDetectedScreen(raw: unknown): DetectedScreen {
-  const r = raw as Record<string, unknown>
-  return {
-    vid:         Number(r.vid         ?? r.VID         ?? 0),
-    pid:         Number(r.pid         ?? r.PID         ?? 0),
-    serial:      String(r.serial      ?? r.Serial      ?? ''),
-    width:       Number(r.width       ?? r.Width       ?? 0),
-    height:      Number(r.height      ?? r.Height      ?? 0),
-    description: String(r.description ?? r.Description ?? ''),
-    driver:      (r.driver ?? r.Driver ?? 'vocore') as DriverType,
-  }
-}
-
-function normSavedScreen(raw: unknown): SavedScreen {
+function normSavedDevice(raw: unknown): SavedDevice {
   const r = raw as Record<string, unknown>
   return {
     vid:      Number(r.vid      ?? r.VID      ?? 0),
     pid:      Number(r.pid      ?? r.PID      ?? 0),
     serial:   String(r.serial   ?? r.Serial   ?? ''),
+    type:     (r.type ?? r.Type ?? '') as DeviceType | '',
     width:    Number(r.width    ?? r.Width    ?? 0),
     height:   Number(r.height   ?? r.Height   ?? 0),
     name:     String(r.name     ?? r.Name     ?? ''),
     rotation: Number(r.rotation ?? r.Rotation ?? 0),
     driver:   (r.driver ?? r.Driver ?? 'vocore') as DriverType,
     dashId:   String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
+    bindings: Array.isArray(r.bindings ?? r.Bindings)
+      ? (r.bindings ?? r.Bindings) as DeviceBinding[]
+      : [],
+  }
+}
+
+function normCatalogEntry(raw: unknown): CatalogEntry {
+  const r = raw as Record<string, unknown>
+  return {
+    id:          String(r.id          ?? r.ID          ?? ''),
+    name:        String(r.name        ?? r.Name        ?? ''),
+    description: String(r.description ?? r.Description ?? ''),
+    type:        (r.type ?? r.Type ?? 'screen') as DeviceType,
+    vid:         Number(r.vid ?? r.VID ?? 0),
+    pid:         Number(r.pid ?? r.PID ?? 0),
+    width:       Number(r.width    ?? r.Width    ?? 0),
+    height:      Number(r.height   ?? r.Height   ?? 0),
+    rotation:    Number(r.rotation ?? r.Rotation ?? 0),
+    driver:      (r.driver ?? r.Driver ?? 'vocore') as DriverType,
+    bindings:    Array.isArray(r.bindings ?? r.Bindings)
+      ? (r.bindings ?? r.Bindings) as DeviceBinding[]
+      : [],
   }
 }
 
@@ -223,11 +219,6 @@ export const dashAPI = {
   async listLayouts(): Promise<LayoutMeta[]> {
     const raw = await call<unknown[]>('DashListLayouts')
     return Array.isArray(raw) ? raw.map(normLayoutMeta) : []
-  },
-
-  async loadLayout(): Promise<DashLayout> {
-    const raw = await call<unknown>('DashLoadLayout')
-    return normLayout(raw)
   },
 
   async loadLayoutByID(id: string): Promise<DashLayout> {
@@ -261,38 +252,29 @@ export const dashAPI = {
   },
 }
 
-// Device screen API.
+// Device API.
 
-export const deviceScreenAPI = {
-  async scanScreens(): Promise<DetectedScreen[]> {
-    const raw = await call<unknown[]>('DeviceScanScreens')
-    return Array.isArray(raw) ? raw.map(normDetectedScreen) : []
+export const deviceAPI = {
+  async getCatalog(): Promise<CatalogEntry[]> {
+    const raw = await call<unknown[]>('DeviceGetCatalog')
+    return Array.isArray(raw) ? raw.map(normCatalogEntry) : []
   },
 
-  async getSavedScreens(): Promise<SavedScreen[]> {
-    const raw = await call<unknown[]>('DeviceGetSavedScreens')
-    return Array.isArray(raw) ? raw.map(normSavedScreen) : []
+  async getSavedDevices(): Promise<SavedDevice[]> {
+    const raw = await call<unknown[]>('DeviceGetSavedDevices')
+    return Array.isArray(raw) ? raw.map(normSavedDevice) : []
   },
 
-  async getScreen(): Promise<SavedScreen | null> {
-    try {
-      const raw = await call<unknown>('DeviceGetScreen')
-      if (!raw) return null
-      return normSavedScreen(raw)
-    } catch {
-      return null
-    }
+  async addDevice(catalogID: string): Promise<void> {
+    await call<void>('DeviceAdd', catalogID)
   },
 
-  async selectScreen(
-    vid: number, pid: number, serial: string,
-    width: number, height: number, driver: DriverType,
-  ): Promise<void> {
-    await call<void>('DeviceSelectScreen', vid, pid, serial, width, height, driver)
+  async removeDevice(vid: number, pid: number, serial: string): Promise<void> {
+    await call<void>('DeviceRemoveDevice', vid, pid, serial)
   },
 
-  async renameScreen(vid: number, pid: number, serial: string, name: string): Promise<void> {
-    await call<void>('DeviceRenameScreen', vid, pid, serial, name)
+  async renameDevice(vid: number, pid: number, serial: string, name: string): Promise<void> {
+    await call<void>('DeviceRenameDevice', vid, pid, serial, name)
   },
 
   async setScreenRotation(vid: number, pid: number, serial: string, rotation: number): Promise<void> {
@@ -303,13 +285,13 @@ export const deviceScreenAPI = {
     await call<void>('DeviceSetDashLayout', vid, pid, serial, dashId)
   },
 
-  async setScreenPaused(paused: boolean): Promise<void> {
-    await call<void>('DeviceSetScreenPaused', paused)
+  async setDevicePaused(deviceID: string, paused: boolean): Promise<void> {
+    await call<void>('DeviceSetDevicePaused', deviceID, paused)
   },
 
-  async getScreenPaused(): Promise<boolean> {
+  async getDevicePaused(deviceID: string): Promise<boolean> {
     try {
-      return await call<boolean>('DeviceGetScreenPaused')
+      return await call<boolean>('DeviceGetDevicePaused', deviceID)
     } catch {
       return false
     }
@@ -326,15 +308,7 @@ export const deviceScreenAPI = {
   },
 }
 
-/** @deprecated Use deviceScreenAPI instead */
-export const voCoreAPI = deviceScreenAPI
-
 // Device binding API.
-
-export interface DeviceBinding {
-  button: number
-  command: string
-}
 
 export const deviceBindingsAPI = {
   async getDeviceBindings(vid: number, pid: number, serial: string): Promise<DeviceBinding[]> {

@@ -11,9 +11,16 @@ import (
 )
 
 // Binding maps a hardware button number to an application command.
+// DeviceVID and DevicePID scope the binding to a specific HID device; both
+// zero means the binding fires on any device (wildcard / global).
+// ScreenID is the coordinator screen ID to route the dispatched command to;
+// empty means global (no screen-specific routing).
 type Binding struct {
-	Button  int              `json:"button"`
-	Command commands.Command `json:"command"`
+	Button    int              `json:"button"`
+	Command   commands.Command `json:"command"`
+	DeviceVID uint16           `json:"-"` // internal; not persisted
+	DevicePID uint16           `json:"-"` // internal; not persisted
+	ScreenID  string           `json:"-"` // internal; not persisted
 }
 
 // Config holds the persisted button→command bindings.
