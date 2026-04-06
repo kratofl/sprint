@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import Home from '@/views/Home'
 import Telemetry from '@/views/Telemetry'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
@@ -7,26 +8,24 @@ import { useTelemetry } from '@/hooks/useTelemetry'
 import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { onEvent, call } from '@/lib/wails'
-import { Badge, Button, NavRail, type NavRailItem, cn } from '@sprint/ui'
+import { Badge, Button, cn } from '@sprint/ui'
+import logoIcon from '@/assets/sprint_logo_icon.png'
 import {
-  IconGauge,
-  IconLayout,
-  IconUsb,
-  IconKeyboard,
   IconBell,
   IconMinus,
   IconSquare,
   IconX,
 } from '@tabler/icons-react'
 
-type View = 'telemetry' | 'dash' | 'devices' | 'controls'
+type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'
 type BuildChannel = 'dev' | 'alpha' | 'beta' | 'release'
 
-const NAV: NavRailItem[] = [
-  { id: 'telemetry', label: 'Live_Session', icon: IconGauge },
-  { id: 'dash',      label: 'Dash_Editor',  icon: IconLayout },
-  { id: 'devices',   label: 'Devices',      icon: IconUsb },
-  { id: 'controls',  label: 'Controls',     icon: IconKeyboard },
+const NAV: { id: View; label: string }[] = [
+  { id: 'home',      label: 'Home' },
+  { id: 'telemetry', label: 'Live_Session' },
+  { id: 'dash',      label: 'Dash_Editor' },
+  { id: 'devices',   label: 'Devices' },
+  { id: 'controls',  label: 'Controls' },
 ]
 
 const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 'neutral' | 'active' | 'connected' }> = {
@@ -37,8 +36,8 @@ const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 
 }
 
 export default function App() {
-  const [view, setView] = useState<View>(import.meta.env.DEV ? 'telemetry' : 'dash')
-  const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry')
+  const [view, setView] = useState<View>('home')
+  const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry') as { id: View; label: string }[]
   const { frame, connected, fps } = useTelemetry()
 
   const [booting, setBooting] = useState(true)
@@ -92,13 +91,33 @@ export default function App() {
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      {/* Thin title bar — drag region with channel badge + window controls */}
+      {/* Top app bar — drag region, logo + nav tabs + window controls */}
       <header className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]">
-        <div className="flex items-center gap-2 [--wails-draggable:nodrag]">
-          <span className="font-sans italic text-sm font-bold uppercase tracking-[2px] text-accent select-none">
-            Sprint
-          </span>
+        {/* Logo */}
+        <div className="flex shrink-0 items-center pr-4 [--wails-draggable:nodrag]">
+          <img src={logoIcon} alt="Sprint" className="h-5 w-auto object-contain select-none" draggable={false} />
         </div>
+
+        {/* Nav tabs */}
+        <nav className="flex items-stretch gap-0.5 h-full [--wails-draggable:nodrag]">
+          {visibleNav.map(item => {
+            const isActive = item.id === view
+            return (
+              <button
+                key={item.id}
+                onClick={() => switchView(item.id)}
+                className={cn(
+                  'relative flex items-center px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-100 outline-none',
+                  isActive
+                    ? 'text-accent after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-accent'
+                    : 'text-text-muted hover:text-foreground',
+                )}
+              >
+                {item.label}
+              </button>
+            )
+          })}
+        </nav>
 
         {/* Right: notifications + window controls */}
         <div className="ml-auto flex items-center gap-1 [--wails-draggable:nodrag]">
@@ -131,23 +150,14 @@ export default function App() {
         </div>
       </header>
 
-      {/* Body: nav rail + main */}
-      <div className="flex flex-1 overflow-hidden">
-
-        <NavRail
-          items={visibleNav}
-          activeId={view}
-          onSelect={id => switchView(id as View)}
-        />
-
-        {/* Main content */}
-        <main className="flex flex-1 flex-col overflow-hidden bg-background">
-          {view === 'telemetry' && <Telemetry frame={frame} />}
-          {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
-          {view === 'devices'   && <Devices />}
-          {view === 'controls'  && <Controls />}
-        </main>
-      </div>
+      {/* Main content */}
+      <main className="flex flex-1 flex-col overflow-hidden bg-background">
+        {view === 'home'      && <Home connected={connected} onNavigate={switchView} />}
+        {view === 'telemetry' && <Telemetry frame={frame} />}
+        {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
+        {view === 'devices'   && <Devices />}
+        {view === 'controls'  && <Controls />}
+      </main>
 
       {/* Fixed bottom status footer */}
       <footer className="flex h-6 shrink-0 items-center border-t border-border bg-background px-4 font-mono text-[9px] text-text-muted">
