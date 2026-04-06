@@ -56,7 +56,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
         </div>
         <div className="flex items-center gap-2">
           <span className={cn(
-            'h-1.5 w-1.5 rounded-full',
+            'h-1.5 w-1.5',
             connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
           )} />
           <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
@@ -73,7 +73,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
               <button
                 key={feature.id}
                 onClick={() => onNavigate(feature.id)}
-                className="group text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
+                className="group text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
               >
                 <Card
                   size="sm"

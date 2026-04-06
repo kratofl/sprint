@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"strings"
 
 	"github.com/kratofl/sprint/app/internal/core"
@@ -33,6 +34,15 @@ func NewApp(version string) *App {
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 	log := logger.Init(logger.DefaultConfig())
+
+	// Inject embedded presets into packages that use them as fallback.
+	if catalogFS, err := fs.Sub(PresetsFS, "presets/devices"); err == nil {
+		devices.InitPresets(catalogFS)
+	}
+	if dashFS, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
+		dashboard.InitPresets(dashFS)
+	}
+
 	a.dash = dashboard.NewManager()
 	a.devMgr = devices.NewManager()
 	a.coord = core.New(log, a.dash, a.devMgr)

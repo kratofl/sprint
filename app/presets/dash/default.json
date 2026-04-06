@@ -8,8 +8,8 @@
     "id": "idle-default",
     "name": "Idle",
     "widgets": [
-      {"id": "idle-name", "type": "text", "col": 4, "row": 3, "colSpan": 12, "rowSpan": 3, "config": {"content": "Sprint"}},
-      {"id": "idle-number", "type": "text", "col": 6, "row": 6, "colSpan": 8, "rowSpan": 2, "config": {"content": "#00"}}
+      {"id": "idle-name", "type": "text", "col": 4, "row": 3, "colSpan": 12, "rowSpan": 3, "config": {"content": "Your Name"}},
+      {"id": "idle-number", "type": "text", "col": 6, "row": 6, "colSpan": 8, "rowSpan": 2, "config": {"content": "#22"}}
     ]
   },
   "pages": [

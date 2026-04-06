@@ -14,7 +14,7 @@ type VoCoreDriver struct {
 
 // NewVoCoreDriver creates a VoCoreDriver. The screen is not opened until Run is called.
 func NewVoCoreDriver(logger *slog.Logger) *VoCoreDriver {
-	return &VoCoreDriver{baseDriver: newBaseDriver(logger)}
+	return &VoCoreDriver{baseDriver: newBaseDriver(logger, 30)}
 }
 
 // Run starts the render-and-send loop. Blocks until ctx is cancelled.

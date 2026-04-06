@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/commands"
@@ -37,11 +36,15 @@ var inputEventCh = make(chan ButtonEvent, 128)
 
 // Detector listens to wheel button events and dispatches the bound command.
 type Detector struct {
-	logger    *slog.Logger
-	capturing atomic.Bool
+	logger *slog.Logger
 
 	bindMu  sync.RWMutex
 	bindMap map[deviceKey]bindTarget
+
+	// capMu guards capCh. capCh is non-nil while a CaptureNextButton call is
+	// in progress; Run forwards events there instead of dispatching commands.
+	capMu sync.Mutex
+	capCh chan ButtonEvent
 }
 
 // deviceKey identifies a specific button on a specific HID device by VID+PID.
@@ -94,7 +97,8 @@ func (d *Detector) lookup(evt ButtonEvent) (bindTarget, bool) {
 }
 
 // Run reads button events from the Raw Input loop and dispatches bound commands.
-// Events are suppressed while a CaptureNextButton call is in progress.
+// Events are forwarded to the capture channel while a CaptureNextButton call is
+// in progress, so no event is ever silently dropped.
 func (d *Detector) Run(ctx context.Context) {
 	d.logger.Info("detector running")
 	for {
@@ -103,10 +107,19 @@ func (d *Detector) Run(ctx context.Context) {
 			d.logger.Info("detector stopped")
 			return
 		case evt := <-inputEventCh:
-			if d.capturing.Load() {
-				// CaptureNextButton is consuming events — do not dispatch.
+			d.capMu.Lock()
+			ch := d.capCh
+			d.capMu.Unlock()
+
+			if ch != nil {
+				// A capture session is active — forward the event there.
+				select {
+				case ch <- evt:
+				default:
+				}
 				continue
 			}
+
 			if target, ok := d.lookup(evt); ok {
 				d.logger.Debug("dispatching command", "button", evt.Button, "vid", evt.VID, "pid", evt.PID, "command", target.Command, "screen", target.ScreenID)
 				commands.Dispatch(target.Command, target.ScreenID)
@@ -125,20 +138,21 @@ func (d *Detector) Run(ctx context.Context) {
 // Returns ErrCaptureTimeout if no input occurs within timeout, or
 // ErrCaptureInProgress if another capture is already running.
 func (d *Detector) CaptureNextButton(ctx context.Context, timeout time.Duration) (int, error) {
-	if !d.capturing.CompareAndSwap(false, true) {
+	ch := make(chan ButtonEvent, 1)
+
+	d.capMu.Lock()
+	if d.capCh != nil {
+		d.capMu.Unlock()
 		return 0, ErrCaptureInProgress
 	}
-	defer d.capturing.Store(false)
+	d.capCh = ch
+	d.capMu.Unlock()
 
-	// Drain any stale events queued before this capture session started.
-	for {
-		select {
-		case <-inputEventCh:
-		default:
-			goto drained
-		}
-	}
-drained:
+	defer func() {
+		d.capMu.Lock()
+		d.capCh = nil
+		d.capMu.Unlock()
+	}()
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -146,7 +160,7 @@ drained:
 	select {
 	case <-ctx.Done():
 		return 0, ctx.Err()
-	case evt := <-inputEventCh:
+	case evt := <-ch:
 		return evt.Button, nil
 	case <-timer.C:
 		return 0, ErrCaptureTimeout

@@ -18,3 +18,12 @@ func Dir() string {
 	base, _ := os.UserConfigDir()
 	return filepath.Join(base, "sprint")
 }
+
+// ExeDir returns the directory that contains the running executable.
+// Returns an empty string if the executable path cannot be determined.
+func ExeDir() string {
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Dir(exe)
+	}
+	return ""
+}

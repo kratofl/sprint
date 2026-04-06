@@ -4,7 +4,9 @@ import "fmt"
 
 const WidgetEnergy WidgetType = "virtual_energy"
 
-func init() { RegisterWidget(WidgetEnergy, "Virtual Energy", CategoryRace, 4, 3, false, 15, nil, drawWidgetEnergy) }
+func init() {
+	RegisterWidget(WidgetEnergy, "Virtual Energy", CategoryRace, 4, 3, false, 15, nil, drawWidgetEnergy)
+}
 
 func drawWidgetEnergy(c WidgetCtx) {
 	c.Panel()

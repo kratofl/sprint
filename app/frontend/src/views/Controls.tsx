@@ -241,7 +241,7 @@ function CommandRow({
           {bound && (
             <button
               onClick={() => onButtonChange(0)}
-              className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
+              className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
               title="Clear binding"
             >
               ×

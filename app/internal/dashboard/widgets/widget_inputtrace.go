@@ -6,7 +6,9 @@ import (
 
 const WidgetInputTrace WidgetType = "input_trace"
 
-func init() { RegisterWidget(WidgetInputTrace, "Inputs", CategoryCar, 6, 3, false, 30, nil, drawWidgetInputTrace) }
+func init() {
+	RegisterWidget(WidgetInputTrace, "Inputs", CategoryCar, 6, 3, false, 30, nil, drawWidgetInputTrace)
+}
 
 func drawWidgetInputTrace(c WidgetCtx) {
 	c.Panel()

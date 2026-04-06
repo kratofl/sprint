@@ -80,7 +80,7 @@ export function PageTabs({
             )}
           >
             {isLive && (
-              <span className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" title="Currently rendering" />
+              <span className="w-1.5 h-1.5 bg-teal-400 flex-shrink-0" title="Currently rendering" />
             )}
 
             {renamingIdx === idx ? (

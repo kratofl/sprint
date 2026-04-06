@@ -15,8 +15,6 @@ import (
 )
 
 const (
-	targetFPS           = 30
-	frameInterval       = time.Second / targetFPS
 	screenRetryInterval = 3 * time.Second
 	// fastRetryInterval is used for the first fastRetryDuration after Run starts,
 	// so transient WinUSB init delays or brief exclusive-access windows
@@ -40,7 +38,11 @@ const (
 // transport opener).
 type baseDriver struct {
 	screen      ScreenConfig
+	defaultFPS  int          // hardware-appropriate default; used when cfgFPS is zero
 	cfgRotation atomic.Int32 // user-configured rotation; updated by Configure for hot-reload
+	cfgFPS      atomic.Int32 // user-configured target fps; 0 = fall back to defaultFPS
+	cfgOffsetX  atomic.Int32 // pixels from left in screen space; applied after rotation
+	cfgOffsetY  atomic.Int32 // pixels from top in screen space; applied after rotation
 	logger      *slog.Logger
 
 	// painter is the active Painter, stored atomically so SetLayout can access
@@ -58,24 +60,30 @@ type baseDriver struct {
 
 	screenConnected atomic.Bool
 	paused          atomic.Bool
-	pauseSignal     chan struct{}       // buffered 1; signals driveLoop to stop and release USB
+	pauseSignal     chan struct{}        // buffered 1; signals driveLoop to stop and release USB
 	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
 }
 
-func newBaseDriver(logger *slog.Logger) baseDriver {
+func newBaseDriver(logger *slog.Logger, defaultFPS int) baseDriver {
 	return baseDriver{
 		logger:      logger,
+		defaultFPS:  defaultFPS,
 		pauseSignal: make(chan struct{}, 1),
 	}
 }
 
 // Configure sets the target screen's USB identity and render dimensions.
 // Safe to call while the driver is running; takes effect on the next connect
-// attempt. The rotation is stored atomically so running render ticks can
-// hot-reload it.
+// attempt. The rotation and fps are stored atomically so running render ticks
+// can hot-reload them.
 func (d *baseDriver) Configure(cfg ScreenConfig) {
 	d.screen = cfg
 	d.cfgRotation.Store(int32(cfg.Rotation))
+	if cfg.TargetFPS > 0 {
+		d.cfgFPS.Store(int32(cfg.TargetFPS))
+	}
+	d.cfgOffsetX.Store(int32(cfg.OffsetX))
+	d.cfgOffsetY.Store(int32(cfg.OffsetY))
 	d.forceRedraw.Store(true)
 }
 
@@ -197,7 +205,7 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 	d.logger.Info(name+" starting",
 		"vid", fmt.Sprintf("0x%04X", d.screen.VID),
 		"pid", fmt.Sprintf("0x%04X", d.screen.PID),
-		"target_fps", targetFPS)
+		"target_fps", d.cfgFPS.Load())
 
 	defer func() {
 		if p := d.painter.Load(); p != nil {
@@ -247,6 +255,16 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 		d.screenConnected.Store(true)
 		d.emitEvent("screen:connected")
 		d.driveLoop(ctx, transport)
+
+		// On app shutdown, send a black frame before releasing the USB handle
+		// so the screen goes dark and is immediately usable by other apps.
+		if ctx.Err() != nil {
+			nativeW, nativeH := transport.nativeSize()
+			if frameBytes := nativeW * nativeH * 2; frameBytes > 0 {
+				_ = transport.send(make([]byte, frameBytes)) // all-zero = RGB565 black
+			}
+		}
+
 		transport.close()
 		d.screenConnected.Store(false)
 		d.emitEvent("screen:disconnected")
@@ -264,11 +282,15 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 	}
 }
 
-// driveLoop renders and sends frames at targetFPS until disconnect or cancel.
+// driveLoop renders and sends frames at the configured fps until disconnect or cancel.
 // Render and USB send run in separate goroutines (double-buffered pipeline) so
 // USB latency does not stall the next frame render.
 func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
-	ticker := time.NewTicker(frameInterval)
+	activeFPS := int(d.cfgFPS.Load())
+	if activeFPS <= 0 {
+		activeFPS = d.defaultFPS
+	}
+	ticker := time.NewTicker(time.Second / time.Duration(activeFPS))
 	defer ticker.Stop()
 
 	nativeW, nativeH := transport.nativeSize()
@@ -310,6 +332,9 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	if p := d.painter.Load(); p != nil {
 		if img, err := p.Paint(&dto.TelemetryFrame{}); err == nil {
 			applyRGB565Rotation(img, renderBuf, rotation)
+			if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
+				applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
+			}
 			if err := transport.send(renderBuf); err != nil {
 				d.logger.Warn("standby frame send failed", "err", err)
 			}
@@ -370,6 +395,15 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		// idle widgets (e.g. a clock or "no game" notice).
 		idleHeartbeat := d.currentIdle.Load() && time.Since(lastRenderTime) >= idleRefreshInterval
 		if !newFrame && !redraw && !idleHeartbeat {
+			// Hot-reload fps if it changed (e.g. via Configure).
+			newFPS := int(d.cfgFPS.Load())
+			if newFPS <= 0 {
+				newFPS = d.defaultFPS
+			}
+			if newFPS != activeFPS {
+				activeFPS = newFPS
+				ticker.Reset(time.Second / time.Duration(activeFPS))
+			}
 			continue
 		}
 		frame := d.latestFrame.Load()
@@ -394,6 +428,9 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		renderDone := time.Now()
 
 		applyRGB565Rotation(img, renderBuf, rotation)
+		if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
+			applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
+		}
 		convertDone := time.Now()
 
 		if len(renderBuf) != frameBytes {
@@ -431,7 +468,7 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		totalRenderNs += renderDone.Sub(renderStart).Nanoseconds()
 		totalConvertNs += convertDone.Sub(renderDone).Nanoseconds()
 
-		if time.Since(renderStart) > frameInterval {
+		if time.Since(renderStart) > time.Second/time.Duration(activeFPS) {
 			framesSkipped++
 			select {
 			case <-ticker.C:
@@ -446,8 +483,8 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 			}
 			d.logger.Info("render stats",
 				"fps", fmt.Sprintf("%.1f", float64(framesSent)/elapsed.Seconds()),
-				"render_ms", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
-				"convert_ms", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
+				"render_ns", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
+				"convert_ns", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
 				"frame_bytes", frameBytes,
 				"skipped", framesSkipped,
 				"rotation_deg", rotation)

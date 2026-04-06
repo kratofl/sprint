@@ -17,9 +17,9 @@ import (
 type DeviceType string
 
 const (
-	DeviceTypeWheel     DeviceType = "wheel"      // screen + buttons; future: LEDs
-	DeviceTypeScreen    DeviceType = "screen"      // display only
-	DeviceTypeButtonBox DeviceType = "buttonbox"   // buttons only; future: LEDs
+	DeviceTypeWheel     DeviceType = "wheel"     // screen + buttons; future: LEDs
+	DeviceTypeScreen    DeviceType = "screen"    // display only
+	DeviceTypeButtonBox DeviceType = "buttonbox" // buttons only; future: LEDs
 )
 
 // DriverType identifies which hardware driver backs a screen-capable device.
@@ -54,17 +54,20 @@ type DeviceBinding struct {
 // SavedDevice is a persisted registry entry with user metadata that survives
 // disconnection. Replaces the former SavedScreen type.
 type SavedDevice struct {
-	VID      uint16          `json:"vid"`
-	PID      uint16          `json:"pid"`
-	Serial   string          `json:"serial,omitempty"`
-	Type     DeviceType      `json:"type,omitempty"`     // defaults to DeviceTypeScreen for old entries
-	Width    int             `json:"width"`
-	Height   int             `json:"height"`
-	Name     string          `json:"name"`
-	Rotation int             `json:"rotation"` // 0=0°, 90=CW90, 180=180°, 270=CW270
-	Driver   DriverType      `json:"driver"`
-	DashID   string          `json:"dash_id,omitempty"`   // assigned dash layout; empty = use default
-	Bindings []DeviceBinding `json:"bindings,omitempty"`
+	VID       uint16          `json:"vid"`
+	PID       uint16          `json:"pid"`
+	Serial    string          `json:"serial,omitempty"`
+	Type      DeviceType      `json:"type,omitempty"` // defaults to DeviceTypeScreen for old entries
+	Width     int             `json:"width"`
+	Height    int             `json:"height"`
+	Name      string          `json:"name"`
+	Rotation  int             `json:"rotation"`             // 0=0°, 90=CW90, 180=180°, 270=CW270
+	TargetFPS int             `json:"target_fps,omitempty"` // 0 = use driver default
+	OffsetX   int             `json:"offset_x,omitempty"`   // pixels from left in screen space
+	OffsetY   int             `json:"offset_y,omitempty"`   // pixels from top in screen space
+	Driver    DriverType      `json:"driver"`
+	DashID    string          `json:"dash_id,omitempty"` // assigned dash layout; empty = use default
+	Bindings  []DeviceBinding `json:"bindings,omitempty"`
 }
 
 // HasScreen reports whether this device has a screen (wheel or screen type).
@@ -75,12 +78,15 @@ func (d *SavedDevice) HasScreen() bool {
 // ScreenConfig is the hardware-agnostic config the coordinator uses to drive
 // a screen-capable device. Only valid when HasScreen() is true.
 type ScreenConfig struct {
-	VID      uint16     `json:"vid"`
-	PID      uint16     `json:"pid"`
-	Width    int        `json:"width"`
-	Height   int        `json:"height"`
-	Rotation int        `json:"rotation"`
-	Driver   DriverType `json:"driver"`
+	VID       uint16     `json:"vid"`
+	PID       uint16     `json:"pid"`
+	Width     int        `json:"width"`
+	Height    int        `json:"height"`
+	Rotation  int        `json:"rotation"`
+	TargetFPS int        `json:"target_fps,omitempty"` // 0 = use driver default
+	OffsetX   int        `json:"offset_x,omitempty"`   // pixels from left in screen space
+	OffsetY   int        `json:"offset_y,omitempty"`   // pixels from top in screen space
+	Driver    DriverType `json:"driver"`
 }
 
 // DeviceRegistry holds all known devices.
@@ -88,20 +94,48 @@ type DeviceRegistry struct {
 	Devices []SavedDevice `json:"devices"`
 }
 
-// Manager handles persistence of the device registry at data/screens.json
-// (next to the executable, or OS config dir as fallback).
+// Manager handles persistence of the device registry under a data/devices/
+// directory, with one JSON file per device type.
 type Manager struct {
-	path    string
-	oldPath string // legacy screen.json migration source
+	dir string
 }
 
 // NewManager creates a Manager using the local app data directory.
 func NewManager() *Manager {
-	base := appdata.Dir()
-	return &Manager{
-		path:    filepath.Join(base, "screens.json"),
-		oldPath: filepath.Join(base, "screen.json"),
+	return &Manager{dir: filepath.Join(appdata.Dir(), "devices")}
+}
+
+func (m *Manager) filePath(name string) string {
+	return filepath.Join(m.dir, name)
+}
+
+// readDeviceFile reads a flat JSON array of SavedDevice from path.
+// Returns nil slice (no error) if the file does not exist.
+func readDeviceFile(path string) ([]SavedDevice, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("devices: read %s: %w", filepath.Base(path), err)
 	}
+	var devices []SavedDevice
+	if err := json.Unmarshal(data, &devices); err != nil {
+		return nil, fmt.Errorf("devices: parse %s: %w", filepath.Base(path), err)
+	}
+	return devices, nil
+}
+
+// writeDeviceFile writes a flat JSON array of SavedDevice to path.
+func writeDeviceFile(path string, devices []SavedDevice) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("devices: mkdir: %w", err)
+	}
+	data, err := json.MarshalIndent(devices, "", "  ")
+	if err != nil {
+		return fmt.Errorf("devices: marshal %s: %w", filepath.Base(path), err)
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 // DeviceID returns the composite key "vid-pid[-serial]" for a device.
@@ -118,33 +152,51 @@ func ScreenID(vid, pid uint16, serial string) string {
 	return DeviceID(vid, pid, serial)
 }
 
-// Load reads the registry from disk. Migrates a legacy VoCore screen.json on
-// first run. Returns an empty registry (no error) if neither file exists.
+// Load reads the registry from disk. Each device type is stored in its own file
+// under the devices/ directory. Returns an empty registry if no files exist.
 func (m *Manager) Load() (*DeviceRegistry, error) {
-	data, err := os.ReadFile(m.path)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("devices: read registry: %w", err)
-		}
-		return m.migrate()
+	files := map[string]DeviceType{
+		"wheels.json":      DeviceTypeWheel,
+		"screens.json":     DeviceTypeScreen,
+		"buttonboxes.json": DeviceTypeButtonBox,
 	}
 	var reg DeviceRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("devices: parse registry: %w", err)
+	for file := range files {
+		devices, err := readDeviceFile(m.filePath(file))
+		if err != nil {
+			return nil, err
+		}
+		reg.Devices = append(reg.Devices, devices...)
 	}
 	return &reg, nil
 }
 
-// Save writes the registry to disk, creating parent directories if needed.
+// Save writes the registry to disk, splitting devices into per-type files.
 func (m *Manager) Save(reg *DeviceRegistry) error {
-	if err := os.MkdirAll(filepath.Dir(m.path), 0755); err != nil {
-		return fmt.Errorf("devices: mkdir: %w", err)
+	buckets := map[string][]SavedDevice{
+		"wheels.json":      nil,
+		"screens.json":     nil,
+		"buttonboxes.json": nil,
 	}
-	data, err := json.MarshalIndent(reg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("devices: marshal registry: %w", err)
+	for _, d := range reg.Devices {
+		switch d.Type {
+		case DeviceTypeWheel:
+			buckets["wheels.json"] = append(buckets["wheels.json"], d)
+		case DeviceTypeButtonBox:
+			buckets["buttonboxes.json"] = append(buckets["buttonboxes.json"], d)
+		default: // DeviceTypeScreen or legacy ""
+			buckets["screens.json"] = append(buckets["screens.json"], d)
+		}
 	}
-	return os.WriteFile(m.path, data, 0644)
+	for file, devices := range buckets {
+		if devices == nil {
+			devices = []SavedDevice{}
+		}
+		if err := writeDeviceFile(m.filePath(file), devices); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Upsert adds a detected screen to the registry as a SavedDevice if not already
@@ -168,16 +220,21 @@ func Upsert(reg *DeviceRegistry, screen DetectedScreen) {
 	if screen.Height > screen.Width {
 		rotation = 90
 	}
+	targetFPS := 30
+	if screen.Driver == DriverUSBD480 {
+		targetFPS = 60
+	}
 	reg.Devices = append(reg.Devices, SavedDevice{
-		VID:      screen.VID,
-		PID:      screen.PID,
-		Serial:   screen.Serial,
-		Type:     DeviceTypeScreen,
-		Width:    screen.Width,
-		Height:   screen.Height,
-		Name:     name,
-		Rotation: rotation,
-		Driver:   screen.Driver,
+		VID:       screen.VID,
+		PID:       screen.PID,
+		Serial:    screen.Serial,
+		Type:      DeviceTypeScreen,
+		Width:     screen.Width,
+		Height:    screen.Height,
+		Name:      name,
+		Rotation:  rotation,
+		TargetFPS: targetFPS,
+		Driver:    screen.Driver,
 	})
 }
 
@@ -252,47 +309,26 @@ func Remove(reg *DeviceRegistry, id string) {
 // Only meaningful when d.HasScreen() is true.
 func ToScreenConfig(d *SavedDevice) ScreenConfig {
 	return ScreenConfig{
-		VID:      d.VID,
-		PID:      d.PID,
-		Width:    d.Width,
-		Height:   d.Height,
-		Rotation: d.Rotation,
-		Driver:   d.Driver,
+		VID:       d.VID,
+		PID:       d.PID,
+		Width:     d.Width,
+		Height:    d.Height,
+		Rotation:  d.Rotation,
+		TargetFPS: d.TargetFPS,
+		OffsetX:   d.OffsetX,
+		OffsetY:   d.OffsetY,
+		Driver:    d.Driver,
 	}
 }
 
-// migrate reads a legacy screen.json (VoCore-only, pre-registry format) and
-// synthesises a DeviceRegistry from it.
-func (m *Manager) migrate() (*DeviceRegistry, error) {
-	reg := &DeviceRegistry{}
-	data, err := os.ReadFile(m.oldPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return reg, nil
+// SetScreenOffset updates the screen offset for the device with the given composite ID.
+func SetScreenOffset(reg *DeviceRegistry, id string, offsetX, offsetY int) error {
+	for i := range reg.Devices {
+		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
+			reg.Devices[i].OffsetX = offsetX
+			reg.Devices[i].OffsetY = offsetY
+			return nil
 		}
-		return nil, fmt.Errorf("devices: read legacy screen config: %w", err)
 	}
-	var legacy struct {
-		VID    uint16 `json:"vid"`
-		PID    uint16 `json:"pid"`
-		Width  int    `json:"width"`
-		Height int    `json:"height"`
-	}
-	if err := json.Unmarshal(data, &legacy); err != nil || legacy.VID == 0 {
-		return reg, nil
-	}
-	w, h := legacy.Width, legacy.Height
-	if h > w {
-		w, h = h, w
-	}
-	detected := DetectedScreen{
-		VID:         legacy.VID,
-		PID:         legacy.PID,
-		Width:       w,
-		Height:      h,
-		Description: fmt.Sprintf("VoCore Screen · %d×%d", w, h),
-		Driver:      DriverVoCore,
-	}
-	Upsert(reg, detected)
-	return reg, nil
+	return fmt.Errorf("devices: device %q not found", id)
 }

@@ -6,7 +6,9 @@ import (
 
 const WidgetTyreTemp WidgetType = "tyre_temp"
 
-func init() { RegisterWidget(WidgetTyreTemp, "Tyre Temp", CategoryRace, 10, 4, false, 5, nil, drawWidgetTyreTemp) }
+func init() {
+	RegisterWidget(WidgetTyreTemp, "Tyre Temp", CategoryRace, 10, 4, false, 5, nil, drawWidgetTyreTemp)
+}
 
 func drawWidgetTyreTemp(c WidgetCtx) {
 	c.Panel()

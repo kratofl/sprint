@@ -2,7 +2,9 @@ package widgets
 
 const WidgetRPMBar WidgetType = "rpm_bar"
 
-func init() { RegisterWidget(WidgetRPMBar, "RPM Bar", CategoryCar, 2, 8, false, 30, nil, drawWidgetRPMBar) }
+func init() {
+	RegisterWidget(WidgetRPMBar, "RPM Bar", CategoryCar, 2, 8, false, 30, nil, drawWidgetRPMBar)
+}
 
 func drawWidgetRPMBar(c WidgetCtx) {
 	c.Panel()

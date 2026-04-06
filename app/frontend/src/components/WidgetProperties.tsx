@@ -63,7 +63,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
         <select
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border rounded px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
         >
           {def.options.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -75,20 +75,20 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="number"
           value={current}
           onChange={e => onChange(Number(e.target.value))}
-          className="bg-[#141414] border border-border rounded px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
         />
       )}
       {def.type === 'boolean' && (
         <button
           onClick={() => onChange(current !== 'true')}
           className={cn(
-            'flex items-center gap-2 px-2 py-1 rounded border font-mono text-[10px] transition-colors w-full text-left',
+            'flex items-center gap-2 px-2 py-1 border font-mono text-[10px] transition-colors w-full text-left',
             current === 'true'
               ? 'border-accent bg-accent/10 text-accent'
               : 'border-border text-text-muted hover:border-border-strong'
           )}
         >
-          <span className={cn('w-3 h-3 rounded-sm border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
+          <span className={cn('w-3 h-3 border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
           {current === 'true' ? 'Enabled' : 'Disabled'}
         </button>
       )}
@@ -97,7 +97,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border rounded px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
         />
       )}
     </div>

@@ -62,6 +62,8 @@ export interface SavedDevice {
   height: number
   name: string
   rotation: number          // 0 | 90 | 180 | 270
+  offsetX: number           // pixel offset from left edge
+  offsetY: number           // pixel offset from top edge
   driver: DriverType
   dashId: string            // assigned layout ID; empty = use default
   bindings?: DeviceBinding[]
@@ -186,6 +188,8 @@ function normSavedDevice(raw: unknown): SavedDevice {
     height:   Number(r.height   ?? r.Height   ?? 0),
     name:     String(r.name     ?? r.Name     ?? ''),
     rotation: Number(r.rotation ?? r.Rotation ?? 0),
+    offsetX:  Number(r.offset_x  ?? r.offsetX  ?? r.OffsetX  ?? 0),
+    offsetY:  Number(r.offset_y  ?? r.offsetY  ?? r.OffsetY  ?? 0),
     driver:   (r.driver ?? r.Driver ?? 'vocore') as DriverType,
     dashId:   String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
     bindings: Array.isArray(r.bindings ?? r.Bindings)
@@ -279,6 +283,10 @@ export const deviceAPI = {
 
   async setScreenRotation(vid: number, pid: number, serial: string, rotation: number): Promise<void> {
     await call<void>('DeviceSetScreenRotation', vid, pid, serial, rotation)
+  },
+
+  async setScreenOffset(vid: number, pid: number, serial: string, offsetX: number, offsetY: number): Promise<void> {
+    await call<void>('DeviceSetScreenOffset', vid, pid, serial, offsetX, offsetY)
   },
 
   async setDashLayout(vid: number, pid: number, serial: string, dashId: string): Promise<void> {

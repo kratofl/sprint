@@ -65,14 +65,16 @@ func clamp01(v float64) float64 {
 	return v
 }
 
-func drawPanel(dc *gg.Context, x, y, w, h, r float64) {
-	dc.SetColor(ColElevated)
+func drawPanel(dc *gg.Context, x, y, w, h, r, bw float64) {
+	// Draw border as an outer fill, then cover the interior with the background.
+	// Using two fills (no Stroke) avoids the 1px stroke overhang that extends
+	// outside the widget bounds and causes border flickering on isolated widgets.
+	dc.SetColor(ColBorder)
 	dc.DrawRoundedRectangle(x, y, w, h, r)
 	dc.Fill()
-	dc.SetColor(ColBorder)
-	dc.SetLineWidth(1)
-	dc.DrawRoundedRectangle(x, y, w, h, r)
-	dc.Stroke()
+	dc.SetColor(ColBg)
+	dc.DrawRoundedRectangle(x+bw, y+bw, w-bw*2, h-bw*2, r)
+	dc.Fill()
 }
 
 func drawHBar(dc *gg.Context, x, y, w, h, pct float64, col color.RGBA) {

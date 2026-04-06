@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { IconDeviceMobile } from '@tabler/icons-react'
 import {
   type SavedDevice, type CatalogEntry, type DeviceType, type LayoutMeta, type DeviceBinding,
   deviceAPI, deviceBindingsAPI, dashAPI, deviceHasScreen, deviceID,
@@ -158,7 +159,7 @@ function DeviceSection() {
                           type="button"
                           onClick={() => handleDeviceClick(d)}
                           className={cn(
-                            'w-full rounded border px-3 py-2 text-left transition-colors',
+                            'w-full border px-3 py-2 text-left transition-colors',
                             selected
                               ? 'border-primary/60 bg-primary/10'
                               : 'border-border bg-card hover:border-border-strong hover:bg-card/80',
@@ -262,7 +263,7 @@ function CatalogPanel({ entries, deviceType, onAdd, onClose, onError }: CatalogP
           {entries.map(e => (
             <div
               key={e.id}
-              className="flex items-start justify-between gap-3 rounded border border-border bg-card px-4 py-3"
+              className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
             >
               <div className="min-w-0 flex-1">
                 <p className="font-mono text-[10px] font-bold">{e.name}</p>
@@ -296,8 +297,13 @@ function CatalogPanel({ entries, deviceType, onAdd, onClose, onError }: CatalogP
 
 // DeviceDetail — right panel shown when a device is selected.
 
-const ROTATION_OPTIONS = [0, 90, 180, 270] as const
-type Rotation = (typeof ROTATION_OPTIONS)[number]
+const ORIENTATION_OPTIONS = [
+  { degrees: 0   as const, label: 'Portrait',       iconRotation: 'rotate-0'    },
+  { degrees: 90  as const, label: 'Landscape',      iconRotation: 'rotate-90'   },
+  { degrees: 180 as const, label: 'Portrait Rev.',  iconRotation: 'rotate-180'  },
+  { degrees: 270 as const, label: 'Landscape Rev.', iconRotation: '-rotate-90'  },
+] as const
+type Rotation = (typeof ORIENTATION_OPTIONS)[number]['degrees']
 
 interface DeviceDetailProps {
   device: SavedDevice
@@ -318,17 +324,19 @@ function DeviceDetail({
   const [draft, setDraft]                       = useState(device.name)
   const [renaming, setRenaming]                 = useState(false)
   const [rotation, setRotation]                 = useState<Rotation>(device.rotation as Rotation)
+  const [offsetX, setOffsetX]                   = useState(device.offsetX ?? 0)
+  const [offsetY, setOffsetY]                   = useState(device.offsetY ?? 0)
   const [dashId, setDashId]                     = useState(device.dashId)
   const [savingDash, setSavingDash]             = useState(false)
   const [paused, setPaused]                     = useState(false)
   const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
-  const [savingBindings, setSavingBindings]     = useState(false)
-  const [bindingsSaved, setBindingsSaved]       = useState(false)
   const [removing, setRemoving]                 = useState(false)
 
   useEffect(() => {
     setDraft(device.name)
     setRotation(device.rotation as Rotation)
+    setOffsetX(device.offsetX ?? 0)
+    setOffsetY(device.offsetY ?? 0)
     setDashId(device.dashId)
     setRenaming(false)
     if (isScreen) {
@@ -368,6 +376,20 @@ function DeviceDetail({
     }
   }
 
+  const handleOffsetChange = async (axis: 'x' | 'y', value: number) => {
+    const nx = axis === 'x' ? value : offsetX
+    const ny = axis === 'y' ? value : offsetY
+    if (axis === 'x') setOffsetX(nx)
+    else setOffsetY(ny)
+    try {
+      await deviceAPI.setScreenOffset(device.vid, device.pid, device.serial, nx, ny)
+    } catch (e) {
+      onError(String(e))
+      if (axis === 'x') setOffsetX(device.offsetX ?? 0)
+      else setOffsetY(device.offsetY ?? 0)
+    }
+  }
+
   const handleDashChange = async (newId: string) => {
     setDashId(newId)
     setSavingDash(true)
@@ -396,26 +418,17 @@ function DeviceDetail({
   const getDeviceButton = (commandId: string) =>
     bindings.find(b => b.command === commandId)?.button ?? 0
 
-  const setDeviceButton = (commandId: string, button: number) => {
-    setBindings(prev => {
-      const rest = prev.filter(b => b.command !== commandId)
-      if (button > 0) rest.push({ command: commandId, button })
-      return rest
-    })
-  }
-
-  const handleSaveBindings = async () => {
-    setSavingBindings(true)
+  const setDeviceButton = async (commandId: string, button: number) => {
+    const updated = bindings.filter(b => b.command !== commandId)
+    if (button > 0) updated.push({ command: commandId, button })
+    setBindings(updated)
     try {
-      await deviceBindingsAPI.saveDeviceBindings(device.vid, device.pid, device.serial, bindings)
-      setBindingsSaved(true)
-      setTimeout(() => setBindingsSaved(false), 2000)
+      await deviceBindingsAPI.saveDeviceBindings(device.vid, device.pid, device.serial, updated)
     } catch (e) {
       onError(String(e))
-    } finally {
-      setSavingBindings(false)
     }
   }
+
 
   const handleRemove = async () => {
     setRemoving(true)
@@ -448,7 +461,7 @@ function DeviceDetail({
                 if (e.key === 'Escape') { setDraft(device.name); setRenaming(false) }
               }}
               onBlur={commitRename}
-              className="rounded bg-background px-1 font-mono text-sm font-bold outline outline-1 outline-primary"
+              className="bg-background px-1 font-mono text-sm font-bold outline outline-1 outline-primary"
             />
           ) : (
             <button
@@ -489,7 +502,7 @@ function DeviceDetail({
       {isScreen && (
         <>
           {/* Pause/Resume */}
-          <div className="flex items-center justify-between rounded border border-border bg-card px-4 py-3 gap-3">
+          <div className="flex items-center justify-between border border-border bg-card px-4 py-3 gap-3">
             <div className="min-w-0">
               <p className={cn(
                 'font-mono text-[10px] font-bold',
@@ -513,25 +526,55 @@ function DeviceDetail({
             </Button>
           </div>
 
-          {/* Rotation */}
+          {/* Orientation */}
           <div className="space-y-1.5">
-            <p className="font-mono text-[9px] font-bold text-text-muted">ROTATION</p>
+            <p className="font-mono text-[9px] font-bold text-text-muted">ORIENTATION</p>
             <div className="flex gap-1.5">
-              {ROTATION_OPTIONS.map(r => (
+              {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
                 <button
-                  key={r}
+                  key={degrees}
                   type="button"
-                  onClick={() => handleRotation(r)}
+                  onClick={() => handleRotation(degrees)}
                   className={cn(
-                    'rounded border px-3 py-1 font-mono text-[10px] transition-colors',
-                    rotation === r
+                    'flex items-center gap-1.5 border px-3 py-1 font-mono text-[10px] transition-colors',
+                    rotation === degrees
                       ? 'border-primary bg-primary text-background'
                       : 'border-border bg-background text-text-muted hover:text-foreground',
                   )}
                 >
-                  {r}°
+                  <IconDeviceMobile size={12} className={iconRotation} />
+                  {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Screen offset */}
+          <div className="space-y-1.5">
+            <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_OFFSET (px)</p>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1.5">
+                <span className="font-mono text-[9px] text-text-muted">LEFT</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={512}
+                  value={offsetX}
+                  onChange={e => handleOffsetChange('x', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                <span className="font-mono text-[9px] text-text-muted">TOP</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={512}
+                  value={offsetY}
+                  onChange={e => handleOffsetChange('y', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
             </div>
           </div>
 
@@ -550,7 +593,7 @@ function DeviceDetail({
                 onChange={e => handleDashChange(e.target.value)}
                 disabled={savingDash}
                 className={cn(
-                  'w-full rounded border border-border bg-background px-3 py-1.5',
+                  'w-full border border-border bg-background px-3 py-1.5',
                   'font-mono text-[10px] text-foreground',
                   'focus:outline-none focus:ring-1 focus:ring-primary',
                   'disabled:opacity-50',
@@ -568,23 +611,7 @@ function DeviceDetail({
       {/* Button bindings */}
       {deviceOnlyCmds.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[9px] font-bold text-text-muted">BUTTON_BINDINGS</p>
-            <div className="flex items-center gap-2">
-              {bindingsSaved && (
-                <span className="terminal-header font-mono text-[9px] text-success">SAVED</span>
-              )}
-              <Button
-                size="sm"
-                variant="primary"
-                className="terminal-header h-6 px-2 text-[9px]"
-                disabled={savingBindings}
-                onClick={handleSaveBindings}
-              >
-                {savingBindings ? 'SAVING…' : 'SAVE'}
-              </Button>
-            </div>
-          </div>
+          <p className="font-mono text-[9px] font-bold text-text-muted">BUTTON_BINDINGS</p>
           <p className="font-mono text-[8px] text-text-muted">
             Click CAPTURE then press the physical button on this device.
           </p>
@@ -664,7 +691,7 @@ function DeviceCommandRow({
 
   return (
     <div className={cn(
-      'flex items-center justify-between rounded border px-4 py-2.5',
+      'flex items-center justify-between border px-4 py-2.5',
       bound ? 'border-primary/40 bg-primary/5' : 'border-border bg-card',
     )}>
       <div className="flex flex-col gap-0.5">
@@ -680,7 +707,7 @@ function DeviceCommandRow({
         {bound && (
           <button
             onClick={() => onButtonChange(0)}
-            className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
+            className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
             title="Clear binding"
           >
             ×

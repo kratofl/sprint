@@ -4,7 +4,9 @@ import "fmt"
 
 const WidgetLapCounter WidgetType = "lap_counter"
 
-func init() { RegisterWidget(WidgetLapCounter, "Lap Counter", CategoryTiming, 4, 2, false, 5, nil, drawWidgetLapCounter) }
+func init() {
+	RegisterWidget(WidgetLapCounter, "Lap Counter", CategoryTiming, 4, 2, false, 5, nil, drawWidgetLapCounter)
+}
 
 func drawWidgetLapCounter(c WidgetCtx) {
 	c.Panel()

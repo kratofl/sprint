@@ -4,7 +4,9 @@ import "fmt"
 
 const WidgetIncidents WidgetType = "incidents"
 
-func init() { RegisterWidget(WidgetIncidents, "Incidents", CategoryRace, 3, 2, false, 2, nil, drawWidgetIncidents) }
+func init() {
+	RegisterWidget(WidgetIncidents, "Incidents", CategoryRace, 3, 2, false, 2, nil, drawWidgetIncidents)
+}
 
 func drawWidgetIncidents(c WidgetCtx) {
 	c.Panel()

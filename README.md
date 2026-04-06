@@ -1,6 +1,8 @@
-# Sprint
-
-> Sim racing telemetry platform — live data on your wheel, your engineer on voice, your setup in the cloud.
+<div align="center">
+  <img src="docs/sprint_logo_icon.png" alt="Sprint" width="120" />
+  <h1>Sprint</h1>
+  <p>Sim racing telemetry platform — live data on your wheel, your engineer on voice, your setup in the cloud.</p>
+</div>
 
 Sprint is a full-stack telemetry platform for sim racers. A native desktop app runs on your rig, reads live telemetry from the game, and streams data to a VoCore steering wheel display. A remote race engineer can connect from anywhere to see the same live data and push commands — change the target laptime, send pit notes, adjust dash parameters. Sessions are synced to a cloud API for post-session analysis on the web.
 

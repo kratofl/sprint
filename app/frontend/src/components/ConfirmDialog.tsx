@@ -20,7 +20,7 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
-      <div className="relative surface-elevated rounded border border-border p-6 max-w-sm w-full mx-4 shadow-2xl">
+      <div className="relative surface-elevated border border-border p-6 max-w-sm w-full mx-4 shadow-2xl">
         <p className="font-bold text-sm mb-1">{title}</p>
         <p className="text-sm text-text-muted mb-5">{message}</p>
         <div className="flex gap-2 justify-end">

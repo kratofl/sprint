@@ -233,7 +233,7 @@ export function DashCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden rounded bg-[#0a0a0a] border border-white/10"
+      className="relative w-full overflow-hidden bg-[#0a0a0a] border border-white/10"
       style={{
         aspectRatio: `${screenW} / ${screenH}`,
         backgroundImage: [
@@ -256,7 +256,7 @@ export function DashCanvas({
       {/* Drop / move / resize ghost */}
       {ghost && (
         <div
-          className="pointer-events-none absolute rounded"
+          className="pointer-events-none absolute"
           style={{
             left:       `${(ghost.col     / gridCols) * 100}%`,
             top:        `${(ghost.row     / gridRows) * 100}%`,
@@ -302,7 +302,7 @@ export function DashCanvas({
                 onSelect(idx)
               }}
               className={cn(
-                'absolute inset-0 flex flex-col items-start justify-start overflow-hidden rounded select-none border',
+                'absolute inset-0 flex flex-col items-start justify-start overflow-hidden select-none border',
                 activeMove ? 'cursor-grabbing' : 'cursor-grab',
                 isSelected
                   ? 'bg-white/8 border-accent ring-1 ring-accent/30'

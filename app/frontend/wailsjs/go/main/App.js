@@ -82,6 +82,10 @@ export function DeviceSetDevicePaused(arg1, arg2) {
   return window['go']['main']['App']['DeviceSetDevicePaused'](arg1, arg2);
 }
 
+export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['DeviceSetScreenOffset'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetScreenRotation'](arg1, arg2, arg3, arg4);
 }

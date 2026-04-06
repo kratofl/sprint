@@ -198,8 +198,10 @@ export namespace devices {
 	    width: number;
 	    height: number;
 	    rotation: number;
+	    offset_x?: number;
+	    offset_y?: number;
 	    driver: string;
-	    bindings: DeviceBinding[];
+	    bindings?: DeviceBinding[];
 	
 	    static createFrom(source: any = {}) {
 	        return new CatalogEntry(source);
@@ -216,6 +218,8 @@ export namespace devices {
 	        this.width = source["width"];
 	        this.height = source["height"];
 	        this.rotation = source["rotation"];
+	        this.offset_x = source["offset_x"];
+	        this.offset_y = source["offset_y"];
 	        this.driver = source["driver"];
 	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
 	    }
@@ -248,6 +252,9 @@ export namespace devices {
 	    height: number;
 	    name: string;
 	    rotation: number;
+	    target_fps?: number;
+	    offset_x?: number;
+	    offset_y?: number;
 	    driver: string;
 	    dash_id?: string;
 	    bindings?: DeviceBinding[];
@@ -266,6 +273,9 @@ export namespace devices {
 	        this.height = source["height"];
 	        this.name = source["name"];
 	        this.rotation = source["rotation"];
+	        this.target_fps = source["target_fps"];
+	        this.offset_x = source["offset_x"];
+	        this.offset_y = source["offset_y"];
 	        this.driver = source["driver"];
 	        this.dash_id = source["dash_id"];
 	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);

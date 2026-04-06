@@ -14,7 +14,7 @@ type USBD480Driver struct {
 
 // NewUSBD480Driver creates an USBD480Driver. The screen is not opened until Run is called.
 func NewUSBD480Driver(logger *slog.Logger) *USBD480Driver {
-	return &USBD480Driver{baseDriver: newBaseDriver(logger)}
+	return &USBD480Driver{baseDriver: newBaseDriver(logger, 60)}
 }
 
 // Run starts the render-and-send loop. Blocks until ctx is cancelled.

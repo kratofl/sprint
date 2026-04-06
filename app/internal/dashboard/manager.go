@@ -2,10 +2,10 @@ package dashboard
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,8 +16,14 @@ import (
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
-//go:embed default.json
-var defaultLayoutJSON []byte
+// dashPresetsFS is the embedded presets/dash sub-tree injected from package main.
+var dashPresetsFS fs.FS
+
+// InitPresets sets the embedded fallback FS for dashboard defaults.
+// Call this in Startup() with fs.Sub(PresetsFS, "presets/dash").
+func InitPresets(fsys fs.FS) {
+	dashPresetsFS = fsys
+}
 
 // LayoutMeta is a lightweight descriptor returned by List (no widget data).
 type LayoutMeta struct {
@@ -271,19 +277,38 @@ func (m *Manager) writeFile(layout *DashLayout) error {
 	return nil
 }
 
-// defaultLayout unmarshals and returns the embedded default layout.
+// defaultLayout returns the default dash layout.
+// Tries <exe_dir>/DefaultDash.json first; falls back to the embedded presets FS.
 func defaultLayout() (*DashLayout, error) {
-	var layout DashLayout
-	if err := json.Unmarshal(defaultLayoutJSON, &layout); err != nil {
-		return nil, fmt.Errorf("dash: parse embedded default layout: %w", err)
+	if exeDir := appdata.ExeDir(); exeDir != "" {
+		if data, err := os.ReadFile(filepath.Join(exeDir, "DefaultDash.json")); err == nil {
+			var layout DashLayout
+			if err := json.Unmarshal(data, &layout); err == nil {
+				if layout.ID == "" {
+					layout.ID = "default"
+				}
+				if layout.Name == "" {
+					layout.Name = "Default"
+				}
+				return &layout, nil
+			}
+		}
 	}
-	if layout.ID == "" {
-		layout.ID = "default"
+	if dashPresetsFS != nil {
+		if data, err := fs.ReadFile(dashPresetsFS, "default.json"); err == nil {
+			var layout DashLayout
+			if err := json.Unmarshal(data, &layout); err == nil {
+				if layout.ID == "" {
+					layout.ID = "default"
+				}
+				if layout.Name == "" {
+					layout.Name = "Default"
+				}
+				return &layout, nil
+			}
+		}
 	}
-	if layout.Name == "" {
-		layout.Name = "Default"
-	}
-	return &layout, nil
+	return nil, fmt.Errorf("dash: no default layout available")
 }
 
 // Dashboard commands — fired by input bindings or direct app actions.

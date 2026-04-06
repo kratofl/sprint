@@ -41,6 +41,116 @@ func imageToRGB565(img image.Image, dst []byte) {
 	}
 }
 
+// applyScreenOffset shifts content in the RGB565 buffer so that offsetX pixels
+// of black appear at the left screen edge and offsetY pixels at the top screen
+// edge. The rotation parameter must match the rotation applied to produce buf so
+// that offsets are expressed in screen (user-visible) coordinates rather than
+// native buffer coordinates. In-place, no allocation.
+//
+// Rotation → native operation mapping:
+//
+//	  0°  left=fromLeft,  top=fromTop
+//	 90°  left=fromTop,   top=fromRight
+//	180°  left=fromRight, top=fromBottom
+//	270°  left=fromBottom,top=fromLeft
+func applyScreenOffset(buf []byte, nativeW, nativeH, offsetX, offsetY, rotation int) {
+	if offsetX == 0 && offsetY == 0 {
+		return
+	}
+	if offsetX < 0 {
+		offsetX = 0
+	}
+	if offsetY < 0 {
+		offsetY = 0
+	}
+
+	var fromLeft, fromRight, fromTop, fromBottom int
+	switch sanitizeRotation(rotation) {
+	case 90:
+		fromTop = offsetX
+		fromRight = offsetY
+	case 180:
+		fromRight = offsetX
+		fromBottom = offsetY
+	case 270:
+		fromBottom = offsetX
+		fromLeft = offsetY
+	default: // 0
+		fromLeft = offsetX
+		fromTop = offsetY
+	}
+
+	rowBytes := nativeW * 2
+
+	// fromTop: add black at top rows, shift content down.
+	if fromTop > 0 {
+		if fromTop >= nativeH {
+			for i := range buf {
+				buf[i] = 0
+			}
+			return
+		}
+		for row := nativeH - 1; row >= fromTop; row-- {
+			copy(buf[row*rowBytes:(row+1)*rowBytes], buf[(row-fromTop)*rowBytes:(row-fromTop+1)*rowBytes])
+		}
+		for i := 0; i < fromTop*rowBytes; i++ {
+			buf[i] = 0
+		}
+	}
+
+	// fromBottom: add black at bottom rows, shift content up.
+	if fromBottom > 0 {
+		if fromBottom >= nativeH {
+			for i := range buf {
+				buf[i] = 0
+			}
+			return
+		}
+		for row := 0; row < nativeH-fromBottom; row++ {
+			copy(buf[row*rowBytes:(row+1)*rowBytes], buf[(row+fromBottom)*rowBytes:(row+fromBottom+1)*rowBytes])
+		}
+		for i := (nativeH - fromBottom) * rowBytes; i < len(buf); i++ {
+			buf[i] = 0
+		}
+	}
+
+	// fromLeft: add black at left of each row, shift content right.
+	if fromLeft > 0 {
+		shiftBytes := fromLeft * 2
+		if shiftBytes >= rowBytes {
+			for i := range buf {
+				buf[i] = 0
+			}
+			return
+		}
+		for row := 0; row < nativeH; row++ {
+			start := row * rowBytes
+			copy(buf[start+shiftBytes:start+rowBytes], buf[start:start+rowBytes-shiftBytes])
+			for i := start; i < start+shiftBytes; i++ {
+				buf[i] = 0
+			}
+		}
+	}
+
+	// fromRight: add black at right of each row, shift content left.
+	if fromRight > 0 {
+		shiftBytes := fromRight * 2
+		if shiftBytes >= rowBytes {
+			for i := range buf {
+				buf[i] = 0
+			}
+			return
+		}
+		for row := 0; row < nativeH; row++ {
+			start := row * rowBytes
+			copy(buf[start:start+rowBytes-shiftBytes], buf[start+shiftBytes:start+rowBytes])
+			for i := start + rowBytes - shiftBytes; i < start+rowBytes; i++ {
+				buf[i] = 0
+			}
+		}
+	}
+}
+
 // imageToRGB565CW90 converts an image to RGB565 little-endian with a 90° CW
 // rotation. Source image W×H becomes output H×W.
 // dst must be at least W*H*2 bytes.

@@ -185,7 +185,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               if (e.key === 'Escape') { setDashNameValue(layout.name); setRenamingDash(false) }
               e.stopPropagation()
             }}
-            className="rounded bg-background px-1 font-bold text-sm outline outline-1 outline-accent flex-1 min-w-0"
+            className="bg-background px-1 font-bold text-sm outline outline-1 outline-accent flex-1 min-w-0"
           />
         ) : (
           <button

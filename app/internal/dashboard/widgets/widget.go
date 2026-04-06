@@ -228,10 +228,14 @@ func (c WidgetCtx) ConfigFloat(key string, defaultVal float64) float64 {
 	return defaultVal
 }
 
-func (c WidgetCtx) Panel()           { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0) }
-func (c WidgetCtx) PanelR(r float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r) }
-func (c WidgetCtx) CX() float64      { return c.X + c.W/2 }
-func (c WidgetCtx) CY() float64      { return c.Y + c.H/2 }
+const defaultBw = 1
+
+func (c WidgetCtx) Panel()                 { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, defaultBw) }
+func (c WidgetCtx) PanelR(r float64)       { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, defaultBw) }
+func (c WidgetCtx) PanelBW(bw float64)     { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, bw) }
+func (c WidgetCtx) PanelRBW(r, bw float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, bw) }
+func (c WidgetCtx) CX() float64            { return c.X + c.W/2 }
+func (c WidgetCtx) CY() float64            { return c.Y + c.H/2 }
 
 // Font helpers.
 

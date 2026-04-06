@@ -127,21 +127,21 @@ export default function App() {
           <div className="flex items-center gap-1 pl-2 border-l border-border">
             <button
               onClick={() => call('WindowMinimise')}
-              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
               aria-label="Minimise"
             >
               <IconMinus size={12} />
             </button>
             <button
               onClick={() => call('WindowMaximise')}
-              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
               aria-label="Maximise"
             >
               <IconSquare size={12} />
             </button>
             <button
               onClick={() => call('WindowClose')}
-              className="flex h-6 w-6 items-center justify-center rounded text-text-muted opacity-60 hover:opacity-100 hover:bg-destructive/80 hover:text-white transition-all"
+              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-destructive/80 hover:text-white transition-all"
               aria-label="Close"
             >
               <IconX size={12} />
@@ -164,7 +164,7 @@ export default function App() {
         <div className="flex w-full items-center gap-6">
           <div className="flex items-center gap-2">
             <span className={cn(
-              'h-1.5 w-1.5 rounded-full',
+              'h-1.5 w-1.5',
               connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
             )} />
             <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
@@ -186,7 +186,8 @@ export default function App() {
           </div>
         </div>
       </footer>
-      <ConfirmDialog
+
+      <ConfirmDialog
         open={showLeaveConfirm}
         title="Discard changes?"
         message="You have unsaved changes that will be lost."

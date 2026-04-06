@@ -34,11 +34,14 @@ How dash layouts are stored, loaded, and rendered onto the USB screen.
 
 ```go
 type DashLayout struct {
-    ID       string     // UUID — used as the filename (layouts/<id>.json)
-    Name     string     // display name shown in the UI
-    GridCols int        // number of columns in the editor grid
-    GridRows int        // number of rows in the editor grid
-    Pages    []DashPage // one or more pages (driver cycles through them)
+    ID       string      // UUID — used as the directory name (layouts/<id>/)
+    Name     string      // display name shown in the UI
+    Default  bool        // true for the layout used as the fallback for new screens
+    GridCols int         // number of columns in the editor grid
+    GridRows int         // number of rows in the editor grid
+    IdlePage DashPage    // shown when the driver is not in a session
+    Pages    []DashPage  // one or more active pages (driver cycles through them)
+    Alerts   AlertConfig // which parameter changes trigger full-screen overlays
 }
 ```
 
@@ -46,7 +49,8 @@ type DashLayout struct {
 
 ```go
 type DashPage struct {
-    Name    string      // e.g. "Race", "Quali", "Garage"
+    ID      string       // UUID
+    Name    string       // e.g. "Race", "Quali", "Garage"
     Widgets []DashWidget
 }
 ```
@@ -55,12 +59,23 @@ type DashPage struct {
 
 ```go
 type DashWidget struct {
-    Type   string         // e.g. "speed", "gear", "lap_time"
-    Col    int            // grid column (0-based)
-    Row    int            // grid row (0-based)
-    ColSpan int           // how many columns wide
-    RowSpan int           // how many rows tall
-    Config map[string]any // widget-specific settings (e.g. {"unit": "kmh"})
+    ID      string         // UUID
+    Type    string         // e.g. "speed", "gear", "lap_time"
+    Col     int            // grid column (0-based)
+    Row     int            // grid row (0-based)
+    ColSpan int            // how many columns wide
+    RowSpan int            // how many rows tall
+    Config  map[string]any // widget-specific settings (e.g. {"unit": "kmh"})
+}
+```
+
+### `AlertConfig` — full-screen overlay triggers
+
+```go
+type AlertConfig struct {
+    TCChange        bool // show overlay when TC level changes
+    ABSChange       bool // show overlay when ABS level changes
+    EngineMapChange bool // show overlay when engine map changes
 }
 ```
 
@@ -68,9 +83,12 @@ type DashWidget struct {
 > `DashPageDto`, `DashWidgetDto`). Go structs with JSON tags work exactly the
 > same as `[JsonPropertyName("id")]` attributes in C# `System.Text.Json`.
 
-The full layout is stored as a single JSON file:
+Each layout is stored as a **directory** under `%APPDATA%\Sprint\layouts\`:
 ```
-%APPDATA%\Sprint\layouts\<uuid>.json
+layouts/
+└── <uuid>/
+    ├── config.json    ← full layout (pages + widgets)
+    └── thumbnail.png  ← auto-generated preview PNG (written on every save)
 ```
 
 ---
@@ -93,22 +111,27 @@ type Manager struct {
 // List all layouts (metadata only — no widget data)
 metas, err := manager.List()    // returns []LayoutMeta
 
-// Load a full layout by ID
+// Load a full layout by ID (pass "" to load the first available or embedded default)
 layout, err := manager.Load("3f2a...")   // returns *DashLayout
 
-// Save a layout (creates or overwrites the JSON file)
+// Save a layout (creates or overwrites; assigns UUID if layout.ID is empty)
 err := manager.Save(layout)
 
-// Delete a layout
+// Create a new empty layout with the given name and persist it
+layout, err := manager.Create("Race Layout")
+
+// Delete a layout (returns an error if id == "default")
 err := manager.Delete("3f2a...")
 
-// Generate a PNG preview of the layout for the editor UI
-pngBytes, err := manager.RenderPreview(layout, width, height)
+// Mark a layout as default (clears the flag on all others)
+err := manager.SetDefault("3f2a...")
+
+// Ensure at least one default layout exists (seeds the embedded default on first run)
+err := manager.EnsureDefault()
 ```
 
-The `List()` method reads the directory, parses each JSON file's header (ID, Name,
-GridCols, GridRows) without deserialising the full widget tree — this is why `LayoutMeta`
-exists: fast listing without loading all widget data.
+The `List()` method loads every layout fully to populate `LayoutMeta` (including page count and
+whether a preview PNG exists), so it should not be called on a hot path.
 
 ### Default layout
 
@@ -122,8 +145,8 @@ var defaultLayoutJSON []byte
 > **C# equivalent:** `Assembly.GetManifestResourceStream("default.json")`.
 > The file is compiled into the `.exe` — no external file needed.
 
-If no layouts exist (first run), `List()` returns this embedded default so the user always
-has something to start with.
+If no layouts exist on first run, `EnsureDefault()` seeds the embedded default so the
+user always has something to start with.
 
 ---
 
@@ -152,9 +175,9 @@ img, err := painter.Paint(frame)
 ```
 
 Internally, `Paint` does:
-1. Clear the canvas with the background color
-2. Look up the current page's widget list
-3. For each widget, call its registered draw function
+1. Choose the active page (idle page if `p.idle` is set, otherwise `p.layout.Pages[p.page]`)
+2. Clear the canvas with the background color
+3. For each widget on the page, call its registered draw function
 4. Return the canvas as `image.RGBA`
 
 ```go
@@ -162,7 +185,12 @@ func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
     p.dc.SetHexColor("#0a0a0a")   // background
     p.dc.Clear()
 
-    page := p.layout.Pages[p.page]
+    var page DashPage
+    if p.idle {
+        page = p.layout.IdlePage
+    } else {
+        page = p.layout.Pages[p.page]
+    }
     for _, widget := range page.Widgets {
         drawFn := widgetRegistry[widget.Type]
         // calculate pixel bounds from grid position + span
@@ -193,53 +221,51 @@ is imported.
 package widgets
 
 func init() {
-    RegisterWidget("speed", "Speed", CategoryCar,
-        WidgetMeta{
-            DefaultColSpan: 4,
-            DefaultRowSpan: 3,
-        },
-        func(frame *dto.TelemetryFrame, cfg map[string]any) WidgetDrawFn {
-            // build-time setup (parse config once)
-            unit := getString(cfg, "unit", "kmh")
+    RegisterWidget(WidgetSpeed, "Speed", CategoryCar, 4, 3, false, 30, nil, drawWidgetSpeed)
+}
 
-            return func(dc *gg.Context, w, h float64) {
-                // called every frame — keep allocations minimal
-                speed := frame.Car.SpeedKmh
-                if unit == "mph" { speed *= 0.621371 }
-                WidgetCtx{dc, w, h}.Panel("Speed", FmtValue(speed), OrangeColor)
-            }
-        },
-    )
+func drawWidgetSpeed(c WidgetCtx) {
+    c.Panel()
+    c.FontNumber(c.H * 0.45)
+    c.DC.SetColor(ColTextPri)
+    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.Y+c.H*0.4, 0.5, 0.5)
+    c.FontLabel(c.H * 0.18)
+    c.DC.SetColor(ColTextMuted)
+    c.DC.DrawStringAnchored("km/h", c.CX(), c.Y+c.H*0.72, 0.5, 0.5)
 }
 ```
 
 > **C# equivalent:** This is like `services.AddSingleton<IWidget, SpeedWidget>()` in
 > `Startup.cs` — but without a DI container. Each `init()` call appends to a global
-> `map[string]WidgetFactory`. The map is read-only after startup.
+> `map[WidgetType]WidgetFn`. The map is read-only after startup.
 
-The two-level function (`func(frame, cfg) WidgetDrawFn`) is a Go idiom for closures:
-- The outer function runs **once at layout load** — parses config, pre-computes values
-- The inner `WidgetDrawFn` runs **every frame** — only reads pre-computed values
-
-This avoids re-parsing the config map 30 times per second.
+The `WidgetCtx` passed to every draw function carries the telemetry frame, widget bounds,
+and drawing helpers — no separate "outer/inner function" split needed. The draw function
+is called directly on every render tick.
 
 ### `WidgetCtx` — Drawing Helpers
 
 ```go
 type WidgetCtx struct {
-    dc *gg.Context
-    W  float64
-    H  float64
+    DC         *gg.Context
+    Frame      *dto.TelemetryFrame
+    X, Y, W, H float64
+    FontLoader  func(dc *gg.Context, name string, size float64)
+    Config      map[string]any
 }
 
-// Pre-built layout helpers — use these instead of raw gg calls
-ctx.Panel("Speed", "234", OrangeColor)  // label + value + colored bar
-ctx.HBar(0.73, CyanColor)               // horizontal progress bar (0–1)
-ctx.FontNumber(48)                      // apply the JetBrains Mono font at size 48
+// Pre-built helpers — use these instead of raw gg calls
+c.Panel()                         // draw the standard widget background
+c.FontNumber(c.H * 0.45)         // apply JetBrains Mono Bold at the given size
+c.FontLabel(c.H * 0.18)          // apply Space Grotesk Regular
+c.CX()                            // horizontal center of the widget bounds
+c.FmtSpeed(frame.Car.SpeedMS)    // m/s → "234" (km/h string)
+c.FmtLap(frame.Timing.LastLap)   // seconds → "1:23.456"
+c.ConfigString("unit", "kmh")    // read widget-instance config
 ```
 
-> **C# equivalent:** Extension methods on `SKCanvas`. The `WidgetCtx` wraps the raw
-> `gg.Context` with domain-specific helpers so widget code stays concise (30–60 lines).
+> **C# equivalent:** Extension methods on `SKCanvas`. `WidgetCtx` wraps the raw
+> `gg.Context` with domain-specific helpers so widget code stays concise (10–30 lines).
 
 ---
 
@@ -301,44 +327,43 @@ SIMD-friendly loops — for a 480×800 screen that's 768 000 pixels × 2 bytes =
 ```go
 package widgets
 
-import (
-    "github.com/kratofl/sprint/pkg/dto"
-    "github.com/fogleman/gg"
-)
-
 func init() {
     RegisterWidget(
-        "my_widget",      // type key — must be unique
-        "My Widget",      // display label in the editor palette
-        CategoryCar,      // palette category
-        WidgetMeta{
-            DefaultColSpan: 3,
-            DefaultRowSpan: 2,
-            IdleCapable:    false, // true = renders when driver is not in car
-        },
-        func(frame *dto.TelemetryFrame, cfg map[string]any) WidgetDrawFn {
-            // parse config once here
-            return func(dc *gg.Context, w, h float64) {
-                ctx := WidgetCtx{dc, w, h}
-                ctx.Panel("My Widget", "value", OrangeColor)
-            }
-        },
+        "my_widget",   // WidgetType — must be unique
+        "My Widget",   // display label in the editor palette
+        CategoryCar,   // palette category
+        3, 2,          // defaultColSpan, defaultRowSpan
+        false,         // idleCapable: true = also available on the idle page
+        30,            // defaultUpdateHz (informational)
+        nil,           // configDefs — []ConfigDef for editor properties (nil = no config)
+        drawMyWidget,
     )
+}
+
+func drawMyWidget(c WidgetCtx) {
+    c.Panel()
+    c.FontNumber(c.H * 0.45)
+    c.DC.SetColor(ColTextPri)
+    c.DC.DrawStringAnchored("42", c.CX(), c.Y+c.H*0.4, 0.5, 0.5)
 }
 ```
 
-No other files need to change. The `import _ "github.com/.../widgets"` in `manager.go`
+No other files need to change. The `import _ "github.com/.../widgets"` in `painter.go`
 triggers all `init()` calls at startup.
 
 ---
 
-## Layout Storage Layout (pun intended)
+## Layout Storage
 
 ```
 %APPDATA%\Sprint\
 ├── layouts\
-│   ├── 3f2a4b1c-...json    ← saved layout (full widget data)
-│   ├── a9d21e7f-...json
+│   ├── default\
+│   │   ├── config.json      ← built-in default layout
+│   │   └── thumbnail.png    ← auto-generated preview
+│   ├── 3f2a4b1c-...\
+│   │   ├── config.json      ← saved layout (full widget data)
+│   │   └── thumbnail.png
 │   └── ...
 ├── devices.json             ← screen device registry
 └── controls.json            ← button binding config

@@ -66,6 +66,9 @@ icons: ## Generate app/build icons from app/frontend/src/assets/sprint_logo_icon
 
 build-app: icons ## Build the Wails desktop app (requires Wails CLI)
 	cd $(APP_DIR) && wails build -clean -ldflags "-X main.Version=$(VERSION)"
+	mkdir -p app/build/bin/DeviceCatalog
+	cp app/presets/devices/*.json app/build/bin/DeviceCatalog/
+	cp app/presets/dash/default.json app/build/bin/DefaultDash.json
 
 build: build-api build-web ## Build all (API + web)
 

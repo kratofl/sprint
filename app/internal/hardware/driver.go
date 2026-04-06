@@ -16,11 +16,14 @@ import (
 // ScreenConfig is the hardware-agnostic screen configuration shared by all drivers.
 // Derived from devices.ScreenConfig in the coordinator.
 type ScreenConfig struct {
-	VID      uint16
-	PID      uint16
-	Width    int
-	Height   int
-	Rotation int
+	VID       uint16
+	PID       uint16
+	Width     int
+	Height    int
+	Rotation  int
+	TargetFPS int // 0 = use driver default
+	OffsetX   int // pixels from left in screen space (applied after rotation)
+	OffsetY   int // pixels from top in screen space (applied after rotation)
 }
 
 // ScreenDriver is the interface the coordinator depends on for screen output.
