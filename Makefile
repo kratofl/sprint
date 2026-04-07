@@ -16,7 +16,7 @@ APP_DIR    := app
 
 # Version: read from the most recent git tag (strips leading "v").
 # Override with: make build-app VERSION=1.2.3
-_RAW_VERSION := $(shell git describe --tags --abbrev=0 2>$$null; if ($$LASTEXITCODE) { 'dev' })
+_RAW_VERSION := $(shell $$tag = git describe --tags --abbrev=0 2>&1; if ($$LASTEXITCODE -eq 0) { $$tag.Trim() } else { 'dev' })
 VERSION ?= $(patsubst v%,%,$(_RAW_VERSION))
 
 # Prevent Go from hitting sum.golang.org for private modules in this workspace.

@@ -1,7 +1,7 @@
 // Package logger initialises the structured logger for the Sprint desktop app.
 //
 // It wraps log/slog and sets up a multi-handler that writes:
-//   - JSON records to a file in the OS user log/cache directory (for post-session analysis)
+//   - JSON records to a daily rotating file in <exe>/logs/ (14-day retention)
 //   - Text records to stdout (for development visibility)
 //
 // Usage:
@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Config controls logger behaviour.
@@ -25,7 +26,7 @@ type Config struct {
 	// Defaults to "info".
 	Level string
 
-	// LogFile is the path to the log file. If empty, DefaultLogFile() is used.
+	// LogFile overrides the log file path. If empty, a daily file under LogDir() is used.
 	LogFile string
 
 	// Console controls whether log records are also written to stdout.
@@ -34,13 +35,23 @@ type Config struct {
 }
 
 // DefaultConfig returns a Config that reads LOG_LEVEL from the environment
-// and writes to the default OS log file location.
+// and writes to a daily log file next to the executable.
 func DefaultConfig() Config {
 	return Config{
 		Level:   envOrDefault("LOG_LEVEL", "info"),
-		LogFile: "", // resolved lazily in Init
+		LogFile: "", // resolved lazily in Init → daily file in LogDir()
 		Console: true,
 	}
+}
+
+// LogDir returns the logs directory next to the running executable.
+// Falls back to the OS cache dir if the executable path cannot be determined.
+func LogDir() string {
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), "logs")
+	}
+	base, _ := os.UserCacheDir()
+	return filepath.Join(base, "sprint", "logs")
 }
 
 // Init configures the global slog default logger and returns the root logger.
@@ -50,11 +61,12 @@ func Init(cfg Config) *slog.Logger {
 
 	var handlers []slog.Handler
 
-	// File handler (JSON).
+	// File handler (JSON, daily rotation).
 	logPath := cfg.LogFile
 	if logPath == "" {
-		logPath = DefaultLogFile()
+		logPath = dailyLogPath()
 	}
+	pruneOldLogs(filepath.Dir(logPath), 14)
 	if f, err := openLogFile(logPath); err == nil {
 		handlers = append(handlers, slog.NewJSONHandler(f, &slog.HandlerOptions{Level: level}))
 	}
@@ -79,17 +91,35 @@ func Init(cfg Config) *slog.Logger {
 	return logger
 }
 
-// DefaultLogFile returns the OS-appropriate path for the Sprint log file.
-//
-//   - macOS:   ~/Library/Logs/Sprint/sprint.log
-//   - Linux:   ~/.cache/sprint/sprint.log
-//   - Windows: %LOCALAPPDATA%\Sprint\sprint.log
-func DefaultLogFile() string {
-	base, err := os.UserCacheDir()
+// dailyLogPath returns the path for today's log file inside LogDir().
+func dailyLogPath() string {
+	return filepath.Join(LogDir(), "sprint-"+time.Now().Format("2006-01-02")+".log")
+}
+
+// pruneOldLogs deletes sprint-YYYY-MM-DD.log files in dir older than retentionDays.
+func pruneOldLogs(dir string, retentionDays int) {
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		base = os.TempDir()
+		return
 	}
-	return filepath.Join(base, "sprint", "sprint.log")
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, "sprint-") || !strings.HasSuffix(name, ".log") {
+			continue
+		}
+		dateStr := strings.TrimPrefix(strings.TrimSuffix(name, ".log"), "sprint-")
+		t, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		if t.Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // openLogFile creates the log file and any missing parent directories.
@@ -120,3 +150,4 @@ func envOrDefault(key, def string) string {
 	}
 	return def
 }
+
