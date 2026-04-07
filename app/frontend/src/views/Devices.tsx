@@ -510,6 +510,10 @@ function DeviceDetail({
   const [dashId, setDashId]                     = useState(device.dashId)
   const [savingDash, setSavingDash]             = useState(false)
   const [purpose, setPurpose]                   = useState<DevicePurpose>(device.purpose ?? 'dash')
+  const [captureX, setCaptureX]                 = useState(Number(device.purposeConfig?.capture_x ?? 0))
+  const [captureY, setCaptureY]                 = useState(Number(device.purposeConfig?.capture_y ?? 0))
+  const [captureW, setCaptureW]                 = useState(Number(device.purposeConfig?.capture_w ?? 0))
+  const [captureH, setCaptureH]                 = useState(Number(device.purposeConfig?.capture_h ?? 0))
   const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
   const [removing, setRemoving]                 = useState(false)
 
@@ -522,6 +526,10 @@ function DeviceDetail({
     setOffsetY(device.offsetY ?? 0)
     setDashId(device.dashId)
     setPurpose(device.purpose ?? 'dash')
+    setCaptureX(Number(device.purposeConfig?.capture_x ?? 0))
+    setCaptureY(Number(device.purposeConfig?.capture_y ?? 0))
+    setCaptureW(Number(device.purposeConfig?.capture_w ?? 0))
+    setCaptureH(Number(device.purposeConfig?.capture_h ?? 0))
     setRenaming(false)
     deviceBindingsAPI
       .getDeviceBindings(device.vid, device.pid, device.serial)
@@ -593,6 +601,27 @@ function DeviceDetail({
     } catch (e) {
       onError(String(e))
       setPurpose(device.purpose ?? 'dash')
+    }
+  }
+
+  const handleCaptureRegionChange = async (field: 'capture_x' | 'capture_y' | 'capture_w' | 'capture_h', value: number) => {
+    const next = {
+      capture_x: captureX,
+      capture_y: captureY,
+      capture_w: captureW,
+      capture_h: captureH,
+      [field]: value,
+    }
+    switch (field) {
+      case 'capture_x': setCaptureX(value); break
+      case 'capture_y': setCaptureY(value); break
+      case 'capture_w': setCaptureW(value); break
+      case 'capture_h': setCaptureH(value); break
+    }
+    try {
+      await deviceAPI.setDevicePurposeConfig(device.vid, device.pid, device.serial, next)
+    } catch (e) {
+      onError(String(e))
     }
   }
 
@@ -769,6 +798,58 @@ function DeviceDetail({
               </label>
             </div>
           </div>
+
+          {/* Rear view capture region — only shown for rear_view purpose */}
+          {purpose === 'rear_view' && (
+            <div className="space-y-2">
+              <p className="font-mono text-[9px] font-bold text-text-muted">CAPTURE_REGION (px)</p>
+              <p className="font-mono text-[9px] text-text-muted">
+                Screen coordinates of the game window region to mirror.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-text-muted">LEFT (X)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={captureX}
+                    onChange={e => handleCaptureRegionChange('capture_x', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-text-muted">TOP (Y)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={captureY}
+                    onChange={e => handleCaptureRegionChange('capture_y', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-text-muted">WIDTH</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={captureW}
+                    onChange={e => handleCaptureRegionChange('capture_w', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-mono text-[9px] text-text-muted">HEIGHT</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={captureH}
+                    onChange={e => handleCaptureRegionChange('capture_h', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* Dash layout assignment — only relevant when purpose is dash */}
           {purpose === 'dash' && (
