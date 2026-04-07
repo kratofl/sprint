@@ -556,6 +556,7 @@ func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
 		TargetFPS: cfg.TargetFPS,
 		OffsetX:   cfg.OffsetX,
 		OffsetY:   cfg.OffsetY,
+		Driver:    cfg.Driver,
 	}
 }
 
@@ -572,7 +573,14 @@ func applyFrameSource(drv hardware.ScreenDriver, d *devices.SavedDevice, scrCfg 
 			logger.Warn("rear view config parse error; using defaults", "err", err)
 		}
 	}
-	renderer := capture.NewMirrorRenderer(scrCfg.Width, scrCfg.Height, rvCfg, logger)
+	// MirrorRenderer must produce images at painter dims (after rotation), not
+	// native dims, because driveLoop passes the image directly to applyRGB565Rotation
+	// which expects a canvas already sized for the rotation transform.
+	pW, pH := scrCfg.Width, scrCfg.Height
+	if scrCfg.Rotation == 90 || scrCfg.Rotation == 270 {
+		pW, pH = scrCfg.Height, scrCfg.Width
+	}
+	renderer := capture.NewMirrorRenderer(pW, pH, rvCfg, logger)
 	drv.SetFrameSource(renderer)
 }
 
