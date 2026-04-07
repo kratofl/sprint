@@ -186,6 +186,7 @@ func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error 
 }
 
 // DeviceSetPurpose updates the purpose for the given device and persists it.
+// Hot-reloads the driver so the new purpose takes effect immediately.
 func (a *App) DeviceSetPurpose(vid, pid uint16, serial string, purpose devices.DevicePurpose) error {
 	reg, err := a.devMgr.Load()
 	if err != nil {
@@ -195,7 +196,13 @@ func (a *App) DeviceSetPurpose(vid, pid uint16, serial string, purpose devices.D
 	if err := devices.SetPurpose(reg, id, purpose); err != nil {
 		return fmt.Errorf("DeviceSetPurpose: %w", err)
 	}
-	return a.devMgr.Save(reg)
+	if err := a.devMgr.Save(reg); err != nil {
+		return fmt.Errorf("DeviceSetPurpose: save: %w", err)
+	}
+	if d := devices.FindByID(reg, id); d != nil && d.HasScreen() {
+		a.coord.SetScreenConfig(id, *d)
+	}
+	return nil
 }
 
 // DeviceSetPurposeConfig updates the purpose-specific config JSON blob for the

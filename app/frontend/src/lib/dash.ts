@@ -48,6 +48,15 @@ export interface LayoutMeta {
 export type DriverType = 'vocore' | 'usbd480'
 export type DeviceType = 'wheel' | 'screen' | 'buttonbox'
 export type DevicePurpose = 'dash' | 'rear_view'
+export type RearViewIdleMode = 'black' | 'clock'
+
+export interface RearViewConfig {
+  capture_x: number
+  capture_y: number
+  capture_w: number
+  capture_h: number
+  idle_mode: RearViewIdleMode
+}
 
 export interface DeviceBinding {
   button: number
@@ -68,7 +77,7 @@ export interface SavedDevice {
   driver: DriverType
   dashId: string            // assigned layout ID; empty = use default
   purpose: DevicePurpose    // defaults to 'dash'
-  purposeConfig?: Record<string, unknown> // purpose-specific config
+  purposeConfig?: RearViewConfig // purpose-specific config (rear_view: capture region + idle mode)
   bindings?: DeviceBinding[]
 }
 
@@ -207,7 +216,7 @@ function normSavedDevice(raw: unknown): SavedDevice {
     driver:        (r.driver ?? r.Driver ?? 'vocore') as DriverType,
     dashId:        String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
     purpose:       ((r.purpose ?? r.Purpose ?? 'dash') as DevicePurpose) || 'dash',
-    purposeConfig: (r.purpose_config ?? r.PurposeConfig ?? r.purposeConfig) as Record<string, unknown> | undefined,
+    purposeConfig: (r.purpose_config ?? r.PurposeConfig ?? r.purposeConfig) as RearViewConfig | undefined,
     bindings:      Array.isArray(r.bindings ?? r.Bindings)
       ? (r.bindings ?? r.Bindings) as DeviceBinding[]
       : [],
@@ -348,7 +357,7 @@ export const deviceAPI = {
     await call<void>('DeviceSetPurpose', vid, pid, serial, purpose)
   },
 
-  async setDevicePurposeConfig(vid: number, pid: number, serial: string, config: Record<string, unknown>): Promise<void> {
+  async setDevicePurposeConfig(vid: number, pid: number, serial: string, config: Partial<RearViewConfig>): Promise<void> {
     await call<void>('DeviceSetPurposeConfig', vid, pid, serial, JSON.stringify(config))
   },
 

@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { IconDeviceMobile, IconAlertTriangle, IconLoader2 } from '@tabler/icons-react'
 import {
   type SavedDevice, type CatalogEntry, type DetectedScreen, type DeviceType,
-  type DevicePurpose, type LayoutMeta, type DeviceBinding,
+  type DevicePurpose, type RearViewConfig, type RearViewIdleMode, type LayoutMeta, type DeviceBinding,
   deviceAPI, deviceBindingsAPI, dashAPI, deviceHasScreen, deviceID,
 } from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
 import { call, onEvent } from '@/lib/wails'
-import { Badge, Button, Switch, Skeleton, cn } from '@sprint/ui'
+import { Badge, Button, Switch, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent, cn } from '@sprint/ui'
 
 const DEVICE_TYPES: DeviceType[] = ['wheel', 'screen', 'buttonbox']
 const SECTION_LABELS: Record<DeviceType, string> = {
@@ -594,10 +594,6 @@ function DeviceDetail({
   const [dashId, setDashId]                     = useState(device.dashId)
   const [savingDash, setSavingDash]             = useState(false)
   const [purpose, setPurpose]                   = useState<DevicePurpose>(device.purpose ?? 'dash')
-  const [captureX, setCaptureX]                 = useState(Number(device.purposeConfig?.capture_x ?? 0))
-  const [captureY, setCaptureY]                 = useState(Number(device.purposeConfig?.capture_y ?? 0))
-  const [captureW, setCaptureW]                 = useState(Number(device.purposeConfig?.capture_w ?? 0))
-  const [captureH, setCaptureH]                 = useState(Number(device.purposeConfig?.capture_h ?? 0))
   const [selectingBounds, setSelectingBounds]   = useState(false)
   const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
   const [removing, setRemoving]                 = useState(false)
@@ -611,10 +607,6 @@ function DeviceDetail({
     setOffsetY(device.offsetY ?? 0)
     setDashId(device.dashId)
     setPurpose(device.purpose ?? 'dash')
-    setCaptureX(Number(device.purposeConfig?.capture_x ?? 0))
-    setCaptureY(Number(device.purposeConfig?.capture_y ?? 0))
-    setCaptureW(Number(device.purposeConfig?.capture_w ?? 0))
-    setCaptureH(Number(device.purposeConfig?.capture_h ?? 0))
     setRenaming(false)
     deviceBindingsAPI
       .getDeviceBindings(device.vid, device.pid, device.serial)
@@ -698,6 +690,19 @@ function DeviceDetail({
       onError(String(e))
     } finally {
       setSelectingBounds(false)
+    }
+  }
+
+  const handleIdleModeChange = async (mode: RearViewIdleMode) => {
+    const next: Partial<RearViewConfig> = {
+      ...(device.purposeConfig ?? {}),
+      idle_mode: mode,
+    }
+    try {
+      await deviceAPI.setDevicePurposeConfig(device.vid, device.pid, device.serial, next)
+      await onSaved()
+    } catch (e) {
+      onError(String(e))
     }
   }
 
@@ -876,27 +881,59 @@ function DeviceDetail({
           </div>
 
           {/* Rear view capture region — only shown for rear_view purpose */}
-          {purpose === 'rear_view' && (
-            <div className="space-y-2">
-              <p className="font-mono text-[9px] font-bold text-text-muted">CAPTURE_REGION</p>
-              <Button
-                variant="active"
-                size="sm"
-                className="w-full font-mono text-[10px]"
-                onClick={handleSelectBounds}
-                disabled={selectingBounds}
-              >
-                {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
-              </Button>
-              {captureW > 0 && captureH > 0 ? (
-                <p className="font-mono text-[9px] text-text-muted">
-                  X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
-                </p>
-              ) : (
-                <p className="font-mono text-[9px] text-text-muted">No region set — click Set Bounds</p>
-              )}
-            </div>
-          )}
+          {purpose === 'rear_view' && (() => {
+            const cfg = device.purposeConfig
+            const cx = cfg?.capture_x ?? 0
+            const cy = cfg?.capture_y ?? 0
+            const cw = cfg?.capture_w ?? 0
+            const ch = cfg?.capture_h ?? 0
+            const idleMode = cfg?.idle_mode ?? 'black'
+            return (
+              <div className="space-y-2">
+                <Tabs defaultValue="capture">
+                  <TabsList className="w-full font-mono text-[9px]">
+                    <TabsTrigger value="capture" className="flex-1 font-mono text-[9px]">CAPTURE</TabsTrigger>
+                    <TabsTrigger value="idle" className="flex-1 font-mono text-[9px]">IDLE SCREEN</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="capture" className="space-y-2 pt-2">
+                    <Button
+                      variant="active"
+                      size="sm"
+                      className="w-full font-mono text-[10px]"
+                      onClick={handleSelectBounds}
+                      disabled={selectingBounds}
+                    >
+                      {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
+                    </Button>
+                    {cw > 0 && ch > 0 ? (
+                      <p className="font-mono text-[9px] text-text-muted">
+                        X: {cx}  Y: {cy}  W: {cw}  H: {ch}
+                      </p>
+                    ) : (
+                      <p className="font-mono text-[9px] text-text-muted">No region set — click Set Bounds</p>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="idle" className="space-y-2 pt-2">
+                    <p className="font-mono text-[9px] font-bold text-text-muted">IDLE_MODE</p>
+                    <select
+                      value={idleMode}
+                      onChange={e => handleIdleModeChange(e.target.value as RearViewIdleMode)}
+                      className={cn(
+                        'w-full border border-border bg-background px-3 py-1.5',
+                        'font-mono text-[10px] text-foreground',
+                        'focus:outline-none focus:ring-1 focus:ring-primary',
+                      )}
+                    >
+                      <option value="black">BLACK — screen off</option>
+                      <option value="clock">CLOCK — digital HH:MM:SS</option>
+                    </select>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )
+          })()}
 
           {/* Dash layout assignment — only relevant when purpose is dash */}
           {purpose === 'dash' && (

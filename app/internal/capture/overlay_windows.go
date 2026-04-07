@@ -34,6 +34,7 @@ var (
 	procSetCursor               = user32.NewProc("SetCursor")
 	procLoadImageW              = user32.NewProc("LoadImageW")
 	procSetForegroundWindow     = user32.NewProc("SetForegroundWindow")
+	procSetFocus                = user32.NewProc("SetFocus")
 	procGetModuleHandleW        = kernel32.NewProc("GetModuleHandleW")
 
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
@@ -402,6 +403,7 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 		procShowWindow.Call(hwnd, swShow)
 		procUpdateWindow.Call(hwnd)
 		procSetForegroundWindow.Call(hwnd)
+		procSetFocus.Call(hwnd)
 
 		var m msg
 		for {

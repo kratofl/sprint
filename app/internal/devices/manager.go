@@ -370,8 +370,14 @@ func SetPurposeConfig(reg *DeviceRegistry, id string, config json.RawMessage) er
 // RearViewConfig is the purpose-specific configuration for PurposeRearView devices.
 // Stored as JSON in SavedDevice.PurposeConfig.
 type RearViewConfig struct {
-	CaptureX int `json:"capture_x"` // left edge of capture region in game window coords
-	CaptureY int `json:"capture_y"` // top edge of capture region
-	CaptureW int `json:"capture_w"` // width; 0 = full window width
-	CaptureH int `json:"capture_h"` // height; 0 = full window height
+	CaptureX int    `json:"capture_x"` // left edge of capture region in game window coords
+	CaptureY int    `json:"capture_y"` // top edge of capture region
+	CaptureW int    `json:"capture_w"` // width; 0 = full window width
+	CaptureH int    `json:"capture_h"` // height; 0 = full window height
+	IdleMode string `json:"idle_mode"` // what to show when no game is running; "" or "black" = black frame, "clock" = digital clock
 }
+
+const (
+	RearViewIdleBlack = "black"
+	RearViewIdleClock = "clock"
+)

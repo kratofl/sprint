@@ -87,15 +87,15 @@ func (r *MirrorRenderer) SetConfig(cfg devices.RearViewConfig) {
 func (r *MirrorRenderer) Paint(_ *dto.TelemetryFrame) (image.Image, error) {
 	cfg := r.cfg.Load().(devices.RearViewConfig)
 
-	if cfg.CaptureW <= 0 || cfg.CaptureH <= 0 {
-		// No region configured yet — return a black frame.
-		return image.NewRGBA(image.Rect(0, 0, r.targetW, r.targetH)), nil
+	// When idle (no game running) or no capture region is set, show idle frame.
+	if r.idle.Load() || cfg.CaptureW <= 0 || cfg.CaptureH <= 0 {
+		return renderIdleFrame(r.targetW, r.targetH, cfg.IdleMode), nil
 	}
 
 	raw, err := captureRegion(cfg.CaptureX, cfg.CaptureY, cfg.CaptureW, cfg.CaptureH)
 	if err != nil {
 		r.logger.Warn("screen capture failed", "err", err)
-		return image.NewRGBA(image.Rect(0, 0, r.targetW, r.targetH)), nil
+		return renderIdleFrame(r.targetW, r.targetH, cfg.IdleMode), nil
 	}
 
 	if cfg.CaptureW == r.targetW && cfg.CaptureH == r.targetH {
