@@ -45,10 +45,10 @@ type baseDriver struct {
 	cfgOffsetY  atomic.Int32 // pixels from top in screen space; applied after rotation
 	logger      *slog.Logger
 
-	// painter is the active Painter, stored atomically so SetLayout can access
-	// it concurrently from any goroutine. Only driveLoop calls non-thread-safe
-	// Painter methods (Paint, Close); SetLayout only calls the atomic SetLayout.
-	painter       atomic.Pointer[dashboard.Painter]
+	// source is the active FrameSource stored atomically. For dash devices
+	// ensureDashSource creates a dashboard.Painter; for rear_view devices
+	// the coordinator sets a capture.MirrorRenderer via SetFrameSource.
+	source        atomic.Pointer[FrameSource]
 	currentLayout atomic.Pointer[dashboard.DashLayout]
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
@@ -59,16 +59,16 @@ type baseDriver struct {
 	currentActivePage atomic.Int32
 
 	screenConnected atomic.Bool
-	paused          atomic.Bool
-	pauseSignal     chan struct{}        // buffered 1; signals driveLoop to stop and release USB
+	disabled        atomic.Bool
+	disableSignal   chan struct{}        // buffered 1; signals driveLoop to stop and release USB
 	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
 }
 
 func newBaseDriver(logger *slog.Logger, defaultFPS int) baseDriver {
 	return baseDriver{
-		logger:      logger,
-		defaultFPS:  defaultFPS,
-		pauseSignal: make(chan struct{}, 1),
+		logger:        logger,
+		defaultFPS:    defaultFPS,
+		disableSignal: make(chan struct{}, 1),
 	}
 }
 
@@ -98,27 +98,27 @@ func (d *baseDriver) IsConnected() bool {
 	return d.screenConnected.Load()
 }
 
-// SetPaused pauses or resumes screen rendering.
-// When paused, the current USB connection is released so another application
+// SetDisabled disables or re-enables screen rendering.
+// When disabled, the current USB connection is released so another application
 // (e.g., SimHub) can take over the screen. Sprint will reconnect automatically
-// once SetPaused(false) is called.
-func (d *baseDriver) SetPaused(paused bool) {
-	d.paused.Store(paused)
-	if paused {
+// once SetDisabled(false) is called.
+func (d *baseDriver) SetDisabled(disabled bool) {
+	d.disabled.Store(disabled)
+	if disabled {
 		// Signal driveLoop to exit and release the USB transport.
 		select {
-		case d.pauseSignal <- struct{}{}:
+		case d.disableSignal <- struct{}{}:
 		default:
 		}
-		d.emitEvent("screen:paused")
+		d.emitEvent("screen:disabled")
 	} else {
-		d.emitEvent("screen:resumed")
+		d.emitEvent("screen:enabled")
 	}
 }
 
-// GetPaused reports whether screen rendering is currently paused.
-func (d *baseDriver) GetPaused() bool {
-	return d.paused.Load()
+// GetDisabled reports whether screen rendering is currently disabled.
+func (d *baseDriver) GetDisabled() bool {
+	return d.disabled.Load()
 }
 
 func (d *baseDriver) emitEvent(event string, data ...any) {
@@ -134,8 +134,10 @@ func (d *baseDriver) SetActivePage(index int) {
 		index = 0
 	}
 	d.currentActivePage.Store(int32(index))
-	if p := d.painter.Load(); p != nil {
-		p.SetActivePage(index)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetActivePage(index)
+		}
 	}
 	d.forceRedraw.Store(true)
 }
@@ -144,8 +146,8 @@ func (d *baseDriver) SetActivePage(index int) {
 // so it is re-applied whenever a new painter is created.
 func (d *baseDriver) SetIdle(idle bool) {
 	d.currentIdle.Store(idle)
-	if p := d.painter.Load(); p != nil {
-		p.SetIdle(idle)
+	if sptr := d.source.Load(); sptr != nil {
+		(*sptr).SetIdle(idle)
 	}
 	d.forceRedraw.Store(true)
 }
@@ -154,23 +156,28 @@ func (d *baseDriver) SetIdle(idle bool) {
 // (if one exists). Safe to call at any time; takes effect on the next frame.
 func (d *baseDriver) SetLayout(layout *dashboard.DashLayout) {
 	d.currentLayout.Store(layout)
-	if p := d.painter.Load(); p != nil {
-		p.SetLayout(layout)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetLayout(layout)
+		}
 	}
 	d.forceRedraw.Store(true)
 }
 
-// ensurePainter guarantees the active Painter has canvas dimensions w×h.
-// When the existing painter already matches those dimensions it is kept intact
-// (preserving its loaded layout and font cache). Otherwise the old painter is
-// closed, a new one is created, and currentLayout is applied to it.
-// Must only be called from driveLoop (not concurrency-safe for multiple writers).
-func (d *baseDriver) ensurePainter(w, h int) {
-	if p := d.painter.Load(); p != nil {
-		if pw, ph := p.Dims(); pw == w && ph == h {
-			return
+// ensureDashSource guarantees the active FrameSource is a dashboard.Painter
+// with canvas dimensions w×h. If the current source is an external (non-Painter)
+// FrameSource it is left untouched. Must only be called from driveLoop.
+func (d *baseDriver) ensureDashSource(w, h int) {
+	if sptr := d.source.Load(); sptr != nil {
+		switch src := (*sptr).(type) {
+		case *dashboard.Painter:
+			if pw, ph := src.Dims(); pw == w && ph == h {
+				return
+			}
+			src.Close()
+		default:
+			return // external source (e.g. MirrorRenderer); coordinator manages it
 		}
-		p.Close()
 	}
 	p := dashboard.NewPainter(w, h)
 	if layout := d.currentLayout.Load(); layout != nil {
@@ -178,11 +185,25 @@ func (d *baseDriver) ensurePainter(w, h int) {
 	}
 	p.SetIdle(d.currentIdle.Load())
 	p.SetActivePage(int(d.currentActivePage.Load()))
-	d.painter.Store(p)
+	var src FrameSource = p
+	d.source.Store(&src)
 	// Re-apply currentLayout in case SetLayout raced between our Load and Store.
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 	}
+}
+
+// SetFrameSource replaces the current rendering source. If the existing source
+// is a dashboard.Painter it is closed first. External sources (e.g. MirrorRenderer)
+// are managed by their creator and must not be closed here.
+func (d *baseDriver) SetFrameSource(src FrameSource) {
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.Close()
+		}
+	}
+	d.source.Store(&src)
+	d.forceRedraw.Store(true)
 }
 
 // OnFrame delivers a new telemetry frame. Non-blocking; safe to call from the
@@ -208,19 +229,19 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 		"target_fps", d.cfgFPS.Load())
 
 	defer func() {
-		if p := d.painter.Load(); p != nil {
-			p.Close()
+		if sptr := d.source.Load(); sptr != nil {
+			(*sptr).Close()
 		}
 	}()
 
 	startTime := time.Now()
 
 	for {
-		// Wait while paused before attempting to open the screen.
-		for d.paused.Load() {
+		// Wait while disabled before attempting to open the screen.
+		for d.disabled.Load() {
 			select {
 			case <-ctx.Done():
-				d.logger.Info(name + " stopped (while paused)")
+				d.logger.Info(name + " stopped (while disabled)")
 				return
 			case <-time.After(200 * time.Millisecond):
 			}
@@ -269,10 +290,10 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 		d.screenConnected.Store(false)
 		d.emitEvent("screen:disconnected")
 
-		// If we exited driveLoop due to a pause signal, skip the reconnect wait.
-		if d.paused.Load() {
-			d.logger.Info("screen paused; USB released; waiting for resume")
-			continue // loop back to the pause-wait above
+		// If we exited driveLoop due to a disable signal, skip the reconnect wait.
+		if d.disabled.Load() {
+			d.logger.Info("screen disabled; USB released; waiting for re-enable")
+			continue // loop back to the disable-wait above
 		}
 
 		d.logger.Info("screen connection lost, will reconnect")
@@ -299,7 +320,7 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	// Size the painter canvas to match native dims + rotation so all four
 	// rotation values produce a correctly-strided output buffer.
 	pW, pH := painterDimsForRotation(rotation, nativeW, nativeH)
-	d.ensurePainter(pW, pH)
+	d.ensureDashSource(pW, pH)
 
 	d.logger.Info("screen connected",
 		"native", fmt.Sprintf("%dx%d", nativeW, nativeH),
@@ -329,8 +350,8 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	// Claim the screen immediately with a standby frame so it shows Sprint's
 	// layout rather than whatever the previous app left behind. Sent before the
 	// async sender goroutine starts so transport.send is safe to call directly.
-	if p := d.painter.Load(); p != nil {
-		if img, err := p.Paint(&dto.TelemetryFrame{}); err == nil {
+	if sptr := d.source.Load(); sptr != nil {
+		if img, err := (*sptr).Paint(&dto.TelemetryFrame{}); err == nil {
 			applyRGB565Rotation(img, renderBuf, rotation)
 			if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
 				applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
@@ -375,8 +396,8 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-d.pauseSignal:
-			d.logger.Info("pause signal received; releasing USB transport")
+		case <-d.disableSignal:
+			d.logger.Info("disable signal received; releasing USB transport")
 			return
 		case <-ticker.C:
 		}
@@ -416,11 +437,15 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		// dimensions (e.g. switching between 0°↔90° on a portrait screen).
 		rotation = sanitizeRotation(int(d.cfgRotation.Load()))
 		pW, pH = painterDimsForRotation(rotation, nativeW, nativeH)
-		d.ensurePainter(pW, pH)
+		d.ensureDashSource(pW, pH)
 
 		renderStart := time.Now()
 
-		img, err := d.painter.Load().Paint(frame)
+		sptr := d.source.Load()
+		if sptr == nil {
+			continue
+		}
+		img, err := (*sptr).Paint(frame)
 		if err != nil {
 			d.logger.Warn("paint error", "err", err)
 			continue

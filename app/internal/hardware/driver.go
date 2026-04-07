@@ -39,11 +39,16 @@ type ScreenDriver interface {
 	SetIdle(idle bool)
 	OnFrame(frame *dto.TelemetryFrame)
 	Run(ctx context.Context)
-	SetPaused(paused bool)
-	GetPaused() bool
+	SetDisabled(disabled bool)
+	GetDisabled() bool
 	// IsConnected reports whether the USB link to the screen is currently active.
 	IsConnected() bool
 	// SetEmit wires the Wails event emitter so the driver can notify the
 	// frontend of connection state changes.
 	SetEmit(fn func(string, ...any))
+	// SetFrameSource replaces the rendering source for this driver.
+	// For dash devices the coordinator may omit this call; baseDriver creates
+	// a dashboard.Painter automatically on screen connect.
+	// For rear_view devices the coordinator sets a capture.MirrorRenderer here.
+	SetFrameSource(src FrameSource)
 }

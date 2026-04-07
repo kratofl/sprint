@@ -25,7 +25,8 @@ type EmitFn func(event string, data ...any)
 
 // deviceEntry holds the runtime state for a single registered device.
 type deviceEntry struct {
-	driver        hardware.ScreenDriver // nil for button-box type devices
+	driver        hardware.ScreenDriver  // nil for button-box type devices
+	purpose       devices.DevicePurpose  // PurposeDash or PurposeRearView
 	pageIndex     int
 	layoutID      string
 	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
@@ -55,7 +56,9 @@ type Coordinator struct {
 	mu      sync.RWMutex
 	entries map[string]*deviceEntry // deviceID -> entry
 
-	rootCtx context.Context // set by Start; used when adding devices at runtime
+	rootCtx   context.Context    // set by Start; used when adding devices at runtime
+	stopFn    context.CancelFunc // cancels rootCtx on Stop
+	driverWg  sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
 }
 
 const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
@@ -91,8 +94,8 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 				}
 				drv.Configure(toHardwareScreenConfig(devices.ToScreenConfig(d)))
 
-				entry := &deviceEntry{driver: drv, cancel: func() {}}
-				if dashMgr != nil {
+				entry := &deviceEntry{driver: drv, cancel: func() {}, purpose: d.Purpose}
+				if d.Purpose != devices.PurposeRearView && dashMgr != nil {
 					if layout, lerr := dashMgr.Load(d.DashID); lerr == nil && layout != nil {
 						drv.SetLayout(layout)
 						entry.layoutID = layout.ID
@@ -138,29 +141,36 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 func (c *Coordinator) Start(ctx context.Context) {
 	c.logger.Info("starting subsystems")
 
+	childCtx, stop := context.WithCancel(ctx)
+
 	c.mu.Lock()
-	c.rootCtx = ctx
+	c.rootCtx = childCtx
+	c.stopFn = stop
 	// Assign a child context + cancel to each pre-loaded entry.
 	for _, e := range c.entries {
 		if e.driver == nil {
 			continue
 		}
-		childCtx, cancel := context.WithCancel(ctx)
+		driverCtx, cancel := context.WithCancel(childCtx)
 		e.cancel = cancel
-		go e.driver.Run(childCtx)
+		c.driverWg.Add(1)
+		go func(drv hardware.ScreenDriver) {
+			defer c.driverWg.Done()
+			drv.Run(driverCtx)
+		}(e.driver)
 	}
 	c.mu.Unlock()
 
 	go func() {
-		<-ctx.Done()
+		<-childCtx.Done()
 		if err := c.adapter.Disconnect(); err != nil {
 			c.logger.Warn("adapter disconnect", "err", err)
 		}
 	}()
 
-	go c.input.Run(ctx)
-	go c.runTelemetryLoop(ctx)
-	go c.runFrontendEmitter(ctx)
+	go c.input.Run(childCtx)
+	go c.runTelemetryLoop(childCtx)
+	go c.runFrontendEmitter(childCtx)
 
 	c.ReloadInputBindings()
 }
@@ -193,13 +203,17 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 
 	var cancel context.CancelFunc = func() {}
 	if c.rootCtx != nil {
-		childCtx, cf := context.WithCancel(c.rootCtx)
+		driverCtx, cf := context.WithCancel(c.rootCtx)
 		cancel = cf
-		go drv.Run(childCtx)
+		c.driverWg.Add(1)
+		go func() {
+			defer c.driverWg.Done()
+			drv.Run(driverCtx)
+		}()
 	}
 
-	entry := &deviceEntry{driver: drv, cancel: cancel}
-	if c.dashMgr != nil {
+	entry := &deviceEntry{driver: drv, cancel: cancel, purpose: d.Purpose}
+	if d.Purpose != devices.PurposeRearView && c.dashMgr != nil {
 		if layout, lerr := c.dashMgr.Load(d.DashID); lerr == nil && layout != nil {
 			drv.SetLayout(layout)
 			entry.layoutID = layout.ID
@@ -282,21 +296,23 @@ func (c *Coordinator) GetScreenStatus() string {
 	return "disconnected"
 }
 
-// SetDevicePaused pauses or resumes rendering for the given device.
-func (c *Coordinator) SetDevicePaused(deviceID string, paused bool) {
+// SetDeviceDisabled disables or re-enables rendering for the given device.
+// When disabled the USB handle is released so another app (e.g. SimHub) can
+// drive the screen. Sprint reconnects automatically when called with false.
+func (c *Coordinator) SetDeviceDisabled(deviceID string, disabled bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if e, ok := c.entries[deviceID]; ok && e.driver != nil {
-		e.driver.SetPaused(paused)
+		e.driver.SetDisabled(disabled)
 	}
 }
 
-// GetDevicePaused reports whether the given device's rendering is paused.
-func (c *Coordinator) GetDevicePaused(deviceID string) bool {
+// GetDeviceDisabled reports whether the given device's rendering is disabled.
+func (c *Coordinator) GetDeviceDisabled(deviceID string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if e, ok := c.entries[deviceID]; ok && e.driver != nil {
-		return e.driver.GetPaused()
+		return e.driver.GetDisabled()
 	}
 	return false
 }
@@ -376,8 +392,15 @@ func (c *Coordinator) CaptureNextButton(ctx context.Context, timeoutSecs int) (i
 }
 
 // Stop shuts down all subsystems gracefully.
+// Cancels the coordinator context and waits for all driver goroutines to
+// complete their cleanup (including dimming the screen before releasing USB).
 func (c *Coordinator) Stop() {
 	c.logger.Info("stopping")
+	if c.stopFn != nil {
+		c.stopFn()
+	}
+	c.driverWg.Wait()
+	c.logger.Info("stopped")
 }
 
 const reconnectDelay = 5 * time.Second
