@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app icons build \
+.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build-installer icons build \
         test test-api test-pkg lint fmt \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -69,6 +69,9 @@ build-app: icons ## Build the Wails desktop app (requires Wails CLI)
 	mkdir -p app/build/bin/DeviceCatalog
 	cp app/presets/devices/*.json app/build/bin/DeviceCatalog/
 	cp app/presets/dash/default.json app/build/bin/DefaultDash.json
+
+build-installer: build-app ## Build Windows NSIS installer → app/build/bin/Sprint-amd64-installer.exe
+	cd app/build/windows/installer && makensis -DVERSION=$(VERSION) project.nsi
 
 build: build-api build-web ## Build all (API + web)
 
