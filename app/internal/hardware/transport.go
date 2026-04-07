@@ -16,3 +16,9 @@ type screenTransport interface {
 // errScreenTransportUnsupported indicates that no platform transport is
 // implemented for this screen type on the current platform.
 var errScreenTransportUnsupported = errors.New("screen transport unsupported on this platform")
+
+// ErrDriverNotInstalled is returned when the WinUSB kernel driver is not bound
+// to the device. This is distinct from "device not found": the USB device is
+// visible to Windows but winusb.sys is not its function driver.
+// Fix: run InstallWinUSBDriver, or use Zadig / SimHub's screen setup tool.
+var ErrDriverNotInstalled = errors.New("WinUSB driver not installed for this device")

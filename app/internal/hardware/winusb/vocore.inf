@@ -1,0 +1,41 @@
+; vocore.inf — WinUSB driver binding for VoCore M-PRO screen family.
+; Install via: pnputil /add-driver vocore.inf /install
+; Or use Zadig (https://zadig.akeo.ie) to bind WinUSB manually.
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = USBDevice
+ClassGUID   = {88BAE032-5A81-49f0-BC3D-A4FF138216D6}
+Provider    = %ManufacturerName%
+DriverVer   = 01/01/2024,1.0.0.0
+CatalogFile = vocore.cat
+
+[Manufacturer]
+%ManufacturerName% = Standard, NTamd64
+
+[Standard.NTamd64]
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1001
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1002
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1003
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1004
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1005
+%VoCoreName% = USB_Install, USB\VID_C872&PID_1006
+%VoCoreName% = USB_Install, USB\VID_C872&PID_100A
+
+[USB_Install]
+Include = winusb.inf
+Needs   = WINUSB.NT
+
+[USB_Install.Services]
+Include    = winusb.inf
+AddService = WinUSB,,WINUSB.NT.Services
+
+[USB_Install.HW]
+AddReg = Dev_AddReg
+
+[Dev_AddReg]
+HKR,,DeviceInterfaceGUIDs,0x10000,"{A5DCBF10-6530-11D2-901F-00C04FB951ED}"
+
+[Strings]
+ManufacturerName = "Sprint"
+VoCoreName       = "VoCore M-PRO Screen"

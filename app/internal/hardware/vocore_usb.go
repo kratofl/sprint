@@ -113,6 +113,9 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	)
 	if r == 0 {
 		syscall.CloseHandle(devHandle)
+		if isDriverNotBoundError(callErr) {
+			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig (https://zadig.akeo.ie)", ErrDriverNotInstalled, vid, pid)
+		}
 		return nil, fmt.Errorf("WinUsb_Initialize: %w (ensure the WinUSB driver is bound to VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig)", callErr, vid, pid)
 	}
 
@@ -154,15 +157,20 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 		return nil, err
 	}
 
-	// Send display initialization: Sleep Out → Display ON.
-	sleepOut := [6]byte{0x00, 0x11, 0x00, 0x00, 0x00, 0x00}
-	if err := s.controlOut(sleepOut[:]); err != nil {
-		logger.Warn("sleep-out failed (non-fatal)", "err", err)
-	}
-
+	// Send display initialization: "quit sleep" (0x29) wakes the panel from any
+	// power state — this is the only wake command used by the official mpro DRM
+	// driver (cmd_quit_sleep). Do NOT send 0x11 (SLEEP_OUT) first; the VoCore
+	// firmware handles the full wake sequence internally on receiving 0x29.
+	// After waking, restore the backlight to full brightness via 0x51, since
+	// SimHub's "disable" sets brightness=0 rather than entering hardware sleep.
 	wake := [6]byte{0x00, 0x29, 0x00, 0x00, 0x00, 0x00}
 	if err := s.controlOut(wake[:]); err != nil {
 		logger.Warn("display wake failed (non-fatal)", "err", err)
+	}
+
+	brightness := [8]byte{0x00, 0x51, 0x02, 0x00, 0x00, 0x00, 0xFF, 0x00}
+	if err := s.controlOut(brightness[:]); err != nil {
+		logger.Warn("brightness restore failed (non-fatal)", "err", err)
 	}
 
 	// Build the 6-byte full-frame draw command (mode + Memory Write + size).
@@ -244,7 +252,19 @@ func (s *winusbSender) nativeSize() (int, int) {
 	return s.nativeW, s.nativeH
 }
 
+// displaySleep sets the backlight brightness to 0, turning the panel dark
+// without putting the controller into deep sleep. This matches SimHub's
+// "disable" behaviour and leaves the device in a state where a single 0x29
+// + brightness-restore can wake it reliably.
+func (s *winusbSender) displaySleep() {
+	brightness := [8]byte{0x00, 0x51, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00}
+	if err := s.controlOut(brightness[:]); err != nil {
+		s.logger.Warn("brightness off failed (non-fatal)", "err", err)
+	}
+}
+
 func (s *winusbSender) close() {
+	s.displaySleep()
 	s.resetPipe(usbBulkEndpoint)
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)
@@ -429,4 +449,25 @@ func mproModelDimensions(model uint32) (width, height int) {
 	default:
 		return 480, 800
 	}
+}
+
+// isDriverNotBoundError returns true when err from WinUsb_Initialize indicates
+// that winusb.sys is not the function driver for the device (as opposed to a
+// transient I/O error or access-denied).
+// Common codes from Windows when WinUSB driver is not bound:
+//   - ERROR_GEN_FAILURE    (0x1F = 31)  — most common on Windows 10/11
+//   - ERROR_BAD_DRIVER     (0xE7 = 231) — less common
+//   - ERROR_INVALID_HANDLE (0x6  = 6)   — seen on some configurations
+func isDriverNotBoundError(err error) bool {
+	errno, ok := err.(syscall.Errno)
+	if !ok {
+		return false
+	}
+	switch errno {
+	case 31,  // ERROR_GEN_FAILURE
+		231, // ERROR_BAD_DRIVER
+		6:   // ERROR_INVALID_HANDLE
+		return true
+	}
+	return false
 }

@@ -11,9 +11,10 @@ import (
 
 // USBD480 USB protocol constants (from usbd480fb Linux driver / User Guide).
 const (
-	usbd480ReqGetDetails = 0x80 // control IN:  64-byte device info (name, width, height)
-	usbd480ReqSetAddr    = 0xC0 // control OUT: set framebuffer write address
-	usbd480ReqSetFrame   = 0xC4 // control OUT: set frame start address (flip)
+	usbd480ReqGetDetails  = 0x80 // control IN:  64-byte device info (name, width, height)
+	usbd480ReqSetAddr     = 0xC0 // control OUT: set framebuffer write address
+	usbd480ReqSetFrame    = 0xC4 // control OUT: set frame start address (flip)
+	usbd480ReqBrightness  = 0x81 // control OUT: set backlight brightness; wValue = level (0=off, 255=full)
 
 	// bmRequestType bytes.
 	// USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x40 | 0x01 = 0x41
@@ -53,7 +54,7 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 	devHandle, err := syscall.CreateFile(
 		pathUTF16,
 		syscall.GENERIC_READ|syscall.GENERIC_WRITE,
-		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE,
+		syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|fileShareDelete,
 		nil,
 		syscall.OPEN_EXISTING,
 		syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OVERLAPPED,
@@ -70,6 +71,9 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 	)
 	if r == 0 {
 		syscall.CloseHandle(devHandle)
+		if isDriverNotBoundError(callErr) {
+			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — use Zadig or run the Sprint driver installer", ErrDriverNotInstalled, vid, pid)
+		}
 		return nil, fmt.Errorf("WinUsb_Initialize USBD480: %w", callErr)
 	}
 
@@ -105,6 +109,9 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 		"pid", fmt.Sprintf("0x%04X", pid),
 		"native", fmt.Sprintf("%dx%d", s.nativeW, s.nativeH))
 
+	// Restore full brightness — SimHub (and our own close) set it to 0 on disable.
+	s.setBrightness(255)
+
 	return s, nil
 }
 
@@ -139,9 +146,19 @@ func (s *usbd480Sender) send(rgb565 []byte) error {
 func (s *usbd480Sender) nativeSize() (int, int) { return s.nativeW, s.nativeH }
 
 func (s *usbd480Sender) close() {
+	// Dim backlight before release — same mechanism SimHub uses to "disable" the screen.
+	s.setBrightness(0)
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)
 	s.logger.Info("USBD480 screen closed")
+}
+
+// setBrightness sets the USBD480 backlight level (0 = off, 255 = full).
+// Per the official usbd480fb Linux driver: bRequest=0x81, wValue=brightness, no data.
+func (s *usbd480Sender) setBrightness(level uint16) {
+	if err := s.controlOut(usbd480ReqBrightness, level, 0); err != nil {
+		s.logger.Warn("USBD480 set brightness failed (non-fatal)", "err", err, "level", level)
+	}
 }
 
 // controlOut sends a vendor OUT control transfer (RECIP_INTERFACE) to the USBD480.
