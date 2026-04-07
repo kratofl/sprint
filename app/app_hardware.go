@@ -183,6 +183,33 @@ func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error 
 	return nil
 }
 
+// DeviceSetPurpose updates the purpose for the given device and persists it.
+func (a *App) DeviceSetPurpose(vid, pid uint16, serial string, purpose devices.DevicePurpose) error {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceSetPurpose: load: %w", err)
+	}
+	id := devices.DeviceID(vid, pid, serial)
+	if err := devices.SetPurpose(reg, id, purpose); err != nil {
+		return fmt.Errorf("DeviceSetPurpose: %w", err)
+	}
+	return a.devMgr.Save(reg)
+}
+
+// DeviceSetPurposeConfig updates the purpose-specific config JSON blob for the
+// given device and persists it. config must be a valid JSON object or null.
+func (a *App) DeviceSetPurposeConfig(vid, pid uint16, serial string, config []byte) error {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceSetPurposeConfig: load: %w", err)
+	}
+	id := devices.DeviceID(vid, pid, serial)
+	if err := devices.SetPurposeConfig(reg, id, config); err != nil {
+		return fmt.Errorf("DeviceSetPurposeConfig: %w", err)
+	}
+	return a.devMgr.Save(reg)
+}
+
 // DeviceGetDeviceBindings returns the button→command bindings for the given device.
 func (a *App) DeviceGetDeviceBindings(vid, pid uint16, serial string) ([]devices.DeviceBinding, error) {
 	reg, err := a.devMgr.Load()
@@ -217,55 +244,150 @@ func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings 
 	return nil
 }
 
-// DeviceSetDevicePaused pauses or resumes rendering for the given device.
-// When paused the USB handle is released so another app (e.g. SimHub) can
-// drive the screen. Sprint resumes when called with false.
-func (a *App) DeviceSetDevicePaused(deviceID string, paused bool) {
-	a.coord.SetDevicePaused(deviceID, paused)
+// DeviceSetDeviceDisabled disables or re-enables rendering for the given device.
+// When disabled the USB handle is released so another app (e.g. SimHub) can
+// drive the screen. Sprint reconnects when called with false.
+func (a *App) DeviceSetDeviceDisabled(deviceID string, disabled bool) {
+	a.coord.SetDeviceDisabled(deviceID, disabled)
 }
 
-// DeviceGetDevicePaused reports whether the given device's rendering is paused.
-func (a *App) DeviceGetDevicePaused(deviceID string) bool {
-	return a.coord.GetDevicePaused(deviceID)
+// DeviceGetDeviceDisabled reports whether the given device's rendering is disabled.
+func (a *App) DeviceGetDeviceDisabled(deviceID string) bool {
+	return a.coord.GetDeviceDisabled(deviceID)
+}
+
+// scanAllUnregistered scans USB for all devices of the given driver type that
+// are not already present in the registry.
+func (a *App) scanAllUnregistered(reg *devices.DeviceRegistry, driver devices.DriverType) ([]devices.DetectedScreen, error) {
+	switch driver {
+	case devices.DriverVoCore:
+		screens, err := hardware.ScanVoCore()
+		if err != nil {
+			return nil, fmt.Errorf("scan vocore: %w", err)
+		}
+		var result []devices.DetectedScreen
+		for _, s := range screens {
+			if devices.FindByID(reg, devices.DeviceID(s.VID, s.PID, s.Serial)) == nil {
+				result = append(result, devices.DetectedScreen{
+					VID: s.VID, PID: s.PID, Serial: s.Serial,
+					Width: s.Width, Height: s.Height, Description: s.Description,
+					Driver: devices.DriverVoCore,
+				})
+			}
+		}
+		return result, nil
+	case devices.DriverUSBD480:
+		screens, err := hardware.ScanUSBD480()
+		if err != nil {
+			return nil, fmt.Errorf("scan usbd480: %w", err)
+		}
+		var result []devices.DetectedScreen
+		for _, s := range screens {
+			if devices.FindByID(reg, devices.DeviceID(s.VID, s.PID, s.Serial)) == nil {
+				result = append(result, devices.DetectedScreen{
+					VID: s.VID, PID: s.PID, Serial: s.Serial,
+					Width: s.Width, Height: s.Height, Description: s.Description,
+					Driver: devices.DriverUSBD480,
+				})
+			}
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("unknown driver type %q", driver)
+	}
 }
 
 // scanFirstUnregistered scans USB for the first device of the given driver type
 // that is not already present in the registry.
 func (a *App) scanFirstUnregistered(reg *devices.DeviceRegistry, driver devices.DriverType) (devices.DetectedScreen, error) {
-	switch driver {
-	case devices.DriverVoCore:
-		screens, err := hardware.ScanVoCore()
-		if err != nil {
-			return devices.DetectedScreen{}, fmt.Errorf("scan vocore: %w", err)
-		}
-		for _, s := range screens {
-			id := devices.DeviceID(s.VID, s.PID, s.Serial)
-			if devices.FindByID(reg, id) == nil {
-				return devices.DetectedScreen{
-					VID: s.VID, PID: s.PID, Serial: s.Serial,
-					Width: s.Width, Height: s.Height, Description: s.Description,
-					Driver: devices.DriverVoCore,
-				}, nil
-			}
-		}
-		return devices.DetectedScreen{}, fmt.Errorf("no unregistered VoCore device found")
-	case devices.DriverUSBD480:
-		screens, err := hardware.ScanUSBD480()
-		if err != nil {
-			return devices.DetectedScreen{}, fmt.Errorf("scan usbd480: %w", err)
-		}
-		for _, s := range screens {
-			id := devices.DeviceID(s.VID, s.PID, s.Serial)
-			if devices.FindByID(reg, id) == nil {
-				return devices.DetectedScreen{
-					VID: s.VID, PID: s.PID, Serial: s.Serial,
-					Width: s.Width, Height: s.Height, Description: s.Description,
-					Driver: devices.DriverUSBD480,
-				}, nil
-			}
-		}
-		return devices.DetectedScreen{}, fmt.Errorf("no unregistered USBD480 device found")
-	default:
-		return devices.DetectedScreen{}, fmt.Errorf("unknown driver type %q", driver)
+	all, err := a.scanAllUnregistered(reg, driver)
+	if err != nil {
+		return devices.DetectedScreen{}, err
 	}
+	if len(all) == 0 {
+		return devices.DetectedScreen{}, fmt.Errorf("no unregistered %s device found", driver)
+	}
+	return all[0], nil
+}
+
+// DeviceScanUnregistered scans USB for all unregistered devices matching the
+// driver of the given generic catalog entry (VID=0, PID=0). Returns all
+// candidates so the frontend can present a picker when multiple are found.
+func (a *App) DeviceScanUnregistered(catalogID string) ([]devices.DetectedScreen, error) {
+	entry, ok := devices.CatalogByID(catalogID)
+	if !ok {
+		return nil, fmt.Errorf("DeviceScanUnregistered: unknown catalog ID %q", catalogID)
+	}
+	if !entry.IsGeneric() {
+		return nil, fmt.Errorf("DeviceScanUnregistered: catalog entry %q is not a generic entry", catalogID)
+	}
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return nil, fmt.Errorf("DeviceScanUnregistered: load registry: %w", err)
+	}
+	return a.scanAllUnregistered(reg, entry.Driver)
+}
+
+// DeviceAddScanned adds a specific device found by a prior scan to the registry.
+// Intended for use after DeviceScanUnregistered when the user picks one of
+// multiple detected screens. The device is re-validated by scanning to ensure
+// it is still connected and to retrieve current dimensions.
+func (a *App) DeviceAddScanned(catalogID string, vid, pid uint16, serial string) error {
+	entry, ok := devices.CatalogByID(catalogID)
+	if !ok {
+		return fmt.Errorf("DeviceAddScanned: unknown catalog ID %q", catalogID)
+	}
+
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceAddScanned: load registry: %w", err)
+	}
+
+	all, err := a.scanAllUnregistered(reg, entry.Driver)
+	if err != nil {
+		return fmt.Errorf("DeviceAddScanned: %w", err)
+	}
+
+	var detected *devices.DetectedScreen
+	for i := range all {
+		if all[i].VID == vid && all[i].PID == pid && all[i].Serial == serial {
+			detected = &all[i]
+			break
+		}
+	}
+	if detected == nil {
+		return fmt.Errorf("DeviceAddScanned: device %s not found among unregistered devices", devices.DeviceID(vid, pid, serial))
+	}
+
+	saved := entry.ToSavedDevice("")
+	saved.VID = detected.VID
+	saved.PID = detected.PID
+	saved.Serial = detected.Serial
+	saved.Width = detected.Width
+	saved.Height = detected.Height
+	if saved.Name == "" || saved.Name == entry.Name {
+		saved.Name = detected.Description
+	}
+	if saved.Rotation == 0 && saved.Height > saved.Width {
+		saved.Rotation = 90
+	}
+
+	id := devices.DeviceID(saved.VID, saved.PID, saved.Serial)
+	existing := devices.FindByID(reg, id)
+	if existing != nil {
+		existing.Width = saved.Width
+		existing.Height = saved.Height
+	} else {
+		reg.Devices = append(reg.Devices, saved)
+	}
+	if err := a.devMgr.Save(reg); err != nil {
+		return fmt.Errorf("DeviceAddScanned: save: %w", err)
+	}
+
+	device := devices.FindByID(reg, id)
+	if device != nil && device.HasScreen() {
+		a.coord.SetScreenConfig(id, *device)
+	}
+	a.coord.ReloadInputBindings()
+	return nil
 }

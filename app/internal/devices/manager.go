@@ -13,6 +13,15 @@ import (
 	"github.com/kratofl/sprint/app/internal/appdata"
 )
 
+// DevicePurpose identifies the role of a screen-capable device.
+// Empty string is treated as PurposeDash for backward compatibility.
+type DevicePurpose string
+
+const (
+	PurposeDash     DevicePurpose = "dash"
+	PurposeRearView DevicePurpose = "rear_view"
+)
+
 // DeviceType categorises a registered device by its capabilities.
 type DeviceType string
 
@@ -54,20 +63,22 @@ type DeviceBinding struct {
 // SavedDevice is a persisted registry entry with user metadata that survives
 // disconnection. Replaces the former SavedScreen type.
 type SavedDevice struct {
-	VID       uint16          `json:"vid"`
-	PID       uint16          `json:"pid"`
-	Serial    string          `json:"serial,omitempty"`
-	Type      DeviceType      `json:"type,omitempty"` // defaults to DeviceTypeScreen for old entries
-	Width     int             `json:"width"`
-	Height    int             `json:"height"`
-	Name      string          `json:"name"`
-	Rotation  int             `json:"rotation"`             // 0=0°, 90=CW90, 180=180°, 270=CW270
-	TargetFPS int             `json:"target_fps,omitempty"` // 0 = use driver default
-	OffsetX   int             `json:"offset_x,omitempty"`   // pixels from left in screen space
-	OffsetY   int             `json:"offset_y,omitempty"`   // pixels from top in screen space
-	Driver    DriverType      `json:"driver"`
-	DashID    string          `json:"dash_id,omitempty"` // assigned dash layout; empty = use default
-	Bindings  []DeviceBinding `json:"bindings,omitempty"`
+	VID           uint16          `json:"vid"`
+	PID           uint16          `json:"pid"`
+	Serial        string          `json:"serial,omitempty"`
+	Type          DeviceType      `json:"type,omitempty"` // defaults to DeviceTypeScreen for old entries
+	Width         int             `json:"width"`
+	Height        int             `json:"height"`
+	Name          string          `json:"name"`
+	Rotation      int             `json:"rotation"`             // 0=0°, 90=CW90, 180=180°, 270=CW270
+	TargetFPS     int             `json:"target_fps,omitempty"` // 0 = use driver default
+	OffsetX       int             `json:"offset_x,omitempty"`   // pixels from left in screen space
+	OffsetY       int             `json:"offset_y,omitempty"`   // pixels from top in screen space
+	Driver        DriverType      `json:"driver"`
+	DashID        string          `json:"dash_id,omitempty"`        // assigned dash layout; empty = use default
+	Purpose       DevicePurpose   `json:"purpose,omitempty"`        // defaults to PurposeDash
+	PurposeConfig json.RawMessage `json:"purpose_config,omitempty"` // purpose-specific config JSON blob
+	Bindings      []DeviceBinding `json:"bindings,omitempty"`
 }
 
 // HasScreen reports whether this device has a screen (wheel or screen type).
@@ -331,4 +342,36 @@ func SetScreenOffset(reg *DeviceRegistry, id string, offsetX, offsetY int) error
 		}
 	}
 	return fmt.Errorf("devices: device %q not found", id)
+}
+
+// SetPurpose updates the purpose for the device with the given composite ID.
+func SetPurpose(reg *DeviceRegistry, id string, purpose DevicePurpose) error {
+	for i := range reg.Devices {
+		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
+			reg.Devices[i].Purpose = purpose
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: device %q not found", id)
+}
+
+// SetPurposeConfig updates the purpose-specific config blob for the device with
+// the given composite ID. config must be valid JSON or nil.
+func SetPurposeConfig(reg *DeviceRegistry, id string, config json.RawMessage) error {
+	for i := range reg.Devices {
+		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
+			reg.Devices[i].PurposeConfig = config
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: device %q not found", id)
+}
+
+// RearViewConfig is the purpose-specific configuration for PurposeRearView devices.
+// Stored as JSON in SavedDevice.PurposeConfig.
+type RearViewConfig struct {
+	CaptureX int `json:"capture_x"` // left edge of capture region in game window coords
+	CaptureY int `json:"capture_y"` // top edge of capture region
+	CaptureW int `json:"capture_w"` // width; 0 = full window width
+	CaptureH int `json:"capture_h"` // height; 0 = full window height
 }

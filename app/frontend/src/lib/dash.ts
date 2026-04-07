@@ -47,6 +47,7 @@ export interface LayoutMeta {
 
 export type DriverType = 'vocore' | 'usbd480'
 export type DeviceType = 'wheel' | 'screen' | 'buttonbox'
+export type DevicePurpose = 'dash' | 'rear_view'
 
 export interface DeviceBinding {
   button: number
@@ -66,7 +67,19 @@ export interface SavedDevice {
   offsetY: number           // pixel offset from top edge
   driver: DriverType
   dashId: string            // assigned layout ID; empty = use default
+  purpose: DevicePurpose    // defaults to 'dash'
+  purposeConfig?: Record<string, unknown> // purpose-specific config
   bindings?: DeviceBinding[]
+}
+
+export interface DetectedScreen {
+  vid: number
+  pid: number
+  serial: string
+  width: number
+  height: number
+  description: string
+  driver: DriverType
 }
 
 export interface CatalogEntry {
@@ -80,6 +93,7 @@ export interface CatalogEntry {
   height: number
   rotation: number
   driver: DriverType
+  purpose: DevicePurpose
   bindings: DeviceBinding[]
 }
 
@@ -180,21 +194,36 @@ function normLayoutMeta(raw: unknown): LayoutMeta {
 function normSavedDevice(raw: unknown): SavedDevice {
   const r = raw as Record<string, unknown>
   return {
-    vid:      Number(r.vid      ?? r.VID      ?? 0),
-    pid:      Number(r.pid      ?? r.PID      ?? 0),
-    serial:   String(r.serial   ?? r.Serial   ?? ''),
-    type:     (r.type ?? r.Type ?? '') as DeviceType | '',
-    width:    Number(r.width    ?? r.Width    ?? 0),
-    height:   Number(r.height   ?? r.Height   ?? 0),
-    name:     String(r.name     ?? r.Name     ?? ''),
-    rotation: Number(r.rotation ?? r.Rotation ?? 0),
-    offsetX:  Number(r.offset_x  ?? r.offsetX  ?? r.OffsetX  ?? 0),
-    offsetY:  Number(r.offset_y  ?? r.offsetY  ?? r.OffsetY  ?? 0),
-    driver:   (r.driver ?? r.Driver ?? 'vocore') as DriverType,
-    dashId:   String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
-    bindings: Array.isArray(r.bindings ?? r.Bindings)
+    vid:           Number(r.vid      ?? r.VID      ?? 0),
+    pid:           Number(r.pid      ?? r.PID      ?? 0),
+    serial:        String(r.serial   ?? r.Serial   ?? ''),
+    type:          (r.type ?? r.Type ?? '') as DeviceType | '',
+    width:         Number(r.width    ?? r.Width    ?? 0),
+    height:        Number(r.height   ?? r.Height   ?? 0),
+    name:          String(r.name     ?? r.Name     ?? ''),
+    rotation:      Number(r.rotation ?? r.Rotation ?? 0),
+    offsetX:       Number(r.offset_x  ?? r.offsetX  ?? r.OffsetX  ?? 0),
+    offsetY:       Number(r.offset_y  ?? r.offsetY  ?? r.OffsetY  ?? 0),
+    driver:        (r.driver ?? r.Driver ?? 'vocore') as DriverType,
+    dashId:        String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
+    purpose:       ((r.purpose ?? r.Purpose ?? 'dash') as DevicePurpose) || 'dash',
+    purposeConfig: (r.purpose_config ?? r.PurposeConfig ?? r.purposeConfig) as Record<string, unknown> | undefined,
+    bindings:      Array.isArray(r.bindings ?? r.Bindings)
       ? (r.bindings ?? r.Bindings) as DeviceBinding[]
       : [],
+  }
+}
+
+function normDetectedScreen(raw: unknown): DetectedScreen {
+  const r = raw as Record<string, unknown>
+  return {
+    vid:         Number(r.vid         ?? r.VID         ?? 0),
+    pid:         Number(r.pid         ?? r.PID         ?? 0),
+    serial:      String(r.serial      ?? r.Serial      ?? ''),
+    width:       Number(r.width       ?? r.Width       ?? 0),
+    height:      Number(r.height      ?? r.Height      ?? 0),
+    description: String(r.description ?? r.Description ?? ''),
+    driver:      (r.driver ?? r.Driver ?? 'vocore') as DriverType,
   }
 }
 
@@ -211,6 +240,7 @@ function normCatalogEntry(raw: unknown): CatalogEntry {
     height:      Number(r.height   ?? r.Height   ?? 0),
     rotation:    Number(r.rotation ?? r.Rotation ?? 0),
     driver:      (r.driver ?? r.Driver ?? 'vocore') as DriverType,
+    purpose:     ((r.purpose ?? r.Purpose ?? 'dash') as DevicePurpose) || 'dash',
     bindings:    Array.isArray(r.bindings ?? r.Bindings)
       ? (r.bindings ?? r.Bindings) as DeviceBinding[]
       : [],
@@ -273,6 +303,15 @@ export const deviceAPI = {
     await call<void>('DeviceAdd', catalogID)
   },
 
+  async scanUnregistered(catalogID: string): Promise<DetectedScreen[]> {
+    const raw = await call<unknown[]>('DeviceScanUnregistered', catalogID)
+    return Array.isArray(raw) ? raw.map(normDetectedScreen) : []
+  },
+
+  async addScanned(catalogID: string, vid: number, pid: number, serial: string): Promise<void> {
+    await call<void>('DeviceAddScanned', catalogID, vid, pid, serial)
+  },
+
   async removeDevice(vid: number, pid: number, serial: string): Promise<void> {
     await call<void>('DeviceRemoveDevice', vid, pid, serial)
   },
@@ -293,16 +332,24 @@ export const deviceAPI = {
     await call<void>('DeviceSetDashLayout', vid, pid, serial, dashId)
   },
 
-  async setDevicePaused(deviceID: string, paused: boolean): Promise<void> {
-    await call<void>('DeviceSetDevicePaused', deviceID, paused)
+  async setDeviceDisabled(deviceID: string, disabled: boolean): Promise<void> {
+    await call<void>('DeviceSetDeviceDisabled', deviceID, disabled)
   },
 
-  async getDevicePaused(deviceID: string): Promise<boolean> {
+  async getDeviceDisabled(deviceID: string): Promise<boolean> {
     try {
-      return await call<boolean>('DeviceGetDevicePaused', deviceID)
+      return await call<boolean>('DeviceGetDeviceDisabled', deviceID)
     } catch {
       return false
     }
+  },
+
+  async setDevicePurpose(vid: number, pid: number, serial: string, purpose: DevicePurpose): Promise<void> {
+    await call<void>('DeviceSetPurpose', vid, pid, serial, purpose)
+  },
+
+  async setDevicePurposeConfig(vid: number, pid: number, serial: string, config: Record<string, unknown>): Promise<void> {
+    await call<void>('DeviceSetPurposeConfig', vid, pid, serial, JSON.stringify(config))
   },
 
   async getScreenStatus(): Promise<'connected' | 'disconnected' | 'unknown'> {

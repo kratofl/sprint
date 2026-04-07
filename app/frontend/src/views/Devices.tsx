@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { IconDeviceMobile } from '@tabler/icons-react'
 import {
-  type SavedDevice, type CatalogEntry, type DeviceType, type LayoutMeta, type DeviceBinding,
+  type SavedDevice, type CatalogEntry, type DetectedScreen, type DeviceType,
+  type DevicePurpose, type LayoutMeta, type DeviceBinding,
   deviceAPI, deviceBindingsAPI, dashAPI, deviceHasScreen, deviceID,
 } from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
 import { onEvent } from '@/lib/wails'
-import { Badge, Button, Skeleton, cn } from '@sprint/ui'
+import { Badge, Button, Switch, Skeleton, cn } from '@sprint/ui'
 
 const DEVICE_TYPES: DeviceType[] = ['wheel', 'screen', 'buttonbox']
 const SECTION_LABELS: Record<DeviceType, string> = {
@@ -43,7 +44,8 @@ function DeviceSection() {
   const [layouts, setLayouts]         = useState<LayoutMeta[]>([])
   const [deviceOnlyCmds, setDeviceOnlyCmds] = useState<CommandMeta[]>([])
   const [screenStatus, setScreenStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
-  const [loading, setLoading]         = useState(true)
+  const [disabledMap, setDisabledMap]   = useState<Record<string, boolean>>({})
+  const [loading, setLoading]           = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [panel, setPanel]             = useState<PanelView>({ tag: 'empty' })
 
@@ -51,6 +53,15 @@ function DeviceSection() {
     try {
       const devs = await deviceAPI.getSavedDevices()
       setDevices(devs)
+      const screens = devs.filter(d => deviceHasScreen(d.type))
+      const entries = await Promise.all(
+        screens.map(async d => {
+          const id = deviceID(d.vid, d.pid, d.serial)
+          const val = await deviceAPI.getDeviceDisabled(id).catch(() => false)
+          return [id, val] as [string, boolean]
+        }),
+      )
+      setDisabledMap(Object.fromEntries(entries))
       return devs
     } catch (e) {
       setError(String(e))
@@ -86,21 +97,37 @@ function DeviceSection() {
     setPanel({ tag: 'detail', key: deviceKey(d) })
   }
 
-  const handleCatalogAdd = async (catalogID: string) => {
-    await deviceAPI.addDevice(catalogID)
+  const autoSelectAfterAdd = useCallback(async (catalogID: string, prevDevices: SavedDevice[]) => {
     const updated = await loadDevices()
     const entry = catalog.find(c => c.id === catalogID)
-    // Auto-select the newly added device in the detail panel.
+    const prevKeys = new Set(prevDevices.map(deviceKey))
     const newDev = entry
       ? updated.find(d =>
           entry.vid === 0 && entry.pid === 0
-            ? deviceKey(d) !== deviceKey(devices.find(x => deviceKey(x) === deviceKey(d)) ?? d) // new entry
+            ? !prevKeys.has(deviceKey(d))
             : d.vid === entry.vid && d.pid === entry.pid,
         )
       : undefined
     const target = newDev ?? updated[updated.length - 1]
     if (target) setPanel({ tag: 'detail', key: deviceKey(target) })
     else setPanel({ tag: 'empty' })
+  }, [catalog, loadDevices])
+
+  const handleCatalogAdd = async (catalogID: string) => {
+    const entry = catalog.find(c => c.id === catalogID)
+    if (entry && entry.vid === 0 && entry.pid === 0) {
+      // Generic entry: scan first so the user can pick when multiple screens are found.
+      // CatalogPanel handles the scanning/picker flow and calls back with the resolved result.
+      await deviceAPI.addDevice(catalogID)
+    } else {
+      await deviceAPI.addDevice(catalogID)
+    }
+    await autoSelectAfterAdd(catalogID, devices)
+  }
+
+  const handleCatalogAddScanned = async (catalogID: string, screen: DetectedScreen) => {
+    await deviceAPI.addScanned(catalogID, screen.vid, screen.pid, screen.serial)
+    await autoSelectAfterAdd(catalogID, devices)
   }
 
   const handleRemove = async (d: SavedDevice) => {
@@ -153,6 +180,12 @@ function DeviceSection() {
                     group.map(d => {
                       const key = deviceKey(d)
                       const selected = panel.tag === 'detail' && panel.key === key
+                      const isScr = deviceHasScreen(d.type)
+                      const did = deviceID(d.vid, d.pid, d.serial)
+                      const dotColor = !isScr ? null
+                        : screenStatus === 'connected' && !disabledMap[did] ? 'bg-success'
+                        : screenStatus === 'connected'                       ? 'bg-warning'
+                        : 'bg-text-disabled'
                       return (
                         <button
                           key={key}
@@ -165,7 +198,12 @@ function DeviceSection() {
                               : 'border-border bg-card hover:border-border-strong hover:bg-card/80',
                           )}
                         >
-                          <p className="truncate font-mono text-[10px] font-bold">{d.name}</p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {dotColor && (
+                              <span className={cn('size-1.5 rounded-full flex-shrink-0', dotColor)} />
+                            )}
+                            <p className="truncate font-mono text-[10px] font-bold">{d.name}</p>
+                          </div>
                           <p className="font-mono text-[8px] uppercase text-text-muted">
                             {d.driver || d.type || 'unknown'}
                           </p>
@@ -187,6 +225,7 @@ function DeviceSection() {
             entries={catalogForType}
             deviceType={panel.filterType}
             onAdd={handleCatalogAdd}
+            onAddScanned={handleCatalogAddScanned}
             onClose={() => setPanel({ tag: 'empty' })}
             onError={setError}
           />
@@ -198,6 +237,8 @@ function DeviceSection() {
             screenStatus={screenStatus}
             layouts={layouts}
             deviceOnlyCmds={deviceOnlyCmds}
+            disabledMap={disabledMap}
+            setDisabledMap={setDisabledMap}
             onSaved={loadDevices}
             onRemove={() => handleRemove(selectedDevice)}
             onError={setError}
@@ -223,21 +264,81 @@ interface CatalogPanelProps {
   entries: CatalogEntry[]
   deviceType: DeviceType
   onAdd: (catalogID: string) => Promise<void>
+  onAddScanned: (catalogID: string, screen: DetectedScreen) => Promise<void>
   onClose: () => void
   onError: (msg: string) => void
 }
 
-function CatalogPanel({ entries, deviceType, onAdd, onClose, onError }: CatalogPanelProps) {
-  const [adding, setAdding] = useState<string | null>(null)
+function CatalogPanel({ entries, deviceType, onAdd, onAddScanned, onClose, onError }: CatalogPanelProps) {
+  const [scanning, setScanning] = useState<string | null>(null)
+  const [adding, setAdding]     = useState<string | null>(null)
+  const [candidates, setCandidates] = useState<{ catalogID: string; screens: DetectedScreen[] } | null>(null)
 
-  const handleAdd = async (id: string) => {
-    setAdding(id)
+  const handleAdd = async (entry: CatalogEntry) => {
+    if (entry.vid !== 0 || entry.pid !== 0) {
+      // Non-generic: add directly, no scan needed.
+      setAdding(entry.id)
+      try {
+        await onAdd(entry.id)
+      } catch (e) {
+        onError(String(e))
+        setAdding(null)
+      }
+      return
+    }
+
+    // Generic entry: scan first to find all unregistered devices.
+    setScanning(entry.id)
     try {
-      await onAdd(id)
+      const found = await deviceAPI.scanUnregistered(entry.id)
+      if (found.length === 0) {
+        onError(`No unregistered ${entry.driver.toUpperCase()} device found. Make sure the device is connected.`)
+        setScanning(null)
+        return
+      }
+      if (found.length === 1) {
+        // Single result — add immediately without showing a picker.
+        setAdding(entry.id)
+        setScanning(null)
+        try {
+          await onAddScanned(entry.id, found[0])
+        } catch (e) {
+          onError(String(e))
+          setAdding(null)
+        }
+        return
+      }
+      // Multiple results — show inline picker.
+      setCandidates({ catalogID: entry.id, screens: found })
+      setScanning(null)
+    } catch (e) {
+      onError(String(e))
+      setScanning(null)
+    }
+  }
+
+  const handlePickScanned = async (screen: DetectedScreen) => {
+    if (!candidates) return
+    setAdding(candidates.catalogID)
+    setCandidates(null)
+    try {
+      await onAddScanned(candidates.catalogID, screen)
     } catch (e) {
       onError(String(e))
       setAdding(null)
     }
+  }
+
+  if (candidates) {
+    return (
+      <ScanPickerPanel
+        catalogID={candidates.catalogID}
+        screens={candidates.screens}
+        deviceType={deviceType}
+        onPick={handlePickScanned}
+        onBack={() => setCandidates(null)}
+      />
+    )
   }
 
   return (
@@ -260,42 +361,120 @@ function CatalogPanel({ entries, deviceType, onAdd, onClose, onError }: CatalogP
         </div>
       ) : (
         <div className="space-y-2">
-          {entries.map(e => (
-            <div
-              key={e.id}
-              className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-mono text-[10px] font-bold">{e.name}</p>
-                <p className="mt-0.5 font-mono text-[8px] text-text-muted">{e.description}</p>
-                {e.vid === 0 && e.pid === 0 ? (
-                  <p className="mt-0.5 font-mono text-[8px] text-text-disabled">
-                    Scans USB for first detected {e.driver} device
-                  </p>
-                ) : (
-                  <p className="mt-0.5 font-mono text-[8px] text-text-disabled uppercase">
-                    {e.driver} · {e.width}×{e.height}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
-                disabled={adding !== null}
-                onClick={() => handleAdd(e.id)}
+          {entries.map(e => {
+            const isGeneric = e.vid === 0 && e.pid === 0
+            return (
+              <div
+                key={e.id}
+                className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
               >
-                {adding === e.id ? 'ADDING…' : 'ADD'}
-              </Button>
-            </div>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <p className="font-mono text-[10px] font-bold">{e.name}</p>
+                  <p className="mt-0.5 font-mono text-[8px] text-text-muted">{e.description}</p>
+                  {isGeneric ? (
+                    <p className="mt-0.5 font-mono text-[8px] text-text-disabled">
+                      Scans USB for {e.driver.toUpperCase()} devices
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 font-mono text-[8px] text-text-disabled uppercase">
+                      {e.driver} · {e.width}×{e.height}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+                  disabled={scanning !== null || adding !== null}
+                  onClick={() => handleAdd(e)}
+                >
+                  {scanning === e.id ? 'SCANNING…' : adding === e.id ? 'ADDING…' : 'ADD'}
+                </Button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-// DeviceDetail — right panel shown when a device is selected.
+// ScanPickerPanel — inline picker shown when a scan finds multiple unregistered devices.
+
+interface ScanPickerPanelProps {
+  catalogID: string
+  screens: DetectedScreen[]
+  deviceType: DeviceType
+  onPick: (screen: DetectedScreen) => Promise<void>
+  onBack: () => void
+}
+
+function ScanPickerPanel({ screens, deviceType, onPick, onBack }: ScanPickerPanelProps) {
+  const [picking, setPicking] = useState<string | null>(null)
+
+  const screenKey = (s: DetectedScreen) =>
+    `${s.vid.toString(16).padStart(4, '0')}-${s.pid.toString(16).padStart(4, '0')}${s.serial ? `-${s.serial}` : ''}`
+
+  const handlePick = async (s: DetectedScreen) => {
+    const key = screenKey(s)
+    setPicking(key)
+    try {
+      await onPick(s)
+    } catch {
+      setPicking(null)
+    }
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="terminal-header text-[10px] font-bold">
+          SELECT_{SECTION_LABELS[deviceType]}
+        </h3>
+        <Button variant="ghost" size="sm" className="h-6 px-2 font-mono text-[9px]" onClick={onBack}>
+          ← BACK
+        </Button>
+      </div>
+      <p className="font-mono text-[8px] text-text-muted">
+        {screens.length} {deviceType} devices found. Select the one to register.
+      </p>
+      <div className="space-y-2">
+        {screens.map(s => {
+          const key = screenKey(s)
+          const vidHex = s.vid.toString(16).padStart(4, '0').toUpperCase()
+          const pidHex = s.pid.toString(16).padStart(4, '0').toUpperCase()
+          return (
+            <div
+              key={key}
+              className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] font-bold">{s.description || s.driver.toUpperCase()}</p>
+                <p className="mt-0.5 font-mono text-[8px] text-text-muted uppercase">
+                  {s.width}×{s.height} · {vidHex}:{pidHex}
+                </p>
+                {s.serial && (
+                  <p className="mt-0.5 font-mono text-[8px] text-text-disabled">S/N {s.serial}</p>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+                disabled={picking !== null}
+                onClick={() => handlePick(s)}
+              >
+                {picking === key ? 'ADDING…' : 'SELECT'}
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
 
 const ORIENTATION_OPTIONS = [
   { degrees: 0   as const, label: 'Portrait',       iconRotation: 'rotate-0'    },
@@ -310,13 +489,15 @@ interface DeviceDetailProps {
   screenStatus: 'connected' | 'disconnected' | 'unknown'
   layouts: LayoutMeta[]
   deviceOnlyCmds: CommandMeta[]
+  disabledMap: Record<string, boolean>
+  setDisabledMap: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
   onSaved: () => Promise<SavedDevice[]>
   onRemove: () => Promise<void>
   onError: (msg: string) => void
 }
 
 function DeviceDetail({
-  device, screenStatus, layouts, deviceOnlyCmds, onSaved, onRemove, onError,
+  device, screenStatus, layouts, deviceOnlyCmds, disabledMap, setDisabledMap, onSaved, onRemove, onError,
 }: DeviceDetailProps) {
   const isScreen = deviceHasScreen(device.type)
   const id = deviceID(device.vid, device.pid, device.serial)
@@ -328,9 +509,11 @@ function DeviceDetail({
   const [offsetY, setOffsetY]                   = useState(device.offsetY ?? 0)
   const [dashId, setDashId]                     = useState(device.dashId)
   const [savingDash, setSavingDash]             = useState(false)
-  const [paused, setPaused]                     = useState(false)
+  const [purpose, setPurpose]                   = useState<DevicePurpose>(device.purpose ?? 'dash')
   const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
   const [removing, setRemoving]                 = useState(false)
+
+  const disabled = disabledMap[id] ?? false
 
   useEffect(() => {
     setDraft(device.name)
@@ -338,10 +521,8 @@ function DeviceDetail({
     setOffsetX(device.offsetX ?? 0)
     setOffsetY(device.offsetY ?? 0)
     setDashId(device.dashId)
+    setPurpose(device.purpose ?? 'dash')
     setRenaming(false)
-    if (isScreen) {
-      deviceAPI.getDevicePaused(id).then(setPaused).catch(() => {})
-    }
     deviceBindingsAPI
       .getDeviceBindings(device.vid, device.pid, device.serial)
       .then(setBindings)
@@ -404,14 +585,25 @@ function DeviceDetail({
     }
   }
 
-  const handleTogglePause = async () => {
-    const next = !paused
-    setPaused(next)
+  const handlePurposeChange = async (newPurpose: DevicePurpose) => {
+    setPurpose(newPurpose)
     try {
-      await deviceAPI.setDevicePaused(id, next)
+      await deviceAPI.setDevicePurpose(device.vid, device.pid, device.serial, newPurpose)
+      await onSaved()
     } catch (e) {
       onError(String(e))
-      setPaused(paused)
+      setPurpose(device.purpose ?? 'dash')
+    }
+  }
+
+  const handleToggleDisabled = async () => {
+    const next = !disabled
+    setDisabledMap(prev => ({ ...prev, [id]: next }))
+    try {
+      await deviceAPI.setDeviceDisabled(id, next)
+    } catch (e) {
+      onError(String(e))
+      setDisabledMap(prev => ({ ...prev, [id]: disabled }))
     }
   }
 
@@ -495,35 +687,35 @@ function DeviceDetail({
           {isScreen && screenStatus === 'connected' && (
             <Badge variant="connected" className="terminal-header">CONNECTED</Badge>
           )}
+          {isScreen && (
+            <Switch
+              size="sm"
+              checked={!disabled}
+              onCheckedChange={() => handleToggleDisabled()}
+              aria-label={disabled ? 'Enable screen' : 'Disable screen'}
+            />
+          )}
         </div>
       </div>
 
       {/* Screen-specific controls */}
       {isScreen && (
         <>
-          {/* Pause/Resume */}
-          <div className="flex items-center justify-between border border-border bg-card px-4 py-3 gap-3">
-            <div className="min-w-0">
-              <p className={cn(
-                'font-mono text-[10px] font-bold',
-                !paused ? 'text-success' : 'text-text-muted',
-              )}>
-                {paused ? 'PAUSED' : 'RENDERING'}
-              </p>
-              <p className="font-mono text-[9px] text-text-muted leading-snug">
-                {paused
-                  ? 'USB released — another app can control this screen'
-                  : 'Sprint is actively sending frames to this screen'}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant={paused ? 'primary' : 'neutral'}
-              className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
-              onClick={handleTogglePause}
+          {/* Purpose */}
+          <div className="space-y-1.5">
+            <p className="font-mono text-[9px] font-bold text-text-muted">PURPOSE</p>
+            <select
+              value={purpose}
+              onChange={e => handlePurposeChange(e.target.value as DevicePurpose)}
+              className={cn(
+                'w-full border border-border bg-background px-3 py-1.5',
+                'font-mono text-[10px] text-foreground',
+                'focus:outline-none focus:ring-1 focus:ring-primary',
+              )}
             >
-              {paused ? 'RESUME' : 'PAUSE'}
-            </Button>
+              <option value="dash">Dash</option>
+              <option value="rear_view">Rear View Mirror</option>
+            </select>
           </div>
 
           {/* Orientation */}
@@ -578,7 +770,8 @@ function DeviceDetail({
             </div>
           </div>
 
-          {/* Dash layout assignment */}
+          {/* Dash layout assignment — only relevant when purpose is dash */}
+          {purpose === 'dash' && (
           <div className="space-y-1.5">
             <p className="font-mono text-[9px] font-bold text-text-muted">
               DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
@@ -605,6 +798,7 @@ function DeviceDetail({
               </select>
             )}
           </div>
+          )}
         </>
       )}
 

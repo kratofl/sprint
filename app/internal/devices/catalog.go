@@ -25,6 +25,7 @@ type CatalogEntry struct {
 	OffsetX     int             `json:"offset_x,omitempty"`
 	OffsetY     int             `json:"offset_y,omitempty"`
 	Driver      DriverType      `json:"driver"`
+	Purpose     DevicePurpose   `json:"purpose,omitempty"`
 	Bindings    []DeviceBinding `json:"bindings,omitempty"`
 }
 
@@ -51,6 +52,7 @@ func (e *CatalogEntry) ToSavedDevice(name string) SavedDevice {
 		OffsetX:  e.OffsetX,
 		OffsetY:  e.OffsetY,
 		Driver:   e.Driver,
+		Purpose:  e.Purpose,
 		Bindings: append([]DeviceBinding(nil), e.Bindings...),
 	}
 }
