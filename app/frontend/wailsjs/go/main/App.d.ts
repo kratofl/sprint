@@ -26,11 +26,13 @@ export function DashSetDefault(arg1:string):Promise<void>;
 
 export function DeviceAdd(arg1:string):Promise<void>;
 
+export function DeviceAddScanned(arg1:string,arg2:number,arg3:number,arg4:string):Promise<void>;
+
 export function DeviceGetCatalog():Promise<Array<devices.CatalogEntry>>;
 
 export function DeviceGetDeviceBindings(arg1:number,arg2:number,arg3:string):Promise<Array<devices.DeviceBinding>>;
 
-export function DeviceGetDevicePaused(arg1:string):Promise<boolean>;
+export function DeviceGetDeviceDisabled(arg1:string):Promise<boolean>;
 
 export function DeviceGetSavedDevices():Promise<Array<devices.SavedDevice>>;
 
@@ -42,9 +44,17 @@ export function DeviceRenameDevice(arg1:number,arg2:number,arg3:string,arg4:stri
 
 export function DeviceSaveDeviceBindings(arg1:number,arg2:number,arg3:string,arg4:Array<devices.DeviceBinding>):Promise<void>;
 
+export function DeviceScanUnregistered(arg1:string):Promise<Array<devices.DetectedScreen>>;
+
+export function DeviceSelectCaptureRegion(arg1:number,arg2:number,arg3:string):Promise<void>;
+
 export function DeviceSetDashLayout(arg1:number,arg2:number,arg3:string,arg4:string):Promise<void>;
 
-export function DeviceSetDevicePaused(arg1:string,arg2:boolean):Promise<void>;
+export function DeviceSetDeviceDisabled(arg1:string,arg2:boolean):Promise<void>;
+
+export function DeviceSetPurpose(arg1:number,arg2:number,arg3:string,arg4:devices.DevicePurpose):Promise<void>;
+
+export function DeviceSetPurposeConfig(arg1:number,arg2:number,arg3:string,arg4:Array<number>):Promise<void>;
 
 export function DeviceSetScreenOffset(arg1:number,arg2:number,arg3:string,arg4:number,arg5:number):Promise<void>;
 
@@ -59,6 +69,8 @@ export function GetCommandCatalog():Promise<Array<commands.CommandMeta>>;
 export function GetVersion():Promise<string>;
 
 export function GetWidgetCatalog():Promise<Array<widgets.WidgetMeta>>;
+
+export function InstallScreenDriver(arg1:string):Promise<void>;
 
 export function IsConnected():Promise<boolean>;
 

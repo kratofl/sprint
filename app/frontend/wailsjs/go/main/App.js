@@ -42,6 +42,10 @@ export function DeviceAdd(arg1) {
   return window['go']['main']['App']['DeviceAdd'](arg1);
 }
 
+export function DeviceAddScanned(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceAddScanned'](arg1, arg2, arg3, arg4);
+}
+
 export function DeviceGetCatalog() {
   return window['go']['main']['App']['DeviceGetCatalog']();
 }
@@ -50,8 +54,8 @@ export function DeviceGetDeviceBindings(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeviceGetDeviceBindings'](arg1, arg2, arg3);
 }
 
-export function DeviceGetDevicePaused(arg1) {
-  return window['go']['main']['App']['DeviceGetDevicePaused'](arg1);
+export function DeviceGetDeviceDisabled(arg1) {
+  return window['go']['main']['App']['DeviceGetDeviceDisabled'](arg1);
 }
 
 export function DeviceGetSavedDevices() {
@@ -74,12 +78,28 @@ export function DeviceSaveDeviceBindings(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSaveDeviceBindings'](arg1, arg2, arg3, arg4);
 }
 
+export function DeviceScanUnregistered(arg1) {
+  return window['go']['main']['App']['DeviceScanUnregistered'](arg1);
+}
+
+export function DeviceSelectCaptureRegion(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeviceSelectCaptureRegion'](arg1, arg2, arg3);
+}
+
 export function DeviceSetDashLayout(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetDashLayout'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceSetDevicePaused(arg1, arg2) {
-  return window['go']['main']['App']['DeviceSetDevicePaused'](arg1, arg2);
+export function DeviceSetDeviceDisabled(arg1, arg2) {
+  return window['go']['main']['App']['DeviceSetDeviceDisabled'](arg1, arg2);
+}
+
+export function DeviceSetPurpose(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceSetPurpose'](arg1, arg2, arg3, arg4);
+}
+
+export function DeviceSetPurposeConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['DeviceSetPurposeConfig'](arg1, arg2, arg3, arg4);
 }
 
 export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5) {
@@ -108,6 +128,10 @@ export function GetVersion() {
 
 export function GetWidgetCatalog() {
   return window['go']['main']['App']['GetWidgetCatalog']();
+}
+
+export function InstallScreenDriver(arg1) {
+  return window['go']['main']['App']['InstallScreenDriver'](arg1);
 }
 
 export function IsConnected() {

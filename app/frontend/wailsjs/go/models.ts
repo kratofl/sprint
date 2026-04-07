@@ -201,6 +201,7 @@ export namespace devices {
 	    offset_x?: number;
 	    offset_y?: number;
 	    driver: string;
+	    purpose?: string;
 	    bindings?: DeviceBinding[];
 	
 	    static createFrom(source: any = {}) {
@@ -221,6 +222,7 @@ export namespace devices {
 	        this.offset_x = source["offset_x"];
 	        this.offset_y = source["offset_y"];
 	        this.driver = source["driver"];
+	        this.purpose = source["purpose"];
 	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
 	    }
 	
@@ -242,6 +244,30 @@ export namespace devices {
 		    return a;
 		}
 	}
+	export class DetectedScreen {
+	    vid: number;
+	    pid: number;
+	    serial?: string;
+	    width: number;
+	    height: number;
+	    description: string;
+	    driver: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DetectedScreen(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.vid = source["vid"];
+	        this.pid = source["pid"];
+	        this.serial = source["serial"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.description = source["description"];
+	        this.driver = source["driver"];
+	    }
+	}
 	
 	export class SavedDevice {
 	    vid: number;
@@ -257,6 +283,8 @@ export namespace devices {
 	    offset_y?: number;
 	    driver: string;
 	    dash_id?: string;
+	    purpose?: string;
+	    purpose_config?: number[];
 	    bindings?: DeviceBinding[];
 	
 	    static createFrom(source: any = {}) {
@@ -278,6 +306,8 @@ export namespace devices {
 	        this.offset_y = source["offset_y"];
 	        this.driver = source["driver"];
 	        this.dash_id = source["dash_id"];
+	        this.purpose = source["purpose"];
+	        this.purpose_config = source["purpose_config"];
 	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
 	    }
 	
