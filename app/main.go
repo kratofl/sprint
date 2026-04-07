@@ -39,7 +39,7 @@ func main() {
 		Bind: []interface{}{
 			app,
 		},
-		AlwaysOnTop: true,
+		AlwaysOnTop: false,
 		Windows: &windows.Options{
 			WebviewUserDataPath:  filepath.Join(appdata.Dir(), "WebView2"),
 			WebviewIsTransparent: false,

@@ -66,12 +66,12 @@ icons: ## Generate app/build icons from app/frontend/src/assets/sprint_logo_icon
 
 build-app: icons ## Build the Wails desktop app (requires Wails CLI)
 	cd $(APP_DIR) && wails build -clean -ldflags "-X main.Version=$(VERSION)"
-	mkdir -p app/build/bin/DeviceCatalog
-	cp app/presets/devices/*.json app/build/bin/DeviceCatalog/
-	cp app/presets/dash/default.json app/build/bin/DefaultDash.json
+	mkdir 'app\build\bin\DeviceCatalog'
+	cp app\presets\devices\*.json app\build\bin\DeviceCatalog
+	cp app\presets\dash\default.json app\build\bin\DefaultDash.json
 
 build-installer: build-app ## Build Windows NSIS installer → app/build/bin/Sprint-amd64-installer.exe
-	cd app/build/windows/installer && makensis -DVERSION=$(VERSION) project.nsi
+	cd app\build\windows\installer && makensis -DVERSION=$(VERSION) project.nsi
 
 build: build-api build-web ## Build all (API + web)
 
