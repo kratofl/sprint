@@ -24,6 +24,12 @@ func NewMirrorRenderer(targetW, targetH int, _ devices.RearViewConfig, _ *slog.L
 // SetConfig is a no-op on non-Windows builds.
 func (r *MirrorRenderer) SetConfig(_ devices.RearViewConfig) {}
 
+// ResizeTarget updates the canvas dimensions on non-Windows builds.
+func (r *MirrorRenderer) ResizeTarget(w, h int) {
+	r.targetW = w
+	r.targetH = h
+}
+
 // Paint returns a black frame on non-Windows builds.
 func (r *MirrorRenderer) Paint(_ *dto.TelemetryFrame) (image.Image, error) {
 	return image.NewRGBA(image.Rect(0, 0, r.targetW, r.targetH)), nil

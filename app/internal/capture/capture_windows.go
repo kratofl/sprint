@@ -77,6 +77,13 @@ func NewMirrorRenderer(targetW, targetH int, cfg devices.RearViewConfig, logger 
 	return r
 }
 
+// ResizeTarget updates the canvas dimensions. Called by driveLoop via
+// ResizableSource when hardware-detected dims differ from the initial config.
+func (r *MirrorRenderer) ResizeTarget(w, h int) {
+	r.targetW = w
+	r.targetH = h
+}
+
 // SetConfig hot-reloads the capture region without restarting the renderer.
 func (r *MirrorRenderer) SetConfig(cfg devices.RearViewConfig) {
 	r.cfg.Store(cfg)

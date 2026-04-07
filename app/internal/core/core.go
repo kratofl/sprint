@@ -190,6 +190,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 	e, exists := c.entries[deviceID]
 	if exists && e.driver != nil {
 		e.driver.Configure(cfg)
+		applyFrameSource(e.driver, &d, cfg, c.logger.With("component", "capture", "device", deviceID))
 		c.mu.Unlock()
 		c.ReloadInputBindings()
 		return
@@ -573,13 +574,11 @@ func applyFrameSource(drv hardware.ScreenDriver, d *devices.SavedDevice, scrCfg 
 			logger.Warn("rear view config parse error; using defaults", "err", err)
 		}
 	}
-	// MirrorRenderer must produce images at painter dims (after rotation), not
-	// native dims, because driveLoop passes the image directly to applyRGB565Rotation
-	// which expects a canvas already sized for the rotation transform.
+	// MirrorRenderer must produce images at painter dims (after rotation). The
+	// registry stores dims in landscape orientation (Width >= Height) — portrait-native
+	// screens are already swapped by screenFromPID. Do NOT apply another rotation-based
+	// swap here; that would double-swap and produce the wrong canvas size.
 	pW, pH := scrCfg.Width, scrCfg.Height
-	if scrCfg.Rotation == 90 || scrCfg.Rotation == 270 {
-		pW, pH = scrCfg.Height, scrCfg.Width
-	}
 	renderer := capture.NewMirrorRenderer(pW, pH, rvCfg, logger)
 	drv.SetFrameSource(renderer)
 }

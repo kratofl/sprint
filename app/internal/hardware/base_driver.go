@@ -176,7 +176,16 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 			}
 			src.Close()
 		default:
-			return // external source (e.g. MirrorRenderer); coordinator manages it
+			// For resizable external sources (e.g. MirrorRenderer), correct the
+			// canvas dims to match hardware-detected native dims. This handles
+			// cases where applyFrameSource initialised the renderer before the
+			// USB model query ran and adjusted nativeW/nativeH.
+			if rsz, ok := (*sptr).(ResizableSource); ok {
+				if sw, sh := rsz.Dims(); sw != w || sh != h {
+					rsz.ResizeTarget(w, h)
+				}
+			}
+			return // external source; coordinator manages its lifecycle
 		}
 	}
 	p := dashboard.NewPainter(w, h)
@@ -260,6 +269,19 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 				d.logger.Warn(name+": transport unavailable; running in no-op mode", "err", err)
 				<-ctx.Done()
 				return
+			}
+			if errors.Is(err, ErrDriverNotInstalled) {
+				d.logger.Warn("WinUSB driver not installed for screen device", "err", err)
+				d.emitEvent("screen:driver_missing", map[string]string{
+					"driver": d.screen.Driver,
+					"error":  err.Error(),
+				})
+				// Retry at the normal interval — driver installation is asynchronous
+				// (the user may install while the app is running).
+				if !waitOrCancel(ctx, screenRetryInterval) {
+					return
+				}
+				continue
 			}
 			d.logger.Warn("screen not available, retrying", "err", err)
 			d.emitEvent("screen:error", err.Error())
