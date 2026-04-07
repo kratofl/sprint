@@ -189,6 +189,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 	c.mu.Lock()
 	e, exists := c.entries[deviceID]
 	if exists && e.driver != nil {
+		e.purpose = d.Purpose
 		e.driver.Configure(cfg)
 		applyFrameSource(e.driver, &d, cfg, c.logger.With("component", "capture", "device", deviceID))
 		c.mu.Unlock()
@@ -566,6 +567,10 @@ func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
 // device's PurposeConfig. For PurposeDash the driver manages its own Painter.
 func applyFrameSource(drv hardware.ScreenDriver, d *devices.SavedDevice, scrCfg hardware.ScreenConfig, logger *slog.Logger) {
 	if d.Purpose != devices.PurposeRearView {
+		// Switching to dash (or any non-rear_view purpose): remove any external
+		// source (e.g. MirrorRenderer from a previous rear_view config) so
+		// ensureDashSource creates a fresh Painter on the next driveLoop tick.
+		drv.ClearExternalSource()
 		return
 	}
 	var rvCfg devices.RearViewConfig

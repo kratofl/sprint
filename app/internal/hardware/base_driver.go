@@ -215,6 +215,22 @@ func (d *baseDriver) SetFrameSource(src FrameSource) {
 	d.forceRedraw.Store(true)
 }
 
+// ClearExternalSource removes any non-Painter FrameSource and sets the source
+// to nil so ensureDashSource creates a fresh Painter on the next driveLoop tick.
+// Called when a device switches purpose away from rear_view.
+func (d *baseDriver) ClearExternalSource() {
+	sptr := d.source.Load()
+	if sptr == nil {
+		return
+	}
+	if _, ok := (*sptr).(*dashboard.Painter); ok {
+		return // Painter is managed by ensureDashSource; leave it
+	}
+	(*sptr).Close()
+	d.source.Store(nil)
+	d.forceRedraw.Store(true)
+}
+
 // OnFrame delivers a new telemetry frame. Non-blocking; safe to call from the
 // coordinator's hot telemetry loop.
 func (d *baseDriver) OnFrame(frame *dto.TelemetryFrame) {

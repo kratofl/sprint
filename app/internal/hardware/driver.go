@@ -21,9 +21,10 @@ type ScreenConfig struct {
 	Width     int
 	Height    int
 	Rotation  int
-	TargetFPS int // 0 = use driver default
-	OffsetX   int // pixels from left in screen space (applied after rotation)
-	OffsetY   int // pixels from top in screen space (applied after rotation)
+	TargetFPS int    // 0 = use driver default
+	OffsetX   int    // pixels from left in screen space (applied after rotation)
+	OffsetY   int    // pixels from top in screen space (applied after rotation)
+	Driver    string // DriverType: "vocore" or "usbd480"
 }
 
 // ScreenDriver is the interface the coordinator depends on for screen output.
@@ -51,4 +52,8 @@ type ScreenDriver interface {
 	// a dashboard.Painter automatically on screen connect.
 	// For rear_view devices the coordinator sets a capture.MirrorRenderer here.
 	SetFrameSource(src FrameSource)
+	// ClearExternalSource removes any non-Painter FrameSource (e.g. MirrorRenderer)
+	// and sets the source to nil so the next ensureDashSource call creates a fresh
+	// Painter. Used when a device switches from rear_view back to dash purpose.
+	ClearExternalSource()
 }
