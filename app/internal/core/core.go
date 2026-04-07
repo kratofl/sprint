@@ -4,11 +4,13 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/kratofl/sprint/app/internal/capture"
 	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/devices"
@@ -105,6 +107,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 					}
 				}
 				drv.SetIdle(true)
+				applyFrameSource(drv, d, toHardwareScreenConfig(devices.ToScreenConfig(d)), logger)
 				c.entries[id] = entry
 			}
 		}
@@ -222,6 +225,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 			c.logger.Warn("failed to load dash layout for device", "device", deviceID, "err", lerr)
 		}
 	}
+	applyFrameSource(drv, &d, cfg, c.logger.With("component", "capture", "device", deviceID))
 
 	if exists {
 		e.driver = drv
@@ -553,6 +557,23 @@ func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
 		OffsetX:   cfg.OffsetX,
 		OffsetY:   cfg.OffsetY,
 	}
+}
+
+// applyFrameSource sets the appropriate FrameSource on a driver based on the
+// device's purpose. For PurposeRearView it creates a MirrorRenderer from the
+// device's PurposeConfig. For PurposeDash the driver manages its own Painter.
+func applyFrameSource(drv hardware.ScreenDriver, d *devices.SavedDevice, scrCfg hardware.ScreenConfig, logger *slog.Logger) {
+	if d.Purpose != devices.PurposeRearView {
+		return
+	}
+	var rvCfg devices.RearViewConfig
+	if d.PurposeConfig != nil {
+		if err := json.Unmarshal(d.PurposeConfig, &rvCfg); err != nil {
+			logger.Warn("rear view config parse error; using defaults", "err", err)
+		}
+	}
+	renderer := capture.NewMirrorRenderer(scrCfg.Width, scrCfg.Height, rvCfg, logger)
+	drv.SetFrameSource(renderer)
 }
 
 // runFrontendEmitter runs in its own goroutine and emits telemetry:frame
