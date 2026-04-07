@@ -2,25 +2,30 @@ package lemansultimate
 
 import "testing"
 
-func TestMapToDTOInCarGarageStall(t *testing.T) {
+// TestMapToDTOInCarAlwaysTrue verifies that mapToDTO always produces InCar=true.
+// mapToDTO is only reached when playerHasVehicle=true (player assigned & on track).
+// The not-in-car path is handled upstream by sessionOnlyFrame (InCar zero value =
+// false), so mapToDTO never needs to set InCar=false itself.
+func TestMapToDTOInCarAlwaysTrue(t *testing.T) {
 	a := New()
-
 	telem := &lmuVehicleTelemetry{}
 	scoInfo := &lmuScoringInfo{}
 
-	t.Run("in garage stall → InCar false", func(t *testing.T) {
-		scoring := &lmuVehicleScoring{MInGarageStall: true}
-		frame := a.mapToDTO(telem, scoring, scoInfo)
-		if frame.Session.InCar {
-			t.Error("expected InCar=false when MInGarageStall=true, got true")
-		}
-	})
-
-	t.Run("not in garage stall → InCar true", func(t *testing.T) {
-		scoring := &lmuVehicleScoring{MInGarageStall: false}
+	for _, garageStall := range []bool{false, true} {
+		scoring := &lmuVehicleScoring{MInGarageStall: garageStall}
 		frame := a.mapToDTO(telem, scoring, scoInfo)
 		if !frame.Session.InCar {
-			t.Error("expected InCar=true when MInGarageStall=false, got false")
+			t.Errorf("mapToDTO: expected InCar=true (garageStall=%v), got false", garageStall)
 		}
-	})
+	}
+}
+
+// TestSessionOnlyFrameInCarFalse verifies that sessionOnlyFrame returns InCar=false.
+// This is the path taken when playerHasVehicle=false (garage / pre-session menu).
+func TestSessionOnlyFrameInCarFalse(t *testing.T) {
+	a := New()
+	frame := a.sessionOnlyFrame(&lmuScoringInfo{})
+	if frame.Session.InCar {
+		t.Error("sessionOnlyFrame: expected InCar=false, got true")
+	}
 }
