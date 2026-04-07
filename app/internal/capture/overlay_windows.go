@@ -34,7 +34,7 @@ var (
 	procSetCursor               = user32.NewProc("SetCursor")
 	procLoadImageW              = user32.NewProc("LoadImageW")
 	procSetForegroundWindow     = user32.NewProc("SetForegroundWindow")
-	procGetModuleHandleW        = user32.NewProc("GetModuleHandleW")
+	procGetModuleHandleW        = kernel32.NewProc("GetModuleHandleW")
 
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
 	procDeleteBrush      = gdi32.NewProc("DeleteObject")
