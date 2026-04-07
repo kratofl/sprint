@@ -8,6 +8,7 @@ import (
 	"github.com/kratofl/sprint/app/internal/core"
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/devices"
+	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/logger"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -44,6 +45,9 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	a.dash = dashboard.NewManager()
+	if err := a.dash.EnsureDefault(); err != nil {
+		log.Warn("dash: failed to ensure default layout", "err", err)
+	}
 	a.devMgr = devices.NewManager()
 	a.coord = core.New(log, a.dash, a.devMgr)
 	a.coord.SetEmit(func(event string, data ...any) {
@@ -101,6 +105,13 @@ func (a *App) WindowMaximise() {
 // WindowClose closes the application window.
 func (a *App) WindowClose() {
 	runtime.Quit(a.ctx)
+}
+
+// InstallScreenDriver installs the WinUSB driver binding for the given screen
+// driver type ("vocore" or "usbd480"). A UAC elevation prompt will appear.
+// Returns an error string if installation fails or the user cancels the UAC prompt.
+func (a *App) InstallScreenDriver(driverType string) error {
+	return hardware.InstallWinUSBDriver(driverType)
 }
 
 // Shutdown is called when the app is closing.
