@@ -296,7 +296,7 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 			SessionTime: toF64(si.MCurrentET),
 			BestLapTime: toF64(s.MBestLapTime),
 			MaxLaps:     si.MMaxLaps,
-			InCar:       true,
+			InCar:       !s.MInGarageStall,
 		},
 		Car: dto.CarState{
 			SpeedMS:       speedMS,
