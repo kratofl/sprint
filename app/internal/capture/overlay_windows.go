@@ -47,6 +47,9 @@ var (
 	procCreateFontW      = gdi32.NewProc("CreateFontW")
 	procDeleteGDIObject  = gdi32.NewProc("DeleteObject")
 	procSetPixel         = gdi32.NewProc("SetPixel")
+	procCreatePen        = gdi32.NewProc("CreatePen")
+	procMoveToEx         = gdi32.NewProc("MoveToEx")
+	procLineTo           = gdi32.NewProc("LineTo")
 )
 
 const (
@@ -54,7 +57,10 @@ const (
 	wsVisible    = 0x10000000
 	wsExTopmost  = 0x00000008
 	wsExLayered  = 0x00080000
-	lwaColorkey  = 0x00000001
+	lwaAlpha      = uintptr(0x00000002)
+	overlayAlpha  = uintptr(180)        // ~71% opaque
+	bgColor       = uintptr(0x000a0a0a) // BGR near-black background
+	borderColor   = uintptr(0x006C90FF) // BGR for orange #ff906c
 	smCxScreen   = 0
 	smCyScreen   = 1
 	hwndTop      = 0
@@ -86,8 +92,6 @@ const (
 	transparent   = 1
 	swShow        = 5
 	swpNone       = 0
-	colorKey      = 0x00010101 // RGB(1,1,1) — unlikely to appear in game content
-	borderColor   = 0x006C90FF // BGR for orange #ff906c
 	borderThick   = int32(3)
 	handleSize    = int32(8)
 	minSide       = 80
@@ -250,16 +254,16 @@ func overlayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 	return r
 }
 
-// paintOverlay renders the overlay: transparent interior, orange border, corner
-// handles, and an instruction strip at the bottom.
+// paintOverlay renders the overlay: dark semi-transparent interior, orange border,
+// corner handles, a gapped X crosshair in the center, and orange instruction text.
 func paintOverlay(hwnd, hdc uintptr) {
 	var rc winRect
 	procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
 	w := rc.Right
 	h := rc.Bottom
 
-	// Fill entire window with colorkey (becomes transparent via LWA_COLORKEY).
-	bgBrush, _, _ := procCreateSolidBrush.Call(colorKey)
+	// Dark background — visible at window-level alpha.
+	bgBrush, _, _ := procCreateSolidBrush.Call(bgColor)
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&rc)), bgBrush)
 	procDeleteGDIObject.Call(bgBrush)
 
@@ -283,21 +287,51 @@ func paintOverlay(hwnd, hdc uintptr) {
 	}
 	procDeleteGDIObject.Call(borderBrush)
 
-	// Instruction strip — dark semi-opaque bar at the bottom.
-	stripH := instrHeight
-	stripR := winRect{0, h - stripH, w, h}
-	darkBrush, _, _ := procCreateSolidBrush.Call(0x00191919) // BGR dark
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&stripR)), darkBrush)
-	procDeleteGDIObject.Call(darkBrush)
+	// Gapped X crosshair at center.
+	shorter := w
+	if h < w {
+		shorter = h
+	}
+	armLen := shorter / 6
+	if armLen < 10 {
+		armLen = 10
+	}
+	const xGap = int32(6)
+	cx, cy := w/2, h/2
+	pen, _, _ := procCreatePen.Call(0, 2, borderColor)
+	oldPen, _, _ := procSelectGDIObject.Call(hdc, pen)
+	procMoveToEx.Call(hdc, uintptr(cx-armLen), uintptr(cy-armLen), 0)
+	procLineTo.Call(hdc, uintptr(cx-xGap), uintptr(cy-xGap))
+	procMoveToEx.Call(hdc, uintptr(cx+xGap), uintptr(cy+xGap), 0)
+	procLineTo.Call(hdc, uintptr(cx+armLen), uintptr(cy+armLen))
+	procMoveToEx.Call(hdc, uintptr(cx+armLen), uintptr(cy-armLen), 0)
+	procLineTo.Call(hdc, uintptr(cx+xGap), uintptr(cy-xGap))
+	procMoveToEx.Call(hdc, uintptr(cx-xGap), uintptr(cy+xGap), 0)
+	procLineTo.Call(hdc, uintptr(cx-armLen), uintptr(cy+armLen))
+	procSelectGDIObject.Call(hdc, oldPen)
+	procDeleteGDIObject.Call(pen)
 
-	instrText := syscall.StringToUTF16("DRAG TO POSITION  ·  CORNER TO RESIZE  ·  ENTER to confirm  ·  ESC to cancel")
+	// Orange instruction text inside the border.
 	procSetBkMode.Call(hdc, transparent)
-	procSetTextColor.Call(hdc, 0x00FFFFFF)
+	procSetTextColor.Call(hdc, borderColor)
+
+	topText := syscall.StringToUTF16("DRAG TO POSITION  ·  CORNER TO RESIZE")
+	topR := winRect{borderThick + 4, borderThick + 4, w - borderThick - 4, borderThick + instrHeight}
 	procDrawTextW.Call(
 		hdc,
-		uintptr(unsafe.Pointer(&instrText[0])),
+		uintptr(unsafe.Pointer(&topText[0])),
 		^uintptr(0),
-		uintptr(unsafe.Pointer(&stripR)),
+		uintptr(unsafe.Pointer(&topR)),
+		dtCenter|dtVCenter|dtSingleLine,
+	)
+
+	btmText := syscall.StringToUTF16("ENTER  ·  CONFIRM    ESC  ·  CANCEL")
+	btmR := winRect{borderThick + 4, h - borderThick - instrHeight - 4, w - borderThick - 4, h - borderThick - 4}
+	procDrawTextW.Call(
+		hdc,
+		uintptr(unsafe.Pointer(&btmText[0])),
+		^uintptr(0),
+		uintptr(unsafe.Pointer(&btmR)),
 		dtCenter|dtVCenter|dtSingleLine,
 	)
 }
@@ -339,8 +373,9 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 		startX := initX
 		startY := initY
 		if startW <= 0 || startH <= 0 {
-			startW = int(monW) * 40 / 100
-			startH = startW * aspectH / aspectW
+			// Default to the exact screen resolution (1:1 pixel mapping).
+			startW = aspectW
+			startH = aspectH
 		}
 		if startX <= 0 && startY <= 0 {
 			startX = (int(monW) - startW) / 2
@@ -362,8 +397,8 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 			return
 		}
 
-		// Transparent interior.
-		procSetLayeredWindowAttribs.Call(hwnd, colorKey, 0, lwaColorkey)
+		// Semi-transparent window — mouse clicks hit the full area (not click-through).
+		procSetLayeredWindowAttribs.Call(hwnd, 0, overlayAlpha, lwaAlpha)
 		procShowWindow.Call(hwnd, swShow)
 		procUpdateWindow.Call(hwnd)
 		procSetForegroundWindow.Call(hwnd)

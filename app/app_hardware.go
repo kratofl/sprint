@@ -227,11 +227,9 @@ func (a *App) DeviceSelectCaptureRegion(vid, pid uint16, serial string) error {
 		return fmt.Errorf("DeviceSelectCaptureRegion: device %q not found", id)
 	}
 
-	// Aspect ratio: painter dims after rotation (90°/270° swaps width and height).
+	// Aspect ratio from native screen dims — rotation is a render pipeline concern,
+	// not a capture region concern.
 	aspectW, aspectH := d.Width, d.Height
-	if d.Rotation == 90 || d.Rotation == 270 {
-		aspectW, aspectH = d.Height, d.Width
-	}
 
 	// Pass the existing capture region as the initial overlay position/size
 	// so the overlay opens over the previously confirmed area.
