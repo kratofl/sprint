@@ -191,9 +191,10 @@ func (a *Adapter) Read() (*dto.TelemetryFrame, error) {
 			return nil, fmt.Errorf("lemansultimate: decode scoring info: %w", err)
 		}
 
-		if !playerHasVehicle {
+		if !playerInCar(playerHasVehicle, &scoInfo) {
 			// Emit a minimal frame with only session-level data so the frontend
-			// shows the connected state and track/session info even from the garage.
+			// shows the connected state and track/session info even from the garage
+			// or when the player has left the session entirely.
 			return a.sessionOnlyFrame(&scoInfo), nil
 		}
 
@@ -409,6 +410,16 @@ func mapSessionType(s int32) dto.SessionType {
 	default:
 		return dto.SessionUnknown
 	}
+}
+
+// playerInCar reports whether the player is actively driving.
+// Both conditions must be true: the telemetry header must assign a vehicle to
+// the player AND the scoring info must confirm the player is in realtime mode.
+// Checking only playerHasVehicle is insufficient — when a session ends, LMU can
+// leave that byte stale (still 1) while MInRealtime is immediately cleared to
+// false, which would otherwise keep the in-car dash rendering indefinitely.
+func playerInCar(playerHasVehicle bool, si *lmuScoringInfo) bool {
+	return playerHasVehicle && si.MInRealtime
 }
 
 // sessionOnlyFrame returns a TelemetryFrame populated only with session-level
