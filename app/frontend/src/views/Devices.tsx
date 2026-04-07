@@ -584,6 +584,7 @@ function DeviceDetail({
   device, screenStatus, layouts, deviceOnlyCmds, disabledMap, setDisabledMap, onSaved, onRemove, onError,
 }: DeviceDetailProps) {
   const isScreen = deviceHasScreen(device.type)
+  const isScreenOnly = device.type === 'screen'
   const id = deviceID(device.vid, device.pid, device.serial)
 
   const [draft, setDraft]                       = useState(device.name)
@@ -811,7 +812,8 @@ function DeviceDetail({
       {/* Screen-specific controls */}
       {isScreen && (
         <>
-          {/* Purpose */}
+          {/* Purpose — screen-only devices, dev builds only */}
+          {isScreenOnly && import.meta.env.DEV && (
           <div className="space-y-1.5">
             <p className="font-mono text-[9px] font-bold text-text-muted">PURPOSE</p>
             <select
@@ -827,6 +829,7 @@ function DeviceDetail({
               <option value="rear_view">Rear View Mirror</option>
             </select>
           </div>
+          )}
 
           {/* Orientation */}
           <div className="space-y-1.5">
@@ -880,8 +883,8 @@ function DeviceDetail({
             </div>
           </div>
 
-          {/* Rear view capture region — only shown for rear_view purpose */}
-          {purpose === 'rear_view' && (() => {
+          {/* Rear view capture region — screen-only, dev builds, rear_view purpose */}
+          {isScreenOnly && import.meta.env.DEV && purpose === 'rear_view' && (() => {
             const cfg = device.purposeConfig
             const cx = cfg?.capture_x ?? 0
             const cy = cfg?.capture_y ?? 0
@@ -935,8 +938,8 @@ function DeviceDetail({
             )
           })()}
 
-          {/* Dash layout assignment — only relevant when purpose is dash */}
-          {purpose === 'dash' && (
+          {/* Dash layout assignment — shown when purpose is dash, or in production (rear_view gated to DEV) */}
+          {(!import.meta.env.DEV || purpose === 'dash') && (
           <div className="space-y-1.5">
             <p className="font-mono text-[9px] font-bold text-text-muted">
               DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
