@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { IconDeviceMobile } from '@tabler/icons-react'
+import { IconDeviceMobile, IconAlertTriangle, IconLoader2 } from '@tabler/icons-react'
 import {
   type SavedDevice, type CatalogEntry, type DetectedScreen, type DeviceType,
   type DevicePurpose, type LayoutMeta, type DeviceBinding,
   deviceAPI, deviceBindingsAPI, dashAPI, deviceHasScreen, deviceID,
 } from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
-import { onEvent } from '@/lib/wails'
+import { call, onEvent } from '@/lib/wails'
 import { Badge, Button, Switch, Skeleton, cn } from '@sprint/ui'
 
 const DEVICE_TYPES: DeviceType[] = ['wheel', 'screen', 'buttonbox']
@@ -48,6 +48,7 @@ function DeviceSection() {
   const [loading, setLoading]           = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [panel, setPanel]             = useState<PanelView>({ tag: 'empty' })
+  const [driverMissingType, setDriverMissingType] = useState<string | null>(null)
 
   const loadDevices = useCallback(async () => {
     try {
@@ -83,8 +84,11 @@ function DeviceSection() {
 
   useEffect(() => {
     const unsubs = [
-      onEvent('screen:connected',    () => setScreenStatus('connected')),
+      onEvent('screen:connected',    () => { setScreenStatus('connected'); setDriverMissingType(null) }),
       onEvent('screen:disconnected', () => setScreenStatus('disconnected')),
+      onEvent('screen:driver_missing', (data: { driver: string; error: string }) => {
+        setDriverMissingType(data?.driver ?? 'unknown')
+      }),
     ]
     return () => unsubs.forEach(fn => fn())
   }, [])
@@ -220,6 +224,13 @@ function DeviceSection() {
 
       {/* Right panel */}
       <div className="flex flex-1 flex-col overflow-y-auto">
+        {driverMissingType && (
+          <DriverMissingBanner
+            driverType={driverMissingType}
+            onDismiss={() => setDriverMissingType(null)}
+          />
+        )}
+
         {panel.tag === 'catalog' && (
           <CatalogPanel
             entries={catalogForType}
@@ -253,6 +264,79 @@ function DeviceSection() {
             </p>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// DriverMissingBanner is shown when the WinUSB driver is not bound to a screen
+// device. It offers a one-click install via pnputil (requires UAC elevation).
+interface DriverMissingBannerProps {
+  driverType: string
+  onDismiss: () => void
+}
+
+function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBannerProps) {
+  const [installing, setInstalling] = useState(false)
+  const [installError, setInstallError] = useState<string | null>(null)
+
+  const handleInstall = async () => {
+    setInstalling(true)
+    setInstallError(null)
+    try {
+      await call<void>('InstallScreenDriver', driverType)
+      // Driver installed — the retry loop will reconnect automatically.
+      // The banner will auto-hide when screen:connected fires.
+    } catch (e) {
+      setInstallError(String(e))
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  return (
+    <div className="mx-4 mt-4 flex flex-col gap-2 border border-warning/40 bg-warning/10 px-4 py-3">
+      <div className="flex items-start gap-2">
+        <IconAlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-warning" />
+        <div className="flex-1 min-w-0">
+          <p className="font-mono text-[10px] font-bold text-warning uppercase tracking-wide">
+            DRIVER_NOT_INSTALLED
+          </p>
+          <p className="mt-0.5 font-mono text-[9px] text-text-muted">
+            The WinUSB driver is not bound to this {driverType.toUpperCase()} device.
+            Click <span className="text-foreground">Install Driver</span> to install it automatically
+            (requires administrator approval).
+          </p>
+          {installError && (
+            <p className="mt-1 font-mono text-[9px] text-destructive">{installError}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          className="font-mono text-[9px] text-text-muted hover:text-foreground"
+          onClick={onDismiss}
+        >✕</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-3 font-mono text-[9px] border-warning/40 text-warning hover:bg-warning/10 disabled:opacity-50"
+          onClick={handleInstall}
+          disabled={installing}
+        >
+          {installing ? (
+            <span className="flex items-center gap-1">
+              <IconLoader2 className="size-3 animate-spin" />
+              INSTALLING…
+            </span>
+          ) : (
+            'INSTALL_DRIVER'
+          )}
+        </Button>
+        <span className="font-mono text-[8px] text-text-disabled">
+          Alternatively, use Zadig or SimHub's VOCOREScreenSetup
+        </span>
       </div>
     </div>
   )
@@ -514,6 +598,7 @@ function DeviceDetail({
   const [captureY, setCaptureY]                 = useState(Number(device.purposeConfig?.capture_y ?? 0))
   const [captureW, setCaptureW]                 = useState(Number(device.purposeConfig?.capture_w ?? 0))
   const [captureH, setCaptureH]                 = useState(Number(device.purposeConfig?.capture_h ?? 0))
+  const [selectingBounds, setSelectingBounds]   = useState(false)
   const [bindings, setBindings]                 = useState<DeviceBinding[]>([])
   const [removing, setRemoving]                 = useState(false)
 
@@ -604,24 +689,15 @@ function DeviceDetail({
     }
   }
 
-  const handleCaptureRegionChange = async (field: 'capture_x' | 'capture_y' | 'capture_w' | 'capture_h', value: number) => {
-    const next = {
-      capture_x: captureX,
-      capture_y: captureY,
-      capture_w: captureW,
-      capture_h: captureH,
-      [field]: value,
-    }
-    switch (field) {
-      case 'capture_x': setCaptureX(value); break
-      case 'capture_y': setCaptureY(value); break
-      case 'capture_w': setCaptureW(value); break
-      case 'capture_h': setCaptureH(value); break
-    }
+  const handleSelectBounds = async () => {
+    setSelectingBounds(true)
     try {
-      await deviceAPI.setDevicePurposeConfig(device.vid, device.pid, device.serial, next)
+      await deviceAPI.selectCaptureRegion(device.vid, device.pid, device.serial)
+      await onSaved()
     } catch (e) {
       onError(String(e))
+    } finally {
+      setSelectingBounds(false)
     }
   }
 
@@ -802,52 +878,23 @@ function DeviceDetail({
           {/* Rear view capture region — only shown for rear_view purpose */}
           {purpose === 'rear_view' && (
             <div className="space-y-2">
-              <p className="font-mono text-[9px] font-bold text-text-muted">CAPTURE_REGION (px)</p>
-              <p className="font-mono text-[9px] text-text-muted">
-                Screen coordinates of the game window region to mirror.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-text-muted">LEFT (X)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={captureX}
-                    onChange={e => handleCaptureRegionChange('capture_x', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-text-muted">TOP (Y)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={captureY}
-                    onChange={e => handleCaptureRegionChange('capture_y', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-text-muted">WIDTH</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={captureW}
-                    onChange={e => handleCaptureRegionChange('capture_w', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-mono text-[9px] text-text-muted">HEIGHT</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={captureH}
-                    onChange={e => handleCaptureRegionChange('capture_h', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-full border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </label>
-              </div>
+              <p className="font-mono text-[9px] font-bold text-text-muted">CAPTURE_REGION</p>
+              <Button
+                variant="active"
+                size="sm"
+                className="w-full font-mono text-[10px]"
+                onClick={handleSelectBounds}
+                disabled={selectingBounds}
+              >
+                {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
+              </Button>
+              {captureW > 0 && captureH > 0 ? (
+                <p className="font-mono text-[9px] text-text-muted">
+                  X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
+                </p>
+              ) : (
+                <p className="font-mono text-[9px] text-text-muted">No region set — click Set Bounds</p>
+              )}
             </div>
           )}
 

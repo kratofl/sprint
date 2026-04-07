@@ -352,6 +352,10 @@ export const deviceAPI = {
     await call<void>('DeviceSetPurposeConfig', vid, pid, serial, JSON.stringify(config))
   },
 
+  async selectCaptureRegion(vid: number, pid: number, serial: string): Promise<void> {
+    await call<void>('DeviceSelectCaptureRegion', vid, pid, serial)
+  },
+
   async getScreenStatus(): Promise<'connected' | 'disconnected' | 'unknown'> {
     try {
       const s = await call<string>('DeviceGetScreenStatus')

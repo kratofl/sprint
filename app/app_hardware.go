@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
+	"github.com/kratofl/sprint/app/internal/capture"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 )
@@ -208,6 +210,60 @@ func (a *App) DeviceSetPurposeConfig(vid, pid uint16, serial string, config []by
 		return fmt.Errorf("DeviceSetPurposeConfig: %w", err)
 	}
 	return a.devMgr.Save(reg)
+}
+
+// DeviceSelectCaptureRegion opens a native overlay window on the primary monitor
+// so the user can drag-position and resize an aspect-ratio-locked selection
+// rectangle. On confirm the capture region is saved to the device's PurposeConfig
+// and the driver is hot-reloaded. On cancel no change is made.
+func (a *App) DeviceSelectCaptureRegion(vid, pid uint16, serial string) error {
+	reg, err := a.devMgr.Load()
+	if err != nil {
+		return fmt.Errorf("DeviceSelectCaptureRegion: load: %w", err)
+	}
+	id := devices.DeviceID(vid, pid, serial)
+	d := devices.FindByID(reg, id)
+	if d == nil {
+		return fmt.Errorf("DeviceSelectCaptureRegion: device %q not found", id)
+	}
+
+	// Aspect ratio: painter dims after rotation (90°/270° swaps width and height).
+	aspectW, aspectH := d.Width, d.Height
+	if d.Rotation == 90 || d.Rotation == 270 {
+		aspectW, aspectH = d.Height, d.Width
+	}
+
+	// Pass the existing capture region as the initial overlay position/size
+	// so the overlay opens over the previously confirmed area.
+	var initX, initY, initW, initH int
+	if d.PurposeConfig != nil {
+		var rv devices.RearViewConfig
+		if json.Unmarshal(d.PurposeConfig, &rv) == nil && rv.CaptureW > 0 && rv.CaptureH > 0 {
+			initX, initY, initW, initH = rv.CaptureX, rv.CaptureY, rv.CaptureW, rv.CaptureH
+		}
+	}
+
+	x, y, w, h, confirmed := capture.SelectRegion(aspectW, aspectH, initX, initY, initW, initH)
+	if !confirmed {
+		return nil
+	}
+
+	cfg := devices.RearViewConfig{CaptureX: x, CaptureY: y, CaptureW: w, CaptureH: h}
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("DeviceSelectCaptureRegion: marshal: %w", err)
+	}
+	if err := devices.SetPurposeConfig(reg, id, cfgJSON); err != nil {
+		return fmt.Errorf("DeviceSelectCaptureRegion: %w", err)
+	}
+	if err := a.devMgr.Save(reg); err != nil {
+		return fmt.Errorf("DeviceSelectCaptureRegion: save: %w", err)
+	}
+	// Hot-reload: restart the driver so the new MirrorRenderer picks up the new region.
+	if updated := devices.FindByID(reg, id); updated != nil && updated.HasScreen() {
+		a.coord.SetScreenConfig(id, *updated)
+	}
+	return nil
 }
 
 // DeviceGetDeviceBindings returns the button→command bindings for the given device.
