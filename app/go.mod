@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/kratofl/sprint/pkg v0.0.0-00010101000000-000000000000
 	github.com/wailsapp/wails/v2 v2.12.0
-	golang.org/x/image v0.12.0
+	golang.org/x/image v0.38.0
 )
 
 replace github.com/kratofl/sprint/pkg => ../pkg
