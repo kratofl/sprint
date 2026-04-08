@@ -4,9 +4,12 @@ import Telemetry from '@/views/Telemetry'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
+import Settings from '@/views/Settings'
 import { useTelemetry } from '@/hooks/useTelemetry'
+import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import UpdateToast from '@/components/UpdateToast'
 import { onEvent, call } from '@/lib/wails'
 import { Badge, Button, cn } from '@sprint/ui'
 import logoIcon from '@/assets/sprint_logo_icon.png'
@@ -17,7 +20,7 @@ import {
   IconX,
 } from '@tabler/icons-react'
 
-type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'
+type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls' | 'settings'
 type BuildChannel = 'dev' | 'alpha' | 'beta' | 'release'
 
 const NAV: { id: View; label: string }[] = [
@@ -26,6 +29,7 @@ const NAV: { id: View; label: string }[] = [
   { id: 'dash',      label: 'Dash_Editor' },
   { id: 'devices',   label: 'Devices' },
   { id: 'controls',  label: 'Controls' },
+  { id: 'settings',  label: 'Settings' },
 ]
 
 const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 'neutral' | 'active' | 'connected' }> = {
@@ -39,6 +43,7 @@ export default function App() {
   const [view, setView] = useState<View>('home')
   const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry') as { id: View; label: string }[]
   const { frame, connected, fps } = useTelemetry()
+  const { releaseInfo, installing, dismiss, install } = useUpdateCheck()
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
@@ -157,6 +162,7 @@ export default function App() {
         {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
         {view === 'devices'   && <Devices />}
         {view === 'controls'  && <Controls />}
+        {view === 'settings'  && <Settings />}
       </main>
 
       {/* Fixed bottom status footer */}
@@ -195,6 +201,13 @@ export default function App() {
         cancelLabel="Keep Editing"
         onConfirm={confirmLeave}
         onCancel={cancelLeave}
+      />
+
+      <UpdateToast
+        releaseInfo={releaseInfo}
+        installing={installing}
+        onInstall={install}
+        onDismiss={dismiss}
       />
 
     </div>

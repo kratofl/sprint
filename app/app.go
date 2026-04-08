@@ -10,6 +10,8 @@ import (
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/logger"
+	"github.com/kratofl/sprint/app/internal/settings"
+	"github.com/kratofl/sprint/app/internal/updater"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -43,6 +45,9 @@ func (a *App) Startup(ctx context.Context) {
 	if dashFS, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
 		dashboard.InitPresets(dashFS)
 	}
+	if settingsFS, err := fs.Sub(PresetsFS, "presets/settings"); err == nil {
+		settings.InitPresets(settingsFS)
+	}
 
 	a.dash = dashboard.NewManager()
 	if err := a.dash.EnsureDefault(); err != nil {
@@ -61,6 +66,23 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) DomReady(ctx context.Context) {
 	a.coord.Start(ctx)
 	runtime.EventsEmit(ctx, "app:ready")
+
+	go a.checkUpdateInBackground(ctx)
+}
+
+// checkUpdateInBackground loads the current channel setting, checks GitHub
+// for a newer release, and emits update:available if one is found.
+// Failures are logged and silently discarded — the user is not bothered.
+func (a *App) checkUpdateInBackground(ctx context.Context) {
+	s, err := settings.Load()
+	if err != nil {
+		return
+	}
+	info, err := updater.CheckLatest(a.version, s.UpdateChannel)
+	if err != nil || info == nil {
+		return
+	}
+	runtime.EventsEmit(ctx, "update:available", info)
 }
 
 // IsConnected reports whether the game adapter is currently connected.
@@ -119,4 +141,34 @@ func (a *App) Shutdown(_ context.Context) {
 	if a.coord != nil {
 		a.coord.Stop()
 	}
+}
+
+// GetSettings returns the current application settings.
+func (a *App) GetSettings() (*settings.Settings, error) {
+	return settings.Load()
+}
+
+// SaveSettings persists s to disk.
+func (a *App) SaveSettings(s settings.Settings) error {
+	return settings.Save(&s)
+}
+
+// CheckUpdate manually checks GitHub Releases for a newer version.
+// Returns nil if the app is already up-to-date.
+func (a *App) CheckUpdate() (*updater.ReleaseInfo, error) {
+	s, err := settings.Load()
+	if err != nil {
+		return nil, err
+	}
+	return updater.CheckLatest(a.version, s.UpdateChannel)
+}
+
+// DownloadAndInstall downloads the release installer at downloadURL, launches
+// it silently, then quits the app so the installer can replace the binary.
+func (a *App) DownloadAndInstall(downloadURL string) error {
+	if err := updater.DownloadAndInstall(a.ctx, downloadURL); err != nil {
+		return err
+	}
+	runtime.Quit(a.ctx)
+	return nil
 }

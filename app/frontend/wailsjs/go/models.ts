@@ -381,6 +381,46 @@ export namespace input {
 
 }
 
+export namespace settings {
+	
+	export class Settings {
+	    updateChannel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.updateChannel = source["updateChannel"];
+	    }
+	}
+
+}
+
+export namespace updater {
+	
+	export class ReleaseInfo {
+	    version: string;
+	    downloadURL: string;
+	    releaseNotes: string;
+	    isPrerelease: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReleaseInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.downloadURL = source["downloadURL"];
+	        this.releaseNotes = source["releaseNotes"];
+	        this.isPrerelease = source["isPrerelease"];
+	    }
+	}
+
+}
+
 export namespace widgets {
 	
 	export class Option {

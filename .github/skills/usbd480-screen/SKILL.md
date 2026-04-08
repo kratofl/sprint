@@ -61,11 +61,11 @@ The touchscreen interface can be reconfigured via `SET_CONFIG_VALUE (0x82)`:
 
 ## Control Transfer Format
 
-All vendor control messages target **Interface 0** using `RECIP_INTERFACE`:
+All vendor control messages go via Interface 0. The Linux `usbd480fb` driver (and Sprint) use `RECIP_DEVICE` — not `RECIP_INTERFACE` — because NX composite devices STALL interface-level vendor requests:
 
 ```
-OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x41
-IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0xC1
+OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0x40
+IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0xC0
 ```
 
 In the WinUSB `WINUSB_SETUP_PACKET` (8 bytes):
@@ -186,17 +186,15 @@ Linux driver TODO list even notes `suspend/resume?` as unimplemented.
 ## WinUSB Notes (Windows)
 
 - Requires WinUSB driver bound to **Interface 0** of the composite device.
-- **Zadig**: in most cases, run Zadig and replace the driver for the whole composite
-  device. If you install WinUSB on Interface 0 only (per-interface), the device path
-  is enumerated under `GUID_DEVINTERFACE_WINUSB` instead of
-  `GUID_DEVINTERFACE_USB_DEVICE` — our scan currently uses the latter, so per-interface
-  Zadig installs may not be detected. Install on the whole device to be safe.
+- **Zadig per-interface install (Interface 0 only)** is the correct approach for NX composite devices. The device path is enumerated under `GUID_DEVINTERFACE_WINUSB`. Sprint's scan searches that GUID first, so per-interface installs are detected correctly.
+- **Zadig whole-device install** also works — the path is enumerated under `GUID_DEVINTERFACE_USB_DEVICE` and found on the fallback scan pass.
 - Interface 1 (HID touchscreen) is claimed by the OS HID driver automatically and
   does not need WinUSB.
 - The `controlOut` function encodes `addr` as `wValue = addr[15:0]`,
   `wIndex = addr[31:16]` — this matches the Linux driver's `usb_control_msg` call
   for `SET_ADDRESS` and `SET_FRAME_START_ADDRESS`.
 - Brightness uses `wValue` directly (not encoded as address).
+- **`bmRequestType`**: Sprint uses `0x40` (Vendor | RECIP_DEVICE) for OUT and `0xC0` for IN, matching the Linux `usbd480fb` driver. Using `RECIP_INTERFACE (0x41 / 0xC1)` causes USB STALL on NX composite devices with per-interface WinUSB → `ERROR_GEN_FAILURE`.
 
 ## Code Layout
 
@@ -225,7 +223,9 @@ Key functions:
 | Screen dark after SimHub disable | SimHub set brightness=0, we didn't restore it | `setBrightness(255)` in open sequence |
 | Screen dark after our own close | We set brightness=0 (intended), but next open didn't restore | `setBrightness(255)` in open sequence |
 | `ACCESS_DENIED` on CreateFile | Missing `FILE_SHARE_DELETE` on Windows 10/11 | Add `fileShareDelete` flag |
-| Device not found (per-interface Zadig install) | Scan uses `GUID_DEVINTERFACE_USB_DEVICE` but per-interface installs use `GUID_DEVINTERFACE_WINUSB` | Install WinUSB on whole device, not per-interface |
+| All transfers fail with `ERROR_GEN_FAILURE` | `bmRequestType = 0x41` (RECIP_INTERFACE) causes USB STALL on NX composite device | Use `0x40` (RECIP_DEVICE) — matches Linux `usbd480fb` |
+| Two devices in device list for one physical device | Scan finds both the composite parent (GUID_DEVINTERFACE_USB_DEVICE) and the Interface 0 path (GUID_DEVINTERFACE_WINUSB) | Scan `GUID_DEVINTERFACE_WINUSB` first, track found PIDs, skip those PIDs in `GUID_DEVINTERFACE_USB_DEVICE` pass |
+| Wrong dimensions (480×272) in device list | Scan stores default; `GET_DEVICE_DETAILS` result is not propagated back to registry | `screen:connected` event carries native dims; coordinator intercepts and calls `updateDeviceDims` |
 | Wrong dimensions | Hardcoded size doesn't match device | Always use `queryDeviceDetails()` result |
-| Bulk write fails | WinUSB not bound to Interface 0 | Run Zadig, select WinUSB for the device |
+| Bulk write fails | WinUSB not bound to Interface 0 | Run Zadig, select WinUSB for Interface 0 |
 
