@@ -6,6 +6,10 @@ export function CaptureNextButton(arg1) {
   return window['go']['main']['App']['CaptureNextButton'](arg1);
 }
 
+export function CheckUpdate() {
+  return window['go']['main']['App']['CheckUpdate']();
+}
+
 export function DashCreateLayout(arg1) {
   return window['go']['main']['App']['DashCreateLayout'](arg1);
 }
@@ -110,6 +114,10 @@ export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetScreenRotation'](arg1, arg2, arg3, arg4);
 }
 
+export function DownloadAndInstall(arg1) {
+  return window['go']['main']['App']['DownloadAndInstall'](arg1);
+}
+
 export function GetBindings() {
   return window['go']['main']['App']['GetBindings']();
 }
@@ -120,6 +128,10 @@ export function GetBuildChannel() {
 
 export function GetCommandCatalog() {
   return window['go']['main']['App']['GetCommandCatalog']();
+}
+
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
 }
 
 export function GetVersion() {
@@ -140,6 +152,10 @@ export function IsConnected() {
 
 export function SaveBindings(arg1) {
   return window['go']['main']['App']['SaveBindings'](arg1);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
 export function WindowClose() {
