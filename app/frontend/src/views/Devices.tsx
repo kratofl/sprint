@@ -89,9 +89,10 @@ function DeviceSection() {
       onEvent('screen:driver_missing', (data: { driver: string; error: string }) => {
         setDriverMissingType(data?.driver ?? 'unknown')
       }),
+      onEvent('devices:updated', () => { loadDevices() }),
     ]
     return () => unsubs.forEach(fn => fn())
-  }, [])
+  }, [loadDevices])
 
   const handleAddForType = (type: DeviceType) => {
     setPanel({ tag: 'catalog', filterType: type })
