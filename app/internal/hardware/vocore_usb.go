@@ -4,7 +4,7 @@
 // native WinUSB API. No CGO, no libusb installation required.
 //
 // Prerequisites:
-//   - The VoCore device must have the WinUSB driver bound to it. SimHub's
+//   - The VoCore device must have the WinUSB driver bound to it. Ref's
 //     VOCOREScreenSetup does this automatically. If not installed, use
 //     Zadig (https://zadig.akeo.ie) to bind the VoCore to WinUSB.
 package hardware
@@ -31,6 +31,7 @@ var (
 	procWinUsbControlTransfer = modWinUSB.NewProc("WinUsb_ControlTransfer")
 	procWinUsbWritePipe       = modWinUSB.NewProc("WinUsb_WritePipe")
 	procWinUsbResetPipe       = modWinUSB.NewProc("WinUsb_ResetPipe")
+	procWinUsbSetPowerPolicy  = modWinUSB.NewProc("WinUsb_SetPowerPolicy")
 )
 
 // GUID_DEVINTERFACE_USB_DEVICE {A5DCBF10-6530-11D2-901F-00C04FB951ED}
@@ -101,7 +102,7 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	)
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok && errno == 5 {
-			return nil, fmt.Errorf("open device: access denied (another application may have exclusive access to the screen — close SimHub or other USB tools)")
+			return nil, fmt.Errorf("open device: access denied (another application may have exclusive access to the screen — close other USB tools)")
 		}
 		return nil, fmt.Errorf("open device: %w", err)
 	}
@@ -114,9 +115,9 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	if r == 0 {
 		syscall.CloseHandle(devHandle)
 		if isDriverNotBoundError(callErr) {
-			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig (https://zadig.akeo.ie)", ErrDriverNotInstalled, vid, pid)
+			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — run Ref's VOCOREScreenSetup or use Zadig (https://zadig.akeo.ie)", ErrDriverNotInstalled, vid, pid)
 		}
-		return nil, fmt.Errorf("WinUsb_Initialize: %w (ensure the WinUSB driver is bound to VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig)", callErr, vid, pid)
+		return nil, fmt.Errorf("WinUsb_Initialize: %w (ensure the WinUSB driver is bound to VID=%04X PID=%04X — run Ref's VOCOREScreenSetup or use Zadig)", callErr, vid, pid)
 	}
 
 	s := &winusbSender{
@@ -162,7 +163,7 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	// driver (cmd_quit_sleep). Do NOT send 0x11 (SLEEP_OUT) first; the VoCore
 	// firmware handles the full wake sequence internally on receiving 0x29.
 	// After waking, restore the backlight to full brightness via 0x51, since
-	// SimHub's "disable" sets brightness=0 rather than entering hardware sleep.
+	// Ref's "disable" sets brightness=0 rather than entering hardware sleep.
 	wake := [6]byte{0x00, 0x29, 0x00, 0x00, 0x00, 0x00}
 	if err := s.controlOut(wake[:]); err != nil {
 		logger.Warn("display wake failed (non-fatal)", "err", err)
@@ -253,7 +254,7 @@ func (s *winusbSender) nativeSize() (int, int) {
 }
 
 // displaySleep sets the backlight brightness to 0, turning the panel dark
-// without putting the controller into deep sleep. This matches SimHub's
+// without putting the controller into deep sleep. This matches Ref's
 // "disable" behaviour and leaves the device in a state where a single 0x29
 // + brightness-restore can wake it reliably.
 func (s *winusbSender) displaySleep() {
@@ -360,10 +361,26 @@ func (s *winusbSender) controlOutReq(request byte, data []byte) error {
 // findUSBDevicePath enumerates USB device interfaces and returns the device
 // path for the VoCore matching the given VID/PID.
 func findUSBDevicePath(vid, pid uint16) (string, error) {
+	path, err := findUSBDevicePathWithGUID(vid, pid, &guidUSBDevice)
+	if err != nil {
+		return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
+	}
+	return path, nil
+}
+
+// findUSBDevicePathWithGUID enumerates device interfaces under the given interface
+// GUID and returns the best matching path for the given VID/PID.
+//
+// "Best" means a whole-device path (no &mi_ component) is preferred over a
+// per-interface composite path (&mi_XX). On Windows, OUT vendor control transfers
+// fail when WinUSB is installed per-interface on a composite device because usbccgp
+// does not route them to the interface driver. Whole-device paths work correctly.
+// Per-interface paths are returned as a fallback if no whole-device path exists.
+func findUSBDevicePathWithGUID(vid, pid uint16, guid *winGUID) (string, error) {
 	target := fmt.Sprintf("vid_%04x&pid_%04x", vid, pid)
 
 	r, _, err := procSetupDiGetClassDevsW.Call(
-		uintptr(unsafe.Pointer(&guidUSBDevice)),
+		uintptr(unsafe.Pointer(guid)),
 		0, 0,
 		uintptr(digcfPresent|digcfDeviceInterface),
 	)
@@ -376,11 +393,13 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 	var ifData spDeviceInterfaceData
 	ifData.CbSize = uint32(unsafe.Sizeof(ifData))
 
+	var interfaceFallback string // per-interface path (&mi_XX), used if no whole-device found
+
 	for i := uint32(0); ; i++ {
 		r, _, _ := procSetupDiEnumDeviceInterfaces.Call(
 			hDevInfo,
 			0,
-			uintptr(unsafe.Pointer(&guidUSBDevice)),
+			uintptr(unsafe.Pointer(guid)),
 			uintptr(i),
 			uintptr(unsafe.Pointer(&ifData)),
 		)
@@ -424,13 +443,23 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 			}
 		}
 		path := syscall.UTF16ToString(pathUTF16)
+		lower := strings.ToLower(path)
 
-		if strings.Contains(strings.ToLower(path), target) {
-			return path, nil
+		if !strings.Contains(lower, target) {
+			continue
+		}
+		if !strings.Contains(lower, "&mi_") {
+			return path, nil // whole-device path — prefer immediately
+		}
+		if interfaceFallback == "" {
+			interfaceFallback = path // keep first per-interface path as fallback
 		}
 	}
 
-	return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
+	if interfaceFallback != "" {
+		return interfaceFallback, nil
+	}
+	return "", fmt.Errorf("device (VID=%04X PID=%04X) not found", vid, pid)
 }
 
 // screen model ID. Values from the mpro_drm Linux driver.
@@ -464,7 +493,7 @@ func isDriverNotBoundError(err error) bool {
 		return false
 	}
 	switch errno {
-	case 31,  // ERROR_GEN_FAILURE
+	case 31, // ERROR_GEN_FAILURE
 		231, // ERROR_BAD_DRIVER
 		6:   // ERROR_INVALID_HANDLE
 		return true

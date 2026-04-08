@@ -4,13 +4,13 @@ import "fmt"
 
 const (
 	usbd480VID uint16 = 0x16C0
-	usbd480PID uint16 = 0x08A6
+	usbd480PID uint16 = 0x08A7
 
 	// usbd480DefaultWidth / Height are the fallback render dimensions used when
 	// WinUSB is not yet installed and the device cannot be queried. The actual
 	// dimensions are fetched from the device via GET_DEVICE_DETAILS on first connect.
-	usbd480DefaultWidth  = 480
-	usbd480DefaultHeight = 272
+	usbd480DefaultWidth  = 800
+	usbd480DefaultHeight = 480
 )
 
 // USBD480Screen describes a USBD480 display found by USB enumeration.
@@ -34,7 +34,7 @@ func ScanUSBD480() ([]USBD480Screen, error) {
 // usbd480ScreenDefault returns an USBD480Screen with default dimensions for a
 // given serial, used when the device cannot be queried at scan time.
 func usbd480ScreenDefault(serial string) USBD480Screen {
-	desc := fmt.Sprintf("USBD480 · %d×%d", usbd480DefaultWidth, usbd480DefaultHeight)
+	desc := fmt.Sprintf("USBD480 NX · %d×%d", usbd480DefaultWidth, usbd480DefaultHeight)
 	if serial != "" {
 		desc += fmt.Sprintf(" [%s]", serial)
 	}

@@ -127,7 +127,7 @@ SkiaSharp is significantly more capable than `gg`.
 
 ### 2. Sim racing ecosystem
 
-iRacing's SDK is C# first. Existing tools in the sim racing space (SimHub, CrewChief,
+iRacing's SDK is C# first. Existing tools in the sim racing space (Ref, CrewChief,
 iOverlay) are all .NET. This means more reference implementations, community libraries,
 and protocol documentation framed around C#. For adding new game adapters, the
 ecosystem advantage is real.
@@ -158,7 +158,7 @@ The C# community has extensive documentation for every Windows API, including Wi
 
 - .NET 8+ must be installed OR you ship a ~80–100 MB self-contained bundle
 - Go ships a 10–20 MB single `.exe` with no runtime dependency
-- For a sim racing tool that competes with SimHub, bundle size matters
+- For a sim racing tool that competes with Ref, bundle size matters
 
 ### 2. Wails equivalent is immature
 

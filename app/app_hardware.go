@@ -306,7 +306,7 @@ func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings 
 }
 
 // DeviceSetDeviceDisabled disables or re-enables rendering for the given device.
-// When disabled the USB handle is released so another app (e.g. SimHub) can
+// When disabled the USB handle is released so another app (e.g. Ref) can
 // drive the screen. Sprint reconnects when called with false.
 func (a *App) DeviceSetDeviceDisabled(deviceID string, disabled bool) {
 	a.coord.SetDeviceDisabled(deviceID, disabled)
