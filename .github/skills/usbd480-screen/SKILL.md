@@ -64,12 +64,16 @@ The touchscreen interface can be reconfigured via `SET_CONFIG_VALUE (0x82)`:
 
 ## Control Transfer Format
 
-All vendor control messages target **Interface 0** using `RECIP_INTERFACE`:
+All vendor control messages for the **NX series** (PID 0x08A7) use `RECIP_DEVICE`:
 
 ```
-OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x00 | 0x40 | 0x01 = 0x41
-IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x80 | 0x40 | 0x01 = 0xC1
+OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0x00 | 0x40 | 0x00 = 0x40
+IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0x80 | 0x40 | 0x00 = 0xC0
 ```
+
+> **WQ43 vs NX difference**: The old WQ43 (PID 0x08A6) driver used `RECIP_INTERFACE`
+> (0x41/0xC1). The NX firmware uses `RECIP_DEVICE` (0x40/0xC0). Sending RECIP_INTERFACE
+> requests to the NX causes it to STALL the endpoint → `ERROR_GEN_FAILURE` on all transfers.
 
 In the WinUSB `WINUSB_SETUP_PACKET` (8 bytes):
 
@@ -235,6 +239,7 @@ Key functions:
 | Screen dark after our own close | We set brightness=0 (intended), but next open didn't restore | `setBrightness(255)` in open sequence |
 | `ACCESS_DENIED` on CreateFile | Missing `FILE_SHARE_DELETE` on Windows 10/11 | Add `fileShareDelete` flag |
 | OUT control transfers fail (`WinUsb_ControlTransfer OUT 0xC0: A device attached to the system is not functioning`) | NULL buffer passed for zero-length OUT transfer — WinUSB on composite devices rejects this even when `BufferLength=0` | Pass non-NULL pointer (e.g. `&dummy[0]`) with `BufferLength=0`; see `controlOut` |
+| ALL control transfers fail (IN and OUT) | Using `RECIP_INTERFACE` (0x41/0xC1) — NX firmware STALLs these; only `RECIP_DEVICE` (0x40/0xC0) works | Change `usbd480ReqTypeOut=0x40`, `usbd480ReqTypeIn=0xC0` |
 | Device not found | WinUSB not installed, or only `GUID_DEVINTERFACE_USB_DEVICE` path opened | Ensure WinUSB installed via Zadig (Interface 0); our scan uses only `GUID_DEVINTERFACE_WINUSB` |
 | Wrong dimensions | Hardcoded size doesn't match device | Always use `queryDeviceDetails()` result |
 | Bulk write fails | WinUSB not bound to Interface 0 | Run Zadig, select WinUSB for Interface 0 |

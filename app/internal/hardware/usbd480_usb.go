@@ -17,10 +17,11 @@ const (
 	usbd480ReqBrightness  = 0x81 // control OUT: set backlight brightness; wValue = level (0=off, 255=full)
 
 	// bmRequestType bytes.
-	// USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x00 | 0x40 | 0x01 = 0x41
-	// USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x80 | 0x40 | 0x01 = 0xC1
-	usbd480ReqTypeOut = 0x41
-	usbd480ReqTypeIn  = 0xC1
+	// The NX series uses USB_RECIP_DEVICE (not RECIP_INTERFACE like the old WQ43):
+	// USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0x00 | 0x40 | 0x00 = 0x40
+	// USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_DEVICE = 0x80 | 0x40 | 0x00 = 0xC0
+	usbd480ReqTypeOut = 0x40
+	usbd480ReqTypeIn  = 0xC0
 
 	usbd480BulkEP = 0x02 // bulk OUT endpoint
 )
