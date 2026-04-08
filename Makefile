@@ -27,7 +27,7 @@ help: ## Show this help message
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
 setup: ## One-time dev setup: install Wails CLI
-	go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+	go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 	Write-Host 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
