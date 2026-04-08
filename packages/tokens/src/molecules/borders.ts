@@ -14,8 +14,8 @@ export const borders = {
   outline:     '#2a2a2a',
   /** Subtle variant — dividers inside surfaces */
   outlineSubtle: 'rgba(255, 255, 255, 0.08)',
-  /** Accent — orange tint on highlighted/active cards */
-  accent:      'rgba(255, 144, 108, 0.30)',
-  /** Cyan — secondary call-out highlights */
-  teal:        'rgba(90, 248, 251, 0.30)',
+  /** Accent — orange-500 at 30% opacity, highlighted/active cards */
+  accent:      `${orange[500]}4d`,
+  /** Cyan — cyan-500 at 30% opacity, secondary call-out highlights */
+  teal:        `${cyan[500]}4d`,
 } as const
