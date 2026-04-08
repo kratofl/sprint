@@ -210,6 +210,7 @@ Linux driver TODO list even notes `suspend/resume?` as unimplemented.
   `wIndex = addr[31:16]` — this matches the Linux driver's `usb_control_msg` call
   for `SET_ADDRESS` and `SET_FRAME_START_ADDRESS`.
 - Brightness uses `wValue` directly (not encoded as address).
+- **`bmRequestType`**: Sprint uses `0x40` (Vendor | RECIP_DEVICE) for OUT and `0xC0` for IN, matching the Linux `usbd480fb` driver. Using `RECIP_INTERFACE (0x41 / 0xC1)` causes USB STALL on NX composite devices with per-interface WinUSB → `ERROR_GEN_FAILURE`.
 
 ## Code Layout
 
