@@ -17,3 +17,5 @@ export type {
   SetTargetLapPayload,
   NotePayload,
 } from './engineer'
+
+export type { AppSettings, ReleaseInfo } from './settings'
