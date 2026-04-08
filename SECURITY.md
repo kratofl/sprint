@@ -4,15 +4,11 @@
 
 If you discover a security vulnerability in Sprint, please report it responsibly.
 
-**Do not open a public issue.** Instead, email the maintainer directly:
+**Do not open a public issue.** Instead, use GitHub's private vulnerability reporting:
 
-- **Email:** [open an issue with the `security` label if no email is available]
+👉 [Report a vulnerability](https://github.com/kratofl/sprint/security/advisories/new)
 
-Please include:
-- A description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+This keeps the details confidential until a fix is ready.
 
 ## Response Timeline
 

@@ -17,7 +17,6 @@ applyTo: '**/*.go,**/go.mod,**/go.sum'
 - Each deployable binary is its own Go module with `main.go` at the module root (`app/main.go`, `api/main.go`) — required by Wails.
 - Use `go.work` to link all modules (`app`, `api`, `pkg`) so local changes resolve without publishing.
 - Run `go work sync` after updating any module's `go.mod`.
-- Set `GONOSUMDB` and `GONOPROXY` for private modules (`github.com/kratofl/*`).
 - Use `internal/` for packages that should not be imported by external projects.
 - Prefer generics over unconstrained types; use `any` instead of `interface{}` (Go 1.18+).
 

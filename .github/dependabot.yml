@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Go modules — desktop app
+  - package-ecosystem: gomod
+    directory: /app
+    schedule:
+      interval: monthly
+
+  # Go modules — API server
+  - package-ecosystem: gomod
+    directory: /api
+    schedule:
+      interval: monthly
+
+  # Go modules — shared packages
+  - package-ecosystem: gomod
+    directory: /pkg
+    schedule:
+      interval: monthly
+
+  # npm (pnpm workspace at repo root)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

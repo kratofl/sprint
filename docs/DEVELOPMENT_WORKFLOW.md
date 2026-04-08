@@ -368,7 +368,6 @@ lsof -i :8080
 
 | Variable | Where used | What it does |
 |---|---|---|
-| `GOPRIVATE=github.com/kratofl/*` | Go build | Tells Go not to check the public checksum DB for private modules |
 | `VITE_API_URL` | app/frontend | URL of the API server (default: `http://localhost:8080`) |
 | `NEXT_PUBLIC_API_URL` | web | URL of the API server for client-side fetches |
 

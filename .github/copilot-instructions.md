@@ -64,7 +64,6 @@ The desktop app is **authoritative** — it applies engineer commands and can re
 ```
 
 Go workspace: three modules sharing `pkg/dto` and `pkg/games` via workspace resolution.
-Makefile sets `GONOSUMDB=github.com/kratofl/*` and `GONOPROXY=github.com/kratofl/*`.
 
 ## Module Conventions
 

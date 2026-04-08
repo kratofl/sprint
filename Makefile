@@ -19,27 +19,21 @@ APP_DIR    := app
 _RAW_VERSION := $(shell $$tag = git describe --tags --abbrev=0 2>&1; if ($$LASTEXITCODE -eq 0) { $$tag.Trim() } else { 'dev' })
 VERSION ?= $(patsubst v%,%,$(_RAW_VERSION))
 
-# Prevent Go from hitting sum.golang.org for private modules in this workspace.
-# Can also be set permanently: go env -w GONOSUMDB=github.com/kratofl/*
-export GONOSUMDB := github.com/kratofl/*
-export GONOPROXY := github.com/kratofl/*
-
-# ─── Help ─────────────────────────────────────────────────────────────────────
+# ─── Help─────────────────────────────────────────────────────────────────────
 
 help: ## Show this help message
 	Select-String -Path Makefile -Pattern '^[a-zA-Z_-]+:.*?## ' | ForEach-Object { if ($$_.Line -match '^([a-zA-Z_-]+):.*?## (.*)') { '  {0,-18} {1}' -f $$Matches[1], $$Matches[2] } } | Sort-Object
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
-setup: ## One-time dev setup: configure Go env for private modules
-	go env -w GONOSUMDB=github.com/kratofl/*
-	go env -w GONOPROXY=github.com/kratofl/*
-	Write-Host 'Go env configured for private modules'
+setup: ## One-time dev setup: install Wails CLI and verify tooling
+	go install github.com/wailsapp/wails/v2/cmd/wails@latest
+	Write-Host 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
 
 dev-app: ## Run the Wails desktop app in dev mode
-	$$env:GONOSUMDB = 'github.com/kratofl/*'; $$env:GONOPROXY = 'github.com/kratofl/*'; Set-Location $(APP_DIR); wails dev
+	Set-Location $(APP_DIR); wails dev
 
 dev-api: ## Run the API server locally (hot-reload with go run)
 	go run ./api
