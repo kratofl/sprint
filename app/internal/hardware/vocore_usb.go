@@ -4,7 +4,7 @@
 // native WinUSB API. No CGO, no libusb installation required.
 //
 // Prerequisites:
-//   - The VoCore device must have the WinUSB driver bound to it. SimHub's
+//   - The VoCore device must have the WinUSB driver bound to it. Ref's
 //     VOCOREScreenSetup does this automatically. If not installed, use
 //     Zadig (https://zadig.akeo.ie) to bind the VoCore to WinUSB.
 package hardware
@@ -102,7 +102,7 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	)
 	if err != nil {
 		if errno, ok := err.(syscall.Errno); ok && errno == 5 {
-			return nil, fmt.Errorf("open device: access denied (another application may have exclusive access to the screen — close SimHub or other USB tools)")
+			return nil, fmt.Errorf("open device: access denied (another application may have exclusive access to the screen — close other USB tools)")
 		}
 		return nil, fmt.Errorf("open device: %w", err)
 	}
@@ -115,9 +115,9 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	if r == 0 {
 		syscall.CloseHandle(devHandle)
 		if isDriverNotBoundError(callErr) {
-			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig (https://zadig.akeo.ie)", ErrDriverNotInstalled, vid, pid)
+			return nil, fmt.Errorf("%w: VID=%04X PID=%04X — run Ref's VOCOREScreenSetup or use Zadig (https://zadig.akeo.ie)", ErrDriverNotInstalled, vid, pid)
 		}
-		return nil, fmt.Errorf("WinUsb_Initialize: %w (ensure the WinUSB driver is bound to VID=%04X PID=%04X — run SimHub's VOCOREScreenSetup or use Zadig)", callErr, vid, pid)
+		return nil, fmt.Errorf("WinUsb_Initialize: %w (ensure the WinUSB driver is bound to VID=%04X PID=%04X — run Ref's VOCOREScreenSetup or use Zadig)", callErr, vid, pid)
 	}
 
 	s := &winusbSender{
@@ -163,7 +163,7 @@ func openVoCoreScreen(vid, pid uint16, width, height int, logger *slog.Logger) (
 	// driver (cmd_quit_sleep). Do NOT send 0x11 (SLEEP_OUT) first; the VoCore
 	// firmware handles the full wake sequence internally on receiving 0x29.
 	// After waking, restore the backlight to full brightness via 0x51, since
-	// SimHub's "disable" sets brightness=0 rather than entering hardware sleep.
+	// Ref's "disable" sets brightness=0 rather than entering hardware sleep.
 	wake := [6]byte{0x00, 0x29, 0x00, 0x00, 0x00, 0x00}
 	if err := s.controlOut(wake[:]); err != nil {
 		logger.Warn("display wake failed (non-fatal)", "err", err)
@@ -254,7 +254,7 @@ func (s *winusbSender) nativeSize() (int, int) {
 }
 
 // displaySleep sets the backlight brightness to 0, turning the panel dark
-// without putting the controller into deep sleep. This matches SimHub's
+// without putting the controller into deep sleep. This matches Ref's
 // "disable" behaviour and leaves the device in a state where a single 0x29
 // + brightness-restore can wake it reliably.
 func (s *winusbSender) displaySleep() {
@@ -493,7 +493,7 @@ func isDriverNotBoundError(err error) bool {
 		return false
 	}
 	switch errno {
-	case 31,  // ERROR_GEN_FAILURE
+	case 31, // ERROR_GEN_FAILURE
 		231, // ERROR_BAD_DRIVER
 		6:   // ERROR_INVALID_HANDLE
 		return true

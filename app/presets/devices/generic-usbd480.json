@@ -1,7 +1,7 @@
 {
   "id": "generic-usbd480",
-  "name": "Generic USBD480 Screen",
-  "description": "Any USBD480 display — Sprint will find the first unregistered device",
+  "name": "Generic USBD480 NX Screen",
+  "description": "Any USBD480 NX display (NX43, NX50) — Sprint will find the first unregistered device",
   "type": "screen",
   "vid": 0,
   "pid": 0,

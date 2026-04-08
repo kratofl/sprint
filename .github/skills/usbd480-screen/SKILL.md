@@ -134,7 +134,7 @@ hardware sleep/wake command (unlike VoCore's `0x29`).
 - `wValue = 255` → full brightness (on)
 - `wValue = 0`   → backlight off (screen appears off)
 
-**SimHub "disable" = `SET_BRIGHTNESS(0)`.** The framebuffer controller stays
+**Ref "disable" = `SET_BRIGHTNESS(0)`.** The framebuffer controller stays
 active. Always restore brightness on open.
 
 ## Frame Send Sequence
@@ -166,17 +166,17 @@ stream decoder only if bulk-only performance becomes necessary.
               FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, ...)
 2. WinUsb_Initialize(devHandle) → winusbHandle
 3. queryDeviceDetails()         → get actual width/height
-4. setBrightness(255)           → restore backlight (SimHub may have left it at 0)
+4. setBrightness(255)           → restore backlight (Ref may have left it at 0)
 ```
 
 `FILE_SHARE_DELETE` is required on Windows 10/11: without it, the `CreateFile`
-call fails with `ACCESS_DENIED` if another process (e.g. SimHub) recently held
+call fails with `ACCESS_DENIED` if another process (e.g. Ref) recently held
 the device.
 
 ## Close Sequence
 
 ```go
-1. setBrightness(0)             → dim backlight (polite: matches SimHub disable behavior)
+1. setBrightness(0)             → dim backlight (polite: matches Ref disable behavior)
 2. WinUsb_Free(winusbHandle)
 3. CloseHandle(devHandle)
 ```
@@ -188,7 +188,7 @@ Linux driver TODO list even notes `suspend/resume?` as unimplemented.
 
 - Do **not** look for a "display on" command — there isn't one.
 - Brightness restore (`0x81 wValue=255`) is sufficient to make the screen visible.
-- If the screen stays dark after opening, SimHub (or our own close) left brightness
+- If the screen stays dark after opening, Ref (or our own close) left brightness
   at 0 — the brightness restore in the open sequence is the fix.
 
 ## WinUSB Notes (Windows)
@@ -235,7 +235,7 @@ Key functions:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Screen dark after SimHub disable | SimHub set brightness=0, we didn't restore it | `setBrightness(255)` in open sequence |
+| Screen dark after Ref disable | Ref set brightness=0, we didn't restore it | `setBrightness(255)` in open sequence |
 | Screen dark after our own close | We set brightness=0 (intended), but next open didn't restore | `setBrightness(255)` in open sequence |
 | `ACCESS_DENIED` on CreateFile | Missing `FILE_SHARE_DELETE` on Windows 10/11 | Add `fileShareDelete` flag |
 | OUT control transfers fail (`WinUsb_ControlTransfer OUT 0xC0: A device attached to the system is not functioning`) | NULL buffer passed for zero-length OUT transfer — WinUSB on composite devices rejects this even when `BufferLength=0` | Pass non-NULL pointer (e.g. `&dummy[0]`) with `BufferLength=0`; see `controlOut` |

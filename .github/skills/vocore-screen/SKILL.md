@@ -39,10 +39,10 @@ All commands are 6 or 8 bytes sent as the data payload of a `0xB0` vendor contro
 | Command | Bytes | Effect |
 |---|---|---|
 | Quit sleep (wake) | `{0x00, 0x29, 0x00, 0x00, 0x00, 0x00}` | Wakes panel from **any** power state. This is `cmd_quit_sleep` in the official driver. Send this on every open — no `0x11` needed, no timing delay. |
-| Set brightness | `{0x00, 0x51, 0x02, 0x00, 0x00, 0x00, <level>, 0x00}` | Byte 6 = brightness (0 = off, 255 = full). This is how SimHub's "disable" works — brightness 0, not hardware sleep. |
+| Set brightness | `{0x00, 0x51, 0x02, 0x00, 0x00, 0x00, <level>, 0x00}` | Byte 6 = brightness (0 = off, 255 = full). This is how Ref's "disable" works — brightness 0, not hardware sleep. |
 
-**CRITICAL — SimHub's "disable" is just brightness=0.** The display controller
-stays active. To wake after SimHub disables:
+**CRITICAL — Ref's "disable" is just brightness=0.** The display controller
+stays active. To wake after Ref disables:
 1. Send `0x29` (quit sleep)
 2. Send `0x51` with brightness=255
 
@@ -108,7 +108,7 @@ RGB565, 2 bytes per pixel, big-endian within each pixel. Full frame = `width × 
 4. CloseHandle
 ```
 
-This leaves the panel in the same state SimHub's "disable" produces — so any
+This leaves the panel in the same state Ref's "disable" produces — so any
 app (including Sprint on reconnect) can wake it immediately with `0x29` +
 brightness restore.
 
@@ -117,7 +117,7 @@ brightness restore.
 ## WinUSB Driver Requirement
 
 The VoCore must have the **WinUSB** driver bound (not libusbK, not libusb-win32).
-SimHub's `VOCOREScreenSetup.exe` does this automatically. Alternatively use
+Ref's `VOCOREScreenSetup.exe` does this automatically. Alternatively use
 [Zadig](https://zadig.akeo.ie). Our code will return `"WinUsb_Initialize: ..."`
 or `"access denied"` if the wrong driver is bound or another app holds the handle.
 
@@ -130,9 +130,9 @@ some Windows 10/11 configurations.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Screen stays dark after SimHub closes | Brightness was set to 0 by SimHub | Send `0x29` then `0x51` brightness=255 on open |
-| `WinUsb_Initialize` fails | Wrong USB driver (libusbK bound) | Reinstall WinUSB via SimHub setup or Zadig |
-| `ACCESS_DENIED` on CreateFile | Another app holds exclusive handle | Close SimHub / other USB tools first |
+| Screen stays dark after Ref closes | Brightness was set to 0 by Ref | Send `0x29` then `0x51` brightness=255 on open |
+| `WinUsb_Initialize` fails | Wrong USB driver (libusbK bound) | Reinstall WinUSB via Ref setup or Zadig |
+| `ACCESS_DENIED` on CreateFile | Another app holds exclusive handle | Close Ref / other USB tools first |
 | Model query fails | Device in bad state after reset | Code falls back to configured dimensions; harmless |
 | Bulk write fails on first frame | Stale STALL on endpoint | `resetPipe(0x02)` clears it; already done on open |
 

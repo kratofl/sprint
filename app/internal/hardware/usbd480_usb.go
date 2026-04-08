@@ -11,10 +11,10 @@ import (
 
 // USBD480 USB protocol constants (from usbd480fb Linux driver / User Guide).
 const (
-	usbd480ReqGetDetails  = 0x80 // control IN:  64-byte device info (name, width, height)
-	usbd480ReqSetAddr     = 0xC0 // control OUT: set framebuffer write address
-	usbd480ReqSetFrame    = 0xC4 // control OUT: set frame start address (flip)
-	usbd480ReqBrightness  = 0x81 // control OUT: set backlight brightness; wValue = level (0=off, 255=full)
+	usbd480ReqGetDetails = 0x80 // control IN:  64-byte device info (name, width, height)
+	usbd480ReqSetAddr    = 0xC0 // control OUT: set framebuffer write address
+	usbd480ReqSetFrame   = 0xC4 // control OUT: set frame start address (flip)
+	usbd480ReqBrightness = 0x81 // control OUT: set backlight brightness; wValue = level (0=off, 255=full)
 
 	// bmRequestType bytes.
 	// The NX series uses USB_RECIP_DEVICE (not RECIP_INTERFACE like the old WQ43):
@@ -107,7 +107,7 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 	}
 
 	// Wake the device from USB selective suspend. When another application (e.g.
-	// SimHub) disables the screen and closes its handle, the WinUSB driver leaves
+	// Ref) disables the screen and closes its handle, the WinUSB driver leaves
 	// the device in AUTO_SUSPEND mode. WinUsb_Initialize succeeds (opens the
 	// interface) but all transfers fail with ERROR_GEN_FAILURE until the device
 	// is woken. Setting AUTO_SUSPEND=FALSE forces the host to bring the device
@@ -154,7 +154,7 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 		"pid", fmt.Sprintf("0x%04X", pid),
 		"native", fmt.Sprintf("%dx%d", s.nativeW, s.nativeH))
 
-	// Restore full brightness — SimHub (and our own close) set it to 0 on disable.
+	// Restore full brightness — Ref (and our own close) set it to 0 on disable.
 	s.setBrightness(255)
 
 	return s, nil
@@ -191,7 +191,7 @@ func (s *usbd480Sender) send(rgb565 []byte) error {
 func (s *usbd480Sender) nativeSize() (int, int) { return s.nativeW, s.nativeH }
 
 func (s *usbd480Sender) close() {
-	// Dim backlight before release — same mechanism SimHub uses to "disable" the screen.
+	// Dim backlight before release — same mechanism Ref uses to "disable" the screen.
 	s.setBrightness(0)
 	procWinUsbFree.Call(s.winusbHandle)
 	syscall.CloseHandle(s.devHandle)

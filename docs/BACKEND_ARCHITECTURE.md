@@ -359,7 +359,7 @@ EventsOn('telemetry:frame', (frame: TelemetryFrame) => {
 | `screen:connected` | — | USB screen found and opened |
 | `screen:disconnected` | — | USB screen disconnected |
 | `screen:error` | `string` | USB error message |
-| `screen:paused` | — | Screen rendering paused (SimHub takeover) |
+| `screen:paused` | — | Screen rendering paused (Ref takeover) |
 | `screen:resumed` | — | Screen rendering resumed |
 | `dash:page-changed` | `{pageIndex, pageName}` | Active dash page switched |
 

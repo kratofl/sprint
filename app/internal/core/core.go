@@ -102,8 +102,11 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 						drv.SetLayout(layout)
 						entry.layoutID = layout.ID
 						entry.currentLayout = layout
+						logger.Info("dash layout assigned", "device", id, "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
 					} else if lerr != nil {
 						logger.Warn("failed to load dash layout for device, screen will render black", "device", id, "err", lerr)
+					} else {
+						logger.Warn("no layout for device, screen will render black", "device", id)
 					}
 				}
 				drv.SetIdle(true)

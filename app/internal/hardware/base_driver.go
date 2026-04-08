@@ -100,7 +100,7 @@ func (d *baseDriver) IsConnected() bool {
 
 // SetDisabled disables or re-enables screen rendering.
 // When disabled, the current USB connection is released so another application
-// (e.g., SimHub) can take over the screen. Sprint will reconnect automatically
+// (e.g., Ref) can take over the screen. Sprint will reconnect automatically
 // once SetDisabled(false) is called.
 func (d *baseDriver) SetDisabled(disabled bool) {
 	d.disabled.Store(disabled)
@@ -191,6 +191,9 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	p := dashboard.NewPainter(w, h)
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
+		d.logger.Info("painter created", "dims", fmt.Sprintf("%dx%d", w, h), "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
+	} else {
+		d.logger.Warn("painter created with NO layout", "dims", fmt.Sprintf("%dx%d", w, h))
 	}
 	p.SetIdle(d.currentIdle.Load())
 	p.SetActivePage(int(d.currentActivePage.Load()))
