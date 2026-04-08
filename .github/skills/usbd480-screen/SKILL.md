@@ -16,11 +16,11 @@ description: >
 |---|---|
 | Vendor | lcdinfo.com |
 | VID | `0x16C0` |
-| PID | `0x08A6` |
+| PID | `0x08A7` |
 | USB type | **Composite device** — 2 interfaces |
 | Pixel format | RGB565 (16 bpp) |
 
-Known models: NX43 (480×272), WQ43 (480×272), and others at various resolutions.
+Known models: NX43 (800×480), NX50 (800×480), and others at various resolutions.
 The device reports its own width/height via `GET_DEVICE_DETAILS (0x80)` — always
 query and use those, do not hardcode dimensions.
 
@@ -31,14 +31,17 @@ The USBD480 exposes two USB interfaces in a single configuration:
 | Interface | Class | Purpose | Our driver |
 |---|---|---|---|
 | **0** | Vendor-specific (`0xFF`) | Display / framebuffer | ✅ WinUSB — `usbd480_usb.go` |
-| **1** | HID (`0x03`) | Touchscreen (optional) | ❌ Not used — OS handles it natively |
+| **1** | HID (`0x03`) | Touchscreen (optional) | ❌ Not used — inactive when WinUSB is on parent device |
 
-**Interface 0** is the display interface. All framebuffer commands and bulk pixel
-data go here. This is what WinUSB must be bound to.
+**WinUSB is installed on the whole composite device** (parent entry in Zadig / `USB\VID_16C0&PID_08A7`).
+This replaces `usbccgp.sys` with WinUSB as the function driver for the whole device. All framebuffer
+commands and bulk pixel data are sent to Interface 0. Interface 1 (HID touchscreen) is inaccessible
+while WinUSB is active — this is acceptable because our driver does not use the touchscreen.
 
-**Interface 1** is the touchscreen HID interface (only present on touch-equipped
-models). Windows enumerates it automatically via the built-in HID driver. It uses
-Interrupt Endpoint 1 for touch reports. Our driver ignores this interface entirely.
+> **Why whole-device and not per-interface?** Windows does not route OUT vendor control transfers
+> through `usbccgp` to per-interface WinUSB drivers. Installing per-interface (selecting "Interface 0"
+> in Zadig) causes all OUT control transfers (`SET_ADDRESS`, `SET_BRIGHTNESS`, etc.) to fail with
+> `ERROR_GEN_FAILURE`, while IN transfers still work. Whole-device install is the correct approach.
 
 ### Touchscreen HID Interface
 
@@ -64,8 +67,8 @@ The touchscreen interface can be reconfigured via `SET_CONFIG_VALUE (0x82)`:
 All vendor control messages target **Interface 0** using `RECIP_INTERFACE`:
 
 ```
-OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x41
-IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0xC1
+OUT: bmRequestType = USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x00 | 0x40 | 0x01 = 0x41
+IN:  bmRequestType = USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x80 | 0x40 | 0x01 = 0xC1
 ```
 
 In the WinUSB `WINUSB_SETUP_PACKET` (8 bytes):
@@ -95,7 +98,8 @@ In the WinUSB `WINUSB_SETUP_PACKET` (8 bytes):
 | `SET_TOUCH_MODE` | `0xE2` | OUT | mode | 0 | 0 | none | Set touchscreen operating mode |
 
 Source: `usbd480fb.c` — https://github.com/hski/usbd480fb  
-Source: WQ43 User Guide — https://www.lcdinfo.com/usbd480/documentation/USBD480-WQ43_User_Guide.pdf
+Source: NX43 User Guide — https://www.lcdinfo.com/usbd480/documentation/USBD480-NX43_User_Guide.pdf  
+Source: WQ43 User Guide — https://www.lcdinfo.com/usbd480/documentation/USBD480-WQ43_User_Guide.pdf (protocol reference, same commands on NX)
 
 ### Config Parameters (for SET_CONFIG_VALUE / GET_CONFIG_VALUE)
 
@@ -145,7 +149,7 @@ driver always sends a full frame.
 
 ### Stream Decoder (alternative bulk-only mode)
 
-The WQ43 firmware also supports a **stream decoder**: all commands (including
+The NX firmware also supports a **stream decoder**: all commands (including
 `SET_ADDRESS` / `SET_FRAME_START_ADDRESS`) can be embedded as inline tokens in the
 bulk data stream, avoiding the need for separate control transfers. Useful for
 high-throughput scenarios. Our driver uses the control-transfer approach; switch to
@@ -185,14 +189,19 @@ Linux driver TODO list even notes `suspend/resume?` as unimplemented.
 
 ## WinUSB Notes (Windows)
 
-- Requires WinUSB driver bound to **Interface 0** of the composite device.
-- **Zadig**: in most cases, run Zadig and replace the driver for the whole composite
-  device. If you install WinUSB on Interface 0 only (per-interface), the device path
-  is enumerated under `GUID_DEVINTERFACE_WINUSB` instead of
-  `GUID_DEVINTERFACE_USB_DEVICE` — our scan currently uses the latter, so per-interface
-  Zadig installs may not be detected. Install on the whole device to be safe.
-- Interface 1 (HID touchscreen) is claimed by the OS HID driver automatically and
-  does not need WinUSB.
+- Requires WinUSB driver bound to Interface 0 of the composite device.
+- **Zadig**: run Zadig and install WinUSB for the display interface. Both options work:
+  - **Interface 0 only** (`MI_00` entry in Zadig) — preferred; keeps HID touchscreen (Interface 1) working.
+  - **Whole device** (parent entry in Zadig) — also works; disables HID touchscreen while active.
+- Both install types register the device under `GUID_DEVINTERFACE_WINUSB`
+  (`{DEE824EF-729B-4A0E-9C14-B7117D33A817}`). Our scan uses **only this GUID** —
+  `GUID_DEVINTERFACE_USB_DEVICE` is deliberately avoided because it also lists the
+  `usbccgp.sys` composite parent; opening that path causes WinUsb_Initialize to partially
+  succeed but OUT control transfers to fail.
+- **Zero-length OUT control transfer bug**: WinUSB on composite interfaces rejects a NULL
+  buffer pointer for OUT control transfers, even when `BufferLength = 0`. Always pass a
+  valid (non-NULL) pointer with `BufferLength = 0`. This matches libusb's behavior
+  (`winusbx_submit_control_transfer` always passes `transfer->buffer + setup_size`).
 - The `controlOut` function encodes `addr` as `wValue = addr[15:0]`,
   `wIndex = addr[31:16]` — this matches the Linux driver's `usb_control_msg` call
   for `SET_ADDRESS` and `SET_FRAME_START_ADDRESS`.
@@ -225,7 +234,8 @@ Key functions:
 | Screen dark after SimHub disable | SimHub set brightness=0, we didn't restore it | `setBrightness(255)` in open sequence |
 | Screen dark after our own close | We set brightness=0 (intended), but next open didn't restore | `setBrightness(255)` in open sequence |
 | `ACCESS_DENIED` on CreateFile | Missing `FILE_SHARE_DELETE` on Windows 10/11 | Add `fileShareDelete` flag |
-| Device not found (per-interface Zadig install) | Scan uses `GUID_DEVINTERFACE_USB_DEVICE` but per-interface installs use `GUID_DEVINTERFACE_WINUSB` | Install WinUSB on whole device, not per-interface |
+| OUT control transfers fail (`WinUsb_ControlTransfer OUT 0xC0: A device attached to the system is not functioning`) | NULL buffer passed for zero-length OUT transfer — WinUSB on composite devices rejects this even when `BufferLength=0` | Pass non-NULL pointer (e.g. `&dummy[0]`) with `BufferLength=0`; see `controlOut` |
+| Device not found | WinUSB not installed, or only `GUID_DEVINTERFACE_USB_DEVICE` path opened | Ensure WinUSB installed via Zadig (Interface 0); our scan uses only `GUID_DEVINTERFACE_WINUSB` |
 | Wrong dimensions | Hardcoded size doesn't match device | Always use `queryDeviceDetails()` result |
-| Bulk write fails | WinUSB not bound to Interface 0 | Run Zadig, select WinUSB for the device |
+| Bulk write fails | WinUSB not bound to Interface 0 | Run Zadig, select WinUSB for Interface 0 |
 

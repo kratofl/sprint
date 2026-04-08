@@ -17,13 +17,41 @@ const (
 	usbd480ReqBrightness  = 0x81 // control OUT: set backlight brightness; wValue = level (0=off, 255=full)
 
 	// bmRequestType bytes.
-	// USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x40 | 0x01 = 0x41
+	// USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x00 | 0x40 | 0x01 = 0x41
 	// USB_DIR_IN  | USB_TYPE_VENDOR | USB_RECIP_INTERFACE = 0x80 | 0x40 | 0x01 = 0xC1
 	usbd480ReqTypeOut = 0x41
 	usbd480ReqTypeIn  = 0xC1
 
 	usbd480BulkEP = 0x02 // bulk OUT endpoint
 )
+
+// GUID_DEVINTERFACE_WINUSB {DEE824EF-729B-4A0E-9C14-B7117D33A817}
+// Windows registers this GUID automatically when WinUSB is bound to a device
+// interface (including per-interface installs on composite devices).
+var guidWinUSBDevice = winGUID{
+	Data1: 0xDEE824EF,
+	Data2: 0x729B,
+	Data3: 0x4A0E,
+	Data4: [8]byte{0x9C, 0x14, 0xB7, 0x11, 0x7D, 0x33, 0xA8, 0x17},
+}
+
+// findUSBD480DevicePath returns the Windows device path for the USBD480 NX screen.
+//
+// Only GUID_DEVINTERFACE_WINUSB is used — it is exclusively registered when WinUSB
+// is the active function driver. GUID_DEVINTERFACE_USB_DEVICE also lists the raw
+// usbccgp.sys composite parent, and WinUsb_Initialize partially succeeds on it
+// (IN transfers work; OUT transfers fail because the parent device is not WinUSB).
+//
+// Per-interface installs (Zadig → Interface 0, path contains &mi_00) work correctly
+// for both IN and OUT transfers once the NULL buffer bug is avoided. Whole-device
+// installs are still preferred when both coexist.
+func findUSBD480DevicePath(vid, pid uint16) (string, error) {
+	path, err := findUSBDevicePathWithGUID(vid, pid, &guidWinUSBDevice)
+	if err != nil {
+		return "", fmt.Errorf("USBD480 NX (VID=%04X PID=%04X) not found — connect the screen and install WinUSB via Zadig or the Sprint driver installer", vid, pid)
+	}
+	return path, nil
+}
 
 type usbd480Sender struct {
 	devHandle    syscall.Handle
@@ -41,7 +69,7 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 		return nil, fmt.Errorf("WinUSB not available: %w", err)
 	}
 
-	path, err := findUSBDevicePath(vid, pid)
+	path, err := findUSBD480DevicePath(vid, pid)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +191,11 @@ func (s *usbd480Sender) setBrightness(level uint16) {
 
 // controlOut sends a vendor OUT control transfer (RECIP_INTERFACE) to the USBD480.
 // wValue and wIndex encode a 32-bit address: wValue = addr[15:0], wIndex = addr[31:16].
+//
+// A non-NULL buffer pointer is required even for zero-length transfers — WinUSB on
+// composite devices rejects NULL buffers for OUT control transfers regardless of what
+// the documentation states. libusb exhibits the same behavior (always passes a valid
+// pointer even when size=0).
 func (s *usbd480Sender) controlOut(request byte, wValue, wIndex uint16) error {
 	var pkt [8]byte
 	pkt[0] = usbd480ReqTypeOut
@@ -173,11 +206,13 @@ func (s *usbd480Sender) controlOut(request byte, wValue, wIndex uint16) error {
 	pkt[5] = byte(wIndex >> 8)
 	// pkt[6:8] = wLength = 0
 
+	var dummy [1]byte // non-NULL buffer required even for zero-length OUT transfers
 	var transferred uint32
 	r, _, err := procWinUsbControlTransfer.Call(
 		s.winusbHandle,
 		*(*uintptr)(unsafe.Pointer(&pkt[0])),
-		0, 0,
+		uintptr(unsafe.Pointer(&dummy[0])),
+		0,
 		uintptr(unsafe.Pointer(&transferred)),
 		0,
 	)
