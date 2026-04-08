@@ -382,10 +382,10 @@ the render loop.
 
 ---
 
-## Pause Mode (SimHub Coexistence)
+## Pause Mode (Ref Coexistence)
 
 ```go
-// Pause: releases the USB handle so SimHub (or another app) can take over
+// Pause: releases the USB handle so Ref (or another app) can take over
 coordinator.SetScreenPaused(true)
 
 // Resume: Sprint reconnects and retakes the screen

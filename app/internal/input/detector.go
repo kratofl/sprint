@@ -132,7 +132,7 @@ func (d *Detector) Run(ctx context.Context) {
 // on any connected HID device and returns its button number.
 //
 // Physical buttons return their HID usage number (1–65535, matching what
-// SimHub reports — e.g. BUTTON_68 → 68).
+// Ref reports — e.g. BUTTON_68 → 68).
 // Relative-axis encoders return a virtual number ≥ axisVirtualBase.
 //
 // Returns ErrCaptureTimeout if no input occurs within timeout, or

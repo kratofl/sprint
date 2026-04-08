@@ -336,7 +336,7 @@ function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBannerProps
           )}
         </Button>
         <span className="font-mono text-[8px] text-text-disabled">
-          Alternatively, use Zadig or SimHub's VOCOREScreenSetup
+          Alternatively, use Zadig or Ref's VOCOREScreenSetup
         </span>
       </div>
     </div>
