@@ -105,6 +105,22 @@ func openUSBD480Screen(vid, pid uint16, width, height int, logger *slog.Logger) 
 		return nil, fmt.Errorf("WinUsb_Initialize USBD480: %w", callErr)
 	}
 
+	// Wake the device from USB selective suspend. When another application (e.g.
+	// SimHub) disables the screen and closes its handle, the WinUSB driver leaves
+	// the device in AUTO_SUSPEND mode. WinUsb_Initialize succeeds (opens the
+	// interface) but all transfers fail with ERROR_GEN_FAILURE until the device
+	// is woken. Setting AUTO_SUSPEND=FALSE forces the host to bring the device
+	// back to full power immediately.
+	//
+	// POWER_POLICY_TYPE AUTO_SUSPEND = 0x81 (from winusbio.h)
+	var autoSuspendOff uint8 = 0
+	procWinUsbSetPowerPolicy.Call(
+		winusbHandle,
+		0x81, // AUTO_SUSPEND
+		1,
+		uintptr(unsafe.Pointer(&autoSuspendOff)),
+	)
+
 	s := &usbd480Sender{
 		devHandle:    devHandle,
 		winusbHandle: winusbHandle,

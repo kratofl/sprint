@@ -31,6 +31,7 @@ var (
 	procWinUsbControlTransfer = modWinUSB.NewProc("WinUsb_ControlTransfer")
 	procWinUsbWritePipe       = modWinUSB.NewProc("WinUsb_WritePipe")
 	procWinUsbResetPipe       = modWinUSB.NewProc("WinUsb_ResetPipe")
+	procWinUsbSetPowerPolicy  = modWinUSB.NewProc("WinUsb_SetPowerPolicy")
 )
 
 // GUID_DEVINTERFACE_USB_DEVICE {A5DCBF10-6530-11D2-901F-00C04FB951ED}
@@ -360,10 +361,26 @@ func (s *winusbSender) controlOutReq(request byte, data []byte) error {
 // findUSBDevicePath enumerates USB device interfaces and returns the device
 // path for the VoCore matching the given VID/PID.
 func findUSBDevicePath(vid, pid uint16) (string, error) {
+	path, err := findUSBDevicePathWithGUID(vid, pid, &guidUSBDevice)
+	if err != nil {
+		return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
+	}
+	return path, nil
+}
+
+// findUSBDevicePathWithGUID enumerates device interfaces under the given interface
+// GUID and returns the best matching path for the given VID/PID.
+//
+// "Best" means a whole-device path (no &mi_ component) is preferred over a
+// per-interface composite path (&mi_XX). On Windows, OUT vendor control transfers
+// fail when WinUSB is installed per-interface on a composite device because usbccgp
+// does not route them to the interface driver. Whole-device paths work correctly.
+// Per-interface paths are returned as a fallback if no whole-device path exists.
+func findUSBDevicePathWithGUID(vid, pid uint16, guid *winGUID) (string, error) {
 	target := fmt.Sprintf("vid_%04x&pid_%04x", vid, pid)
 
 	r, _, err := procSetupDiGetClassDevsW.Call(
-		uintptr(unsafe.Pointer(&guidUSBDevice)),
+		uintptr(unsafe.Pointer(guid)),
 		0, 0,
 		uintptr(digcfPresent|digcfDeviceInterface),
 	)
@@ -376,11 +393,13 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 	var ifData spDeviceInterfaceData
 	ifData.CbSize = uint32(unsafe.Sizeof(ifData))
 
+	var interfaceFallback string // per-interface path (&mi_XX), used if no whole-device found
+
 	for i := uint32(0); ; i++ {
 		r, _, _ := procSetupDiEnumDeviceInterfaces.Call(
 			hDevInfo,
 			0,
-			uintptr(unsafe.Pointer(&guidUSBDevice)),
+			uintptr(unsafe.Pointer(guid)),
 			uintptr(i),
 			uintptr(unsafe.Pointer(&ifData)),
 		)
@@ -424,13 +443,23 @@ func findUSBDevicePath(vid, pid uint16) (string, error) {
 			}
 		}
 		path := syscall.UTF16ToString(pathUTF16)
+		lower := strings.ToLower(path)
 
-		if strings.Contains(strings.ToLower(path), target) {
-			return path, nil
+		if !strings.Contains(lower, target) {
+			continue
+		}
+		if !strings.Contains(lower, "&mi_") {
+			return path, nil // whole-device path — prefer immediately
+		}
+		if interfaceFallback == "" {
+			interfaceFallback = path // keep first per-interface path as fallback
 		}
 	}
 
-	return "", fmt.Errorf("VoCore screen (VID=%04X PID=%04X) not found — is the device connected?", vid, pid)
+	if interfaceFallback != "" {
+		return interfaceFallback, nil
+	}
+	return "", fmt.Errorf("device (VID=%04X PID=%04X) not found", vid, pid)
 }
 
 // screen model ID. Values from the mpro_drm Linux driver.
