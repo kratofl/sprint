@@ -51,6 +51,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared packages
+        run: pnpm turbo build --filter=@sprint/types --filter=@sprint/ui
+
       - name: Update wails.json productVersion
         shell: pwsh
         working-directory: app
