@@ -66,30 +66,14 @@ jobs:
         working-directory: app
         run: wails build -clean -ldflags "-X main.Version=${{ env.VERSION }}"
 
-      - name: Copy preset files
+      - name: Rename artifact
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path app/build/bin/DeviceCatalog | Out-Null
-          Copy-Item app/presets/devices/*.json app/build/bin/DeviceCatalog/
-          Copy-Item app/presets/dash/default.json app/build/bin/DefaultDash.json
-
-      - name: Build Windows installer
-        shell: pwsh
-        working-directory: app/build/windows/installer
-        run: makensis /DVERSION=${{ env.VERSION }} project.nsi
-
-      - name: Rename artifacts
-        shell: pwsh
-        run: |
-          Move-Item app/build/bin/Sprint.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
-          Move-Item app/build/bin/Sprint-amd64-installer.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64-installer.exe"
+        run: Move-Item app/build/bin/Sprint.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
-          files: |
-            app/build/bin/sprint-${{ github.ref_name }}-windows-amd64-installer.exe
-            app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe
+          files: app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
 
