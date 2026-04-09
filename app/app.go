@@ -163,8 +163,8 @@ func (a *App) CheckUpdate() (*updater.ReleaseInfo, error) {
 	return updater.CheckLatest(a.version, s.UpdateChannel)
 }
 
-// DownloadAndInstall downloads the release installer at downloadURL, launches
-// it silently, then quits the app so the installer can replace the binary.
+// DownloadAndInstall downloads the new portable exe at downloadURL, writes a
+// self-replace script, and quits the app so the script can swap the binary.
 func (a *App) DownloadAndInstall(downloadURL string) error {
 	if err := updater.DownloadAndInstall(a.ctx, downloadURL); err != nil {
 		return err
