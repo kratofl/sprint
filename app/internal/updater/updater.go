@@ -1,5 +1,5 @@
 // Package updater checks GitHub Releases for newer versions of Sprint
-// and downloads the Windows installer for one-click updates.
+// and applies one-click updates via a self-replace script on Windows.
 package updater
 
 import (
@@ -79,15 +79,16 @@ func CheckLatest(currentVersion, channel string) (*ReleaseInfo, error) {
 	return nil, nil
 }
 
-// DownloadAndInstall downloads the installer from downloadURL to the OS temp
-// directory and launches it silently. The caller should quit the app after
-// this returns without error.
+// DownloadAndInstall downloads the portable exe from downloadURL to the OS
+// temp directory and launches a self-replace script that swaps the binary
+// and restarts the app. The caller should quit the app after this returns
+// without error so the script can replace the running executable.
 func DownloadAndInstall(ctx context.Context, downloadURL string) error {
-	dest := filepath.Join(os.TempDir(), "sprint-update-installer.exe")
+	dest := filepath.Join(os.TempDir(), "sprint-update.exe")
 	if err := downloadFile(ctx, downloadURL, dest); err != nil {
-		return fmt.Errorf("download installer: %w", err)
+		return fmt.Errorf("download update: %w", err)
 	}
-	return launchInstaller(dest)
+	return launchUpdate(dest)
 }
 
 func downloadFile(ctx context.Context, url, dest string) error {
@@ -128,7 +129,7 @@ type githubAsset struct {
 
 func installerAssetURL(r githubRelease) string {
 	tag := r.TagName
-	want := fmt.Sprintf("sprint-%s-windows-amd64-installer.exe", tag)
+	want := fmt.Sprintf("sprint-%s-windows-amd64.exe", tag)
 	for _, a := range r.Assets {
 		if a.Name == want {
 			return a.BrowserDownloadURL
