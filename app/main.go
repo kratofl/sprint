@@ -3,9 +3,7 @@ package main
 import (
 	"embed"
 	"log"
-	"path/filepath"
 
-	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -41,7 +39,6 @@ func main() {
 		},
 		AlwaysOnTop: false,
 		Windows: &windows.Options{
-			WebviewUserDataPath:  filepath.Join(appdata.Dir(), "WebView2"),
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			DisableWindowIcon:    false,
