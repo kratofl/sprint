@@ -95,6 +95,9 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 					drv = hardware.NewVoCoreDriver(logger.With("component", "screen", "device", id))
 				}
 				drv.Configure(toHardwareScreenConfig(devices.ToScreenConfig(d)))
+			if d.Disabled {
+				drv.SetDisabled(true)
+			}
 
 				entry := &deviceEntry{driver: drv, cancel: func() {}, purpose: d.Purpose}
 				if d.Purpose != devices.PurposeRearView && dashMgr != nil {

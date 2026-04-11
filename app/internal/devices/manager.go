@@ -79,6 +79,7 @@ type SavedDevice struct {
 	Purpose       DevicePurpose   `json:"purpose,omitempty"`        // defaults to PurposeDash
 	PurposeConfig json.RawMessage `json:"purpose_config,omitempty"` // purpose-specific config JSON blob
 	Bindings      []DeviceBinding `json:"bindings,omitempty"`
+	Disabled      bool            `json:"disabled,omitempty"` // user-disabled; persisted across restarts
 }
 
 // HasScreen reports whether this device has a screen (wheel or screen type).
@@ -277,6 +278,17 @@ func SetDashLayout(reg *DeviceRegistry, id, dashID string) error {
 	for i := range reg.Devices {
 		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
 			reg.Devices[i].DashID = dashID
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: device %q not found", id)
+}
+
+// SetDisabled updates the disabled flag for the device with the given composite ID.
+func SetDisabled(reg *DeviceRegistry, id string, disabled bool) error {
+	for i := range reg.Devices {
+		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
+			reg.Devices[i].Disabled = disabled
 			return nil
 		}
 	}

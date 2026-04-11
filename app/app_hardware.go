@@ -310,6 +310,13 @@ func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings 
 // drive the screen. Sprint reconnects when called with false.
 func (a *App) DeviceSetDeviceDisabled(deviceID string, disabled bool) {
 	a.coord.SetDeviceDisabled(deviceID, disabled)
+
+	reg, err := a.devMgr.Load()
+	if err == nil {
+		if setErr := devices.SetDisabled(reg, deviceID, disabled); setErr == nil {
+			_ = a.devMgr.Save(reg)
+		}
+	}
 }
 
 // DeviceGetDeviceDisabled reports whether the given device's rendering is disabled.
