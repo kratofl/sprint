@@ -9,6 +9,7 @@ interface DashListProps {
   onCreate: () => void
   onDelete: (id: string) => Promise<void>
   onSetDefault: (id: string) => Promise<void>
+  onOpenGlobalSettings: () => void
 }
 
 function DashRow({
@@ -120,14 +121,19 @@ function DashRow({
   )
 }
 
-export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault }: DashListProps) {
+export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, onOpenGlobalSettings }: DashListProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
         <h2 className="terminal-header text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
-        <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
-          + NEW DASH
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="terminal-header font-bold">
+            GLOBAL SETTINGS
+          </Button>
+          <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
+            + NEW DASH
+          </Button>
+        </div>
       </div>
       {layouts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center font-mono text-[10px] text-text-muted">

@@ -39,13 +39,49 @@ func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
 	return nil
 }
 
-// DashCreateLayout creates a new named dash layout and returns it.
+// DashCreateLayout creates a new named dash layout inheriting the global
+// default theme and domain palette, then returns the persisted layout.
 func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 	layout, err := a.dash.Create(name)
 	if err != nil {
 		return nil, fmt.Errorf("DashCreateLayout: %w", err)
 	}
+	gs, err := dashboard.LoadGlobalSettings()
+	if err == nil {
+		layout.Theme = gs.Theme
+		layout.DomainPalette = gs.DomainPalette
+		_ = a.dash.Save(layout) // best-effort: apply global defaults to the new layout
+	}
 	return layout, nil
+}
+
+// DashGetGlobalSettings returns the global dash settings (theme + domain palette defaults).
+func (a *App) DashGetGlobalSettings() (*dashboard.GlobalDashSettings, error) {
+	s, err := dashboard.LoadGlobalSettings()
+	if err != nil {
+		return nil, fmt.Errorf("DashGetGlobalSettings: %w", err)
+	}
+	return s, nil
+}
+
+// DashSaveGlobalSettings writes the global dash settings to disk.
+func (a *App) DashSaveGlobalSettings(s dashboard.GlobalDashSettings) error {
+	if err := dashboard.SaveGlobalSettings(&s); err != nil {
+		return fmt.Errorf("DashSaveGlobalSettings: %w", err)
+	}
+	return nil
+}
+
+// DashGetDefaultTheme returns the compile-time default DashTheme.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultTheme() widgets.DashTheme {
+	return widgets.DefaultTheme()
+}
+
+// DashGetDefaultDomainPalette returns the compile-time default DomainPalette.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultDomainPalette() widgets.DomainPalette {
+	return widgets.DefaultDomainPalette()
 }
 
 // DashDeleteLayout deletes the layout with the given ID.

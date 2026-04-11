@@ -26,6 +26,26 @@ export interface DomainPalette {
   brakeMig?:  RGBAColor
 }
 
+export interface DashTheme {
+  primary: RGBAColor
+  accent:  RGBAColor
+  fg:      RGBAColor
+  muted:   RGBAColor
+  muted2:  RGBAColor
+  success: RGBAColor
+  warning: RGBAColor
+  danger:  RGBAColor
+  surface: RGBAColor
+  bg:      RGBAColor
+  border:  RGBAColor
+  rpmRed:  RGBAColor
+}
+
+export interface GlobalDashSettings {
+  theme:         DashTheme
+  domainPalette: DomainPalette
+}
+
 export interface ConditionalRule {
   property: string
   op: RuleOp
@@ -66,7 +86,8 @@ export interface DashLayout {
   gridRows: number
   idlePage: DashPage
   pages: DashPage[]
-  alerts:        AlertConfig
+  alerts:         AlertConfig
+  theme?:         DashTheme
   domainPalette?: DomainPalette
 }
 
@@ -200,6 +221,37 @@ function normPage(raw: unknown): DashPage {
   }
 }
 
+function normRGBA(raw: unknown): RGBAColor | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const R = Number(r.R ?? r.r ?? 0)
+  const G = Number(r.G ?? r.g ?? 0)
+  const B = Number(r.B ?? r.b ?? 0)
+  const A = Number(r.A ?? r.a ?? 255)
+  return { R, G, B, A }
+}
+
+function normDashTheme(raw: unknown): DashTheme | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const primary = normRGBA(r.primary ?? r.Primary)
+  if (!primary) return undefined
+  return {
+    primary,
+    accent:  normRGBA(r.accent  ?? r.Accent)  ?? { R: 90,  G: 248, B: 251, A: 255 },
+    fg:      normRGBA(r.fg      ?? r.Fg)      ?? { R: 255, G: 255, B: 255, A: 255 },
+    muted:   normRGBA(r.muted   ?? r.Muted)   ?? { R: 128, G: 128, B: 128, A: 255 },
+    muted2:  normRGBA(r.muted2  ?? r.Muted2)  ?? { R: 161, G: 161, B: 170, A: 255 },
+    success: normRGBA(r.success ?? r.Success) ?? { R: 52,  G: 211, B: 153, A: 255 },
+    warning: normRGBA(r.warning ?? r.Warning) ?? { R: 251, G: 191, B: 36,  A: 255 },
+    danger:  normRGBA(r.danger  ?? r.Danger)  ?? { R: 248, G: 113, B: 113, A: 255 },
+    surface: normRGBA(r.surface ?? r.Surface) ?? { R: 20,  G: 20,  B: 20,  A: 255 },
+    bg:      normRGBA(r.bg      ?? r.Bg)      ?? { R: 10,  G: 10,  B: 10,  A: 255 },
+    border:  normRGBA(r.border  ?? r.Border)  ?? { R: 42,  G: 42,  B: 42,  A: 255 },
+    rpmRed:  normRGBA(r.rpmRed  ?? r.RPMRed  ?? r.RpmRed) ?? { R: 220, G: 38, B: 38, A: 255 },
+  }
+}
+
 function normAlerts(raw: unknown): AlertConfig {
   const r = (raw ?? {}) as Record<string, unknown>
   return {
@@ -222,6 +274,7 @@ function normLayout(raw: unknown): DashLayout {
     idlePage: rawIdlePage ? normPage(rawIdlePage) : { id: '', name: 'Idle', widgets: [] },
     pages:    Array.isArray(rawPages) ? (rawPages as unknown[]).map(normPage) : [{ id: '', name: 'Main', widgets: [] }],
     alerts:        normAlerts(r.alerts ?? r.Alerts),
+    theme:         normDashTheme(r.theme ?? r.Theme),
     domainPalette: (r.domainPalette ?? r.DomainPalette) as DomainPalette | undefined,
   }
 }
@@ -331,6 +384,57 @@ export const dashAPI = {
 
   async cyclePage(direction: number): Promise<void> {
     await call<void>('DashCyclePage', direction)
+  },
+
+  async getGlobalSettings(): Promise<GlobalDashSettings> {
+    const raw = await call<unknown>('DashGetGlobalSettings')
+    const r = raw as Record<string, unknown>
+    const theme = normDashTheme(r.theme ?? r.Theme)
+    const defaultTheme: DashTheme = {
+      primary: { R: 255, G: 144, B: 108, A: 255 },
+      accent:  { R: 90,  G: 248, B: 251, A: 255 },
+      fg:      { R: 255, G: 255, B: 255, A: 255 },
+      muted:   { R: 128, G: 128, B: 128, A: 255 },
+      muted2:  { R: 161, G: 161, B: 170, A: 255 },
+      success: { R: 52,  G: 211, B: 153, A: 255 },
+      warning: { R: 251, G: 191, B: 36,  A: 255 },
+      danger:  { R: 248, G: 113, B: 113, A: 255 },
+      surface: { R: 20,  G: 20,  B: 20,  A: 255 },
+      bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
+      border:  { R: 42,  G: 42,  B: 42,  A: 255 },
+      rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
+    }
+    return {
+      theme: theme ?? defaultTheme,
+      domainPalette: (r.domainPalette ?? r.DomainPalette ?? {}) as DomainPalette,
+    }
+  },
+
+  async saveGlobalSettings(s: GlobalDashSettings): Promise<void> {
+    await call<void>('DashSaveGlobalSettings', s)
+  },
+
+  async getDefaultTheme(): Promise<DashTheme> {
+    const raw = await call<unknown>('DashGetDefaultTheme')
+    return normDashTheme(raw) ?? {
+      primary: { R: 255, G: 144, B: 108, A: 255 },
+      accent:  { R: 90,  G: 248, B: 251, A: 255 },
+      fg:      { R: 255, G: 255, B: 255, A: 255 },
+      muted:   { R: 128, G: 128, B: 128, A: 255 },
+      muted2:  { R: 161, G: 161, B: 170, A: 255 },
+      success: { R: 52,  G: 211, B: 153, A: 255 },
+      warning: { R: 251, G: 191, B: 36,  A: 255 },
+      danger:  { R: 248, G: 113, B: 113, A: 255 },
+      surface: { R: 20,  G: 20,  B: 20,  A: 255 },
+      bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
+      border:  { R: 42,  G: 42,  B: 42,  A: 255 },
+      rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
+    }
+  },
+
+  async getDefaultDomainPalette(): Promise<DomainPalette> {
+    const raw = await call<unknown>('DashGetDefaultDomainPalette')
+    return (raw ?? {}) as DomainPalette
   },
 }
 
