@@ -9,6 +9,10 @@ func (energyWidget) Meta() WidgetMeta {
 		Type: WidgetEnergy, Label: "Virtual Energy", Category: CategoryRace,
 		DefaultColSpan: 4, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: "energy.virtualEnergyPct", Op: RuleOpLT, Threshold: 20, Color: "danger", Alpha: 0.20},
+			{Property: "energy.virtualEnergyPct", Op: RuleOpLT, Threshold: 40, Color: "warning", Alpha: 0.12},
+		},
 	}
 }
 

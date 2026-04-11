@@ -9,6 +9,10 @@ func (fuelWidget) Meta() WidgetMeta {
 		Type: WidgetFuel, Label: "Fuel", Category: CategoryRace,
 		DefaultColSpan: 5, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 5,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: "car.fuel", Op: RuleOpLT, Threshold: 2, Color: "danger", Alpha: 0.20},
+			{Property: "car.fuel", Op: RuleOpLT, Threshold: 5, Color: "warning", Alpha: 0.12},
+		},
 	}
 }
 

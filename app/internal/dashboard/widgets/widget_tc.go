@@ -20,6 +20,9 @@ func (tcWidget) Meta() WidgetMeta {
 			},
 			Default: "tc1",
 		}},
+		DefaultPanelRules: []ConditionalRule{
+			{Property: "electronics.tcActive", Op: RuleOpGT, Threshold: 0, Color: "accent", Alpha: 0.12},
+		},
 	}
 }
 

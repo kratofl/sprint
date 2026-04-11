@@ -9,6 +9,9 @@ func (brakeBiasWidget) Meta() WidgetMeta {
 		Type: WidgetBrakeBias, Label: "Brake Bias", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: "car.brakeBiasWarning", Op: RuleOpGT, Threshold: 0, Color: "warning", Alpha: 0.18},
+		},
 	}
 }
 

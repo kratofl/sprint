@@ -222,7 +222,12 @@ export function DashCanvas({
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
     if (!isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows)) return
-    const newWidget: DashWidget = { id: crypto.randomUUID(), type: widgetType, ...proposed }
+    const newWidget: DashWidget = {
+      id: crypto.randomUUID(),
+      type: widgetType,
+      ...proposed,
+      ...(meta?.defaultPanelRules?.length ? { panelRules: meta.defaultPanelRules } : {}),
+    }
     const updated = [...widgetsRef.current, newWidget]
     onUpdate(updated)
     onSelect(updated.length - 1)

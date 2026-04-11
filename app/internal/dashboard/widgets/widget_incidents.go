@@ -9,6 +9,10 @@ func (incidentsWidget) Meta() WidgetMeta {
 		Type: WidgetIncidents, Label: "Incidents", Category: CategoryRace,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 2,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: "penalties.incidents", Op: RuleOpGT, Threshold: 3, Color: "danger", Alpha: 0.20},
+			{Property: "penalties.incidents", Op: RuleOpGT, Threshold: 0, Color: "warning", Alpha: 0.12},
+		},
 	}
 }
 

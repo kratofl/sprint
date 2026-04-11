@@ -139,6 +139,7 @@ export interface WidgetCatalogEntry {
   defaultColSpan: number
   defaultRowSpan: number
   idleCapable: boolean
+  defaultPanelRules?: ConditionalRule[]
 }
 
 // Helper: does this device have a screen?
@@ -431,9 +432,12 @@ export const widgetCatalogAPI = {
         configDefs:     Array.isArray(e.configDefs ?? e.ConfigDefs)
           ? (e.configDefs ?? e.ConfigDefs) as ConfigDef[]
           : undefined,
-        defaultColSpan: Number(e.defaultColSpan ?? e.DefaultColSpan ?? 4),
-        defaultRowSpan: Number(e.defaultRowSpan ?? e.DefaultRowSpan ?? 2),
-        idleCapable:    Boolean(e.idleCapable ?? e.IdleCapable ?? false),
+        defaultColSpan:      Number(e.defaultColSpan ?? e.DefaultColSpan ?? 4),
+        defaultRowSpan:      Number(e.defaultRowSpan ?? e.DefaultRowSpan ?? 2),
+        idleCapable:         Boolean(e.idleCapable ?? e.IdleCapable ?? false),
+        defaultPanelRules:   Array.isArray(e.defaultPanelRules ?? e.DefaultPanelRules)
+          ? (e.defaultPanelRules ?? e.DefaultPanelRules) as ConditionalRule[]
+          : undefined,
       }
     })
   },

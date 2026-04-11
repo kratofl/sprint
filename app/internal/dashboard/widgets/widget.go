@@ -87,15 +87,16 @@ var categoryLabels = map[Category]string{
 // WidgetMeta holds the widget type, display name, palette category,
 // config schema, and default grid dimensions.
 type WidgetMeta struct {
-	Type            WidgetType  `json:"type"`
-	Label           string      `json:"label"`
-	Category        Category    `json:"category"`
-	CategoryLabel   string      `json:"categoryLabel"`
-	ConfigDefs      []ConfigDef `json:"configDefs,omitempty"`
-	DefaultColSpan  int         `json:"defaultColSpan"`
-	DefaultRowSpan  int         `json:"defaultRowSpan"`
-	IdleCapable     bool        `json:"idleCapable"`
-	DefaultUpdateHz float64     `json:"defaultUpdateHz"`
+	Type              WidgetType         `json:"type"`
+	Label             string             `json:"label"`
+	Category          Category           `json:"category"`
+	CategoryLabel     string             `json:"categoryLabel"`
+	ConfigDefs        []ConfigDef        `json:"configDefs,omitempty"`
+	DefaultColSpan    int                `json:"defaultColSpan"`
+	DefaultRowSpan    int                `json:"defaultRowSpan"`
+	IdleCapable       bool               `json:"idleCapable"`
+	DefaultUpdateHz   float64            `json:"defaultUpdateHz"`
+	DefaultPanelRules []ConditionalRule  `json:"defaultPanelRules,omitempty"`
 }
 
 var (
