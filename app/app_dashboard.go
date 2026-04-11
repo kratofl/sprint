@@ -134,6 +134,17 @@ func (a *App) DashGetPreview(id string) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+// GetWidgetPreview renders a single widget of the given type into a small PNG and
+// returns it as a base64-encoded string. Returns an empty string if the widget type
+// is unknown or rendering fails.
+func (a *App) GetWidgetPreview(widgetType string) string {
+	data, err := dashboard.RenderWidgetPreview(widgetType, dashboard.WidgetPreviewW, dashboard.WidgetPreviewH)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(data)
+}
+
 // DashCyclePage cycles the active dash page by direction: +1 for next, -1 for prev.
 // Broadcasts to all connected screen-capable devices.
 func (a *App) DashCyclePage(direction int) {

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/kratofl/sprint/app/internal/commands"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -324,12 +325,72 @@ func init() {
 	commands.RegisterMeta(CmdSetTargetLap, "Set Target Lap", "Dashboard", true, false)
 }
 
-// previewWidth and previewHeight are the dimensions for preview thumbnails.
+// previewWidth and previewHeight are the dimensions for layout thumbnail previews.
 // Smaller than the actual screen for fast generation and small file size.
 const (
 	previewWidth  = 400
 	previewHeight = 240
 )
+
+// widgetPreviewW and widgetPreviewH are the pixel dimensions for single-widget
+// palette previews rendered by RenderWidgetPreview.
+const (
+	widgetPreviewW = 160
+	widgetPreviewH = 80
+)
+
+// WidgetPreviewW and WidgetPreviewH are the exported pixel dimensions used by the
+// Wails binding when rendering single-widget palette previews.
+const (
+	WidgetPreviewW = widgetPreviewW
+	WidgetPreviewH = widgetPreviewH
+)
+// of the given pixel dimensions and returns the encoded bytes. A 1×1 grid is used
+// so the widget fills the entire canvas. A zero-value TelemetryFrame provides
+// placeholder values — no live data required.
+// Returns an error if the widget type is not registered.
+func RenderWidgetPreview(widgetType string, w, h int) ([]byte, error) {
+	wt := widgets.WidgetType(widgetType)
+	if _, ok := widgets.Get(wt); !ok {
+		return nil, fmt.Errorf("dash: unknown widget %q", widgetType)
+	}
+
+	layout := &DashLayout{
+		ID:       "widget-preview",
+		GridCols: 1,
+		GridRows: 1,
+		IdlePage: DashPage{ID: "idle", Name: "Idle"},
+		Pages: []DashPage{{
+			ID:   "p",
+			Name: "p",
+			Widgets: []DashWidget{{
+				ID:      "w",
+				Type:    wt,
+				Col:     0,
+				Row:     0,
+				ColSpan: 1,
+				RowSpan: 1,
+			}},
+		}},
+	}
+
+	painter := NewPainter(w, h)
+	defer painter.Close()
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
 
 // renderPreview renders a PNG thumbnail of the layout's first active page.
 // Uses a zero-value TelemetryFrame (all fields zero/false) so no live data needed.

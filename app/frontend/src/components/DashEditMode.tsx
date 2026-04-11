@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Badge, Button,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -400,6 +400,36 @@ function WidgetPalette({
   const categories = [...knownCategories, ...extraCategories]
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [previews, setPreviews] = useState<Map<string, string>>(new Map())
+  const inflight = useRef<Set<string>>(new Set())
+
+  const loadPreviews = useCallback((types: string[]) => {
+    const toFetch = types.filter(t => !previews.has(t) && !inflight.current.has(t))
+    if (toFetch.length === 0) return
+    toFetch.forEach(t => inflight.current.add(t))
+    Promise.allSettled(toFetch.map(t => widgetCatalogAPI.getWidgetPreview(t).then(b64 => ({ t, b64 }))))
+      .then(results => {
+        setPreviews(prev => {
+          const next = new Map(prev)
+          results.forEach(r => {
+            if (r.status === 'fulfilled' && r.value.b64) {
+              next.set(r.value.t, r.value.b64)
+            }
+          })
+          return next
+        })
+      })
+  }, [previews])
+
+  // Eagerly load previews for initially-expanded categories.
+  useEffect(() => {
+    if (catalog.length === 0) return
+    const expandedTypes = catalog
+      .filter(w => !(collapsed[w.category] ?? false))
+      .map(w => w.type)
+    loadPreviews(expandedTypes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog])
 
   if (catalog.length === 0) {
     return (
@@ -414,10 +444,17 @@ function WidgetPalette({
       {categories.map(cat => {
         const isCollapsed = collapsed[cat] ?? false
         const catLabel = catalog.find(w => w.category === cat)?.categoryLabel ?? cat
+        const catWidgets = catalog.filter(w => w.category === cat)
         return (
           <div key={cat}>
             <button
-              onClick={() => setCollapsed(prev => ({ ...prev, [cat]: !isCollapsed }))}
+              onClick={() => {
+                const nowCollapsed = !isCollapsed
+                setCollapsed(prev => ({ ...prev, [cat]: nowCollapsed }))
+                if (!nowCollapsed) {
+                  loadPreviews(catWidgets.map(w => w.type))
+                }
+              }}
               className="flex w-full items-center gap-1.5 px-3 pt-3 pb-1 hover:text-foreground transition-colors"
             >
               <svg
@@ -433,7 +470,8 @@ function WidgetPalette({
             {!isCollapsed && (
               <div className="px-3 pb-2">
                 <WidgetList
-                  widgets={catalog.filter(w => w.category === cat)}
+                  widgets={catWidgets}
+                  previews={previews}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
                 />
@@ -448,47 +486,67 @@ function WidgetPalette({
 
 function WidgetList({
   widgets,
+  previews,
   onDragStart,
   onDragEnd,
 }: {
   widgets: ReadonlyArray<{ type: string; label: string }>
+  previews: Map<string, string>
   onDragStart?: (type: string) => void
   onDragEnd?: () => void
 }) {
   return (
     <div className="space-y-1">
-      {widgets.map(w => (
-        <TooltipProvider key={w.type}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                draggable
-                onDragStart={e => {
-                  e.dataTransfer.effectAllowed = 'copy'
-                  e.dataTransfer.setData('widget-type', w.type)
-                  // Suppress the browser's default semi-transparent ghost image
-                  const blank = document.createElement('div')
-                  blank.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:1px;height:1px'
-                  document.body.appendChild(blank)
-                  e.dataTransfer.setDragImage(blank, 0, 0)
-                  requestAnimationFrame(() => blank.remove())
-                  onDragStart?.(w.type)
-                }}
-                onDragEnd={() => onDragEnd?.()}
-                className={cn(
-                  'flex w-full cursor-grab select-none items-center gap-2 border border-border px-2 py-1.5 active:cursor-grabbing',
-                  'font-mono text-[10px] text-text-muted transition-colors',
-                  'hover:border-border-strong hover:text-foreground',
-                )}
-              >
-                <WidgetDragIcon />
-                {w.label}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>Drag onto canvas to add</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ))}
+      {widgets.map(w => {
+        const preview = previews.get(w.type)
+        const loading = !preview
+        return (
+          <TooltipProvider key={w.type}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  draggable
+                  onDragStart={e => {
+                    e.dataTransfer.effectAllowed = 'copy'
+                    e.dataTransfer.setData('widget-type', w.type)
+                    const blank = document.createElement('div')
+                    blank.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:1px;height:1px'
+                    document.body.appendChild(blank)
+                    e.dataTransfer.setDragImage(blank, 0, 0)
+                    requestAnimationFrame(() => blank.remove())
+                    onDragStart?.(w.type)
+                  }}
+                  onDragEnd={() => onDragEnd?.()}
+                  className={cn(
+                    'flex w-full cursor-grab select-none flex-col overflow-hidden border border-border active:cursor-grabbing',
+                    'transition-colors hover:border-border-strong',
+                  )}
+                >
+                  {/* Preview image area */}
+                  <div className="relative w-full overflow-hidden bg-[#0a0a0a]" style={{ aspectRatio: '2 / 1' }}>
+                    {preview ? (
+                      <img
+                        src={`data:image/png;base64,${preview}`}
+                        alt={w.label}
+                        className="w-full h-full object-fill"
+                        draggable={false}
+                      />
+                    ) : loading ? (
+                      <div className="absolute inset-0 animate-pulse bg-white/5" />
+                    ) : null}
+                  </div>
+                  {/* Label row */}
+                  <div className="flex items-center gap-2 border-t border-border px-2 py-1">
+                    <WidgetDragIcon />
+                    <span className="font-mono text-[10px] text-text-muted truncate">{w.label}</span>
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Drag onto canvas to add</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+      })}
     </div>
   )
 }
