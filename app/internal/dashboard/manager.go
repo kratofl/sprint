@@ -332,28 +332,26 @@ const (
 	previewHeight = 240
 )
 
-// widgetPreviewW and widgetPreviewH are the pixel dimensions for single-widget
-// palette previews rendered by RenderWidgetPreview.
-const (
-	widgetPreviewW = 160
-	widgetPreviewH = 80
-)
+// widgetPreviewCellPx is the pixel size per grid cell when rendering a single-widget
+// preview. The preview canvas is sized as DefaultColSpan×widgetPreviewCellPx by
+// DefaultRowSpan×widgetPreviewCellPx, so the image always has the correct aspect ratio.
+const widgetPreviewCellPx = 48
 
-// WidgetPreviewW and WidgetPreviewH are the exported pixel dimensions used by the
-// Wails binding when rendering single-widget palette previews.
-const (
-	WidgetPreviewW = widgetPreviewW
-	WidgetPreviewH = widgetPreviewH
-)
-// of the given pixel dimensions and returns the encoded bytes. A 1×1 grid is used
-// so the widget fills the entire canvas. A zero-value TelemetryFrame provides
-// placeholder values — no live data required.
-// Returns an error if the widget type is not registered.
-func RenderWidgetPreview(widgetType string, w, h int) ([]byte, error) {
+// RenderWidgetPreview renders a single widget of the given type into a PNG image
+// whose dimensions match the widget's default grid span (DefaultColSpan × DefaultRowSpan
+// cells at widgetPreviewCellPx px/cell). A 1×1 grid is used so the widget fills the
+// entire canvas. A zero-value TelemetryFrame provides placeholder values — no live data
+// required. Returns an error if the widget type is not registered.
+func RenderWidgetPreview(widgetType string) ([]byte, error) {
 	wt := widgets.WidgetType(widgetType)
-	if _, ok := widgets.Get(wt); !ok {
+	widget, ok := widgets.Get(wt)
+	if !ok {
 		return nil, fmt.Errorf("dash: unknown widget %q", widgetType)
 	}
+
+	meta := widget.Meta()
+	w := meta.DefaultColSpan * widgetPreviewCellPx
+	h := meta.DefaultRowSpan * widgetPreviewCellPx
 
 	layout := &DashLayout{
 		ID:       "widget-preview",

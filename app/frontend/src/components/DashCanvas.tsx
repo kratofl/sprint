@@ -320,7 +320,7 @@ export function DashCanvas({
                 <img
                   src={`data:image/png;base64,${widgetPreviews.get(widget.type)}`}
                   alt={widgetLabel(widget.type, catalog)}
-                  className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
                   draggable={false}
                   style={{ opacity: isSelected ? 0.85 : 0.7 }}
                 />

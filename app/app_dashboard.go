@@ -134,11 +134,11 @@ func (a *App) DashGetPreview(id string) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
-// GetWidgetPreview renders a single widget of the given type into a small PNG and
-// returns it as a base64-encoded string. Returns an empty string if the widget type
-// is unknown or rendering fails.
+// GetWidgetPreview renders a single widget of the given type into a PNG sized to
+// match the widget's default grid span, and returns it as a base64-encoded string.
+// Returns an empty string if the widget type is unknown or rendering fails.
 func (a *App) GetWidgetPreview(widgetType string) string {
-	data, err := dashboard.RenderWidgetPreview(widgetType, dashboard.WidgetPreviewW, dashboard.WidgetPreviewH)
+	data, err := dashboard.RenderWidgetPreview(widgetType)
 	if err != nil {
 		return ""
 	}
