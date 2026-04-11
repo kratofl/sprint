@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetEngineMap WidgetType = "engine_map"
 
-func init() {
-	RegisterWidget(WidgetEngineMap, "Engine Map", CategoryCar, 3, 2, false, 15, nil, drawWidgetEngineMap)
+type engineMapWidget struct{}
+
+func (engineMapWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetEngineMap, Label: "Engine Map", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
 }
 
-func drawWidgetEngineMap(c WidgetCtx) {
+func (engineMapWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -26,3 +32,5 @@ func drawWidgetEngineMap(c WidgetCtx) {
 	c.DC.SetColor(ColAccent)
 	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(engineMapWidget{}) }

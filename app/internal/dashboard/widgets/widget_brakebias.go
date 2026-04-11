@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetBrakeBias WidgetType = "brake_bias"
 
-func init() {
-	RegisterWidget(WidgetBrakeBias, "Brake Bias", CategoryCar, 3, 2, false, 15, nil, drawWidgetBrakeBias)
+type brakeBiasWidget struct{}
+
+func (brakeBiasWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetBrakeBias, Label: "Brake Bias", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
 }
 
-func drawWidgetBrakeBias(c WidgetCtx) {
+func (brakeBiasWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -24,3 +30,5 @@ func drawWidgetBrakeBias(c WidgetCtx) {
 	c.DC.SetColor(col)
 	c.DC.DrawStringAnchored(fmt.Sprintf("%.1f%%", float64(bias)*100), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(brakeBiasWidget{}) }

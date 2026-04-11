@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetLapCounter WidgetType = "lap_counter"
 
-func init() {
-	RegisterWidget(WidgetLapCounter, "Lap Counter", CategoryTiming, 4, 2, false, 5, nil, drawWidgetLapCounter)
+type lapCounterWidget struct{}
+
+func (lapCounterWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetLapCounter, Label: "Lap Counter", Category: CategoryTiming,
+		DefaultColSpan: 4, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 5,
+	}
 }
 
-func drawWidgetLapCounter(c WidgetCtx) {
+func (lapCounterWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -36,3 +42,5 @@ func drawWidgetLapCounter(c WidgetCtx) {
 		c.DC.DrawString(maxStr, cx+w1, cy)
 	}
 }
+
+func init() { Register(lapCounterWidget{}) }

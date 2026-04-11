@@ -2,9 +2,17 @@ package widgets
 
 const WidgetSpeed WidgetType = "speed"
 
-func init() { RegisterWidget(WidgetSpeed, "Speed", CategoryCar, 4, 3, false, 30, nil, drawWidgetSpeed) }
+type speedWidget struct{}
 
-func drawWidgetSpeed(c WidgetCtx) {
+func (speedWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetSpeed, Label: "Speed", Category: CategoryCar,
+		DefaultColSpan: 4, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
+}
+
+func (speedWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontNumber(c.H * 0.45)
 	c.DC.SetColor(ColTextPri)
@@ -13,3 +21,5 @@ func drawWidgetSpeed(c WidgetCtx) {
 	c.DC.SetColor(ColTextMuted)
 	c.DC.DrawStringAnchored("km/h", c.CX(), c.Y+c.H*0.72, 0.5, 0.5)
 }
+
+func init() { Register(speedWidget{}) }

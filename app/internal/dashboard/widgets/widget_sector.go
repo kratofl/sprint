@@ -6,11 +6,17 @@ import (
 
 const WidgetSector WidgetType = "sector"
 
-func init() {
-	RegisterWidget(WidgetSector, "Sector", CategoryTiming, 6, 3, false, 15, nil, drawWidgetSector)
+type sectorWidget struct{}
+
+func (sectorWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetSector, Label: "Sector", Category: CategoryTiming,
+		DefaultColSpan: 6, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
 }
 
-func drawWidgetSector(c WidgetCtx) {
+func (sectorWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.12)
 	c.DC.SetColor(ColTextMuted)
@@ -30,3 +36,5 @@ func drawWidgetSector(c WidgetCtx) {
 	c.DC.SetColor(ColAccent)
 	c.DC.DrawString(fmt.Sprintf("S%d ●", c.Frame.Lap.Sector), c.X+12+2*sw, c.Y+c.H*0.5)
 }
+
+func init() { Register(sectorWidget{}) }

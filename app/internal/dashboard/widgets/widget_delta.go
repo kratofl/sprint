@@ -7,11 +7,17 @@ import (
 
 const WidgetDelta WidgetType = "delta"
 
-func init() {
-	RegisterWidget(WidgetDelta, "Delta", CategoryTiming, 4, 3, false, 30, nil, drawWidgetDelta)
+type deltaWidget struct{}
+
+func (deltaWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetDelta, Label: "Delta", Category: CategoryTiming,
+		DefaultColSpan: 4, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
 }
 
-func drawWidgetDelta(c WidgetCtx) {
+func (deltaWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	if c.Frame.Lap.TargetLapTime <= 0 {
 		c.FontLabel(c.H * 0.15)
@@ -49,3 +55,5 @@ func drawWidgetDelta(c WidgetCtx) {
 	c.DC.DrawStringAnchored(fmt.Sprintf("%s%.3f", sign, math.Abs(delta)),
 		c.CX(), dby+dbh+c.H*0.15, 0.5, 0.5)
 }
+
+func init() { Register(deltaWidget{}) }

@@ -4,8 +4,14 @@ import "fmt"
 
 const WidgetSessionTimer WidgetType = "session_timer"
 
-func init() {
-	RegisterWidget(WidgetSessionTimer, "Session Timer", CategoryTiming, 4, 2, false, 5, nil, drawWidgetSessionTimer)
+type sessionTimerWidget struct{}
+
+func (sessionTimerWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetSessionTimer, Label: "Session Timer", Category: CategoryTiming,
+		DefaultColSpan: 4, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 5,
+	}
 }
 
 func fmtSessionTime(secs float64) string {
@@ -22,7 +28,7 @@ func fmtSessionTime(secs float64) string {
 	return fmt.Sprintf("%02d:%02d", m, s)
 }
 
-func drawWidgetSessionTimer(c WidgetCtx) {
+func (sessionTimerWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -32,3 +38,5 @@ func drawWidgetSessionTimer(c WidgetCtx) {
 	c.DC.SetColor(ColTextPri)
 	c.DC.DrawStringAnchored(fmtSessionTime(c.Frame.Session.SessionTime), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(sessionTimerWidget{}) }

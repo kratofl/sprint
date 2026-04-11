@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetEnergy WidgetType = "virtual_energy"
 
-func init() {
-	RegisterWidget(WidgetEnergy, "Virtual Energy", CategoryRace, 4, 3, false, 15, nil, drawWidgetEnergy)
+type energyWidget struct{}
+
+func (energyWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetEnergy, Label: "Virtual Energy", Category: CategoryRace,
+		DefaultColSpan: 4, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
 }
 
-func drawWidgetEnergy(c WidgetCtx) {
+func (energyWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	virtualenergy := float64(c.Frame.Energy.VirtualEnergy) * 100
@@ -35,3 +41,5 @@ func drawWidgetEnergy(c WidgetCtx) {
 	c.DC.SetColor(ColTextMuted)
 	c.DC.DrawStringAnchored("REGEN", c.CX(), barY+barH+c.H*0.05, 0.5, 0)
 }
+
+func init() { Register(energyWidget{}) }

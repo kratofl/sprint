@@ -6,11 +6,17 @@ import (
 
 const WidgetTyreTemp WidgetType = "tyre_temp"
 
-func init() {
-	RegisterWidget(WidgetTyreTemp, "Tyre Temp", CategoryRace, 10, 4, false, 5, nil, drawWidgetTyreTemp)
+type tyreTempWidget struct{}
+
+func (tyreTempWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetTyreTemp, Label: "Tyre Temp", Category: CategoryRace,
+		DefaultColSpan: 10, DefaultRowSpan: 4,
+		IdleCapable: false, DefaultUpdateHz: 5,
+	}
 }
 
-func drawWidgetTyreTemp(c WidgetCtx) {
+func (tyreTempWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.1)
 	c.DC.SetColor(ColTextMuted)
@@ -32,3 +38,5 @@ func drawWidgetTyreTemp(c WidgetCtx) {
 		c.DC.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tw, ty-2, 1, 0)
 	}
 }
+
+func init() { Register(tyreTempWidget{}) }

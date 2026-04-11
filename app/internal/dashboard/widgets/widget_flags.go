@@ -4,9 +4,17 @@ import "image/color"
 
 const WidgetFlags WidgetType = "flags"
 
-func init() { RegisterWidget(WidgetFlags, "Flags", CategoryRace, 4, 2, true, 30, nil, drawWidgetFlags) }
+type flagsWidget struct{}
 
-func drawWidgetFlags(c WidgetCtx) {
+func (flagsWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetFlags, Label: "Flags", Category: CategoryRace,
+		DefaultColSpan: 4, DefaultRowSpan: 2,
+		IdleCapable: true, DefaultUpdateHz: 30,
+	}
+}
+
+func (flagsWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	fl := c.Frame.Flags
@@ -41,3 +49,5 @@ func drawWidgetFlags(c WidgetCtx) {
 	c.DC.SetColor(col)
 	c.DC.DrawStringAnchored(text, c.X+c.W*0.12+dotSize+c.W*0.04+c.W*0.3, c.CY(), 0.5, 0.5)
 }
+
+func init() { Register(flagsWidget{}) }

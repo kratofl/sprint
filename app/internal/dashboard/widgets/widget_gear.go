@@ -6,9 +6,17 @@ import (
 
 const WidgetGear WidgetType = "gear"
 
-func init() { RegisterWidget(WidgetGear, "Gear", CategoryCar, 3, 3, false, 30, nil, drawWidgetGear) }
+type gearWidget struct{}
 
-func drawWidgetGear(c WidgetCtx) {
+func (gearWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetGear, Label: "Gear", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
+}
+
+func (gearWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	gear := c.Frame.Car.Gear
 	gearStr := "N"
@@ -21,3 +29,5 @@ func drawWidgetGear(c WidgetCtx) {
 	c.DC.SetColor(ColTextPri)
 	c.DC.DrawStringAnchored(gearStr, c.CX(), c.Y+c.H*0.45, 0.5, 0.5)
 }
+
+func init() { Register(gearWidget{}) }

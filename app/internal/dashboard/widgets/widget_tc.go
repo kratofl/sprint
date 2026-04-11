@@ -4,21 +4,28 @@ import "fmt"
 
 const WidgetTC WidgetType = "tc"
 
-func init() {
-	RegisterWidget(WidgetTC, "Traction Control", CategoryCar, 3, 2, false, 15, []ConfigDef{{
-		Key:   "tcMode",
-		Label: "TC Mode",
-		Type:  "select",
-		Options: []Option{
-			{Value: "tc1", Label: "TC1 (Main)"},
-			{Value: "tc2_cut", Label: "TC2 (Cut)"},
-			{Value: "tc3_slip", Label: "TC3 (Slip)"},
-		},
-		Default: "tc1",
-	}}, drawWidgetTC)
+type tcWidget struct{}
+
+func (tcWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetTC, Label: "Traction Control", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 15,
+		ConfigDefs: []ConfigDef{{
+			Key:   "tcMode",
+			Label: "TC Mode",
+			Type:  "select",
+			Options: []Option{
+				{Value: "tc1", Label: "TC1 (Main)"},
+				{Value: "tc2_cut", Label: "TC2 (Cut)"},
+				{Value: "tc3_slip", Label: "TC3 (Slip)"},
+			},
+			Default: "tc1",
+		}},
+	}
 }
 
-func drawWidgetTC(c WidgetCtx) {
+func (tcWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	mode := c.ConfigString("tcMode", "tc1")
@@ -57,3 +64,5 @@ func drawWidgetTC(c WidgetCtx) {
 	// }
 	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(tcWidget{}) }

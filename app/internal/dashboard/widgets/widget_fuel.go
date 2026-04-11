@@ -6,9 +6,17 @@ import (
 
 const WidgetFuel WidgetType = "fuel"
 
-func init() { RegisterWidget(WidgetFuel, "Fuel", CategoryRace, 5, 3, false, 5, nil, drawWidgetFuel) }
+type fuelWidget struct{}
 
-func drawWidgetFuel(c WidgetCtx) {
+func (fuelWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetFuel, Label: "Fuel", Category: CategoryRace,
+		DefaultColSpan: 5, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 5,
+	}
+}
+
+func (fuelWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.12)
 	c.DC.SetColor(ColTextMuted)
@@ -30,3 +38,5 @@ func drawWidgetFuel(c WidgetCtx) {
 		c.DC.DrawString(fmt.Sprintf("~%.0f laps", rem), c.X+12, c.Y+c.H-10)
 	}
 }
+
+func init() { Register(fuelWidget{}) }

@@ -6,13 +6,19 @@ import (
 
 const WidgetHeader WidgetType = "header"
 
-func init() {
-	RegisterWidget(WidgetHeader, "Header", CategoryLayout, 20, 2, true, 5, nil, drawWidgetHeader)
+type headerWidget struct{}
+
+func (headerWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetHeader, Label: "Header", Category: CategoryLayout,
+		DefaultColSpan: 20, DefaultRowSpan: 2,
+		IdleCapable: true, DefaultUpdateHz: 5,
+	}
 }
 
-// drawWidgetHeader renders the session info bar across the top of the screen:
+// Draw renders the session info bar across the top of the screen:
 // app name, track, car, session type, lap counter, and live indicator.
-func drawWidgetHeader(c WidgetCtx) {
+func (headerWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	c.FontLabel(c.H * 0.35)
@@ -35,3 +41,5 @@ func drawWidgetHeader(c WidgetCtx) {
 	c.FontLabel(c.H * 0.25)
 	c.DC.DrawStringAnchored("LIVE", c.X+c.W-10, c.CY(), 1, 0.5)
 }
+
+func init() { Register(headerWidget{}) }

@@ -6,11 +6,17 @@ import (
 
 const WidgetInputTrace WidgetType = "input_trace"
 
-func init() {
-	RegisterWidget(WidgetInputTrace, "Inputs", CategoryCar, 6, 3, false, 30, nil, drawWidgetInputTrace)
+type inputTraceWidget struct{}
+
+func (inputTraceWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetInputTrace, Label: "Inputs", Category: CategoryCar,
+		DefaultColSpan: 6, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
 }
 
-func drawWidgetInputTrace(c WidgetCtx) {
+func (inputTraceWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.08)
 	c.DC.SetColor(ColTextMuted)
@@ -45,3 +51,5 @@ func drawWidgetInputTrace(c WidgetCtx) {
 		}
 	}
 }
+
+func init() { Register(inputTraceWidget{}) }

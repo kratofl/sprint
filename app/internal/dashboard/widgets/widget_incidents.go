@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetIncidents WidgetType = "incidents"
 
-func init() {
-	RegisterWidget(WidgetIncidents, "Incidents", CategoryRace, 3, 2, false, 2, nil, drawWidgetIncidents)
+type incidentsWidget struct{}
+
+func (incidentsWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetIncidents, Label: "Incidents", Category: CategoryRace,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 2,
+	}
 }
 
-func drawWidgetIncidents(c WidgetCtx) {
+func (incidentsWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -27,3 +33,5 @@ func drawWidgetIncidents(c WidgetCtx) {
 	c.DC.SetColor(col)
 	c.DC.DrawStringAnchored(fmt.Sprintf("%d", n), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(incidentsWidget{}) }

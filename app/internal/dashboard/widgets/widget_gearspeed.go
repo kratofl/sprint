@@ -6,13 +6,19 @@ import (
 
 const WidgetGearSpeed WidgetType = "gear_speed"
 
-func init() {
-	RegisterWidget(WidgetGearSpeed, "Gear + Speed", CategoryCar, 5, 3, false, 30, nil, drawWidgetGearSpeed)
+type gearSpeedWidget struct{}
+
+func (gearSpeedWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetGearSpeed, Label: "Gear + Speed", Category: CategoryCar,
+		DefaultColSpan: 5, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
 }
 
-// drawWidgetGearSpeed renders the combined gear + speed panel: a large gear
-// number in the upper portion and the current speed with a "km/h" label below.
-func drawWidgetGearSpeed(c WidgetCtx) {
+// Draw renders the combined gear + speed panel: a large gear number in the
+// upper portion and the current speed with a "km/h" label below.
+func (gearSpeedWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	gear := c.Frame.Car.Gear
@@ -33,3 +39,5 @@ func drawWidgetGearSpeed(c WidgetCtx) {
 	c.DC.SetColor(ColTextMuted)
 	c.DC.DrawStringAnchored("km/h", c.CX(), c.Y+c.H*0.88, 0.5, 0.5)
 }
+
+func init() { Register(gearSpeedWidget{}) }

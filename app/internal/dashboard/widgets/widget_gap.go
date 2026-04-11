@@ -4,7 +4,15 @@ import "fmt"
 
 const WidgetGap WidgetType = "gap"
 
-func init() { RegisterWidget(WidgetGap, "Gap", CategoryRace, 4, 3, false, 15, nil, drawWidgetGap) }
+type gapWidget struct{}
+
+func (gapWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetGap, Label: "Gap", Category: CategoryRace,
+		DefaultColSpan: 4, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
+}
 
 func fmtGap(g float32) string {
 	if g == 0 {
@@ -13,7 +21,7 @@ func fmtGap(g float32) string {
 	return fmt.Sprintf("+%.3f", g)
 }
 
-func drawWidgetGap(c WidgetCtx) {
+func (gapWidget) Draw(c WidgetCtx) {
 	c.Panel()
 
 	topY := c.Y + c.H*0.28
@@ -29,3 +37,5 @@ func drawWidgetGap(c WidgetCtx) {
 	c.DC.DrawStringAnchored(fmtGap(c.Frame.Race.GapAhead), c.CX(), topY+c.H*0.06, 0.5, 0.5)
 	c.DC.DrawStringAnchored(fmtGap(c.Frame.Race.GapBehind), c.CX(), botY+c.H*0.06, 0.5, 0.5)
 }
+
+func init() { Register(gapWidget{}) }

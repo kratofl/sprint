@@ -4,8 +4,10 @@
 package widgets
 
 import (
+	"encoding/hex"
 	"fmt"
 	"image/color"
+	"strings"
 
 	"github.com/fogleman/gg"
 	"github.com/kratofl/sprint/pkg/dto"
@@ -15,8 +17,13 @@ import (
 // Each widget_*.go file defines its own WidgetType constant.
 type WidgetType string
 
-// WidgetFn is the drawing function signature for a dashboard widget.
-type WidgetFn func(WidgetCtx)
+// Widget is the interface implemented by every dashboard widget.
+// Create a new widget by defining a struct that implements this interface,
+// then calling Register in an init() function.
+type Widget interface {
+	Meta() WidgetMeta
+	Draw(ctx WidgetCtx)
+}
 
 // ConfigDef describes one configurable parameter for a widget instance.
 type ConfigDef struct {
@@ -63,39 +70,26 @@ type WidgetMeta struct {
 	DefaultRowSpan  int         `json:"defaultRowSpan"`
 	IdleCapable     bool        `json:"idleCapable"`
 	DefaultUpdateHz float64     `json:"defaultUpdateHz"`
-	Fn              WidgetFn    `json:"-"`
 }
 
 var (
-	widgetRegistry = map[WidgetType]WidgetFn{}
+	widgetRegistry = map[WidgetType]Widget{}
 	widgetMeta     = map[WidgetType]WidgetMeta{}
 )
 
-// RegisterWidget registers a widget with its metadata.
-// category is normalised to lowercase; the display label is looked up from categoryLabels.
+// Register registers a Widget implementation.
+// The update_rate ConfigDef is automatically appended to the widget's ConfigDefs.
 // Call from init() in widget_*.go files.
-func RegisterWidget(t WidgetType, label string, category Category, defaultColSpan, defaultRowSpan int, idleCapable bool, defaultUpdateHz float64, configDefs []ConfigDef, fn WidgetFn) {
-	catLabel, ok := categoryLabels[category]
+func Register(w Widget) {
+	m := w.Meta()
+	catLabel, ok := categoryLabels[m.Category]
 	if !ok {
-		catLabel = string(category)
+		catLabel = string(m.Category)
 	}
-	allDefs := make([]ConfigDef, 0, len(configDefs)+1)
-	allDefs = append(allDefs, configDefs...)
-	allDefs = append(allDefs, updateRateConfigDef(defaultUpdateHz))
-	meta := WidgetMeta{
-		Type:            t,
-		Label:           label,
-		Category:        category,
-		CategoryLabel:   catLabel,
-		ConfigDefs:      allDefs,
-		DefaultColSpan:  defaultColSpan,
-		DefaultRowSpan:  defaultRowSpan,
-		IdleCapable:     idleCapable,
-		DefaultUpdateHz: defaultUpdateHz,
-		Fn:              fn,
-	}
-	widgetRegistry[t] = fn
-	widgetMeta[t] = meta
+	m.CategoryLabel = catLabel
+	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
+	widgetRegistry[m.Type] = w
+	widgetMeta[m.Type] = m
 }
 
 // GetMeta returns the WidgetMeta for the given widget type.
@@ -131,15 +125,15 @@ func WidgetCatalog() []WidgetMeta {
 	return out
 }
 
-// Dispatch calls the registered draw function for the given widget type.
+// Dispatch calls the registered Draw method for the given widget type.
 // w provides the bounding box; FontLoader is the painter's font-loading function.
 // Unknown types are silently skipped.
 func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64, fontLoader func(*gg.Context, string, float64), config map[string]any) {
-	fn, ok := widgetRegistry[t]
+	widget, ok := widgetRegistry[t]
 	if !ok {
 		return
 	}
-	fn(WidgetCtx{
+	widget.Draw(WidgetCtx{
 		DC:         dc,
 		Frame:      frame,
 		X:          x,
@@ -151,26 +145,33 @@ func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, 
 	})
 }
 
-// WidgetCtx is the drawing context passed to every widget renderer.
+// WidgetCtx is the drawing context passed to every widget's Draw method.
 //
 // # Adding a new widget
 //
 //  1. Create app/internal/dashboard/widgets/widget_<name>.go.
-//  2. Define a WidgetType constant, call RegisterWidget in init(), write the draw function.
-//  3. No other files need to change.
+//  2. Define a WidgetType constant and a struct implementing Widget.
+//  3. Call Register in init(). No other files need to change.
 //
 // Example:
 //
 //	const WidgetMyThing WidgetType = "my_thing"
 //
-//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", 4, 3, false, 15, nil, drawMyThing) }
+//	type myThingWidget struct{}
 //
-//	func drawMyThing(c WidgetCtx) {
+//	func (myThingWidget) Meta() WidgetMeta {
+//	    return WidgetMeta{Type: WidgetMyThing, Label: "My Thing", Category: CategoryCar,
+//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: 15}
+//	}
+//
+//	func (myThingWidget) Draw(c WidgetCtx) {
 //	    c.Panel()
 //	    c.FontNumber(c.H * 0.5)
 //	    c.DC.SetColor(ColTextPri)
 //	    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.CY(), 0.5, 0.5)
 //	}
+//
+//	func init() { Register(myThingWidget{}) }
 type WidgetCtx struct {
 	DC         *gg.Context
 	Frame      *dto.TelemetryFrame
@@ -226,6 +227,24 @@ func (c WidgetCtx) ConfigFloat(key string, defaultVal float64) float64 {
 		}
 	}
 	return defaultVal
+}
+
+// ConfigColor parses a hex color string config value (e.g. "#ff906c" or "ff906c").
+// Returns defaultVal if the key is absent or the value cannot be parsed.
+func (c WidgetCtx) ConfigColor(key string, defaultVal color.RGBA) color.RGBA {
+	s := c.ConfigString(key, "")
+	if s == "" {
+		return defaultVal
+	}
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 {
+		return defaultVal
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil || len(b) != 3 {
+		return defaultVal
+	}
+	return color.RGBA{R: b[0], G: b[1], B: b[2], A: 255}
 }
 
 const defaultBw = 1

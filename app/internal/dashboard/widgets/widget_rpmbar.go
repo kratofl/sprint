@@ -2,11 +2,17 @@ package widgets
 
 const WidgetRPMBar WidgetType = "rpm_bar"
 
-func init() {
-	RegisterWidget(WidgetRPMBar, "RPM Bar", CategoryCar, 2, 8, false, 30, nil, drawWidgetRPMBar)
+type rpmBarWidget struct{}
+
+func (rpmBarWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetRPMBar, Label: "RPM Bar", Category: CategoryCar,
+		DefaultColSpan: 2, DefaultRowSpan: 8,
+		IdleCapable: false, DefaultUpdateHz: 30,
+	}
 }
 
-func drawWidgetRPMBar(c WidgetCtx) {
+func (rpmBarWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	rpmPct := clamp01(float64(c.Frame.Car.RPM) / float64(c.Frame.Car.MaxRPM))
 	segs := 20
@@ -29,3 +35,5 @@ func drawWidgetRPMBar(c WidgetCtx) {
 		c.DC.Fill()
 	}
 }
+
+func init() { Register(rpmBarWidget{}) }

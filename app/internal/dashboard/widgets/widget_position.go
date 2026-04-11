@@ -4,11 +4,17 @@ import "fmt"
 
 const WidgetPosition WidgetType = "position"
 
-func init() {
-	RegisterWidget(WidgetPosition, "Position", CategoryRace, 3, 2, false, 2, nil, drawWidgetPosition)
+type positionWidget struct{}
+
+func (positionWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetPosition, Label: "Position", Category: CategoryRace,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 2,
+	}
 }
 
-func drawWidgetPosition(c WidgetCtx) {
+func (positionWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	c.FontLabel(c.H * 0.18)
 	c.DC.SetColor(ColTextMuted)
@@ -30,3 +36,5 @@ func drawWidgetPosition(c WidgetCtx) {
 	c.DC.SetColor(col)
 	c.DC.DrawStringAnchored(posStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(positionWidget{}) }

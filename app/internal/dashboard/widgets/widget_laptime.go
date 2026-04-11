@@ -6,11 +6,17 @@ import (
 
 const WidgetLapTime WidgetType = "lap_time"
 
-func init() {
-	RegisterWidget(WidgetLapTime, "Lap Time", CategoryTiming, 5, 3, false, 15, nil, drawWidgetLapTime)
+type lapTimeWidget struct{}
+
+func (lapTimeWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetLapTime, Label: "Lap Time", Category: CategoryTiming,
+		DefaultColSpan: 5, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
 }
 
-func drawWidgetLapTime(c WidgetCtx) {
+func (lapTimeWidget) Draw(c WidgetCtx) {
 	c.Panel()
 	type lapEntry struct {
 		label string
@@ -35,3 +41,5 @@ func drawWidgetLapTime(c WidgetCtx) {
 		c.DC.DrawStringAnchored(c.FmtLap(l.time), c.X+c.W-12, ly-4, 1, 0)
 	}
 }
+
+func init() { Register(lapTimeWidget{}) }

@@ -4,9 +4,17 @@ import "fmt"
 
 const WidgetABS WidgetType = "abs"
 
-func init() { RegisterWidget(WidgetABS, "ABS", CategoryCar, 3, 2, false, 15, nil, drawWidgetABS) }
+type absWidget struct{}
 
-func drawWidgetABS(c WidgetCtx) {
+func (absWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetABS, Label: "ABS", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: 15,
+	}
+}
+
+func (absWidget) Draw(c WidgetCtx) {
 	if c.Frame.Electronics.ABSActive {
 		c.DC.SetColor(DimColor(ColWarning, 0.15))
 		c.DC.DrawRectangle(c.X, c.Y, c.W, c.H)
@@ -35,3 +43,5 @@ func drawWidgetABS(c WidgetCtx) {
 	// }
 	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func init() { Register(absWidget{}) }
