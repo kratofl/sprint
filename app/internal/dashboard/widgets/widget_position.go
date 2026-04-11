@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetPosition WidgetType = "position"
 
 type positionWidget struct{}
@@ -14,27 +12,15 @@ func (positionWidget) Meta() WidgetMeta {
 	}
 }
 
-func (positionWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("POSITION", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	pos := c.Frame.Race.Position
-	var posStr string
-	var col = ColTextPri
-	if pos == 0 {
-		posStr = "---"
-	} else {
-		posStr = fmt.Sprintf("P%d", pos)
-		if pos == 1 {
-			col = ColAccent
-		}
+func (positionWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "POSITION", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "race.positionStr", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5,
+			Color: ColorExpr{Ref: "fg", When: []ColorWhen{{Binding: "race.positionP1", Ref: "primary"}}}},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(posStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(positionWidget{}) }

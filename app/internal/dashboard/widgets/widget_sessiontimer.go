@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetSessionTimer WidgetType = "session_timer"
 
 type sessionTimerWidget struct{}
@@ -14,29 +12,14 @@ func (sessionTimerWidget) Meta() WidgetMeta {
 	}
 }
 
-func fmtSessionTime(secs float64) string {
-	t := int(secs)
-	if t < 0 {
-		t = 0
+func (sessionTimerWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "SESSION", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "session.sessionTime", Format: "session", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
 	}
-	h := t / 3600
-	m := (t % 3600) / 60
-	s := t % 60
-	if h > 0 {
-		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
-	}
-	return fmt.Sprintf("%02d:%02d", m, s)
-}
-
-func (sessionTimerWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("SESSION", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(fmtSessionTime(c.Frame.Session.SessionTime), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(sessionTimerWidget{}) }

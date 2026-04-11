@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetGearSpeed WidgetType = "gear_speed"
 
 type gearSpeedWidget struct{}
@@ -16,28 +12,16 @@ func (gearSpeedWidget) Meta() WidgetMeta {
 	}
 }
 
-// Draw renders the combined gear + speed panel: a large gear number in the
-// upper portion and the current speed with a "km/h" label below.
-func (gearSpeedWidget) Draw(c WidgetCtx) {
-	c.Panel()
-
-	gear := c.Frame.Car.Gear
-	gearStr := "N"
-	if gear > 0 {
-		gearStr = fmt.Sprintf("%d", gear)
-	} else if gear < 0 {
-		gearStr = "R"
+func (gearSpeedWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.68,
+			X: 0.5, Y: 0.45, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.19,
+			X: 0.5, Y: 0.76, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.08,
+			X: 0.5, Y: 0.88, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
 	}
-	c.FontNumber(c.H * 0.68)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(gearStr, c.CX(), c.Y+c.H*0.45, 0.5, 0.5)
-
-	c.FontNumber(c.H * 0.19)
-	c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.Y+c.H*0.76, 0.5, 0.5)
-
-	c.FontLabel(c.H * 0.08)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("km/h", c.CX(), c.Y+c.H*0.88, 0.5, 0.5)
 }
 
 func init() { Register(gearSpeedWidget{}) }

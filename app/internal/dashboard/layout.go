@@ -47,14 +47,15 @@ type AlertConfig struct {
 // It contains an idle page (shown when player is not in a session),
 // one or more active pages (cycled via commands), and alert settings.
 type DashLayout struct {
-	ID       string      `json:"id"`
-	Name     string      `json:"name"`
-	Default  bool        `json:"default"`
-	GridCols int         `json:"gridCols"`
-	GridRows int         `json:"gridRows"`
-	IdlePage DashPage    `json:"idlePage"`
-	Pages    []DashPage  `json:"pages"` // at least 1 required
-	Alerts   AlertConfig `json:"alerts"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Default  bool              `json:"default"`
+	GridCols int               `json:"gridCols"`
+	GridRows int               `json:"gridRows"`
+	IdlePage DashPage          `json:"idlePage"`
+	Pages    []DashPage        `json:"pages"` // at least 1 required
+	Alerts   AlertConfig       `json:"alerts"`
+	Theme    widgets.DashTheme `json:"theme,omitempty"`
 }
 
 // NewPage creates a DashPage with a new UUID.

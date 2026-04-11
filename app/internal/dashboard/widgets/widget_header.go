@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetHeader WidgetType = "header"
 
 type headerWidget struct{}
@@ -16,30 +12,24 @@ func (headerWidget) Meta() WidgetMeta {
 	}
 }
 
-// Draw renders the session info bar across the top of the screen:
-// app name, track, car, session type, lap counter, and live indicator.
-func (headerWidget) Draw(c WidgetCtx) {
-	c.Panel()
-
-	c.FontLabel(c.H * 0.35)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("SPRINT", c.X+16, c.CY(), 0, 0.5)
-
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(c.Frame.Session.Track, c.X+100, c.CY(), 0, 0.5)
-	c.DC.SetColor(ColTextSec)
-	c.DC.DrawStringAnchored(c.Frame.Session.Car, c.X+282, c.CY(), 0, 0.5)
-	c.DC.DrawStringAnchored(string(c.Frame.Session.SessionType), c.X+492, c.CY(), 0, 0.5)
-
-	c.FontMono(c.H * 0.30)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored(fmt.Sprintf("L%d", c.Frame.Lap.CurrentLap), c.X+c.W-72, c.CY(), 0, 0.5)
-
-	c.DC.SetColor(ColTeal)
-	c.DC.DrawCircle(c.X+c.W-22, c.CY(), 4)
-	c.DC.Fill()
-	c.FontLabel(c.H * 0.25)
-	c.DC.DrawStringAnchored("LIVE", c.X+c.W-10, c.CY(), 1, 0.5)
+func (headerWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "SPRINT", Font: FontLabel, FontScale: 0.35,
+			X: 0.03, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "session.track", Font: FontLabel, FontScale: 0.35,
+			X: 0.18, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Binding: "session.car", Font: FontLabel, FontScale: 0.35,
+			X: 0.45, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemText, Binding: "session.sessionType", Font: FontLabel, FontScale: 0.35,
+			X: 0.65, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemText, Binding: "lap.currentLap", Format: "L%d", Font: FontMono, FontScale: 0.30,
+			X: 0.87, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemDot, DotX: 0.95, DotY: 0.5, DotR: 0.08,
+			Color: ColorExpr{Ref: "accent"}},
+		{Kind: ElemText, Text: "LIVE", Font: FontLabel, FontScale: 0.25,
+			X: 0.975, Y: 0.5, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "accent"}},
+	}
 }
 
 func init() { Register(headerWidget{}) }

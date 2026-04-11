@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetGap WidgetType = "gap"
 
 type gapWidget struct{}
@@ -14,28 +12,18 @@ func (gapWidget) Meta() WidgetMeta {
 	}
 }
 
-func fmtGap(g float32) string {
-	if g == 0 {
-		return "---"
+func (gapWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "GAP+", Font: FontLabel, FontScale: 0.14,
+			X: 0.5, Y: 0.18, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "race.gapAhead", Format: "gap", Font: FontNumber, FontScale: 0.28,
+			X: 0.5, Y: 0.34, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "GAP-", Font: FontLabel, FontScale: 0.14,
+			X: 0.5, Y: 0.62, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "race.gapBehind", Format: "gap", Font: FontNumber, FontScale: 0.28,
+			X: 0.5, Y: 0.78, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
 	}
-	return fmt.Sprintf("+%.3f", g)
-}
-
-func (gapWidget) Draw(c WidgetCtx) {
-	c.Panel()
-
-	topY := c.Y + c.H*0.28
-	botY := c.Y + c.H*0.72
-
-	c.FontLabel(c.H * 0.14)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("GAP+", c.CX(), topY-c.H*0.1, 0.5, 0.5)
-	c.DC.DrawStringAnchored("GAP-", c.CX(), botY-c.H*0.1, 0.5, 0.5)
-
-	c.FontNumber(c.H * 0.28)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(fmtGap(c.Frame.Race.GapAhead), c.CX(), topY+c.H*0.06, 0.5, 0.5)
-	c.DC.DrawStringAnchored(fmtGap(c.Frame.Race.GapBehind), c.CX(), botY+c.H*0.06, 0.5, 0.5)
 }
 
 func init() { Register(gapWidget{}) }

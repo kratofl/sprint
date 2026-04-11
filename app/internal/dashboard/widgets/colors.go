@@ -2,8 +2,6 @@ package widgets
 
 import (
 	"image/color"
-
-	"github.com/fogleman/gg"
 )
 
 // Sprint design tokens — mirroring packages/tokens/src/atoms/colors.ts + molecules/surfaces.ts.
@@ -63,52 +61,4 @@ func clamp01(v float64) float64 {
 		return 1
 	}
 	return v
-}
-
-func drawPanel(dc *gg.Context, x, y, w, h, r, bw float64) {
-	// Draw border as an outer fill, then cover the interior with the background.
-	// Using two fills (no Stroke) avoids the 1px stroke overhang that extends
-	// outside the widget bounds and causes border flickering on isolated widgets.
-	dc.SetColor(ColBorder)
-	dc.DrawRoundedRectangle(x, y, w, h, r)
-	dc.Fill()
-	dc.SetColor(ColBg)
-	dc.DrawRoundedRectangle(x+bw, y+bw, w-bw*2, h-bw*2, r)
-	dc.Fill()
-}
-
-func drawHBar(dc *gg.Context, x, y, w, h, pct float64, col color.RGBA) {
-	pct = clamp01(pct)
-	dc.SetColor(DimColor(col, 0.15))
-	dc.DrawRoundedRectangle(x, y, w, h, 3)
-	dc.Fill()
-	if pct > 0 {
-		dc.SetColor(col)
-		dc.DrawRoundedRectangle(x, y, w*pct, h, 3)
-		dc.Fill()
-	}
-}
-
-// drawHBarCentered draws a horizontal bar where 0.5 is the centre position.
-// Values < 0.5 fill left of centre, values > 0.5 fill right of centre.
-// Used for steering input, where -1…+1 is normalised to 0…1.
-func drawHBarCentered(dc *gg.Context, x, y, w, h, pct float64, col color.RGBA) {
-	pct = clamp01(pct)
-	dc.SetColor(DimColor(col, 0.15))
-	dc.DrawRoundedRectangle(x, y, w, h, 3)
-	dc.Fill()
-	dc.SetColor(DimColor(col, 0.4))
-	dc.DrawRectangle(x+w/2-0.5, y, 1, h)
-	dc.Fill()
-	if pct != 0.5 {
-		dc.SetColor(col)
-		if pct < 0.5 {
-			fillW := (0.5 - pct) * w
-			dc.DrawRoundedRectangle(x+pct*w, y, fillW, h, 3)
-		} else {
-			fillW := (pct - 0.5) * w
-			dc.DrawRoundedRectangle(x+w*0.5, y, fillW, h, 3)
-		}
-		dc.Fill()
-	}
 }

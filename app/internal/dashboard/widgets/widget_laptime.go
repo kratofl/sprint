@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"image/color"
-)
-
 const WidgetLapTime WidgetType = "lap_time"
 
 type lapTimeWidget struct{}
@@ -16,29 +12,23 @@ func (lapTimeWidget) Meta() WidgetMeta {
 	}
 }
 
-func (lapTimeWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	type lapEntry struct {
-		label string
-		time  float64
-		col   color.RGBA
-	}
-	laps := []lapEntry{
-		{"Current", c.Frame.Lap.CurrentLapTime, ColTextPri},
-		{"Last", c.Frame.Lap.LastLapTime, ColTextPri},
-		{"Best", c.Frame.Lap.BestLapTime, ColTeal},
-	}
-	c.FontLabel(c.H * 0.1)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("LAP TIMES", c.X+12, c.Y+c.H*0.15)
-	for i, l := range laps {
-		ly := c.Y + c.H*0.25 + float64(i)*(c.H*0.22)
-		c.FontLabel(c.H * 0.12)
-		c.DC.SetColor(ColTextSec)
-		c.DC.DrawString(l.label, c.X+12, ly)
-		c.FontNumber(c.H * 0.16)
-		c.DC.SetColor(l.col)
-		c.DC.DrawStringAnchored(c.FmtLap(l.time), c.X+c.W-12, ly-4, 1, 0)
+func (lapTimeWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "LAP TIMES", Font: FontLabel, FontScale: 0.1,
+			X: 0.025, Y: 0.15, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Text: "Current", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.3, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemText, Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+			X: 0.975, Y: 0.3, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "Last", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.52, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemText, Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+			X: 0.975, Y: 0.52, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "Best", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.74, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemText, Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+			X: 0.975, Y: 0.74, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "accent"}},
 	}
 }
 

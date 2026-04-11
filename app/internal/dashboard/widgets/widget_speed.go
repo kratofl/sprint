@@ -12,14 +12,14 @@ func (speedWidget) Meta() WidgetMeta {
 	}
 }
 
-func (speedWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.Y+c.H*0.4, 0.5, 0.5)
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("km/h", c.CX(), c.Y+c.H*0.72, 0.5, 0.5)
+func (speedWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.4, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.72, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+	}
 }
 
 func init() { Register(speedWidget{}) }

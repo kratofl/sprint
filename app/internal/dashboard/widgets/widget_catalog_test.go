@@ -114,6 +114,35 @@ func TestWidgetCatalog(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("all widgets return non-nil Definition", func(t *testing.T) {
+		frame := &dto.TelemetryFrame{}
+		for _, m := range catalog {
+			w, ok := Get(m.Type)
+			if !ok {
+				t.Errorf("widget %q missing from registry", m.Type)
+				continue
+			}
+			elems := w.Definition(nil)
+			if elems == nil {
+				t.Errorf("widget %q returned nil from Definition(nil)", m.Type)
+			}
+			_ = frame
+		}
+	})
+
+	t.Run("tc widget Definition with config", func(t *testing.T) {
+		w, ok := Get(WidgetTC)
+		if !ok {
+			t.Fatal("tc widget not in registry")
+		}
+		for _, mode := range []string{"tc1", "tc2_cut", "tc3_slip"} {
+			elems := w.Definition(map[string]any{"tcMode": mode})
+			if len(elems) == 0 {
+				t.Errorf("tc widget mode=%q returned no elements", mode)
+			}
+		}
+	})
 }
 
 func TestResolve(t *testing.T) {
@@ -198,6 +227,12 @@ func TestFormatValue(t *testing.T) {
 		{"sprintf pattern", 42.0, "%.0f km/h", "42 km/h"},
 		{"empty format", "hello", "", "hello"},
 		{"int via sprint", 7, "", "7"},
+		{"delta positive", 1.234, "delta", "+1.234"},
+		{"delta negative", -0.456, "delta", "-0.456"},
+		{"gap nonzero", float32(1.5), "gap", "+1.500"},
+		{"gap zero", float32(0), "gap", "---"},
+		{"session hours", 3661.0, "session", "1:01:01"},
+		{"session minutes", 90.0, "session", "01:30"},
 	}
 
 	for _, tc := range cases {

@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetEngineMap WidgetType = "engine_map"
 
 type engineMapWidget struct{}
@@ -14,23 +12,14 @@ func (engineMapWidget) Meta() WidgetMeta {
 	}
 }
 
-func (engineMapWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("ENGINE MAP", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	e := c.Frame.Electronics
-	var valStr string
-	if e.MotorMapMax == 0 {
-		valStr = fmt.Sprintf("%d", e.MotorMap)
-	} else {
-		valStr = fmt.Sprintf("MAP %d", e.MotorMap)
+func (engineMapWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "ENGINE MAP", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "electronics.motorMap", Format: "MAP %d", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "primary"}},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(ColAccent)
-	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(engineMapWidget{}) }

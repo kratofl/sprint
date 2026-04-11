@@ -1,16 +1,12 @@
-// Package widgets contains the widget registry, draw context, and all widget
-// implementations for the dashboard. It has no internal imports so it can be
-// imported by dashboard/ without creating cycles.
+// Package widgets contains the widget registry, element types, and all widget
+// definitions for the dashboard. Widgets are pure data — they return []Element
+// describing what to draw. All rendering lives in the dashboard/painter package.
+// This package has no dependency on gg, so it can be tested without a display.
 package widgets
 
 import (
-	"encoding/hex"
 	"fmt"
-	"image/color"
-	"strings"
-
-	"github.com/fogleman/gg"
-	"github.com/kratofl/sprint/pkg/dto"
+	"strconv"
 )
 
 // WidgetType is the canonical identifier for a dashboard widget kind.
@@ -18,11 +14,41 @@ import (
 type WidgetType string
 
 // Widget is the interface implemented by every dashboard widget.
-// Create a new widget by defining a struct that implements this interface,
-// then calling Register in an init() function.
+// Definition returns a slice of elements describing the widget's visuals.
+// config holds the per-instance configuration from DashWidget.Config.
+// No gg drawing calls should appear in any Widget implementation — all
+// rendering is centralised in the dashboard Painter.
+//
+// # Adding a new widget
+//
+//  1. Create app/internal/dashboard/widgets/widget_<name>.go.
+//  2. Define a WidgetType constant and a struct implementing Widget.
+//  3. Call Register in init(). No other files need to change.
+//
+// Example:
+//
+//	const WidgetMyThing WidgetType = "my_thing"
+//
+//	type myThingWidget struct{}
+//
+//	func (myThingWidget) Meta() WidgetMeta {
+//	    return WidgetMeta{Type: WidgetMyThing, Label: "My Thing", Category: CategoryCar,
+//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: 15}
+//	}
+//
+//	func (myThingWidget) Definition(_ map[string]any) []Element {
+//	    return []Element{
+//	        {Kind: ElemPanel},
+//	        {Kind: ElemText, Binding: "car.speedKPH", Format: "int",
+//	         Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
+//	         AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+//	    }
+//	}
+//
+//	func init() { Register(myThingWidget{}) }
 type Widget interface {
 	Meta() WidgetMeta
-	Draw(ctx WidgetCtx)
+	Definition(config map[string]any) []Element
 }
 
 // ConfigDef describes one configurable parameter for a widget instance.
@@ -58,8 +84,8 @@ var categoryLabels = map[Category]string{
 	CategoryRace:   "Race",
 }
 
-// WidgetMeta holds the type, display name, palette category, and draw function.
-// The Fn field is never serialised; it is used only by the render pipeline.
+// WidgetMeta holds the widget type, display name, palette category,
+// config schema, and default grid dimensions.
 type WidgetMeta struct {
 	Type            WidgetType  `json:"type"`
 	Label           string      `json:"label"`
@@ -90,6 +116,12 @@ func Register(w Widget) {
 	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
 	widgetRegistry[m.Type] = w
 	widgetMeta[m.Type] = m
+}
+
+// Get returns the registered Widget for the given type, or (nil, false) if unknown.
+func Get(t WidgetType) (Widget, bool) {
+	w, ok := widgetRegistry[t]
+	return w, ok
 }
 
 // GetMeta returns the WidgetMeta for the given widget type.
@@ -125,72 +157,12 @@ func WidgetCatalog() []WidgetMeta {
 	return out
 }
 
-// Dispatch calls the registered Draw method for the given widget type.
-// w provides the bounding box; FontLoader is the painter's font-loading function.
-// Unknown types are silently skipped.
-func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64, fontLoader func(*gg.Context, string, float64), config map[string]any) {
-	widget, ok := widgetRegistry[t]
-	if !ok {
-		return
-	}
-	widget.Draw(WidgetCtx{
-		DC:         dc,
-		Frame:      frame,
-		X:          x,
-		Y:          y,
-		W:          w,
-		H:          h,
-		FontLoader: fontLoader,
-		Config:     config,
-	})
-}
-
-// WidgetCtx is the drawing context passed to every widget's Draw method.
-//
-// # Adding a new widget
-//
-//  1. Create app/internal/dashboard/widgets/widget_<name>.go.
-//  2. Define a WidgetType constant and a struct implementing Widget.
-//  3. Call Register in init(). No other files need to change.
-//
-// Example:
-//
-//	const WidgetMyThing WidgetType = "my_thing"
-//
-//	type myThingWidget struct{}
-//
-//	func (myThingWidget) Meta() WidgetMeta {
-//	    return WidgetMeta{Type: WidgetMyThing, Label: "My Thing", Category: CategoryCar,
-//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: 15}
-//	}
-//
-//	func (myThingWidget) Draw(c WidgetCtx) {
-//	    c.Panel()
-//	    c.FontNumber(c.H * 0.5)
-//	    c.DC.SetColor(ColTextPri)
-//	    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.CY(), 0.5, 0.5)
-//	}
-//
-//	func init() { Register(myThingWidget{}) }
-type WidgetCtx struct {
-	DC         *gg.Context
-	Frame      *dto.TelemetryFrame
-	X, Y, W, H float64
-	// FontLoader loads a named font face at the given size onto dc.
-	// Provided by the Painter — use the FontXxx helpers instead of calling directly.
-	FontLoader func(dc *gg.Context, name string, size float64)
-	// Config holds optional widget-specific configuration from the layout.
-	Config map[string]any
-}
-
-// Layout helpers.
-
-// ConfigString returns a string config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigString(key, defaultVal string) string {
-	if c.Config == nil {
+// configString returns a string config value by key, or defaultVal if absent.
+func configString(config map[string]any, key, defaultVal string) string {
+	if config == nil {
 		return defaultVal
 	}
-	if v, ok := c.Config[key]; ok {
+	if v, ok := config[key]; ok {
 		if s, ok := v.(string); ok {
 			return s
 		}
@@ -198,86 +170,23 @@ func (c WidgetCtx) ConfigString(key, defaultVal string) string {
 	return defaultVal
 }
 
-// ConfigBool returns a bool config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigBool(key string, defaultVal bool) bool {
-	if c.Config == nil {
+// configFloat returns a float64 config value by key, or defaultVal if absent or unparseable.
+func configFloat(config map[string]any, key string, defaultVal float64) float64 {
+	if config == nil {
 		return defaultVal
 	}
-	if v, ok := c.Config[key]; ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return defaultVal
-}
-
-// ConfigFloat returns a float64 config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigFloat(key string, defaultVal float64) float64 {
-	if c.Config == nil {
-		return defaultVal
-	}
-	if v, ok := c.Config[key]; ok {
+	if v, ok := config[key]; ok {
 		switch n := v.(type) {
 		case float64:
 			return n
-		case float32:
-			return float64(n)
-		case int:
-			return float64(n)
+		case string:
+			if f, err := strconv.ParseFloat(n, 64); err == nil {
+				return f
+			}
 		}
 	}
 	return defaultVal
 }
-
-// ConfigColor parses a hex color string config value (e.g. "#ff906c" or "ff906c").
-// Returns defaultVal if the key is absent or the value cannot be parsed.
-func (c WidgetCtx) ConfigColor(key string, defaultVal color.RGBA) color.RGBA {
-	s := c.ConfigString(key, "")
-	if s == "" {
-		return defaultVal
-	}
-	s = strings.TrimPrefix(s, "#")
-	if len(s) != 6 {
-		return defaultVal
-	}
-	b, err := hex.DecodeString(s)
-	if err != nil || len(b) != 3 {
-		return defaultVal
-	}
-	return color.RGBA{R: b[0], G: b[1], B: b[2], A: 255}
-}
-
-const defaultBw = 1
-
-func (c WidgetCtx) Panel()                 { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, defaultBw) }
-func (c WidgetCtx) PanelR(r float64)       { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, defaultBw) }
-func (c WidgetCtx) PanelBW(bw float64)     { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, bw) }
-func (c WidgetCtx) PanelRBW(r, bw float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, bw) }
-func (c WidgetCtx) CX() float64            { return c.X + c.W/2 }
-func (c WidgetCtx) CY() float64            { return c.Y + c.H/2 }
-
-// Font helpers.
-
-func (c WidgetCtx) FontLabel(size float64)  { c.FontLoader(c.DC, "SpaceGrotesk-Regular.ttf", size) }
-func (c WidgetCtx) FontBold(size float64)   { c.FontLoader(c.DC, "SpaceGrotesk-Bold.ttf", size) }
-func (c WidgetCtx) FontNumber(size float64) { c.FontLoader(c.DC, "JetBrainsMono-Bold.ttf", size) }
-func (c WidgetCtx) FontMono(size float64)   { c.FontLoader(c.DC, "JetBrainsMono-Regular.ttf", size) }
-
-// Bar helpers.
-
-func (c WidgetCtx) HBar(x, y, w, h, pct float64, col color.RGBA) {
-	drawHBar(c.DC, x, y, w, h, pct, col)
-}
-
-func (c WidgetCtx) HBarCentered(x, y, w, h, pct float64, col color.RGBA) {
-	drawHBarCentered(c.DC, x, y, w, h, pct, col)
-}
-
-// Formatter helpers.
-
-func (c WidgetCtx) FmtLap(t float64) string    { return FmtLap(t) }
-func (c WidgetCtx) FmtSector(t float64) string { return FmtSector(t) }
-func (c WidgetCtx) FmtSpeed(ms float64) string { return fmt.Sprintf("%.0f", ms*3.6) }
 
 // FmtLap formats t (seconds) as "M:SS.mmm". Returns "-.---.---" when t ≤ 0.
 func FmtLap(seconds float64) string {

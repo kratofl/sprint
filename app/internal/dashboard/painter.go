@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -167,7 +168,12 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	pw := float64(w.ColSpan) * cellW
 	ph := float64(w.RowSpan) * cellH
 
-	meta, _ := widgets.GetMeta(w.Type)
+	widget, ok := widgets.Get(w.Type)
+	if !ok {
+		return
+	}
+
+	meta := widget.Meta()
 	hz := widgetUpdateHz(w.Config, meta.DefaultUpdateHz)
 	if hz > 0 {
 		intervalNano := int64(float64(time.Second) / hz)
@@ -178,7 +184,12 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		}
 	}
 
-	widgets.Dispatch(w.Type, dc, frame, x, y, pw, ph, p.face, w.Config)
+	theme := layout.Theme
+	if theme == (widgets.DashTheme{}) {
+		theme = widgets.DefaultTheme()
+	}
+	elems := widget.Definition(w.Config)
+	p.renderElements(dc, frame, theme, x, y, pw, ph, elems)
 
 	if hz > 0 {
 		p.saveCache(dc, w.ID, int(x), int(y), int(pw), int(ph))
@@ -202,6 +213,397 @@ func widgetUpdateHz(config map[string]any, defaultHz float64) float64 {
 		}
 	}
 	return defaultHz
+}
+
+// renderElements renders a slice of elements within the widget bounding box.
+func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elems []widgets.Element) {
+	for _, e := range elems {
+		p.renderElement(dc, frame, theme, x, y, w, h, e)
+	}
+}
+
+// renderElement renders a single element within the widget bounding box.
+func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	switch elem.Kind {
+	case widgets.ElemPanel:
+		p.renderPanel(dc, theme, x, y, w, h, elem)
+	case widgets.ElemText:
+		p.renderText(dc, frame, theme, x, y, w, h, elem)
+	case widgets.ElemDot:
+		p.renderDot(dc, frame, theme, x, y, w, h, elem)
+	case widgets.ElemHBar:
+		p.renderHBar(dc, frame, theme, x, y, w, h, elem)
+	case widgets.ElemDeltaBar:
+		p.renderDeltaBar(dc, frame, theme, x, y, w, h, elem)
+	case widgets.ElemSegBar:
+		p.renderSegBar(dc, frame, theme, x, y, w, h, elem)
+	case widgets.ElemTyreGrid:
+		p.renderTyreGrid(dc, frame, theme, x, y, w, h)
+	case widgets.ElemCondition:
+		p.renderCondition(dc, frame, theme, x, y, w, h, elem)
+	}
+}
+
+// renderPanel draws the widget background (border + fill) plus an optional FillColor overlay.
+func (p *Painter) renderPanel(dc *gg.Context, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	if elem.FillColor != "" && elem.FillAlpha > 0 {
+		fc := widgets.ThemeColor(theme, elem.FillColor)
+		dc.SetRGBA255(int(fc.R), int(fc.G), int(fc.B), int(elem.FillAlpha*255))
+		dc.DrawRectangle(x, y, w, h)
+		dc.Fill()
+	}
+	if !elem.NoBorder {
+		painterDrawPanel(dc, x, y, w, h, elem.CornerR, 1)
+	}
+}
+
+// renderText resolves the binding or uses the static Text, formats the value,
+// and draws it at the fractional position within the widget bounding box.
+func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	var display string
+	if elem.Binding != "" {
+		if val, ok := widgets.Resolve(frame, elem.Binding); ok {
+			display = widgets.FormatValue(val, elem.Format)
+		} else {
+			display = elem.Text
+		}
+	} else {
+		display = elem.Text
+	}
+	if display == "" {
+		return
+	}
+
+	size := elem.FontScale * h
+	if size <= 0 {
+		return
+	}
+
+	fontName := fontFileName(elem.Font)
+	p.face(dc, fontName, size)
+
+	col := p.resolveColorExpr(frame, theme, elem.Color)
+	dc.SetColor(col)
+	dc.DrawStringAnchored(display, x+elem.X*w, y+elem.Y*h, elem.AnchorX, elem.AnchorY)
+}
+
+// renderDot draws a filled circle at the fractional position within the widget.
+func (p *Painter) renderDot(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	col := p.resolveColorExpr(frame, theme, elem.Color)
+	dc.SetColor(col)
+	cx := x + elem.DotX*w
+	cy := y + elem.DotY*h
+	r := elem.DotR * h
+	dc.DrawCircle(cx, cy, r)
+	dc.Fill()
+}
+
+// renderHBar draws a horizontal fill bar (normal or centred-fraction).
+func (p *Painter) renderHBar(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	var pct float64
+	if elem.BarBinding != "" {
+		if val, ok := widgets.Resolve(frame, elem.BarBinding); ok {
+			if f, ok := toFloat64(val); ok {
+				pct = f
+			}
+		}
+	}
+	bgRef := elem.BgColor
+	if bgRef == "" {
+		bgRef = "surface"
+	}
+	col := p.resolveColorExpr(frame, theme, elem.BarColor)
+	bg := widgets.ThemeColor(theme, bgRef)
+	bx := x + elem.BarX*w
+	by := y + elem.BarY*h
+	bw := elem.BarW * w
+	bh := elem.BarH * h
+	if elem.BarCentered {
+		painterDrawHBarCentered(dc, bx, by, bw, bh, pct, col, bg)
+	} else {
+		painterDrawHBar(dc, bx, by, bw, bh, pct, col, bg)
+	}
+}
+
+// renderDeltaBar draws a signed centred bar (lap delta).
+func (p *Painter) renderDeltaBar(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	var delta float64
+	if elem.BarBinding != "" {
+		if val, ok := widgets.Resolve(frame, elem.BarBinding); ok {
+			if f, ok := toFloat64(val); ok {
+				delta = f
+			}
+		}
+	}
+	bgRef := elem.BgColor
+	if bgRef == "" {
+		bgRef = "surface"
+	}
+	bg := widgets.ThemeColor(theme, bgRef)
+	bx := x + elem.BarX*w
+	by := y + elem.BarY*h
+	bw := elem.BarW * w
+	bh := elem.BarH * h
+	maxD := elem.MaxDelta
+	if maxD <= 0 {
+		maxD = 2.0
+	}
+	pct := math.Max(-1, math.Min(1, delta/maxD))
+	mid := bx + bw/2
+	fw := math.Abs(pct) * bw / 2
+
+	dc.SetColor(bg)
+	dc.DrawRoundedRectangle(bx, by, bw, bh, 3)
+	dc.Fill()
+
+	if delta > 0 {
+		col := p.resolveColorExpr(frame, theme, elem.PosColor)
+		dc.SetColor(col)
+		dc.DrawRoundedRectangle(mid, by+1, fw, bh-2, 2)
+		dc.Fill()
+	} else if delta < 0 {
+		col := p.resolveColorExpr(frame, theme, elem.NegColor)
+		dc.SetColor(col)
+		dc.DrawRoundedRectangle(mid-fw, by+1, fw, bh-2, 2)
+		dc.Fill()
+	}
+}
+
+// renderSegBar draws a vertical segmented bar (RPM indicator).
+func (p *Painter) renderSegBar(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	var pct float64
+	if elem.SegBinding != "" {
+		if val, ok := widgets.Resolve(frame, elem.SegBinding); ok {
+			if f, ok := toFloat64(val); ok {
+				pct = f
+			}
+		}
+	}
+	segs := elem.Segments
+	if segs <= 0 {
+		segs = 20
+	}
+	segH := (h - 12) / float64(segs)
+	filled := int(float64(segs) * clamp01(pct))
+	for i := 0; i < segs; i++ {
+		sy := y + 6 + (h-12) - float64(i+1)*segH
+		segPct := float64(i) / float64(segs)
+		col := p.segStopColor(theme, elem.SegStops, segPct)
+		if i >= filled {
+			col = widgets.DimColor(col, 0.15)
+		}
+		dc.SetColor(col)
+		dc.DrawRoundedRectangle(x+5, sy+1, w-10, segH-2, 2)
+		dc.Fill()
+	}
+}
+
+// segStopColor resolves the color for a segment bar at the given pct position.
+func (p *Painter) segStopColor(theme widgets.DashTheme, stops []widgets.SegColorStop, pct float64) color.RGBA {
+	col := widgets.ThemeColor(theme, "accent")
+	for _, stop := range stops {
+		if pct >= stop.At {
+			col = widgets.ThemeColor(theme, stop.Color)
+		}
+	}
+	return col
+}
+
+// renderTyreGrid draws the 2×2 tyre temperature grid.
+func (p *Painter) renderTyreGrid(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64) {
+	labels := [4]string{"FL", "FR", "RL", "RR"}
+	tireW := (w - 36) / 2
+	p.face(dc, "SpaceGrotesk-Regular.ttf", h*0.12)
+	for i, tire := range frame.Tires {
+		col := i % 2
+		row := i / 2
+		tx := x + 12 + float64(col)*(tireW+12)
+		ty := y + h*0.3 + float64(row)*(h*0.32)
+		avgTemp := (float64(tire.TempInner) + float64(tire.TempMiddle) + float64(tire.TempOuter)) / 3
+		dc.SetColor(widgets.ThemeColor(theme, "muted"))
+		dc.DrawString(labels[i], tx, ty)
+		p.face(dc, "JetBrainsMono-Bold.ttf", h*0.2)
+		dc.SetColor(widgets.TyreColor(avgTemp))
+		dc.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tireW, ty-2, 1, 0)
+	}
+}
+
+// renderCondition evaluates the condition binding and renders Then or Else elements.
+func (p *Painter) renderCondition(dc *gg.Context, frame *dto.TelemetryFrame, theme widgets.DashTheme, x, y, w, h float64, elem widgets.Element) {
+	cond := false
+	if val, ok := widgets.Resolve(frame, elem.CondBinding); ok {
+		cond = isTruthy(val, elem.CondAbove)
+	}
+	if cond {
+		p.renderElements(dc, frame, theme, x, y, w, h, elem.Then)
+	} else {
+		p.renderElements(dc, frame, theme, x, y, w, h, elem.Else)
+	}
+}
+
+// resolveColorExpr resolves a ColorExpr to a concrete color against the frame and theme.
+func (p *Painter) resolveColorExpr(frame *dto.TelemetryFrame, theme widgets.DashTheme, expr widgets.ColorExpr) color.RGBA {
+	for _, when := range expr.When {
+		if val, ok := widgets.Resolve(frame, when.Binding); ok {
+			match := false
+			if when.Equals != nil {
+				if f, ok := toFloat64(val); ok {
+					match = f == *when.Equals
+				}
+			} else {
+				match = isTruthy(val, when.Above)
+			}
+			if match {
+				return widgets.ThemeColor(theme, when.Ref)
+			}
+		}
+	}
+	if expr.DynamicRef != "" {
+		if val, ok := widgets.Resolve(frame, expr.DynamicRef); ok {
+			if s, ok := val.(string); ok {
+				return widgets.ThemeColor(theme, widgets.ColorRef(s))
+			}
+		}
+	}
+	return widgets.ThemeColor(theme, expr.Ref)
+}
+
+// isTruthy returns true when val is considered "truthy" (> above, or non-zero/non-false).
+func isTruthy(val any, above float64) bool {
+	switch v := val.(type) {
+	case bool:
+		return v
+	case float64:
+		return v > above
+	case float32:
+		return float64(v) > above
+	case int:
+		return float64(v) > above
+	case int8:
+		return float64(v) > above
+	case int16:
+		return float64(v) > above
+	case int32:
+		return float64(v) > above
+	case int64:
+		return float64(v) > above
+	case uint:
+		return float64(v) > above
+	case uint8:
+		return float64(v) > above
+	case uint16:
+		return float64(v) > above
+	case uint32:
+		return float64(v) > above
+	case uint64:
+		return float64(v) > above
+	case string:
+		return v != ""
+	}
+	return false
+}
+
+// toFloat64 converts common numeric types to float64.
+func toFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int8:
+		return float64(n), true
+	case int16:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint8:
+		return float64(n), true
+	case uint16:
+		return float64(n), true
+	case uint32:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	}
+	return 0, false
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+// fontFileName maps a FontStyle to the actual TTF file name.
+func fontFileName(fs widgets.FontStyle) string {
+	switch fs {
+	case widgets.FontBold:
+		return "SpaceGrotesk-Bold.ttf"
+	case widgets.FontNumber:
+		return "JetBrainsMono-Bold.ttf"
+	case widgets.FontMono:
+		return "JetBrainsMono-Regular.ttf"
+	default:
+		return "SpaceGrotesk-Regular.ttf"
+	}
+}
+
+// painterDrawPanel draws a bordered panel: border ring then background interior.
+func painterDrawPanel(dc *gg.Context, x, y, w, h, r, bw float64) {
+	dc.SetColor(widgets.ColBorder)
+	dc.DrawRoundedRectangle(x, y, w, h, r)
+	dc.Fill()
+	dc.SetColor(widgets.ColBg)
+	dc.DrawRoundedRectangle(x+bw, y+bw, w-bw*2, h-bw*2, r)
+	dc.Fill()
+}
+
+// painterDrawHBar draws a left-fill progress bar with a dim track.
+func painterDrawHBar(dc *gg.Context, x, y, w, h, pct float64, col, bg color.RGBA) {
+	pct = clamp01(pct)
+	dc.SetColor(widgets.DimColor(col, 0.15))
+	dc.DrawRoundedRectangle(x, y, w, h, 3)
+	dc.Fill()
+	if pct > 0 {
+		dc.SetColor(col)
+		dc.DrawRoundedRectangle(x, y, w*pct, h, 3)
+		dc.Fill()
+	}
+	_ = bg
+}
+
+// painterDrawHBarCentered draws a horizontal bar where 0.5 is the centre.
+// Values < 0.5 fill left of centre, values > 0.5 fill right of centre.
+func painterDrawHBarCentered(dc *gg.Context, x, y, w, h, pct float64, col, bg color.RGBA) {
+	pct = clamp01(pct)
+	dc.SetColor(widgets.DimColor(col, 0.15))
+	dc.DrawRoundedRectangle(x, y, w, h, 3)
+	dc.Fill()
+	dc.SetColor(widgets.DimColor(col, 0.4))
+	dc.DrawRectangle(x+w/2-0.5, y, 1, h)
+	dc.Fill()
+	if pct != 0.5 {
+		dc.SetColor(col)
+		if pct < 0.5 {
+			fillW := (0.5 - pct) * w
+			dc.DrawRoundedRectangle(x+pct*w, y, fillW, h, 3)
+		} else {
+			fillW := (pct - 0.5) * w
+			dc.DrawRoundedRectangle(x+w*0.5, y, fillW, h, 3)
+		}
+		dc.Fill()
+	}
+	_ = bg
 }
 
 // blitCache copies the cached widget pixels back onto the canvas.

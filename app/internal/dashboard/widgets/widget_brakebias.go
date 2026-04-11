@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetBrakeBias WidgetType = "brake_bias"
 
 type brakeBiasWidget struct{}
@@ -14,21 +12,15 @@ func (brakeBiasWidget) Meta() WidgetMeta {
 	}
 }
 
-func (brakeBiasWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("BRAKE BIAS", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	bias := c.Frame.Car.BrakeBiasRear
-	col := ColTextPri
-	if bias < 0.45 {
-		col = ColWarning
+func (brakeBiasWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "BRAKE BIAS", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "car.brakeBiasPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5,
+			Color: ColorExpr{Ref: "fg", When: []ColorWhen{{Binding: "car.brakeBiasWarning", Ref: "warning"}}}},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%.1f%%", float64(bias)*100), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(brakeBiasWidget{}) }

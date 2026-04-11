@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"image/color"
-)
-
 const WidgetInputTrace WidgetType = "input_trace"
 
 type inputTraceWidget struct{}
@@ -16,40 +12,36 @@ func (inputTraceWidget) Meta() WidgetMeta {
 	}
 }
 
-func (inputTraceWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.08)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("INPUTS", c.X+10, c.Y+c.H*0.14)
-
-	barX := c.X + 52.0
-	barW := c.W - 62.0
-	barH := c.H * 0.12
-	rowH := c.H / 4
-
-	type inputRow struct {
-		label string
-		value float64
-		col   color.RGBA
+func (inputTraceWidget) Definition(_ map[string]any) []Element {
+	const barX, barW, barH = 0.22, 0.76, 0.12
+	type row struct {
+		label    string
+		binding  string
+		centered bool
+		color    ColorRef
 	}
-	steerNorm := (float64(c.Frame.Car.Steering) + 1.0) / 2.0
-	rows := []inputRow{
-		{"THR", float64(c.Frame.Car.Throttle), ColSuccess},
-		{"BRK", float64(c.Frame.Car.Brake), ColDanger},
-		{"CLU", float64(c.Frame.Car.Clutch), ColTextSec},
-		{"STR", steerNorm, ColTextSec},
+	rows := []row{
+		{"THR", "car.throttle", false, "success"},
+		{"BRK", "car.brake", false, "danger"},
+		{"CLU", "car.clutch", false, "muted2"},
+		{"STR", "car.steeringNorm", true, "muted2"},
 	}
-	for i, row := range rows {
-		cy := c.Y + rowH*(float64(i)+0.5)
-		c.FontLabel(c.H * 0.09)
-		c.DC.SetColor(ColTextMuted)
-		c.DC.DrawStringAnchored(row.label, c.X+34, cy, 1, 0.5)
-		if i == 3 {
-			c.HBarCentered(barX, cy-barH/2, barW, barH, row.value, row.col)
-		} else {
-			c.HBar(barX, cy-barH/2, barW, barH, row.value, row.col)
-		}
+	elems := []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "INPUTS", Font: FontLabel, FontScale: 0.08,
+			X: 0.025, Y: 0.08, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
 	}
+	for i, r := range rows {
+		cy := 0.125 + float64(i)*0.25
+		elems = append(elems,
+			Element{Kind: ElemText, Text: r.label, Font: FontLabel, FontScale: 0.09,
+				X: 0.2, Y: cy, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+			Element{Kind: ElemHBar, BarBinding: r.binding,
+				BarX: barX, BarY: cy - barH/2, BarW: barW, BarH: barH,
+				BarCentered: r.centered, BarColor: ColorExpr{Ref: r.color}},
+		)
+	}
+	return elems
 }
 
 func init() { Register(inputTraceWidget{}) }

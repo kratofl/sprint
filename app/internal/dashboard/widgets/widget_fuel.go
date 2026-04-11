@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetFuel WidgetType = "fuel"
 
 type fuelWidget struct{}
@@ -16,26 +12,20 @@ func (fuelWidget) Meta() WidgetMeta {
 	}
 }
 
-func (fuelWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("FUEL", c.X+12, c.Y+c.H*0.22)
-
-	c.FontNumber(c.H * 0.32)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawString(fmt.Sprintf("%.1f L", c.Frame.Car.Fuel), c.X+12, c.Y+c.H*0.58)
-
-	c.FontMono(c.H * 0.16)
-	c.DC.SetColor(ColTextSec)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%.2f L/lap", c.Frame.Car.FuelPerLap),
-		c.X+c.W-12, c.Y+c.H*0.56, 1, 0)
-
-	if c.Frame.Car.FuelPerLap > 0 {
-		rem := float64(c.Frame.Car.Fuel) / float64(c.Frame.Car.FuelPerLap)
-		c.FontLabel(c.H * 0.14)
-		c.DC.SetColor(ColTextMuted)
-		c.DC.DrawString(fmt.Sprintf("~%.0f laps", rem), c.X+12, c.Y+c.H-10)
+func (fuelWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "FUEL", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.22, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "car.fuel", Format: "%.1f L", Font: FontNumber, FontScale: 0.32,
+			X: 0.025, Y: 0.58, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Binding: "car.fuelPerLap", Format: "%.2f L/lap", Font: FontMono, FontScale: 0.16,
+			X: 0.975, Y: 0.56, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+		{Kind: ElemCondition, CondBinding: "car.fuelLapsRemaining", CondAbove: 0,
+			Then: []Element{
+				{Kind: ElemText, Binding: "car.fuelLapsRemaining", Format: "~%.0f laps", Font: FontLabel, FontScale: 0.14,
+					X: 0.025, Y: 0.9, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+			}},
 	}
 }
 

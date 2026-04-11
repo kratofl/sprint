@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetTC WidgetType = "tc"
 
 type tcWidget struct{}
@@ -25,44 +23,28 @@ func (tcWidget) Meta() WidgetMeta {
 	}
 }
 
-func (tcWidget) Draw(c WidgetCtx) {
-	c.Panel()
-
-	mode := c.ConfigString("tcMode", "tc1")
-
-	var val uint8
-	var label string
-	var active bool
-
-	e := c.Frame.Electronics
+func (tcWidget) Definition(config map[string]any) []Element {
+	mode := configString(config, "tcMode", "tc1")
+	var binding, label, activeBinding string
 	switch mode {
 	case "tc2_cut":
-		val, label = e.TCCut, "TC2"
+		binding, label = "electronics.tcCut", "TC2"
 	case "tc3_slip":
-		val, label = e.TCSlip, "TC3"
+		binding, label = "electronics.tcSlip", "TC3"
 	default:
-		val, label, active = e.TC, "TC1", e.TCActive
+		binding, label, activeBinding = "electronics.tc", "TC1", "electronics.tcActive"
 	}
-
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored(label, c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	col := ColTextPri
-	if active {
-		col = ColTeal
+	col := ColorExpr{Ref: "fg"}
+	if activeBinding != "" {
+		col.When = []ColorWhen{{Binding: activeBinding, Ref: "accent"}}
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	var valStr string
-	valStr = fmt.Sprintf("%d", val)
-	// if max == 0 {
-	// 	valStr = fmt.Sprintf("%d", val)
-	// } else {
-	// 	valStr = fmt.Sprintf("%d / %d", val, max)
-	// }
-	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: label, Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5, Color: col},
+	}
 }
 
 func init() { Register(tcWidget{}) }

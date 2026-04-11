@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetIncidents WidgetType = "incidents"
 
 type incidentsWidget struct{}
@@ -14,24 +12,21 @@ func (incidentsWidget) Meta() WidgetMeta {
 	}
 }
 
-func (incidentsWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("INCIDENTS", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	n := c.Frame.Penalties.Incidents
-	col := ColSuccess
-	switch {
-	case n > 3:
-		col = ColDanger
-	case n > 0:
-		col = ColWarning
+func (incidentsWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "INCIDENTS", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "penalties.incidents", Format: "int", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5,
+			Color: ColorExpr{
+				Ref: "success",
+				When: []ColorWhen{
+					{Binding: "penalties.incidents", Above: 3, Ref: "danger"},
+					{Binding: "penalties.incidents", Above: 0, Ref: "warning"},
+				},
+			}},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%d", n), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(incidentsWidget{}) }

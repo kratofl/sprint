@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetSector WidgetType = "sector"
 
 type sectorWidget struct{}
@@ -16,25 +12,26 @@ func (sectorWidget) Meta() WidgetMeta {
 	}
 }
 
-func (sectorWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("SECTORS", c.X+12, c.Y+c.H*0.2)
-
-	sw := (c.W - 36) / 3
-	for i, st := range []float64{c.Frame.Lap.Sector1Time, c.Frame.Lap.Sector2Time} {
-		sx := c.X + 12 + float64(i)*sw
-		c.FontLabel(c.H * 0.12)
-		c.DC.SetColor(ColTextMuted)
-		c.DC.DrawString(fmt.Sprintf("S%d", i+1), sx, c.Y+c.H*0.5)
-		c.FontMono(c.H * 0.22)
-		c.DC.SetColor(ColTextPri)
-		c.DC.DrawString(c.FmtSector(st), sx, c.Y+c.H*0.78)
+func (sectorWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "SECTORS", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.2, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Text: "S1", Font: FontLabel, FontScale: 0.12,
+			X: 0.025, Y: 0.5, AnchorX: 0, AnchorY: 0.5,
+			Color: ColorExpr{Ref: "muted", When: []ColorWhen{{Binding: "lap.sector1Active", Ref: "primary"}}}},
+		{Kind: ElemText, Binding: "lap.sector1Time", Format: "sector", Font: FontMono, FontScale: 0.22,
+			X: 0.025, Y: 0.78, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemText, Text: "S2", Font: FontLabel, FontScale: 0.12,
+			X: 0.36, Y: 0.5, AnchorX: 0, AnchorY: 0.5,
+			Color: ColorExpr{Ref: "muted", When: []ColorWhen{{Binding: "lap.sector2Active", Ref: "primary"}}}},
+		{Kind: ElemText, Binding: "lap.sector2Time", Format: "sector", Font: FontMono, FontScale: 0.22,
+			X: 0.36, Y: 0.78, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+		{Kind: ElemDot, DotX: 0.7, DotY: 0.5, DotR: 0.07,
+			Color: ColorExpr{Ref: "primary"}},
+		{Kind: ElemText, Binding: "lap.sector", Format: "S%d", Font: FontLabel, FontScale: 0.12,
+			X: 0.78, Y: 0.5, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "primary"}},
 	}
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColAccent)
-	c.DC.DrawString(fmt.Sprintf("S%d ●", c.Frame.Lap.Sector), c.X+12+2*sw, c.Y+c.H*0.5)
 }
 
 func init() { Register(sectorWidget{}) }

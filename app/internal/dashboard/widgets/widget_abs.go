@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetABS WidgetType = "abs"
 
 type absWidget struct{}
@@ -14,34 +12,19 @@ func (absWidget) Meta() WidgetMeta {
 	}
 }
 
-func (absWidget) Draw(c WidgetCtx) {
-	if c.Frame.Electronics.ABSActive {
-		c.DC.SetColor(DimColor(ColWarning, 0.15))
-		c.DC.DrawRectangle(c.X, c.Y, c.W, c.H)
-		c.DC.Fill()
+func (absWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemCondition, CondBinding: "electronics.absActive",
+			Then: []Element{
+				{Kind: ElemPanel, FillColor: "warning", FillAlpha: 0.15, NoBorder: true},
+			}},
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "ABS", Font: FontLabel, FontScale: 0.18,
+			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "electronics.abs", Format: "int", Font: FontNumber, FontScale: 0.45,
+			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5,
+			Color: ColorExpr{Ref: "fg", When: []ColorWhen{{Binding: "electronics.absActive", Ref: "warning"}}}},
 	}
-	c.Panel()
-
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("ABS", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	e := c.Frame.Electronics
-	col := ColTextPri
-	if e.ABSActive {
-		col = ColWarning
-	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	var valStr string
-	valStr = fmt.Sprintf("%d", e.ABS)
-	// if e.ABSMax == 0 {
-	// 	valStr = fmt.Sprintf("%d", e.ABS)
-	// } else {
-	// 	valStr = fmt.Sprintf("%d / %d", e.ABS, e.ABSMax)
-	// }
-	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
 
 func init() { Register(absWidget{}) }

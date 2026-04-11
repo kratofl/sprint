@@ -1,7 +1,5 @@
 package widgets
 
-import "fmt"
-
 const WidgetEnergy WidgetType = "virtual_energy"
 
 type energyWidget struct{}
@@ -14,32 +12,18 @@ func (energyWidget) Meta() WidgetMeta {
 	}
 }
 
-func (energyWidget) Draw(c WidgetCtx) {
-	c.Panel()
-
-	virtualenergy := float64(c.Frame.Energy.VirtualEnergy) * 100
-
-	col := ColSuccess
-
-	c.FontLabel(c.H * 0.14)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("ENERGY", c.CX(), c.Y+c.H*0.16, 0.5, 0.5)
-
-	c.FontNumber(c.H * 0.42)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%.1f%%", virtualenergy), c.CX(), c.CY(), 0.5, 0.5)
-
-	barX := c.X + c.W*0.1
-	barW := c.W * 0.8
-	barH := c.H * 0.08
-	barY := c.Y + c.H*0.82
-
-	regenPct := virtualenergy
-	c.HBar(barX, barY, barW, barH, regenPct, ColTeal)
-
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("REGEN", c.CX(), barY+barH+c.H*0.05, 0.5, 0)
+func (energyWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Text: "ENERGY", Font: FontLabel, FontScale: 0.14,
+			X: 0.5, Y: 0.16, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+		{Kind: ElemText, Binding: "energy.virtualEnergyPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.42,
+			X: 0.5, Y: 0.5, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "success"}},
+		{Kind: ElemHBar, BarBinding: "energy.virtualEnergy", BarX: 0.1, BarY: 0.82, BarW: 0.8, BarH: 0.08,
+			BarColor: ColorExpr{Ref: "accent"}},
+		{Kind: ElemText, Text: "REGEN", Font: FontLabel, FontScale: 0.12,
+			X: 0.5, Y: 0.95, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+	}
 }
 
 func init() { Register(energyWidget{}) }

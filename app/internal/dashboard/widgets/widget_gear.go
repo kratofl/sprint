@@ -1,9 +1,5 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetGear WidgetType = "gear"
 
 type gearWidget struct{}
@@ -16,18 +12,12 @@ func (gearWidget) Meta() WidgetMeta {
 	}
 }
 
-func (gearWidget) Draw(c WidgetCtx) {
-	c.Panel()
-	gear := c.Frame.Car.Gear
-	gearStr := "N"
-	if gear > 0 {
-		gearStr = fmt.Sprintf("%d", gear)
-	} else if gear < 0 {
-		gearStr = "R"
+func (gearWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		{Kind: ElemPanel},
+		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.7,
+			X: 0.5, Y: 0.45, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
 	}
-	c.FontNumber(c.H * 0.7)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(gearStr, c.CX(), c.Y+c.H*0.45, 0.5, 0.5)
 }
 
 func init() { Register(gearWidget{}) }
