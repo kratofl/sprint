@@ -4,6 +4,24 @@ import (
 	"image/color"
 )
 
+// HAlign is the horizontal text alignment for an ElemText element.
+type HAlign int
+
+const (
+	HAlignStart  HAlign = iota // left-aligned (default)
+	HAlignCenter               // centred
+	HAlignEnd                  // right-aligned
+)
+
+// VAlign is the vertical text alignment for an ElemText element.
+type VAlign int
+
+const (
+	VAlignStart  VAlign = iota // top (default)
+	VAlignCenter               // middle
+	VAlignEnd                  // bottom
+)
+
 // FontStyle selects which font face to use for a text element.
 type FontStyle string
 
@@ -120,10 +138,10 @@ type Element struct {
 	Format    string    // named formatter or sprintf pattern (see format.go)
 	Font      FontStyle // font face selector
 	FontScale float64   // font size = FontScale × widget height
-	X         float64   // horizontal anchor point (fraction of widget width)
-	Y         float64   // vertical anchor point (fraction of widget height)
-	AnchorX   float64   // 0=left-aligned, 0.5=centred, 1=right-aligned
-	AnchorY   float64   // 0=top, 0.5=middle, 1=bottom
+	X         float64   // horizontal position (fraction of widget width)
+	Y         float64   // vertical position (fraction of widget height)
+	HAlign    HAlign    // horizontal text alignment (Start=left, Center, End=right)
+	VAlign    VAlign    // vertical text alignment (Start=top, Center, End=bottom)
 	Color     ColorExpr
 
 	// --- ElemDot ---

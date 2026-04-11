@@ -44,9 +44,9 @@ func (tcWidget) Definition(config map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: label, Font: FontLabel, FontScale: 0.18,
-			X: 0.5, Y: 0.22, AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+			X: 0.5, Y: 0.22, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
-			X: 0.5, Y: 0.6, AnchorX: 0.5, AnchorY: 0.5, Color: col},
+			X: 0.5, Y: 0.6, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: col},
 	}
 }
 

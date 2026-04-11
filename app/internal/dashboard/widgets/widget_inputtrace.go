@@ -29,13 +29,13 @@ func (inputTraceWidget) Definition(_ map[string]any) []Element {
 	elems := []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "INPUTS", Font: FontLabel, FontScale: 0.08,
-			X: 0.025, Y: 0.08, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+			X: 0.025, Y: 0.08, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
 	}
 	for i, r := range rows {
 		cy := 0.125 + float64(i)*0.25
 		elems = append(elems,
 			Element{Kind: ElemText, Text: r.label, Font: FontLabel, FontScale: 0.09,
-				X: 0.2, Y: cy, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+				X: 0.2, Y: cy, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
 			Element{Kind: ElemHBar, BarBinding: r.binding,
 				BarX: barX, BarY: cy - barH/2, BarW: barW, BarH: barH,
 				BarCentered: r.centered, BarColor: ColorExpr{Ref: r.color}},

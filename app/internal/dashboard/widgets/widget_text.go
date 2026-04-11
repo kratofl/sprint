@@ -35,7 +35,7 @@ func (textWidget) Definition(config map[string]any) []Element {
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: content, Binding: binding, Format: format,
 			Font: FontBold, FontScale: fontScale,
-			X: 0.5, Y: 0.5, AnchorX: 0.5, AnchorY: 0.5,
+			X: 0.5, Y: 0.5, HAlign: HAlignCenter, VAlign: VAlignCenter,
 			Color: ColorExpr{Ref: ref}},
 	}
 }

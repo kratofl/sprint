@@ -22,6 +22,18 @@ export function DashDeleteLayout(arg1) {
   return window['go']['main']['App']['DashDeleteLayout'](arg1);
 }
 
+export function DashGetDefaultDomainPalette() {
+  return window['go']['main']['App']['DashGetDefaultDomainPalette']();
+}
+
+export function DashGetDefaultTheme() {
+  return window['go']['main']['App']['DashGetDefaultTheme']();
+}
+
+export function DashGetGlobalSettings() {
+  return window['go']['main']['App']['DashGetGlobalSettings']();
+}
+
 export function DashGetPreview(arg1) {
   return window['go']['main']['App']['DashGetPreview'](arg1);
 }
@@ -32,6 +44,10 @@ export function DashListLayouts() {
 
 export function DashLoadLayoutByID(arg1) {
   return window['go']['main']['App']['DashLoadLayoutByID'](arg1);
+}
+
+export function DashSaveGlobalSettings(arg1) {
+  return window['go']['main']['App']['DashSaveGlobalSettings'](arg1);
 }
 
 export function DashSaveLayout(arg1) {
@@ -140,6 +156,10 @@ export function GetVersion() {
 
 export function GetWidgetCatalog() {
   return window['go']['main']['App']['GetWidgetCatalog']();
+}
+
+export function GetWidgetPreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetWidgetPreview'](arg1, arg2, arg3);
 }
 
 export function InstallScreenDriver(arg1) {

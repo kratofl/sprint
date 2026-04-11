@@ -41,7 +41,7 @@ type WidgetType string
 //	        {Kind: ElemPanel},
 //	        {Kind: ElemText, Binding: "car.speedKPH", Format: "int",
 //	         Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
-//	         AnchorX: 0.5, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+//	         HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
 //	    }
 //	}
 //

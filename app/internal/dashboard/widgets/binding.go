@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/kratofl/sprint/pkg/dto"
 )
@@ -62,7 +63,7 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 	},
 
 	// Lap
-	"lap.currentLap":      func(f *dto.TelemetryFrame) any { return f.Lap.CurrentLap },
+	"lap.currentLap":     func(f *dto.TelemetryFrame) any { return f.Lap.CurrentLap },
 	"lap.currentLapTime": func(f *dto.TelemetryFrame) any { return f.Lap.CurrentLapTime },
 	"lap.lastLapTime":    func(f *dto.TelemetryFrame) any { return f.Lap.LastLapTime },
 	"lap.bestLapTime":    func(f *dto.TelemetryFrame) any { return f.Lap.BestLapTime },
@@ -83,7 +84,7 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 		return f.Lap.CurrentLapTime > f.Lap.TargetLapTime
 	},
 	"lap.counterStr": func(f *dto.TelemetryFrame) any {
-		if f.Session.MaxLaps == 0 {
+		if f.Session.MaxLaps == 0 || f.Session.MaxLaps == math.MaxInt32 {
 			return fmt.Sprintf("%d", f.Lap.CurrentLap)
 		}
 		return fmt.Sprintf("%d / %d", f.Lap.CurrentLap, f.Session.MaxLaps)

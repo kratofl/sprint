@@ -21,15 +21,15 @@ const (
 // DashWidget is a single widget placed on a dashboard page.
 // Col, Row, ColSpan, RowSpan are all in grid units.
 type DashWidget struct {
-	ID      string             `json:"id"`
-	Type    widgets.WidgetType `json:"type"`
-	Col     int                `json:"col"`     // 0-based grid column (left edge)
-	Row     int                `json:"row"`     // 0-based grid row (top edge)
-	ColSpan int                `json:"colSpan"` // width in grid cells (min 1)
-	RowSpan int                `json:"rowSpan"` // height in grid cells (min 1)
-	Config         map[string]any                    `json:"config,omitempty"`
-	PanelRules     []widgets.ConditionalRule          `json:"panelRules,omitempty"`
-	StyleOverrides map[widgets.ColorRef]color.RGBA    `json:"styleOverrides,omitempty"`
+	ID             string                          `json:"id"`
+	Type           widgets.WidgetType              `json:"type"`
+	Col            int                             `json:"col"`     // 0-based grid column (left edge)
+	Row            int                             `json:"row"`     // 0-based grid row (top edge)
+	ColSpan        int                             `json:"colSpan"` // width in grid cells (min 1)
+	RowSpan        int                             `json:"rowSpan"` // height in grid cells (min 1)
+	Config         map[string]any                  `json:"config,omitempty"`
+	PanelRules     []widgets.ConditionalRule       `json:"panelRules,omitempty"`
+	StyleOverrides map[widgets.ColorRef]color.RGBA `json:"styleOverrides,omitempty"`
 }
 
 // DashPage is a single page within a dashboard layout.
@@ -50,15 +50,15 @@ type AlertConfig struct {
 // It contains an idle page (shown when player is not in a session),
 // one or more active pages (cycled via commands), and alert settings.
 type DashLayout struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Default  bool              `json:"default"`
-	GridCols int               `json:"gridCols"`
-	GridRows int               `json:"gridRows"`
-	IdlePage DashPage          `json:"idlePage"`
-	Pages    []DashPage        `json:"pages"` // at least 1 required
-	Alerts        AlertConfig          `json:"alerts"`
-	Theme         widgets.DashTheme    `json:"theme,omitempty"`
+	ID            string                `json:"id"`
+	Name          string                `json:"name"`
+	Default       bool                  `json:"default"`
+	GridCols      int                   `json:"gridCols"`
+	GridRows      int                   `json:"gridRows"`
+	IdlePage      DashPage              `json:"idlePage"`
+	Pages         []DashPage            `json:"pages"` // at least 1 required
+	Alerts        AlertConfig           `json:"alerts"`
+	Theme         widgets.DashTheme     `json:"theme,omitempty"`
 	DomainPalette widgets.DomainPalette `json:"domainPalette,omitempty"`
 }
 

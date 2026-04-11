@@ -16,19 +16,19 @@ func (lapTimeWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "LAP TIMES", Font: FontLabel, FontScale: 0.1,
-			X: 0.025, Y: 0.15, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted"}},
+			X: 0.025, Y: 0.15, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Text: "Current", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.3, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+			X: 0.025, Y: 0.3, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.3, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+			X: 0.975, Y: 0.3, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "Last", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.52, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+			X: 0.025, Y: 0.52, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.52, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "fg"}},
+			X: 0.975, Y: 0.52, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "Best", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.74, AnchorX: 0, AnchorY: 0.5, Color: ColorExpr{Ref: "muted2"}},
+			X: 0.025, Y: 0.74, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.74, AnchorX: 1, AnchorY: 0.5, Color: ColorExpr{Ref: "accent"}},
+			X: 0.975, Y: 0.74, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "accent"}},
 	}
 }
 

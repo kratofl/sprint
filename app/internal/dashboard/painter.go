@@ -308,6 +308,28 @@ func (p *Painter) renderPanel(dc *gg.Context, rt widgets.RenderTheme, x, y, w, h
 	}
 }
 
+func halignFrac(a widgets.HAlign) float64 {
+	switch a {
+	case widgets.HAlignCenter:
+		return 0.5
+	case widgets.HAlignEnd:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func valignFrac(a widgets.VAlign) float64 {
+	switch a {
+	case widgets.VAlignCenter:
+		return 0.5
+	case widgets.VAlignEnd:
+		return 1
+	default:
+		return 0
+	}
+}
+
 // renderText resolves the binding or uses the static Text, formats the value,
 // and draws it at the fractional position within the widget bounding box.
 func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Element) {
@@ -335,7 +357,7 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 
 	col := p.resolveColorExpr(frame, rt, elem.Color)
 	dc.SetColor(col)
-	dc.DrawStringAnchored(display, x+elem.X*w, y+elem.Y*h, elem.AnchorX, elem.AnchorY)
+	dc.DrawStringAnchored(display, x+elem.X*w, y+elem.Y*h, halignFrac(elem.HAlign), valignFrac(elem.VAlign))
 }
 
 // renderDot draws a filled circle at the fractional position within the widget.

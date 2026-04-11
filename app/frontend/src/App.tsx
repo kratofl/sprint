@@ -97,7 +97,13 @@ export default function App() {
       )}
 
       {/* Top app bar — drag region, logo + nav tabs + window controls */}
-      <header className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]">
+      <header
+        className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
+        onDoubleClick={(e) => {
+          if ((e.target as HTMLElement).closest('button, a, input')) return
+          call('WindowMaximise')
+        }}
+      >
         {/* Logo */}
         <div className="flex shrink-0 items-center pr-4 [--wails-draggable:nodrag]">
           <img src={logoIcon} alt="Sprint" className="h-5 w-auto object-contain select-none" draggable={false} />
