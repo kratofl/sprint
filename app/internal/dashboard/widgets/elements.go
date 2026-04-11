@@ -14,10 +14,20 @@ const (
 	FontMono   FontStyle = "mono"   // JetBrainsMono-Regular
 )
 
-// ColorRef is a semantic color name resolved against a DashTheme at render time.
-// Values: "primary", "accent", "fg", "muted", "muted2", "success", "warning",
+// ColorRef is a semantic color name resolved at render time.
+// Generic values: "primary", "accent", "fg", "muted", "muted2", "success", "warning",
 // "danger", "surface", "bg", "border", "rpmred".
+// Domain values: "abs", "tc", "brakeBias", "energy", "motor", "brakeMig".
 type ColorRef string
+
+const (
+	ColorRefABS      ColorRef = "abs"
+	ColorRefTC       ColorRef = "tc"
+	ColorRefBrakeBias ColorRef = "brakeBias"
+	ColorRefEnergy   ColorRef = "energy"
+	ColorRefMotor    ColorRef = "motor"
+	ColorRefBrakeMig ColorRef = "brakeMig"
+)
 
 // ColorWhen is one conditional override rule within a ColorExpr.
 // The first matching rule wins; "matching" means the resolved binding value is
@@ -185,7 +195,92 @@ func DefaultTheme() DashTheme {
 	}
 }
 
-// ThemeColor resolves a ColorRef to a concrete color.RGBA from theme.
+// DomainPalette holds sim-racing domain-specific highlight colours.
+// Each field maps to a domain ColorRef ("abs", "tc", "brakeBias", "energy", "motor", "brakeMig").
+// Zero-value fields fall back to DefaultDomainPalette at render time.
+type DomainPalette struct {
+	ABS      color.RGBA `json:"abs"`
+	TC       color.RGBA `json:"tc"`
+	BrakeBias color.RGBA `json:"brakeBias"`
+	Energy   color.RGBA `json:"energy"`
+	Motor    color.RGBA `json:"motor"`
+	BrakeMig color.RGBA `json:"brakeMig"`
+}
+
+// DefaultDomainPalette returns the built-in domain colour defaults.
+func DefaultDomainPalette() DomainPalette {
+	return DomainPalette{
+		ABS:      ColWarning,
+		TC:       ColTeal,
+		BrakeBias: ColWarning,
+		Energy:   ColSuccess,
+		Motor:    ColAccent,
+		BrakeMig: ColTeal,
+	}
+}
+
+func domainColor(d DomainPalette, ref ColorRef) (color.RGBA, bool) {
+	zero := color.RGBA{}
+	switch ref {
+	case ColorRefABS:
+		if d.ABS != zero {
+			return d.ABS, true
+		}
+		return DefaultDomainPalette().ABS, true
+	case ColorRefTC:
+		if d.TC != zero {
+			return d.TC, true
+		}
+		return DefaultDomainPalette().TC, true
+	case ColorRefBrakeBias:
+		if d.BrakeBias != zero {
+			return d.BrakeBias, true
+		}
+		return DefaultDomainPalette().BrakeBias, true
+	case ColorRefEnergy:
+		if d.Energy != zero {
+			return d.Energy, true
+		}
+		return DefaultDomainPalette().Energy, true
+	case ColorRefMotor:
+		if d.Motor != zero {
+			return d.Motor, true
+		}
+		return DefaultDomainPalette().Motor, true
+	case ColorRefBrakeMig:
+		if d.BrakeMig != zero {
+			return d.BrakeMig, true
+		}
+		return DefaultDomainPalette().BrakeMig, true
+	}
+	return color.RGBA{}, false
+}
+
+// RenderTheme is the fully-resolved colour context for a single widget render.
+// It holds all three colour layers and resolves them in priority order:
+//  1. Overrides (per-widget)
+//  2. Domain palette (layout-global domain colours)
+//  3. Theme (generic semantic colours)
+//  4. Built-in white fallback
+type RenderTheme struct {
+	Theme     DashTheme
+	Domain    DomainPalette
+	Overrides map[ColorRef]color.RGBA // nil = no widget-level overrides
+}
+
+// Resolve returns the concrete color.RGBA for ref, checking all layers.
+func (rt RenderTheme) Resolve(ref ColorRef) color.RGBA {
+	if rt.Overrides != nil {
+		if c, ok := rt.Overrides[ref]; ok {
+			return c
+		}
+	}
+	if c, ok := domainColor(rt.Domain, ref); ok {
+		return c
+	}
+	return ThemeColor(rt.Theme, ref)
+}
+
 // Unknown refs return white so the rendering remains visible.
 func ThemeColor(theme DashTheme, ref ColorRef) color.RGBA {
 	switch ref {

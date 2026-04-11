@@ -8,6 +8,23 @@ export type ColorRef =
   | 'primary' | 'accent' | 'fg' | 'muted' | 'muted2'
   | 'success' | 'warning' | 'danger'
   | 'surface' | 'bg' | 'border' | 'rpmred'
+  | 'abs' | 'tc' | 'brakeBias' | 'energy' | 'motor' | 'brakeMig'
+
+export interface RGBAColor {
+  R: number
+  G: number
+  B: number
+  A: number
+}
+
+export interface DomainPalette {
+  abs?:       RGBAColor
+  tc?:        RGBAColor
+  brakeBias?: RGBAColor
+  energy?:    RGBAColor
+  motor?:     RGBAColor
+  brakeMig?:  RGBAColor
+}
 
 export interface ConditionalRule {
   property: string
@@ -30,8 +47,9 @@ export interface DashWidget {
   row: number
   colSpan: number
   rowSpan: number
-  config?: Record<string, unknown>
-  panelRules?: ConditionalRule[]
+  config?:         Record<string, unknown>
+  panelRules?:     ConditionalRule[]
+  styleOverrides?: Partial<Record<ColorRef, RGBAColor>>
 }
 
 export interface DashPage {
@@ -48,7 +66,8 @@ export interface DashLayout {
   gridRows: number
   idlePage: DashPage
   pages: DashPage[]
-  alerts: AlertConfig
+  alerts:        AlertConfig
+  domainPalette?: DomainPalette
 }
 
 export interface LayoutMeta {
@@ -165,8 +184,9 @@ function normWidget(raw: unknown): DashWidget {
     row:        Number(r.row     ?? r.Row     ?? 0),
     colSpan:    Number(r.colSpan ?? r.ColSpan ?? 1),
     rowSpan:    Number(r.rowSpan ?? r.RowSpan ?? 1),
-    config:     (r.config ?? r.Config) as Record<string, unknown> | undefined,
-    panelRules: (r.panelRules ?? r.PanelRules) as ConditionalRule[] | undefined,
+    config:          (r.config ?? r.Config) as Record<string, unknown> | undefined,
+    panelRules:      (r.panelRules ?? r.PanelRules) as ConditionalRule[] | undefined,
+    styleOverrides:  (r.styleOverrides ?? r.StyleOverrides) as Partial<Record<ColorRef, RGBAColor>> | undefined,
   }
 }
 
@@ -201,7 +221,8 @@ function normLayout(raw: unknown): DashLayout {
     gridRows: Number(r.gridRows  ?? r.GridRows  ?? 12),
     idlePage: rawIdlePage ? normPage(rawIdlePage) : { id: '', name: 'Idle', widgets: [] },
     pages:    Array.isArray(rawPages) ? (rawPages as unknown[]).map(normPage) : [{ id: '', name: 'Main', widgets: [] }],
-    alerts:   normAlerts(r.alerts ?? r.Alerts),
+    alerts:        normAlerts(r.alerts ?? r.Alerts),
+    domainPalette: (r.domainPalette ?? r.DomainPalette) as DomainPalette | undefined,
   }
 }
 

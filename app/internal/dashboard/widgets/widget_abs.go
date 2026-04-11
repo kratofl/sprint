@@ -10,7 +10,7 @@ func (absWidget) Meta() WidgetMeta {
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 15,
 		DefaultPanelRules: []ConditionalRule{
-			{Property: "electronics.absActive", Op: RuleOpGT, Threshold: 0, Color: "warning", Alpha: 0.15},
+			{Property: "electronics.absActive", Op: RuleOpGT, Threshold: 0, Color: ColorRefABS, Alpha: 0.15},
 		},
 	}
 }

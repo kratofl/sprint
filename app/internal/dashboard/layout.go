@@ -5,6 +5,7 @@ package dashboard
 
 import (
 	"fmt"
+	"image/color"
 
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
@@ -26,8 +27,9 @@ type DashWidget struct {
 	Row     int                `json:"row"`     // 0-based grid row (top edge)
 	ColSpan int                `json:"colSpan"` // width in grid cells (min 1)
 	RowSpan int                `json:"rowSpan"` // height in grid cells (min 1)
-	Config     map[string]any             `json:"config,omitempty"`
-	PanelRules []widgets.ConditionalRule  `json:"panelRules,omitempty"`
+	Config         map[string]any                    `json:"config,omitempty"`
+	PanelRules     []widgets.ConditionalRule          `json:"panelRules,omitempty"`
+	StyleOverrides map[widgets.ColorRef]color.RGBA    `json:"styleOverrides,omitempty"`
 }
 
 // DashPage is a single page within a dashboard layout.
@@ -55,8 +57,9 @@ type DashLayout struct {
 	GridRows int               `json:"gridRows"`
 	IdlePage DashPage          `json:"idlePage"`
 	Pages    []DashPage        `json:"pages"` // at least 1 required
-	Alerts   AlertConfig       `json:"alerts"`
-	Theme    widgets.DashTheme `json:"theme,omitempty"`
+	Alerts        AlertConfig          `json:"alerts"`
+	Theme         widgets.DashTheme    `json:"theme,omitempty"`
+	DomainPalette widgets.DomainPalette `json:"domainPalette,omitempty"`
 }
 
 // NewPage creates a DashPage with a new UUID.
