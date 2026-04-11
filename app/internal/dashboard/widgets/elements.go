@@ -37,6 +37,29 @@ type ColorExpr struct {
 	When       []ColorWhen // conditional overrides, evaluated in order
 }
 
+// RuleOp is the comparison operator in a ConditionalRule.
+type RuleOp string
+
+const (
+	RuleOpGT  RuleOp = ">"
+	RuleOpLT  RuleOp = "<"
+	RuleOpGTE RuleOp = ">="
+	RuleOpLTE RuleOp = "<="
+	RuleOpEQ  RuleOp = "=="
+	RuleOpNEQ RuleOp = "!="
+)
+
+// ConditionalRule evaluates a telemetry binding against a threshold and, when
+// the condition is satisfied, applies a semantic panel fill colour.
+// Rules are stored per DashWidget and evaluated first-match-wins at render time.
+type ConditionalRule struct {
+	Property  string   `json:"property"`          // binding path (e.g. "car.brakeBiasPct")
+	Op        RuleOp   `json:"op"`                // comparison operator
+	Threshold float64  `json:"threshold"`          // right-hand operand
+	Color     ColorRef `json:"color"`              // semantic fill colour when matched
+	Alpha     float64  `json:"alpha,omitempty"`    // fill alpha 0–1; 0 = default 0.35
+}
+
 // SegColorStop defines the color for a segment bar above a given threshold.
 // Thresholds are checked in order; the last stop whose At ≤ current RPM % wins.
 type SegColorStop struct {

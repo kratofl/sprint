@@ -26,7 +26,8 @@ type DashWidget struct {
 	Row     int                `json:"row"`     // 0-based grid row (top edge)
 	ColSpan int                `json:"colSpan"` // width in grid cells (min 1)
 	RowSpan int                `json:"rowSpan"` // height in grid cells (min 1)
-	Config  map[string]any     `json:"config,omitempty"`
+	Config     map[string]any             `json:"config,omitempty"`
+	PanelRules []widgets.ConditionalRule  `json:"panelRules,omitempty"`
 }
 
 // DashPage is a single page within a dashboard layout.

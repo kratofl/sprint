@@ -2,6 +2,21 @@
 
 import { call } from '@/lib/wails'
 
+export type RuleOp = '>' | '<' | '>=' | '<=' | '==' | '!='
+
+export type ColorRef =
+  | 'primary' | 'accent' | 'fg' | 'muted' | 'muted2'
+  | 'success' | 'warning' | 'danger'
+  | 'surface' | 'bg' | 'border' | 'rpmred'
+
+export interface ConditionalRule {
+  property: string
+  op: RuleOp
+  threshold: number
+  color: ColorRef
+  alpha?: number
+}
+
 export interface AlertConfig {
   tcChange: boolean
   absChange: boolean
@@ -16,6 +31,7 @@ export interface DashWidget {
   colSpan: number
   rowSpan: number
   config?: Record<string, unknown>
+  panelRules?: ConditionalRule[]
 }
 
 export interface DashPage {
@@ -142,13 +158,14 @@ export function deviceID(vid: number, pid: number, serial: string): string {
 function normWidget(raw: unknown): DashWidget {
   const r = raw as Record<string, unknown>
   return {
-    id:      String(r.id      ?? r.ID      ?? ''),
-    type:    String(r.type    ?? r.Type    ?? ''),
-    col:     Number(r.col     ?? r.Col     ?? 0),
-    row:     Number(r.row     ?? r.Row     ?? 0),
-    colSpan: Number(r.colSpan ?? r.ColSpan ?? 1),
-    rowSpan: Number(r.rowSpan ?? r.RowSpan ?? 1),
-    config:  (r.config ?? r.Config) as Record<string, unknown> | undefined,
+    id:         String(r.id      ?? r.ID      ?? ''),
+    type:       String(r.type    ?? r.Type    ?? ''),
+    col:        Number(r.col     ?? r.Col     ?? 0),
+    row:        Number(r.row     ?? r.Row     ?? 0),
+    colSpan:    Number(r.colSpan ?? r.ColSpan ?? 1),
+    rowSpan:    Number(r.rowSpan ?? r.RowSpan ?? 1),
+    config:     (r.config ?? r.Config) as Record<string, unknown> | undefined,
+    panelRules: (r.panelRules ?? r.PanelRules) as ConditionalRule[] | undefined,
   }
 }
 

@@ -189,11 +189,57 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		theme = widgets.DefaultTheme()
 	}
 	elems := widget.Definition(w.Config)
+	if len(w.PanelRules) > 0 {
+		if col, alpha := evalPanelRules(frame, w.PanelRules); col != "" {
+			for i := range elems {
+				if elems[i].Kind == widgets.ElemPanel {
+					elems[i].FillColor = col
+					elems[i].FillAlpha = alpha
+					break
+				}
+			}
+		}
+	}
 	p.renderElements(dc, frame, theme, x, y, pw, ph, elems)
 
 	if hz > 0 {
 		p.saveCache(dc, w.ID, int(x), int(y), int(pw), int(ph))
 	}
+}
+
+// evalPanelRules evaluates a list of ConditionalRules against the telemetry frame
+// and returns the first matching color and alpha. Returns ("", 0) when no rule matches.
+func evalPanelRules(frame *dto.TelemetryFrame, rules []widgets.ConditionalRule) (widgets.ColorRef, float64) {
+	for _, r := range rules {
+		val, ok := widgets.Resolve(frame, r.Property)
+		if !ok {
+			continue
+		}
+		f, _ := toFloat64(val)
+		var match bool
+		switch r.Op {
+		case widgets.RuleOpGT:
+			match = f > r.Threshold
+		case widgets.RuleOpLT:
+			match = f < r.Threshold
+		case widgets.RuleOpGTE:
+			match = f >= r.Threshold
+		case widgets.RuleOpLTE:
+			match = f <= r.Threshold
+		case widgets.RuleOpEQ:
+			match = f == r.Threshold
+		case widgets.RuleOpNEQ:
+			match = f != r.Threshold
+		}
+		if match {
+			alpha := r.Alpha
+			if alpha == 0 {
+				alpha = 0.35
+			}
+			return r.Color, alpha
+		}
+	}
+	return "", 0
 }
 
 // widgetUpdateHz reads update_rate from the widget config, falling back to defaultHz.
