@@ -79,6 +79,7 @@ export interface DashCanvasProps {
   screenW?: number
   screenH?: number
   paletteDropType?: string | null
+  widgetPreviews?: Map<string, string>
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -92,6 +93,7 @@ export function DashCanvas({
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
+  widgetPreviews,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
@@ -314,9 +316,19 @@ export function DashCanvas({
                   : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
-              <span className="w-full truncate px-1 pt-0.5 font-mono text-[9px] uppercase leading-none tracking-wide text-white/40">
-                {widgetLabel(widget.type, catalog)}
-              </span>
+              {widgetPreviews?.get(widget.type) ? (
+                <img
+                  src={`data:image/png;base64,${widgetPreviews.get(widget.type)}`}
+                  alt={widgetLabel(widget.type, catalog)}
+                  className="absolute inset-0 w-full h-full object-fill pointer-events-none"
+                  draggable={false}
+                  style={{ opacity: isSelected ? 0.85 : 0.7 }}
+                />
+              ) : (
+                <span className="w-full truncate px-1 pt-0.5 font-mono text-[9px] uppercase leading-none tracking-wide text-white/40">
+                  {widgetLabel(widget.type, catalog)}
+                </span>
+              )}
             </div>
 
             {isSelected && ALL_HANDLES.map(handle => {
