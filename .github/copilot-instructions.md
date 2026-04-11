@@ -7,6 +7,7 @@
 - Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation. Fall back to grep/glob only as a last resort.
 - Use `gh` CLI for GitHub operations instead of MCP GitHub tools, unless explicitly requested.
 - You **may** run `git commit` automatically. Every commit must include: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+- Before committing, check the current branch with `git branch --show-current`. If on `main`, create and switch to a new descriptive branch first, then commit there.
 - Do **not** use decorative separator comment lines or banner comments in source/config files.
 
 ## Project Overview
