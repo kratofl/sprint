@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Badge, Button,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -73,25 +73,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
       .catch(() => {})
   }, [])
 
-  const [canvasPreviews, setCanvasPreviews] = useState<Map<string, string>>(new Map())
-  const canvasPreviewInflight = useRef<Set<string>>(new Set())
-
-  const loadCanvasPreviews = useCallback((types: string[]) => {
-    const toFetch = types.filter(t => !canvasPreviews.has(t) && !canvasPreviewInflight.current.has(t))
-    if (toFetch.length === 0) return
-    toFetch.forEach(t => canvasPreviewInflight.current.add(t))
-    Promise.allSettled(toFetch.map(t => widgetCatalogAPI.getWidgetPreview(t).then(b64 => ({ t, b64 }))))
-      .then(results => {
-        setCanvasPreviews(prev => {
-          const next = new Map(prev)
-          results.forEach(r => {
-            if (r.status === 'fulfilled' && r.value.b64) next.set(r.value.t, r.value.b64)
-          })
-          return next
-        })
-      })
-  }, [canvasPreviews])
-
   const { isDirty, markSaved } = useUnsavedChanges(layout, initialLayout)
   const { showDialog, guardedNavigate, confirm, cancel } = useNavigationGuard(isDirty)
 
@@ -146,12 +127,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const canvasWidgets = activeTab === 'idle'
     ? layout.idlePage.widgets
     : (layout.pages[activeTab as number]?.widgets ?? [])
-
-  useEffect(() => {
-    const types = [...new Set(canvasWidgets.map(w => w.type))]
-    loadCanvasPreviews(types)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasWidgets])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
     if (activeTab === 'idle') {
@@ -353,7 +328,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                 screenW={screenW}
                 screenH={screenH}
                 paletteDropType={paletteDropType}
-                widgetPreviews={canvasPreviews}
                 onSelect={setSelectedId}
                 onUpdate={handleUpdate}
               />

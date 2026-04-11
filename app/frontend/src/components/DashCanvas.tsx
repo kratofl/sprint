@@ -1,12 +1,17 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useReducer } from 'react'
 import { cn } from '@sprint/ui'
-import { type DashWidget, type WidgetCatalogEntry } from '@/lib/dash'
+import { type DashWidget, type WidgetCatalogEntry, widgetCatalogAPI } from '@/lib/dash'
 
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
 
 const DEFAULT_GRID_COLS = 20
 const DEFAULT_GRID_ROWS = 12
+
+// Module-level cache so previews survive tab switches and layout edits.
+// Key: "type:colSpan×rowSpan"
+const previewCache = new Map<string, string>()
+const previewInflight = new Set<string>()
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
@@ -79,7 +84,6 @@ export interface DashCanvasProps {
   screenW?: number
   screenH?: number
   paletteDropType?: string | null
-  widgetPreviews?: Map<string, string>
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -93,7 +97,6 @@ export function DashCanvas({
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
-  widgetPreviews,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
@@ -101,9 +104,34 @@ export function DashCanvas({
   const widgetsRef    = useRef(widgets)
   widgetsRef.current  = widgets
 
+  // Force a re-render whenever a preview finishes loading.
+  const [, forceUpdate] = useReducer(x => x + 1, 0)
+
   const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
   const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
   const [ghost,        setGhost]        = useState<Ghost        | null>(null)
+
+  // Load previews for any widget whose (type, colSpan, rowSpan) is not yet cached.
+  // Runs on every widgets change so resized widgets get a fresh preview automatically.
+  useEffect(() => {
+    const missing = widgets.filter(w => {
+      const key = `${w.type}:${w.colSpan}x${w.rowSpan}`
+      return !previewCache.has(key) && !previewInflight.has(key)
+    })
+    if (missing.length === 0) return
+    missing.forEach(w => {
+      const key = `${w.type}:${w.colSpan}x${w.rowSpan}`
+      previewInflight.add(key)
+      widgetCatalogAPI.getWidgetPreview(w.type, w.colSpan, w.rowSpan)
+        .then(b64 => {
+          if (b64) previewCache.set(key, b64)
+          previewInflight.delete(key)
+          forceUpdate()
+        })
+        .catch(() => { previewInflight.delete(key) })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgets])
 
   const gridPos = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { col: 0, row: 0 }
@@ -316,13 +344,13 @@ export function DashCanvas({
                   : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
-              {widgetPreviews?.get(widget.type) ? (
+              {previewCache.get(`${widget.type}:${widget.colSpan}x${widget.rowSpan}`) ? (
                 <img
-                  src={`data:image/png;base64,${widgetPreviews.get(widget.type)}`}
+                  src={`data:image/png;base64,${previewCache.get(`${widget.type}:${widget.colSpan}x${widget.rowSpan}`)}`}
                   alt={widgetLabel(widget.type, catalog)}
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  className="absolute inset-0 w-full h-full pointer-events-none"
                   draggable={false}
-                  style={{ opacity: isSelected ? 0.85 : 0.7 }}
+                  style={{ objectFit: 'fill', opacity: isSelected ? 0.85 : 0.7 }}
                 />
               ) : (
                 <span className="w-full truncate px-1 pt-0.5 font-mono text-[9px] uppercase leading-none tracking-wide text-white/40">

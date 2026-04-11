@@ -567,7 +567,7 @@ export const widgetCatalogAPI = {
     })
   },
 
-  async getWidgetPreview(widgetType: string): Promise<string> {
-    return call<string>('GetWidgetPreview', widgetType)
+  async getWidgetPreview(widgetType: string, colSpan: number, rowSpan: number): Promise<string> {
+    return call<string>('GetWidgetPreview', widgetType, colSpan, rowSpan)
   },
 }

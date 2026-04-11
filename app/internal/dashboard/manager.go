@@ -337,21 +337,20 @@ const (
 // DefaultRowSpan×widgetPreviewCellPx, so the image always has the correct aspect ratio.
 const widgetPreviewCellPx = 48
 
-// RenderWidgetPreview renders a single widget of the given type into a PNG image
-// whose dimensions match the widget's default grid span (DefaultColSpan × DefaultRowSpan
-// cells at widgetPreviewCellPx px/cell). A 1×1 grid is used so the widget fills the
-// entire canvas. A zero-value TelemetryFrame provides placeholder values — no live data
-// required. Returns an error if the widget type is not registered.
-func RenderWidgetPreview(widgetType string) ([]byte, error) {
+// RenderWidgetPreview renders a single widget of the given type into a PNG image whose
+// pixel dimensions are colSpan×widgetPreviewCellPx by rowSpan×widgetPreviewCellPx. A 1×1
+// grid is used so the widget fills the entire canvas. A zero-value TelemetryFrame provides
+// placeholder values — no live data required. Returns an error if the widget type is not
+// registered.
+func RenderWidgetPreview(widgetType string, colSpan, rowSpan int) ([]byte, error) {
 	wt := widgets.WidgetType(widgetType)
-	widget, ok := widgets.Get(wt)
+	_, ok := widgets.Get(wt)
 	if !ok {
 		return nil, fmt.Errorf("dash: unknown widget %q", widgetType)
 	}
 
-	meta := widget.Meta()
-	w := meta.DefaultColSpan * widgetPreviewCellPx
-	h := meta.DefaultRowSpan * widgetPreviewCellPx
+	w := colSpan * widgetPreviewCellPx
+	h := rowSpan * widgetPreviewCellPx
 
 	layout := &DashLayout{
 		ID:       "widget-preview",
