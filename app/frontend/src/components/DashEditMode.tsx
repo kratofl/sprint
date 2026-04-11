@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Badge, Button,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -41,6 +41,25 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [renamingDash, setRenamingDash] = useState(false)
   const [dashNameValue, setDashNameValue] = useState(initialLayout.name)
   const [confirmRemoveWidget, setConfirmRemoveWidget] = useState(false)
+
+  const canvasPaneRef = useRef<HTMLDivElement>(null)
+  const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
+
+  useEffect(() => {
+    const el = canvasPaneRef.current
+    if (!el) return
+    const ratio = screenW / screenH
+    const obs = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect
+      if (width / height > ratio) {
+        setFittedCanvas({ w: Math.floor(height * ratio), h: Math.floor(height) })
+      } else {
+        setFittedCanvas({ w: Math.floor(width), h: Math.floor(width / ratio) })
+      }
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [screenW, screenH])
 
   const hardcodedThemeDefault: DashTheme = {
     primary: { R: 255, G: 144, B: 108, A: 255 },
@@ -319,18 +338,25 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
             {/* Center: canvas */}
             <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3 min-w-0">
-              <DashCanvas
-                widgets={canvasWidgets}
-                gridCols={layout.gridCols}
-                gridRows={layout.gridRows}
-                selectedId={selectedId}
-                catalog={catalog}
-                screenW={screenW}
-                screenH={screenH}
-                paletteDropType={paletteDropType}
-                onSelect={setSelectedId}
-                onUpdate={handleUpdate}
-              />
+              <div
+                ref={canvasPaneRef}
+                className="flex flex-1 min-h-0 items-center justify-center overflow-hidden"
+              >
+                <div style={fittedCanvas ? { width: fittedCanvas.w, height: fittedCanvas.h } : { width: '100%' }}>
+                  <DashCanvas
+                    widgets={canvasWidgets}
+                    gridCols={layout.gridCols}
+                    gridRows={layout.gridRows}
+                    selectedId={selectedId}
+                    catalog={catalog}
+                    screenW={screenW}
+                    screenH={screenH}
+                    paletteDropType={paletteDropType}
+                    onSelect={setSelectedId}
+                    onUpdate={handleUpdate}
+                  />
+                </div>
+              </div>
 
               <div className="flex h-7 flex-shrink-0 items-center gap-4 font-mono text-[10px]">
                 {selectedWidget ? (
