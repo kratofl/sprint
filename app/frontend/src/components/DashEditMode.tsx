@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Badge, Button,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -44,12 +44,12 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [dashNameValue, setDashNameValue] = useState(initialLayout.name)
   const [confirmRemoveWidget, setConfirmRemoveWidget] = useState(false)
 
-  const canvasPaneRef = useRef<HTMLDivElement>(null)
+  const [canvasPaneEl, setCanvasPaneEl] = useState<HTMLDivElement | null>(null)
+  const canvasPaneRef = useCallback((el: HTMLDivElement | null) => setCanvasPaneEl(el), [])
   const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
 
   useEffect(() => {
-    const el = canvasPaneRef.current
-    if (!el) return
+    if (!canvasPaneEl) return
     const ratio = screenW / screenH
     const obs = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect
@@ -59,9 +59,9 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         setFittedCanvas({ w: Math.floor(width), h: Math.floor(width / ratio) })
       }
     })
-    obs.observe(el)
+    obs.observe(canvasPaneEl)
     return () => obs.disconnect()
-  }, [screenW, screenH])
+  }, [canvasPaneEl, screenW, screenH])
 
   const hardcodedThemeDefault: DashTheme = {
     primary: { R: 255, G: 144, B: 108, A: 255 },
