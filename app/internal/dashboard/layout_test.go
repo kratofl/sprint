@@ -1,8 +1,10 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 )
 
@@ -23,6 +25,55 @@ func validLayout() *DashLayout {
 			},
 		},
 	}
+}
+
+func TestDashLayoutUnmarshalAlerts(t *testing.T) {
+	t.Run("legacy object alerts silently ignored", func(t *testing.T) {
+		raw := `{
+			"id":"x","name":"X","gridCols":20,"gridRows":12,
+			"idlePage":{"id":"i","name":"Idle","widgets":[]},
+			"pages":[{"id":"p","name":"P","widgets":[]}],
+			"alerts":{"tcChange":false,"absChange":false,"engineMapChange":false}
+		}`
+		var l DashLayout
+		if err := json.Unmarshal([]byte(raw), &l); err != nil {
+			t.Fatalf("expected no error for legacy alerts object, got %v", err)
+		}
+		if len(l.Alerts) != 0 {
+			t.Fatalf("expected empty Alerts slice, got %v", l.Alerts)
+		}
+	})
+
+	t.Run("new array alerts parsed", func(t *testing.T) {
+		raw := `{
+			"id":"x","name":"X","gridCols":20,"gridRows":12,
+			"idlePage":{"id":"i","name":"Idle","widgets":[]},
+			"pages":[{"id":"p","name":"P","widgets":[]}],
+			"alerts":[{"id":"a1","type":"tc_change"}]
+		}`
+		var l DashLayout
+		if err := json.Unmarshal([]byte(raw), &l); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(l.Alerts) != 1 || l.Alerts[0].Type != alerts.AlertTypeTC {
+			t.Fatalf("expected 1 TC alert, got %v", l.Alerts)
+		}
+	})
+
+	t.Run("null alerts treated as empty", func(t *testing.T) {
+		raw := `{
+			"id":"x","name":"X","gridCols":20,"gridRows":12,
+			"idlePage":{"id":"i","name":"Idle","widgets":[]},
+			"pages":[{"id":"p","name":"P","widgets":[]}]
+		}`
+		var l DashLayout
+		if err := json.Unmarshal([]byte(raw), &l); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if l.Alerts != nil {
+			t.Fatalf("expected nil Alerts, got %v", l.Alerts)
+		}
+	})
 }
 
 func TestValidateLayout(t *testing.T) {

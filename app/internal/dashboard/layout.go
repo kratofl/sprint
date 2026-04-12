@@ -4,10 +4,12 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 
 	"github.com/google/uuid"
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 )
 
@@ -39,13 +41,6 @@ type DashPage struct {
 	Widgets []DashWidget `json:"widgets"`
 }
 
-// AlertConfig controls which parameter changes trigger a full-screen overlay alert.
-type AlertConfig struct {
-	TCChange        bool `json:"tcChange"`
-	ABSChange       bool `json:"absChange"`
-	EngineMapChange bool `json:"engineMapChange"`
-}
-
 // DashLayout is the full configuration for one named dashboard.
 // It contains an idle page (shown when player is not in a session),
 // one or more active pages (cycled via commands), and alert settings.
@@ -57,7 +52,7 @@ type DashLayout struct {
 	GridRows      int                   `json:"gridRows"`
 	IdlePage      DashPage              `json:"idlePage"`
 	Pages         []DashPage            `json:"pages"` // at least 1 required
-	Alerts        AlertConfig           `json:"alerts"`
+	Alerts        []alerts.AlertInstance `json:"alerts,omitempty"`
 	Theme         widgets.DashTheme     `json:"theme,omitempty"`
 	DomainPalette widgets.DomainPalette `json:"domainPalette,omitempty"`
 }
@@ -71,7 +66,33 @@ func NewPage(name string) DashPage {
 	}
 }
 
-// ValidateLayout returns an error if the layout is invalid.
+// UnmarshalJSON implements backwards-compatible deserialization for DashLayout.
+// Older saved layouts stored "alerts" as an object {"tcChange":false, ...}.
+// The field is now []alerts.AlertInstance (an array). We detect the old format
+// by inspecting the raw JSON token and silently treat it as an empty slice,
+// so existing layouts load cleanly without losing any other fields.
+func (l *DashLayout) UnmarshalJSON(data []byte) error {
+	// Use a type alias to avoid infinite recursion while still unmarshaling all
+	// other fields via the generated logic.
+	type Alias DashLayout
+	aux := &struct {
+		Alerts json.RawMessage `json:"alerts"`
+		*Alias
+	}{
+		Alias: (*Alias)(l),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	// Old format was an object; new format is an array. Only unmarshal when it
+	// is actually a JSON array — otherwise leave Alerts nil (no configured alerts).
+	if len(aux.Alerts) > 0 && aux.Alerts[0] == '[' {
+		if err := json.Unmarshal(aux.Alerts, &l.Alerts); err != nil {
+			l.Alerts = nil
+		}
+	}
+	return nil
+}
 func ValidateLayout(l *DashLayout) error {
 	if l.GridCols <= 0 || l.GridRows <= 0 {
 		return fmt.Errorf("dash: invalid grid dimensions %dx%d", l.GridCols, l.GridRows)
