@@ -227,7 +227,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const handleBack = () => guardedNavigate(onBack)
 
   const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
-  const widgetCount = canvasWidgets.length
   const paletteWidgets = activeTab === 'idle'
     ? catalog.filter(w => w.idleCapable)
     : activeTab === 'alerts'
@@ -275,22 +274,9 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           </button>
         )}
 
-        {/* Editor tab switcher */}
-        <div className="flex items-center gap-0.5 border border-border rounded-sm overflow-hidden flex-shrink-0">
-          <EditorTabButton active={editorTab === 'designer'} onClick={() => setEditorTab('designer')}>DESIGNER</EditorTabButton>
-          <EditorTabButton active={editorTab === 'settings'} onClick={() => setEditorTab('settings')}>SETTINGS</EditorTabButton>
-        </div>
+        {/* Spacer */}
+        <span className="flex-1 min-w-0" />
 
-        {editorTab === 'designer' && (
-          <span className="font-mono text-[9px] text-text-muted">
-            {widgetCount} widget{widgetCount !== 1 ? 's' : ''}
-            {livePageIndex !== null && (
-              <span className="ml-2 text-teal-400">
-                ● LIVE: {layout.pages[livePageIndex]?.name ?? `Page ${livePageIndex + 1}`}
-              </span>
-            )}
-          </span>
-        )}
         {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
         {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
         {editorTab === 'designer' && (
@@ -312,6 +298,20 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         onCancel={cancel}
       />
 
+      <PageTabs
+        idlePage={layout.idlePage}
+        pages={layout.pages}
+        activeTab={activeTab}
+        livePageIndex={livePageIndex}
+        editorTab={editorTab}
+        onEditorTabChange={setEditorTab}
+        onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
+        onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
+        onAddPage={handleAddPage}
+        onDeletePage={handleDeletePage}
+        onRenamePage={handleRenamePage}
+      />
+
       {editorTab === 'settings' ? (
         <AdditionalSettingsPanel
           theme={layout.theme ?? {}}
@@ -320,28 +320,14 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           globalDefaults={globalDefaults}
           onChange={handleSettingsChange}
         />
+      ) : activeTab === 'alerts' ? (
+        <AlertsEditor
+          instances={layout.alerts ?? []}
+          catalog={alertCatalog}
+          domainPalette={layout.domainPalette}
+          onChange={handleAlertsChange}
+        />
       ) : (
-        <>
-          <PageTabs
-            idlePage={layout.idlePage}
-            pages={layout.pages}
-            activeTab={activeTab}
-            livePageIndex={livePageIndex}
-            onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
-            onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
-            onAddPage={handleAddPage}
-            onDeletePage={handleDeletePage}
-            onRenamePage={handleRenamePage}
-          />
-
-          {activeTab === 'alerts' ? (
-            <AlertsEditor
-              instances={layout.alerts ?? []}
-              catalog={alertCatalog}
-              domainPalette={layout.domainPalette}
-              onChange={handleAlertsChange}
-            />
-          ) : (
           <div className="flex flex-1 overflow-hidden min-h-0">
             {/* Left: widget palette */}
             <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
@@ -398,9 +384,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     </Button>
                   </>
                 ) : (
-                  <span className="text-text-muted">
-                    {widgetCount === 0 ? 'DRAG_WIDGET_TO_CANVAS' : `${widgetCount}_WIDGETS — CLICK_TO_SELECT`}
-                  </span>
+                  <span className="text-text-muted">DRAG_WIDGET_TO_CANVAS</span>
                 )}
               </div>
             </div>
@@ -420,8 +404,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             </div>
           </div>
           )}
-        </>
-      )}
 
       <ConfirmDialog
         open={confirmRemoveWidget}
@@ -560,22 +542,5 @@ function PencilIcon({ className }: { className?: string }) {
     <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M7.5 1.5 9.5 3.5 3.5 9.5H1.5v-2z" />
     </svg>
-  )
-}
-
-function EditorTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'px-2 py-1 font-mono text-[9px] font-bold tracking-wider transition-colors',
-        active
-          ? 'bg-accent/10 text-accent'
-          : 'text-text-muted hover:text-foreground hover:bg-white/5',
-      )}
-    >
-      {children}
-    </button>
   )
 }

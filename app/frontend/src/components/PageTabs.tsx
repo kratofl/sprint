@@ -6,9 +6,12 @@ import { ConfirmDialog } from './ConfirmDialog'
 export interface PageTabsProps {
   idlePage: DashPage
   pages: DashPage[]
-  activeTab: 'idle' | number
+  activeTab: 'idle' | 'alerts' | number
   livePageIndex?: number | null
-  onSelectTab: (tab: 'idle' | number) => void
+  editorTab: 'designer' | 'settings'
+  onEditorTabChange: (tab: 'designer' | 'settings') => void
+  onSelectTab: (tab: 'idle' | 'alerts' | number) => void
+  onSelectAlerts: () => void
   onAddPage: () => void
   onDeletePage: (index: number) => void
   onRenamePage: (index: number, name: string) => void
@@ -18,7 +21,10 @@ export function PageTabs({
   pages,
   activeTab,
   livePageIndex,
+  editorTab,
+  onEditorTabChange,
   onSelectTab,
+  onSelectAlerts,
   onAddPage,
   onDeletePage,
   onRenamePage,
@@ -59,6 +65,20 @@ export function PageTabs({
       >
         <LockIcon />
         <span>IDLE</span>
+      </button>
+
+      {/* Alerts tab — always present, locked */}
+      <button
+        onClick={onSelectAlerts}
+        className={cn(
+          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0',
+          activeTab === 'alerts'
+            ? 'border-warning text-foreground bg-white/[0.04]'
+            : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
+        )}
+      >
+        <LockIcon />
+        <span>ALERTS</span>
       </button>
 
       <div className="w-px bg-border self-stretch my-1.5" />
@@ -140,6 +160,32 @@ export function PageTabs({
         <span className="text-base leading-none">+</span>
         <span>Page</span>
       </button>
+
+      {/* DESIGNER / SETTINGS toggle — pushed to far right */}
+      <div className="ml-auto flex items-center self-stretch border-l border-border pl-3 pr-3 gap-0.5 flex-shrink-0">
+        <button
+          onClick={() => onEditorTabChange('designer')}
+          className={cn(
+            'px-2.5 h-6 font-mono text-[10px] transition-colors rounded-sm',
+            editorTab === 'designer'
+              ? 'bg-white/[0.08] text-foreground'
+              : 'text-text-muted hover:text-foreground hover:bg-white/[0.04]'
+          )}
+        >
+          DESIGNER
+        </button>
+        <button
+          onClick={() => onEditorTabChange('settings')}
+          className={cn(
+            'px-2.5 h-6 font-mono text-[10px] transition-colors rounded-sm',
+            editorTab === 'settings'
+              ? 'bg-white/[0.08] text-foreground'
+              : 'text-text-muted hover:text-foreground hover:bg-white/[0.04]'
+          )}
+        >
+          SETTINGS
+        </button>
+      </div>
     </div>
 
     <ConfirmDialog
