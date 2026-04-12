@@ -6,8 +6,8 @@ import {
 } from '@sprint/ui'
 import {
   type DashLayout, type DashPage, type DashWidget, type WidgetCatalogEntry,
-  type DashTheme, type DomainPalette,
-  widgetCatalogAPI, deviceAPI, deviceHasScreen, dashAPI,
+  type DashTheme, type DomainPalette, type AlertInstance, type AlertMeta,
+  widgetCatalogAPI, deviceAPI, deviceHasScreen, dashAPI, alertCatalogAPI,
 } from '@/lib/dash'
 import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
@@ -15,6 +15,7 @@ import { WidgetProperties } from './WidgetProperties'
 import { useUnsavedChanges, useNavigationGuard } from '@/hooks/useUnsavedChanges'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AdditionalSettingsPanel } from './AdditionalSettingsPanel'
+import { AlertsEditor } from './AlertsEditor'
 import { onEvent } from '@/lib/wails'
 
 const CATEGORY_ORDER = ['layout', 'timing', 'car', 'race']
@@ -33,10 +34,11 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [editorTab, setEditorTab]     = useState<'designer' | 'settings'>('designer')
   const [selectedId, setSelectedId]   = useState<number | null>(null)
   const [catalog, setCatalog]         = useState<WidgetCatalogEntry[]>([])
+  const [alertCatalog, setAlertCatalog] = useState<AlertMeta[]>([])
   const [screenW, setScreenW]         = useState(DEFAULT_SCREEN_W)
   const [paletteDropType, setPaletteDropType] = useState<string | null>(null)
   const [screenH, setScreenH]         = useState(DEFAULT_SCREEN_H)
-  const [activeTab, setActiveTab]     = useState<'idle' | number>(0)
+  const [activeTab, setActiveTab]     = useState<'idle' | 'alerts' | number>(0)
   const [livePageIndex, setLivePageIndex] = useState<number | null>(null)
   const [renamingDash, setRenamingDash] = useState(false)
   const [dashNameValue, setDashNameValue] = useState(initialLayout.name)
@@ -101,8 +103,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     Promise.all([
       widgetCatalogAPI.getWidgetCatalog(),
       deviceAPI.getSavedDevices(),
-    ]).then(([widgets, devs]) => {
+      alertCatalogAPI.getAlertCatalog(),
+    ]).then(([widgets, devs, alertsMeta]) => {
       setCatalog(widgets)
+      setAlertCatalog(alertsMeta)
       const screen = devs.find(d => deviceHasScreen(d.type))
       if (screen) { setScreenW(screen.width); setScreenH(screen.height) }
     }).catch(() => {})
@@ -145,12 +149,14 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   const canvasWidgets = activeTab === 'idle'
     ? layout.idlePage.widgets
-    : (layout.pages[activeTab as number]?.widgets ?? [])
+    : activeTab === 'alerts'
+      ? []
+      : (layout.pages[activeTab as number]?.widgets ?? [])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
     if (activeTab === 'idle') {
       setLayout(prev => ({ ...prev, idlePage: { ...prev.idlePage, widgets } }))
-    } else {
+    } else if (activeTab !== 'alerts') {
       setLayout(prev => ({
         ...prev,
         pages: prev.pages.map((p, i) => i === activeTab ? { ...p, widgets } : p),
@@ -200,6 +206,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     }))
   }
 
+  const handleAlertsChange = useCallback((instances: AlertInstance[]) => {
+    setLayout(prev => ({ ...prev, alerts: instances }))
+  }, [])
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -218,7 +228,11 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
   const widgetCount = canvasWidgets.length
-  const paletteWidgets = activeTab === 'idle' ? catalog.filter(w => w.idleCapable) : catalog
+  const paletteWidgets = activeTab === 'idle'
+    ? catalog.filter(w => w.idleCapable)
+    : activeTab === 'alerts'
+      ? []
+      : catalog
 
   const updateSelectedWidget = (updated: DashWidget) => {
     if (selectedId === null) return
@@ -280,7 +294,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
         {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
         {editorTab === 'designer' && (
-          <Button variant="neutral" size="sm" onClick={handleClearPage}>CLEAR</Button>
+          <Button variant="neutral" size="sm" onClick={handleClearPage} disabled={activeTab === 'alerts'}>CLEAR</Button>
         )}
         <Button variant="neutral" size="sm" onClick={handleBack}>CANCEL</Button>
         <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
@@ -314,11 +328,20 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             activeTab={activeTab}
             livePageIndex={livePageIndex}
             onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
+            onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
             onAddPage={handleAddPage}
             onDeletePage={handleDeletePage}
             onRenamePage={handleRenamePage}
           />
 
+          {activeTab === 'alerts' ? (
+            <AlertsEditor
+              instances={layout.alerts ?? []}
+              catalog={alertCatalog}
+              domainPalette={layout.domainPalette}
+              onChange={handleAlertsChange}
+            />
+          ) : (
           <div className="flex flex-1 overflow-hidden min-h-0">
             {/* Left: widget palette */}
             <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
@@ -396,6 +419,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               </div>
             </div>
           </div>
+          )}
         </>
       )}
 
