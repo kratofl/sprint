@@ -1,6 +1,9 @@
 // Types and Wails bindings for Dash Studio and device management.
 
 import { call } from '@/lib/wails'
+import type { FormatPreferences } from '@sprint/types'
+
+export type { FormatPreferences }
 
 export type RuleOp = '>' | '<' | '>=' | '<=' | '==' | '!='
 
@@ -42,8 +45,9 @@ export interface DashTheme {
 }
 
 export interface GlobalDashSettings {
-  theme:         DashTheme
-  domainPalette: DomainPalette
+  theme:              DashTheme
+  domainPalette:      DomainPalette
+  formatPreferences?: FormatPreferences
 }
 
 export interface ConditionalRule {
@@ -54,10 +58,18 @@ export interface ConditionalRule {
   alpha?: number
 }
 
-export interface AlertConfig {
-  tcChange: boolean
-  absChange: boolean
-  engineMapChange: boolean
+export interface AlertInstance {
+  id: string
+  type: string
+  config?: Record<string, unknown>
+}
+
+export interface AlertMeta {
+  type: string
+  label: string
+  description: string
+  defaultColor: string
+  configDefs?: ConfigDef[]
 }
 
 export interface DashWidget {
@@ -86,9 +98,10 @@ export interface DashLayout {
   gridRows: number
   idlePage: DashPage
   pages: DashPage[]
-  alerts:         AlertConfig
-  theme?:         DashTheme
-  domainPalette?: DomainPalette
+  alerts:              AlertInstance[]
+  theme?:              DashTheme
+  domainPalette?:      DomainPalette
+  formatPreferences?:  FormatPreferences
 }
 
 export interface LayoutMeta {
@@ -170,6 +183,80 @@ export interface ConfigDef {
   default: string
 }
 
+// ── Widget element types (mirrors app/internal/dashboard/widgets/elements.go) ─
+
+export type ElementKind = 'panel' | 'text' | 'dot' | 'hbar' | 'deltabar' | 'segbar' | 'tyre_grid' | 'condition'
+export type FontStyle  = 'label' | 'bold' | 'number' | 'mono'
+
+// 0 = Start/left/top, 1 = Center, 2 = End/right/bottom
+export type HAlign = 0 | 1 | 2
+export type VAlign = 0 | 1 | 2
+
+export interface ColorWhen {
+  binding: string
+  above?: number
+  equals?: number
+  ref: ColorRef
+}
+
+export interface ColorExpr {
+  ref?:        ColorRef
+  dynamicRef?: string
+  when?:       ColorWhen[]
+}
+
+export interface SegColorStop {
+  at:    number
+  color: ColorRef
+}
+
+export interface WidgetElement {
+  kind: ElementKind
+  // panel
+  cornerR?:   number
+  fillColor?: ColorRef
+  fillAlpha?: number
+  noBorder?:  boolean
+  // text
+  text?:      string
+  binding?:   string
+  format?:    string
+  font?:      FontStyle
+  fontScale?: number
+  zone?:      string
+  x?:         number
+  y?:         number
+  hAlign?:    HAlign
+  vAlign?:    VAlign
+  color?:     ColorExpr
+  // dot
+  dotX?: number
+  dotY?: number
+  dotR?: number
+  // hbar / deltabar
+  barBinding?:  string
+  barX?:        number
+  barY?:        number
+  barW?:        number
+  barH?:        number
+  barCentered?: boolean
+  barColor?:    ColorExpr
+  bgColor?:     ColorRef
+  // deltabar
+  maxDelta?: number
+  posColor?: ColorExpr
+  negColor?: ColorExpr
+  // segbar
+  segBinding?: string
+  segments?:   number
+  segStops?:   SegColorStop[]
+  // condition
+  condBinding?: string
+  condAbove?:   number
+  then?:        WidgetElement[]
+  else?:        WidgetElement[]
+}
+
 export interface WidgetCatalogEntry {
   type: string
   label: string
@@ -180,6 +267,7 @@ export interface WidgetCatalogEntry {
   defaultRowSpan: number
   idleCapable: boolean
   defaultPanelRules?: ConditionalRule[]
+  defaultDefinition?: WidgetElement[]
 }
 
 // Helper: does this device have a screen?
@@ -252,13 +340,16 @@ function normDashTheme(raw: unknown): DashTheme | undefined {
   }
 }
 
-function normAlerts(raw: unknown): AlertConfig {
-  const r = (raw ?? {}) as Record<string, unknown>
-  return {
-    tcChange:        Boolean(r.tcChange        ?? r.TCChange        ?? false),
-    absChange:       Boolean(r.absChange       ?? r.ABSChange       ?? false),
-    engineMapChange: Boolean(r.engineMapChange ?? r.EngineMapChange ?? false),
-  }
+function normAlertInstances(raw: unknown): AlertInstance[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((r: unknown): AlertInstance => {
+    const e = (r ?? {}) as Record<string, unknown>
+    return {
+      id:     String(e.id     ?? e.ID     ?? ''),
+      type:   String(e.type   ?? e.Type   ?? ''),
+      config: (e.config ?? e.Config) as Record<string, unknown> | undefined,
+    }
+  })
 }
 
 function normLayout(raw: unknown): DashLayout {
@@ -273,9 +364,10 @@ function normLayout(raw: unknown): DashLayout {
     gridRows: Number(r.gridRows  ?? r.GridRows  ?? 12),
     idlePage: rawIdlePage ? normPage(rawIdlePage) : { id: '', name: 'Idle', widgets: [] },
     pages:    Array.isArray(rawPages) ? (rawPages as unknown[]).map(normPage) : [{ id: '', name: 'Main', widgets: [] }],
-    alerts:        normAlerts(r.alerts ?? r.Alerts),
-    theme:         normDashTheme(r.theme ?? r.Theme),
-    domainPalette: (r.domainPalette ?? r.DomainPalette) as DomainPalette | undefined,
+    alerts:              normAlertInstances(r.alerts ?? r.Alerts),
+    theme:               normDashTheme(r.theme ?? r.Theme),
+    domainPalette:       (r.domainPalette ?? r.DomainPalette) as DomainPalette | undefined,
+    formatPreferences:   (r.formatPreferences ?? r.FormatPreferences) as FormatPreferences | undefined,
   }
 }
 
@@ -406,7 +498,8 @@ export const dashAPI = {
     }
     return {
       theme: theme ?? defaultTheme,
-      domainPalette: (r.domainPalette ?? r.DomainPalette ?? {}) as DomainPalette,
+      domainPalette:     (r.domainPalette ?? r.DomainPalette ?? {}) as DomainPalette,
+      formatPreferences: (r.formatPreferences ?? r.FormatPreferences) as FormatPreferences | undefined,
     }
   },
 
@@ -435,6 +528,11 @@ export const dashAPI = {
   async getDefaultDomainPalette(): Promise<DomainPalette> {
     const raw = await call<unknown>('DashGetDefaultDomainPalette')
     return (raw ?? {}) as DomainPalette
+  },
+
+  async getDefaultFormatPreferences(): Promise<FormatPreferences> {
+    const raw = await call<unknown>('DashGetDefaultFormatPreferences')
+    return (raw ?? {}) as FormatPreferences
   },
 }
 
@@ -563,11 +661,35 @@ export const widgetCatalogAPI = {
         defaultPanelRules:   Array.isArray(e.defaultPanelRules ?? e.DefaultPanelRules)
           ? (e.defaultPanelRules ?? e.DefaultPanelRules) as ConditionalRule[]
           : undefined,
+        defaultDefinition: Array.isArray(e.defaultDefinition ?? e.DefaultDefinition)
+          ? (e.defaultDefinition ?? e.DefaultDefinition) as WidgetElement[]
+          : undefined,
       }
     })
   },
 
   async getWidgetPreview(widgetType: string, colSpan: number, rowSpan: number): Promise<string> {
     return call<string>('GetWidgetPreview', widgetType, colSpan, rowSpan)
+  },
+}
+
+// Alert catalog API.
+
+export const alertCatalogAPI = {
+  async getAlertCatalog(): Promise<AlertMeta[]> {
+    const raw = await call<unknown[]>('GetAlertCatalog')
+    if (!Array.isArray(raw)) return []
+    return raw.map((r: unknown): AlertMeta => {
+      const e = r as Record<string, unknown>
+      return {
+        type:         String(e.type        ?? e.Type        ?? ''),
+        label:        String(e.label       ?? e.Label       ?? ''),
+        description:  String(e.description ?? e.Description ?? ''),
+        defaultColor: String(e.defaultColor ?? e.DefaultColor ?? ''),
+        configDefs: Array.isArray(e.configDefs ?? e.ConfigDefs)
+          ? (e.configDefs ?? e.ConfigDefs) as ConfigDef[]
+          : undefined,
+      }
+    })
   },
 }

@@ -87,7 +87,8 @@ type LapState struct {
 	CurrentLapTime float64 `json:"currentLapTime"` // seconds since lap start
 	LastLapTime    float64 `json:"lastLapTime"`    // seconds; 0 if no completed lap this session
 	BestLapTime    float64 `json:"bestLapTime"`    // personal best seconds; 0 if none
-	TargetLapTime  float64 `json:"targetLapTime"`  // seconds; set by driver or engineer; 0 means unset
+	TargetLapTime  float64 `json:"targetLapTime"`  // seconds; active reference lap time; 0 means no reference
+	Delta          float64 `json:"delta"`          // position-based delta to reference lap in seconds; 0 if no reference
 	Sector         int     `json:"sector"`         // current sector (1-based)
 	Sector1Time    float64 `json:"sector1Time"`    // last completed lap sector 1, seconds; 0 if unavailable
 	Sector2Time    float64 `json:"sector2Time"`    // last completed lap sector 2, seconds

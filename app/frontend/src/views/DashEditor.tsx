@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { type DashLayout, type LayoutMeta, type GlobalDashSettings, type DashTheme, type DomainPalette, dashAPI } from '@/lib/dash'
+import { type DashLayout, type LayoutMeta, type GlobalDashSettings, type DashTheme, type DomainPalette, type FormatPreferences, dashAPI } from '@/lib/dash'
 import { DashList } from '@/components/DashList'
 import { DashEditMode } from '@/components/DashEditMode'
 import { AdditionalSettingsPanel } from '@/components/AdditionalSettingsPanel'
@@ -85,9 +85,14 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
 
   const handleGlobalSettingsChange = (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
     setGlobalSettings(prev => prev ? {
+      ...prev,
       theme: { ...HARDCODED_THEME, ...theme } as DashTheme,
       domainPalette: domain,
     } : prev)
+  }
+
+  const handleGlobalFormatPreferencesChange = (prefs: Partial<FormatPreferences>) => {
+    setGlobalSettings(prev => prev ? { ...prev, formatPreferences: prefs } : prev)
   }
 
   const handleGlobalSave = async () => {
@@ -134,7 +139,9 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
             theme={globalSettings.theme ?? {}}
             domainPalette={globalSettings.domainPalette ?? {}}
             hardcodedDefaults={{ theme: HARDCODED_THEME, domain: HARDCODED_DOMAIN }}
+            formatPreferences={globalSettings.formatPreferences ?? {}}
             onChange={handleGlobalSettingsChange}
+            onFormatPreferencesChange={handleGlobalFormatPreferencesChange}
           />
         )}
       </div>

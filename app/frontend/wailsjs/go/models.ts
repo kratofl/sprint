@@ -1,3 +1,62 @@
+export namespace alerts {
+	
+	export class AlertInstance {
+	    id: string;
+	    type: string;
+	    config?: Record<string, any>;
+	
+	    static createFrom(source: any = {}) {
+	        return new AlertInstance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.config = source["config"];
+	    }
+	}
+	export class AlertMeta {
+	    type: string;
+	    label: string;
+	    description: string;
+	    defaultColor: string;
+	    configDefs?: config.ConfigDef[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AlertMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	        this.defaultColor = source["defaultColor"];
+	        this.configDefs = this.convertValues(source["configDefs"], config.ConfigDef);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace color {
 	
 	export class RGBA {
@@ -46,24 +105,65 @@ export namespace commands {
 
 }
 
-export namespace dashboard {
+export namespace config {
 	
-	export class AlertConfig {
-	    tcChange: boolean;
-	    absChange: boolean;
-	    engineMapChange: boolean;
+	export class Option {
+	    value: string;
+	    label: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new AlertConfig(source);
+	        return new Option(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.tcChange = source["tcChange"];
-	        this.absChange = source["absChange"];
-	        this.engineMapChange = source["engineMapChange"];
+	        this.value = source["value"];
+	        this.label = source["label"];
 	    }
 	}
+	export class ConfigDef {
+	    key: string;
+	    label: string;
+	    type: string;
+	    options?: Option[];
+	    default: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigDef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.options = this.convertValues(source["options"], Option);
+	        this.default = source["default"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace dashboard {
+	
 	export class DashWidget {
 	    id: string;
 	    type: string;
@@ -152,9 +252,10 @@ export namespace dashboard {
 	    gridRows: number;
 	    idlePage: DashPage;
 	    pages: DashPage[];
-	    alerts: AlertConfig;
+	    alerts?: alerts.AlertInstance[];
 	    theme?: widgets.DashTheme;
 	    domainPalette?: widgets.DomainPalette;
+	    formatPreferences?: widgets.FormatPreferences;
 	
 	    static createFrom(source: any = {}) {
 	        return new DashLayout(source);
@@ -169,9 +270,10 @@ export namespace dashboard {
 	        this.gridRows = source["gridRows"];
 	        this.idlePage = this.convertValues(source["idlePage"], DashPage);
 	        this.pages = this.convertValues(source["pages"], DashPage);
-	        this.alerts = this.convertValues(source["alerts"], AlertConfig);
+	        this.alerts = this.convertValues(source["alerts"], alerts.AlertInstance);
 	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
 	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
+	        this.formatPreferences = this.convertValues(source["formatPreferences"], widgets.FormatPreferences);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -197,6 +299,7 @@ export namespace dashboard {
 	export class GlobalDashSettings {
 	    theme: widgets.DashTheme;
 	    domainPalette: widgets.DomainPalette;
+	    formatPreferences: widgets.FormatPreferences;
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalDashSettings(source);
@@ -206,6 +309,7 @@ export namespace dashboard {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
 	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
+	        this.formatPreferences = this.convertValues(source["formatPreferences"], widgets.FormatPreferences);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -506,58 +610,38 @@ export namespace updater {
 
 export namespace widgets {
 	
-	export class ConditionalRule {
-	    property: string;
-	    op: string;
-	    threshold: number;
-	    color: string;
-	    alpha?: number;
+	export class ColorWhen {
+	    binding: string;
+	    above?: number;
+	    equals?: number;
+	    ref: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new ConditionalRule(source);
+	        return new ColorWhen(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.property = source["property"];
-	        this.op = source["op"];
-	        this.threshold = source["threshold"];
-	        this.color = source["color"];
-	        this.alpha = source["alpha"];
+	        this.binding = source["binding"];
+	        this.above = source["above"];
+	        this.equals = source["equals"];
+	        this.ref = source["ref"];
 	    }
 	}
-	export class Option {
-	    value: string;
-	    label: string;
+	export class ColorExpr {
+	    ref?: string;
+	    dynamicRef?: string;
+	    when?: ColorWhen[];
 	
 	    static createFrom(source: any = {}) {
-	        return new Option(source);
+	        return new ColorExpr(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.value = source["value"];
-	        this.label = source["label"];
-	    }
-	}
-	export class ConfigDef {
-	    key: string;
-	    label: string;
-	    type: string;
-	    options?: Option[];
-	    default: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ConfigDef(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.label = source["label"];
-	        this.type = source["type"];
-	        this.options = this.convertValues(source["options"], Option);
-	        this.default = source["default"];
+	        this.ref = source["ref"];
+	        this.dynamicRef = source["dynamicRef"];
+	        this.when = this.convertValues(source["when"], ColorWhen);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -577,6 +661,27 @@ export namespace widgets {
 		    }
 		    return a;
 		}
+	}
+	
+	export class ConditionalRule {
+	    property: string;
+	    op: string;
+	    threshold: number;
+	    color: string;
+	    alpha?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConditionalRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.property = source["property"];
+	        this.op = source["op"];
+	        this.threshold = source["threshold"];
+	        this.color = source["color"];
+	        this.alpha = source["alpha"];
+	    }
 	}
 	export class DashTheme {
 	    primary: color.RGBA;
@@ -670,18 +775,155 @@ export namespace widgets {
 		    return a;
 		}
 	}
+	export class SegColorStop {
+	    at: number;
+	    color: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SegColorStop(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = source["at"];
+	        this.color = source["color"];
+	    }
+	}
+	export class Element {
+	    kind: string;
+	    cornerR?: number;
+	    fillColor?: string;
+	    fillAlpha?: number;
+	    noBorder?: boolean;
+	    text?: string;
+	    binding?: string;
+	    format?: string;
+	    font?: string;
+	    fontScale?: number;
+	    zone?: string;
+	    x?: number;
+	    y?: number;
+	    hAlign?: number;
+	    vAlign?: number;
+	    color?: ColorExpr;
+	    dotX?: number;
+	    dotY?: number;
+	    dotR?: number;
+	    barBinding?: string;
+	    barX?: number;
+	    barY?: number;
+	    barW?: number;
+	    barH?: number;
+	    barCentered?: boolean;
+	    barColor?: ColorExpr;
+	    bgColor?: string;
+	    maxDelta?: number;
+	    posColor?: ColorExpr;
+	    negColor?: ColorExpr;
+	    segBinding?: string;
+	    segments?: number;
+	    segStops?: SegColorStop[];
+	    condBinding?: string;
+	    condAbove?: number;
+	    then?: Element[];
+	    else?: Element[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Element(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.cornerR = source["cornerR"];
+	        this.fillColor = source["fillColor"];
+	        this.fillAlpha = source["fillAlpha"];
+	        this.noBorder = source["noBorder"];
+	        this.text = source["text"];
+	        this.binding = source["binding"];
+	        this.format = source["format"];
+	        this.font = source["font"];
+	        this.fontScale = source["fontScale"];
+	        this.zone = source["zone"];
+	        this.x = source["x"];
+	        this.y = source["y"];
+	        this.hAlign = source["hAlign"];
+	        this.vAlign = source["vAlign"];
+	        this.color = this.convertValues(source["color"], ColorExpr);
+	        this.dotX = source["dotX"];
+	        this.dotY = source["dotY"];
+	        this.dotR = source["dotR"];
+	        this.barBinding = source["barBinding"];
+	        this.barX = source["barX"];
+	        this.barY = source["barY"];
+	        this.barW = source["barW"];
+	        this.barH = source["barH"];
+	        this.barCentered = source["barCentered"];
+	        this.barColor = this.convertValues(source["barColor"], ColorExpr);
+	        this.bgColor = source["bgColor"];
+	        this.maxDelta = source["maxDelta"];
+	        this.posColor = this.convertValues(source["posColor"], ColorExpr);
+	        this.negColor = this.convertValues(source["negColor"], ColorExpr);
+	        this.segBinding = source["segBinding"];
+	        this.segments = source["segments"];
+	        this.segStops = this.convertValues(source["segStops"], SegColorStop);
+	        this.condBinding = source["condBinding"];
+	        this.condAbove = source["condAbove"];
+	        this.then = this.convertValues(source["then"], Element);
+	        this.else = this.convertValues(source["else"], Element);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FormatPreferences {
+	    lapFormat?: string;
+	    speedUnit?: string;
+	    tempUnit?: string;
+	    pressureUnit?: string;
+	    deltaPrecision?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FormatPreferences(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.lapFormat = source["lapFormat"];
+	        this.speedUnit = source["speedUnit"];
+	        this.tempUnit = source["tempUnit"];
+	        this.pressureUnit = source["pressureUnit"];
+	        this.deltaPrecision = source["deltaPrecision"];
+	    }
+	}
 	
 	export class WidgetMeta {
 	    type: string;
 	    label: string;
 	    category: string;
 	    categoryLabel: string;
-	    configDefs?: ConfigDef[];
+	    configDefs?: config.ConfigDef[];
 	    defaultColSpan: number;
 	    defaultRowSpan: number;
 	    idleCapable: boolean;
 	    defaultUpdateHz: number;
 	    defaultPanelRules?: ConditionalRule[];
+	    defaultDefinition?: Element[];
 	
 	    static createFrom(source: any = {}) {
 	        return new WidgetMeta(source);
@@ -693,12 +935,13 @@ export namespace widgets {
 	        this.label = source["label"];
 	        this.category = source["category"];
 	        this.categoryLabel = source["categoryLabel"];
-	        this.configDefs = this.convertValues(source["configDefs"], ConfigDef);
+	        this.configDefs = this.convertValues(source["configDefs"], config.ConfigDef);
 	        this.defaultColSpan = source["defaultColSpan"];
 	        this.defaultRowSpan = source["defaultRowSpan"];
 	        this.idleCapable = source["idleCapable"];
 	        this.defaultUpdateHz = source["defaultUpdateHz"];
 	        this.defaultPanelRules = this.convertValues(source["defaultPanelRules"], ConditionalRule);
+	        this.defaultDefinition = this.convertValues(source["defaultDefinition"], Element);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

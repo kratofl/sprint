@@ -209,37 +209,48 @@ func TestResolve(t *testing.T) {
 }
 
 func TestFormatValue(t *testing.T) {
+	def := DefaultFormatPreferences()
 	cases := []struct {
 		name   string
 		val    any
 		format string
+		prefs  FormatPreferences
 		want   string
 	}{
-		{"lap named", 90.0, "lap", "1:30.000"},
-		{"sector named", 30.5, "sector", "30.500"},
-		{"speed named", 30.0, "speed", "108"},
-		{"int named", 42.0, "int", "42"},
-		{"float named", 1.2345, "float", "1.23"},
-		{"float1 named", 1.2345, "float1", "1.2"},
-		{"float2 named", 1.2345, "float2", "1.23"},
-		{"bool true", true, "bool", "true"},
-		{"bool false", false, "bool", "false"},
-		{"sprintf pattern", 42.0, "%.0f km/h", "42 km/h"},
-		{"empty format", "hello", "", "hello"},
-		{"int via sprint", 7, "", "7"},
-		{"delta positive", 1.234, "delta", "+1.234"},
-		{"delta negative", -0.456, "delta", "-0.456"},
-		{"gap nonzero", float32(1.5), "gap", "+1.500"},
-		{"gap zero", float32(0), "gap", "---"},
-		{"session hours", 3661.0, "session", "1:01:01"},
-		{"session minutes", 90.0, "session", "01:30"},
+		{"lap named", 90.0, "lap", def, "1:30.000"},
+		{"lap M:SS.mm", 90.0, "lap", FormatPreferences{LapFormat: LapFormatMSSmm}, "1:30.00"},
+		{"lap SS.mmm", 90.5, "lap", FormatPreferences{LapFormat: LapFormatSSmmm}, "90.500"},
+		{"sector named", 30.5, "sector", def, "30.500"},
+		{"speed kph", 30.0, "speed", def, "108"},
+		{"speed mph", 30.0, "speed", FormatPreferences{SpeedUnit: SpeedMPH}, "67"},
+		{"int named", 42.0, "int", def, "42"},
+		{"float named", 1.2345, "float", def, "1.23"},
+		{"float1 named", 1.2345, "float1", def, "1.2"},
+		{"float2 named", 1.2345, "float2", def, "1.23"},
+		{"bool true", true, "bool", def, "true"},
+		{"bool false", false, "bool", def, "false"},
+		{"sprintf pattern", 42.0, "%.0f km/h", def, "42 km/h"},
+		{"empty format", "hello", "", def, "hello"},
+		{"int via sprint", 7, "", def, "7"},
+		{"delta positive 3dp", 1.234, "delta", def, "+1.234"},
+		{"delta negative 3dp", -0.456, "delta", def, "-0.456"},
+		{"delta positive 2dp", 1.234, "delta", FormatPreferences{DeltaPrecision: DeltaPrec2}, "+1.23"},
+		{"gap nonzero", float32(1.5), "gap", def, "+1.500"},
+		{"gap zero", float32(0), "gap", def, "---"},
+		{"session hours", 3661.0, "session", def, "1:01:01"},
+		{"session minutes", 90.0, "session", def, "01:30"},
+		{"temp celsius", 85.0, "temp", def, "85.0"},
+		{"temp fahrenheit", 100.0, "temp", FormatPreferences{TempUnit: TempFahrenheit}, "212.0"},
+		{"pressure kpa", 165.0, "pressure", def, "165.0"},
+		{"pressure psi", 165.0, "pressure", FormatPreferences{PressureUnit: PressurePSI}, "23.9"},
+		{"pressure bar", 165.0, "pressure", FormatPreferences{PressureUnit: PressureBar}, "1.650"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := FormatValue(tc.val, tc.format)
+			got := FormatValue(tc.val, tc.format, tc.prefs)
 			if got != tc.want {
-				t.Errorf("FormatValue(%v, %q) = %q, want %q", tc.val, tc.format, got, tc.want)
+				t.Errorf("FormatValue(%v, %q, prefs) = %q, want %q", tc.val, tc.format, got, tc.want)
 			}
 		})
 	}

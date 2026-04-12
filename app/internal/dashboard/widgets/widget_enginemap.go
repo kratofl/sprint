@@ -16,9 +16,9 @@ func (engineMapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "ENGINE MAP", Font: FontLabel, FontScale: 0.18,
-			X: 0.5, Y: 0.22, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "electronics.motorMap", Format: "MAP %d", Font: FontNumber, FontScale: 0.45,
-			X: 0.5, Y: 0.6, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "primary"}},
+			Zone: "fill", HAlign: HAlignCenter, Color: ColorExpr{Ref: "primary"}},
 	}
 }
 

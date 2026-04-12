@@ -51,18 +51,18 @@ const (
 // The first matching rule wins; "matching" means the resolved binding value is
 // truthy (> Above). Use Equals (non-nil pointer) for exact equality checks.
 type ColorWhen struct {
-	Binding string   // dot-path to resolve from the frame
-	Above   float64  // trigger when resolved value > Above; default 0 = any truthy
-	Equals  *float64 // trigger when resolved value == Equals (exclusive with Above)
-	Ref     ColorRef // color to apply when the condition matches
+	Binding string   `json:"binding"`
+	Above   float64  `json:"above,omitempty"`
+	Equals  *float64 `json:"equals,omitempty"`
+	Ref     ColorRef `json:"ref"`
 }
 
 // ColorExpr describes how to pick a color for an element.
 // Resolution order: When list (first match) → DynamicRef → Ref.
 type ColorExpr struct {
-	Ref        ColorRef    // static semantic name; used when nothing else matches
-	DynamicRef string      // binding path that returns a ColorRef string at runtime
-	When       []ColorWhen // conditional overrides, evaluated in order
+	Ref        ColorRef    `json:"ref,omitempty"`
+	DynamicRef string      `json:"dynamicRef,omitempty"`
+	When       []ColorWhen `json:"when,omitempty"`
 }
 
 // RuleOp is the comparison operator in a ConditionalRule.
@@ -91,8 +91,8 @@ type ConditionalRule struct {
 // SegColorStop defines the color for a segment bar above a given threshold.
 // Thresholds are checked in order; the last stop whose At ≤ current RPM % wins.
 type SegColorStop struct {
-	At    float64  // 0–1 threshold (e.g. 0.85 = 85% RPM)
-	Color ColorRef // semantic color to use above this threshold
+	At    float64  `json:"at"`
+	Color ColorRef `json:"color"`
 }
 
 // ElementKind is the discriminator for an Element.
@@ -124,57 +124,62 @@ const (
 // bounding box (0 = left/top, 1 = right/bottom).
 // Sizes (FontScale, BarW, BarH, DotR) are fractions of the widget height.
 type Element struct {
-	Kind ElementKind
+	Kind ElementKind `json:"kind"`
 
 	// --- ElemPanel ---
-	CornerR   float64  // corner radius in pixels; 0 = sharp
-	FillColor ColorRef // optional coloured background flush (e.g. ABS active)
-	FillAlpha float64  // 0–1 alpha multiplier for FillColor
-	NoBorder  bool     // suppress the border ring (use with FillColor overlays)
+	CornerR   float64  `json:"cornerR,omitempty"`
+	FillColor ColorRef `json:"fillColor,omitempty"`
+	FillAlpha float64  `json:"fillAlpha,omitempty"`
+	NoBorder  bool     `json:"noBorder,omitempty"`
 
 	// --- ElemText ---
-	Text      string    // static display string; overridden by Binding when set
-	Binding   string    // dot-path to telemetry field (see binding.go)
-	Format    string    // named formatter or sprintf pattern (see format.go)
-	Font      FontStyle // font face selector
-	FontScale float64   // font size = FontScale × widget height
-	X         float64   // horizontal position (fraction of widget width)
-	Y         float64   // vertical position (fraction of widget height)
-	HAlign    HAlign    // horizontal text alignment (Start=left, Center, End=right)
-	VAlign    VAlign    // vertical text alignment (Start=top, Center, End=bottom)
-	Color     ColorExpr
+	Text      string    `json:"text,omitempty"`
+	Binding   string    `json:"binding,omitempty"`
+	Format    string    `json:"format,omitempty"`
+	Font      FontStyle `json:"font,omitempty"`
+	FontScale float64   `json:"fontScale,omitempty"`
+	// Zone is the semantic layout zone for the element within its widget.
+	// When set, the painter derives pixel X/Y from Zone + HAlign instead of X/Y.
+	// Values: "header", "fill", "fill:0"/"fill:1"/"fill:2"... (numbered fill rows), "footer".
+	// An explicit X > 0 overrides the HAlign-derived horizontal position.
+	// Leave empty for backward-compat absolute X/Y positioning.
+	Zone   string  `json:"zone,omitempty"`
+	X      float64 `json:"x,omitempty"`
+	Y      float64 `json:"y,omitempty"`
+	HAlign HAlign  `json:"hAlign,omitempty"`
+	VAlign VAlign  `json:"vAlign,omitempty"`
+	Color  ColorExpr `json:"color,omitempty"`
 
 	// --- ElemDot ---
-	DotX float64  // centre X as fraction of widget width
-	DotY float64  // centre Y as fraction of widget height
-	DotR float64  // radius as fraction of widget height
+	DotX float64 `json:"dotX,omitempty"`
+	DotY float64 `json:"dotY,omitempty"`
+	DotR float64 `json:"dotR,omitempty"`
 
 	// --- ElemHBar ---
-	BarBinding  string    // dot-path; value must be 0–1
-	BarX        float64   // bar left edge as fraction of widget width
-	BarY        float64   // bar top edge as fraction of widget height
-	BarW        float64   // bar width as fraction of widget width
-	BarH        float64   // bar height as fraction of widget height
-	BarCentered bool      // if true: 0.5 = centre, <0.5 fills left, >0.5 fills right
-	BarColor    ColorExpr
-	BgColor     ColorRef // bar track colour; defaults to "surface"
+	BarBinding  string    `json:"barBinding,omitempty"`
+	BarX        float64   `json:"barX,omitempty"`
+	BarY        float64   `json:"barY,omitempty"`
+	BarW        float64   `json:"barW,omitempty"`
+	BarH        float64   `json:"barH,omitempty"`
+	BarCentered bool      `json:"barCentered,omitempty"`
+	BarColor    ColorExpr `json:"barColor,omitempty"`
+	BgColor     ColorRef  `json:"bgColor,omitempty"`
 
 	// --- ElemDeltaBar (shares BarX/Y/W/H/BgColor with ElemHBar) ---
-	// BarBinding resolves to a signed float (seconds); ±MaxDelta maps to ±50% fill.
-	MaxDelta float64    // scale factor; e.g. 2.0 means ±2 s fills the half-width
-	PosColor ColorExpr  // colour for the positive (over-target) side
-	NegColor ColorExpr  // colour for the negative (under-target) side
+	MaxDelta float64   `json:"maxDelta,omitempty"`
+	PosColor ColorExpr `json:"posColor,omitempty"`
+	NegColor ColorExpr `json:"negColor,omitempty"`
 
 	// --- ElemSegBar ---
-	SegBinding string         // dot-path; value must be 0–1
-	Segments   int            // number of segments (default 20)
-	SegStops   []SegColorStop // colour thresholds, checked low→high
+	SegBinding string         `json:"segBinding,omitempty"`
+	Segments   int            `json:"segments,omitempty"`
+	SegStops   []SegColorStop `json:"segStops,omitempty"`
 
 	// --- ElemCondition ---
-	CondBinding string    // dot-path to evaluate
-	CondAbove   float64   // condition is true when resolved value > CondAbove
-	Then        []Element // elements rendered when condition is true
-	Else        []Element // elements rendered when condition is false
+	CondBinding string    `json:"condBinding,omitempty"`
+	CondAbove   float64   `json:"condAbove,omitempty"`
+	Then        []Element `json:"then,omitempty"`
+	Else        []Element `json:"else,omitempty"`
 }
 
 // DashTheme holds the semantic colour palette for a dashboard layout.
@@ -281,9 +286,10 @@ func domainColor(d DomainPalette, ref ColorRef) (color.RGBA, bool) {
 //  3. Theme (generic semantic colours)
 //  4. Built-in white fallback
 type RenderTheme struct {
-	Theme     DashTheme
-	Domain    DomainPalette
-	Overrides map[ColorRef]color.RGBA // nil = no widget-level overrides
+	Theme        DashTheme
+	Domain       DomainPalette
+	Overrides    map[ColorRef]color.RGBA // nil = no widget-level overrides
+	FontScaleMul float64                 // 0 = default (1.0); multiplier for all text elements
 }
 
 // Resolve returns the concrete color.RGBA for ref, checking all layers.

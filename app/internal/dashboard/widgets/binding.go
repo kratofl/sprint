@@ -78,10 +78,10 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 
 	// Lap — derived
 	"lap.delta": func(f *dto.TelemetryFrame) any {
-		return f.Lap.CurrentLapTime - f.Lap.TargetLapTime
+		return f.Lap.Delta
 	},
 	"lap.deltaPositive": func(f *dto.TelemetryFrame) any {
-		return f.Lap.CurrentLapTime > f.Lap.TargetLapTime
+		return f.Lap.Delta > 0
 	},
 	"lap.counterStr": func(f *dto.TelemetryFrame) any {
 		if f.Session.MaxLaps == 0 || f.Session.MaxLaps == math.MaxInt32 {

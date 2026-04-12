@@ -16,19 +16,19 @@ func (lapTimeWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "LAP TIMES", Font: FontLabel, FontScale: 0.1,
-			X: 0.025, Y: 0.15, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Text: "Current", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.3, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
+			Zone: "fill:0", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.3, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:0", HAlign: HAlignEnd, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "Last", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.52, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
+			Zone: "fill:1", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.52, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:1", HAlign: HAlignEnd, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "Best", Font: FontLabel, FontScale: 0.12,
-			X: 0.025, Y: 0.74, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted2"}},
+			Zone: "fill:2", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			X: 0.975, Y: 0.74, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "accent"}},
+			Zone: "fill:2", HAlign: HAlignEnd, Color: ColorExpr{Ref: "accent"}},
 	}
 }
 

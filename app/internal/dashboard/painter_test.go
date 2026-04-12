@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
@@ -104,7 +106,7 @@ func TestPainterAlertDetection(t *testing.T) {
 	defer painter.Close()
 
 	layout := makeTestLayout()
-	layout.Alerts.TCChange = true
+	layout.Alerts = []alerts.AlertInstance{{ID: uuid.NewString(), Type: alerts.AlertTypeTC}}
 	painter.SetLayout(layout)
 	painter.SetIdle(false)
 

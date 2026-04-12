@@ -16,11 +16,11 @@ func (gearSpeedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.68,
-			X: 0.5, Y: 0.45, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.19,
-			X: 0.5, Y: 0.76, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:1", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.08,
-			X: 0.5, Y: 0.88, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "footer", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 	}
 }
 

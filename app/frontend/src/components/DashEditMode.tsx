@@ -7,6 +7,7 @@ import {
 import {
   type DashLayout, type DashPage, type DashWidget, type WidgetCatalogEntry,
   type DashTheme, type DomainPalette, type AlertInstance, type AlertMeta,
+  type FormatPreferences,
   widgetCatalogAPI, deviceAPI, deviceHasScreen, dashAPI, alertCatalogAPI,
 } from '@/lib/dash'
 import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
@@ -86,11 +87,11 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     brakeMig:  { R: 90,  G: 248, B: 251, A: 255 },
   }
 
-  const [globalDefaults, setGlobalDefaults] = useState<{ theme: DashTheme; domain: DomainPalette } | undefined>(undefined)
+  const [globalDefaults, setGlobalDefaults] = useState<{ theme: DashTheme; domain: DomainPalette; formatPreferences?: Partial<FormatPreferences> } | undefined>(undefined)
 
   useEffect(() => {
     dashAPI.getGlobalSettings()
-      .then(gs => setGlobalDefaults({ theme: gs.theme, domain: gs.domainPalette }))
+      .then(gs => setGlobalDefaults({ theme: gs.theme, domain: gs.domainPalette, formatPreferences: gs.formatPreferences }))
       .catch(() => {})
   }, [])
 
@@ -206,6 +207,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     }))
   }
 
+  const handleFormatPreferencesChange = (prefs: Partial<FormatPreferences>) => {
+    setLayout(prev => ({ ...prev, formatPreferences: Object.keys(prefs).length === 0 ? undefined : prefs }))
+  }
+
   const handleAlertsChange = useCallback((instances: AlertInstance[]) => {
     setLayout(prev => ({ ...prev, alerts: instances }))
   }, [])
@@ -318,7 +323,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           domainPalette={layout.domainPalette ?? {}}
           hardcodedDefaults={{ theme: hardcodedThemeDefault, domain: hardcodedDomainDefault }}
           globalDefaults={globalDefaults}
+          formatPreferences={layout.formatPreferences ?? {}}
+          globalFormatPreferences={globalDefaults?.formatPreferences}
           onChange={handleSettingsChange}
+          onFormatPreferencesChange={handleFormatPreferencesChange}
         />
       ) : activeTab === 'alerts' ? (
         <AlertsEditor
@@ -360,6 +368,8 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     catalog={catalog}
                     screenW={screenW}
                     screenH={screenH}
+                    theme={layout.theme ?? hardcodedThemeDefault}
+                    domainPalette={layout.domainPalette ?? hardcodedDomainDefault}
                     paletteDropType={paletteDropType}
                     onSelect={setSelectedId}
                     onUpdate={handleUpdate}

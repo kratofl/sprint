@@ -10,11 +10,13 @@ import (
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 )
 
-// GlobalDashSettings holds the global default color palette applied to every
-// newly created dash layout. Users can override these per-dash in the editor.
+// GlobalDashSettings holds the global default color palette and format
+// preferences applied to every newly created dash layout. Users can override
+// these per-dash in the editor.
 type GlobalDashSettings struct {
-	Theme         widgets.DashTheme     `json:"theme"`
-	DomainPalette widgets.DomainPalette `json:"domainPalette"`
+	Theme            widgets.DashTheme        `json:"theme"`
+	DomainPalette    widgets.DomainPalette    `json:"domainPalette"`
+	FormatPreferences widgets.FormatPreferences `json:"formatPreferences"`
 }
 
 // globalSettingsPath returns the path to the global dash settings file.
@@ -59,17 +61,22 @@ func SaveGlobalSettings(s *GlobalDashSettings) error {
 // compile-time defaults from the widgets package.
 func defaultGlobalSettings() *GlobalDashSettings {
 	return &GlobalDashSettings{
-		Theme:         widgets.DefaultTheme(),
-		DomainPalette: widgets.DefaultDomainPalette(),
+		Theme:             widgets.DefaultTheme(),
+		DomainPalette:     widgets.DefaultDomainPalette(),
+		FormatPreferences: widgets.DefaultFormatPreferences(),
 	}
 }
 
-// fillGlobalDefaults fills zero-value color fields with the compile-time defaults.
-// This ensures partial JSON files (e.g., only domainPalette saved) still yield
-// a fully-populated struct without overwriting intentional customisations.
+// fillGlobalDefaults fills zero-value fields with the compile-time defaults.
+// This ensures partial JSON files still yield a fully-populated struct without
+// overwriting intentional customisations.
 func fillGlobalDefaults(s *GlobalDashSettings) {
 	zero := widgets.DashTheme{}
 	if s.Theme == zero {
 		s.Theme = widgets.DefaultTheme()
+	}
+	zeroFP := widgets.FormatPreferences{}
+	if s.FormatPreferences == zeroFP {
+		s.FormatPreferences = widgets.DefaultFormatPreferences()
 	}
 }

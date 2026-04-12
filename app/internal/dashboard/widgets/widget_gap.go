@@ -16,13 +16,13 @@ func (gapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "GAP+", Font: FontLabel, FontScale: 0.14,
-			X: 0.5, Y: 0.18, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "race.gapAhead", Format: "gap", Font: FontNumber, FontScale: 0.28,
-			X: 0.5, Y: 0.34, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:1", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "GAP-", Font: FontLabel, FontScale: 0.14,
-			X: 0.5, Y: 0.62, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "fill:2", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "race.gapBehind", Format: "gap", Font: FontNumber, FontScale: 0.28,
-			X: 0.5, Y: 0.78, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:3", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 	}
 }
 

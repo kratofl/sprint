@@ -146,7 +146,6 @@ func (m *Manager) Create(name string) (*DashLayout, error) {
 		GridRows: DefaultGridRows,
 		IdlePage: NewPage("Idle"),
 		Pages:    []DashPage{NewPage("Main")},
-		Alerts:   AlertConfig{},
 	}
 	if err := m.Save(layout); err != nil {
 		return nil, err

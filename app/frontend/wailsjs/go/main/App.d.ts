@@ -4,6 +4,7 @@ import {updater} from '../models';
 import {dashboard} from '../models';
 import {widgets} from '../models';
 import {devices} from '../models';
+import {alerts} from '../models';
 import {input} from '../models';
 import {commands} from '../models';
 import {settings} from '../models';
@@ -19,6 +20,8 @@ export function DashCyclePage(arg1:number):Promise<void>;
 export function DashDeleteLayout(arg1:string):Promise<void>;
 
 export function DashGetDefaultDomainPalette():Promise<widgets.DomainPalette>;
+
+export function DashGetDefaultFormatPreferences():Promise<widgets.FormatPreferences>;
 
 export function DashGetDefaultTheme():Promise<widgets.DashTheme>;
 
@@ -73,6 +76,8 @@ export function DeviceSetScreenOffset(arg1:number,arg2:number,arg3:string,arg4:n
 export function DeviceSetScreenRotation(arg1:number,arg2:number,arg3:string,arg4:number):Promise<void>;
 
 export function DownloadAndInstall(arg1:string):Promise<void>;
+
+export function GetAlertCatalog():Promise<Array<alerts.AlertMeta>>;
 
 export function GetBindings():Promise<input.Config>;
 

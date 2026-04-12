@@ -7,6 +7,8 @@ package widgets
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/kratofl/sprint/app/internal/dashboard/config"
 )
 
 // WidgetType is the canonical identifier for a dashboard widget kind.
@@ -51,20 +53,10 @@ type Widget interface {
 	Definition(config map[string]any) []Element
 }
 
-// ConfigDef describes one configurable parameter for a widget instance.
-type ConfigDef struct {
-	Key     string   `json:"key"`
-	Label   string   `json:"label"`
-	Type    string   `json:"type"` // "select", "number", "boolean", "text"
-	Options []Option `json:"options,omitempty"`
-	Default string   `json:"default"` // string representation of default value
-}
-
-// Option is one choice in a "select" ConfigDef.
-type Option struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
-}
+// ConfigDef and Option are re-exported from dashboard/config so that callers
+// importing only this package continue to work without change.
+type ConfigDef = config.ConfigDef
+type Option = config.Option
 
 // Category is the palette grouping for a widget.
 type Category string
@@ -97,6 +89,7 @@ type WidgetMeta struct {
 	IdleCapable       bool               `json:"idleCapable"`
 	DefaultUpdateHz   float64            `json:"defaultUpdateHz"`
 	DefaultPanelRules []ConditionalRule  `json:"defaultPanelRules,omitempty"`
+	DefaultDefinition []Element          `json:"defaultDefinition,omitempty"`
 }
 
 var (
@@ -106,6 +99,8 @@ var (
 
 // Register registers a Widget implementation.
 // The update_rate ConfigDef is automatically appended to the widget's ConfigDefs.
+// DefaultDefinition is pre-computed using the default config so the catalog
+// includes the element layout for editor preview rendering.
 // Call from init() in widget_*.go files.
 func Register(w Widget) {
 	m := w.Meta()
@@ -115,6 +110,7 @@ func Register(w Widget) {
 	}
 	m.CategoryLabel = catLabel
 	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
+	m.DefaultDefinition = w.Definition(nil)
 	widgetRegistry[m.Type] = w
 	widgetMeta[m.Type] = m
 }
@@ -189,20 +185,54 @@ func configFloat(config map[string]any, key string, defaultVal float64) float64 
 	return defaultVal
 }
 
-// FmtLap formats t (seconds) as "M:SS.mmm". Returns "-.---.---" when t ≤ 0.
+// FmtLap formats t (seconds) using the default M:SS.mmm layout.
+// Returns "-.---.---" when t ≤ 0.
 func FmtLap(seconds float64) string {
-	if seconds <= 0 {
-		return "-.---.---"
-	}
-	m := int(seconds) / 60
-	s := seconds - float64(m*60)
-	return fmt.Sprintf("%d:%06.3f", m, s)
+	return FmtLapWith(seconds, LapFormatMSSmmm)
 }
 
-// FmtSector formats t (seconds) as "SS.mmm". Returns "--.---" when t ≤ 0.
+// FmtLapWith formats t (seconds) according to the given LapFormat.
+// Returns a format-appropriate placeholder when t ≤ 0.
+func FmtLapWith(seconds float64, format LapFormat) string {
+	switch format {
+	case LapFormatMSSmm:
+		if seconds <= 0 {
+			return "-.---.--"
+		}
+		m := int(seconds) / 60
+		s := seconds - float64(m*60)
+		return fmt.Sprintf("%d:%05.2f", m, s)
+	case LapFormatSSmmm:
+		if seconds <= 0 {
+			return "--.---"
+		}
+		return fmt.Sprintf("%.3f", seconds)
+	default: // LapFormatMSSmmm
+		if seconds <= 0 {
+			return "-.---.---"
+		}
+		m := int(seconds) / 60
+		s := seconds - float64(m*60)
+		return fmt.Sprintf("%d:%06.3f", m, s)
+	}
+}
+
+// FmtSector formats t (seconds) using the default SS.mmm layout.
+// Returns "--.---" when t ≤ 0.
 func FmtSector(seconds float64) string {
+	return FmtSectorWith(seconds, LapFormatMSSmmm)
+}
+
+// FmtSectorWith formats a sector time (seconds) according to the given LapFormat.
+// Sector times always show as total seconds; the LapFormat only controls precision.
+func FmtSectorWith(seconds float64, format LapFormat) string {
 	if seconds <= 0 {
 		return "--.---"
 	}
-	return fmt.Sprintf("%.3f", seconds)
+	switch format {
+	case LapFormatMSSmm:
+		return fmt.Sprintf("%.2f", seconds)
+	default: // LapFormatMSSmmm, LapFormatSSmmm
+		return fmt.Sprintf("%.3f", seconds)
+	}
 }

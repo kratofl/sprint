@@ -19,9 +19,9 @@ func (brakeBiasWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "BRAKE BIAS", Font: FontLabel, FontScale: 0.18,
-			X: 0.5, Y: 0.22, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "car.brakeBiasPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.45,
-			X: 0.5, Y: 0.6, HAlign: HAlignCenter, VAlign: VAlignCenter,
+			Zone: "fill", HAlign: HAlignCenter,
 			Color: ColorExpr{Ref: "fg", When: []ColorWhen{{Binding: "car.brakeBiasWarning", Ref: "warning"}}}},
 	}
 }

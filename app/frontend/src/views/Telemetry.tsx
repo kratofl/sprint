@@ -1,29 +1,37 @@
+import { useEffect, useState } from 'react'
 import {
   DeltaBar,
   RPMBar,
   InputTrace,
 } from '@sprint/ui'
-import type { TelemetryFrame } from '@sprint/types'
+import type { TelemetryFrame, FormatPreferences } from '@sprint/types'
 import { cn } from '@sprint/ui'
+import { dashAPI } from '@/lib/dash'
+import { fmtLap, fmtDelta as _fmtDelta, fmtSpeed, speedUnitLabel, resolvedPrefs } from '@/lib/format'
 
 export interface TelemetryProps {
   frame: TelemetryFrame | null
 }
 
-// Go LapState sends times in seconds (float64).
-function fmt(sec: number | undefined): string {
-  if (!sec || sec <= 0) return '—:——.———'
-  const m = Math.floor(sec / 60)
-  const s = (sec % 60).toFixed(3).padStart(6, '0')
-  return `${m}:${s}`
-}
-
-function fmtDelta(sec: number): string {
-  const s = Math.abs(sec).toFixed(3)
-  return sec >= 0 ? `+${s}` : `-${s}`
-}
-
 export default function Telemetry({ frame }: TelemetryProps) {
+  const [formatPrefs, setFormatPrefs] = useState<FormatPreferences | undefined>(undefined)
+
+  useEffect(() => {
+    dashAPI.getGlobalSettings()
+      .then(gs => setFormatPrefs(gs.formatPreferences))
+      .catch(() => {})
+  }, [])
+
+  const prefs = resolvedPrefs(formatPrefs)
+
+  function fmt(sec: number | undefined): string {
+    return fmtLap(sec, prefs)
+  }
+
+  function fmtDelta(sec: number): string {
+    return _fmtDelta(sec, prefs)
+  }
+
   const tires = frame?.tires ?? []
   const TIRE_LABELS = [
     { pos: 'POS_FL', name: 'FRONT_LEFT' },
@@ -54,8 +62,8 @@ export default function Telemetry({ frame }: TelemetryProps) {
               <div className="text-right">
                 <span className="terminal-header block mb-1 text-[9px] text-text-muted">Velocity</span>
                 <span className="font-mono text-3xl font-bold leading-none">
-                  {frame ? (frame.car.speedMS * 3.6).toFixed(1) : '——'}
-                  <span className="text-[10px] text-text-muted"> KM/H</span>
+                   {frame ? fmtSpeed(frame.car.speedMS, prefs) : '——'}
+                   <span className="text-[10px] text-text-muted"> {speedUnitLabel(prefs)}</span>
                 </span>
               </div>
               <div className="text-right">
@@ -111,7 +119,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
               {frame && frame.lap.targetLapTime > 0 && (
                 <div className="mt-2">
                   <span className="terminal-header text-[9px] text-text-muted block mb-1">Δ_TARGET</span>
-                  <DeltaBar delta={frame.lap.currentLapTime - frame.lap.targetLapTime} />
+                  <DeltaBar delta={frame.lap.delta} />
                 </div>
               )}
             </div>

@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -36,6 +37,7 @@ type ScreenDriver interface {
 	// connect attempt.
 	Configure(cfg ScreenConfig)
 	SetLayout(layout *dashboard.DashLayout)
+	SetGlobalPrefs(prefs widgets.FormatPreferences)
 	SetActivePage(index int)
 	SetIdle(idle bool)
 	OnFrame(frame *dto.TelemetryFrame)

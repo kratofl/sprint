@@ -1,17 +1,13 @@
-import { useRef, useState, useEffect, useCallback, useReducer } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { cn } from '@sprint/ui'
-import { type DashWidget, type WidgetCatalogEntry, widgetCatalogAPI } from '@/lib/dash'
+import { type DashWidget, type DashTheme, type DomainPalette, type WidgetCatalogEntry } from '@/lib/dash'
+import { WidgetPreview } from './WidgetPreview'
 
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
 
 const DEFAULT_GRID_COLS = 20
 const DEFAULT_GRID_ROWS = 12
-
-// Module-level cache so previews survive tab switches and layout edits.
-// Key: "type:colSpan×rowSpan"
-const previewCache = new Map<string, string>()
-const previewInflight = new Set<string>()
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
@@ -50,10 +46,6 @@ const HANDLE_OFFSETS: Record<ResizeHandle, [string, string]> = {
 
 const ALL_HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
-function widgetLabel(type: string, catalog: WidgetCatalogEntry[]): string {
-  return catalog.find(w => w.type === type)?.label ?? type
-}
-
 function overlaps(
   a: { col: number; row: number; colSpan: number; rowSpan: number },
   b: { col: number; row: number; colSpan: number; rowSpan: number },
@@ -79,6 +71,8 @@ export interface DashCanvasProps {
   widgets: DashWidget[]
   selectedId: number | null
   catalog?: WidgetCatalogEntry[]
+  theme?: DashTheme
+  domainPalette?: DomainPalette
   gridCols?: number
   gridRows?: number
   screenW?: number
@@ -94,6 +88,8 @@ export function DashCanvas({
   gridRows = DEFAULT_GRID_ROWS,
   selectedId,
   catalog = [],
+  theme,
+  domainPalette,
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
@@ -104,34 +100,9 @@ export function DashCanvas({
   const widgetsRef    = useRef(widgets)
   widgetsRef.current  = widgets
 
-  // Force a re-render whenever a preview finishes loading.
-  const [, forceUpdate] = useReducer(x => x + 1, 0)
-
   const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
   const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
   const [ghost,        setGhost]        = useState<Ghost        | null>(null)
-
-  // Load previews for any widget whose (type, colSpan, rowSpan) is not yet cached.
-  // Runs on every widgets change so resized widgets get a fresh preview automatically.
-  useEffect(() => {
-    const missing = widgets.filter(w => {
-      const key = `${w.type}:${w.colSpan}x${w.rowSpan}`
-      return !previewCache.has(key) && !previewInflight.has(key)
-    })
-    if (missing.length === 0) return
-    missing.forEach(w => {
-      const key = `${w.type}:${w.colSpan}x${w.rowSpan}`
-      previewInflight.add(key)
-      widgetCatalogAPI.getWidgetPreview(w.type, w.colSpan, w.rowSpan)
-        .then(b64 => {
-          if (b64) previewCache.set(key, b64)
-          previewInflight.delete(key)
-          forceUpdate()
-        })
-        .catch(() => { previewInflight.delete(key) })
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widgets])
 
   const gridPos = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { col: 0, row: 0 }
@@ -344,18 +315,13 @@ export function DashCanvas({
                   : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
-              {previewCache.get(`${widget.type}:${widget.colSpan}x${widget.rowSpan}`) ? (
-                <img
-                  src={`data:image/png;base64,${previewCache.get(`${widget.type}:${widget.colSpan}x${widget.rowSpan}`)}`}
-                  alt={widgetLabel(widget.type, catalog)}
-                  className="absolute inset-0 w-full h-full pointer-events-none"
-                  draggable={false}
-                  style={{ objectFit: 'fill', opacity: isSelected ? 0.85 : 0.7 }}
+              {theme && (
+                <WidgetPreview
+                  widget={widget}
+                  theme={theme}
+                  domainPalette={domainPalette}
+                  catalog={catalog}
                 />
-              ) : (
-                <span className="w-full truncate px-1 pt-0.5 font-mono text-[9px] uppercase leading-none tracking-wide text-white/40">
-                  {widgetLabel(widget.type, catalog)}
-                </span>
               )}
             </div>
 

@@ -6,32 +6,43 @@ import (
 )
 
 // namedFormatters maps format names to formatting functions.
+// Each function receives the raw value and the resolved FormatPreferences so
+// that user-configured units and precision are honoured at render time.
 // When the "format" config key matches one of these names, the corresponding
 // function is used instead of treating the value as an fmt.Sprintf pattern.
-var namedFormatters = map[string]func(any) string{
-	"lap":     fmtAnyLap,
-	"sector":  fmtAnySector,
-	"speed":   fmtAnySpeed,
-	"int":     fmtAnyInt,
-	"float":   fmtAnyFloat2,
-	"float1":  fmtAnyFloat1,
-	"float2":  fmtAnyFloat2,
-	"bool":    fmtAnyBool,
-	"delta":   fmtAnyDelta,
-	"gap":     fmtAnyGap,
-	"session": fmtAnySession,
+var namedFormatters = map[string]func(any, FormatPreferences) string{
+	"lap":      fmtAnyLap,
+	"sector":   fmtAnySector,
+	"speed":    fmtAnySpeed,
+	"int":      ignorePrefs(fmtAnyInt),
+	"float":    ignorePrefs(fmtAnyFloat2),
+	"float1":   ignorePrefs(fmtAnyFloat1),
+	"float2":   ignorePrefs(fmtAnyFloat2),
+	"bool":     ignorePrefs(fmtAnyBool),
+	"delta":    fmtAnyDelta,
+	"gap":      fmtAnyGap,
+	"session":  ignorePrefs(fmtAnySession),
+	"temp":     fmtAnyTemp,
+	"pressure": fmtAnyPressure,
 }
 
-// FormatValue converts val to a display string using the format hint.
+// ignorePrefs wraps a pref-agnostic formatter so it fits the prefs-aware signature.
+func ignorePrefs(fn func(any) string) func(any, FormatPreferences) string {
+	return func(v any, _ FormatPreferences) string { return fn(v) }
+}
+
+// FormatValue converts val to a display string using the format hint and the
+// active FormatPreferences.
 //
 // Resolution order:
-//  1. If format is a named formatter key (e.g. "lap", "speed"), apply it.
+//  1. If format is a named formatter key (e.g. "lap", "speed"), apply it with prefs.
 //  2. If format contains a '%', use it as an fmt.Sprintf pattern.
 //  3. If format is empty, fall back to fmt.Sprint(val).
-func FormatValue(val any, format string) string {
+func FormatValue(val any, format string, prefs FormatPreferences) string {
+	prefs = resolvedFormatPreferences(prefs)
 	if format != "" {
 		if fn, ok := namedFormatters[format]; ok {
-			return fn(val)
+			return fn(val, prefs)
 		}
 		if strings.ContainsRune(format, '%') {
 			return fmt.Sprintf(format, val)
@@ -71,28 +82,33 @@ func toFloat64(v any) (float64, bool) {
 	return 0, false
 }
 
-func fmtAnyLap(v any) string {
+func fmtAnyLap(v any, prefs FormatPreferences) string {
 	f, ok := toFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
-	return FmtLap(f)
+	return FmtLapWith(f, prefs.LapFormat)
 }
 
-func fmtAnySector(v any) string {
+func fmtAnySector(v any, prefs FormatPreferences) string {
 	f, ok := toFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
-	return FmtSector(f)
+	return FmtSectorWith(f, prefs.LapFormat)
 }
 
-func fmtAnySpeed(v any) string {
+func fmtAnySpeed(v any, prefs FormatPreferences) string {
 	f, ok := toFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
-	return fmt.Sprintf("%.0f", f*3.6)
+	switch prefs.SpeedUnit {
+	case SpeedMPH:
+		return fmt.Sprintf("%.0f", f*2.23694)
+	default:
+		return fmt.Sprintf("%.0f", f*3.6)
+	}
 }
 
 func fmtAnyInt(v any) string {
@@ -129,20 +145,23 @@ func fmtAnyBool(v any) string {
 	return fmt.Sprint(v)
 }
 
-// fmtAnyDelta formats a signed float64 as "+0.123" or "-0.123".
-func fmtAnyDelta(v any) string {
+// fmtAnyDelta formats a signed float64 as e.g. "+0.123" or "-0.456".
+// Precision is controlled by prefs.DeltaPrecision.
+func fmtAnyDelta(v any, prefs FormatPreferences) string {
 	f, ok := toFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
+	pattern := deltaPattern(prefs.DeltaPrecision)
 	if f >= 0 {
-		return fmt.Sprintf("+%.3f", f)
+		return fmt.Sprintf("+"+pattern, f)
 	}
-	return fmt.Sprintf("%.3f", f) // negative sign from Sprintf
+	return fmt.Sprintf(pattern, f)
 }
 
-// fmtAnyGap formats a gap value as "+0.000" or "---" when zero.
-func fmtAnyGap(v any) string {
+// fmtAnyGap formats a gap value as e.g. "+1.234" or "---" when zero.
+// Precision is controlled by prefs.DeltaPrecision.
+func fmtAnyGap(v any, prefs FormatPreferences) string {
 	f, ok := toFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
@@ -150,7 +169,8 @@ func fmtAnyGap(v any) string {
 	if f == 0 {
 		return "---"
 	}
-	return fmt.Sprintf("+%.3f", f)
+	pattern := deltaPattern(prefs.DeltaPrecision)
+	return fmt.Sprintf("+"+pattern, f)
 }
 
 // fmtAnySession formats a session time (seconds) as "H:MM:SS" or "MM:SS".
@@ -170,4 +190,44 @@ func fmtAnySession(v any) string {
 		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
+// fmtAnyTemp formats a Celsius temperature value according to prefs.TempUnit.
+func fmtAnyTemp(v any, prefs FormatPreferences) string {
+	f, ok := toFloat64(v)
+	if !ok {
+		return fmt.Sprint(v)
+	}
+	switch prefs.TempUnit {
+	case TempFahrenheit:
+		return fmt.Sprintf("%.1f", f*9/5+32)
+	default:
+		return fmt.Sprintf("%.1f", f)
+	}
+}
+
+// fmtAnyPressure formats a kPa pressure value according to prefs.PressureUnit.
+func fmtAnyPressure(v any, prefs FormatPreferences) string {
+	f, ok := toFloat64(v)
+	if !ok {
+		return fmt.Sprint(v)
+	}
+	switch prefs.PressureUnit {
+	case PressurePSI:
+		return fmt.Sprintf("%.1f", f*0.14504)
+	case PressureBar:
+		return fmt.Sprintf("%.3f", f/100)
+	default:
+		return fmt.Sprintf("%.1f", f)
+	}
+}
+
+// deltaPattern returns the fmt.Sprintf precision pattern for the given DeltaPrecision.
+func deltaPattern(dp DeltaPrecision) string {
+	switch dp {
+	case DeltaPrec2:
+		return "%.2f"
+	default:
+		return "%.3f"
+	}
 }

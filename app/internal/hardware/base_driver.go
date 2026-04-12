@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -62,6 +63,10 @@ type baseDriver struct {
 	disabled        atomic.Bool
 	disableSignal   chan struct{}        // buffered 1; signals driveLoop to stop and release USB
 	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
+
+	// currentGlobalPrefs stores the latest global format preferences so they can
+	// be applied to a newly created Painter in ensureDashSource.
+	currentGlobalPrefs atomic.Pointer[widgets.FormatPreferences]
 }
 
 func newBaseDriver(logger *slog.Logger, defaultFPS int) baseDriver {
@@ -152,6 +157,19 @@ func (d *baseDriver) SetIdle(idle bool) {
 	d.forceRedraw.Store(true)
 }
 
+// SetGlobalPrefs stores the global format preferences and applies them to the
+// current Painter. The prefs are also cached so ensureDashSource can apply
+// them to any newly created Painter.
+func (d *baseDriver) SetGlobalPrefs(prefs widgets.FormatPreferences) {
+	d.currentGlobalPrefs.Store(&prefs)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalPrefs(prefs)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
 // SetLayout stores the dashboard layout and applies it to the current Painter
 // (if one exists). Safe to call at any time; takes effect on the next frame.
 func (d *baseDriver) SetLayout(layout *dashboard.DashLayout) {
@@ -189,6 +207,9 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 		}
 	}
 	p := dashboard.NewPainter(w, h)
+	if gp := d.currentGlobalPrefs.Load(); gp != nil {
+		p.SetGlobalPrefs(*gp)
+	}
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 		d.logger.Info("painter created", "dims", fmt.Sprintf("%dx%d", w, h), "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
@@ -549,8 +570,8 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 			}
 			d.logger.Info("render stats",
 				"fps", fmt.Sprintf("%.1f", float64(framesSent)/elapsed.Seconds()),
-				"render_ns", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
-				"convert_ns", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
+				"render_ms", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
+				"convert_ms", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
 				"frame_bytes", frameBytes,
 				"skipped", framesSkipped,
 				"rotation_deg", rotation)

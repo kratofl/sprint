@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/app/internal/devices"
 )
@@ -40,7 +41,7 @@ func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
 }
 
 // DashCreateLayout creates a new named dash layout inheriting the global
-// default theme and domain palette, then returns the persisted layout.
+// default theme, domain palette, and format preferences, then returns the persisted layout.
 func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 	layout, err := a.dash.Create(name)
 	if err != nil {
@@ -50,6 +51,7 @@ func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 	if err == nil {
 		layout.Theme = gs.Theme
 		layout.DomainPalette = gs.DomainPalette
+		layout.FormatPreferences = gs.FormatPreferences
 		_ = a.dash.Save(layout) // best-effort: apply global defaults to the new layout
 	}
 	return layout, nil
@@ -64,11 +66,13 @@ func (a *App) DashGetGlobalSettings() (*dashboard.GlobalDashSettings, error) {
 	return s, nil
 }
 
-// DashSaveGlobalSettings writes the global dash settings to disk.
+// DashSaveGlobalSettings writes the global dash settings to disk and propagates
+// the format preferences to all active screen painters immediately.
 func (a *App) DashSaveGlobalSettings(s dashboard.GlobalDashSettings) error {
 	if err := dashboard.SaveGlobalSettings(&s); err != nil {
 		return fmt.Errorf("DashSaveGlobalSettings: %w", err)
 	}
+	a.coord.SetGlobalFormatPrefs(s.FormatPreferences)
 	return nil
 }
 
@@ -82,6 +86,12 @@ func (a *App) DashGetDefaultTheme() widgets.DashTheme {
 // Used by the editor to offer a "reset to default" action.
 func (a *App) DashGetDefaultDomainPalette() widgets.DomainPalette {
 	return widgets.DefaultDomainPalette()
+}
+
+// DashGetDefaultFormatPreferences returns the compile-time default FormatPreferences.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultFormatPreferences() widgets.FormatPreferences {
+	return widgets.DefaultFormatPreferences()
 }
 
 // DashDeleteLayout deletes the layout with the given ID.
@@ -122,6 +132,11 @@ func (a *App) DashSetDefault(id string) error {
 // GetWidgetCatalog returns metadata for all registered widgets (for the editor palette).
 func (a *App) GetWidgetCatalog() []widgets.WidgetMeta {
 	return widgets.WidgetCatalog()
+}
+
+// GetAlertCatalog returns metadata for all registered alert types (for the alert editor palette).
+func (a *App) GetAlertCatalog() []alerts.AlertMeta {
+	return alerts.AlertCatalog()
 }
 
 // DashGetPreview returns a base64-encoded PNG preview image for the given layout ID.

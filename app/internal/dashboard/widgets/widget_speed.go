@@ -16,9 +16,9 @@ func (speedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.45,
-			X: 0.5, Y: 0.4, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.18,
-			X: 0.5, Y: 0.72, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "fill:1", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 	}
 }
 

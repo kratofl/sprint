@@ -29,7 +29,7 @@ func (inputTraceWidget) Definition(_ map[string]any) []Element {
 	elems := []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "INPUTS", Font: FontLabel, FontScale: 0.08,
-			X: 0.025, Y: 0.08, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 	}
 	for i, r := range rows {
 		cy := 0.125 + float64(i)*0.25

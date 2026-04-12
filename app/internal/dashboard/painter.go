@@ -12,11 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/fogleman/gg"
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 	"golang.org/x/image/font"
@@ -26,10 +28,13 @@ import (
 //go:embed fonts/*.ttf
 var fontsFS embed.FS
 
-// widgetCache holds the last rendered pixels for a widget instance, used to
-// blit back onto the canvas when the widget is throttled below the frame rate.
+// widgetCache holds the per-widget sub-context and rendered pixels.
+// Each widget renders into its own img (widget-local coordinates) and the
+// result is blitted onto the main canvas. This avoids the 384 KB image.Alpha
+// allocation that gg.Clip() would otherwise create per widget per frame.
 type widgetCache struct {
 	img      *image.RGBA
+	ctx      *gg.Context // gg context backed by img; widget-local origin (0,0)
 	x, y     int
 	lastNano int64
 }
@@ -58,8 +63,8 @@ type Painter struct {
 
 	// alert is the currently active parameter-change overlay (not atomic —
 	// only accessed from the render goroutine).
-	alert    alertState
-	prevElec dto.Electronics
+	alert     alertState
+	prevFrame *dto.TelemetryFrame
 
 	// layout is the user-configured layout.
 	layout atomic.Pointer[DashLayout]
@@ -67,6 +72,12 @@ type Painter struct {
 	// widgetCaches holds per-widget pixel snapshots for update-rate throttling.
 	// Keyed by DashWidget.ID. Only accessed from the render goroutine — no mutex.
 	widgetCaches map[string]*widgetCache
+
+	// globalPrefs holds the user's global-level format preferences. These sit
+	// between the compile-time defaults and any per-layout overrides so that a
+	// global setting change is immediately reflected across all layouts unless
+	// a layout has an explicit override for that field.
+	globalPrefs atomic.Pointer[widgets.FormatPreferences]
 
 	// activePageIndex is the index into layout.Pages to render (0-based).
 	activePageIndex atomic.Int32
@@ -108,6 +119,13 @@ func (p *Painter) SetActivePage(index int) {
 // When true, the idle page is shown regardless of active page index.
 func (p *Painter) SetIdle(idle bool) {
 	p.idle.Store(idle)
+}
+
+// SetGlobalPrefs stores the global-level FormatPreferences applied as the base
+// layer under per-layout overrides. Call whenever the user saves global dash
+// settings so all active painters reflect the change immediately.
+func (p *Painter) SetGlobalPrefs(prefs widgets.FormatPreferences) {
+	p.globalPrefs.Store(&prefs)
 }
 
 // Paint renders a complete dashboard image for the given telemetry frame
@@ -175,10 +193,12 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 
 	meta := widget.Meta()
 	hz := widgetUpdateHz(w.Config, meta.DefaultUpdateHz)
+
+	cache := p.getOrCreateCache(w.ID, int(x), int(y), int(pw), int(ph))
 	if hz > 0 {
 		intervalNano := int64(float64(time.Second) / hz)
 		now := time.Now().UnixNano()
-		if cache, ok := p.widgetCaches[w.ID]; ok && now-cache.lastNano < intervalNano {
+		if cache.lastNano != 0 && now-cache.lastNano < intervalNano {
 			p.blitCache(dc, cache)
 			return
 		}
@@ -188,11 +208,32 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	if theme == (widgets.DashTheme{}) {
 		theme = widgets.DefaultTheme()
 	}
-	rt := widgets.RenderTheme{
-		Theme:     theme,
-		Domain:    layout.DomainPalette,
-		Overrides: w.StyleOverrides,
+
+	var fontScaleMul float64 = 1.0
+	if v, ok := w.Config["font_scale"]; ok {
+		switch f := v.(type) {
+		case float64:
+			if f > 0 {
+				fontScaleMul = f
+			}
+		}
 	}
+
+	rt := widgets.RenderTheme{
+		Theme:        theme,
+		Domain:       layout.DomainPalette,
+		Overrides:    w.StyleOverrides,
+		FontScaleMul: fontScaleMul,
+	}
+
+	// Resolve FormatPreferences: global settings → layout-level overrides → widget config overrides.
+	base := widgets.DefaultFormatPreferences()
+	if gp := p.globalPrefs.Load(); gp != nil {
+		base = widgets.MergeFormatPreferences(base, *gp)
+	}
+	layoutPrefs := widgets.MergeFormatPreferences(base, layout.FormatPreferences)
+	prefs := widgets.MergeFormatPreferences(layoutPrefs, widgets.FormatPreferencesFromConfig(w.Config))
+
 	elems := widget.Definition(w.Config)
 	if len(w.PanelRules) > 0 {
 		if col, alpha := evalPanelRules(frame, w.PanelRules); col != "" {
@@ -205,10 +246,18 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 			}
 		}
 	}
-	p.renderElements(dc, frame, rt, x, y, pw, ph, elems)
+	// Clear the widget sub-context to background colour, then render at (0,0).
+	// The rendered pixels are blitted onto the main canvas at the widget's
+	// absolute position. This replaces the previous dc.Clip() approach which
+	// allocated a 384 KB image.Alpha per widget per frame, causing severe GC
+	// pressure and progressive FPS degradation after several laps.
+	cache.ctx.SetColor(widgets.ColBg)
+	cache.ctx.Clear()
+	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, elems)
+	p.blitCache(dc, cache)
 
 	if hz > 0 {
-		p.saveCache(dc, w.ID, int(x), int(y), int(pw), int(ph))
+		cache.lastNano = time.Now().UnixNano()
 	}
 }
 
@@ -267,19 +316,20 @@ func widgetUpdateHz(config map[string]any, defaultHz float64) float64 {
 }
 
 // renderElements renders a slice of elements within the widget bounding box.
-func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64, elems []widgets.Element) {
+func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elems []widgets.Element) {
+	fillRowCount := countFillRows(elems)
 	for _, e := range elems {
-		p.renderElement(dc, frame, rt, x, y, w, h, e)
+		p.renderElement(dc, frame, rt, prefs, x, y, w, h, e, fillRowCount)
 	}
 }
 
 // renderElement renders a single element within the widget bounding box.
-func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element, fillRowCount int) {
 	switch elem.Kind {
 	case widgets.ElemPanel:
 		p.renderPanel(dc, rt, x, y, w, h, elem)
 	case widgets.ElemText:
-		p.renderText(dc, frame, rt, x, y, w, h, elem)
+		p.renderText(dc, frame, rt, prefs, x, y, w, h, elem, fillRowCount)
 	case widgets.ElemDot:
 		p.renderDot(dc, frame, rt, x, y, w, h, elem)
 	case widgets.ElemHBar:
@@ -289,9 +339,9 @@ func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt wi
 	case widgets.ElemSegBar:
 		p.renderSegBar(dc, frame, rt, x, y, w, h, elem)
 	case widgets.ElemTyreGrid:
-		p.renderTyreGrid(dc, frame, rt, x, y, w, h)
+		p.renderTyreGrid(dc, frame, rt, prefs, x, y, w, h)
 	case widgets.ElemCondition:
-		p.renderCondition(dc, frame, rt, x, y, w, h, elem)
+		p.renderCondition(dc, frame, rt, prefs, x, y, w, h, elem)
 	}
 }
 
@@ -330,13 +380,95 @@ func valignFrac(a widgets.VAlign) float64 {
 	}
 }
 
+// fillZoneYs returns the Y fractions for n fill:N rows within the fill zone.
+// Distributions are tuned so common widget layouts (label+value, 3-row tables)
+// match the original hand-tuned X/Y positions.
+func fillZoneYs(n int) []float64 {
+	switch n {
+	case 1:
+		return []float64{0.52}
+	case 2:
+		return []float64{0.38, 0.72}
+	case 3:
+		return []float64{0.30, 0.52, 0.74}
+	case 4:
+		return []float64{0.20, 0.40, 0.60, 0.80}
+	default:
+		ys := make([]float64, n)
+		for i := range ys {
+			ys[i] = 0.18 + 0.64*float64(i)/float64(n-1)
+		}
+		return ys
+	}
+}
+
+// countFillRows scans a flat element list for fill:N zones and returns the count
+// of distinct row indices (max index + 1). Nested condition elements are not scanned.
+func countFillRows(elems []widgets.Element) int {
+	max := -1
+	for _, e := range elems {
+		if !strings.HasPrefix(e.Zone, "fill:") {
+			continue
+		}
+		idx, err := strconv.Atoi(e.Zone[5:])
+		if err == nil && idx > max {
+			max = idx
+		}
+	}
+	return max + 1
+}
+
+// zoneTextPos computes the absolute drawing position for an ElemText element
+// that has a Zone set. When Zone is not set, returns the conventional e.X*w, e.Y*h.
+func zoneTextPos(e widgets.Element, fillRowCount int, wx, wy, w, h float64) (tx, ty float64) {
+	var yFrac float64
+	switch e.Zone {
+	case "header":
+		yFrac = 0.20
+	case "fill":
+		yFrac = 0.52
+	case "footer":
+		yFrac = 0.84
+	case "":
+		return wx + e.X*w, wy + e.Y*h
+	default:
+		if strings.HasPrefix(e.Zone, "fill:") {
+			idx, err := strconv.Atoi(e.Zone[5:])
+			if err == nil && fillRowCount > 0 && idx < fillRowCount {
+				ys := fillZoneYs(fillRowCount)
+				yFrac = ys[idx]
+			} else {
+				yFrac = 0.52
+			}
+		} else {
+			return wx + e.X*w, wy + e.Y*h
+		}
+	}
+	ty = wy + yFrac*h
+	if e.X > 0 {
+		tx = wx + e.X*w
+	} else {
+		switch e.HAlign {
+		case widgets.HAlignCenter:
+			tx = wx + 0.5*w
+		case widgets.HAlignEnd:
+			tx = wx + 0.975*w
+		default:
+			tx = wx + 0.025*w
+		}
+	}
+	return tx, ty
+}
+
 // renderText resolves the binding or uses the static Text, formats the value,
 // and draws it at the fractional position within the widget bounding box.
-func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Element) {
+// When elem.Zone is set, pixel X/Y are derived from zone + HAlign; otherwise
+// elem.X and elem.Y fractions are used directly (backward compat).
+func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element, fillRowCount int) {
 	var display string
 	if elem.Binding != "" {
 		if val, ok := widgets.Resolve(frame, elem.Binding); ok {
-			display = widgets.FormatValue(val, elem.Format)
+			display = widgets.FormatValue(val, elem.Format, prefs)
 		} else {
 			display = elem.Text
 		}
@@ -347,7 +479,11 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		return
 	}
 
-	size := elem.FontScale * h
+	mul := rt.FontScaleMul
+	if mul <= 0 {
+		mul = 1.0
+	}
+	size := elem.FontScale * mul * h
 	if size <= 0 {
 		return
 	}
@@ -357,7 +493,12 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 
 	col := p.resolveColorExpr(frame, rt, elem.Color)
 	dc.SetColor(col)
-	dc.DrawStringAnchored(display, x+elem.X*w, y+elem.Y*h, halignFrac(elem.HAlign), valignFrac(elem.VAlign))
+	tx, ty := zoneTextPos(elem, fillRowCount, x, y, w, h)
+	ay := 0.5 // zone-based elements always use vertical centering
+	if elem.Zone == "" {
+		ay = valignFrac(elem.VAlign)
+	}
+	dc.DrawStringAnchored(display, tx, ty, halignFrac(elem.HAlign), ay)
 }
 
 // renderDot draws a filled circle at the fractional position within the widget.
@@ -459,7 +600,7 @@ func (p *Painter) renderSegBar(dc *gg.Context, frame *dto.TelemetryFrame, rt wid
 	segH := (h - 12) / float64(segs)
 	filled := int(float64(segs) * clamp01(pct))
 	for i := 0; i < segs; i++ {
-		sy := y + 6 + (h-12) - float64(i+1)*segH
+		sy := y + 6 + (h - 12) - float64(i+1)*segH
 		segPct := float64(i) / float64(segs)
 		col := p.segStopColor(rt, elem.SegStops, segPct)
 		if i >= filled {
@@ -483,7 +624,7 @@ func (p *Painter) segStopColor(rt widgets.RenderTheme, stops []widgets.SegColorS
 }
 
 // renderTyreGrid draws the 2×2 tyre temperature grid.
-func (p *Painter) renderTyreGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64) {
+func (p *Painter) renderTyreGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64) {
 	labels := [4]string{"FL", "FR", "RL", "RR"}
 	tireW := (w - 36) / 2
 	p.face(dc, "SpaceGrotesk-Regular.ttf", h*0.12)
@@ -497,20 +638,20 @@ func (p *Painter) renderTyreGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt w
 		dc.DrawString(labels[i], tx, ty)
 		p.face(dc, "JetBrainsMono-Bold.ttf", h*0.2)
 		dc.SetColor(widgets.TyreColor(avgTemp))
-		dc.DrawStringAnchored(fmt.Sprintf("%.0f°", avgTemp), tx+tireW, ty-2, 1, 0)
+		dc.DrawStringAnchored(widgets.FormatValue(avgTemp, "temp", prefs)+"°", tx+tireW, ty-2, 1, 0)
 	}
 }
 
 // renderCondition evaluates the condition binding and renders Then or Else elements.
-func (p *Painter) renderCondition(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderCondition(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
 	cond := false
 	if val, ok := widgets.Resolve(frame, elem.CondBinding); ok {
 		cond = isTruthy(val, elem.CondAbove)
 	}
 	if cond {
-		p.renderElements(dc, frame, rt, x, y, w, h, elem.Then)
+		p.renderElements(dc, frame, rt, prefs, x, y, w, h, elem.Then)
 	} else {
-		p.renderElements(dc, frame, rt, x, y, w, h, elem.Else)
+		p.renderElements(dc, frame, rt, prefs, x, y, w, h, elem.Else)
 	}
 }
 
@@ -689,35 +830,28 @@ func (p *Painter) blitCache(dc *gg.Context, cache *widgetCache) {
 	}
 }
 
-// saveCache captures the rendered widget region into the per-widget cache.
-func (p *Painter) saveCache(dc *gg.Context, id string, x, y, w, h int) {
+// getOrCreateCache returns the widgetCache for id, allocating a new one if the
+// entry is absent or its dimensions have changed. The sub-context (ctx) is
+// backed by cache.img and uses widget-local coordinates with (0,0) at the top-left.
+func (p *Painter) getOrCreateCache(id string, x, y, pw, ph int) *widgetCache {
 	if p.widgetCaches == nil {
 		p.widgetCaches = make(map[string]*widgetCache)
 	}
-	src, ok := dc.Image().(*image.RGBA)
-	if !ok {
-		return
-	}
 	cache := p.widgetCaches[id]
-	if cache == nil || cache.img == nil || cache.img.Bounds().Dx() != w || cache.img.Bounds().Dy() != h {
+	if cache == nil || cache.img == nil || cache.img.Bounds().Dx() != pw || cache.img.Bounds().Dy() != ph {
+		img := image.NewRGBA(image.Rect(0, 0, pw, ph))
 		cache = &widgetCache{
-			img: image.NewRGBA(image.Rect(0, 0, w, h)),
+			img: img,
+			ctx: gg.NewContextForRGBA(img),
 			x:   x,
 			y:   y,
 		}
 		p.widgetCaches[id] = cache
+	} else {
+		cache.x = x
+		cache.y = y
 	}
-	captureRegion(cache.img, src, x, y, w, h)
-	cache.lastNano = time.Now().UnixNano()
-}
-
-// captureRegion copies a w×h region from src starting at (x, y) into dst (0, 0).
-func captureRegion(dst, src *image.RGBA, x, y, w, h int) {
-	for row := 0; row < h; row++ {
-		srcOff := src.PixOffset(x, y+row)
-		dstOff := dst.PixOffset(0, row)
-		copy(dst.Pix[dstOff:dstOff+w*4], src.Pix[srcOff:srcOff+w*4])
-	}
+	return cache
 }
 
 // blitSubImage copies src into dst at position (x, y).
@@ -855,7 +989,7 @@ func (p *Painter) extractFonts() {
 	}
 }
 
-const alertDuration = 1500 * time.Millisecond
+const defaultAlertDuration = 1500 * time.Millisecond
 
 // alertState holds the currently active full-screen alert overlay.
 type alertState struct {
@@ -864,37 +998,40 @@ type alertState struct {
 	expiresAt time.Time
 }
 
-// checkAlerts compares the current frame's Electronics against the previous
-// frame. When a monitored value changes and the layout enables that alert,
-// the active alert is updated. Only the most recent change wins (last write).
-// prevElec is always updated so future comparisons stay accurate.
+// checkAlerts iterates over the layout's configured alert instances, calling
+// each registered alert type's Check method. The last event that fires wins
+// (same behaviour as before). prevFrame is updated after each call so future
+// comparisons stay accurate.
 func (p *Painter) checkAlerts(frame *dto.TelemetryFrame, layout *DashLayout) {
-	elec := frame.Electronics
-	prev := p.prevElec
 	now := time.Now()
+	theme := layout.Theme
+	if theme == (widgets.DashTheme{}) {
+		theme = widgets.DefaultTheme()
+	}
+	domain := layout.DomainPalette
 
-	if layout.Alerts.TCChange && elec.TC != prev.TC {
+	for _, inst := range layout.Alerts {
+		a, ok := alerts.GetAlert(inst.Type)
+		if !ok {
+			continue
+		}
+		event := a.Check(frame, p.prevFrame, inst.Config)
+		if event == nil {
+			continue
+		}
+		rt := widgets.RenderTheme{Theme: theme, Domain: domain}
+		c := rt.Resolve(widgets.ColorRef(event.Color))
+		dur := alerts.ConfigFloat(inst.Config, "duration", 0)
+		if dur <= 0 {
+			dur = defaultAlertDuration.Seconds()
+		}
 		p.alert = alertState{
-			text:      fmt.Sprintf("TC  %d", elec.TC),
-			color:     widgets.ColTeal,
-			expiresAt: now.Add(alertDuration),
+			text:      event.Text,
+			color:     c,
+			expiresAt: now.Add(time.Duration(dur * float64(time.Second))),
 		}
 	}
-	if layout.Alerts.ABSChange && elec.ABS != prev.ABS {
-		p.alert = alertState{
-			text:      fmt.Sprintf("ABS  %d", elec.ABS),
-			color:     widgets.ColWarning,
-			expiresAt: now.Add(alertDuration),
-		}
-	}
-	if layout.Alerts.EngineMapChange && elec.MotorMap != prev.MotorMap {
-		p.alert = alertState{
-			text:      fmt.Sprintf("MAP  %d", elec.MotorMap),
-			color:     widgets.ColAccent,
-			expiresAt: now.Add(alertDuration),
-		}
-	}
-	p.prevElec = elec
+	p.prevFrame = frame
 }
 
 // applyAlertOverlay paints a full-screen overlay when an alert is active.
@@ -905,7 +1042,7 @@ func (p *Painter) applyAlertOverlay(dc *gg.Context, w, h float64) {
 		return
 	}
 
-	dc.SetRGBA(0, 0, 0, 0.82)
+	dc.SetRGBA(0, 0, 0, 1)
 	dc.DrawRectangle(0, 0, w, h)
 	dc.Fill()
 

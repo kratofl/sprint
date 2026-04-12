@@ -54,7 +54,8 @@ export interface LapState {
   currentLapTime: number
   lastLapTime: number
   bestLapTime: number
-  targetLapTime: number
+  targetLapTime: number  // active reference lap time; 0 means no reference
+  delta: number          // position-based delta to reference lap in seconds; 0 if no reference
   sector: number
   sector1Time: number
   sector2Time: number

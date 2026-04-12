@@ -26,6 +26,10 @@ export function DashGetDefaultDomainPalette() {
   return window['go']['main']['App']['DashGetDefaultDomainPalette']();
 }
 
+export function DashGetDefaultFormatPreferences() {
+  return window['go']['main']['App']['DashGetDefaultFormatPreferences']();
+}
+
 export function DashGetDefaultTheme() {
   return window['go']['main']['App']['DashGetDefaultTheme']();
 }
@@ -132,6 +136,10 @@ export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
 
 export function DownloadAndInstall(arg1) {
   return window['go']['main']['App']['DownloadAndInstall'](arg1);
+}
+
+export function GetAlertCatalog() {
+  return window['go']['main']['App']['GetAlertCatalog']();
 }
 
 export function GetBindings() {

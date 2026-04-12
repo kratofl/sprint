@@ -13,6 +13,8 @@ import (
 	"github.com/kratofl/sprint/app/internal/capture"
 	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/delta"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/input"
@@ -42,6 +44,7 @@ type Coordinator struct {
 	input   *input.Detector
 	devMgr  *devices.Manager
 	dashMgr *dashboard.Manager
+	delta   *delta.Tracker
 
 	emit EmitFn
 
@@ -76,6 +79,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 		emit:           func(string, ...any) {},
 		devMgr:         devMgr,
 		dashMgr:        dashMgr,
+		delta:          delta.New(logger),
 		entries:        map[string]*deviceEntry{},
 		idleState:      true,
 		frontendEmitCh: make(chan *dto.TelemetryFrame, 1),
@@ -126,6 +130,9 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 	commands.Handle(dashboard.CmdPrevDashPage, func(p any) {
 		screenID, _ := p.(string)
 		c.CyclePage(screenID, -1)
+	})
+	commands.Handle(dashboard.CmdSetTargetLap, func(_ any) {
+		c.delta.SetManualReference()
 	})
 
 	return c
@@ -269,6 +276,19 @@ func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
 		if e.driver != nil && e.layoutID == layout.ID {
 			e.driver.SetLayout(layout)
 			e.currentLayout = layout
+		}
+	}
+}
+
+// SetGlobalFormatPrefs propagates new global-level format preferences to all
+// active screen drivers so they take effect on the next rendered frame without
+// requiring the user to switch layouts.
+func (c *Coordinator) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalPrefs(prefs)
 		}
 	}
 }
@@ -481,7 +501,7 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 			lastLog = time.Now()
 		}
 
-		c.fanOut(frame)
+		c.fanOut(c.augmentDelta(frame))
 	}
 }
 
@@ -524,6 +544,17 @@ func (c *Coordinator) setAllIdle(idle bool) {
 			e.driver.SetIdle(idle)
 		}
 	}
+}
+
+// augmentDelta shallow-copies frame, runs it through the delta tracker, and
+// injects the computed Delta and TargetLapTime into the copy. The original
+// adapter-owned frame is never mutated.
+func (c *Coordinator) augmentDelta(frame *dto.TelemetryFrame) *dto.TelemetryFrame {
+	d, refTime := c.delta.Process(frame)
+	augmented := *frame
+	augmented.Lap.Delta = d
+	augmented.Lap.TargetLapTime = refTime
+	return &augmented
 }
 
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {

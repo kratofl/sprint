@@ -16,7 +16,7 @@ func (tyreTempWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "TYRE TEMPS", Font: FontLabel, FontScale: 0.1,
-			X: 0.025, Y: 0.18, HAlign: HAlignStart, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemTyreGrid},
 	}
 }
