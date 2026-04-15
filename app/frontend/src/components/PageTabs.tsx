@@ -8,8 +8,6 @@ export interface PageTabsProps {
   pages: DashPage[]
   activeTab: 'idle' | 'alerts' | number
   livePageIndex?: number | null
-  editorTab: 'designer' | 'settings'
-  onEditorTabChange: (tab: 'designer' | 'settings') => void
   onSelectTab: (tab: 'idle' | 'alerts' | number) => void
   onSelectAlerts: () => void
   onAddPage: () => void
@@ -21,8 +19,6 @@ export function PageTabs({
   pages,
   activeTab,
   livePageIndex,
-  editorTab,
-  onEditorTabChange,
   onSelectTab,
   onSelectAlerts,
   onAddPage,
@@ -160,32 +156,6 @@ export function PageTabs({
         <span className="text-base leading-none">+</span>
         <span>Page</span>
       </button>
-
-      {/* DESIGNER / SETTINGS toggle — pushed to far right */}
-      <div className="ml-auto flex items-center self-stretch border-l border-border pl-3 pr-3 gap-0.5 flex-shrink-0">
-        <button
-          onClick={() => onEditorTabChange('designer')}
-          className={cn(
-            'px-2.5 h-6 font-mono text-[10px] transition-colors rounded-sm',
-            editorTab === 'designer'
-              ? 'bg-white/[0.08] text-foreground'
-              : 'text-text-muted hover:text-foreground hover:bg-white/[0.04]'
-          )}
-        >
-          DESIGNER
-        </button>
-        <button
-          onClick={() => onEditorTabChange('settings')}
-          className={cn(
-            'px-2.5 h-6 font-mono text-[10px] transition-colors rounded-sm',
-            editorTab === 'settings'
-              ? 'bg-white/[0.08] text-foreground'
-              : 'text-text-muted hover:text-foreground hover:bg-white/[0.04]'
-          )}
-        >
-          SETTINGS
-        </button>
-      </div>
     </div>
 
     <ConfirmDialog

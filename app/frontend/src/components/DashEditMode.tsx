@@ -314,6 +314,28 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         {/* Spacer */}
         <span className="flex-1 min-w-0" />
 
+        {/* Mode toggle — top-level: controls whether page tabs are visible */}
+        <div className="flex items-center gap-0.5 rounded bg-white/[0.05] p-0.5 flex-shrink-0">
+          <button
+            onClick={() => setEditorTab('designer')}
+            className={cn(
+              'px-3 h-6 font-mono text-[10px] rounded-sm transition-colors',
+              editorTab === 'designer' ? 'bg-white/[0.10] text-foreground' : 'text-text-muted hover:text-foreground'
+            )}
+          >
+            DESIGNER
+          </button>
+          <button
+            onClick={() => setEditorTab('settings')}
+            className={cn(
+              'px-3 h-6 font-mono text-[10px] rounded-sm transition-colors',
+              editorTab === 'settings' ? 'bg-white/[0.10] text-foreground' : 'text-text-muted hover:text-foreground'
+            )}
+          >
+            SETTINGS
+          </button>
+        </div>
+
         {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
         {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
         {editorTab === 'designer' && (
@@ -335,19 +357,19 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         onCancel={cancel}
       />
 
-      <PageTabs
-        idlePage={layout.idlePage}
-        pages={layout.pages}
-        activeTab={activeTab}
-        livePageIndex={livePageIndex}
-        editorTab={editorTab}
-        onEditorTabChange={setEditorTab}
-        onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
-        onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
-        onAddPage={handleAddPage}
-        onDeletePage={handleDeletePage}
-        onRenamePage={handleRenamePage}
-      />
+      {editorTab === 'designer' && (
+        <PageTabs
+          idlePage={layout.idlePage}
+          pages={layout.pages}
+          activeTab={activeTab}
+          livePageIndex={livePageIndex}
+          onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
+          onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
+          onAddPage={handleAddPage}
+          onDeletePage={handleDeletePage}
+          onRenamePage={handleRenamePage}
+        />
+      )}
 
       {editorTab === 'settings' ? (
         <AdditionalSettingsPanel
