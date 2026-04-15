@@ -113,9 +113,16 @@ func (p *Painter) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	p.globalPrefs.Store(&prefs)
 }
 
+// emptyFrame is a shared zero-value frame used when no game is connected.
+var emptyFrame dto.TelemetryFrame
+
 // Paint renders a complete dashboard image for the given telemetry frame
-// using the active layout.
+// using the active layout. A nil frame is treated as a zero-value frame so
+// widgets display placeholder/default values when no game is connected.
 func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
+	if frame == nil {
+		frame = &emptyFrame
+	}
 	p.fontOnce.Do(func() {
 		p.extractFonts()
 		p.fontFiles = make(map[string]*opentype.Font)
