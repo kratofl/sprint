@@ -17,15 +17,6 @@ import (
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
-// dashPresetsFS is the embedded presets/dash sub-tree injected from package main.
-var dashPresetsFS fs.FS
-
-// InitPresets sets the embedded fallback FS for dashboard defaults.
-// Call this in Startup() with fs.Sub(PresetsFS, "presets/dash").
-func InitPresets(fsys fs.FS) {
-	dashPresetsFS = fsys
-}
-
 // LayoutMeta is a lightweight descriptor returned by List (no widget data).
 type LayoutMeta struct {
 	ID               string `json:"id"`
@@ -41,14 +32,17 @@ type LayoutMeta struct {
 // Each layout is stored as data/layouts/<id>/config.json with an optional
 // data/layouts/<id>/thumbnail.png preview image.
 type Manager struct {
-	dir string
+	dir       string
+	presetsFS fs.FS
 }
 
 // NewManager creates a Manager using the standard config directory.
-func NewManager() *Manager {
+// presetsFS is the embedded dash presets sub-tree (fs.Sub(PresetsFS, "presets/dash")).
+func NewManager(presetsFS fs.FS) *Manager {
 	base := appdata.Dir()
 	return &Manager{
-		dir: filepath.Join(base, "layouts"),
+		dir:       filepath.Join(base, "layouts"),
+		presetsFS: presetsFS,
 	}
 }
 
@@ -212,7 +206,7 @@ func (m *Manager) EnsureDefault() error {
 			return nil
 		}
 	}
-	layout, err := defaultLayout()
+	layout, err := m.defaultLayout()
 	if err != nil {
 		return err
 	}
@@ -254,7 +248,7 @@ func (m *Manager) loadFirst() (*DashLayout, error) {
 		}
 	}
 	_ = m.EnsureDefault()
-	return defaultLayout()
+	return m.defaultLayout()
 }
 
 // writeFile marshals and writes a layout to disk without validation.
@@ -279,7 +273,7 @@ func (m *Manager) writeFile(layout *DashLayout) error {
 
 // defaultLayout returns the default dash layout.
 // Tries <exe_dir>/DefaultDash.json first; falls back to the embedded presets FS.
-func defaultLayout() (*DashLayout, error) {
+func (m *Manager) defaultLayout() (*DashLayout, error) {
 	if exeDir := appdata.ExeDir(); exeDir != "" {
 		if data, err := os.ReadFile(filepath.Join(exeDir, "DefaultDash.json")); err == nil {
 			var layout DashLayout
@@ -294,8 +288,8 @@ func defaultLayout() (*DashLayout, error) {
 			}
 		}
 	}
-	if dashPresetsFS != nil {
-		if data, err := fs.ReadFile(dashPresetsFS, "default.json"); err == nil {
+	if m.presetsFS != nil {
+		if data, err := fs.ReadFile(m.presetsFS, "default.json"); err == nil {
 			var layout DashLayout
 			if err := json.Unmarshal(data, &layout); err == nil {
 				if layout.ID == "" {

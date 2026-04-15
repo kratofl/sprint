@@ -7,7 +7,7 @@ package alerts
 import (
 	"fmt"
 
-	"github.com/kratofl/sprint/app/internal/dashboard/config"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -37,7 +37,7 @@ type AlertMeta struct {
 	Label        string             `json:"label"`
 	Description  string             `json:"description"`
 	DefaultColor string             `json:"defaultColor"` // ColorRef string e.g. "tc", "abs", "motor"
-	ConfigDefs   []config.ConfigDef `json:"configDefs,omitempty"`
+	ConfigDefs   []widgets.ConfigDef `json:"configDefs,omitempty"`
 }
 
 // AlertEvent is returned by Alert.Check when the alert fires.
@@ -116,8 +116,8 @@ func ConfigString(cfg map[string]any, key, defaultVal string) string {
 	return defaultVal
 }
 
-func alertDurationConfigDef() config.ConfigDef {
-	return config.ConfigDef{
+func alertDurationConfigDef() widgets.ConfigDef {
+	return widgets.ConfigDef{
 		Key:     "duration",
 		Label:   "Duration (s)",
 		Type:    "number",

@@ -39,6 +39,12 @@ export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
 
 export function DashSetDefault(arg1:string):Promise<void>;
 
+export function DashStartPreview(arg1:dashboard.DashLayout,arg2:number,arg3:boolean):Promise<void>;
+
+export function DashStopPreview():Promise<void>;
+
+export function DashUpdatePreview(arg1:dashboard.DashLayout,arg2:number,arg3:boolean):Promise<void>;
+
 export function DeviceAdd(arg1:string):Promise<void>;
 
 export function DeviceAddScanned(arg1:string,arg2:number,arg3:number,arg4:string):Promise<void>;

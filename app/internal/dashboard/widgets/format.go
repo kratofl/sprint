@@ -51,8 +51,8 @@ func FormatValue(val any, format string, prefs FormatPreferences) string {
 	return fmt.Sprint(val)
 }
 
-// toFloat64 converts common numeric types to float64.
-func toFloat64(v any) (float64, bool) {
+// ToFloat64 converts common numeric types to float64.
+func ToFloat64(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		return n, true
@@ -83,7 +83,7 @@ func toFloat64(v any) (float64, bool) {
 }
 
 func fmtAnyLap(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -91,7 +91,7 @@ func fmtAnyLap(v any, prefs FormatPreferences) string {
 }
 
 func fmtAnySector(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -99,7 +99,7 @@ func fmtAnySector(v any, prefs FormatPreferences) string {
 }
 
 func fmtAnySpeed(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -112,7 +112,7 @@ func fmtAnySpeed(v any, prefs FormatPreferences) string {
 }
 
 func fmtAnyInt(v any) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -120,7 +120,7 @@ func fmtAnyInt(v any) string {
 }
 
 func fmtAnyFloat1(v any) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -128,7 +128,7 @@ func fmtAnyFloat1(v any) string {
 }
 
 func fmtAnyFloat2(v any) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -148,7 +148,7 @@ func fmtAnyBool(v any) string {
 // fmtAnyDelta formats a signed float64 as e.g. "+0.123" or "-0.456".
 // Precision is controlled by prefs.DeltaPrecision.
 func fmtAnyDelta(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -162,7 +162,7 @@ func fmtAnyDelta(v any, prefs FormatPreferences) string {
 // fmtAnyGap formats a gap value as e.g. "+1.234" or "---" when zero.
 // Precision is controlled by prefs.DeltaPrecision.
 func fmtAnyGap(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -175,7 +175,7 @@ func fmtAnyGap(v any, prefs FormatPreferences) string {
 
 // fmtAnySession formats a session time (seconds) as "H:MM:SS" or "MM:SS".
 func fmtAnySession(v any) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -194,7 +194,7 @@ func fmtAnySession(v any) string {
 
 // fmtAnyTemp formats a Celsius temperature value according to prefs.TempUnit.
 func fmtAnyTemp(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}
@@ -208,7 +208,7 @@ func fmtAnyTemp(v any, prefs FormatPreferences) string {
 
 // fmtAnyPressure formats a kPa pressure value according to prefs.PressureUnit.
 func fmtAnyPressure(v any, prefs FormatPreferences) string {
-	f, ok := toFloat64(v)
+	f, ok := ToFloat64(v)
 	if !ok {
 		return fmt.Sprint(v)
 	}

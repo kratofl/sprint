@@ -7,8 +7,6 @@ package widgets
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/kratofl/sprint/app/internal/dashboard/config"
 )
 
 // WidgetType is the canonical identifier for a dashboard widget kind.
@@ -52,11 +50,6 @@ type Widget interface {
 	Meta() WidgetMeta
 	Definition(config map[string]any) []Element
 }
-
-// ConfigDef and Option are re-exported from dashboard/config so that callers
-// importing only this package continue to work without change.
-type ConfigDef = config.ConfigDef
-type Option = config.Option
 
 // Category is the palette grouping for a widget.
 type Category string

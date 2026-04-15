@@ -62,6 +62,18 @@ export function DashSetDefault(arg1) {
   return window['go']['main']['App']['DashSetDefault'](arg1);
 }
 
+export function DashStartPreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DashStartPreview'](arg1, arg2, arg3);
+}
+
+export function DashStopPreview() {
+  return window['go']['main']['App']['DashStopPreview']();
+}
+
+export function DashUpdatePreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DashUpdatePreview'](arg1, arg2, arg3);
+}
+
 export function DeviceAdd(arg1) {
   return window['go']['main']['App']['DeviceAdd'](arg1);
 }

@@ -42,14 +42,15 @@ func (a *App) Startup(ctx context.Context) {
 	if catalogFS, err := fs.Sub(PresetsFS, "presets/devices"); err == nil {
 		devices.InitPresets(catalogFS)
 	}
-	if dashFS, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
-		dashboard.InitPresets(dashFS)
+	var dashFS fs.FS
+	if sub, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
+		dashFS = sub
 	}
 	if settingsFS, err := fs.Sub(PresetsFS, "presets/settings"); err == nil {
 		settings.InitPresets(settingsFS)
 	}
 
-	a.dash = dashboard.NewManager()
+	a.dash = dashboard.NewManager(dashFS)
 	if err := a.dash.EnsureDefault(); err != nil {
 		log.Warn("dash: failed to ensure default layout", "err", err)
 	}
