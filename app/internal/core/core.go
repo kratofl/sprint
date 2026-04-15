@@ -190,7 +190,7 @@ func (c *Coordinator) Start(ctx context.Context) {
 	go c.input.Run(childCtx)
 	go c.runTelemetryLoop(childCtx)
 	go c.runFrontendEmitter(childCtx)
-	go c.preview.Start(childCtx)
+	c.preview.Start(childCtx)
 
 	c.ReloadInputBindings()
 }

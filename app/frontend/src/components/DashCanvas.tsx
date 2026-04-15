@@ -268,7 +268,7 @@ export function DashCanvas({
           alt=""
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ objectFit: 'fill' }}
+          style={{ objectFit: 'contain' }}
         />
       )}
 

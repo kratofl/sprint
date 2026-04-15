@@ -6,12 +6,15 @@ import (
 	"encoding/base64"
 	"image/png"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/pkg/dto"
 )
+
+var previewBufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 const (
 	previewTickInterval = 100 * time.Millisecond // ~10 Hz
@@ -26,7 +29,8 @@ const (
 // The service is cheap when idle — the goroutine only renders when active
 // (i.e. the editor is open). Screen drivers are not affected.
 type previewService struct {
-	painter *dashboard.Painter // created lazily on first Activate call; 800×480
+	painterOnce sync.Once
+	painter     *dashboard.Painter // created lazily on first Activate call; 800×480
 
 	layout atomic.Pointer[dashboard.DashLayout]
 	page   atomic.Int32
@@ -39,6 +43,7 @@ type previewService struct {
 	// render goroutine can react immediately rather than waiting for the next tick.
 	notify chan struct{}
 
+	emitMu sync.RWMutex
 	emit   EmitFn
 	logger *slog.Logger
 }
@@ -54,7 +59,9 @@ func newPreviewService(logger *slog.Logger, emit EmitFn) *previewService {
 // setEmit replaces the emit function. Called when the coordinator wires the
 // Wails emitter after startup (mirrors how the coordinator passes emit to drivers).
 func (s *previewService) setEmit(fn EmitFn) {
+	s.emitMu.Lock()
 	s.emit = fn
+	s.emitMu.Unlock()
 }
 
 // Start launches the render goroutine. ctx governs its lifetime.
@@ -130,9 +137,9 @@ func (s *previewService) sendNotify() {
 // The Painter is always 800×480 so the preview matches the most common screen.
 // Font extraction (done inside Paint on first call) is cached by the Painter.
 func (s *previewService) ensurePainter() {
-	if s.painter == nil {
+	s.painterOnce.Do(func() {
 		s.painter = dashboard.NewPainter(800, 480)
-	}
+	})
 }
 
 // renderAndEmit renders the current layout, encodes the result as PNG, and
@@ -156,13 +163,20 @@ func (s *previewService) renderAndEmit() {
 		return
 	}
 
-	var buf bytes.Buffer
+	buf := previewBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer previewBufPool.Put(buf)
 	enc := &png.Encoder{CompressionLevel: png.BestSpeed}
-	if err := enc.Encode(&buf, img); err != nil {
+	if err := enc.Encode(buf, img); err != nil {
 		s.logger.Warn("preview PNG encode failed", "err", err)
 		return
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-	s.emit(previewEventName, map[string]string{"png": b64})
+	s.emitMu.RLock()
+	emit := s.emit
+	s.emitMu.RUnlock()
+	if emit != nil {
+		emit(previewEventName, map[string]string{"png": b64})
+	}
 }

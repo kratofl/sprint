@@ -479,15 +479,21 @@ export const dashAPI = {
   },
 
   startPreview(layout: DashLayout, pageIndex: number, idle: boolean): void {
-    void call<void>('DashStartPreview', layout, pageIndex, idle)
+    call<void>('DashStartPreview', layout, pageIndex, idle).catch(err =>
+      console.error('[dash] startPreview failed:', err)
+    )
   },
 
   stopPreview(): void {
-    void call<void>('DashStopPreview')
+    call<void>('DashStopPreview').catch(err =>
+      console.error('[dash] stopPreview failed:', err)
+    )
   },
 
   updatePreview(layout: DashLayout, pageIndex: number, idle: boolean): void {
-    void call<void>('DashUpdatePreview', layout, pageIndex, idle)
+    call<void>('DashUpdatePreview', layout, pageIndex, idle).catch(err =>
+      console.error('[dash] updatePreview failed:', err)
+    )
   },
 
   async getGlobalSettings(): Promise<GlobalDashSettings> {
