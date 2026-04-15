@@ -166,6 +166,28 @@ func (a *App) DashCyclePage(direction int) {
 	a.coord.CyclePage("", direction)
 }
 
+// DashStartPreview activates the editor preview pipeline for the given layout.
+// The coordinator begins rendering the layout via the shared Painter and emitting
+// "dash:preview" events containing base64-encoded PNG frames at ~10 Hz.
+// pageIndex selects the active page (0-based); idle selects the idle page.
+// Call DashStopPreview when the editor closes.
+func (a *App) DashStartPreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	a.coord.StartPreview(layout, pageIndex, idle)
+}
+
+// DashStopPreview deactivates the editor preview pipeline.
+// Call when the dash editor is closed or navigated away from.
+func (a *App) DashStopPreview() {
+	a.coord.StopPreview()
+}
+
+// DashUpdatePreview pushes an updated layout to the preview renderer and triggers
+// an immediate re-render. Call (debounced) whenever the user makes an edit in the
+// dash editor — widget moved, property changed, page switched, etc.
+func (a *App) DashUpdatePreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	a.coord.UpdatePreview(layout, pageIndex, idle)
+}
+
 // isLayoutActive reports whether any screen-capable device is currently using layoutID.
 func (a *App) isLayoutActive(layoutID string) bool {
 	reg, err := a.devMgr.Load()

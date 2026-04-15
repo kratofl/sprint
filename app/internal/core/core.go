@@ -45,6 +45,7 @@ type Coordinator struct {
 	devMgr  *devices.Manager
 	dashMgr *dashboard.Manager
 	delta   *delta.Tracker
+	preview *previewService
 
 	emit EmitFn
 
@@ -84,6 +85,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 		idleState:      true,
 		frontendEmitCh: make(chan *dto.TelemetryFrame, 1),
 	}
+	c.preview = newPreviewService(logger, c.emit)
 
 	if devMgr != nil {
 		if reg, err := devMgr.Load(); err == nil {
@@ -144,6 +146,7 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 		return
 	}
 	c.emit = fn
+	c.preview.setEmit(fn)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, e := range c.entries {
@@ -187,6 +190,7 @@ func (c *Coordinator) Start(ctx context.Context) {
 	go c.input.Run(childCtx)
 	go c.runTelemetryLoop(childCtx)
 	go c.runFrontendEmitter(childCtx)
+	go c.preview.Start(childCtx)
 
 	c.ReloadInputBindings()
 }
@@ -568,6 +572,8 @@ func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
 	}
 	c.mu.RUnlock()
 
+	c.preview.OnFrame(frame)
+
 	// Non-blocking send: if the emitter goroutine hasn't consumed the previous
 	// frame yet, overwrite it with the latest (latest-value semantics).
 	select {
@@ -644,4 +650,23 @@ func (c *Coordinator) runFrontendEmitter(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// StartPreview activates the editor preview service with the given layout.
+// The service begins emitting "dash:preview" Wails events at ~10 Hz.
+// pageIndex is the 0-based active page index; idle selects the idle page.
+func (c *Coordinator) StartPreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	c.preview.Activate(layout, pageIndex, idle)
+}
+
+// StopPreview deactivates the editor preview service. No more "dash:preview"
+// events are emitted until StartPreview is called again.
+func (c *Coordinator) StopPreview() {
+	c.preview.Deactivate()
+}
+
+// UpdatePreview replaces the layout being previewed without restarting the
+// service. Triggers an immediate re-render.
+func (c *Coordinator) UpdatePreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	c.preview.UpdateLayout(layout, pageIndex, idle)
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Badge, Button,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -48,6 +48,8 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [canvasPaneEl, setCanvasPaneEl] = useState<HTMLDivElement | null>(null)
   const canvasPaneRef = useCallback((el: HTMLDivElement | null) => setCanvasPaneEl(el), [])
   const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!canvasPaneEl) return
@@ -118,6 +120,36 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
       setLivePageIndex(data.pageIndex)
     })
   }, [])
+
+  // Start the Go-rendered preview when the editor mounts, stop when it unmounts.
+  useEffect(() => {
+    const isIdle = activeTab === 'idle'
+    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
+    dashAPI.startPreview(layout, pageIndex, isIdle)
+    return () => { dashAPI.stopPreview() }
+    // Only on mount/unmount — layout changes are handled by the debounced effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Subscribe to Go-rendered preview PNG frames.
+  useEffect(() => {
+    return onEvent('dash:preview', (data: { png: string }) => {
+      setPreviewUrl(`data:image/png;base64,${data.png}`)
+    })
+  }, [])
+
+  // Push layout/page changes to the Go preview renderer (debounced 150ms).
+  useEffect(() => {
+    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
+    previewDebounceRef.current = setTimeout(() => {
+      const isIdle = activeTab === 'idle'
+      const pageIndex = typeof activeTab === 'number' ? activeTab : 0
+      dashAPI.updatePreview(layout, pageIndex, isIdle)
+    }, 150)
+    return () => {
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
+    }
+  }, [layout, activeTab])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -371,6 +403,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     theme={layout.theme ?? hardcodedThemeDefault}
                     domainPalette={layout.domainPalette ?? hardcodedDomainDefault}
                     paletteDropType={paletteDropType}
+                    previewUrl={previewUrl ?? undefined}
                     onSelect={setSelectedId}
                     onUpdate={handleUpdate}
                   />

@@ -78,6 +78,7 @@ export interface DashCanvasProps {
   screenW?: number
   screenH?: number
   paletteDropType?: string | null
+  previewUrl?: string
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -93,6 +94,7 @@ export function DashCanvas({
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
+  previewUrl,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
@@ -259,6 +261,17 @@ export function DashCanvas({
         {screenW}×{screenH}
       </span>
 
+      {/* Go-rendered preview — pixel-accurate match of what the screen displays */}
+      {previewUrl && (
+        <img
+          src={previewUrl}
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          style={{ objectFit: 'fill' }}
+        />
+      )}
+
       {/* Drop / move / resize ghost */}
       {ghost && (
         <div
@@ -311,11 +324,11 @@ export function DashCanvas({
                 'absolute inset-0 flex flex-col items-start justify-start overflow-hidden select-none border',
                 activeMove ? 'cursor-grabbing' : 'cursor-grab',
                 isSelected
-                  ? 'bg-white/8 border-accent ring-1 ring-accent/30'
-                  : 'bg-white/5 border-white/10 hover:border-white/20',
+                  ? previewUrl ? 'bg-transparent border-accent ring-1 ring-accent/30' : 'bg-white/8 border-accent ring-1 ring-accent/30'
+                  : previewUrl ? 'bg-transparent border-transparent hover:border-white/20' : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
-              {theme && (
+              {!previewUrl && theme && (
                 <WidgetPreview
                   widget={widget}
                   theme={theme}
