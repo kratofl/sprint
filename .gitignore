@@ -105,3 +105,8 @@ app/frontend/dist/
 logs/
 tmp/
 temp/
+
+# ─── Tool artifacts ───────────────────────────────────────────────────────────
+# codebase-memory-mcp tool data and installer
+.codebase-memory/
+install.ps1
