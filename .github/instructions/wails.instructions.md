@@ -29,7 +29,7 @@ The desktop app uses [Wails v2](https://wails.io) — Go backend + embedded Reac
 
 ## Coordinator Pattern
 
-The coordinator (`internal/coordinator/`) wires all subsystems:
+The coordinator (`internal/core/`) wires all subsystems:
 
 - Constructor-injected dependencies (logger, devices manager)
 - Each subsystem gets a tagged child logger: `logger.With("component", "name")`
@@ -39,15 +39,18 @@ The coordinator (`internal/coordinator/`) wires all subsystems:
 
 ## Internal Package Conventions
 
-- `internal/render/` — dashboard image painter (`Painter`, widget registry, all widget implementations)
-- `internal/vocore/` — VoCore USB screen driver (`Driver`, WinUSB transport, RGB565 conversion)
-- `internal/devices/` — USB device detection, screen config, serial port management
-- `internal/engineer/` — WebSocket server for LAN race engineers
-- `internal/wheel/` — button detector, valid-lap finder
-- `internal/dash/` — layout types and manager
-- `internal/setup/` — local car/track setup file manager
-- `internal/sync/` — API server sync client
-- `internal/logger/` — structured logging via `slog`
+- `internal/core/` — coordinator: wires all subsystems, owns the telemetry read loop; no business logic
+- `internal/hardware/` — `ScreenDriver` interface + `VoCoreDriver` + `USBD480Driver`; `baseDriver` shared render/send loop; `factory.go` for construction
+- `internal/dashboard/` — `DashLayout` model, `Manager` (JSON file repo), `Painter` (gg canvas renderer), `widgets/` (self-registering via `init()`), `alerts/`, `config/`
+- `internal/devices/` — device registry persistence (`devices.json`); `DeviceType`, `DevicePurpose`, `DriverType`, `CatalogEntry`; no USB scanning (that lives in `hardware/`)
+- `internal/input/` — wheel button detector (`Detector`); maps button numbers to `commands.Command` strings
+- `internal/delta/` — position-based lap delta tracker (`Tracker`, `Store`, `ReferenceLap`); handles valid-lap detection and manual reference selection
+- `internal/commands/` — global button-to-action registry; `Handle(cmd, fn)` + `Dispatch(cmd, payload)`
+- `internal/capture/` — Windows screen capture (GDI) for rear-view mirror feature; transparent overlay window
+- `internal/updater/` — GitHub Releases checker + one-click self-replace installer (Windows)
+- `internal/settings/` — persistent app preferences (`settings.json`); update channel, etc.
+- `internal/appdata/` — platform config directory resolver (`%APPDATA%\Sprint\` on Windows)
+- `internal/logger/` — `log/slog` wrapper; `Init()` + multi-writer (file + console)
 
 ## Event Emission
 

@@ -13,10 +13,9 @@ Sim Game (UDP / shared memory)
 GameAdapter.Read() → *dto.TelemetryFrame
     ↓
 Coordinator (30 Hz throttle)
-    ├→ VoCore renderer (PNG → USB serial)
-    ├→ Race Engineer hub (WebSocket → LAN/remote)
-    ├→ Frontend events (Wails EventsEmit)
-    └→ Sync client (API server)
+    ├→ USB screen renderer (RGB565 → WinUSB → VoCore / USBD480)
+    ├→ Delta tracker (position-based lap delta, valid-lap detection)
+    └→ Frontend events (Wails EventsEmit)
 ```
 
 ## GameAdapter Interface (`pkg/games/adapter.go`)
@@ -37,7 +36,7 @@ Each game adapter lives in `pkg/games/<gamename>/` and maps raw game data to the
 1. Create `pkg/games/<gamename>/` package
 2. Implement `GameAdapter` interface
 3. Map raw data to `dto.TelemetryFrame` — use SI units (m/s, °C, kPa)
-4. Register in `app/internal/coordinator/coordinator.go`
+4. Register in `app/internal/core/core.go`
 5. No other changes needed — all downstream consumers use the unified DTO
 
 ## TelemetryFrame DTO (`pkg/dto/telemetry.go`)
@@ -61,7 +60,7 @@ The root type is `TelemetryFrame` containing:
 
 The coordinator throttles frame emission to ~30 Hz (33ms intervals) to prevent overwhelming the frontend and WebSocket consumers. The `GameAdapter.Read()` call may produce frames faster than this.
 
-## Valid Lap Criteria (`app/internal/wheel/`)
+## Valid Lap Criteria (`app/internal/delta/`)
 
 When the driver presses the "set target" button, the most recent valid lap is used. A valid lap satisfies ALL of:
 - Not an out-lap or in-lap

@@ -21,7 +21,7 @@ export namespace alerts {
 	    label: string;
 	    description: string;
 	    defaultColor: string;
-	    configDefs?: config.ConfigDef[];
+	    configDefs?: widgets.ConfigDef[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AlertMeta(source);
@@ -33,7 +33,7 @@ export namespace alerts {
 	        this.label = source["label"];
 	        this.description = source["description"];
 	        this.defaultColor = source["defaultColor"];
-	        this.configDefs = this.convertValues(source["configDefs"], config.ConfigDef);
+	        this.configDefs = this.convertValues(source["configDefs"], widgets.ConfigDef);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -101,63 +101,6 @@ export namespace commands {
 	        this.capturable = source["capturable"];
 	        this.deviceOnly = source["deviceOnly"];
 	    }
-	}
-
-}
-
-export namespace config {
-	
-	export class Option {
-	    value: string;
-	    label: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Option(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.value = source["value"];
-	        this.label = source["label"];
-	    }
-	}
-	export class ConfigDef {
-	    key: string;
-	    label: string;
-	    type: string;
-	    options?: Option[];
-	    default: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ConfigDef(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.label = source["label"];
-	        this.type = source["type"];
-	        this.options = this.convertValues(source["options"], Option);
-	        this.default = source["default"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 
 }
@@ -683,6 +626,58 @@ export namespace widgets {
 	        this.alpha = source["alpha"];
 	    }
 	}
+	export class Option {
+	    value: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Option(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.value = source["value"];
+	        this.label = source["label"];
+	    }
+	}
+	export class ConfigDef {
+	    key: string;
+	    label: string;
+	    type: string;
+	    options?: Option[];
+	    default: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConfigDef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.options = this.convertValues(source["options"], Option);
+	        this.default = source["default"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DashTheme {
 	    primary: color.RGBA;
 	    accent: color.RGBA;
@@ -912,12 +907,13 @@ export namespace widgets {
 	    }
 	}
 	
+	
 	export class WidgetMeta {
 	    type: string;
 	    label: string;
 	    category: string;
 	    categoryLabel: string;
-	    configDefs?: config.ConfigDef[];
+	    configDefs?: ConfigDef[];
 	    defaultColSpan: number;
 	    defaultRowSpan: number;
 	    idleCapable: boolean;
@@ -935,7 +931,7 @@ export namespace widgets {
 	        this.label = source["label"];
 	        this.category = source["category"];
 	        this.categoryLabel = source["categoryLabel"];
-	        this.configDefs = this.convertValues(source["configDefs"], config.ConfigDef);
+	        this.configDefs = this.convertValues(source["configDefs"], ConfigDef);
 	        this.defaultColSpan = source["defaultColSpan"];
 	        this.defaultRowSpan = source["defaultRowSpan"];
 	        this.idleCapable = source["idleCapable"];

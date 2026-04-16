@@ -29,7 +29,7 @@ Sim racing telemetry platform:
 
 ## Architecture
 
-Data flow: `Sim Game → (UDP) → Desktop App → (USB serial PNG) → VoCore wheel screen`
+Data flow: `Sim Game → (UDP) → Desktop App → (WinUSB RGB565) → USB screen (VoCore / USBD480)`
                                           `→ (WebSocket) → LAN Engineers`
                                           `→ (HTTP/WS) → API Server → (WS relay) → Remote Engineers`
                                           `                           → (HTTP) → Web App`
@@ -38,7 +38,7 @@ The desktop app is **authoritative** — it applies engineer commands and can re
 
 ## Key Features
 
-**VoCore Wheel Display:** Go backend renders PNG frames → USB serial (CDC ACM) → VoCore screen embedded in steering wheel. Device paths: `/dev/cu.usbmodemXXXX` (macOS), `/dev/ttyACM0` (Linux), `COM3` (Windows). Frames are length-prefixed PNG. Layout controlled by dash config.
+**USB Wheel Display (VoCore / USBD480):** Go backend renders RGB565 frames → WinUSB bulk transfer → USB screen embedded in steering wheel. Two supported screen families: VoCore M-PRO (`VID 0xC872`) and USBD480 (`VID 0x16C0`). Both require WinUSB driver (installed by vendor setup or Zadig). Layout controlled by dash config.
 
 **Set Target Lap (wheel button):** On press, finds the most recent valid lap as delta reference. Valid = not out/in lap, no yellow flag/SC, no track limits violation, within ±5% of session best. Triggers VoCore re-render + engineer broadcast.
 
@@ -60,7 +60,7 @@ The desktop app is **authoritative** — it applies engineer commands and can re
 ├── web/                 ← Next.js: app/{sessions,engineer,setups,dash}
 └── app/                 ← Wails desktop app
     ├── main.go + app.go ← Wails entry point + bindings
-    ├── internal/        ← coordinator, devices, render, vocore, engineer, wheel, dash, logger, sync, setup
+    ├── internal/        ← core, hardware, dashboard, devices, input, delta, commands, capture, updater, settings, logger, appdata
     └── frontend/        ← React/TS (embedded via go:embed)
 ```
 

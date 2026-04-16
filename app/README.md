@@ -5,7 +5,7 @@ Wails application (Go backend + React/TypeScript frontend) that runs on the driv
 ## Responsibilities
 
 - Read live telemetry from sim racing games via UDP/shared memory
-- Render PNG frames to the VoCore steering wheel display over USB serial
+- Render RGB565 frames to USB wheel/dash screens (VoCore M-PRO, USBD480) via WinUSB
 - Host a WebSocket server for LAN race engineer connections
 - Detect wheel button presses (set target lap, etc.)
 - Manage car setups locally
@@ -19,15 +19,18 @@ app/
 ├── app.go                  ← App struct bound to frontend
 ├── wails.json              ← Wails config
 ├── internal/
-│   ├── coordinator/        ← Wires all services together
-│   ├── render/             ← Dashboard image painter (Painter, widgets)
-│   ├── vocore/             ← VoCore USB screen driver (Driver, WinUSB)
-│   ├── devices/            ← USB device detection, screen config
-│   ├── engineer/           ← WebSocket hub for LAN engineers
-│   ├── wheel/              ← Button detector + valid lap finder
-│   ├── dash/               ← Layout types and manager
-│   ├── sync/               ← API server sync client
-│   └── setup/              ← Local setup file manager
+│   ├── core/               ← Wires all services together (Coordinator)
+│   ├── hardware/           ← ScreenDriver interface, VoCoreDriver, USBD480Driver
+│   ├── dashboard/          ← DashLayout model, Manager, Painter, widgets/, alerts/
+│   ├── devices/            ← Device registry persistence (devices.json), catalog
+│   ├── input/              ← Wheel button Detector
+│   ├── delta/              ← Position-based lap delta Tracker + valid-lap detection
+│   ├── commands/           ← Button→action global registry
+│   ├── capture/            ← Windows screen capture (rear-view) + overlay window
+│   ├── updater/            ← GitHub Releases checker + self-replace installer
+│   ├── settings/           ← Persistent app preferences (settings.json)
+│   ├── logger/             ← slog wrapper + multi-writer
+│   └── appdata/            ← Platform config dir resolver
 └── frontend/               ← React/TS frontend (Vite)
     ├── src/
     │   ├── App.tsx
