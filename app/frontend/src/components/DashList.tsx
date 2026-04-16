@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Badge, Button, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from '@sprint/ui'
+import { Badge, Button, PageHeader, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from '@sprint/ui'
 import { type LayoutMeta, dashAPI } from '@/lib/dash'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -69,6 +69,7 @@ function DashRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="xs" variant="primary" onClick={() => onEdit(layout.id)}>
+                  <span className="sr-only">Edit {layout.name}</span>
                   <EditIcon />
                 </Button>
               </TooltipTrigger>
@@ -78,9 +79,10 @@ function DashRow({
             {!layout.default && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="xs" variant="neutral" onClick={() => void onSetDefault(layout.id)}>
-                    <StarIcon />
-                  </Button>
+                    <Button size="xs" variant="neutral" onClick={() => void onSetDefault(layout.id)}>
+                      <span className="sr-only">Set {layout.name} as default</span>
+                      <StarIcon />
+                    </Button>
                 </TooltipTrigger>
                 <TooltipContent>Set as default</TooltipContent>
               </Tooltip>
@@ -89,15 +91,16 @@ function DashRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={isBuiltIn}
-                    className="text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
-                    onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
-                  >
-                    <TrashIcon />
-                  </Button>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={isBuiltIn}
+                      className="text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
+                      onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
+                    >
+                      <span className="sr-only">Delete {layout.name}</span>
+                      <TrashIcon />
+                    </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -124,17 +127,20 @@ function DashRow({
 export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, onOpenGlobalSettings }: DashListProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
-        <h2 className="terminal-header text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        heading="DASH_STUDIO"
+        caption="Manage saved layouts and device-ready dash presets"
+        actions={(
+          <>
           <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="terminal-header font-bold">
             GLOBAL SETTINGS
           </Button>
           <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
             + NEW DASH
           </Button>
-        </div>
-      </div>
+          </>
+        )}
+      />
       {layouts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center font-mono text-[10px] text-text-muted">
           NO_LAYOUTS — create your first dash

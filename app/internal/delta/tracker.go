@@ -18,6 +18,14 @@ const numRefPoints = 500
 // updating at a slower internal rate than telemetry.
 const deltaAlpha = 0.2
 
+// wrapDropThreshold detects a start/finish wrap in telemetry where track
+// position drops from near 1.0 to near 0.0 before the lap number increments.
+const wrapDropThreshold = 0.5
+
+// minReferenceCoverage is the minimum lap-position span required for a lap to
+// be considered usable as a reference.
+const minReferenceCoverage = 0.9
+
 // Tracker accumulates telemetry samples lap by lap, computes position-based
 // delta against a reference lap, and persists the historical best lap.
 //
@@ -82,9 +90,9 @@ func (t *Tracker) SetManualReference() {
 // The caller must NOT mutate frame — Process only reads it.
 func (t *Tracker) Process(frame *dto.TelemetryFrame) (delta, refTime float64) {
 	t.checkSessionChange(frame)
+	t.checkLapTransition(frame)
 	t.updateTaint(frame)
 	t.recordSample(frame)
-	t.checkLapTransition(frame)
 
 	t.prevLap = frame.Lap.CurrentLap
 	t.prevIsValid = frame.Lap.IsValid
@@ -134,12 +142,13 @@ func (t *Tracker) updateTaint(frame *dto.TelemetryFrame) {
 
 // recordSample appends a position sample if the frame has useful data.
 func (t *Tracker) recordSample(frame *dto.TelemetryFrame) {
-	if frame.Lap.CurrentLapTime <= 0 || frame.Lap.TrackPosition <= 0 {
+	lapTime := lapTimeForDelta(frame)
+	if lapTime <= 0 || frame.Lap.TrackPosition <= 0 {
 		return
 	}
 	t.currentSamples = append(t.currentSamples, Sample{
 		Pos: frame.Lap.TrackPosition,
-		T:   frame.Lap.CurrentLapTime,
+		T:   lapTime,
 	})
 }
 
@@ -151,8 +160,7 @@ func (t *Tracker) checkLapTransition(frame *dto.TelemetryFrame) {
 	}
 
 	lapTime := frame.Lap.LastLapTime
-	valid := lapTime > 0 && t.prevIsValid && !t.lapTainted &&
-		!frame.Lap.IsInLap && !frame.Lap.IsOutLap
+	valid := lapTime > 0 && t.prevIsValid && !t.lapTainted
 
 	if valid {
 		ref := buildReference(t.currentSamples, lapTime)
@@ -182,12 +190,12 @@ func (t *Tracker) computeDelta(frame *dto.TelemetryFrame) (float64, float64) {
 		t.hasDelta = false
 		return 0, 0
 	}
-	refAtPos, ok := t.reference.DeltaAt(frame.Lap.TrackPosition)
+	refAtPos, ok := t.reference.DeltaAt(clampTrackPos(frame.Lap.TrackPosition))
 	if !ok {
 		t.hasDelta = false
 		return 0, t.reference.LapTime
 	}
-	raw := frame.Lap.CurrentLapTime - refAtPos
+	raw := lapTimeForDelta(frame) - refAtPos
 	if !t.hasDelta {
 		t.smoothedDelta = raw
 		t.hasDelta = true
@@ -197,37 +205,96 @@ func (t *Tracker) computeDelta(frame *dto.TelemetryFrame) (float64, float64) {
 	return t.smoothedDelta, t.reference.LapTime
 }
 
+func lapTimeForDelta(frame *dto.TelemetryFrame) float64 {
+	if frame.Lap.PositionLapTime > 0 {
+		return frame.Lap.PositionLapTime
+	}
+	return frame.Lap.CurrentLapTime
+}
+
 // buildReference converts raw recorded samples into a normalized ReferenceLap
 // with numRefPoints evenly-spaced position points. Returns nil if there are
 // fewer than two samples or the position range is too small.
 func buildReference(raw []Sample, lapTime float64) *ReferenceLap {
-	if len(raw) < 2 {
+	if len(raw) < 2 || lapTime <= 0 {
 		return nil
 	}
 
-	// Sort by position.
-	sorted := make([]Sample, len(raw))
-	copy(sorted, raw)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Pos < sorted[j].Pos
+	// Order by lap time first so we can unwrap start/finish crossings safely.
+	ordered := make([]Sample, len(raw))
+	copy(ordered, raw)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].T < ordered[j].T
 	})
-
-	minPos := sorted[0].Pos
-	maxPos := sorted[len(sorted)-1].Pos
-	if maxPos-minPos < 0.01 {
-		return nil // not enough position range to be useful
+	for i := range ordered {
+		ordered[i].Pos = clampTrackPos(ordered[i].Pos)
 	}
 
-	// Downsample to numRefPoints evenly-spaced positions via linear interpolation.
+	unwrapped := unwrapLapPositions(ordered)
+	minPos := unwrapped[0].Pos
+	maxPos := unwrapped[len(unwrapped)-1].Pos
+	if maxPos-minPos < minReferenceCoverage {
+		return nil // likely partial-lap capture; skip as unreliable reference
+	}
+
+	normalized := make([]Sample, len(unwrapped))
+	copy(normalized, unwrapped)
+
+	// Anchor interpolation at start/finish to avoid edge extrapolation noise.
+	if normalized[0].Pos > 0 {
+		normalized = append([]Sample{{Pos: 0, T: 0}}, normalized...)
+	} else {
+		normalized[0].T = 0
+	}
+	if normalized[len(normalized)-1].Pos < 1 {
+		normalized = append(normalized, Sample{Pos: 1, T: lapTime})
+	}
+	sort.SliceStable(normalized, func(i, j int) bool { return normalized[i].Pos < normalized[j].Pos })
+
+	// Downsample to numRefPoints evenly-spaced lap-relative positions.
 	ref := &ReferenceLap{
 		LapTime: lapTime,
 		Samples: make([]Sample, numRefPoints),
 	}
 	for i := range ref.Samples {
-		pos := minPos + float32(i)*(maxPos-minPos)/float32(numRefPoints-1)
-		ref.Samples[i] = Sample{Pos: pos, T: interpolateAt(sorted, pos)}
+		pos := float32(i) / float32(numRefPoints-1)
+		ref.Samples[i] = Sample{Pos: pos, T: interpolateAt(normalized, pos)}
 	}
 	return ref
+}
+
+func clampTrackPos(pos float32) float32 {
+	switch {
+	case pos < 0:
+		return 0
+	case pos > 1:
+		return 1
+	default:
+		return pos
+	}
+}
+
+func unwrapLapPositions(samples []Sample) []Sample {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := make([]Sample, len(samples))
+	offset := float32(0)
+	prev := samples[0].Pos
+	out[0] = samples[0]
+	for i := 1; i < len(samples); i++ {
+		pos := samples[i].Pos
+		if pos+offset < prev-wrapDropThreshold {
+			offset++
+		}
+		unwrapped := pos + offset
+		if unwrapped < prev {
+			unwrapped = prev
+		}
+		out[i] = Sample{Pos: unwrapped, T: samples[i].T}
+		prev = unwrapped
+	}
+	return out
 }
 
 // interpolateAt returns the lap time at pos by linear interpolation within

@@ -20,9 +20,14 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70" onClick={onCancel} />
-      <div className="relative surface-elevated border border-border p-6 max-w-sm w-full mx-4 shadow-2xl">
-        <p className="font-bold text-sm mb-1">{title}</p>
-        <p className="text-sm text-text-muted mb-5">{message}</p>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="relative mx-4 w-full max-w-sm border border-border p-6 shadow-2xl surface-elevated"
+      >
+        <p id="confirm-dialog-title" className="mb-1 text-sm font-bold">{title}</p>
+        <p className="mb-5 text-sm text-text-muted">{message}</p>
         <div className="flex gap-2 justify-end">
           <Button variant="neutral" size="sm" onClick={onCancel}>{cancelLabel}</Button>
           <Button

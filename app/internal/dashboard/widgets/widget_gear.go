@@ -16,7 +16,7 @@ func (gearWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemPanel},
 		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.7,
-			Zone: "fill", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
+			Zone: "fill", HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: ColorRefFG}},
 	}
 }
 

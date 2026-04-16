@@ -3,7 +3,7 @@ import { type DashLayout, type LayoutMeta, type GlobalDashSettings, type DashThe
 import { DashList } from '@/components/DashList'
 import { DashEditMode } from '@/components/DashEditMode'
 import { AdditionalSettingsPanel } from '@/components/AdditionalSettingsPanel'
-import { Button, Badge } from '@sprint/ui'
+import { Badge, Button, PageHeader } from '@sprint/ui'
 
 export interface DashEditorHandle {
   isDirty: boolean
@@ -124,16 +124,26 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
   if (mode === 'global-settings') {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-border px-6 py-3 flex-shrink-0">
-          <button onClick={() => setMode('list')} className="font-mono text-[10px] text-text-muted hover:text-foreground">← BACK</button>
-          <span className="font-mono text-[10px] text-text-muted">|</span>
-          <span className="font-bold text-sm flex-1">Global Dash Settings</span>
-          {globalSaveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
-          {globalSaveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
-          <Button variant="primary" size="sm" onClick={handleGlobalSave} disabled={globalSaving}>
-            {globalSaving ? 'SAVING\u2026' : 'SAVE'}
-          </Button>
-        </div>
+        <PageHeader
+          heading="GLOBAL_DASH_SETTINGS"
+          caption="Theme, domain palette, and formatting defaults"
+          status={(
+            <>
+              {globalSaveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
+              {globalSaveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+            </>
+          )}
+          actions={(
+            <>
+              <Button variant="outline" size="sm" onClick={() => setMode('list')}>
+                BACK
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleGlobalSave} disabled={globalSaving}>
+                {globalSaving ? 'SAVING…' : 'SAVE'}
+              </Button>
+            </>
+          )}
+        />
         {globalSettings && (
           <AdditionalSettingsPanel
             theme={globalSettings.theme ?? {}}

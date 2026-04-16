@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, cn } from '@sprint/ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, PageHeader, cn } from '@sprint/ui'
 import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
 
 // Category display order.
@@ -65,22 +65,20 @@ export default function Controls() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-
-      {/* Section header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
-        <div>
-          <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">CONTROLS</h2>
-          <p className="font-mono text-[10px] text-text-muted">
-            Assign wheel buttons to commands
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        heading="CONTROLS"
+        caption="Assign wheel buttons to commands"
+        status={(
+          <>
           {saveStatus === 'saved' && (
             <Badge variant="success" className="terminal-header">SAVED</Badge>
           )}
           {saveStatus === 'error' && (
             <Badge variant="destructive" className="terminal-header">SAVE_FAILED</Badge>
           )}
+          </>
+        )}
+        actions={(
           <Button
             onClick={handleSave}
             disabled={saving || catalog.length === 0}
@@ -89,8 +87,8 @@ export default function Controls() {
           >
             {saving ? 'SAVING…' : 'SAVE_BINDINGS'}
           </Button>
-        </div>
-      </div>
+        )}
+      />
 
       {loadError && (
         <div className="border-b border-border px-6 py-2 font-mono text-[10px] text-destructive">
@@ -114,7 +112,7 @@ export default function Controls() {
               <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
                 <p>Click <span className="text-foreground">[ CAPTURE ]</span> next to a command, then press the physical button on your wheel.</p>
                 <p>The channel is detected automatically. Leave a command unbound to disable it.</p>
-                <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
+              <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
               </CardContent>
             </Card>
 
@@ -241,8 +239,9 @@ function CommandRow({
           {bound && (
             <button
               onClick={() => onButtonChange(0)}
-              className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
+              className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
               title="Clear binding"
+              aria-label={`Clear binding for ${cmd.label}`}
             >
               ×
             </button>

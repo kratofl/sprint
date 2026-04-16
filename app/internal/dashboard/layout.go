@@ -6,7 +6,6 @@ package dashboard
 import (
 	"encoding/json"
 	"fmt"
-	"image/color"
 
 	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
@@ -23,15 +22,15 @@ const (
 // DashWidget is a single widget placed on a dashboard page.
 // Col, Row, ColSpan, RowSpan are all in grid units.
 type DashWidget struct {
-	ID             string                          `json:"id"`
-	Type           widgets.WidgetType              `json:"type"`
-	Col            int                             `json:"col"`     // 0-based grid column (left edge)
-	Row            int                             `json:"row"`     // 0-based grid row (top edge)
-	ColSpan        int                             `json:"colSpan"` // width in grid cells (min 1)
-	RowSpan        int                             `json:"rowSpan"` // height in grid cells (min 1)
-	Config         map[string]any                  `json:"config,omitempty"`
-	PanelRules     []widgets.ConditionalRule       `json:"panelRules,omitempty"`
-	StyleOverrides map[widgets.ColorRef]color.RGBA `json:"styleOverrides,omitempty"`
+	ID         string                    `json:"id"`
+	Type       widgets.WidgetType        `json:"type"`
+	Col        int                       `json:"col"`     // 0-based grid column (left edge)
+	Row        int                       `json:"row"`     // 0-based grid row (top edge)
+	ColSpan    int                       `json:"colSpan"` // width in grid cells (min 1)
+	RowSpan    int                       `json:"rowSpan"` // height in grid cells (min 1)
+	Config     map[string]any            `json:"config,omitempty"`
+	PanelRules []widgets.ConditionalRule `json:"panelRules,omitempty"`
+	Style      widgets.WidgetStyle       `json:"style,omitempty"`
 }
 
 // DashPage is a single page within a dashboard layout.

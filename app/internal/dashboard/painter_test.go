@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"image"
+	"math"
 	"testing"
 	"time"
 
@@ -113,6 +114,7 @@ func TestPainterAlertDetection(t *testing.T) {
 	// Frame 1: TC=3 baseline. Copy pixels before the context is reused.
 	frame1 := &dto.TelemetryFrame{}
 	frame1.Electronics.TC = 3
+	frame1.Electronics.TCAvailable = true
 	rawImg1, err := painter.Paint(frame1)
 	if err != nil {
 		t.Fatalf("Paint frame1 error: %v", err)
@@ -127,6 +129,7 @@ func TestPainterAlertDetection(t *testing.T) {
 	// Frame 2: TC=5 triggers alert overlay.
 	frame2 := &dto.TelemetryFrame{}
 	frame2.Electronics.TC = 5
+	frame2.Electronics.TCAvailable = true
 	rawImg2, err := painter.Paint(frame2)
 	if err != nil {
 		t.Fatalf("Paint frame2 error: %v", err)
@@ -186,5 +189,25 @@ func TestPainterSetActivePage(t *testing.T) {
 	painter.SetActivePage(99)
 	if _, err := painter.Paint(frame); err != nil {
 		t.Fatalf("Paint out-of-range page: %v", err)
+	}
+}
+
+func TestFillZoneYsSingleRowCentered(t *testing.T) {
+	ys := fillZoneYs(1)
+	if len(ys) != 1 {
+		t.Fatalf("fillZoneYs(1) length: want 1, got %d", len(ys))
+	}
+	if ys[0] != defaultFillYFrac {
+		t.Fatalf("fillZoneYs(1)[0]: want %.2f, got %.2f", defaultFillYFrac, ys[0])
+	}
+}
+
+func TestZoneTextPosFillUsesVerticalCenter(t *testing.T) {
+	elem := widgets.Element{Zone: "fill", HAlign: widgets.HAlignCenter}
+	_, ty := zoneTextPos(elem, 0, 10, 20, 200, 100)
+
+	want := 20 + defaultFillYFrac*100
+	if math.Abs(ty-want) > 1e-9 {
+		t.Fatalf("zoneTextPos fill y: want %.2f, got %.2f", want, ty)
 	}
 }

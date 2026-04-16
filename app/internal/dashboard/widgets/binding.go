@@ -83,6 +83,9 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 	"lap.deltaPositive": func(f *dto.TelemetryFrame) any {
 		return f.Lap.Delta > 0
 	},
+	"lap.deltaNegative": func(f *dto.TelemetryFrame) any {
+		return f.Lap.Delta < 0
+	},
 	"lap.counterStr": func(f *dto.TelemetryFrame) any {
 		if f.Session.MaxLaps == 0 || f.Session.MaxLaps == math.MaxInt32 {
 			return fmt.Sprintf("%d", f.Lap.CurrentLap)
@@ -109,16 +112,24 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 	"race.positionP1": func(f *dto.TelemetryFrame) any { return f.Race.Position == 1 },
 
 	// Electronics
-	"electronics.tc":        func(f *dto.TelemetryFrame) any { return f.Electronics.TC },
-	"electronics.tcMax":     func(f *dto.TelemetryFrame) any { return f.Electronics.TCMax },
-	"electronics.tcActive":  func(f *dto.TelemetryFrame) any { return f.Electronics.TCActive },
-	"electronics.tcCut":     func(f *dto.TelemetryFrame) any { return f.Electronics.TCCut },
-	"electronics.tcSlip":    func(f *dto.TelemetryFrame) any { return f.Electronics.TCSlip },
-	"electronics.abs":       func(f *dto.TelemetryFrame) any { return f.Electronics.ABS },
-	"electronics.absMax":    func(f *dto.TelemetryFrame) any { return f.Electronics.ABSMax },
-	"electronics.absActive": func(f *dto.TelemetryFrame) any { return f.Electronics.ABSActive },
-	"electronics.motorMap":  func(f *dto.TelemetryFrame) any { return f.Electronics.MotorMap },
-	"electronics.drsActive": func(f *dto.TelemetryFrame) any { return f.Electronics.DRSActive },
+	"electronics.tc":                func(f *dto.TelemetryFrame) any { return f.Electronics.TC },
+	"electronics.tcMax":             func(f *dto.TelemetryFrame) any { return f.Electronics.TCMax },
+	"electronics.tcActive":          func(f *dto.TelemetryFrame) any { return f.Electronics.TCActive },
+	"electronics.tcCut":             func(f *dto.TelemetryFrame) any { return f.Electronics.TCCut },
+	"electronics.tcCutMax":          func(f *dto.TelemetryFrame) any { return f.Electronics.TCCutMax },
+	"electronics.tcSlip":            func(f *dto.TelemetryFrame) any { return f.Electronics.TCSlip },
+	"electronics.tcSlipMax":         func(f *dto.TelemetryFrame) any { return f.Electronics.TCSlipMax },
+	"electronics.abs":               func(f *dto.TelemetryFrame) any { return f.Electronics.ABS },
+	"electronics.absMax":            func(f *dto.TelemetryFrame) any { return f.Electronics.ABSMax },
+	"electronics.absActive":         func(f *dto.TelemetryFrame) any { return f.Electronics.ABSActive },
+	"electronics.motorMap":          func(f *dto.TelemetryFrame) any { return f.Electronics.MotorMap },
+	"electronics.motorMapMax":       func(f *dto.TelemetryFrame) any { return f.Electronics.MotorMapMax },
+	"electronics.drsActive":         func(f *dto.TelemetryFrame) any { return f.Electronics.DRSActive },
+	"electronics.absAvailable":      func(f *dto.TelemetryFrame) any { return f.Electronics.ABSAvailable },
+	"electronics.tcAvailable":       func(f *dto.TelemetryFrame) any { return f.Electronics.TCAvailable },
+	"electronics.tcCutAvailable":    func(f *dto.TelemetryFrame) any { return f.Electronics.TCCutAvailable },
+	"electronics.tcSlipAvailable":   func(f *dto.TelemetryFrame) any { return f.Electronics.TCSlipAvailable },
+	"electronics.motorMapAvailable": func(f *dto.TelemetryFrame) any { return f.Electronics.MotorMapAvailable },
 
 	// Session
 	"session.game":        func(f *dto.TelemetryFrame) any { return f.Session.Game },
@@ -198,4 +209,23 @@ func Resolve(frame *dto.TelemetryFrame, path string) (any, bool) {
 		return nil, false
 	}
 	return fn(frame), true
+}
+
+// ResolveWithPrefs resolves frame binding paths that depend on display precision.
+// Paths without precision semantics fall back to Resolve.
+func ResolveWithPrefs(frame *dto.TelemetryFrame, path string, prefs FormatPreferences) (any, bool) {
+	if frame == nil {
+		return nil, false
+	}
+
+	switch path {
+	case "lap.deltaPositive":
+		rounded := roundDeltaValue(frame.Lap.Delta, resolvedFormatPreferences(prefs).DeltaPrecision)
+		return rounded > 0, true
+	case "lap.deltaNegative":
+		rounded := roundDeltaValue(frame.Lap.Delta, resolvedFormatPreferences(prefs).DeltaPrecision)
+		return rounded < 0, true
+	default:
+		return Resolve(frame, path)
+	}
 }

@@ -46,15 +46,30 @@ function lapPlaceholder(format: LapFormat | undefined): string {
 export function fmtLap(sec: number | undefined, prefs?: Partial<FormatPreferences>): string {
   const p = resolvedPrefs(prefs)
   if (!sec || sec <= 0) return lapPlaceholder(p.lapFormat)
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
   switch (p.lapFormat) {
-    case 'M:SS.mm':
-      return `${m}:${s.toFixed(2).padStart(5, '0')}`
-    case 'SS.mmm':
-      return sec.toFixed(3)
-    default: // 'M:SS.mmm'
-      return `${m}:${s.toFixed(3).padStart(6, '0')}`
+    case 'M:SS.mm': {
+      const totalCs = Math.round(sec * 100)
+      if (totalCs <= 0) return lapPlaceholder(p.lapFormat)
+      const m = Math.floor(totalCs / 6000)
+      const rem = totalCs % 6000
+      const s = Math.floor(rem / 100)
+      const cs = rem % 100
+      return `${m}:${s.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`
+    }
+    case 'SS.mmm': {
+      const totalMs = Math.round(sec * 1000)
+      if (totalMs <= 0) return lapPlaceholder(p.lapFormat)
+      return (totalMs / 1000).toFixed(3)
+    }
+    default: {
+      const totalMs = Math.round(sec * 1000)
+      if (totalMs <= 0) return lapPlaceholder(p.lapFormat)
+      const m = Math.floor(totalMs / 60000)
+      const rem = totalMs % 60000
+      const s = Math.floor(rem / 1000)
+      const ms = rem % 1000
+      return `${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
+    }
   }
 }
 

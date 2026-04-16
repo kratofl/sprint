@@ -50,6 +50,15 @@ export interface GlobalDashSettings {
   formatPreferences?: FormatPreferences
 }
 
+export interface WidgetStyle {
+  font?:       FontStyle
+  fontSize?:   number
+  textColor?:  RGBAColor
+  labelColor?: RGBAColor
+  labelFont?:  FontStyle
+  background?: RGBAColor
+}
+
 export interface ConditionalRule {
   property: string
   op: RuleOp
@@ -79,9 +88,9 @@ export interface DashWidget {
   row: number
   colSpan: number
   rowSpan: number
-  config?:         Record<string, unknown>
-  panelRules?:     ConditionalRule[]
-  styleOverrides?: Partial<Record<ColorRef, RGBAColor>>
+  config?:     Record<string, unknown>
+  panelRules?: ConditionalRule[]
+  style?:      WidgetStyle
 }
 
 export interface DashPage {
@@ -293,9 +302,9 @@ function normWidget(raw: unknown): DashWidget {
     row:        Number(r.row     ?? r.Row     ?? 0),
     colSpan:    Number(r.colSpan ?? r.ColSpan ?? 1),
     rowSpan:    Number(r.rowSpan ?? r.RowSpan ?? 1),
-    config:          (r.config ?? r.Config) as Record<string, unknown> | undefined,
-    panelRules:      (r.panelRules ?? r.PanelRules) as ConditionalRule[] | undefined,
-    styleOverrides:  (r.styleOverrides ?? r.StyleOverrides) as Partial<Record<ColorRef, RGBAColor>> | undefined,
+    config:     (r.config ?? r.Config) as Record<string, unknown> | undefined,
+    panelRules: (r.panelRules ?? r.PanelRules) as ConditionalRule[] | undefined,
+    style:      (r.style ?? r.Style) as WidgetStyle | undefined,
   }
 }
 

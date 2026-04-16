@@ -132,13 +132,6 @@ body {
     border: 1px solid var(--outline);
   }
 
-  /* Tech-grid — applied to main content areas for HUD texture */
-  .tech-grid {
-    background-image:
-      linear-gradient(to right,  #1a1a1a 1px, transparent 1px),
-      linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
 }
 
 /* Scrollbar */

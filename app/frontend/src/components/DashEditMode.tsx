@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Badge, Button,
+  Badge, Button, PageHeader,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
   cn,
 } from '@sprint/ui'
@@ -277,10 +277,8 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-border px-6 py-3 flex-shrink-0">
-        <button onClick={handleBack} className="font-mono text-[10px] text-text-muted hover:text-foreground">← BACK</button>
-        <span className="font-mono text-[10px] text-text-muted">|</span>
-        {renamingDash ? (
+      <PageHeader
+        heading={renamingDash ? (
           <input
             autoFocus
             value={dashNameValue}
@@ -296,56 +294,40 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               if (e.key === 'Escape') { setDashNameValue(layout.name); setRenamingDash(false) }
               e.stopPropagation()
             }}
-            className="bg-background px-1 font-bold text-sm outline outline-1 outline-accent flex-1 min-w-0"
+            className="min-w-0 bg-background px-1 font-bold text-sm outline outline-1 outline-accent"
           />
         ) : (
           <button
             type="button"
             onClick={() => { setDashNameValue(layout.name); setRenamingDash(true) }}
-            className="group flex items-center gap-1.5 text-left flex-1 min-w-0"
+            className="group flex items-center gap-1.5 text-left"
+            aria-label="Rename dash layout"
           >
-            <span className="font-bold text-sm truncate group-hover:text-accent transition-colors">
+            <span className="truncate font-bold text-sm transition-colors group-hover:text-accent">
               {layout.name}
             </span>
-            <PencilIcon className="text-text-disabled group-hover:text-accent transition-colors flex-shrink-0" />
+            <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-accent" />
           </button>
         )}
-
-        {/* Spacer */}
-        <span className="flex-1 min-w-0" />
-
-        {/* Mode toggle — top-level: controls whether page tabs are visible */}
-        <div className="flex items-center gap-0.5 rounded bg-white/[0.05] p-0.5 flex-shrink-0">
-          <button
-            onClick={() => setEditorTab('designer')}
-            className={cn(
-              'px-3 h-6 font-mono text-[10px] rounded-sm transition-colors',
-              editorTab === 'designer' ? 'bg-white/[0.10] text-foreground' : 'text-text-muted hover:text-foreground'
-            )}
-          >
-            DESIGNER
-          </button>
-          <button
-            onClick={() => setEditorTab('settings')}
-            className={cn(
-              'px-3 h-6 font-mono text-[10px] rounded-sm transition-colors',
-              editorTab === 'settings' ? 'bg-white/[0.10] text-foreground' : 'text-text-muted hover:text-foreground'
-            )}
-          >
-            SETTINGS
-          </button>
-        </div>
-
-        {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
-        {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
-        {editorTab === 'designer' && (
-          <Button variant="neutral" size="sm" onClick={handleClearPage} disabled={activeTab === 'alerts'}>CLEAR</Button>
+        caption="DASH_STUDIO"
+        status={(
+          <>
+            {isDirty && <Badge variant="warning" className="terminal-header">DIRTY</Badge>}
+            {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
+            {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+          </>
         )}
-        <Button variant="neutral" size="sm" onClick={handleBack}>CANCEL</Button>
-        <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
-          {saving ? 'SAVING…' : 'SAVE'}
-        </Button>
-      </div>
+        actions={(
+          <>
+            <Button variant="outline" size="sm" onClick={handleBack}>
+              BACK
+            </Button>
+            <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? 'SAVING…' : 'SAVE'}
+            </Button>
+          </>
+        )}
+      />
 
       <ConfirmDialog
         open={showDialog}
@@ -356,6 +338,31 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         onConfirm={confirm}
         onCancel={cancel}
       />
+
+      <div className="flex flex-shrink-0 items-stretch border-b border-border bg-background">
+        <button
+          onClick={() => setEditorTab('designer')}
+          className={cn(
+            'flex items-center px-4 h-9 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+            editorTab === 'designer'
+              ? 'border-primary text-foreground bg-white/[0.04]'
+              : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
+          )}
+        >
+          DESIGNER
+        </button>
+        <button
+          onClick={() => setEditorTab('settings')}
+          className={cn(
+            'flex items-center px-4 h-9 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+            editorTab === 'settings'
+              ? 'border-primary text-foreground bg-white/[0.04]'
+              : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
+          )}
+        >
+          SETTINGS
+        </button>
+      </div>
 
       {editorTab === 'designer' && (
         <PageTabs
@@ -439,18 +446,30 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     <span className="text-text-muted">
                       COL:{selectedWidget.col} ROW:{selectedWidget.row} W:{selectedWidget.colSpan} H:{selectedWidget.rowSpan}
                     </span>
-                    <Button
-                      onClick={() => setConfirmRemoveWidget(true)}
-                      variant="ghost"
-                      size="xs"
-                      className="ml-auto h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
-                    >
-                      REMOVE
-                    </Button>
                   </>
                 ) : (
                   <span className="text-text-muted">DRAG_WIDGET_TO_CANVAS</span>
                 )}
+                <div className="ml-auto flex items-center gap-3">
+                  <Button
+                    onClick={handleClearPage}
+                    variant="ghost"
+                    size="xs"
+                    className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-foreground"
+                  >
+                    CLEAR
+                  </Button>
+                  {selectedWidget && (
+                    <Button
+                      onClick={() => setConfirmRemoveWidget(true)}
+                      variant="ghost"
+                      size="xs"
+                      className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
+                    >
+                      REMOVE
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
 

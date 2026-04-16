@@ -1,5 +1,33 @@
 package widgets
 
+import "image/color"
+
+// WidgetStyle holds the per-widget styling overrides applied on top of the
+// layout theme. Only non-zero fields take effect; zero values fall through to
+// the layout theme.
+type WidgetStyle struct {
+	// Font overrides the typeface used for value/data text elements
+	// (those that normally use FontNumber or FontBold).
+	Font FontStyle `json:"font,omitempty"`
+
+	// FontSize is a global font-size multiplier for all text in this widget.
+	// 0 and 1 both mean "use the default size".
+	FontSize float64 `json:"fontSize,omitempty"`
+
+	// TextColor overrides the "fg" semantic color (main value/text).
+	TextColor *color.RGBA `json:"textColor,omitempty"`
+
+	// LabelColor overrides the "muted" semantic color (label text).
+	LabelColor *color.RGBA `json:"labelColor,omitempty"`
+
+	// LabelFont overrides the typeface used for label text elements
+	// (those that normally use FontLabel or FontMono).
+	LabelFont FontStyle `json:"labelFont,omitempty"`
+
+	// Background overrides the "surface" semantic color (panel background).
+	Background *color.RGBA `json:"background,omitempty"`
+}
+
 // HAlign is the horizontal text alignment for an ElemText element.
 type HAlign int
 
@@ -35,6 +63,19 @@ const (
 type ColorRef string
 
 const (
+	ColorRefPrimary ColorRef = "primary"
+	ColorRefAccent  ColorRef = "accent"
+	ColorRefFG      ColorRef = "fg"
+	ColorRefMuted   ColorRef = "muted"
+	ColorRefMuted2  ColorRef = "muted2"
+	ColorRefSuccess ColorRef = "success"
+	ColorRefWarning ColorRef = "warning"
+	ColorRefDanger  ColorRef = "danger"
+	ColorRefSurface ColorRef = "surface"
+	ColorRefBg      ColorRef = "bg"
+	ColorRefBorder  ColorRef = "border"
+	ColorRefRPMRed  ColorRef = "rpmred"
+
 	ColorRefABS      ColorRef = "abs"
 	ColorRefTC       ColorRef = "tc"
 	ColorRefBrakeBias ColorRef = "brakeBias"

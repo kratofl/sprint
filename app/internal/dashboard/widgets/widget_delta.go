@@ -19,9 +19,15 @@ func (deltaWidget) Definition(_ map[string]any) []Element {
 			Then: []Element{
 				{Kind: ElemText, Text: "DELTA", Font: FontLabel, FontScale: 0.12,
 					Zone: "header", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
-				{Kind: ElemText, Binding: "lap.delta", Format: "delta", Font: FontNumber, FontScale: 0.18,
+				{Kind: ElemText, Binding: "lap.delta", Format: "delta", Font: FontNumber, FontScale: 0.35,
 					Zone: "fill", HAlign: HAlignCenter,
-					Color: ColorExpr{Ref: "accent", When: []ColorWhen{{Binding: "lap.deltaPositive", Ref: "danger"}}}},
+					Color: ColorExpr{
+						Ref: "fg",
+						When: []ColorWhen{
+							{Binding: "lap.deltaPositive", Ref: "danger"},
+							{Binding: "lap.deltaNegative", Ref: "accent"},
+						},
+					}},
 			},
 			Else: []Element{
 				{Kind: ElemText, Text: "No target", Font: FontLabel, FontScale: 0.15,

@@ -53,7 +53,7 @@ export function PageTabs({
       <button
         onClick={() => onSelectTab('idle')}
         className={cn(
-          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0',
+          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
           activeTab === 'idle'
             ? 'border-text-muted text-foreground bg-white/[0.04]'
             : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
@@ -67,7 +67,7 @@ export function PageTabs({
       <button
         onClick={onSelectAlerts}
         className={cn(
-          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0',
+          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
           activeTab === 'alerts'
             ? 'border-warning text-foreground bg-white/[0.04]'
             : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
@@ -89,7 +89,7 @@ export function PageTabs({
             key={page.id}
             onClick={() => onSelectTab(idx)}
             className={cn(
-              'group flex items-center gap-2 px-3 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 cursor-pointer select-none',
+              'group flex items-center gap-2 px-3 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
               isActive
                 ? 'border-accent text-foreground bg-white/[0.04]'
                 : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
@@ -120,27 +120,30 @@ export function PageTabs({
             {/* Actions — only on active tab */}
             {isActive && renamingIdx !== idx && (
               <span className="flex items-center gap-1 ml-1">
-                <span
-                  role="button"
+                <button
+                  type="button"
                   onClick={e => { e.stopPropagation(); startRename(idx) }}
-                  className="opacity-40 hover:opacity-100 transition-opacity cursor-pointer text-text-muted hover:text-foreground"
+                  className="opacity-40 hover:opacity-100 transition-opacity cursor-pointer text-text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
                   title="Rename page"
+                  aria-label={`Rename ${page.name}`}
                 >
                   <PencilIcon />
-                </span>
-                <span
-                  role="button"
+                </button>
+                <button
+                  type="button"
                   onClick={e => { e.stopPropagation(); if (pages.length > 1) setDeleteIdx(idx) }}
                   className={cn(
-                    'transition-opacity cursor-pointer',
+                    'transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                     pages.length > 1
                       ? 'opacity-40 hover:opacity-100 hover:text-destructive text-text-muted'
                       : 'opacity-20 cursor-not-allowed text-text-disabled'
                   )}
                   title={pages.length > 1 ? 'Delete page' : 'Cannot delete the only page'}
+                  aria-label={pages.length > 1 ? `Delete ${page.name}` : `Cannot delete ${page.name}`}
+                  disabled={pages.length <= 1}
                 >
                   <TrashIcon />
-                </span>
+                </button>
               </span>
             )}
           </div>
@@ -150,7 +153,7 @@ export function PageTabs({
       {/* Add page button */}
       <button
         onClick={onAddPage}
-        className="flex items-center gap-1.5 px-3 h-10 font-mono text-[11px] text-text-muted hover:text-foreground hover:bg-white/[0.02] transition-colors border-b-2 border-transparent flex-shrink-0 ml-1"
+        className="ml-1 flex h-10 flex-shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 font-mono text-[11px] text-text-muted transition-colors hover:bg-white/[0.02] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
         title="Add page"
       >
         <span className="text-base leading-none">+</span>

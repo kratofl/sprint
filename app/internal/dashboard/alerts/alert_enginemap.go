@@ -12,10 +12,11 @@ type engineMapChangeAlert struct{}
 
 func (engineMapChangeAlert) Meta() AlertMeta {
 	return AlertMeta{
-		Type:         AlertTypeEngineMap,
-		Label:        "Engine Map Change",
-		Description:  "Full-screen overlay when engine map setting changes.",
-		DefaultColor: "motor",
+		Type:              AlertTypeEngineMap,
+		Label:             "Engine Map Change",
+		Description:       "Full-screen overlay when engine map setting changes.",
+		DefaultColor:      "motor",
+		CapabilityBinding: "electronics.motorMapAvailable",
 	}
 }
 

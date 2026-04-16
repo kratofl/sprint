@@ -35,6 +35,14 @@ func (p *Painter) checkAlerts(frame *dto.TelemetryFrame, layout *DashLayout) {
 		if !ok {
 			continue
 		}
+		// Skip if this alert type is capability-gated and the car doesn't support it.
+		if cb := a.Meta().CapabilityBinding; cb != "" {
+			if val, ok := widgets.Resolve(frame, cb); ok {
+				if available, _ := val.(bool); !available {
+					continue
+				}
+			}
+		}
 		event := a.Check(frame, p.prevFrame, inst.Config)
 		if event == nil {
 			continue
@@ -73,9 +81,10 @@ func (p *Painter) applyAlertOverlay(dc *gg.Context, w, h float64) {
 	dc.DrawRectangle(0, h-10, w, 10)
 	dc.Fill()
 
+	fontHeight := h * 0.28
 	p.face(dc, "JetBrainsMono-Bold.ttf", h*0.28)
 	dc.SetColor(color.RGBA{R: c.R, G: c.G, B: c.B, A: 255})
-	dc.DrawStringAnchored(p.alert.text, w/2, h/2, 0.5, 0.5)
+	dc.DrawStringAnchored(p.alert.text, w/2, h/2-fontHeight/2, 0.5, 0.5)
 }
 
 // applyFlagOverlay draws the flag status banner over the rendered frame when a flag is active.

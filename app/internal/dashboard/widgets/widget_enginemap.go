@@ -9,6 +9,7 @@ func (engineMapWidget) Meta() WidgetMeta {
 		Type: WidgetEngineMap, Label: "Engine Map", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		CapabilityBinding: "electronics.motorMapAvailable",
 	}
 }
 

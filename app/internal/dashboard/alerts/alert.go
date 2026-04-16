@@ -38,6 +38,9 @@ type AlertMeta struct {
 	Description  string             `json:"description"`
 	DefaultColor string             `json:"defaultColor"` // ColorRef string e.g. "tc", "abs", "motor"
 	ConfigDefs   []widgets.ConfigDef `json:"configDefs,omitempty"`
+	// CapabilityBinding is an optional binding path (e.g. "electronics.absAvailable").
+	// When set, the alert is suppressed for any frame where the path resolves to false.
+	CapabilityBinding string `json:"capabilityBinding,omitempty"`
 }
 
 // AlertEvent is returned by Alert.Check when the alert fires.

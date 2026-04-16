@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef } from 'react'
 import { cn } from '@sprint/ui'
-import type { DashWidget, WidgetCatalogEntry, ConfigDef, ColorRef, RGBAColor } from '../lib/dash'
+import type { DashWidget, WidgetCatalogEntry, ConfigDef, FontStyle, RGBAColor, WidgetStyle } from '../lib/dash'
 import { rgbaToHex, hexToRgba } from '@/lib/color'
 
 interface WidgetPropertiesProps {
@@ -9,24 +9,11 @@ interface WidgetPropertiesProps {
   onUpdate: (updated: DashWidget) => void
 }
 
-const STYLE_COLOR_ROWS: { key: ColorRef; label: string }[] = [
-  { key: 'fg',      label: 'Value / Text' },
-  { key: 'primary', label: 'Primary (Driver)' },
-  { key: 'accent',  label: 'Accent (Engineer)' },
-  { key: 'muted',   label: 'Label / Muted' },
-  { key: 'surface', label: 'Background' },
-  { key: 'success', label: 'Success' },
-  { key: 'warning', label: 'Warning' },
-  { key: 'danger',  label: 'Danger' },
-]
-
-const FONT_SCALE_OPTIONS = [
-  { value: '0.7',  label: '0.7× (small)' },
-  { value: '0.85', label: '0.85×' },
-  { value: '1',    label: '1× (default)' },
-  { value: '1.2',  label: '1.2×' },
-  { value: '1.5',  label: '1.5× (large)' },
-  { value: '2',    label: '2× (xlarge)' },
+const FONT_OPTIONS: { value: FontStyle; label: string }[] = [
+  { value: 'label',  label: 'Space Grotesk (default)' },
+  { value: 'bold',   label: 'Space Grotesk Bold' },
+  { value: 'number', label: 'JetBrains Mono Bold' },
+  { value: 'mono',   label: 'JetBrains Mono' },
 ]
 
 export function WidgetProperties({ widget, catalog, onUpdate }: WidgetPropertiesProps) {
@@ -48,25 +35,15 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
     })
   }
 
-  const setColorOverride = (ref: ColorRef, rgba: RGBAColor) => {
-    onUpdate({
-      ...widget,
-      styleOverrides: { ...(widget.styleOverrides ?? {}), [ref]: rgba },
-    })
+  const updateStyle = (patch: Partial<WidgetStyle>) => {
+    onUpdate({ ...widget, style: { ...(widget.style ?? {}), ...patch } })
   }
 
-  const clearColorOverride = (ref: ColorRef) => {
-    const next = { ...(widget.styleOverrides ?? {}) }
-    delete next[ref]
-    onUpdate({ ...widget, styleOverrides: Object.keys(next).length > 0 ? next : undefined })
+  const clearStyleField = (key: keyof WidgetStyle) => {
+    const next = { ...(widget.style ?? {}) }
+    delete next[key]
+    onUpdate({ ...widget, style: Object.keys(next).length > 0 ? next : undefined })
   }
-
-  const fontScaleCurrent = widget.config?.['font_scale'] !== undefined
-    ? String(widget.config['font_scale'])
-    : '1'
-
-  const activeOverrideCount = STYLE_COLOR_ROWS.filter(r => widget.styleOverrides?.[r.key] !== undefined).length
-  const [styleOpen, setStyleOpen] = useState(activeOverrideCount > 0)
 
   return (
     <div className="flex flex-col gap-0 overflow-y-auto">
@@ -92,53 +69,51 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
         <div className="px-4 py-3 font-mono text-[9px] text-text-disabled">No configurable options</div>
       )}
 
-      <div className="border-t border-border mt-1 pt-1">
-        <button
-          onClick={() => setStyleOpen(o => !o)}
-          className="flex items-center gap-1.5 w-full font-mono text-[9px] font-bold text-text-disabled uppercase tracking-wider px-4 py-2 hover:text-foreground transition-colors text-left"
-        >
-          <span>{styleOpen ? '▼' : '▶'}</span>
-          <span>STYLE</span>
-          {activeOverrideCount > 0 && (
-            <span className="ml-auto text-accent font-normal">
-              {activeOverrideCount} override{activeOverrideCount !== 1 ? 's' : ''}
-            </span>
-          )}
-        </button>
-
-        {/* Font scale — always visible */}
-        <div className="flex flex-col gap-1 px-4 py-2.5 border-b border-border/50">
-          <label className="font-mono text-[9px] text-text-muted uppercase tracking-wide">Font Scale</label>
-          <select
-            value={fontScaleCurrent}
-            onChange={e => {
-              const v = e.target.value
-              if (v === '1') {
-                const next = { ...(widget.config ?? {}) }
-                delete next['font_scale']
-                onUpdate({ ...widget, config: Object.keys(next).length > 0 ? next : undefined })
-              } else {
-                updateConfig('font_scale', parseFloat(v))
-              }
-            }}
-            className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
-          >
-            {FONT_SCALE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+      <div className="border-t border-border mt-1">
+        <div className="px-4 py-2">
+          <p className="font-mono text-[9px] font-bold text-text-disabled uppercase tracking-wider">Style</p>
         </div>
 
-        {/* Color overrides — collapsible */}
-        {styleOpen && STYLE_COLOR_ROWS.map(({ key, label }) => (
-          <ColorOverrideRow
-            key={key}
-            label={label}
-            value={widget.styleOverrides?.[key]}
-            onChange={rgba => setColorOverride(key, rgba)}
-            onReset={() => clearColorOverride(key)}
-          />
-        ))}
+        <FontSelectRow
+          label="Font"
+          value={widget.style?.font}
+          onChange={v => updateStyle({ font: v })}
+          onReset={() => clearStyleField('font')}
+        />
+
+        <FontSizeRow
+          value={widget.style?.fontSize}
+          onChange={v => updateStyle({ fontSize: v })}
+          onReset={() => clearStyleField('fontSize')}
+        />
+
+        <FontSelectRow
+          label="Label Font"
+          value={widget.style?.labelFont}
+          onChange={v => updateStyle({ labelFont: v })}
+          onReset={() => clearStyleField('labelFont')}
+        />
+
+        <ColorRow
+          label="Text Color"
+          value={widget.style?.textColor}
+          onChange={v => updateStyle({ textColor: v })}
+          onReset={() => clearStyleField('textColor')}
+        />
+
+        <ColorRow
+          label="Label Color"
+          value={widget.style?.labelColor}
+          onChange={v => updateStyle({ labelColor: v })}
+          onReset={() => clearStyleField('labelColor')}
+        />
+
+        <ColorRow
+          label="Background"
+          value={widget.style?.background}
+          onChange={v => updateStyle({ background: v })}
+          onReset={() => clearStyleField('background')}
+        />
       </div>
     </div>
   )
@@ -195,17 +170,86 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
   )
 }
 
-interface ColorOverrideRowProps {
+function FontSelectRow({ label, value, onChange, onReset }: {
+  label: string
+  value: FontStyle | undefined
+  onChange: (v: FontStyle) => void
+  onReset: () => void
+}) {
+  const isSet = value !== undefined
+  return (
+    <div className="flex flex-col gap-1 px-4 py-2 border-b border-border/50">
+      <div className="flex items-center justify-between">
+        <label className={cn('font-mono text-[9px] uppercase tracking-wide', isSet ? 'text-foreground' : 'text-text-muted')}>
+          {label}
+        </label>
+        {isSet && (
+          <button type="button" onClick={onReset} className="text-text-disabled hover:text-foreground transition-colors" title="Reset">
+            <ResetIcon />
+          </button>
+        )}
+      </div>
+      <select
+        value={value ?? ''}
+        onChange={e => {
+          const v = e.target.value as FontStyle
+          if (v) onChange(v); else onReset()
+        }}
+        className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+      >
+        <option value="">— default —</option>
+        {FONT_OPTIONS.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function FontSizeRow({ value, onChange, onReset }: {
+  value: number | undefined
+  onChange: (v: number) => void
+  onReset: () => void
+}) {
+  const isSet = value !== undefined && value !== 0
+  const displayVal = isSet ? value : 1
+  return (
+    <div className="flex flex-col gap-1 px-4 py-2 border-b border-border/50">
+      <div className="flex items-center justify-between">
+        <label className={cn('font-mono text-[9px] uppercase tracking-wide', isSet ? 'text-foreground' : 'text-text-muted')}>
+          Font Size
+        </label>
+        {isSet && (
+          <button type="button" onClick={onReset} className="text-text-disabled hover:text-foreground transition-colors" title="Reset">
+            <ResetIcon />
+          </button>
+        )}
+      </div>
+      <input
+        type="number"
+        step="0.05"
+        min="0.5"
+        max="3"
+        value={displayVal}
+        onChange={e => {
+          const v = parseFloat(e.target.value)
+          if (!isNaN(v) && v > 0) onChange(v); else onReset()
+        }}
+        className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+      />
+    </div>
+  )
+}
+
+function ColorRow({ label, value, onChange, onReset }: {
   label: string
   value: RGBAColor | undefined
   onChange: (v: RGBAColor) => void
   onReset: () => void
-}
-
-function ColorOverrideRow({ label, value, onChange, onReset }: ColorOverrideRowProps) {
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
   const hex = value ? rgbaToHex(value) : null
-  const isOverridden = hex !== null
+  const isSet = hex !== null
 
   const handleHexInput = useCallback((raw: string) => {
     const clean = raw.startsWith('#') ? raw : `#${raw}`
@@ -215,12 +259,12 @@ function ColorOverrideRow({ label, value, onChange, onReset }: ColorOverrideRowP
   }, [onChange, value?.A])
 
   return (
-    <div className="flex items-center gap-2 px-4 py-1.5 border-b border-border/50">
-      <span className={cn('font-mono text-[10px] flex-1 min-w-0 truncate', isOverridden ? 'text-foreground' : 'text-text-disabled')}>
+    <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
+      <span className={cn('font-mono text-[9px] uppercase tracking-wide flex-1 min-w-0 truncate', isSet ? 'text-foreground' : 'text-text-muted')}>
         {label}
       </span>
 
-      {isOverridden ? (
+      {isSet ? (
         <>
           <button
             type="button"
@@ -262,7 +306,7 @@ function ColorOverrideRow({ label, value, onChange, onReset }: ColorOverrideRowP
           type="button"
           onClick={() => inputRef.current?.click()}
           className="font-mono text-[9px] text-text-disabled hover:text-foreground border border-dashed border-border hover:border-border-strong px-2 py-0.5 transition-colors"
-          title="Set override"
+          title="Set color"
         >
           <input
             ref={inputRef}
@@ -271,7 +315,7 @@ function ColorOverrideRow({ label, value, onChange, onReset }: ColorOverrideRowP
             className="sr-only"
             onChange={e => onChange(hexToRgba(e.target.value, 255))}
           />
-          override
+          set
         </button>
       )}
     </div>

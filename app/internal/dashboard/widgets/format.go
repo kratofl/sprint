@@ -2,6 +2,7 @@ package widgets
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -152,11 +153,15 @@ func fmtAnyDelta(v any, prefs FormatPreferences) string {
 	if !ok {
 		return fmt.Sprint(v)
 	}
+	rounded := roundDeltaValue(f, prefs.DeltaPrecision)
 	pattern := deltaPattern(prefs.DeltaPrecision)
-	if f >= 0 {
-		return fmt.Sprintf("+"+pattern, f)
+	if rounded > 0 {
+		return fmt.Sprintf("+"+pattern, rounded)
 	}
-	return fmt.Sprintf(pattern, f)
+	if rounded == 0 {
+		return fmt.Sprintf(pattern, rounded)
+	}
+	return fmt.Sprintf(pattern, rounded)
 }
 
 // fmtAnyGap formats a gap value as e.g. "+1.234" or "---" when zero.
@@ -166,11 +171,12 @@ func fmtAnyGap(v any, prefs FormatPreferences) string {
 	if !ok {
 		return fmt.Sprint(v)
 	}
-	if f == 0 {
+	rounded := roundDeltaValue(f, prefs.DeltaPrecision)
+	if rounded == 0 {
 		return "---"
 	}
 	pattern := deltaPattern(prefs.DeltaPrecision)
-	return fmt.Sprintf("+"+pattern, f)
+	return fmt.Sprintf("+"+pattern, rounded)
 }
 
 // fmtAnySession formats a session time (seconds) as "H:MM:SS" or "MM:SS".
@@ -230,4 +236,16 @@ func deltaPattern(dp DeltaPrecision) string {
 	default:
 		return "%.3f"
 	}
+}
+
+func roundDeltaValue(v float64, dp DeltaPrecision) float64 {
+	factor := 1000.0
+	if dp == DeltaPrec2 {
+		factor = 100.0
+	}
+	rounded := math.Round(v*factor) / factor
+	if math.Abs(rounded) < 1.0/factor {
+		return 0
+	}
+	return rounded
 }

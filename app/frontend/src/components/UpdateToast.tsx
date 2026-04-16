@@ -35,7 +35,7 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
         </div>
         <button
           onClick={onDismiss}
-          className="text-text-muted hover:text-foreground transition-colors mt-0.5"
+          className="mt-0.5 text-text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
           aria-label="Dismiss"
         >
           <IconX size={14} />

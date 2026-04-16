@@ -83,19 +83,20 @@ type TireState struct {
 
 // LapState holds lap timing and validity data for the current lap.
 type LapState struct {
-	CurrentLap     int     `json:"currentLap"`
-	CurrentLapTime float64 `json:"currentLapTime"` // seconds since lap start
-	LastLapTime    float64 `json:"lastLapTime"`    // seconds; 0 if no completed lap this session
-	BestLapTime    float64 `json:"bestLapTime"`    // personal best seconds; 0 if none
-	TargetLapTime  float64 `json:"targetLapTime"`  // seconds; active reference lap time; 0 means no reference
-	Delta          float64 `json:"delta"`          // position-based delta to reference lap in seconds; 0 if no reference
-	Sector         int     `json:"sector"`         // current sector (1-based)
-	Sector1Time    float64 `json:"sector1Time"`    // last completed lap sector 1, seconds; 0 if unavailable
-	Sector2Time    float64 `json:"sector2Time"`    // last completed lap sector 2, seconds
-	IsInLap        bool    `json:"isInLap"`
-	IsOutLap       bool    `json:"isOutLap"`
-	IsValid        bool    `json:"isValid"`       // false on track limit or other infringement
-	TrackPosition  float32 `json:"trackPosition"` // 0–1, fraction of lap distance completed
+	CurrentLap      int     `json:"currentLap"`
+	CurrentLapTime  float64 `json:"currentLapTime"`  // seconds since lap start
+	PositionLapTime float64 `json:"positionLapTime"` // seconds since lap start in the same timing domain as TrackPosition; 0 means unavailable
+	LastLapTime     float64 `json:"lastLapTime"`     // seconds; 0 if no completed lap this session
+	BestLapTime     float64 `json:"bestLapTime"`     // personal best seconds; 0 if none
+	TargetLapTime   float64 `json:"targetLapTime"`   // seconds; active reference lap time; 0 means no reference
+	Delta           float64 `json:"delta"`           // position-based delta to reference lap in seconds; 0 if no reference
+	Sector          int     `json:"sector"`          // current sector (1-based)
+	Sector1Time     float64 `json:"sector1Time"`     // last completed lap sector 1, seconds; 0 if unavailable
+	Sector2Time     float64 `json:"sector2Time"`     // last completed lap sector 2, seconds
+	IsInLap         bool    `json:"isInLap"`
+	IsOutLap        bool    `json:"isOutLap"`
+	IsValid         bool    `json:"isValid"`       // false on track limit or other infringement
+	TrackPosition   float32 `json:"trackPosition"` // 0–1, fraction of lap distance completed
 }
 
 // Flags holds the current flag state on track.
@@ -113,16 +114,23 @@ type Electronics struct {
 	TCActive    bool  `json:"tcActive"`    // TC currently intervening (cutting power)
 	TC          uint8 `json:"tc"`          // TC setting; 0 = off
 	TCMax       uint8 `json:"tcMax"`       // maximum TC setting available for this car
-	ABSActive   bool  `json:"absActive"`   // ABS currently intervening
-	ABS         uint8 `json:"abs"`         // ABS setting; 0 = off
-	ABSMax      uint8 `json:"absMax"`      // maximum ABS setting available for this car
 	TCCut       uint8 `json:"tcCut"`       // TC cut level (TC2); 0 = off
 	TCCutMax    uint8 `json:"tcCutMax"`    // maximum TC cut level for this car
 	TCSlip      uint8 `json:"tcSlip"`      // TC slip level (TC3); 0 = off
 	TCSlipMax   uint8 `json:"tcSlipMax"`   // maximum TC slip level for this car
+	ABSActive   bool  `json:"absActive"`   // ABS currently intervening
+	ABS         uint8 `json:"abs"`         // ABS setting; 0 = off
+	ABSMax      uint8 `json:"absMax"`      // maximum ABS setting available for this car
 	MotorMap    uint8 `json:"motorMap"`    // engine/motor map setting
 	MotorMapMax uint8 `json:"motorMapMax"` // maximum motor map setting for this car
 	DRSActive   bool  `json:"drsActive"`   // DRS currently deployed
+
+	// Availability flags — false when the feature is not present on the current car.
+	ABSAvailable      bool `json:"absAvailable"`
+	TCAvailable       bool `json:"tcAvailable"`
+	TCCutAvailable    bool `json:"tcCutAvailable"`
+	TCSlipAvailable   bool `json:"tcSlipAvailable"`
+	MotorMapAvailable bool `json:"motorMapAvailable"`
 }
 
 // RaceState holds real-time race position and gap information.

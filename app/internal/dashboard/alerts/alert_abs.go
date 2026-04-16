@@ -12,10 +12,11 @@ type absChangeAlert struct{}
 
 func (absChangeAlert) Meta() AlertMeta {
 	return AlertMeta{
-		Type:         AlertTypeABS,
-		Label:        "ABS Change",
-		Description:  "Full-screen overlay when ABS setting changes.",
-		DefaultColor: "abs",
+		Type:              AlertTypeABS,
+		Label:             "ABS Change",
+		Description:       "Full-screen overlay when ABS setting changes.",
+		DefaultColor:      "abs",
+		CapabilityBinding: "electronics.absAvailable",
 	}
 }
 

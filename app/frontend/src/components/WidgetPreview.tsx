@@ -1,7 +1,7 @@
 import type { ReactNode, CSSProperties } from 'react'
 import type {
   DashWidget, DashTheme, DomainPalette, WidgetCatalogEntry,
-  ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, HAlign,
+  ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle,
 } from '@/lib/dash'
 
 interface Props {
@@ -21,11 +21,12 @@ function resolveRef(
   ref: ColorRef | undefined,
   theme: DashTheme,
   dp?: DomainPalette,
-  overrides?: Partial<Record<ColorRef, RGBAColor>>,
+  style?: WidgetStyle,
 ): string {
   if (!ref) return 'rgba(255,255,255,0.5)'
-  const ovr = overrides?.[ref]
-  if (ovr) return toCSS(ovr)
+  if (ref === 'fg'      && style?.textColor)  return toCSS(style.textColor)
+  if (ref === 'muted'   && style?.labelColor) return toCSS(style.labelColor)
+  if (ref === 'surface' && style?.background) return toCSS(style.background)
   switch (ref) {
     case 'primary':   return toCSS(theme.primary)
     case 'accent':    return toCSS(theme.accent)
@@ -53,9 +54,9 @@ function resolveExpr(
   expr: ColorExpr | undefined,
   theme: DashTheme,
   dp?: DomainPalette,
-  overrides?: Partial<Record<ColorRef, RGBAColor>>,
+  style?: WidgetStyle,
 ): string {
-  return resolveRef(expr?.ref ?? 'fg', theme, dp, overrides)
+  return resolveRef(expr?.ref ?? 'fg', theme, dp, style)
 }
 
 // ── Static placeholder values per binding path ────────────────────────────────
@@ -125,6 +126,13 @@ const FONT_MAP: Record<FontStyle, string> = {
 function fontFamily(f?: FontStyle): string { return FONT_MAP[f ?? 'label'] }
 function fontWeight(f?: FontStyle): number  { return f === 'bold' || f === 'number' ? 700 : 400 }
 
+function resolveFont(elemFont: FontStyle | undefined, style?: WidgetStyle): FontStyle {
+  const f = elemFont ?? 'label'
+  if ((f === 'number' || f === 'bold') && style?.font)      return style.font
+  if ((f === 'label'  || f === 'mono') && style?.labelFont) return style.labelFont
+  return f
+}
+
 // ── Zone layout helpers ───────────────────────────────────────────────────────
 
 // Flatten conditions to their then-branch for preview purposes.
@@ -137,32 +145,73 @@ function flattenElements(elems: WidgetElement[]): WidgetElement[] {
   return out
 }
 
-// Flex margin style that positions a span within a flex row by hAlign.
-function hAlignStyle(hAlign?: HAlign): CSSProperties {
-  switch (hAlign) {
-    case 2: return { marginLeft: 'auto' }
-    case 1: return { margin: '0 auto' }
-    default: return { marginRight: 'auto' }
+const defaultFillYFrac = 0.5
+
+function fillZoneYs(n: number): number[] {
+  switch (n) {
+    case 1:
+      return [defaultFillYFrac]
+    case 2:
+      return [0.38, 0.72]
+    case 3:
+      return [0.30, 0.52, 0.74]
+    case 4:
+      return [0.20, 0.40, 0.60, 0.80]
+    default: {
+      if (n <= 0) return []
+      const ys: number[] = []
+      for (let i = 0; i < n; i += 1) ys.push(0.18 + (0.64 * i) / (n - 1))
+      return ys
+    }
   }
 }
 
-// Render a single text element inside a zone row.
+function countFillRows(elems: WidgetElement[]): number {
+  let max = -1
+  for (const e of elems) {
+    if (e.kind !== 'text' || !e.zone?.startsWith('fill:')) continue
+    const n = Number.parseInt(e.zone.slice(5), 10)
+    if (!Number.isNaN(n) && n > max) max = n
+  }
+  return max + 1
+}
+
+function zoneYFrac(zone: string | undefined, fillRows: number[]): number {
+  switch (zone) {
+    case 'header':
+      return 0.20
+    case 'fill':
+      return defaultFillYFrac
+    case 'footer':
+      return 0.84
+    default:
+      if (zone?.startsWith('fill:')) {
+        const idx = Number.parseInt(zone.slice(5), 10)
+        if (!Number.isNaN(idx) && idx >= 0 && idx < fillRows.length) return fillRows[idx]
+      }
+      return defaultFillYFrac
+  }
+}
+
+// Render a single text element in a zone.
 function ZoneTextItem({
-  elem, theme, dp, overrides, fontScaleMul,
+  elem, theme, dp, style, fontScaleMul, yFrac,
 }: {
   elem: WidgetElement
   theme: DashTheme
   dp?: DomainPalette
-  overrides?: Partial<Record<ColorRef, RGBAColor>>
+  style?: WidgetStyle
   fontScaleMul: number
+  yFrac: number
 }): ReactNode {
-  const color  = resolveExpr(elem.color, theme, dp, overrides)
+  const color  = resolveExpr(elem.color, theme, dp, style)
   const text   = placeholder(elem.binding, elem.format, elem.text)
   const fs     = (elem.fontScale ?? 0.1) * fontScaleMul
-  const style: CSSProperties = {
+  const ef     = resolveFont(elem.font, style)
+  const css: CSSProperties = {
     fontSize:   `${fs * 100}cqh`,
-    fontFamily: fontFamily(elem.font),
-    fontWeight: fontWeight(elem.font),
+    fontFamily: fontFamily(ef),
+    fontWeight: fontWeight(ef),
     color,
     whiteSpace: 'nowrap',
     lineHeight: 1,
@@ -173,10 +222,10 @@ function ZoneTextItem({
     const tx = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'
     return (
       <span style={{
-        ...style,
+        ...css,
         position:  'absolute',
         left:      `${elem.x * 100}%`,
-        top:       '50%',
+        top:       `${yFrac * 100}%`,
         transform: `translate(${tx}, -50%)`,
       }}>
         {text}
@@ -184,91 +233,48 @@ function ZoneTextItem({
     )
   }
 
-  // No explicit X → flex margin alignment.
+  // No explicit X → use backend-style zone alignment anchors.
   return (
-    <span style={{ ...style, ...hAlignStyle(elem.hAlign), flexShrink: 0 }}>
+    <span style={{
+      ...css,
+      position: 'absolute',
+      left: elem.hAlign === 1 ? '50%' : elem.hAlign === 2 ? '97.5%' : '2.5%',
+      top: `${yFrac * 100}%`,
+      transform: `translate(${elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'}, -50%)`,
+    }}>
       {text}
     </span>
   )
 }
 
-// One horizontal zone row (header / fill:N / footer).
-function ZoneRow({
-  elems, style, theme, dp, overrides, fontScaleMul,
-}: {
-  elems: WidgetElement[]
-  style?: CSSProperties
-  theme: DashTheme
-  dp?: DomainPalette
-  overrides?: Partial<Record<ColorRef, RGBAColor>>
-  fontScaleMul: number
-}): ReactNode {
-  return (
-    <div style={{
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      width: '100%',
-      paddingLeft: '3%',
-      paddingRight: '3%',
-      boxSizing: 'border-box',
-      overflow: 'hidden',
-      ...style,
-    }}>
-      {elems.map((e, i) => (
-        <ZoneTextItem key={i} elem={e} theme={theme} dp={dp} overrides={overrides} fontScaleMul={fontScaleMul} />
-      ))}
-    </div>
-  )
-}
-
-// Full zone flex overlay for all text elements that have a zone.
+// Full zone overlay for all text elements that have a zone.
 function ZoneLayer({
-  elems, theme, dp, overrides, fontScaleMul,
+  elems, theme, dp, widgetStyle, fontScaleMul,
 }: {
   elems: WidgetElement[]
   theme: DashTheme
   dp?: DomainPalette
-  overrides?: Partial<Record<ColorRef, RGBAColor>>
+  widgetStyle?: WidgetStyle
   fontScaleMul: number
 }): ReactNode {
   const flat = flattenElements(elems)
   const zoneText = flat.filter(e => e.kind === 'text' && !!e.zone)
-
-  const header  = zoneText.filter(e => e.zone === 'header')
-  const footer  = zoneText.filter(e => e.zone === 'footer')
-  const fillMap = new Map<number, WidgetElement[]>()
-  for (const e of zoneText) {
-    if (e.zone === 'fill') {
-      if (!fillMap.has(0)) fillMap.set(0, [])
-      fillMap.get(0)!.push(e)
-    } else if (e.zone?.startsWith('fill:')) {
-      const n = parseInt(e.zone.slice(5))
-      if (!fillMap.has(n)) fillMap.set(n, [])
-      fillMap.get(n)!.push(e)
-    }
-  }
-  const fillRows = [...fillMap.entries()].sort((a, b) => a[0] - b[0]).map(([, r]) => r)
-
   if (zoneText.length === 0) return null
-
-  const shared = { theme, dp, overrides, fontScaleMul }
+  const fillRows = fillZoneYs(countFillRows(zoneText))
 
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
-      {header.length > 0 && (
-        <ZoneRow elems={header} style={{ height: '22%', flexShrink: 0 }} {...shared} />
-      )}
-      {fillRows.length > 0 && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {fillRows.map((row, i) => (
-            <ZoneRow key={i} elems={row} style={{ flex: 1 }} {...shared} />
-          ))}
-        </div>
-      )}
-      {footer.length > 0 && (
-        <ZoneRow elems={footer} style={{ height: '18%', flexShrink: 0 }} {...shared} />
-      )}
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {zoneText.map((e, i) => (
+        <ZoneTextItem
+          key={i}
+          elem={e}
+          theme={theme}
+          dp={dp}
+          style={widgetStyle}
+          fontScaleMul={fontScaleMul}
+          yFrac={zoneYFrac(e.zone, fillRows)}
+        />
+      ))}
     </div>
   )
 }
@@ -279,18 +285,18 @@ function renderAbsElem(
   elem: WidgetElement,
   theme: DashTheme,
   dp: DomainPalette | undefined,
-  overrides: Partial<Record<ColorRef, RGBAColor>> | undefined,
+  widgetStyle: WidgetStyle | undefined,
   fontScaleMul: number,
   key: number,
 ): ReactNode {
-  const r = (ref?: ColorRef) => resolveRef(ref, theme, dp, overrides)
-  const x = (expr?: ColorExpr) => resolveExpr(expr, theme, dp, overrides)
+  const r = (ref?: ColorRef) => resolveRef(ref, theme, dp, widgetStyle)
+  const x = (expr?: ColorExpr) => resolveExpr(expr, theme, dp, widgetStyle)
 
   switch (elem.kind) {
 
     case 'panel': {
-      const bg     = resolveRef('surface', theme, dp, overrides)
-      const border = resolveRef('border', theme, dp, overrides)
+      const bg     = resolveRef('surface', theme, dp, widgetStyle)
+      const border = resolveRef('border',  theme, dp, widgetStyle)
       return (
         <div key={key} style={{
           position: 'absolute', inset: 0,
@@ -308,6 +314,7 @@ function renderAbsElem(
       const text   = placeholder(elem.binding, elem.format, elem.text)
       const fs     = (elem.fontScale ?? 0.1) * fontScaleMul
       const color  = x(elem.color)
+      const ef     = resolveFont(elem.font, widgetStyle)
       const tx     = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'
       const ty     = elem.vAlign === 1 ? '-50%' : elem.vAlign === 2 ? '-100%' : '0'
       return (
@@ -317,8 +324,8 @@ function renderAbsElem(
           top:        `${(elem.y ?? 0) * 100}%`,
           transform:  `translate(${tx}, ${ty})`,
           fontSize:   `${fs * 100}cqh`,
-          fontFamily: fontFamily(elem.font),
-          fontWeight: fontWeight(elem.font),
+          fontFamily: fontFamily(ef),
+          fontWeight: fontWeight(ef),
           color,
           whiteSpace: 'nowrap',
           lineHeight: 1,
@@ -453,7 +460,7 @@ function renderAbsElem(
     }
 
     case 'condition':
-      return <>{flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, overrides, fontScaleMul, i))}</>
+      return <>{flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, widgetStyle, fontScaleMul, i))}</>
 
     default:
       return null
@@ -463,10 +470,10 @@ function renderAbsElem(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Props) {
-  const entry     = catalog.find(e => e.type === widget.type)
-  const elements  = entry?.defaultDefinition ?? []
-  const fontScale = Math.max(0.5, Number(widget.config?.font_scale ?? 1) || 1)
-  const overrides = widget.styleOverrides
+  const entry       = catalog.find(e => e.type === widget.type)
+  const elements    = entry?.defaultDefinition ?? []
+  const widgetStyle = widget.style
+  const fontScale   = Math.max(0.5, widgetStyle?.fontSize ?? 1)
 
   return (
     <div
@@ -475,13 +482,13 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
     >
       {elements.length > 0 ? (
         <>
-          {elements.map((e, i) => renderAbsElem(e, theme, domainPalette, overrides, fontScale, i))}
-          <ZoneLayer elems={elements} theme={theme} dp={domainPalette} overrides={overrides} fontScaleMul={fontScale} />
+          {elements.map((e, i) => renderAbsElem(e, theme, domainPalette, widgetStyle, fontScale, i))}
+          <ZoneLayer elems={elements} theme={theme} dp={domainPalette} widgetStyle={widgetStyle} fontScaleMul={fontScale} />
         </>
       ) : (
         <div className="absolute inset-0 flex items-center justify-center"
-          style={{ background: resolveRef('surface', theme, domainPalette, overrides) }}>
-          <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette), fontFamily: 'JetBrains Mono, monospace' }}>
+          style={{ background: resolveRef('surface', theme, domainPalette, widgetStyle) }}>
+          <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette, widgetStyle), fontFamily: 'JetBrains Mono, monospace' }}>
             {entry?.label ?? widget.type}
           </span>
         </div>

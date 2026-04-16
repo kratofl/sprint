@@ -1,4 +1,22 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import {
+  Button,
+  cn,
+  NavRail,
+  StatusStrip,
+} from '@sprint/ui'
+import {
+  IconGauge,
+  IconHome2,
+  IconKeyboard,
+  IconLayoutDashboard,
+  IconMinus,
+  IconSettings,
+  IconSquare,
+  IconUsb,
+  IconX,
+} from '@tabler/icons-react'
+import logoIcon from '@/assets/sprint_logo_icon.png'
 import Home from '@/views/Home'
 import Telemetry from '@/views/Telemetry'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
@@ -11,44 +29,34 @@ import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import UpdateToast from '@/components/UpdateToast'
 import { onEvent, call } from '@/lib/wails'
-import { Badge, Button, cn } from '@sprint/ui'
-import logoIcon from '@/assets/sprint_logo_icon.png'
-import {
-  IconBell,
-  IconMinus,
-  IconSquare,
-  IconX,
-} from '@tabler/icons-react'
 
 type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls' | 'settings'
-type BuildChannel = 'dev' | 'alpha' | 'beta' | 'release'
 
-const NAV: { id: View; label: string }[] = [
-  { id: 'home',      label: 'Home' },
-  { id: 'telemetry', label: 'Live_Session' },
-  { id: 'dash',      label: 'Dash_Editor' },
-  { id: 'devices',   label: 'Devices' },
-  { id: 'controls',  label: 'Controls' },
-  { id: 'settings',  label: 'Settings' },
-]
-
-const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 'neutral' | 'active' | 'connected' }> = {
-  dev:     { label: 'DEV',     variant: 'warning' },
-  alpha:   { label: 'ALPHA',   variant: 'active' },
-  beta:    { label: 'BETA',    variant: 'neutral' },
-  release: { label: 'RELEASE', variant: 'connected' },
-}
+const NAV = [
+  { id: 'home', label: 'HOME', icon: IconHome2 },
+  { id: 'telemetry', label: 'LIVE_SESSION', icon: IconGauge },
+  { id: 'dash', label: 'DASH_EDITOR', icon: IconLayoutDashboard },
+  { id: 'devices', label: 'DEVICES', icon: IconUsb },
+  { id: 'controls', label: 'CONTROLS', icon: IconKeyboard },
+] as const satisfies ReadonlyArray<{
+  id: View
+  label: string
+  icon: ComponentType<{ className?: string; size?: number }>
+}>
 
 export default function App() {
   const [view, setView] = useState<View>('home')
-  const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry') as { id: View; label: string }[]
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  const visibleNav = useMemo(
+    () => import.meta.env.DEV ? [...NAV] : NAV.filter(item => item.id !== 'telemetry'),
+    []
+  )
   const { frame, connected, fps } = useTelemetry()
   const { releaseInfo, installing, dismiss, install } = useUpdateCheck()
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
   const [version, setVersion] = useState('dev')
-  const [channel, setChannel] = useState<BuildChannel>('dev')
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
   const [pendingView, setPendingView] = useState<View | null>(null)
@@ -80,124 +88,147 @@ export default function App() {
   useEffect(() => {
     const unsub = onEvent('app:ready', () => setBooting(false))
     const fallback = setTimeout(() => setBooting(false), 3000)
-    return () => { unsub(); clearTimeout(fallback) }
+    return () => {
+      unsub()
+      clearTimeout(fallback)
+    }
   }, [])
 
   useEffect(() => {
     call<string>('GetVersion').then(setVersion).catch(() => {})
-    call<string>('GetBuildChannel').then(v => setChannel(v as BuildChannel)).catch(() => {})
   }, [])
 
-  const channelBadge = CHANNEL_BADGE[channel] ?? CHANNEL_BADGE.dev
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return
+      }
+
+      if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === ',') {
+        event.preventDefault()
+        switchView('settings')
+        return
+      }
+
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return
+      }
+
+      const match = /^Digit([1-9])$/.exec(event.code)
+      if (!match) {
+        return
+      }
+
+      const targetView = visibleNav[Number(match[1]) - 1]
+      if (!targetView) {
+        return
+      }
+
+      event.preventDefault()
+      switchView(targetView.id)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [switchView, visibleNav])
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground border-t border-border">
+    <div className="flex h-screen w-screen flex-col overflow-hidden border-t border-border bg-background font-sans text-foreground">
       {splashMounted && (
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      {/* Top app bar — drag region, logo + nav tabs + window controls */}
       <header
-        className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
-        onDoubleClick={(e) => {
-          if ((e.target as HTMLElement).closest('button, a, input')) return
+        className="flex h-8 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
+        onDoubleClick={(event) => {
+          if ((event.target as HTMLElement).closest('button, a, input')) return
           call('WindowMaximise')
         }}
       >
-        {/* Logo */}
-        <div className="flex shrink-0 items-center pr-4 [--wails-draggable:nodrag]">
-          <img src={logoIcon} alt="Sprint" className="h-5 w-auto object-contain select-none" draggable={false} />
+        <div className="flex items-center gap-2 [--wails-draggable:nodrag]">
+          <img src={logoIcon} alt="Sprint" className="h-5 w-auto" />
         </div>
 
-        {/* Nav tabs */}
-        <nav className="flex items-stretch gap-0.5 h-full [--wails-draggable:nodrag]">
-          {visibleNav.map(item => {
-            const isActive = item.id === view
-            return (
-              <button
-                key={item.id}
-                onClick={() => switchView(item.id)}
-                className={cn(
-                  'relative flex items-center px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-100 outline-none',
-                  isActive
-                    ? 'text-accent after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-accent'
-                    : 'text-text-muted hover:text-foreground',
-                )}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </nav>
-
-        {/* Right: notifications + window controls */}
         <div className="ml-auto flex items-center gap-1 [--wails-draggable:nodrag]">
-          <Button variant="ghost" size="icon-sm" className="text-text-muted" aria-label="Notifications">
-            <IconBell size={15} />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => switchView('settings')}
+            className={cn(
+              'text-text-muted hover:bg-foreground/10',
+              view === 'settings' && 'text-foreground',
+            )}
+            aria-label="Settings"
+          >
+            <IconSettings size={14} />
           </Button>
-          <div className="flex items-center gap-1 pl-2 border-l border-border">
-            <button
+          <div className="flex items-center gap-1 border-l border-border pl-2">
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => call('WindowMinimise')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              className="text-text-muted hover:bg-foreground/10"
               aria-label="Minimise"
             >
               <IconMinus size={12} />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => call('WindowMaximise')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              className="text-text-muted hover:bg-foreground/10"
               aria-label="Maximise"
             >
               <IconSquare size={12} />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={() => call('WindowClose')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-destructive/80 hover:text-white transition-all"
+              className="text-text-muted hover:bg-destructive/80 hover:text-white"
               aria-label="Close"
             >
               <IconX size={12} />
-            </button>
+            </Button>
           </div>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-background">
-        {view === 'home'      && <Home connected={connected} onNavigate={switchView} />}
-        {view === 'telemetry' && <Telemetry frame={frame} />}
-        {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
-        {view === 'devices'   && <Devices />}
-        {view === 'controls'  && <Controls />}
-        {view === 'settings'  && <Settings />}
-      </main>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <NavRail
+          items={visibleNav.map(({ id, label, icon }) => ({ id, label, icon }))}
+          activeId={view}
+          onSelect={(id) => switchView(id as View)}
+          collapsed={navCollapsed}
+          onCollapsedChange={setNavCollapsed}
+        />
 
-      {/* Fixed bottom status footer */}
-      <footer className="flex h-6 shrink-0 items-center border-t border-border bg-background px-4 font-mono text-[9px] text-text-muted">
-        <div className="flex w-full items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'h-1.5 w-1.5',
-              connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
-            )} />
-            <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-              {connected ? 'UPLINK_STABLE' : 'UPLINK_OFFLINE'}
-            </Badge>
-          </div>
-          <div className="h-3 w-px bg-border" />
-          <div className="flex gap-4">
-            <span>FRAME_RATE: {fps ?? 0}Hz</span>
-            <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="italic tracking-widest opacity-40">SPRINT v{version}</span>
-            {channel !== 'release' && (
-              <Badge variant={channelBadge.variant} className="terminal-header font-mono text-[9px]">
-                {channelBadge.label}
-              </Badge>
-            )}
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <main className="flex flex-1 flex-col overflow-hidden bg-background">
+            {view === 'home' && <Home connected={connected} onNavigate={switchView} />}
+            {view === 'telemetry' && <Telemetry frame={frame} />}
+            {view === 'dash' && <DashEditor ref={dashEditorRef} />}
+            {view === 'devices' && <Devices />}
+            {view === 'controls' && <Controls />}
+            {view === 'settings' && <Settings />}
+          </main>
+
+          <StatusStrip
+            connected={connected}
+            version={version}
+            leftSlot={
+              <>
+                <span>FRAME_RATE: {fps ?? 0}Hz</span>
+                <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
+              </>
+            }
+          />
         </div>
-      </footer>
+      </div>
 
       <ConfirmDialog
         open={showLeaveConfirm}
@@ -215,8 +246,6 @@ export default function App() {
         onInstall={install}
         onDismiss={dismiss}
       />
-
     </div>
   )
 }
-

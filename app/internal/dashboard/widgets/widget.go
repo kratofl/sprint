@@ -6,6 +6,7 @@ package widgets
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -72,17 +73,21 @@ var categoryLabels = map[Category]string{
 // WidgetMeta holds the widget type, display name, palette category,
 // config schema, and default grid dimensions.
 type WidgetMeta struct {
-	Type              WidgetType         `json:"type"`
-	Label             string             `json:"label"`
-	Category          Category           `json:"category"`
-	CategoryLabel     string             `json:"categoryLabel"`
-	ConfigDefs        []ConfigDef        `json:"configDefs,omitempty"`
-	DefaultColSpan    int                `json:"defaultColSpan"`
-	DefaultRowSpan    int                `json:"defaultRowSpan"`
-	IdleCapable       bool               `json:"idleCapable"`
-	DefaultUpdateHz   float64            `json:"defaultUpdateHz"`
-	DefaultPanelRules []ConditionalRule  `json:"defaultPanelRules,omitempty"`
-	DefaultDefinition []Element          `json:"defaultDefinition,omitempty"`
+	Type              WidgetType        `json:"type"`
+	Label             string            `json:"label"`
+	Category          Category          `json:"category"`
+	CategoryLabel     string            `json:"categoryLabel"`
+	ConfigDefs        []ConfigDef       `json:"configDefs,omitempty"`
+	DefaultColSpan    int               `json:"defaultColSpan"`
+	DefaultRowSpan    int               `json:"defaultRowSpan"`
+	IdleCapable       bool              `json:"idleCapable"`
+	DefaultUpdateHz   float64           `json:"defaultUpdateHz"`
+	DefaultPanelRules []ConditionalRule `json:"defaultPanelRules,omitempty"`
+	DefaultDefinition []Element         `json:"defaultDefinition,omitempty"`
+	// CapabilityBinding is an optional binding path (e.g. "electronics.absAvailable").
+	// When set, the painter resolves this path on every frame; if it resolves to
+	// false the widget renders a "not available" placeholder instead of live data.
+	CapabilityBinding string `json:"capabilityBinding,omitempty"`
 }
 
 var (
@@ -192,21 +197,37 @@ func FmtLapWith(seconds float64, format LapFormat) string {
 		if seconds <= 0 {
 			return "-.---.--"
 		}
-		m := int(seconds) / 60
-		s := seconds - float64(m*60)
-		return fmt.Sprintf("%d:%05.2f", m, s)
+		totalCs := int64(math.Round(seconds * 100))
+		if totalCs <= 0 {
+			return "-.---.--"
+		}
+		m := totalCs / 6000
+		rem := totalCs % 6000
+		s := rem / 100
+		cs := rem % 100
+		return fmt.Sprintf("%d:%02d.%02d", m, s, cs)
 	case LapFormatSSmmm:
 		if seconds <= 0 {
 			return "--.---"
 		}
-		return fmt.Sprintf("%.3f", seconds)
+		totalMs := int64(math.Round(seconds * 1000))
+		if totalMs <= 0 {
+			return "--.---"
+		}
+		return fmt.Sprintf("%.3f", float64(totalMs)/1000.0)
 	default: // LapFormatMSSmmm
 		if seconds <= 0 {
 			return "-.---.---"
 		}
-		m := int(seconds) / 60
-		s := seconds - float64(m*60)
-		return fmt.Sprintf("%d:%06.3f", m, s)
+		totalMs := int64(math.Round(seconds * 1000))
+		if totalMs <= 0 {
+			return "-.---.---"
+		}
+		m := totalMs / 60000
+		rem := totalMs % 60000
+		s := rem / 1000
+		ms := rem % 1000
+		return fmt.Sprintf("%d:%02d.%03d", m, s, ms)
 	}
 }
 

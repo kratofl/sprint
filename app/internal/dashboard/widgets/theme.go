@@ -101,22 +101,56 @@ func domainColor(d DomainPalette, ref ColorRef) (color.RGBA, bool) {
 
 // RenderTheme is the fully-resolved colour context for a single widget render.
 // It holds all three colour layers and resolves them in priority order:
-//  1. Overrides (per-widget)
+//  1. Style overrides (per-widget)
 //  2. Domain palette (layout-global domain colours)
 //  3. Theme (generic semantic colours)
 //  4. Built-in white fallback
 type RenderTheme struct {
-	Theme        DashTheme
-	Domain       DomainPalette
-	Overrides    map[ColorRef]color.RGBA // nil = no widget-level overrides
-	FontScaleMul float64                 // 0 = default (1.0); multiplier for all text elements
+	Theme  DashTheme
+	Domain DomainPalette
+	Style  WidgetStyle // per-widget style overrides
+}
+
+// FontScale returns the font-size multiplier from the widget style.
+// Returns 1.0 when no override is set.
+func (rt RenderTheme) FontScale() float64 {
+	if rt.Style.FontSize > 0 {
+		return rt.Style.FontSize
+	}
+	return 1.0
+}
+
+// ResolveFont returns the font to use for a given element font, applying
+// per-widget font overrides when set. Value/data fonts (FontNumber, FontBold)
+// use Style.Font; label fonts (FontLabel, FontMono) use Style.LabelFont.
+func (rt RenderTheme) ResolveFont(elemFont FontStyle) FontStyle {
+	switch elemFont {
+	case FontNumber, FontBold:
+		if rt.Style.Font != "" {
+			return rt.Style.Font
+		}
+	case FontLabel, FontMono:
+		if rt.Style.LabelFont != "" {
+			return rt.Style.LabelFont
+		}
+	}
+	return elemFont
 }
 
 // Resolve returns the concrete color.RGBA for ref, checking all layers.
 func (rt RenderTheme) Resolve(ref ColorRef) color.RGBA {
-	if rt.Overrides != nil {
-		if c, ok := rt.Overrides[ref]; ok {
-			return c
+	switch ref {
+	case "fg":
+		if rt.Style.TextColor != nil {
+			return *rt.Style.TextColor
+		}
+	case "muted":
+		if rt.Style.LabelColor != nil {
+			return *rt.Style.LabelColor
+		}
+	case "surface":
+		if rt.Style.Background != nil {
+			return *rt.Style.Background
 		}
 	}
 	if c, ok := domainColor(rt.Domain, ref); ok {

@@ -39,13 +39,14 @@ type deviceEntry struct {
 
 // Coordinator is the top-level wiring of all backend subsystems.
 type Coordinator struct {
-	logger  *slog.Logger
-	adapter games.GameAdapter
-	input   *input.Detector
-	devMgr  *devices.Manager
-	dashMgr *dashboard.Manager
-	delta   *delta.Tracker
-	preview *previewService
+	logger   *slog.Logger
+	adapters []games.GameAdapter // all registered game adapters, probed in order
+	adapter  games.GameAdapter   // currently active adapter (nil when no game connected)
+	input    *input.Detector
+	devMgr   *devices.Manager
+	dashMgr  *dashboard.Manager
+	delta    *delta.Tracker
+	preview  *previewService
 
 	emit EmitFn
 
@@ -75,7 +76,7 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
 	c := &Coordinator{
 		logger:         logger,
-		adapter:        lemansultimate.New(),
+		adapters:       []games.GameAdapter{lemansultimate.New()},
 		input:          input.NewDetector(logger.With("component", "input")),
 		emit:           func(string, ...any) {},
 		devMgr:         devMgr,
@@ -182,8 +183,10 @@ func (c *Coordinator) Start(ctx context.Context) {
 
 	go func() {
 		<-childCtx.Done()
-		if err := c.adapter.Disconnect(); err != nil {
-			c.logger.Warn("adapter disconnect", "err", err)
+		for _, a := range c.adapters {
+			if err := a.Disconnect(); err != nil {
+				c.logger.Warn("adapter disconnect", "game", a.Name(), "err", err)
+			}
 		}
 	}()
 
@@ -442,6 +445,7 @@ func (c *Coordinator) Stop() {
 const reconnectDelay = 5 * time.Second
 
 func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
+	var noGameLogged bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -449,9 +453,22 @@ func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
 		default:
 		}
 
-		if err := c.adapter.Connect(); err != nil {
-			c.logger.Warn("game adapter connect failed, retrying",
-				"game", c.adapter.Name(), "err", err, "delay", reconnectDelay)
+		// Probe all registered adapters in order; use the first that connects.
+		var active games.GameAdapter
+		for _, a := range c.adapters {
+			if err := a.Connect(); err == nil {
+				active = a
+				break
+			} else if !errors.Is(err, games.ErrNotRunning) {
+				c.logger.Warn("game adapter error", "game", a.Name(), "err", err)
+			}
+		}
+
+		if active == nil {
+			if !noGameLogged {
+				c.logger.Debug("no game detected, waiting", "delay", reconnectDelay)
+				noGameLogged = true
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -459,13 +476,17 @@ func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
 			}
 			continue
 		}
-		c.logger.Info("game adapter connected", "game", c.adapter.Name())
+
+		noGameLogged = false
+		c.adapter = active
+		c.logger.Info("game adapter connected", "game", active.Name())
 		c.connected = true
 		c.emit("telemetry:connected")
 
 		c.readLoop(ctx)
 
 		c.connected = false
+		c.adapter = nil
 		c.emit("telemetry:disconnected")
 		c.setAllIdle(true)
 		c.idleState = true
@@ -491,10 +512,9 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 
 		frame, err := c.adapter.Read()
 		if err != nil {
-			if errors.Is(err, lemansultimate.ErrDisconnected) {
-				return
+			if !errors.Is(err, lemansultimate.ErrDisconnected) {
+				c.logger.Warn("telemetry read error", "game", c.adapter.Name(), "err", err)
 			}
-			c.logger.Warn("telemetry read error", "err", err)
 			return
 		}
 

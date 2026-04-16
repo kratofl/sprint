@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IconRefresh, IconLoader2, IconCheck } from '@tabler/icons-react'
-import { Badge, Button, cn } from '@sprint/ui'
+import { Badge, Button, PageHeader, cn } from '@sprint/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { call } from '@/lib/wails'
 import type { AppSettings, ReleaseInfo } from '@sprint/types'
@@ -61,10 +61,10 @@ export default function Settings() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="border-b border-border px-6 py-4 flex-shrink-0">
-        <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">SETTINGS</h2>
-        <p className="font-mono text-[10px] text-text-muted">Application preferences</p>
-      </div>
+      <PageHeader
+        heading="SETTINGS"
+        caption="Application preferences"
+      />
 
       <div className="flex flex-col gap-6 px-6 py-6 max-w-lg">
         <section className="flex flex-col gap-4">
@@ -85,6 +85,7 @@ export default function Settings() {
                     onClick={() => handleChannelChange(ch)}
                     className={cn(
                       'flex items-center gap-2 rounded border px-3 py-1.5 font-mono text-[10px] transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                       settings.updateChannel === ch
                         ? 'border-primary text-primary bg-accent/5'
                         : 'border-border text-text-muted hover:border-border-strong hover:text-foreground',
