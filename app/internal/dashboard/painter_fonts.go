@@ -11,17 +11,34 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-// fontFileName maps a FontStyle to the actual TTF file name.
-func fontFileName(fs widgets.FontStyle) string {
-	switch fs {
-	case widgets.FontBold:
-		return "SpaceGrotesk-Bold.ttf"
-	case widgets.FontNumber:
-		return "JetBrainsMono-Bold.ttf"
-	case widgets.FontMono:
+// fontFileName maps a FontFamily and bold flag to the actual TTF file name.
+func fontFileName(family widgets.FontFamily, bold bool) string {
+	switch family {
+	case widgets.FontFamilyMono:
+		if bold {
+			return "JetBrainsMono-Bold.ttf"
+		}
 		return "JetBrainsMono-Regular.ttf"
 	default:
+		if bold {
+			return "SpaceGrotesk-Bold.ttf"
+		}
 		return "SpaceGrotesk-Regular.ttf"
+	}
+}
+
+// fontStyleToFamily converts a legacy FontStyle to FontFamily and bold flag.
+// Used to resolve WidgetStyle.Font / LabelFont widget-level overrides.
+func fontStyleToFamily(fs widgets.FontStyle) (widgets.FontFamily, bool) {
+	switch fs {
+	case widgets.FontBold:
+		return widgets.FontFamilyUI, true
+	case widgets.FontNumber:
+		return widgets.FontFamilyMono, true
+	case widgets.FontMono:
+		return widgets.FontFamilyMono, false
+	default:
+		return widgets.FontFamilyUI, false
 	}
 }
 

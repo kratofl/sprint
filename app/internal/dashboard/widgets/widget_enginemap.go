@@ -10,14 +10,14 @@ func (engineMapWidget) Meta() WidgetMeta {
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: Hz15,
 		Label: LabelConfig{FontScale: 0.18, Align: HAlignCenter},
-		CapabilityBinding: "electronics.motorMapAvailable",
+		CapabilityBinding: BindingElectronicsMotorMapAvailable,
 	}
 }
 
 func (engineMapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "electronics.motorMap", Format: "MAP %d", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter, Color: ColorRefPrimary.Expr()},
+		Text{Binding: BindingElectronicsMotorMap, Format: "MAP %d", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: ColorRefPrimary.Expr()}},
 	}
 }
 

@@ -222,30 +222,24 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		elems = append([]widgets.Element{panel}, elems...)
 	}
 
-	// Auto-prepend header element from meta unless disabled.
-	if !meta.Label.Disabled {
+	// Render header label directly at a fixed top position (not auto-stacked with content).
+	if !meta.Label.Hidden {
 		text := meta.Label.Text
 		if text == "" {
 			text = strings.ToUpper(meta.Name)
 		}
-		align := meta.Label.Align
 		fontScale := meta.Label.FontScale
 		if fontScale == 0 {
 			fontScale = 0.12
 		}
-		header := widgets.Text{
-			Zone:      "header",
-			Text:      text,
-			Font:      widgets.FontLabel,
-			FontScale: fontScale,
-			HAlign:    align,
-			Color:     widgets.ColorRefMuted.Expr(),
+		hdrStyle := widgets.TextStyle{
+			Font:     widgets.FontFamilyUI,
+			FontSize: fontScale,
+			HAlign:   meta.Label.Align,
+			Color:    widgets.ColorRefMuted.Expr(),
 		}
-		insertAt := 0
-		if !meta.Panel.Disabled {
-			insertAt = 1
-		}
-		elems = append(elems[:insertAt], append([]widgets.Element{header}, elems[insertAt:]...)...)
+		p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+			widgets.Text{Text: text, Style: hdrStyle}, 0.1)
 	}
 
 	// Capability gate: if the widget declares a CapabilityBinding and the frame
@@ -253,25 +247,26 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	if meta.CapabilityBinding != "" {
 		if val, ok := widgets.Resolve(frame, meta.CapabilityBinding); ok {
 			if available, _ := val.(bool); !available {
-				naHeaderAlign := widgets.HAlignCenter
-				for _, e := range elems {
-					if t, ok := e.(widgets.Text); ok && t.Zone == "header" {
-						naHeaderAlign = t.HAlign
-						break
-					}
-				}
-				naElems := []widgets.Element{
-					widgets.Panel{},
-					widgets.Text{Text: strings.ToUpper(meta.Name), Font: widgets.FontLabel, FontScale: 0.18,
-						Zone: "header", HAlign: naHeaderAlign, VAlign: widgets.VAlignCenter,
-						Color: widgets.ColorRefMuted.Expr()},
-					widgets.Text{Text: "—", Font: widgets.FontNumber, FontScale: 0.45,
-						Zone: "fill", HAlign: widgets.HAlignCenter, VAlign: widgets.VAlignCenter,
-						Color: widgets.ColorRefMuted.Expr()},
-				}
 				cache.ctx.SetColor(widgets.ColorBackground)
 				cache.ctx.Clear()
-				p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, naElems)
+				p.renderPanel(cache.ctx, rt, 0, 0, pw, ph, widgets.Panel{})
+				naHdrStyle := widgets.TextStyle{
+					Font:   widgets.FontFamilyUI,
+					FontSize: 0.18,
+					HAlign: meta.Label.Align,
+					Color:  widgets.ColorRefMuted.Expr(),
+				}
+				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+					widgets.Text{Text: strings.ToUpper(meta.Name), Style: naHdrStyle}, 0.1)
+				naValStyle := widgets.TextStyle{
+					Font:   widgets.FontFamilyMono,
+					FontSize: 0.45,
+					IsBold: true,
+					HAlign: widgets.HAlignCenter,
+					Color:  widgets.ColorRefMuted.Expr(),
+				}
+				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+					widgets.Text{Text: "—", Style: naValStyle}, 0.5)
 				p.blitCache(dc, cache)
 				if hz > 0 {
 					cache.lastNano = time.Now().UnixNano()
@@ -363,20 +358,32 @@ func widgetUpdateHz(config map[string]any, defaultHz float64) float64 {
 }
 
 // renderElements renders a slice of elements within the widget bounding box.
+// Text elements are distributed vertically (auto-stacked) based on their count.
+// All other elements are rendered in order by renderElement.
 func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elems []widgets.Element) {
-	fillRowCount := countFillRows(elems)
+	textCount := 0
 	for _, e := range elems {
-		p.renderElement(dc, frame, rt, prefs, x, y, w, h, e, fillRowCount)
+		if _, ok := e.(widgets.Text); ok {
+			textCount++
+		}
+	}
+	ys := textAutoStackYs(textCount)
+	textIdx := 0
+	for _, e := range elems {
+		if t, ok := e.(widgets.Text); ok {
+			p.renderText(dc, frame, rt, prefs, x, y, w, h, t, ys[textIdx])
+			textIdx++
+		} else {
+			p.renderElement(dc, frame, rt, prefs, x, y, w, h, e)
+		}
 	}
 }
 
-// renderElement renders a single element within the widget bounding box.
-func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element, fillRowCount int) {
+// renderElement renders a single non-Text element within the widget bounding box.
+func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
 	switch e := elem.(type) {
 	case widgets.Panel:
 		p.renderPanel(dc, rt, x, y, w, h, e)
-	case widgets.Text:
-		p.renderText(dc, frame, rt, prefs, x, y, w, h, e, fillRowCount)
 	case widgets.Dot:
 		p.renderDot(dc, frame, rt, prefs, x, y, w, h, e)
 	case widgets.Bar:
@@ -427,15 +434,14 @@ func valignFrac(a widgets.VAlign) float64 {
 	}
 }
 
-const defaultFillYFrac = 0.5
-
-// fillZoneYs returns the Y fractions for n fill:N rows within the fill zone.
-// Distributions are tuned so common widget layouts (label+value, 3-row tables)
-// match the original hand-tuned X/Y positions.
-func fillZoneYs(n int) []float64 {
+// textAutoStackYs returns the vertical center fractions for n auto-stacked Text
+// elements. Returns nil for n == 0.
+func textAutoStackYs(n int) []float64 {
 	switch n {
+	case 0:
+		return nil
 	case 1:
-		return []float64{defaultFillYFrac}
+		return []float64{0.5}
 	case 2:
 		return []float64{0.38, 0.72}
 	case 3:
@@ -451,70 +457,9 @@ func fillZoneYs(n int) []float64 {
 	}
 }
 
-// countFillRows scans a flat element list for fill:N zones and returns the count
-// of distinct row indices (max index + 1). Nested condition elements are not scanned.
-func countFillRows(elems []widgets.Element) int {
-	max := -1
-	for _, e := range elems {
-t, ok := e.(widgets.Text)
-if !ok || !strings.HasPrefix(t.Zone, "fill:") {
-			continue
-		}
-		idx, err := strconv.Atoi(t.Zone[5:])
-		if err == nil && idx > max {
-			max = idx
-		}
-	}
-	return max + 1
-}
-
-// zoneTextPos computes the absolute drawing position for an ElemText element
-// that has a Zone set. When Zone is not set, returns the conventional e.X*w, e.Y*h.
-func zoneTextPos(e widgets.Text, fillRowCount int, wx, wy, w, h float64) (tx, ty float64) {
-	var yFrac float64
-	switch e.Zone {
-	case "header":
-		yFrac = 0.1
-	case "fill":
-		yFrac = defaultFillYFrac
-	case "footer":
-		yFrac = 0.1
-	case "":
-		return wx + e.X*w, wy + e.Y*h
-	default:
-		if strings.HasPrefix(e.Zone, "fill:") {
-			idx, err := strconv.Atoi(e.Zone[5:])
-			if err == nil && fillRowCount > 0 && idx < fillRowCount {
-				ys := fillZoneYs(fillRowCount)
-				yFrac = ys[idx]
-			} else {
-				yFrac = defaultFillYFrac
-			}
-		} else {
-			return wx + e.X*w, wy + e.Y*h
-		}
-	}
-	ty = wy + yFrac*h
-	if e.X > 0 {
-		tx = wx + e.X*w
-	} else {
-		switch e.HAlign {
-		case widgets.HAlignCenter:
-			tx = wx + 0.5*w
-		case widgets.HAlignEnd:
-			tx = wx + 0.975*w
-		default:
-			tx = wx + 0.025*w
-		}
-	}
-	return tx, ty
-}
-
-// renderText resolves the binding or uses the static Text, formats the value,
-// and draws it at the fractional position within the widget bounding box.
-// When elem.Zone is set, pixel X/Y are derived from zone + HAlign; otherwise
-// elem.X and elem.Y fractions are used directly (backward compat).
-func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Text, fillRowCount int) {
+// renderText draws a text element at the given yFrac (vertical center fraction
+// of the widget bounding box). yFrac is assigned by renderElements via textAutoStackYs.
+func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Text, yFrac float64) {
 	var display string
 	if elem.Binding != "" {
 		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
@@ -529,23 +474,35 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		return
 	}
 
-	mul := rt.FontScale()
-	size := elem.FontScale * mul * h
+	style := elem.Style
+	size := style.FontSize * rt.FontScale() * h
 	if size <= 0 {
 		return
 	}
 
-	fontName := fontFileName(rt.ResolveFont(elem.Font))
-	p.face(dc, fontName, size)
-
-	col := p.resolveColorExpr(frame, rt, prefs, elem.Color)
-	dc.SetColor(col)
-	tx, ty := zoneTextPos(elem, fillRowCount, x, y, w, h)
-	ay := 0.5 // zone-based elements always use vertical centering
-	if elem.Zone == "" {
-		ay = valignFrac(elem.VAlign)
+	family := style.Font
+	bold := style.IsBold
+	if style.TabulaNums {
+		family = widgets.FontFamilyMono
 	}
-	dc.DrawStringAnchored(display, tx, ty, halignFrac(elem.HAlign), ay)
+	p.face(dc, fontFileName(family, bold), size)
+	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
+
+	var tx float64
+	switch style.HAlign {
+	case widgets.HAlignCenter:
+		tx = x + 0.5*w
+	case widgets.HAlignEnd:
+		tx = x + 0.975*w
+	default:
+		tx = x + 0.025*w
+	}
+	ty := y + yFrac*h
+	ay := 0.5
+	if style.VAlign != 0 {
+		ay = valignFrac(style.VAlign)
+	}
+	dc.DrawStringAnchored(display, tx, ty, halignFrac(style.HAlign), ay)
 }
 
 // renderDot draws a filled circle at the fractional position within the widget.
@@ -670,7 +627,9 @@ func (p *Painter) segStopColor(rt widgets.RenderTheme, stops []widgets.SegColorS
 	return col
 }
 
-// renderGrid draws an NxM grid of labelled data cells within the given bounds.
+// renderGrid draws an NxM grid of cells within the given bounds.
+// Columns use ColWidths fractional widths when provided; otherwise equal width.
+// Cells render using Style when set; otherwise fall back to legacy label+binding layout.
 func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Grid) {
 	rows := elem.Rows
 	cols := elem.Cols
@@ -678,14 +637,34 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		return
 	}
 	gap := elem.Gap * h
-	cellW := (w - gap*float64(cols-1)) / float64(cols)
 	cellH := (h - gap*float64(rows-1)) / float64(rows)
+
+	// Compute per-column widths.
+	colWs := make([]float64, cols)
+	if len(elem.ColWidths) == cols {
+		available := w - gap*float64(cols-1)
+		for c, frac := range elem.ColWidths {
+			colWs[c] = frac * available
+		}
+	} else {
+		cw := (w - gap*float64(cols-1)) / float64(cols)
+		for c := range colWs {
+			colWs[c] = cw
+		}
+	}
+
+	// Compute column X start positions.
+	colXs := make([]float64, cols)
+	colXs[0] = x
+	for c := 1; c < cols; c++ {
+		colXs[c] = colXs[c-1] + colWs[c-1] + gap
+	}
 
 	if elem.Lines {
 		dc.SetColor(rt.Resolve("muted"))
 		dc.SetLineWidth(1)
 		for c := 1; c < cols; c++ {
-			lx := x + float64(c)*(cellW+gap) - gap/2
+			lx := colXs[c] - gap/2
 			dc.DrawLine(lx, y, lx, y+h)
 			dc.Stroke()
 		}
@@ -697,33 +676,78 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 	}
 
 	for i, cell := range elem.Cells {
-		col := i % cols
+		c := i % cols
 		row := i / cols
 		if row >= rows {
 			break
 		}
-		cx := x + float64(col)*(cellW+gap)
+		cx := colXs[c]
 		cy := y + float64(row)*(cellH+gap)
+		cw := colWs[c]
 
-		if cell.Label != "" {
+		if cell.Label != "" && cell.Binding != "" {
+			// Legacy label+value layout (e.g. TyreTemp): label small top-left, value large right.
 			p.face(dc, "SpaceGrotesk-Regular.ttf", cellH*0.28)
 			dc.SetColor(p.resolveColorExpr(frame, rt, prefs, cell.LabelColor))
 			dc.DrawString(cell.Label, cx+4, cy+cellH*0.4)
+			if val, ok := widgets.ResolveWithPrefs(frame, cell.Binding, prefs); ok {
+				p.face(dc, "JetBrainsMono-Bold.ttf", cellH*0.48)
+				var col color.RGBA
+				if cell.ColorFn != "" {
+					col = p.resolveColorFn(cell.ColorFn, val)
+				} else {
+					col = p.resolveColorExpr(frame, rt, prefs, cell.Color)
+				}
+				dc.SetColor(col)
+				text := widgets.FormatValue(val, cell.Format, prefs)
+				dc.DrawStringAnchored(text, cx+cw-4, cy+cellH*0.45, 1, 0)
+			}
+			continue
 		}
 
+		// Style-based single-content cell.
+		var display string
 		if cell.Binding != "" {
-			val, ok := widgets.ResolveWithPrefs(frame, cell.Binding, prefs)
-			if ok {
-				p.face(dc, "JetBrainsMono-Bold.ttf", cellH*0.48)
-				if cell.ColorFn != "" {
-					dc.SetColor(p.resolveColorFn(cell.ColorFn, val))
-				} else {
-					dc.SetColor(p.resolveColorExpr(frame, rt, prefs, cell.Color))
-				}
-				text := widgets.FormatValue(val, cell.Format, prefs)
-				dc.DrawStringAnchored(text, cx+cellW-4, cy+cellH*0.45, 1, 0)
+			if val, ok := widgets.ResolveWithPrefs(frame, cell.Binding, prefs); ok {
+				display = widgets.FormatValue(val, cell.Format, prefs)
+			} else {
+				display = cell.Text
 			}
+		} else {
+			display = cell.Text
 		}
+		if display == "" {
+			continue
+		}
+
+		style := cell.Style
+		size := style.FontSize * rt.FontScale() * cellH
+		if size <= 0 {
+			continue
+		}
+		family := style.Font
+		bold := style.IsBold
+		if style.TabulaNums {
+			family = widgets.FontFamilyMono
+		}
+		p.face(dc, fontFileName(family, bold), size)
+
+		colorExpr := style.Color
+		if colorExpr.Ref == "" && colorExpr.DynamicRef == "" && len(colorExpr.When) == 0 {
+			colorExpr = cell.Color
+		}
+		dc.SetColor(p.resolveColorExpr(frame, rt, prefs, colorExpr))
+
+		var tx float64
+		switch style.HAlign {
+		case widgets.HAlignCenter:
+			tx = cx + cw*0.5
+		case widgets.HAlignEnd:
+			tx = cx + cw - 4
+		default:
+			tx = cx + 4
+		}
+		dc.DrawStringAnchored(display, tx, cy+cellH*0.5, halignFrac(style.HAlign), 0.5)
 	}
 }
 

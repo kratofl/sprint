@@ -9,7 +9,7 @@ func (textWidget) Meta() WidgetMeta {
 		Type: WidgetText, Name: "Text", Category: CategoryLayout,
 		DefaultColSpan: 4, DefaultRowSpan: 2,
 		IdleCapable: true, DefaultUpdateHz: Hz5,
-		Label: LabelConfig{Disabled: true},
+		Label: LabelConfig{Hidden: true},
 		ConfigDefs: []ConfigDef{
 			{Key: "content", Label: "Static Text", Type: "text", Default: "Sprint"},
 			{Key: "binding", Label: "Data Binding", Type: "text", Default: ""},
@@ -33,10 +33,9 @@ func (textWidget) Definition(config map[string]any) []Element {
 	}
 
 	return []Element{
-		Text{Text: content, Binding: binding, Format: format,
-			Font: FontBold, FontScale: fontScale,
-			Zone: "fill", HAlign: HAlignCenter,
-			Color: ref.Expr()},
+		Text{Text: content, Binding: Binding(binding), Format: format, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: fontScale, IsBold: true,
+			HAlign: HAlignCenter, Color: ref.Expr()}},
 	}
 }
 

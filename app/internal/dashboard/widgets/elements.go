@@ -40,20 +40,13 @@ return marshalWithKind(ElemPanel, alias(v))
 }
 
 // Text draws a text string (static or data-bound) within the widget.
-// Zone selects a semantic layout zone; X/Y are fractional fallback positions.
-// Zones: "header", "fill", "fill:0"/"fill:1"/... (numbered rows), "footer".
+// Text elements are distributed vertically by the painter based on their count
+// in the element list (auto-stacking). Use Grid for multi-column layouts.
 type Text struct {
-Zone      string    `json:"zone,omitempty"`
-Text      string    `json:"text,omitempty"`
-Binding   string    `json:"binding,omitempty"`
-Format    string    `json:"format,omitempty"`
-Font      FontStyle `json:"font,omitempty"`
-FontScale float64   `json:"fontScale,omitempty"`
-X         float64   `json:"x,omitempty"`
-Y         float64   `json:"y,omitempty"`
-HAlign    HAlign    `json:"hAlign,omitempty"`
-VAlign    VAlign    `json:"vAlign,omitempty"`
-Color     ColorExpr `json:"color,omitempty"`
+Text    string    `json:"text,omitempty"`
+Binding Binding   `json:"binding,omitempty"`
+Format  string    `json:"format,omitempty"`
+Style   TextStyle `json:"style,omitempty"`
 }
 
 func (Text) elemKind() ElementKind { return ElemText }
@@ -81,7 +74,7 @@ return marshalWithKind(ElemDot, alias(v))
 // Bar draws a horizontal fill bar (normal or centred-fraction for e.g. steering).
 // X, Y, W, H are fractions of the widget bounding box (Y and H relative to height).
 type Bar struct {
-Binding  string    `json:"barBinding,omitempty"`
+Binding  Binding   `json:"barBinding,omitempty"`
 X        float64   `json:"barX,omitempty"`
 Y        float64   `json:"barY,omitempty"`
 W        float64   `json:"barW,omitempty"`
@@ -100,7 +93,7 @@ return marshalWithKind(ElemHBar, alias(v))
 
 // DeltaBar draws a signed centred bar (lap delta indicator).
 type DeltaBar struct {
-Binding  string    `json:"barBinding,omitempty"`
+Binding  Binding   `json:"barBinding,omitempty"`
 X        float64   `json:"barX,omitempty"`
 Y        float64   `json:"barY,omitempty"`
 W        float64   `json:"barW,omitempty"`
@@ -120,7 +113,7 @@ return marshalWithKind(ElemDeltaBar, alias(v))
 
 // SegBar draws a vertical segmented bar (e.g. RPM indicator).
 type SegBar struct {
-Binding  string         `json:"segBinding,omitempty"`
+Binding  Binding        `json:"segBinding,omitempty"`
 Segments int            `json:"segments,omitempty"`
 Stops    []SegColorStop `json:"segStops,omitempty"`
 }
@@ -132,13 +125,15 @@ type alias SegBar
 return marshalWithKind(ElemSegBar, alias(v))
 }
 
-// Grid draws an NxM grid of labelled data cells.
+// Grid draws an NxM grid of cells. ColWidths optionally specifies per-column
+// fractional widths (len must equal Cols); omit for equal-width columns.
 type Grid struct {
-Rows  int        `json:"gridRows,omitempty"`
-Cols  int        `json:"gridCols,omitempty"`
-Gap   float64    `json:"gridGap,omitempty"`
-Lines bool       `json:"gridLines,omitempty"`
-Cells []GridCell `json:"gridCells,omitempty"`
+Rows      int        `json:"gridRows,omitempty"`
+Cols      int        `json:"gridCols,omitempty"`
+Gap       float64    `json:"gridGap,omitempty"`
+Lines     bool       `json:"gridLines,omitempty"`
+ColWidths []float64  `json:"colWidths,omitempty"`
+Cells     []GridCell `json:"gridCells,omitempty"`
 }
 
 func (Grid) elemKind() ElementKind { return ElemGrid }
@@ -150,7 +145,7 @@ return marshalWithKind(ElemGrid, alias(v))
 
 // Condition renders Then or Else sub-elements based on a data binding value.
 type Condition struct {
-Binding string      `json:"condBinding,omitempty"`
+Binding Binding     `json:"condBinding,omitempty"`
 Above   float64     `json:"condAbove,omitempty"`
 Then    ElementList `json:"then,omitempty"`
 Else    ElementList `json:"else,omitempty"`
@@ -165,8 +160,10 @@ return marshalWithKind(ElemCondition, alias(v))
 
 // GridCell defines one cell in a Grid element.
 type GridCell struct {
+Text       string    `json:"text,omitempty"`
+Style      TextStyle `json:"style,omitempty"`
 Label      string    `json:"label,omitempty"`
-Binding    string    `json:"binding,omitempty"`
+Binding    Binding   `json:"binding,omitempty"`
 Format     string    `json:"format,omitempty"`
 Color      ColorExpr `json:"color,omitempty"`
 LabelColor ColorExpr `json:"labelColor,omitempty"`

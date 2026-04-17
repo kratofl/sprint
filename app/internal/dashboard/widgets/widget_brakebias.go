@@ -11,16 +11,16 @@ func (brakeBiasWidget) Meta() WidgetMeta {
 		IdleCapable: false, DefaultUpdateHz: Hz15,
 		Label: LabelConfig{FontScale: 0.18, Align: HAlignCenter},
 		DefaultPanelRules: []ConditionalRule{
-			{Property: "car.brakeBiasWarning", Op: RuleOpGT, Threshold: 0, Color: ColorRefBrakeBias, Alpha: 0.18},
+			{Property: BindingCarBrakeBiasWarning, Op: RuleOpGT, Threshold: 0, Color: ColorRefBrakeBias, Alpha: 0.18},
 		},
 	}
 }
 
 func (brakeBiasWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "car.brakeBiasPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorRefForeground.When(WhenActive("car.brakeBiasWarning", ColorRefWarning))},
+		Text{Binding: BindingCarBrakeBiasPct, Format: "%.1f%%", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingCarBrakeBiasWarning, ColorRefWarning))}},
 	}
 }
 

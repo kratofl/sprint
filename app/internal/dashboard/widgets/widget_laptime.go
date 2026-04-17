@@ -15,18 +15,14 @@ func (lapTimeWidget) Meta() WidgetMeta {
 
 func (lapTimeWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Text: "Current", Font: FontLabel, FontScale: 0.12,
-			Zone: "fill:0", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		Text{Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			Zone: "fill:0", HAlign: HAlignEnd, Color: ColorRefForeground.Expr()},
-		Text{Text: "Last", Font: FontLabel, FontScale: 0.12,
-			Zone: "fill:1", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		Text{Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			Zone: "fill:1", HAlign: HAlignEnd, Color: ColorRefForeground.Expr()},
-		Text{Text: "Best", Font: FontLabel, FontScale: 0.12,
-			Zone: "fill:2", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		Text{Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
-			Zone: "fill:2", HAlign: HAlignEnd, Color: ColorRefAccent.Expr()},
+		Grid{Rows: 3, Cols: 2, Gap: 0.04, Cells: []GridCell{
+			{Text: "Current", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.36, HAlign: HAlignStart, Color: ColorRefSecondary.Expr()}},
+			{Binding: BindingLapCurrentLapTime, Format: "lap", Style: TextStyle{Font: FontFamilyMono, FontSize: 0.48, IsBold: true, HAlign: HAlignEnd, Color: ColorRefForeground.Expr()}},
+			{Text: "Last", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.36, HAlign: HAlignStart, Color: ColorRefSecondary.Expr()}},
+			{Binding: BindingLapLastLapTime, Format: "lap", Style: TextStyle{Font: FontFamilyMono, FontSize: 0.48, IsBold: true, HAlign: HAlignEnd, Color: ColorRefForeground.Expr()}},
+			{Text: "Best", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.36, HAlign: HAlignStart, Color: ColorRefSecondary.Expr()}},
+			{Binding: BindingLapBestLapTime, Format: "lap", Style: TextStyle{Font: FontFamilyMono, FontSize: 0.48, IsBold: true, HAlign: HAlignEnd, Color: ColorRefAccent.Expr()}},
+		}},
 	}
 }
 

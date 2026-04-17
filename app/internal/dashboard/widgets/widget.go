@@ -96,7 +96,7 @@ type PanelConfig struct {
 // LabelConfig controls the automatic label drawn by the painter.
 // Zero value = label auto-generated from UPPER(Meta.Name) at the top, default styling.
 type LabelConfig struct {
-	Disabled  bool    `json:"disabled,omitempty"`   // true = no auto-label
+	Hidden    bool    `json:"hidden,omitempty"`     // true = no auto-label
 	Text      string  `json:"text,omitempty"`       // override label text (default: UPPER(Meta.Name))
 	Align     HAlign  `json:"align,omitempty"`      // label alignment (default: HAlignStart)
 	FontScale float64 `json:"fontScale,omitempty"`  // label font scale (default: 0.12)
@@ -119,10 +119,10 @@ type WidgetMeta struct {
 	DefaultUpdateHz   float64           `json:"defaultUpdateHz"`
 	DefaultPanelRules []ConditionalRule `json:"defaultPanelRules,omitempty"`
 	DefaultDefinition ElementList       `json:"defaultDefinition,omitempty"`
-	// CapabilityBinding is an optional binding path (e.g. "electronics.absAvailable").
+	// CapabilityBinding is an optional binding path (e.g. BindingElectronicsABSAvailable).
 	// When set, the painter resolves this path on every frame; if it resolves to
 	// false the widget renders a "not available" placeholder instead of live data.
-	CapabilityBinding string `json:"capabilityBinding,omitempty"`
+	CapabilityBinding Binding `json:"capabilityBinding,omitempty"`
 }
 
 var (
@@ -148,27 +148,23 @@ func Register(w Widget) {
 		panel := Panel{CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
 		def = append([]Element{panel}, def...)
 	}
-	if !m.Label.Disabled {
+	if !m.Label.Hidden {
 		text := m.Label.Text
 		if text == "" {
 			text = strings.ToUpper(m.Name)
 		}
-		align := m.Label.Align
 		fontScale := m.Label.FontScale
 		if fontScale == 0 {
 			fontScale = 0.12
 		}
-		zone := "header"
-		if m.Label.VAlign == VAlignEnd {
-			zone = "footer"
-		}
 		lbl := Text{
-			Zone:      zone,
-			Text:      text,
-			Font:      FontLabel,
-			FontScale: fontScale,
-			HAlign:    align,
-			Color:     ColorRefMuted.Expr(),
+			Text: text,
+			Style: TextStyle{
+				Font:   FontFamilyUI,
+				FontSize: fontScale,
+				HAlign:  m.Label.Align,
+				Color:   ColorRefMuted.Expr(),
+			},
 		}
 		// Insert label after panel (if present) or at the start.
 		insertAt := 0

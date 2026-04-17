@@ -13,7 +13,7 @@ import (
 //
 // Derived paths (e.g. "car.speedKPH") are computed here to avoid burdening
 // widget Definition implementations with unit conversion.
-var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
+var bindingPaths = map[Binding]func(*dto.TelemetryFrame) any{
 	// Car
 	"car.speedMS":       func(f *dto.TelemetryFrame) any { return f.Car.SpeedMS },
 	"car.speedKPH":      func(f *dto.TelemetryFrame) any { return float32(f.Car.SpeedMS) * 3.6 },
@@ -221,7 +221,7 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 // Resolve returns the value at path within frame, along with a bool indicating
 // whether the path is known. The returned value may be any numeric, string, or
 // bool type matching the underlying DTO field.
-func Resolve(frame *dto.TelemetryFrame, path string) (any, bool) {
+func Resolve(frame *dto.TelemetryFrame, path Binding) (any, bool) {
 	fn, ok := bindingPaths[path]
 	if !ok {
 		return nil, false
@@ -231,16 +231,16 @@ func Resolve(frame *dto.TelemetryFrame, path string) (any, bool) {
 
 // ResolveWithPrefs resolves frame binding paths that depend on display precision.
 // Paths without precision semantics fall back to Resolve.
-func ResolveWithPrefs(frame *dto.TelemetryFrame, path string, prefs FormatPreferences) (any, bool) {
+func ResolveWithPrefs(frame *dto.TelemetryFrame, path Binding, prefs FormatPreferences) (any, bool) {
 	if frame == nil {
 		return nil, false
 	}
 
 	switch path {
-	case "lap.deltaPositive":
+	case BindingLapDeltaPositive:
 		rounded := roundDeltaValue(frame.Lap.Delta, resolvedFormatPreferences(prefs).DeltaPrecision)
 		return rounded > 0, true
-	case "lap.deltaNegative":
+	case BindingLapDeltaNegative:
 		rounded := roundDeltaValue(frame.Lap.Delta, resolvedFormatPreferences(prefs).DeltaPrecision)
 		return rounded < 0, true
 	default:

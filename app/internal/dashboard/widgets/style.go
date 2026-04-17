@@ -56,6 +56,25 @@ const (
 	FontMono   FontStyle = "mono"   // JetBrainsMono-Regular
 )
 
+// FontFamily selects the typeface family for a text element.
+type FontFamily string
+
+const (
+	FontFamilyUI   FontFamily = "ui"   // Space Grotesk
+	FontFamilyMono FontFamily = "mono" // JetBrains Mono
+)
+
+// TextStyle groups the presentation properties for a Text or GridCell element.
+type TextStyle struct {
+	Font       FontFamily `json:"font,omitempty"`
+	FontSize   float64    `json:"fontSize,omitempty"`
+	IsBold     bool       `json:"bold,omitempty"`
+	TabulaNums bool       `json:"tabulaNums,omitempty"`
+	HAlign     HAlign     `json:"hAlign,omitempty"`
+	VAlign     VAlign     `json:"vAlign,omitempty"`
+	Color      ColorExpr  `json:"color,omitempty"`
+}
+
 // ColorRef is a semantic color name resolved at render time.
 // Generic values: "primary", "accent", "fg", "muted", "muted2", "success", "warning",
 // "danger", "surface", "bg", "border", "rpmred".
@@ -88,7 +107,7 @@ const (
 // The first matching rule wins; "matching" means the resolved binding value is
 // truthy (> Above). Use Equals (non-nil pointer) for exact equality checks.
 type ColorWhen struct {
-	Binding string   `json:"binding"`
+	Binding Binding  `json:"binding"`
 	Above   float64  `json:"above,omitempty"`
 	Equals  *float64 `json:"equals,omitempty"`
 	Ref     ColorRef `json:"ref"`
@@ -98,7 +117,7 @@ type ColorWhen struct {
 // Resolution order: When list (first match) → DynamicRef → Ref.
 type ColorExpr struct {
 	Ref        ColorRef    `json:"ref,omitempty"`
-	DynamicRef string      `json:"dynamicRef,omitempty"`
+	DynamicRef Binding     `json:"dynamicRef,omitempty"`
 	When       []ColorWhen `json:"when,omitempty"`
 }
 
@@ -110,22 +129,22 @@ func (r ColorRef) When(conds ...ColorWhen) ColorExpr { return ColorExpr{Ref: r, 
 
 // ColorDynamic returns a ColorExpr whose color is resolved dynamically at render
 // time via the named binding path (e.g. "flags.colorRef").
-func ColorDynamic(dynamicRef string) ColorExpr { return ColorExpr{DynamicRef: dynamicRef} }
+func ColorDynamic(dynamicRef Binding) ColorExpr { return ColorExpr{DynamicRef: dynamicRef} }
 
 // WhenActive returns a ColorWhen that matches when the binding value is truthy (> 0).
-func WhenActive(binding string, ref ColorRef) ColorWhen {
-	return ColorWhen{Binding: binding, Ref: ref}
+func WhenActive(b Binding, ref ColorRef) ColorWhen {
+	return ColorWhen{Binding: b, Ref: ref}
 }
 
 // WhenAbove returns a ColorWhen that matches when the binding value is above the threshold.
-func WhenAbove(binding string, above float64, ref ColorRef) ColorWhen {
-	return ColorWhen{Binding: binding, Above: above, Ref: ref}
+func WhenAbove(b Binding, above float64, ref ColorRef) ColorWhen {
+	return ColorWhen{Binding: b, Above: above, Ref: ref}
 }
 
 // WhenEquals returns a ColorWhen that matches when the binding value equals val exactly.
-func WhenEquals(binding string, val float64, ref ColorRef) ColorWhen {
+func WhenEquals(b Binding, val float64, ref ColorRef) ColorWhen {
 	v := val
-	return ColorWhen{Binding: binding, Equals: &v, Ref: ref}
+	return ColorWhen{Binding: b, Equals: &v, Ref: ref}
 }
 
 // RuleOp is the comparison operator in a ConditionalRule.
@@ -144,7 +163,7 @@ const (
 // the condition is satisfied, applies a semantic panel fill colour.
 // Rules are stored per DashWidget and evaluated first-match-wins at render time.
 type ConditionalRule struct {
-	Property  string   `json:"property"`       // binding path (e.g. "car.brakeBiasPct")
+	Property  Binding  `json:"property"`       // binding path (e.g. BindingCarBrakeBiasPct)
 	Op        RuleOp   `json:"op"`             // comparison operator
 	Threshold float64  `json:"threshold"`      // right-hand operand
 	Color     ColorRef `json:"color"`          // semantic fill colour when matched

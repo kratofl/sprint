@@ -15,8 +15,8 @@ func (lapCounterWidget) Meta() WidgetMeta {
 
 func (lapCounterWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "lap.counterStr", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter, Color: ColorRefForeground.Expr()},
+		Text{Binding: BindingLapCounterStr, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 	}
 }
 

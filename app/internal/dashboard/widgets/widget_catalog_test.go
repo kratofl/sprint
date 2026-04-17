@@ -139,11 +139,11 @@ func TestWidgetCatalog(t *testing.T) {
 		cases := []struct {
 			mode        string
 			wantLabel   string
-			wantBinding string
+			wantBinding Binding
 		}{
-			{mode: "tc1", wantLabel: "TC1", wantBinding: "electronics.tc"},
-			{mode: "tc2_cut", wantLabel: "TC2", wantBinding: "electronics.tcCut"},
-			{mode: "tc3_slip", wantLabel: "TC3", wantBinding: "electronics.tcSlip"},
+			{mode: "tc1", wantLabel: "TC1", wantBinding: BindingElectronicsTC},
+			{mode: "tc2_cut", wantLabel: "TC2", wantBinding: BindingElectronicsTCCut},
+			{mode: "tc3_slip", wantLabel: "TC3", wantBinding: BindingElectronicsTCSlip},
 		}
 		for _, tc := range cases {
 			elems := w.Definition(map[string]any{"tcMode": tc.mode})
@@ -200,7 +200,7 @@ func TestResolve(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
-			got, ok := Resolve(frame, tc.path)
+			got, ok := Resolve(frame, Binding(tc.path))
 			if !ok {
 				t.Fatalf("Resolve(%q) returned ok=false", tc.path)
 			}

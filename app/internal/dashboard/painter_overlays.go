@@ -37,7 +37,7 @@ func (p *Painter) checkAlerts(frame *dto.TelemetryFrame, layout *DashLayout) {
 		}
 		// Skip if this alert type is capability-gated and the car doesn't support it.
 		if cb := a.Meta().CapabilityBinding; cb != "" {
-			if val, ok := widgets.Resolve(frame, cb); ok {
+			if val, ok := widgets.Resolve(frame, widgets.Binding(cb)); ok {
 				if available, _ := val.(bool); !available {
 					continue
 				}

@@ -15,9 +15,9 @@ func (rpmWidget) Meta() WidgetMeta {
 
 func (rpmWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "car.rpm", Format: "%.0f", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorRefForeground.When(WhenActive("car.rpmRedlineWarning", ColorRefWarning))},
+		Text{Binding: BindingCarRPM, Format: "%.0f", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingCarRPMRedlineWarning, ColorRefWarning))}},
 	}
 }
 

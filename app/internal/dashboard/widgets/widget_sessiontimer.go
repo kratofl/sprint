@@ -15,8 +15,8 @@ func (sessionTimerWidget) Meta() WidgetMeta {
 
 func (sessionTimerWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "session.sessionTime", Format: "session", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter, Color: ColorRefForeground.Expr()},
+		Text{Binding: BindingSessionTime, Format: "session", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 	}
 }
 

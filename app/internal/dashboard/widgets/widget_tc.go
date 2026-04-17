@@ -9,8 +9,8 @@ func (tcWidget) Meta() WidgetMeta {
 		Type: WidgetTC, Name: "Traction Control", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: Hz15,
-		Label: LabelConfig{Disabled: true},
-		CapabilityBinding: "electronics.tcAvailable",
+		Label: LabelConfig{Hidden: true},
+		CapabilityBinding: BindingElectronicsTCAvailable,
 		ConfigDefs: []ConfigDef{{
 			Key:   "tcMode",
 			Label: "TC Mode",
@@ -23,31 +23,33 @@ func (tcWidget) Meta() WidgetMeta {
 			Default: "tc1",
 		}},
 		DefaultPanelRules: []ConditionalRule{
-			{Property: "electronics.tcActive", Op: RuleOpGT, Threshold: 0, Color: ColorRefTC, Alpha: 0.12},
+			{Property: BindingElectronicsTCActive, Op: RuleOpGT, Threshold: 0, Color: ColorRefTC, Alpha: 0.12},
 		},
 	}
 }
 
 func (tcWidget) Definition(config map[string]any) []Element {
 	mode := configString(config, "tcMode", "tc1")
-	var binding, label, activeBinding string
+	var binding Binding
+	var label string
+	var activeBinding Binding
 	switch mode {
 	case "tc2_cut":
-		binding, label = "electronics.tcCut", "TC2"
+		binding, label = BindingElectronicsTCCut, "TC2"
 	case "tc3_slip":
-		binding, label = "electronics.tcSlip", "TC3"
+		binding, label = BindingElectronicsTCSlip, "TC3"
 	default:
-		binding, label, activeBinding = "electronics.tc", "TC1", "electronics.tcActive"
+		binding, label, activeBinding = BindingElectronicsTC, "TC1", BindingElectronicsTCActive
 	}
 	col := ColorRefForeground.Expr()
 	if activeBinding != "" {
 		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefAccent))
 	}
 	return []Element{
-		Text{Text: label, Font: FontLabel, FontScale: 0.18,
-			Zone: "header", HAlign: HAlignStart, Color: ColorRefMuted.Expr()},
-		Text{Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter, Color: col},
+		Text{Text: label, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: 0.18, HAlign: HAlignStart, Color: ColorRefMuted.Expr()}},
+		Text{Binding: binding, Format: "int", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: col}},
 	}
 }
 

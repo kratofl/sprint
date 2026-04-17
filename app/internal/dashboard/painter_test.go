@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"image"
-	"math"
 	"testing"
 	"time"
 
@@ -189,25 +188,5 @@ func TestPainterSetActivePage(t *testing.T) {
 	painter.SetActivePage(99)
 	if _, err := painter.Paint(frame); err != nil {
 		t.Fatalf("Paint out-of-range page: %v", err)
-	}
-}
-
-func TestFillZoneYsSingleRowCentered(t *testing.T) {
-	ys := fillZoneYs(1)
-	if len(ys) != 1 {
-		t.Fatalf("fillZoneYs(1) length: want 1, got %d", len(ys))
-	}
-	if ys[0] != defaultFillYFrac {
-		t.Fatalf("fillZoneYs(1)[0]: want %.2f, got %.2f", defaultFillYFrac, ys[0])
-	}
-}
-
-func TestZoneTextPosFillUsesVerticalCenter(t *testing.T) {
-	elem := widgets.Text{Zone: "fill", HAlign: widgets.HAlignCenter}
-	_, ty := zoneTextPos(elem, 0, 10, 20, 200, 100)
-
-	want := 20 + defaultFillYFrac*100
-	if math.Abs(ty-want) > 1e-9 {
-		t.Fatalf("zoneTextPos fill y: want %.2f, got %.2f", want, ty)
 	}
 }

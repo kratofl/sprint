@@ -10,18 +10,18 @@ func (absWidget) Meta() WidgetMeta {
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: Hz15,
 		Label: LabelConfig{FontScale: 0.18},
-		CapabilityBinding: "electronics.absAvailable",
+		CapabilityBinding: BindingElectronicsABSAvailable,
 		DefaultPanelRules: []ConditionalRule{
-			{Property: "electronics.absActive", Op: RuleOpGT, Threshold: 0, Color: ColorRefABS, Alpha: 0.15},
+			{Property: BindingElectronicsABSActive, Op: RuleOpGT, Threshold: 0, Color: ColorRefABS, Alpha: 0.15},
 		},
 	}
 }
 
 func (absWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "electronics.abs", Format: "int", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorRefForeground.When(WhenActive("electronics.absActive", ColorRefWarning))},
+		Text{Binding: BindingElectronicsABS, Format: "int", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingElectronicsABSActive, ColorRefWarning))}},
 	}
 }
 

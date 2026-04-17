@@ -15,9 +15,9 @@ func (positionWidget) Meta() WidgetMeta {
 
 func (positionWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: "race.positionStr", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorRefForeground.When(WhenActive("race.positionP1", ColorRefPrimary))},
+		Text{Binding: BindingRacePositionStr, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingRacePositionP1, ColorRefPrimary))}},
 	}
 }
 
