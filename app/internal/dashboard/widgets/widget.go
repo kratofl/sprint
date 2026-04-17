@@ -39,15 +39,15 @@ type WidgetType string
 //	type myThingWidget struct{}
 //
 //	func (myThingWidget) Meta() WidgetMeta {
-//	    return WidgetMeta{Type: WidgetMyThing, Label: "My Thing", Category: CategoryCar,
-//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: 15}
+//	    return WidgetMeta{Type: WidgetMyThing, Name: "My Thing", Category: CategoryCar,
+//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: Hz15}
 //	}
 //
 //	func (myThingWidget) Definition(_ map[string]any) []Element {
 //	    return []Element{
-//	        {Kind: ElemText, Binding: "car.speedKPH", Format: "int",
-//	         Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
-//	         HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
+//	        Text{Binding: "car.speedKPH", Format: "int",
+//	             Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
+//	             HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()},
 //	    }
 //	}
 //
@@ -118,7 +118,7 @@ type WidgetMeta struct {
 	IdleCapable       bool              `json:"idleCapable"`
 	DefaultUpdateHz   float64           `json:"defaultUpdateHz"`
 	DefaultPanelRules []ConditionalRule `json:"defaultPanelRules,omitempty"`
-	DefaultDefinition []Element         `json:"defaultDefinition,omitempty"`
+	DefaultDefinition ElementList       `json:"defaultDefinition,omitempty"`
 	// CapabilityBinding is an optional binding path (e.g. "electronics.absAvailable").
 	// When set, the painter resolves this path on every frame; if it resolves to
 	// false the widget renders a "not available" placeholder instead of live data.
@@ -145,7 +145,7 @@ func Register(w Widget) {
 	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
 	def := w.Definition(nil)
 	if !m.Panel.Disabled {
-		panel := Element{Kind: ElemPanel, CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
+		panel := Panel{CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
 		def = append([]Element{panel}, def...)
 	}
 	if !m.Label.Disabled {
@@ -162,8 +162,7 @@ func Register(w Widget) {
 		if m.Label.VAlign == VAlignEnd {
 			zone = "footer"
 		}
-		lbl := Element{
-			Kind:      ElemText,
+		lbl := Text{
 			Zone:      zone,
 			Text:      text,
 			Font:      FontLabel,
@@ -178,7 +177,7 @@ func Register(w Widget) {
 		}
 		def = append(def[:insertAt], append([]Element{lbl}, def[insertAt:]...)...)
 	}
-	m.DefaultDefinition = def
+	m.DefaultDefinition = ElementList(def)
 	widgetRegistry[m.Type] = w
 	widgetMeta[m.Type] = m
 }

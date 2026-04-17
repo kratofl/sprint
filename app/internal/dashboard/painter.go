@@ -218,7 +218,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 
 	// Auto-prepend panel element from meta unless disabled.
 	if !meta.Panel.Disabled {
-		panel := widgets.Element{Kind: widgets.ElemPanel, CornerR: meta.Panel.CornerR, NoBorder: meta.Panel.NoBorder}
+		panel := widgets.Panel{CornerR: meta.Panel.CornerR, NoBorder: meta.Panel.NoBorder}
 		elems = append([]widgets.Element{panel}, elems...)
 	}
 
@@ -233,8 +233,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		if fontScale == 0 {
 			fontScale = 0.12
 		}
-		header := widgets.Element{
-			Kind:      widgets.ElemText,
+		header := widgets.Text{
 			Zone:      "header",
 			Text:      text,
 			Font:      widgets.FontLabel,
@@ -256,17 +255,17 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 			if available, _ := val.(bool); !available {
 				naHeaderAlign := widgets.HAlignCenter
 				for _, e := range elems {
-					if e.Kind == widgets.ElemText && e.Zone == "header" {
-						naHeaderAlign = e.HAlign
+					if t, ok := e.(widgets.Text); ok && t.Zone == "header" {
+						naHeaderAlign = t.HAlign
 						break
 					}
 				}
 				naElems := []widgets.Element{
-					{Kind: widgets.ElemPanel},
-					{Kind: widgets.ElemText, Text: strings.ToUpper(meta.Name), Font: widgets.FontLabel, FontScale: 0.18,
+					widgets.Panel{},
+					widgets.Text{Text: strings.ToUpper(meta.Name), Font: widgets.FontLabel, FontScale: 0.18,
 						Zone: "header", HAlign: naHeaderAlign, VAlign: widgets.VAlignCenter,
 						Color: widgets.ColorRefMuted.Expr()},
-					{Kind: widgets.ElemText, Text: "—", Font: widgets.FontNumber, FontScale: 0.45,
+					widgets.Text{Text: "—", Font: widgets.FontNumber, FontScale: 0.45,
 						Zone: "fill", HAlign: widgets.HAlignCenter, VAlign: widgets.VAlignCenter,
 						Color: widgets.ColorRefMuted.Expr()},
 				}
@@ -284,10 +283,11 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 
 	if len(w.PanelRules) > 0 {
 		if col, alpha := evalPanelRules(frame, w.PanelRules); col != "" {
-			for i := range elems {
-				if elems[i].Kind == widgets.ElemPanel {
-					elems[i].FillColor = col
-					elems[i].FillAlpha = alpha
+			for i, e := range elems {
+				if p, ok := e.(widgets.Panel); ok {
+					p.FillColor = col
+					p.FillAlpha = alpha
+					elems[i] = p
 					break
 				}
 			}
@@ -372,28 +372,28 @@ func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt w
 
 // renderElement renders a single element within the widget bounding box.
 func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element, fillRowCount int) {
-	switch elem.Kind {
-	case widgets.ElemPanel:
-		p.renderPanel(dc, rt, x, y, w, h, elem)
-	case widgets.ElemText:
-		p.renderText(dc, frame, rt, prefs, x, y, w, h, elem, fillRowCount)
-	case widgets.ElemDot:
-		p.renderDot(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemHBar:
-		p.renderHBar(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemDeltaBar:
-		p.renderDeltaBar(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemSegBar:
-		p.renderSegBar(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemGrid:
-		p.renderGrid(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemCondition:
-		p.renderCondition(dc, frame, rt, prefs, x, y, w, h, elem)
+	switch e := elem.(type) {
+	case widgets.Panel:
+		p.renderPanel(dc, rt, x, y, w, h, e)
+	case widgets.Text:
+		p.renderText(dc, frame, rt, prefs, x, y, w, h, e, fillRowCount)
+	case widgets.Dot:
+		p.renderDot(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.Bar:
+		p.renderHBar(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.DeltaBar:
+		p.renderDeltaBar(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.SegBar:
+		p.renderSegBar(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.Grid:
+		p.renderGrid(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.Condition:
+		p.renderCondition(dc, frame, rt, prefs, x, y, w, h, e)
 	}
 }
 
 // renderPanel draws the widget background (border + fill) plus an optional FillColor overlay.
-func (p *Painter) renderPanel(dc *gg.Context, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderPanel(dc *gg.Context, rt widgets.RenderTheme, x, y, w, h float64, elem widgets.Panel) {
 	if elem.FillColor != "" && elem.FillAlpha > 0 {
 		fc := rt.Resolve(elem.FillColor)
 		dc.SetRGBA255(int(fc.R), int(fc.G), int(fc.B), int(elem.FillAlpha*255))
@@ -456,10 +456,11 @@ func fillZoneYs(n int) []float64 {
 func countFillRows(elems []widgets.Element) int {
 	max := -1
 	for _, e := range elems {
-		if !strings.HasPrefix(e.Zone, "fill:") {
+t, ok := e.(widgets.Text)
+if !ok || !strings.HasPrefix(t.Zone, "fill:") {
 			continue
 		}
-		idx, err := strconv.Atoi(e.Zone[5:])
+		idx, err := strconv.Atoi(t.Zone[5:])
 		if err == nil && idx > max {
 			max = idx
 		}
@@ -469,7 +470,7 @@ func countFillRows(elems []widgets.Element) int {
 
 // zoneTextPos computes the absolute drawing position for an ElemText element
 // that has a Zone set. When Zone is not set, returns the conventional e.X*w, e.Y*h.
-func zoneTextPos(e widgets.Element, fillRowCount int, wx, wy, w, h float64) (tx, ty float64) {
+func zoneTextPos(e widgets.Text, fillRowCount int, wx, wy, w, h float64) (tx, ty float64) {
 	var yFrac float64
 	switch e.Zone {
 	case "header":
@@ -513,7 +514,7 @@ func zoneTextPos(e widgets.Element, fillRowCount int, wx, wy, w, h float64) (tx,
 // and draws it at the fractional position within the widget bounding box.
 // When elem.Zone is set, pixel X/Y are derived from zone + HAlign; otherwise
 // elem.X and elem.Y fractions are used directly (backward compat).
-func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element, fillRowCount int) {
+func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Text, fillRowCount int) {
 	var display string
 	if elem.Binding != "" {
 		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
@@ -548,21 +549,21 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 }
 
 // renderDot draws a filled circle at the fractional position within the widget.
-func (p *Painter) renderDot(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderDot(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Dot) {
 	col := p.resolveColorExpr(frame, rt, prefs, elem.Color)
 	dc.SetColor(col)
-	cx := x + elem.DotX*w
-	cy := y + elem.DotY*h
-	r := elem.DotR * h
+	cx := x + elem.X*w
+	cy := y + elem.Y*h
+	r := elem.R * h
 	dc.DrawCircle(cx, cy, r)
 	dc.Fill()
 }
 
 // renderHBar draws a horizontal fill bar (normal or centred-fraction).
-func (p *Painter) renderHBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderHBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Bar) {
 	var pct float64
-	if elem.BarBinding != "" {
-		if val, ok := widgets.ResolveWithPrefs(frame, elem.BarBinding, prefs); ok {
+	if elem.Binding != "" {
+		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
 			if f, ok := widgets.ToFloat64(val); ok {
 				pct = f
 			}
@@ -572,13 +573,13 @@ func (p *Painter) renderHBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 	if bgRef == "" {
 		bgRef = "surface"
 	}
-	col := p.resolveColorExpr(frame, rt, prefs, elem.BarColor)
+	col := p.resolveColorExpr(frame, rt, prefs, elem.Color)
 	bg := rt.Resolve(bgRef)
-	bx := x + elem.BarX*w
-	by := y + elem.BarY*h
-	bw := elem.BarW * w
-	bh := elem.BarH * h
-	if elem.BarCentered {
+	bx := x + elem.X*w
+	by := y + elem.Y*h
+	bw := elem.W * w
+	bh := elem.H * h
+	if elem.Centered {
 		painterDrawHBarCentered(dc, bx, by, bw, bh, pct, col, bg)
 	} else {
 		painterDrawHBar(dc, bx, by, bw, bh, pct, col, bg)
@@ -586,10 +587,10 @@ func (p *Painter) renderHBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 }
 
 // renderDeltaBar draws a signed centred bar (lap delta).
-func (p *Painter) renderDeltaBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderDeltaBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.DeltaBar) {
 	var delta float64
-	if elem.BarBinding != "" {
-		if val, ok := widgets.ResolveWithPrefs(frame, elem.BarBinding, prefs); ok {
+	if elem.Binding != "" {
+		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
 			if f, ok := widgets.ToFloat64(val); ok {
 				delta = f
 			}
@@ -600,10 +601,10 @@ func (p *Painter) renderDeltaBar(dc *gg.Context, frame *dto.TelemetryFrame, rt w
 		bgRef = "surface"
 	}
 	bg := rt.Resolve(bgRef)
-	bx := x + elem.BarX*w
-	by := y + elem.BarY*h
-	bw := elem.BarW * w
-	bh := elem.BarH * h
+	bx := x + elem.X*w
+	by := y + elem.Y*h
+	bw := elem.W * w
+	bh := elem.H * h
 	maxD := elem.MaxDelta
 	if maxD <= 0 {
 		maxD = 2.0
@@ -630,10 +631,10 @@ func (p *Painter) renderDeltaBar(dc *gg.Context, frame *dto.TelemetryFrame, rt w
 }
 
 // renderSegBar draws a vertical segmented bar (RPM indicator).
-func (p *Painter) renderSegBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderSegBar(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.SegBar) {
 	var pct float64
-	if elem.SegBinding != "" {
-		if val, ok := widgets.ResolveWithPrefs(frame, elem.SegBinding, prefs); ok {
+	if elem.Binding != "" {
+		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
 			if f, ok := widgets.ToFloat64(val); ok {
 				pct = f
 			}
@@ -648,7 +649,7 @@ func (p *Painter) renderSegBar(dc *gg.Context, frame *dto.TelemetryFrame, rt wid
 	for i := 0; i < segs; i++ {
 		sy := y + 6 + (h - 12) - float64(i+1)*segH
 		segPct := float64(i) / float64(segs)
-		col := p.segStopColor(rt, elem.SegStops, segPct)
+		col := p.segStopColor(rt, elem.Stops, segPct)
 		if i >= filled {
 			col = widgets.DimColor(col, 0.15)
 		}
@@ -670,17 +671,17 @@ func (p *Painter) segStopColor(rt widgets.RenderTheme, stops []widgets.SegColorS
 }
 
 // renderGrid draws an NxM grid of labelled data cells within the given bounds.
-func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
-	rows := elem.GridRows
-	cols := elem.GridCols
+func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Grid) {
+	rows := elem.Rows
+	cols := elem.Cols
 	if rows <= 0 || cols <= 0 {
 		return
 	}
-	gap := elem.GridGap * h
+	gap := elem.Gap * h
 	cellW := (w - gap*float64(cols-1)) / float64(cols)
 	cellH := (h - gap*float64(rows-1)) / float64(rows)
 
-	if elem.GridLines {
+	if elem.Lines {
 		dc.SetColor(rt.Resolve("muted"))
 		dc.SetLineWidth(1)
 		for c := 1; c < cols; c++ {
@@ -695,7 +696,7 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		}
 	}
 
-	for i, cell := range elem.GridCells {
+	for i, cell := range elem.Cells {
 		col := i % cols
 		row := i / cols
 		if row >= rows {
@@ -738,15 +739,15 @@ func (p *Painter) resolveColorFn(name string, val any) color.RGBA {
 }
 
 // renderCondition evaluates the condition binding and renders Then or Else elements.
-func (p *Painter) renderCondition(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+func (p *Painter) renderCondition(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Condition) {
 	cond := false
-	if val, ok := widgets.ResolveWithPrefs(frame, elem.CondBinding, prefs); ok {
-		cond = isTruthy(val, elem.CondAbove)
+	if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
+		cond = isTruthy(val, elem.Above)
 	}
 	if cond {
-		p.renderElements(dc, frame, rt, prefs, x, y, w, h, elem.Then)
+		p.renderElements(dc, frame, rt, prefs, x, y, w, h, []widgets.Element(elem.Then))
 	} else {
-		p.renderElements(dc, frame, rt, prefs, x, y, w, h, elem.Else)
+		p.renderElements(dc, frame, rt, prefs, x, y, w, h, []widgets.Element(elem.Else))
 	}
 }
 

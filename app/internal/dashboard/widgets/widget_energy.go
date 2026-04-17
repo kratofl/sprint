@@ -19,9 +19,9 @@ func (energyWidget) Meta() WidgetMeta {
 
 func (energyWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "energy.virtualEnergyPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.42,
+		Text{Binding: "energy.virtualEnergyPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.42,
 			Zone: "fill", HAlign: HAlignCenter, Color: ColorRefSuccess.Expr()},
-		{Kind: ElemText, Text: "REGEN", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "REGEN", Font: FontLabel, FontScale: 0.12,
 			Zone: "footer", HAlign: HAlignCenter, Color: ColorRefMuted.Expr()},
 	}
 }

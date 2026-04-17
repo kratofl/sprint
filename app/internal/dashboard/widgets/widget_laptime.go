@@ -15,17 +15,17 @@ func (lapTimeWidget) Meta() WidgetMeta {
 
 func (lapTimeWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Text: "Current", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "Current", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		{Kind: ElemText, Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+		Text{Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
 			Zone: "fill:0", HAlign: HAlignEnd, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Text: "Last", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "Last", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:1", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		{Kind: ElemText, Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+		Text{Binding: "lap.lastLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
 			Zone: "fill:1", HAlign: HAlignEnd, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Text: "Best", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "Best", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:2", HAlign: HAlignStart, Color: ColorRefSecondary.Expr()},
-		{Kind: ElemText, Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
+		Text{Binding: "lap.bestLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,
 			Zone: "fill:2", HAlign: HAlignEnd, Color: ColorRefAccent.Expr()},
 	}
 }

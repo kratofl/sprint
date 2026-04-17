@@ -1,106 +1,275 @@
-package widgets
+﻿package widgets
 
-// ElementKind is the discriminator for an Element.
+import (
+"encoding/json"
+"fmt"
+)
+
+// ElementKind is the JSON discriminator for serialized elements.
 type ElementKind string
 
 const (
-	// ElemPanel draws the widget background with a border.
-	ElemPanel ElementKind = "panel"
-	// ElemText draws a text string at a fractional position within the widget.
-	ElemText ElementKind = "text"
-	// ElemDot draws a filled circle.
-	ElemDot ElementKind = "dot"
-	// ElemHBar draws a horizontal fill bar (0–1 or centred-fraction for steering).
-	ElemHBar ElementKind = "hbar"
-	// ElemDeltaBar draws a signed centred bar (lap delta).
-	ElemDeltaBar ElementKind = "deltabar"
-	// ElemSegBar draws a vertical segmented bar (RPM indicator).
-	ElemSegBar ElementKind = "segbar"
-	// ElemGrid draws an NxM grid of labelled data cells.
-	ElemGrid ElementKind = "grid"
-	// ElemCondition renders Then or Else sub-elements based on a binding value.
-	ElemCondition ElementKind = "condition"
+ElemPanel     ElementKind = "panel"
+ElemText      ElementKind = "text"
+ElemDot       ElementKind = "dot"
+ElemHBar      ElementKind = "hbar"
+ElemDeltaBar  ElementKind = "deltabar"
+ElemSegBar    ElementKind = "segbar"
+ElemGrid      ElementKind = "grid"
+ElemCondition ElementKind = "condition"
 )
 
-// Element is a single visual primitive in a widget definition.
-// Only the fields relevant to the element's Kind need to be populated.
-//
-// Positions (X, Y, BarX, BarY, DotX, DotY) are fractions of the widget's
-// bounding box (0 = left/top, 1 = right/bottom).
-// Sizes (FontScale, BarW, BarH, DotR) are fractions of the widget height.
-type Element struct {
-	Kind ElementKind `json:"kind"`
+// Element is implemented by all concrete visual primitive types.
+// Use the concrete types directly: Text{}, Bar{}, Panel{}, etc.
+// The painter dispatches on concrete type via a type switch.
+type Element interface{ elemKind() ElementKind }
 
-	// --- ElemPanel ---
-	CornerR   float64  `json:"cornerR,omitempty"`
-	FillColor ColorRef `json:"fillColor,omitempty"`
-	FillAlpha float64  `json:"fillAlpha,omitempty"`
-	NoBorder  bool     `json:"noBorder,omitempty"`
-
-	// --- ElemText ---
-	Text      string    `json:"text,omitempty"`
-	Binding   string    `json:"binding,omitempty"`
-	Format    string    `json:"format,omitempty"`
-	Font      FontStyle `json:"font,omitempty"`
-	FontScale float64   `json:"fontScale,omitempty"`
-	// Zone is the semantic layout zone for the element within its widget.
-	// When set, the painter derives pixel X/Y from Zone + HAlign instead of X/Y.
-	// Values: "header", "fill", "fill:0"/"fill:1"/"fill:2"... (numbered fill rows), "footer".
-	// An explicit X > 0 overrides the HAlign-derived horizontal position.
-	// Leave empty for backward-compat absolute X/Y positioning.
-	Zone   string    `json:"zone,omitempty"`
-	X      float64   `json:"x,omitempty"`
-	Y      float64   `json:"y,omitempty"`
-	HAlign HAlign    `json:"hAlign,omitempty"`
-	VAlign VAlign    `json:"vAlign,omitempty"`
-	Color  ColorExpr `json:"color,omitempty"`
-
-	// --- ElemDot ---
-	DotX float64 `json:"dotX,omitempty"`
-	DotY float64 `json:"dotY,omitempty"`
-	DotR float64 `json:"dotR,omitempty"`
-
-	// --- ElemHBar ---
-	BarBinding  string    `json:"barBinding,omitempty"`
-	BarX        float64   `json:"barX,omitempty"`
-	BarY        float64   `json:"barY,omitempty"`
-	BarW        float64   `json:"barW,omitempty"`
-	BarH        float64   `json:"barH,omitempty"`
-	BarCentered bool      `json:"barCentered,omitempty"`
-	BarColor    ColorExpr `json:"barColor,omitempty"`
-	BgColor     ColorRef  `json:"bgColor,omitempty"`
-
-	// --- ElemDeltaBar (shares BarX/Y/W/H/BgColor with ElemHBar) ---
-	MaxDelta float64   `json:"maxDelta,omitempty"`
-	PosColor ColorExpr `json:"posColor,omitempty"`
-	NegColor ColorExpr `json:"negColor,omitempty"`
-
-	// --- ElemSegBar ---
-	SegBinding string         `json:"segBinding,omitempty"`
-	Segments   int            `json:"segments,omitempty"`
-	SegStops   []SegColorStop `json:"segStops,omitempty"`
-
-	// --- ElemCondition ---
-	CondBinding string    `json:"condBinding,omitempty"`
-	CondAbove   float64   `json:"condAbove,omitempty"`
-	Then        []Element `json:"then,omitempty"`
-	Else        []Element `json:"else,omitempty"`
-
-	// --- ElemGrid ---
-	GridRows  int        `json:"gridRows,omitempty"`
-	GridCols  int        `json:"gridCols,omitempty"`
-	GridGap   float64    `json:"gridGap,omitempty"`   // gap between cells as fraction of widget height
-	GridLines bool       `json:"gridLines,omitempty"` // draw separator lines between cells
-	GridCells []GridCell `json:"gridCells,omitempty"` // cell definitions in row-major order
+// Panel draws the widget background (border + optional fill overlay).
+type Panel struct {
+CornerR   float64  `json:"cornerR,omitempty"`
+FillColor ColorRef `json:"fillColor,omitempty"`
+FillAlpha float64  `json:"fillAlpha,omitempty"`
+NoBorder  bool     `json:"noBorder,omitempty"`
 }
 
-// GridCell defines one cell in an ElemGrid.
+func (Panel) elemKind() ElementKind { return ElemPanel }
+
+func (v Panel) MarshalJSON() ([]byte, error) {
+type alias Panel
+return marshalWithKind(ElemPanel, alias(v))
+}
+
+// Text draws a text string (static or data-bound) within the widget.
+// Zone selects a semantic layout zone; X/Y are fractional fallback positions.
+// Zones: "header", "fill", "fill:0"/"fill:1"/... (numbered rows), "footer".
+type Text struct {
+Zone      string    `json:"zone,omitempty"`
+Text      string    `json:"text,omitempty"`
+Binding   string    `json:"binding,omitempty"`
+Format    string    `json:"format,omitempty"`
+Font      FontStyle `json:"font,omitempty"`
+FontScale float64   `json:"fontScale,omitempty"`
+X         float64   `json:"x,omitempty"`
+Y         float64   `json:"y,omitempty"`
+HAlign    HAlign    `json:"hAlign,omitempty"`
+VAlign    VAlign    `json:"vAlign,omitempty"`
+Color     ColorExpr `json:"color,omitempty"`
+}
+
+func (Text) elemKind() ElementKind { return ElemText }
+
+func (v Text) MarshalJSON() ([]byte, error) {
+type alias Text
+return marshalWithKind(ElemText, alias(v))
+}
+
+// Dot draws a filled circle at fractional position within the widget.
+type Dot struct {
+X     float64   `json:"dotX,omitempty"`
+Y     float64   `json:"dotY,omitempty"`
+R     float64   `json:"dotR,omitempty"`
+Color ColorExpr `json:"color,omitempty"`
+}
+
+func (Dot) elemKind() ElementKind { return ElemDot }
+
+func (v Dot) MarshalJSON() ([]byte, error) {
+type alias Dot
+return marshalWithKind(ElemDot, alias(v))
+}
+
+// Bar draws a horizontal fill bar (normal or centred-fraction for e.g. steering).
+// X, Y, W, H are fractions of the widget bounding box (Y and H relative to height).
+type Bar struct {
+Binding  string    `json:"barBinding,omitempty"`
+X        float64   `json:"barX,omitempty"`
+Y        float64   `json:"barY,omitempty"`
+W        float64   `json:"barW,omitempty"`
+H        float64   `json:"barH,omitempty"`
+Centered bool      `json:"barCentered,omitempty"`
+Color    ColorExpr `json:"barColor,omitempty"`
+BgColor  ColorRef  `json:"bgColor,omitempty"`
+}
+
+func (Bar) elemKind() ElementKind { return ElemHBar }
+
+func (v Bar) MarshalJSON() ([]byte, error) {
+type alias Bar
+return marshalWithKind(ElemHBar, alias(v))
+}
+
+// DeltaBar draws a signed centred bar (lap delta indicator).
+type DeltaBar struct {
+Binding  string    `json:"barBinding,omitempty"`
+X        float64   `json:"barX,omitempty"`
+Y        float64   `json:"barY,omitempty"`
+W        float64   `json:"barW,omitempty"`
+H        float64   `json:"barH,omitempty"`
+MaxDelta float64   `json:"maxDelta,omitempty"`
+PosColor ColorExpr `json:"posColor,omitempty"`
+NegColor ColorExpr `json:"negColor,omitempty"`
+BgColor  ColorRef  `json:"bgColor,omitempty"`
+}
+
+func (DeltaBar) elemKind() ElementKind { return ElemDeltaBar }
+
+func (v DeltaBar) MarshalJSON() ([]byte, error) {
+type alias DeltaBar
+return marshalWithKind(ElemDeltaBar, alias(v))
+}
+
+// SegBar draws a vertical segmented bar (e.g. RPM indicator).
+type SegBar struct {
+Binding  string         `json:"segBinding,omitempty"`
+Segments int            `json:"segments,omitempty"`
+Stops    []SegColorStop `json:"segStops,omitempty"`
+}
+
+func (SegBar) elemKind() ElementKind { return ElemSegBar }
+
+func (v SegBar) MarshalJSON() ([]byte, error) {
+type alias SegBar
+return marshalWithKind(ElemSegBar, alias(v))
+}
+
+// Grid draws an NxM grid of labelled data cells.
+type Grid struct {
+Rows  int        `json:"gridRows,omitempty"`
+Cols  int        `json:"gridCols,omitempty"`
+Gap   float64    `json:"gridGap,omitempty"`
+Lines bool       `json:"gridLines,omitempty"`
+Cells []GridCell `json:"gridCells,omitempty"`
+}
+
+func (Grid) elemKind() ElementKind { return ElemGrid }
+
+func (v Grid) MarshalJSON() ([]byte, error) {
+type alias Grid
+return marshalWithKind(ElemGrid, alias(v))
+}
+
+// Condition renders Then or Else sub-elements based on a data binding value.
+type Condition struct {
+Binding string      `json:"condBinding,omitempty"`
+Above   float64     `json:"condAbove,omitempty"`
+Then    ElementList `json:"then,omitempty"`
+Else    ElementList `json:"else,omitempty"`
+}
+
+func (Condition) elemKind() ElementKind { return ElemCondition }
+
+func (v Condition) MarshalJSON() ([]byte, error) {
+type alias Condition
+return marshalWithKind(ElemCondition, alias(v))
+}
+
+// GridCell defines one cell in a Grid element.
 type GridCell struct {
-	Label      string    `json:"label,omitempty"`      // static label text (e.g. "FL", "FR")
-	Binding    string    `json:"binding,omitempty"`     // data binding for the value
-	Format     string    `json:"format,omitempty"`      // value format string
-	Color      ColorExpr `json:"color,omitempty"`       // value color
-	LabelColor ColorExpr `json:"labelColor,omitempty"`  // label color
-	ColorFn    string    `json:"colorFn,omitempty"`     // named function for value-dependent color (e.g. "tyre_temp")
+Label      string    `json:"label,omitempty"`
+Binding    string    `json:"binding,omitempty"`
+Format     string    `json:"format,omitempty"`
+Color      ColorExpr `json:"color,omitempty"`
+LabelColor ColorExpr `json:"labelColor,omitempty"`
+ColorFn    string    `json:"colorFn,omitempty"`
 }
 
+// ElementList is a JSON-serializable slice of Element values.
+// Use this type for any []Element that needs to round-trip through JSON
+// (WidgetMeta.DefaultDefinition, Condition.Then/Else).
+// Internal painter slices can use plain []Element.
+type ElementList []Element
+
+func (el ElementList) MarshalJSON() ([]byte, error) {
+arr := make([]json.RawMessage, len(el))
+for i, e := range el {
+b, err := marshalElement(e)
+if err != nil {
+return nil, fmt.Errorf("element %d: %w", i, err)
+}
+arr[i] = b
+}
+return json.Marshal(arr)
+}
+
+func (el *ElementList) UnmarshalJSON(b []byte) error {
+var raws []json.RawMessage
+if err := json.Unmarshal(b, &raws); err != nil {
+return err
+}
+*el = make(ElementList, 0, len(raws))
+for i, raw := range raws {
+e, err := unmarshalElement(raw)
+if err != nil {
+return fmt.Errorf("element %d: %w", i, err)
+}
+*el = append(*el, e)
+}
+return nil
+}
+
+// marshalElement serializes a single Element to JSON, injecting the "kind" discriminator.
+func marshalElement(e Element) ([]byte, error) {
+b, err := json.Marshal(e)
+if err != nil {
+return nil, err
+}
+return b, nil
+}
+
+// unmarshalElement parses a single element JSON blob using the "kind" discriminator.
+func unmarshalElement(raw json.RawMessage) (Element, error) {
+var kindOnly struct {
+Kind ElementKind `json:"kind"`
+}
+if err := json.Unmarshal(raw, &kindOnly); err != nil {
+return nil, err
+}
+switch kindOnly.Kind {
+case ElemPanel:
+var v Panel
+return v, json.Unmarshal(raw, &v)
+case ElemText:
+var v Text
+return v, json.Unmarshal(raw, &v)
+case ElemDot:
+var v Dot
+return v, json.Unmarshal(raw, &v)
+case ElemHBar:
+var v Bar
+return v, json.Unmarshal(raw, &v)
+case ElemDeltaBar:
+var v DeltaBar
+return v, json.Unmarshal(raw, &v)
+case ElemSegBar:
+var v SegBar
+return v, json.Unmarshal(raw, &v)
+case ElemGrid:
+var v Grid
+return v, json.Unmarshal(raw, &v)
+case ElemCondition:
+var v Condition
+return v, json.Unmarshal(raw, &v)
+default:
+return nil, fmt.Errorf("unknown element kind: %q", kindOnly.Kind)
+}
+}
+
+// marshalWithKind marshals v as a JSON object and injects "kind" as the first field.
+func marshalWithKind(kind ElementKind, v any) ([]byte, error) {
+b, err := json.Marshal(v)
+if err != nil {
+return nil, err
+}
+kindJSON, _ := json.Marshal(string(kind))
+// Inject "kind":xxx after the opening '{'.
+// b is guaranteed to start with '{' from json.Marshal on a struct.
+result := make([]byte, 0, 10+len(kindJSON)+len(b))
+result = append(result, '{')
+result = append(result, '"', 'k', 'i', 'n', 'd', '"', ':')
+result = append(result, kindJSON...)
+if b[1] != '}' {
+result = append(result, ',')
+}
+result = append(result, b[1:]...)
+return result, nil
+}

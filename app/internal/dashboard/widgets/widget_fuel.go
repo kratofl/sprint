@@ -18,13 +18,13 @@ func (fuelWidget) Meta() WidgetMeta {
 
 func (fuelWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "car.fuel", Format: "%.1f L", Font: FontNumber, FontScale: 0.32,
+		Text{Binding: "car.fuel", Format: "%.1f L", Font: FontNumber, FontScale: 0.32,
 			Zone: "fill", HAlign: HAlignStart, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Binding: "car.fuelPerLap", Format: "%.2f L/lap", Font: FontMono, FontScale: 0.16,
+		Text{Binding: "car.fuelPerLap", Format: "%.2f L/lap", Font: FontMono, FontScale: 0.16,
 			Zone: "fill", HAlign: HAlignEnd, Color: ColorRefSecondary.Expr()},
-		{Kind: ElemCondition, CondBinding: "car.fuelLapsRemaining", CondAbove: 0,
-			Then: []Element{
-				{Kind: ElemText, Binding: "car.fuelLapsRemaining", Format: "~%.0f laps", Font: FontLabel, FontScale: 0.14,
+		Condition{Binding: "car.fuelLapsRemaining", Above: 0,
+			Then: ElementList{
+				Text{Binding: "car.fuelLapsRemaining", Format: "~%.0f laps", Font: FontLabel, FontScale: 0.14,
 					Zone: "footer", HAlign: HAlignStart, Color: ColorRefMuted.Expr()},
 			}},
 	}

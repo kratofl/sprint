@@ -15,11 +15,11 @@ func (gearSpeedWidget) Meta() WidgetMeta {
 
 func (gearSpeedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.68,
+		Text{Binding: "car.gearStr", Font: FontNumber, FontScale: 0.68,
 			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.19,
+		Text{Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.19,
 			Zone: "fill:1", HAlign: HAlignCenter, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.08,
+		Text{Text: "km/h", Font: FontLabel, FontScale: 0.08,
 			Zone: "footer", HAlign: HAlignCenter, Color: ColorRefMuted.Expr()},
 	}
 }

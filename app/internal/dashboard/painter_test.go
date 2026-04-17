@@ -203,7 +203,7 @@ func TestFillZoneYsSingleRowCentered(t *testing.T) {
 }
 
 func TestZoneTextPosFillUsesVerticalCenter(t *testing.T) {
-	elem := widgets.Element{Zone: "fill", HAlign: widgets.HAlignCenter}
+	elem := widgets.Text{Zone: "fill", HAlign: widgets.HAlignCenter}
 	_, ty := zoneTextPos(elem, 0, 10, 20, 200, 100)
 
 	want := 20 + defaultFillYFrac*100

@@ -18,7 +18,7 @@ func (brakeBiasWidget) Meta() WidgetMeta {
 
 func (brakeBiasWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "car.brakeBiasPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.45,
+		Text{Binding: "car.brakeBiasPct", Format: "%.1f%%", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill", HAlign: HAlignCenter,
 			Color: ColorRefForeground.When(WhenActive("car.brakeBiasWarning", ColorRefWarning))},
 	}

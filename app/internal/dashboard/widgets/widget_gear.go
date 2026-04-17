@@ -15,7 +15,7 @@ func (gearWidget) Meta() WidgetMeta {
 
 func (gearWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "car.gearStr", Font: FontNumber, FontScale: 0.7,
+		Text{Binding: "car.gearStr", Font: FontNumber, FontScale: 0.7,
 			Zone: "fill", HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()},
 	}
 }

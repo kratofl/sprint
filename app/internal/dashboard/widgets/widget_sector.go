@@ -15,19 +15,19 @@ func (sectorWidget) Meta() WidgetMeta {
 
 func (sectorWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Text: "S1", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "S1", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", HAlign: HAlignStart,
 			Color: ColorRefMuted.When(WhenActive("lap.sector1Active", ColorRefPrimary))},
-		{Kind: ElemText, Binding: "lap.sector1Time", Format: "sector", Font: FontMono, FontScale: 0.22,
+		Text{Binding: "lap.sector1Time", Format: "sector", Font: FontMono, FontScale: 0.22,
 			Zone: "fill:1", HAlign: HAlignStart, Color: ColorRefForeground.Expr()},
-		{Kind: ElemText, Text: "S2", Font: FontLabel, FontScale: 0.12,
+		Text{Text: "S2", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", X: 0.36, HAlign: HAlignStart,
 			Color: ColorRefMuted.When(WhenActive("lap.sector2Active", ColorRefPrimary))},
-		{Kind: ElemText, Binding: "lap.sector2Time", Format: "sector", Font: FontMono, FontScale: 0.22,
+		Text{Binding: "lap.sector2Time", Format: "sector", Font: FontMono, FontScale: 0.22,
 			Zone: "fill:1", X: 0.36, HAlign: HAlignStart, Color: ColorRefForeground.Expr()},
-		{Kind: ElemDot, DotX: 0.7, DotY: 0.5, DotR: 0.07,
+		Dot{X: 0.7, Y: 0.5, R: 0.07,
 			Color: ColorRefPrimary.Expr()},
-		{Kind: ElemText, Binding: "lap.sector", Format: "S%d", Font: FontLabel, FontScale: 0.12,
+		Text{Binding: "lap.sector", Format: "S%d", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", X: 0.78, HAlign: HAlignStart, Color: ColorRefPrimary.Expr()},
 	}
 }

@@ -44,9 +44,9 @@ func (tcWidget) Definition(config map[string]any) []Element {
 		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefAccent))
 	}
 	return []Element{
-		{Kind: ElemText, Text: label, Font: FontLabel, FontScale: 0.18,
+		Text{Text: label, Font: FontLabel, FontScale: 0.18,
 			Zone: "header", HAlign: HAlignStart, Color: ColorRefMuted.Expr()},
-		{Kind: ElemText, Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
+		Text{Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill", HAlign: HAlignCenter, Color: col},
 	}
 }

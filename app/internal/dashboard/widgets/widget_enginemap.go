@@ -16,7 +16,7 @@ func (engineMapWidget) Meta() WidgetMeta {
 
 func (engineMapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemText, Binding: "electronics.motorMap", Format: "MAP %d", Font: FontNumber, FontScale: 0.45,
+		Text{Binding: "electronics.motorMap", Format: "MAP %d", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill", HAlign: HAlignCenter, Color: ColorRefPrimary.Expr()},
 	}
 }
