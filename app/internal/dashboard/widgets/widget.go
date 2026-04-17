@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // WidgetType is the canonical identifier for a dashboard widget kind.
@@ -19,6 +20,11 @@ type WidgetType string
 // config holds the per-instance configuration from DashWidget.Config.
 // No gg drawing calls should appear in any Widget implementation — all
 // rendering is centralised in the dashboard Painter.
+//
+// The painter automatically prepends a panel background and a header label
+// based on WidgetMeta.Panel and WidgetMeta.Header. Widgets should NOT
+// include ElemPanel or header ElemText in their Definition() return value
+// unless they need full manual control (set Header.Disabled / Panel.Disabled).
 //
 // # Adding a new widget
 //
@@ -39,7 +45,6 @@ type WidgetType string
 //
 //	func (myThingWidget) Definition(_ map[string]any) []Element {
 //	    return []Element{
-//	        {Kind: ElemPanel},
 //	        {Kind: ElemText, Binding: "car.speedKPH", Format: "int",
 //	         Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
 //	         HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorExpr{Ref: "fg"}},
@@ -70,6 +75,23 @@ var categoryLabels = map[Category]string{
 	CategoryRace:   "Race",
 }
 
+// PanelConfig controls the automatic panel background drawn by the painter.
+// Zero value = standard bordered panel.
+type PanelConfig struct {
+	Disabled bool    `json:"disabled,omitempty"` // true = no panel background
+	CornerR  float64 `json:"cornerR,omitempty"`  // corner radius (0 = square)
+	NoBorder bool    `json:"noBorder,omitempty"` // true = fill only, no border ring
+}
+
+// HeaderConfig controls the automatic header label drawn by the painter.
+// Zero value = header auto-generated from UPPER(Meta.Label) with default styling.
+type HeaderConfig struct {
+	Disabled  bool    `json:"disabled,omitempty"`  // true = no auto-header
+	Text      string  `json:"text,omitempty"`      // override label text (default: UPPER(Meta.Label))
+	Align     HAlign  `json:"align,omitempty"`     // header alignment (default: HAlignStart)
+	FontScale float64 `json:"fontScale,omitempty"` // header font scale (default: 0.12)
+}
+
 // WidgetMeta holds the widget type, display name, palette category,
 // config schema, and default grid dimensions.
 type WidgetMeta struct {
@@ -77,6 +99,8 @@ type WidgetMeta struct {
 	Label             string            `json:"label"`
 	Category          Category          `json:"category"`
 	CategoryLabel     string            `json:"categoryLabel"`
+	Panel             PanelConfig       `json:"panel,omitempty"`
+	Header            HeaderConfig      `json:"header,omitempty"`
 	ConfigDefs        []ConfigDef       `json:"configDefs,omitempty"`
 	DefaultColSpan    int               `json:"defaultColSpan"`
 	DefaultRowSpan    int               `json:"defaultRowSpan"`
@@ -108,7 +132,38 @@ func Register(w Widget) {
 	}
 	m.CategoryLabel = catLabel
 	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
-	m.DefaultDefinition = w.Definition(nil)
+	def := w.Definition(nil)
+	if !m.Panel.Disabled {
+		panel := Element{Kind: ElemPanel, CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
+		def = append([]Element{panel}, def...)
+	}
+	if !m.Header.Disabled {
+		text := m.Header.Text
+		if text == "" {
+			text = strings.ToUpper(m.Label)
+		}
+		align := m.Header.Align
+		fontScale := m.Header.FontScale
+		if fontScale == 0 {
+			fontScale = 0.12
+		}
+		header := Element{
+			Kind:      ElemText,
+			Zone:      "header",
+			Text:      text,
+			Font:      FontLabel,
+			FontScale: fontScale,
+			HAlign:    align,
+			Color:     ColorExpr{Ref: ColorRefMuted},
+		}
+		// Insert header after panel (if present) or at the start.
+		insertAt := 0
+		if !m.Panel.Disabled {
+			insertAt = 1
+		}
+		def = append(def[:insertAt], append([]Element{header}, def[insertAt:]...)...)
+	}
+	m.DefaultDefinition = def
 	widgetRegistry[m.Type] = w
 	widgetMeta[m.Type] = m
 }

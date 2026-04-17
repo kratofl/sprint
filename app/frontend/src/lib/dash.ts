@@ -194,7 +194,7 @@ export interface ConfigDef {
 
 // ── Widget element types (mirrors app/internal/dashboard/widgets/elements.go) ─
 
-export type ElementKind = 'panel' | 'text' | 'dot' | 'hbar' | 'deltabar' | 'segbar' | 'tyre_grid' | 'condition'
+export type ElementKind = 'panel' | 'text' | 'dot' | 'hbar' | 'deltabar' | 'segbar' | 'grid' | 'condition'
 export type FontStyle  = 'label' | 'bold' | 'number' | 'mono'
 
 // 0 = Start/left/top, 1 = Center, 2 = End/right/bottom
@@ -264,6 +264,21 @@ export interface WidgetElement {
   condAbove?:   number
   then?:        WidgetElement[]
   else?:        WidgetElement[]
+  // grid
+  gridRows?:  number
+  gridCols?:  number
+  gridGap?:   number
+  gridLines?: boolean
+  gridCells?: GridCell[]
+}
+
+export interface GridCell {
+  label?:      string
+  binding?:    string
+  format?:     string
+  color?:      ColorExpr
+  labelColor?: ColorExpr
+  colorFn?:    string
 }
 
 export interface WidgetCatalogEntry {
@@ -275,8 +290,23 @@ export interface WidgetCatalogEntry {
   defaultColSpan: number
   defaultRowSpan: number
   idleCapable: boolean
+  panel?: PanelConfig
+  header?: HeaderConfig
   defaultPanelRules?: ConditionalRule[]
   defaultDefinition?: WidgetElement[]
+}
+
+export interface PanelConfig {
+  disabled?: boolean
+  cornerR?:  number
+  noBorder?: boolean
+}
+
+export interface HeaderConfig {
+  disabled?:  boolean
+  text?:      string
+  align?:     HAlign
+  fontScale?: number
 }
 
 // Helper: does this device have a screen?

@@ -63,25 +63,25 @@ const (
 type ColorRef string
 
 const (
-	ColorRefPrimary ColorRef = "primary"
-	ColorRefAccent  ColorRef = "accent"
-	ColorRefFG      ColorRef = "fg"
-	ColorRefMuted   ColorRef = "muted"
-	ColorRefMuted2  ColorRef = "muted2"
-	ColorRefSuccess ColorRef = "success"
-	ColorRefWarning ColorRef = "warning"
-	ColorRefDanger  ColorRef = "danger"
-	ColorRefSurface ColorRef = "surface"
-	ColorRefBg      ColorRef = "bg"
-	ColorRefBorder  ColorRef = "border"
-	ColorRefRPMRed  ColorRef = "rpmred"
+	ColorRefPrimary    ColorRef = "primary"
+	ColorRefAccent     ColorRef = "accent"
+	ColorRefForeground ColorRef = "fg"
+	ColorRefMuted      ColorRef = "muted"
+	ColorRefSecondary  ColorRef = "muted2"
+	ColorRefSuccess    ColorRef = "success"
+	ColorRefWarning    ColorRef = "warning"
+	ColorRefDanger     ColorRef = "danger"
+	ColorRefSurface    ColorRef = "surface"
+	ColorRefBackground ColorRef = "bg"
+	ColorRefBorder     ColorRef = "border"
+	ColorRefRPMRed     ColorRef = "rpmred"
 
-	ColorRefABS      ColorRef = "abs"
-	ColorRefTC       ColorRef = "tc"
+	ColorRefABS       ColorRef = "abs"
+	ColorRefTC        ColorRef = "tc"
 	ColorRefBrakeBias ColorRef = "brakeBias"
-	ColorRefEnergy   ColorRef = "energy"
-	ColorRefMotor    ColorRef = "motor"
-	ColorRefBrakeMig ColorRef = "brakeMig"
+	ColorRefEnergy    ColorRef = "energy"
+	ColorRefMotor     ColorRef = "motor"
+	ColorRefBrakeMig  ColorRef = "brakeMig"
 )
 
 // ColorWhen is one conditional override rule within a ColorExpr.

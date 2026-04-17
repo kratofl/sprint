@@ -9,14 +9,12 @@ func (sectorWidget) Meta() WidgetMeta {
 		Type: WidgetSector, Label: "Sector", Category: CategoryTiming,
 		DefaultColSpan: 6, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		Header: HeaderConfig{Text: "SECTORS"},
 	}
 }
 
 func (sectorWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
-		{Kind: ElemText, Text: "SECTORS", Font: FontLabel, FontScale: 0.12,
-			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Text: "S1", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", HAlign: HAlignStart,
 			Color: ColorExpr{Ref: "muted", When: []ColorWhen{{Binding: "lap.sector1Active", Ref: "primary"}}}},

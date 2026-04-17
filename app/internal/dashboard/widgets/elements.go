@@ -16,8 +16,8 @@ const (
 	ElemDeltaBar ElementKind = "deltabar"
 	// ElemSegBar draws a vertical segmented bar (RPM indicator).
 	ElemSegBar ElementKind = "segbar"
-	// ElemTyreGrid draws the 2×2 tyre temperature grid with gradient colouring.
-	ElemTyreGrid ElementKind = "tyre_grid"
+	// ElemGrid draws an NxM grid of labelled data cells.
+	ElemGrid ElementKind = "grid"
 	// ElemCondition renders Then or Else sub-elements based on a binding value.
 	ElemCondition ElementKind = "condition"
 )
@@ -85,5 +85,22 @@ type Element struct {
 	CondAbove   float64   `json:"condAbove,omitempty"`
 	Then        []Element `json:"then,omitempty"`
 	Else        []Element `json:"else,omitempty"`
+
+	// --- ElemGrid ---
+	GridRows  int        `json:"gridRows,omitempty"`
+	GridCols  int        `json:"gridCols,omitempty"`
+	GridGap   float64    `json:"gridGap,omitempty"`   // gap between cells as fraction of widget height
+	GridLines bool       `json:"gridLines,omitempty"` // draw separator lines between cells
+	GridCells []GridCell `json:"gridCells,omitempty"` // cell definitions in row-major order
+}
+
+// GridCell defines one cell in an ElemGrid.
+type GridCell struct {
+	Label      string    `json:"label,omitempty"`      // static label text (e.g. "FL", "FR")
+	Binding    string    `json:"binding,omitempty"`     // data binding for the value
+	Format     string    `json:"format,omitempty"`      // value format string
+	Color      ColorExpr `json:"color,omitempty"`       // value color
+	LabelColor ColorExpr `json:"labelColor,omitempty"`  // label color
+	ColorFn    string    `json:"colorFn,omitempty"`     // named function for value-dependent color (e.g. "tyre_temp")
 }
 

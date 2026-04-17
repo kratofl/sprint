@@ -9,6 +9,7 @@ func (tcWidget) Meta() WidgetMeta {
 		Type: WidgetTC, Label: "Traction Control", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		Header: HeaderConfig{Disabled: true},
 		CapabilityBinding: "electronics.tcAvailable",
 		ConfigDefs: []ConfigDef{{
 			Key:   "tcMode",
@@ -43,7 +44,6 @@ func (tcWidget) Definition(config map[string]any) []Element {
 		col.When = []ColorWhen{{Binding: activeBinding, Ref: "accent"}}
 	}
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemText, Text: label, Font: FontLabel, FontScale: 0.18,
 			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,

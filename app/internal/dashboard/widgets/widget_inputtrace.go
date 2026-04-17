@@ -9,6 +9,7 @@ func (inputTraceWidget) Meta() WidgetMeta {
 		Type: WidgetInputTrace, Label: "Inputs", Category: CategoryCar,
 		DefaultColSpan: 6, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 30,
+		Header: HeaderConfig{FontScale: 0.08},
 	}
 }
 
@@ -26,11 +27,7 @@ func (inputTraceWidget) Definition(_ map[string]any) []Element {
 		{"CLU", "car.clutch", false, "muted2"},
 		{"STR", "car.steeringNorm", true, "muted2"},
 	}
-	elems := []Element{
-		{Kind: ElemPanel},
-		{Kind: ElemText, Text: "INPUTS", Font: FontLabel, FontScale: 0.08,
-			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
-	}
+	elems := []Element{}
 	for i, r := range rows {
 		cy := 0.125 + float64(i)*0.25
 		elems = append(elems,

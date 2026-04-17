@@ -198,6 +198,24 @@ var bindingPaths = map[string]func(*dto.TelemetryFrame) any{
 			return "success"
 		}
 	},
+
+	// Tires — averaged temperature per corner
+	"tires.fl.avgTemp": func(f *dto.TelemetryFrame) any {
+		t := f.Tires[0]
+		return (float64(t.TempInner) + float64(t.TempMiddle) + float64(t.TempOuter)) / 3
+	},
+	"tires.fr.avgTemp": func(f *dto.TelemetryFrame) any {
+		t := f.Tires[1]
+		return (float64(t.TempInner) + float64(t.TempMiddle) + float64(t.TempOuter)) / 3
+	},
+	"tires.rl.avgTemp": func(f *dto.TelemetryFrame) any {
+		t := f.Tires[2]
+		return (float64(t.TempInner) + float64(t.TempMiddle) + float64(t.TempOuter)) / 3
+	},
+	"tires.rr.avgTemp": func(f *dto.TelemetryFrame) any {
+		t := f.Tires[3]
+		return (float64(t.TempInner) + float64(t.TempMiddle) + float64(t.TempOuter)) / 3
+	},
 }
 
 // Resolve returns the value at path within frame, along with a bool indicating

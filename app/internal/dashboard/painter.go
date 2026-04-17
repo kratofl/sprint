@@ -36,7 +36,7 @@ type Painter struct {
 	fontFiles map[string]*opentype.Font
 	fontFaces map[string]font.Face
 
-	// bgImg is the pre-baked static background (solid ColBg fill).
+	// bgImg is the pre-baked static background (solid ColorBackground fill).
 	// Rendered once on the first frame; copied into ctx at the start of each
 	// frame so clearing the canvas does not run every tick.
 	bgImg *image.RGBA
@@ -216,6 +216,39 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	prefs := widgets.MergeFormatPreferences(layoutPrefs, widgets.FormatPreferencesFromConfig(w.Config))
 	elems := widget.Definition(w.Config)
 
+	// Auto-prepend panel element from meta unless disabled.
+	if !meta.Panel.Disabled {
+		panel := widgets.Element{Kind: widgets.ElemPanel, CornerR: meta.Panel.CornerR, NoBorder: meta.Panel.NoBorder}
+		elems = append([]widgets.Element{panel}, elems...)
+	}
+
+	// Auto-prepend header element from meta unless disabled.
+	if !meta.Header.Disabled {
+		text := meta.Header.Text
+		if text == "" {
+			text = strings.ToUpper(meta.Label)
+		}
+		align := meta.Header.Align
+		fontScale := meta.Header.FontScale
+		if fontScale == 0 {
+			fontScale = 0.12
+		}
+		header := widgets.Element{
+			Kind:      widgets.ElemText,
+			Zone:      "header",
+			Text:      text,
+			Font:      widgets.FontLabel,
+			FontScale: fontScale,
+			HAlign:    align,
+			Color:     widgets.ColorExpr{Ref: widgets.ColorRefMuted},
+		}
+		insertAt := 0
+		if !meta.Panel.Disabled {
+			insertAt = 1
+		}
+		elems = append(elems[:insertAt], append([]widgets.Element{header}, elems[insertAt:]...)...)
+	}
+
 	// Capability gate: if the widget declares a CapabilityBinding and the frame
 	// resolves it to false, render a static "not available" placeholder instead.
 	if meta.CapabilityBinding != "" {
@@ -237,7 +270,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 						Zone: "fill", HAlign: widgets.HAlignCenter, VAlign: widgets.VAlignCenter,
 						Color: widgets.ColorExpr{Ref: widgets.ColorRefMuted}},
 				}
-				cache.ctx.SetColor(widgets.ColBg)
+				cache.ctx.SetColor(widgets.ColorBackground)
 				cache.ctx.Clear()
 				p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, naElems)
 				p.blitCache(dc, cache)
@@ -265,7 +298,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	// absolute position. This replaces the previous dc.Clip() approach which
 	// allocated a 384 KB image.Alpha per widget per frame, causing severe GC
 	// pressure and progressive FPS degradation after several laps.
-	cache.ctx.SetColor(widgets.ColBg)
+	cache.ctx.SetColor(widgets.ColorBackground)
 	cache.ctx.Clear()
 	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, elems)
 	p.blitCache(dc, cache)
@@ -352,8 +385,8 @@ func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt wi
 		p.renderDeltaBar(dc, frame, rt, prefs, x, y, w, h, elem)
 	case widgets.ElemSegBar:
 		p.renderSegBar(dc, frame, rt, prefs, x, y, w, h, elem)
-	case widgets.ElemTyreGrid:
-		p.renderTyreGrid(dc, frame, rt, prefs, x, y, w, h)
+	case widgets.ElemGrid:
+		p.renderGrid(dc, frame, rt, prefs, x, y, w, h, elem)
 	case widgets.ElemCondition:
 		p.renderCondition(dc, frame, rt, prefs, x, y, w, h, elem)
 	}
@@ -636,23 +669,72 @@ func (p *Painter) segStopColor(rt widgets.RenderTheme, stops []widgets.SegColorS
 	return col
 }
 
-// renderTyreGrid draws the 2×2 tyre temperature grid.
-func (p *Painter) renderTyreGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64) {
-	labels := [4]string{"FL", "FR", "RL", "RR"}
-	tireW := (w - 36) / 2
-	p.face(dc, "SpaceGrotesk-Regular.ttf", h*0.12)
-	for i, tire := range frame.Tires {
-		col := i % 2
-		row := i / 2
-		tx := x + 12 + float64(col)*(tireW+12)
-		ty := y + h*0.3 + float64(row)*(h*0.32)
-		avgTemp := (float64(tire.TempInner) + float64(tire.TempMiddle) + float64(tire.TempOuter)) / 3
-		dc.SetColor(rt.Resolve("muted"))
-		dc.DrawString(labels[i], tx, ty)
-		p.face(dc, "JetBrainsMono-Bold.ttf", h*0.2)
-		dc.SetColor(widgets.TyreColor(avgTemp))
-		dc.DrawStringAnchored(widgets.FormatValue(avgTemp, "temp", prefs)+"°", tx+tireW, ty-2, 1, 0)
+// renderGrid draws an NxM grid of labelled data cells within the given bounds.
+func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Element) {
+	rows := elem.GridRows
+	cols := elem.GridCols
+	if rows <= 0 || cols <= 0 {
+		return
 	}
+	gap := elem.GridGap * h
+	cellW := (w - gap*float64(cols-1)) / float64(cols)
+	cellH := (h - gap*float64(rows-1)) / float64(rows)
+
+	if elem.GridLines {
+		dc.SetColor(rt.Resolve("muted"))
+		dc.SetLineWidth(1)
+		for c := 1; c < cols; c++ {
+			lx := x + float64(c)*(cellW+gap) - gap/2
+			dc.DrawLine(lx, y, lx, y+h)
+			dc.Stroke()
+		}
+		for r := 1; r < rows; r++ {
+			ly := y + float64(r)*(cellH+gap) - gap/2
+			dc.DrawLine(x, ly, x+w, ly)
+			dc.Stroke()
+		}
+	}
+
+	for i, cell := range elem.GridCells {
+		col := i % cols
+		row := i / cols
+		if row >= rows {
+			break
+		}
+		cx := x + float64(col)*(cellW+gap)
+		cy := y + float64(row)*(cellH+gap)
+
+		if cell.Label != "" {
+			p.face(dc, "SpaceGrotesk-Regular.ttf", cellH*0.28)
+			dc.SetColor(p.resolveColorExpr(frame, rt, prefs, cell.LabelColor))
+			dc.DrawString(cell.Label, cx+4, cy+cellH*0.4)
+		}
+
+		if cell.Binding != "" {
+			val, ok := widgets.ResolveWithPrefs(frame, cell.Binding, prefs)
+			if ok {
+				p.face(dc, "JetBrainsMono-Bold.ttf", cellH*0.48)
+				if cell.ColorFn != "" {
+					dc.SetColor(p.resolveColorFn(cell.ColorFn, val))
+				} else {
+					dc.SetColor(p.resolveColorExpr(frame, rt, prefs, cell.Color))
+				}
+				text := widgets.FormatValue(val, cell.Format, prefs)
+				dc.DrawStringAnchored(text, cx+cellW-4, cy+cellH*0.45, 1, 0)
+			}
+		}
+	}
+}
+
+// resolveColorFn resolves a named color function from a value.
+func (p *Painter) resolveColorFn(name string, val any) color.RGBA {
+	switch name {
+	case "tyre_temp":
+		if f, ok := widgets.ToFloat64(val); ok {
+			return widgets.TyreColor(f)
+		}
+	}
+	return widgets.ColorForeground
 }
 
 // renderCondition evaluates the condition binding and renders Then or Else elements.

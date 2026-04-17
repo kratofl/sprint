@@ -416,26 +416,31 @@ function renderAbsElem(
       )
     }
 
-    case 'tyre_grid': {
-      const tileColors = [r('success'), r('warning'), r('success'), r('success')]
-      const labels = ['FL', 'FR', 'RL', 'RR']
+    case 'grid': {
+      const rows = elem.gridRows ?? 2
+      const cols = elem.gridCols ?? 2
+      const cells = elem.gridCells ?? []
       return (
         <div key={key} style={{
           position: 'absolute',
           left: '5%', top: '25%', right: '5%', bottom: '5%',
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '1fr 1fr',
+          gridTemplateColumns: `repeat(${cols}, 1fr)`,
+          gridTemplateRows: `repeat(${rows}, 1fr)`,
           gap: 3,
         }}>
-          {labels.map((label, i) => (
-            <div key={label} style={{
-              background:   tileColors[i],
-              borderRadius: 2,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+          {cells.map((cell, i) => (
+            <div key={cell.label ?? i} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0 4px',
             }}>
-              <span style={{ fontSize: '1cqh', color: '#000', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
-                {label}
+              {cell.label && (
+                <span style={{ fontSize: '0.8cqh', color: r('muted'), fontFamily: 'Space Grotesk, sans-serif' }}>
+                  {cell.label}
+                </span>
+              )}
+              <span style={{ fontSize: '1cqh', color: r('fg'), fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
+                —
               </span>
             </div>
           ))}

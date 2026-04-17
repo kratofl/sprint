@@ -9,6 +9,7 @@ func (incidentsWidget) Meta() WidgetMeta {
 		Type: WidgetIncidents, Label: "Incidents", Category: CategoryRace,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: 2,
+		Header: HeaderConfig{FontScale: 0.18, Align: HAlignCenter},
 		DefaultPanelRules: []ConditionalRule{
 			{Property: "penalties.incidents", Op: RuleOpGT, Threshold: 3, Color: "danger", Alpha: 0.20},
 			{Property: "penalties.incidents", Op: RuleOpGT, Threshold: 0, Color: "warning", Alpha: 0.12},
@@ -18,9 +19,6 @@ func (incidentsWidget) Meta() WidgetMeta {
 
 func (incidentsWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
-		{Kind: ElemText, Text: "INCIDENTS", Font: FontLabel, FontScale: 0.18,
-			Zone: "header", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "penalties.incidents", Format: "int", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill", HAlign: HAlignCenter,
 			Color: ColorExpr{

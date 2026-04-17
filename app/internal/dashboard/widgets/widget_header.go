@@ -9,12 +9,12 @@ func (headerWidget) Meta() WidgetMeta {
 		Type: WidgetHeader, Label: "Header", Category: CategoryLayout,
 		DefaultColSpan: 20, DefaultRowSpan: 2,
 		IdleCapable: true, DefaultUpdateHz: 5,
+		Header: HeaderConfig{Disabled: true},
 	}
 }
 
 func (headerWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "SPRINT", Font: FontLabel, FontScale: 0.35,
 			Zone: "fill", X: 0.03, HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "session.track", Font: FontLabel, FontScale: 0.35,

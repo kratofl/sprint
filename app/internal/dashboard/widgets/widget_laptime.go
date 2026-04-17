@@ -9,14 +9,12 @@ func (lapTimeWidget) Meta() WidgetMeta {
 		Type: WidgetLapTime, Label: "Lap Time", Category: CategoryTiming,
 		DefaultColSpan: 5, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		Header: HeaderConfig{Text: "LAP TIMES", FontScale: 0.1},
 	}
 }
 
 func (lapTimeWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
-		{Kind: ElemText, Text: "LAP TIMES", Font: FontLabel, FontScale: 0.1,
-			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Text: "Current", Font: FontLabel, FontScale: 0.12,
 			Zone: "fill:0", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted2"}},
 		{Kind: ElemText, Binding: "lap.currentLapTime", Format: "lap", Font: FontNumber, FontScale: 0.16,

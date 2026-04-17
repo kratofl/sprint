@@ -15,7 +15,7 @@ func (p *Painter) ensureBg() {
 		return
 	}
 	tmp := gg.NewContext(p.width, p.height)
-	tmp.SetColor(widgets.ColBg)
+	tmp.SetColor(widgets.ColorBackground)
 	tmp.Clear()
 	src := tmp.Image().(*image.RGBA)
 	p.bgImg = image.NewRGBA(src.Rect)
@@ -32,7 +32,7 @@ func (p *Painter) getContext() *gg.Context {
 	if dst, ok := p.ctx.Image().(*image.RGBA); ok && p.bgImg != nil {
 		copy(dst.Pix, p.bgImg.Pix)
 	} else {
-		p.ctx.SetColor(widgets.ColBg)
+		p.ctx.SetColor(widgets.ColorBackground)
 		p.ctx.Clear()
 	}
 	return p.ctx
@@ -40,10 +40,10 @@ func (p *Painter) getContext() *gg.Context {
 
 // painterDrawPanel draws a bordered panel: border ring then background interior.
 func painterDrawPanel(dc *gg.Context, x, y, w, h, r, bw float64) {
-	dc.SetColor(widgets.ColBorder)
+	dc.SetColor(widgets.ColorBorder)
 	dc.DrawRoundedRectangle(x, y, w, h, r)
 	dc.Fill()
-	dc.SetColor(widgets.ColBg)
+	dc.SetColor(widgets.ColorBackground)
 	dc.DrawRoundedRectangle(x+bw, y+bw, w-bw*2, h-bw*2, r)
 	dc.Fill()
 }

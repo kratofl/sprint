@@ -9,12 +9,12 @@ func (gapWidget) Meta() WidgetMeta {
 		Type: WidgetGap, Label: "Gap", Category: CategoryRace,
 		DefaultColSpan: 4, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 15,
+		Header: HeaderConfig{Disabled: true},
 	}
 }
 
 func (gapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemText, Text: "GAP+", Font: FontLabel, FontScale: 0.14,
 			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "race.gapAhead", Format: "gap", Font: FontNumber, FontScale: 0.28,

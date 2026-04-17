@@ -9,12 +9,12 @@ func (flagsWidget) Meta() WidgetMeta {
 		Type: WidgetFlags, Label: "Flags", Category: CategoryRace,
 		DefaultColSpan: 4, DefaultRowSpan: 2,
 		IdleCapable: true, DefaultUpdateHz: 30,
+		Header: HeaderConfig{Disabled: true},
 	}
 }
 
 func (flagsWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemDot, DotX: 0.12, DotY: 0.5, DotR: 0.18,
 			Color: ColorExpr{DynamicRef: "flags.colorRef"}},
 		{Kind: ElemText, Binding: "flags.activeText", Font: FontBold, FontScale: 0.32,

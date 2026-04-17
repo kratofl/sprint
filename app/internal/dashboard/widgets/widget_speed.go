@@ -9,12 +9,12 @@ func (speedWidget) Meta() WidgetMeta {
 		Type: WidgetSpeed, Label: "Speed", Category: CategoryCar,
 		DefaultColSpan: 4, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 30,
+		Header: HeaderConfig{Disabled: true},
 	}
 }
 
 func (speedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemText, Binding: "car.speedMS", Format: "speed", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill:0", HAlign: HAlignCenter, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Text: "km/h", Font: FontLabel, FontScale: 0.18,

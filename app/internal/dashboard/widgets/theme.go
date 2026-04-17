@@ -23,18 +23,18 @@ type DashTheme struct {
 // DefaultTheme returns the default DashTheme matching the Sprint design tokens.
 func DefaultTheme() DashTheme {
 	return DashTheme{
-		Primary: ColAccent,
-		Accent:  ColTeal,
-		Fg:      ColTextPri,
-		Muted:   ColTextMuted,
-		Muted2:  ColTextSec,
-		Success: ColSuccess,
-		Warning: ColWarning,
-		Danger:  ColDanger,
-		Surface: ColSurface,
-		Bg:      ColBg,
-		Border:  ColBorder,
-		RPMRed:  ColRPMRed,
+		Primary: ColorPrimary,
+		Accent:  ColorAccent,
+		Fg:      ColorForeground,
+		Muted:   ColorMuted,
+		Muted2:  ColorSecondary,
+		Success: ColorSuccess,
+		Warning: ColorWarning,
+		Danger:  ColorDanger,
+		Surface: ColorSurface,
+		Bg:      ColorBackground,
+		Border:  ColorBorder,
+		RPMRed:  ColorRPMRed,
 	}
 }
 
@@ -53,12 +53,12 @@ type DomainPalette struct {
 // DefaultDomainPalette returns the built-in domain colour defaults.
 func DefaultDomainPalette() DomainPalette {
 	return DomainPalette{
-		ABS:       ColWarning,
-		TC:        ColTeal,
-		BrakeBias: ColWarning,
-		Energy:    ColSuccess,
-		Motor:     ColAccent,
-		BrakeMig:  ColTeal,
+		ABS:       ColorWarning,
+		TC:        ColorAccent,
+		BrakeBias: ColorWarning,
+		Energy:    ColorSuccess,
+		Motor:     ColorPrimary,
+		BrakeMig:  ColorAccent,
 	}
 }
 

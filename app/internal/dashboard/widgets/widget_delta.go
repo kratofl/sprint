@@ -9,12 +9,12 @@ func (deltaWidget) Meta() WidgetMeta {
 		Type: WidgetDelta, Label: "Delta", Category: CategoryTiming,
 		DefaultColSpan: 4, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: 30,
+		Header: HeaderConfig{Disabled: true},
 	}
 }
 
 func (deltaWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
 		{Kind: ElemCondition, CondBinding: "lap.targetLapTime", CondAbove: 0,
 			Then: []Element{
 				{Kind: ElemText, Text: "DELTA", Font: FontLabel, FontScale: 0.12,

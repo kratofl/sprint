@@ -96,11 +96,11 @@ func (p *Painter) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFrame, w,
 	var flagText string
 	switch {
 	case frame.Flags.Red:
-		flagCol, flagText = widgets.ColDanger, "RED FLAG"
+		flagCol, flagText = widgets.ColorDanger, "RED FLAG"
 	case frame.Flags.SafetyCar:
-		flagCol, flagText = widgets.ColWarning, "SAFETY CAR"
+		flagCol, flagText = widgets.ColorWarning, "SAFETY CAR"
 	default:
-		flagCol, flagText = widgets.ColWarning, "YELLOW FLAG"
+		flagCol, flagText = widgets.ColorWarning, "YELLOW FLAG"
 	}
 	dc.SetRGBA255(int(flagCol.R), int(flagCol.G), int(flagCol.B), 25)
 	dc.DrawRectangle(0, 0, w, h)
@@ -109,6 +109,6 @@ func (p *Painter) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFrame, w,
 	dc.DrawRectangle(0, h-30, w, 30)
 	dc.Fill()
 	p.face(dc, "SpaceGrotesk-Bold.ttf", 14)
-	dc.SetColor(widgets.ColBg)
+	dc.SetColor(widgets.ColorBackground)
 	dc.DrawStringAnchored(flagText, w/2, h-15, 0.5, 0.5)
 }

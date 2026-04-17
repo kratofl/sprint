@@ -18,9 +18,6 @@ func (fuelWidget) Meta() WidgetMeta {
 
 func (fuelWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		{Kind: ElemPanel},
-		{Kind: ElemText, Text: "FUEL", Font: FontLabel, FontScale: 0.12,
-			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
 		{Kind: ElemText, Binding: "car.fuel", Format: "%.1f L", Font: FontNumber, FontScale: 0.32,
 			Zone: "fill", HAlign: HAlignStart, Color: ColorExpr{Ref: "fg"}},
 		{Kind: ElemText, Binding: "car.fuelPerLap", Format: "%.2f L/lap", Font: FontMono, FontScale: 0.16,

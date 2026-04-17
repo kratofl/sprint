@@ -151,15 +151,15 @@ func TestWidgetCatalog(t *testing.T) {
 				t.Errorf("tc widget mode=%q returned no elements", tc.mode)
 				continue
 			}
-			if len(elems) < 3 {
-				t.Errorf("tc widget mode=%q returned %d elements, want >= 3", tc.mode, len(elems))
+			if len(elems) < 2 {
+				t.Errorf("tc widget mode=%q returned %d elements, want >= 2", tc.mode, len(elems))
 				continue
 			}
-			if elems[1].Text != tc.wantLabel {
-				t.Errorf("tc widget mode=%q label = %q, want %q", tc.mode, elems[1].Text, tc.wantLabel)
+			if elems[0].Text != tc.wantLabel {
+				t.Errorf("tc widget mode=%q label = %q, want %q", tc.mode, elems[0].Text, tc.wantLabel)
 			}
-			if elems[2].Binding != tc.wantBinding {
-				t.Errorf("tc widget mode=%q binding = %q, want %q", tc.mode, elems[2].Binding, tc.wantBinding)
+			if elems[1].Binding != tc.wantBinding {
+				t.Errorf("tc widget mode=%q binding = %q, want %q", tc.mode, elems[1].Binding, tc.wantBinding)
 			}
 		}
 	})
