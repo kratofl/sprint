@@ -6,25 +6,46 @@ import (
 	"strings"
 )
 
+// Format is the typed format hint for text elements.
+// Named constants represent prefs-aware formatters; any fmt.Sprintf pattern
+// (containing '%') is also valid as an untyped string literal.
+type Format string
+
+const (
+	FormatLap      Format = "lap"
+	FormatSector   Format = "sector"
+	FormatSpeed    Format = "speed"
+	FormatInt      Format = "int"
+	FormatFloat    Format = "float"
+	FormatFloat1   Format = "float1"
+	FormatFloat2   Format = "float2"
+	FormatBool     Format = "bool"
+	FormatDelta    Format = "delta"
+	FormatGap      Format = "gap"
+	FormatSession  Format = "session"
+	FormatTemp     Format = "temp"
+	FormatPressure Format = "pressure"
+)
+
 // namedFormatters maps format names to formatting functions.
 // Each function receives the raw value and the resolved FormatPreferences so
 // that user-configured units and precision are honoured at render time.
 // When the "format" config key matches one of these names, the corresponding
 // function is used instead of treating the value as an fmt.Sprintf pattern.
-var namedFormatters = map[string]func(any, FormatPreferences) string{
-	"lap":      fmtAnyLap,
-	"sector":   fmtAnySector,
-	"speed":    fmtAnySpeed,
-	"int":      ignorePrefs(fmtAnyInt),
-	"float":    ignorePrefs(fmtAnyFloat2),
-	"float1":   ignorePrefs(fmtAnyFloat1),
-	"float2":   ignorePrefs(fmtAnyFloat2),
-	"bool":     ignorePrefs(fmtAnyBool),
-	"delta":    fmtAnyDelta,
-	"gap":      fmtAnyGap,
-	"session":  ignorePrefs(fmtAnySession),
-	"temp":     fmtAnyTemp,
-	"pressure": fmtAnyPressure,
+var namedFormatters = map[Format]func(any, FormatPreferences) string{
+	FormatLap:      fmtAnyLap,
+	FormatSector:   fmtAnySector,
+	FormatSpeed:    fmtAnySpeed,
+	FormatInt:      ignorePrefs(fmtAnyInt),
+	FormatFloat:    ignorePrefs(fmtAnyFloat2),
+	FormatFloat1:   ignorePrefs(fmtAnyFloat1),
+	FormatFloat2:   ignorePrefs(fmtAnyFloat2),
+	FormatBool:     ignorePrefs(fmtAnyBool),
+	FormatDelta:    fmtAnyDelta,
+	FormatGap:      fmtAnyGap,
+	FormatSession:  ignorePrefs(fmtAnySession),
+	FormatTemp:     fmtAnyTemp,
+	FormatPressure: fmtAnyPressure,
 }
 
 // ignorePrefs wraps a pref-agnostic formatter so it fits the prefs-aware signature.
@@ -36,17 +57,17 @@ func ignorePrefs(fn func(any) string) func(any, FormatPreferences) string {
 // active FormatPreferences.
 //
 // Resolution order:
-//  1. If format is a named formatter key (e.g. "lap", "speed"), apply it with prefs.
+//  1. If format is a named formatter key (e.g. FormatLap, FormatSpeed), apply it with prefs.
 //  2. If format contains a '%', use it as an fmt.Sprintf pattern.
 //  3. If format is empty, fall back to fmt.Sprint(val).
-func FormatValue(val any, format string, prefs FormatPreferences) string {
+func FormatValue(val any, format Format, prefs FormatPreferences) string {
 	prefs = resolvedFormatPreferences(prefs)
 	if format != "" {
 		if fn, ok := namedFormatters[format]; ok {
 			return fn(val, prefs)
 		}
-		if strings.ContainsRune(format, '%') {
-			return fmt.Sprintf(format, val)
+		if strings.ContainsRune(string(format), '%') {
+			return fmt.Sprintf(string(format), val)
 		}
 	}
 	return fmt.Sprint(val)

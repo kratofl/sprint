@@ -19,7 +19,7 @@ Condition{Binding: BindingLapTargetLapTime, Above: 0,
 Then: ElementList{
 Text{Text: "DELTA", Style: TextStyle{
 Font: FontFamilyUI, FontSize: 0.12, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},
-Text{Binding: BindingLapDelta, Format: "delta", Style: TextStyle{
+Text{Binding: BindingLapDelta, Format: FormatDelta, Style: TextStyle{
 Font: FontFamilyMono, FontSize: 0.35, IsBold: true, HAlign: HAlignCenter,
 Color: ColorRefForeground.When(
 WhenActive(BindingLapDeltaPositive, ColorRefDanger),

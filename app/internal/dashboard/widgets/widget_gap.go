@@ -17,11 +17,11 @@ func (gapWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Text{Text: "GAP+", Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.14, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},
-		Text{Binding: BindingRaceGapAhead, Format: "gap", Style: TextStyle{
+		Text{Binding: BindingRaceGapAhead, Format: FormatGap, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.28, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 		Text{Text: "GAP-", Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.14, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},
-		Text{Binding: BindingRaceGapBehind, Format: "gap", Style: TextStyle{
+		Text{Binding: BindingRaceGapBehind, Format: FormatGap, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.28, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 	}
 }

@@ -15,7 +15,7 @@ func (speedWidget) Meta() WidgetMeta {
 
 func (speedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: BindingCarSpeedMS, Format: "speed", Style: TextStyle{
+		Text{Binding: BindingCarSpeedMS, Format: FormatSpeed, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 		Text{Text: "km/h", Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.18, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},

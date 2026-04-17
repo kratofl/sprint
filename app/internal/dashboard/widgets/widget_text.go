@@ -33,7 +33,7 @@ func (textWidget) Definition(config map[string]any) []Element {
 	}
 
 	return []Element{
-		Text{Text: content, Binding: Binding(binding), Format: format, Style: TextStyle{
+		Text{Text: content, Binding: Binding(binding), Format: Format(format), Style: TextStyle{
 			Font: FontFamilyUI, FontSize: fontScale, IsBold: true,
 			HAlign: HAlignCenter, Color: ref.Expr()}},
 	}

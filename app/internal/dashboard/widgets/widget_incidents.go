@@ -19,7 +19,7 @@ func (incidentsWidget) Meta() WidgetMeta {
 
 func (incidentsWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: BindingPenaltiesIncidents, Format: "int", Style: TextStyle{
+		Text{Binding: BindingPenaltiesIncidents, Format: FormatInt, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
 			Color: ColorRefSuccess.When(
 				WhenAbove(BindingPenaltiesIncidents, 3, ColorRefDanger),

@@ -48,7 +48,7 @@ func (tcWidget) Definition(config map[string]any) []Element {
 	return []Element{
 		Text{Text: label, Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.18, HAlign: HAlignStart, Color: ColorRefMuted.Expr()}},
-		Text{Binding: binding, Format: "int", Style: TextStyle{
+		Text{Binding: binding, Format: FormatInt, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: col}},
 	}
 }

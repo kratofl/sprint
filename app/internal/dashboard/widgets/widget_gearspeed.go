@@ -17,7 +17,7 @@ func (gearSpeedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Text{Binding: BindingCarGearStr, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.68, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
-		Text{Binding: BindingCarSpeedMS, Format: "speed", Style: TextStyle{
+		Text{Binding: BindingCarSpeedMS, Format: FormatSpeed, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.19, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
 		Text{Text: "km/h", Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.08, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},

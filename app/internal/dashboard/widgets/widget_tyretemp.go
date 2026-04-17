@@ -16,10 +16,10 @@ func (tyreTempWidget) Meta() WidgetMeta {
 func (tyreTempWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Grid{Rows: 2, Cols: 2, Gap: 0.04, Cells: []GridCell{
-			{Label: "FL", Binding: BindingTiresFLAvgTemp, Format: "temp", ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
-			{Label: "FR", Binding: BindingTiresFRAvgTemp, Format: "temp", ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
-			{Label: "RL", Binding: BindingTiresRLAvgTemp, Format: "temp", ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
-			{Label: "RR", Binding: BindingTiresRRAvgTemp, Format: "temp", ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
+			{Label: "FL", Binding: BindingTiresFLAvgTemp, Format: FormatTemp, ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
+			{Label: "FR", Binding: BindingTiresFRAvgTemp, Format: FormatTemp, ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
+			{Label: "RL", Binding: BindingTiresRLAvgTemp, Format: FormatTemp, ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
+			{Label: "RR", Binding: BindingTiresRRAvgTemp, Format: FormatTemp, ColorFn: "tyre_temp", LabelColor: ColorRefMuted.Expr()},
 		}},
 	}
 }

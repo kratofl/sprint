@@ -45,7 +45,7 @@ return marshalWithKind(ElemPanel, alias(v))
 type Text struct {
 Text    string    `json:"text,omitempty"`
 Binding Binding   `json:"binding,omitempty"`
-Format  string    `json:"format,omitempty"`
+Format  Format    `json:"format,omitempty"`
 Style   TextStyle `json:"style,omitempty"`
 }
 
@@ -164,7 +164,7 @@ Text       string    `json:"text,omitempty"`
 Style      TextStyle `json:"style,omitempty"`
 Label      string    `json:"label,omitempty"`
 Binding    Binding   `json:"binding,omitempty"`
-Format     string    `json:"format,omitempty"`
+Format     Format    `json:"format,omitempty"`
 Color      ColorExpr `json:"color,omitempty"`
 LabelColor ColorExpr `json:"labelColor,omitempty"`
 ColorFn    string    `json:"colorFn,omitempty"`

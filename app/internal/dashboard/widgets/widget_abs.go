@@ -19,7 +19,7 @@ func (absWidget) Meta() WidgetMeta {
 
 func (absWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: BindingElectronicsABS, Format: "int", Style: TextStyle{
+		Text{Binding: BindingElectronicsABS, Format: FormatInt, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
 			Color: ColorRefForeground.When(WhenActive(BindingElectronicsABSActive, ColorRefWarning))}},
 	}
