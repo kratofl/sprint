@@ -1,4 +1,4 @@
-package widgets
+﻿package widgets
 
 const WidgetRPM WidgetType = "rpm"
 
@@ -6,10 +6,10 @@ type rpmWidget struct{}
 
 func (rpmWidget) Meta() WidgetMeta {
 	return WidgetMeta{
-		Type: WidgetRPM, Label: "RPM", Category: CategoryCar,
+		Type: WidgetRPM, Name: "RPM", Category: CategoryCar,
 		DefaultColSpan: 2, DefaultRowSpan: 1,
-		IdleCapable: false, DefaultUpdateHz: 30,
-		Header: HeaderConfig{FontScale: 0.18, Align: HAlignCenter},
+		IdleCapable: false, DefaultUpdateHz: Hz30,
+		Label: LabelConfig{FontScale: 0.18, Align: HAlignCenter},
 	}
 }
 
@@ -17,7 +17,7 @@ func (rpmWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		{Kind: ElemText, Binding: "car.rpm", Format: "%.0f", Font: FontNumber, FontScale: 0.45,
 			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorExpr{Ref: "fg", When: []ColorWhen{{Binding: "car.rpmRedlineWarning", Ref: "warning"}}}},
+			Color: ColorRefForeground.When(WhenActive("car.rpmRedlineWarning", ColorRefWarning))},
 	}
 }
 

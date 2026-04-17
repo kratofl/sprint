@@ -283,7 +283,7 @@ export interface GridCell {
 
 export interface WidgetCatalogEntry {
   type: string
-  label: string
+  name: string
   category: string
   categoryLabel: string
   configDefs?: ConfigDef[]
@@ -291,7 +291,7 @@ export interface WidgetCatalogEntry {
   defaultRowSpan: number
   idleCapable: boolean
   panel?: PanelConfig
-  header?: HeaderConfig
+  label?: LabelConfig
   defaultPanelRules?: ConditionalRule[]
   defaultDefinition?: WidgetElement[]
 }
@@ -302,11 +302,12 @@ export interface PanelConfig {
   noBorder?: boolean
 }
 
-export interface HeaderConfig {
+export interface LabelConfig {
   disabled?:  boolean
   text?:      string
   align?:     HAlign
   fontScale?: number
+  vAlign?:    VAlign
 }
 
 // Helper: does this device have a screen?
@@ -706,7 +707,7 @@ export const widgetCatalogAPI = {
       const e = r as Record<string, unknown>
       return {
         type:           String(e.type          ?? ''),
-        label:          String(e.label         ?? ''),
+        name:           String(e.name          ?? ''),
         category:       String(e.category      ?? ''),
         categoryLabel:  String(e.categoryLabel ?? e.CategoryLabel ?? e.category ?? ''),
         configDefs:     Array.isArray(e.configDefs ?? e.ConfigDefs)

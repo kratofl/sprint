@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Badge, Button, PageHeader,
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
@@ -567,7 +567,7 @@ function WidgetList({
   onDragStart,
   onDragEnd,
 }: {
-  widgets: ReadonlyArray<{ type: string; label: string }>
+  widgets: ReadonlyArray<{ type: string; name: string }>
   onDragStart?: (type: string) => void
   onDragEnd?: () => void
 }) {
@@ -597,7 +597,7 @@ function WidgetList({
                 )}
               >
                 <WidgetDragIcon />
-                {w.label}
+                {w.name}
               </div>
             </TooltipTrigger>
             <TooltipContent>Drag onto canvas to add</TooltipContent>

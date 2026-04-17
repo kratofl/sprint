@@ -67,6 +67,16 @@ const (
 	CategoryRace   Category = "race"
 )
 
+// Standard update rates for DefaultUpdateHz.
+const (
+	Hz1  float64 = 1
+	Hz2  float64 = 2
+	Hz5  float64 = 5
+	Hz10 float64 = 10
+	Hz15 float64 = 15
+	Hz30 float64 = 30
+)
+
 // categoryLabels maps canonical category IDs to display labels.
 var categoryLabels = map[Category]string{
 	CategoryLayout: "Layout",
@@ -83,24 +93,25 @@ type PanelConfig struct {
 	NoBorder bool    `json:"noBorder,omitempty"` // true = fill only, no border ring
 }
 
-// HeaderConfig controls the automatic header label drawn by the painter.
-// Zero value = header auto-generated from UPPER(Meta.Label) with default styling.
-type HeaderConfig struct {
-	Disabled  bool    `json:"disabled,omitempty"`  // true = no auto-header
-	Text      string  `json:"text,omitempty"`      // override label text (default: UPPER(Meta.Label))
-	Align     HAlign  `json:"align,omitempty"`     // header alignment (default: HAlignStart)
-	FontScale float64 `json:"fontScale,omitempty"` // header font scale (default: 0.12)
+// LabelConfig controls the automatic label drawn by the painter.
+// Zero value = label auto-generated from UPPER(Meta.Name) at the top, default styling.
+type LabelConfig struct {
+	Disabled  bool    `json:"disabled,omitempty"`   // true = no auto-label
+	Text      string  `json:"text,omitempty"`       // override label text (default: UPPER(Meta.Name))
+	Align     HAlign  `json:"align,omitempty"`      // label alignment (default: HAlignStart)
+	FontScale float64 `json:"fontScale,omitempty"`  // label font scale (default: 0.12)
+	VAlign    VAlign  `json:"vAlign,omitempty"`     // VAlignStart = top (default), VAlignEnd = bottom
 }
 
 // WidgetMeta holds the widget type, display name, palette category,
 // config schema, and default grid dimensions.
 type WidgetMeta struct {
 	Type              WidgetType        `json:"type"`
-	Label             string            `json:"label"`
+	Name              string            `json:"name"`
 	Category          Category          `json:"category"`
 	CategoryLabel     string            `json:"categoryLabel"`
 	Panel             PanelConfig       `json:"panel,omitempty"`
-	Header            HeaderConfig      `json:"header,omitempty"`
+	Label             LabelConfig       `json:"label,omitempty"`
 	ConfigDefs        []ConfigDef       `json:"configDefs,omitempty"`
 	DefaultColSpan    int               `json:"defaultColSpan"`
 	DefaultRowSpan    int               `json:"defaultRowSpan"`
@@ -137,31 +148,35 @@ func Register(w Widget) {
 		panel := Element{Kind: ElemPanel, CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
 		def = append([]Element{panel}, def...)
 	}
-	if !m.Header.Disabled {
-		text := m.Header.Text
+	if !m.Label.Disabled {
+		text := m.Label.Text
 		if text == "" {
-			text = strings.ToUpper(m.Label)
+			text = strings.ToUpper(m.Name)
 		}
-		align := m.Header.Align
-		fontScale := m.Header.FontScale
+		align := m.Label.Align
+		fontScale := m.Label.FontScale
 		if fontScale == 0 {
 			fontScale = 0.12
 		}
-		header := Element{
+		zone := "header"
+		if m.Label.VAlign == VAlignEnd {
+			zone = "footer"
+		}
+		lbl := Element{
 			Kind:      ElemText,
-			Zone:      "header",
+			Zone:      zone,
 			Text:      text,
 			Font:      FontLabel,
 			FontScale: fontScale,
 			HAlign:    align,
-			Color:     ColorExpr{Ref: ColorRefMuted},
+			Color:     ColorRefMuted.Expr(),
 		}
-		// Insert header after panel (if present) or at the start.
+		// Insert label after panel (if present) or at the start.
 		insertAt := 0
 		if !m.Panel.Disabled {
 			insertAt = 1
 		}
-		def = append(def[:insertAt], append([]Element{header}, def[insertAt:]...)...)
+		def = append(def[:insertAt], append([]Element{lbl}, def[insertAt:]...)...)
 	}
 	m.DefaultDefinition = def
 	widgetRegistry[m.Type] = w

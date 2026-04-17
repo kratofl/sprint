@@ -1,4 +1,4 @@
-package widgets
+﻿package widgets
 
 const WidgetText WidgetType = "text"
 
@@ -6,10 +6,10 @@ type textWidget struct{}
 
 func (textWidget) Meta() WidgetMeta {
 	return WidgetMeta{
-		Type: WidgetText, Label: "Text", Category: CategoryLayout,
+		Type: WidgetText, Name: "Text", Category: CategoryLayout,
 		DefaultColSpan: 4, DefaultRowSpan: 2,
-		IdleCapable: true, DefaultUpdateHz: 5,
-		Header: HeaderConfig{Disabled: true},
+		IdleCapable: true, DefaultUpdateHz: Hz5,
+		Label: LabelConfig{Disabled: true},
 		ConfigDefs: []ConfigDef{
 			{Key: "content", Label: "Static Text", Type: "text", Default: "Sprint"},
 			{Key: "binding", Label: "Data Binding", Type: "text", Default: ""},
@@ -36,7 +36,7 @@ func (textWidget) Definition(config map[string]any) []Element {
 		{Kind: ElemText, Text: content, Binding: binding, Format: format,
 			Font: FontBold, FontScale: fontScale,
 			Zone: "fill", HAlign: HAlignCenter,
-			Color: ColorExpr{Ref: ref}},
+			Color: ref.Expr()},
 	}
 }
 

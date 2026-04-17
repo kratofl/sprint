@@ -1,4 +1,4 @@
-package widgets
+﻿package widgets
 
 import (
 	"testing"
@@ -73,10 +73,10 @@ func TestWidgetCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("all widgets have non-empty label and category", func(t *testing.T) {
+	t.Run("all widgets have non-empty name and category", func(t *testing.T) {
 		for _, m := range catalog {
-			if m.Label == "" {
-				t.Errorf("widget %q has empty label", m.Type)
+			if m.Name == "" {
+				t.Errorf("widget %q has empty name", m.Type)
 			}
 			if m.Category == "" {
 				t.Errorf("widget %q has empty category", m.Type)

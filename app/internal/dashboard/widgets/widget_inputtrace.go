@@ -1,4 +1,4 @@
-package widgets
+﻿package widgets
 
 const WidgetInputTrace WidgetType = "input_trace"
 
@@ -6,10 +6,10 @@ type inputTraceWidget struct{}
 
 func (inputTraceWidget) Meta() WidgetMeta {
 	return WidgetMeta{
-		Type: WidgetInputTrace, Label: "Inputs", Category: CategoryCar,
+		Type: WidgetInputTrace, Name: "Inputs", Category: CategoryCar,
 		DefaultColSpan: 6, DefaultRowSpan: 3,
-		IdleCapable: false, DefaultUpdateHz: 30,
-		Header: HeaderConfig{FontScale: 0.08},
+		IdleCapable: false, DefaultUpdateHz: Hz30,
+		Label: LabelConfig{FontScale: 0.08},
 	}
 }
 
@@ -32,10 +32,10 @@ func (inputTraceWidget) Definition(_ map[string]any) []Element {
 		cy := 0.125 + float64(i)*0.25
 		elems = append(elems,
 			Element{Kind: ElemText, Text: r.label, Font: FontLabel, FontScale: 0.09,
-				X: 0.2, Y: cy, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorExpr{Ref: "muted"}},
+				X: 0.2, Y: cy, HAlign: HAlignEnd, VAlign: VAlignCenter, Color: ColorRefMuted.Expr()},
 			Element{Kind: ElemHBar, BarBinding: r.binding,
 				BarX: barX, BarY: cy - barH/2, BarW: barW, BarH: barH,
-				BarCentered: r.centered, BarColor: ColorExpr{Ref: r.color}},
+				BarCentered: r.centered, BarColor: r.color.Expr()},
 		)
 	}
 	return elems

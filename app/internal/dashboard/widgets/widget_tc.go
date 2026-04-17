@@ -1,4 +1,4 @@
-package widgets
+﻿package widgets
 
 const WidgetTC WidgetType = "tc"
 
@@ -6,10 +6,10 @@ type tcWidget struct{}
 
 func (tcWidget) Meta() WidgetMeta {
 	return WidgetMeta{
-		Type: WidgetTC, Label: "Traction Control", Category: CategoryCar,
+		Type: WidgetTC, Name: "Traction Control", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
-		IdleCapable: false, DefaultUpdateHz: 15,
-		Header: HeaderConfig{Disabled: true},
+		IdleCapable: false, DefaultUpdateHz: Hz15,
+		Label: LabelConfig{Disabled: true},
 		CapabilityBinding: "electronics.tcAvailable",
 		ConfigDefs: []ConfigDef{{
 			Key:   "tcMode",
@@ -39,15 +39,15 @@ func (tcWidget) Definition(config map[string]any) []Element {
 	default:
 		binding, label, activeBinding = "electronics.tc", "TC1", "electronics.tcActive"
 	}
-	col := ColorExpr{Ref: "fg"}
+	col := ColorRefForeground.Expr()
 	if activeBinding != "" {
-		col.When = []ColorWhen{{Binding: activeBinding, Ref: "accent"}}
+		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefAccent))
 	}
 	return []Element{
 		{Kind: ElemText, Text: label, Font: FontLabel, FontScale: 0.18,
-			Zone: "header", HAlign: HAlignStart, Color: ColorExpr{Ref: "muted"}},
+			Zone: "header", HAlign: HAlignStart, Color: ColorRefMuted.Expr()},
 		{Kind: ElemText, Binding: binding, Format: "int", Font: FontNumber, FontScale: 0.45,
-			Zone: "fill", HAlign: HAlignCenter, Color: ColorExpr{Ref: ColorRefTC}},
+			Zone: "fill", HAlign: HAlignCenter, Color: col},
 	}
 }
 

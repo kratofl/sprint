@@ -102,6 +102,32 @@ type ColorExpr struct {
 	When       []ColorWhen `json:"when,omitempty"`
 }
 
+// Expr returns a simple static ColorExpr using this ref.
+func (r ColorRef) Expr() ColorExpr { return ColorExpr{Ref: r} }
+
+// When returns a conditional ColorExpr using this ref as the fallback color.
+func (r ColorRef) When(conds ...ColorWhen) ColorExpr { return ColorExpr{Ref: r, When: conds} }
+
+// ColorDynamic returns a ColorExpr whose color is resolved dynamically at render
+// time via the named binding path (e.g. "flags.colorRef").
+func ColorDynamic(dynamicRef string) ColorExpr { return ColorExpr{DynamicRef: dynamicRef} }
+
+// WhenActive returns a ColorWhen that matches when the binding value is truthy (> 0).
+func WhenActive(binding string, ref ColorRef) ColorWhen {
+	return ColorWhen{Binding: binding, Ref: ref}
+}
+
+// WhenAbove returns a ColorWhen that matches when the binding value is above the threshold.
+func WhenAbove(binding string, above float64, ref ColorRef) ColorWhen {
+	return ColorWhen{Binding: binding, Above: above, Ref: ref}
+}
+
+// WhenEquals returns a ColorWhen that matches when the binding value equals val exactly.
+func WhenEquals(binding string, val float64, ref ColorRef) ColorWhen {
+	v := val
+	return ColorWhen{Binding: binding, Equals: &v, Ref: ref}
+}
+
 // RuleOp is the comparison operator in a ConditionalRule.
 type RuleOp string
 

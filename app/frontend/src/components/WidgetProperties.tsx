@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+﻿import { useCallback, useRef } from 'react'
 import { cn } from '@sprint/ui'
 import type { DashWidget, WidgetCatalogEntry, ConfigDef, FontStyle, RGBAColor, WidgetStyle } from '../lib/dash'
 import { rgbaToHex, hexToRgba } from '@/lib/color'
@@ -48,7 +48,7 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
   return (
     <div className="flex flex-col gap-0 overflow-y-auto">
       <div className="border-b border-border px-4 py-3">
-        <p className="font-mono text-[10px] font-bold text-foreground uppercase tracking-wider">{meta?.label ?? widget.type}</p>
+        <p className="font-mono text-[10px] font-bold text-foreground uppercase tracking-wider">{meta?.name ?? widget.type}</p>
         <p className="font-mono text-[9px] text-text-muted mt-0.5">
           {widget.col},{widget.row} · {widget.colSpan}×{widget.rowSpan}
         </p>

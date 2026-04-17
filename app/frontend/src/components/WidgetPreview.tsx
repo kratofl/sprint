@@ -494,7 +494,7 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
         <div className="absolute inset-0 flex items-center justify-center"
           style={{ background: resolveRef('surface', theme, domainPalette, widgetStyle) }}>
           <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette, widgetStyle), fontFamily: 'JetBrains Mono, monospace' }}>
-            {entry?.label ?? widget.type}
+            {entry?.name ?? widget.type}
           </span>
         </div>
       )}

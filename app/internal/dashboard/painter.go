@@ -1,4 +1,4 @@
-// Package dashboard paints dashboard images from telemetry data.
+﻿// Package dashboard paints dashboard images from telemetry data.
 // It has no hardware dependency — callers receive an image.Image and decide
 // how to deliver it (USB, file, test comparison, etc.).
 package dashboard
@@ -223,13 +223,13 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	}
 
 	// Auto-prepend header element from meta unless disabled.
-	if !meta.Header.Disabled {
-		text := meta.Header.Text
+	if !meta.Label.Disabled {
+		text := meta.Label.Text
 		if text == "" {
-			text = strings.ToUpper(meta.Label)
+			text = strings.ToUpper(meta.Name)
 		}
-		align := meta.Header.Align
-		fontScale := meta.Header.FontScale
+		align := meta.Label.Align
+		fontScale := meta.Label.FontScale
 		if fontScale == 0 {
 			fontScale = 0.12
 		}
@@ -240,7 +240,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 			Font:      widgets.FontLabel,
 			FontScale: fontScale,
 			HAlign:    align,
-			Color:     widgets.ColorExpr{Ref: widgets.ColorRefMuted},
+			Color:     widgets.ColorRefMuted.Expr(),
 		}
 		insertAt := 0
 		if !meta.Panel.Disabled {
@@ -263,12 +263,12 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 				}
 				naElems := []widgets.Element{
 					{Kind: widgets.ElemPanel},
-					{Kind: widgets.ElemText, Text: strings.ToUpper(meta.Label), Font: widgets.FontLabel, FontScale: 0.18,
+					{Kind: widgets.ElemText, Text: strings.ToUpper(meta.Name), Font: widgets.FontLabel, FontScale: 0.18,
 						Zone: "header", HAlign: naHeaderAlign, VAlign: widgets.VAlignCenter,
-						Color: widgets.ColorExpr{Ref: widgets.ColorRefMuted}},
+						Color: widgets.ColorRefMuted.Expr()},
 					{Kind: widgets.ElemText, Text: "—", Font: widgets.FontNumber, FontScale: 0.45,
 						Zone: "fill", HAlign: widgets.HAlignCenter, VAlign: widgets.VAlignCenter,
-						Color: widgets.ColorExpr{Ref: widgets.ColorRefMuted}},
+						Color: widgets.ColorRefMuted.Expr()},
 				}
 				cache.ctx.SetColor(widgets.ColorBackground)
 				cache.ctx.Clear()
