@@ -140,16 +140,16 @@ func (a *App) DeviceSetScreenRotation(vid, pid uint16, serial string, rotation i
 	return nil
 }
 
-// DeviceSetScreenOffset updates the pixel offset for the given device and
+// DeviceSetScreenOffset updates the pixel placement for the given device and
 // hot-reloads the renderer. offsetX/offsetY shift the content from the
-// left/top edge of the screen respectively.
-func (a *App) DeviceSetScreenOffset(vid, pid uint16, serial string, offsetX, offsetY int) error {
+// left/top edge of the screen respectively, while margin adds a uniform inset.
+func (a *App) DeviceSetScreenOffset(vid, pid uint16, serial string, offsetX, offsetY, margin int) error {
 	reg, err := a.devMgr.Load()
 	if err != nil {
 		return fmt.Errorf("DeviceSetScreenOffset: load: %w", err)
 	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetScreenOffset(reg, id, offsetX, offsetY); err != nil {
+	if err := devices.SetScreenOffset(reg, id, offsetX, offsetY, margin); err != nil {
 		return fmt.Errorf("DeviceSetScreenOffset: %w", err)
 	}
 	if err := a.devMgr.Save(reg); err != nil {

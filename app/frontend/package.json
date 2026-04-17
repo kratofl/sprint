@@ -4,9 +4,12 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "predev": "pnpm --filter @sprint/ui... build",
     "dev": "vite",
+    "prebuild": "pnpm --filter @sprint/ui... build",
     "build": "tsc -b && vite build",
     "lint": "eslint src --ext ts,tsx",
+    "pretype-check": "pnpm --filter @sprint/ui... build",
     "type-check": "tsc --noEmit",
     "preview": "vite preview"
   },

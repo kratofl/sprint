@@ -330,6 +330,7 @@ export namespace devices {
 	    rotation: number;
 	    offset_x?: number;
 	    offset_y?: number;
+	    margin?: number;
 	    driver: string;
 	    purpose?: string;
 	    bindings?: DeviceBinding[];
@@ -351,6 +352,7 @@ export namespace devices {
 	        this.rotation = source["rotation"];
 	        this.offset_x = source["offset_x"];
 	        this.offset_y = source["offset_y"];
+	        this.margin = source["margin"];
 	        this.driver = source["driver"];
 	        this.purpose = source["purpose"];
 	        this.bindings = this.convertValues(source["bindings"], DeviceBinding);
@@ -411,6 +413,7 @@ export namespace devices {
 	    target_fps?: number;
 	    offset_x?: number;
 	    offset_y?: number;
+	    margin?: number;
 	    driver: string;
 	    dash_id?: string;
 	    purpose?: string;
@@ -435,6 +438,7 @@ export namespace devices {
 	        this.target_fps = source["target_fps"];
 	        this.offset_x = source["offset_x"];
 	        this.offset_y = source["offset_y"];
+	        this.margin = source["margin"];
 	        this.driver = source["driver"];
 	        this.dash_id = source["dash_id"];
 	        this.purpose = source["purpose"];
@@ -554,59 +558,6 @@ export namespace updater {
 }
 
 export namespace widgets {
-	
-	export class ColorWhen {
-	    binding: string;
-	    above?: number;
-	    equals?: number;
-	    ref: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ColorWhen(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.binding = source["binding"];
-	        this.above = source["above"];
-	        this.equals = source["equals"];
-	        this.ref = source["ref"];
-	    }
-	}
-	export class ColorExpr {
-	    ref?: string;
-	    dynamicRef?: string;
-	    when?: ColorWhen[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ColorExpr(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.ref = source["ref"];
-	        this.dynamicRef = source["dynamicRef"];
-	        this.when = this.convertValues(source["when"], ColorWhen);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	
 	export class ConditionalRule {
 	    property: string;
@@ -772,122 +723,6 @@ export namespace widgets {
 		    return a;
 		}
 	}
-	export class SegColorStop {
-	    at: number;
-	    color: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SegColorStop(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.at = source["at"];
-	        this.color = source["color"];
-	    }
-	}
-	export class Element {
-	    kind: string;
-	    cornerR?: number;
-	    fillColor?: string;
-	    fillAlpha?: number;
-	    noBorder?: boolean;
-	    text?: string;
-	    binding?: string;
-	    format?: string;
-	    font?: string;
-	    fontScale?: number;
-	    zone?: string;
-	    x?: number;
-	    y?: number;
-	    hAlign?: number;
-	    vAlign?: number;
-	    color?: ColorExpr;
-	    dotX?: number;
-	    dotY?: number;
-	    dotR?: number;
-	    barBinding?: string;
-	    barX?: number;
-	    barY?: number;
-	    barW?: number;
-	    barH?: number;
-	    barCentered?: boolean;
-	    barColor?: ColorExpr;
-	    bgColor?: string;
-	    maxDelta?: number;
-	    posColor?: ColorExpr;
-	    negColor?: ColorExpr;
-	    segBinding?: string;
-	    segments?: number;
-	    segStops?: SegColorStop[];
-	    condBinding?: string;
-	    condAbove?: number;
-	    then?: Element[];
-	    else?: Element[];
-	
-	    static createFrom(source: any = {}) {
-	        return new Element(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.kind = source["kind"];
-	        this.cornerR = source["cornerR"];
-	        this.fillColor = source["fillColor"];
-	        this.fillAlpha = source["fillAlpha"];
-	        this.noBorder = source["noBorder"];
-	        this.text = source["text"];
-	        this.binding = source["binding"];
-	        this.format = source["format"];
-	        this.font = source["font"];
-	        this.fontScale = source["fontScale"];
-	        this.zone = source["zone"];
-	        this.x = source["x"];
-	        this.y = source["y"];
-	        this.hAlign = source["hAlign"];
-	        this.vAlign = source["vAlign"];
-	        this.color = this.convertValues(source["color"], ColorExpr);
-	        this.dotX = source["dotX"];
-	        this.dotY = source["dotY"];
-	        this.dotR = source["dotR"];
-	        this.barBinding = source["barBinding"];
-	        this.barX = source["barX"];
-	        this.barY = source["barY"];
-	        this.barW = source["barW"];
-	        this.barH = source["barH"];
-	        this.barCentered = source["barCentered"];
-	        this.barColor = this.convertValues(source["barColor"], ColorExpr);
-	        this.bgColor = source["bgColor"];
-	        this.maxDelta = source["maxDelta"];
-	        this.posColor = this.convertValues(source["posColor"], ColorExpr);
-	        this.negColor = this.convertValues(source["negColor"], ColorExpr);
-	        this.segBinding = source["segBinding"];
-	        this.segments = source["segments"];
-	        this.segStops = this.convertValues(source["segStops"], SegColorStop);
-	        this.condBinding = source["condBinding"];
-	        this.condAbove = source["condAbove"];
-	        this.then = this.convertValues(source["then"], Element);
-	        this.else = this.convertValues(source["else"], Element);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class FormatPreferences {
 	    lapFormat?: string;
 	    speedUnit?: string;
@@ -908,20 +743,57 @@ export namespace widgets {
 	        this.deltaPrecision = source["deltaPrecision"];
 	    }
 	}
+	export class LabelConfig {
+	    hidden?: boolean;
+	    text?: string;
+	    align?: number;
+	    fontScale?: number;
+	    vAlign?: number;
 	
+	    static createFrom(source: any = {}) {
+	        return new LabelConfig(source);
+	    }
 	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hidden = source["hidden"];
+	        this.text = source["text"];
+	        this.align = source["align"];
+	        this.fontScale = source["fontScale"];
+	        this.vAlign = source["vAlign"];
+	    }
+	}
+	
+	export class PanelConfig {
+	    disabled?: boolean;
+	    cornerR?: number;
+	    noBorder?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PanelConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.disabled = source["disabled"];
+	        this.cornerR = source["cornerR"];
+	        this.noBorder = source["noBorder"];
+	    }
+	}
 	export class WidgetMeta {
 	    type: string;
-	    label: string;
+	    name: string;
 	    category: string;
 	    categoryLabel: string;
+	    panel?: PanelConfig;
+	    label?: LabelConfig;
 	    configDefs?: ConfigDef[];
 	    defaultColSpan: number;
 	    defaultRowSpan: number;
 	    idleCapable: boolean;
 	    defaultUpdateHz: number;
 	    defaultPanelRules?: ConditionalRule[];
-	    defaultDefinition?: Element[];
+	    defaultDefinition?: any[];
 	    capabilityBinding?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -931,16 +803,18 @@ export namespace widgets {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.type = source["type"];
-	        this.label = source["label"];
+	        this.name = source["name"];
 	        this.category = source["category"];
 	        this.categoryLabel = source["categoryLabel"];
+	        this.panel = this.convertValues(source["panel"], PanelConfig);
+	        this.label = this.convertValues(source["label"], LabelConfig);
 	        this.configDefs = this.convertValues(source["configDefs"], ConfigDef);
 	        this.defaultColSpan = source["defaultColSpan"];
 	        this.defaultRowSpan = source["defaultRowSpan"];
 	        this.idleCapable = source["idleCapable"];
 	        this.defaultUpdateHz = source["defaultUpdateHz"];
 	        this.defaultPanelRules = this.convertValues(source["defaultPanelRules"], ConditionalRule);
-	        this.defaultDefinition = this.convertValues(source["defaultDefinition"], Element);
+	        this.defaultDefinition = source["defaultDefinition"];
 	        this.capabilityBinding = source["capabilityBinding"];
 	    }
 	

@@ -1,4 +1,4 @@
-﻿package widgets
+package widgets
 
 const WidgetTC WidgetType = "tc"
 
@@ -9,7 +9,7 @@ func (tcWidget) Meta() WidgetMeta {
 		Type: WidgetTC, Name: "Traction Control", Category: CategoryCar,
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: Hz15,
-		Label: LabelConfig{Hidden: true},
+		Label:             LabelConfig{Hidden: true},
 		CapabilityBinding: BindingElectronicsTCAvailable,
 		ConfigDefs: []ConfigDef{{
 			Key:   "tcMode",
@@ -43,7 +43,7 @@ func (tcWidget) Definition(config map[string]any) []Element {
 	}
 	col := ColorRefForeground.Expr()
 	if activeBinding != "" {
-		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefAccent))
+		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefTC))
 	}
 	return []Element{
 		Text{Text: label, Style: TextStyle{

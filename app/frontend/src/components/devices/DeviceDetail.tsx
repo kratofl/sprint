@@ -57,6 +57,7 @@ export function DeviceDetail({
   const [rotation, setRotation] = useState<Rotation>(device.rotation as Rotation)
   const [offsetX, setOffsetX] = useState(device.offsetX ?? 0)
   const [offsetY, setOffsetY] = useState(device.offsetY ?? 0)
+  const [margin, setMargin] = useState(device.margin ?? 0)
   const [dashId, setDashId] = useState(device.dashId)
   const [savingDash, setSavingDash] = useState(false)
   const [purpose, setPurpose] = useState<DevicePurpose>(device.purpose ?? 'dash')
@@ -71,6 +72,7 @@ export function DeviceDetail({
     setRotation(device.rotation as Rotation)
     setOffsetX(device.offsetX ?? 0)
     setOffsetY(device.offsetY ?? 0)
+    setMargin(device.margin ?? 0)
     setDashId(device.dashId)
     setPurpose(device.purpose ?? 'dash')
     setRenaming(false)
@@ -107,17 +109,20 @@ export function DeviceDetail({
     }
   }
 
-  const handleOffsetChange = async (axis: 'x' | 'y', value: number) => {
-    const nextX = axis === 'x' ? value : offsetX
-    const nextY = axis === 'y' ? value : offsetY
-    if (axis === 'x') setOffsetX(nextX)
-    else setOffsetY(nextY)
+  const handleOffsetChange = async (field: 'x' | 'y' | 'margin', value: number) => {
+    const nextX = field === 'x' ? value : offsetX
+    const nextY = field === 'y' ? value : offsetY
+    const nextMargin = field === 'margin' ? value : margin
+    if (field === 'x') setOffsetX(nextX)
+    else if (field === 'y') setOffsetY(nextY)
+    else setMargin(nextMargin)
     try {
-      await deviceAPI.setScreenOffset(device.vid, device.pid, device.serial, nextX, nextY)
+      await deviceAPI.setScreenOffset(device.vid, device.pid, device.serial, nextX, nextY, nextMargin)
     } catch (error) {
       onError(String(error))
-      if (axis === 'x') setOffsetX(device.offsetX ?? 0)
-      else setOffsetY(device.offsetY ?? 0)
+      if (field === 'x') setOffsetX(device.offsetX ?? 0)
+      else if (field === 'y') setOffsetY(device.offsetY ?? 0)
+      else setMargin(device.margin ?? 0)
     }
   }
 
@@ -316,8 +321,8 @@ export function DeviceDetail({
           </div>
 
           <div className="space-y-1.5">
-            <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_OFFSET (px)</p>
-            <div className="flex items-center gap-3">
+            <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_POSITION (px)</p>
+            <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-1.5">
                 <span className="font-mono text-[9px] text-text-muted">LEFT</span>
                 <input
@@ -337,6 +342,17 @@ export function DeviceDetail({
                   max={512}
                   value={offsetY}
                   onChange={event => handleOffsetChange('y', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </label>
+              <label className="flex items-center gap-1.5">
+                <span className="font-mono text-[9px] text-text-muted">MARGIN</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={512}
+                  value={margin}
+                  onChange={event => handleOffsetChange('margin', Math.max(0, parseInt(event.target.value, 10) || 0))}
                   className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </label>

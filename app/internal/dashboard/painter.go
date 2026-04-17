@@ -1,4 +1,4 @@
-﻿// Package dashboard paints dashboard images from telemetry data.
+// Package dashboard paints dashboard images from telemetry data.
 // It has no hardware dependency — callers receive an image.Image and decide
 // how to deliver it (USB, file, test comparison, etc.).
 package dashboard
@@ -222,26 +222,6 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		elems = append([]widgets.Element{panel}, elems...)
 	}
 
-	// Render header label directly at a fixed top position (not auto-stacked with content).
-	if !meta.Label.Hidden {
-		text := meta.Label.Text
-		if text == "" {
-			text = strings.ToUpper(meta.Name)
-		}
-		fontScale := meta.Label.FontScale
-		if fontScale == 0 {
-			fontScale = 0.12
-		}
-		hdrStyle := widgets.TextStyle{
-			Font:     widgets.FontFamilyUI,
-			FontSize: fontScale,
-			HAlign:   meta.Label.Align,
-			Color:    widgets.ColorRefMuted.Expr(),
-		}
-		p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
-			widgets.Text{Text: text, Style: hdrStyle}, 0.1)
-	}
-
 	// Capability gate: if the widget declares a CapabilityBinding and the frame
 	// resolves it to false, render a static "not available" placeholder instead.
 	if meta.CapabilityBinding != "" {
@@ -251,19 +231,19 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 				cache.ctx.Clear()
 				p.renderPanel(cache.ctx, rt, 0, 0, pw, ph, widgets.Panel{})
 				naHdrStyle := widgets.TextStyle{
-					Font:   widgets.FontFamilyUI,
+					Font:     widgets.FontFamilyUI,
 					FontSize: 0.18,
-					HAlign: meta.Label.Align,
-					Color:  widgets.ColorRefMuted.Expr(),
+					HAlign:   meta.Label.Align,
+					Color:    widgets.ColorRefMuted.Expr(),
 				}
 				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
 					widgets.Text{Text: strings.ToUpper(meta.Name), Style: naHdrStyle}, 0.1)
 				naValStyle := widgets.TextStyle{
-					Font:   widgets.FontFamilyMono,
+					Font:     widgets.FontFamilyMono,
 					FontSize: 0.45,
-					IsBold: true,
-					HAlign: widgets.HAlignCenter,
-					Color:  widgets.ColorRefMuted.Expr(),
+					IsBold:   true,
+					HAlign:   widgets.HAlignCenter,
+					Color:    widgets.ColorRefMuted.Expr(),
 				}
 				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
 					widgets.Text{Text: "—", Style: naValStyle}, 0.5)
@@ -296,6 +276,27 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	cache.ctx.SetColor(widgets.ColorBackground)
 	cache.ctx.Clear()
 	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, elems)
+
+	// Render the auto label after the widget body so it survives the clear above
+	// and matches the final pixels shown on the physical screen.
+	if !meta.Label.Hidden {
+		text := meta.Label.Text
+		if text == "" {
+			text = strings.ToUpper(meta.Name)
+		}
+		fontScale := meta.Label.FontScale
+		if fontScale == 0 {
+			fontScale = 0.12
+		}
+		hdrStyle := widgets.TextStyle{
+			Font:     widgets.FontFamilyUI,
+			FontSize: fontScale,
+			HAlign:   meta.Label.Align,
+			Color:    widgets.ColorRefMuted.Expr(),
+		}
+		p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+			widgets.Text{Text: text, Style: hdrStyle}, 0.1)
+	}
 	p.blitCache(dc, cache)
 
 	if hz > 0 {

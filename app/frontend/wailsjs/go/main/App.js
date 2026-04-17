@@ -138,8 +138,8 @@ export function DeviceSetPurposeConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetPurposeConfig'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['DeviceSetScreenOffset'](arg1, arg2, arg3, arg4, arg5);
+export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['DeviceSetScreenOffset'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {

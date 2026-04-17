@@ -1,4 +1,4 @@
-﻿package widgets
+package widgets
 
 const WidgetBrakeBias WidgetType = "brake_bias"
 
@@ -20,7 +20,7 @@ func (brakeBiasWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Text{Binding: BindingCarBrakeBiasPct, Format: "%.1f%%", Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
-			Color: ColorRefForeground.When(WhenActive(BindingCarBrakeBiasWarning, ColorRefWarning))}},
+			Color: ColorRefForeground.When(WhenActive(BindingCarBrakeBiasWarning, ColorRefBrakeBias))}},
 	}
 }
 

@@ -36,8 +36,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [selectedId, setSelectedId]   = useState<number | null>(null)
   const [catalog, setCatalog]         = useState<WidgetCatalogEntry[]>([])
   const [alertCatalog, setAlertCatalog] = useState<AlertMeta[]>([])
+  const [widgetPreviewUrls, setWidgetPreviewUrls] = useState<Record<string, string>>({})
   const [screenW, setScreenW]         = useState(DEFAULT_SCREEN_W)
   const [paletteDropType, setPaletteDropType] = useState<string | null>(null)
+  const [paletteDropPreviewUrl, setPaletteDropPreviewUrl] = useState<string | null>(null)
   const [screenH, setScreenH]         = useState(DEFAULT_SCREEN_H)
   const [activeTab, setActiveTab]     = useState<'idle' | 'alerts' | number>(0)
   const [livePageIndex, setLivePageIndex] = useState<number | null>(null)
@@ -50,6 +52,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewTargetRef = useRef<{ pageIndex: number; idle: boolean }>({ pageIndex: 0, idle: false })
 
   useEffect(() => {
     if (!canvasPaneEl) return
@@ -67,18 +70,18 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   }, [canvasPaneEl, screenW, screenH])
 
   const hardcodedThemeDefault: DashTheme = {
-    primary: { R: 255, G: 144, B: 108, A: 255 },
-    accent:  { R: 90,  G: 248, B: 251, A: 255 },
-    fg:      { R: 255, G: 255, B: 255, A: 255 },
-    muted:   { R: 128, G: 128, B: 128, A: 255 },
-    muted2:  { R: 161, G: 161, B: 170, A: 255 },
-    success: { R: 52,  G: 211, B: 153, A: 255 },
-    warning: { R: 251, G: 191, B: 36,  A: 255 },
-    danger:  { R: 248, G: 113, B: 113, A: 255 },
-    surface: { R: 20,  G: 20,  B: 20,  A: 255 },
-    bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
-    border:  { R: 42,  G: 42,  B: 42,  A: 255 },
-    rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
+    primary: { R: 255, G: 139, B: 97,  A: 255 },
+    accent:  { R: 121, G: 214, B: 230, A: 255 },
+    fg:      { R: 245, G: 247, B: 250, A: 255 },
+    muted:   { R: 139, G: 147, B: 161, A: 255 },
+    muted2:  { R: 183, G: 191, B: 202, A: 255 },
+    success: { R: 79,  G: 209, B: 155, A: 255 },
+    warning: { R: 242, G: 184, B: 75,  A: 255 },
+    danger:  { R: 240, G: 125, B: 125, A: 255 },
+    surface: { R: 21,  G: 23,  B: 28,  A: 255 },
+    bg:      { R: 9,   G: 10,  B: 12,  A: 255 },
+    border:  { R: 45,  G: 49,  B: 56,  A: 255 },
+    rpmRed:  { R: 230, G: 74,  B: 74,  A: 255 },
   }
   const hardcodedDomainDefault = {
     abs:       { R: 251, G: 191, B: 36,  A: 255 },
@@ -116,15 +119,44 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   }, [])
 
   useEffect(() => {
+    if (catalog.length === 0) return
+    let cancelled = false
+    Promise.all(catalog.map(async widget => {
+      try {
+        const png = await widgetCatalogAPI.getWidgetPreview(widget.type, widget.defaultColSpan, widget.defaultRowSpan)
+        return [widget.type, png ? `data:image/png;base64,${png}` : ''] as const
+      } catch {
+        return [widget.type, ''] as const
+      }
+    })).then(entries => {
+      if (cancelled) return
+      const next: Record<string, string> = {}
+      for (const [type, url] of entries) {
+        if (url) next[type] = url
+      }
+      setWidgetPreviewUrls(next)
+    })
+    return () => { cancelled = true }
+  }, [catalog])
+
+  useEffect(() => {
     return onEvent('dash:page-changed', (data: { pageIndex: number }) => {
       setLivePageIndex(data.pageIndex)
     })
   }, [])
 
+  useEffect(() => {
+    previewTargetRef.current = {
+      pageIndex: typeof activeTab === 'number' ? activeTab : 0,
+      idle: activeTab === 'idle',
+    }
+  }, [activeTab])
+
   // Start the Go-rendered preview when the editor mounts, stop when it unmounts.
   useEffect(() => {
     const isIdle = activeTab === 'idle'
     const pageIndex = typeof activeTab === 'number' ? activeTab : 0
+    previewTargetRef.current = { pageIndex, idle: isIdle }
     dashAPI.startPreview(layout, pageIndex, isIdle)
     return () => { dashAPI.stopPreview() }
     // Only on mount/unmount — layout changes are handled by the debounced effect below.
@@ -133,23 +165,37 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   // Subscribe to Go-rendered preview PNG frames.
   useEffect(() => {
-    return onEvent('dash:preview', (data: { png: string }) => {
+    return onEvent('dash:preview', (data: { png: string; pageIndex?: number; idle?: boolean }) => {
+      const target = previewTargetRef.current
+      if ((data.pageIndex ?? 0) !== target.pageIndex || Boolean(data.idle) !== target.idle) {
+        return
+      }
       setPreviewUrl(`data:image/png;base64,${data.png}`)
     })
   }, [])
 
-  // Push layout/page changes to the Go preview renderer (debounced 150ms).
+  // Page/idle switches should feel immediate — clear the previous frame and request the new one now.
+  useEffect(() => {
+    const isIdle = activeTab === 'idle'
+    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
+    previewTargetRef.current = { pageIndex, idle: isIdle }
+    setPreviewUrl(null)
+    dashAPI.updatePreview(layout, pageIndex, isIdle)
+  // layout is intentionally excluded here — edits stay on the debounced path.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  // Push layout edits to the Go preview renderer (debounced 150ms).
   useEffect(() => {
     if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
     previewDebounceRef.current = setTimeout(() => {
-      const isIdle = activeTab === 'idle'
-      const pageIndex = typeof activeTab === 'number' ? activeTab : 0
+      const { idle: isIdle, pageIndex } = previewTargetRef.current
       dashAPI.updatePreview(layout, pageIndex, isIdle)
     }, 150)
     return () => {
       if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
     }
-  }, [layout, activeTab])
+  }, [layout])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -407,8 +453,15 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                 <TooltipProvider>
                   <WidgetPalette
                     catalog={paletteWidgets}
-                    onDragStart={setPaletteDropType}
-                    onDragEnd={() => setPaletteDropType(null)}
+                    previewUrls={widgetPreviewUrls}
+                    onDragStart={(type, previewUrl) => {
+                      setPaletteDropType(type)
+                      setPaletteDropPreviewUrl(previewUrl ?? null)
+                    }}
+                    onDragEnd={() => {
+                      setPaletteDropType(null)
+                      setPaletteDropPreviewUrl(null)
+                    }}
                   />
                 </TooltipProvider>
               </div>
@@ -432,6 +485,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     theme={layout.theme ?? hardcodedThemeDefault}
                     domainPalette={layout.domainPalette ?? hardcodedDomainDefault}
                     paletteDropType={paletteDropType}
+                    palettePreviewUrl={paletteDropPreviewUrl}
                     previewUrl={previewUrl ?? undefined}
                     onSelect={setSelectedId}
                     onUpdate={handleUpdate}
@@ -504,11 +558,13 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
 function WidgetPalette({
   catalog,
+  previewUrls,
   onDragStart,
   onDragEnd,
 }: {
   catalog: WidgetCatalogEntry[]
-  onDragStart?: (type: string) => void
+  previewUrls: Record<string, string>
+  onDragStart?: (type: string, previewUrl?: string) => void
   onDragEnd?: () => void
 }) {
   const knownCategories = CATEGORY_ORDER.filter(c => catalog.some(w => w.category === c))
@@ -550,6 +606,7 @@ function WidgetPalette({
               <div className="px-3 pb-2">
                 <WidgetList
                   widgets={catalog.filter(w => w.category === cat)}
+                  previewUrls={previewUrls}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
                 />
@@ -564,11 +621,13 @@ function WidgetPalette({
 
 function WidgetList({
   widgets,
+  previewUrls,
   onDragStart,
   onDragEnd,
 }: {
-  widgets: ReadonlyArray<{ type: string; name: string }>
-  onDragStart?: (type: string) => void
+  widgets: ReadonlyArray<Pick<WidgetCatalogEntry, 'type' | 'name'>>
+  previewUrls: Record<string, string>
+  onDragStart?: (type: string, previewUrl?: string) => void
   onDragEnd?: () => void
 }) {
   return (
@@ -582,12 +641,22 @@ function WidgetList({
                 onDragStart={e => {
                   e.dataTransfer.effectAllowed = 'copy'
                   e.dataTransfer.setData('widget-type', w.type)
-                  const blank = document.createElement('div')
-                  blank.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:1px;height:1px'
-                  document.body.appendChild(blank)
-                  e.dataTransfer.setDragImage(blank, 0, 0)
-                  requestAnimationFrame(() => blank.remove())
-                  onDragStart?.(w.type)
+                  const previewUrl = previewUrls[w.type]
+                  const dragImage = document.createElement('div')
+                  dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid rgba(255,255,255,0.2);background:#090a0c;overflow:hidden;border-radius:4px'
+                  if (previewUrl) {
+                    const img = document.createElement('img')
+                    img.src = previewUrl
+                    img.style.cssText = 'width:100%;height:100%;display:block'
+                    dragImage.appendChild(img)
+                  } else {
+                    dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:#f5f7fa;font:700 11px JetBrains Mono, monospace'
+                    dragImage.textContent = w.name
+                  }
+                  document.body.appendChild(dragImage)
+                  e.dataTransfer.setDragImage(dragImage, 12, 12)
+                  requestAnimationFrame(() => dragImage.remove())
+                  onDragStart?.(w.type, previewUrl)
                 }}
                 onDragEnd={() => onDragEnd?.()}
                 className={cn(
@@ -597,7 +666,15 @@ function WidgetList({
                 )}
               >
                 <WidgetDragIcon />
-                {w.name}
+                {previewUrls[w.type] && (
+                  <img
+                    src={previewUrls[w.type]}
+                    alt=""
+                    className="h-8 w-12 flex-shrink-0 border border-border/70 bg-background"
+                    style={{ objectFit: 'fill' }}
+                  />
+                )}
+                <span className="truncate">{w.name}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>Drag onto canvas to add</TooltipContent>

@@ -216,6 +216,10 @@ var bindingPaths = map[Binding]func(*dto.TelemetryFrame) any{
 		t := f.Tires[3]
 		return (float64(t.TempInner) + float64(t.TempMiddle) + float64(t.TempOuter)) / 3
 	},
+	"tires.fl.coreTemp": func(f *dto.TelemetryFrame) any { return f.Tires[0].TempCore },
+	"tires.fr.coreTemp": func(f *dto.TelemetryFrame) any { return f.Tires[1].TempCore },
+	"tires.rl.coreTemp": func(f *dto.TelemetryFrame) any { return f.Tires[2].TempCore },
+	"tires.rr.coreTemp": func(f *dto.TelemetryFrame) any { return f.Tires[3].TempCore },
 }
 
 // Resolve returns the value at path within frame, along with a bool indicating

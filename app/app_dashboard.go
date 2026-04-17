@@ -168,7 +168,7 @@ func (a *App) DashCyclePage(direction int) {
 
 // DashStartPreview activates the editor preview pipeline for the given layout.
 // The coordinator begins rendering the layout via the shared Painter and emitting
-// "dash:preview" events containing base64-encoded PNG frames at ~10 Hz.
+// "dash:preview" events containing base64-encoded PNG frames at screen cadence.
 // pageIndex selects the active page (0-based); idle selects the idle page.
 // Call DashStopPreview when the editor closes.
 func (a *App) DashStartPreview(layout dashboard.DashLayout, pageIndex int, idle bool) {

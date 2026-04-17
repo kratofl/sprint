@@ -17,18 +17,21 @@ interface AdditionalSettingsPanelProps {
   onFormatPreferencesChange?: (prefs: Partial<FormatPreferences>) => void
 }
 
-const THEME_ROWS: { key: keyof DashTheme; label: string }[] = [
+const BASE_THEME_ROWS: { key: keyof DashTheme; label: string }[] = [
   { key: 'primary', label: 'Primary (Driver)' },
   { key: 'accent',  label: 'Accent (Engineer)' },
   { key: 'fg',      label: 'Foreground' },
   { key: 'muted',   label: 'Muted' },
   { key: 'muted2',  label: 'Muted 2' },
-  { key: 'success', label: 'Success' },
-  { key: 'warning', label: 'Warning' },
-  { key: 'danger',  label: 'Danger' },
   { key: 'surface', label: 'Surface' },
   { key: 'bg',      label: 'Background' },
   { key: 'border',  label: 'Border' },
+]
+
+const SEMANTIC_THEME_ROWS: { key: keyof DashTheme; label: string }[] = [
+  { key: 'success', label: 'Success' },
+  { key: 'warning', label: 'Warning' },
+  { key: 'danger',  label: 'Danger' },
   { key: 'rpmRed',  label: 'RPM Red Zone' },
 ]
 
@@ -87,9 +90,12 @@ export function AdditionalSettingsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-        <div className="grid grid-cols-2 gap-6">
-          <Section label="THEME_COLORS">
-            {THEME_ROWS.map(({ key, label }) => {
+        <div className="grid gap-6 xl:grid-cols-3">
+          <Section
+            label="BASE_AND_HIGHLIGHTS"
+            description="Neutral surfaces, text, and the two general-purpose highlight colors."
+          >
+            {BASE_THEME_ROWS.map(({ key, label }) => {
               const current = theme[key] ?? hardcodedDefaults.theme[key]
               const defaultVal = hardcodedDefaults.theme[key]
               return (
@@ -105,7 +111,30 @@ export function AdditionalSettingsPanel({
             })}
           </Section>
 
-          <Section label="DOMAIN_COLORS">
+          <Section
+            label="SEMANTIC_STATES"
+            description="Reserve these for state meaning so alerts and thresholds stay readable."
+          >
+            {SEMANTIC_THEME_ROWS.map(({ key, label }) => {
+              const current = theme[key] ?? hardcodedDefaults.theme[key]
+              const defaultVal = hardcodedDefaults.theme[key]
+              return (
+                <ColorRow
+                  key={key}
+                  label={label}
+                  value={current}
+                  defaultValue={defaultVal}
+                  onChange={v => handleThemeChange(key, v)}
+                  onReset={() => handleThemeChange(key, defaultVal)}
+                />
+              )
+            })}
+          </Section>
+
+          <Section
+            label="DOMAIN_SIGNALS"
+            description="Racing-system colors that widgets should use only for their matching domains."
+          >
             {DOMAIN_ROWS.map(({ key, label }) => {
               const current = domainPalette[key] ?? hardcodedDefaults.domain[key]
               const defaultVal = hardcodedDefaults.domain[key]
@@ -138,12 +167,25 @@ export function AdditionalSettingsPanel({
   )
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  description,
+  children,
+}: {
+  label: string
+  description?: string
+  children: React.ReactNode
+}) {
   return (
     <div>
       <p className="terminal-header text-[9px] font-bold text-text-disabled uppercase tracking-wider mb-2">
         {label}
       </p>
+      {description && (
+        <p className="mb-3 font-mono text-[9px] leading-relaxed text-text-muted">
+          {description}
+        </p>
+      )}
       <div className="space-y-1">
         {children}
       </div>

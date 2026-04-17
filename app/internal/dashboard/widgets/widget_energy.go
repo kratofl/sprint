@@ -1,4 +1,4 @@
-﻿package widgets
+package widgets
 
 const WidgetEnergy WidgetType = "virtual_energy"
 
@@ -20,7 +20,7 @@ func (energyWidget) Meta() WidgetMeta {
 func (energyWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Text{Binding: BindingEnergyVirtualPct, Format: "%.1f%%", Style: TextStyle{
-			Font: FontFamilyMono, FontSize: 0.42, IsBold: true, HAlign: HAlignCenter, Color: ColorRefSuccess.Expr()}},
+			Font: FontFamilyMono, FontSize: 0.42, IsBold: true, HAlign: HAlignCenter, Color: ColorRefEnergy.Expr()}},
 		Text{Text: "REGEN", Style: TextStyle{
 			Font: FontFamilyUI, FontSize: 0.12, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},
 	}

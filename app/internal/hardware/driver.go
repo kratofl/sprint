@@ -25,6 +25,7 @@ type ScreenConfig struct {
 	TargetFPS int    // 0 = use driver default
 	OffsetX   int    // pixels from left in screen space (applied after rotation)
 	OffsetY   int    // pixels from top in screen space (applied after rotation)
+	Margin    int    // uniform inset in pixels on all sides
 	Driver    string // DriverType: "vocore" or "usbd480"
 }
 

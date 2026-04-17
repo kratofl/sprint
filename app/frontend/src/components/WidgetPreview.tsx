@@ -1,7 +1,7 @@
 import type { ReactNode, CSSProperties } from 'react'
 import type {
   DashWidget, DashTheme, DomainPalette, WidgetCatalogEntry,
-  ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle,
+  ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle, HAlign, VAlign,
 } from '@/lib/dash'
 
 interface Props {
@@ -100,6 +100,14 @@ const PLACEHOLDERS: Record<string, string> = {
   'penalties.incidents':   '3',
   'energy.virtualEnergy':  '4.2',
   'flags.activeText':      'GREEN',
+  'tires.fl.avgTemp':      '93.0',
+  'tires.fr.avgTemp':      '94.0',
+  'tires.rl.avgTemp':      '90.0',
+  'tires.rr.avgTemp':      '91.0',
+  'tires.fl.coreTemp':     '95.0',
+  'tires.fr.coreTemp':     '96.0',
+  'tires.rl.coreTemp':     '92.0',
+  'tires.rr.coreTemp':     '93.0',
 }
 
 function placeholder(binding?: string, format?: string, text?: string): string {
@@ -193,6 +201,72 @@ function zoneYFrac(zone: string | undefined, fillRows: number[]): number {
   }
 }
 
+function autoStackYs(n: number): number[] {
+  switch (n) {
+    case 0:
+      return []
+    case 1:
+      return [0.5]
+    case 2:
+      return [0.38, 0.72]
+    case 3:
+      return [0.30, 0.52, 0.74]
+    case 4:
+      return [0.20, 0.40, 0.60, 0.80]
+    default: {
+      const ys: number[] = []
+      for (let i = 0; i < n; i += 1) ys.push(0.18 + (0.64 * i) / (n - 1))
+      return ys
+    }
+  }
+}
+
+function countAutoStackTexts(elems: WidgetElement[]): number {
+  let count = 0
+  for (const elem of elems) {
+    if (elem.kind === 'condition') {
+      count += countAutoStackTexts(flattenElements(elem.then ?? []))
+      continue
+    }
+    if (elem.kind === 'text' && !elem.zone && typeof elem.y !== 'number') count += 1
+  }
+  return count
+}
+
+function defaultTextLeft(hAlign: HAlign | undefined): string {
+  switch (hAlign) {
+    case 1:
+      return '50%'
+    case 2:
+      return '97.5%'
+    default:
+      return '2.5%'
+  }
+}
+
+function translateX(hAlign: HAlign | undefined): string {
+  switch (hAlign) {
+    case 1:
+      return '-50%'
+    case 2:
+      return '-100%'
+    default:
+      return '0'
+  }
+}
+
+function translateY(vAlign: VAlign | undefined, explicitY: boolean): string {
+  if (!explicitY) return '-50%'
+  switch (vAlign) {
+    case 1:
+      return '-50%'
+    case 2:
+      return '-100%'
+    default:
+      return '0'
+  }
+}
+
 // Render a single text element in a zone.
 function ZoneTextItem({
   elem, theme, dp, style, fontScaleMul, yFrac,
@@ -218,7 +292,7 @@ function ZoneTextItem({
   }
 
   // Explicit X → absolute positioning within the zone row.
-  if (elem.x && elem.x > 0) {
+  if (typeof elem.x === 'number') {
     const tx = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'
     return (
       <span style={{
@@ -287,6 +361,8 @@ function renderAbsElem(
   dp: DomainPalette | undefined,
   widgetStyle: WidgetStyle | undefined,
   fontScaleMul: number,
+  textYs: number[],
+  textState: { nextIndex: number },
   key: number,
 ): ReactNode {
   const r = (ref?: ColorRef) => resolveRef(ref, theme, dp, widgetStyle)
@@ -315,14 +391,15 @@ function renderAbsElem(
       const fs     = (elem.fontScale ?? 0.1) * fontScaleMul
       const color  = x(elem.color)
       const ef     = resolveFont(elem.font, widgetStyle)
-      const tx     = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'
-      const ty     = elem.vAlign === 1 ? '-50%' : elem.vAlign === 2 ? '-100%' : '0'
+      const hasExplicitX = typeof elem.x === 'number'
+      const hasExplicitY = typeof elem.y === 'number'
+      const autoY = hasExplicitY ? 0.5 : (textYs[textState.nextIndex++] ?? 0.5)
       return (
         <div key={key} style={{
           position:   'absolute',
-          left:       `${(elem.x ?? 0) * 100}%`,
-          top:        `${(elem.y ?? 0) * 100}%`,
-          transform:  `translate(${tx}, ${ty})`,
+          left:       hasExplicitX ? `${elem.x! * 100}%` : defaultTextLeft(elem.hAlign),
+          top:        hasExplicitY ? `${elem.y! * 100}%` : `${autoY * 100}%`,
+          transform:  `translate(${translateX(elem.hAlign)}, ${translateY(elem.vAlign, hasExplicitY)})`,
           fontSize:   `${fs * 100}cqh`,
           fontFamily: fontFamily(ef),
           fontWeight: fontWeight(ef),
@@ -465,7 +542,7 @@ function renderAbsElem(
     }
 
     case 'condition':
-      return <>{flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, widgetStyle, fontScaleMul, i))}</>
+      return <>{flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, widgetStyle, fontScaleMul, textYs, textState, i))}</>
 
     default:
       return null
@@ -479,6 +556,8 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
   const elements    = entry?.defaultDefinition ?? []
   const widgetStyle = widget.style
   const fontScale   = Math.max(0.5, widgetStyle?.fontSize ?? 1)
+  const textYs      = autoStackYs(countAutoStackTexts(elements))
+  const textState   = { nextIndex: 0 }
 
   return (
     <div
@@ -487,7 +566,7 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
     >
       {elements.length > 0 ? (
         <>
-          {elements.map((e, i) => renderAbsElem(e, theme, domainPalette, widgetStyle, fontScale, i))}
+          {elements.map((e, i) => renderAbsElem(e, theme, domainPalette, widgetStyle, fontScale, textYs, textState, i))}
           <ZoneLayer elems={elements} theme={theme} dp={domainPalette} widgetStyle={widgetStyle} fontScaleMul={fontScale} />
         </>
       ) : (
@@ -501,4 +580,3 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
     </div>
   )
 }
-

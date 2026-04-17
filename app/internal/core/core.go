@@ -29,8 +29,8 @@ type EmitFn func(event string, data ...any)
 
 // deviceEntry holds the runtime state for a single registered device.
 type deviceEntry struct {
-	driver        hardware.ScreenDriver  // nil for button-box type devices
-	purpose       devices.DevicePurpose  // PurposeDash or PurposeRearView
+	driver        hardware.ScreenDriver // nil for button-box type devices
+	purpose       devices.DevicePurpose // PurposeDash or PurposeRearView
 	pageIndex     int
 	layoutID      string
 	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
@@ -63,9 +63,9 @@ type Coordinator struct {
 	mu      sync.RWMutex
 	entries map[string]*deviceEntry // deviceID -> entry
 
-	rootCtx   context.Context    // set by Start; used when adding devices at runtime
-	stopFn    context.CancelFunc // cancels rootCtx on Stop
-	driverWg  sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
+	rootCtx  context.Context    // set by Start; used when adding devices at runtime
+	stopFn   context.CancelFunc // cancels rootCtx on Stop
+	driverWg sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
 }
 
 const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
@@ -102,9 +102,9 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 					drv = hardware.NewVoCoreDriver(logger.With("component", "screen", "device", id))
 				}
 				drv.Configure(toHardwareScreenConfig(devices.ToScreenConfig(d)))
-			if d.Disabled {
-				drv.SetDisabled(true)
-			}
+				if d.Disabled {
+					drv.SetDisabled(true)
+				}
 
 				entry := &deviceEntry{driver: drv, cancel: func() {}, purpose: d.Purpose}
 				if d.Purpose != devices.PurposeRearView && dashMgr != nil {
@@ -621,6 +621,7 @@ func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
 		TargetFPS: cfg.TargetFPS,
 		OffsetX:   cfg.OffsetX,
 		OffsetY:   cfg.OffsetY,
+		Margin:    cfg.Margin,
 		Driver:    cfg.Driver,
 	}
 }

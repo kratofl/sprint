@@ -1,4 +1,4 @@
-﻿package widgets
+package widgets
 
 import (
 	"testing"
@@ -167,7 +167,13 @@ func TestWidgetCatalog(t *testing.T) {
 
 func TestResolve(t *testing.T) {
 	frame := &dto.TelemetryFrame{
-		Car:         dto.CarState{SpeedMS: 30, Gear: 3, RPM: 8000},
+		Car: dto.CarState{SpeedMS: 30, Gear: 3, RPM: 8000},
+		Tires: [4]dto.TireState{
+			{TempInner: 88, TempMiddle: 90, TempOuter: 92, TempCore: 94},
+			{TempInner: 89, TempMiddle: 91, TempOuter: 93, TempCore: 95},
+			{TempInner: 84, TempMiddle: 86, TempOuter: 88, TempCore: 90},
+			{TempInner: 85, TempMiddle: 87, TempOuter: 89, TempCore: 91},
+		},
 		Lap:         dto.LapState{CurrentLap: 5, CurrentLapTime: 90.123, BestLapTime: 88.456},
 		Race:        dto.RaceState{Position: 2, GapAhead: 0.321},
 		Electronics: dto.Electronics{TC: 4, ABS: 2},
@@ -196,6 +202,10 @@ func TestResolve(t *testing.T) {
 		{"energy.soc", float32(0.75)},
 		{"penalties.incidents", int16(1)},
 		{"flags.yellow", true},
+		{"tires.fl.avgTemp", float64(90)},
+		{"tires.rr.avgTemp", float64(87)},
+		{"tires.fl.coreTemp", float32(94)},
+		{"tires.rr.coreTemp", float32(91)},
 	}
 
 	for _, tc := range cases {
@@ -226,6 +236,42 @@ func TestResolve(t *testing.T) {
 			t.Error("expected ok=false for unknown path")
 		}
 	})
+}
+
+func TestTyreTempWidgetUsesCoreBindings(t *testing.T) {
+	w, ok := Get(WidgetTyreTemp)
+	if !ok {
+		t.Fatal("tyre temp widget not in registry")
+	}
+
+	elems := w.Definition(nil)
+	if len(elems) != 1 {
+		t.Fatalf("tyre temp widget returned %d elements, want 1", len(elems))
+	}
+
+	grid, ok := elems[0].(Grid)
+	if !ok {
+		t.Fatalf("tyre temp widget element type = %T, want Grid", elems[0])
+	}
+
+	got := []Binding{
+		grid.Cells[0].Binding,
+		grid.Cells[1].Binding,
+		grid.Cells[2].Binding,
+		grid.Cells[3].Binding,
+	}
+	want := []Binding{
+		BindingTiresFLCoreTemp,
+		BindingTiresFRCoreTemp,
+		BindingTiresRLCoreTemp,
+		BindingTiresRRCoreTemp,
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("grid cell %d binding = %q, want %q", i, got[i], want[i])
+		}
+	}
 }
 
 func TestFormatValue(t *testing.T) {

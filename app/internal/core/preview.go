@@ -17,7 +17,7 @@ import (
 var previewBufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 const (
-	previewTickInterval = 100 * time.Millisecond // ~10 Hz
+	previewTickInterval = time.Second / 30 // match screen cadence (~30 Hz)
 	previewEventName    = "dash:preview"
 )
 
@@ -173,10 +173,16 @@ func (s *previewService) renderAndEmit() {
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+	pageIndex := int(s.page.Load())
+	idle := s.idle.Load()
 	s.emitMu.RLock()
 	emit := s.emit
 	s.emitMu.RUnlock()
 	if emit != nil {
-		emit(previewEventName, map[string]string{"png": b64})
+		emit(previewEventName, map[string]any{
+			"png":       b64,
+			"pageIndex": pageIndex,
+			"idle":      idle,
+		})
 	}
 }

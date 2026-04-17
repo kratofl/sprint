@@ -41,6 +41,37 @@ func imageToRGB565(img image.Image, dst []byte) {
 	}
 }
 
+// applyScreenMargin scales the full RGB565 buffer into a centered inset region,
+// leaving a black border of margin pixels on each side.
+func applyScreenMargin(src, dst []byte, nativeW, nativeH, margin int) {
+	if margin <= 0 {
+		copy(dst, src)
+		return
+	}
+
+	innerW := nativeW - (margin * 2)
+	innerH := nativeH - (margin * 2)
+	for i := range dst {
+		dst[i] = 0
+	}
+	if innerW <= 0 || innerH <= 0 {
+		return
+	}
+
+	for dy := 0; dy < innerH; dy++ {
+		sy := dy * nativeH / innerH
+		dstRow := (dy + margin) * nativeW
+		srcRow := sy * nativeW
+		for dx := 0; dx < innerW; dx++ {
+			sx := dx * nativeW / innerW
+			srcIdx := (srcRow + sx) * 2
+			dstIdx := (dstRow + dx + margin) * 2
+			dst[dstIdx] = src[srcIdx]
+			dst[dstIdx+1] = src[srcIdx+1]
+		}
+	}
+}
+
 // applyScreenOffset shifts content in the RGB565 buffer so that offsetX pixels
 // of black appear at the left screen edge and offsetY pixels at the top screen
 // edge. The rotation parameter must match the rotation applied to produce buf so

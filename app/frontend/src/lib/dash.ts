@@ -152,6 +152,7 @@ export interface SavedDevice {
   rotation: number          // 0 | 90 | 180 | 270
   offsetX: number           // pixel offset from left edge
   offsetY: number           // pixel offset from top edge
+  margin: number            // uniform inset on all four sides
   driver: DriverType
   dashId: string            // assigned layout ID; empty = use default
   purpose: DevicePurpose    // defaults to 'dash'
@@ -179,6 +180,7 @@ export interface CatalogEntry {
   width: number
   height: number
   rotation: number
+  margin: number
   driver: DriverType
   purpose: DevicePurpose
   bindings: DeviceBinding[]
@@ -366,17 +368,17 @@ function normDashTheme(raw: unknown): DashTheme | undefined {
   if (!primary) return undefined
   return {
     primary,
-    accent:  normRGBA(r.accent  ?? r.Accent)  ?? { R: 90,  G: 248, B: 251, A: 255 },
-    fg:      normRGBA(r.fg      ?? r.Fg)      ?? { R: 255, G: 255, B: 255, A: 255 },
-    muted:   normRGBA(r.muted   ?? r.Muted)   ?? { R: 128, G: 128, B: 128, A: 255 },
-    muted2:  normRGBA(r.muted2  ?? r.Muted2)  ?? { R: 161, G: 161, B: 170, A: 255 },
-    success: normRGBA(r.success ?? r.Success) ?? { R: 52,  G: 211, B: 153, A: 255 },
-    warning: normRGBA(r.warning ?? r.Warning) ?? { R: 251, G: 191, B: 36,  A: 255 },
-    danger:  normRGBA(r.danger  ?? r.Danger)  ?? { R: 248, G: 113, B: 113, A: 255 },
-    surface: normRGBA(r.surface ?? r.Surface) ?? { R: 20,  G: 20,  B: 20,  A: 255 },
-    bg:      normRGBA(r.bg      ?? r.Bg)      ?? { R: 10,  G: 10,  B: 10,  A: 255 },
-    border:  normRGBA(r.border  ?? r.Border)  ?? { R: 42,  G: 42,  B: 42,  A: 255 },
-    rpmRed:  normRGBA(r.rpmRed  ?? r.RPMRed  ?? r.RpmRed) ?? { R: 220, G: 38, B: 38, A: 255 },
+    accent:  normRGBA(r.accent  ?? r.Accent)  ?? { R: 121, G: 214, B: 230, A: 255 },
+    fg:      normRGBA(r.fg      ?? r.Fg)      ?? { R: 245, G: 247, B: 250, A: 255 },
+    muted:   normRGBA(r.muted   ?? r.Muted)   ?? { R: 139, G: 147, B: 161, A: 255 },
+    muted2:  normRGBA(r.muted2  ?? r.Muted2)  ?? { R: 183, G: 191, B: 202, A: 255 },
+    success: normRGBA(r.success ?? r.Success) ?? { R: 79,  G: 209, B: 155, A: 255 },
+    warning: normRGBA(r.warning ?? r.Warning) ?? { R: 242, G: 184, B: 75,  A: 255 },
+    danger:  normRGBA(r.danger  ?? r.Danger)  ?? { R: 240, G: 125, B: 125, A: 255 },
+    surface: normRGBA(r.surface ?? r.Surface) ?? { R: 21,  G: 23,  B: 28,  A: 255 },
+    bg:      normRGBA(r.bg      ?? r.Bg)      ?? { R: 9,   G: 10,  B: 12,  A: 255 },
+    border:  normRGBA(r.border  ?? r.Border)  ?? { R: 45,  G: 49,  B: 56,  A: 255 },
+    rpmRed:  normRGBA(r.rpmRed  ?? r.RPMRed  ?? r.RpmRed) ?? { R: 230, G: 74, B: 74, A: 255 },
   }
 }
 
@@ -437,6 +439,7 @@ function normSavedDevice(raw: unknown): SavedDevice {
     rotation:      Number(r.rotation ?? r.Rotation ?? 0),
     offsetX:       Number(r.offset_x  ?? r.offsetX  ?? r.OffsetX  ?? 0),
     offsetY:       Number(r.offset_y  ?? r.offsetY  ?? r.OffsetY  ?? 0),
+    margin:        Number(r.margin    ?? r.Margin   ?? 0),
     driver:        (r.driver ?? r.Driver ?? 'vocore') as DriverType,
     dashId:        String(r.dash_id  ?? r.DashID   ?? r.dashId ?? ''),
     purpose:       ((r.purpose ?? r.Purpose ?? 'dash') as DevicePurpose) || 'dash',
@@ -472,6 +475,7 @@ function normCatalogEntry(raw: unknown): CatalogEntry {
     width:       Number(r.width    ?? r.Width    ?? 0),
     height:      Number(r.height   ?? r.Height   ?? 0),
     rotation:    Number(r.rotation ?? r.Rotation ?? 0),
+    margin:      Number(r.margin   ?? r.Margin   ?? 0),
     driver:      (r.driver ?? r.Driver ?? 'vocore') as DriverType,
     purpose:     ((r.purpose ?? r.Purpose ?? 'dash') as DevicePurpose) || 'dash',
     bindings:    Array.isArray(r.bindings ?? r.Bindings)
@@ -541,18 +545,18 @@ export const dashAPI = {
     const r = raw as Record<string, unknown>
     const theme = normDashTheme(r.theme ?? r.Theme)
     const defaultTheme: DashTheme = {
-      primary: { R: 255, G: 144, B: 108, A: 255 },
-      accent:  { R: 90,  G: 248, B: 251, A: 255 },
-      fg:      { R: 255, G: 255, B: 255, A: 255 },
-      muted:   { R: 128, G: 128, B: 128, A: 255 },
-      muted2:  { R: 161, G: 161, B: 170, A: 255 },
-      success: { R: 52,  G: 211, B: 153, A: 255 },
-      warning: { R: 251, G: 191, B: 36,  A: 255 },
-      danger:  { R: 248, G: 113, B: 113, A: 255 },
-      surface: { R: 20,  G: 20,  B: 20,  A: 255 },
-      bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
-      border:  { R: 42,  G: 42,  B: 42,  A: 255 },
-      rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
+      primary: { R: 255, G: 139, B: 97,  A: 255 },
+      accent:  { R: 121, G: 214, B: 230, A: 255 },
+      fg:      { R: 245, G: 247, B: 250, A: 255 },
+      muted:   { R: 139, G: 147, B: 161, A: 255 },
+      muted2:  { R: 183, G: 191, B: 202, A: 255 },
+      success: { R: 79,  G: 209, B: 155, A: 255 },
+      warning: { R: 242, G: 184, B: 75,  A: 255 },
+      danger:  { R: 240, G: 125, B: 125, A: 255 },
+      surface: { R: 21,  G: 23,  B: 28,  A: 255 },
+      bg:      { R: 9,   G: 10,  B: 12,  A: 255 },
+      border:  { R: 45,  G: 49,  B: 56,  A: 255 },
+      rpmRed:  { R: 230, G: 74,  B: 74,  A: 255 },
     }
     return {
       theme: theme ?? defaultTheme,
@@ -568,18 +572,18 @@ export const dashAPI = {
   async getDefaultTheme(): Promise<DashTheme> {
     const raw = await call<unknown>('DashGetDefaultTheme')
     return normDashTheme(raw) ?? {
-      primary: { R: 255, G: 144, B: 108, A: 255 },
-      accent:  { R: 90,  G: 248, B: 251, A: 255 },
-      fg:      { R: 255, G: 255, B: 255, A: 255 },
-      muted:   { R: 128, G: 128, B: 128, A: 255 },
-      muted2:  { R: 161, G: 161, B: 170, A: 255 },
-      success: { R: 52,  G: 211, B: 153, A: 255 },
-      warning: { R: 251, G: 191, B: 36,  A: 255 },
-      danger:  { R: 248, G: 113, B: 113, A: 255 },
-      surface: { R: 20,  G: 20,  B: 20,  A: 255 },
-      bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
-      border:  { R: 42,  G: 42,  B: 42,  A: 255 },
-      rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
+      primary: { R: 255, G: 139, B: 97,  A: 255 },
+      accent:  { R: 121, G: 214, B: 230, A: 255 },
+      fg:      { R: 245, G: 247, B: 250, A: 255 },
+      muted:   { R: 139, G: 147, B: 161, A: 255 },
+      muted2:  { R: 183, G: 191, B: 202, A: 255 },
+      success: { R: 79,  G: 209, B: 155, A: 255 },
+      warning: { R: 242, G: 184, B: 75,  A: 255 },
+      danger:  { R: 240, G: 125, B: 125, A: 255 },
+      surface: { R: 21,  G: 23,  B: 28,  A: 255 },
+      bg:      { R: 9,   G: 10,  B: 12,  A: 255 },
+      border:  { R: 45,  G: 49,  B: 56,  A: 255 },
+      rpmRed:  { R: 230, G: 74,  B: 74,  A: 255 },
     }
   },
 
@@ -632,8 +636,8 @@ export const deviceAPI = {
     await call<void>('DeviceSetScreenRotation', vid, pid, serial, rotation)
   },
 
-  async setScreenOffset(vid: number, pid: number, serial: string, offsetX: number, offsetY: number): Promise<void> {
-    await call<void>('DeviceSetScreenOffset', vid, pid, serial, offsetX, offsetY)
+  async setScreenOffset(vid: number, pid: number, serial: string, offsetX: number, offsetY: number, margin: number): Promise<void> {
+    await call<void>('DeviceSetScreenOffset', vid, pid, serial, offsetX, offsetY, margin)
   },
 
   async setDashLayout(vid: number, pid: number, serial: string, dashId: string): Promise<void> {

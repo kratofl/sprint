@@ -44,6 +44,7 @@ type baseDriver struct {
 	cfgFPS      atomic.Int32 // user-configured target fps; 0 = fall back to defaultFPS
 	cfgOffsetX  atomic.Int32 // pixels from left in screen space; applied after rotation
 	cfgOffsetY  atomic.Int32 // pixels from top in screen space; applied after rotation
+	cfgMargin   atomic.Int32 // uniform inset in pixels on all sides
 	logger      *slog.Logger
 
 	// source is the active FrameSource stored atomically. For dash devices
@@ -89,6 +90,7 @@ func (d *baseDriver) Configure(cfg ScreenConfig) {
 	}
 	d.cfgOffsetX.Store(int32(cfg.OffsetX))
 	d.cfgOffsetY.Store(int32(cfg.OffsetY))
+	d.cfgMargin.Store(int32(cfg.Margin))
 	d.forceRedraw.Store(true)
 }
 
@@ -403,6 +405,7 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	b0 := make([]byte, frameBytes)
 	b1 := make([]byte, frameBytes)
 	b2 := make([]byte, frameBytes)
+	marginBuf := make([]byte, frameBytes)
 	sendCh := make(chan []byte, 1)
 	returnCh := make(chan []byte, 2)
 	returnCh <- b1
@@ -415,6 +418,10 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	if sptr := d.source.Load(); sptr != nil {
 		if img, err := (*sptr).Paint(&dto.TelemetryFrame{}); err == nil {
 			applyRGB565Rotation(img, renderBuf, rotation)
+			if margin := int(d.cfgMargin.Load()); margin > 0 {
+				applyScreenMargin(renderBuf, marginBuf, nativeW, nativeH, margin)
+				copy(renderBuf, marginBuf)
+			}
 			if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
 				applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
 			}
@@ -515,6 +522,10 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		renderDone := time.Now()
 
 		applyRGB565Rotation(img, renderBuf, rotation)
+		if margin := int(d.cfgMargin.Load()); margin > 0 {
+			applyScreenMargin(renderBuf, marginBuf, nativeW, nativeH, margin)
+			copy(renderBuf, marginBuf)
+		}
 		if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
 			applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
 		}

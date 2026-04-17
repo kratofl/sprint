@@ -9,7 +9,8 @@
   "height": 480,
   "rotation": 90,
   "offset_x": 0,
-  "offset_y": 3,
+  "offset_y": 0,
+  "margin": 5,
   "driver": "vocore",
   "bindings": []
 }

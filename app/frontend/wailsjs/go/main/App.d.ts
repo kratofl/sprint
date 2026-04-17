@@ -77,7 +77,7 @@ export function DeviceSetPurpose(arg1:number,arg2:number,arg3:string,arg4:device
 
 export function DeviceSetPurposeConfig(arg1:number,arg2:number,arg3:string,arg4:Array<number>):Promise<void>;
 
-export function DeviceSetScreenOffset(arg1:number,arg2:number,arg3:string,arg4:number,arg5:number):Promise<void>;
+export function DeviceSetScreenOffset(arg1:number,arg2:number,arg3:string,arg4:number,arg5:number,arg6:number):Promise<void>;
 
 export function DeviceSetScreenRotation(arg1:number,arg2:number,arg3:string,arg4:number):Promise<void>;
 

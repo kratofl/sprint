@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useId } from 'react'
 import { cn } from '@sprint/ui'
 import { type DashWidget, type DashTheme, type DomainPalette, type WidgetCatalogEntry } from '@/lib/dash'
 import { WidgetPreview } from './WidgetPreview'
@@ -78,6 +78,7 @@ export interface DashCanvasProps {
   screenW?: number
   screenH?: number
   paletteDropType?: string | null
+  palettePreviewUrl?: string | null
   previewUrl?: string
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
@@ -94,6 +95,7 @@ export function DashCanvas({
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
+  palettePreviewUrl = null,
   previewUrl,
   onSelect,
   onUpdate,
@@ -101,6 +103,11 @@ export function DashCanvas({
   const containerRef  = useRef<HTMLDivElement>(null)
   const widgetsRef    = useRef(widgets)
   widgetsRef.current  = widgets
+  const gridMaskId = useId()
+  const minorVerticals = Array.from({ length: Math.max(0, gridCols - 1) }, (_, idx) => idx + 1)
+  const minorHorizontals = Array.from({ length: Math.max(0, gridRows - 1) }, (_, idx) => idx + 1)
+  const majorVerticals = minorVerticals.filter(col => col % 5 === 0)
+  const majorHorizontals = minorHorizontals.filter(row => row % 3 === 0)
 
   const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
   const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
@@ -244,11 +251,6 @@ export function DashCanvas({
       className="relative w-full overflow-hidden bg-[#0a0a0a] border border-white/10"
       style={{
         aspectRatio: `${screenW} / ${screenH}`,
-        backgroundImage: [
-          'linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)',
-        ].join(','),
-        backgroundSize: `${100 / gridCols}% ${100 / gridRows}%`,
         cursor: activeMove ? 'grabbing' : undefined,
       }}
       onDragOver={handleDragOver}
@@ -257,7 +259,7 @@ export function DashCanvas({
       onClick={() => { if (!isDragging) onSelect(null) }}
     >
 
-      <span className="pointer-events-none absolute bottom-1.5 right-2 font-mono text-[10px] text-white/20">
+      <span className="pointer-events-none absolute bottom-1.5 right-2 z-[2] font-mono text-[10px] text-white/20">
         {screenW}×{screenH}
       </span>
 
@@ -268,9 +270,79 @@ export function DashCanvas({
           alt=""
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ objectFit: 'contain' }}
+          style={{ objectFit: 'contain', zIndex: 0 }}
         />
       )}
+
+      <svg
+        className="pointer-events-none absolute inset-0"
+        viewBox={`0 0 ${gridCols} ${gridRows}`}
+        preserveAspectRatio="none"
+        style={{ zIndex: 1 }}
+      >
+        <defs>
+          <mask id={gridMaskId}>
+            <rect x="0" y="0" width={gridCols} height={gridRows} fill="white" />
+            {widgets.map(widget => (
+              <rect
+                key={widget.id}
+                x={widget.col}
+                y={widget.row}
+                width={widget.colSpan}
+                height={widget.rowSpan}
+                fill="black"
+              />
+            ))}
+          </mask>
+        </defs>
+
+        <g mask={`url(#${gridMaskId})`}>
+          {minorVerticals.map(col => (
+            <line
+              key={`minor-v-${col}`}
+              x1={col}
+              y1={0}
+              x2={col}
+              y2={gridRows}
+              stroke="rgba(255,255,255,0.08)"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {minorHorizontals.map(row => (
+            <line
+              key={`minor-h-${row}`}
+              x1={0}
+              y1={row}
+              x2={gridCols}
+              y2={row}
+              stroke="rgba(255,255,255,0.08)"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {majorVerticals.map(col => (
+            <line
+              key={`major-v-${col}`}
+              x1={col}
+              y1={0}
+              x2={col}
+              y2={gridRows}
+              stroke="rgba(255,255,255,0.14)"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {majorHorizontals.map(row => (
+            <line
+              key={`major-h-${row}`}
+              x1={0}
+              y1={row}
+              x2={gridCols}
+              y2={row}
+              stroke="rgba(255,255,255,0.14)"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        </g>
+      </svg>
 
       {/* Drop / move / resize ghost */}
       {ghost && (
@@ -284,8 +356,18 @@ export function DashCanvas({
             zIndex:     50,
             border:     `2px dashed ${ghost.valid ? 'var(--accent)' : '#F87171'}`,
             background:  ghost.valid ? 'rgba(255,144,108,0.12)' : 'rgba(248,113,113,0.12)',
+            overflow:   'hidden',
           }}
-        />
+        >
+          {paletteDropType && palettePreviewUrl && (
+            <img
+              src={palettePreviewUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full opacity-90"
+              style={{ objectFit: 'fill' }}
+            />
+          )}
+        </div>
       )}
 
       {widgets.map((widget, idx) => {
@@ -301,7 +383,7 @@ export function DashCanvas({
               top:     `${(widget.row     / gridRows) * 100}%`,
               width:   `${(widget.colSpan / gridCols) * 100}%`,
               height:  `${(widget.rowSpan / gridRows) * 100}%`,
-              zIndex:  isSelected ? 10 : undefined,
+              zIndex:  isSelected ? 10 : 2,
               opacity: isBeingMoved ? 0.2 : 1,
             }}
             onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(idx) }}
