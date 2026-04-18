@@ -1,2 +1,1 @@
-export { SprintLogo, SprintIcon } from './SprintLogo'
-export type { SprintLogoProps } from './SprintLogo'
+// Intentionally empty. The desktop shell uses the provided PNG logo asset directly.

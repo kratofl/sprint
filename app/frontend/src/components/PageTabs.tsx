@@ -55,7 +55,7 @@ export function PageTabs({
         className={cn(
           'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
           activeTab === 'idle'
-            ? 'border-text-muted text-foreground bg-white/[0.04]'
+            ? 'border-accent text-accent bg-accent/[0.06]'
             : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
         )}
       >
@@ -69,7 +69,7 @@ export function PageTabs({
         className={cn(
           'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
           activeTab === 'alerts'
-            ? 'border-warning text-foreground bg-white/[0.04]'
+            ? 'border-accent text-accent bg-accent/[0.06]'
             : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
         )}
       >
@@ -91,7 +91,7 @@ export function PageTabs({
             className={cn(
               'group flex items-center gap-2 px-3 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
               isActive
-                ? 'border-accent text-foreground bg-white/[0.04]'
+                ? 'border-accent text-accent bg-accent/[0.06]'
                 : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
             )}
           >

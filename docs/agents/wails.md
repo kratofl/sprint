@@ -5,6 +5,9 @@
 - `app/main.go` embeds `frontend/dist/`.
 - `app/app.go` exposes the Wails-bound `App` methods.
 - Keep the `App` struct thin. Put business logic in `app/internal/`.
+- Prefer service delegation from `app/app*.go` when the same
+  load-update-save-hot-reload flow appears in multiple bindings.
+- `docs/desktop/README.md` is the implementation-facing companion to this file.
 
 ### Lifecycle
 
@@ -17,6 +20,10 @@ Defer subsystem startup that emits events until `DomReady` so the frontend has l
 ### Bindings
 
 - Exported `App` methods are frontend-callable through Wails codegen.
+- Generated bindings in `app/frontend/wailsjs/go/main/App` are the source of
+  truth for frontend calls.
+- Frontend code should wrap generated bindings in small typed helpers under
+  `app/frontend/src/lib/` instead of using raw string-based call helpers.
 - Bindings should delegate to internal services and return results.
 
 ### Coordinator
@@ -44,7 +51,27 @@ Defer subsystem startup that emits events until `DomReady` so the frontend has l
 ### Events
 
 - Use `runtime.EventsEmit(ctx, eventName, data)` for Go-to-frontend events.
-- Frontend listeners should subscribe through Wails runtime event APIs.
+- Prefer typed payload structs over `map[string]any` when the event shape is
+  stable.
+- Frontend event names and payloads should be centrally owned in
+  `app/frontend/src/lib/desktopEvents.ts`.
+- Frontend listeners should subscribe through the typed `onEvent(...)` helper in
+  `app/frontend/src/lib/wails.ts`.
+
+Current event domains:
+
+- `app`
+- `telemetry`
+- `dash`
+- `screen`
+- `devices`
+- `update`
+
+When adding a new event:
+
+1. emit a typed Go payload where practical;
+2. register the event name and payload in `desktopEvents.ts`;
+3. subscribe through `onEvent(...)` in the frontend.
 
 ### Versioning
 
@@ -54,3 +81,5 @@ Defer subsystem startup that emits events until `DomReady` so the frontend has l
 
 - Test internal packages in isolation where possible.
 - Use integration tests for coordinator-level behavior.
+- Add focused tests for extracted frontend adapters/event modules and internal
+  services when refactoring desktop boundary code.

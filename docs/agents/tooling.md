@@ -1,5 +1,14 @@
 ## Tooling Guidance
 
+### GitHub Collaboration
+
+- Use `gh` CLI for GitHub issue and PR operations unless the user requests a different tool.
+- When an agent works on a GitHub issue, add comments for implementation details, decisions,
+  blockers, questions, or other context worth preserving.
+- If there is an active or assigned PR for the same work, add the relevant context there too when
+  reviewers or future agents would benefit from it.
+- Keep GitHub comments durable and high-signal rather than posting routine progress noise.
+
 ### GitHub Actions
 
 - Pin every action to a full commit SHA and annotate it with the human-readable version comment.

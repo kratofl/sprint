@@ -12,6 +12,7 @@ import {
   dashAPI,
 } from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
+import { DEVICE_EVENTS, SCREEN_EVENTS } from '@/lib/desktopEvents'
 import { onEvent } from '@/lib/wails'
 import { CatalogPanel } from './CatalogPanel'
 import { DeviceDetail } from './DeviceDetail'
@@ -70,15 +71,15 @@ export function DeviceSection() {
 
   useEffect(() => {
     const unsubs = [
-      onEvent('screen:connected', () => {
+      onEvent(SCREEN_EVENTS.connected, () => {
         setScreenStatus('connected')
         setDriverMissingType(null)
       }),
-      onEvent('screen:disconnected', () => setScreenStatus('disconnected')),
-      onEvent('screen:driver_missing', (data: { driver: string; error: string }) => {
+      onEvent(SCREEN_EVENTS.disconnected, () => setScreenStatus('disconnected')),
+      onEvent(SCREEN_EVENTS.driverMissing, (data) => {
         setDriverMissingType(data?.driver ?? 'unknown')
       }),
-      onEvent('devices:updated', () => { void loadDevices() }),
+      onEvent(DEVICE_EVENTS.updated, () => { void loadDevices() }),
     ]
     return () => unsubs.forEach(unsub => unsub())
   }, [loadDevices])

@@ -12,6 +12,7 @@
 - Run `go work sync` after changing module dependencies.
 - Use `internal/` for packages that should not be imported externally.
 - Prefer generics over unconstrained types and use `any` instead of `interface{}`.
+- Do not point `GOCACHE` at the repository root. Use the default user-level Go build cache.
 
 ### HTTP Clients
 

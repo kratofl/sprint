@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { IconRefresh, IconLoader2, IconCheck } from '@tabler/icons-react'
 import { Badge, Button, PageHeader, cn } from '@sprint/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { call } from '@/lib/wails'
+import { appInfoAPI, settingsAPI, updateAPI, type BuildChannel } from '@/lib/settings'
 import type { AppSettings, ReleaseInfo } from '@sprint/types'
 
 type CheckState = 'idle' | 'checking' | 'up-to-date' | 'update-found'
@@ -13,12 +13,12 @@ export default function Settings() {
   const [checkState, setCheckState] = useState<CheckState>('idle')
   const [foundRelease, setFoundRelease] = useState<ReleaseInfo | null>(null)
   const [version, setVersion] = useState('dev')
-  const [buildChannel, setBuildChannel] = useState('dev')
+  const [buildChannel, setBuildChannel] = useState<BuildChannel>('dev')
 
   useEffect(() => {
-    call<AppSettings>('GetSettings').then(setSettings).catch(() => {})
-    call<string>('GetVersion').then(setVersion).catch(() => {})
-    call<string>('GetBuildChannel').then(setBuildChannel).catch(() => {})
+    settingsAPI.getSettings().then(setSettings).catch(() => {})
+    appInfoAPI.getVersion().then(setVersion).catch(() => {})
+    appInfoAPI.getBuildChannel().then(setBuildChannel).catch(() => {})
   }, [])
 
   const handleChannelChange = useCallback((channel: AppSettings['updateChannel']) => {
@@ -33,7 +33,7 @@ export default function Settings() {
   const applyChannel = useCallback((channel: AppSettings['updateChannel']) => {
     const next: AppSettings = { ...settings, updateChannel: channel }
     setSettings(next)
-    call('SaveSettings', next).catch(() => {})
+    settingsAPI.saveSettings(next).catch(() => {})
   }, [settings])
 
   const confirmPrerelease = useCallback(() => {
@@ -47,7 +47,7 @@ export default function Settings() {
     setCheckState('checking')
     setFoundRelease(null)
     try {
-      const info = await call<ReleaseInfo | null>('CheckUpdate')
+      const info = await updateAPI.checkNow()
       if (info) {
         setFoundRelease(info)
         setCheckState('update-found')

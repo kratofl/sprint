@@ -166,7 +166,7 @@ export function DeviceDetail({
   const handleIdleModeChange = async (mode: RearViewIdleMode) => {
     const next: Partial<RearViewConfig> = {
       ...(device.purposeConfig ?? {}),
-      idle_mode: mode,
+      idleMode: mode,
     }
     try {
       await deviceAPI.setDevicePurposeConfig(device.vid, device.pid, device.serial, next)
@@ -361,11 +361,11 @@ export function DeviceDetail({
 
           {isScreenOnly && import.meta.env.DEV && purpose === 'rear_view' ? (() => {
             const config = device.purposeConfig
-            const captureX = config?.capture_x ?? 0
-            const captureY = config?.capture_y ?? 0
-            const captureW = config?.capture_w ?? 0
-            const captureH = config?.capture_h ?? 0
-            const idleMode = config?.idle_mode ?? 'black'
+            const captureX = config?.captureX ?? 0
+            const captureY = config?.captureY ?? 0
+            const captureW = config?.captureW ?? 0
+            const captureH = config?.captureH ?? 0
+            const idleMode = config?.idleMode ?? 'black'
             return (
               <div className="space-y-2">
                 <Tabs defaultValue="capture">

@@ -58,12 +58,18 @@
 - Desktop build: `make build-app`
 
 Run the smallest relevant validation for the files you touched. Do not claim validation you did not run.
+- Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal user-level Go cache.
 
 ## Commit Rules
 
 - Check the current branch before committing.
 - If currently on `main`, create a descriptive feature branch before committing.
 - Use `gh` CLI for GitHub operations unless the user requests a different tool.
+- When working on a GitHub issue, leave useful implementation notes, open questions, blockers, or
+  decisions in issue comments.
+- If there is an active or assigned PR for the same work, add the relevant context there too when
+  it helps review or merge decisions.
+- Keep GitHub comments high-signal rather than posting routine progress noise.
 - If creating a commit on behalf of Copilot-driven workflows, include:
   `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 

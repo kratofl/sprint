@@ -16,11 +16,11 @@ func (a *App) DeviceGetCatalog() []devices.CatalogEntry {
 
 // DeviceGetSavedDevices returns all devices in the registry (online or offline).
 func (a *App) DeviceGetSavedDevices() ([]devices.SavedDevice, error) {
-	reg, err := a.devMgr.Load()
+	saved, err := a.devices.SavedDevices()
 	if err != nil {
 		return nil, fmt.Errorf("DeviceGetSavedDevices: %w", err)
 	}
-	return reg.Devices, nil
+	return saved, nil
 }
 
 // DeviceAdd adds a device to the registry by catalog entry ID.
@@ -88,54 +88,34 @@ func (a *App) DeviceAdd(catalogID string) error {
 
 // DeviceRemoveDevice removes a device from the registry and stops its driver.
 func (a *App) DeviceRemoveDevice(vid, pid uint16, serial string) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceRemoveDevice: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	devices.Remove(reg, id)
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceRemoveDevice: save: %w", err)
+	if err := a.devices.Remove(id); err != nil {
+		return fmt.Errorf("DeviceRemoveDevice: %w", err)
 	}
-	a.coord.RemoveDevice(id)
 	return nil
 }
 
 // DeviceGetScreenStatus returns the live screen connection state:
 // "connected" when any USB screen link is active, "disconnected" otherwise.
-func (a *App) DeviceGetScreenStatus() string {
+func (a *App) DeviceGetScreenStatus() devices.ScreenStatus {
 	return a.coord.GetScreenStatus()
 }
 
 // DeviceRenameDevice updates the user-defined name for the given device.
 func (a *App) DeviceRenameDevice(vid, pid uint16, serial, name string) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceRenameDevice: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.Rename(reg, id, name); err != nil {
+	if err := a.devices.Rename(id, name); err != nil {
 		return fmt.Errorf("DeviceRenameDevice: %w", err)
 	}
-	return a.devMgr.Save(reg)
+	return nil
 }
 
 // DeviceSetScreenRotation updates the rotation for the given device and
 // hot-reloads the renderer.
 func (a *App) DeviceSetScreenRotation(vid, pid uint16, serial string, rotation int) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSetScreenRotation: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetRotation(reg, id, rotation); err != nil {
+	if err := a.devices.SetRotation(id, rotation); err != nil {
 		return fmt.Errorf("DeviceSetScreenRotation: %w", err)
-	}
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceSetScreenRotation: save: %w", err)
-	}
-	if d := devices.FindByID(reg, id); d != nil && d.HasScreen() {
-		a.coord.SetScreenConfig(id, *d)
 	}
 	return nil
 }
@@ -144,19 +124,9 @@ func (a *App) DeviceSetScreenRotation(vid, pid uint16, serial string, rotation i
 // hot-reloads the renderer. offsetX/offsetY shift the content from the
 // left/top edge of the screen respectively, while margin adds a uniform inset.
 func (a *App) DeviceSetScreenOffset(vid, pid uint16, serial string, offsetX, offsetY, margin int) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSetScreenOffset: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetScreenOffset(reg, id, offsetX, offsetY, margin); err != nil {
+	if err := a.devices.SetScreenOffset(id, offsetX, offsetY, margin); err != nil {
 		return fmt.Errorf("DeviceSetScreenOffset: %w", err)
-	}
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceSetScreenOffset: save: %w", err)
-	}
-	if d := devices.FindByID(reg, id); d != nil && d.HasScreen() {
-		a.coord.SetScreenConfig(id, *d)
 	}
 	return nil
 }
@@ -164,23 +134,9 @@ func (a *App) DeviceSetScreenOffset(vid, pid uint16, serial string, offsetX, off
 // DeviceSetDashLayout assigns a dash layout to the given device and hot-reloads
 // the renderer immediately.
 func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSetDashLayout: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetDashLayout(reg, id, dashID); err != nil {
+	if err := a.devices.SetDashLayout(id, dashID); err != nil {
 		return fmt.Errorf("DeviceSetDashLayout: %w", err)
-	}
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceSetDashLayout: save: %w", err)
-	}
-	if d := devices.FindByID(reg, id); d != nil && d.HasScreen() {
-		layout, loadErr := a.dash.Load(dashID)
-		if loadErr != nil {
-			return fmt.Errorf("DeviceSetDashLayout: load layout: %w", loadErr)
-		}
-		a.coord.SetDashLayout(id, layout)
 	}
 	return nil
 }
@@ -188,19 +144,9 @@ func (a *App) DeviceSetDashLayout(vid, pid uint16, serial, dashID string) error 
 // DeviceSetPurpose updates the purpose for the given device and persists it.
 // Hot-reloads the driver so the new purpose takes effect immediately.
 func (a *App) DeviceSetPurpose(vid, pid uint16, serial string, purpose devices.DevicePurpose) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSetPurpose: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetPurpose(reg, id, purpose); err != nil {
+	if err := a.devices.SetPurpose(id, purpose); err != nil {
 		return fmt.Errorf("DeviceSetPurpose: %w", err)
-	}
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceSetPurpose: save: %w", err)
-	}
-	if d := devices.FindByID(reg, id); d != nil && d.HasScreen() {
-		a.coord.SetScreenConfig(id, *d)
 	}
 	return nil
 }
@@ -208,15 +154,11 @@ func (a *App) DeviceSetPurpose(vid, pid uint16, serial string, purpose devices.D
 // DeviceSetPurposeConfig updates the purpose-specific config JSON blob for the
 // given device and persists it. config must be a valid JSON object or null.
 func (a *App) DeviceSetPurposeConfig(vid, pid uint16, serial string, config []byte) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSetPurposeConfig: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetPurposeConfig(reg, id, config); err != nil {
+	if err := a.devices.SetPurposeConfig(id, config); err != nil {
 		return fmt.Errorf("DeviceSetPurposeConfig: %w", err)
 	}
-	return a.devMgr.Save(reg)
+	return nil
 }
 
 // DeviceSelectCaptureRegion opens a native overlay window on the primary monitor
@@ -273,35 +215,19 @@ func (a *App) DeviceSelectCaptureRegion(vid, pid uint16, serial string) error {
 
 // DeviceGetDeviceBindings returns the button→command bindings for the given device.
 func (a *App) DeviceGetDeviceBindings(vid, pid uint16, serial string) ([]devices.DeviceBinding, error) {
-	reg, err := a.devMgr.Load()
+	bindings, err := a.devices.DeviceBindings(devices.DeviceID(vid, pid, serial))
 	if err != nil {
 		return nil, fmt.Errorf("DeviceGetDeviceBindings: %w", err)
 	}
-	id := devices.DeviceID(vid, pid, serial)
-	d := devices.FindByID(reg, id)
-	if d == nil {
-		return nil, fmt.Errorf("DeviceGetDeviceBindings: device %q not found", id)
-	}
-	if d.Bindings == nil {
-		return []devices.DeviceBinding{}, nil
-	}
-	return d.Bindings, nil
+	return bindings, nil
 }
 
 // DeviceSaveDeviceBindings persists button→command bindings for the given device.
 func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings []devices.DeviceBinding) error {
-	reg, err := a.devMgr.Load()
-	if err != nil {
-		return fmt.Errorf("DeviceSaveDeviceBindings: load: %w", err)
-	}
 	id := devices.DeviceID(vid, pid, serial)
-	if err := devices.SetDeviceBindings(reg, id, bindings); err != nil {
+	if err := a.devices.SaveDeviceBindings(id, bindings); err != nil {
 		return fmt.Errorf("DeviceSaveDeviceBindings: %w", err)
 	}
-	if err := a.devMgr.Save(reg); err != nil {
-		return fmt.Errorf("DeviceSaveDeviceBindings: save: %w", err)
-	}
-	a.coord.ReloadInputBindings()
 	return nil
 }
 
@@ -309,19 +235,12 @@ func (a *App) DeviceSaveDeviceBindings(vid, pid uint16, serial string, bindings 
 // When disabled the USB handle is released so another app (e.g. Ref) can
 // drive the screen. Sprint reconnects when called with false.
 func (a *App) DeviceSetDeviceDisabled(deviceID string, disabled bool) {
-	a.coord.SetDeviceDisabled(deviceID, disabled)
-
-	reg, err := a.devMgr.Load()
-	if err == nil {
-		if setErr := devices.SetDisabled(reg, deviceID, disabled); setErr == nil {
-			_ = a.devMgr.Save(reg)
-		}
-	}
+	_ = a.devices.SetDisabled(deviceID, disabled)
 }
 
 // DeviceGetDeviceDisabled reports whether the given device's rendering is disabled.
 func (a *App) DeviceGetDeviceDisabled(deviceID string) bool {
-	return a.coord.GetDeviceDisabled(deviceID)
+	return a.devices.GetDisabled(deviceID)
 }
 
 // scanAllUnregistered scans USB for all devices of the given driver type that

@@ -9,6 +9,8 @@ import (
 	"github.com/kratofl/sprint/app/internal/appdata"
 )
 
+var lookupExeDir = appdata.ExeDir
+
 // CatalogEntry describes a known device configuration that users can add to
 // their registry. Generic entries (VID=0, PID=0) trigger a USB scan for the
 // first unregistered device of the given driver type.
@@ -71,13 +73,12 @@ func InitPresets(fsys fs.FS) {
 
 var catalogEntries []CatalogEntry
 
-// loadCatalog loads catalog entries. Tries <exe_dir>/DeviceCatalog/*.json first;
-// falls back to the injected embedded FS.
+// loadCatalog loads catalog entries. Tries a live source-tree catalog first
+// when running from app/build/bin during local development, then falls back to
+// <exe_dir>/DeviceCatalog/*.json, and finally the injected embedded FS.
 func loadCatalog() []CatalogEntry {
-	if dir := filepath.Join(appdata.ExeDir(), "DeviceCatalog"); appdata.ExeDir() != "" {
-		if entries, err := loadCatalogFromDir(dir); err == nil && len(entries) > 0 {
-			return entries
-		}
+	if entries, ok := loadExternalCatalog(); ok {
+		return entries
 	}
 	if presetsFS != nil {
 		if entries, err := loadCatalogFromFS(presetsFS); err == nil {
@@ -85,6 +86,22 @@ func loadCatalog() []CatalogEntry {
 		}
 	}
 	return nil
+}
+
+func loadExternalCatalog() ([]CatalogEntry, bool) {
+	exeDir := lookupExeDir()
+	if exeDir == "" {
+		return nil, false
+	}
+	sourceDir := filepath.Clean(filepath.Join(exeDir, "..", "..", "presets", "devices"))
+	if entries, err := loadCatalogFromDir(sourceDir); err == nil && len(entries) > 0 {
+		return entries, true
+	}
+	overrideDir := filepath.Join(exeDir, "DeviceCatalog")
+	if entries, err := loadCatalogFromDir(overrideDir); err == nil && len(entries) > 0 {
+		return entries, true
+	}
+	return nil, false
 }
 
 func loadCatalogFromDir(dir string) ([]CatalogEntry, error) {
@@ -130,12 +147,15 @@ func loadCatalogFromFS(fsys fs.FS) ([]CatalogEntry, error) {
 
 // Catalog returns all entries in the device catalog.
 func Catalog() []CatalogEntry {
+	if entries, ok := loadExternalCatalog(); ok {
+		return entries
+	}
 	return catalogEntries
 }
 
 // CatalogByID returns the catalog entry with the given ID, or false if not found.
 func CatalogByID(id string) (CatalogEntry, bool) {
-	for _, e := range catalogEntries {
+	for _, e := range Catalog() {
 		if e.ID == id {
 			return e, true
 		}

@@ -1,25 +1,22 @@
-﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Badge, Button, PageHeader,
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+  Badge,
+  Button,
+  PageHeader,
   cn,
 } from '@sprint/ui'
 import {
-  type DashLayout, type DashPage, type DashWidget, type WidgetCatalogEntry,
-  type DashTheme, type DomainPalette, type AlertInstance, type AlertMeta,
-  type FormatPreferences,
-  widgetCatalogAPI, deviceAPI, deviceHasScreen, dashAPI, alertCatalogAPI,
+  type DashLayout,
+  DEFAULT_DASH_THEME,
+  DEFAULT_DOMAIN_PALETTE,
 } from '@/lib/dash'
-import { DashCanvas, DEFAULT_SCREEN_W, DEFAULT_SCREEN_H } from '@/components/DashCanvas'
+import { DashCanvas } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
 import { WidgetProperties } from './WidgetProperties'
-import { useUnsavedChanges, useNavigationGuard } from '@/hooks/useUnsavedChanges'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AdditionalSettingsPanel } from './AdditionalSettingsPanel'
 import { AlertsEditor } from './AlertsEditor'
-import { onEvent } from '@/lib/wails'
-
-const CATEGORY_ORDER = ['layout', 'timing', 'car', 'race']
+import { WidgetPalette } from './dash-editor/WidgetPalette'
+import { useDashEditorController } from './dash-editor/useDashEditorController'
 
 interface DashEditModeProps {
   layout: DashLayout
@@ -29,328 +26,44 @@ interface DashEditModeProps {
 }
 
 export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyChange }: DashEditModeProps) {
-  const [layout, setLayout]           = useState<DashLayout>(initialLayout)
-  const [saving, setSaving]           = useState(false)
-  const [saveStatus, setSaveStatus]   = useState<'idle' | 'saved' | 'error'>('idle')
-  const [editorTab, setEditorTab]     = useState<'designer' | 'settings'>('designer')
-  const [selectedId, setSelectedId]   = useState<number | null>(null)
-  const [catalog, setCatalog]         = useState<WidgetCatalogEntry[]>([])
-  const [alertCatalog, setAlertCatalog] = useState<AlertMeta[]>([])
-  const [widgetPreviewUrls, setWidgetPreviewUrls] = useState<Record<string, string>>({})
-  const [screenW, setScreenW]         = useState(DEFAULT_SCREEN_W)
-  const [paletteDropType, setPaletteDropType] = useState<string | null>(null)
-  const [paletteDropPreviewUrl, setPaletteDropPreviewUrl] = useState<string | null>(null)
-  const [screenH, setScreenH]         = useState(DEFAULT_SCREEN_H)
-  const [activeTab, setActiveTab]     = useState<'idle' | 'alerts' | number>(0)
-  const [livePageIndex, setLivePageIndex] = useState<number | null>(null)
-  const [renamingDash, setRenamingDash] = useState(false)
-  const [dashNameValue, setDashNameValue] = useState(initialLayout.name)
-  const [confirmRemoveWidget, setConfirmRemoveWidget] = useState(false)
-
-  const [canvasPaneEl, setCanvasPaneEl] = useState<HTMLDivElement | null>(null)
-  const canvasPaneRef = useCallback((el: HTMLDivElement | null) => setCanvasPaneEl(el), [])
-  const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const previewTargetRef = useRef<{ pageIndex: number; idle: boolean }>({ pageIndex: 0, idle: false })
-
-  useEffect(() => {
-    if (!canvasPaneEl) return
-    const ratio = screenW / screenH
-    const obs = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect
-      if (width / height > ratio) {
-        setFittedCanvas({ w: Math.floor(height * ratio), h: Math.floor(height) })
-      } else {
-        setFittedCanvas({ w: Math.floor(width), h: Math.floor(width / ratio) })
-      }
-    })
-    obs.observe(canvasPaneEl)
-    return () => obs.disconnect()
-  }, [canvasPaneEl, screenW, screenH])
-
-  const hardcodedThemeDefault: DashTheme = {
-    primary: { R: 255, G: 139, B: 97,  A: 255 },
-    accent:  { R: 121, G: 214, B: 230, A: 255 },
-    fg:      { R: 245, G: 247, B: 250, A: 255 },
-    muted:   { R: 139, G: 147, B: 161, A: 255 },
-    muted2:  { R: 183, G: 191, B: 202, A: 255 },
-    success: { R: 79,  G: 209, B: 155, A: 255 },
-    warning: { R: 242, G: 184, B: 75,  A: 255 },
-    danger:  { R: 240, G: 125, B: 125, A: 255 },
-    surface: { R: 21,  G: 23,  B: 28,  A: 255 },
-    bg:      { R: 9,   G: 10,  B: 12,  A: 255 },
-    border:  { R: 45,  G: 49,  B: 56,  A: 255 },
-    rpmRed:  { R: 230, G: 74,  B: 74,  A: 255 },
-  }
-  const hardcodedDomainDefault = {
-    abs:       { R: 251, G: 191, B: 36,  A: 255 },
-    tc:        { R: 90,  G: 248, B: 251, A: 255 },
-    brakeBias: { R: 251, G: 191, B: 36,  A: 255 },
-    energy:    { R: 52,  G: 211, B: 153, A: 255 },
-    motor:     { R: 255, G: 144, B: 108, A: 255 },
-    brakeMig:  { R: 90,  G: 248, B: 251, A: 255 },
-  }
-
-  const [globalDefaults, setGlobalDefaults] = useState<{ theme: DashTheme; domain: DomainPalette; formatPreferences?: Partial<FormatPreferences> } | undefined>(undefined)
-
-  useEffect(() => {
-    dashAPI.getGlobalSettings()
-      .then(gs => setGlobalDefaults({ theme: gs.theme, domain: gs.domainPalette, formatPreferences: gs.formatPreferences }))
-      .catch(() => {})
-  }, [])
-
-  const { isDirty, markSaved } = useUnsavedChanges(layout, initialLayout)
-  const { showDialog, guardedNavigate, confirm, cancel } = useNavigationGuard(isDirty)
-
-  useEffect(() => { onDirtyChange(isDirty) }, [isDirty, onDirtyChange])
-
-  useEffect(() => {
-    Promise.all([
-      widgetCatalogAPI.getWidgetCatalog(),
-      deviceAPI.getSavedDevices(),
-      alertCatalogAPI.getAlertCatalog(),
-    ]).then(([widgets, devs, alertsMeta]) => {
-      setCatalog(widgets)
-      setAlertCatalog(alertsMeta)
-      const screen = devs.find(d => deviceHasScreen(d.type))
-      if (screen) { setScreenW(screen.width); setScreenH(screen.height) }
-    }).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    if (catalog.length === 0) return
-    let cancelled = false
-    Promise.all(catalog.map(async widget => {
-      try {
-        const png = await widgetCatalogAPI.getWidgetPreview(widget.type, widget.defaultColSpan, widget.defaultRowSpan)
-        return [widget.type, png ? `data:image/png;base64,${png}` : ''] as const
-      } catch {
-        return [widget.type, ''] as const
-      }
-    })).then(entries => {
-      if (cancelled) return
-      const next: Record<string, string> = {}
-      for (const [type, url] of entries) {
-        if (url) next[type] = url
-      }
-      setWidgetPreviewUrls(next)
-    })
-    return () => { cancelled = true }
-  }, [catalog])
-
-  useEffect(() => {
-    return onEvent('dash:page-changed', (data: { pageIndex: number }) => {
-      setLivePageIndex(data.pageIndex)
-    })
-  }, [])
-
-  useEffect(() => {
-    previewTargetRef.current = {
-      pageIndex: typeof activeTab === 'number' ? activeTab : 0,
-      idle: activeTab === 'idle',
-    }
-  }, [activeTab])
-
-  // Start the Go-rendered preview when the editor mounts, stop when it unmounts.
-  useEffect(() => {
-    const isIdle = activeTab === 'idle'
-    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
-    previewTargetRef.current = { pageIndex, idle: isIdle }
-    dashAPI.startPreview(layout, pageIndex, isIdle)
-    return () => { dashAPI.stopPreview() }
-    // Only on mount/unmount — layout changes are handled by the debounced effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Subscribe to Go-rendered preview PNG frames.
-  useEffect(() => {
-    return onEvent('dash:preview', (data: { png: string; pageIndex?: number; idle?: boolean }) => {
-      const target = previewTargetRef.current
-      if ((data.pageIndex ?? 0) !== target.pageIndex || Boolean(data.idle) !== target.idle) {
-        return
-      }
-      setPreviewUrl(`data:image/png;base64,${data.png}`)
-    })
-  }, [])
-
-  // Page/idle switches should feel immediate — clear the previous frame and request the new one now.
-  useEffect(() => {
-    const isIdle = activeTab === 'idle'
-    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
-    previewTargetRef.current = { pageIndex, idle: isIdle }
-    setPreviewUrl(null)
-    dashAPI.updatePreview(layout, pageIndex, isIdle)
-  // layout is intentionally excluded here — edits stay on the debounced path.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
-
-  // Push layout edits to the Go preview renderer (debounced 150ms).
-  useEffect(() => {
-    if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
-    previewDebounceRef.current = setTimeout(() => {
-      const { idle: isIdle, pageIndex } = previewTargetRef.current
-      dashAPI.updatePreview(layout, pageIndex, isIdle)
-    }, 150)
-    return () => {
-      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
-    }
-  }, [layout])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== null) {
-        if (document.activeElement?.tagName === 'INPUT') return
-        setConfirmRemoveWidget(true)
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [selectedId])
-
-  const doRemoveSelectedWidget = useCallback(() => {
-    if (selectedId === null) return
-    if (activeTab === 'idle') {
-      setLayout(prev => ({
-        ...prev,
-        idlePage: { ...prev.idlePage, widgets: prev.idlePage.widgets.filter((_, wi) => wi !== selectedId) },
-      }))
-    } else {
-      setLayout(prev => ({
-        ...prev,
-        pages: prev.pages.map((p, i) =>
-          i === activeTab ? { ...p, widgets: p.widgets.filter((_, wi) => wi !== selectedId) } : p
-        ),
-      }))
-    }
-    setSelectedId(null)
-  }, [selectedId, activeTab])
-
-  const canvasWidgets = activeTab === 'idle'
-    ? layout.idlePage.widgets
-    : activeTab === 'alerts'
-      ? []
-      : (layout.pages[activeTab as number]?.widgets ?? [])
-
-  const handleUpdate = useCallback((widgets: DashWidget[]) => {
-    if (activeTab === 'idle') {
-      setLayout(prev => ({ ...prev, idlePage: { ...prev.idlePage, widgets } }))
-    } else if (activeTab !== 'alerts') {
-      setLayout(prev => ({
-        ...prev,
-        pages: prev.pages.map((p, i) => i === activeTab ? { ...p, widgets } : p),
-      }))
-    }
-  }, [activeTab])
-
-  const handleAddPage = () => {
-    const name = `Page ${layout.pages.length + 1}`
-    const newPage: DashPage = { id: crypto.randomUUID(), name, widgets: [] }
-    setLayout(prev => ({ ...prev, pages: [...prev.pages, newPage] }))
-    setActiveTab(layout.pages.length)
-    setSelectedId(null)
-  }
-
-  const handleDeletePage = (idx: number) => {
-    if (layout.pages.length <= 1) return
-    setLayout(prev => ({ ...prev, pages: prev.pages.filter((_, i) => i !== idx) }))
-    setActiveTab(prev => typeof prev === 'number' && prev >= idx ? Math.max(0, prev - 1) : prev)
-    setSelectedId(null)
-  }
-
-  const handleRenamePage = (idx: number, name: string) => {
-    setLayout(prev => ({
-      ...prev,
-      pages: prev.pages.map((p, i) => i === idx ? { ...p, name } : p),
-    }))
-  }
-
-  const handleClearPage = () => {
-    if (activeTab === 'idle') {
-      setLayout(prev => ({ ...prev, idlePage: { ...prev.idlePage, widgets: [] } }))
-    } else {
-      setLayout(prev => ({
-        ...prev,
-        pages: prev.pages.map((p, i) => i === activeTab ? { ...p, widgets: [] } : p),
-      }))
-    }
-    setSelectedId(null)
-  }
-
-  const handleSettingsChange = (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
-    setLayout(prev => ({
-      ...prev,
-      theme: { ...hardcodedThemeDefault, ...theme } as DashTheme,
-      domainPalette: domain,
-    }))
-  }
-
-  const handleFormatPreferencesChange = (prefs: Partial<FormatPreferences>) => {
-    setLayout(prev => ({ ...prev, formatPreferences: Object.keys(prefs).length === 0 ? undefined : prefs }))
-  }
-
-  const handleAlertsChange = useCallback((instances: AlertInstance[]) => {
-    setLayout(prev => ({ ...prev, alerts: instances }))
-  }, [])
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      await onSave(layout)
-      markSaved(layout)
-      setSaveStatus('saved')
-      setTimeout(() => setSaveStatus('idle'), 2000)
-    } catch {
-      setSaveStatus('error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleBack = () => guardedNavigate(onBack)
-
-  const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
-  const paletteWidgets = activeTab === 'idle'
-    ? catalog.filter(w => w.idleCapable)
-    : activeTab === 'alerts'
-      ? []
-      : catalog
-
-  const updateSelectedWidget = (updated: DashWidget) => {
-    if (selectedId === null) return
-    handleUpdate(canvasWidgets.map((w, i) => i === selectedId ? updated : w))
-  }
+  const controller = useDashEditorController({
+    initialLayout,
+    onSave,
+    onBack,
+    onDirtyChange,
+  })
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        heading={renamingDash ? (
+        heading={controller.renamingDash ? (
           <input
             autoFocus
-            value={dashNameValue}
-            onChange={e => setDashNameValue(e.target.value)}
-            onBlur={() => {
-              const name = dashNameValue.trim() || layout.name
-              setLayout(prev => ({ ...prev, name }))
-              setDashNameValue(name)
-              setRenamingDash(false)
+            value={controller.dashNameValue}
+            onChange={event => controller.setDashNameValue(event.target.value)}
+            onBlur={() => controller.commitDashName(controller.dashNameValue)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+              if (event.key === 'Escape') {
+                controller.setDashNameValue(controller.layout.name)
+                controller.setRenamingDash(false)
+              }
+              event.stopPropagation()
             }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') e.currentTarget.blur()
-              if (e.key === 'Escape') { setDashNameValue(layout.name); setRenamingDash(false) }
-              e.stopPropagation()
-            }}
-            className="min-w-0 bg-background px-1 font-bold text-sm outline outline-1 outline-accent"
+            className="min-w-0 bg-background px-1 text-sm font-bold outline outline-1 outline-accent"
           />
         ) : (
           <button
             type="button"
-            onClick={() => { setDashNameValue(layout.name); setRenamingDash(true) }}
+            onClick={() => {
+              controller.setDashNameValue(controller.layout.name)
+              controller.setRenamingDash(true)
+            }}
             className="group flex items-center gap-1.5 text-left"
             aria-label="Rename dash layout"
           >
-            <span className="truncate font-bold text-sm transition-colors group-hover:text-accent">
-              {layout.name}
+            <span className="truncate text-sm font-bold transition-colors group-hover:text-accent">
+              {controller.layout.name}
             </span>
             <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-accent" />
           </button>
@@ -358,349 +71,215 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         caption="DASH_STUDIO"
         status={(
           <>
-            {isDirty && <Badge variant="warning" className="terminal-header">DIRTY</Badge>}
-            {saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
-            {saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+            {controller.isDirty && <Badge variant="warning" className="terminal-header">DIRTY</Badge>}
+            {controller.saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
+            {controller.saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
           </>
         )}
         actions={(
           <>
-            <Button variant="outline" size="sm" onClick={handleBack}>
+            <Button variant="outline" size="sm" onClick={controller.handleBack}>
               BACK
             </Button>
-            <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? 'SAVING…' : 'SAVE'}
+            <Button variant="primary" size="sm" onClick={controller.handleSave} disabled={controller.saving}>
+              {controller.saving ? 'SAVING…' : 'SAVE'}
             </Button>
           </>
         )}
       />
 
       <ConfirmDialog
-        open={showDialog}
+        open={controller.showDialog}
         title="Discard changes?"
         message="You have unsaved changes that will be lost."
         confirmLabel="Discard"
         cancelLabel="Keep Editing"
-        onConfirm={confirm}
-        onCancel={cancel}
+        onConfirm={controller.confirm}
+        onCancel={controller.cancel}
       />
 
       <div className="flex flex-shrink-0 items-stretch border-b border-border bg-background">
         <button
-          onClick={() => setEditorTab('designer')}
+          onClick={() => controller.setEditorTab('designer')}
           className={cn(
-            'flex items-center px-4 h-9 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-            editorTab === 'designer'
-              ? 'border-primary text-foreground bg-white/[0.04]'
-              : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
+            'flex h-9 items-center whitespace-nowrap border-b-2 px-4 font-mono text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+            controller.editorTab === 'designer'
+              ? 'border-accent text-accent bg-accent/[0.06]'
+              : 'border-transparent text-text-muted hover:bg-white/[0.02] hover:text-foreground',
           )}
         >
           DESIGNER
         </button>
         <button
-          onClick={() => setEditorTab('settings')}
+          onClick={() => controller.setEditorTab('settings')}
           className={cn(
-            'flex items-center px-4 h-9 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-            editorTab === 'settings'
-              ? 'border-primary text-foreground bg-white/[0.04]'
-              : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
+            'flex h-9 items-center whitespace-nowrap border-b-2 px-4 font-mono text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+            controller.editorTab === 'settings'
+              ? 'border-accent text-accent bg-accent/[0.06]'
+              : 'border-transparent text-text-muted hover:bg-white/[0.02] hover:text-foreground',
           )}
         >
           SETTINGS
         </button>
       </div>
 
-      {editorTab === 'designer' && (
+      {controller.editorTab === 'designer' && (
         <PageTabs
-          idlePage={layout.idlePage}
-          pages={layout.pages}
-          activeTab={activeTab}
-          livePageIndex={livePageIndex}
-          onSelectTab={tab => { setActiveTab(tab); setSelectedId(null) }}
-          onSelectAlerts={() => { setActiveTab('alerts'); setSelectedId(null) }}
-          onAddPage={handleAddPage}
-          onDeletePage={handleDeletePage}
-          onRenamePage={handleRenamePage}
+          idlePage={controller.layout.idlePage}
+          pages={controller.layout.pages}
+          activeTab={controller.activeTab}
+          livePageIndex={controller.livePageIndex}
+          onSelectTab={controller.selectCanvasTab}
+          onSelectAlerts={() => controller.selectCanvasTab('alerts')}
+          onAddPage={controller.handleAddPage}
+          onDeletePage={controller.handleDeletePage}
+          onRenamePage={controller.handleRenamePage}
         />
       )}
 
-      {editorTab === 'settings' ? (
+      {controller.editorTab === 'settings' ? (
         <AdditionalSettingsPanel
-          theme={layout.theme ?? {}}
-          domainPalette={layout.domainPalette ?? {}}
-          hardcodedDefaults={{ theme: hardcodedThemeDefault, domain: hardcodedDomainDefault }}
-          globalDefaults={globalDefaults}
-          formatPreferences={layout.formatPreferences ?? {}}
-          globalFormatPreferences={globalDefaults?.formatPreferences}
-          onChange={handleSettingsChange}
-          onFormatPreferencesChange={handleFormatPreferencesChange}
+          theme={controller.layout.theme ?? {}}
+          domainPalette={controller.layout.domainPalette ?? {}}
+          hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
+          globalDefaults={controller.globalDefaults}
+          formatPreferences={controller.layout.formatPreferences ?? {}}
+          globalFormatPreferences={controller.globalDefaults?.formatPreferences}
+          onChange={controller.handleSettingsChange}
+          onFormatPreferencesChange={controller.handleFormatPreferencesChange}
         />
-      ) : activeTab === 'alerts' ? (
+      ) : controller.activeTab === 'alerts' ? (
         <AlertsEditor
-          instances={layout.alerts ?? []}
-          catalog={alertCatalog}
-          domainPalette={layout.domainPalette}
-          onChange={handleAlertsChange}
+          instances={controller.layout.alerts ?? []}
+          catalog={controller.alertCatalog}
+          domainPalette={controller.layout.domainPalette}
+          onChange={controller.handleAlertsChange}
         />
       ) : (
-          <div className="flex flex-1 overflow-hidden min-h-0">
-            {/* Left: widget palette */}
-            <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
-              <div className="border-b border-border px-4 py-3">
-                <h4 className="terminal-header text-[10px] font-bold text-text-muted">WIDGET_PALETTE</h4>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <TooltipProvider>
-                  <WidgetPalette
-                    catalog={paletteWidgets}
-                    previewUrls={widgetPreviewUrls}
-                    onDragStart={(type, previewUrl) => {
-                      setPaletteDropType(type)
-                      setPaletteDropPreviewUrl(previewUrl ?? null)
-                    }}
-                    onDragEnd={() => {
-                      setPaletteDropType(null)
-                      setPaletteDropPreviewUrl(null)
-                    }}
-                  />
-                </TooltipProvider>
-              </div>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
+            <div className="border-b border-border px-4 py-3">
+              <h4 className="terminal-header text-[10px] font-bold text-text-muted">WIDGET_PALETTE</h4>
             </div>
-
-            {/* Center: canvas */}
-            <div className="flex flex-1 flex-col overflow-hidden p-6 gap-3 min-w-0">
-              <div
-                ref={canvasPaneRef}
-                className="flex flex-1 min-h-0 items-center justify-center overflow-hidden"
-              >
-                <div style={fittedCanvas ? { width: fittedCanvas.w, height: fittedCanvas.h } : { width: '100%' }}>
-                  <DashCanvas
-                    widgets={canvasWidgets}
-                    gridCols={layout.gridCols}
-                    gridRows={layout.gridRows}
-                    selectedId={selectedId}
-                    catalog={catalog}
-                    screenW={screenW}
-                    screenH={screenH}
-                    theme={layout.theme ?? hardcodedThemeDefault}
-                    domainPalette={layout.domainPalette ?? hardcodedDomainDefault}
-                    paletteDropType={paletteDropType}
-                    palettePreviewUrl={paletteDropPreviewUrl}
-                    previewUrl={previewUrl ?? undefined}
-                    onSelect={setSelectedId}
-                    onUpdate={handleUpdate}
-                  />
-                </div>
-              </div>
-
-              <div className="flex h-7 flex-shrink-0 items-center gap-4 font-mono text-[10px]">
-                {selectedWidget ? (
-                  <>
-                    <Badge variant="active" className="terminal-header">{selectedWidget.type}</Badge>
-                    <span className="text-text-muted">
-                      COL:{selectedWidget.col} ROW:{selectedWidget.row} W:{selectedWidget.colSpan} H:{selectedWidget.rowSpan}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-text-muted">DRAG_WIDGET_TO_CANVAS</span>
-                )}
-                <div className="ml-auto flex items-center gap-3">
-                  <Button
-                    onClick={handleClearPage}
-                    variant="ghost"
-                    size="xs"
-                    className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-foreground"
-                  >
-                    CLEAR
-                  </Button>
-                  {selectedWidget && (
-                    <Button
-                      onClick={() => setConfirmRemoveWidget(true)}
-                      variant="ghost"
-                      size="xs"
-                      className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
-                    >
-                      REMOVE
-                    </Button>
-                  )}
-                </div>
-              </div>
+            <div className="flex-1 overflow-y-auto">
+              <WidgetPalette
+                catalog={controller.paletteWidgets}
+                previewUrls={controller.widgetPreviewUrls}
+                onDragStart={(type, previewUrl) => {
+                  controller.setPaletteDropType(type)
+                  controller.setPaletteDropPreviewUrl(previewUrl ?? null)
+                }}
+                onDragEnd={() => {
+                  controller.setPaletteDropType(null)
+                  controller.setPaletteDropPreviewUrl(null)
+                }}
+              />
             </div>
+          </div>
 
-            {/* Right: properties panel */}
-            <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-border">
-              <div className="border-b border-border px-4 py-3">
-                <h4 className="terminal-header text-[10px] font-bold text-text-muted">PROPERTIES</h4>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <WidgetProperties
-                  widget={selectedWidget}
-                  catalog={catalog}
-                  onUpdate={updateSelectedWidget}
+          <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-6">
+            <div
+              ref={controller.canvasPaneRef}
+              className="flex min-h-0 flex-1 items-center justify-center overflow-hidden"
+            >
+              <div style={controller.fittedCanvas ? { width: controller.fittedCanvas.w, height: controller.fittedCanvas.h } : { width: '100%' }}>
+                <DashCanvas
+                  widgets={controller.canvasWidgets}
+                  gridCols={controller.layout.gridCols}
+                  gridRows={controller.layout.gridRows}
+                  selectedId={controller.selectedId}
+                  catalog={controller.catalog}
+                  screenW={controller.screenW}
+                  screenH={controller.screenH}
+                  theme={controller.layout.theme ?? DEFAULT_DASH_THEME}
+                  domainPalette={controller.layout.domainPalette ?? DEFAULT_DOMAIN_PALETTE}
+                  paletteDropType={controller.paletteDropType}
+                  palettePreviewUrl={controller.paletteDropPreviewUrl}
+                  previewUrl={controller.previewUrl ?? undefined}
+                  onSelect={controller.setSelectedId}
+                  onUpdate={controller.handleUpdate}
                 />
               </div>
             </div>
+
+            <div className="flex h-7 flex-shrink-0 items-center gap-4 font-mono text-[10px]">
+              {controller.selectedWidget ? (
+                <>
+                  <Badge variant="active" className="terminal-header">{controller.selectedWidget.type}</Badge>
+                  <span className="text-text-muted">
+                    COL:{controller.selectedWidget.col} ROW:{controller.selectedWidget.row} W:{controller.selectedWidget.colSpan} H:{controller.selectedWidget.rowSpan}
+                  </span>
+                </>
+              ) : (
+                <span className="text-text-muted">DRAG_WIDGET_TO_CANVAS</span>
+              )}
+              <div className="ml-auto flex items-center gap-3">
+                <Button
+                  onClick={controller.handleClearPage}
+                  variant="ghost"
+                  size="xs"
+                  className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-foreground"
+                >
+                  CLEAR
+                </Button>
+                {controller.selectedWidget && (
+                  <Button
+                    onClick={() => controller.setConfirmRemoveWidget(true)}
+                    variant="ghost"
+                    size="xs"
+                    className="h-auto border-0 px-0 text-text-muted hover:bg-transparent hover:text-destructive"
+                  >
+                    REMOVE
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-          )}
+
+          <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-border">
+            <div className="border-b border-border px-4 py-3">
+              <h4 className="terminal-header text-[10px] font-bold text-text-muted">PROPERTIES</h4>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <WidgetProperties
+                widget={controller.selectedWidget}
+                catalog={controller.catalog}
+                onUpdate={controller.updateSelectedWidget}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
-        open={confirmRemoveWidget}
+        open={controller.confirmRemoveWidget}
         title="Remove widget?"
-        message={selectedWidget ? `Remove "${selectedWidget.type}" widget from this page?` : 'Remove selected widget?'}
+        message={controller.selectedWidget ? `Remove "${controller.selectedWidget.type}" widget from this page?` : 'Remove selected widget?'}
         confirmLabel="Remove"
         cancelLabel="Cancel"
-        onConfirm={() => { doRemoveSelectedWidget(); setConfirmRemoveWidget(false) }}
-        onCancel={() => setConfirmRemoveWidget(false)}
+        onConfirm={() => {
+          controller.doRemoveSelectedWidget()
+          controller.setConfirmRemoveWidget(false)
+        }}
+        onCancel={() => controller.setConfirmRemoveWidget(false)}
       />
     </div>
   )
 }
 
-function WidgetPalette({
-  catalog,
-  previewUrls,
-  onDragStart,
-  onDragEnd,
-}: {
-  catalog: WidgetCatalogEntry[]
-  previewUrls: Record<string, string>
-  onDragStart?: (type: string, previewUrl?: string) => void
-  onDragEnd?: () => void
-}) {
-  const knownCategories = CATEGORY_ORDER.filter(c => catalog.some(w => w.category === c))
-  const extraCategories = [...new Set(catalog.map(w => w.category))].filter(c => !CATEGORY_ORDER.includes(c))
-  const categories = [...knownCategories, ...extraCategories]
-
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-
-  if (catalog.length === 0) {
-    return (
-      <div className="p-4 text-center font-mono text-[10px] text-text-muted">
-        LOADING_CATALOG…
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col">
-      {categories.map(cat => {
-        const isCollapsed = collapsed[cat] ?? false
-        const catLabel = catalog.find(w => w.category === cat)?.categoryLabel ?? cat
-        return (
-          <div key={cat}>
-            <button
-              onClick={() => setCollapsed(prev => ({ ...prev, [cat]: !isCollapsed }))}
-              className="flex w-full items-center gap-1.5 px-3 pt-3 pb-1 hover:text-foreground transition-colors"
-            >
-              <svg
-                width="8" height="8" viewBox="0 0 8 8" fill="currentColor"
-                className={cn('text-text-disabled flex-shrink-0 transition-transform duration-150', isCollapsed ? '-rotate-90' : '')}
-              >
-                <polygon points="0,0 8,0 4,8" />
-              </svg>
-              <span className="font-mono text-[9px] font-bold text-text-disabled uppercase tracking-wider">
-                {catLabel}
-              </span>
-            </button>
-            {!isCollapsed && (
-              <div className="px-3 pb-2">
-                <WidgetList
-                  widgets={catalog.filter(w => w.category === cat)}
-                  previewUrls={previewUrls}
-                  onDragStart={onDragStart}
-                  onDragEnd={onDragEnd}
-                />
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function WidgetList({
-  widgets,
-  previewUrls,
-  onDragStart,
-  onDragEnd,
-}: {
-  widgets: ReadonlyArray<Pick<WidgetCatalogEntry, 'type' | 'name'>>
-  previewUrls: Record<string, string>
-  onDragStart?: (type: string, previewUrl?: string) => void
-  onDragEnd?: () => void
-}) {
-  return (
-    <div className="space-y-1">
-      {widgets.map(w => (
-        <TooltipProvider key={w.type}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                draggable
-                onDragStart={e => {
-                  e.dataTransfer.effectAllowed = 'copy'
-                  e.dataTransfer.setData('widget-type', w.type)
-                  const previewUrl = previewUrls[w.type]
-                  const dragImage = document.createElement('div')
-                  dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid rgba(255,255,255,0.2);background:#090a0c;overflow:hidden;border-radius:4px'
-                  if (previewUrl) {
-                    const img = document.createElement('img')
-                    img.src = previewUrl
-                    img.style.cssText = 'width:100%;height:100%;display:block'
-                    dragImage.appendChild(img)
-                  } else {
-                    dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:#f5f7fa;font:700 11px JetBrains Mono, monospace'
-                    dragImage.textContent = w.name
-                  }
-                  document.body.appendChild(dragImage)
-                  e.dataTransfer.setDragImage(dragImage, 12, 12)
-                  requestAnimationFrame(() => dragImage.remove())
-                  onDragStart?.(w.type, previewUrl)
-                }}
-                onDragEnd={() => onDragEnd?.()}
-                className={cn(
-                  'flex w-full cursor-grab select-none items-center gap-2 border border-border px-2 py-1.5 active:cursor-grabbing',
-                  'font-mono text-[10px] text-text-muted transition-colors',
-                  'hover:border-border-strong hover:text-foreground',
-                )}
-              >
-                <WidgetDragIcon />
-                {previewUrls[w.type] && (
-                  <img
-                    src={previewUrls[w.type]}
-                    alt=""
-                    className="h-8 w-12 flex-shrink-0 border border-border/70 bg-background"
-                    style={{ objectFit: 'fill' }}
-                  />
-                )}
-                <span className="truncate">{w.name}</span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>Drag onto canvas to add</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ))}
-    </div>
-  )
-}
-
-function WidgetDragIcon() {
-  return (
-    <svg width="10" height="14" viewBox="0 0 10 14" fill="none" className="text-text-disabled flex-shrink-0">
-      <circle cx="3" cy="3"  r="1.5" fill="currentColor" />
-      <circle cx="7" cy="3"  r="1.5" fill="currentColor" />
-      <circle cx="3" cy="7"  r="1.5" fill="currentColor" />
-      <circle cx="7" cy="7"  r="1.5" fill="currentColor" />
-      <circle cx="3" cy="11" r="1.5" fill="currentColor" />
-      <circle cx="7" cy="11" r="1.5" fill="currentColor" />
-    </svg>
-  )
-}
-
 function PencilIcon({ className }: { className?: string }) {
   return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 11 11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <path d="M7.5 1.5 9.5 3.5 3.5 9.5H1.5v-2z" />
     </svg>
   )

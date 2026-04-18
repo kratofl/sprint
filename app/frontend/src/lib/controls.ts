@@ -1,6 +1,10 @@
-// Types and Wails bindings for the controls panel (wheel button → command bindings).
-
-import { call } from '@/lib/wails'
+import {
+  CaptureNextButton,
+  GetBindings,
+  GetCommandCatalog,
+  SaveBindings,
+} from '../../wailsjs/go/main/App'
+import { runDesktopCall } from '@/lib/wails'
 
 // Types.
 
@@ -27,36 +31,35 @@ export interface ControlsConfig {
 
 export const controlsAPI = {
   async getCommandCatalog(): Promise<CommandMeta[]> {
-    const raw = await call<unknown[]>('GetCommandCatalog')
-    if (!Array.isArray(raw)) return []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return raw.map((r: any): CommandMeta => ({
-      id:         r.id         ?? '',
-      label:      r.label      ?? '',
-      category:   r.category   ?? '',
-      capturable: r.capturable ?? false,
-      deviceOnly: r.deviceOnly ?? false,
-    }))
+    return runDesktopCall('GetCommandCatalog', async () => {
+      const catalog = await GetCommandCatalog()
+      return catalog.map(command => ({
+        id: command.id,
+        label: command.label,
+        category: command.category,
+        capturable: command.capturable,
+        deviceOnly: command.deviceOnly,
+      }))
+    })
   },
 
   async getBindings(): Promise<ControlsConfig> {
-    const raw = await call<{ bindings?: unknown[] }>('GetBindings')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bindings: Binding[] = Array.isArray(raw?.bindings)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? raw.bindings.map((b: any): Binding => ({
-          button:  b.button  ?? 0,
-          command: b.command ?? '',
-        }))
-      : []
-    return { bindings }
+    return runDesktopCall('GetBindings', async () => {
+      const config = await GetBindings()
+      return {
+        bindings: config.bindings.map(binding => ({
+          button: binding.button,
+          command: binding.command,
+        })),
+      }
+    })
   },
 
   async saveBindings(cfg: ControlsConfig): Promise<void> {
-    await call<void>('SaveBindings', cfg)
+    await runDesktopCall('SaveBindings', () => SaveBindings(cfg as never))
   },
 
   async captureButton(timeoutSecs: number): Promise<number> {
-    return call<number>('CaptureNextButton', timeoutSecs)
+    return runDesktopCall('CaptureNextButton', () => CaptureNextButton(timeoutSecs))
   },
 }

@@ -43,6 +43,17 @@ This is the neutral, agent-facing entrypoint for the repository. Canonical guida
 - Format: `make fmt`
 
 Run the smallest relevant checks for your change set. Do not claim checks you did not run.
+- Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal user-level Go cache.
+
+## GitHub Collaboration
+
+- When working on a GitHub issue, add useful progress notes to the issue comments.
+- Comment implementation decisions, open questions, blockers, assumptions, or other context that
+  would help the next human or agent continue the work.
+- If there is an assigned or active PR for the same work, add the relevant notes there as well when
+  they matter for review or merge decisions.
+- Keep comments high-signal. Do not spam routine status updates that add no durable value.
+- Use `gh` CLI for GitHub issue and PR comments unless the user requests a different tool.
 
 ## UI Rules
 
@@ -59,8 +70,30 @@ Run the smallest relevant checks for your change set. Do not claim checks you di
 - Next.js guidance: `docs/agents/nextjs.md`
 - Tooling and CI guidance: `docs/agents/tooling.md`
 
+## Canonical Prompts
+
+- Prompt index: `docs/agents/prompts/README.md`
+- Maintenance audit: `docs/agents/prompts/maintenance.md`
+- New API endpoint: `docs/agents/prompts/new-api-endpoint.md`
+- New shared component: `docs/agents/prompts/new-shared-component.md`
+- New game adapter: `docs/agents/prompts/new-game-adapter.md`
+
+## Canonical Skills
+
+- Skill index: `docs/agents/skills/README.md`
+- Telemetry pipeline: `docs/agents/skills/telemetry-data-pipeline.md`
+- VoCore screen: `docs/agents/skills/vocore-screen.md`
+- USBD480 screen: `docs/agents/skills/usbd480-screen.md`
+- Code review: `docs/agents/skills/code-review.md`
+- Secret scanning: `docs/agents/skills/secret-scanning.md`
+- Architecture blueprint: `docs/agents/skills/architecture-blueprint-generator.md`
+- Multi-stage Dockerfile: `docs/agents/skills/multi-stage-dockerfile.md`
+- Web coder: `docs/agents/skills/web-coder.md`
+
 ## Compatibility
 
 - `.github/copilot-instructions.md` remains for GitHub Copilot.
 - `.github/instructions/*.instructions.md` remain as thin compatibility wrappers that point to the
   canonical docs above.
+- `.github/prompts/*.md` and `.github/skills/*/SKILL.md` remain as compatibility wrappers for
+  GitHub-specific workflows, but the canonical content now lives under `docs/agents/`.

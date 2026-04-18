@@ -314,9 +314,9 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 			}
 			if errors.Is(err, ErrDriverNotInstalled) {
 				d.logger.Warn("WinUSB driver not installed for screen device", "err", err)
-				d.emitEvent("screen:driver_missing", map[string]string{
-					"driver": d.screen.Driver,
-					"error":  err.Error(),
+				d.emitEvent("screen:driver_missing", ScreenDriverMissingEvent{
+					Driver: d.screen.Driver,
+					Error:  err.Error(),
 				})
 				// Retry at the normal interval — driver installation is asynchronous
 				// (the user may install while the app is running).

@@ -31,6 +31,16 @@ These documents are the canonical repository instructions for coding agents.
 
 Run the smallest relevant checks for the files you touched.
 
+### GitHub Collaboration
+
+- Agents working on a GitHub issue should leave durable implementation notes in issue comments when
+  that context would help future contributors.
+- Comment open questions, blockers, assumptions, design decisions, partial progress, or follow-up
+  work worth preserving.
+- If the work also has an active PR, mirror the relevant context there when it affects review,
+  testing, or merge decisions.
+- Prefer a few useful comments over frequent low-signal status chatter.
+
 ### Design System
 
 - Use `@sprint/tokens` as the source of truth for colors, surfaces, and typography.
@@ -45,3 +55,4 @@ Run the smallest relevant checks for the files you touched.
 - `docs/agents/react-typescript.md`
 - `docs/agents/nextjs.md`
 - `docs/agents/tooling.md`
+- `docs/desktop/README.md`

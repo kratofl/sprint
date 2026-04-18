@@ -57,7 +57,7 @@ export function DeviceGetDeviceDisabled(arg1:string):Promise<boolean>;
 
 export function DeviceGetSavedDevices():Promise<Array<devices.SavedDevice>>;
 
-export function DeviceGetScreenStatus():Promise<string>;
+export function DeviceGetScreenStatus():Promise<devices.ScreenStatus>;
 
 export function DeviceRemoveDevice(arg1:number,arg2:number,arg3:string):Promise<void>;
 

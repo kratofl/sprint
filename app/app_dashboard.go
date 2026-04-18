@@ -8,7 +8,6 @@ import (
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
-	"github.com/kratofl/sprint/app/internal/devices"
 )
 
 // DashListLayouts returns metadata for all saved dash layouts.
@@ -33,26 +32,18 @@ func (a *App) DashLoadLayoutByID(id string) (*dashboard.DashLayout, error) {
 // DashSaveLayout writes the layout to disk and hot-reloads all screens whose
 // current layout matches the saved ID.
 func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
-	if err := a.dash.Save(&layout); err != nil {
+	if err := a.dashSvc.SaveLayout(&layout); err != nil {
 		return fmt.Errorf("DashSaveLayout: %w", err)
 	}
-	a.coord.UpdateLayout(&layout)
 	return nil
 }
 
 // DashCreateLayout creates a new named dash layout inheriting the global
 // default theme, domain palette, and format preferences, then returns the persisted layout.
 func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
-	layout, err := a.dash.Create(name)
+	layout, err := a.dashSvc.CreateLayout(name)
 	if err != nil {
 		return nil, fmt.Errorf("DashCreateLayout: %w", err)
-	}
-	gs, err := dashboard.LoadGlobalSettings()
-	if err == nil {
-		layout.Theme = gs.Theme
-		layout.DomainPalette = gs.DomainPalette
-		layout.FormatPreferences = gs.FormatPreferences
-		_ = a.dash.Save(layout) // best-effort: apply global defaults to the new layout
 	}
 	return layout, nil
 }
@@ -69,10 +60,9 @@ func (a *App) DashGetGlobalSettings() (*dashboard.GlobalDashSettings, error) {
 // DashSaveGlobalSettings writes the global dash settings to disk and propagates
 // the format preferences to all active screen painters immediately.
 func (a *App) DashSaveGlobalSettings(s dashboard.GlobalDashSettings) error {
-	if err := dashboard.SaveGlobalSettings(&s); err != nil {
+	if err := a.dashSvc.SaveGlobalSettings(&s); err != nil {
 		return fmt.Errorf("DashSaveGlobalSettings: %w", err)
 	}
-	a.coord.SetGlobalFormatPrefs(s.FormatPreferences)
 	return nil
 }
 
@@ -97,26 +87,8 @@ func (a *App) DashGetDefaultFormatPreferences() widgets.FormatPreferences {
 // DashDeleteLayout deletes the layout with the given ID.
 // Any screen currently showing that layout is switched to the default.
 func (a *App) DashDeleteLayout(id string) error {
-	if err := a.dash.Delete(id); err != nil {
+	if err := a.dashSvc.DeleteLayout(id); err != nil {
 		return fmt.Errorf("DashDeleteLayout: %w", err)
-	}
-	defaultLayout, _ := a.dash.Load("")
-	if defaultLayout == nil {
-		return nil
-	}
-	reg, _ := a.devMgr.Load()
-	if reg == nil {
-		return nil
-	}
-	for i := range reg.Devices {
-		d := &reg.Devices[i]
-		if !d.HasScreen() {
-			continue
-		}
-		if d.DashID == id || d.DashID == "" {
-			deviceID := devices.DeviceID(d.VID, d.PID, d.Serial)
-			a.coord.SetDashLayout(deviceID, defaultLayout)
-		}
 	}
 	return nil
 }

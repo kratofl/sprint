@@ -23,6 +23,8 @@ type App struct {
 	coord   *core.Coordinator
 	dash    *dashboard.Manager
 	devMgr  *devices.Manager
+	dashSvc *dashboard.Service
+	devices *devices.Service
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -56,8 +58,18 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.devMgr = devices.NewManager()
 	a.coord = core.New(log, a.dash, a.devMgr)
-	a.coord.SetEmit(func(event string, data ...any) {
+	emit := func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
+	}
+	a.coord.SetEmit(emit)
+	a.dashSvc = dashboard.NewService(a.dash, a.devMgr, a.coord)
+	a.devices = devices.NewService(a.devMgr, a.coord, emit, func(deviceID, dashID string) error {
+		layout, err := a.dash.Load(dashID)
+		if err != nil {
+			return err
+		}
+		a.coord.SetDashLayout(deviceID, layout)
+		return nil
 	})
 }
 

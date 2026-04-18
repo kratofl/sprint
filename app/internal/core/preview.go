@@ -179,10 +179,10 @@ func (s *previewService) renderAndEmit() {
 	emit := s.emit
 	s.emitMu.RUnlock()
 	if emit != nil {
-		emit(previewEventName, map[string]any{
-			"png":       b64,
-			"pageIndex": pageIndex,
-			"idle":      idle,
+		emit(previewEventName, DashPreviewEvent{
+			PNG:       b64,
+			PageIndex: pageIndex,
+			Idle:      idle,
 		})
 	}
 }

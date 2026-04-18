@@ -315,24 +315,24 @@ func (c *Coordinator) CyclePage(deviceID string, direction int) {
 		n := len(e.currentLayout.Pages)
 		e.pageIndex = ((e.pageIndex+direction)%n + n) % n
 		e.driver.SetActivePage(e.pageIndex)
-		c.emit("dash:page-changed", map[string]any{
-			"deviceID":  id,
-			"pageIndex": e.pageIndex,
-			"pageName":  e.currentLayout.Pages[e.pageIndex].Name,
+		c.emit("dash:page-changed", DashPageChangedEvent{
+			DeviceID:  id,
+			PageIndex: e.pageIndex,
+			PageName:  e.currentLayout.Pages[e.pageIndex].Name,
 		})
 	}
 }
 
-// GetScreenStatus returns "connected" if any screen-capable driver is connected.
-func (c *Coordinator) GetScreenStatus() string {
+// GetScreenStatus returns connected if any screen-capable driver is active.
+func (c *Coordinator) GetScreenStatus() devices.ScreenStatus {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, e := range c.entries {
 		if e.driver != nil && e.driver.IsConnected() {
-			return "connected"
+			return devices.ScreenStatusConnected
 		}
 	}
-	return "disconnected"
+	return devices.ScreenStatusDisconnected
 }
 
 // SetDeviceDisabled disables or re-enables rendering for the given device.
@@ -550,10 +550,10 @@ func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
 			if e.currentLayout != nil && len(e.currentLayout.Pages) > 0 {
 				pageName = e.currentLayout.Pages[0].Name
 			}
-			c.emit("dash:page-changed", map[string]any{
-				"deviceID":  id,
-				"pageIndex": 0,
-				"pageName":  pageName,
+			c.emit("dash:page-changed", DashPageChangedEvent{
+				DeviceID:  id,
+				PageIndex: 0,
+				PageName:  pageName,
 			})
 		}
 		c.mu.Unlock()

@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { type DashLayout, type LayoutMeta, type GlobalDashSettings, type DashTheme, type DomainPalette, type FormatPreferences, dashAPI } from '@/lib/dash'
+import {
+  type DashLayout,
+  type LayoutMeta,
+  type GlobalDashSettings,
+  type DashTheme,
+  type DomainPalette,
+  type FormatPreferences,
+  DEFAULT_DASH_THEME,
+  DEFAULT_DOMAIN_PALETTE,
+  dashAPI,
+} from '@/lib/dash'
 import { DashList } from '@/components/DashList'
 import { DashEditMode } from '@/components/DashEditMode'
 import { AdditionalSettingsPanel } from '@/components/AdditionalSettingsPanel'
@@ -7,30 +17,6 @@ import { Badge, Button, PageHeader } from '@sprint/ui'
 
 export interface DashEditorHandle {
   isDirty: boolean
-}
-
-const HARDCODED_THEME: DashTheme = {
-  primary: { R: 255, G: 144, B: 108, A: 255 },
-  accent:  { R: 90,  G: 248, B: 251, A: 255 },
-  fg:      { R: 255, G: 255, B: 255, A: 255 },
-  muted:   { R: 128, G: 128, B: 128, A: 255 },
-  muted2:  { R: 161, G: 161, B: 170, A: 255 },
-  success: { R: 52,  G: 211, B: 153, A: 255 },
-  warning: { R: 251, G: 191, B: 36,  A: 255 },
-  danger:  { R: 248, G: 113, B: 113, A: 255 },
-  surface: { R: 20,  G: 20,  B: 20,  A: 255 },
-  bg:      { R: 10,  G: 10,  B: 10,  A: 255 },
-  border:  { R: 42,  G: 42,  B: 42,  A: 255 },
-  rpmRed:  { R: 220, G: 38,  B: 38,  A: 255 },
-}
-
-const HARDCODED_DOMAIN: DomainPalette = {
-  abs:       { R: 251, G: 191, B: 36,  A: 255 },
-  tc:        { R: 90,  G: 248, B: 251, A: 255 },
-  brakeBias: { R: 251, G: 191, B: 36,  A: 255 },
-  energy:    { R: 52,  G: 211, B: 153, A: 255 },
-  motor:     { R: 255, G: 144, B: 108, A: 255 },
-  brakeMig:  { R: 90,  G: 248, B: 251, A: 255 },
 }
 
 const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
@@ -86,7 +72,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
   const handleGlobalSettingsChange = (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
     setGlobalSettings(prev => prev ? {
       ...prev,
-      theme: { ...HARDCODED_THEME, ...theme } as DashTheme,
+      theme: { ...DEFAULT_DASH_THEME, ...theme } as DashTheme,
       domainPalette: domain,
     } : prev)
   }
@@ -148,7 +134,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
           <AdditionalSettingsPanel
             theme={globalSettings.theme ?? {}}
             domainPalette={globalSettings.domainPalette ?? {}}
-            hardcodedDefaults={{ theme: HARDCODED_THEME, domain: HARDCODED_DOMAIN }}
+            hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
             formatPreferences={globalSettings.formatPreferences ?? {}}
             onChange={handleGlobalSettingsChange}
             onFormatPreferencesChange={handleGlobalFormatPreferencesChange}

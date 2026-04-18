@@ -6,10 +6,15 @@ import {
   StatusStrip,
 } from '@sprint/ui'
 import {
+  IconArrowLeft,
+  IconArrowRight,
   IconGauge,
+  IconHelp,
   IconHome2,
   IconKeyboard,
   IconLayoutDashboard,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconMinus,
   IconSettings,
   IconSquare,
@@ -23,14 +28,26 @@ import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
 import Settings from '@/views/Settings'
+import Help from '@/views/Help'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import UpdateToast from '@/components/UpdateToast'
-import { onEvent, call } from '@/lib/wails'
+import { APP_EVENTS } from '@/lib/desktopEvents'
+import {
+  createViewHistory,
+  goBack,
+  goForward,
+  navigateToView,
+  type AppView,
+  type ViewHistory,
+} from '@/lib/appShell'
+import { appInfoAPI } from '@/lib/settings'
+import { windowAPI } from '@/lib/window'
+import { onEvent } from '@/lib/wails'
 
-type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls' | 'settings'
+type View = AppView
 
 const NAV = [
   { id: 'home', label: 'HOME', icon: IconHome2 },
@@ -39,13 +56,13 @@ const NAV = [
   { id: 'devices', label: 'DEVICES', icon: IconUsb },
   { id: 'controls', label: 'CONTROLS', icon: IconKeyboard },
 ] as const satisfies ReadonlyArray<{
-  id: View
+  id: Extract<View, 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'>
   label: string
   icon: ComponentType<{ className?: string; size?: number }>
 }>
 
 export default function App() {
-  const [view, setView] = useState<View>('home')
+  const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory('home'))
   const [navCollapsed, setNavCollapsed] = useState(false)
   const visibleNav = useMemo(
     () => import.meta.env.DEV ? [...NAV] : NAV.filter(item => item.id !== 'telemetry'),
@@ -59,34 +76,56 @@ export default function App() {
   const [version, setVersion] = useState('dev')
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
-  const [pendingView, setPendingView] = useState<View | null>(null)
+  const [pendingHistory, setPendingHistory] = useState<ViewHistory | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
-  const switchView = useCallback((newView: View) => {
-    if (newView === view) return
+  const view = viewHistory.current
+
+  const applyHistory = useCallback((nextHistory: ViewHistory) => {
+    if (
+      nextHistory.current === viewHistory.current &&
+      nextHistory.index === viewHistory.index &&
+      nextHistory.stack.length === viewHistory.stack.length
+    ) {
+      return
+    }
+
     if (view === 'dash' && dashEditorRef.current?.isDirty) {
-      setPendingView(newView)
+      setPendingHistory(nextHistory)
       setShowLeaveConfirm(true)
       return
     }
-    setView(newView)
-  }, [view])
+
+    setViewHistory(nextHistory)
+  }, [view, viewHistory])
+
+  const switchView = useCallback((newView: View) => {
+    applyHistory(navigateToView(viewHistory, newView))
+  }, [applyHistory, viewHistory])
+
+  const stepBackward = useCallback(() => {
+    applyHistory(goBack(viewHistory))
+  }, [applyHistory, viewHistory])
+
+  const stepForward = useCallback(() => {
+    applyHistory(goForward(viewHistory))
+  }, [applyHistory, viewHistory])
 
   const confirmLeave = useCallback(() => {
     setShowLeaveConfirm(false)
-    if (pendingView) {
-      setView(pendingView)
-      setPendingView(null)
+    if (pendingHistory) {
+      setViewHistory(pendingHistory)
+      setPendingHistory(null)
     }
-  }, [pendingView])
+  }, [pendingHistory])
 
   const cancelLeave = useCallback(() => {
     setShowLeaveConfirm(false)
-    setPendingView(null)
+    setPendingHistory(null)
   }, [])
 
   useEffect(() => {
-    const unsub = onEvent('app:ready', () => setBooting(false))
+    const unsub = onEvent(APP_EVENTS.ready, () => setBooting(false))
     const fallback = setTimeout(() => setBooting(false), 3000)
     return () => {
       unsub()
@@ -95,7 +134,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    call<string>('GetVersion').then(setVersion).catch(() => {})
+    appInfoAPI.getVersion().then(setVersion).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -143,34 +182,92 @@ export default function App() {
       )}
 
       <header
-        className="flex h-8 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
+        className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
         onDoubleClick={(event) => {
           if ((event.target as HTMLElement).closest('button, a, input')) return
-          call('WindowMaximise')
+          void windowAPI.toggleMaximise()
         }}
       >
-        <div className="flex items-center gap-2 [--wails-draggable:nodrag]">
-          <img src={logoIcon} alt="Sprint" className="h-5 w-auto" />
-        </div>
-
-        <div className="ml-auto flex items-center gap-1 [--wails-draggable:nodrag]">
+        <div className="flex items-center gap-1.5 [--wails-draggable:nodrag]">
           <Button
             variant="ghost"
             size="icon-sm"
+            onClick={stepBackward}
+            disabled={!viewHistory.canGoBack}
+            className="text-text-muted hover:bg-foreground/10"
+            aria-label="Back"
+          >
+            <IconArrowLeft size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={stepForward}
+            disabled={!viewHistory.canGoForward}
+            className="text-text-muted hover:bg-foreground/10"
+            aria-label="Forward"
+          >
+            <IconArrowRight size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setNavCollapsed(value => !value)}
+            className="text-text-muted hover:bg-foreground/10"
+            aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {navCollapsed ? (
+              <IconLayoutSidebarLeftExpand size={14} />
+            ) : (
+              <IconLayoutSidebarLeftCollapse size={14} />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => switchView('home')}
+            className="gap-2 px-2.5 text-foreground hover:bg-foreground/10"
+            aria-label="Go to home"
+          >
+            <img src={logoIcon} alt="Sprint" className="h-4 w-auto shrink-0" />
+            <span className="text-[11px] font-semibold tracking-[0.04em]">Sprint</span>
+          </Button>
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-1 [--wails-draggable:nodrag]">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => switchView('settings')}
             className={cn(
-              'text-text-muted hover:bg-foreground/10',
-              view === 'settings' && 'text-foreground',
+              'gap-1.5 text-text-muted hover:bg-foreground/10 hover:text-foreground',
+              view === 'settings' && 'border-border bg-white/[0.04] text-foreground',
             )}
-            aria-label="Settings"
+            aria-label="View settings"
           >
             <IconSettings size={14} />
+            <span>SETTINGS</span>
           </Button>
-          <div className="flex items-center gap-1 border-l border-border pl-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => switchView('help')}
+            className={cn(
+              'gap-1.5 text-text-muted hover:bg-foreground/10 hover:text-foreground',
+              view === 'help' && 'border-border bg-white/[0.04] text-foreground',
+            )}
+            aria-label="Help"
+          >
+            <IconHelp size={14} />
+            <span>HELP</span>
+          </Button>
+          <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => call('WindowMinimise')}
+              onClick={() => { void windowAPI.minimise() }}
               className="text-text-muted hover:bg-foreground/10"
               aria-label="Minimise"
             >
@@ -179,7 +276,7 @@ export default function App() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => call('WindowMaximise')}
+              onClick={() => { void windowAPI.toggleMaximise() }}
               className="text-text-muted hover:bg-foreground/10"
               aria-label="Maximise"
             >
@@ -188,7 +285,7 @@ export default function App() {
             <Button
               variant="ghost"
               size="icon-sm"
-              onClick={() => call('WindowClose')}
+              onClick={() => { void windowAPI.close() }}
               className="text-text-muted hover:bg-destructive/80 hover:text-white"
               aria-label="Close"
             >
@@ -205,6 +302,7 @@ export default function App() {
           onSelect={(id) => switchView(id as View)}
           collapsed={navCollapsed}
           onCollapsedChange={setNavCollapsed}
+          showCollapseToggle={false}
         />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -215,17 +313,18 @@ export default function App() {
             {view === 'devices' && <Devices />}
             {view === 'controls' && <Controls />}
             {view === 'settings' && <Settings />}
+            {view === 'help' && <Help />}
           </main>
 
           <StatusStrip
             connected={connected}
             version={version}
-            leftSlot={
+            leftSlot={(
               <>
                 <span>FRAME_RATE: {fps ?? 0}Hz</span>
                 <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
               </>
-            }
+            )}
           />
         </div>
       </div>

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { IconAlertTriangle, IconLoader2 } from '@tabler/icons-react'
 import { Button } from '@sprint/ui'
-import { call } from '@/lib/wails'
+import { InstallScreenDriver } from '../../../wailsjs/go/main/App'
+import { runDesktopCall } from '@/lib/wails'
 
 interface DriverMissingBannerProps {
   driverType: string
@@ -16,7 +17,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
     setInstalling(true)
     setInstallError(null)
     try {
-      await call<void>('InstallScreenDriver', driverType)
+      await runDesktopCall('InstallScreenDriver', () => InstallScreenDriver(driverType))
     } catch (error) {
       setInstallError(String(error))
     } finally {
