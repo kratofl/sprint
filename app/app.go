@@ -71,6 +71,13 @@ func (a *App) Startup(ctx context.Context) {
 		a.coord.SetDashLayout(deviceID, layout)
 		return nil
 	})
+
+	if s, err := settings.Load(); err == nil {
+		a.coord.SetProfile(dashboard.RenderProfile{
+			DriverName:   s.DriverName,
+			DriverNumber: s.DriverNumber,
+		})
+	}
 }
 
 // DomReady is called after the frontend DOM is fully loaded and scripts have
@@ -163,7 +170,16 @@ func (a *App) GetSettings() (*settings.Settings, error) {
 
 // SaveSettings persists s to disk.
 func (a *App) SaveSettings(s settings.Settings) error {
-	return settings.Save(&s)
+	if err := settings.Save(&s); err != nil {
+		return err
+	}
+	if a.coord != nil {
+		a.coord.SetProfile(dashboard.RenderProfile{
+			DriverName:   s.DriverName,
+			DriverNumber: s.DriverNumber,
+		})
+	}
+	return nil
 }
 
 // CheckUpdate manually checks GitHub Releases for a newer version.

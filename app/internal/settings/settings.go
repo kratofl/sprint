@@ -16,6 +16,8 @@ import (
 // Settings holds persistent application preferences.
 type Settings struct {
 	UpdateChannel string `json:"updateChannel"` // "stable" | "pre-release"
+	DriverName    string `json:"driverName,omitempty"`
+	DriverNumber  string `json:"driverNumber,omitempty"`
 }
 
 var presetsFS fs.FS

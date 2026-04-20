@@ -50,6 +50,14 @@ type DomainPalette struct {
 	BrakeMig  color.RGBA `json:"brakeMig"`
 }
 
+// TypographySettings holds dash-level font defaults applied beneath per-widget
+// overrides. Zero values fall back to the next typography layer.
+type TypographySettings struct {
+	Font      FontStyle `json:"font,omitempty"`
+	LabelFont FontStyle `json:"labelFont,omitempty"`
+	FontScale float64   `json:"fontScale,omitempty"`
+}
+
 // DefaultDomainPalette returns the built-in domain colour defaults.
 func DefaultDomainPalette() DomainPalette {
 	return DomainPalette{
@@ -106,9 +114,11 @@ func domainColor(d DomainPalette, ref ColorRef) (color.RGBA, bool) {
 //  3. Theme (generic semantic colours)
 //  4. Built-in white fallback
 type RenderTheme struct {
-	Theme  DashTheme
-	Domain DomainPalette
-	Style  WidgetStyle // per-widget style overrides
+	Theme            DashTheme
+	Domain           DomainPalette
+	Style            WidgetStyle // per-widget style overrides
+	Typography       TypographySettings
+	GlobalTypography TypographySettings
 }
 
 // FontScale returns the font-size multiplier from the widget style.
@@ -116,6 +126,12 @@ type RenderTheme struct {
 func (rt RenderTheme) FontScale() float64 {
 	if rt.Style.FontSize > 0 {
 		return rt.Style.FontSize
+	}
+	if rt.Typography.FontScale > 0 {
+		return rt.Typography.FontScale
+	}
+	if rt.GlobalTypography.FontScale > 0 {
+		return rt.GlobalTypography.FontScale
 	}
 	return 1.0
 }
@@ -129,9 +145,21 @@ func (rt RenderTheme) ResolveFont(elemFont FontStyle) FontStyle {
 		if rt.Style.Font != "" {
 			return rt.Style.Font
 		}
+		if rt.Typography.Font != "" {
+			return rt.Typography.Font
+		}
+		if rt.GlobalTypography.Font != "" {
+			return rt.GlobalTypography.Font
+		}
 	case FontLabel, FontMono:
 		if rt.Style.LabelFont != "" {
 			return rt.Style.LabelFont
+		}
+		if rt.Typography.LabelFont != "" {
+			return rt.Typography.LabelFont
+		}
+		if rt.GlobalTypography.LabelFont != "" {
+			return rt.GlobalTypography.LabelFont
 		}
 	}
 	return elemFont

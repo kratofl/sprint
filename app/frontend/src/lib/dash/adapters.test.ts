@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { adaptCatalogEntry, adaptSavedDevice } from './adapters.ts'
+import { adaptCatalogEntry, adaptGlobalDashSettings, adaptLayout, adaptSavedDevice } from './adapters.ts'
 
 test('adaptSavedDevice maps snake_case desktop payloads into camelCase frontend models', () => {
   const adapted = adaptSavedDevice({
@@ -76,4 +76,62 @@ test('adaptCatalogEntry preserves optional bindings and defaults the purpose to 
   assert.equal(adapted.purpose, 'dash')
   assert.deepEqual(adapted.bindings, [])
   assert.equal(adapted.margin, 0)
+})
+
+test('adaptLayout maps wrapper groups, page backgrounds, and typography settings', () => {
+  const adapted = adaptLayout({
+    id: 'layout-a',
+    name: 'Race',
+    default: false,
+    gridCols: 20,
+    gridRows: 12,
+    idlePage: { id: 'idle', name: 'Idle', widgets: [] },
+    pages: [{
+      id: 'page-main',
+      name: 'Main',
+      background: { R: 1, G: 2, B: 3, A: 255 },
+      widgets: [],
+      wrapperGroups: [{
+        id: 'stack',
+        name: 'Stack',
+        col: 4,
+        row: 3,
+        colSpan: 8,
+        rowSpan: 3,
+        defaultVariantId: 'variant-a',
+        variants: [{
+          id: 'variant-a',
+          name: 'A',
+          widgets: [{ id: 'inner', type: 'text', col: 0, row: 0, colSpan: 8, rowSpan: 3 }],
+        }],
+      }],
+    }],
+    typography: {
+      font: 'bold',
+      labelFont: 'mono',
+      fontScale: 1.2,
+    },
+  })
+
+  assert.equal(adapted.pages[0].background?.R, 1)
+  assert.equal(adapted.pages[0].wrapperGroups?.[0]?.defaultVariantId, 'variant-a')
+  assert.equal(adapted.pages[0].wrapperGroups?.[0]?.variants?.[0]?.widgets?.[0]?.type, 'text')
+  assert.equal(adapted.typography?.font, 'bold')
+  assert.equal(adapted.typography?.fontScale, 1.2)
+})
+
+test('adaptGlobalDashSettings includes typography defaults', () => {
+  const adapted = adaptGlobalDashSettings({
+    theme: { primary: { R: 1, G: 2, B: 3, A: 255 } },
+    domainPalette: {},
+    typography: {
+      font: 'number',
+      labelFont: 'label',
+      fontScale: 1.1,
+    },
+  })
+
+  assert.equal(adapted.typography?.font, 'number')
+  assert.equal(adapted.typography?.labelFont, 'label')
+  assert.equal(adapted.typography?.fontScale, 1.1)
 })

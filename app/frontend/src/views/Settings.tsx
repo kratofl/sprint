@@ -36,6 +36,12 @@ export default function Settings() {
     settingsAPI.saveSettings(next).catch(() => {})
   }, [settings])
 
+  const applyProfile = useCallback((patch: Partial<AppSettings>) => {
+    const next: AppSettings = { ...settings, ...patch }
+    setSettings(next)
+    settingsAPI.saveSettings(next).catch(() => {})
+  }, [settings])
+
   const confirmPrerelease = useCallback(() => {
     if (pendingChannel) {
       applyChannel(pendingChannel)
@@ -67,6 +73,38 @@ export default function Settings() {
       />
 
       <div className="flex flex-col gap-6 px-6 py-6 max-w-lg">
+        <section className="flex flex-col gap-4">
+          <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
+            PROFILE
+          </h3>
+
+          <div className="surface rounded border border-border p-4 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] text-text-muted">Driver name</label>
+              <input
+                type="text"
+                value={settings.driverName ?? ''}
+                onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
+                onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
+                className="bg-background border border-border px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                placeholder="Your Name"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] text-text-muted">Driver number</label>
+              <input
+                type="text"
+                value={settings.driverNumber ?? ''}
+                onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
+                onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
+                className="bg-background border border-border px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                placeholder="#22"
+              />
+            </div>
+          </div>
+        </section>
+
         <section className="flex flex-col gap-4">
           <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
             UPDATES

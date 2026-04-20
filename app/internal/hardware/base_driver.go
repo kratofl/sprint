@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,6 +60,8 @@ type baseDriver struct {
 
 	currentIdle       atomic.Bool
 	currentActivePage atomic.Int32
+	wrapperMu         sync.Mutex
+	currentWrappers   map[string]string
 
 	screenConnected atomic.Bool
 	disabled        atomic.Bool
@@ -68,6 +71,10 @@ type baseDriver struct {
 	// currentGlobalPrefs stores the latest global format preferences so they can
 	// be applied to a newly created Painter in ensureDashSource.
 	currentGlobalPrefs atomic.Pointer[widgets.FormatPreferences]
+	// currentGlobalTypography stores the latest global dash typography defaults.
+	currentGlobalTypography atomic.Pointer[widgets.TypographySettings]
+	// currentProfile stores app-level profile strings such as driver name/number.
+	currentProfile atomic.Pointer[dashboard.RenderProfile]
 }
 
 func newBaseDriver(logger *slog.Logger, defaultFPS int) baseDriver {
@@ -172,10 +179,52 @@ func (d *baseDriver) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	d.forceRedraw.Store(true)
 }
 
+// SetGlobalTypography stores the global dash typography defaults and applies
+// them to the current Painter.
+func (d *baseDriver) SetGlobalTypography(typography widgets.TypographySettings) {
+	d.currentGlobalTypography.Store(&typography)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalTypography(typography)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetProfile stores app-level display strings and applies them to the current Painter.
+func (d *baseDriver) SetProfile(profile dashboard.RenderProfile) {
+	d.currentProfile.Store(&profile)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetProfile(profile)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetWrapperVariant stores the selected wrapper variant and applies it to the current Painter.
+func (d *baseDriver) SetWrapperVariant(pageID, groupID, variantID string) {
+	d.wrapperMu.Lock()
+	if d.currentWrappers == nil {
+		d.currentWrappers = map[string]string{}
+	}
+	d.currentWrappers[pageID+"::"+groupID] = variantID
+	d.wrapperMu.Unlock()
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetWrapperVariant(pageID, groupID, variantID)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
 // SetLayout stores the dashboard layout and applies it to the current Painter
 // (if one exists). Safe to call at any time; takes effect on the next frame.
 func (d *baseDriver) SetLayout(layout *dashboard.DashLayout) {
 	d.currentLayout.Store(layout)
+	d.wrapperMu.Lock()
+	d.currentWrappers = nil
+	d.wrapperMu.Unlock()
 	if sptr := d.source.Load(); sptr != nil {
 		if p, ok := (*sptr).(*dashboard.Painter); ok {
 			p.SetLayout(layout)
@@ -212,6 +261,12 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	if gp := d.currentGlobalPrefs.Load(); gp != nil {
 		p.SetGlobalPrefs(*gp)
 	}
+	if gt := d.currentGlobalTypography.Load(); gt != nil {
+		p.SetGlobalTypography(*gt)
+	}
+	if profile := d.currentProfile.Load(); profile != nil {
+		p.SetProfile(*profile)
+	}
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 		d.logger.Info("painter created", "dims", fmt.Sprintf("%dx%d", w, h), "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
@@ -226,6 +281,14 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 	}
+	d.wrapperMu.Lock()
+	for key, variantID := range d.currentWrappers {
+		pageID, groupID, ok := strings.Cut(key, "::")
+		if ok {
+			p.SetWrapperVariant(pageID, groupID, variantID)
+		}
+	}
+	d.wrapperMu.Unlock()
 }
 
 // SetFrameSource replaces the current rendering source. If the existing source

@@ -109,6 +109,84 @@ export namespace commands {
 
 export namespace dashboard {
 	
+	export class DashWrapperVariant {
+	    id: string;
+	    name: string;
+	    widgets: DashWidget[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DashWrapperVariant(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.widgets = this.convertValues(source["widgets"], DashWidget);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DashWrapperGroup {
+	    id: string;
+	    name: string;
+	    col: number;
+	    row: number;
+	    colSpan: number;
+	    rowSpan: number;
+	    defaultVariantId?: string;
+	    variants: DashWrapperVariant[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DashWrapperGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.col = source["col"];
+	        this.row = source["row"];
+	        this.colSpan = source["colSpan"];
+	        this.rowSpan = source["rowSpan"];
+	        this.defaultVariantId = source["defaultVariantId"];
+	        this.variants = this.convertValues(source["variants"], DashWrapperVariant);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class DashWidget {
 	    id: string;
 	    type: string;
@@ -158,7 +236,9 @@ export namespace dashboard {
 	export class DashPage {
 	    id: string;
 	    name: string;
+	    background?: color.RGBA;
 	    widgets: DashWidget[];
+	    wrapperGroups?: DashWrapperGroup[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DashPage(source);
@@ -168,7 +248,9 @@ export namespace dashboard {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.name = source["name"];
+	        this.background = this.convertValues(source["background"], color.RGBA);
 	        this.widgets = this.convertValues(source["widgets"], DashWidget);
+	        this.wrapperGroups = this.convertValues(source["wrapperGroups"], DashWrapperGroup);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -200,6 +282,7 @@ export namespace dashboard {
 	    alerts?: alerts.AlertInstance[];
 	    theme?: widgets.DashTheme;
 	    domainPalette?: widgets.DomainPalette;
+	    typography?: widgets.TypographySettings;
 	    formatPreferences?: widgets.FormatPreferences;
 	
 	    static createFrom(source: any = {}) {
@@ -218,6 +301,7 @@ export namespace dashboard {
 	        this.alerts = this.convertValues(source["alerts"], alerts.AlertInstance);
 	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
 	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
+	        this.typography = this.convertValues(source["typography"], widgets.TypographySettings);
 	        this.formatPreferences = this.convertValues(source["formatPreferences"], widgets.FormatPreferences);
 	    }
 	
@@ -241,9 +325,12 @@ export namespace dashboard {
 	}
 	
 	
+	
+	
 	export class GlobalDashSettings {
 	    theme: widgets.DashTheme;
 	    domainPalette: widgets.DomainPalette;
+	    typography?: widgets.TypographySettings;
 	    formatPreferences: widgets.FormatPreferences;
 	
 	    static createFrom(source: any = {}) {
@@ -254,6 +341,7 @@ export namespace dashboard {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
 	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
+	        this.typography = this.convertValues(source["typography"], widgets.TypographySettings);
 	        this.formatPreferences = this.convertValues(source["formatPreferences"], widgets.FormatPreferences);
 	    }
 	
@@ -521,6 +609,8 @@ export namespace settings {
 	
 	export class Settings {
 	    updateChannel: string;
+	    driverName?: string;
+	    driverNumber?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -529,6 +619,8 @@ export namespace settings {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.updateChannel = source["updateChannel"];
+	        this.driverName = source["driverName"];
+	        this.driverNumber = source["driverNumber"];
 	    }
 	}
 
@@ -778,6 +870,22 @@ export namespace widgets {
 	        this.disabled = source["disabled"];
 	        this.cornerR = source["cornerR"];
 	        this.noBorder = source["noBorder"];
+	    }
+	}
+	export class TypographySettings {
+	    font?: string;
+	    labelFont?: string;
+	    fontScale?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TypographySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.font = source["font"];
+	        this.labelFont = source["labelFont"];
+	        this.fontScale = source["fontScale"];
 	    }
 	}
 	export class WidgetMeta {

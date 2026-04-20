@@ -44,7 +44,14 @@ export interface DashTheme {
 export interface GlobalDashSettings {
   theme: DashTheme
   domainPalette: DomainPalette
+  typography?: TypographySettings
   formatPreferences?: FormatPreferences
+}
+
+export interface TypographySettings {
+  font?: FontStyle
+  labelFont?: FontStyle
+  fontScale?: number
 }
 
 export interface WidgetStyle {
@@ -93,7 +100,26 @@ export interface DashWidget {
 export interface DashPage {
   id: string
   name: string
+  background?: RGBAColor
   widgets: DashWidget[]
+  wrapperGroups?: DashWrapperGroup[]
+}
+
+export interface DashWrapperVariant {
+  id: string
+  name: string
+  widgets: DashWidget[]
+}
+
+export interface DashWrapperGroup {
+  id: string
+  name: string
+  col: number
+  row: number
+  colSpan: number
+  rowSpan: number
+  defaultVariantId?: string
+  variants: DashWrapperVariant[]
 }
 
 export interface DashLayout {
@@ -107,6 +133,7 @@ export interface DashLayout {
   alerts: AlertInstance[]
   theme?: DashTheme
   domainPalette?: DomainPalette
+  typography?: TypographySettings
   formatPreferences?: FormatPreferences
 }
 

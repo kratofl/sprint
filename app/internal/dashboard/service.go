@@ -13,6 +13,8 @@ type Runtime interface {
 	UpdateLayout(layout *DashLayout)
 	SetDashLayout(deviceID string, layout *DashLayout)
 	SetGlobalFormatPrefs(prefs widgets.FormatPreferences)
+	SetGlobalTypography(typography widgets.TypographySettings)
+	ReloadDashCommands()
 }
 
 type Service struct {
@@ -35,6 +37,7 @@ func (s *Service) SaveLayout(layout *DashLayout) error {
 	}
 	if s.runtime != nil {
 		s.runtime.UpdateLayout(layout)
+		s.runtime.ReloadDashCommands()
 	}
 	return nil
 }
@@ -51,6 +54,9 @@ func (s *Service) CreateLayout(name string) (*DashLayout, error) {
 		layout.FormatPreferences = gs.FormatPreferences
 		_ = s.manager.Save(layout)
 	}
+	if s.runtime != nil {
+		s.runtime.ReloadDashCommands()
+	}
 	return layout, nil
 }
 
@@ -60,6 +66,7 @@ func (s *Service) SaveGlobalSettings(settings *GlobalDashSettings) error {
 	}
 	if s.runtime != nil {
 		s.runtime.SetGlobalFormatPrefs(settings.FormatPreferences)
+		s.runtime.SetGlobalTypography(settings.Typography)
 	}
 	return nil
 }
@@ -67,6 +74,9 @@ func (s *Service) SaveGlobalSettings(settings *GlobalDashSettings) error {
 func (s *Service) DeleteLayout(id string) error {
 	if err := s.manager.Delete(id); err != nil {
 		return err
+	}
+	if s.runtime != nil {
+		s.runtime.ReloadDashCommands()
 	}
 
 	if s.runtime == nil || s.deviceStore == nil {

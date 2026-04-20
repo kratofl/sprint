@@ -24,7 +24,9 @@ type fakeDashboardRuntime struct {
 		deviceID string
 		layoutID string
 	}
-	globalPrefs []widgets.FormatPreferences
+	globalPrefs      []widgets.FormatPreferences
+	globalTypography []widgets.TypographySettings
+	reloadCommands   int
 }
 
 func (f *fakeDashboardRuntime) UpdateLayout(layout *DashLayout) {
@@ -40,6 +42,14 @@ func (f *fakeDashboardRuntime) SetDashLayout(deviceID string, layout *DashLayout
 
 func (f *fakeDashboardRuntime) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
 	f.globalPrefs = append(f.globalPrefs, prefs)
+}
+
+func (f *fakeDashboardRuntime) SetGlobalTypography(typography widgets.TypographySettings) {
+	f.globalTypography = append(f.globalTypography, typography)
+}
+
+func (f *fakeDashboardRuntime) ReloadDashCommands() {
+	f.reloadCommands++
 }
 
 func TestServiceSaveLayoutPersistsAndRefreshesActiveLayout(t *testing.T) {
@@ -65,6 +75,9 @@ func TestServiceSaveLayoutPersistsAndRefreshesActiveLayout(t *testing.T) {
 	if len(runtime.updatedLayouts) != 1 || runtime.updatedLayouts[0] != layout.ID {
 		t.Fatalf("expected runtime layout update for %s, got %#v", layout.ID, runtime.updatedLayouts)
 	}
+	if runtime.reloadCommands != 1 {
+		t.Fatalf("expected SaveLayout to rebuild dynamic commands once, got %d", runtime.reloadCommands)
+	}
 }
 
 func TestServiceSaveGlobalSettingsUpdatesCoordinatorPreferences(t *testing.T) {
@@ -76,6 +89,7 @@ func TestServiceSaveGlobalSettingsUpdatesCoordinatorPreferences(t *testing.T) {
 		Theme:             widgets.DefaultTheme(),
 		DomainPalette:     widgets.DefaultDomainPalette(),
 		FormatPreferences: widgets.FormatPreferences{SpeedUnit: widgets.SpeedMPH},
+		Typography:        widgets.TypographySettings{Font: widgets.FontBold, FontScale: 1.2},
 	}
 
 	if err := service.SaveGlobalSettings(settings); err != nil {
@@ -87,5 +101,11 @@ func TestServiceSaveGlobalSettingsUpdatesCoordinatorPreferences(t *testing.T) {
 	}
 	if runtime.globalPrefs[0].SpeedUnit != widgets.SpeedMPH {
 		t.Fatalf("expected speed unit mph, got %q", runtime.globalPrefs[0].SpeedUnit)
+	}
+	if len(runtime.globalTypography) != 1 {
+		t.Fatalf("expected one runtime typography update, got %d", len(runtime.globalTypography))
+	}
+	if runtime.globalTypography[0].Font != widgets.FontBold {
+		t.Fatalf("expected typography font %q, got %q", widgets.FontBold, runtime.globalTypography[0].Font)
 	}
 }

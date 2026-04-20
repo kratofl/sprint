@@ -14,8 +14,9 @@ import (
 // preferences applied to every newly created dash layout. Users can override
 // these per-dash in the editor.
 type GlobalDashSettings struct {
-	Theme            widgets.DashTheme        `json:"theme"`
-	DomainPalette    widgets.DomainPalette    `json:"domainPalette"`
+	Theme             widgets.DashTheme         `json:"theme"`
+	DomainPalette     widgets.DomainPalette     `json:"domainPalette"`
+	Typography        widgets.TypographySettings `json:"typography,omitempty"`
 	FormatPreferences widgets.FormatPreferences `json:"formatPreferences"`
 }
 

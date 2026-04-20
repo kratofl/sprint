@@ -77,6 +77,10 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     } : prev)
   }
 
+  const handleGlobalTypographyChange = (typography: GlobalDashSettings['typography']) => {
+    setGlobalSettings(prev => prev ? { ...prev, typography } : prev)
+  }
+
   const handleGlobalFormatPreferencesChange = (prefs: Partial<FormatPreferences>) => {
     setGlobalSettings(prev => prev ? { ...prev, formatPreferences: prefs } : prev)
   }
@@ -135,8 +139,10 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
             theme={globalSettings.theme ?? {}}
             domainPalette={globalSettings.domainPalette ?? {}}
             hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
+            typography={globalSettings.typography ?? {}}
             formatPreferences={globalSettings.formatPreferences ?? {}}
             onChange={handleGlobalSettingsChange}
+            onTypographyChange={handleGlobalTypographyChange}
             onFormatPreferencesChange={handleGlobalFormatPreferencesChange}
           />
         )}

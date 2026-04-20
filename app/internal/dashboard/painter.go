@@ -40,6 +40,7 @@ type Painter struct {
 	// Rendered once on the first frame; copied into ctx at the start of each
 	// frame so clearing the canvas does not run every tick.
 	bgImg *image.RGBA
+	bgCol color.RGBA
 
 	// ctx is the reusable gg.Context. Allocated once per screen size and reset
 	// at the start of each frame by blitting bgImg, avoiding a 1.5 MB allocation
@@ -63,6 +64,13 @@ type Painter struct {
 	// global setting change is immediately reflected across all layouts unless
 	// a layout has an explicit override for that field.
 	globalPrefs atomic.Pointer[widgets.FormatPreferences]
+	// globalTypography holds the global-level dash typography defaults.
+	globalTypography atomic.Pointer[widgets.TypographySettings]
+	// profile holds app-level display strings such as driver name/number.
+	profile atomic.Pointer[RenderProfile]
+
+	wrapperMu     sync.RWMutex
+	wrapperStates map[string]string
 
 	// activePageIndex is the index into layout.Pages to render (0-based).
 	activePageIndex atomic.Int32
@@ -87,6 +95,7 @@ func (p *Painter) SetLayout(layout *DashLayout) {
 		p.layout.Store((*DashLayout)(nil))
 	} else {
 		p.layout.Store(layout)
+		p.resetWrapperStates(layout)
 	}
 	p.widgetCaches = nil
 }
@@ -98,12 +107,22 @@ func (p *Painter) SetActivePage(index int) {
 		index = 0
 	}
 	p.activePageIndex.Store(int32(index))
+	if layout := p.layout.Load(); layout != nil && index < len(layout.Pages) {
+		p.resetPageWrapperStates(layout.Pages[index])
+	}
+	p.widgetCaches = nil
 }
 
 // SetIdle controls whether the idle page is rendered.
 // When true, the idle page is shown regardless of active page index.
 func (p *Painter) SetIdle(idle bool) {
 	p.idle.Store(idle)
+	if idle {
+		if layout := p.layout.Load(); layout != nil {
+			p.resetPageWrapperStates(layout.IdlePage)
+		}
+	}
+	p.widgetCaches = nil
 }
 
 // SetGlobalPrefs stores the global-level FormatPreferences applied as the base
@@ -111,6 +130,30 @@ func (p *Painter) SetIdle(idle bool) {
 // settings so all active painters reflect the change immediately.
 func (p *Painter) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	p.globalPrefs.Store(&prefs)
+	p.widgetCaches = nil
+}
+
+// SetGlobalTypography stores the global dash-level typography defaults.
+func (p *Painter) SetGlobalTypography(typography widgets.TypographySettings) {
+	p.globalTypography.Store(&typography)
+	p.widgetCaches = nil
+}
+
+// SetProfile stores app-level display strings used by profile.* text bindings.
+func (p *Painter) SetProfile(profile RenderProfile) {
+	p.profile.Store(&profile)
+	p.widgetCaches = nil
+}
+
+// SetWrapperVariant selects the active wrapper variant for a specific page/group.
+func (p *Painter) SetWrapperVariant(pageID, groupID, variantID string) {
+	p.wrapperMu.Lock()
+	defer p.wrapperMu.Unlock()
+	if p.wrapperStates == nil {
+		p.wrapperStates = map[string]string{}
+	}
+	p.wrapperStates[wrapperStateKey(pageID, groupID)] = variantID
+	p.widgetCaches = nil
 }
 
 // emptyFrame is a shared zero-value frame used when no game is connected.
@@ -128,30 +171,22 @@ func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
 		p.fontFiles = make(map[string]*opentype.Font)
 		p.fontFaces = make(map[string]font.Face)
 	})
-	p.ensureBg()
-
-	dc := p.getContext()
-
 	if layout := p.layout.Load(); layout != nil {
+		page := p.currentPage(layout)
+		p.ensureBg(p.pageBackground(layout, page))
+		dc := p.getContext()
 		p.checkAlerts(frame, layout)
-		var pageWidgets []DashWidget
-		if p.idle.Load() {
-			pageWidgets = layout.IdlePage.Widgets
-		} else {
-			idx := int(p.activePageIndex.Load())
-			if idx >= len(layout.Pages) {
-				idx = 0
-			}
-			if len(layout.Pages) > 0 {
-				pageWidgets = layout.Pages[idx].Widgets
-			}
-		}
-		for _, widget := range pageWidgets {
+		for _, widget := range page.Widgets {
 			p.dispatchWidget(dc, frame, widget, layout)
 		}
+		p.dispatchWrapperGroups(dc, frame, page, layout)
 		p.applyAlertOverlay(dc, float64(p.width), float64(p.height))
+		p.applyFlagOverlay(dc, frame, float64(p.width), float64(p.height))
+		return dc.Image(), nil
 	}
 
+	p.ensureBg(widgets.ColorBackground)
+	dc := p.getContext()
 	p.applyFlagOverlay(dc, frame, float64(p.width), float64(p.height))
 	return dc.Image(), nil
 }
@@ -202,9 +237,11 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	}
 
 	rt := widgets.RenderTheme{
-		Theme:  theme,
-		Domain: layout.DomainPalette,
-		Style:  w.Style,
+		Theme:            theme,
+		Domain:           layout.DomainPalette,
+		Style:            w.Style,
+		Typography:       layout.Typography,
+		GlobalTypography: p.currentGlobalTypography(),
 	}
 
 	// Resolve FormatPreferences: global settings → layout-level overrides → widget config overrides.
@@ -463,7 +500,7 @@ func textAutoStackYs(n int) []float64 {
 func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Text, yFrac float64) {
 	var display string
 	if elem.Binding != "" {
-		if val, ok := widgets.ResolveWithPrefs(frame, elem.Binding, prefs); ok {
+		if val, ok := p.resolveTextBinding(frame, elem.Binding, prefs); ok {
 			display = widgets.FormatValue(val, elem.Format, prefs)
 		} else {
 			display = elem.Text
@@ -481,11 +518,7 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		return
 	}
 
-	family := style.Font
-	bold := style.IsBold
-	if style.TabulaNums {
-		family = widgets.FontFamilyMono
-	}
+	family, bold := resolveTextStyle(style, rt)
 	p.face(dc, fontFileName(family, bold), size)
 	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
 
@@ -726,11 +759,7 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		if size <= 0 {
 			continue
 		}
-		family := style.Font
-		bold := style.IsBold
-		if style.TabulaNums {
-			family = widgets.FontFamilyMono
-		}
+		family, bold := resolveTextStyle(style, rt)
 		p.face(dc, fontFileName(family, bold), size)
 
 		colorExpr := style.Color
@@ -750,6 +779,160 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		}
 		dc.DrawStringAnchored(display, tx, cy+cellH*0.5, halignFrac(style.HAlign), 0.5)
 	}
+}
+
+func resolveTextStyle(style widgets.TextStyle, rt widgets.RenderTheme) (widgets.FontFamily, bool) {
+	switch rt.ResolveFont(baseFontStyle(style)) {
+	case widgets.FontNumber:
+		return widgets.FontFamilyMono, true
+	case widgets.FontMono:
+		return widgets.FontFamilyMono, false
+	case widgets.FontBold:
+		return widgets.FontFamilyUI, true
+	default:
+		return widgets.FontFamilyUI, false
+	}
+}
+
+func baseFontStyle(style widgets.TextStyle) widgets.FontStyle {
+	if style.Font == widgets.FontFamilyMono || style.TabulaNums {
+		if style.IsBold {
+			return widgets.FontNumber
+		}
+		return widgets.FontMono
+	}
+	if style.IsBold {
+		return widgets.FontBold
+	}
+	return widgets.FontLabel
+}
+
+func (p *Painter) currentPage(layout *DashLayout) DashPage {
+	if p.idle.Load() {
+		return layout.IdlePage
+	}
+	idx := int(p.activePageIndex.Load())
+	if idx >= len(layout.Pages) {
+		idx = 0
+	}
+	if len(layout.Pages) == 0 {
+		return layout.IdlePage
+	}
+	return layout.Pages[idx]
+}
+
+func (p *Painter) pageBackground(layout *DashLayout, page DashPage) color.RGBA {
+	if page.Background != nil {
+		return *page.Background
+	}
+	theme := layout.Theme
+	if theme == (widgets.DashTheme{}) {
+		theme = widgets.DefaultTheme()
+	}
+	return theme.Bg
+}
+
+func (p *Painter) currentGlobalTypography() widgets.TypographySettings {
+	if typography := p.globalTypography.Load(); typography != nil {
+		return *typography
+	}
+	return widgets.TypographySettings{}
+}
+
+func (p *Painter) dispatchWrapperGroups(dc *gg.Context, frame *dto.TelemetryFrame, page DashPage, layout *DashLayout) {
+	for _, group := range page.WrapperGroups {
+		variant := p.activeWrapperVariant(page.ID, group)
+		if variant == nil {
+			continue
+		}
+		for _, child := range variant.Widgets {
+			abs := child
+			abs.ID = wrapperCacheID(group.ID, variant.ID, child.ID)
+			abs.Col += group.Col
+			abs.Row += group.Row
+			p.dispatchWidget(dc, frame, abs, layout)
+		}
+	}
+}
+
+func (p *Painter) resolveTextBinding(frame *dto.TelemetryFrame, binding widgets.Binding, prefs widgets.FormatPreferences) (any, bool) {
+	switch binding {
+	case "profile.driverName":
+		if profile := p.profile.Load(); profile != nil && profile.DriverName != "" {
+			return profile.DriverName, true
+		}
+	case "profile.driverNumber":
+		if profile := p.profile.Load(); profile != nil && profile.DriverNumber != "" {
+			return profile.DriverNumber, true
+		}
+	}
+	return widgets.ResolveWithPrefs(frame, binding, prefs)
+}
+
+func (p *Painter) resetWrapperStates(layout *DashLayout) {
+	states := map[string]string{}
+	addPageWrapperDefaults(states, layout.IdlePage)
+	for _, page := range layout.Pages {
+		addPageWrapperDefaults(states, page)
+	}
+	p.wrapperMu.Lock()
+	p.wrapperStates = states
+	p.wrapperMu.Unlock()
+}
+
+func (p *Painter) resetPageWrapperStates(page DashPage) {
+	p.wrapperMu.Lock()
+	defer p.wrapperMu.Unlock()
+	if p.wrapperStates == nil {
+		p.wrapperStates = map[string]string{}
+	}
+	for _, group := range page.WrapperGroups {
+		p.wrapperStates[wrapperStateKey(page.ID, group.ID)] = defaultVariantID(group)
+	}
+}
+
+func (p *Painter) activeWrapperVariant(pageID string, group DashWrapperGroup) *DashWrapperVariant {
+	activeID := defaultVariantID(group)
+	p.wrapperMu.RLock()
+	if p.wrapperStates != nil {
+		if selected := p.wrapperStates[wrapperStateKey(pageID, group.ID)]; selected != "" {
+			activeID = selected
+		}
+	}
+	p.wrapperMu.RUnlock()
+	for i := range group.Variants {
+		if group.Variants[i].ID == activeID {
+			return &group.Variants[i]
+		}
+	}
+	if len(group.Variants) == 0 {
+		return nil
+	}
+	return &group.Variants[0]
+}
+
+func addPageWrapperDefaults(states map[string]string, page DashPage) {
+	for _, group := range page.WrapperGroups {
+		states[wrapperStateKey(page.ID, group.ID)] = defaultVariantID(group)
+	}
+}
+
+func defaultVariantID(group DashWrapperGroup) string {
+	if group.DefaultVariantID != "" {
+		return group.DefaultVariantID
+	}
+	if len(group.Variants) > 0 {
+		return group.Variants[0].ID
+	}
+	return ""
+}
+
+func wrapperStateKey(pageID, groupID string) string {
+	return pageID + "::" + groupID
+}
+
+func wrapperCacheID(groupID, variantID, widgetID string) string {
+	return groupID + "::" + variantID + "::" + widgetID
 }
 
 // resolveColorFn resolves a named color function from a value.

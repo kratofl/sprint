@@ -34,6 +34,7 @@ type deviceEntry struct {
 	pageIndex     int
 	layoutID      string
 	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
+	wrapperStates map[string]string
 	cancel        context.CancelFunc
 }
 
@@ -112,6 +113,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 						drv.SetLayout(layout)
 						entry.layoutID = layout.ID
 						entry.currentLayout = layout
+						entry.wrapperStates = defaultWrapperStates(layout)
 						logger.Info("dash layout assigned", "device", id, "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
 					} else if lerr != nil {
 						logger.Warn("failed to load dash layout for device, screen will render black", "device", id, "err", lerr)
@@ -137,6 +139,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 	commands.Handle(dashboard.CmdSetTargetLap, func(_ any) {
 		c.delta.SetManualReference()
 	})
+	c.ReloadDashCommands()
 
 	return c
 }
@@ -243,6 +246,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 			drv.SetLayout(layout)
 			entry.layoutID = layout.ID
 			entry.currentLayout = layout
+			entry.wrapperStates = defaultWrapperStates(layout)
 		} else if lerr != nil {
 			c.logger.Warn("failed to load dash layout for device", "device", deviceID, "err", lerr)
 		}
@@ -271,6 +275,7 @@ func (c *Coordinator) SetDashLayout(deviceID string, layout *dashboard.DashLayou
 	e.driver.SetLayout(layout)
 	e.layoutID = layout.ID
 	e.currentLayout = layout
+	e.wrapperStates = defaultWrapperStates(layout)
 	e.pageIndex = 0
 	e.driver.SetActivePage(0)
 }
@@ -283,6 +288,7 @@ func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
 		if e.driver != nil && e.layoutID == layout.ID {
 			e.driver.SetLayout(layout)
 			e.currentLayout = layout
+			e.wrapperStates = defaultWrapperStates(layout)
 		}
 	}
 }
@@ -296,6 +302,165 @@ func (c *Coordinator) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
 	for _, e := range c.entries {
 		if e.driver != nil {
 			e.driver.SetGlobalPrefs(prefs)
+		}
+	}
+}
+
+// SetGlobalTypography propagates new global dash typography defaults to all
+// active screen drivers and the editor preview painter.
+func (c *Coordinator) SetGlobalTypography(typography widgets.TypographySettings) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalTypography(typography)
+		}
+	}
+	c.preview.SetGlobalTypography(typography)
+}
+
+// SetProfile propagates app-level profile strings to all active screen drivers
+// and the editor preview painter.
+func (c *Coordinator) SetProfile(profile dashboard.RenderProfile) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetProfile(profile)
+		}
+	}
+	c.preview.SetProfile(profile)
+}
+
+// ReloadDashCommands rebuilds the dynamic wrapper command catalog from all
+// saved dash layouts.
+func (c *Coordinator) ReloadDashCommands() {
+	if c.dashMgr == nil {
+		commands.ReplaceDynamic(nil)
+		return
+	}
+
+	metas, err := c.dashMgr.List()
+	if err != nil {
+		c.logger.Warn("dash: failed to rebuild dynamic commands", "err", err)
+		commands.ReplaceDynamic(nil)
+		return
+	}
+
+	var dynamic []commands.DynamicCommand
+	for _, meta := range metas {
+		layout, err := c.dashMgr.Load(meta.ID)
+		if err != nil || layout == nil {
+			continue
+		}
+		for _, page := range append([]dashboard.DashPage{layout.IdlePage}, layout.Pages...) {
+			for _, group := range page.WrapperGroups {
+				baseLabel := layout.Name + " / " + page.Name + " / " + group.Name
+				layoutID := layout.ID
+				pageID := page.ID
+				groupID := group.ID
+				dynamic = append(dynamic,
+					commands.DynamicCommand{
+						Meta: commands.CommandMeta{
+							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".next"),
+							Label:      baseLabel + " / Next",
+							Category:   "Dashboard",
+							Capturable: true,
+						},
+						Handler: func(payload any) {
+							screenID, _ := payload.(string)
+							c.cycleWrapper(screenID, layoutID, pageID, groupID, 1)
+						},
+					},
+					commands.DynamicCommand{
+						Meta: commands.CommandMeta{
+							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".prev"),
+							Label:      baseLabel + " / Prev",
+							Category:   "Dashboard",
+							Capturable: true,
+						},
+						Handler: func(payload any) {
+							screenID, _ := payload.(string)
+							c.cycleWrapper(screenID, layoutID, pageID, groupID, -1)
+						},
+					},
+				)
+				for _, variant := range group.Variants {
+					variantID := variant.ID
+					variantName := variant.Name
+					if variantName == "" {
+						variantName = variantID
+					}
+					dynamic = append(dynamic, commands.DynamicCommand{
+						Meta: commands.CommandMeta{
+							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".show." + variantID),
+							Label:      baseLabel + " / " + variantName,
+							Category:   "Dashboard",
+							Capturable: true,
+						},
+						Handler: func(payload any) {
+							screenID, _ := payload.(string)
+							c.setWrapperVariant(screenID, layoutID, pageID, groupID, variantID)
+						},
+					})
+				}
+			}
+		}
+	}
+
+	commands.ReplaceDynamic(dynamic)
+}
+
+func (c *Coordinator) cycleWrapper(screenID, layoutID, pageID, groupID string, direction int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, entry := range c.entries {
+		if screenID != "" && id != screenID {
+			continue
+		}
+		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
+			continue
+		}
+		group := findWrapperGroup(entry.currentLayout, pageID, groupID)
+		if group == nil || len(group.Variants) == 0 {
+			continue
+		}
+		currentID := entry.wrapperStates[wrapperStateKey(pageID, groupID)]
+		if currentID == "" {
+			currentID = groupDefaultVariantID(*group)
+		}
+		currentIndex := 0
+		for i, variant := range group.Variants {
+			if variant.ID == currentID {
+				currentIndex = i
+				break
+			}
+		}
+		nextIndex := ((currentIndex + direction) % len(group.Variants) + len(group.Variants)) % len(group.Variants)
+		nextID := group.Variants[nextIndex].ID
+		entry.wrapperStates[wrapperStateKey(pageID, groupID)] = nextID
+		entry.driver.SetWrapperVariant(pageID, groupID, nextID)
+	}
+}
+
+func (c *Coordinator) setWrapperVariant(screenID, layoutID, pageID, groupID, variantID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, entry := range c.entries {
+		if screenID != "" && id != screenID {
+			continue
+		}
+		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
+			continue
+		}
+		if group := findWrapperGroup(entry.currentLayout, pageID, groupID); group != nil {
+			for _, variant := range group.Variants {
+				if variant.ID == variantID {
+					entry.wrapperStates[wrapperStateKey(pageID, groupID)] = variantID
+					entry.driver.SetWrapperVariant(pageID, groupID, variantID)
+					break
+				}
+			}
 		}
 	}
 }
@@ -315,6 +480,7 @@ func (c *Coordinator) CyclePage(deviceID string, direction int) {
 		n := len(e.currentLayout.Pages)
 		e.pageIndex = ((e.pageIndex+direction)%n + n) % n
 		e.driver.SetActivePage(e.pageIndex)
+		resetPageWrapperStates(e, e.currentLayout.Pages[e.pageIndex])
 		c.emit("dash:page-changed", DashPageChangedEvent{
 			DeviceID:  id,
 			PageIndex: e.pageIndex,
@@ -548,6 +714,7 @@ func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
 			e.driver.SetActivePage(0)
 			pageName := ""
 			if e.currentLayout != nil && len(e.currentLayout.Pages) > 0 {
+				resetPageWrapperStates(e, e.currentLayout.Pages[0])
 				pageName = e.currentLayout.Pages[0].Name
 			}
 			c.emit("dash:page-changed", DashPageChangedEvent{
@@ -568,6 +735,69 @@ func (c *Coordinator) setAllIdle(idle bool) {
 			e.driver.SetIdle(idle)
 		}
 	}
+}
+
+func defaultWrapperStates(layout *dashboard.DashLayout) map[string]string {
+	states := map[string]string{}
+	if layout == nil {
+		return states
+	}
+	collectPageWrapperDefaults(states, layout.IdlePage)
+	for _, page := range layout.Pages {
+		collectPageWrapperDefaults(states, page)
+	}
+	return states
+}
+
+func collectPageWrapperDefaults(states map[string]string, page dashboard.DashPage) {
+	for _, group := range page.WrapperGroups {
+		states[wrapperStateKey(page.ID, group.ID)] = groupDefaultVariantID(group)
+	}
+}
+
+func resetPageWrapperStates(entry *deviceEntry, page dashboard.DashPage) {
+	if entry.wrapperStates == nil {
+		entry.wrapperStates = map[string]string{}
+	}
+	for _, group := range page.WrapperGroups {
+		variantID := groupDefaultVariantID(group)
+		entry.wrapperStates[wrapperStateKey(page.ID, group.ID)] = variantID
+		if entry.driver != nil && variantID != "" {
+			entry.driver.SetWrapperVariant(page.ID, group.ID, variantID)
+		}
+	}
+}
+
+func groupDefaultVariantID(group dashboard.DashWrapperGroup) string {
+	if group.DefaultVariantID != "" {
+		return group.DefaultVariantID
+	}
+	if len(group.Variants) > 0 {
+		return group.Variants[0].ID
+	}
+	return ""
+}
+
+func wrapperStateKey(pageID, groupID string) string {
+	return pageID + "::" + groupID
+}
+
+func findWrapperGroup(layout *dashboard.DashLayout, pageID, groupID string) *dashboard.DashWrapperGroup {
+	if layout == nil {
+		return nil
+	}
+	pages := append([]dashboard.DashPage{layout.IdlePage}, layout.Pages...)
+	for _, page := range pages {
+		if page.ID != pageID {
+			continue
+		}
+		for i := range page.WrapperGroups {
+			if page.WrapperGroups[i].ID == groupID {
+				return &page.WrapperGroups[i]
+			}
+		}
+	}
+	return nil
 }
 
 // augmentDelta shallow-copies frame, runs it through the delta tracker, and

@@ -2,6 +2,8 @@
 
 export interface AppSettings {
   updateChannel: 'stable' | 'pre-release'
+  driverName?: string
+  driverNumber?: string
 }
 
 export interface ReleaseInfo {

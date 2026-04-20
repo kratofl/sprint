@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -36,6 +37,8 @@ type previewService struct {
 	page   atomic.Int32
 	idle   atomic.Bool
 	active atomic.Bool
+	globalTypography atomic.Pointer[widgets.TypographySettings]
+	profile          atomic.Pointer[dashboard.RenderProfile]
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
 
@@ -62,6 +65,14 @@ func (s *previewService) setEmit(fn EmitFn) {
 	s.emitMu.Lock()
 	s.emit = fn
 	s.emitMu.Unlock()
+}
+
+func (s *previewService) SetGlobalTypography(typography widgets.TypographySettings) {
+	s.globalTypography.Store(&typography)
+}
+
+func (s *previewService) SetProfile(profile dashboard.RenderProfile) {
+	s.profile.Store(&profile)
 }
 
 // Start launches the render goroutine. ctx governs its lifetime.
@@ -154,6 +165,12 @@ func (s *previewService) renderAndEmit() {
 	s.painter.SetLayout(layout)
 	s.painter.SetActivePage(int(s.page.Load()))
 	s.painter.SetIdle(s.idle.Load())
+	if typography := s.globalTypography.Load(); typography != nil {
+		s.painter.SetGlobalTypography(*typography)
+	}
+	if profile := s.profile.Load(); profile != nil {
+		s.painter.SetProfile(*profile)
+	}
 
 	frame := s.latestFrame.Load() // nil when game is not connected — widgets show "no data" state
 

@@ -10,6 +10,14 @@ const DEFAULT_GRID_COLS = 20
 const DEFAULT_GRID_ROWS = 12
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+export interface GridRect {
+  col: number
+  row: number
+  colSpan: number
+  rowSpan: number
+  label?: string
+  selected?: boolean
+}
 
 interface ActiveResize {
   widgetIdx: number
@@ -62,9 +70,20 @@ function isValidPlacement(
   excludeIdx: number | null,
   cols: number,
   rows: number,
+  blockedAreas: GridRect[] = [],
+  placementBounds: GridRect | null = null,
 ): boolean {
   if (p.col < 0 || p.row < 0 || p.col + p.colSpan > cols || p.row + p.rowSpan > rows) return false
-  return widgets.every((w, i) => i === excludeIdx || !overlaps(p, w))
+  if (placementBounds) {
+    const insideBounds =
+      p.col >= placementBounds.col &&
+      p.row >= placementBounds.row &&
+      p.col + p.colSpan <= placementBounds.col + placementBounds.colSpan &&
+      p.row + p.rowSpan <= placementBounds.row + placementBounds.rowSpan
+    if (!insideBounds) return false
+  }
+  return widgets.every((w, i) => i === excludeIdx || !overlaps(p, w)) &&
+    blockedAreas.every(area => !overlaps(p, area))
 }
 
 export interface DashCanvasProps {
@@ -73,6 +92,9 @@ export interface DashCanvasProps {
   catalog?: WidgetCatalogEntry[]
   theme?: DashTheme
   domainPalette?: DomainPalette
+  blockedAreas?: GridRect[]
+  placementBounds?: GridRect | null
+  overlayRects?: GridRect[]
   gridCols?: number
   gridRows?: number
   screenW?: number
@@ -92,6 +114,9 @@ export function DashCanvas({
   catalog = [],
   theme,
   domainPalette,
+  blockedAreas = [],
+  placementBounds = null,
+  overlayRects = [],
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
@@ -144,7 +169,7 @@ export function DashCanvas({
       w.colSpan = Math.max(1, Math.min(w.colSpan, gridCols - w.col))
       w.rowSpan = Math.max(1, Math.min(w.rowSpan, gridRows - w.row))
 
-      const valid = isValidPlacement(w, widgetsRef.current, widgetIdx, gridCols, gridRows)
+      const valid = isValidPlacement(w, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)
       setGhost({ col: w.col, row: w.row, colSpan: w.colSpan, rowSpan: w.rowSpan, valid })
       onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? w : ww)))
     }
@@ -152,7 +177,7 @@ export function DashCanvas({
     const onMouseUp = () => {
       // If the final position overlaps another widget, revert to start
       const cur = widgetsRef.current[widgetIdx]
-      if (cur && !isValidPlacement(cur, widgetsRef.current, widgetIdx, gridCols, gridRows)) {
+      if (cur && !isValidPlacement(cur, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
         onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? startWidget : ww)))
       }
       setActiveResize(null)
@@ -167,7 +192,7 @@ export function DashCanvas({
     }
   // widgetsRef.current is used intentionally to avoid re-registering on every frame
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeResize, gridCols, gridRows, onUpdate, gridPos])
+  }, [activeResize, blockedAreas, gridCols, gridRows, onUpdate, gridPos, placementBounds])
 
   // ── Move (mouse-based — no HTML5 drag ghost) ────────────────────────────────
   useEffect(() => {
@@ -179,7 +204,7 @@ export function DashCanvas({
       const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
       const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
       const proposed = { ...startWidget, col: snapCol, row: snapRow }
-      const valid    = isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows)
+      const valid    = isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)
       setGhost({ col: snapCol, row: snapRow, colSpan: startWidget.colSpan, rowSpan: startWidget.rowSpan, valid })
     }
 
@@ -188,7 +213,7 @@ export function DashCanvas({
       const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
       const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
       const proposed = { ...startWidget, col: snapCol, row: snapRow }
-      if (isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows)) {
+      if (isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
         onUpdate(widgetsRef.current.map((w, i) => (i === widgetIdx ? proposed : w)))
       }
       setActiveMove(null)
@@ -202,7 +227,7 @@ export function DashCanvas({
       window.removeEventListener('mouseup',   onMouseUp)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMove, gridCols, gridRows, onUpdate, gridPos])
+  }, [activeMove, blockedAreas, gridCols, gridRows, onUpdate, gridPos, placementBounds])
 
   // ── Palette drop ──────────────────────────────────────────────────────────
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -216,8 +241,8 @@ export function DashCanvas({
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
-    setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows) })
-  }, [paletteDropType, catalog, gridCols, gridRows, gridPos])
+    setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows, blockedAreas, placementBounds) })
+  }, [paletteDropType, catalog, blockedAreas, gridCols, gridRows, gridPos, placementBounds])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -231,7 +256,7 @@ export function DashCanvas({
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
-    if (!isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows)) return
+    if (!isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows, blockedAreas, placementBounds)) return
     const newWidget: DashWidget = {
       id: crypto.randomUUID(),
       type: widgetType,
@@ -241,7 +266,7 @@ export function DashCanvas({
     const updated = [...widgetsRef.current, newWidget]
     onUpdate(updated)
     onSelect(updated.length - 1)
-  }, [catalog, gridCols, gridRows, onUpdate, onSelect, gridPos])
+  }, [catalog, blockedAreas, gridCols, gridRows, onUpdate, onSelect, gridPos, placementBounds])
 
   const isDragging = activeMove !== null || activeResize !== null
 
@@ -343,6 +368,28 @@ export function DashCanvas({
           ))}
         </g>
       </svg>
+
+      {overlayRects.map((rect, index) => (
+        <div
+          key={`${rect.label ?? 'overlay'}-${index}`}
+          className="pointer-events-none absolute border border-dashed"
+          style={{
+            left: `${(rect.col / gridCols) * 100}%`,
+            top: `${(rect.row / gridRows) * 100}%`,
+            width: `${(rect.colSpan / gridCols) * 100}%`,
+            height: `${(rect.rowSpan / gridRows) * 100}%`,
+            borderColor: rect.selected ? 'var(--accent)' : 'rgba(255,255,255,0.28)',
+            background: rect.selected ? 'rgba(255,144,108,0.08)' : 'rgba(255,255,255,0.04)',
+            zIndex: 3,
+          }}
+        >
+          {rect.label && (
+            <span className="absolute left-1 top-1 font-mono text-[9px] text-white/70">
+              {rect.label}
+            </span>
+          )}
+        </div>
+      ))}
 
       {/* Drop / move / resize ghost */}
       {ghost && (

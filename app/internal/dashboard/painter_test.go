@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"image"
+	"image/color"
 	"testing"
 	"time"
 
@@ -188,5 +189,158 @@ func TestPainterSetActivePage(t *testing.T) {
 	painter.SetActivePage(99)
 	if _, err := painter.Paint(frame); err != nil {
 		t.Fatalf("Paint out-of-range page: %v", err)
+	}
+}
+
+func TestPainterPageBackgroundOverride(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	layout.Theme = widgets.DashTheme{Bg: color.RGBA{R: 10, G: 20, B: 30, A: 255}}
+	layout.Pages[0].Background = &color.RGBA{R: 200, G: 25, B: 25, A: 255}
+	layout.Pages[0].Widgets = nil
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+
+	got := color.RGBAModel.Convert(img.At(0, 0)).(color.RGBA)
+	want := *layout.Pages[0].Background
+	if got != want {
+		t.Fatalf("expected page background pixel %#v, got %#v", want, got)
+	}
+}
+
+func TestPainterProfileBindingFallsBackAndUsesProfileValue(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	layout.IdlePage.Widgets = []DashWidget{
+		{
+			ID:      "idle-name",
+			Type:    widgets.WidgetText,
+			Col:     4,
+			Row:     3,
+			ColSpan: 12,
+			RowSpan: 3,
+			Config: map[string]any{
+				"content": "Your Name",
+				"binding": "profile.driverName",
+			},
+		},
+	}
+	painter.SetLayout(layout)
+	painter.SetIdle(true)
+
+	rawFallback, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint fallback frame: %v", err)
+	}
+	fallback, ok := rawFallback.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", rawFallback)
+	}
+	fallbackPix := append([]byte(nil), fallback.Pix...)
+
+	painter.SetProfile(RenderProfile{DriverName: "Alice"})
+	rawProfile, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint profile frame: %v", err)
+	}
+	profileImg, ok := rawProfile.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", rawProfile)
+	}
+
+	if len(fallbackPix) != len(profileImg.Pix) {
+		t.Fatalf("pixel length mismatch: %d vs %d", len(fallbackPix), len(profileImg.Pix))
+	}
+	same := true
+	for i := range fallbackPix {
+		if fallbackPix[i] != profileImg.Pix[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("expected profile-bound text to differ from fallback content when profile is set")
+	}
+}
+
+func TestPainterWrapperGroupRendersSelectedVariant(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	layout.Pages[0].Widgets = nil
+	layout.Pages[0].WrapperGroups = []DashWrapperGroup{
+		{
+			ID:               "stack",
+			Name:             "Stack",
+			Col:              4,
+			Row:              3,
+			ColSpan:          8,
+			RowSpan:          3,
+			DefaultVariantID: "variant-a",
+			Variants: []DashWrapperVariant{
+				{
+					ID:   "variant-a",
+					Name: "A",
+					Widgets: []DashWidget{
+						{ID: "inner-a", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 8, RowSpan: 3, Config: map[string]any{"content": "VARIANT_A"}},
+					},
+				},
+				{
+					ID:   "variant-b",
+					Name: "B",
+					Widgets: []DashWidget{
+						{ID: "inner-b", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 8, RowSpan: 3, Config: map[string]any{"content": "VARIANT_B"}},
+					},
+				},
+			},
+		},
+	}
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	rawVariantA, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint variant A: %v", err)
+	}
+	imgA, ok := rawVariantA.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", rawVariantA)
+	}
+	pixA := append([]byte(nil), imgA.Pix...)
+
+	painter.SetWrapperVariant(layout.Pages[0].ID, "stack", "variant-b")
+	rawVariantB, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint variant B: %v", err)
+	}
+	imgB, ok := rawVariantB.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", rawVariantB)
+	}
+
+	if len(pixA) != len(imgB.Pix) {
+		t.Fatalf("pixel length mismatch: %d vs %d", len(pixA), len(imgB.Pix))
+	}
+	same := true
+	for i := range pixA {
+		if pixA[i] != imgB.Pix[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("expected selected wrapper variant to change rendered pixels")
 	}
 }

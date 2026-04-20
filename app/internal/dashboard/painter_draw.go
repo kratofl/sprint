@@ -10,15 +10,16 @@ import (
 
 // ensureBg pre-renders the static background into bgImg once per painter
 // lifetime. Subsequent frames blit this image instead of clearing manually.
-func (p *Painter) ensureBg() {
-	if p.bgImg != nil {
+func (p *Painter) ensureBg(bg color.RGBA) {
+	if p.bgImg != nil && p.bgCol == bg {
 		return
 	}
 	tmp := gg.NewContext(p.width, p.height)
-	tmp.SetColor(widgets.ColorBackground)
+	tmp.SetColor(bg)
 	tmp.Clear()
 	src := tmp.Image().(*image.RGBA)
 	p.bgImg = image.NewRGBA(src.Rect)
+	p.bgCol = bg
 	copy(p.bgImg.Pix, src.Pix)
 }
 
@@ -32,7 +33,11 @@ func (p *Painter) getContext() *gg.Context {
 	if dst, ok := p.ctx.Image().(*image.RGBA); ok && p.bgImg != nil {
 		copy(dst.Pix, p.bgImg.Pix)
 	} else {
-		p.ctx.SetColor(widgets.ColorBackground)
+		bg := p.bgCol
+		if bg == (color.RGBA{}) {
+			bg = widgets.ColorBackground
+		}
+		p.ctx.SetColor(bg)
 		p.ctx.Clear()
 	}
 	return p.ctx

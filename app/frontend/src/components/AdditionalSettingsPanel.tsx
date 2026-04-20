@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
 import { Button, cn } from '@sprint/ui'
-import { type DashTheme, type DomainPalette, type RGBAColor, type FormatPreferences } from '@/lib/dash'
+import { type DashTheme, type DomainPalette, type RGBAColor, type FormatPreferences, type TypographySettings, type FontStyle } from '@/lib/dash'
 import { DEFAULT_FORMAT_PREFERENCES } from '@/lib/format'
 import { rgbaToHex, hexToRgba } from '@/lib/color'
 
@@ -11,9 +11,12 @@ interface AdditionalSettingsPanelProps {
   domainPalette: Partial<DomainPalette>
   hardcodedDefaults: { theme: DashTheme; domain: DomainPalette }
   globalDefaults?: { theme: DashTheme; domain: DomainPalette }
+  typography?: Partial<TypographySettings>
+  globalTypography?: Partial<TypographySettings>
   formatPreferences?: Partial<FormatPreferences>
   globalFormatPreferences?: Partial<FormatPreferences>
   onChange: (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => void
+  onTypographyChange?: (typography: Partial<TypographySettings>) => void
   onFormatPreferencesChange?: (prefs: Partial<FormatPreferences>) => void
 }
 
@@ -44,14 +47,24 @@ const DOMAIN_ROWS: { key: keyof DomainPalette; label: string }[] = [
   { key: 'brakeMig', label: 'Brake Migration' },
 ]
 
+const TYPOGRAPHY_FONT_OPTIONS: { value: FontStyle; label: string }[] = [
+  { value: 'label', label: 'Space Grotesk' },
+  { value: 'bold', label: 'Space Grotesk Bold' },
+  { value: 'number', label: 'JetBrains Mono Bold' },
+  { value: 'mono', label: 'JetBrains Mono' },
+]
+
 export function AdditionalSettingsPanel({
   theme,
   domainPalette,
   hardcodedDefaults,
   globalDefaults,
+  typography,
+  globalTypography,
   formatPreferences,
   globalFormatPreferences,
   onChange,
+  onTypographyChange,
   onFormatPreferencesChange,
 }: AdditionalSettingsPanelProps) {
   const handleThemeChange = (key: keyof DashTheme, value: RGBAColor) => {
@@ -64,12 +77,14 @@ export function AdditionalSettingsPanel({
 
   const handleResetAllToHardcoded = () => {
     onChange({ ...hardcodedDefaults.theme }, { ...hardcodedDefaults.domain })
+    onTypographyChange?.({})
     onFormatPreferencesChange?.({})
   }
 
   const handleResetAllToGlobal = () => {
     if (!globalDefaults) return
     onChange({ ...globalDefaults.theme }, { ...globalDefaults.domain })
+    onTypographyChange?.({})
     onFormatPreferencesChange?.({})
   }
 
@@ -152,6 +167,16 @@ export function AdditionalSettingsPanel({
             })}
           </Section>
         </div>
+
+        {onTypographyChange && (
+          <Section label="TYPOGRAPHY_DEFAULTS">
+            <TypographySection
+              typography={typography ?? {}}
+              globalTypography={globalTypography}
+              onChange={onTypographyChange}
+            />
+          </Section>
+        )}
 
         {onFormatPreferencesChange && (
           <Section label="FORMAT_PREFERENCES">
@@ -376,6 +401,79 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
           value={effective.deltaPrecision!}
           inherited={prefs.deltaPrecision === undefined ? globalEffective.deltaPrecision : undefined}
           onChange={v => set('deltaPrecision', v as FormatPreferences['deltaPrecision'])}
+        />
+      </FormatRow>
+    </div>
+  )
+}
+
+function TypographySection({
+  typography,
+  globalTypography,
+  onChange,
+}: {
+  typography: Partial<TypographySettings>
+  globalTypography?: Partial<TypographySettings>
+  onChange: (typography: Partial<TypographySettings>) => void
+}) {
+  const effective = { ...globalTypography, ...typography }
+
+  const set = <K extends keyof TypographySettings>(key: K, value: TypographySettings[K]) =>
+    onChange({ ...typography, [key]: value })
+
+  const reset = <K extends keyof TypographySettings>(key: K) => {
+    const next = { ...typography }
+    delete next[key]
+    onChange(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      <FormatRow
+        label="Value font"
+        isOverridden={typography.font !== undefined}
+        onReset={() => reset('font')}
+        showReset={globalTypography !== undefined}
+      >
+        <ToggleGroup
+          options={TYPOGRAPHY_FONT_OPTIONS}
+          value={effective.font ?? 'number'}
+          inherited={typography.font === undefined ? globalTypography?.font : undefined}
+          onChange={value => set('font', value as TypographySettings['font'])}
+        />
+      </FormatRow>
+
+      <FormatRow
+        label="Label font"
+        isOverridden={typography.labelFont !== undefined}
+        onReset={() => reset('labelFont')}
+        showReset={globalTypography !== undefined}
+      >
+        <ToggleGroup
+          options={TYPOGRAPHY_FONT_OPTIONS}
+          value={effective.labelFont ?? 'label'}
+          inherited={typography.labelFont === undefined ? globalTypography?.labelFont : undefined}
+          onChange={value => set('labelFont', value as TypographySettings['labelFont'])}
+        />
+      </FormatRow>
+
+      <FormatRow
+        label="Font scale"
+        isOverridden={typography.fontScale !== undefined}
+        onReset={() => reset('fontScale')}
+        showReset={globalTypography !== undefined}
+      >
+        <input
+          type="number"
+          step="0.05"
+          min="0.5"
+          max="3"
+          value={effective.fontScale ?? 1}
+          onChange={event => {
+            const next = parseFloat(event.target.value)
+            if (!Number.isNaN(next) && next > 0) set('fontScale', next)
+          }}
+          className="w-24 bg-background border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       </FormatRow>
     </div>

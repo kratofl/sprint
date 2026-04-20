@@ -64,7 +64,9 @@ export function DeviceSection() {
       dashAPI.listLayouts().then(setLayouts).catch(() => {}),
       deviceAPI.getScreenStatus().then(setScreenStatus),
       controlsAPI.getCommandCatalog()
-        .then(commands => setDeviceOnlyCmds(commands.filter(command => command.deviceOnly)))
+        .then(commands => setDeviceOnlyCmds(commands.filter(command =>
+          command.deviceOnly || command.id.startsWith('dash.wrapper.')
+        )))
         .catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [loadDevices])

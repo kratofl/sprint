@@ -4,6 +4,8 @@ import type {
   CatalogEntry,
   DashLayout,
   DashPage,
+  DashWrapperGroup,
+  DashWrapperVariant,
   DashTheme,
   DashWidget,
   DetectedScreen,
@@ -16,6 +18,7 @@ import type {
   LayoutMeta,
   RearViewConfig,
   SavedDevice,
+  TypographySettings,
   WidgetCatalogEntry,
   WidgetStyle,
 } from './types.ts'
@@ -189,7 +192,7 @@ function adaptWidget(raw: RawRecord): DashWidget {
   }
 }
 
-function adaptPage(raw: RawRecord): DashPage {
+function adaptWrapperVariant(raw: RawRecord): DashWrapperVariant {
   return {
     id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
@@ -199,9 +202,43 @@ function adaptPage(raw: RawRecord): DashPage {
   }
 }
 
+function adaptWrapperGroup(raw: RawRecord): DashWrapperGroup {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    col: Number(raw.col ?? 0),
+    row: Number(raw.row ?? 0),
+    colSpan: Number(raw.colSpan ?? 1),
+    rowSpan: Number(raw.rowSpan ?? 1),
+    defaultVariantId: raw.defaultVariantId ? String(raw.defaultVariantId) : undefined,
+    variants: Array.isArray(raw.variants)
+      ? raw.variants.map(variant => adaptWrapperVariant(variant as RawRecord))
+      : [],
+  }
+}
+
+function adaptPage(raw: RawRecord): DashPage {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    background: raw.background as DashPage['background'],
+    widgets: Array.isArray(raw.widgets)
+      ? raw.widgets.map(widget => adaptWidget(widget as RawRecord))
+      : [],
+    wrapperGroups: Array.isArray(raw.wrapperGroups)
+      ? raw.wrapperGroups.map(group => adaptWrapperGroup(group as RawRecord))
+      : [],
+  }
+}
+
 function adaptTheme(raw: unknown): DashTheme | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   return raw as DashTheme
+}
+
+function adaptTypography(raw: unknown): TypographySettings | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  return raw as TypographySettings
 }
 
 export function adaptLayout(raw: RawRecord): DashLayout {
@@ -220,6 +257,7 @@ export function adaptLayout(raw: RawRecord): DashLayout {
     alerts: (raw.alerts as AlertInstance[] | undefined) ?? [],
     theme: adaptTheme(raw.theme),
     domainPalette: raw.domainPalette as DomainPalette | undefined,
+    typography: adaptTypography(raw.typography),
     formatPreferences: raw.formatPreferences as FormatPreferences | undefined,
   }
 }
@@ -240,6 +278,7 @@ export function adaptGlobalDashSettings(raw: RawRecord): GlobalDashSettings {
   return {
     theme: adaptTheme(raw.theme) ?? DEFAULT_DASH_THEME,
     domainPalette: (raw.domainPalette as DomainPalette | undefined) ?? {},
+    typography: adaptTypography(raw.typography),
     formatPreferences: raw.formatPreferences as FormatPreferences | undefined,
   }
 }
