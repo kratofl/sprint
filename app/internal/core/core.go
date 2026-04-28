@@ -306,6 +306,32 @@ func (c *Coordinator) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
 	}
 }
 
+// SetGlobalTheme propagates new global dash colors to all active screen drivers
+// and the editor preview painter.
+func (c *Coordinator) SetGlobalTheme(theme widgets.DashTheme) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalTheme(theme)
+		}
+	}
+	c.preview.SetGlobalTheme(theme)
+}
+
+// SetGlobalDomainPalette propagates new global domain colors to all active
+// screen drivers and the editor preview painter.
+func (c *Coordinator) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalDomainPalette(domain)
+		}
+	}
+	c.preview.SetGlobalDomainPalette(domain)
+}
+
 // SetGlobalTypography propagates new global dash typography defaults to all
 // active screen drivers and the editor preview painter.
 func (c *Coordinator) SetGlobalTypography(typography widgets.TypographySettings) {
@@ -363,9 +389,10 @@ func (c *Coordinator) ReloadDashCommands() {
 					commands.DynamicCommand{
 						Meta: commands.CommandMeta{
 							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".next"),
-							Label:      baseLabel + " / Next",
+							Label:      baseLabel + " / Next Layer",
 							Category:   "Dashboard",
 							Capturable: true,
+							DeviceOnly: true,
 						},
 						Handler: func(payload any) {
 							screenID, _ := payload.(string)
@@ -375,9 +402,10 @@ func (c *Coordinator) ReloadDashCommands() {
 					commands.DynamicCommand{
 						Meta: commands.CommandMeta{
 							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".prev"),
-							Label:      baseLabel + " / Prev",
+							Label:      baseLabel + " / Previous Layer",
 							Category:   "Dashboard",
 							Capturable: true,
+							DeviceOnly: true,
 						},
 						Handler: func(payload any) {
 							screenID, _ := payload.(string)
@@ -385,25 +413,6 @@ func (c *Coordinator) ReloadDashCommands() {
 						},
 					},
 				)
-				for _, variant := range group.Variants {
-					variantID := variant.ID
-					variantName := variant.Name
-					if variantName == "" {
-						variantName = variantID
-					}
-					dynamic = append(dynamic, commands.DynamicCommand{
-						Meta: commands.CommandMeta{
-							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".show." + variantID),
-							Label:      baseLabel + " / " + variantName,
-							Category:   "Dashboard",
-							Capturable: true,
-						},
-						Handler: func(payload any) {
-							screenID, _ := payload.(string)
-							c.setWrapperVariant(screenID, layoutID, pageID, groupID, variantID)
-						},
-					})
-				}
 			}
 		}
 	}

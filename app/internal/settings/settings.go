@@ -13,11 +13,110 @@ import (
 	"github.com/kratofl/sprint/app/internal/appdata"
 )
 
+type DashEditorPanelPreferences struct {
+	Open   bool `json:"open"`
+	Pinned bool `json:"pinned"`
+}
+
+func defaultDashEditorPanelPreferences() DashEditorPanelPreferences {
+	return DashEditorPanelPreferences{
+		Open:   true,
+		Pinned: true,
+	}
+}
+
+func (p *DashEditorPanelPreferences) UnmarshalJSON(data []byte) error {
+	type rawDashEditorPanelPreferences struct {
+		Open   *bool `json:"open"`
+		Pinned *bool `json:"pinned"`
+	}
+
+	var raw rawDashEditorPanelPreferences
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	defaults := defaultDashEditorPanelPreferences()
+	p.Open = defaults.Open
+	p.Pinned = defaults.Pinned
+	if raw.Open != nil {
+		p.Open = *raw.Open
+	}
+	if raw.Pinned != nil {
+		p.Pinned = *raw.Pinned
+	}
+	return nil
+}
+
+type DashEditorUIPreferences struct {
+	Palette   DashEditorPanelPreferences `json:"palette"`
+	Inspector DashEditorPanelPreferences `json:"inspector"`
+}
+
+func defaultDashEditorUIPreferences() DashEditorUIPreferences {
+	return DashEditorUIPreferences{
+		Palette:   defaultDashEditorPanelPreferences(),
+		Inspector: defaultDashEditorPanelPreferences(),
+	}
+}
+
+func (p *DashEditorUIPreferences) UnmarshalJSON(data []byte) error {
+	type rawDashEditorUIPreferences struct {
+		Palette   *DashEditorPanelPreferences `json:"palette"`
+		Inspector *DashEditorPanelPreferences `json:"inspector"`
+	}
+
+	var raw rawDashEditorUIPreferences
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	defaults := defaultDashEditorUIPreferences()
+	p.Palette = defaults.Palette
+	p.Inspector = defaults.Inspector
+	if raw.Palette != nil {
+		p.Palette = *raw.Palette
+	}
+	if raw.Inspector != nil {
+		p.Inspector = *raw.Inspector
+	}
+	return nil
+}
+
 // Settings holds persistent application preferences.
 type Settings struct {
-	UpdateChannel string `json:"updateChannel"` // "stable" | "pre-release"
-	DriverName    string `json:"driverName,omitempty"`
-	DriverNumber  string `json:"driverNumber,omitempty"`
+	UpdateChannel string                  `json:"updateChannel"` // "stable" | "pre-release"
+	DriverName    string                  `json:"driverName,omitempty"`
+	DriverNumber  string                  `json:"driverNumber,omitempty"`
+	DashEditorUI  DashEditorUIPreferences `json:"dashEditorUI"`
+}
+
+func (s *Settings) UnmarshalJSON(data []byte) error {
+	type rawSettings struct {
+		UpdateChannel string                   `json:"updateChannel"`
+		DriverName    string                   `json:"driverName,omitempty"`
+		DriverNumber  string                   `json:"driverNumber,omitempty"`
+		DashEditorUI  *DashEditorUIPreferences `json:"dashEditorUI"`
+	}
+
+	var raw rawSettings
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	s.UpdateChannel = raw.UpdateChannel
+	if s.UpdateChannel == "" {
+		s.UpdateChannel = "stable"
+	}
+	s.DriverName = raw.DriverName
+	s.DriverNumber = raw.DriverNumber
+	if raw.DashEditorUI != nil {
+		s.DashEditorUI = *raw.DashEditorUI
+	} else {
+		s.DashEditorUI = defaultDashEditorUIPreferences()
+	}
+
+	return nil
 }
 
 var presetsFS fs.FS
@@ -53,7 +152,10 @@ func loadDefault() (*Settings, error) {
 			}
 		}
 	}
-	return &Settings{UpdateChannel: "stable"}, nil
+	return &Settings{
+		UpdateChannel: "stable",
+		DashEditorUI:  defaultDashEditorUIPreferences(),
+	}, nil
 }
 
 // Save writes s to {appdata.Dir()}/settings.json, creating the directory if needed.

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { adaptCatalogEntry, adaptGlobalDashSettings, adaptLayout, adaptSavedDevice } from './adapters.ts'
+import { adaptCatalogEntry, adaptGlobalDashSettings, adaptLayout, adaptSavedDevice, adaptWidgetCatalogEntry } from './adapters.ts'
 
 test('adaptSavedDevice maps snake_case desktop payloads into camelCase frontend models', () => {
   const adapted = adaptSavedDevice({
@@ -134,4 +134,57 @@ test('adaptGlobalDashSettings includes typography defaults', () => {
   assert.equal(adapted.typography?.font, 'number')
   assert.equal(adapted.typography?.labelFont, 'label')
   assert.equal(adapted.typography?.fontScale, 1.1)
+})
+
+test('adaptWidgetCatalogEntry flattens Go text styles for widget previews', () => {
+  const adapted = adaptWidgetCatalogEntry({
+    type: 'tc',
+    name: 'Traction Control',
+    category: 'car',
+    defaultDefinition: [
+      {
+        kind: 'text',
+        text: 'TC1',
+        x: 0.025,
+        y: 0.08,
+        style: {
+          font: 'ui',
+          fontSize: 0.14,
+          hAlign: 0,
+          vAlign: 0,
+          color: { ref: 'muted' },
+        },
+      },
+      {
+        kind: 'text',
+        binding: 'electronics.tc',
+        x: 0.5,
+        y: 0.6,
+        style: {
+          font: 'mono',
+          fontSize: 0.45,
+          bold: true,
+          hAlign: 1,
+          vAlign: 1,
+          color: { ref: 'fg' },
+        },
+      },
+    ],
+  })
+
+  assert.equal(adapted.defaultDefinition?.[0]?.font, 'label')
+  assert.equal(adapted.defaultDefinition?.[0]?.fontScale, 0.14)
+  assert.equal(adapted.defaultDefinition?.[0]?.x, 0.025)
+  assert.equal(adapted.defaultDefinition?.[0]?.y, 0.08)
+  assert.equal(adapted.defaultDefinition?.[0]?.hAlign, 0)
+  assert.equal(adapted.defaultDefinition?.[0]?.vAlign, 0)
+  assert.deepEqual(adapted.defaultDefinition?.[0]?.color, { ref: 'muted' })
+  assert.equal('style' in (adapted.defaultDefinition?.[0] ?? {}), false)
+
+  assert.equal(adapted.defaultDefinition?.[1]?.font, 'number')
+  assert.equal(adapted.defaultDefinition?.[1]?.fontScale, 0.45)
+  assert.equal(adapted.defaultDefinition?.[1]?.x, 0.5)
+  assert.equal(adapted.defaultDefinition?.[1]?.y, 0.6)
+  assert.equal(adapted.defaultDefinition?.[1]?.hAlign, 1)
+  assert.equal(adapted.defaultDefinition?.[1]?.vAlign, 1)
 })

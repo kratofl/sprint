@@ -64,6 +64,10 @@ type Painter struct {
 	// global setting change is immediately reflected across all layouts unless
 	// a layout has an explicit override for that field.
 	globalPrefs atomic.Pointer[widgets.FormatPreferences]
+	// globalTheme holds the global dash palette beneath per-layout overrides.
+	globalTheme atomic.Pointer[widgets.DashTheme]
+	// globalDomain holds the global domain palette beneath per-layout overrides.
+	globalDomain atomic.Pointer[widgets.DomainPalette]
 	// globalTypography holds the global-level dash typography defaults.
 	globalTypography atomic.Pointer[widgets.TypographySettings]
 	// profile holds app-level display strings such as driver name/number.
@@ -130,6 +134,18 @@ func (p *Painter) SetIdle(idle bool) {
 // settings so all active painters reflect the change immediately.
 func (p *Painter) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	p.globalPrefs.Store(&prefs)
+	p.widgetCaches = nil
+}
+
+// SetGlobalTheme stores the global dash palette applied beneath per-layout overrides.
+func (p *Painter) SetGlobalTheme(theme widgets.DashTheme) {
+	p.globalTheme.Store(&theme)
+	p.widgetCaches = nil
+}
+
+// SetGlobalDomainPalette stores the global domain palette applied beneath per-layout overrides.
+func (p *Painter) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	p.globalDomain.Store(&domain)
 	p.widgetCaches = nil
 }
 
@@ -205,13 +221,9 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		rows = DefaultGridRows
 	}
 
-	cellW := float64(p.width) / float64(cols)
-	cellH := float64(p.height) / float64(rows)
-
-	x := float64(w.Col) * cellW
-	y := float64(w.Row) * cellH
-	pw := float64(w.ColSpan) * cellW
-	ph := float64(w.RowSpan) * cellH
+	x, y, pw, ph := gridPixelRect(p.width, p.height, cols, rows, w.Col, w.Row, w.ColSpan, w.RowSpan)
+	fw := float64(pw)
+	fh := float64(ph)
 
 	widget, ok := widgets.Get(w.Type)
 	if !ok {
@@ -221,7 +233,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	meta := widget.Meta()
 	hz := widgetUpdateHz(w.Config, meta.DefaultUpdateHz)
 
-	cache := p.getOrCreateCache(w.ID, int(x), int(y), int(pw), int(ph))
+	cache := p.getOrCreateCache(w.ID, x, y, pw, ph)
 	if hz > 0 {
 		intervalNano := int64(float64(time.Second) / hz)
 		now := time.Now().UnixNano()
@@ -231,14 +243,9 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		}
 	}
 
-	theme := layout.Theme
-	if theme == (widgets.DashTheme{}) {
-		theme = widgets.DefaultTheme()
-	}
-
 	rt := widgets.RenderTheme{
-		Theme:            theme,
-		Domain:           layout.DomainPalette,
+		Theme:            p.resolvedTheme(layout),
+		Domain:           p.resolvedDomainPalette(layout),
 		Style:            w.Style,
 		Typography:       layout.Typography,
 		GlobalTypography: p.currentGlobalTypography(),
@@ -266,14 +273,14 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 			if available, _ := val.(bool); !available {
 				cache.ctx.SetColor(widgets.ColorBackground)
 				cache.ctx.Clear()
-				p.renderPanel(cache.ctx, rt, 0, 0, pw, ph, widgets.Panel{})
+				p.renderPanel(cache.ctx, rt, 0, 0, fw, fh, widgets.Panel{})
 				naHdrStyle := widgets.TextStyle{
 					Font:     widgets.FontFamilyUI,
 					FontSize: 0.18,
 					HAlign:   meta.Label.Align,
 					Color:    widgets.ColorRefMuted.Expr(),
 				}
-				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, fw, fh,
 					widgets.Text{Text: strings.ToUpper(meta.Name), Style: naHdrStyle}, 0.1)
 				naValStyle := widgets.TextStyle{
 					Font:     widgets.FontFamilyMono,
@@ -282,7 +289,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 					HAlign:   widgets.HAlignCenter,
 					Color:    widgets.ColorRefMuted.Expr(),
 				}
-				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+				p.renderText(cache.ctx, frame, rt, prefs, 0, 0, fw, fh,
 					widgets.Text{Text: "—", Style: naValStyle}, 0.5)
 				p.blitCache(dc, cache)
 				if hz > 0 {
@@ -312,7 +319,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	// pressure and progressive FPS degradation after several laps.
 	cache.ctx.SetColor(widgets.ColorBackground)
 	cache.ctx.Clear()
-	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, pw, ph, elems)
+	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, fw, fh, elems)
 
 	// Render the auto label after the widget body so it survives the clear above
 	// and matches the final pixels shown on the physical screen.
@@ -331,7 +338,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 			HAlign:   meta.Label.Align,
 			Color:    widgets.ColorRefMuted.Expr(),
 		}
-		p.renderText(cache.ctx, frame, rt, prefs, 0, 0, pw, ph,
+		p.renderText(cache.ctx, frame, rt, prefs, 0, 0, fw, fh,
 			widgets.Text{Text: text, Style: hdrStyle}, 0.1)
 	}
 	p.blitCache(dc, cache)
@@ -395,13 +402,56 @@ func widgetUpdateHz(config map[string]any, defaultHz float64) float64 {
 	return defaultHz
 }
 
+func gridPixelRect(screenW, screenH, cols, rows, col, row, colSpan, rowSpan int) (x, y, w, h int) {
+	left := gridPixelEdge(screenW, cols, col)
+	right := gridPixelEdge(screenW, cols, col+colSpan)
+	top := gridPixelEdge(screenH, rows, row)
+	bottom := gridPixelEdge(screenH, rows, row+rowSpan)
+	left, right = normalizePixelSpan(left, right, screenW)
+	top, bottom = normalizePixelSpan(top, bottom, screenH)
+	return left, top, right - left, bottom - top
+}
+
+func gridPixelEdge(total, divisions, edge int) int {
+	if total <= 0 || divisions <= 0 {
+		return 0
+	}
+	pos := int(math.Round(float64(edge) * float64(total) / float64(divisions)))
+	if pos < 0 {
+		return 0
+	}
+	if pos > total {
+		return total
+	}
+	return pos
+}
+
+func normalizePixelSpan(start, end, total int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if start >= total {
+		start = total - 1
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end <= start {
+		end = start + 1
+	}
+	if end > total {
+		end = total
+	}
+	return start, end
+}
+
 // renderElements renders a slice of elements within the widget bounding box.
 // Text elements are distributed vertically (auto-stacked) based on their count.
 // All other elements are rendered in order by renderElement.
 func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elems []widgets.Element) {
 	textCount := 0
 	for _, e := range elems {
-		if _, ok := e.(widgets.Text); ok {
+		if t, ok := e.(widgets.Text); ok && !textHasExplicitY(t) {
 			textCount++
 		}
 	}
@@ -409,8 +459,12 @@ func (p *Painter) renderElements(dc *gg.Context, frame *dto.TelemetryFrame, rt w
 	textIdx := 0
 	for _, e := range elems {
 		if t, ok := e.(widgets.Text); ok {
-			p.renderText(dc, frame, rt, prefs, x, y, w, h, t, ys[textIdx])
-			textIdx++
+			yFrac := 0.5
+			if !textHasExplicitY(t) {
+				yFrac = ys[textIdx]
+				textIdx++
+			}
+			p.renderText(dc, frame, rt, prefs, x, y, w, h, t, yFrac)
 		} else {
 			p.renderElement(dc, frame, rt, prefs, x, y, w, h, e)
 		}
@@ -472,6 +526,14 @@ func valignFrac(a widgets.VAlign) float64 {
 	}
 }
 
+func textHasExplicitX(elem widgets.Text) bool {
+	return elem.X != 0
+}
+
+func textHasExplicitY(elem widgets.Text) bool {
+	return elem.Y != 0
+}
+
 // textAutoStackYs returns the vertical center fractions for n auto-stacked Text
 // elements. Returns nil for n == 0.
 func textAutoStackYs(n int) []float64 {
@@ -495,8 +557,9 @@ func textAutoStackYs(n int) []float64 {
 	}
 }
 
-// renderText draws a text element at the given yFrac (vertical center fraction
-// of the widget bounding box). yFrac is assigned by renderElements via textAutoStackYs.
+// renderText draws a text element at the given yFrac unless elem.Y provides an
+// explicit widget-relative anchor. yFrac is assigned by renderElements via
+// textAutoStackYs.
 func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Text, yFrac float64) {
 	var display string
 	if elem.Binding != "" {
@@ -523,17 +586,24 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
 
 	var tx float64
-	switch style.HAlign {
-	case widgets.HAlignCenter:
-		tx = x + 0.5*w
-	case widgets.HAlignEnd:
-		tx = x + 0.975*w
-	default:
-		tx = x + 0.025*w
+	if textHasExplicitX(elem) {
+		tx = x + elem.X*w
+	} else {
+		switch style.HAlign {
+		case widgets.HAlignCenter:
+			tx = x + 0.5*w
+		case widgets.HAlignEnd:
+			tx = x + 0.975*w
+		default:
+			tx = x + 0.025*w
+		}
+	}
+	if textHasExplicitY(elem) {
+		yFrac = elem.Y
 	}
 	ty := y + yFrac*h
 	ay := 0.5
-	if style.VAlign != 0 {
+	if textHasExplicitY(elem) || style.VAlign != 0 {
 		ay = valignFrac(style.VAlign)
 	}
 	dc.DrawStringAnchored(display, tx, ty, halignFrac(style.HAlign), ay)
@@ -825,11 +895,23 @@ func (p *Painter) pageBackground(layout *DashLayout, page DashPage) color.RGBA {
 	if page.Background != nil {
 		return *page.Background
 	}
-	theme := layout.Theme
-	if theme == (widgets.DashTheme{}) {
-		theme = widgets.DefaultTheme()
+	return p.resolvedTheme(layout).Bg
+}
+
+func (p *Painter) resolvedTheme(layout *DashLayout) widgets.DashTheme {
+	theme := widgets.DefaultTheme()
+	if global := p.globalTheme.Load(); global != nil {
+		theme = widgets.MergeTheme(theme, *global)
 	}
-	return theme.Bg
+	return widgets.MergeTheme(theme, layout.Theme)
+}
+
+func (p *Painter) resolvedDomainPalette(layout *DashLayout) widgets.DomainPalette {
+	domain := widgets.DefaultDomainPalette()
+	if global := p.globalDomain.Load(); global != nil {
+		domain = widgets.MergeDomainPalette(domain, *global)
+	}
+	return widgets.MergeDomainPalette(domain, layout.DomainPalette)
 }
 
 func (p *Painter) currentGlobalTypography() widgets.TypographySettings {

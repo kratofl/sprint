@@ -6,23 +6,28 @@ import type {
   DashPage,
   DashWrapperGroup,
   DashWrapperVariant,
-  DashTheme,
+  DashThemeOverrides,
   DashWidget,
   DetectedScreen,
   DeviceBinding,
   DevicePurpose,
   DeviceType,
   DomainPalette,
+  FontStyle,
   FormatPreferences,
   GlobalDashSettings,
+  HAlign,
   LayoutMeta,
   RearViewConfig,
   SavedDevice,
   TypographySettings,
+  VAlign,
   WidgetCatalogEntry,
+  WidgetElement,
   WidgetStyle,
 } from './types.ts'
 import { DEFAULT_DASH_THEME } from './defaults.ts'
+import { resolveDashTheme } from './themeOverrides.ts'
 
 type RawRecord = Record<string, unknown>
 
@@ -231,14 +236,57 @@ function adaptPage(raw: RawRecord): DashPage {
   }
 }
 
-function adaptTheme(raw: unknown): DashTheme | undefined {
+function adaptTheme(raw: unknown): DashThemeOverrides | undefined {
   if (!raw || typeof raw !== 'object') return undefined
-  return raw as DashTheme
+  return raw as DashThemeOverrides
 }
 
 function adaptTypography(raw: unknown): TypographySettings | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   return raw as TypographySettings
+}
+
+function isRecord(raw: unknown): raw is RawRecord {
+  return !!raw && typeof raw === 'object' && !Array.isArray(raw)
+}
+
+function adaptGoTextFont(style: RawRecord): FontStyle | undefined {
+  const family = typeof style.font === 'string' ? style.font : ''
+  const isBold = Boolean(style.bold)
+
+  if (family === 'mono') return isBold ? 'number' : 'mono'
+  if (family === 'ui') return isBold ? 'bold' : 'label'
+  return isBold ? 'bold' : undefined
+}
+
+function adaptGoTextStyle(elem: RawRecord): void {
+  if (elem.kind !== 'text' || !isRecord(elem.style)) return
+
+  const style = elem.style
+  const font = adaptGoTextFont(style)
+  if (font && elem.font === undefined) elem.font = font
+  if (typeof style.fontSize === 'number' && elem.fontScale === undefined) elem.fontScale = style.fontSize
+  if (typeof style.hAlign === 'number' && elem.hAlign === undefined) elem.hAlign = style.hAlign as HAlign
+  if (typeof style.vAlign === 'number' && elem.vAlign === undefined) elem.vAlign = style.vAlign as VAlign
+  if (isRecord(style.color) && elem.color === undefined) elem.color = style.color
+  delete elem.style
+}
+
+function adaptWidgetElement(raw: unknown): WidgetElement {
+  if (!isRecord(raw)) return raw as WidgetElement
+
+  const elem: RawRecord = { ...raw }
+  adaptGoTextStyle(elem)
+
+  if (Array.isArray(elem.then)) elem.then = elem.then.map(adaptWidgetElement)
+  if (Array.isArray(elem.else)) elem.else = elem.else.map(adaptWidgetElement)
+
+  return elem as unknown as WidgetElement
+}
+
+function adaptWidgetDefinition(raw: unknown): WidgetElement[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  return raw.map(adaptWidgetElement)
 }
 
 export function adaptLayout(raw: RawRecord): DashLayout {
@@ -276,7 +324,7 @@ export function adaptLayoutMeta(raw: RawRecord): LayoutMeta {
 
 export function adaptGlobalDashSettings(raw: RawRecord): GlobalDashSettings {
   return {
-    theme: adaptTheme(raw.theme) ?? DEFAULT_DASH_THEME,
+    theme: resolveDashTheme(undefined, adaptTheme(raw.theme)) ?? DEFAULT_DASH_THEME,
     domainPalette: (raw.domainPalette as DomainPalette | undefined) ?? {},
     typography: adaptTypography(raw.typography),
     formatPreferences: raw.formatPreferences as FormatPreferences | undefined,
@@ -296,7 +344,7 @@ export function adaptWidgetCatalogEntry(raw: RawRecord): WidgetCatalogEntry {
     panel: raw.panel as WidgetCatalogEntry['panel'],
     label: raw.label as WidgetCatalogEntry['label'],
     defaultPanelRules: raw.defaultPanelRules as WidgetCatalogEntry['defaultPanelRules'],
-    defaultDefinition: raw.defaultDefinition as WidgetCatalogEntry['defaultDefinition'],
+    defaultDefinition: adaptWidgetDefinition(raw.defaultDefinition),
   }
 }
 

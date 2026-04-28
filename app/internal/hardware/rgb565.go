@@ -42,7 +42,9 @@ func imageToRGB565(img image.Image, dst []byte) {
 }
 
 // applyScreenMargin scales the full RGB565 buffer into a centered inset region,
-// leaving a black border of margin pixels on each side.
+// leaving a black border of margin pixels on each side. It samples the covered
+// source area rather than a single floor-mapped source pixel so one-pixel
+// dashboard borders do not disappear at specific columns during downscaling.
 func applyScreenMargin(src, dst []byte, nativeW, nativeH, margin int) {
 	if margin <= 0 {
 		copy(dst, src)
@@ -59,17 +61,54 @@ func applyScreenMargin(src, dst []byte, nativeW, nativeH, margin int) {
 	}
 
 	for dy := 0; dy < innerH; dy++ {
-		sy := dy * nativeH / innerH
 		dstRow := (dy + margin) * nativeW
-		srcRow := sy * nativeW
+		sy0 := dy * nativeH / innerH
+		sy1 := ((dy+1)*nativeH + innerH - 1) / innerH
+		if sy1 <= sy0 {
+			sy1 = sy0 + 1
+		}
+		if sy1 > nativeH {
+			sy1 = nativeH
+		}
 		for dx := 0; dx < innerW; dx++ {
-			sx := dx * nativeW / innerW
-			srcIdx := (srcRow + sx) * 2
+			sx0 := dx * nativeW / innerW
+			sx1 := ((dx+1)*nativeW + innerW - 1) / innerW
+			if sx1 <= sx0 {
+				sx1 = sx0 + 1
+			}
+			if sx1 > nativeW {
+				sx1 = nativeW
+			}
+			srcIdx := visibleRGB565InArea(src, nativeW, sx0, sx1, sy0, sy1)
 			dstIdx := (dstRow + dx + margin) * 2
 			dst[dstIdx] = src[srcIdx]
 			dst[dstIdx+1] = src[srcIdx+1]
 		}
 	}
+}
+
+func visibleRGB565InArea(src []byte, nativeW, sx0, sx1, sy0, sy1 int) int {
+	bestIdx := (sy0*nativeW + sx0) * 2
+	bestScore := rgb565Visibility(src[bestIdx], src[bestIdx+1])
+	for sy := sy0; sy < sy1; sy++ {
+		for sx := sx0; sx < sx1; sx++ {
+			idx := (sy*nativeW + sx) * 2
+			score := rgb565Visibility(src[idx], src[idx+1])
+			if score > bestScore {
+				bestIdx = idx
+				bestScore = score
+			}
+		}
+	}
+	return bestIdx
+}
+
+func rgb565Visibility(lo, hi byte) int {
+	px := uint16(lo) | uint16(hi)<<8
+	r := int((px >> 11) & 0x1f)
+	g := int((px >> 5) & 0x3f)
+	b := int(px & 0x1f)
+	return r*299 + (g*587)/2 + b*114
 }
 
 // applyScreenOffset shifts content in the RGB565 buffer so that offsetX pixels

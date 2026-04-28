@@ -78,7 +78,7 @@ export default function Settings() {
             PROFILE
           </h3>
 
-          <div className="surface rounded border border-border p-4 flex flex-col gap-4">
+          <div className="surface rounded p-4 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="font-mono text-[10px] text-text-muted">Driver name</label>
               <input
@@ -86,7 +86,7 @@ export default function Settings() {
                 value={settings.driverName ?? ''}
                 onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
                 onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
-                className="bg-background border border-border px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
                 placeholder="Your Name"
               />
             </div>
@@ -98,7 +98,7 @@ export default function Settings() {
                 value={settings.driverNumber ?? ''}
                 onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
                 onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
-                className="bg-background border border-border px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
                 placeholder="#22"
               />
             </div>
@@ -110,7 +110,7 @@ export default function Settings() {
             UPDATES
           </h3>
 
-          <div className="surface rounded border border-border p-4 flex flex-col gap-4">
+          <div className="surface rounded p-4 flex flex-col gap-4">
             <div>
               <p className="text-[11px] font-bold text-foreground mb-1">Update channel</p>
               <p className="font-mono text-[9px] text-text-muted mb-3">
@@ -126,7 +126,7 @@ export default function Settings() {
                       'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                       settings.updateChannel === ch
                         ? 'border-primary text-primary bg-accent/5'
-                        : 'border-border text-text-muted hover:border-border-strong hover:text-foreground',
+                        : 'border-border text-text-muted hover:border-border hover:text-foreground',
                     )}
                   >
                     {settings.updateChannel === ch && (
@@ -170,7 +170,7 @@ export default function Settings() {
             ABOUT
           </h3>
 
-          <div className="surface rounded border border-border p-4 flex flex-col gap-3">
+          <div className="surface rounded p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] text-text-muted">VERSION</span>
               <span className="font-mono text-[10px] text-foreground">v{version}</span>

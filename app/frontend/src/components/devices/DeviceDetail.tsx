@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { IconDeviceMobile } from '@tabler/icons-react'
 import { Badge, Button, Switch, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@sprint/ui'
 import {
@@ -15,6 +15,8 @@ import {
 } from '@/lib/dash'
 import type { CommandMeta } from '@/lib/controls'
 import { DeviceCommandRow } from './DeviceCommandRow'
+import { resolveBindingDashContext } from './bindingDashContext'
+import { buildDeviceBindingsViewModel } from './deviceBindingsViewModel'
 
 const ORIENTATION_OPTIONS = [
   { degrees: 0 as const, label: 'Portrait', iconRotation: 'rotate-0' },
@@ -59,6 +61,7 @@ export function DeviceDetail({
   const [offsetY, setOffsetY] = useState(device.offsetY ?? 0)
   const [margin, setMargin] = useState(device.margin ?? 0)
   const [dashId, setDashId] = useState(device.dashId)
+  const [selectedBindingDashId, setSelectedBindingDashId] = useState(device.dashId || layouts[0]?.id || '')
   const [savingDash, setSavingDash] = useState(false)
   const [purpose, setPurpose] = useState<DevicePurpose>(device.purpose ?? 'dash')
   const [selectingBounds, setSelectingBounds] = useState(false)
@@ -74,13 +77,14 @@ export function DeviceDetail({
     setOffsetY(device.offsetY ?? 0)
     setMargin(device.margin ?? 0)
     setDashId(device.dashId)
+    setSelectedBindingDashId(device.dashId || layouts[0]?.id || '')
     setPurpose(device.purpose ?? 'dash')
     setRenaming(false)
     deviceBindingsAPI
       .getDeviceBindings(device.vid, device.pid, device.serial)
       .then(setBindings)
       .catch(() => setBindings([]))
-  }, [device, id])
+  }, [device, id, layouts])
 
   const commitRename = async () => {
     const trimmed = draft.trim()
@@ -187,9 +191,6 @@ export function DeviceDetail({
     }
   }
 
-  const getDeviceButton = (commandId: string) =>
-    bindings.find(binding => binding.command === commandId)?.button ?? 0
-
   const setDeviceButton = async (commandId: string, button: number) => {
     const updated = bindings.filter(binding => binding.command !== commandId)
     if (button > 0) updated.push({ command: commandId, button })
@@ -211,11 +212,30 @@ export function DeviceDetail({
     }
   }
 
-  const activeDashId = dashId || layouts[0]?.id || ''
+  const bindingDashContext = resolveBindingDashContext({
+    device: { ...device, dashId },
+    layouts,
+    selectedDashId: selectedBindingDashId,
+  })
+  const activeDashId = bindingDashContext.activeDashId
   const typeLabel =
     device.type === 'wheel' ? 'WHEEL' :
       device.type === 'buttonbox' ? 'BUTTON_BOX' :
         'SCREEN'
+  const bindingView = useMemo(
+    () => buildDeviceBindingsViewModel({
+      commands: deviceOnlyCmds,
+      bindings,
+      activeDashId,
+    }),
+    [activeDashId, bindings, deviceOnlyCmds],
+  )
+  const nativeSelectClassName = cn(
+    'w-full border border-border bg-bg-shell px-3 py-1.5 font-mono text-[10px] text-foreground',
+    'focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50',
+  )
+  const numericFieldClassName =
+    'w-16 border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
 
   return (
     <div className="p-6 space-y-6">
@@ -234,7 +254,7 @@ export function DeviceDetail({
                 }
               }}
               onBlur={commitRename}
-              className="bg-background px-1 font-mono text-sm font-bold outline outline-1 outline-primary"
+              className="surface-inline px-2 font-mono text-sm font-bold outline-none focus:border-primary"
             />
           ) : (
             <button
@@ -278,202 +298,239 @@ export function DeviceDetail({
         </div>
       </div>
 
-      {isScreen ? (
-        <>
-          {isScreenOnly && import.meta.env.DEV ? (
+      <Tabs key={id} defaultValue={isScreen ? 'settings' : 'bindings'} className="space-y-4">
+        <TabsList
+          variant="top"
+          className="font-mono text-[9px]"
+        >
+          <TabsTrigger value="settings" className="px-3">
+            SETTINGS
+          </TabsTrigger>
+          <TabsTrigger value="bindings" className="px-3">
+            BINDINGS
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="settings" className="space-y-6 pt-1">
+          {isScreen ? (
+            <>
+              {isScreenOnly && import.meta.env.DEV ? (
+                <div className="space-y-1.5">
+                  <p className="font-mono text-[9px] font-bold text-text-muted">PURPOSE</p>
+                  <select
+                    value={purpose}
+                    onChange={event => handlePurposeChange(event.target.value as DevicePurpose)}
+                    className={nativeSelectClassName}
+                  >
+                    <option value="dash">Dash</option>
+                    <option value="rear_view">Rear View Mirror</option>
+                  </select>
+                </div>
+              ) : null}
+
+              <div className="space-y-1.5">
+                <p className="font-mono text-[9px] font-bold text-text-muted">ORIENTATION</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
+                    <button
+                      key={degrees}
+                      type="button"
+                      onClick={() => handleRotation(degrees)}
+                      className={cn(
+                        'flex items-center gap-1.5 border px-3 py-1 font-mono text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+                        rotation === degrees
+                          ? 'border-accent bg-accent/10 text-accent'
+                          : 'border-border bg-bg-shell text-text-muted hover:text-foreground',
+                      )}
+                    >
+                      <IconDeviceMobile size={12} className={iconRotation} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_POSITION (px)</p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-1.5">
+                    <span className="font-mono text-[9px] text-text-muted">LEFT</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={512}
+                      value={offsetX}
+                      onChange={event => handleOffsetChange('x', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                      className={numericFieldClassName}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <span className="font-mono text-[9px] text-text-muted">TOP</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={512}
+                      value={offsetY}
+                      onChange={event => handleOffsetChange('y', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                      className={numericFieldClassName}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <span className="font-mono text-[9px] text-text-muted">MARGIN</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={512}
+                      value={margin}
+                      onChange={event => handleOffsetChange('margin', Math.max(0, parseInt(event.target.value, 10) || 0))}
+                      className={numericFieldClassName}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {isScreenOnly && import.meta.env.DEV && purpose === 'rear_view' ? (() => {
+                const config = device.purposeConfig
+                const captureX = config?.captureX ?? 0
+                const captureY = config?.captureY ?? 0
+                const captureW = config?.captureW ?? 0
+                const captureH = config?.captureH ?? 0
+                const idleMode = config?.idleMode ?? 'black'
+                return (
+                  <div className="space-y-2">
+                    <Tabs defaultValue="capture">
+                      <TabsList variant="compact" className="w-full font-mono text-[9px]">
+                        <TabsTrigger value="capture" className="flex-1">CAPTURE</TabsTrigger>
+                        <TabsTrigger value="idle" className="flex-1">IDLE SCREEN</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="capture" className="space-y-2 pt-2">
+                        <Button
+                          variant="active"
+                          size="sm"
+                          className="w-full font-mono text-[10px]"
+                          onClick={handleSelectBounds}
+                          disabled={selectingBounds}
+                        >
+                          {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
+                        </Button>
+                        {captureW > 0 && captureH > 0 ? (
+                          <p className="font-mono text-[9px] text-text-muted">
+                            X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
+                          </p>
+                        ) : (
+                          <p className="font-mono text-[9px] text-text-muted">
+                            No region set — click Set Bounds
+                          </p>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="idle" className="space-y-2 pt-2">
+                        <p className="font-mono text-[9px] font-bold text-text-muted">IDLE_MODE</p>
+                        <select
+                          value={idleMode}
+                          onChange={event => handleIdleModeChange(event.target.value as RearViewIdleMode)}
+                          className={nativeSelectClassName}
+                        >
+                          <option value="black">BLACK — screen off</option>
+                          <option value="clock">CLOCK — digital HH:MM:SS</option>
+                        </select>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                )
+              })() : null}
+
+              {!import.meta.env.DEV || purpose === 'dash' ? (
+                <div className="space-y-1.5">
+                  <p className="font-mono text-[9px] font-bold text-text-muted">
+                    DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
+                  </p>
+                  {layouts.length === 0 ? (
+                    <p className="font-mono text-[9px] text-text-muted">
+                      No layouts saved yet — create one in DASH_STUDIO
+                    </p>
+                  ) : (
+                    <select
+                      value={activeDashId}
+                      onChange={event => handleDashChange(event.target.value)}
+                      disabled={savingDash}
+                      className={nativeSelectClassName}
+                    >
+                      {layouts.map(layout => (
+                        <option key={layout.id} value={layout.id}>{layout.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="bindings" className="space-y-3 pt-1">
+          {bindingDashContext.showDashPicker && layouts.length > 0 ? (
             <div className="space-y-1.5">
-              <p className="font-mono text-[9px] font-bold text-text-muted">PURPOSE</p>
+              <p className="font-mono text-[8px] text-text-muted">BINDING_DASH_LAYOUT</p>
               <select
-                value={purpose}
-                onChange={event => handlePurposeChange(event.target.value as DevicePurpose)}
-                className={cn(
-                  'w-full border border-border bg-background px-3 py-1.5',
-                  'font-mono text-[10px] text-foreground',
-                  'focus:outline-none focus:ring-1 focus:ring-primary',
-                )}
+                value={activeDashId}
+                onChange={event => setSelectedBindingDashId(event.target.value)}
+                className={nativeSelectClassName}
               >
-                <option value="dash">Dash</option>
-                <option value="rear_view">Rear View Mirror</option>
+                {layouts.map(layout => (
+                  <option key={layout.id} value={layout.id}>{layout.name}</option>
+                ))}
               </select>
             </div>
           ) : null}
 
-          <div className="space-y-1.5">
-            <p className="font-mono text-[9px] font-bold text-text-muted">ORIENTATION</p>
-            <div className="flex flex-wrap gap-1.5">
-              {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
-                <button
-                  key={degrees}
-                  type="button"
-                  onClick={() => handleRotation(degrees)}
-                  className={cn(
-                    'flex items-center gap-1.5 border px-3 py-1 font-mono text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-                    rotation === degrees
-                      ? 'border-primary bg-primary text-background'
-                      : 'border-border bg-background text-text-muted hover:text-foreground',
-                  )}
-                >
-                  <IconDeviceMobile size={12} className={iconRotation} />
-                  {label}
-                </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-mono text-[8px] text-text-muted">ACTIVE_DASH_ONLY</p>
+            {bindingView.hiddenBindingCount > 0 ? (
+              <Badge variant="outline" className="font-mono text-[8px]">
+                {bindingView.hiddenBindingCount}_HIDDEN
+              </Badge>
+            ) : null}
+          </div>
+
+          {bindingView.cards.length > 0 ? (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {bindingView.cards.map(card => (
+                <div key={card.key} className="surface-panel space-y-2 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10px] font-bold uppercase text-foreground">{card.title}</p>
+                    {card.subtitle ? (
+                      <p className="truncate font-mono text-[8px] text-text-muted">{card.subtitle}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1">
+                    {card.rows.map(row => (
+                      <DeviceCommandRow
+                        key={row.command.id}
+                        cmd={row.command}
+                        button={row.button}
+                        bound={row.button > 0}
+                        onButtonChange={nextButton => setDeviceButton(row.command.id, nextButton)}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_POSITION (px)</p>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1.5">
-                <span className="font-mono text-[9px] text-text-muted">LEFT</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={512}
-                  value={offsetX}
-                  onChange={event => handleOffsetChange('x', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </label>
-              <label className="flex items-center gap-1.5">
-                <span className="font-mono text-[9px] text-text-muted">TOP</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={512}
-                  value={offsetY}
-                  onChange={event => handleOffsetChange('y', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </label>
-              <label className="flex items-center gap-1.5">
-                <span className="font-mono text-[9px] text-text-muted">MARGIN</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={512}
-                  value={margin}
-                  onChange={event => handleOffsetChange('margin', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                  className="w-16 border border-border bg-background px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </label>
+          ) : (
+            <div className="surface-panel px-4 py-3">
+              <p className="font-mono text-[9px] text-text-muted">NO_ACTIVE_DASH_BINDINGS</p>
             </div>
-          </div>
-
-          {isScreenOnly && import.meta.env.DEV && purpose === 'rear_view' ? (() => {
-            const config = device.purposeConfig
-            const captureX = config?.captureX ?? 0
-            const captureY = config?.captureY ?? 0
-            const captureW = config?.captureW ?? 0
-            const captureH = config?.captureH ?? 0
-            const idleMode = config?.idleMode ?? 'black'
-            return (
-              <div className="space-y-2">
-                <Tabs defaultValue="capture">
-                  <TabsList className="w-full font-mono text-[9px]">
-                    <TabsTrigger value="capture" className="flex-1 font-mono text-[9px]">CAPTURE</TabsTrigger>
-                    <TabsTrigger value="idle" className="flex-1 font-mono text-[9px]">IDLE SCREEN</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="capture" className="space-y-2 pt-2">
-                    <Button
-                      variant="active"
-                      size="sm"
-                      className="w-full font-mono text-[10px]"
-                      onClick={handleSelectBounds}
-                      disabled={selectingBounds}
-                    >
-                      {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
-                    </Button>
-                    {captureW > 0 && captureH > 0 ? (
-                      <p className="font-mono text-[9px] text-text-muted">
-                        X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
-                      </p>
-                    ) : (
-                      <p className="font-mono text-[9px] text-text-muted">
-                        No region set — click Set Bounds
-                      </p>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="idle" className="space-y-2 pt-2">
-                    <p className="font-mono text-[9px] font-bold text-text-muted">IDLE_MODE</p>
-                    <select
-                      value={idleMode}
-                      onChange={event => handleIdleModeChange(event.target.value as RearViewIdleMode)}
-                      className={cn(
-                        'w-full border border-border bg-background px-3 py-1.5',
-                        'font-mono text-[10px] text-foreground',
-                        'focus:outline-none focus:ring-1 focus:ring-primary',
-                      )}
-                    >
-                      <option value="black">BLACK — screen off</option>
-                      <option value="clock">CLOCK — digital HH:MM:SS</option>
-                    </select>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            )
-          })() : null}
-
-          {!import.meta.env.DEV || purpose === 'dash' ? (
-            <div className="space-y-1.5">
-              <p className="font-mono text-[9px] font-bold text-text-muted">
-                DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
-              </p>
-              {layouts.length === 0 ? (
-                <p className="font-mono text-[9px] text-text-muted">
-                  No layouts saved yet — create one in DASH_STUDIO
-                </p>
-              ) : (
-                <select
-                  value={activeDashId}
-                  onChange={event => handleDashChange(event.target.value)}
-                  disabled={savingDash}
-                  className={cn(
-                    'w-full border border-border bg-background px-3 py-1.5',
-                    'font-mono text-[10px] text-foreground',
-                    'focus:outline-none focus:ring-1 focus:ring-primary',
-                    'disabled:opacity-50',
-                  )}
-                >
-                  {layouts.map(layout => (
-                    <option key={layout.id} value={layout.id}>{layout.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {deviceOnlyCmds.length > 0 ? (
-        <div className="space-y-1.5">
-          <p className="font-mono text-[9px] font-bold text-text-muted">BUTTON_BINDINGS</p>
-          <p className="font-mono text-[8px] text-text-muted">
-            Click CAPTURE then press the physical button on this device.
-          </p>
-          <div className="space-y-1">
-            {deviceOnlyCmds.map(command => {
-              const button = getDeviceButton(command.id)
-              return (
-                <DeviceCommandRow
-                  key={command.id}
-                  cmd={command}
-                  button={button}
-                  bound={button > 0}
-                  onButtonChange={nextButton => setDeviceButton(command.id, nextButton)}
-                />
-              )
-            })}
-          </div>
-        </div>
-      ) : null}
+          )}
+        </TabsContent>
+      </Tabs>
 
       <div className="border-t border-border pt-4">
         <Button
-          variant="outline"
+          variant="destructive"
           size="sm"
-          className="terminal-header h-7 px-3 text-[9px] text-destructive hover:border-destructive hover:bg-destructive/10"
+          className="terminal-header h-7 px-3 text-[9px]"
           disabled={removing}
           onClick={handleRemove}
         >

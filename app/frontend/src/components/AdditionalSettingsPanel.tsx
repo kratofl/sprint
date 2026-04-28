@@ -1,8 +1,20 @@
 import { useCallback, useRef } from 'react'
 import { Button, cn } from '@sprint/ui'
-import { type DashTheme, type DomainPalette, type RGBAColor, type FormatPreferences, type TypographySettings, type FontStyle } from '@/lib/dash'
+import {
+  type DashTheme,
+  type DomainPalette,
+  type RGBAColor,
+  type FormatPreferences,
+  type TypographySettings,
+  type FontStyle,
+  clearDomainColorOverride,
+  clearThemeColorOverride,
+  setDomainColorOverride,
+  setThemeColorOverride,
+} from '@/lib/dash'
 import { DEFAULT_FORMAT_PREFERENCES } from '@/lib/format'
 import { rgbaToHex, hexToRgba } from '@/lib/color'
+import { getDomainColorRowState, getThemeColorRowState } from './additionalSettingsPanelState'
 
 export { rgbaToHex, hexToRgba }
 
@@ -67,12 +79,16 @@ export function AdditionalSettingsPanel({
   onTypographyChange,
   onFormatPreferencesChange,
 }: AdditionalSettingsPanelProps) {
+  const inheritsGlobalColors = globalDefaults !== undefined
+  const inheritedTheme = globalDefaults?.theme ?? hardcodedDefaults.theme
+  const inheritedDomain = globalDefaults?.domain ?? hardcodedDefaults.domain
+
   const handleThemeChange = (key: keyof DashTheme, value: RGBAColor) => {
-    onChange({ ...theme, [key]: value }, domainPalette)
+    onChange(setThemeColorOverride(theme, key, value), domainPalette)
   }
 
   const handleDomainChange = (key: keyof DomainPalette, value: RGBAColor) => {
-    onChange(theme, { ...domainPalette, [key]: value })
+    onChange(theme, setDomainColorOverride(domainPalette, key, value))
   }
 
   const handleResetAllToHardcoded = () => {
@@ -83,7 +99,7 @@ export function AdditionalSettingsPanel({
 
   const handleResetAllToGlobal = () => {
     if (!globalDefaults) return
-    onChange({ ...globalDefaults.theme }, { ...globalDefaults.domain })
+    onChange({}, {})
     onTypographyChange?.({})
     onFormatPreferencesChange?.({})
   }
@@ -93,14 +109,16 @@ export function AdditionalSettingsPanel({
       <div className="flex items-center justify-between border-b border-border px-6 py-3 flex-shrink-0">
         <h4 className="terminal-header text-[10px] font-bold text-text-muted">ADDITIONAL_SETTINGS</h4>
         <div className="flex items-center gap-2">
-          {globalDefaults && (
+          {inheritsGlobalColors && (
             <Button size="xs" variant="neutral" onClick={handleResetAllToGlobal}>
-              RESET TO GLOBAL
+              INHERIT_GLOBALS
             </Button>
           )}
-          <Button size="xs" variant="ghost" onClick={handleResetAllToHardcoded}>
-            RESET ALL
-          </Button>
+          {!inheritsGlobalColors && (
+            <Button size="xs" variant="ghost" onClick={handleResetAllToHardcoded}>
+              RESET ALL
+            </Button>
+          )}
         </div>
       </div>
 
@@ -111,16 +129,25 @@ export function AdditionalSettingsPanel({
             description="Neutral surfaces, text, and the two general-purpose highlight colors."
           >
             {BASE_THEME_ROWS.map(({ key, label }) => {
-              const current = theme[key] ?? hardcodedDefaults.theme[key]
-              const defaultVal = hardcodedDefaults.theme[key]
+              const state = getThemeColorRowState({
+                key,
+                theme,
+                inheritedTheme,
+                hardcodedTheme: hardcodedDefaults.theme,
+                inheritsGlobalColors,
+              })
               return (
                 <ColorRow
                   key={key}
                   label={label}
-                  value={current}
-                  defaultValue={defaultVal}
+                  value={state.value}
+                  defaultValue={state.defaultValue}
+                  isOverridden={state.isOverridden}
                   onChange={v => handleThemeChange(key, v)}
-                  onReset={() => handleThemeChange(key, defaultVal)}
+                  onReset={() => inheritsGlobalColors
+                    ? onChange(clearThemeColorOverride(theme, key) ?? {}, domainPalette)
+                    : handleThemeChange(key, hardcodedDefaults.theme[key])}
+                  resetTitle={inheritsGlobalColors ? 'Clear override and inherit global' : 'Reset to default'}
                 />
               )
             })}
@@ -131,16 +158,25 @@ export function AdditionalSettingsPanel({
             description="Reserve these for state meaning so alerts and thresholds stay readable."
           >
             {SEMANTIC_THEME_ROWS.map(({ key, label }) => {
-              const current = theme[key] ?? hardcodedDefaults.theme[key]
-              const defaultVal = hardcodedDefaults.theme[key]
+              const state = getThemeColorRowState({
+                key,
+                theme,
+                inheritedTheme,
+                hardcodedTheme: hardcodedDefaults.theme,
+                inheritsGlobalColors,
+              })
               return (
                 <ColorRow
                   key={key}
                   label={label}
-                  value={current}
-                  defaultValue={defaultVal}
+                  value={state.value}
+                  defaultValue={state.defaultValue}
+                  isOverridden={state.isOverridden}
                   onChange={v => handleThemeChange(key, v)}
-                  onReset={() => handleThemeChange(key, defaultVal)}
+                  onReset={() => inheritsGlobalColors
+                    ? onChange(clearThemeColorOverride(theme, key) ?? {}, domainPalette)
+                    : handleThemeChange(key, hardcodedDefaults.theme[key])}
+                  resetTitle={inheritsGlobalColors ? 'Clear override and inherit global' : 'Reset to default'}
                 />
               )
             })}
@@ -151,17 +187,26 @@ export function AdditionalSettingsPanel({
             description="Racing-system colors that widgets should use only for their matching domains."
           >
             {DOMAIN_ROWS.map(({ key, label }) => {
-              const current = domainPalette[key] ?? hardcodedDefaults.domain[key]
-              const defaultVal = hardcodedDefaults.domain[key]
-              if (!current || !defaultVal) return null
+              const state = getDomainColorRowState({
+                key,
+                domainPalette,
+                inheritedDomain,
+                hardcodedDomain: hardcodedDefaults.domain,
+                inheritsGlobalColors,
+              })
+              if (!state) return null
               return (
                 <ColorRow
                   key={key}
                   label={label}
-                  value={current}
-                  defaultValue={defaultVal}
+                  value={state.value}
+                  defaultValue={state.defaultValue}
+                  isOverridden={state.isOverridden}
                   onChange={v => handleDomainChange(key, v)}
-                  onReset={() => handleDomainChange(key, defaultVal)}
+                  onReset={() => inheritsGlobalColors
+                    ? onChange(theme, clearDomainColorOverride(domainPalette, key) ?? {})
+                    : handleDomainChange(key, hardcodedDefaults.domain[key]!)}
+                  resetTitle={inheritsGlobalColors ? 'Clear override and inherit global' : 'Reset to default'}
                 />
               )
             })}
@@ -222,14 +267,16 @@ interface ColorRowProps {
   label: string
   value: RGBAColor
   defaultValue: RGBAColor
+  isOverridden: boolean
   onChange: (v: RGBAColor) => void
   onReset: () => void
+  resetTitle: string
 }
 
-function ColorRow({ label, value, defaultValue, onChange, onReset }: ColorRowProps) {
+function ColorRow({ label, value, defaultValue, isOverridden, onChange, onReset, resetTitle }: ColorRowProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const hex = rgbaToHex(value)
-  const isDefault = hex === rgbaToHex(defaultValue)
+  const resetHex = rgbaToHex(defaultValue)
 
   const handleHexInput = useCallback((raw: string) => {
     const clean = raw.startsWith('#') ? raw : `#${raw}`
@@ -268,7 +315,7 @@ function ColorRow({ label, value, defaultValue, onChange, onReset }: ColorRowPro
         onBlur={e => handleHexInput(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') handleHexInput(e.currentTarget.value) }}
         className={cn(
-          'w-20 bg-background border border-border px-1.5 py-0.5 font-mono text-[10px] text-foreground',
+          'w-20 border border-border bg-bg-shell px-1.5 py-0.5 font-mono text-[10px] text-foreground',
           'focus:outline-none focus:border-accent',
         )}
       />
@@ -277,9 +324,9 @@ function ColorRow({ label, value, defaultValue, onChange, onReset }: ColorRowPro
       <button
         type="button"
         onClick={onReset}
-        disabled={isDefault}
+        disabled={!isOverridden}
         className="text-text-disabled hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
-        title="Reset to default"
+        title={`${resetTitle} (${resetHex})`}
       >
         <ResetIcon />
       </button>
@@ -473,7 +520,7 @@ function TypographySection({
             const next = parseFloat(event.target.value)
             if (!Number.isNaN(next) && next > 0) set('fontScale', next)
           }}
-          className="w-24 bg-background border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className="w-24 border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       </FormatRow>
     </div>
@@ -543,7 +590,7 @@ function ToggleGroup({
                 ? 'border-primary text-primary bg-primary/5'
                 : isActive && isInherited
                   ? 'border-border text-text-muted border-dashed'
-                  : 'border-border text-text-disabled hover:border-border-strong hover:text-foreground',
+                  : 'border-border text-text-disabled hover:border-border hover:text-foreground',
             )}
             title={isInherited ? 'Inherited from global' : undefined}
           >

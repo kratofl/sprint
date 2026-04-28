@@ -45,9 +45,9 @@ type WidgetType string
 //
 //	func (myThingWidget) Definition(_ map[string]any) []Element {
 //	    return []Element{
-//	        Text{Binding: "car.speedKPH", Format: "int",
-//	             Font: FontNumber, FontScale: 0.5, X: 0.5, Y: 0.5,
-//	             HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()},
+//	        Text{Binding: "car.speedKPH", Format: "int", X: 0.5, Y: 0.5,
+//	             Style: TextStyle{Font: FontFamilyMono, FontSize: 0.5, IsBold: true,
+//	                 HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
 //	    }
 //	}
 //
@@ -96,11 +96,11 @@ type PanelConfig struct {
 // LabelConfig controls the automatic label drawn by the painter.
 // Zero value = label auto-generated from UPPER(Meta.Name) at the top, default styling.
 type LabelConfig struct {
-	Hidden    bool    `json:"hidden,omitempty"`     // true = no auto-label
-	Text      string  `json:"text,omitempty"`       // override label text (default: UPPER(Meta.Name))
-	Align     HAlign  `json:"align,omitempty"`      // label alignment (default: HAlignStart)
-	FontScale float64 `json:"fontScale,omitempty"`  // label font scale (default: 0.12)
-	VAlign    VAlign  `json:"vAlign,omitempty"`     // VAlignStart = top (default), VAlignEnd = bottom
+	Hidden    bool    `json:"hidden,omitempty"`    // true = no auto-label
+	Text      string  `json:"text,omitempty"`      // override label text (default: UPPER(Meta.Name))
+	Align     HAlign  `json:"align,omitempty"`     // label alignment (default: HAlignStart)
+	FontScale float64 `json:"fontScale,omitempty"` // label font scale (default: 0.12)
+	VAlign    VAlign  `json:"vAlign,omitempty"`    // VAlignStart = top (default), VAlignEnd = bottom
 }
 
 // WidgetMeta holds the widget type, display name, palette category,
@@ -160,10 +160,10 @@ func Register(w Widget) {
 		lbl := Text{
 			Text: text,
 			Style: TextStyle{
-				Font:   FontFamilyUI,
+				Font:     FontFamilyUI,
 				FontSize: fontScale,
-				HAlign:  m.Label.Align,
-				Color:   ColorRefMuted.Expr(),
+				HAlign:   m.Label.Align,
+				Color:    ColorRefMuted.Expr(),
 			},
 		}
 		// Insert label after panel (if present) or at the start.

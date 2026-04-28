@@ -14,6 +14,16 @@ func TestSaveAndLoadRoundTripsDriverProfile(t *testing.T) {
 		UpdateChannel: "stable",
 		DriverName:    "Alice Example",
 		DriverNumber:  "#22",
+		DashEditorUI: DashEditorUIPreferences{
+			Palette: DashEditorPanelPreferences{
+				Open:   true,
+				Pinned: false,
+			},
+			Inspector: DashEditorPanelPreferences{
+				Open:   false,
+				Pinned: true,
+			},
+		},
 	}
 	if err := Save(want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -28,5 +38,11 @@ func TestSaveAndLoadRoundTripsDriverProfile(t *testing.T) {
 	}
 	if got.DriverNumber != want.DriverNumber {
 		t.Fatalf("expected driver number %q, got %q", want.DriverNumber, got.DriverNumber)
+	}
+	if got.DashEditorUI.Palette != want.DashEditorUI.Palette {
+		t.Fatalf("expected palette prefs %+v, got %+v", want.DashEditorUI.Palette, got.DashEditorUI.Palette)
+	}
+	if got.DashEditorUI.Inspector != want.DashEditorUI.Inspector {
+		t.Fatalf("expected inspector prefs %+v, got %+v", want.DashEditorUI.Inspector, got.DashEditorUI.Inspector)
 	}
 }

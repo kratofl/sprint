@@ -1,9 +1,20 @@
 // Mirrors app/internal/settings/settings.go and app/internal/updater/updater.go
 
+export interface DashEditorPanelPreferences {
+  open: boolean
+  pinned: boolean
+}
+
+export interface DashEditorUIPreferences {
+  palette: DashEditorPanelPreferences
+  inspector: DashEditorPanelPreferences
+}
+
 export interface AppSettings {
   updateChannel: 'stable' | 'pre-release'
   driverName?: string
   driverNumber?: string
+  dashEditorUI?: DashEditorUIPreferences
 }
 
 export interface ReleaseInfo {

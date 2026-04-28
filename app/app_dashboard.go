@@ -8,6 +8,7 @@ import (
 	"github.com/kratofl/sprint/app/internal/dashboard"
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DashListLayouts returns metadata for all saved dash layouts.
@@ -35,6 +36,7 @@ func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
 	if err := a.dashSvc.SaveLayout(&layout); err != nil {
 		return fmt.Errorf("DashSaveLayout: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
@@ -45,6 +47,7 @@ func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
 	if err != nil {
 		return nil, fmt.Errorf("DashCreateLayout: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return layout, nil
 }
 
@@ -90,6 +93,7 @@ func (a *App) DashDeleteLayout(id string) error {
 	if err := a.dashSvc.DeleteLayout(id); err != nil {
 		return fmt.Errorf("DashDeleteLayout: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
@@ -98,6 +102,7 @@ func (a *App) DashSetDefault(id string) error {
 	if err := a.dash.SetDefault(id); err != nil {
 		return fmt.Errorf("DashSetDefault: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
@@ -175,4 +180,10 @@ func (a *App) isLayoutActive(layoutID string) bool {
 		}
 	}
 	return false
+}
+
+func (a *App) emitDashLayoutsUpdated() {
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, dashboard.EventLayoutsUpdated)
+	}
 }

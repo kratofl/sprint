@@ -100,17 +100,17 @@ export default function Telemetry({ frame }: TelemetryProps) {
         {/* Right: chrono — col-span-3 */}
         <section className="col-span-3 flex flex-col overflow-hidden">
           <div className="border-b border-border p-4">
-            <h3 className="terminal-header mb-4 text-[10px] font-bold text-text-muted">
+              <h3 className="terminal-header mb-4 text-[10px] font-bold text-text-muted">
               CHRONO_SUMMARY
             </h3>
             <div className="space-y-1">
-              <div className="flex items-center justify-between border border-border bg-white/[0.02] p-3">
+              <div className="surface-panel flex items-center justify-between p-3">
                 <span className="font-mono text-[9px] text-text-muted">P1_BEST</span>
                 <span className="font-mono text-lg font-bold text-secondary">
                   {fmt(frame?.lap.bestLapTime)}
                 </span>
               </div>
-              <div className="flex items-center justify-between border border-border bg-white/[0.01] p-3">
+              <div className="surface-inline flex items-center justify-between p-3">
                 <span className="font-mono text-[9px] text-text-muted">L_SESS</span>
                 <span className="font-mono text-lg font-bold">
                   {fmt(frame?.lap.lastLapTime)}
@@ -128,7 +128,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
           {/* Lap table */}
           <div className="flex-1 overflow-y-auto">
             <table className="w-full font-mono text-[10px]">
-              <thead className="sticky top-0 border-b border-border bg-background">
+              <thead className="sticky top-0 border-b border-border bg-bg-shell">
                 <tr className="text-text-muted/60">
                   <th className="px-4 py-2 text-left font-normal uppercase">Lap</th>
                   <th className="px-4 py-2 text-left font-normal uppercase">Time</th>
@@ -138,14 +138,14 @@ export default function Telemetry({ frame }: TelemetryProps) {
               <tbody className="divide-y divide-border/30">
                 {frame?.lap.lastLapTime ? (
                   <>
-                    <tr className="hover:bg-white/[0.02]">
+                    <tr className="hover:bg-bg-panel/60">
                       <td className="px-4 py-2.5 text-text-muted">L</td>
                       <td className="px-4 py-2.5 font-bold">{fmt(frame.lap.lastLapTime)}</td>
                       <td className={cn('px-4 py-2.5 text-right', frame.lap.lastLapTime <= (frame.lap.bestLapTime || Infinity) ? 'text-secondary' : 'text-primary')}>
                         {frame.lap.bestLapTime ? fmtDelta(frame.lap.lastLapTime - frame.lap.bestLapTime) : '——'}
                       </td>
                     </tr>
-                    <tr className="hover:bg-white/[0.02]">
+                    <tr className="hover:bg-bg-panel/60">
                       <td className="px-4 py-2.5 text-text-muted">PB</td>
                       <td className="px-4 py-2.5 font-bold text-secondary">{fmt(frame.lap.bestLapTime)}</td>
                       <td className="px-4 py-2.5 text-right text-secondary">——</td>

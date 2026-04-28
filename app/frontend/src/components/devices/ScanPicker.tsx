@@ -47,10 +47,7 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
           const vidHex = screen.vid.toString(16).padStart(4, '0').toUpperCase()
           const pidHex = screen.pid.toString(16).padStart(4, '0').toUpperCase()
           return (
-            <div
-              key={key}
-              className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
-            >
+            <div key={key} className="surface-panel flex items-start justify-between gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="font-mono text-[10px] font-bold">
                   {screen.description || screen.driver.toUpperCase()}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, PageHeader, cn } from '@sprint/ui'
 import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
+import { formatCommandIdForDisplay } from '@/lib/controls/commandIdDisplay'
 
 // Category display order.
 const CATEGORY_ORDER = ['dash', 'lap']
@@ -91,7 +92,7 @@ export default function Controls() {
       />
 
       {loadError && (
-        <div className="border-b border-border px-6 py-2 font-mono text-[10px] text-destructive">
+        <div className="surface-destructive border-x-0 border-t-0 px-6 py-2 font-mono text-[10px] text-destructive">
           {loadError}
         </div>
       )}
@@ -229,7 +230,7 @@ function CommandRow({
           )}>
             {cmd.label}
           </span>
-          <span className="font-mono text-[9px] text-text-muted opacity-60">{cmd.id}</span>
+          <span className="font-mono text-[9px] text-text-muted opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
         </div>
 
         <div className="ml-4 flex flex-shrink-0 items-center gap-2">
@@ -237,14 +238,16 @@ function CommandRow({
             <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
           )}
           {bound && (
-            <button
+            <Button
               onClick={() => onButtonChange(0)}
-              className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
+              variant="destructive"
+              size="icon-xs"
+              className="h-5 w-5 p-0 text-[13px]"
               title="Clear binding"
               aria-label={`Clear binding for ${cmd.label}`}
             >
               ×
-            </button>
+            </Button>
           )}
 
           <Input
@@ -264,14 +267,17 @@ function CommandRow({
 
           {cmd.capturable && (
             <Button
-              variant={captureState === 'capturing' ? 'ghost' : 'secondary'}
+              variant={
+                captureState === 'capturing'
+                  ? 'ghost'
+                  : captureState === 'timeout'
+                    ? 'destructive'
+                    : 'secondary'
+              }
               size="sm"
               disabled={captureState === 'capturing'}
               onClick={handleCapture}
-              className={cn(
-                'terminal-header w-24 font-bold text-[9px]',
-                captureState === 'timeout' && 'text-destructive',
-              )}
+              className="terminal-header w-24 font-bold text-[9px]"
             >
               {captureState === 'capturing'
                 ? `LISTENING_${countdown}`

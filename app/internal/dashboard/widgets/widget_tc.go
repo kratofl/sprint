@@ -46,10 +46,10 @@ func (tcWidget) Definition(config map[string]any) []Element {
 		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefTC))
 	}
 	return []Element{
-		Text{Text: label, Style: TextStyle{
-			Font: FontFamilyUI, FontSize: 0.18, HAlign: HAlignStart, Color: ColorRefMuted.Expr()}},
-		Text{Binding: binding, Format: FormatInt, Style: TextStyle{
-			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: col}},
+		Text{Text: label, X: 0.015, Y: 0.035, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: 0.13, HAlign: HAlignStart, VAlign: VAlignStart, Color: ColorRefMuted.Expr()}},
+		Text{Binding: binding, Format: FormatInt, X: 0.5, Y: 0.56, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.52, IsBold: true, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: col}},
 	}
 }
 

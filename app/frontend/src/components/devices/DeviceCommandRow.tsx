@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, cn } from '@sprint/ui'
 import type { CommandMeta } from '@/lib/controls'
 import { controlsAPI } from '@/lib/controls'
+import { formatCommandIdForDisplay } from '@/lib/controls/commandIdDisplay'
 
 type DeviceCaptureState = 'idle' | 'capturing' | 'timeout'
 
@@ -54,38 +55,43 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
 
   return (
     <div className={cn(
-      'flex items-center justify-between border px-4 py-2.5',
-      bound ? 'border-primary/40 bg-primary/5' : 'border-border bg-card',
+      'flex items-center justify-between px-3 py-2',
+      bound ? 'surface-active' : 'surface-panel',
     )}>
-      <div className="flex flex-col gap-0.5">
-        <span className={cn('font-mono text-[11px] font-bold', bound ? 'text-white' : 'text-text-muted')}>
-          {cmd.label}
-        </span>
-        <span className="font-mono text-[9px] text-text-muted opacity-60">{cmd.id}</span>
-      </div>
+        <div className="flex flex-col gap-0.5">
+          <span className={cn('font-mono text-[11px] font-bold', bound ? 'text-white' : 'text-text-muted')}>
+            {cmd.label}
+          </span>
+        <span className="font-mono text-[9px] text-text-muted opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
+        </div>
       <div className="ml-4 flex flex-shrink-0 items-center gap-2">
         {bound ? (
           <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
         ) : null}
         {bound ? (
-          <button
+          <Button
             onClick={() => onButtonChange(0)}
-            className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
+            variant="destructive"
+            size="icon-xs"
+            className="h-5 w-5 p-0 text-[13px]"
             title="Clear binding"
             aria-label={`Clear binding for ${cmd.label}`}
           >
             ×
-          </button>
+          </Button>
         ) : null}
         <Button
-          variant={captureState === 'capturing' ? 'ghost' : 'secondary'}
+          variant={
+            captureState === 'capturing'
+              ? 'ghost'
+              : captureState === 'timeout'
+                ? 'destructive'
+                : 'secondary'
+          }
           size="sm"
           disabled={captureState === 'capturing'}
           onClick={handleCapture}
-          className={cn(
-            'terminal-header w-24 font-bold text-[9px]',
-            captureState === 'timeout' && 'text-destructive',
-          )}
+          className="terminal-header w-20 font-bold text-[9px]"
         >
           {captureState === 'capturing'
             ? `LISTENING_${countdown}`

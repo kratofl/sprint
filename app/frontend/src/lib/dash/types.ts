@@ -41,6 +41,8 @@ export interface DashTheme {
   rpmRed: RGBAColor
 }
 
+export type DashThemeOverrides = Partial<DashTheme>
+
 export interface GlobalDashSettings {
   theme: DashTheme
   domainPalette: DomainPalette
@@ -131,7 +133,7 @@ export interface DashLayout {
   idlePage: DashPage
   pages: DashPage[]
   alerts: AlertInstance[]
-  theme?: DashTheme
+  theme?: DashThemeOverrides
   domainPalette?: DomainPalette
   typography?: TypographySettings
   formatPreferences?: FormatPreferences

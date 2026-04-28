@@ -37,6 +37,8 @@ type previewService struct {
 	page   atomic.Int32
 	idle   atomic.Bool
 	active atomic.Bool
+	globalTheme      atomic.Pointer[widgets.DashTheme]
+	globalDomain     atomic.Pointer[widgets.DomainPalette]
 	globalTypography atomic.Pointer[widgets.TypographySettings]
 	profile          atomic.Pointer[dashboard.RenderProfile]
 
@@ -69,6 +71,14 @@ func (s *previewService) setEmit(fn EmitFn) {
 
 func (s *previewService) SetGlobalTypography(typography widgets.TypographySettings) {
 	s.globalTypography.Store(&typography)
+}
+
+func (s *previewService) SetGlobalTheme(theme widgets.DashTheme) {
+	s.globalTheme.Store(&theme)
+}
+
+func (s *previewService) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	s.globalDomain.Store(&domain)
 }
 
 func (s *previewService) SetProfile(profile dashboard.RenderProfile) {
@@ -165,6 +175,12 @@ func (s *previewService) renderAndEmit() {
 	s.painter.SetLayout(layout)
 	s.painter.SetActivePage(int(s.page.Load()))
 	s.painter.SetIdle(s.idle.Load())
+	if theme := s.globalTheme.Load(); theme != nil {
+		s.painter.SetGlobalTheme(*theme)
+	}
+	if domain := s.globalDomain.Load(); domain != nil {
+		s.painter.SetGlobalDomainPalette(*domain)
+	}
 	if typography := s.globalTypography.Load(); typography != nil {
 		s.painter.SetGlobalTypography(*typography)
 	}

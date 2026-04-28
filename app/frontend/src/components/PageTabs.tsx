@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { cn } from '@sprint/ui'
+import {
+  cn,
+  tabsListBaseClassName,
+  tabsListVariantClassNames,
+  tabsRootBaseClassName,
+  tabsTriggerActiveClassName,
+  tabsTriggerBaseClassName,
+} from '@sprint/ui'
 import type { DashPage } from '@/lib/dash'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -13,6 +20,7 @@ export interface PageTabsProps {
   onAddPage: () => void
   onDeletePage: (index: number) => void
   onRenamePage: (index: number, name: string) => void
+  embedded?: boolean
 }
 
 export function PageTabs({
@@ -24,6 +32,7 @@ export function PageTabs({
   onAddPage,
   onDeletePage,
   onRenamePage,
+  embedded = false,
 }: PageTabsProps) {
   const [renamingIdx, setRenamingIdx] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -33,6 +42,12 @@ export function PageTabs({
   useEffect(() => {
     if (renamingIdx !== null) inputRef.current?.select()
   }, [renamingIdx])
+
+  const topTriggerClassName = cn(
+    tabsTriggerBaseClassName,
+    tabsTriggerActiveClassName,
+    'flex-shrink-0 gap-2',
+  )
 
   const startRename = (idx: number) => {
     setRenamingIdx(idx)
@@ -48,118 +63,137 @@ export function PageTabs({
 
   return (
     <>
-    <div className="flex items-stretch gap-0 border-b border-border bg-background flex-shrink-0 overflow-x-auto">
-      {/* Idle tab — always present, distinct styling */}
-      <button
-        onClick={() => onSelectTab('idle')}
-        className={cn(
-          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-          activeTab === 'idle'
-            ? 'border-accent text-accent bg-accent/[0.06]'
-            : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
-        )}
-      >
-        <LockIcon />
-        <span>IDLE</span>
-      </button>
-
-      {/* Alerts tab — always present, locked */}
-      <button
-        onClick={onSelectAlerts}
-        className={cn(
-          'flex items-center gap-2 px-4 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-          activeTab === 'alerts'
-            ? 'border-accent text-accent bg-accent/[0.06]'
-            : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
-        )}
-      >
-        <LockIcon />
-        <span>ALERTS</span>
-      </button>
-
-      <div className="w-px bg-border self-stretch my-1.5" />
-
-      {/* Active pages */}
-      {pages.map((page, idx) => {
-        const isActive = activeTab === idx
-        const isLive = livePageIndex === idx
-
-        return (
-          <div
-            key={page.id}
-            onClick={() => onSelectTab(idx)}
-            className={cn(
-              'group flex items-center gap-2 px-3 h-10 font-mono text-[11px] font-medium transition-colors whitespace-nowrap border-b-2 flex-shrink-0 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-              isActive
-                ? 'border-accent text-accent bg-accent/[0.06]'
-                : 'border-transparent text-text-muted hover:text-foreground hover:bg-white/[0.02]'
-            )}
+    {(() => {
+      const tabContent = (
+        <>
+          <button
+            type="button"
+            onClick={() => onSelectTab('idle')}
+            data-state={activeTab === 'idle' ? 'active' : 'inactive'}
+            className={topTriggerClassName}
           >
-            {isLive && (
-              <span className="w-1.5 h-1.5 bg-teal-400 flex-shrink-0" title="Currently rendering" />
-            )}
+            <LockIcon />
+            <span>IDLE</span>
+          </button>
 
-            {renamingIdx === idx ? (
-              <input
-                ref={inputRef}
-                value={renameValue}
-                onChange={e => setRenameValue(e.target.value)}
-                onBlur={commitRename}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') commitRename()
-                  if (e.key === 'Escape') setRenamingIdx(null)
-                  e.stopPropagation()
+          <button
+            type="button"
+            onClick={onSelectAlerts}
+            data-state={activeTab === 'alerts' ? 'active' : 'inactive'}
+            className={topTriggerClassName}
+          >
+            <LockIcon />
+            <span>ALERTS</span>
+          </button>
+
+          <div className="my-1.5 w-px self-stretch bg-border" />
+
+          {pages.map((page, idx) => {
+            const isActive = activeTab === idx
+            const isLive = livePageIndex === idx
+
+            return (
+              <div
+                key={page.id}
+                onClick={() => onSelectTab(idx)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onSelectTab(idx)
+                  }
                 }}
-                onClick={e => e.stopPropagation()}
-                className="bg-transparent outline-none w-24 font-mono text-[11px] border-b border-accent text-foreground"
-              />
-            ) : (
-              <span>{page.name}</span>
-            )}
+                role="button"
+                tabIndex={0}
+                data-state={isActive ? 'active' : 'inactive'}
+                className={cn(
+                  topTriggerClassName,
+                  'group min-h-full cursor-pointer select-none px-3',
+                )}
+              >
+                {isLive && (
+                  <span className="h-1.5 w-1.5 flex-shrink-0 bg-secondary" title="Currently rendering" />
+                )}
 
-            {/* Actions — only on active tab */}
-            {isActive && renamingIdx !== idx && (
-              <span className="flex items-center gap-1 ml-1">
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); startRename(idx) }}
-                  className="opacity-40 hover:opacity-100 transition-opacity cursor-pointer text-text-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
-                  title="Rename page"
-                  aria-label={`Rename ${page.name}`}
-                >
-                  <PencilIcon />
-                </button>
-                <button
-                  type="button"
-                  onClick={e => { e.stopPropagation(); if (pages.length > 1) setDeleteIdx(idx) }}
-                  className={cn(
-                    'transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-                    pages.length > 1
-                      ? 'opacity-40 hover:opacity-100 hover:text-destructive text-text-muted'
-                      : 'opacity-20 cursor-not-allowed text-text-disabled'
-                  )}
-                  title={pages.length > 1 ? 'Delete page' : 'Cannot delete the only page'}
-                  aria-label={pages.length > 1 ? `Delete ${page.name}` : `Cannot delete ${page.name}`}
-                  disabled={pages.length <= 1}
-                >
-                  <TrashIcon />
-                </button>
-              </span>
-            )}
+                {renamingIdx === idx ? (
+                  <input
+                    ref={inputRef}
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitRename()
+                      if (e.key === 'Escape') setRenamingIdx(null)
+                      e.stopPropagation()
+                    }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-24 border-b border-accent bg-transparent font-mono text-[11px] text-foreground outline-none"
+                  />
+                ) : (
+                  <span>{page.name}</span>
+                )}
+
+                {isActive && renamingIdx !== idx && (
+                  <span className="ml-1 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); startRename(idx) }}
+                      className="cursor-pointer rounded-sm p-1 text-text-muted opacity-50 transition-colors transition-opacity hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
+                      title="Rename page"
+                      aria-label={`Rename ${page.name}`}
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); if (pages.length > 1) setDeleteIdx(idx) }}
+                      className={cn(
+                        'cursor-pointer rounded-sm p-1 transition-colors transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+                        pages.length > 1
+                          ? 'text-destructive opacity-75 hover:bg-destructive/10 hover:opacity-100'
+                          : 'cursor-not-allowed text-text-disabled opacity-20'
+                      )}
+                      title={pages.length > 1 ? 'Delete page' : 'Cannot delete the only page'}
+                      aria-label={pages.length > 1 ? `Delete ${page.name}` : `Cannot delete ${page.name}`}
+                      disabled={pages.length <= 1}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </span>
+                )}
+              </div>
+            )
+          })}
+
+          <button
+            type="button"
+            onClick={onAddPage}
+            data-state="inactive"
+            className={cn(topTriggerClassName, 'ml-1 gap-1.5 px-3')}
+            title="Add page"
+          >
+            <span className="text-base leading-none">+</span>
+            <span>Page</span>
+          </button>
+        </>
+      )
+
+      return embedded
+        ? tabContent
+        : (
+          <div className={cn(tabsRootBaseClassName, 'gap-0')} data-orientation="horizontal">
+            <div
+              className={cn(
+                tabsListBaseClassName,
+                tabsListVariantClassNames.top,
+                'min-w-0 overflow-x-auto',
+              )}
+              data-variant="top"
+            >
+              {tabContent}
+            </div>
           </div>
         )
-      })}
-
-      {/* Add page button */}
-      <button
-        onClick={onAddPage}
-        className="ml-1 flex h-10 flex-shrink-0 items-center gap-1.5 border-b-2 border-transparent px-3 font-mono text-[11px] text-text-muted transition-colors hover:bg-white/[0.02] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
-        title="Add page"
-      >
-        <span className="text-base leading-none">+</span>
-        <span>Page</span>
-      </button>
-    </div>
+    })()}
 
     <ConfirmDialog
       open={deleteIdx !== null}

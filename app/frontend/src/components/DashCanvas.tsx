@@ -1,7 +1,19 @@
 import { useRef, useState, useEffect, useCallback, useId } from 'react'
 import { cn } from '@sprint/ui'
 import { type DashWidget, type DashTheme, type DomainPalette, type WidgetCatalogEntry } from '@/lib/dash'
+import { createDashWidgetId } from '@/lib/dash/ids'
 import { WidgetPreview } from './WidgetPreview'
+import {
+  DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN,
+  DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN,
+  getMultiFunctionWidgetOverlayMode,
+  MULTI_FUNCTION_WIDGET_PALETTE_TYPE,
+} from './dash-editor/multiFunctionWidgetState'
+import {
+  consumeCanvasClick,
+  createCanvasInteractionState,
+  suppressNextCanvasClick,
+} from './canvasInteractionState'
 
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
@@ -11,12 +23,15 @@ const DEFAULT_GRID_ROWS = 12
 
 type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 export interface GridRect {
+  id?: string
   col: number
   row: number
   colSpan: number
   rowSpan: number
   label?: string
   selected?: boolean
+  locked?: boolean
+  editing?: boolean
 }
 
 interface ActiveResize {
@@ -30,6 +45,19 @@ interface ActiveMove {
   grabOffsetCol: number
   grabOffsetRow: number
   startWidget: DashWidget
+}
+
+interface ActiveOverlayResize {
+  overlayIdx: number
+  handle: ResizeHandle
+  startRect: GridRect
+}
+
+interface ActiveOverlayMove {
+  overlayIdx: number
+  grabOffsetCol: number
+  grabOffsetRow: number
+  startRect: GridRect
 }
 
 interface Ghost {
@@ -86,6 +114,19 @@ function isValidPlacement(
     blockedAreas.every(area => !overlaps(p, area))
 }
 
+function isValidOverlayPlacement(
+  p: GridRect,
+  overlays: GridRect[],
+  excludeIdx: number | null,
+  cols: number,
+  rows: number,
+  blockedAreas: GridRect[] = [],
+): boolean {
+  if (p.col < 0 || p.row < 0 || p.col + p.colSpan > cols || p.row + p.rowSpan > rows) return false
+  return overlays.every((overlay, index) => index === excludeIdx || !overlaps(p, overlay)) &&
+    blockedAreas.every(area => !overlaps(p, area))
+}
+
 export interface DashCanvasProps {
   widgets: DashWidget[]
   selectedId: number | null
@@ -95,6 +136,8 @@ export interface DashCanvasProps {
   blockedAreas?: GridRect[]
   placementBounds?: GridRect | null
   overlayRects?: GridRect[]
+  overlayBlockedAreas?: GridRect[]
+  overlayEditMode?: boolean
   gridCols?: number
   gridRows?: number
   screenW?: number
@@ -102,6 +145,11 @@ export interface DashCanvasProps {
   paletteDropType?: string | null
   palettePreviewUrl?: string | null
   previewUrl?: string
+  onBackgroundClick?: () => void
+  onSelectOverlay?: (id: string | null) => void
+  onUpdateOverlay?: (id: string, rect: GridRect) => void
+  onEnterOverlay?: (id: string) => void
+  onDropMultiFunctionWidget?: (rect: GridRect) => void
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -117,17 +165,27 @@ export function DashCanvas({
   blockedAreas = [],
   placementBounds = null,
   overlayRects = [],
+  overlayBlockedAreas = [],
+  overlayEditMode = false,
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   paletteDropType = null,
   palettePreviewUrl = null,
   previewUrl,
+  onBackgroundClick,
+  onSelectOverlay,
+  onUpdateOverlay,
+  onEnterOverlay,
+  onDropMultiFunctionWidget,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
   const containerRef  = useRef<HTMLDivElement>(null)
+  const canvasInteractionRef = useRef(createCanvasInteractionState())
   const widgetsRef    = useRef(widgets)
   widgetsRef.current  = widgets
+  const overlaysRef   = useRef(overlayRects)
+  overlaysRef.current = overlayRects
   const gridMaskId = useId()
   const minorVerticals = Array.from({ length: Math.max(0, gridCols - 1) }, (_, idx) => idx + 1)
   const minorHorizontals = Array.from({ length: Math.max(0, gridRows - 1) }, (_, idx) => idx + 1)
@@ -136,7 +194,10 @@ export function DashCanvas({
 
   const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
   const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
+  const [activeOverlayResize, setActiveOverlayResize] = useState<ActiveOverlayResize | null>(null)
+  const [activeOverlayMove, setActiveOverlayMove] = useState<ActiveOverlayMove | null>(null)
   const [ghost,        setGhost]        = useState<Ghost        | null>(null)
+  const [overlayGhost, setOverlayGhost] = useState<Ghost        | null>(null)
 
   const gridPos = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { col: 0, row: 0 }
@@ -146,6 +207,120 @@ export function DashCanvas({
       row: (clientY - r.top)  / r.height * gridRows,
     }
   }, [gridCols, gridRows])
+
+  const isPointerInsideCanvas = useCallback((clientX: number, clientY: number) => {
+    if (!containerRef.current) return false
+    const rect = containerRef.current.getBoundingClientRect()
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    )
+  }, [])
+
+  const markNextCanvasClickSuppressed = useCallback(() => {
+    canvasInteractionRef.current = suppressNextCanvasClick(canvasInteractionRef.current)
+  }, [])
+
+  const consumeSuppressedCanvasClick = useCallback(() => {
+    const result = consumeCanvasClick(canvasInteractionRef.current)
+    canvasInteractionRef.current = result.nextState
+    return result.shouldSuppressClick
+  }, [])
+
+  useEffect(() => {
+    if (!activeOverlayResize) return
+    const { overlayIdx, handle, startRect } = activeOverlayResize
+    const right = startRect.col + startRect.colSpan
+    const bottom = startRect.row + startRect.rowSpan
+
+    const onMouseMove = (e: MouseEvent) => {
+      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
+      const col = Math.round(rawCol)
+      const row = Math.round(rawRow)
+
+      const rect = { ...startRect }
+      if (handle.includes('e')) rect.colSpan = Math.max(1, col - rect.col)
+      if (handle.includes('s')) rect.rowSpan = Math.max(1, row - rect.row)
+      if (handle.includes('w')) { rect.col = Math.max(0, Math.min(col, right - 1)); rect.colSpan = right - rect.col }
+      if (handle.includes('n')) { rect.row = Math.max(0, Math.min(row, bottom - 1)); rect.rowSpan = bottom - rect.row }
+      rect.col = Math.max(0, rect.col)
+      rect.row = Math.max(0, rect.row)
+      rect.colSpan = Math.max(1, Math.min(rect.colSpan, gridCols - rect.col))
+      rect.rowSpan = Math.max(1, Math.min(rect.rowSpan, gridRows - rect.row))
+
+      const valid = isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)
+      setOverlayGhost({ col: rect.col, row: rect.row, colSpan: rect.colSpan, rowSpan: rect.rowSpan, valid })
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
+      const col = Math.round(rawCol)
+      const row = Math.round(rawRow)
+      const rect = { ...startRect }
+      if (handle.includes('e')) rect.colSpan = Math.max(1, col - rect.col)
+      if (handle.includes('s')) rect.rowSpan = Math.max(1, row - rect.row)
+      if (handle.includes('w')) { rect.col = Math.max(0, Math.min(col, right - 1)); rect.colSpan = right - rect.col }
+      if (handle.includes('n')) { rect.row = Math.max(0, Math.min(row, bottom - 1)); rect.rowSpan = bottom - rect.row }
+      rect.col = Math.max(0, rect.col)
+      rect.row = Math.max(0, rect.row)
+      rect.colSpan = Math.max(1, Math.min(rect.colSpan, gridCols - rect.col))
+      rect.rowSpan = Math.max(1, Math.min(rect.rowSpan, gridRows - rect.row))
+
+      if (rect.id && isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)) {
+        onUpdateOverlay?.(rect.id, rect)
+      }
+      if (isPointerInsideCanvas(e.clientX, e.clientY)) {
+        markNextCanvasClickSuppressed()
+      }
+      setActiveOverlayResize(null)
+      setOverlayGhost(null)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [activeOverlayResize, gridCols, gridRows, gridPos, isPointerInsideCanvas, markNextCanvasClickSuppressed, onUpdateOverlay, overlayBlockedAreas])
+
+  useEffect(() => {
+    if (!activeOverlayMove) return
+    const { overlayIdx, grabOffsetCol, grabOffsetRow, startRect } = activeOverlayMove
+
+    const onMouseMove = (e: MouseEvent) => {
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      const snapCol = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startRect.colSpan))
+      const snapRow = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startRect.rowSpan))
+      const rect = { ...startRect, col: snapCol, row: snapRow }
+      const valid = isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)
+      setOverlayGhost({ col: rect.col, row: rect.row, colSpan: rect.colSpan, rowSpan: rect.rowSpan, valid })
+    }
+
+    const onMouseUp = (e: MouseEvent) => {
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      const snapCol = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startRect.colSpan))
+      const snapRow = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startRect.rowSpan))
+      const rect = { ...startRect, col: snapCol, row: snapRow }
+      if (rect.id && isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)) {
+        onUpdateOverlay?.(rect.id, rect)
+      }
+      if (isPointerInsideCanvas(e.clientX, e.clientY)) {
+        markNextCanvasClickSuppressed()
+      }
+      setActiveOverlayMove(null)
+      setOverlayGhost(null)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [activeOverlayMove, gridCols, gridRows, gridPos, isPointerInsideCanvas, markNextCanvasClickSuppressed, onUpdateOverlay, overlayBlockedAreas])
 
   // ── Resize ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -174,11 +349,14 @@ export function DashCanvas({
       onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? w : ww)))
     }
 
-    const onMouseUp = () => {
+    const onMouseUp = (e: MouseEvent) => {
       // If the final position overlaps another widget, revert to start
       const cur = widgetsRef.current[widgetIdx]
       if (cur && !isValidPlacement(cur, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
         onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? startWidget : ww)))
+      }
+      if (isPointerInsideCanvas(e.clientX, e.clientY)) {
+        markNextCanvasClickSuppressed()
       }
       setActiveResize(null)
       setGhost(null)
@@ -192,7 +370,7 @@ export function DashCanvas({
     }
   // widgetsRef.current is used intentionally to avoid re-registering on every frame
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeResize, blockedAreas, gridCols, gridRows, onUpdate, gridPos, placementBounds])
+  }, [activeResize, blockedAreas, gridCols, gridRows, isPointerInsideCanvas, markNextCanvasClickSuppressed, onUpdate, gridPos, placementBounds])
 
   // ── Move (mouse-based — no HTML5 drag ghost) ────────────────────────────────
   useEffect(() => {
@@ -216,6 +394,9 @@ export function DashCanvas({
       if (isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
         onUpdate(widgetsRef.current.map((w, i) => (i === widgetIdx ? proposed : w)))
       }
+      if (isPointerInsideCanvas(e.clientX, e.clientY)) {
+        markNextCanvasClickSuppressed()
+      }
       setActiveMove(null)
       setGhost(null)
     }
@@ -227,7 +408,7 @@ export function DashCanvas({
       window.removeEventListener('mouseup',   onMouseUp)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMove, blockedAreas, gridCols, gridRows, onUpdate, gridPos, placementBounds])
+  }, [activeMove, blockedAreas, gridCols, gridRows, isPointerInsideCanvas, markNextCanvasClickSuppressed, onUpdate, gridPos, placementBounds])
 
   // ── Palette drop ──────────────────────────────────────────────────────────
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -235,30 +416,51 @@ export function DashCanvas({
     if (!paletteDropType) return
     e.dataTransfer.dropEffect = 'copy'
     const meta    = catalog.find(wt => wt.type === paletteDropType)
-    const colSpan = meta?.defaultColSpan ?? 4
-    const rowSpan = meta?.defaultRowSpan ?? 2
+    const colSpan = paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
+      ? DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN
+      : (meta?.defaultColSpan ?? 4)
+    const rowSpan = paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
+      ? DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN
+      : (meta?.defaultRowSpan ?? 2)
     const { col, row } = gridPos(e.clientX, e.clientY)
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
+    if (paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE) {
+      setOverlayGhost({ ...proposed, valid: isValidOverlayPlacement(proposed, overlaysRef.current, null, gridCols, gridRows, overlayBlockedAreas) })
+      setGhost(null)
+      return
+    }
     setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows, blockedAreas, placementBounds) })
-  }, [paletteDropType, catalog, blockedAreas, gridCols, gridRows, gridPos, placementBounds])
+    setOverlayGhost(null)
+  }, [paletteDropType, catalog, blockedAreas, gridCols, gridRows, gridPos, overlayBlockedAreas, placementBounds])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setGhost(null)
+    setOverlayGhost(null)
     const widgetType = e.dataTransfer.getData('widget-type')
     if (!widgetType) return
     const meta    = catalog.find(wt => wt.type === widgetType)
-    const colSpan = meta?.defaultColSpan ?? 4
-    const rowSpan = meta?.defaultRowSpan ?? 2
+    const colSpan = widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
+      ? DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN
+      : (meta?.defaultColSpan ?? 4)
+    const rowSpan = widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
+      ? DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN
+      : (meta?.defaultRowSpan ?? 2)
     const { col, row } = gridPos(e.clientX, e.clientY)
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
+    if (widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE) {
+      if (isValidOverlayPlacement(proposed, overlaysRef.current, null, gridCols, gridRows, overlayBlockedAreas)) {
+        onDropMultiFunctionWidget?.(proposed)
+      }
+      return
+    }
     if (!isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows, blockedAreas, placementBounds)) return
     const newWidget: DashWidget = {
-      id: crypto.randomUUID(),
+      id: createDashWidgetId(),
       type: widgetType,
       ...proposed,
       ...(meta?.defaultPanelRules?.length ? { panelRules: meta.defaultPanelRules } : {}),
@@ -268,20 +470,33 @@ export function DashCanvas({
     onSelect(updated.length - 1)
   }, [catalog, blockedAreas, gridCols, gridRows, onUpdate, onSelect, gridPos, placementBounds])
 
-  const isDragging = activeMove !== null || activeResize !== null
+  const isDragging = activeMove !== null || activeResize !== null || activeOverlayMove !== null || activeOverlayResize !== null
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden bg-[#0a0a0a] border border-white/10"
+      className="relative w-full overflow-hidden border border-border bg-black"
       style={{
         aspectRatio: `${screenW} / ${screenH}`,
         cursor: activeMove ? 'grabbing' : undefined,
       }}
       onDragOver={handleDragOver}
-      onDragLeave={() => setGhost(null)}
+      onDragLeave={() => {
+        setGhost(null)
+        setOverlayGhost(null)
+      }}
       onDrop={handleDrop}
-      onClick={() => { if (!isDragging) onSelect(null) }}
+      onClickCapture={event => {
+        if (!consumeSuppressedCanvasClick()) return
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onClick={() => {
+        if (!isDragging) {
+          onSelect(null)
+          onBackgroundClick?.()
+        }
+      }}
     >
 
       <span className="pointer-events-none absolute bottom-1.5 right-2 z-[2] font-mono text-[10px] text-white/20">
@@ -296,6 +511,13 @@ export function DashCanvas({
           draggable={false}
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ objectFit: 'contain', zIndex: 0 }}
+        />
+      )}
+
+      {overlayEditMode && (
+        <div
+          className="pointer-events-none absolute inset-0 bg-black/45"
+          style={{ zIndex: 1.5 }}
         />
       )}
 
@@ -369,27 +591,135 @@ export function DashCanvas({
         </g>
       </svg>
 
-      {overlayRects.map((rect, index) => (
-        <div
-          key={`${rect.label ?? 'overlay'}-${index}`}
-          className="pointer-events-none absolute border border-dashed"
-          style={{
-            left: `${(rect.col / gridCols) * 100}%`,
-            top: `${(rect.row / gridRows) * 100}%`,
-            width: `${(rect.colSpan / gridCols) * 100}%`,
-            height: `${(rect.rowSpan / gridRows) * 100}%`,
-            borderColor: rect.selected ? 'var(--accent)' : 'rgba(255,255,255,0.28)',
-            background: rect.selected ? 'rgba(255,144,108,0.08)' : 'rgba(255,255,255,0.04)',
-            zIndex: 3,
-          }}
-        >
-          {rect.label && (
-            <span className="absolute left-1 top-1 font-mono text-[9px] text-white/70">
-              {rect.label}
-            </span>
-          )}
-        </div>
-      ))}
+      {overlayRects.map((rect, index) => {
+        const overlayMode = getMultiFunctionWidgetOverlayMode({
+          selected: Boolean(rect.selected),
+          editing: Boolean(rect.editing),
+          locked: Boolean(rect.locked),
+        })
+        const canSelectByBody = Boolean(rect.id && onSelectOverlay && overlayMode.bodyInteractive)
+        const canUseMoveHandle = Boolean(rect.id && onSelectOverlay && overlayMode.moveHandleInteractive)
+        const canResize = Boolean(rect.id && onSelectOverlay && rect.selected && overlayMode.resizeHandlesInteractive)
+        const isBeingMoved = activeOverlayMove?.overlayIdx === index
+        return (
+          <div
+            key={rect.id ?? `${rect.label ?? 'overlay'}-${index}`}
+            className="absolute"
+            style={{
+              left: `${(rect.col / gridCols) * 100}%`,
+              top: `${(rect.row / gridRows) * 100}%`,
+              width: `${(rect.colSpan / gridCols) * 100}%`,
+              height: `${(rect.rowSpan / gridRows) * 100}%`,
+              zIndex: overlayMode.zIndex,
+              opacity: isBeingMoved ? 0.3 : 1,
+              pointerEvents: canSelectByBody ? 'auto' : 'none',
+            }}
+            onClick={event => {
+              event.stopPropagation()
+              if (!isDragging && canSelectByBody && rect.id) {
+                onSelectOverlay?.(rect.id)
+              }
+            }}
+            onDoubleClick={event => {
+              event.stopPropagation()
+              if (canSelectByBody && rect.id) {
+                onEnterOverlay?.(rect.id)
+              }
+            }}
+          >
+            <div
+              className={cn(
+                'absolute inset-0 border border-dashed select-none',
+                canSelectByBody ? 'cursor-pointer' : 'cursor-default',
+              )}
+              style={{
+                borderColor: rect.selected ? 'var(--accent)' : 'rgba(255,255,255,0.34)',
+                background: rect.editing
+                  ? 'transparent'
+                  : rect.selected
+                    ? 'rgba(255,144,108,0.08)'
+                    : 'rgba(255,255,255,0.04)',
+                boxShadow: rect.editing ? '0 0 0 1px rgba(255,144,108,0.55) inset' : undefined,
+                borderWidth: rect.selected ? 2 : 1,
+              }}
+            />
+
+            {rect.label && (
+              <button
+                type="button"
+                onMouseDown={event => {
+                  if (!canUseMoveHandle || event.button !== 0) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const { col, row } = gridPos(event.clientX, event.clientY)
+                  if (rect.id) {
+                    onSelectOverlay?.(rect.id)
+                  }
+                  setActiveOverlayMove({
+                    overlayIdx: index,
+                    grabOffsetCol: col - rect.col,
+                    grabOffsetRow: row - rect.row,
+                    startRect: { ...rect },
+                  })
+                }}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (rect.id) {
+                    onSelectOverlay?.(rect.id)
+                  }
+                }}
+                onDoubleClick={event => {
+                  event.stopPropagation()
+                  if (rect.id) {
+                    onEnterOverlay?.(rect.id)
+                  }
+                }}
+                className={cn(
+                  'absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide shadow-sm',
+                  canUseMoveHandle ? (activeOverlayMove ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+                )}
+                style={{
+                  zIndex: 18,
+                  pointerEvents: canUseMoveHandle ? 'auto' : 'none',
+                  background: rect.selected ? 'rgba(255,144,108,0.95)' : 'rgba(255,255,255,0.2)',
+                  color: rect.selected ? '#0a0a0a' : '#f5f7fa',
+                }}
+              >
+                <span>MFW</span>
+                <span className={rect.selected ? 'opacity-80' : 'opacity-60'}>/</span>
+                <span className="max-w-[10rem] truncate normal-case tracking-normal">{rect.label}</span>
+              </button>
+            )}
+
+            {canResize && ALL_HANDLES.map(handle => {
+              const [hLeft, hTop] = HANDLE_OFFSETS[handle]
+              return (
+                <div
+                  key={handle}
+                  onMouseDown={event => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setActiveOverlayResize({ overlayIdx: index, handle, startRect: { ...rect } })
+                  }}
+                  style={{
+                    position: 'absolute',
+                    left: hLeft,
+                    top: hTop,
+                    transform: 'translate(-50%, -50%)',
+                    width: 8,
+                    height: 8,
+                    background: 'var(--accent)',
+                    border: '1px solid black',
+                    borderRadius: 1,
+                    cursor: HANDLE_CURSORS[handle],
+                    zIndex: 20,
+                  }}
+                />
+              )
+            })}
+          </div>
+        )
+      })}
 
       {/* Drop / move / resize ghost */}
       {ghost && (
@@ -417,6 +747,21 @@ export function DashCanvas({
         </div>
       )}
 
+      {overlayGhost && (
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: `${(overlayGhost.col / gridCols) * 100}%`,
+            top: `${(overlayGhost.row / gridRows) * 100}%`,
+            width: `${(overlayGhost.colSpan / gridCols) * 100}%`,
+            height: `${(overlayGhost.rowSpan / gridRows) * 100}%`,
+            zIndex: 15,
+            border: `2px dashed ${overlayGhost.valid ? 'var(--accent)' : '#F87171'}`,
+            background: overlayGhost.valid ? 'rgba(255,144,108,0.12)' : 'rgba(248,113,113,0.12)',
+          }}
+        />
+      )}
+
       {widgets.map((widget, idx) => {
         const isSelected   = selectedId === idx
         const isBeingMoved = activeMove?.widgetIdx === idx
@@ -430,7 +775,7 @@ export function DashCanvas({
               top:     `${(widget.row     / gridRows) * 100}%`,
               width:   `${(widget.colSpan / gridCols) * 100}%`,
               height:  `${(widget.rowSpan / gridRows) * 100}%`,
-              zIndex:  isSelected ? 10 : 2,
+              zIndex:  isSelected ? 14 : 2,
               opacity: isBeingMoved ? 0.2 : 1,
             }}
             onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(idx) }}

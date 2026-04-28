@@ -1,3 +1,13 @@
 {
-  "updateChannel": "stable"
+  "updateChannel": "stable",
+  "dashEditorUI": {
+    "palette": {
+      "open": true,
+      "pinned": true
+    },
+    "inspector": {
+      "open": true,
+      "pinned": true
+    }
+  }
 }

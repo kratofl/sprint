@@ -12,11 +12,12 @@ import {
   dashAPI,
 } from '@/lib/dash'
 import { type CommandMeta, controlsAPI } from '@/lib/controls'
-import { DEVICE_EVENTS, SCREEN_EVENTS } from '@/lib/desktopEvents'
+import { DASH_EVENTS, DEVICE_EVENTS, SCREEN_EVENTS } from '@/lib/desktopEvents'
 import { onEvent } from '@/lib/wails'
 import { CatalogPanel } from './CatalogPanel'
 import { DeviceDetail } from './DeviceDetail'
 import { DriverMissingBanner } from './DriverMissingBanner'
+import { loadDeviceBindingReferenceData } from './deviceBindingReferenceData'
 import { DEVICE_TYPES, type PanelView, SECTION_LABELS, deviceKey } from './shared'
 
 const EMPTY_ACTIONS = {
@@ -57,19 +58,23 @@ export function DeviceSection() {
     }
   }, [])
 
+  const loadBindingReferenceData = useCallback(async () => {
+    const referenceData = await loadDeviceBindingReferenceData({
+      listLayouts: dashAPI.listLayouts,
+      getCommandCatalog: controlsAPI.getCommandCatalog,
+    })
+    setLayouts(referenceData.layouts)
+    setDeviceOnlyCmds(referenceData.deviceOnlyCmds)
+  }, [])
+
   useEffect(() => {
     Promise.all([
       loadDevices(),
       deviceAPI.getCatalog().then(setCatalog).catch(() => {}),
-      dashAPI.listLayouts().then(setLayouts).catch(() => {}),
       deviceAPI.getScreenStatus().then(setScreenStatus),
-      controlsAPI.getCommandCatalog()
-        .then(commands => setDeviceOnlyCmds(commands.filter(command =>
-          command.deviceOnly || command.id.startsWith('dash.wrapper.')
-        )))
-        .catch(() => {}),
+      loadBindingReferenceData(),
     ]).finally(() => setLoading(false))
-  }, [loadDevices])
+  }, [loadBindingReferenceData, loadDevices])
 
   useEffect(() => {
     const unsubs = [
@@ -82,9 +87,10 @@ export function DeviceSection() {
         setDriverMissingType(data?.driver ?? 'unknown')
       }),
       onEvent(DEVICE_EVENTS.updated, () => { void loadDevices() }),
+      onEvent(DASH_EVENTS.layoutsUpdated, () => { void loadBindingReferenceData() }),
     ]
     return () => unsubs.forEach(unsub => unsub())
-  }, [loadDevices])
+  }, [loadBindingReferenceData, loadDevices])
 
   const handleAddForType = (type: typeof DEVICE_TYPES[number]) => {
     setPanel({ tag: 'catalog', filterType: type })
@@ -142,8 +148,8 @@ export function DeviceSection() {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-border bg-background/70">
-        <div className="border-b border-border px-4 py-3">
+      <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-border bg-bg-shell">
+        <div className="border-b border-border bg-bg-shell px-4 py-3">
           <h3 className="terminal-header text-[10px] font-bold text-text-muted">DEVICE_LIBRARY</h3>
           <p className="mt-1 font-mono text-[8px] text-text-muted">
             Registered hardware and quick-add actions.
@@ -208,8 +214,8 @@ export function DeviceSection() {
                           className={cn(
                             'w-full border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                             selected
-                              ? 'border-primary/60 bg-primary/10'
-                              : 'border-border bg-card hover:border-border-strong hover:bg-card/80',
+                              ? 'surface-active'
+                              : 'surface-panel hover:border-border hover:bg-bg-panel',
                           )}
                         >
                           <div className="flex min-w-0 items-center gap-1.5">

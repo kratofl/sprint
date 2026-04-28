@@ -125,7 +125,7 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
                     'flex items-center gap-3 px-4 py-3 border-b border-border/40 cursor-pointer transition-colors',
                     isSelected
                       ? 'bg-white/[0.05] border-l-2 border-l-warning'
-                      : 'hover:bg-white/[0.02] border-l-2 border-l-transparent'
+                      : 'hover:bg-white/[0.03] border-l-2 border-l-transparent'
                   )}
                 >
                   <span
@@ -138,7 +138,7 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
                   <button
                     type="button"
                     onClick={e => { e.stopPropagation(); handleRemove(inst.id) }}
-                    className="text-text-disabled hover:text-destructive transition-colors flex-shrink-0"
+                    className="text-destructive/80 hover:text-destructive transition-colors flex-shrink-0"
                     title="Remove alert"
                   >
                     <RemoveIcon />
@@ -208,7 +208,7 @@ function AlertConfigField({
         <select
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         >
           {def.options.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -222,7 +222,7 @@ function AlertConfigField({
           step="0.5"
           min="0.5"
           onChange={e => onChange(Number(e.target.value))}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       )}
       {def.type === 'boolean' && (
@@ -232,7 +232,7 @@ function AlertConfigField({
             'flex items-center gap-2 px-2 py-1 border font-mono text-[10px] transition-colors w-full text-left',
             current === 'true'
               ? 'border-accent bg-accent/10 text-accent'
-              : 'border-border text-text-muted hover:border-border-strong'
+              : 'border-border text-text-muted hover:border-border'
           )}
         >
           <span className={cn('w-3 h-3 border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
@@ -244,7 +244,7 @@ function AlertConfigField({
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       )}
     </div>

@@ -24,6 +24,7 @@ test('desktop event constants keep canonical Wails event names grouped by domain
   assert.deepEqual(DASH_EVENTS, {
     pageChanged: 'dash:page-changed',
     preview: 'dash:preview',
+    layoutsUpdated: 'dash:layouts-updated',
   })
 
   assert.deepEqual(SCREEN_EVENTS, {

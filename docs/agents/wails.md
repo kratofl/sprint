@@ -17,6 +17,14 @@
 
 Defer subsystem startup that emits events until `DomReady` so the frontend has listeners attached.
 
+### Development
+
+- Start the desktop app with `cd app && wails dev`.
+- Browser-safe desktop UI checks can use the Vite page at `http://localhost:5173/` while `cd app && wails dev` is running.
+- For desktop-bound browser inspection, run `make dev-app-agent`. This starts `wails dev` with a fixed Wails browser URL using `-devserver localhost:<port>`, with `SPRINT_WAILS_DEVSERVER_PORT` defaulting to `34115`.
+- After launching `make dev-app-agent`, run `pwsh -File .\app\scripts\wait-desktop-browser.ps1` and open `http://127.0.0.1:34115` or the port from `SPRINT_WAILS_DEVSERVER_PORT` with Playwright MCP.
+- Use the Wails browser surface for flows that need generated bindings or runtime methods. The plain Vite page at `http://localhost:5173/` does not provide those bindings.
+
 ### Bindings
 
 - Exported `App` methods are frontend-callable through Wails codegen.

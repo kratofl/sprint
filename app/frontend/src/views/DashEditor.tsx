@@ -9,17 +9,23 @@ import {
   DEFAULT_DASH_THEME,
   DEFAULT_DOMAIN_PALETTE,
   dashAPI,
+  resolveDomainPalette,
+  resolveDashTheme,
 } from '@/lib/dash'
 import { DashList } from '@/components/DashList'
 import { DashEditMode } from '@/components/DashEditMode'
 import { AdditionalSettingsPanel } from '@/components/AdditionalSettingsPanel'
+import { isDesktopRuntimeAvailable } from '@/lib/wails'
 import { Badge, Button, PageHeader } from '@sprint/ui'
+import { getDashEditorRuntimeNotice } from './dashEditorRuntime'
 
 export interface DashEditorHandle {
   isDirty: boolean
 }
 
 const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
+  const desktopRuntimeAvailable = isDesktopRuntimeAvailable()
+  const runtimeNotice = getDashEditorRuntimeNotice(desktopRuntimeAvailable)
   const [mode, setMode] = useState<'list' | 'edit' | 'global-settings'>('list')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [layouts, setLayouts] = useState<LayoutMeta[]>([])
@@ -37,7 +43,10 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return metas
   }, [])
 
-  useEffect(() => { void loadLayouts() }, [loadLayouts])
+  useEffect(() => {
+    if (!desktopRuntimeAvailable) return
+    void loadLayouts()
+  }, [desktopRuntimeAvailable, loadLayouts])
 
   const handleEdit = async (id: string) => {
     const layout = await dashAPI.loadLayoutByID(id)
@@ -72,8 +81,8 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
   const handleGlobalSettingsChange = (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
     setGlobalSettings(prev => prev ? {
       ...prev,
-      theme: { ...DEFAULT_DASH_THEME, ...theme } as DashTheme,
-      domainPalette: domain,
+      theme: resolveDashTheme(undefined, theme),
+      domainPalette: resolveDomainPalette(undefined, domain),
     } : prev)
   }
 
@@ -97,6 +106,50 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     } finally {
       setGlobalSaving(false)
     }
+  }
+
+  if (runtimeNotice) {
+    return (
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <PageHeader
+          heading="DASH_STUDIO"
+          caption="Use the real Wails desktop window for layout creation, live preview, and agent-driven UI inspection."
+          status={<Badge variant="warning" className="terminal-header">{runtimeNotice.title}</Badge>}
+        />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="surface-panel flex w-full max-w-3xl flex-col gap-5 p-5">
+            <div className="space-y-2">
+              <p className="font-mono text-[10px] leading-relaxed text-foreground">{runtimeNotice.description}</p>
+              <p className="font-mono text-[10px] leading-relaxed text-text-muted">{runtimeNotice.browserHint}</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">1. LAUNCH_DESKTOP</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.launchCommand}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">2. WAIT_FOR_WAILS_DEVSERVER</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.waitCommand}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.browserSurfaceUrl}
+                </div>
+                <p className="font-mono text-[9px] leading-relaxed text-text-muted">{runtimeNotice.browserSurfaceNote}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (mode === 'edit' && editLayout) {

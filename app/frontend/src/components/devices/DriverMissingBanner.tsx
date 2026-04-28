@@ -26,7 +26,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
   }
 
   return (
-    <div className="mx-4 mt-4 flex flex-col gap-2 border border-warning/40 bg-warning/10 px-4 py-3">
+    <div className="surface-warning mx-4 mt-4 flex flex-col gap-2 px-4 py-3">
       <div className="flex items-start gap-2">
         <IconAlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-warning" />
         <div className="min-w-0 flex-1">
@@ -42,14 +42,9 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
             <p className="mt-1 font-mono text-[9px] text-destructive">{installError}</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="font-mono text-[9px] text-text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
-          onClick={onDismiss}
-          aria-label="Dismiss driver warning"
-        >
+        <Button type="button" variant="ghost" size="icon-xs" onClick={onDismiss} aria-label="Dismiss driver warning">
           ✕
-        </button>
+        </Button>
       </div>
       <div className="flex items-center gap-2">
         <Button

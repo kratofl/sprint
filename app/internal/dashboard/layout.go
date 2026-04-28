@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image/color"
 
-	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 )
@@ -82,10 +81,10 @@ type DashLayout struct {
 	FormatPreferences widgets.FormatPreferences `json:"formatPreferences,omitempty"`
 }
 
-// NewPage creates a DashPage with a new UUID.
+// NewPage creates a DashPage with a compact page ID.
 func NewPage(name string) DashPage {
 	return DashPage{
-		ID:      uuid.NewString(),
+		ID:      newDashID("page"),
 		Name:    name,
 		Widgets: []DashWidget{},
 	}

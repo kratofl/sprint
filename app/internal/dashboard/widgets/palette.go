@@ -7,25 +7,25 @@ import (
 // Sprint design-system palette — mirrors packages/tokens/src/atoms/colors.ts + molecules/surfaces.ts.
 var (
 	// Surfaces
-	ColorBackground = color.RGBA{9, 10, 12, 255}  // #090a0c  surfaces.base
-	ColorSurface    = color.RGBA{21, 23, 28, 255} // #15171c  surfaces.container
-	ColorElevated   = color.RGBA{31, 35, 41, 255} // #1f2329  surfaces.elevated
-	ColorBorder     = color.RGBA{45, 49, 56, 255} // #2d3138  borders.outline
+	ColorBackground = color.RGBA{10, 10, 10, 255} // #0a0a0a  surfaces.base
+	ColorSurface    = color.RGBA{20, 20, 20, 255} // #141414  surfaces.container
+	ColorElevated   = color.RGBA{31, 31, 31, 255} // #1f1f1f  surfaces.elevated
+	ColorBorder     = color.RGBA{42, 42, 42, 255} // #2a2a2a  borders.outline
 
 	// Semantic accents
-	ColorPrimary = color.RGBA{255, 139, 97, 255}  // #ff8b61  orange — driver/primary
-	ColorAccent  = color.RGBA{121, 214, 230, 255} // #79d6e6  teal — engineer/comparison
-	ColorSuccess = color.RGBA{79, 209, 155, 255}  // #4FD19B
-	ColorDanger  = color.RGBA{240, 125, 125, 255} // #F07D7D
-	ColorWarning = color.RGBA{242, 184, 75, 255}  // #F2B84B
+	ColorPrimary = color.RGBA{255, 144, 108, 255} // #ff906c  orange — driver/primary
+	ColorAccent  = color.RGBA{90, 248, 251, 255}  // #5af8fb  cyan — engineer/comparison
+	ColorSuccess = color.RGBA{52, 211, 153, 255}  // #34D399
+	ColorDanger  = color.RGBA{248, 113, 113, 255} // #F87171
+	ColorWarning = color.RGBA{251, 191, 36, 255}  // #FBBF24
 
 	// Text
-	ColorForeground = color.RGBA{245, 247, 250, 255} // #f5f7fa  neutral[100]
-	ColorMuted      = color.RGBA{139, 147, 161, 255} // #8b93a1  neutral[400]
-	ColorSecondary  = color.RGBA{183, 191, 202, 255} // #b7bfca  neutral[300]
+	ColorForeground = color.RGBA{255, 255, 255, 255} // #ffffff  neutral[100]
+	ColorMuted      = color.RGBA{128, 128, 128, 255} // #808080  neutral[400]
+	ColorSecondary  = color.RGBA{161, 161, 170, 255} // #A1A1AA  neutral[300]
 
 	// Specialty
-	ColorRPMRed = color.RGBA{230, 74, 74, 255} // #E64A4A  RPM bar >92% zone
+	ColorRPMRed = color.RGBA{248, 113, 113, 255} // #F87171  RPM bar >92% zone
 )
 
 // DimColor multiplies each RGB channel by factor (0–1).

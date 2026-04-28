@@ -1,6 +1,9 @@
 package widgets
 
-import "image/color"
+import (
+	"encoding/json"
+	"image/color"
+)
 
 // DashTheme holds the semantic colour palette for a dashboard layout.
 // Widgets reference colours by semantic name (ColorRef); the painter resolves
@@ -18,6 +21,51 @@ type DashTheme struct {
 	Bg      color.RGBA `json:"bg"`      // canvas background
 	Border  color.RGBA `json:"border"`  // panel outline
 	RPMRed  color.RGBA `json:"rpmRed"`  // RPM bar >92% zone
+}
+
+func (t DashTheme) IsZero() bool {
+	return t == (DashTheme{})
+}
+
+func (t DashTheme) MarshalJSON() ([]byte, error) {
+	values := map[string]color.RGBA{}
+	if t.Primary != (color.RGBA{}) {
+		values["primary"] = t.Primary
+	}
+	if t.Accent != (color.RGBA{}) {
+		values["accent"] = t.Accent
+	}
+	if t.Fg != (color.RGBA{}) {
+		values["fg"] = t.Fg
+	}
+	if t.Muted != (color.RGBA{}) {
+		values["muted"] = t.Muted
+	}
+	if t.Muted2 != (color.RGBA{}) {
+		values["muted2"] = t.Muted2
+	}
+	if t.Success != (color.RGBA{}) {
+		values["success"] = t.Success
+	}
+	if t.Warning != (color.RGBA{}) {
+		values["warning"] = t.Warning
+	}
+	if t.Danger != (color.RGBA{}) {
+		values["danger"] = t.Danger
+	}
+	if t.Surface != (color.RGBA{}) {
+		values["surface"] = t.Surface
+	}
+	if t.Bg != (color.RGBA{}) {
+		values["bg"] = t.Bg
+	}
+	if t.Border != (color.RGBA{}) {
+		values["border"] = t.Border
+	}
+	if t.RPMRed != (color.RGBA{}) {
+		values["rpmRed"] = t.RPMRed
+	}
+	return json.Marshal(values)
 }
 
 // DefaultTheme returns the default DashTheme matching the Sprint design tokens.
@@ -50,6 +98,33 @@ type DomainPalette struct {
 	BrakeMig  color.RGBA `json:"brakeMig"`
 }
 
+func (d DomainPalette) IsZero() bool {
+	return d == (DomainPalette{})
+}
+
+func (d DomainPalette) MarshalJSON() ([]byte, error) {
+	values := map[string]color.RGBA{}
+	if d.ABS != (color.RGBA{}) {
+		values["abs"] = d.ABS
+	}
+	if d.TC != (color.RGBA{}) {
+		values["tc"] = d.TC
+	}
+	if d.BrakeBias != (color.RGBA{}) {
+		values["brakeBias"] = d.BrakeBias
+	}
+	if d.Energy != (color.RGBA{}) {
+		values["energy"] = d.Energy
+	}
+	if d.Motor != (color.RGBA{}) {
+		values["motor"] = d.Motor
+	}
+	if d.BrakeMig != (color.RGBA{}) {
+		values["brakeMig"] = d.BrakeMig
+	}
+	return json.Marshal(values)
+}
+
 // TypographySettings holds dash-level font defaults applied beneath per-widget
 // overrides. Zero values fall back to the next typography layer.
 type TypographySettings struct {
@@ -68,6 +143,70 @@ func DefaultDomainPalette() DomainPalette {
 		Motor:     ColorPrimary,
 		BrakeMig:  ColorAccent,
 	}
+}
+
+// MergeTheme overlays sparse theme overrides onto a fully-resolved base theme.
+func MergeTheme(base, override DashTheme) DashTheme {
+	if override.Primary != (color.RGBA{}) {
+		base.Primary = override.Primary
+	}
+	if override.Accent != (color.RGBA{}) {
+		base.Accent = override.Accent
+	}
+	if override.Fg != (color.RGBA{}) {
+		base.Fg = override.Fg
+	}
+	if override.Muted != (color.RGBA{}) {
+		base.Muted = override.Muted
+	}
+	if override.Muted2 != (color.RGBA{}) {
+		base.Muted2 = override.Muted2
+	}
+	if override.Success != (color.RGBA{}) {
+		base.Success = override.Success
+	}
+	if override.Warning != (color.RGBA{}) {
+		base.Warning = override.Warning
+	}
+	if override.Danger != (color.RGBA{}) {
+		base.Danger = override.Danger
+	}
+	if override.Surface != (color.RGBA{}) {
+		base.Surface = override.Surface
+	}
+	if override.Bg != (color.RGBA{}) {
+		base.Bg = override.Bg
+	}
+	if override.Border != (color.RGBA{}) {
+		base.Border = override.Border
+	}
+	if override.RPMRed != (color.RGBA{}) {
+		base.RPMRed = override.RPMRed
+	}
+	return base
+}
+
+// MergeDomainPalette overlays sparse domain colour overrides onto a resolved base palette.
+func MergeDomainPalette(base, override DomainPalette) DomainPalette {
+	if override.ABS != (color.RGBA{}) {
+		base.ABS = override.ABS
+	}
+	if override.TC != (color.RGBA{}) {
+		base.TC = override.TC
+	}
+	if override.BrakeBias != (color.RGBA{}) {
+		base.BrakeBias = override.BrakeBias
+	}
+	if override.Energy != (color.RGBA{}) {
+		base.Energy = override.Energy
+	}
+	if override.Motor != (color.RGBA{}) {
+		base.Motor = override.Motor
+	}
+	if override.BrakeMig != (color.RGBA{}) {
+		base.BrakeMig = override.BrakeMig
+	}
+	return base
 }
 
 func domainColor(d DomainPalette, ref ColorRef) (color.RGBA, bool) {

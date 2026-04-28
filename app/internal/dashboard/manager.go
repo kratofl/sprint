@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
@@ -104,13 +103,13 @@ func (m *Manager) Load(id string) (*DashLayout, error) {
 	return &layout, nil
 }
 
-// Save validates and writes a layout to disk. A new UUID is assigned if layout.ID is empty.
+// Save validates and writes a layout to disk. A compact layout ID is assigned if layout.ID is empty.
 func (m *Manager) Save(layout *DashLayout) error {
 	if err := os.MkdirAll(m.dir, 0755); err != nil {
 		return fmt.Errorf("dash: mkdir: %w", err)
 	}
 	if layout.ID == "" {
-		layout.ID = uuid.NewString()
+		layout.ID = newDashID("lay")
 	}
 	if layout.Name == "" {
 		layout.Name = "Untitled"
@@ -133,7 +132,7 @@ func (m *Manager) Create(name string) (*DashLayout, error) {
 		name = "Untitled"
 	}
 	layout := &DashLayout{
-		ID:       uuid.NewString(),
+		ID:       newDashID("lay"),
 		Name:     name,
 		Default:  false,
 		GridCols: DefaultGridCols,

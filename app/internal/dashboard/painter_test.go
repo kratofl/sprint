@@ -3,6 +3,7 @@ package dashboard
 import (
 	"image"
 	"image/color"
+	"math"
 	"testing"
 	"time"
 
@@ -213,6 +214,164 @@ func TestPainterPageBackgroundOverride(t *testing.T) {
 	want := *layout.Pages[0].Background
 	if got != want {
 		t.Fatalf("expected page background pixel %#v, got %#v", want, got)
+	}
+}
+
+func TestPainterPageBackgroundUsesGlobalThemeWhenLayoutHasNoOverride(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	layout.Pages[0].Widgets = nil
+	painter.SetGlobalTheme(widgets.DashTheme{
+		Bg: color.RGBA{R: 33, G: 44, B: 55, A: 255},
+	})
+
+	got := painter.pageBackground(layout, layout.Pages[0])
+	want := color.RGBA{R: 33, G: 44, B: 55, A: 255}
+	if got != want {
+		t.Fatalf("expected global theme background %#v, got %#v", want, got)
+	}
+}
+
+func TestPainterPreservesPanelRightBorderOnFractionalGridWidths(t *testing.T) {
+	const (
+		screenW = 854
+		screenH = 480
+		cols    = 20
+		rows    = 12
+	)
+	widget := DashWidget{
+		ID:      "fractional-panel",
+		Type:    widgets.WidgetText,
+		Col:     3,
+		Row:     1,
+		ColSpan: 2,
+		RowSpan: 2,
+		Config:  map[string]any{"content": ""},
+	}
+	layout := &DashLayout{
+		ID:       "fractional-grid",
+		Name:     "Fractional Grid",
+		GridCols: cols,
+		GridRows: rows,
+		IdlePage: NewPage("Idle"),
+		Pages: []DashPage{{
+			ID:      "p1",
+			Name:    "Main",
+			Widgets: []DashWidget{widget},
+		}},
+	}
+	painter := NewPainter(screenW, screenH)
+	defer painter.Close()
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	raw, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	img, ok := raw.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", raw)
+	}
+
+	rightEdgeX := int(math.Round(float64(widget.Col+widget.ColSpan)*float64(screenW)/float64(cols))) - 1
+	topY := int(math.Round(float64(widget.Row) * float64(screenH) / float64(rows)))
+	bottomY := int(math.Round(float64(widget.Row+widget.RowSpan) * float64(screenH) / float64(rows)))
+	midY := topY + (bottomY-topY)/2
+	got := color.RGBAModel.Convert(img.At(rightEdgeX, midY)).(color.RGBA)
+	if got != widgets.ColorBorder {
+		t.Fatalf("expected right border pixel at (%d,%d) to be %#v, got %#v", rightEdgeX, midY, widgets.ColorBorder, got)
+	}
+}
+
+func TestPainterPreservesRightBordersInStackedDefaultLayout(t *testing.T) {
+	widgetsUnderTest := []DashWidget{
+		{ID: "gear", Type: widgets.WidgetGear, Col: 8, Row: 1, ColSpan: 4, RowSpan: 6},
+		{ID: "speed", Type: widgets.WidgetSpeed, Col: 8, Row: 7, ColSpan: 4, RowSpan: 1},
+		{ID: "engine", Type: widgets.WidgetEngineMap, Col: 8, Row: 8, ColSpan: 4, RowSpan: 2},
+		{ID: "energy", Type: widgets.WidgetEnergy, Col: 8, Row: 10, ColSpan: 4, RowSpan: 2},
+		{ID: "position", Type: widgets.WidgetPosition, Col: 0, Row: 0, ColSpan: 2, RowSpan: 1},
+	}
+	layout := &DashLayout{
+		ID:       "stacked-default",
+		Name:     "Stacked Default",
+		GridCols: 20,
+		GridRows: 12,
+		IdlePage: NewPage("Idle"),
+		Pages: []DashPage{{
+			ID:   "p1",
+			Name: "Main",
+			Widgets: []DashWidget{
+				{ID: "rpm", Type: widgets.WidgetRPM, Col: 8, Row: 0, ColSpan: 4, RowSpan: 1},
+				{ID: "abs", Type: widgets.WidgetABS, Col: 6, Row: 4, ColSpan: 2, RowSpan: 2},
+				{ID: "tc1", Type: widgets.WidgetTC, Col: 4, Row: 4, ColSpan: 2, RowSpan: 2},
+				{ID: "tc2", Type: widgets.WidgetTC, Col: 4, Row: 6, ColSpan: 2, RowSpan: 2},
+				{ID: "tc3", Type: widgets.WidgetTC, Col: 6, Row: 6, ColSpan: 2, RowSpan: 2},
+				{ID: "incidents", Type: widgets.WidgetIncidents, Col: 12, Row: 0, ColSpan: 3, RowSpan: 1},
+				{ID: "flags", Type: widgets.WidgetFlags, Col: 5, Row: 0, ColSpan: 3, RowSpan: 1},
+				{ID: "delta", Type: widgets.WidgetDelta, Col: 12, Row: 1, ColSpan: 8, RowSpan: 3},
+				{ID: "lap", Type: widgets.WidgetLapCounter, Col: 18, Row: 0, ColSpan: 2, RowSpan: 1},
+				{ID: "brake", Type: widgets.WidgetBrakeBias, Col: 0, Row: 4, ColSpan: 3, RowSpan: 2},
+				{ID: "lap-time", Type: widgets.WidgetLapTime, Col: 0, Row: 1, ColSpan: 8, RowSpan: 3},
+			},
+		}},
+	}
+	layout.Pages[0].Widgets = append(widgetsUnderTest, layout.Pages[0].Widgets...)
+
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	raw, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	img, ok := raw.(*image.RGBA)
+	if !ok {
+		t.Fatalf("expected RGBA image, got %T", raw)
+	}
+
+	for _, widget := range widgetsUnderTest {
+		_, _, right, bottom := widgetPixelBounds(layout.GridCols, layout.GridRows, 800, 480, widget)
+		_, top, _, _ := widgetPixelBounds(layout.GridCols, layout.GridRows, 800, 480, widget)
+		x := right - 1
+		y := top + (bottom-top)/2
+		got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+		if got != widgets.ColorBorder {
+			t.Fatalf("%s right border pixel at (%d,%d): want %#v, got %#v", widget.ID, x, y, widgets.ColorBorder, got)
+		}
+	}
+}
+
+func widgetPixelBounds(cols, rows, screenW, screenH int, widget DashWidget) (left, top, right, bottom int) {
+	left = int(math.Round(float64(widget.Col) * float64(screenW) / float64(cols)))
+	right = int(math.Round(float64(widget.Col+widget.ColSpan) * float64(screenW) / float64(cols)))
+	top = int(math.Round(float64(widget.Row) * float64(screenH) / float64(rows)))
+	bottom = int(math.Round(float64(widget.Row+widget.RowSpan) * float64(screenH) / float64(rows)))
+	return left, top, right, bottom
+}
+
+func TestPainterResolvedDomainPaletteUsesGlobalDomainWhenLayoutHasNoOverride(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	painter.SetGlobalDomainPalette(widgets.DomainPalette{
+		TC: color.RGBA{R: 90, G: 12, B: 33, A: 255},
+	})
+
+	domain := painter.resolvedDomainPalette(layout)
+	want := color.RGBA{R: 90, G: 12, B: 33, A: 255}
+	if domain.TC != want {
+		t.Fatalf("expected global TC color %#v, got %#v", want, domain.TC)
+	}
+	if domain.Motor != widgets.DefaultDomainPalette().Motor {
+		t.Fatalf("expected unspecified domain colors to inherit defaults, got %#v", domain.Motor)
 	}
 }
 

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
@@ -87,6 +88,20 @@ func TestDashLayoutUnmarshalAlerts(t *testing.T) {
 			t.Fatalf("expected nil Alerts, got %v", l.Alerts)
 		}
 	})
+}
+
+func TestNewPageUsesCompactID(t *testing.T) {
+	page := NewPage("Main")
+
+	if !strings.HasPrefix(page.ID, "page_") {
+		t.Fatalf("expected page id to use compact page_ prefix, got %q", page.ID)
+	}
+	if strings.Contains(page.ID, "-") {
+		t.Fatalf("expected page id to avoid UUID hyphens, got %q", page.ID)
+	}
+	if got, want := len(page.ID), len("page_")+8; got != want {
+		t.Fatalf("expected compact page id length %d, got %d (%q)", want, got, page.ID)
+	}
 }
 
 func TestValidateLayout(t *testing.T) {

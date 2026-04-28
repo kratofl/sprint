@@ -39,11 +39,11 @@ function DashRow({
   return (
     <>
       <div className={cn(
-        'flex items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.02]',
-        layout.default && 'bg-white/[0.015]',
+        'flex items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.03]',
+        layout.default && 'bg-bg-panel',
       )}>
         {/* Preview thumbnail */}
-        <div className="w-20 h-12 flex-shrink-0 overflow-hidden bg-[#111] border border-border flex items-center justify-center">
+        <div className="surface-shell h-12 w-20 flex-shrink-0 overflow-hidden flex items-center justify-center">
           {preview
             ? <img src={`data:image/png;base64,${preview}`} className="w-full h-full object-cover" alt={layout.name} />
             : <span className="font-mono text-base text-white/20">{layout.name.slice(0, 2).toUpperCase()}</span>
@@ -93,9 +93,9 @@ function DashRow({
                 <span>
                     <Button
                       size="xs"
-                      variant="ghost"
+                      variant="destructive"
                       disabled={isBuiltIn}
-                      className="text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
+                      className="disabled:pointer-events-none disabled:opacity-30"
                       onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
                     >
                       <span className="sr-only">Delete {layout.name}</span>

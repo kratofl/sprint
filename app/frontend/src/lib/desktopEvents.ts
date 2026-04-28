@@ -13,6 +13,7 @@ export const TELEMETRY_EVENTS = {
 export const DASH_EVENTS = {
   pageChanged: 'dash:page-changed',
   preview: 'dash:preview',
+  layoutsUpdated: 'dash:layouts-updated',
 } as const
 
 export const SCREEN_EVENTS = {
@@ -53,6 +54,7 @@ export interface DesktopEventMap {
   [TELEMETRY_EVENTS.disconnected]: undefined
   [DASH_EVENTS.pageChanged]: DashPageChangedEvent
   [DASH_EVENTS.preview]: DashPreviewEvent
+  [DASH_EVENTS.layoutsUpdated]: undefined
   [SCREEN_EVENTS.connected]: undefined
   [SCREEN_EVENTS.disconnected]: undefined
   [SCREEN_EVENTS.driverMissing]: ScreenDriverMissingEvent

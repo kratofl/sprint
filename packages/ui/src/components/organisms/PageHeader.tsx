@@ -21,7 +21,7 @@ export function PageHeader({
     <header
       data-slot="page-header"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4",
+        "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg-shell px-6 py-4",
         className
       )}
       {...props}

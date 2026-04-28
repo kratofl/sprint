@@ -7,12 +7,17 @@ import {
   cn,
 } from '@sprint/ui'
 import type { WidgetCatalogEntry } from '@/lib/dash'
+import { MULTI_FUNCTION_WIDGET_PALETTE_TYPE } from './multiFunctionWidgetState'
 
 const CATEGORY_ORDER = ['layout', 'timing', 'car', 'race']
+interface PaletteWidget extends Pick<WidgetCatalogEntry, 'type' | 'name' | 'category' | 'categoryLabel'> {
+  synthetic?: boolean
+}
 
 interface WidgetPaletteProps {
   catalog: WidgetCatalogEntry[]
   previewUrls: Record<string, string>
+  includeMultiFunctionWidget?: boolean
   onDragStart?: (type: string, previewUrl?: string) => void
   onDragEnd?: () => void
 }
@@ -20,17 +25,31 @@ interface WidgetPaletteProps {
 export function WidgetPalette({
   catalog,
   previewUrls,
+  includeMultiFunctionWidget = false,
   onDragStart,
   onDragEnd,
 }: WidgetPaletteProps) {
-  const knownCategories = CATEGORY_ORDER.filter(category => catalog.some(widget => widget.category === category))
-  const extraCategories = [...new Set(catalog.map(widget => widget.category))]
+  const paletteCatalog: PaletteWidget[] = includeMultiFunctionWidget
+    ? [
+      {
+        type: MULTI_FUNCTION_WIDGET_PALETTE_TYPE,
+        name: 'Multi-Function Widget',
+        category: 'layout',
+        categoryLabel: 'layout',
+        synthetic: true,
+      },
+      ...catalog,
+    ]
+    : catalog
+
+  const knownCategories = CATEGORY_ORDER.filter(category => paletteCatalog.some(widget => widget.category === category))
+  const extraCategories = [...new Set(paletteCatalog.map(widget => widget.category))]
     .filter(category => !CATEGORY_ORDER.includes(category))
   const categories = [...knownCategories, ...extraCategories]
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-  if (catalog.length === 0) {
+  if (paletteCatalog.length === 0) {
     return (
       <div className="p-4 text-center font-mono text-[10px] text-text-muted">
         LOADING_CATALOG…
@@ -42,7 +61,7 @@ export function WidgetPalette({
     <div className="flex flex-col">
       {categories.map(category => {
         const isCollapsed = collapsed[category] ?? false
-        const categoryLabel = catalog.find(widget => widget.category === category)?.categoryLabel ?? category
+        const categoryLabel = paletteCatalog.find(widget => widget.category === category)?.categoryLabel ?? category
 
         return (
           <div key={category}>
@@ -70,7 +89,7 @@ export function WidgetPalette({
             {!isCollapsed && (
               <div className="px-3 pb-2">
                 <WidgetList
-                  widgets={catalog.filter(widget => widget.category === category)}
+                  widgets={paletteCatalog.filter(widget => widget.category === category)}
                   previewUrls={previewUrls}
                   onDragStart={onDragStart}
                   onDragEnd={onDragEnd}
@@ -90,7 +109,7 @@ function WidgetList({
   onDragStart,
   onDragEnd,
 }: {
-  widgets: ReadonlyArray<Pick<WidgetCatalogEntry, 'type' | 'name'>>
+  widgets: ReadonlyArray<PaletteWidget>
   previewUrls: Record<string, string>
   onDragStart?: (type: string, previewUrl?: string) => void
   onDragEnd?: () => void
@@ -129,7 +148,8 @@ function WidgetList({
                 className={cn(
                   'flex w-full cursor-grab select-none items-center gap-2 border border-border px-2 py-1.5 active:cursor-grabbing',
                   'font-mono text-[10px] text-text-muted transition-colors',
-                  'hover:border-border-strong hover:text-foreground',
+                  'hover:border-border hover:text-foreground',
+                  widget.synthetic ? 'border-accent/40 bg-accent/[0.04] text-foreground' : '',
                 )}
               >
                 <WidgetDragIcon />
@@ -137,7 +157,7 @@ function WidgetList({
                   <img
                     src={previewUrls[widget.type]}
                     alt=""
-                    className="h-8 w-12 flex-shrink-0 border border-border/70 bg-background"
+                    className="h-8 w-12 flex-shrink-0 border border-border bg-bg-shell"
                     style={{ objectFit: 'fill' }}
                   />
                 )}

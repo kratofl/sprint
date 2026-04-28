@@ -2,6 +2,14 @@
 
 These documents are the canonical repository instructions for coding agents.
 
+### Scope
+
+- Stay inside the project folder. Do not read, write, execute, or otherwise operate outside it
+  unless the user explicitly asks.
+- Do not install tools, CLIs, language servers, or other system-wide software.
+- Only install project dependencies through the repo's package managers when needed for the apps,
+  such as `pnpm` packages or Go module dependencies.
+
 ### Priority
 
 - Default focus is `app/`.
@@ -23,6 +31,7 @@ These documents are the canonical repository instructions for coding agents.
 - Web dev: `make dev-web`
 - API dev: `make dev-api`
 - Desktop dev: `cd app && wails dev`
+- Desktop dev for agent attach: `make dev-app-agent`
 - Go tests: `make test`
 - API tests: `make test-api`
 - Shared Go tests: `make test-pkg`
@@ -30,6 +39,9 @@ These documents are the canonical repository instructions for coding agents.
 - Format: `make fmt`
 
 Run the smallest relevant checks for the files you touched.
+- Use Playwright MCP for frontend/browser testing and UI-flow debugging.
+- Browser-safe desktop UI checks use `http://localhost:5173/` while `cd app && wails dev` is running.
+- Desktop-bound UI flows use `make dev-app-agent`, then `pwsh -File .\app\scripts\wait-desktop-browser.ps1`, then Playwright MCP against `http://127.0.0.1:34115` or the port from `SPRINT_WAILS_DEVSERVER_PORT`.
 
 ### GitHub Collaboration
 

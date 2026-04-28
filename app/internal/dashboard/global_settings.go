@@ -3,6 +3,7 @@ package dashboard
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 
@@ -14,10 +15,10 @@ import (
 // preferences applied to every newly created dash layout. Users can override
 // these per-dash in the editor.
 type GlobalDashSettings struct {
-	Theme             widgets.DashTheme         `json:"theme"`
-	DomainPalette     widgets.DomainPalette     `json:"domainPalette"`
+	Theme             widgets.DashTheme          `json:"theme"`
+	DomainPalette     widgets.DomainPalette      `json:"domainPalette"`
 	Typography        widgets.TypographySettings `json:"typography,omitempty"`
-	FormatPreferences widgets.FormatPreferences `json:"formatPreferences"`
+	FormatPreferences widgets.FormatPreferences  `json:"formatPreferences"`
 }
 
 // globalSettingsPath returns the path to the global dash settings file.
@@ -73,11 +74,34 @@ func defaultGlobalSettings() *GlobalDashSettings {
 // overwriting intentional customisations.
 func fillGlobalDefaults(s *GlobalDashSettings) {
 	zero := widgets.DashTheme{}
-	if s.Theme == zero {
+	switch {
+	case s.Theme == zero:
 		s.Theme = widgets.DefaultTheme()
+	case s.Theme == legacyDefaultTheme():
+		s.Theme = widgets.DefaultTheme()
+	default:
+		s.Theme = widgets.MergeTheme(widgets.DefaultTheme(), s.Theme)
 	}
+	s.DomainPalette = widgets.MergeDomainPalette(widgets.DefaultDomainPalette(), s.DomainPalette)
 	zeroFP := widgets.FormatPreferences{}
 	if s.FormatPreferences == zeroFP {
 		s.FormatPreferences = widgets.DefaultFormatPreferences()
+	}
+}
+
+func legacyDefaultTheme() widgets.DashTheme {
+	return widgets.DashTheme{
+		Primary: color.RGBA{R: 255, G: 139, B: 97, A: 255},
+		Accent:  color.RGBA{R: 121, G: 214, B: 230, A: 255},
+		Fg:      color.RGBA{R: 245, G: 247, B: 250, A: 255},
+		Muted:   color.RGBA{R: 139, G: 147, B: 161, A: 255},
+		Muted2:  color.RGBA{R: 183, G: 191, B: 202, A: 255},
+		Success: color.RGBA{R: 79, G: 209, B: 155, A: 255},
+		Warning: color.RGBA{R: 242, G: 184, B: 75, A: 255},
+		Danger:  color.RGBA{R: 240, G: 125, B: 125, A: 255},
+		Surface: color.RGBA{R: 21, G: 23, B: 28, A: 255},
+		Bg:      color.RGBA{R: 9, G: 10, B: 12, A: 255},
+		Border:  color.RGBA{R: 45, G: 49, B: 56, A: 255},
+		RPMRed:  color.RGBA{R: 230, G: 74, B: 74, A: 255},
 	}
 }

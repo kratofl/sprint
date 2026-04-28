@@ -12,6 +12,8 @@ type DeviceStore interface {
 type Runtime interface {
 	UpdateLayout(layout *DashLayout)
 	SetDashLayout(deviceID string, layout *DashLayout)
+	SetGlobalTheme(theme widgets.DashTheme)
+	SetGlobalDomainPalette(domain widgets.DomainPalette)
 	SetGlobalFormatPrefs(prefs widgets.FormatPreferences)
 	SetGlobalTypography(typography widgets.TypographySettings)
 	ReloadDashCommands()
@@ -49,8 +51,6 @@ func (s *Service) CreateLayout(name string) (*DashLayout, error) {
 	}
 	gs, err := LoadGlobalSettings()
 	if err == nil {
-		layout.Theme = gs.Theme
-		layout.DomainPalette = gs.DomainPalette
 		layout.FormatPreferences = gs.FormatPreferences
 		_ = s.manager.Save(layout)
 	}
@@ -61,13 +61,58 @@ func (s *Service) CreateLayout(name string) (*DashLayout, error) {
 }
 
 func (s *Service) SaveGlobalSettings(settings *GlobalDashSettings) error {
+	previous, err := LoadGlobalSettings()
+	if err != nil {
+		previous = defaultGlobalSettings()
+	}
+	fillGlobalDefaults(settings)
 	if err := SaveGlobalSettings(settings); err != nil {
 		return err
 	}
+	if err := s.rewriteInheritedColorOverrides(previous, settings); err != nil {
+		return err
+	}
 	if s.runtime != nil {
+		s.runtime.SetGlobalTheme(settings.Theme)
+		s.runtime.SetGlobalDomainPalette(settings.DomainPalette)
 		s.runtime.SetGlobalFormatPrefs(settings.FormatPreferences)
 		s.runtime.SetGlobalTypography(settings.Typography)
 	}
+	return nil
+}
+
+func (s *Service) rewriteInheritedColorOverrides(previous, _ *GlobalDashSettings) error {
+	if s.manager == nil {
+		return nil
+	}
+
+	metas, err := s.manager.List()
+	if err != nil {
+		return err
+	}
+
+	for _, meta := range metas {
+		layout, err := s.manager.Load(meta.ID)
+		if err != nil || layout == nil {
+			continue
+		}
+
+		theme := clearInheritedThemeOverrides(layout.Theme, previous.Theme)
+		domain := clearInheritedDomainOverrides(layout.DomainPalette, previous.DomainPalette)
+		if theme == layout.Theme && domain == layout.DomainPalette {
+			continue
+		}
+
+		layout.Theme = theme
+		layout.DomainPalette = domain
+		if err := s.manager.Save(layout); err != nil {
+			return err
+		}
+		if s.runtime != nil {
+			s.runtime.UpdateLayout(layout)
+		}
+	}
+
 	return nil
 }
 

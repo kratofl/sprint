@@ -5,6 +5,7 @@ import {
   type DashLayout,
   type DashPage,
   type DashTheme,
+  type DashThemeOverrides,
   type DashWidget,
   type DashWrapperGroup,
   type DomainPalette,
@@ -13,16 +14,31 @@ import {
   type TypographySettings,
   type WidgetCatalogEntry,
   alertCatalogAPI,
-  DEFAULT_DASH_THEME,
   dashAPI,
   deviceAPI,
   deviceHasScreen,
+  normalizeDomainPaletteOverrides,
+  normalizeThemeOverrides,
+  resolveDashTheme,
+  resolveDomainPalette,
   widgetCatalogAPI,
 } from '@/lib/dash'
+import { createDashLayerId, createDashPageId } from '@/lib/dash/ids'
 import { DASH_EVENTS } from '@/lib/desktopEvents'
 import { onEvent } from '@/lib/wails'
 import { useNavigationGuard, useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { DEFAULT_SCREEN_H, DEFAULT_SCREEN_W } from '@/components/DashCanvas'
+import {
+  clampWidgetToLayerBounds,
+  createClearedWrapperGroupSelectionState,
+  createMultiFunctionWidgetOnDrop,
+  createPageEditContext,
+  createWrapperGroupEditState,
+  createWrapperGroupSelectionState,
+  enterMultiFunctionWidgetMode,
+  isValidMultiFunctionWidgetPlacement,
+  type DashEditContext,
+} from './multiFunctionWidgetState'
 
 interface UseDashEditorControllerArgs {
   initialLayout: DashLayout
@@ -83,6 +99,7 @@ export function useDashEditorController({
   const [selectedWrapperGroupId, setSelectedWrapperGroupId] = useState<string | null>(null)
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
   const [wrapperVariantSelections, setWrapperVariantSelections] = useState<Record<string, string>>({})
+  const [editContext, setEditContext] = useState<DashEditContext>(createPageEditContext())
   const [canvasPaneEl, setCanvasPaneEl] = useState<HTMLDivElement | null>(null)
   const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -234,18 +251,6 @@ export function useDashEditorController({
     }
   }, [layout, wrapperVariantSelections])
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedId !== null) {
-        if (document.activeElement?.tagName === 'INPUT') return
-        setConfirmRemoveWidget(true)
-      }
-    }
-
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [selectedId])
-
   const currentPage = activeTab === 'idle'
     ? layout.idlePage
     : activeTab === 'alerts'
@@ -270,11 +275,19 @@ export function useDashEditorController({
       ?? selectedWrapperGroup.variants[0]
       ?? null
     : null
+  const editingMultiFunctionWidget = editContext.kind === 'multi-function-widget'
+  const editorMode: 'page' | 'mfw' = editingMultiFunctionWidget ? 'mfw' : 'page'
+  const editingSelectedGroup = editingMultiFunctionWidget && selectedWrapperGroup && selectedWrapperGroup.id === editContext.groupId
+  const editingSelectedVariant = editingSelectedGroup
+    ? selectedWrapperGroup.variants.find(variant => variant.id === editContext.layerId)
+      ?? selectedWrapperVariant
+      ?? null
+    : null
 
   const canvasWidgets = activeTab === 'alerts'
     ? []
-    : selectedWrapperGroup && selectedWrapperVariant
-      ? selectedWrapperVariant.widgets.map(widget => ({
+    : editingSelectedGroup && editingSelectedVariant
+      ? editingSelectedVariant.widgets.map(widget => ({
         ...widget,
         col: widget.col + selectedWrapperGroup.col,
         row: widget.row + selectedWrapperGroup.row,
@@ -282,6 +295,8 @@ export function useDashEditorController({
       : (currentPage?.widgets ?? [])
 
   const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
+  const resolvedTheme = resolveDashTheme(globalDefaults?.theme, layout.theme)
+  const resolvedDomainPalette = resolveDomainPalette(globalDefaults?.domain, layout.domainPalette)
   const paletteWidgets = activeTab === 'idle'
     ? catalog.filter(widget => widget.idleCapable)
     : activeTab === 'alerts'
@@ -292,6 +307,7 @@ export function useDashEditorController({
     if (activeTab === 'alerts') {
       setSelectedWrapperGroupId(null)
       setSelectedVariantId(null)
+      setEditContext(createPageEditContext())
       return
     }
     if (!selectedWrapperGroupId) return
@@ -299,6 +315,7 @@ export function useDashEditorController({
     if (!group) {
       setSelectedWrapperGroupId(null)
       setSelectedVariantId(null)
+      setEditContext(createPageEditContext())
       return
     }
     const nextVariantId = currentPage
@@ -325,6 +342,18 @@ export function useDashEditorController({
       }
     }
   }, [activeTab, currentPage, selectedVariantId, selectedWrapperGroupId, wrapperGroups, wrapperVariantSelections])
+
+  useEffect(() => {
+    if (editContext.kind !== 'multi-function-widget') return
+    if (!currentPage || !selectedWrapperGroup || !selectedWrapperVariant) {
+      setEditContext(createPageEditContext())
+      return
+    }
+    if (editContext.groupId !== selectedWrapperGroup.id || !selectedWrapperGroup.variants.some(variant => variant.id === editContext.layerId)) {
+      const nextContext = enterMultiFunctionWidgetMode(currentPage, selectedWrapperGroup.id, wrapperVariantSelections)
+      setEditContext(nextContext ?? createPageEditContext())
+    }
+  }, [currentPage, editContext, selectedWrapperGroup, selectedWrapperVariant, wrapperVariantSelections])
 
   const clearWrapperVariantSelections = useCallback(() => {
     setWrapperVariantSelections({})
@@ -357,19 +386,21 @@ export function useDashEditorController({
   }, [activeTab])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
-    if (selectedWrapperGroup && selectedWrapperVariant) {
+    if (editingSelectedGroup && editingSelectedVariant) {
       updateCurrentPage(page => ({
         ...page,
         wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === selectedWrapperVariant.id
+            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id
               ? {
                 ...variant,
                 widgets: widgets.map(widget => ({
-                  ...widget,
-                  col: widget.col - group.col,
-                  row: widget.row - group.row,
+                  ...clampWidgetToLayerBounds({
+                    ...widget,
+                    col: widget.col - group.col,
+                    row: widget.row - group.row,
+                  }, group),
                 })),
               }
               : variant),
@@ -380,24 +411,26 @@ export function useDashEditorController({
     }
 
     updateCurrentPage(page => ({ ...page, widgets }))
-  }, [selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage])
+  }, [editingSelectedGroup, editingSelectedVariant, selectedWrapperGroup, updateCurrentPage])
 
   const selectCanvasTab = useCallback((tab: 'idle' | 'alerts' | number) => {
     setActiveTab(tab)
     setSelectedWrapperGroupId(null)
     setSelectedVariantId(null)
     clearWrapperVariantSelections()
+    setEditContext(createPageEditContext())
     setSelectedId(null)
   }, [clearWrapperVariantSelections])
 
   const handleAddPage = useCallback(() => {
     const name = `Page ${layout.pages.length + 1}`
-    const newPage: DashPage = { id: crypto.randomUUID(), name, widgets: [], wrapperGroups: [] }
+    const newPage: DashPage = { id: createDashPageId(), name, widgets: [], wrapperGroups: [] }
     setLayout(previous => ({ ...previous, pages: [...previous.pages, newPage] }))
     setActiveTab(layout.pages.length)
     setSelectedWrapperGroupId(null)
     setSelectedVariantId(null)
     clearWrapperVariantSelections()
+    setEditContext(createPageEditContext())
     setSelectedId(null)
   }, [clearWrapperVariantSelections, layout.pages.length])
 
@@ -409,6 +442,7 @@ export function useDashEditorController({
     setSelectedWrapperGroupId(null)
     setSelectedVariantId(null)
     clearWrapperVariantSelections()
+    setEditContext(createPageEditContext())
     setSelectedId(null)
   }, [clearWrapperVariantSelections, layout.pages.length])
 
@@ -420,13 +454,13 @@ export function useDashEditorController({
   }, [])
 
   const handleClearPage = useCallback(() => {
-    if (selectedWrapperGroup && selectedWrapperVariant) {
+    if (editingSelectedGroup && editingSelectedVariant) {
       updateCurrentPage(page => ({
         ...page,
         wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === selectedWrapperVariant.id ? { ...variant, widgets: [] } : variant),
+            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id ? { ...variant, widgets: [] } : variant),
           }
           : group),
       }))
@@ -434,13 +468,13 @@ export function useDashEditorController({
       updateCurrentPage(page => ({ ...page, widgets: [] }))
     }
     setSelectedId(null)
-  }, [selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage])
+  }, [editingSelectedGroup, editingSelectedVariant, selectedWrapperGroup, updateCurrentPage])
 
-  const handleSettingsChange = useCallback((theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
+  const handleSettingsChange = useCallback((theme: DashThemeOverrides, domain: Partial<DomainPalette>) => {
     setLayout(previous => ({
       ...previous,
-      theme: { ...DEFAULT_DASH_THEME, ...theme } as DashTheme,
-      domainPalette: domain,
+      theme: normalizeThemeOverrides(theme),
+      domainPalette: normalizeDomainPaletteOverrides(domain),
     }))
   }, [])
 
@@ -464,13 +498,13 @@ export function useDashEditorController({
 
   const doRemoveSelectedWidget = useCallback(() => {
     if (selectedId === null) return
-    if (selectedWrapperGroup && selectedWrapperVariant) {
+    if (editingSelectedGroup && editingSelectedVariant) {
       updateCurrentPage(page => ({
         ...page,
         wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === selectedWrapperVariant.id
+            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id
               ? { ...variant, widgets: variant.widgets.filter((_, index) => index !== selectedId) }
               : variant),
           }
@@ -481,57 +515,77 @@ export function useDashEditorController({
     }
 
     setSelectedId(null)
-  }, [selectedId, selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage])
+  }, [editingSelectedGroup, editingSelectedVariant, selectedId, selectedWrapperGroup, updateCurrentPage])
 
   const updateSelectedWidget = useCallback((updated: DashWidget) => {
     if (selectedId === null) return
     handleUpdate(canvasWidgets.map((widget, index) => index === selectedId ? updated : widget))
   }, [canvasWidgets, handleUpdate, selectedId])
 
+  const exitMultiFunctionWidgetEditMode = useCallback(() => {
+    const nextState = createClearedWrapperGroupSelectionState()
+    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
+    setSelectedVariantId(nextState.selectedVariantId)
+    setEditContext(nextState.editContext)
+    setSelectedId(null)
+  }, [])
+
+  const enterSelectedWrapperGroup = useCallback((groupId?: string | null) => {
+    if (!currentPage) return
+    const targetGroupId = groupId ?? selectedWrapperGroupId
+    if (!targetGroupId) return
+    const nextState = createWrapperGroupEditState(currentPage, targetGroupId, wrapperVariantSelections)
+    if (!nextState) return
+    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
+    setSelectedVariantId(nextState.selectedVariantId)
+    setEditContext(nextState.editContext)
+    setSelectedId(null)
+  }, [currentPage, selectedWrapperGroupId, wrapperVariantSelections])
+
   const selectWrapperGroup = useCallback((groupId: string | null) => {
     if (!groupId) {
-      setSelectedWrapperGroupId(null)
-      setSelectedVariantId(null)
+      if (editContext.kind !== 'multi-function-widget') {
+        const clearedState = createClearedWrapperGroupSelectionState()
+        setSelectedWrapperGroupId(clearedState.selectedWrapperGroupId)
+        setSelectedVariantId(clearedState.selectedVariantId)
+      }
       setSelectedId(null)
       return
     }
-    const group = wrapperGroups.find(candidate => candidate.id === groupId)
-    const nextVariantId = currentPage
-      ? wrapperVariantSelections[wrapperSelectionKey(currentPage.id, groupId)]
-        ?? group?.defaultVariantId
-        ?? group?.variants[0]?.id
-        ?? null
-      : group?.defaultVariantId ?? group?.variants[0]?.id ?? null
-    setSelectedWrapperGroupId(groupId)
-    setSelectedVariantId(nextVariantId)
+    if (!currentPage) return
+    const nextState = createWrapperGroupSelectionState(currentPage, groupId, wrapperVariantSelections)
+    if (!nextState) return
+    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
+    setSelectedVariantId(nextState.selectedVariantId)
+    if (editContext.kind !== 'multi-function-widget' || editContext.groupId !== groupId) {
+      setEditContext(nextState.editContext)
+    }
     setSelectedId(null)
-  }, [currentPage, wrapperGroups, wrapperVariantSelections])
+  }, [currentPage, editContext, wrapperVariantSelections])
 
   const handleAddWrapperGroup = useCallback(() => {
-    const nextIndex = wrapperGroups.length + 1
-    const nextGroup: DashWrapperGroup = {
-      id: crypto.randomUUID(),
-      name: `Wrapper ${nextIndex}`,
-      col: 0,
-      row: 0,
-      colSpan: 4,
-      rowSpan: 2,
-      defaultVariantId: crypto.randomUUID(),
-      variants: [],
+    if (!currentPage) return
+    const created = createMultiFunctionWidgetOnDrop({
+      page: currentPage,
+      drop: { col: 0, row: 0 },
+      gridCols: layout.gridCols,
+      gridRows: layout.gridRows,
+    })
+    const nextGroups = created.page.wrapperGroups ?? []
+    const nextGroup = nextGroups[nextGroups.length - 1]
+    if (!nextGroup || !isValidMultiFunctionWidgetPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
+      return
     }
-    const firstVariantId = nextGroup.defaultVariantId!
-    nextGroup.variants = [{ id: firstVariantId, name: 'Variant 1', widgets: [] }]
-    updateCurrentPage(page => ({ ...page, wrapperGroups: [...(page.wrapperGroups ?? []), nextGroup] }))
-    if (currentPage) {
-      updateWrapperVariantSelection(currentPage.id, nextGroup.id, firstVariantId)
-    }
-    setSelectedWrapperGroupId(nextGroup.id)
-    setSelectedVariantId(firstVariantId)
+    updateCurrentPage(() => created.page)
+    updateWrapperVariantSelection(currentPage.id, created.context.groupId, created.context.layerId)
+    setSelectedWrapperGroupId(created.context.groupId)
+    setSelectedVariantId(created.context.layerId)
+    setEditContext(created.context)
     setSelectedId(null)
-  }, [currentPage, updateCurrentPage, updateWrapperVariantSelection, wrapperGroups.length])
+  }, [currentPage, layout.gridCols, layout.gridRows, updateCurrentPage, updateWrapperVariantSelection])
 
   const updateSelectedWrapperGroup = useCallback((patch: Partial<DashWrapperGroup>) => {
-    if (!selectedWrapperGroup) return
+    if (!selectedWrapperGroup || !currentPage) return
     updateCurrentPage(page => ({
       ...page,
       wrapperGroups: (page.wrapperGroups ?? []).map(group => {
@@ -541,10 +595,19 @@ export function useDashEditorController({
         next.rowSpan = Math.max(1, Math.min(next.rowSpan, layout.gridRows))
         next.col = Math.max(0, Math.min(next.col, layout.gridCols - next.colSpan))
         next.row = Math.max(0, Math.min(next.row, layout.gridRows - next.rowSpan))
-        return next
+        if (!isValidMultiFunctionWidgetPlacement(next, page, layout.gridCols, layout.gridRows, group.id)) {
+          return group
+        }
+        return {
+          ...next,
+          variants: next.variants.map(variant => ({
+            ...variant,
+            widgets: variant.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
+          })),
+        }
       }),
     }))
-  }, [layout.gridCols, layout.gridRows, selectedWrapperGroup, updateCurrentPage])
+  }, [currentPage, layout.gridCols, layout.gridRows, selectedWrapperGroup, updateCurrentPage])
 
   const handleDeleteSelectedWrapperGroup = useCallback(() => {
     if (!selectedWrapperGroup || !currentPage) return
@@ -555,6 +618,7 @@ export function useDashEditorController({
     updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, null)
     setSelectedWrapperGroupId(null)
     setSelectedVariantId(null)
+    setEditContext(createPageEditContext())
     setSelectedId(null)
   }, [currentPage, selectedWrapperGroup, updateCurrentPage, updateWrapperVariantSelection])
 
@@ -563,12 +627,19 @@ export function useDashEditorController({
       updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, variantId)
     }
     setSelectedVariantId(variantId)
+    if (editContext.kind === 'multi-function-widget' && selectedWrapperGroup) {
+      setEditContext({
+        kind: 'multi-function-widget',
+        groupId: selectedWrapperGroup.id,
+        layerId: variantId,
+      })
+    }
     setSelectedId(null)
-  }, [currentPage, selectedWrapperGroup, updateWrapperVariantSelection])
+  }, [currentPage, editContext.kind, selectedWrapperGroup, updateWrapperVariantSelection])
 
   const handleAddWrapperVariant = useCallback(() => {
     if (!selectedWrapperGroup || !currentPage) return
-    const nextVariant = { id: crypto.randomUUID(), name: `Variant ${selectedWrapperGroup.variants.length + 1}`, widgets: [] }
+    const nextVariant = { id: createDashLayerId(), name: `Layer ${selectedWrapperGroup.variants.length + 1}`, widgets: [] }
     updateCurrentPage(page => ({
       ...page,
       wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
@@ -581,32 +652,60 @@ export function useDashEditorController({
     }))
     updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, nextVariant.id)
     setSelectedVariantId(nextVariant.id)
+    if (editContext.kind === 'multi-function-widget') {
+      setEditContext({
+        kind: 'multi-function-widget',
+        groupId: selectedWrapperGroup.id,
+        layerId: nextVariant.id,
+      })
+    }
     setSelectedId(null)
-  }, [currentPage, selectedWrapperGroup, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, editContext.kind, selectedWrapperGroup, updateCurrentPage, updateWrapperVariantSelection])
 
-  const handleDeleteSelectedVariant = useCallback(() => {
-    if (!selectedWrapperGroup || !selectedWrapperVariant || !currentPage || selectedWrapperGroup.variants.length <= 1) return
-    const nextVariantId = selectedWrapperGroup.variants.find(variant => variant.id !== selectedWrapperVariant.id)?.id ?? null
+  const handleDeleteWrapperVariant = useCallback((variantId: string) => {
+    if (!selectedWrapperGroup || !currentPage || selectedWrapperGroup.variants.length <= 1) return
+    const targetVariant = selectedWrapperGroup.variants.find(variant => variant.id === variantId)
+    if (!targetVariant) return
+    const nextVariantId = selectedWrapperGroup.variants.find(variant => variant.id !== variantId)?.id ?? null
     updateCurrentPage(page => ({
       ...page,
       wrapperGroups: (page.wrapperGroups ?? []).map(group => {
         if (group.id !== selectedWrapperGroup.id) return group
-        const variants = group.variants.filter(variant => variant.id !== selectedWrapperVariant.id)
+        const variants = group.variants.filter(variant => variant.id !== variantId)
         return {
           ...group,
           variants,
-          defaultVariantId: group.defaultVariantId === selectedWrapperVariant.id ? variants[0]?.id : group.defaultVariantId,
+          defaultVariantId: group.defaultVariantId === variantId ? variants[0]?.id : group.defaultVariantId,
         }
       }),
     }))
     updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, nextVariantId)
-    setSelectedVariantId(nextVariantId)
-    setSelectedId(null)
-  }, [currentPage, selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage, updateWrapperVariantSelection])
+    const deletedSelectedVariant = selectedWrapperVariant?.id === variantId
+    if (deletedSelectedVariant) {
+      setSelectedVariantId(nextVariantId)
+    }
+    if (nextVariantId && editContext.kind === 'multi-function-widget' && deletedSelectedVariant) {
+      setEditContext({
+        kind: 'multi-function-widget',
+        groupId: selectedWrapperGroup.id,
+        layerId: nextVariantId,
+      })
+    } else if (deletedSelectedVariant) {
+      setEditContext(createPageEditContext())
+    }
+    if (deletedSelectedVariant) {
+      setSelectedId(null)
+    }
+  }, [currentPage, editContext.kind, selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage, updateWrapperVariantSelection])
 
-  const handleMoveSelectedVariant = useCallback((direction: -1 | 1) => {
-    if (!selectedWrapperGroup || !selectedWrapperVariant) return
-    const currentIndex = selectedWrapperGroup.variants.findIndex(variant => variant.id === selectedWrapperVariant.id)
+  const handleDeleteSelectedVariant = useCallback(() => {
+    if (!selectedWrapperVariant) return
+    handleDeleteWrapperVariant(selectedWrapperVariant.id)
+  }, [handleDeleteWrapperVariant, selectedWrapperVariant])
+
+  const handleMoveWrapperVariant = useCallback((variantId: string, direction: -1 | 1) => {
+    if (!selectedWrapperGroup) return
+    const currentIndex = selectedWrapperGroup.variants.findIndex(variant => variant.id === variantId)
     const nextIndex = currentIndex + direction
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedWrapperGroup.variants.length) return
     updateCurrentPage(page => ({
@@ -619,7 +718,22 @@ export function useDashEditorController({
         return { ...group, variants }
       }),
     }))
-  }, [selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage])
+  }, [selectedWrapperGroup, updateCurrentPage])
+
+  const handleMoveSelectedVariant = useCallback((direction: -1 | 1) => {
+    if (!selectedWrapperVariant) return
+    handleMoveWrapperVariant(selectedWrapperVariant.id, direction)
+  }, [handleMoveWrapperVariant, selectedWrapperVariant])
+
+  const handleSetDefaultWrapperVariant = useCallback((variantId: string) => {
+    if (!selectedWrapperGroup) return
+    updateCurrentPage(page => ({
+      ...page,
+      wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+        ? { ...group, defaultVariantId: variantId }
+        : group),
+    }))
+  }, [selectedWrapperGroup, updateCurrentPage])
 
   const updateSelectedVariant = useCallback((patch: { name?: string; defaultVariantId?: string }) => {
     if (!selectedWrapperGroup || !selectedWrapperVariant) return
@@ -639,22 +753,141 @@ export function useDashEditorController({
     updateCurrentPage(page => ({ ...page, background }))
   }, [updateCurrentPage])
 
-  const blockedAreas = selectedWrapperGroup
+  const handleCanvasSelectWidget = useCallback((id: number | null) => {
+    setSelectedId(id)
+    if (id !== null && !editingMultiFunctionWidget) {
+      setSelectedWrapperGroupId(null)
+      setSelectedVariantId(null)
+    }
+  }, [editingMultiFunctionWidget])
+
+  const handleCanvasBackgroundClick = useCallback(() => {
+    if (editingMultiFunctionWidget) {
+      exitMultiFunctionWidgetEditMode()
+      setSelectedId(null)
+      return
+    }
+    const clearedState = createClearedWrapperGroupSelectionState()
+    setSelectedId(null)
+    setSelectedWrapperGroupId(clearedState.selectedWrapperGroupId)
+    setSelectedVariantId(clearedState.selectedVariantId)
+  }, [editingMultiFunctionWidget, exitMultiFunctionWidgetEditMode])
+
+  const handleCanvasSelectWrapperGroup = useCallback((groupId: string | null) => {
+    if (!groupId) {
+      selectWrapperGroup(null)
+      return
+    }
+    selectWrapperGroup(groupId)
+  }, [selectWrapperGroup])
+
+  const handleCanvasEnterWrapperGroup = useCallback((groupId: string) => {
+    enterSelectedWrapperGroup(groupId)
+  }, [enterSelectedWrapperGroup])
+
+  const handleCanvasUpdateWrapperGroup = useCallback((groupId: string, rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
+    setSelectedWrapperGroupId(groupId)
+    updateCurrentPage(page => ({
+      ...page,
+      wrapperGroups: (page.wrapperGroups ?? []).map(group => {
+        if (group.id !== groupId) return group
+        const next = {
+          ...group,
+          col: Math.max(0, Math.min(rect.col, layout.gridCols - rect.colSpan)),
+          row: Math.max(0, Math.min(rect.row, layout.gridRows - rect.rowSpan)),
+          colSpan: Math.max(1, Math.min(rect.colSpan, layout.gridCols)),
+          rowSpan: Math.max(1, Math.min(rect.rowSpan, layout.gridRows)),
+        }
+        if (!isValidMultiFunctionWidgetPlacement(next, page, layout.gridCols, layout.gridRows, groupId)) {
+          return group
+        }
+        return {
+          ...next,
+          variants: next.variants.map(variant => ({
+            ...variant,
+            widgets: variant.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
+          })),
+        }
+      }),
+    }))
+  }, [layout.gridCols, layout.gridRows, updateCurrentPage])
+
+  const handleCanvasCreateMultiFunctionWidget = useCallback((rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
+    if (!currentPage || editingMultiFunctionWidget) return
+    const created = createMultiFunctionWidgetOnDrop({
+      page: currentPage,
+      drop: { col: rect.col, row: rect.row },
+      gridCols: layout.gridCols,
+      gridRows: layout.gridRows,
+    })
+    const nextGroups = created.page.wrapperGroups ?? []
+    const nextGroup = nextGroups[nextGroups.length - 1]
+    if (!nextGroup || !isValidMultiFunctionWidgetPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
+      return
+    }
+    updateCurrentPage(() => created.page)
+    updateWrapperVariantSelection(currentPage.id, created.context.groupId, created.context.layerId)
+    setSelectedWrapperGroupId(created.context.groupId)
+    setSelectedVariantId(created.context.layerId)
+    setEditContext(created.context)
+    setSelectedId(null)
+  }, [currentPage, editingMultiFunctionWidget, layout.gridCols, layout.gridRows, updateCurrentPage, updateWrapperVariantSelection])
+
+  const blockedAreas = editingMultiFunctionWidget
     ? []
     : wrapperGroups.map(group => ({ col: group.col, row: group.row, colSpan: group.colSpan, rowSpan: group.rowSpan }))
 
-  const placementBounds = selectedWrapperGroup
+  const placementBounds = editingSelectedGroup
     ? { col: selectedWrapperGroup.col, row: selectedWrapperGroup.row, colSpan: selectedWrapperGroup.colSpan, rowSpan: selectedWrapperGroup.rowSpan }
     : null
 
   const overlayRects = wrapperGroups.map(group => ({
+    id: group.id,
     col: group.col,
     row: group.row,
     colSpan: group.colSpan,
     rowSpan: group.rowSpan,
     label: group.name,
     selected: group.id === selectedWrapperGroupId,
+    locked: editingMultiFunctionWidget && group.id !== selectedWrapperGroupId,
+    editing: editingMultiFunctionWidget && group.id === selectedWrapperGroupId,
   }))
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT') return
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedId !== null) {
+          setConfirmRemoveWidget(true)
+          return
+        }
+        if (selectedWrapperGroup) {
+          handleDeleteSelectedWrapperGroup()
+        }
+        return
+      }
+
+      if (event.key === 'Enter' && selectedWrapperGroup && !editingMultiFunctionWidget) {
+        enterSelectedWrapperGroup(selectedWrapperGroup.id)
+        return
+      }
+
+      if (event.key === 'Escape' && editingMultiFunctionWidget) {
+        exitMultiFunctionWidgetEditMode()
+      }
+    }
+
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [
+    editingMultiFunctionWidget,
+    enterSelectedWrapperGroup,
+    exitMultiFunctionWidgetEditMode,
+    handleDeleteSelectedWrapperGroup,
+    selectedId,
+    selectedWrapperGroup,
+  ])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -689,7 +922,11 @@ export function useDashEditorController({
     confirmRemoveWidget,
     dashNameValue,
     doRemoveSelectedWidget,
+    editorMode,
+    editingMultiFunctionWidget,
     editorTab,
+    enterSelectedWrapperGroup,
+    exitMultiFunctionWidgetEditMode,
     fittedCanvas,
     globalDefaults,
     handleAddPage,
@@ -711,11 +948,22 @@ export function useDashEditorController({
     paletteWidgets,
     blockedAreas,
     currentPage,
+    resolvedDomainPalette,
+    resolvedTheme,
     handleAddWrapperGroup,
     handleDeleteSelectedVariant,
+    handleDeleteWrapperVariant,
     handleDeleteSelectedWrapperGroup,
+    handleMoveWrapperVariant,
     handleMoveSelectedVariant,
     handlePageBackgroundChange,
+    handleSetDefaultWrapperVariant,
+    handleCanvasBackgroundClick,
+    handleCanvasCreateMultiFunctionWidget,
+    handleCanvasEnterWrapperGroup,
+    handleCanvasSelectWidget,
+    handleCanvasSelectWrapperGroup,
+    handleCanvasUpdateWrapperGroup,
     handleSelectWrapperVariant,
     handleAddWrapperVariant,
     previewUrl,

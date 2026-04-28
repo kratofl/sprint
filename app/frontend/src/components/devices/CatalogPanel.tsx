@@ -115,10 +115,7 @@ export function CatalogPanel({
           {entries.map(entry => {
             const isGeneric = entry.vid === 0 && entry.pid === 0
             return (
-              <div
-                key={entry.id}
-                className="flex items-start justify-between gap-3 border border-border bg-card px-4 py-3"
-              >
+              <div key={entry.id} className="surface-panel flex items-start justify-between gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-mono text-[10px] font-bold">{entry.name}</p>
                   <p className="mt-0.5 font-mono text-[8px] text-text-muted">{entry.description}</p>

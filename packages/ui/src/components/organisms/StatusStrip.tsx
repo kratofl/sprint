@@ -39,7 +39,7 @@ export function StatusStrip({
     <footer
       data-slot="status-strip"
       className={cn(
-        "flex h-6 shrink-0 items-center border-t border-border bg-background px-4",
+        "flex h-6 shrink-0 items-center border-t border-border bg-bg-shell px-4",
         "font-mono text-[9px] text-text-muted",
         className
       )}

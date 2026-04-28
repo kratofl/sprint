@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
@@ -50,6 +51,30 @@ func TestDeleteDefaultLayout(t *testing.T) {
 	// The entire layout directory must be gone after delete.
 	if _, err := os.Stat(m.layoutDir(nonDefault.ID)); !os.IsNotExist(err) {
 		t.Errorf("expected layout directory to be removed after delete, got: %v", err)
+	}
+}
+
+func TestCreateUsesCompactLayoutAndPageIDs(t *testing.T) {
+	m := &Manager{
+		dir: filepath.Join(t.TempDir(), "layouts"),
+	}
+
+	layout, err := m.Create("Test")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if !strings.HasPrefix(layout.ID, "lay_") {
+		t.Fatalf("expected compact layout id with lay_ prefix, got %q", layout.ID)
+	}
+	if strings.Contains(layout.ID, "-") {
+		t.Fatalf("expected compact layout id without UUID hyphens, got %q", layout.ID)
+	}
+	if !strings.HasPrefix(layout.IdlePage.ID, "page_") {
+		t.Fatalf("expected compact idle page id, got %q", layout.IdlePage.ID)
+	}
+	if got := layout.Pages[0].ID; !strings.HasPrefix(got, "page_") {
+		t.Fatalf("expected compact main page id, got %q", got)
 	}
 }
 

@@ -45,6 +45,12 @@ import {
 } from '@/lib/appShell'
 import { appInfoAPI } from '@/lib/settings'
 import { windowAPI } from '@/lib/window'
+import {
+  windowControlCloseButtonClassName,
+  windowControlMaximiseButtonClassName,
+  windowControlMinimiseButtonClassName,
+  windowControlsRailClassName,
+} from '@/lib/windowControls'
 import { onEvent } from '@/lib/wails'
 
 type View = AppView
@@ -182,7 +188,7 @@ export default function App() {
       )}
 
       <header
-        className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]"
+        className="flex h-10 shrink-0 items-center border-b border-border bg-bg-shell pl-3 pr-0 [--wails-draggable:drag]"
         onDoubleClick={(event) => {
           if ((event.target as HTMLElement).closest('button, a, input')) return
           void windowAPI.toggleMaximise()
@@ -194,7 +200,6 @@ export default function App() {
             size="icon-sm"
             onClick={stepBackward}
             disabled={!viewHistory.canGoBack}
-            className="text-text-muted hover:bg-foreground/10"
             aria-label="Back"
           >
             <IconArrowLeft size={14} />
@@ -204,7 +209,6 @@ export default function App() {
             size="icon-sm"
             onClick={stepForward}
             disabled={!viewHistory.canGoForward}
-            className="text-text-muted hover:bg-foreground/10"
             aria-label="Forward"
           >
             <IconArrowRight size={14} />
@@ -213,7 +217,6 @@ export default function App() {
             variant="ghost"
             size="icon-sm"
             onClick={() => setNavCollapsed(value => !value)}
-            className="text-text-muted hover:bg-foreground/10"
             aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {navCollapsed ? (
@@ -226,7 +229,7 @@ export default function App() {
             variant="ghost"
             size="sm"
             onClick={() => switchView('home')}
-            className="gap-2 px-2.5 text-foreground hover:bg-foreground/10"
+            className="gap-2 px-2.5 text-foreground"
             aria-label="Go to home"
           >
             <img src={logoIcon} alt="Sprint" className="h-4 w-auto shrink-0" />
@@ -236,61 +239,60 @@ export default function App() {
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-1 [--wails-draggable:nodrag]">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => switchView('settings')}
-            className={cn(
-              'gap-1.5 text-text-muted hover:bg-foreground/10 hover:text-foreground',
-              view === 'settings' && 'border-border bg-white/[0.04] text-foreground',
-            )}
-            aria-label="View settings"
-          >
-            <IconSettings size={14} />
-            <span>SETTINGS</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => switchView('help')}
-            className={cn(
-              'gap-1.5 text-text-muted hover:bg-foreground/10 hover:text-foreground',
-              view === 'help' && 'border-border bg-white/[0.04] text-foreground',
-            )}
-            aria-label="Help"
-          >
-            <IconHelp size={14} />
-            <span>HELP</span>
-          </Button>
-          <div className="ml-1 flex items-center gap-1 border-l border-border pl-2">
+        <div className="flex h-full self-stretch items-stretch [--wails-draggable:nodrag]">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="sm"
+              onClick={() => switchView('settings')}
+              className={cn(
+                'gap-1.5 text-text-muted hover:text-foreground',
+                view === 'settings' && 'surface-inline text-foreground',
+              )}
+              aria-label="View settings"
+            >
+              <IconSettings size={14} />
+              <span>SETTINGS</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => switchView('help')}
+              className={cn(
+                'gap-1.5 text-text-muted hover:text-foreground',
+                view === 'help' && 'surface-inline text-foreground',
+              )}
+              aria-label="Help"
+            >
+              <IconHelp size={14} />
+              <span>HELP</span>
+            </Button>
+          </div>
+          <div className={windowControlsRailClassName}>
+            <button
+              type="button"
               onClick={() => { void windowAPI.minimise() }}
-              className="text-text-muted hover:bg-foreground/10"
               aria-label="Minimise"
+              className={windowControlMinimiseButtonClassName}
             >
-              <IconMinus size={12} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
+              <IconMinus size={10} />
+            </button>
+            <button
+              type="button"
               onClick={() => { void windowAPI.toggleMaximise() }}
-              className="text-text-muted hover:bg-foreground/10"
               aria-label="Maximise"
+              className={windowControlMaximiseButtonClassName}
             >
-              <IconSquare size={12} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
+              <IconSquare size={10} />
+            </button>
+            <button
+              type="button"
               onClick={() => { void windowAPI.close() }}
-              className="text-text-muted hover:bg-destructive/80 hover:text-white"
               aria-label="Close"
+              className={windowControlCloseButtonClassName}
             >
-              <IconX size={12} />
-            </Button>
+              <IconX size={11} />
+            </button>
           </div>
         </div>
       </header>

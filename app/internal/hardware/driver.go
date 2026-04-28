@@ -38,6 +38,8 @@ type ScreenDriver interface {
 	// connect attempt.
 	Configure(cfg ScreenConfig)
 	SetLayout(layout *dashboard.DashLayout)
+	SetGlobalTheme(theme widgets.DashTheme)
+	SetGlobalDomainPalette(domain widgets.DomainPalette)
 	SetGlobalPrefs(prefs widgets.FormatPreferences)
 	SetGlobalTypography(typography widgets.TypographySettings)
 	SetProfile(profile dashboard.RenderProfile)

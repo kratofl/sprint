@@ -1,4 +1,4 @@
-﻿package widgets
+package widgets
 
 const WidgetGear WidgetType = "gear"
 
@@ -15,7 +15,7 @@ func (gearWidget) Meta() WidgetMeta {
 
 func (gearWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: BindingCarGearStr, Style: TextStyle{
+		Text{Binding: BindingCarGearStr, X: 0.5, Y: 0.5, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.7, IsBold: true,
 			HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
 	}

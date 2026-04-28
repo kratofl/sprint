@@ -71,6 +71,10 @@ type baseDriver struct {
 	// currentGlobalPrefs stores the latest global format preferences so they can
 	// be applied to a newly created Painter in ensureDashSource.
 	currentGlobalPrefs atomic.Pointer[widgets.FormatPreferences]
+	// currentGlobalTheme stores the latest global dash palette.
+	currentGlobalTheme atomic.Pointer[widgets.DashTheme]
+	// currentGlobalDomain stores the latest global domain palette.
+	currentGlobalDomain atomic.Pointer[widgets.DomainPalette]
 	// currentGlobalTypography stores the latest global dash typography defaults.
 	currentGlobalTypography atomic.Pointer[widgets.TypographySettings]
 	// currentProfile stores app-level profile strings such as driver name/number.
@@ -179,6 +183,28 @@ func (d *baseDriver) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	d.forceRedraw.Store(true)
 }
 
+// SetGlobalTheme stores the global dash palette and applies it to the current Painter.
+func (d *baseDriver) SetGlobalTheme(theme widgets.DashTheme) {
+	d.currentGlobalTheme.Store(&theme)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalTheme(theme)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetGlobalDomainPalette stores the global domain palette and applies it to the current Painter.
+func (d *baseDriver) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	d.currentGlobalDomain.Store(&domain)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalDomainPalette(domain)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
 // SetGlobalTypography stores the global dash typography defaults and applies
 // them to the current Painter.
 func (d *baseDriver) SetGlobalTypography(typography widgets.TypographySettings) {
@@ -260,6 +286,12 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	p := dashboard.NewPainter(w, h)
 	if gp := d.currentGlobalPrefs.Load(); gp != nil {
 		p.SetGlobalPrefs(*gp)
+	}
+	if gt := d.currentGlobalTheme.Load(); gt != nil {
+		p.SetGlobalTheme(*gt)
+	}
+	if gd := d.currentGlobalDomain.Load(); gd != nil {
+		p.SetGlobalDomainPalette(*gd)
 	}
 	if gt := d.currentGlobalTypography.Load(); gt != nil {
 		p.SetGlobalTypography(*gt)

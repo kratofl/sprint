@@ -3,22 +3,14 @@ import {
   EventsOff,
 } from '../../wailsjs/runtime/runtime'
 import type { DesktopEventMap, DesktopEventName } from './desktopEvents'
-
-type WindowWithWails = Window & {
-  go?: {
-    main?: {
-      App?: object
-    }
-  }
-}
+import { hasDesktopAppBridge, hasDesktopEventBridge, type DesktopRuntimeWindowLike } from './desktopRuntime'
 
 type DesktopEventHandler<T> = [T] extends [undefined]
   ? () => void
   : (payload: T) => void
 
 export function isDesktopRuntimeAvailable(): boolean {
-  const runtimeWindow = window as WindowWithWails
-  return Boolean(runtimeWindow.go?.main?.App)
+  return hasDesktopAppBridge(window as DesktopRuntimeWindowLike)
 }
 
 export function runDesktopCall<T>(methodName: string, invoke: () => Promise<T>): Promise<T> {
@@ -37,6 +29,9 @@ export function onEvent<E extends DesktopEventName>(
   event: E,
   callback: DesktopEventHandler<DesktopEventMap[E]>,
 ): () => void {
+  if (!hasDesktopEventBridge(window as DesktopRuntimeWindowLike)) {
+    return () => {}
+  }
   const cancel = EventsOn(event, callback as (...data: unknown[]) => void)
   return () => {
     if (typeof cancel === 'function') {

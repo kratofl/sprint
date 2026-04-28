@@ -129,7 +129,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
         <select
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         >
           {def.options.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -141,7 +141,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="number"
           value={current}
           onChange={e => onChange(Number(e.target.value))}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       )}
       {def.type === 'boolean' && (
@@ -151,7 +151,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
             'flex items-center gap-2 px-2 py-1 border font-mono text-[10px] transition-colors w-full text-left',
             current === 'true'
               ? 'border-accent bg-accent/10 text-accent'
-              : 'border-border text-text-muted hover:border-border-strong'
+              : 'border-border text-text-muted hover:border-border'
           )}
         >
           <span className={cn('w-3 h-3 border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
@@ -163,7 +163,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
         />
       )}
     </div>
@@ -195,7 +195,7 @@ function FontSelectRow({ label, value, onChange, onReset }: {
           const v = e.target.value as FontStyle
           if (v) onChange(v); else onReset()
         }}
-        className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+        className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
       >
         <option value="">— default —</option>
         {FONT_OPTIONS.map(opt => (
@@ -235,7 +235,7 @@ function FontSizeRow({ value, onChange, onReset }: {
           const v = parseFloat(e.target.value)
           if (!isNaN(v) && v > 0) onChange(v); else onReset()
         }}
-        className="bg-[#141414] border border-border px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent w-full"
+        className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
       />
     </div>
   )
@@ -289,7 +289,7 @@ function ColorRow({ label, value, onChange, onReset }: {
             key={hex!}
             onBlur={e => handleHexInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleHexInput(e.currentTarget.value) }}
-            className="w-16 bg-background border border-border px-1 py-0.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+            className="w-16 border border-border bg-bg-shell px-1 py-0.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
           />
 
           <button
@@ -305,7 +305,7 @@ function ColorRow({ label, value, onChange, onReset }: {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="font-mono text-[9px] text-text-disabled hover:text-foreground border border-dashed border-border hover:border-border-strong px-2 py-0.5 transition-colors"
+          className="font-mono text-[9px] text-text-disabled hover:text-foreground border border-dashed border-border hover:border-border px-2 py-0.5 transition-colors"
           title="Set color"
         >
           <input

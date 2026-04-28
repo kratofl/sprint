@@ -607,10 +607,57 @@ export namespace input {
 
 export namespace settings {
 	
+	export class DashEditorPanelPreferences {
+	    open: boolean;
+	    pinned: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DashEditorPanelPreferences(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.open = source["open"];
+	        this.pinned = source["pinned"];
+	    }
+	}
+	export class DashEditorUIPreferences {
+	    palette: DashEditorPanelPreferences;
+	    inspector: DashEditorPanelPreferences;
+	
+	    static createFrom(source: any = {}) {
+	        return new DashEditorUIPreferences(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.palette = this.convertValues(source["palette"], DashEditorPanelPreferences);
+	        this.inspector = this.convertValues(source["inspector"], DashEditorPanelPreferences);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Settings {
 	    updateChannel: string;
 	    driverName?: string;
 	    driverNumber?: string;
+	    dashEditorUI: DashEditorUIPreferences;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -621,7 +668,26 @@ export namespace settings {
 	        this.updateChannel = source["updateChannel"];
 	        this.driverName = source["driverName"];
 	        this.driverNumber = source["driverNumber"];
+	        this.dashEditorUI = this.convertValues(source["dashEditorUI"], DashEditorUIPreferences);
 	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

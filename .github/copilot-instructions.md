@@ -2,8 +2,9 @@
 
 ## Operating Rules
 
-- Stay inside the repository root. Do not read, write, or execute outside this repo unless the user explicitly asks.
-- Do not install system-level tools or packages without user consent.
+- Stay inside the repository root. Do not read, write, execute, or otherwise operate outside this repo unless the user explicitly asks.
+- Do not install tools, CLIs, language servers, or other system-level software.
+- Only install project dependencies through the repo's package managers when needed for the apps, such as `pnpm` packages or Go module dependencies.
 - Prefer existing repo tooling and scripts over ad hoc setup.
 - Prefer precise code navigation tools first; use text search when needed.
 - Do not add decorative banner comments or separator comments to source or config files.

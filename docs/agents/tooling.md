@@ -16,6 +16,13 @@
 - Prefer OIDC over long-lived cloud secrets.
 - Cache Go and Node dependencies with explicit `hashFiles`-based keys.
 
+### Frontend Testing
+
+- Use Playwright MCP for frontend/browser testing and UI-flow debugging.
+- Browser-safe desktop UI checks use `http://localhost:5173/` while `cd app && wails dev` is running.
+- Desktop-bound flows should use `make dev-app-agent`, then `pwsh -File .\app\scripts\wait-desktop-browser.ps1`, then open `http://127.0.0.1:34115` or the port from `SPRINT_WAILS_DEVSERVER_PORT` with Playwright MCP.
+- Use [`docs/agents/examples/playwright-desktop-mcp.json`](./examples/playwright-desktop-mcp.json) as the baseline MCP config, then navigate Playwright MCP to the Wails browser surface URL.
+
 ### Docker
 
 - Use multi-stage builds for Go and Node images.
