@@ -1,29 +1,37 @@
+import { useEffect, useState } from 'react'
 import {
   DeltaBar,
   RPMBar,
   InputTrace,
 } from '@sprint/ui'
-import type { TelemetryFrame } from '@sprint/types'
+import type { TelemetryFrame, FormatPreferences } from '@sprint/types'
 import { cn } from '@sprint/ui'
+import { dashAPI } from '@/lib/dash'
+import { fmtLap, fmtDelta as _fmtDelta, fmtSpeed, speedUnitLabel, resolvedPrefs } from '@/lib/format'
 
 export interface TelemetryProps {
   frame: TelemetryFrame | null
 }
 
-// Go LapState sends times in seconds (float64).
-function fmt(sec: number | undefined): string {
-  if (!sec || sec <= 0) return '—:——.———'
-  const m = Math.floor(sec / 60)
-  const s = (sec % 60).toFixed(3).padStart(6, '0')
-  return `${m}:${s}`
-}
-
-function fmtDelta(sec: number): string {
-  const s = Math.abs(sec).toFixed(3)
-  return sec >= 0 ? `+${s}` : `-${s}`
-}
-
 export default function Telemetry({ frame }: TelemetryProps) {
+  const [formatPrefs, setFormatPrefs] = useState<FormatPreferences | undefined>(undefined)
+
+  useEffect(() => {
+    dashAPI.getGlobalSettings()
+      .then(gs => setFormatPrefs(gs.formatPreferences))
+      .catch(() => {})
+  }, [])
+
+  const prefs = resolvedPrefs(formatPrefs)
+
+  function fmt(sec: number | undefined): string {
+    return fmtLap(sec, prefs)
+  }
+
+  function fmtDelta(sec: number): string {
+    return _fmtDelta(sec, prefs)
+  }
+
   const tires = frame?.tires ?? []
   const TIRE_LABELS = [
     { pos: 'POS_FL', name: 'FRONT_LEFT' },
@@ -54,8 +62,8 @@ export default function Telemetry({ frame }: TelemetryProps) {
               <div className="text-right">
                 <span className="terminal-header block mb-1 text-[9px] text-text-muted">Velocity</span>
                 <span className="font-mono text-3xl font-bold leading-none">
-                  {frame ? (frame.car.speedMS * 3.6).toFixed(1) : '——'}
-                  <span className="text-[10px] text-text-muted"> KM/H</span>
+                   {frame ? fmtSpeed(frame.car.speedMS, prefs) : '——'}
+                   <span className="text-[10px] text-text-muted"> {speedUnitLabel(prefs)}</span>
                 </span>
               </div>
               <div className="text-right">
@@ -92,17 +100,17 @@ export default function Telemetry({ frame }: TelemetryProps) {
         {/* Right: chrono — col-span-3 */}
         <section className="col-span-3 flex flex-col overflow-hidden">
           <div className="border-b border-border p-4">
-            <h3 className="terminal-header mb-4 text-[10px] font-bold text-text-muted">
+              <h3 className="terminal-header mb-4 text-[10px] font-bold text-text-muted">
               CHRONO_SUMMARY
             </h3>
             <div className="space-y-1">
-              <div className="flex items-center justify-between border border-border bg-white/[0.02] p-3">
+              <div className="surface-panel flex items-center justify-between p-3">
                 <span className="font-mono text-[9px] text-text-muted">P1_BEST</span>
                 <span className="font-mono text-lg font-bold text-secondary">
                   {fmt(frame?.lap.bestLapTime)}
                 </span>
               </div>
-              <div className="flex items-center justify-between border border-border bg-white/[0.01] p-3">
+              <div className="surface-inline flex items-center justify-between p-3">
                 <span className="font-mono text-[9px] text-text-muted">L_SESS</span>
                 <span className="font-mono text-lg font-bold">
                   {fmt(frame?.lap.lastLapTime)}
@@ -111,7 +119,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
               {frame && frame.lap.targetLapTime > 0 && (
                 <div className="mt-2">
                   <span className="terminal-header text-[9px] text-text-muted block mb-1">Δ_TARGET</span>
-                  <DeltaBar delta={frame.lap.currentLapTime - frame.lap.targetLapTime} />
+                  <DeltaBar delta={frame.lap.delta} />
                 </div>
               )}
             </div>
@@ -120,7 +128,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
           {/* Lap table */}
           <div className="flex-1 overflow-y-auto">
             <table className="w-full font-mono text-[10px]">
-              <thead className="sticky top-0 border-b border-border bg-background">
+              <thead className="sticky top-0 border-b border-border bg-bg-shell">
                 <tr className="text-text-muted/60">
                   <th className="px-4 py-2 text-left font-normal uppercase">Lap</th>
                   <th className="px-4 py-2 text-left font-normal uppercase">Time</th>
@@ -130,14 +138,14 @@ export default function Telemetry({ frame }: TelemetryProps) {
               <tbody className="divide-y divide-border/30">
                 {frame?.lap.lastLapTime ? (
                   <>
-                    <tr className="hover:bg-white/[0.02]">
+                    <tr className="hover:bg-bg-panel/60">
                       <td className="px-4 py-2.5 text-text-muted">L</td>
                       <td className="px-4 py-2.5 font-bold">{fmt(frame.lap.lastLapTime)}</td>
                       <td className={cn('px-4 py-2.5 text-right', frame.lap.lastLapTime <= (frame.lap.bestLapTime || Infinity) ? 'text-secondary' : 'text-primary')}>
                         {frame.lap.bestLapTime ? fmtDelta(frame.lap.lastLapTime - frame.lap.bestLapTime) : '——'}
                       </td>
                     </tr>
-                    <tr className="hover:bg-white/[0.02]">
+                    <tr className="hover:bg-bg-panel/60">
                       <td className="px-4 py-2.5 text-text-muted">PB</td>
                       <td className="px-4 py-2.5 font-bold text-secondary">{fmt(frame.lap.bestLapTime)}</td>
                       <td className="px-4 py-2.5 text-right text-secondary">——</td>

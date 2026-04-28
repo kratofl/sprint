@@ -2,6 +2,8 @@ package widgets
 
 import (
 	"testing"
+
+	"github.com/kratofl/sprint/pkg/dto"
 )
 
 func TestWidgetCatalog(t *testing.T) {
@@ -34,6 +36,22 @@ func TestWidgetCatalog(t *testing.T) {
 		}
 	})
 
+	t.Run("text widget has binding and format configDefs", func(t *testing.T) {
+		m, ok := byType[WidgetText]
+		if !ok {
+			t.Fatal("text widget not in catalog")
+		}
+		keys := make(map[string]bool)
+		for _, def := range m.ConfigDefs {
+			keys[def.Key] = true
+		}
+		for _, want := range []string{"content", "binding", "format", "color", "font_scale"} {
+			if !keys[want] {
+				t.Errorf("text widget missing configDef with key %q", want)
+			}
+		}
+	})
+
 	t.Run("flags widget is idle-capable", func(t *testing.T) {
 		m, ok := byType[WidgetFlags]
 		if !ok {
@@ -55,10 +73,10 @@ func TestWidgetCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("all widgets have non-empty label and category", func(t *testing.T) {
+	t.Run("all widgets have non-empty name and category", func(t *testing.T) {
 		for _, m := range catalog {
-			if m.Label == "" {
-				t.Errorf("widget %q has empty label", m.Type)
+			if m.Name == "" {
+				t.Errorf("widget %q has empty name", m.Type)
 			}
 			if m.Category == "" {
 				t.Errorf("widget %q has empty category", m.Type)
@@ -89,11 +107,285 @@ func TestWidgetCatalog(t *testing.T) {
 		}
 	})
 
-	t.Run("all widgets have draw function", func(t *testing.T) {
+	t.Run("all widgets are dispatchable via registry", func(t *testing.T) {
 		for _, m := range catalog {
-			if m.Fn == nil {
-				t.Errorf("widget %q has nil draw function", m.Type)
+			if _, ok := widgetRegistry[m.Type]; !ok {
+				t.Errorf("widget %q is in catalog metadata but missing from registry", m.Type)
 			}
+		}
+	})
+
+	t.Run("all widgets return non-nil Definition", func(t *testing.T) {
+		frame := &dto.TelemetryFrame{}
+		for _, m := range catalog {
+			w, ok := Get(m.Type)
+			if !ok {
+				t.Errorf("widget %q missing from registry", m.Type)
+				continue
+			}
+			elems := w.Definition(nil)
+			if elems == nil {
+				t.Errorf("widget %q returned nil from Definition(nil)", m.Type)
+			}
+			_ = frame
+		}
+	})
+
+	t.Run("tc widget Definition with config", func(t *testing.T) {
+		w, ok := Get(WidgetTC)
+		if !ok {
+			t.Fatal("tc widget not in registry")
+		}
+		cases := []struct {
+			mode        string
+			wantLabel   string
+			wantBinding Binding
+		}{
+			{mode: "tc1", wantLabel: "TC1", wantBinding: BindingElectronicsTC},
+			{mode: "tc2_cut", wantLabel: "TC2", wantBinding: BindingElectronicsTCCut},
+			{mode: "tc3_slip", wantLabel: "TC3", wantBinding: BindingElectronicsTCSlip},
+		}
+		for _, tc := range cases {
+			elems := w.Definition(map[string]any{"tcMode": tc.mode})
+			if len(elems) == 0 {
+				t.Errorf("tc widget mode=%q returned no elements", tc.mode)
+				continue
+			}
+			if len(elems) < 2 {
+				t.Errorf("tc widget mode=%q returned %d elements, want >= 2", tc.mode, len(elems))
+				continue
+			}
+			if elems[0].(Text).Text != tc.wantLabel {
+				t.Errorf("tc widget mode=%q label = %q, want %q", tc.mode, elems[0].(Text).Text, tc.wantLabel)
+			}
+			if elems[1].(Text).Binding != tc.wantBinding {
+				t.Errorf("tc widget mode=%q binding = %q, want %q", tc.mode, elems[1].(Text).Binding, tc.wantBinding)
+			}
+		}
+	})
+}
+
+func TestResolve(t *testing.T) {
+	frame := &dto.TelemetryFrame{
+		Car: dto.CarState{SpeedMS: 30, Gear: 3, RPM: 8000},
+		Tires: [4]dto.TireState{
+			{TempInner: 88, TempMiddle: 90, TempOuter: 92, TempCore: 94},
+			{TempInner: 89, TempMiddle: 91, TempOuter: 93, TempCore: 95},
+			{TempInner: 84, TempMiddle: 86, TempOuter: 88, TempCore: 90},
+			{TempInner: 85, TempMiddle: 87, TempOuter: 89, TempCore: 91},
+		},
+		Lap:         dto.LapState{CurrentLap: 5, CurrentLapTime: 90.123, BestLapTime: 88.456},
+		Race:        dto.RaceState{Position: 2, GapAhead: 0.321},
+		Electronics: dto.Electronics{TC: 4, ABS: 2},
+		Session:     dto.Session{Track: "Monza", Car: "Ferrari"},
+		Energy:      dto.EnergyState{SoC: 0.75},
+		Penalties:   dto.Penalties{Incidents: 1},
+		Flags:       dto.Flags{Yellow: true},
+	}
+
+	cases := []struct {
+		path string
+		want any
+	}{
+		{"car.speedMS", float32(30)},
+		{"car.gear", int8(3)},
+		{"car.rpm", float32(8000)},
+		{"lap.currentLap", 5},
+		{"lap.currentLapTime", 90.123},
+		{"lap.bestLapTime", 88.456},
+		{"race.position", uint8(2)},
+		{"race.gapAhead", float32(0.321)},
+		{"electronics.tc", uint8(4)},
+		{"electronics.abs", uint8(2)},
+		{"session.track", "Monza"},
+		{"session.car", "Ferrari"},
+		{"energy.soc", float32(0.75)},
+		{"penalties.incidents", int16(1)},
+		{"flags.yellow", true},
+		{"tires.fl.avgTemp", float64(90)},
+		{"tires.rr.avgTemp", float64(87)},
+		{"tires.fl.coreTemp", float32(94)},
+		{"tires.rr.coreTemp", float32(91)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			got, ok := Resolve(frame, Binding(tc.path))
+			if !ok {
+				t.Fatalf("Resolve(%q) returned ok=false", tc.path)
+			}
+			if got != tc.want {
+				t.Errorf("Resolve(%q) = %v (%T), want %v (%T)", tc.path, got, got, tc.want, tc.want)
+			}
+		})
+	}
+
+	t.Run("derived car.speedKPH", func(t *testing.T) {
+		got, ok := Resolve(frame, "car.speedKPH")
+		if !ok {
+			t.Fatal("Resolve(car.speedKPH) returned ok=false")
+		}
+		want := float32(30) * 3.6
+		if got != want {
+			t.Errorf("car.speedKPH = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("unknown path returns false", func(t *testing.T) {
+		if _, ok := Resolve(frame, "does.not.exist"); ok {
+			t.Error("expected ok=false for unknown path")
+		}
+	})
+}
+
+func TestTyreTempWidgetUsesCoreBindings(t *testing.T) {
+	w, ok := Get(WidgetTyreTemp)
+	if !ok {
+		t.Fatal("tyre temp widget not in registry")
+	}
+
+	elems := w.Definition(nil)
+	if len(elems) != 1 {
+		t.Fatalf("tyre temp widget returned %d elements, want 1", len(elems))
+	}
+
+	grid, ok := elems[0].(Grid)
+	if !ok {
+		t.Fatalf("tyre temp widget element type = %T, want Grid", elems[0])
+	}
+
+	got := []Binding{
+		grid.Cells[0].Binding,
+		grid.Cells[1].Binding,
+		grid.Cells[2].Binding,
+		grid.Cells[3].Binding,
+	}
+	want := []Binding{
+		BindingTiresFLCoreTemp,
+		BindingTiresFRCoreTemp,
+		BindingTiresRLCoreTemp,
+		BindingTiresRRCoreTemp,
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("grid cell %d binding = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFormatValue(t *testing.T) {
+	def := DefaultFormatPreferences()
+	cases := []struct {
+		name   string
+		val    any
+		format Format
+		prefs  FormatPreferences
+		want   string
+	}{
+		{"lap named", 90.0, FormatLap, def, "1:30.000"},
+		{"lap M:SS.mm", 90.0, FormatLap, FormatPreferences{LapFormat: LapFormatMSSmm}, "1:30.00"},
+		{"lap SS.mmm", 90.5, FormatLap, FormatPreferences{LapFormat: LapFormatSSmmm}, "90.500"},
+		{"sector named", 30.5, FormatSector, def, "30.500"},
+		{"speed kph", 30.0, FormatSpeed, def, "108"},
+		{"speed mph", 30.0, FormatSpeed, FormatPreferences{SpeedUnit: SpeedMPH}, "67"},
+		{"int named", 42.0, FormatInt, def, "42"},
+		{"float named", 1.2345, FormatFloat, def, "1.23"},
+		{"float1 named", 1.2345, FormatFloat1, def, "1.2"},
+		{"float2 named", 1.2345, FormatFloat2, def, "1.23"},
+		{"bool true", true, FormatBool, def, "true"},
+		{"bool false", false, FormatBool, def, "false"},
+		{"sprintf pattern", 42.0, "%.0f km/h", def, "42 km/h"},
+		{"empty format", "hello", "", def, "hello"},
+		{"int via sprint", 7, "", def, "7"},
+		{"delta positive 3dp", 1.234, FormatDelta, def, "+1.234"},
+		{"delta negative 3dp", -0.456, FormatDelta, def, "-0.456"},
+		{"delta positive 2dp", 1.234, FormatDelta, FormatPreferences{DeltaPrecision: DeltaPrec2}, "+1.23"},
+		{"delta rounds positive near zero to zero", 0.004, FormatDelta, FormatPreferences{DeltaPrecision: DeltaPrec2}, "0.00"},
+		{"delta rounds negative zero to zero", -0.0004, FormatDelta, def, "0.000"},
+		{"gap nonzero", float32(1.5), FormatGap, def, "+1.500"},
+		{"gap zero", float32(0), FormatGap, def, "---"},
+		{"gap rounds near zero to placeholder", 0.0004, FormatGap, def, "---"},
+		{"session hours", 3661.0, FormatSession, def, "1:01:01"},
+		{"session minutes", 90.0, FormatSession, def, "01:30"},
+		{"temp celsius", 85.0, FormatTemp, def, "85.0"},
+		{"temp fahrenheit", 100.0, FormatTemp, FormatPreferences{TempUnit: TempFahrenheit}, "212.0"},
+		{"pressure kpa", 165.0, FormatPressure, def, "165.0"},
+		{"pressure psi", 165.0, FormatPressure, FormatPreferences{PressureUnit: PressurePSI}, "23.9"},
+		{"pressure bar", 165.0, FormatPressure, FormatPreferences{PressureUnit: PressureBar}, "1.650"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatValue(tc.val, tc.format, tc.prefs)
+			if got != tc.want {
+				t.Errorf("FormatValue(%v, %q, prefs) = %q, want %q", tc.val, tc.format, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFmtLapWithRoundingBoundaries(t *testing.T) {
+	t.Run("MSSmmm carries to next minute cleanly", func(t *testing.T) {
+		got := FmtLapWith(59.9996, LapFormatMSSmmm)
+		if got != "1:00.000" {
+			t.Errorf("FmtLapWith(59.9996, MSSmmm) = %q, want %q", got, "1:00.000")
+		}
+	})
+
+	t.Run("MSSmm carries to next minute cleanly", func(t *testing.T) {
+		got := FmtLapWith(59.996, LapFormatMSSmm)
+		if got != "1:00.00" {
+			t.Errorf("FmtLapWith(59.996, MSSmm) = %q, want %q", got, "1:00.00")
+		}
+	})
+}
+
+func TestResolveWithPrefsDeltaSign(t *testing.T) {
+	frame := &dto.TelemetryFrame{Lap: dto.LapState{Delta: 0.0}}
+
+	t.Run("precision 2 rounds near zero to neutral", func(t *testing.T) {
+		frame.Lap.Delta = 0.004
+		pos, ok := ResolveWithPrefs(frame, "lap.deltaPositive", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		if !ok {
+			t.Fatal("ResolveWithPrefs(lap.deltaPositive) returned ok=false")
+		}
+		neg, ok := ResolveWithPrefs(frame, "lap.deltaNegative", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		if !ok {
+			t.Fatal("ResolveWithPrefs(lap.deltaNegative) returned ok=false")
+		}
+		if pos.(bool) || neg.(bool) {
+			t.Fatalf("expected neutral sign at 2dp for delta=0.004, got pos=%v neg=%v", pos, neg)
+		}
+	})
+
+	t.Run("precision 2 keeps slower/faster away from zero", func(t *testing.T) {
+		frame.Lap.Delta = 0.006
+		pos, _ := ResolveWithPrefs(frame, "lap.deltaPositive", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		neg, _ := ResolveWithPrefs(frame, "lap.deltaNegative", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		if !pos.(bool) || neg.(bool) {
+			t.Fatalf("expected slower sign for delta=0.006 at 2dp, got pos=%v neg=%v", pos, neg)
+		}
+
+		frame.Lap.Delta = -0.006
+		pos, _ = ResolveWithPrefs(frame, "lap.deltaPositive", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		neg, _ = ResolveWithPrefs(frame, "lap.deltaNegative", FormatPreferences{DeltaPrecision: DeltaPrec2})
+		if pos.(bool) || !neg.(bool) {
+			t.Fatalf("expected faster sign for delta=-0.006 at 2dp, got pos=%v neg=%v", pos, neg)
+		}
+	})
+
+	t.Run("precision 3 uses tighter zero band", func(t *testing.T) {
+		frame.Lap.Delta = 0.0004
+		pos, _ := ResolveWithPrefs(frame, "lap.deltaPositive", FormatPreferences{DeltaPrecision: DeltaPrec3})
+		if pos.(bool) {
+			t.Fatalf("expected neutral sign for delta=0.0004 at 3dp, got pos=%v", pos)
+		}
+
+		frame.Lap.Delta = 0.0006
+		pos, _ = ResolveWithPrefs(frame, "lap.deltaPositive", FormatPreferences{DeltaPrecision: DeltaPrec3})
+		if !pos.(bool) {
+			t.Fatalf("expected slower sign for delta=0.0006 at 3dp, got pos=%v", pos)
 		}
 	})
 }

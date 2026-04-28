@@ -1,102 +1,84 @@
-# Copilot Instructions
+# Sprint Repository Instructions
 
-## General Rules
+## Operating Rules
 
-- Do **not** install system-level programs, applications, or packages on the host machine without explicit user consent.
-- Do **not** read, write, or execute anything outside the repository root directory.
-- Prefer **LSP-based tools** (go to definition, find references, hover, etc.) for code navigation. Fall back to grep/glob only as a last resort.
-- Use `gh` CLI for GitHub operations instead of MCP GitHub tools, unless explicitly requested.
-- You **may** run `git commit` automatically. Every commit must include: `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
-- Do **not** use decorative separator comment lines or banner comments in source/config files.
+- Stay inside the repository root. Do not read, write, execute, or otherwise operate outside this repo unless the user explicitly asks.
+- Do not install tools, CLIs, language servers, or other system-level software.
+- Only install project dependencies through the repo's package managers when needed for the apps, such as `pnpm` packages or Go module dependencies.
+- Prefer existing repo tooling and scripts over ad hoc setup.
+- Prefer precise code navigation tools first; use text search when needed.
+- Do not add decorative banner comments or separator comments to source or config files.
 
-## Project Overview
+## Work Priority
 
-Sim racing telemetry platform:
+- Default focus is the desktop app in `app/`.
+- Do not expand `api/` or `web/` unless the user asks, or the change affects shared contracts, shared UI, or shared tokens.
+- If a change impacts both desktop and web, update both surfaces or call out the missing follow-up explicitly.
 
-| Component | Path | Stack | Role |
-|---|---|---|---|
-| Desktop app | `/app` | Wails (Go + React/TS) | Reads game telemetry, renders VoCore display, hosts Race Engineer WS server, syncs with API |
-| API server | `/api` | Go `net/http` | REST + WS relay for remote engineers, DB, auth |
-| Web app | `/web` | Next.js (App Router) | Telemetry analysis, dash editor, engineer portal. Pure frontend — no backend logic |
-| Shared Go | `/pkg` | Go | Unified DTO types (`pkg/dto`), GameAdapter interface (`pkg/games`) |
-| Shared TS | `/packages` | React/TS | `@sprint/ui` components, `@sprint/types` DTO mirrors, `@sprint/tokens` design tokens |
+## Monorepo Map
 
-## Current Development Focus
+| Path | Stack | Purpose |
+|---|---|---|
+| `app/` | Wails, Go, React, TypeScript | Primary desktop application |
+| `api/` | Go, `net/http` | REST API, auth, WebSocket relay |
+| `web/` | Next.js App Router | Browser UI for analysis, engineer portal, setup flows |
+| `pkg/` | Go | Shared DTOs and game adapter interfaces |
+| `packages/ui` | React, TypeScript | Shared UI components |
+| `packages/types` | TypeScript | DTO mirrors of `pkg/dto` |
+| `packages/tokens` | CSS, Tailwind | Shared design tokens |
 
-> **Desktop app (`/app`) is the primary focus.** Do not expand `/api` or `/web` unless the user explicitly asks.
-> Exception: when a change affects shared concerns (`@sprint/ui`, `@sprint/types`, `@sprint/tokens`, API contracts, data model) — apply to both surfaces or note what `/web` will need.
+## Architecture Rules
 
-## Architecture
+- The desktop app is authoritative for live session state and engineer commands.
+- `pkg/dto` is the source of truth for shared telemetry and engineer payloads.
+- Keep SQL inside `api/internal/store/`.
+- Keep platform-specific code out of `packages/*`.
+- Extract reusable UI to `packages/ui` when both desktop and web benefit.
 
-Data flow: `Sim Game → (UDP) → Desktop App → (USB serial PNG) → VoCore wheel screen`
-                                          `→ (WebSocket) → LAN Engineers`
-                                          `→ (HTTP/WS) → API Server → (WS relay) → Remote Engineers`
-                                          `                           → (HTTP) → Web App`
+## Frontend Boundaries
 
-The desktop app is **authoritative** — it applies engineer commands and can reject/override them.
+- Use `@sprint/tokens` as the single source of truth for colors, surfaces, and typography.
+- Use orange `#ff906c` for driver-primary intent and cyan `#5af8fb` for engineer/comparison intent.
+- Do not give orange and cyan equal visual weight on the same element.
+- Desktop-only UI belongs in `app/frontend/src/components/`.
+- Web-only UI belongs in `web/components/`.
 
-## Key Features
+## Validation Commands
 
-**VoCore Wheel Display:** Go backend renders PNG frames → USB serial (CDC ACM) → VoCore screen embedded in steering wheel. Device paths: `/dev/cu.usbmodemXXXX` (macOS), `/dev/ttyACM0` (Linux), `COM3` (Windows). Frames are length-prefixed PNG. Layout controlled by dash config.
+- Root install: `pnpm install`
+- Web dev: `make dev-web`
+- API dev: `make dev-api`
+- Desktop dev: `cd app && wails dev`
+- Go tests: `make test`
+- API tests only: `make test-api`
+- Shared Go tests only: `make test-pkg`
+- Lint: `make lint`
+- Format: `make fmt`
+- Web build: `make build-web`
+- API build: `make build-api`
+- Desktop build: `make build-app`
 
-**Set Target Lap (wheel button):** On press, finds the most recent valid lap as delta reference. Valid = not out/in lap, no yellow flag/SC, no track limits violation, within ±5% of session best. Triggers VoCore re-render + engineer broadcast.
+Run the smallest relevant validation for the files you touched. Do not claim validation you did not run.
+- Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal user-level Go cache.
 
-**Race Engineer Mode:** Driver shares a session link (LAN or remote via web). Engineers receive live telemetry WS stream and can push commands (target lap, pit notes, dash params). Desktop app is authoritative. Command status: pending → applied/rejected.
+## Commit Rules
 
-## Project Structure
+- Check the current branch before committing.
+- If currently on `main`, create a descriptive feature branch before committing.
+- Use `gh` CLI for GitHub operations unless the user requests a different tool.
+- When working on a GitHub issue, leave useful implementation notes, open questions, blockers, or
+  decisions in issue comments.
+- If there is an active or assigned PR for the same work, add the relevant context there too when
+  it helps review or merge decisions.
+- Keep GitHub comments high-signal rather than posting routine progress noise.
+- If creating a commit on behalf of Copilot-driven workflows, include:
+  `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 
-```
-/sprint
-├── go.work              ← Go workspace: ./app ./api ./pkg
-├── package.json         ← pnpm workspace root
-├── turbo.json           ← tokens → ui/types → [web, app/frontend]
-├── pkg/                 ← shared Go: dto/ (telemetry + engineer types), games/ (GameAdapter + adapters)
-├── api/                 ← Go API: internal/{server,handler,authhandler,relay,invite,store,auth}
-├── packages/
-│   ├── ui/              ← @sprint/ui — shared React components (primitives/ + telemetry/)
-│   ├── types/           ← @sprint/types — TS mirrors of pkg/dto
-│   └── tokens/          ← @sprint/tokens — Tailwind config, globals.css, CSS variables
-├── web/                 ← Next.js: app/{sessions,engineer,setups,dash}
-└── app/                 ← Wails desktop app
-    ├── main.go + app.go ← Wails entry point + bindings
-    ├── internal/        ← coordinator, devices, render, vocore, engineer, wheel, dash, logger, sync, setup
-    └── frontend/        ← React/TS (embedded via go:embed)
-```
+## Reference Files
 
-Go workspace: three modules sharing `pkg/dto` and `pkg/games` via workspace resolution.
-
-## Module Conventions
-
-- **`/pkg`**: Single source of truth for telemetry/engineer DTO types. `GameAdapter` interface + per-game adapters. No application logic.
-- **`/api`**: `net/http` server. The `relay` package manages WS connections for remote engineers. The `store` package owns all DB operations — no SQL outside it.
-- **`/app`**: See `wails.instructions.md` for lifecycle, bindings, coordinator pattern, and internal packages.
-- **`/web`**: See `nextjs.instructions.md`. Pure frontend, proxies `/api/*` to Go API via `next.config.ts` rewrites.
-
-## Shared TypeScript (`/packages`)
-
-- `@sprint/tokens` — single source of truth for design tokens. Imported by both apps.
-- `@sprint/types` — kept in sync manually with `pkg/dto/*.go`.
-- `@sprint/ui` — write reusable components here first, consume via `@sprint/ui`.
-
-**Component ownership:**
-
-| Location | For |
-|---|---|
-| `packages/ui/…/primitives/` | Reusable atoms: `Button`, `Badge`, `Card` |
-| `packages/ui/…/telemetry/` | Domain display: `LapTime`, `DeltaBar`, `TireTemp` |
-| `app/frontend/src/components/` | Desktop-only (Wails bindings, native chrome) |
-| `web/components/` | Web-only (Next.js server components, routing) |
-
-**Rules:** Extract to `@sprint/ui` if both apps need it. No platform code (`window.go`, Next.js imports) in `/packages`. Both apps' Tailwind configs include `packages/ui/src/**` in `content`. Use `cn()` + CVA for variants.
-
-## Design System
-
-Full reference: [`docs/DESIGN_SYSTEM.md`](../docs/DESIGN_SYSTEM.md)
-
-**Color semantics:** Orange `#ff906c` = driver/primary. Cyan `#5af8fb` = engineer/comparison. Never same visual weight on one element.
-Other: Background `#0a0a0a`, Foreground `#ffffff`, Muted `#808080`, Success `#34D399`, Warning `#FBBF24`, Danger `#F87171`.
-
-**Surfaces** (in `packages/tokens/globals.css`): `.surface`, `.surface-elevated`, `.surface-overlay`, `.surface-active` (orange), `.surface-secondary` (cyan), `.surface-success`, `.surface-warning`, `.surface-destructive`, `.surface-tertiary`. `.glass` / `.glass-overlay` for floating overlays only.
-
-**Typography:** `Space Grotesk` for UI, `JetBrains Mono` for data. Hero stats: `text-3xl font-bold font-mono tabular-nums`.
-
+- Desktop architecture: `.github/instructions/wails.instructions.md`
+- Next.js guidance: `.github/instructions/nextjs.instructions.md`
+- React/TypeScript guidance: `.github/instructions/react-typescript.instructions.md`
+- Go guidance: `.github/instructions/go.instructions.md`
+- Tooling and CI guidance: `.github/instructions/tooling.instructions.md`
+- Design system: `docs/DESIGN_SYSTEM.md`

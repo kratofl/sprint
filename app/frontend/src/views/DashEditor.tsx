@@ -1,18 +1,39 @@
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { type DashLayout, type LayoutMeta, dashAPI } from '@/lib/dash'
+import {
+  type DashLayout,
+  type LayoutMeta,
+  type GlobalDashSettings,
+  type DashTheme,
+  type DomainPalette,
+  type FormatPreferences,
+  DEFAULT_DASH_THEME,
+  DEFAULT_DOMAIN_PALETTE,
+  dashAPI,
+  resolveDomainPalette,
+  resolveDashTheme,
+} from '@/lib/dash'
 import { DashList } from '@/components/DashList'
 import { DashEditMode } from '@/components/DashEditMode'
+import { AdditionalSettingsPanel } from '@/components/AdditionalSettingsPanel'
+import { isDesktopRuntimeAvailable } from '@/lib/wails'
+import { Badge, Button, PageHeader } from '@sprint/ui'
+import { getDashEditorRuntimeNotice } from './dashEditorRuntime'
 
 export interface DashEditorHandle {
   isDirty: boolean
 }
 
 const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
-  const [mode, setMode] = useState<'list' | 'edit'>('list')
+  const desktopRuntimeAvailable = isDesktopRuntimeAvailable()
+  const runtimeNotice = getDashEditorRuntimeNotice(desktopRuntimeAvailable)
+  const [mode, setMode] = useState<'list' | 'edit' | 'global-settings'>('list')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [layouts, setLayouts] = useState<LayoutMeta[]>([])
   const [editLayout, setEditLayout] = useState<DashLayout | null>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [globalSettings, setGlobalSettings] = useState<GlobalDashSettings | null>(null)
+  const [globalSaving, setGlobalSaving] = useState(false)
+  const [globalSaveStatus, setGlobalSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
 
   useImperativeHandle(ref, () => ({ isDirty }), [isDirty])
 
@@ -22,7 +43,10 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return metas
   }, [])
 
-  useEffect(() => { void loadLayouts() }, [loadLayouts])
+  useEffect(() => {
+    if (!desktopRuntimeAvailable) return
+    void loadLayouts()
+  }, [desktopRuntimeAvailable, loadLayouts])
 
   const handleEdit = async (id: string) => {
     const layout = await dashAPI.loadLayoutByID(id)
@@ -47,7 +71,89 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     setIsDirty(false)
   }
 
+  const handleOpenGlobalSettings = async () => {
+    const gs = await dashAPI.getGlobalSettings()
+    setGlobalSettings(gs)
+    setGlobalSaveStatus('idle')
+    setMode('global-settings')
+  }
+
+  const handleGlobalSettingsChange = (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => {
+    setGlobalSettings(prev => prev ? {
+      ...prev,
+      theme: resolveDashTheme(undefined, theme),
+      domainPalette: resolveDomainPalette(undefined, domain),
+    } : prev)
+  }
+
+  const handleGlobalTypographyChange = (typography: GlobalDashSettings['typography']) => {
+    setGlobalSettings(prev => prev ? { ...prev, typography } : prev)
+  }
+
+  const handleGlobalFormatPreferencesChange = (prefs: Partial<FormatPreferences>) => {
+    setGlobalSettings(prev => prev ? { ...prev, formatPreferences: prefs } : prev)
+  }
+
+  const handleGlobalSave = async () => {
+    if (!globalSettings) return
+    setGlobalSaving(true)
+    try {
+      await dashAPI.saveGlobalSettings(globalSettings)
+      setGlobalSaveStatus('saved')
+      setTimeout(() => setGlobalSaveStatus('idle'), 2000)
+    } catch {
+      setGlobalSaveStatus('error')
+    } finally {
+      setGlobalSaving(false)
+    }
+  }
+
+  if (runtimeNotice) {
+    return (
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <PageHeader
+          heading="DASH_STUDIO"
+          caption="Use the real Wails desktop window for layout creation, live preview, and agent-driven UI inspection."
+          status={<Badge variant="warning" className="terminal-header">{runtimeNotice.title}</Badge>}
+        />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="surface-panel flex w-full max-w-3xl flex-col gap-5 p-5">
+            <div className="space-y-2">
+              <p className="font-mono text-[10px] leading-relaxed text-foreground">{runtimeNotice.description}</p>
+              <p className="font-mono text-[10px] leading-relaxed text-text-muted">{runtimeNotice.browserHint}</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">1. LAUNCH_DESKTOP</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.launchCommand}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">2. WAIT_FOR_WAILS_DEVSERVER</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.waitCommand}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="terminal-header text-[9px] font-bold text-text-muted">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
+                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                  {runtimeNotice.browserSurfaceUrl}
+                </div>
+                <p className="font-mono text-[9px] leading-relaxed text-text-muted">{runtimeNotice.browserSurfaceNote}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (mode === 'edit' && editLayout) {
+    void editingId
     return (
       <DashEditMode
         layout={editLayout}
@@ -58,7 +164,44 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     )
   }
 
-  void editingId
+  if (mode === 'global-settings') {
+    return (
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <PageHeader
+          heading="GLOBAL_DASH_SETTINGS"
+          caption="Theme, domain palette, and formatting defaults"
+          status={(
+            <>
+              {globalSaveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
+              {globalSaveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+            </>
+          )}
+          actions={(
+            <>
+              <Button variant="outline" size="sm" onClick={() => setMode('list')}>
+                BACK
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleGlobalSave} disabled={globalSaving}>
+                {globalSaving ? 'SAVING…' : 'SAVE'}
+              </Button>
+            </>
+          )}
+        />
+        {globalSettings && (
+          <AdditionalSettingsPanel
+            theme={globalSettings.theme ?? {}}
+            domainPalette={globalSettings.domainPalette ?? {}}
+            hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
+            typography={globalSettings.typography ?? {}}
+            formatPreferences={globalSettings.formatPreferences ?? {}}
+            onChange={handleGlobalSettingsChange}
+            onTypographyChange={handleGlobalTypographyChange}
+            onFormatPreferencesChange={handleGlobalFormatPreferencesChange}
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <DashList
@@ -67,6 +210,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
       onCreate={handleCreate}
       onDelete={async (id) => { await dashAPI.deleteLayout(id); await loadLayouts() }}
       onSetDefault={async (id) => { await dashAPI.setDefault(id); await loadLayouts() }}
+      onOpenGlobalSettings={handleOpenGlobalSettings}
     />
   )
 })

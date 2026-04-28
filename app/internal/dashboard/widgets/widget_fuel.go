@@ -1,32 +1,30 @@
-package widgets
-
-import (
-	"fmt"
-)
+﻿package widgets
 
 const WidgetFuel WidgetType = "fuel"
 
-func init() { RegisterWidget(WidgetFuel, "Fuel", CategoryRace, 5, 3, false, 5, nil, drawWidgetFuel) }
+type fuelWidget struct{}
 
-func drawWidgetFuel(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("FUEL", c.X+12, c.Y+c.H*0.22)
-
-	c.FontNumber(c.H * 0.32)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawString(fmt.Sprintf("%.1f L", c.Frame.Car.Fuel), c.X+12, c.Y+c.H*0.58)
-
-	c.FontMono(c.H * 0.16)
-	c.DC.SetColor(ColTextSec)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%.2f L/lap", c.Frame.Car.FuelPerLap),
-		c.X+c.W-12, c.Y+c.H*0.56, 1, 0)
-
-	if c.Frame.Car.FuelPerLap > 0 {
-		rem := float64(c.Frame.Car.Fuel) / float64(c.Frame.Car.FuelPerLap)
-		c.FontLabel(c.H * 0.14)
-		c.DC.SetColor(ColTextMuted)
-		c.DC.DrawString(fmt.Sprintf("~%.0f laps", rem), c.X+12, c.Y+c.H-10)
+func (fuelWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetFuel, Name: "Fuel", Category: CategoryRace,
+		DefaultColSpan: 5, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: Hz5,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: BindingCarFuel, Op: RuleOpLT, Threshold: 2, Color: "danger", Alpha: 0.20},
+			{Property: BindingCarFuel, Op: RuleOpLT, Threshold: 5, Color: "warning", Alpha: 0.12},
+		},
 	}
 }
+
+func (fuelWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Grid{Rows: 2, Cols: 2, Cells: []GridCell{
+			{Binding: BindingCarFuel, Format: "%.1f L", Style: TextStyle{Font: FontFamilyMono, FontSize: 0.64, IsBold: true, HAlign: HAlignStart, Color: ColorRefForeground.Expr()}},
+			{Binding: BindingCarFuelPerLap, Format: "%.2f L/lap", Style: TextStyle{Font: FontFamilyMono, FontSize: 0.32, HAlign: HAlignEnd, Color: ColorRefSecondary.Expr()}},
+			{Binding: BindingCarFuelLapsRemaining, Format: "~%.0f laps", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.28, HAlign: HAlignStart, Color: ColorRefMuted.Expr()}},
+			{},
+		}},
+	}
+}
+
+func init() { Register(fuelWidget{}) }

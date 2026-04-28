@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, cn } from '@sprint/ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, PageHeader, cn } from '@sprint/ui'
 import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
+import { formatCommandIdForDisplay } from '@/lib/controls/commandIdDisplay'
 
 // Category display order.
 const CATEGORY_ORDER = ['dash', 'lap']
@@ -65,22 +66,20 @@ export default function Controls() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-
-      {/* Section header */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
-        <div>
-          <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">CONTROLS</h2>
-          <p className="font-mono text-[10px] text-text-muted">
-            Assign wheel buttons to commands
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        heading="CONTROLS"
+        caption="Assign wheel buttons to commands"
+        status={(
+          <>
           {saveStatus === 'saved' && (
             <Badge variant="success" className="terminal-header">SAVED</Badge>
           )}
           {saveStatus === 'error' && (
             <Badge variant="destructive" className="terminal-header">SAVE_FAILED</Badge>
           )}
+          </>
+        )}
+        actions={(
           <Button
             onClick={handleSave}
             disabled={saving || catalog.length === 0}
@@ -89,11 +88,11 @@ export default function Controls() {
           >
             {saving ? 'SAVING…' : 'SAVE_BINDINGS'}
           </Button>
-        </div>
-      </div>
+        )}
+      />
 
       {loadError && (
-        <div className="border-b border-border px-6 py-2 font-mono text-[10px] text-destructive">
+        <div className="surface-destructive border-x-0 border-t-0 px-6 py-2 font-mono text-[10px] text-destructive">
           {loadError}
         </div>
       )}
@@ -114,7 +113,7 @@ export default function Controls() {
               <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
                 <p>Click <span className="text-foreground">[ CAPTURE ]</span> next to a command, then press the physical button on your wheel.</p>
                 <p>The channel is detected automatically. Leave a command unbound to disable it.</p>
-                <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
+              <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
               </CardContent>
             </Card>
 
@@ -231,7 +230,7 @@ function CommandRow({
           )}>
             {cmd.label}
           </span>
-          <span className="font-mono text-[9px] text-text-muted opacity-60">{cmd.id}</span>
+          <span className="font-mono text-[9px] text-text-muted opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
         </div>
 
         <div className="ml-4 flex flex-shrink-0 items-center gap-2">
@@ -239,13 +238,16 @@ function CommandRow({
             <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
           )}
           {bound && (
-            <button
+            <Button
               onClick={() => onButtonChange(0)}
-              className="flex h-5 w-5 items-center justify-center text-[13px] text-text-muted transition-colors hover:text-destructive focus:outline-none"
+              variant="destructive"
+              size="icon-xs"
+              className="h-5 w-5 p-0 text-[13px]"
               title="Clear binding"
+              aria-label={`Clear binding for ${cmd.label}`}
             >
               ×
-            </button>
+            </Button>
           )}
 
           <Input
@@ -265,14 +267,17 @@ function CommandRow({
 
           {cmd.capturable && (
             <Button
-              variant={captureState === 'capturing' ? 'ghost' : 'secondary'}
+              variant={
+                captureState === 'capturing'
+                  ? 'ghost'
+                  : captureState === 'timeout'
+                    ? 'destructive'
+                    : 'secondary'
+              }
               size="sm"
               disabled={captureState === 'capturing'}
               onClick={handleCapture}
-              className={cn(
-                'terminal-header w-24 font-bold text-[9px]',
-                captureState === 'timeout' && 'text-destructive',
-              )}
+              className="terminal-header w-24 font-bold text-[9px]"
             >
               {captureState === 'capturing'
                 ? `LISTENING_${countdown}`

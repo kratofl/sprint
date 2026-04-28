@@ -1,32 +1,32 @@
-package widgets
-
-import (
-	"fmt"
-)
+﻿package widgets
 
 const WidgetSector WidgetType = "sector"
 
-func init() {
-	RegisterWidget(WidgetSector, "Sector", CategoryTiming, 6, 3, false, 15, nil, drawWidgetSector)
-}
+type sectorWidget struct{}
 
-func drawWidgetSector(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawString("SECTORS", c.X+12, c.Y+c.H*0.2)
-
-	sw := (c.W - 36) / 3
-	for i, st := range []float64{c.Frame.Lap.Sector1Time, c.Frame.Lap.Sector2Time} {
-		sx := c.X + 12 + float64(i)*sw
-		c.FontLabel(c.H * 0.12)
-		c.DC.SetColor(ColTextMuted)
-		c.DC.DrawString(fmt.Sprintf("S%d", i+1), sx, c.Y+c.H*0.5)
-		c.FontMono(c.H * 0.22)
-		c.DC.SetColor(ColTextPri)
-		c.DC.DrawString(c.FmtSector(st), sx, c.Y+c.H*0.78)
+func (sectorWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetSector, Name: "Sector", Category: CategoryTiming,
+		DefaultColSpan: 6, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: Hz15,
+		Label: LabelConfig{Text: "SECTORS"},
 	}
-	c.FontLabel(c.H * 0.12)
-	c.DC.SetColor(ColAccent)
-	c.DC.DrawString(fmt.Sprintf("S%d ●", c.Frame.Lap.Sector), c.X+12+2*sw, c.Y+c.H*0.5)
 }
+
+func (sectorWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Grid{Rows: 2, Cols: 3, ColWidths: []float64{0.36, 0.42, 0.22}, Cells: []GridCell{
+			{Text: "S1", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.24, HAlign: HAlignStart,
+				Color: ColorRefMuted.When(WhenActive(BindingLapSector1Active, ColorRefPrimary))}},
+			{Text: "S2", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.24, HAlign: HAlignStart,
+				Color: ColorRefMuted.When(WhenActive(BindingLapSector2Active, ColorRefPrimary))}},
+			{Binding: BindingLapSector, Format: "S%d", Style: TextStyle{Font: FontFamilyUI, FontSize: 0.24, HAlign: HAlignEnd, Color: ColorRefPrimary.Expr()}},
+			{Binding: BindingLapSector1Time, Format: FormatSector, Style: TextStyle{Font: FontFamilyMono, FontSize: 0.44, HAlign: HAlignStart, Color: ColorRefForeground.Expr()}},
+			{Binding: BindingLapSector2Time, Format: FormatSector, Style: TextStyle{Font: FontFamilyMono, FontSize: 0.44, HAlign: HAlignStart, Color: ColorRefForeground.Expr()}},
+			{},
+		}},
+		Dot{X: 0.84, Y: 0.25, R: 0.07, Color: ColorRefPrimary.Expr()},
+	}
+}
+
+func init() { Register(sectorWidget{}) }

@@ -10,6 +10,7 @@ import (
 	"context"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -24,6 +25,7 @@ type ScreenConfig struct {
 	TargetFPS int    // 0 = use driver default
 	OffsetX   int    // pixels from left in screen space (applied after rotation)
 	OffsetY   int    // pixels from top in screen space (applied after rotation)
+	Margin    int    // uniform inset in pixels on all sides
 	Driver    string // DriverType: "vocore" or "usbd480"
 }
 
@@ -36,6 +38,12 @@ type ScreenDriver interface {
 	// connect attempt.
 	Configure(cfg ScreenConfig)
 	SetLayout(layout *dashboard.DashLayout)
+	SetGlobalTheme(theme widgets.DashTheme)
+	SetGlobalDomainPalette(domain widgets.DomainPalette)
+	SetGlobalPrefs(prefs widgets.FormatPreferences)
+	SetGlobalTypography(typography widgets.TypographySettings)
+	SetProfile(profile dashboard.RenderProfile)
+	SetWrapperVariant(pageID, groupID, variantID string)
 	SetActivePage(index int)
 	SetIdle(idle bool)
 	OnFrame(frame *dto.TelemetryFrame)

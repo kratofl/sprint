@@ -74,11 +74,13 @@ type SavedDevice struct {
 	TargetFPS     int             `json:"target_fps,omitempty"` // 0 = use driver default
 	OffsetX       int             `json:"offset_x,omitempty"`   // pixels from left in screen space
 	OffsetY       int             `json:"offset_y,omitempty"`   // pixels from top in screen space
+	Margin        int             `json:"margin,omitempty"`     // uniform inset in pixels on all sides
 	Driver        DriverType      `json:"driver"`
 	DashID        string          `json:"dash_id,omitempty"`        // assigned dash layout; empty = use default
 	Purpose       DevicePurpose   `json:"purpose,omitempty"`        // defaults to PurposeDash
 	PurposeConfig json.RawMessage `json:"purpose_config,omitempty"` // purpose-specific config JSON blob
 	Bindings      []DeviceBinding `json:"bindings,omitempty"`
+	Disabled      bool            `json:"disabled,omitempty"` // user-disabled; persisted across restarts
 }
 
 // HasScreen reports whether this device has a screen (wheel or screen type).
@@ -97,6 +99,7 @@ type ScreenConfig struct {
 	TargetFPS int        `json:"target_fps,omitempty"` // 0 = use driver default
 	OffsetX   int        `json:"offset_x,omitempty"`   // pixels from left in screen space
 	OffsetY   int        `json:"offset_y,omitempty"`   // pixels from top in screen space
+	Margin    int        `json:"margin,omitempty"`     // uniform inset in pixels on all sides
 	Driver    DriverType `json:"driver"`
 }
 
@@ -283,6 +286,17 @@ func SetDashLayout(reg *DeviceRegistry, id, dashID string) error {
 	return fmt.Errorf("devices: device %q not found", id)
 }
 
+// SetDisabled updates the disabled flag for the device with the given composite ID.
+func SetDisabled(reg *DeviceRegistry, id string, disabled bool) error {
+	for i := range reg.Devices {
+		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
+			reg.Devices[i].Disabled = disabled
+			return nil
+		}
+	}
+	return fmt.Errorf("devices: device %q not found", id)
+}
+
 // SetDeviceBindings updates the button→command bindings for the device with
 // the given composite ID.
 func SetDeviceBindings(reg *DeviceRegistry, id string, bindings []DeviceBinding) error {
@@ -328,16 +342,18 @@ func ToScreenConfig(d *SavedDevice) ScreenConfig {
 		TargetFPS: d.TargetFPS,
 		OffsetX:   d.OffsetX,
 		OffsetY:   d.OffsetY,
+		Margin:    d.Margin,
 		Driver:    d.Driver,
 	}
 }
 
 // SetScreenOffset updates the screen offset for the device with the given composite ID.
-func SetScreenOffset(reg *DeviceRegistry, id string, offsetX, offsetY int) error {
+func SetScreenOffset(reg *DeviceRegistry, id string, offsetX, offsetY, margin int) error {
 	for i := range reg.Devices {
 		if DeviceID(reg.Devices[i].VID, reg.Devices[i].PID, reg.Devices[i].Serial) == id {
 			reg.Devices[i].OffsetX = offsetX
 			reg.Devices[i].OffsetY = offsetY
+			reg.Devices[i].Margin = margin
 			return nil
 		}
 	}

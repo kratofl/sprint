@@ -4,7 +4,7 @@ import type { Config } from 'tailwindcss'
 import { orange, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
-import { surfaces, outlineColor }                    from './src/molecules/surfaces'
+import { surfaces, outlineColor, outlineStrongColor } from './src/molecules/surfaces'
 import { borders }                                   from './src/molecules/borders'
 
 /**
@@ -28,10 +28,10 @@ const tokens: Partial<Config> = {
         // Surface hierarchy.
         background: surfaces.base,
         foreground: neutral[100],
-        card:    { DEFAULT: surfaces.container, foreground: neutral[100] },
-        popover: { DEFAULT: surfaces.overlay,   foreground: neutral[100] },
-        muted:   { DEFAULT: surfaces.elevated,  foreground: neutral[400] },
-        input:   surfaces.elevated,
+        card:    { DEFAULT: surfaces.base, foreground: neutral[100] },
+        popover: { DEFAULT: surfaces.overlayPanel, foreground: neutral[100] },
+        muted:   { DEFAULT: surfaces.variant, foreground: neutral[400] },
+        input:   surfaces.base,
         ring:    orange[500],
 
         // Accent variants for driver-owned primary actions.
@@ -57,12 +57,15 @@ const tokens: Partial<Config> = {
         // Background and surface scale.
         bg: {
           base:      surfaces.base,
+          shell:     surfaces.shell,
           container: surfaces.container,
           // backward-compat aliases
           surface:   surfaces.container,
-          subtle:    neutral[900],
+          panel:     surfaces.variant,
+          subtle:    surfaces.variant,
           elevated:  surfaces.elevated,
           overlay:   surfaces.overlay,
+          'overlay-panel': surfaces.overlayPanel,
         },
 
         // Text hierarchy.
@@ -83,7 +86,7 @@ const tokens: Partial<Config> = {
           base:    borders.outline,
           subtle:  borders.outlineSubtle,
           // keep 'strong' alias for any focus ring overrides
-          strong:  '#3a3a3a',
+          strong:  outlineStrongColor,
           accent:  borders.accent,
           teal:    borders.teal,
         },

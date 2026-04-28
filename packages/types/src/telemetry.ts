@@ -52,9 +52,11 @@ export interface TireState {
 export interface LapState {
   currentLap: number
   currentLapTime: number
+  positionLapTime: number
   lastLapTime: number
   bestLapTime: number
-  targetLapTime: number
+  targetLapTime: number  // active reference lap time; 0 means no reference
+  delta: number          // position-based delta to reference lap in seconds; 0 if no reference
   sector: number
   sector1Time: number
   sector2Time: number
@@ -77,16 +79,23 @@ export interface Electronics {
   tcActive: boolean
   tc: number
   tcMax: number
-  absActive: boolean
-  abs: number
-  absMax: number
   tcCut: number       // TC cut level (TC2); 0 = off
   tcCutMax: number    // maximum TC cut level for this car
   tcSlip: number      // TC slip level (TC3); 0 = off
   tcSlipMax: number   // maximum TC slip level for this car
+  absActive: boolean
+  abs: number
+  absMax: number
   motorMap: number    // engine/motor map setting
   motorMapMax: number // maximum motor map setting for this car
   drsActive: boolean  // DRS currently deployed
+
+  // Availability flags — false when the feature is not present on the current car.
+  absAvailable: boolean
+  tcAvailable: boolean
+  tcCutAvailable: boolean
+  tcSlipAvailable: boolean
+  motorMapAvailable: boolean
 }
 
 export interface RaceState {

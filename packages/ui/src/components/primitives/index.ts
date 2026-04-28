@@ -32,6 +32,14 @@ export {
 export { Checkbox } from './checkbox'
 export { Switch } from './switch'
 export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants } from './tabs'
+export type { TabsListVariant } from './tabsClasses'
+export {
+  tabsListBaseClassName,
+  tabsListVariantClassNames,
+  tabsRootBaseClassName,
+  tabsTriggerActiveClassName,
+  tabsTriggerBaseClassName,
+} from './tabsClasses'
 export {
   Table,
   TableHeader,

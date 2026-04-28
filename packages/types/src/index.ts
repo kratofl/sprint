@@ -18,4 +18,4 @@ export type {
   NotePayload,
 } from './engineer'
 
-export type { AppSettings, ReleaseInfo } from './settings'
+export type { AppSettings, DashEditorPanelPreferences, DashEditorUIPreferences, ReleaseInfo, FormatPreferences, LapFormat, SpeedUnit, TempUnit, PressureUnit, DeltaPrecision } from './settings'

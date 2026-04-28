@@ -6,8 +6,9 @@ import (
 	"os"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
 	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
-	"github.com/kratofl/sprint/app/internal/devices"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DashListLayouts returns metadata for all saved dash layouts.
@@ -32,46 +33,67 @@ func (a *App) DashLoadLayoutByID(id string) (*dashboard.DashLayout, error) {
 // DashSaveLayout writes the layout to disk and hot-reloads all screens whose
 // current layout matches the saved ID.
 func (a *App) DashSaveLayout(layout dashboard.DashLayout) error {
-	if err := a.dash.Save(&layout); err != nil {
+	if err := a.dashSvc.SaveLayout(&layout); err != nil {
 		return fmt.Errorf("DashSaveLayout: %w", err)
 	}
-	a.coord.UpdateLayout(&layout)
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
-// DashCreateLayout creates a new named dash layout and returns it.
+// DashCreateLayout creates a new named dash layout inheriting the global
+// default theme, domain palette, and format preferences, then returns the persisted layout.
 func (a *App) DashCreateLayout(name string) (*dashboard.DashLayout, error) {
-	layout, err := a.dash.Create(name)
+	layout, err := a.dashSvc.CreateLayout(name)
 	if err != nil {
 		return nil, fmt.Errorf("DashCreateLayout: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return layout, nil
+}
+
+// DashGetGlobalSettings returns the global dash settings (theme + domain palette defaults).
+func (a *App) DashGetGlobalSettings() (*dashboard.GlobalDashSettings, error) {
+	s, err := dashboard.LoadGlobalSettings()
+	if err != nil {
+		return nil, fmt.Errorf("DashGetGlobalSettings: %w", err)
+	}
+	return s, nil
+}
+
+// DashSaveGlobalSettings writes the global dash settings to disk and propagates
+// the format preferences to all active screen painters immediately.
+func (a *App) DashSaveGlobalSettings(s dashboard.GlobalDashSettings) error {
+	if err := a.dashSvc.SaveGlobalSettings(&s); err != nil {
+		return fmt.Errorf("DashSaveGlobalSettings: %w", err)
+	}
+	return nil
+}
+
+// DashGetDefaultTheme returns the compile-time default DashTheme.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultTheme() widgets.DashTheme {
+	return widgets.DefaultTheme()
+}
+
+// DashGetDefaultDomainPalette returns the compile-time default DomainPalette.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultDomainPalette() widgets.DomainPalette {
+	return widgets.DefaultDomainPalette()
+}
+
+// DashGetDefaultFormatPreferences returns the compile-time default FormatPreferences.
+// Used by the editor to offer a "reset to default" action.
+func (a *App) DashGetDefaultFormatPreferences() widgets.FormatPreferences {
+	return widgets.DefaultFormatPreferences()
 }
 
 // DashDeleteLayout deletes the layout with the given ID.
 // Any screen currently showing that layout is switched to the default.
 func (a *App) DashDeleteLayout(id string) error {
-	if err := a.dash.Delete(id); err != nil {
+	if err := a.dashSvc.DeleteLayout(id); err != nil {
 		return fmt.Errorf("DashDeleteLayout: %w", err)
 	}
-	defaultLayout, _ := a.dash.Load("")
-	if defaultLayout == nil {
-		return nil
-	}
-	reg, _ := a.devMgr.Load()
-	if reg == nil {
-		return nil
-	}
-	for i := range reg.Devices {
-		d := &reg.Devices[i]
-		if !d.HasScreen() {
-			continue
-		}
-		if d.DashID == id || d.DashID == "" {
-			deviceID := devices.DeviceID(d.VID, d.PID, d.Serial)
-			a.coord.SetDashLayout(deviceID, defaultLayout)
-		}
-	}
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
@@ -80,12 +102,18 @@ func (a *App) DashSetDefault(id string) error {
 	if err := a.dash.SetDefault(id); err != nil {
 		return fmt.Errorf("DashSetDefault: %w", err)
 	}
+	a.emitDashLayoutsUpdated()
 	return nil
 }
 
 // GetWidgetCatalog returns metadata for all registered widgets (for the editor palette).
 func (a *App) GetWidgetCatalog() []widgets.WidgetMeta {
 	return widgets.WidgetCatalog()
+}
+
+// GetAlertCatalog returns metadata for all registered alert types (for the alert editor palette).
+func (a *App) GetAlertCatalog() []alerts.AlertMeta {
+	return alerts.AlertCatalog()
 }
 
 // DashGetPreview returns a base64-encoded PNG preview image for the given layout ID.
@@ -98,10 +126,43 @@ func (a *App) DashGetPreview(id string) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+// GetWidgetPreview renders a single widget of the given type at colSpan×rowSpan cells
+// and returns it as a base64-encoded PNG. The image proportions match the canvas cell
+// so it can fill the cell without distortion. Returns an empty string on failure.
+func (a *App) GetWidgetPreview(widgetType string, colSpan, rowSpan int) string {
+	data, err := dashboard.RenderWidgetPreview(widgetType, colSpan, rowSpan)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(data)
+}
+
 // DashCyclePage cycles the active dash page by direction: +1 for next, -1 for prev.
 // Broadcasts to all connected screen-capable devices.
 func (a *App) DashCyclePage(direction int) {
 	a.coord.CyclePage("", direction)
+}
+
+// DashStartPreview activates the editor preview pipeline for the given layout.
+// The coordinator begins rendering the layout via the shared Painter and emitting
+// "dash:preview" events containing base64-encoded PNG frames at screen cadence.
+// pageIndex selects the active page (0-based); idle selects the idle page.
+// Call DashStopPreview when the editor closes.
+func (a *App) DashStartPreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	a.coord.StartPreview(layout, pageIndex, idle)
+}
+
+// DashStopPreview deactivates the editor preview pipeline.
+// Call when the dash editor is closed or navigated away from.
+func (a *App) DashStopPreview() {
+	a.coord.StopPreview()
+}
+
+// DashUpdatePreview pushes an updated layout to the preview renderer and triggers
+// an immediate re-render. Call (debounced) whenever the user makes an edit in the
+// dash editor — widget moved, property changed, page switched, etc.
+func (a *App) DashUpdatePreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	a.coord.UpdatePreview(layout, pageIndex, idle)
 }
 
 // isLayoutActive reports whether any screen-capable device is currently using layoutID.
@@ -119,4 +180,10 @@ func (a *App) isLayoutActive(layoutID string) bool {
 		}
 	}
 	return false
+}
+
+func (a *App) emitDashLayoutsUpdated() {
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, dashboard.EventLayoutsUpdated)
+	}
 }

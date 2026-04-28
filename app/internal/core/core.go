@@ -13,6 +13,8 @@ import (
 	"github.com/kratofl/sprint/app/internal/capture"
 	"github.com/kratofl/sprint/app/internal/commands"
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/delta"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/input"
@@ -27,21 +29,25 @@ type EmitFn func(event string, data ...any)
 
 // deviceEntry holds the runtime state for a single registered device.
 type deviceEntry struct {
-	driver        hardware.ScreenDriver  // nil for button-box type devices
-	purpose       devices.DevicePurpose  // PurposeDash or PurposeRearView
+	driver        hardware.ScreenDriver // nil for button-box type devices
+	purpose       devices.DevicePurpose // PurposeDash or PurposeRearView
 	pageIndex     int
 	layoutID      string
 	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
+	wrapperStates map[string]string
 	cancel        context.CancelFunc
 }
 
 // Coordinator is the top-level wiring of all backend subsystems.
 type Coordinator struct {
-	logger  *slog.Logger
-	adapter games.GameAdapter
-	input   *input.Detector
-	devMgr  *devices.Manager
-	dashMgr *dashboard.Manager
+	logger   *slog.Logger
+	adapters []games.GameAdapter // all registered game adapters, probed in order
+	adapter  games.GameAdapter   // currently active adapter (nil when no game connected)
+	input    *input.Detector
+	devMgr   *devices.Manager
+	dashMgr  *dashboard.Manager
+	delta    *delta.Tracker
+	preview  *previewService
 
 	emit EmitFn
 
@@ -58,9 +64,9 @@ type Coordinator struct {
 	mu      sync.RWMutex
 	entries map[string]*deviceEntry // deviceID -> entry
 
-	rootCtx   context.Context    // set by Start; used when adding devices at runtime
-	stopFn    context.CancelFunc // cancels rootCtx on Stop
-	driverWg  sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
+	rootCtx  context.Context    // set by Start; used when adding devices at runtime
+	stopFn   context.CancelFunc // cancels rootCtx on Stop
+	driverWg sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
 }
 
 const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
@@ -71,15 +77,17 @@ const frontendFrameInterval = 33 * time.Millisecond // ~30 Hz
 func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manager) *Coordinator {
 	c := &Coordinator{
 		logger:         logger,
-		adapter:        lemansultimate.New(),
+		adapters:       []games.GameAdapter{lemansultimate.New()},
 		input:          input.NewDetector(logger.With("component", "input")),
 		emit:           func(string, ...any) {},
 		devMgr:         devMgr,
 		dashMgr:        dashMgr,
+		delta:          delta.New(logger),
 		entries:        map[string]*deviceEntry{},
 		idleState:      true,
 		frontendEmitCh: make(chan *dto.TelemetryFrame, 1),
 	}
+	c.preview = newPreviewService(logger, c.emit)
 
 	if devMgr != nil {
 		if reg, err := devMgr.Load(); err == nil {
@@ -95,6 +103,9 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 					drv = hardware.NewVoCoreDriver(logger.With("component", "screen", "device", id))
 				}
 				drv.Configure(toHardwareScreenConfig(devices.ToScreenConfig(d)))
+				if d.Disabled {
+					drv.SetDisabled(true)
+				}
 
 				entry := &deviceEntry{driver: drv, cancel: func() {}, purpose: d.Purpose}
 				if d.Purpose != devices.PurposeRearView && dashMgr != nil {
@@ -102,6 +113,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 						drv.SetLayout(layout)
 						entry.layoutID = layout.ID
 						entry.currentLayout = layout
+						entry.wrapperStates = defaultWrapperStates(layout)
 						logger.Info("dash layout assigned", "device", id, "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
 					} else if lerr != nil {
 						logger.Warn("failed to load dash layout for device, screen will render black", "device", id, "err", lerr)
@@ -124,6 +136,10 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 		screenID, _ := p.(string)
 		c.CyclePage(screenID, -1)
 	})
+	commands.Handle(dashboard.CmdSetTargetLap, func(_ any) {
+		c.delta.SetManualReference()
+	})
+	c.ReloadDashCommands()
 
 	return c
 }
@@ -134,6 +150,7 @@ func (c *Coordinator) SetEmit(fn EmitFn) {
 		return
 	}
 	c.emit = fn
+	c.preview.setEmit(fn)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, e := range c.entries {
@@ -169,14 +186,17 @@ func (c *Coordinator) Start(ctx context.Context) {
 
 	go func() {
 		<-childCtx.Done()
-		if err := c.adapter.Disconnect(); err != nil {
-			c.logger.Warn("adapter disconnect", "err", err)
+		for _, a := range c.adapters {
+			if err := a.Disconnect(); err != nil {
+				c.logger.Warn("adapter disconnect", "game", a.Name(), "err", err)
+			}
 		}
 	}()
 
 	go c.input.Run(childCtx)
 	go c.runTelemetryLoop(childCtx)
 	go c.runFrontendEmitter(childCtx)
+	c.preview.Start(childCtx)
 
 	c.ReloadInputBindings()
 }
@@ -226,6 +246,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 			drv.SetLayout(layout)
 			entry.layoutID = layout.ID
 			entry.currentLayout = layout
+			entry.wrapperStates = defaultWrapperStates(layout)
 		} else if lerr != nil {
 			c.logger.Warn("failed to load dash layout for device", "device", deviceID, "err", lerr)
 		}
@@ -254,6 +275,7 @@ func (c *Coordinator) SetDashLayout(deviceID string, layout *dashboard.DashLayou
 	e.driver.SetLayout(layout)
 	e.layoutID = layout.ID
 	e.currentLayout = layout
+	e.wrapperStates = defaultWrapperStates(layout)
 	e.pageIndex = 0
 	e.driver.SetActivePage(0)
 }
@@ -266,6 +288,188 @@ func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
 		if e.driver != nil && e.layoutID == layout.ID {
 			e.driver.SetLayout(layout)
 			e.currentLayout = layout
+			e.wrapperStates = defaultWrapperStates(layout)
+		}
+	}
+}
+
+// SetGlobalFormatPrefs propagates new global-level format preferences to all
+// active screen drivers so they take effect on the next rendered frame without
+// requiring the user to switch layouts.
+func (c *Coordinator) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalPrefs(prefs)
+		}
+	}
+}
+
+// SetGlobalTheme propagates new global dash colors to all active screen drivers
+// and the editor preview painter.
+func (c *Coordinator) SetGlobalTheme(theme widgets.DashTheme) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalTheme(theme)
+		}
+	}
+	c.preview.SetGlobalTheme(theme)
+}
+
+// SetGlobalDomainPalette propagates new global domain colors to all active
+// screen drivers and the editor preview painter.
+func (c *Coordinator) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalDomainPalette(domain)
+		}
+	}
+	c.preview.SetGlobalDomainPalette(domain)
+}
+
+// SetGlobalTypography propagates new global dash typography defaults to all
+// active screen drivers and the editor preview painter.
+func (c *Coordinator) SetGlobalTypography(typography widgets.TypographySettings) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetGlobalTypography(typography)
+		}
+	}
+	c.preview.SetGlobalTypography(typography)
+}
+
+// SetProfile propagates app-level profile strings to all active screen drivers
+// and the editor preview painter.
+func (c *Coordinator) SetProfile(profile dashboard.RenderProfile) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, e := range c.entries {
+		if e.driver != nil {
+			e.driver.SetProfile(profile)
+		}
+	}
+	c.preview.SetProfile(profile)
+}
+
+// ReloadDashCommands rebuilds the dynamic wrapper command catalog from all
+// saved dash layouts.
+func (c *Coordinator) ReloadDashCommands() {
+	if c.dashMgr == nil {
+		commands.ReplaceDynamic(nil)
+		return
+	}
+
+	metas, err := c.dashMgr.List()
+	if err != nil {
+		c.logger.Warn("dash: failed to rebuild dynamic commands", "err", err)
+		commands.ReplaceDynamic(nil)
+		return
+	}
+
+	var dynamic []commands.DynamicCommand
+	for _, meta := range metas {
+		layout, err := c.dashMgr.Load(meta.ID)
+		if err != nil || layout == nil {
+			continue
+		}
+		for _, page := range append([]dashboard.DashPage{layout.IdlePage}, layout.Pages...) {
+			for _, group := range page.WrapperGroups {
+				baseLabel := layout.Name + " / " + page.Name + " / " + group.Name
+				layoutID := layout.ID
+				pageID := page.ID
+				groupID := group.ID
+				dynamic = append(dynamic,
+					commands.DynamicCommand{
+						Meta: commands.CommandMeta{
+							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".next"),
+							Label:      baseLabel + " / Next Layer",
+							Category:   "Dashboard",
+							Capturable: true,
+							DeviceOnly: true,
+						},
+						Handler: func(payload any) {
+							screenID, _ := payload.(string)
+							c.cycleWrapper(screenID, layoutID, pageID, groupID, 1)
+						},
+					},
+					commands.DynamicCommand{
+						Meta: commands.CommandMeta{
+							ID:         commands.Command("dash.wrapper." + layoutID + "." + pageID + "." + groupID + ".prev"),
+							Label:      baseLabel + " / Previous Layer",
+							Category:   "Dashboard",
+							Capturable: true,
+							DeviceOnly: true,
+						},
+						Handler: func(payload any) {
+							screenID, _ := payload.(string)
+							c.cycleWrapper(screenID, layoutID, pageID, groupID, -1)
+						},
+					},
+				)
+			}
+		}
+	}
+
+	commands.ReplaceDynamic(dynamic)
+}
+
+func (c *Coordinator) cycleWrapper(screenID, layoutID, pageID, groupID string, direction int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, entry := range c.entries {
+		if screenID != "" && id != screenID {
+			continue
+		}
+		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
+			continue
+		}
+		group := findWrapperGroup(entry.currentLayout, pageID, groupID)
+		if group == nil || len(group.Variants) == 0 {
+			continue
+		}
+		currentID := entry.wrapperStates[wrapperStateKey(pageID, groupID)]
+		if currentID == "" {
+			currentID = groupDefaultVariantID(*group)
+		}
+		currentIndex := 0
+		for i, variant := range group.Variants {
+			if variant.ID == currentID {
+				currentIndex = i
+				break
+			}
+		}
+		nextIndex := ((currentIndex + direction) % len(group.Variants) + len(group.Variants)) % len(group.Variants)
+		nextID := group.Variants[nextIndex].ID
+		entry.wrapperStates[wrapperStateKey(pageID, groupID)] = nextID
+		entry.driver.SetWrapperVariant(pageID, groupID, nextID)
+	}
+}
+
+func (c *Coordinator) setWrapperVariant(screenID, layoutID, pageID, groupID, variantID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, entry := range c.entries {
+		if screenID != "" && id != screenID {
+			continue
+		}
+		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
+			continue
+		}
+		if group := findWrapperGroup(entry.currentLayout, pageID, groupID); group != nil {
+			for _, variant := range group.Variants {
+				if variant.ID == variantID {
+					entry.wrapperStates[wrapperStateKey(pageID, groupID)] = variantID
+					entry.driver.SetWrapperVariant(pageID, groupID, variantID)
+					break
+				}
+			}
 		}
 	}
 }
@@ -285,24 +489,25 @@ func (c *Coordinator) CyclePage(deviceID string, direction int) {
 		n := len(e.currentLayout.Pages)
 		e.pageIndex = ((e.pageIndex+direction)%n + n) % n
 		e.driver.SetActivePage(e.pageIndex)
-		c.emit("dash:page-changed", map[string]any{
-			"deviceID":  id,
-			"pageIndex": e.pageIndex,
-			"pageName":  e.currentLayout.Pages[e.pageIndex].Name,
+		resetPageWrapperStates(e, e.currentLayout.Pages[e.pageIndex])
+		c.emit("dash:page-changed", DashPageChangedEvent{
+			DeviceID:  id,
+			PageIndex: e.pageIndex,
+			PageName:  e.currentLayout.Pages[e.pageIndex].Name,
 		})
 	}
 }
 
-// GetScreenStatus returns "connected" if any screen-capable driver is connected.
-func (c *Coordinator) GetScreenStatus() string {
+// GetScreenStatus returns connected if any screen-capable driver is active.
+func (c *Coordinator) GetScreenStatus() devices.ScreenStatus {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	for _, e := range c.entries {
 		if e.driver != nil && e.driver.IsConnected() {
-			return "connected"
+			return devices.ScreenStatusConnected
 		}
 	}
-	return "disconnected"
+	return devices.ScreenStatusDisconnected
 }
 
 // SetDeviceDisabled disables or re-enables rendering for the given device.
@@ -415,6 +620,7 @@ func (c *Coordinator) Stop() {
 const reconnectDelay = 5 * time.Second
 
 func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
+	var noGameLogged bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -422,9 +628,22 @@ func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
 		default:
 		}
 
-		if err := c.adapter.Connect(); err != nil {
-			c.logger.Warn("game adapter connect failed, retrying",
-				"game", c.adapter.Name(), "err", err, "delay", reconnectDelay)
+		// Probe all registered adapters in order; use the first that connects.
+		var active games.GameAdapter
+		for _, a := range c.adapters {
+			if err := a.Connect(); err == nil {
+				active = a
+				break
+			} else if !errors.Is(err, games.ErrNotRunning) {
+				c.logger.Warn("game adapter error", "game", a.Name(), "err", err)
+			}
+		}
+
+		if active == nil {
+			if !noGameLogged {
+				c.logger.Debug("no game detected, waiting", "delay", reconnectDelay)
+				noGameLogged = true
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -432,13 +651,17 @@ func (c *Coordinator) runTelemetryLoop(ctx context.Context) {
 			}
 			continue
 		}
-		c.logger.Info("game adapter connected", "game", c.adapter.Name())
+
+		noGameLogged = false
+		c.adapter = active
+		c.logger.Info("game adapter connected", "game", active.Name())
 		c.connected = true
 		c.emit("telemetry:connected")
 
 		c.readLoop(ctx)
 
 		c.connected = false
+		c.adapter = nil
 		c.emit("telemetry:disconnected")
 		c.setAllIdle(true)
 		c.idleState = true
@@ -464,10 +687,9 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 
 		frame, err := c.adapter.Read()
 		if err != nil {
-			if errors.Is(err, lemansultimate.ErrDisconnected) {
-				return
+			if !errors.Is(err, lemansultimate.ErrDisconnected) {
+				c.logger.Warn("telemetry read error", "game", c.adapter.Name(), "err", err)
 			}
-			c.logger.Warn("telemetry read error", "err", err)
 			return
 		}
 
@@ -478,7 +700,7 @@ func (c *Coordinator) readLoop(ctx context.Context) {
 			lastLog = time.Now()
 		}
 
-		c.fanOut(frame)
+		c.fanOut(c.augmentDelta(frame))
 	}
 }
 
@@ -501,12 +723,13 @@ func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
 			e.driver.SetActivePage(0)
 			pageName := ""
 			if e.currentLayout != nil && len(e.currentLayout.Pages) > 0 {
+				resetPageWrapperStates(e, e.currentLayout.Pages[0])
 				pageName = e.currentLayout.Pages[0].Name
 			}
-			c.emit("dash:page-changed", map[string]any{
-				"deviceID":  id,
-				"pageIndex": 0,
-				"pageName":  pageName,
+			c.emit("dash:page-changed", DashPageChangedEvent{
+				DeviceID:  id,
+				PageIndex: 0,
+				PageName:  pageName,
 			})
 		}
 		c.mu.Unlock()
@@ -523,6 +746,80 @@ func (c *Coordinator) setAllIdle(idle bool) {
 	}
 }
 
+func defaultWrapperStates(layout *dashboard.DashLayout) map[string]string {
+	states := map[string]string{}
+	if layout == nil {
+		return states
+	}
+	collectPageWrapperDefaults(states, layout.IdlePage)
+	for _, page := range layout.Pages {
+		collectPageWrapperDefaults(states, page)
+	}
+	return states
+}
+
+func collectPageWrapperDefaults(states map[string]string, page dashboard.DashPage) {
+	for _, group := range page.WrapperGroups {
+		states[wrapperStateKey(page.ID, group.ID)] = groupDefaultVariantID(group)
+	}
+}
+
+func resetPageWrapperStates(entry *deviceEntry, page dashboard.DashPage) {
+	if entry.wrapperStates == nil {
+		entry.wrapperStates = map[string]string{}
+	}
+	for _, group := range page.WrapperGroups {
+		variantID := groupDefaultVariantID(group)
+		entry.wrapperStates[wrapperStateKey(page.ID, group.ID)] = variantID
+		if entry.driver != nil && variantID != "" {
+			entry.driver.SetWrapperVariant(page.ID, group.ID, variantID)
+		}
+	}
+}
+
+func groupDefaultVariantID(group dashboard.DashWrapperGroup) string {
+	if group.DefaultVariantID != "" {
+		return group.DefaultVariantID
+	}
+	if len(group.Variants) > 0 {
+		return group.Variants[0].ID
+	}
+	return ""
+}
+
+func wrapperStateKey(pageID, groupID string) string {
+	return pageID + "::" + groupID
+}
+
+func findWrapperGroup(layout *dashboard.DashLayout, pageID, groupID string) *dashboard.DashWrapperGroup {
+	if layout == nil {
+		return nil
+	}
+	pages := append([]dashboard.DashPage{layout.IdlePage}, layout.Pages...)
+	for _, page := range pages {
+		if page.ID != pageID {
+			continue
+		}
+		for i := range page.WrapperGroups {
+			if page.WrapperGroups[i].ID == groupID {
+				return &page.WrapperGroups[i]
+			}
+		}
+	}
+	return nil
+}
+
+// augmentDelta shallow-copies frame, runs it through the delta tracker, and
+// injects the computed Delta and TargetLapTime into the copy. The original
+// adapter-owned frame is never mutated.
+func (c *Coordinator) augmentDelta(frame *dto.TelemetryFrame) *dto.TelemetryFrame {
+	d, refTime := c.delta.Process(frame)
+	augmented := *frame
+	augmented.Lap.Delta = d
+	augmented.Lap.TargetLapTime = refTime
+	return &augmented
+}
+
 func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
 	c.updateIdleState(frame)
 
@@ -533,6 +830,8 @@ func (c *Coordinator) fanOut(frame *dto.TelemetryFrame) {
 		}
 	}
 	c.mu.RUnlock()
+
+	c.preview.OnFrame(frame)
 
 	// Non-blocking send: if the emitter goroutine hasn't consumed the previous
 	// frame yet, overwrite it with the latest (latest-value semantics).
@@ -561,6 +860,7 @@ func toHardwareScreenConfig(cfg devices.ScreenConfig) hardware.ScreenConfig {
 		TargetFPS: cfg.TargetFPS,
 		OffsetX:   cfg.OffsetX,
 		OffsetY:   cfg.OffsetY,
+		Margin:    cfg.Margin,
 		Driver:    cfg.Driver,
 	}
 }
@@ -610,4 +910,23 @@ func (c *Coordinator) runFrontendEmitter(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// StartPreview activates the editor preview service with the given layout.
+// The service begins emitting "dash:preview" Wails events at ~10 Hz.
+// pageIndex is the 0-based active page index; idle selects the idle page.
+func (c *Coordinator) StartPreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	c.preview.Activate(layout, pageIndex, idle)
+}
+
+// StopPreview deactivates the editor preview service. No more "dash:preview"
+// events are emitted until StartPreview is called again.
+func (c *Coordinator) StopPreview() {
+	c.preview.Deactivate()
+}
+
+// UpdatePreview replaces the layout being previewed without restarting the
+// service. Triggers an immediate re-render.
+func (c *Coordinator) UpdatePreview(layout dashboard.DashLayout, pageIndex int, idle bool) {
+	c.preview.UpdateLayout(layout, pageIndex, idle)
 }

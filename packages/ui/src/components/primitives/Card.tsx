@@ -2,9 +2,16 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "../../lib/utils"
+import {
+  cardAccentClassName,
+  cardDefaultClassName,
+  cardDestructiveClassName,
+  cardElevatedClassName,
+  cardSecondaryClassName,
+} from "./controlClasses"
 
 const cardVariants = cva(
-  "group/card flex flex-col overflow-hidden rounded-sm border bg-card text-xs/relaxed text-foreground transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-sm *:[img:last-child]:rounded-b-sm",
+  `group/card flex flex-col overflow-hidden rounded-sm text-xs/relaxed text-foreground transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-sm *:[img:last-child]:rounded-b-sm ${cardDefaultClassName}`,
   {
     variants: {
       size: {
@@ -12,14 +19,14 @@ const cardVariants = cva(
         sm: "gap-3 py-3",
       },
       variant: {
-        default: "border-border",
-        accent: "surface-active",
-        primary: "surface-active",
-        selected: "surface-active",
-        teal: "surface-secondary",
-        secondary: "surface-secondary",
-        elevated: "border-border bg-bg-elevated",
-        destructive: "surface-destructive",
+        default: "",
+        accent: cardAccentClassName,
+        primary: cardAccentClassName,
+        selected: cardAccentClassName,
+        teal: cardSecondaryClassName,
+        secondary: cardSecondaryClassName,
+        elevated: cardElevatedClassName,
+        destructive: cardDestructiveClassName,
       },
     },
     defaultVariants: {
@@ -133,5 +140,6 @@ export {
   CardAction,
   CardDescription,
   CardContent,
+  cardVariants,
 }
 

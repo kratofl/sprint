@@ -1,9 +1,6 @@
 // Utils
 export { cn } from './lib/utils'
 
-// Brand — logo mark and wordmark
-export * from './components/atoms'
-
 // Atoms — primitive UI components
 export * from './components/primitives'
 
