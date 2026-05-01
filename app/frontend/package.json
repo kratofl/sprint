@@ -16,7 +16,7 @@
     "@sprint/ui": "workspace:*",
     "@tabler/icons-react": "^3.40.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
