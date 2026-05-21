@@ -1,37 +1,28 @@
 package widgets
 
-import "fmt"
-
 const WidgetABS WidgetType = "abs"
 
-func init() { RegisterWidget(WidgetABS, "ABS", CategoryCar, 3, 2, false, 15, nil, drawWidgetABS) }
+type absWidget struct{}
 
-func drawWidgetABS(c WidgetCtx) {
-	if c.Frame.Electronics.ABSActive {
-		c.DC.SetColor(DimColor(ColWarning, 0.15))
-		c.DC.DrawRectangle(c.X, c.Y, c.W, c.H)
-		c.DC.Fill()
+func (absWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetABS, Name: "ABS", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: Hz15,
+		Label:             LabelConfig{FontScale: 0.18},
+		CapabilityBinding: BindingElectronicsABSAvailable,
+		DefaultPanelRules: []ConditionalRule{
+			{Property: BindingElectronicsABSActive, Op: RuleOpGT, Threshold: 0, Color: ColorRefABS, Alpha: 0.15},
+		},
 	}
-	c.Panel()
-
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("ABS", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	e := c.Frame.Electronics
-	col := ColTextPri
-	if e.ABSActive {
-		col = ColWarning
-	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	var valStr string
-	valStr = fmt.Sprintf("%d", e.ABS)
-	// if e.ABSMax == 0 {
-	// 	valStr = fmt.Sprintf("%d", e.ABS)
-	// } else {
-	// 	valStr = fmt.Sprintf("%d / %d", e.ABS, e.ABSMax)
-	// }
-	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func (absWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Text{Binding: BindingElectronicsABS, Format: FormatInt, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingElectronicsABSActive, ColorRefABS))}},
+	}
+}
+
+func init() { Register(absWidget{}) }

@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname, useRouter } from 'next/navigation'
-import { NavRail, NavRailItem } from '@sprint/ui'
+import { Badge, NavRail, NavRailItem, SprintIcon } from '@sprint/ui'
 import {
   IconLayoutDashboard,
   IconHistory,
@@ -11,11 +11,11 @@ import {
 } from '@tabler/icons-react'
 
 const NAV_ITEMS: NavRailItem[] = [
-  { id: '/',         label: 'Dashboard',  icon: IconLayoutDashboard },
-  { id: '/sessions', label: 'Sessions',   icon: IconHistory },
-  { id: '/engineer', label: 'Engineer',   icon: IconHeadset },
-  { id: '/setups',   label: 'Setups',     icon: IconAdjustmentsHorizontal },
-  { id: '/dash',     label: 'Dash',       icon: IconLayout },
+  { id: '/',         label: 'DASHBOARD',   icon: IconLayoutDashboard },
+  { id: '/sessions', label: 'SESSIONS',    icon: IconHistory },
+  { id: '/engineer', label: 'ENGINEER',    icon: IconHeadset },
+  { id: '/setups',   label: 'SETUPS',      icon: IconAdjustmentsHorizontal },
+  { id: '/dash',     label: 'DASH_EDITOR', icon: IconLayout },
 ]
 
 export default function WebNavRail() {
@@ -34,6 +34,8 @@ export default function WebNavRail() {
       items={NAV_ITEMS}
       activeId={activeId}
       onSelect={(id) => router.push(id)}
+      header={<SprintIcon size={18} />}
+      footer={<Badge variant="neutral" className="font-mono">WEB</Badge>}
     />
   )
 }

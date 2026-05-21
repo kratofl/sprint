@@ -95,7 +95,9 @@ func (s *Store) Revoke(value string) {
 
 // reapLoop periodically removes expired codes to prevent unbounded memory growth.
 func (s *Store) reapLoop() {
-	for range time.NewTicker(time.Hour).C {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for range ticker.C {
 		s.mu.Lock()
 		for k, c := range s.codes {
 			if time.Now().After(c.ExpiresAt) {

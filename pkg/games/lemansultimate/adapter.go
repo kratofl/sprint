@@ -18,10 +18,13 @@ import (
 	"time"
 
 	"github.com/kratofl/sprint/pkg/dto"
+	"github.com/kratofl/sprint/pkg/games"
 	"github.com/kratofl/sprint/pkg/shm"
 )
 
 const pollInterval = 10 * time.Millisecond
+const sessionTimeResetThreshold = 1.0
+const lapTimeSpikeThreshold = 2.0
 
 // toF32 safely converts a float64 to float32.
 // Returns 0 for NaN, ±Inf, or any value that would overflow float32.
@@ -42,6 +45,13 @@ func toF32(v float64) float32 {
 // encoding/json refuses to marshal non-finite float64 values.
 func toF64(v float64) float64 {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return v
+}
+
+func clampNonNegative(v float64) float64 {
+	if v < 0 {
 		return 0
 	}
 	return v
@@ -117,6 +127,13 @@ type Adapter struct {
 	prevLap       int32
 	prevFuel      float64
 	fuelSamples   []float64 // up to 5 most recent completed-lap fuel consumptions
+
+	// Monotonic CurrentLapTime state.
+	lapTimeValid     bool
+	lapTimeSession   int32
+	lapTimeLap       int32
+	lapTimeMax       float64
+	lapTimeSessionET float64
 }
 
 // New creates a new LeMansUltimate adapter. Call Connect before reading.
@@ -131,7 +148,8 @@ func New() *Adapter {
 // Name satisfies games.GameAdapter.
 func (a *Adapter) Name() string { return "LeMansUltimate" }
 
-// Connect maps the LMU shared memory region. Returns an error if LMU is not running.
+// Connect maps the LMU shared memory region. Returns games.ErrNotRunning if
+// LMU is not running, or another error for unexpected failures.
 func (a *Adapter) Connect() error {
 	if a.shm.IsOpen() {
 		return nil
@@ -142,7 +160,14 @@ func (a *Adapter) Connect() error {
 		a.done = make(chan struct{})
 	default:
 	}
-	return a.shm.Open()
+	a.resetLapTimeTracking()
+	if err := a.shm.Open(); err != nil {
+		if errors.Is(err, shm.ErrNotFound) {
+			return fmt.Errorf("lemansultimate: %w", games.ErrNotRunning)
+		}
+		return fmt.Errorf("lemansultimate: connect: %w", err)
+	}
+	return nil
 }
 
 // Disconnect unmaps the shared memory and unblocks any pending Read call.
@@ -153,6 +178,7 @@ func (a *Adapter) Disconnect() error {
 	default:
 		close(a.done)
 	}
+	a.resetLapTimeTracking()
 	return a.shm.Close()
 }
 
@@ -256,6 +282,87 @@ func (a *Adapter) fuelPerLap() float32 {
 	return float32(sum / float64(len(a.fuelSamples)))
 }
 
+func (a *Adapter) resetLapTimeTracking() {
+	a.lapTimeValid = false
+	a.lapTimeSession = 0
+	a.lapTimeLap = 0
+	a.lapTimeMax = 0
+	a.lapTimeSessionET = 0
+}
+
+func transitionLapTimeSeed(scoringLapTime, telemetryLapTime float64) float64 {
+	switch {
+	case scoringLapTime > 0 && telemetryLapTime > 0:
+		return math.Min(scoringLapTime, telemetryLapTime)
+	case telemetryLapTime > 0 && telemetryLapTime <= lapTimeSpikeThreshold:
+		return telemetryLapTime
+	default:
+		return scoringLapTime
+	}
+}
+
+func (a *Adapter) monotonicCurrentLapTime(scoringRaw, telemetryElapsed, telemetryLapStart float64, lapNumber int32, si *lmuScoringInfo) float64 {
+	scoringLapTime := clampNonNegative(toF64(scoringRaw))
+	telemetryLapTime := clampNonNegative(toF64(telemetryElapsed - telemetryLapStart))
+	sessionET := clampNonNegative(toF64(si.MCurrentET))
+
+	sessionChanged := a.lapTimeValid && si.MSession != a.lapTimeSession
+	lapWentBack := a.lapTimeValid && lapNumber < a.lapTimeLap
+	sessionReset := a.lapTimeValid && sessionET+sessionTimeResetThreshold < a.lapTimeSessionET
+	newLap := a.lapTimeValid && lapNumber != a.lapTimeLap
+
+	if !a.lapTimeValid {
+		lapTime := telemetryLapTime
+		if lapTime <= 0 {
+			lapTime = scoringLapTime
+		}
+		a.lapTimeValid = true
+		a.lapTimeSession = si.MSession
+		a.lapTimeLap = lapNumber
+		a.lapTimeMax = lapTime
+		a.lapTimeSessionET = sessionET
+		return lapTime
+	}
+
+	if sessionChanged || lapWentBack || sessionReset || newLap {
+		lapTime := transitionLapTimeSeed(scoringLapTime, telemetryLapTime)
+		a.lapTimeValid = true
+		a.lapTimeSession = si.MSession
+		a.lapTimeLap = lapNumber
+		a.lapTimeMax = lapTime
+		a.lapTimeSessionET = sessionET
+		return lapTime
+	}
+
+	lapTime := telemetryLapTime
+	if lapTime <= 0 {
+		lapTime = scoringLapTime
+	}
+
+	sessionDelta := sessionET - a.lapTimeSessionET
+	if sessionDelta < 0 {
+		sessionDelta = 0
+	}
+	maxAdvance := lapTimeSpikeThreshold + sessionDelta
+	if telemetryLapTime > 0 && telemetryLapTime > a.lapTimeMax+maxAdvance {
+		if scoringLapTime > a.lapTimeMax && scoringLapTime <= a.lapTimeMax+maxAdvance {
+			lapTime = scoringLapTime
+		} else {
+			lapTime = a.lapTimeMax
+		}
+	}
+
+	if lapTime < a.lapTimeMax {
+		lapTime = a.lapTimeMax
+	} else {
+		a.lapTimeMax = lapTime
+	}
+	if sessionET > a.lapTimeSessionET {
+		a.lapTimeSessionET = sessionET
+	}
+	return lapTime
+}
+
 // mapToDTO converts decoded LMU structs into a unified TelemetryFrame.
 func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmuScoringInfo) *dto.TelemetryFrame {
 	// Speed: magnitude of local velocity vector.
@@ -275,6 +382,8 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 			trackPos = 1
 		}
 	}
+	positionLapTime := clampNonNegative(toF64(s.MTimeIntoLap))
+	currentLapTime := a.monotonicCurrentLapTime(s.MTimeIntoLap, t.MElapsedTime, t.MLapStartET, t.MLapNumber, si)
 
 	// Tire compound names.
 	frontCompound := nullString(t.MFrontTireCompoundName[:])
@@ -322,17 +431,18 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 			mapTire(dto.RearRight, &t.MWheels[3], rearCompound),
 		},
 		Lap: dto.LapState{
-			CurrentLap:     int(t.MLapNumber),
-			CurrentLapTime: toF64(t.MElapsedTime - t.MLapStartET),
-			LastLapTime:    toF64(s.MLastLapTime),
-			BestLapTime:    toF64(s.MBestLapTime),
-			Sector:         sector,
-			Sector1Time:    toF64(s.MLastSector1),
-			Sector2Time:    toF64(s.MLastSector2 - s.MLastSector1),
-			IsInLap:        s.MInPits,
-			IsOutLap:       s.MPitState == 4,
-			IsValid:        s.MCountLapFlag == 2,
-			TrackPosition:  trackPos,
+			CurrentLap:      int(t.MLapNumber),
+			CurrentLapTime:  currentLapTime,
+			PositionLapTime: positionLapTime,
+			LastLapTime:     toF64(s.MLastLapTime),
+			BestLapTime:     toF64(s.MBestLapTime),
+			Sector:          sector,
+			Sector1Time:     toF64(s.MLastSector1),
+			Sector2Time:     toF64(s.MLastSector2 - s.MLastSector1),
+			IsInLap:         s.MInPits,
+			IsOutLap:        s.MPitState == 4,
+			IsValid:         s.MCountLapFlag == 2,
+			TrackPosition:   trackPos,
 		},
 		Flags: dto.Flags{
 			Yellow:    yellow,
@@ -355,6 +465,12 @@ func (a *Adapter) mapToDTO(t *lmuVehicleTelemetry, s *lmuVehicleScoring, si *lmu
 			MotorMap:    t.MMotorMap,
 			MotorMapMax: t.MMotorMapMax,
 			DRSActive:   s.MDRSState,
+
+			ABSAvailable:      t.MABSMax > 0,
+			TCAvailable:       t.MTCMax > 0,
+			TCCutAvailable:    t.MTCCutMax > 0,
+			TCSlipAvailable:   t.MTCSlipMax > 0,
+			MotorMapAvailable: t.MMotorMapMax > 0,
 		},
 		Race: dto.RaceState{
 			Position:       s.MPlace,

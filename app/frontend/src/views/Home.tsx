@@ -1,5 +1,5 @@
 import { IconGauge, IconLayout, IconUsb, IconKeyboard, IconChevronRight } from '@tabler/icons-react'
-import { Badge, Card, CardContent, cn } from '@sprint/ui'
+import { Badge, Card, CardContent, PageHeader, cn } from '@sprint/ui'
 
 type NavigableView = 'telemetry' | 'dash' | 'devices' | 'controls'
 
@@ -49,12 +49,11 @@ export default function Home({ connected, onNavigate }: HomeProps) {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
-        <div>
-          <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">HOME</h2>
-          <p className="font-mono text-[10px] text-text-muted">Mission control for Sprint</p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        heading="HOME"
+        caption="Mission control for Sprint"
+        status={(
+          <div className="flex items-center gap-2">
           <span className={cn(
             'h-1.5 w-1.5',
             connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
@@ -62,8 +61,9 @@ export default function Home({ connected, onNavigate }: HomeProps) {
           <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
             {connected ? 'UPLINK_STABLE' : 'UPLINK_OFFLINE'}
           </Badge>
-        </div>
-      </div>
+          </div>
+        )}
+      />
 
       <div className="flex-1 px-6 py-6 space-y-6">
         <div>

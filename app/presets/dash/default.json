@@ -8,8 +8,8 @@
     "id": "idle-default",
     "name": "Idle",
     "widgets": [
-      {"id": "idle-name", "type": "text", "col": 4, "row": 3, "colSpan": 12, "rowSpan": 3, "config": {"content": "Your Name"}},
-      {"id": "idle-number", "type": "text", "col": 6, "row": 6, "colSpan": 8, "rowSpan": 2, "config": {"content": "#22"}}
+      {"id": "idle-name", "type": "text", "col": 4, "row": 3, "colSpan": 12, "rowSpan": 3, "config": {"content": "Your Name", "binding": "profile.driverName"}},
+      {"id": "idle-number", "type": "text", "col": 6, "row": 6, "colSpan": 8, "rowSpan": 2, "config": {"content": "#22", "binding": "profile.driverNumber"}}
     ]
   },
   "pages": [
@@ -29,9 +29,9 @@
       ]
     }
   ],
-  "alerts": {
-    "tcChange": true,
-    "absChange": true,
-    "engineMapChange": true
-  }
+  "alerts": [
+    {"id": "alert-tc", "type": "tc_change"},
+    {"id": "alert-abs", "type": "abs_change"},
+    {"id": "alert-engine-map", "type": "enginemap_change"}
+  ]
 }

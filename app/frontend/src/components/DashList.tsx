@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Badge, Button, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from '@sprint/ui'
+import { Badge, Button, PageHeader, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from '@sprint/ui'
 import { type LayoutMeta, dashAPI } from '@/lib/dash'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -9,6 +9,7 @@ interface DashListProps {
   onCreate: () => void
   onDelete: (id: string) => Promise<void>
   onSetDefault: (id: string) => Promise<void>
+  onOpenGlobalSettings: () => void
 }
 
 function DashRow({
@@ -38,11 +39,11 @@ function DashRow({
   return (
     <>
       <div className={cn(
-        'flex items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.02]',
-        layout.default && 'bg-white/[0.015]',
+        'flex items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.03]',
+        layout.default && 'bg-bg-panel',
       )}>
         {/* Preview thumbnail */}
-        <div className="w-20 h-12 flex-shrink-0 overflow-hidden bg-[#111] border border-border flex items-center justify-center">
+        <div className="surface-shell h-12 w-20 flex-shrink-0 overflow-hidden flex items-center justify-center">
           {preview
             ? <img src={`data:image/png;base64,${preview}`} className="w-full h-full object-cover" alt={layout.name} />
             : <span className="font-mono text-base text-white/20">{layout.name.slice(0, 2).toUpperCase()}</span>
@@ -68,6 +69,7 @@ function DashRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="xs" variant="primary" onClick={() => onEdit(layout.id)}>
+                  <span className="sr-only">Edit {layout.name}</span>
                   <EditIcon />
                 </Button>
               </TooltipTrigger>
@@ -77,9 +79,10 @@ function DashRow({
             {!layout.default && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button size="xs" variant="neutral" onClick={() => void onSetDefault(layout.id)}>
-                    <StarIcon />
-                  </Button>
+                    <Button size="xs" variant="neutral" onClick={() => void onSetDefault(layout.id)}>
+                      <span className="sr-only">Set {layout.name} as default</span>
+                      <StarIcon />
+                    </Button>
                 </TooltipTrigger>
                 <TooltipContent>Set as default</TooltipContent>
               </Tooltip>
@@ -88,15 +91,16 @@ function DashRow({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={isBuiltIn}
-                    className="text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
-                    onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
-                  >
-                    <TrashIcon />
-                  </Button>
+                    <Button
+                      size="xs"
+                      variant="destructive"
+                      disabled={isBuiltIn}
+                      className="disabled:pointer-events-none disabled:opacity-30"
+                      onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
+                    >
+                      <span className="sr-only">Delete {layout.name}</span>
+                      <TrashIcon />
+                    </Button>
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -120,15 +124,23 @@ function DashRow({
   )
 }
 
-export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault }: DashListProps) {
+export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, onOpenGlobalSettings }: DashListProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-6 py-4 flex-shrink-0">
-        <h2 className="terminal-header text-sm font-bold tracking-[0.2em]">DASH_STUDIO</h2>
-        <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
-          + NEW DASH
-        </Button>
-      </div>
+      <PageHeader
+        heading="DASH_STUDIO"
+        caption="Manage saved layouts and device-ready dash presets"
+        actions={(
+          <>
+          <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="terminal-header font-bold">
+            GLOBAL SETTINGS
+          </Button>
+          <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
+            + NEW DASH
+          </Button>
+          </>
+        )}
+      />
       {layouts.length === 0 ? (
         <div className="flex flex-1 items-center justify-center font-mono text-[10px] text-text-muted">
           NO_LAYOUTS — create your first dash

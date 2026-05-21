@@ -1,43 +1,28 @@
-package widgets
-
-import "image/color"
+﻿package widgets
 
 const WidgetFlags WidgetType = "flags"
 
-func init() { RegisterWidget(WidgetFlags, "Flags", CategoryRace, 4, 2, true, 30, nil, drawWidgetFlags) }
+type flagsWidget struct{}
 
-func drawWidgetFlags(c WidgetCtx) {
-	c.Panel()
-
-	fl := c.Frame.Flags
-	var text string
-	var col color.RGBA
-
-	switch {
-	case fl.Red:
-		text, col = "RED", ColDanger
-	case fl.SafetyCar:
-		text, col = "SAFETY CAR", ColWarning
-	case fl.VSC:
-		text, col = "VSC", ColWarning
-	case fl.DoubleYellow:
-		text, col = "DBL YELLOW", ColWarning
-	case fl.Yellow:
-		text, col = "YELLOW", ColWarning
-	case fl.Checkered:
-		text, col = "CHECKERED", ColTextPri
-	default:
-		text, col = "GREEN", ColSuccess
+func (flagsWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetFlags, Name: "Flags", Category: CategoryRace,
+		DefaultColSpan: 4, DefaultRowSpan: 2,
+		IdleCapable: true, DefaultUpdateHz: Hz30,
+		Label: LabelConfig{Hidden: true},
 	}
-
-	dotSize := c.H * 0.22
-	dotX := c.X + c.W*0.12
-	dotY := c.CY() - dotSize/2
-	c.DC.SetColor(col)
-	c.DC.DrawRoundedRectangle(dotX, dotY, dotSize, dotSize, 3)
-	c.DC.Fill()
-
-	c.FontBold(c.H * 0.32)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(text, c.X+c.W*0.12+dotSize+c.W*0.04+c.W*0.3, c.CY(), 0.5, 0.5)
 }
+
+func (flagsWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Dot{X: 0.12, Y: 0.5, R: 0.18, Color: ColorDynamic(BindingFlagsColorRef)},
+		Grid{Rows: 1, Cols: 2, ColWidths: []float64{0.36, 0.64}, Cells: []GridCell{
+			{},
+			{Binding: BindingFlagsActiveText, Style: TextStyle{
+				Font: FontFamilyUI, FontSize: 0.32, IsBold: true,
+				HAlign: HAlignCenter, Color: ColorDynamic(BindingFlagsColorRef)}},
+		}},
+	}
+}
+
+func init() { Register(flagsWidget{}) }

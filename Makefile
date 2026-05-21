@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build-installer icons build \
+.PHONY: help setup dev-app dev-app-agent dev-api dev-web build-api build-web build-app build-installer icons build \
         test test-api test-pkg lint fmt \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -34,6 +34,9 @@ setup: ## One-time dev setup: install Wails CLI
 
 dev-app: ## Run the Wails desktop app in dev mode
 	Set-Location $(APP_DIR); wails dev
+
+dev-app-agent: ## Run the Wails desktop app with a fixed Wails browser URL for agent attach
+	& '.\app\scripts\dev-app-agent.ps1'
 
 dev-api: ## Run the API server locally (hot-reload with go run)
 	go run ./api

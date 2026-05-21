@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react'
 import type { ReleaseInfo } from '@sprint/types'
-import { onEvent, call } from '@/lib/wails'
+import { UPDATE_EVENTS } from '@/lib/desktopEvents'
+import { updateAPI } from '@/lib/settings'
+import { onEvent } from '@/lib/wails'
 
 interface UseUpdateCheckResult {
   releaseInfo: ReleaseInfo | null
@@ -15,7 +17,7 @@ export function useUpdateCheck(): UseUpdateCheckResult {
   const [installing, setInstalling] = useState(false)
 
   useEffect(() => {
-    const unsub = onEvent('update:available', (info: ReleaseInfo) => {
+    const unsub = onEvent(UPDATE_EVENTS.available, (info) => {
       setReleaseInfo(info)
       setDismissed(false)
     })
@@ -27,7 +29,7 @@ export function useUpdateCheck(): UseUpdateCheckResult {
   const install = useCallback(() => {
     if (!releaseInfo) return
     setInstalling(true)
-    call('DownloadAndInstall', releaseInfo.downloadURL).catch(() => {
+    updateAPI.install(releaseInfo.downloadURL).catch(() => {
       setInstalling(false)
     })
   }, [releaseInfo])

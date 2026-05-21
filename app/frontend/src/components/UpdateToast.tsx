@@ -15,8 +15,8 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
   return (
     <div
       className={cn(
-        'fixed bottom-8 right-6 z-50 w-72 surface-elevated rounded border border-border',
-        'flex flex-col gap-3 p-4 shadow-lg',
+        'fixed bottom-8 right-6 z-50 w-72 surface-overlay-panel rounded-sm shadow-overlay',
+        'flex flex-col gap-3 p-4',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -33,13 +33,9 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
             v{releaseInfo.version}
           </span>
         </div>
-        <button
-          onClick={onDismiss}
-          className="text-text-muted hover:text-foreground transition-colors mt-0.5"
-          aria-label="Dismiss"
-        >
+        <Button variant="ghost" size="icon-sm" onClick={onDismiss} className="mt-0.5" aria-label="Dismiss">
           <IconX size={14} />
-        </button>
+        </Button>
       </div>
 
       <Button

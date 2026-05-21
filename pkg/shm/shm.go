@@ -3,6 +3,12 @@
 // shm_linux.go. Instantiate with New, then call Open before reading.
 package shm
 
+import "errors"
+
+// ErrNotFound is returned by Open when the named shared memory region does not
+// exist — typically because the game is not running.
+var ErrNotFound = errors.New("shm: region not found")
+
 // Reader wraps a memory-mapped view of a named shared memory region.
 type Reader struct {
 	name    string

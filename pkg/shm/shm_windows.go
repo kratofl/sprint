@@ -3,6 +3,7 @@
 package shm
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 	"unsafe"
@@ -40,6 +41,9 @@ func (r *Reader) Open() error {
 	}
 	handle, err := openFileMapping(windows.FILE_MAP_READ, false, namePtr)
 	if err != nil {
+		if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("shm: OpenFileMapping %q: %w", r.name, err)
 	}
 	ptr, err := windows.MapViewOfFile(handle, windows.FILE_MAP_READ, 0, 0, uintptr(r.bufSize))

@@ -22,6 +22,22 @@ export function DashDeleteLayout(arg1) {
   return window['go']['main']['App']['DashDeleteLayout'](arg1);
 }
 
+export function DashGetDefaultDomainPalette() {
+  return window['go']['main']['App']['DashGetDefaultDomainPalette']();
+}
+
+export function DashGetDefaultFormatPreferences() {
+  return window['go']['main']['App']['DashGetDefaultFormatPreferences']();
+}
+
+export function DashGetDefaultTheme() {
+  return window['go']['main']['App']['DashGetDefaultTheme']();
+}
+
+export function DashGetGlobalSettings() {
+  return window['go']['main']['App']['DashGetGlobalSettings']();
+}
+
 export function DashGetPreview(arg1) {
   return window['go']['main']['App']['DashGetPreview'](arg1);
 }
@@ -34,12 +50,28 @@ export function DashLoadLayoutByID(arg1) {
   return window['go']['main']['App']['DashLoadLayoutByID'](arg1);
 }
 
+export function DashSaveGlobalSettings(arg1) {
+  return window['go']['main']['App']['DashSaveGlobalSettings'](arg1);
+}
+
 export function DashSaveLayout(arg1) {
   return window['go']['main']['App']['DashSaveLayout'](arg1);
 }
 
 export function DashSetDefault(arg1) {
   return window['go']['main']['App']['DashSetDefault'](arg1);
+}
+
+export function DashStartPreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DashStartPreview'](arg1, arg2, arg3);
+}
+
+export function DashStopPreview() {
+  return window['go']['main']['App']['DashStopPreview']();
+}
+
+export function DashUpdatePreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DashUpdatePreview'](arg1, arg2, arg3);
 }
 
 export function DeviceAdd(arg1) {
@@ -106,8 +138,8 @@ export function DeviceSetPurposeConfig(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeviceSetPurposeConfig'](arg1, arg2, arg3, arg4);
 }
 
-export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['DeviceSetScreenOffset'](arg1, arg2, arg3, arg4, arg5);
+export function DeviceSetScreenOffset(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['DeviceSetScreenOffset'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
@@ -116,6 +148,10 @@ export function DeviceSetScreenRotation(arg1, arg2, arg3, arg4) {
 
 export function DownloadAndInstall(arg1) {
   return window['go']['main']['App']['DownloadAndInstall'](arg1);
+}
+
+export function GetAlertCatalog() {
+  return window['go']['main']['App']['GetAlertCatalog']();
 }
 
 export function GetBindings() {
@@ -140,6 +176,10 @@ export function GetVersion() {
 
 export function GetWidgetCatalog() {
   return window['go']['main']['App']['GetWidgetCatalog']();
+}
+
+export function GetWidgetPreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetWidgetPreview'](arg1, arg2, arg3);
 }
 
 export function InstallScreenDriver(arg1) {

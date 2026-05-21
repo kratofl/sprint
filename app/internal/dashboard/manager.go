@@ -10,20 +10,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/google/uuid"
 	"github.com/kratofl/sprint/app/internal/appdata"
 	"github.com/kratofl/sprint/app/internal/commands"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
-
-// dashPresetsFS is the embedded presets/dash sub-tree injected from package main.
-var dashPresetsFS fs.FS
-
-// InitPresets sets the embedded fallback FS for dashboard defaults.
-// Call this in Startup() with fs.Sub(PresetsFS, "presets/dash").
-func InitPresets(fsys fs.FS) {
-	dashPresetsFS = fsys
-}
 
 // LayoutMeta is a lightweight descriptor returned by List (no widget data).
 type LayoutMeta struct {
@@ -40,14 +31,17 @@ type LayoutMeta struct {
 // Each layout is stored as data/layouts/<id>/config.json with an optional
 // data/layouts/<id>/thumbnail.png preview image.
 type Manager struct {
-	dir string
+	dir       string
+	presetsFS fs.FS
 }
 
 // NewManager creates a Manager using the standard config directory.
-func NewManager() *Manager {
+// presetsFS is the embedded dash presets sub-tree (fs.Sub(PresetsFS, "presets/dash")).
+func NewManager(presetsFS fs.FS) *Manager {
 	base := appdata.Dir()
 	return &Manager{
-		dir: filepath.Join(base, "layouts"),
+		dir:       filepath.Join(base, "layouts"),
+		presetsFS: presetsFS,
 	}
 }
 
@@ -109,13 +103,13 @@ func (m *Manager) Load(id string) (*DashLayout, error) {
 	return &layout, nil
 }
 
-// Save validates and writes a layout to disk. A new UUID is assigned if layout.ID is empty.
+// Save validates and writes a layout to disk. A compact layout ID is assigned if layout.ID is empty.
 func (m *Manager) Save(layout *DashLayout) error {
 	if err := os.MkdirAll(m.dir, 0755); err != nil {
 		return fmt.Errorf("dash: mkdir: %w", err)
 	}
 	if layout.ID == "" {
-		layout.ID = uuid.NewString()
+		layout.ID = newDashID("lay")
 	}
 	if layout.Name == "" {
 		layout.Name = "Untitled"
@@ -138,14 +132,13 @@ func (m *Manager) Create(name string) (*DashLayout, error) {
 		name = "Untitled"
 	}
 	layout := &DashLayout{
-		ID:       uuid.NewString(),
+		ID:       newDashID("lay"),
 		Name:     name,
 		Default:  false,
 		GridCols: DefaultGridCols,
 		GridRows: DefaultGridRows,
 		IdlePage: NewPage("Idle"),
 		Pages:    []DashPage{NewPage("Main")},
-		Alerts:   AlertConfig{},
 	}
 	if err := m.Save(layout); err != nil {
 		return nil, err
@@ -212,7 +205,7 @@ func (m *Manager) EnsureDefault() error {
 			return nil
 		}
 	}
-	layout, err := defaultLayout()
+	layout, err := m.defaultLayout()
 	if err != nil {
 		return err
 	}
@@ -254,7 +247,7 @@ func (m *Manager) loadFirst() (*DashLayout, error) {
 		}
 	}
 	_ = m.EnsureDefault()
-	return defaultLayout()
+	return m.defaultLayout()
 }
 
 // writeFile marshals and writes a layout to disk without validation.
@@ -279,7 +272,7 @@ func (m *Manager) writeFile(layout *DashLayout) error {
 
 // defaultLayout returns the default dash layout.
 // Tries <exe_dir>/DefaultDash.json first; falls back to the embedded presets FS.
-func defaultLayout() (*DashLayout, error) {
+func (m *Manager) defaultLayout() (*DashLayout, error) {
 	if exeDir := appdata.ExeDir(); exeDir != "" {
 		if data, err := os.ReadFile(filepath.Join(exeDir, "DefaultDash.json")); err == nil {
 			var layout DashLayout
@@ -294,8 +287,8 @@ func defaultLayout() (*DashLayout, error) {
 			}
 		}
 	}
-	if dashPresetsFS != nil {
-		if data, err := fs.ReadFile(dashPresetsFS, "default.json"); err == nil {
+	if m.presetsFS != nil {
+		if data, err := fs.ReadFile(m.presetsFS, "default.json"); err == nil {
 			var layout DashLayout
 			if err := json.Unmarshal(data, &layout); err == nil {
 				if layout.ID == "" {
@@ -324,12 +317,69 @@ func init() {
 	commands.RegisterMeta(CmdSetTargetLap, "Set Target Lap", "Dashboard", true, false)
 }
 
-// previewWidth and previewHeight are the dimensions for preview thumbnails.
+// previewWidth and previewHeight are the dimensions for layout thumbnail previews.
 // Smaller than the actual screen for fast generation and small file size.
 const (
 	previewWidth  = 400
 	previewHeight = 240
 )
+
+// widgetPreviewCellPx is the pixel size per grid cell when rendering a single-widget
+// preview. The preview canvas is sized as DefaultColSpan×widgetPreviewCellPx by
+// DefaultRowSpan×widgetPreviewCellPx, so the image always has the correct aspect ratio.
+const widgetPreviewCellPx = 48
+
+// RenderWidgetPreview renders a single widget of the given type into a PNG image whose
+// pixel dimensions are colSpan×widgetPreviewCellPx by rowSpan×widgetPreviewCellPx. A 1×1
+// grid is used so the widget fills the entire canvas. A zero-value TelemetryFrame provides
+// placeholder values — no live data required. Returns an error if the widget type is not
+// registered.
+func RenderWidgetPreview(widgetType string, colSpan, rowSpan int) ([]byte, error) {
+	wt := widgets.WidgetType(widgetType)
+	_, ok := widgets.Get(wt)
+	if !ok {
+		return nil, fmt.Errorf("dash: unknown widget %q", widgetType)
+	}
+
+	w := colSpan * widgetPreviewCellPx
+	h := rowSpan * widgetPreviewCellPx
+
+	layout := &DashLayout{
+		ID:       "widget-preview",
+		GridCols: 1,
+		GridRows: 1,
+		IdlePage: DashPage{ID: "idle", Name: "Idle"},
+		Pages: []DashPage{{
+			ID:   "p",
+			Name: "p",
+			Widgets: []DashWidget{{
+				ID:      "w",
+				Type:    wt,
+				Col:     0,
+				Row:     0,
+				ColSpan: 1,
+				RowSpan: 1,
+			}},
+		}},
+	}
+
+	painter := NewPainter(w, h)
+	defer painter.Close()
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
 
 // renderPreview renders a PNG thumbnail of the layout's first active page.
 // Uses a zero-value TelemetryFrame (all fields zero/false) so no live data needed.

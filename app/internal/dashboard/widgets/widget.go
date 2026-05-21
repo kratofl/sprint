@@ -1,36 +1,60 @@
-// Package widgets contains the widget registry, draw context, and all widget
-// implementations for the dashboard. It has no internal imports so it can be
-// imported by dashboard/ without creating cycles.
+// Package widgets contains the widget registry, element types, and all widget
+// definitions for the dashboard. Widgets are pure data — they return []Element
+// describing what to draw. All rendering lives in the dashboard/painter package.
+// This package has no dependency on gg, so it can be tested without a display.
 package widgets
 
 import (
 	"fmt"
-	"image/color"
-
-	"github.com/fogleman/gg"
-	"github.com/kratofl/sprint/pkg/dto"
+	"math"
+	"strconv"
+	"strings"
 )
 
 // WidgetType is the canonical identifier for a dashboard widget kind.
 // Each widget_*.go file defines its own WidgetType constant.
 type WidgetType string
 
-// WidgetFn is the drawing function signature for a dashboard widget.
-type WidgetFn func(WidgetCtx)
-
-// ConfigDef describes one configurable parameter for a widget instance.
-type ConfigDef struct {
-	Key     string   `json:"key"`
-	Label   string   `json:"label"`
-	Type    string   `json:"type"` // "select", "number", "boolean", "text"
-	Options []Option `json:"options,omitempty"`
-	Default string   `json:"default"` // string representation of default value
-}
-
-// Option is one choice in a "select" ConfigDef.
-type Option struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
+// Widget is the interface implemented by every dashboard widget.
+// Definition returns a slice of elements describing the widget's visuals.
+// config holds the per-instance configuration from DashWidget.Config.
+// No gg drawing calls should appear in any Widget implementation — all
+// rendering is centralised in the dashboard Painter.
+//
+// The painter automatically prepends a panel background and a header label
+// based on WidgetMeta.Panel and WidgetMeta.Header. Widgets should NOT
+// include ElemPanel or header ElemText in their Definition() return value
+// unless they need full manual control (set Header.Disabled / Panel.Disabled).
+//
+// # Adding a new widget
+//
+//  1. Create app/internal/dashboard/widgets/widget_<name>.go.
+//  2. Define a WidgetType constant and a struct implementing Widget.
+//  3. Call Register in init(). No other files need to change.
+//
+// Example:
+//
+//	const WidgetMyThing WidgetType = "my_thing"
+//
+//	type myThingWidget struct{}
+//
+//	func (myThingWidget) Meta() WidgetMeta {
+//	    return WidgetMeta{Type: WidgetMyThing, Name: "My Thing", Category: CategoryCar,
+//	        DefaultColSpan: 4, DefaultRowSpan: 3, DefaultUpdateHz: Hz15}
+//	}
+//
+//	func (myThingWidget) Definition(_ map[string]any) []Element {
+//	    return []Element{
+//	        Text{Binding: "car.speedKPH", Format: "int", X: 0.5, Y: 0.5,
+//	             Style: TextStyle{Font: FontFamilyMono, FontSize: 0.5, IsBold: true,
+//	                 HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
+//	    }
+//	}
+//
+//	func init() { Register(myThingWidget{}) }
+type Widget interface {
+	Meta() WidgetMeta
+	Definition(config map[string]any) []Element
 }
 
 // Category is the palette grouping for a widget.
@@ -43,6 +67,16 @@ const (
 	CategoryRace   Category = "race"
 )
 
+// Standard update rates for DefaultUpdateHz.
+const (
+	Hz1  float64 = 1
+	Hz2  float64 = 2
+	Hz5  float64 = 5
+	Hz10 float64 = 10
+	Hz15 float64 = 15
+	Hz30 float64 = 30
+)
+
 // categoryLabels maps canonical category IDs to display labels.
 var categoryLabels = map[Category]string{
 	CategoryLayout: "Layout",
@@ -51,51 +85,103 @@ var categoryLabels = map[Category]string{
 	CategoryRace:   "Race",
 }
 
-// WidgetMeta holds the type, display name, palette category, and draw function.
-// The Fn field is never serialised; it is used only by the render pipeline.
+// PanelConfig controls the automatic panel background drawn by the painter.
+// Zero value = standard bordered panel.
+type PanelConfig struct {
+	Disabled bool    `json:"disabled,omitempty"` // true = no panel background
+	CornerR  float64 `json:"cornerR,omitempty"`  // corner radius (0 = square)
+	NoBorder bool    `json:"noBorder,omitempty"` // true = fill only, no border ring
+}
+
+// LabelConfig controls the automatic label drawn by the painter.
+// Zero value = label auto-generated from UPPER(Meta.Name) at the top, default styling.
+type LabelConfig struct {
+	Hidden    bool    `json:"hidden,omitempty"`    // true = no auto-label
+	Text      string  `json:"text,omitempty"`      // override label text (default: UPPER(Meta.Name))
+	Align     HAlign  `json:"align,omitempty"`     // label alignment (default: HAlignStart)
+	FontScale float64 `json:"fontScale,omitempty"` // label font scale (default: 0.12)
+	VAlign    VAlign  `json:"vAlign,omitempty"`    // VAlignStart = top (default), VAlignEnd = bottom
+}
+
+// WidgetMeta holds the widget type, display name, palette category,
+// config schema, and default grid dimensions.
 type WidgetMeta struct {
-	Type            WidgetType  `json:"type"`
-	Label           string      `json:"label"`
-	Category        Category    `json:"category"`
-	CategoryLabel   string      `json:"categoryLabel"`
-	ConfigDefs      []ConfigDef `json:"configDefs,omitempty"`
-	DefaultColSpan  int         `json:"defaultColSpan"`
-	DefaultRowSpan  int         `json:"defaultRowSpan"`
-	IdleCapable     bool        `json:"idleCapable"`
-	DefaultUpdateHz float64     `json:"defaultUpdateHz"`
-	Fn              WidgetFn    `json:"-"`
+	Type              WidgetType        `json:"type"`
+	Name              string            `json:"name"`
+	Category          Category          `json:"category"`
+	CategoryLabel     string            `json:"categoryLabel"`
+	Panel             PanelConfig       `json:"panel,omitempty"`
+	Label             LabelConfig       `json:"label,omitempty"`
+	ConfigDefs        []ConfigDef       `json:"configDefs,omitempty"`
+	DefaultColSpan    int               `json:"defaultColSpan"`
+	DefaultRowSpan    int               `json:"defaultRowSpan"`
+	IdleCapable       bool              `json:"idleCapable"`
+	DefaultUpdateHz   float64           `json:"defaultUpdateHz"`
+	DefaultPanelRules []ConditionalRule `json:"defaultPanelRules,omitempty"`
+	DefaultDefinition ElementList       `json:"defaultDefinition,omitempty"`
+	// CapabilityBinding is an optional binding path (e.g. BindingElectronicsABSAvailable).
+	// When set, the painter resolves this path on every frame; if it resolves to
+	// false the widget renders a "not available" placeholder instead of live data.
+	CapabilityBinding Binding `json:"capabilityBinding,omitempty"`
 }
 
 var (
-	widgetRegistry = map[WidgetType]WidgetFn{}
+	widgetRegistry = map[WidgetType]Widget{}
 	widgetMeta     = map[WidgetType]WidgetMeta{}
 )
 
-// RegisterWidget registers a widget with its metadata.
-// category is normalised to lowercase; the display label is looked up from categoryLabels.
+// Register registers a Widget implementation.
+// The update_rate ConfigDef is automatically appended to the widget's ConfigDefs.
+// DefaultDefinition is pre-computed using the default config so the catalog
+// includes the element layout for editor preview rendering.
 // Call from init() in widget_*.go files.
-func RegisterWidget(t WidgetType, label string, category Category, defaultColSpan, defaultRowSpan int, idleCapable bool, defaultUpdateHz float64, configDefs []ConfigDef, fn WidgetFn) {
-	catLabel, ok := categoryLabels[category]
+func Register(w Widget) {
+	m := w.Meta()
+	catLabel, ok := categoryLabels[m.Category]
 	if !ok {
-		catLabel = string(category)
+		catLabel = string(m.Category)
 	}
-	allDefs := make([]ConfigDef, 0, len(configDefs)+1)
-	allDefs = append(allDefs, configDefs...)
-	allDefs = append(allDefs, updateRateConfigDef(defaultUpdateHz))
-	meta := WidgetMeta{
-		Type:            t,
-		Label:           label,
-		Category:        category,
-		CategoryLabel:   catLabel,
-		ConfigDefs:      allDefs,
-		DefaultColSpan:  defaultColSpan,
-		DefaultRowSpan:  defaultRowSpan,
-		IdleCapable:     idleCapable,
-		DefaultUpdateHz: defaultUpdateHz,
-		Fn:              fn,
+	m.CategoryLabel = catLabel
+	m.ConfigDefs = append(m.ConfigDefs, updateRateConfigDef(m.DefaultUpdateHz))
+	def := w.Definition(nil)
+	if !m.Panel.Disabled {
+		panel := Panel{CornerR: m.Panel.CornerR, NoBorder: m.Panel.NoBorder}
+		def = append([]Element{panel}, def...)
 	}
-	widgetRegistry[t] = fn
-	widgetMeta[t] = meta
+	if !m.Label.Hidden {
+		text := m.Label.Text
+		if text == "" {
+			text = strings.ToUpper(m.Name)
+		}
+		fontScale := m.Label.FontScale
+		if fontScale == 0 {
+			fontScale = 0.12
+		}
+		lbl := Text{
+			Text: text,
+			Style: TextStyle{
+				Font:     FontFamilyUI,
+				FontSize: fontScale,
+				HAlign:   m.Label.Align,
+				Color:    ColorRefMuted.Expr(),
+			},
+		}
+		// Insert label after panel (if present) or at the start.
+		insertAt := 0
+		if !m.Panel.Disabled {
+			insertAt = 1
+		}
+		def = append(def[:insertAt], append([]Element{lbl}, def[insertAt:]...)...)
+	}
+	m.DefaultDefinition = ElementList(def)
+	widgetRegistry[m.Type] = w
+	widgetMeta[m.Type] = m
+}
+
+// Get returns the registered Widget for the given type, or (nil, false) if unknown.
+func Get(t WidgetType) (Widget, bool) {
+	w, ok := widgetRegistry[t]
+	return w, ok
 }
 
 // GetMeta returns the WidgetMeta for the given widget type.
@@ -131,65 +217,12 @@ func WidgetCatalog() []WidgetMeta {
 	return out
 }
 
-// Dispatch calls the registered draw function for the given widget type.
-// w provides the bounding box; FontLoader is the painter's font-loading function.
-// Unknown types are silently skipped.
-func Dispatch(t WidgetType, dc *gg.Context, frame *dto.TelemetryFrame, x, y, w, h float64, fontLoader func(*gg.Context, string, float64), config map[string]any) {
-	fn, ok := widgetRegistry[t]
-	if !ok {
-		return
-	}
-	fn(WidgetCtx{
-		DC:         dc,
-		Frame:      frame,
-		X:          x,
-		Y:          y,
-		W:          w,
-		H:          h,
-		FontLoader: fontLoader,
-		Config:     config,
-	})
-}
-
-// WidgetCtx is the drawing context passed to every widget renderer.
-//
-// # Adding a new widget
-//
-//  1. Create app/internal/dashboard/widgets/widget_<name>.go.
-//  2. Define a WidgetType constant, call RegisterWidget in init(), write the draw function.
-//  3. No other files need to change.
-//
-// Example:
-//
-//	const WidgetMyThing WidgetType = "my_thing"
-//
-//	func init() { RegisterWidget(WidgetMyThing, "My Thing", "Car", 4, 3, false, 15, nil, drawMyThing) }
-//
-//	func drawMyThing(c WidgetCtx) {
-//	    c.Panel()
-//	    c.FontNumber(c.H * 0.5)
-//	    c.DC.SetColor(ColTextPri)
-//	    c.DC.DrawStringAnchored(c.FmtSpeed(float64(c.Frame.Car.SpeedMS)), c.CX(), c.CY(), 0.5, 0.5)
-//	}
-type WidgetCtx struct {
-	DC         *gg.Context
-	Frame      *dto.TelemetryFrame
-	X, Y, W, H float64
-	// FontLoader loads a named font face at the given size onto dc.
-	// Provided by the Painter — use the FontXxx helpers instead of calling directly.
-	FontLoader func(dc *gg.Context, name string, size float64)
-	// Config holds optional widget-specific configuration from the layout.
-	Config map[string]any
-}
-
-// Layout helpers.
-
-// ConfigString returns a string config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigString(key, defaultVal string) string {
-	if c.Config == nil {
+// configString returns a string config value by key, or defaultVal if absent.
+func configString(config map[string]any, key, defaultVal string) string {
+	if config == nil {
 		return defaultVal
 	}
-	if v, ok := c.Config[key]; ok {
+	if v, ok := config[key]; ok {
 		if s, ok := v.(string); ok {
 			return s
 		}
@@ -197,83 +230,88 @@ func (c WidgetCtx) ConfigString(key, defaultVal string) string {
 	return defaultVal
 }
 
-// ConfigBool returns a bool config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigBool(key string, defaultVal bool) bool {
-	if c.Config == nil {
+// configFloat returns a float64 config value by key, or defaultVal if absent or unparseable.
+func configFloat(config map[string]any, key string, defaultVal float64) float64 {
+	if config == nil {
 		return defaultVal
 	}
-	if v, ok := c.Config[key]; ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return defaultVal
-}
-
-// ConfigFloat returns a float64 config value by key, or defaultVal if absent.
-func (c WidgetCtx) ConfigFloat(key string, defaultVal float64) float64 {
-	if c.Config == nil {
-		return defaultVal
-	}
-	if v, ok := c.Config[key]; ok {
+	if v, ok := config[key]; ok {
 		switch n := v.(type) {
 		case float64:
 			return n
-		case float32:
-			return float64(n)
-		case int:
-			return float64(n)
+		case string:
+			if f, err := strconv.ParseFloat(n, 64); err == nil {
+				return f
+			}
 		}
 	}
 	return defaultVal
 }
 
-const defaultBw = 1
-
-func (c WidgetCtx) Panel()                 { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, defaultBw) }
-func (c WidgetCtx) PanelR(r float64)       { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, defaultBw) }
-func (c WidgetCtx) PanelBW(bw float64)     { drawPanel(c.DC, c.X, c.Y, c.W, c.H, 0, bw) }
-func (c WidgetCtx) PanelRBW(r, bw float64) { drawPanel(c.DC, c.X, c.Y, c.W, c.H, r, bw) }
-func (c WidgetCtx) CX() float64            { return c.X + c.W/2 }
-func (c WidgetCtx) CY() float64            { return c.Y + c.H/2 }
-
-// Font helpers.
-
-func (c WidgetCtx) FontLabel(size float64)  { c.FontLoader(c.DC, "SpaceGrotesk-Regular.ttf", size) }
-func (c WidgetCtx) FontBold(size float64)   { c.FontLoader(c.DC, "SpaceGrotesk-Bold.ttf", size) }
-func (c WidgetCtx) FontNumber(size float64) { c.FontLoader(c.DC, "JetBrainsMono-Bold.ttf", size) }
-func (c WidgetCtx) FontMono(size float64)   { c.FontLoader(c.DC, "JetBrainsMono-Regular.ttf", size) }
-
-// Bar helpers.
-
-func (c WidgetCtx) HBar(x, y, w, h, pct float64, col color.RGBA) {
-	drawHBar(c.DC, x, y, w, h, pct, col)
-}
-
-func (c WidgetCtx) HBarCentered(x, y, w, h, pct float64, col color.RGBA) {
-	drawHBarCentered(c.DC, x, y, w, h, pct, col)
-}
-
-// Formatter helpers.
-
-func (c WidgetCtx) FmtLap(t float64) string    { return FmtLap(t) }
-func (c WidgetCtx) FmtSector(t float64) string { return FmtSector(t) }
-func (c WidgetCtx) FmtSpeed(ms float64) string { return fmt.Sprintf("%.0f", ms*3.6) }
-
-// FmtLap formats t (seconds) as "M:SS.mmm". Returns "-.---.---" when t ≤ 0.
+// FmtLap formats t (seconds) using the default M:SS.mmm layout.
+// Returns "-.---.---" when t ≤ 0.
 func FmtLap(seconds float64) string {
-	if seconds <= 0 {
-		return "-.---.---"
-	}
-	m := int(seconds) / 60
-	s := seconds - float64(m*60)
-	return fmt.Sprintf("%d:%06.3f", m, s)
+	return FmtLapWith(seconds, LapFormatMSSmmm)
 }
 
-// FmtSector formats t (seconds) as "SS.mmm". Returns "--.---" when t ≤ 0.
+// FmtLapWith formats t (seconds) according to the given LapFormat.
+// Returns a format-appropriate placeholder when t ≤ 0.
+func FmtLapWith(seconds float64, format LapFormat) string {
+	switch format {
+	case LapFormatMSSmm:
+		if seconds <= 0 {
+			return "-.---.--"
+		}
+		totalCs := int64(math.Round(seconds * 100))
+		if totalCs <= 0 {
+			return "-.---.--"
+		}
+		m := totalCs / 6000
+		rem := totalCs % 6000
+		s := rem / 100
+		cs := rem % 100
+		return fmt.Sprintf("%d:%02d.%02d", m, s, cs)
+	case LapFormatSSmmm:
+		if seconds <= 0 {
+			return "--.---"
+		}
+		totalMs := int64(math.Round(seconds * 1000))
+		if totalMs <= 0 {
+			return "--.---"
+		}
+		return fmt.Sprintf("%.3f", float64(totalMs)/1000.0)
+	default: // LapFormatMSSmmm
+		if seconds <= 0 {
+			return "-.---.---"
+		}
+		totalMs := int64(math.Round(seconds * 1000))
+		if totalMs <= 0 {
+			return "-.---.---"
+		}
+		m := totalMs / 60000
+		rem := totalMs % 60000
+		s := rem / 1000
+		ms := rem % 1000
+		return fmt.Sprintf("%d:%02d.%03d", m, s, ms)
+	}
+}
+
+// FmtSector formats t (seconds) using the default SS.mmm layout.
+// Returns "--.---" when t ≤ 0.
 func FmtSector(seconds float64) string {
+	return FmtSectorWith(seconds, LapFormatMSSmmm)
+}
+
+// FmtSectorWith formats a sector time (seconds) according to the given LapFormat.
+// Sector times always show as total seconds; the LapFormat only controls precision.
+func FmtSectorWith(seconds float64, format LapFormat) string {
 	if seconds <= 0 {
 		return "--.---"
 	}
-	return fmt.Sprintf("%.3f", seconds)
+	switch format {
+	case LapFormatMSSmm:
+		return fmt.Sprintf("%.2f", seconds)
+	default: // LapFormatMSSmmm, LapFormatSSmmm
+		return fmt.Sprintf("%.3f", seconds)
+	}
 }

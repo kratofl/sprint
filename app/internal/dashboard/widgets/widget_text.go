@@ -1,29 +1,42 @@
-package widgets
+﻿package widgets
 
 const WidgetText WidgetType = "text"
 
-func init() {
-	RegisterWidget(WidgetText, "Text", CategoryLayout, 4, 2, true, 5, []ConfigDef{
-		{
-			Key:     "content",
-			Label:   "Text",
-			Type:    "text",
-			Default: "Sprint",
+type textWidget struct{}
+
+func (textWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetText, Name: "Text", Category: CategoryLayout,
+		DefaultColSpan: 4, DefaultRowSpan: 2,
+		IdleCapable: true, DefaultUpdateHz: Hz5,
+		Label: LabelConfig{Hidden: true},
+		ConfigDefs: []ConfigDef{
+			{Key: "content", Label: "Static Text", Type: "text", Default: "Sprint"},
+			{Key: "binding", Label: "Data Binding", Type: "text", Default: ""},
+			{Key: "format", Label: "Format", Type: "text", Default: ""},
+			{Key: "color", Label: "Text Color (semantic)", Type: "text", Default: ""},
+			{Key: "font_scale", Label: "Font Scale", Type: "number", Default: "1"},
 		},
-	}, drawWidgetText)
+	}
 }
 
-func drawWidgetText(c WidgetCtx) {
-	c.Panel()
+func (textWidget) Definition(config map[string]any) []Element {
+	binding := configString(config, "binding", "")
+	format := configString(config, "format", "")
+	content := configString(config, "content", "Sprint")
+	colorKey := configString(config, "color", "")
+	fontScale := 0.45 * configFloat(config, "font_scale", 1.0)
 
-	text := c.ConfigString("content", "Sprint")
-
-	fontSize := c.H * 0.45
-	if fontSize > c.W*0.12 {
-		fontSize = c.W * 0.12
+	ref := ColorRef("fg")
+	if colorKey != "" {
+		ref = ColorRef(colorKey)
 	}
 
-	c.FontBold(fontSize)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(text, c.CX(), c.CY(), 0.5, 0.5)
+	return []Element{
+		Text{Text: content, Binding: Binding(binding), Format: Format(format), Style: TextStyle{
+			Font: FontFamilyUI, FontSize: fontScale, IsBold: true,
+			HAlign: HAlignCenter, Color: ref.Expr()}},
+	}
 }
+
+func init() { Register(textWidget{}) }

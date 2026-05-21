@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { onEvent } from '@/lib/wails'
 import { IsConnected } from '../../wailsjs/go/main/App'
+import { TELEMETRY_EVENTS } from '@/lib/desktopEvents'
+import { onEvent, runDesktopCall } from '@/lib/wails'
 import type { TelemetryFrame } from '@sprint/types'
 
 export type { TelemetryFrame }
@@ -27,19 +28,19 @@ export function useTelemetry(): UseTelemetryResult {
 
   useEffect(() => {
     // Query current state immediately so we don't miss early connection events.
-    IsConnected().then(setConnected).catch(() => {})
+    runDesktopCall('IsConnected', () => IsConnected()).then(setConnected).catch(() => {})
 
-    const unsubTelemetry = onEvent('telemetry:frame', (data) => {
-      setFrame(data as TelemetryFrame)
+    const unsubTelemetry = onEvent(TELEMETRY_EVENTS.frame, (data) => {
+      setFrame(data)
       setConnected(true)
       frameCount.current++
     })
 
-    const unsubConnect = onEvent('telemetry:connected', () => {
+    const unsubConnect = onEvent(TELEMETRY_EVENTS.connected, () => {
       setConnected(true)
     })
 
-    const unsubDisconnect = onEvent('telemetry:disconnected', () => {
+    const unsubDisconnect = onEvent(TELEMETRY_EVENTS.disconnected, () => {
       setConnected(false)
       setFrame(null)
     })

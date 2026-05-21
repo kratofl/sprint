@@ -3,7 +3,16 @@
 // games/<gamename>/ that satisfies this interface — no other code needs to change.
 package games
 
-import "github.com/kratofl/sprint/pkg/dto"
+import (
+	"errors"
+
+	"github.com/kratofl/sprint/pkg/dto"
+)
+
+// ErrNotRunning is returned by Connect when the game is simply not running.
+// The coordinator uses this to suppress noisy retries from the log at Warn
+// level — it is a normal, expected condition, not an error.
+var ErrNotRunning = errors.New("game not running")
 
 // GameAdapter is the contract between a game-specific integration and the rest of the
 // telemetry pipeline. Implementations read raw game data and map it to the unified DTO.

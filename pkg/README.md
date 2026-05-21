@@ -24,15 +24,16 @@ All values use SI units: speed in m/s, temperatures in °C, pressures in kPa.
 2. Implement the `GameAdapter` interface:
    ```go
    type GameAdapter interface {
-       Name()  string
-       Start() error
-       Stop()  error
+       Name()       string
+       Connect()    error
+       Disconnect() error
+       Read()       (*dto.TelemetryFrame, error)
    }
    ```
-3. Map raw game data to `dto.TelemetryFrame`
-4. Register in `app/internal/coordinator/`
+3. Map raw game data to `dto.TelemetryFrame` — use SI units (m/s, °C, kPa)
+4. Register in `app/internal/core/core.go`
 
-No changes needed to the VoCore renderer, engineer hub, web app, or sync client.
+No changes needed to the USB screen drivers, frontend, or other consumers.
 
 ## Module
 
