@@ -104,24 +104,24 @@ export interface DashPage {
   name: string
   background?: RGBAColor
   widgets: DashWidget[]
-  wrapperGroups?: DashWrapperGroup[]
+  widgetStacks?: DashWidgetStack[]
 }
 
-export interface DashWrapperVariant {
+export interface DashWidgetStackLayer {
   id: string
   name: string
   widgets: DashWidget[]
 }
 
-export interface DashWrapperGroup {
+export interface DashWidgetStack {
   id: string
   name: string
   col: number
   row: number
   colSpan: number
   rowSpan: number
-  defaultVariantId?: string
-  variants: DashWrapperVariant[]
+  defaultLayerId?: string
+  layers: DashWidgetStackLayer[]
 }
 
 export interface DashLayout {
@@ -265,6 +265,7 @@ export interface WidgetElement {
   hAlign?: HAlign
   vAlign?: VAlign
   color?: ColorExpr
+  opticalCenter?: boolean
   dotX?: number
   dotY?: number
   dotR?: number
