@@ -3,28 +3,28 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { Slot } from "radix-ui"
 
 import { cn } from "../../lib/utils"
+import {
+  buttonActiveClassName,
+  buttonDestructiveClassName,
+  buttonGhostClassName,
+  buttonNeutralClassName,
+  buttonPrimaryClassName,
+  buttonSecondaryClassName,
+} from "./controlClasses"
 
 const buttonVariants = cva(
-  "group/button terminal-label inline-flex shrink-0 items-center justify-center rounded-sm border bg-transparent bg-clip-padding whitespace-nowrap text-foreground transition-colors outline-none select-none focus-visible:border-ring focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button terminal-label inline-flex shrink-0 items-center justify-center rounded-sm border bg-transparent bg-clip-padding whitespace-nowrap text-foreground transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default:
-          "border-primary text-primary hover:bg-primary hover:text-primary-foreground",
-        primary:
-          "border-primary text-primary hover:bg-primary hover:text-primary-foreground",
-        outline:
-          "border-border text-text-muted hover:border-border-strong hover:text-foreground",
-        neutral:
-          "border-border text-text-muted hover:border-border-strong hover:text-foreground",
-        secondary:
-          "border-secondary text-secondary hover:bg-secondary hover:text-secondary-foreground",
-        ghost:
-          "border-transparent text-text-muted hover:border-border hover:text-foreground",
-        destructive:
-          "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground",
-        active:
-          "border-primary bg-accent/5 text-primary hover:bg-accent/10",
+        default: buttonPrimaryClassName,
+        primary: buttonPrimaryClassName,
+        outline: buttonNeutralClassName,
+        neutral: buttonNeutralClassName,
+        secondary: buttonSecondaryClassName,
+        ghost: buttonGhostClassName,
+        destructive: buttonDestructiveClassName,
+        active: buttonActiveClassName,
         link: "border-transparent text-text-muted underline-offset-4 hover:text-primary hover:underline",
       },
       size: {

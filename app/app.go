@@ -23,6 +23,8 @@ type App struct {
 	coord   *core.Coordinator
 	dash    *dashboard.Manager
 	devMgr  *devices.Manager
+	dashSvc *dashboard.Service
+	devices *devices.Service
 }
 
 // NewApp creates a new App instance. Wails calls this before Startup.
@@ -42,22 +44,40 @@ func (a *App) Startup(ctx context.Context) {
 	if catalogFS, err := fs.Sub(PresetsFS, "presets/devices"); err == nil {
 		devices.InitPresets(catalogFS)
 	}
-	if dashFS, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
-		dashboard.InitPresets(dashFS)
+	var dashFS fs.FS
+	if sub, err := fs.Sub(PresetsFS, "presets/dash"); err == nil {
+		dashFS = sub
 	}
 	if settingsFS, err := fs.Sub(PresetsFS, "presets/settings"); err == nil {
 		settings.InitPresets(settingsFS)
 	}
 
-	a.dash = dashboard.NewManager()
+	a.dash = dashboard.NewManager(dashFS)
 	if err := a.dash.EnsureDefault(); err != nil {
 		log.Warn("dash: failed to ensure default layout", "err", err)
 	}
 	a.devMgr = devices.NewManager()
 	a.coord = core.New(log, a.dash, a.devMgr)
-	a.coord.SetEmit(func(event string, data ...any) {
+	emit := func(event string, data ...any) {
 		runtime.EventsEmit(ctx, event, data...)
+	}
+	a.coord.SetEmit(emit)
+	a.dashSvc = dashboard.NewService(a.dash, a.devMgr, a.coord)
+	a.devices = devices.NewService(a.devMgr, a.coord, emit, func(deviceID, dashID string) error {
+		layout, err := a.dash.Load(dashID)
+		if err != nil {
+			return err
+		}
+		a.coord.SetDashLayout(deviceID, layout)
+		return nil
 	})
+
+	if s, err := settings.Load(); err == nil {
+		a.coord.SetProfile(dashboard.RenderProfile{
+			DriverName:   s.DriverName,
+			DriverNumber: s.DriverNumber,
+		})
+	}
 }
 
 // DomReady is called after the frontend DOM is fully loaded and scripts have
@@ -150,7 +170,16 @@ func (a *App) GetSettings() (*settings.Settings, error) {
 
 // SaveSettings persists s to disk.
 func (a *App) SaveSettings(s settings.Settings) error {
-	return settings.Save(&s)
+	if err := settings.Save(&s); err != nil {
+		return err
+	}
+	if a.coord != nil {
+		a.coord.SetProfile(dashboard.RenderProfile{
+			DriverName:   s.DriverName,
+			DriverNumber: s.DriverNumber,
+		})
+	}
+	return nil
 }
 
 // CheckUpdate manually checks GitHub Releases for a newer version.

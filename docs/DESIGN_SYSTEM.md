@@ -128,21 +128,6 @@ For accent call-outs, use colored transparent borders on top:
 | Cyan call-out card | `rgba(90,248,251,0.30)` | `border-teal-border` |
 | Subtle divider | `rgba(255,255,255,0.08)` | `border-border-subtle` |
 
-### 2.8 Tech Grid
-
-The main content workspace uses a subtle grid texture to convey a technical HUD feel.
-
-```css
-.tech-grid {
-  background-image:
-    linear-gradient(to right,  #1a1a1a 1px, transparent 1px),
-    linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-```
-
-Apply `.tech-grid` to the main workspace container, not to cards or sidebars.
-
 ### 2.9 Glassmorphism — Floating Surfaces Only
 
 Glass blur effects are reserved for **floating overlays**: modals, sheets, command palette.
@@ -431,11 +416,52 @@ The Wails desktop frontend shares the same design system as the web app — the 
 
 ### 9.1 Window & Chrome
 
-- Frameless or transparent title bar — the dark surface extends to the window edge.
+- Frameless title bar — the dark surface extends to the window edge. A thin `border-t border-border` on the outermost container replaces the OS frame.
 - Minimum window size: `1024 × 680px`.
-- Custom drag region at the top of the sidebar.
+- Title bar height: `h-8` (32px), draggable via `[--wails-draggable:drag]`.
 
-### 9.2 Compact Mode
+**Title bar layout (left → right):**
+
+| Zone | Content |
+|---|---|
+| Left | `sprint_logo_icon.png` at `h-5` — the app logo, no text label beside it |
+| Right | Settings gear icon (`IconSettings`, 14px) · divider · Minimise · Maximise · Close |
+
+The Settings gear icon is a ghost button that highlights (`text-foreground`) when the settings view is active. Interactive zones use `[--wails-draggable:nodrag]` to opt out of window dragging.
+
+**Settings is NOT a sidebar item.** It follows the standard desktop app pattern (VS Code, Spotify) — accessible via the topbar gear icon or `Ctrl+,`. This keeps the sidebar focused on primary content navigation only.
+
+### 9.2 Navigation Shell
+
+The desktop app shell is a three-region layout:
+
+```
+┌──────────────────────────────────────────────┐
+│  [logo]                  [⚙]  [─] [□] [✕]  │  ← title bar (h-8, draggable)
+├───────┬──────────────────────────────────────┤
+│  Nav  │                                      │
+│ Rail  │          Main content area           │
+│       │                                      │
+├───────┴──────────────────────────────────────┤
+│  [DEV] ─ FRAME_RATE: 0Hz  GAME: ——  ● ONLINE │  ← StatusStrip (h-6)
+└──────────────────────────────────────────────┘
+```
+
+**NavRail** (`packages/ui/src/components/organisms/NavRail.tsx`):
+- Icon-first; expands to icon + label on hover/toggle
+- No branding or logo inside the sidebar — logo lives in the title bar only
+- No footer slot used — channel badge moved to StatusStrip
+- Active item: orange tint background + orange icon
+- Collapsed width: 52px · Expanded: 200px
+- Keyboard shortcuts: `Alt+1..n` for nav items; `Ctrl+,` for Settings
+
+**StatusStrip** (`packages/ui/src/components/organisms/StatusStrip.tsx`):
+- Fixed `h-6` bottom HUD bar
+- **Left slot:** build channel badge (DEV / ALPHA / BETA / RELEASE) · FRAME_RATE · GAME — all mono, 9px
+- **Right slot:** connection state dot + label + app version
+- Channel badge variant maps to semantic color: DEV=warning, ALPHA=active, BETA=neutral, RELEASE=connected
+
+### 9.3 Compact Mode
 
 When the window is narrower than `1280px`:
 - Sidebar collapses to icon-only (`52px`)
@@ -490,9 +516,10 @@ Use **teal** (`--teal`) consistently for all engineer-originated actions — it 
 | Heading style | Bold · Italic · All Caps · wide tracking |
 | Label format | UPPER_CASE with underscores (terminal HUD style) |
 | Border radius | `0px` everywhere |
-| Tech grid | `.tech-grid` on main workspace area |
 | Base spacing unit | 4px |
 | Sidebar width | 52px (collapsed) / 200px (expanded) |
+| Settings access | Topbar gear icon (right of title bar) · `Ctrl+,` keyboard shortcut |
+| Channel badge | StatusStrip left slot (DEV / ALPHA / BETA / RELEASE) |
 | Max content width | 1280px |
 | Icon library | Tabler Icons |
 | Chart library | Recharts (via shadcn/ui chart) |

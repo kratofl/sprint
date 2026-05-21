@@ -1,59 +1,56 @@
 package widgets
 
-import "fmt"
-
 const WidgetTC WidgetType = "tc"
 
-func init() {
-	RegisterWidget(WidgetTC, "Traction Control", CategoryCar, 3, 2, false, 15, []ConfigDef{{
-		Key:   "tcMode",
-		Label: "TC Mode",
-		Type:  "select",
-		Options: []Option{
-			{Value: "tc1", Label: "TC1 (Main)"},
-			{Value: "tc2_cut", Label: "TC2 (Cut)"},
-			{Value: "tc3_slip", Label: "TC3 (Slip)"},
+type tcWidget struct{}
+
+func (tcWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetTC, Name: "Traction Control", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: Hz15,
+		Label:             LabelConfig{Hidden: true},
+		CapabilityBinding: BindingElectronicsTCAvailable,
+		ConfigDefs: []ConfigDef{{
+			Key:   "tcMode",
+			Label: "TC Mode",
+			Type:  "select",
+			Options: []Option{
+				{Value: "tc1", Label: "TC1 (Main)"},
+				{Value: "tc2_cut", Label: "TC2 (Cut)"},
+				{Value: "tc3_slip", Label: "TC3 (Slip)"},
+			},
+			Default: "tc1",
+		}},
+		DefaultPanelRules: []ConditionalRule{
+			{Property: BindingElectronicsTCActive, Op: RuleOpGT, Threshold: 0, Color: ColorRefTC, Alpha: 0.12},
 		},
-		Default: "tc1",
-	}}, drawWidgetTC)
+	}
 }
 
-func drawWidgetTC(c WidgetCtx) {
-	c.Panel()
-
-	mode := c.ConfigString("tcMode", "tc1")
-
-	var val uint8
+func (tcWidget) Definition(config map[string]any) []Element {
+	mode := configString(config, "tcMode", "tc1")
+	var binding Binding
 	var label string
-	var active bool
-
-	e := c.Frame.Electronics
+	var activeBinding Binding
 	switch mode {
 	case "tc2_cut":
-		val, label = e.TCCut, "TC2"
+		binding, label = BindingElectronicsTCCut, "TC2"
 	case "tc3_slip":
-		val, label = e.TCSlip, "TC3"
+		binding, label = BindingElectronicsTCSlip, "TC3"
 	default:
-		val, label, active = e.TC, "TC1", e.TCActive
+		binding, label, activeBinding = BindingElectronicsTC, "TC1", BindingElectronicsTCActive
 	}
-
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored(label, c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	col := ColTextPri
-	if active {
-		col = ColTeal
+	col := ColorRefForeground.Expr()
+	if activeBinding != "" {
+		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefTC))
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	var valStr string
-	valStr = fmt.Sprintf("%d", val)
-	// if max == 0 {
-	// 	valStr = fmt.Sprintf("%d", val)
-	// } else {
-	// 	valStr = fmt.Sprintf("%d / %d", val, max)
-	// }
-	c.DC.DrawStringAnchored(valStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
+	return []Element{
+		Text{Text: label, X: 0.015, Y: 0.035, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: 0.13, HAlign: HAlignStart, VAlign: VAlignStart, Color: ColorRefMuted.Expr()}},
+		Text{Binding: binding, Format: FormatInt, X: 0.5, Y: 0.56, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.52, IsBold: true, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: col}},
+	}
 }
+
+func init() { Register(tcWidget{}) }

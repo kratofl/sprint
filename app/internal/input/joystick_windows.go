@@ -3,6 +3,7 @@
 package input
 
 import (
+	"log/slog"
 	"runtime"
 	"sync"
 	"syscall"
@@ -226,6 +227,7 @@ func handleRawInput(lParam uintptr) {
 			select {
 			case inputEventCh <- ButtonEvent{VID: vid, PID: pid, Button: int(btn)}:
 			default:
+				slog.Warn("input: button event dropped, channel full", "vid", vid, "pid", pid, "button", btn)
 			}
 		}
 	}
@@ -282,6 +284,7 @@ func handleAxisInput(hDevice uintptr, caps []hidpValueCap, report, preparsed []b
 		select {
 		case inputEventCh <- ButtonEvent{VID: vid, PID: pid, Button: virtualBtn}:
 		default:
+			slog.Warn("input: axis event dropped, channel full", "vid", vid, "pid", pid, "button", virtualBtn)
 		}
 	}
 }

@@ -1,23 +1,24 @@
 package widgets
 
-import (
-	"fmt"
-)
-
 const WidgetGear WidgetType = "gear"
 
-func init() { RegisterWidget(WidgetGear, "Gear", CategoryCar, 3, 3, false, 30, nil, drawWidgetGear) }
+type gearWidget struct{}
 
-func drawWidgetGear(c WidgetCtx) {
-	c.Panel()
-	gear := c.Frame.Car.Gear
-	gearStr := "N"
-	if gear > 0 {
-		gearStr = fmt.Sprintf("%d", gear)
-	} else if gear < 0 {
-		gearStr = "R"
+func (gearWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetGear, Name: "Gear", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 3,
+		IdleCapable: false, DefaultUpdateHz: Hz30,
+		Label: LabelConfig{Hidden: true},
 	}
-	c.FontNumber(c.H * 0.7)
-	c.DC.SetColor(ColTextPri)
-	c.DC.DrawStringAnchored(gearStr, c.CX(), c.Y+c.H*0.45, 0.5, 0.5)
 }
+
+func (gearWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Text{Binding: BindingCarGearStr, X: 0.5, Y: 0.5, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.7, IsBold: true,
+			HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
+	}
+}
+
+func init() { Register(gearWidget{}) }

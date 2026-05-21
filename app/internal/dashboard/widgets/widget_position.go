@@ -1,32 +1,24 @@
-package widgets
-
-import "fmt"
+﻿package widgets
 
 const WidgetPosition WidgetType = "position"
 
-func init() {
-	RegisterWidget(WidgetPosition, "Position", CategoryRace, 3, 2, false, 2, nil, drawWidgetPosition)
-}
+type positionWidget struct{}
 
-func drawWidgetPosition(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("POSITION", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	pos := c.Frame.Race.Position
-	var posStr string
-	var col = ColTextPri
-	if pos == 0 {
-		posStr = "---"
-	} else {
-		posStr = fmt.Sprintf("P%d", pos)
-		if pos == 1 {
-			col = ColAccent
-		}
+func (positionWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetPosition, Name: "Position", Category: CategoryRace,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: Hz2,
+		Label: LabelConfig{FontScale: 0.18, Align: HAlignCenter},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(posStr, c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func (positionWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Text{Binding: BindingRacePositionStr, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingRacePositionP1, ColorRefPrimary))}},
+	}
+}
+
+func init() { Register(positionWidget{}) }

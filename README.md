@@ -18,7 +18,7 @@ Sim Game (e.g. LeMansUltimate)
 │                                                      │
 │  Go backend:                                         │
 │    · Game telemetry reader + DTO pipeline            │
-│    · VoCore image renderer  (PNG → wheel screen via USB)     │
+│    · USB screen renderer  (RGB565 → WinUSB → wheel/dash screens)    │
 │    · Wheel button detector  (set target lap)         │
 │    · Race Engineer hub  (WebSocket, LAN or remote)   │
 │    · Setup manager & sync client                     │
@@ -27,10 +27,10 @@ Sim Game (e.g. LeMansUltimate)
 │    · Live telemetry  · Dash editor  · Setups         │
 │    · Race Engineer status panel                      │
 └──────────────────────────────────────────────────────┘
-        │  PNG frames (USB serial)     │  WebSocket
+        │  RGB565 frames (WinUSB)      │  WebSocket
         ↓                          ↓
-  VoCore Screen             Race Engineer (LAN)
-  (steering wheel)          direct IP:port
+  USB Screen               Race Engineer (LAN)
+  (VoCore / USBD480)       direct IP:port
 
         ↓  HTTP / WebSocket (sync + live stream)
 ┌──────────────────────────────────────────────────────┐
@@ -163,8 +163,12 @@ The VoCore renderer, engineer hub, web app, and sync client all consume the unif
 
 ## Key features
 
-### VoCore wheel display
-The Go backend renders PNG image frames and sends them to a VoCore screen embedded in the steering wheel over **USB serial (CDC ACM)**. The VoCore presents as a serial port when plugged in — `/dev/cu.usbmodemXXXX` on macOS, `/dev/ttyACM0` on Linux, `COM3` on Windows. Layout and content are controlled by the dash layout configuration editable in the desktop app's **Dash Designer**.
+### VoCore and USBD480 wheel displays
+The Go backend renders RGB565 image frames and sends them to a USB screen embedded in the steering wheel via **WinUSB** (no serial port — the screen uses a vendor-specific bulk transfer protocol). Two screen families are supported:
+- **VoCore M-PRO** (`VID 0xC872`) — 4"–10" OLED/LCD panels; model auto-detected via USB query
+- **USBD480** (`VID 0x16C0`, `PID 0x08A7`) — NX43/NX50 800×480 displays
+
+Both require the WinUSB driver bound in Windows (installed automatically by the vendor setup tool, or manually via [Zadig](https://zadig.akeo.ie)). Layout and content are controlled by the dash layout configuration editable in the desktop app's **Dash Designer**.
 
 ### Dash Designer
 A built-in visual editor lets you build custom wheel display layouts without writing any code:

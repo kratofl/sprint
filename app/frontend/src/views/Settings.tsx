@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IconRefresh, IconLoader2, IconCheck } from '@tabler/icons-react'
-import { Badge, Button, cn } from '@sprint/ui'
+import { Badge, Button, PageHeader, cn } from '@sprint/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { call } from '@/lib/wails'
+import { appInfoAPI, settingsAPI, updateAPI, type BuildChannel } from '@/lib/settings'
 import type { AppSettings, ReleaseInfo } from '@sprint/types'
 
 type CheckState = 'idle' | 'checking' | 'up-to-date' | 'update-found'
@@ -13,12 +13,12 @@ export default function Settings() {
   const [checkState, setCheckState] = useState<CheckState>('idle')
   const [foundRelease, setFoundRelease] = useState<ReleaseInfo | null>(null)
   const [version, setVersion] = useState('dev')
-  const [buildChannel, setBuildChannel] = useState('dev')
+  const [buildChannel, setBuildChannel] = useState<BuildChannel>('dev')
 
   useEffect(() => {
-    call<AppSettings>('GetSettings').then(setSettings).catch(() => {})
-    call<string>('GetVersion').then(setVersion).catch(() => {})
-    call<string>('GetBuildChannel').then(setBuildChannel).catch(() => {})
+    settingsAPI.getSettings().then(setSettings).catch(() => {})
+    appInfoAPI.getVersion().then(setVersion).catch(() => {})
+    appInfoAPI.getBuildChannel().then(setBuildChannel).catch(() => {})
   }, [])
 
   const handleChannelChange = useCallback((channel: AppSettings['updateChannel']) => {
@@ -33,7 +33,13 @@ export default function Settings() {
   const applyChannel = useCallback((channel: AppSettings['updateChannel']) => {
     const next: AppSettings = { ...settings, updateChannel: channel }
     setSettings(next)
-    call('SaveSettings', next).catch(() => {})
+    settingsAPI.saveSettings(next).catch(() => {})
+  }, [settings])
+
+  const applyProfile = useCallback((patch: Partial<AppSettings>) => {
+    const next: AppSettings = { ...settings, ...patch }
+    setSettings(next)
+    settingsAPI.saveSettings(next).catch(() => {})
   }, [settings])
 
   const confirmPrerelease = useCallback(() => {
@@ -47,7 +53,7 @@ export default function Settings() {
     setCheckState('checking')
     setFoundRelease(null)
     try {
-      const info = await call<ReleaseInfo | null>('CheckUpdate')
+      const info = await updateAPI.checkNow()
       if (info) {
         setFoundRelease(info)
         setCheckState('update-found')
@@ -61,18 +67,50 @@ export default function Settings() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <div className="border-b border-border px-6 py-4 flex-shrink-0">
-        <h2 className="terminal-header mb-0.5 text-sm font-bold tracking-[0.2em]">SETTINGS</h2>
-        <p className="font-mono text-[10px] text-text-muted">Application preferences</p>
-      </div>
+      <PageHeader
+        heading="SETTINGS"
+        caption="Application preferences"
+      />
 
       <div className="flex flex-col gap-6 px-6 py-6 max-w-lg">
+        <section className="flex flex-col gap-4">
+          <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
+            PROFILE
+          </h3>
+
+          <div className="surface rounded p-4 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] text-text-muted">Driver name</label>
+              <input
+                type="text"
+                value={settings.driverName ?? ''}
+                onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
+                onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
+                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                placeholder="Your Name"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] text-text-muted">Driver number</label>
+              <input
+                type="text"
+                value={settings.driverNumber ?? ''}
+                onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
+                onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
+                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+                placeholder="#22"
+              />
+            </div>
+          </div>
+        </section>
+
         <section className="flex flex-col gap-4">
           <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
             UPDATES
           </h3>
 
-          <div className="surface rounded border border-border p-4 flex flex-col gap-4">
+          <div className="surface rounded p-4 flex flex-col gap-4">
             <div>
               <p className="text-[11px] font-bold text-foreground mb-1">Update channel</p>
               <p className="font-mono text-[9px] text-text-muted mb-3">
@@ -85,9 +123,10 @@ export default function Settings() {
                     onClick={() => handleChannelChange(ch)}
                     className={cn(
                       'flex items-center gap-2 rounded border px-3 py-1.5 font-mono text-[10px] transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                       settings.updateChannel === ch
                         ? 'border-primary text-primary bg-accent/5'
-                        : 'border-border text-text-muted hover:border-border-strong hover:text-foreground',
+                        : 'border-border text-text-muted hover:border-border hover:text-foreground',
                     )}
                   >
                     {settings.updateChannel === ch && (
@@ -131,7 +170,7 @@ export default function Settings() {
             ABOUT
           </h3>
 
-          <div className="surface rounded border border-border p-4 flex flex-col gap-3">
+          <div className="surface rounded p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] text-text-muted">VERSION</span>
               <span className="font-mono text-[10px] text-foreground">v{version}</span>

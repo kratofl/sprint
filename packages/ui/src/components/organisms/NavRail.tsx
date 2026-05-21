@@ -19,6 +19,8 @@ export interface NavRailProps {
   /** Controlled collapsed state. When omitted, the rail manages its own state. */
   collapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
+  /** Whether to render the built-in collapse toggle at the bottom. */
+  showCollapseToggle?: boolean
   /** Slot rendered at the very top (e.g. app wordmark) */
   header?: React.ReactNode
   /** Slot rendered at the bottom above the toggle (e.g. connection badge) */
@@ -39,6 +41,7 @@ export function NavRail({
   onSelect,
   collapsed: controlledCollapsed,
   onCollapsedChange,
+  showCollapseToggle = true,
   header,
   footer,
   className,
@@ -58,7 +61,7 @@ export function NavRail({
         data-slot="nav-rail"
         data-collapsed={isCollapsed}
         className={cn(
-          "relative flex flex-col bg-background border-r border-[var(--outline)]",
+          "relative flex flex-col bg-bg-shell border-r border-border",
           "transition-[width] duration-150 ease-[cubic-bezier(0.4,0,0.2,1)]",
           isCollapsed ? "w-[3.25rem]" : "w-[12.5rem]",
           className
@@ -96,7 +99,7 @@ export function NavRail({
                   "transition-colors duration-100 outline-none",
                   isCollapsed ? "justify-center px-0" : "pl-4 pr-3",
                   // Inactive
-                  !isActive && "text-on-surface-variant hover:bg-white/[0.04] hover:text-foreground",
+                  !isActive && "text-on-surface-variant hover:bg-white/[0.03] hover:text-foreground",
                   // Active: left accent bar + subtle tint
                   isActive && [
                     "text-accent bg-accent/[0.06]",
@@ -126,7 +129,7 @@ export function NavRail({
               return (
                 <Tooltip key={item.id}>
                   <TooltipTrigger asChild>{itemContent}</TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={8} className="bg-bg-elevated border border-[var(--outline)] text-foreground">
+                  <TooltipContent side="right" sideOffset={8} className="surface-overlay-panel shadow-overlay text-foreground">
                     {item.label}
                   </TooltipContent>
                 </Tooltip>
@@ -149,25 +152,26 @@ export function NavRail({
           </div>
         )}
 
-        {/* Collapse toggle */}
-        <div className="border-t border-[var(--outline)] px-2 py-2">
-          <button
-            onClick={toggle}
-            aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
-            className={cn(
-              "flex h-7 w-full items-center rounded text-on-surface-variant",
-              "transition-colors duration-100 hover:bg-white/[0.04] hover:text-foreground",
-              "outline-none focus-visible:ring-1 focus-visible:ring-accent/40",
-              isCollapsed ? "justify-center" : "justify-end gap-1.5 pr-1 text-[0.625rem] uppercase tracking-widest"
-            )}
-          >
-            {!isCollapsed && <span>Collapse</span>}
-            {isCollapsed
-              ? <IconChevronRight size={13} />
-              : <IconChevronLeft size={13} />
-            }
-          </button>
-        </div>
+        {showCollapseToggle && (
+          <div className="border-t border-[var(--outline)] px-2 py-2">
+            <button
+              onClick={toggle}
+              aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
+              className={cn(
+                "flex h-7 w-full items-center rounded text-on-surface-variant",
+                "transition-colors duration-100 hover:bg-white/[0.03] hover:text-foreground",
+                "outline-none focus-visible:ring-1 focus-visible:ring-accent/40",
+                isCollapsed ? "justify-center" : "justify-end gap-1.5 pr-1 text-[0.625rem] uppercase tracking-widest"
+              )}
+            >
+              {!isCollapsed && <span>Collapse</span>}
+              {isCollapsed
+                ? <IconChevronRight size={13} />
+                : <IconChevronLeft size={13} />
+              }
+            </button>
+          </div>
+        )}
       </aside>
     </TooltipProvider>
   )

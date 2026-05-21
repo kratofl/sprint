@@ -27,10 +27,16 @@ export function LapTime({ seconds, showMs = true, className, ...props }: LapTime
 
 export function formatLapTime(seconds: number | undefined, showMs = true): string {
   if (!seconds || seconds <= 0) return showMs ? '–:––.–––' : '–:––'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
+  const totalMs = Math.round(seconds * 1000)
+  if (totalMs <= 0) return showMs ? '–:––.–––' : '–:––'
+  const totalSeconds = Math.floor(totalMs / 1000)
+  const m = Math.floor(totalSeconds / 60)
   if (showMs) {
-    return `${m}:${s.toFixed(3).padStart(6, '0')}`
+    const rem = totalMs % 60000
+    const s = Math.floor(rem / 1000)
+    const ms = rem % 1000
+    return `${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`
   }
-  return `${m}:${Math.floor(s).toString().padStart(2, '0')}`
+  const s = totalSeconds % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }

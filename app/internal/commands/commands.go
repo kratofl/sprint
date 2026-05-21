@@ -25,10 +25,21 @@ type CommandMeta struct {
 // HandlerFn is the function invoked when a command is dispatched.
 type HandlerFn func(payload any)
 
+// DynamicCommand describes a runtime-generated command and its handler.
+// Dynamic commands are rebuilt from saved dashboard layouts and replace the
+// previous dynamic set wholesale.
+type DynamicCommand struct {
+	Meta    CommandMeta
+	Handler HandlerFn
+}
+
 var (
-	mu       sync.RWMutex
-	catalog  []CommandMeta
-	handlers = map[Command]HandlerFn{}
+	mu            sync.RWMutex
+	staticOrder   []Command
+	staticCatalog = map[Command]CommandMeta{}
+	dynamicOrder  []Command
+	dynamicCatalog = map[Command]CommandMeta{}
+	handlers      = map[Command]HandlerFn{}
 )
 
 // RegisterMeta adds a command to the catalog. Call from init() functions in
@@ -38,13 +49,14 @@ var (
 func RegisterMeta(id Command, label, category string, capturable, deviceOnly bool) {
 	mu.Lock()
 	defer mu.Unlock()
-	catalog = append(catalog, CommandMeta{
+	staticOrder = append(staticOrder, id)
+	staticCatalog[id] = CommandMeta{
 		ID:         id,
 		Label:      label,
 		Category:   category,
 		Capturable: capturable,
 		DeviceOnly: deviceOnly,
-	})
+	}
 }
 
 // Handle registers a handler for id. Only one handler per command is supported;
@@ -73,7 +85,38 @@ func Dispatch(id Command, payload any) {
 func Catalog() []CommandMeta {
 	mu.RLock()
 	defer mu.RUnlock()
-	out := make([]CommandMeta, len(catalog))
-	copy(out, catalog)
+	out := make([]CommandMeta, 0, len(staticOrder)+len(dynamicOrder))
+	for _, id := range staticOrder {
+		if meta, ok := staticCatalog[id]; ok {
+			out = append(out, meta)
+		}
+	}
+	for _, id := range dynamicOrder {
+		if meta, ok := dynamicCatalog[id]; ok {
+			out = append(out, meta)
+		}
+	}
 	return out
+}
+
+// ReplaceDynamic replaces the entire dynamic command set and their handlers.
+// Static commands remain registered and untouched.
+func ReplaceDynamic(entries []DynamicCommand) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	for _, id := range dynamicOrder {
+		delete(dynamicCatalog, id)
+		delete(handlers, id)
+	}
+
+	dynamicOrder = make([]Command, 0, len(entries))
+	for _, entry := range entries {
+		id := entry.Meta.ID
+		dynamicOrder = append(dynamicOrder, id)
+		dynamicCatalog[id] = entry.Meta
+		if entry.Handler != nil {
+			handlers[id] = entry.Handler
+		}
+	}
 }

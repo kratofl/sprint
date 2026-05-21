@@ -1,197 +1,335 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import {
+  Button,
+  cn,
+  NavRail,
+  StatusStrip,
+} from '@sprint/ui'
+import {
+  IconArrowLeft,
+  IconArrowRight,
+  IconGauge,
+  IconHelp,
+  IconHome2,
+  IconKeyboard,
+  IconLayoutDashboard,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconMinus,
+  IconSettings,
+  IconSquare,
+  IconUsb,
+  IconX,
+} from '@tabler/icons-react'
+import logoIcon from '@/assets/sprint_logo_icon.png'
 import Home from '@/views/Home'
 import Telemetry from '@/views/Telemetry'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
 import Controls from '@/views/Controls'
 import Settings from '@/views/Settings'
+import Help from '@/views/Help'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import UpdateToast from '@/components/UpdateToast'
-import { onEvent, call } from '@/lib/wails'
-import { Badge, Button, cn } from '@sprint/ui'
-import logoIcon from '@/assets/sprint_logo_icon.png'
+import { APP_EVENTS } from '@/lib/desktopEvents'
 import {
-  IconBell,
-  IconMinus,
-  IconSquare,
-  IconX,
-} from '@tabler/icons-react'
+  createViewHistory,
+  goBack,
+  goForward,
+  navigateToView,
+  type AppView,
+  type ViewHistory,
+} from '@/lib/appShell'
+import { appInfoAPI } from '@/lib/settings'
+import { windowAPI } from '@/lib/window'
+import {
+  windowControlCloseButtonClassName,
+  windowControlMaximiseButtonClassName,
+  windowControlMinimiseButtonClassName,
+  windowControlsRailClassName,
+} from '@/lib/windowControls'
+import { onEvent } from '@/lib/wails'
 
-type View = 'home' | 'telemetry' | 'dash' | 'devices' | 'controls' | 'settings'
-type BuildChannel = 'dev' | 'alpha' | 'beta' | 'release'
+type View = AppView
 
-const NAV: { id: View; label: string }[] = [
-  { id: 'home',      label: 'Home' },
-  { id: 'telemetry', label: 'Live_Session' },
-  { id: 'dash',      label: 'Dash_Editor' },
-  { id: 'devices',   label: 'Devices' },
-  { id: 'controls',  label: 'Controls' },
-  { id: 'settings',  label: 'Settings' },
-]
-
-const CHANNEL_BADGE: Record<BuildChannel, { label: string; variant: 'warning' | 'neutral' | 'active' | 'connected' }> = {
-  dev:     { label: 'DEV',     variant: 'warning' },
-  alpha:   { label: 'ALPHA',   variant: 'active' },
-  beta:    { label: 'BETA',    variant: 'neutral' },
-  release: { label: 'RELEASE', variant: 'connected' },
-}
+const NAV = [
+  { id: 'home', label: 'HOME', icon: IconHome2 },
+  { id: 'telemetry', label: 'LIVE_SESSION', icon: IconGauge },
+  { id: 'dash', label: 'DASH_EDITOR', icon: IconLayoutDashboard },
+  { id: 'devices', label: 'DEVICES', icon: IconUsb },
+  { id: 'controls', label: 'CONTROLS', icon: IconKeyboard },
+] as const satisfies ReadonlyArray<{
+  id: Extract<View, 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'>
+  label: string
+  icon: ComponentType<{ className?: string; size?: number }>
+}>
 
 export default function App() {
-  const [view, setView] = useState<View>('home')
-  const visibleNav = import.meta.env.DEV ? NAV : NAV.filter(v => v.id !== 'telemetry') as { id: View; label: string }[]
+  const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory('home'))
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  const visibleNav = useMemo(
+    () => import.meta.env.DEV ? [...NAV] : NAV.filter(item => item.id !== 'telemetry'),
+    []
+  )
   const { frame, connected, fps } = useTelemetry()
   const { releaseInfo, installing, dismiss, install } = useUpdateCheck()
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
   const [version, setVersion] = useState('dev')
-  const [channel, setChannel] = useState<BuildChannel>('dev')
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
-  const [pendingView, setPendingView] = useState<View | null>(null)
+  const [pendingHistory, setPendingHistory] = useState<ViewHistory | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
-  const switchView = useCallback((newView: View) => {
-    if (newView === view) return
+  const view = viewHistory.current
+
+  const applyHistory = useCallback((nextHistory: ViewHistory) => {
+    if (
+      nextHistory.current === viewHistory.current &&
+      nextHistory.index === viewHistory.index &&
+      nextHistory.stack.length === viewHistory.stack.length
+    ) {
+      return
+    }
+
     if (view === 'dash' && dashEditorRef.current?.isDirty) {
-      setPendingView(newView)
+      setPendingHistory(nextHistory)
       setShowLeaveConfirm(true)
       return
     }
-    setView(newView)
-  }, [view])
+
+    setViewHistory(nextHistory)
+  }, [view, viewHistory])
+
+  const switchView = useCallback((newView: View) => {
+    applyHistory(navigateToView(viewHistory, newView))
+  }, [applyHistory, viewHistory])
+
+  const stepBackward = useCallback(() => {
+    applyHistory(goBack(viewHistory))
+  }, [applyHistory, viewHistory])
+
+  const stepForward = useCallback(() => {
+    applyHistory(goForward(viewHistory))
+  }, [applyHistory, viewHistory])
 
   const confirmLeave = useCallback(() => {
     setShowLeaveConfirm(false)
-    if (pendingView) {
-      setView(pendingView)
-      setPendingView(null)
+    if (pendingHistory) {
+      setViewHistory(pendingHistory)
+      setPendingHistory(null)
     }
-  }, [pendingView])
+  }, [pendingHistory])
 
   const cancelLeave = useCallback(() => {
     setShowLeaveConfirm(false)
-    setPendingView(null)
+    setPendingHistory(null)
   }, [])
 
   useEffect(() => {
-    const unsub = onEvent('app:ready', () => setBooting(false))
+    const unsub = onEvent(APP_EVENTS.ready, () => setBooting(false))
     const fallback = setTimeout(() => setBooting(false), 3000)
-    return () => { unsub(); clearTimeout(fallback) }
+    return () => {
+      unsub()
+      clearTimeout(fallback)
+    }
   }, [])
 
   useEffect(() => {
-    call<string>('GetVersion').then(setVersion).catch(() => {})
-    call<string>('GetBuildChannel').then(v => setChannel(v as BuildChannel)).catch(() => {})
+    appInfoAPI.getVersion().then(setVersion).catch(() => {})
   }, [])
 
-  const channelBadge = CHANNEL_BADGE[channel] ?? CHANNEL_BADGE.dev
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return
+      }
+
+      if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === ',') {
+        event.preventDefault()
+        switchView('settings')
+        return
+      }
+
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return
+      }
+
+      const match = /^Digit([1-9])$/.exec(event.code)
+      if (!match) {
+        return
+      }
+
+      const targetView = visibleNav[Number(match[1]) - 1]
+      if (!targetView) {
+        return
+      }
+
+      event.preventDefault()
+      switchView(targetView.id)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [switchView, visibleNav])
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground border-t border-border">
+    <div className="flex h-screen w-screen flex-col overflow-hidden border-t border-border bg-background font-sans text-foreground">
       {splashMounted && (
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      {/* Top app bar — drag region, logo + nav tabs + window controls */}
-      <header className="flex h-10 shrink-0 items-center border-b border-border bg-background px-3 [--wails-draggable:drag]">
-        {/* Logo */}
-        <div className="flex shrink-0 items-center pr-4 [--wails-draggable:nodrag]">
-          <img src={logoIcon} alt="Sprint" className="h-5 w-auto object-contain select-none" draggable={false} />
+      <header
+        className="flex h-10 shrink-0 items-center border-b border-border bg-bg-shell pl-3 pr-0 [--wails-draggable:drag]"
+        onDoubleClick={(event) => {
+          if ((event.target as HTMLElement).closest('button, a, input')) return
+          void windowAPI.toggleMaximise()
+        }}
+      >
+        <div className="flex items-center gap-1.5 [--wails-draggable:nodrag]">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={stepBackward}
+            disabled={!viewHistory.canGoBack}
+            aria-label="Back"
+          >
+            <IconArrowLeft size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={stepForward}
+            disabled={!viewHistory.canGoForward}
+            aria-label="Forward"
+          >
+            <IconArrowRight size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setNavCollapsed(value => !value)}
+            aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {navCollapsed ? (
+              <IconLayoutSidebarLeftExpand size={14} />
+            ) : (
+              <IconLayoutSidebarLeftCollapse size={14} />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => switchView('home')}
+            className="gap-2 px-2.5 text-foreground"
+            aria-label="Go to home"
+          >
+            <img src={logoIcon} alt="Sprint" className="h-4 w-auto shrink-0" />
+            <span className="text-[11px] font-semibold tracking-[0.04em]">Sprint</span>
+          </Button>
         </div>
 
-        {/* Nav tabs */}
-        <nav className="flex items-stretch gap-0.5 h-full [--wails-draggable:nodrag]">
-          {visibleNav.map(item => {
-            const isActive = item.id === view
-            return (
-              <button
-                key={item.id}
-                onClick={() => switchView(item.id)}
-                className={cn(
-                  'relative flex items-center px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-100 outline-none',
-                  isActive
-                    ? 'text-accent after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-accent'
-                    : 'text-text-muted hover:text-foreground',
-                )}
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </nav>
+        <div className="flex-1" />
 
-        {/* Right: notifications + window controls */}
-        <div className="ml-auto flex items-center gap-1 [--wails-draggable:nodrag]">
-          <Button variant="ghost" size="icon-sm" className="text-text-muted" aria-label="Notifications">
-            <IconBell size={15} />
-          </Button>
-          <div className="flex items-center gap-1 pl-2 border-l border-border">
+        <div className="flex h-full self-stretch items-stretch [--wails-draggable:nodrag]">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => switchView('settings')}
+              className={cn(
+                'gap-1.5 text-text-muted hover:text-foreground',
+                view === 'settings' && 'surface-inline text-foreground',
+              )}
+              aria-label="View settings"
+            >
+              <IconSettings size={14} />
+              <span>SETTINGS</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => switchView('help')}
+              className={cn(
+                'gap-1.5 text-text-muted hover:text-foreground',
+                view === 'help' && 'surface-inline text-foreground',
+              )}
+              aria-label="Help"
+            >
+              <IconHelp size={14} />
+              <span>HELP</span>
+            </Button>
+          </div>
+          <div className={windowControlsRailClassName}>
             <button
-              onClick={() => call('WindowMinimise')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              type="button"
+              onClick={() => { void windowAPI.minimise() }}
               aria-label="Minimise"
+              className={windowControlMinimiseButtonClassName}
             >
-              <IconMinus size={12} />
+              <IconMinus size={10} />
             </button>
             <button
-              onClick={() => call('WindowMaximise')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-foreground/10 transition-opacity"
+              type="button"
+              onClick={() => { void windowAPI.toggleMaximise() }}
               aria-label="Maximise"
+              className={windowControlMaximiseButtonClassName}
             >
-              <IconSquare size={12} />
+              <IconSquare size={10} />
             </button>
             <button
-              onClick={() => call('WindowClose')}
-              className="flex h-6 w-6 items-center justify-center text-text-muted opacity-60 hover:opacity-100 hover:bg-destructive/80 hover:text-white transition-all"
+              type="button"
+              onClick={() => { void windowAPI.close() }}
               aria-label="Close"
+              className={windowControlCloseButtonClassName}
             >
-              <IconX size={12} />
+              <IconX size={11} />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-background">
-        {view === 'home'      && <Home connected={connected} onNavigate={switchView} />}
-        {view === 'telemetry' && <Telemetry frame={frame} />}
-        {view === 'dash'      && <DashEditor ref={dashEditorRef} />}
-        {view === 'devices'   && <Devices />}
-        {view === 'controls'  && <Controls />}
-        {view === 'settings'  && <Settings />}
-      </main>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <NavRail
+          items={visibleNav.map(({ id, label, icon }) => ({ id, label, icon }))}
+          activeId={view}
+          onSelect={(id) => switchView(id as View)}
+          collapsed={navCollapsed}
+          onCollapsedChange={setNavCollapsed}
+          showCollapseToggle={false}
+        />
 
-      {/* Fixed bottom status footer */}
-      <footer className="flex h-6 shrink-0 items-center border-t border-border bg-background px-4 font-mono text-[9px] text-text-muted">
-        <div className="flex w-full items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'h-1.5 w-1.5',
-              connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
-            )} />
-            <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-              {connected ? 'UPLINK_STABLE' : 'UPLINK_OFFLINE'}
-            </Badge>
-          </div>
-          <div className="h-3 w-px bg-border" />
-          <div className="flex gap-4">
-            <span>FRAME_RATE: {fps ?? 0}Hz</span>
-            <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="italic tracking-widest opacity-40">SPRINT v{version}</span>
-            {channel !== 'release' && (
-              <Badge variant={channelBadge.variant} className="terminal-header font-mono text-[9px]">
-                {channelBadge.label}
-              </Badge>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <main className="flex flex-1 flex-col overflow-hidden bg-background">
+            {view === 'home' && <Home connected={connected} onNavigate={switchView} />}
+            {view === 'telemetry' && <Telemetry frame={frame} />}
+            {view === 'dash' && <DashEditor ref={dashEditorRef} />}
+            {view === 'devices' && <Devices />}
+            {view === 'controls' && <Controls />}
+            {view === 'settings' && <Settings />}
+            {view === 'help' && <Help />}
+          </main>
+
+          <StatusStrip
+            connected={connected}
+            version={version}
+            leftSlot={(
+              <>
+                <span>FRAME_RATE: {fps ?? 0}Hz</span>
+                <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
+              </>
             )}
-          </div>
+          />
         </div>
-      </footer>
+      </div>
 
       <ConfirmDialog
         open={showLeaveConfirm}
@@ -209,8 +347,6 @@ export default function App() {
         onInstall={install}
         onDismiss={dismiss}
       />
-
     </div>
   )
 }
-

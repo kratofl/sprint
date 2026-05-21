@@ -1,26 +1,27 @@
 package widgets
 
-import "fmt"
-
 const WidgetBrakeBias WidgetType = "brake_bias"
 
-func init() {
-	RegisterWidget(WidgetBrakeBias, "Brake Bias", CategoryCar, 3, 2, false, 15, nil, drawWidgetBrakeBias)
-}
+type brakeBiasWidget struct{}
 
-func drawWidgetBrakeBias(c WidgetCtx) {
-	c.Panel()
-	c.FontLabel(c.H * 0.18)
-	c.DC.SetColor(ColTextMuted)
-	c.DC.DrawStringAnchored("BRAKE BIAS", c.CX(), c.Y+c.H*0.22, 0.5, 0.5)
-
-	bias := c.Frame.Car.BrakeBiasRear
-	col := ColTextPri
-	if bias < 0.45 {
-		col = ColWarning
+func (brakeBiasWidget) Meta() WidgetMeta {
+	return WidgetMeta{
+		Type: WidgetBrakeBias, Name: "Brake Bias", Category: CategoryCar,
+		DefaultColSpan: 3, DefaultRowSpan: 2,
+		IdleCapable: false, DefaultUpdateHz: Hz15,
+		Label: LabelConfig{FontScale: 0.18, Align: HAlignCenter},
+		DefaultPanelRules: []ConditionalRule{
+			{Property: BindingCarBrakeBiasWarning, Op: RuleOpGT, Threshold: 0, Color: ColorRefBrakeBias, Alpha: 0.18},
+		},
 	}
-
-	c.FontNumber(c.H * 0.45)
-	c.DC.SetColor(col)
-	c.DC.DrawStringAnchored(fmt.Sprintf("%.1f%%", float64(bias)*100), c.CX(), c.CY()+c.H*0.1, 0.5, 0.5)
 }
+
+func (brakeBiasWidget) Definition(_ map[string]any) []Element {
+	return []Element{
+		Text{Binding: BindingCarBrakeBiasPct, Format: "%.1f%%", Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter,
+			Color: ColorRefForeground.When(WhenActive(BindingCarBrakeBiasWarning, ColorRefBrakeBias))}},
+	}
+}
+
+func init() { Register(brakeBiasWidget{}) }

@@ -3,6 +3,7 @@
 package shm
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -13,6 +14,9 @@ import (
 func (r *Reader) Open() error {
 	f, err := os.Open("/dev/shm/" + r.name)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("shm: open /dev/shm/%s: %w", r.name, err)
 	}
 	defer f.Close()

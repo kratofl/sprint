@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"image"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -43,6 +45,7 @@ type baseDriver struct {
 	cfgFPS      atomic.Int32 // user-configured target fps; 0 = fall back to defaultFPS
 	cfgOffsetX  atomic.Int32 // pixels from left in screen space; applied after rotation
 	cfgOffsetY  atomic.Int32 // pixels from top in screen space; applied after rotation
+	cfgMargin   atomic.Int32 // uniform inset in pixels on all sides
 	logger      *slog.Logger
 
 	// source is the active FrameSource stored atomically. For dash devices
@@ -57,11 +60,25 @@ type baseDriver struct {
 
 	currentIdle       atomic.Bool
 	currentActivePage atomic.Int32
+	wrapperMu         sync.Mutex
+	currentWrappers   map[string]string
 
 	screenConnected atomic.Bool
 	disabled        atomic.Bool
 	disableSignal   chan struct{}        // buffered 1; signals driveLoop to stop and release USB
 	emit            func(string, ...any) // set via SetEmit; nil until coordinator wires it
+
+	// currentGlobalPrefs stores the latest global format preferences so they can
+	// be applied to a newly created Painter in ensureDashSource.
+	currentGlobalPrefs atomic.Pointer[widgets.FormatPreferences]
+	// currentGlobalTheme stores the latest global dash palette.
+	currentGlobalTheme atomic.Pointer[widgets.DashTheme]
+	// currentGlobalDomain stores the latest global domain palette.
+	currentGlobalDomain atomic.Pointer[widgets.DomainPalette]
+	// currentGlobalTypography stores the latest global dash typography defaults.
+	currentGlobalTypography atomic.Pointer[widgets.TypographySettings]
+	// currentProfile stores app-level profile strings such as driver name/number.
+	currentProfile atomic.Pointer[dashboard.RenderProfile]
 }
 
 func newBaseDriver(logger *slog.Logger, defaultFPS int) baseDriver {
@@ -84,6 +101,7 @@ func (d *baseDriver) Configure(cfg ScreenConfig) {
 	}
 	d.cfgOffsetX.Store(int32(cfg.OffsetX))
 	d.cfgOffsetY.Store(int32(cfg.OffsetY))
+	d.cfgMargin.Store(int32(cfg.Margin))
 	d.forceRedraw.Store(true)
 }
 
@@ -152,10 +170,87 @@ func (d *baseDriver) SetIdle(idle bool) {
 	d.forceRedraw.Store(true)
 }
 
+// SetGlobalPrefs stores the global format preferences and applies them to the
+// current Painter. The prefs are also cached so ensureDashSource can apply
+// them to any newly created Painter.
+func (d *baseDriver) SetGlobalPrefs(prefs widgets.FormatPreferences) {
+	d.currentGlobalPrefs.Store(&prefs)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalPrefs(prefs)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetGlobalTheme stores the global dash palette and applies it to the current Painter.
+func (d *baseDriver) SetGlobalTheme(theme widgets.DashTheme) {
+	d.currentGlobalTheme.Store(&theme)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalTheme(theme)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetGlobalDomainPalette stores the global domain palette and applies it to the current Painter.
+func (d *baseDriver) SetGlobalDomainPalette(domain widgets.DomainPalette) {
+	d.currentGlobalDomain.Store(&domain)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalDomainPalette(domain)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetGlobalTypography stores the global dash typography defaults and applies
+// them to the current Painter.
+func (d *baseDriver) SetGlobalTypography(typography widgets.TypographySettings) {
+	d.currentGlobalTypography.Store(&typography)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetGlobalTypography(typography)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetProfile stores app-level display strings and applies them to the current Painter.
+func (d *baseDriver) SetProfile(profile dashboard.RenderProfile) {
+	d.currentProfile.Store(&profile)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetProfile(profile)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetWrapperVariant stores the selected wrapper variant and applies it to the current Painter.
+func (d *baseDriver) SetWrapperVariant(pageID, groupID, variantID string) {
+	d.wrapperMu.Lock()
+	if d.currentWrappers == nil {
+		d.currentWrappers = map[string]string{}
+	}
+	d.currentWrappers[pageID+"::"+groupID] = variantID
+	d.wrapperMu.Unlock()
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetWrapperVariant(pageID, groupID, variantID)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
 // SetLayout stores the dashboard layout and applies it to the current Painter
 // (if one exists). Safe to call at any time; takes effect on the next frame.
 func (d *baseDriver) SetLayout(layout *dashboard.DashLayout) {
 	d.currentLayout.Store(layout)
+	d.wrapperMu.Lock()
+	d.currentWrappers = nil
+	d.wrapperMu.Unlock()
 	if sptr := d.source.Load(); sptr != nil {
 		if p, ok := (*sptr).(*dashboard.Painter); ok {
 			p.SetLayout(layout)
@@ -189,6 +284,21 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 		}
 	}
 	p := dashboard.NewPainter(w, h)
+	if gp := d.currentGlobalPrefs.Load(); gp != nil {
+		p.SetGlobalPrefs(*gp)
+	}
+	if gt := d.currentGlobalTheme.Load(); gt != nil {
+		p.SetGlobalTheme(*gt)
+	}
+	if gd := d.currentGlobalDomain.Load(); gd != nil {
+		p.SetGlobalDomainPalette(*gd)
+	}
+	if gt := d.currentGlobalTypography.Load(); gt != nil {
+		p.SetGlobalTypography(*gt)
+	}
+	if profile := d.currentProfile.Load(); profile != nil {
+		p.SetProfile(*profile)
+	}
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 		d.logger.Info("painter created", "dims", fmt.Sprintf("%dx%d", w, h), "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
@@ -203,6 +313,14 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	if layout := d.currentLayout.Load(); layout != nil {
 		p.SetLayout(layout)
 	}
+	d.wrapperMu.Lock()
+	for key, variantID := range d.currentWrappers {
+		pageID, groupID, ok := strings.Cut(key, "::")
+		if ok {
+			p.SetWrapperVariant(pageID, groupID, variantID)
+		}
+	}
+	d.wrapperMu.Unlock()
 }
 
 // SetFrameSource replaces the current rendering source. If the existing source
@@ -291,9 +409,9 @@ func (d *baseDriver) runLoop(ctx context.Context, name string, openTransport fun
 			}
 			if errors.Is(err, ErrDriverNotInstalled) {
 				d.logger.Warn("WinUSB driver not installed for screen device", "err", err)
-				d.emitEvent("screen:driver_missing", map[string]string{
-					"driver": d.screen.Driver,
-					"error":  err.Error(),
+				d.emitEvent("screen:driver_missing", ScreenDriverMissingEvent{
+					Driver: d.screen.Driver,
+					Error:  err.Error(),
 				})
 				// Retry at the normal interval — driver installation is asynchronous
 				// (the user may install while the app is running).
@@ -382,6 +500,7 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	b0 := make([]byte, frameBytes)
 	b1 := make([]byte, frameBytes)
 	b2 := make([]byte, frameBytes)
+	marginBuf := make([]byte, frameBytes)
 	sendCh := make(chan []byte, 1)
 	returnCh := make(chan []byte, 2)
 	returnCh <- b1
@@ -394,6 +513,10 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 	if sptr := d.source.Load(); sptr != nil {
 		if img, err := (*sptr).Paint(&dto.TelemetryFrame{}); err == nil {
 			applyRGB565Rotation(img, renderBuf, rotation)
+			if margin := int(d.cfgMargin.Load()); margin > 0 {
+				applyScreenMargin(renderBuf, marginBuf, nativeW, nativeH, margin)
+				copy(renderBuf, marginBuf)
+			}
 			if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
 				applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
 			}
@@ -494,6 +617,10 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 		renderDone := time.Now()
 
 		applyRGB565Rotation(img, renderBuf, rotation)
+		if margin := int(d.cfgMargin.Load()); margin > 0 {
+			applyScreenMargin(renderBuf, marginBuf, nativeW, nativeH, margin)
+			copy(renderBuf, marginBuf)
+		}
 		if ox, oy := int(d.cfgOffsetX.Load()), int(d.cfgOffsetY.Load()); ox != 0 || oy != 0 {
 			applyScreenOffset(renderBuf, nativeW, nativeH, ox, oy, rotation)
 		}
@@ -549,8 +676,8 @@ func (d *baseDriver) driveLoop(ctx context.Context, transport screenTransport) {
 			}
 			d.logger.Info("render stats",
 				"fps", fmt.Sprintf("%.1f", float64(framesSent)/elapsed.Seconds()),
-				"render_ns", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
-				"convert_ns", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
+				"render_ms", fmt.Sprintf("%.2f", float64(totalRenderNs)/float64(n)/1e6),
+				"convert_ms", fmt.Sprintf("%.2f", float64(totalConvertNs)/float64(n)/1e6),
 				"frame_bytes", frameBytes,
 				"skipped", framesSkipped,
 				"rotation_deg", rotation)

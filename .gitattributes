@@ -1,0 +1,47 @@
+# Normalize line endings to LF in the repository
+* text=auto eol=lf
+
+# Go source files
+*.go text eol=lf
+go.sum text eol=lf
+go.mod text eol=lf
+
+# TypeScript / JavaScript
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+
+# Web
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+
+# Shell / scripts
+*.sh text eol=lf
+Makefile text eol=lf
+
+# PowerShell scripts (CRLF preferred on Windows)
+*.ps1 text eol=crlf
+
+# Binary
+*.exe binary
+*.dll binary
+*.so binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.zip binary
