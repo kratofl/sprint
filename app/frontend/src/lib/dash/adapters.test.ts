@@ -78,7 +78,7 @@ test('adaptCatalogEntry preserves optional bindings and defaults the purpose to 
   assert.equal(adapted.margin, 0)
 })
 
-test('adaptLayout maps wrapper groups, page backgrounds, and typography settings', () => {
+test('adaptLayout maps widget stacks, page backgrounds, and typography settings from the new shape', () => {
   const adapted = adaptLayout({
     id: 'layout-a',
     name: 'Race',
@@ -91,15 +91,15 @@ test('adaptLayout maps wrapper groups, page backgrounds, and typography settings
       name: 'Main',
       background: { R: 1, G: 2, B: 3, A: 255 },
       widgets: [],
-      wrapperGroups: [{
+      widgetStacks: [{
         id: 'stack',
         name: 'Stack',
         col: 4,
         row: 3,
         colSpan: 8,
         rowSpan: 3,
-        defaultVariantId: 'variant-a',
-        variants: [{
+        defaultLayerId: 'variant-a',
+        layers: [{
           id: 'variant-a',
           name: 'A',
           widgets: [{ id: 'inner', type: 'text', col: 0, row: 0, colSpan: 8, rowSpan: 3 }],
@@ -114,10 +114,55 @@ test('adaptLayout maps wrapper groups, page backgrounds, and typography settings
   })
 
   assert.equal(adapted.pages[0].background?.R, 1)
-  assert.equal(adapted.pages[0].wrapperGroups?.[0]?.defaultVariantId, 'variant-a')
-  assert.equal(adapted.pages[0].wrapperGroups?.[0]?.variants?.[0]?.widgets?.[0]?.type, 'text')
+  assert.equal(adapted.pages[0].widgetStacks?.[0]?.defaultLayerId, 'variant-a')
+  assert.equal(adapted.pages[0].widgetStacks?.[0]?.layers?.[0]?.widgets?.[0]?.type, 'text')
   assert.equal(adapted.typography?.font, 'bold')
   assert.equal(adapted.typography?.fontScale, 1.2)
+})
+
+test('adaptLayout accepts legacy wrapper-group payloads and normalizes them to widget stacks', () => {
+  const adapted = adaptLayout({
+    id: 'layout-a',
+    name: 'Race',
+    default: false,
+    gridCols: 20,
+    gridRows: 12,
+    idlePage: { id: 'idle', name: 'Idle', widgets: [] },
+    pages: [{
+      id: 'page-main',
+      name: 'Main',
+      widgets: [],
+      wrapperGroups: [{
+        id: 'stack',
+        name: 'Legacy Stack',
+        col: 2,
+        row: 1,
+        colSpan: 6,
+        rowSpan: 4,
+        defaultVariantId: 'layer-a',
+        variants: [{
+          id: 'layer-a',
+          name: 'Layer A',
+          widgets: [{ id: 'inner', type: 'text', col: 0, row: 0, colSpan: 6, rowSpan: 4 }],
+        }],
+      }],
+    }],
+  })
+
+  assert.deepEqual(adapted.pages[0].widgetStacks, [{
+    id: 'stack',
+    name: 'Legacy Stack',
+    col: 2,
+    row: 1,
+    colSpan: 6,
+    rowSpan: 4,
+    defaultLayerId: 'layer-a',
+    layers: [{
+      id: 'layer-a',
+      name: 'Layer A',
+      widgets: [{ id: 'inner', type: 'text', col: 0, row: 0, colSpan: 6, rowSpan: 4, config: undefined, panelRules: undefined, style: undefined }],
+    }],
+  }])
 })
 
 test('adaptGlobalDashSettings includes typography defaults', () => {
@@ -167,6 +212,7 @@ test('adaptWidgetCatalogEntry flattens Go text styles for widget previews', () =
           hAlign: 1,
           vAlign: 1,
           color: { ref: 'fg' },
+          opticalCenter: true,
         },
       },
     ],
@@ -187,4 +233,5 @@ test('adaptWidgetCatalogEntry flattens Go text styles for widget previews', () =
   assert.equal(adapted.defaultDefinition?.[1]?.y, 0.6)
   assert.equal(adapted.defaultDefinition?.[1]?.hAlign, 1)
   assert.equal(adapted.defaultDefinition?.[1]?.vAlign, 1)
+  assert.equal(adapted.defaultDefinition?.[1]?.opticalCenter, true)
 })

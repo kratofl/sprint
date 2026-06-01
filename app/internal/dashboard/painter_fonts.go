@@ -44,22 +44,22 @@ func fontStyleToFamily(fs widgets.FontStyle) (widgets.FontFamily, bool) {
 
 // face sets the font face on dc, using a cache to avoid re-parsing the TTF on
 // every draw call.
-func (p *Painter) face(dc *gg.Context, name string, size float64) {
+func (p *Painter) face(dc *gg.Context, name string, size float64) (font.Face, bool) {
 	key := fmt.Sprintf("%s@%.2f", name, size)
 	if f, ok := p.fontFaces[key]; ok {
 		dc.SetFontFace(f)
-		return
+		return f, true
 	}
 
 	parsed, ok := p.fontFiles[name]
 	if !ok {
 		data, err := os.ReadFile(filepath.Join(p.fontDir, name))
 		if err != nil {
-			return
+			return nil, false
 		}
 		parsed, err = opentype.Parse(data)
 		if err != nil {
-			return
+			return nil, false
 		}
 		p.fontFiles[name] = parsed
 	}
@@ -70,10 +70,11 @@ func (p *Painter) face(dc *gg.Context, name string, size float64) {
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
-		return
+		return nil, false
 	}
 	p.fontFaces[key] = face
 	dc.SetFontFace(face)
+	return face, true
 }
 
 // extractFonts extracts the embedded TTF files to a temporary directory so
