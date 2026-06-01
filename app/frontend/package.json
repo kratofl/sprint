@@ -19,15 +19,15 @@
     "@sprint/ui": "workspace:*",
     "@tabler/icons-react": "^3.40.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.2.6"
   },
   "devDependencies": {
-    "@types/node": "^25.5.2",
+    "@types/node": "^25.9.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1",
+    "postcss": "^8.5.10",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.7.2",
     "vite": "^6.4.2"
