@@ -90,6 +90,94 @@ func TestDashLayoutUnmarshalAlerts(t *testing.T) {
 	})
 }
 
+func TestDashLayoutWidgetStackCompatibility(t *testing.T) {
+	t.Run("legacy wrapper group shape loads into widget stacks", func(t *testing.T) {
+		raw := `{
+			"id":"x","name":"X","gridCols":20,"gridRows":12,
+			"idlePage":{"id":"i","name":"Idle","widgets":[]},
+			"pages":[{
+				"id":"p",
+				"name":"P",
+				"widgets":[],
+				"wrapperGroups":[{
+					"id":"stack",
+					"name":"Legacy Stack",
+					"col":4,
+					"row":3,
+					"colSpan":8,
+					"rowSpan":3,
+					"defaultVariantId":"layer-a",
+					"variants":[{
+						"id":"layer-a",
+						"name":"Layer A",
+						"widgets":[{"id":"inner","type":"text","col":0,"row":0,"colSpan":8,"rowSpan":3}]
+					}]
+				}]
+			}]
+		}`
+
+		var l DashLayout
+		if err := json.Unmarshal([]byte(raw), &l); err != nil {
+			t.Fatalf("expected no error for legacy widget stack payload, got %v", err)
+		}
+		if got, want := len(l.Pages[0].WidgetStacks), 1; got != want {
+			t.Fatalf("expected %d widget stack, got %d", want, got)
+		}
+		stack := l.Pages[0].WidgetStacks[0]
+		if stack.DefaultLayerID != "layer-a" {
+			t.Fatalf("expected default layer id to be preserved, got %q", stack.DefaultLayerID)
+		}
+		if got, want := len(stack.Layers), 1; got != want {
+			t.Fatalf("expected %d layer, got %d", want, got)
+		}
+		if stack.Layers[0].Widgets[0].Type != widgets.WidgetText {
+			t.Fatalf("expected legacy layer widget type to remain text, got %q", stack.Layers[0].Widgets[0].Type)
+		}
+	})
+
+	t.Run("marshal emits only widget stack keys", func(t *testing.T) {
+		layout := validLayout()
+		layout.Pages[0].WidgetStacks = []DashWidgetStack{
+			{
+				ID:             "stack",
+				Name:           "Stack",
+				Col:            8,
+				Row:            0,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "layer-a",
+				Layers: []DashWidgetStackLayer{
+					{
+						ID:   "layer-a",
+						Name: "A",
+						Widgets: []DashWidget{
+							{ID: "inner", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 4, RowSpan: 3},
+						},
+					},
+				},
+			},
+		}
+
+		payload, err := json.Marshal(layout)
+		if err != nil {
+			t.Fatalf("marshal layout: %v", err)
+		}
+		jsonText := string(payload)
+		if !strings.Contains(jsonText, `"widgetStacks"`) {
+			t.Fatalf("expected marshaled layout to use widgetStacks, got %s", jsonText)
+		}
+		if !strings.Contains(jsonText, `"defaultLayerId":"layer-a"`) {
+			t.Fatalf("expected marshaled layout to use defaultLayerId, got %s", jsonText)
+		}
+		if !strings.Contains(jsonText, `"layers":[`) {
+			t.Fatalf("expected marshaled layout to use layers, got %s", jsonText)
+		}
+		if strings.Contains(jsonText, `"wrapperGroups"`) || strings.Contains(jsonText, `"defaultVariantId"`) || strings.Contains(jsonText, `"variants"`) {
+			t.Fatalf("expected marshaled layout to drop legacy keys, got %s", jsonText)
+		}
+	})
+}
+
 func TestNewPageUsesCompactID(t *testing.T) {
 	page := NewPage("Main")
 
@@ -168,18 +256,18 @@ func TestValidateLayout(t *testing.T) {
 		}
 	})
 
-	t.Run("wrapper groups within bounds pass", func(t *testing.T) {
+	t.Run("widget stacks within bounds pass", func(t *testing.T) {
 		l := validLayout()
-		l.Pages[0].WrapperGroups = []DashWrapperGroup{
+		l.Pages[0].WidgetStacks = []DashWidgetStack{
 			{
-				ID:               "wrap-1",
-				Name:             "Stack",
-				Col:              8,
-				Row:              0,
-				ColSpan:          4,
-				RowSpan:          3,
-				DefaultVariantID: "variant-a",
-				Variants: []DashWrapperVariant{
+				ID:             "wrap-1",
+				Name:           "Stack",
+				Col:            8,
+				Row:            0,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "variant-a",
+				Layers: []DashWidgetStackLayer{
 					{
 						ID:   "variant-a",
 						Name: "A",
@@ -191,43 +279,43 @@ func TestValidateLayout(t *testing.T) {
 			},
 		}
 		if err := ValidateLayout(l); err != nil {
-			t.Fatalf("expected wrapper layout to validate, got %v", err)
+			t.Fatalf("expected widget stack layout to validate, got %v", err)
 		}
 	})
 
-	t.Run("page widget overlapping wrapper group fails", func(t *testing.T) {
+	t.Run("page widget overlapping widget stack fails", func(t *testing.T) {
 		l := validLayout()
-		l.Pages[0].WrapperGroups = []DashWrapperGroup{
+		l.Pages[0].WidgetStacks = []DashWidgetStack{
 			{
-				ID:               "wrap-1",
-				Name:             "Stack",
-				Col:              2,
-				Row:              0,
-				ColSpan:          4,
-				RowSpan:          3,
-				DefaultVariantID: "variant-a",
-				Variants: []DashWrapperVariant{
+				ID:             "wrap-1",
+				Name:           "Stack",
+				Col:            2,
+				Row:            0,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "variant-a",
+				Layers: []DashWidgetStackLayer{
 					{ID: "variant-a", Name: "A", Widgets: []DashWidget{{ID: "inner", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 4, RowSpan: 3}}},
 				},
 			},
 		}
 		if err := ValidateLayout(l); err == nil {
-			t.Fatal("expected overlap between page widget and wrapper group to fail")
+			t.Fatal("expected overlap between page widget and widget stack to fail")
 		}
 	})
 
-	t.Run("wrapper group child exceeding group bounds fails", func(t *testing.T) {
+	t.Run("widget stack child exceeding stack bounds fails", func(t *testing.T) {
 		l := validLayout()
-		l.Pages[0].WrapperGroups = []DashWrapperGroup{
+		l.Pages[0].WidgetStacks = []DashWidgetStack{
 			{
-				ID:               "wrap-1",
-				Name:             "Stack",
-				Col:              8,
-				Row:              0,
-				ColSpan:          4,
-				RowSpan:          3,
-				DefaultVariantID: "variant-a",
-				Variants: []DashWrapperVariant{
+				ID:             "wrap-1",
+				Name:           "Stack",
+				Col:            8,
+				Row:            0,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "variant-a",
+				Layers: []DashWidgetStackLayer{
 					{
 						ID:   "variant-a",
 						Name: "A",
@@ -239,41 +327,41 @@ func TestValidateLayout(t *testing.T) {
 			},
 		}
 		if err := ValidateLayout(l); err == nil {
-			t.Fatal("expected child widget exceeding wrapper bounds to fail")
+			t.Fatal("expected child widget exceeding widget stack bounds to fail")
 		}
 	})
 
-	t.Run("overlapping wrapper groups fail", func(t *testing.T) {
+	t.Run("overlapping widget stacks fail", func(t *testing.T) {
 		l := validLayout()
 		l.Pages[0].Widgets = nil
-		l.Pages[0].WrapperGroups = []DashWrapperGroup{
+		l.Pages[0].WidgetStacks = []DashWidgetStack{
 			{
-				ID:               "wrap-1",
-				Name:             "Stack A",
-				Col:              0,
-				Row:              0,
-				ColSpan:          4,
-				RowSpan:          3,
-				DefaultVariantID: "variant-a",
-				Variants: []DashWrapperVariant{
+				ID:             "wrap-1",
+				Name:           "Stack A",
+				Col:            0,
+				Row:            0,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "variant-a",
+				Layers: []DashWidgetStackLayer{
 					{ID: "variant-a", Name: "A", Widgets: []DashWidget{{ID: "inner-a", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 4, RowSpan: 3}}},
 				},
 			},
 			{
-				ID:               "wrap-2",
-				Name:             "Stack B",
-				Col:              3,
-				Row:              1,
-				ColSpan:          4,
-				RowSpan:          3,
-				DefaultVariantID: "variant-b",
-				Variants: []DashWrapperVariant{
+				ID:             "wrap-2",
+				Name:           "Stack B",
+				Col:            3,
+				Row:            1,
+				ColSpan:        4,
+				RowSpan:        3,
+				DefaultLayerID: "variant-b",
+				Layers: []DashWidgetStackLayer{
 					{ID: "variant-b", Name: "B", Widgets: []DashWidget{{ID: "inner-b", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 4, RowSpan: 3}}},
 				},
 			},
 		}
 		if err := ValidateLayout(l); err == nil {
-			t.Fatal("expected overlapping wrapper groups to fail")
+			t.Fatal("expected overlapping widget stacks to fail")
 		}
 	})
 }

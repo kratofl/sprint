@@ -73,6 +73,9 @@ type TextStyle struct {
 	HAlign     HAlign     `json:"hAlign,omitempty"`
 	VAlign     VAlign     `json:"vAlign,omitempty"`
 	Color      ColorExpr  `json:"color,omitempty"`
+	// OpticalCenter centers the rendered glyph mass instead of the font advance.
+	// Use it for large, single-character readouts such as gear.
+	OpticalCenter bool `json:"opticalCenter,omitempty"`
 }
 
 // ColorRef is a semantic color name resolved at render time.

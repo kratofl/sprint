@@ -19,6 +19,7 @@ import (
 	"github.com/kratofl/sprint/pkg/dto"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
 )
 
 //go:embed fonts/*.ttf
@@ -74,7 +75,7 @@ type Painter struct {
 	profile atomic.Pointer[RenderProfile]
 
 	wrapperMu     sync.RWMutex
-	wrapperStates map[string]string
+	widgetStackStates map[string]string
 
 	// activePageIndex is the index into layout.Pages to render (0-based).
 	activePageIndex atomic.Int32
@@ -99,7 +100,7 @@ func (p *Painter) SetLayout(layout *DashLayout) {
 		p.layout.Store((*DashLayout)(nil))
 	} else {
 		p.layout.Store(layout)
-		p.resetWrapperStates(layout)
+		p.resetWidgetStackStates(layout)
 	}
 	p.widgetCaches = nil
 }
@@ -112,7 +113,7 @@ func (p *Painter) SetActivePage(index int) {
 	}
 	p.activePageIndex.Store(int32(index))
 	if layout := p.layout.Load(); layout != nil && index < len(layout.Pages) {
-		p.resetPageWrapperStates(layout.Pages[index])
+		p.resetPageWidgetStackStates(layout.Pages[index])
 	}
 	p.widgetCaches = nil
 }
@@ -123,7 +124,7 @@ func (p *Painter) SetIdle(idle bool) {
 	p.idle.Store(idle)
 	if idle {
 		if layout := p.layout.Load(); layout != nil {
-			p.resetPageWrapperStates(layout.IdlePage)
+			p.resetPageWidgetStackStates(layout.IdlePage)
 		}
 	}
 	p.widgetCaches = nil
@@ -161,14 +162,14 @@ func (p *Painter) SetProfile(profile RenderProfile) {
 	p.widgetCaches = nil
 }
 
-// SetWrapperVariant selects the active wrapper variant for a specific page/group.
-func (p *Painter) SetWrapperVariant(pageID, groupID, variantID string) {
+// SetWidgetStackLayer selects the active wrapper variant for a specific page/group.
+func (p *Painter) SetWidgetStackLayer(pageID, groupID, variantID string) {
 	p.wrapperMu.Lock()
 	defer p.wrapperMu.Unlock()
-	if p.wrapperStates == nil {
-		p.wrapperStates = map[string]string{}
+	if p.widgetStackStates == nil {
+		p.widgetStackStates = map[string]string{}
 	}
-	p.wrapperStates[wrapperStateKey(pageID, groupID)] = variantID
+	p.widgetStackStates[widgetStackStateKey(pageID, groupID)] = variantID
 	p.widgetCaches = nil
 }
 
@@ -195,7 +196,7 @@ func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
 		for _, widget := range page.Widgets {
 			p.dispatchWidget(dc, frame, widget, layout)
 		}
-		p.dispatchWrapperGroups(dc, frame, page, layout)
+		p.dispatchWidgetStacks(dc, frame, page, layout)
 		p.applyAlertOverlay(dc, float64(p.width), float64(p.height))
 		p.applyFlagOverlay(dc, frame, float64(p.width), float64(p.height))
 		return dc.Image(), nil
@@ -582,7 +583,7 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 	}
 
 	family, bold := resolveTextStyle(style, rt)
-	p.faceAny(dc, fontFileNames(family, bold), size)
+	face, faceOK := p.faceAny(dc, fontFileNames(family, bold), size)
 	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
 
 	var tx float64
@@ -598,6 +599,9 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 			tx = x + 0.025*w
 		}
 	}
+	if style.HAlign == widgets.HAlignCenter && style.OpticalCenter && faceOK {
+		tx += centeredTextInkAnchorOffset(face, display)
+	}
 	if textHasExplicitY(elem) {
 		yFrac = elem.Y
 	}
@@ -607,6 +611,47 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 		ay = valignFrac(style.VAlign)
 	}
 	dc.DrawStringAnchored(display, tx, ty, halignFrac(style.HAlign), ay)
+}
+
+func centeredTextInkAnchorOffset(face font.Face, text string) float64 {
+	if face == nil || text == "" {
+		return 0
+	}
+
+	var dotX, advance fixed.Int26_6
+	var weightedX, totalWeight float64
+	prev := rune(-1)
+	for _, r := range text {
+		if prev >= 0 {
+			dotX += face.Kern(prev, r)
+		}
+		dr, mask, maskp, glyphAdvance, ok := face.Glyph(fixed.Point26_6{X: dotX}, r)
+		if ok {
+			for y := dr.Min.Y; y < dr.Max.Y; y++ {
+				for x := dr.Min.X; x < dr.Max.X; x++ {
+					alpha := color.AlphaModel.Convert(mask.At(maskp.X+x-dr.Min.X, maskp.Y+y-dr.Min.Y)).(color.Alpha).A
+					if alpha == 0 {
+						continue
+					}
+					weight := float64(alpha)
+					weightedX += (float64(x) + 0.5) * weight
+					totalWeight += weight
+				}
+			}
+		}
+		dotX += glyphAdvance
+		advance = dotX
+		prev = r
+	}
+	if totalWeight == 0 {
+		return 0
+	}
+
+	// gg.DrawStringAnchored centers on MeasureString's integer-pixel advance.
+	// Use the same advance baseline, then shift so the painted mass is centered.
+	advanceCenter := float64(advance>>6) / 2
+	massCenter := weightedX / totalWeight
+	return advanceCenter - massCenter
 }
 
 // renderDot draws a filled circle at the fractional position within the widget.
@@ -921,15 +966,15 @@ func (p *Painter) currentGlobalTypography() widgets.TypographySettings {
 	return widgets.TypographySettings{}
 }
 
-func (p *Painter) dispatchWrapperGroups(dc *gg.Context, frame *dto.TelemetryFrame, page DashPage, layout *DashLayout) {
-	for _, group := range page.WrapperGroups {
-		variant := p.activeWrapperVariant(page.ID, group)
+func (p *Painter) dispatchWidgetStacks(dc *gg.Context, frame *dto.TelemetryFrame, page DashPage, layout *DashLayout) {
+	for _, group := range page.WidgetStacks {
+		variant := p.activeWidgetStackLayer(page.ID, group)
 		if variant == nil {
 			continue
 		}
 		for _, child := range variant.Widgets {
 			abs := child
-			abs.ID = wrapperCacheID(group.ID, variant.ID, child.ID)
+			abs.ID = widgetStackCacheID(group.ID, variant.ID, child.ID)
 			abs.Col += group.Col
 			abs.Row += group.Row
 			p.dispatchWidget(dc, frame, abs, layout)
@@ -951,69 +996,69 @@ func (p *Painter) resolveTextBinding(frame *dto.TelemetryFrame, binding widgets.
 	return widgets.ResolveWithPrefs(frame, binding, prefs)
 }
 
-func (p *Painter) resetWrapperStates(layout *DashLayout) {
+func (p *Painter) resetWidgetStackStates(layout *DashLayout) {
 	states := map[string]string{}
 	addPageWrapperDefaults(states, layout.IdlePage)
 	for _, page := range layout.Pages {
 		addPageWrapperDefaults(states, page)
 	}
 	p.wrapperMu.Lock()
-	p.wrapperStates = states
+	p.widgetStackStates = states
 	p.wrapperMu.Unlock()
 }
 
-func (p *Painter) resetPageWrapperStates(page DashPage) {
+func (p *Painter) resetPageWidgetStackStates(page DashPage) {
 	p.wrapperMu.Lock()
 	defer p.wrapperMu.Unlock()
-	if p.wrapperStates == nil {
-		p.wrapperStates = map[string]string{}
+	if p.widgetStackStates == nil {
+		p.widgetStackStates = map[string]string{}
 	}
-	for _, group := range page.WrapperGroups {
-		p.wrapperStates[wrapperStateKey(page.ID, group.ID)] = defaultVariantID(group)
+	for _, group := range page.WidgetStacks {
+		p.widgetStackStates[widgetStackStateKey(page.ID, group.ID)] = defaultLayerID(group)
 	}
 }
 
-func (p *Painter) activeWrapperVariant(pageID string, group DashWrapperGroup) *DashWrapperVariant {
-	activeID := defaultVariantID(group)
+func (p *Painter) activeWidgetStackLayer(pageID string, group DashWidgetStack) *DashWidgetStackLayer {
+	activeID := defaultLayerID(group)
 	p.wrapperMu.RLock()
-	if p.wrapperStates != nil {
-		if selected := p.wrapperStates[wrapperStateKey(pageID, group.ID)]; selected != "" {
+	if p.widgetStackStates != nil {
+		if selected := p.widgetStackStates[widgetStackStateKey(pageID, group.ID)]; selected != "" {
 			activeID = selected
 		}
 	}
 	p.wrapperMu.RUnlock()
-	for i := range group.Variants {
-		if group.Variants[i].ID == activeID {
-			return &group.Variants[i]
+	for i := range group.Layers {
+		if group.Layers[i].ID == activeID {
+			return &group.Layers[i]
 		}
 	}
-	if len(group.Variants) == 0 {
+	if len(group.Layers) == 0 {
 		return nil
 	}
-	return &group.Variants[0]
+	return &group.Layers[0]
 }
 
 func addPageWrapperDefaults(states map[string]string, page DashPage) {
-	for _, group := range page.WrapperGroups {
-		states[wrapperStateKey(page.ID, group.ID)] = defaultVariantID(group)
+	for _, group := range page.WidgetStacks {
+		states[widgetStackStateKey(page.ID, group.ID)] = defaultLayerID(group)
 	}
 }
 
-func defaultVariantID(group DashWrapperGroup) string {
-	if group.DefaultVariantID != "" {
-		return group.DefaultVariantID
+func defaultLayerID(group DashWidgetStack) string {
+	if group.DefaultLayerID != "" {
+		return group.DefaultLayerID
 	}
-	if len(group.Variants) > 0 {
-		return group.Variants[0].ID
+	if len(group.Layers) > 0 {
+		return group.Layers[0].ID
 	}
 	return ""
 }
 
-func wrapperStateKey(pageID, groupID string) string {
+func widgetStackStateKey(pageID, groupID string) string {
 	return pageID + "::" + groupID
 }
 
-func wrapperCacheID(groupID, variantID, widgetID string) string {
+func widgetStackCacheID(groupID, variantID, widgetID string) string {
 	return groupID + "::" + variantID + "::" + widgetID
 }
 

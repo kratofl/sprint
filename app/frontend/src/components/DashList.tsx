@@ -26,6 +26,7 @@ function DashRow({
   const [preview, setPreview] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const isBuiltIn = layout.id === 'default'
+  const openEditor = () => onEdit(layout.id)
 
   useEffect(() => {
     if (!layout.previewAvailable) return
@@ -39,9 +40,21 @@ function DashRow({
   return (
     <>
       <div className={cn(
-        'flex items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.03]',
+        'flex cursor-pointer items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40',
         layout.default && 'bg-bg-panel',
-      )}>
+      )}
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit ${layout.name}`}
+        onClick={openEditor}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            openEditor()
+          }
+        }}
+      >
         {/* Preview thumbnail */}
         <div className="surface-shell h-12 w-20 flex-shrink-0 overflow-hidden flex items-center justify-center">
           {preview
@@ -68,7 +81,7 @@ function DashRow({
           <div className="flex items-center gap-1 flex-shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="xs" variant="primary" onClick={() => onEdit(layout.id)}>
+                <Button size="xs" variant="primary" onClick={(event) => { event.stopPropagation(); onEdit(layout.id) }}>
                   <span className="sr-only">Edit {layout.name}</span>
                   <EditIcon />
                 </Button>
@@ -79,7 +92,7 @@ function DashRow({
             {!layout.default && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                    <Button size="xs" variant="neutral" onClick={() => void onSetDefault(layout.id)}>
+                    <Button size="xs" variant="neutral" onClick={(event) => { event.stopPropagation(); void onSetDefault(layout.id) }}>
                       <span className="sr-only">Set {layout.name} as default</span>
                       <StarIcon />
                     </Button>
@@ -96,7 +109,7 @@ function DashRow({
                       variant="destructive"
                       disabled={isBuiltIn}
                       className="disabled:pointer-events-none disabled:opacity-30"
-                      onClick={() => { if (!isBuiltIn) setConfirmOpen(true) }}
+                      onClick={(event) => { event.stopPropagation(); if (!isBuiltIn) setConfirmOpen(true) }}
                     >
                       <span className="sr-only">Delete {layout.name}</span>
                       <TrashIcon />

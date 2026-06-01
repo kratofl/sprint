@@ -35,25 +35,8 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
     })
   }
 
-  const updateStyle = (patch: Partial<WidgetStyle>) => {
-    onUpdate({ ...widget, style: { ...(widget.style ?? {}), ...patch } })
-  }
-
-  const clearStyleField = (key: keyof WidgetStyle) => {
-    const next = { ...(widget.style ?? {}) }
-    delete next[key]
-    onUpdate({ ...widget, style: Object.keys(next).length > 0 ? next : undefined })
-  }
-
   return (
     <div className="flex flex-col gap-0 overflow-y-auto">
-      <div className="border-b border-border px-4 py-3">
-        <p className="font-mono text-[10px] font-bold text-foreground uppercase tracking-wider">{meta?.name ?? widget.type}</p>
-        <p className="font-mono text-[9px] text-text-muted mt-0.5">
-          {widget.col},{widget.row} · {widget.colSpan}×{widget.rowSpan}
-        </p>
-      </div>
-
       {meta?.configDefs && meta.configDefs.length > 0 ? (
         <div className="flex flex-col gap-px">
           {meta.configDefs.map(def => (
@@ -66,55 +49,70 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
           ))}
         </div>
       ) : (
-        <div className="px-4 py-3 font-mono text-[9px] text-text-disabled">No configurable options</div>
+        <div className="px-1 py-0.5 font-mono text-[9px] text-text-disabled">No configurable options</div>
       )}
+    </div>
+  )
+}
 
-      <div className="border-t border-border mt-1">
-        <div className="px-4 py-2">
-          <p className="font-mono text-[9px] font-bold text-text-disabled uppercase tracking-wider">Style</p>
-        </div>
+interface WidgetStylePropertiesProps {
+  widget: DashWidget
+  onUpdate: (updated: DashWidget) => void
+}
 
-        <FontSelectRow
-          label="Font"
-          value={widget.style?.font}
-          onChange={v => updateStyle({ font: v })}
-          onReset={() => clearStyleField('font')}
-        />
+export function WidgetStyleProperties({ widget, onUpdate }: WidgetStylePropertiesProps) {
+  const updateStyle = (patch: Partial<WidgetStyle>) => {
+    onUpdate({ ...widget, style: { ...(widget.style ?? {}), ...patch } })
+  }
 
-        <FontSizeRow
-          value={widget.style?.fontSize}
-          onChange={v => updateStyle({ fontSize: v })}
-          onReset={() => clearStyleField('fontSize')}
-        />
+  const clearStyleField = (key: keyof WidgetStyle) => {
+    const next = { ...(widget.style ?? {}) }
+    delete next[key]
+    onUpdate({ ...widget, style: Object.keys(next).length > 0 ? next : undefined })
+  }
 
-        <FontSelectRow
-          label="Label Font"
-          value={widget.style?.labelFont}
-          onChange={v => updateStyle({ labelFont: v })}
-          onReset={() => clearStyleField('labelFont')}
-        />
+  return (
+    <div>
+      <FontSelectRow
+        label="Font"
+        value={widget.style?.font}
+        onChange={v => updateStyle({ font: v })}
+        onReset={() => clearStyleField('font')}
+      />
 
-        <ColorRow
-          label="Text Color"
-          value={widget.style?.textColor}
-          onChange={v => updateStyle({ textColor: v })}
-          onReset={() => clearStyleField('textColor')}
-        />
+      <FontSizeRow
+        value={widget.style?.fontSize}
+        onChange={v => updateStyle({ fontSize: v })}
+        onReset={() => clearStyleField('fontSize')}
+      />
 
-        <ColorRow
-          label="Label Color"
-          value={widget.style?.labelColor}
-          onChange={v => updateStyle({ labelColor: v })}
-          onReset={() => clearStyleField('labelColor')}
-        />
+      <FontSelectRow
+        label="Label Font"
+        value={widget.style?.labelFont}
+        onChange={v => updateStyle({ labelFont: v })}
+        onReset={() => clearStyleField('labelFont')}
+      />
 
-        <ColorRow
-          label="Background"
-          value={widget.style?.background}
-          onChange={v => updateStyle({ background: v })}
-          onReset={() => clearStyleField('background')}
-        />
-      </div>
+      <ColorRow
+        label="Text Color"
+        value={widget.style?.textColor}
+        onChange={v => updateStyle({ textColor: v })}
+        onReset={() => clearStyleField('textColor')}
+      />
+
+      <ColorRow
+        label="Label Color"
+        value={widget.style?.labelColor}
+        onChange={v => updateStyle({ labelColor: v })}
+        onReset={() => clearStyleField('labelColor')}
+      />
+
+      <ColorRow
+        label="Background"
+        value={widget.style?.background}
+        onChange={v => updateStyle({ background: v })}
+        onReset={() => clearStyleField('background')}
+      />
     </div>
   )
 }

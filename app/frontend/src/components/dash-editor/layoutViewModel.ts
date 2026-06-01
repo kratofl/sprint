@@ -1,6 +1,6 @@
-import type { DashWidget, DashWrapperGroup } from '../../lib/dash/types.ts'
+import type { DashWidget, DashWidgetStack } from '../../lib/dash/types.ts'
 
-export type DashEditorMode = 'page' | 'mfw'
+export type DashEditorMode = 'page' | 'stack'
 
 
 export interface DashLayerChipState {
@@ -13,7 +13,7 @@ export interface DashLayerChipState {
 }
 
 export interface DashLayerStripState {
-  groupName: string
+  stackName: string
   layers: DashLayerChipState[]
 }
 
@@ -38,21 +38,21 @@ export type InspectorPanelEvent =
 
 export function createLayerStripState(args: {
   mode: DashEditorMode
-  selectedWrapperGroup: DashWrapperGroup | null
-  selectedVariantId: string | null
+  selectedWidgetStack: DashWidgetStack | null
+  selectedLayerId: string | null
 }): DashLayerStripState | null {
-  const { mode, selectedWrapperGroup, selectedVariantId } = args
-  if (mode !== 'mfw' || !selectedWrapperGroup) return null
+  const { mode, selectedWidgetStack, selectedLayerId } = args
+  if (mode !== 'stack' || !selectedWidgetStack) return null
 
   return {
-    groupName: selectedWrapperGroup.name,
-    layers: selectedWrapperGroup.variants.map((variant, index) => ({
-      id: variant.id,
-      name: variant.name,
-      selected: variant.id === selectedVariantId,
-      isDefault: selectedWrapperGroup.defaultVariantId === variant.id,
+    stackName: selectedWidgetStack.name,
+    layers: selectedWidgetStack.layers.map((layer, index) => ({
+      id: layer.id,
+      name: layer.name,
+      selected: layer.id === selectedLayerId,
+      isDefault: selectedWidgetStack.defaultLayerId === layer.id,
       canMoveLeft: index > 0,
-      canMoveRight: index < selectedWrapperGroup.variants.length - 1,
+      canMoveRight: index < selectedWidgetStack.layers.length - 1,
     })),
   }
 }
@@ -60,21 +60,21 @@ export function createLayerStripState(args: {
 export function createInspectorSheetState(args: {
   mode: DashEditorMode
   selectedWidget: DashWidget | null
-  selectedWrapperGroup: DashWrapperGroup | null
+  selectedWidgetStack: DashWidgetStack | null
   pageName: string
 }): DashInspectorSheetState {
-  const { mode, selectedWidget, selectedWrapperGroup, pageName } = args
+  const { mode, selectedWidget, selectedWidgetStack, pageName } = args
 
   if (selectedWidget) {
     return {
-      title: `WIDGET · ${selectedWidget.type}`,
+      title: selectedWidget.type,
       showAdvancedGeometry: true,
     }
   }
 
-  if (mode === 'mfw' && selectedWrapperGroup) {
+  if (mode === 'stack' && selectedWidgetStack) {
     return {
-      title: `MFW · ${selectedWrapperGroup.name}`,
+      title: `STACK · ${selectedWidgetStack.name}`,
       showAdvancedGeometry: true,
     }
   }

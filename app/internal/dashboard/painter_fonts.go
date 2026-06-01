@@ -46,22 +46,22 @@ func fontStyleToFamily(fs widgets.FontStyle) (widgets.FontFamily, bool) {
 
 // face sets the font face on dc, using a cache to avoid re-parsing the TTF on
 // every draw call.
-func (p *Painter) face(dc *gg.Context, name string, size float64) {
+func (p *Painter) face(dc *gg.Context, name string, size float64) (font.Face, bool) {
 	key := fmt.Sprintf("%s@%.2f", name, size)
 	if f, ok := p.fontFaces[key]; ok {
 		dc.SetFontFace(f)
-		return
+		return f, true
 	}
 
 	parsed, ok := p.fontFiles[name]
 	if !ok {
 		data, err := os.ReadFile(filepath.Join(p.fontDir, name))
 		if err != nil {
-			return
+			return nil, false
 		}
 		parsed, err = opentype.Parse(data)
 		if err != nil {
-			return
+			return nil, false
 		}
 		p.fontFiles[name] = parsed
 	}
@@ -72,28 +72,28 @@ func (p *Painter) face(dc *gg.Context, name string, size float64) {
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
-		return
+		return nil, false
 	}
 	p.fontFaces[key] = face
 	dc.SetFontFace(face)
+	return face, true
 }
 
-func (p *Painter) faceAny(dc *gg.Context, names []string, size float64) {
+func (p *Painter) faceAny(dc *gg.Context, names []string, size float64) (font.Face, bool) {
 	for _, name := range names {
 		if _, ok := p.fontFiles[name]; ok {
-			p.face(dc, name, size)
-			return
+			return p.face(dc, name, size)
 		}
 		if p.fontDir != "" {
 			if _, err := os.Stat(filepath.Join(p.fontDir, name)); err == nil {
-				p.face(dc, name, size)
-				return
+				return p.face(dc, name, size)
 			}
 		}
 	}
 	if len(names) > 0 {
-		p.face(dc, names[len(names)-1], size)
+		return p.face(dc, names[len(names)-1], size)
 	}
+	return nil, false
 }
 
 // extractFonts extracts the embedded TTF files to a temporary directory so

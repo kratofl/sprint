@@ -13,8 +13,7 @@ import {
   type DashLayout,
   type DashPage,
   type DashWidget,
-  type DashWrapperGroup,
-  type DashWrapperVariant,
+  type DashWidgetStack,
   type RGBAColor,
   DEFAULT_DASH_THEME,
   DEFAULT_DOMAIN_PALETTE,
@@ -22,7 +21,7 @@ import {
 import type { AppSettings, DashEditorUIPreferences } from '@sprint/types'
 import { DashCanvas } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
-import { WidgetProperties } from './WidgetProperties'
+import { WidgetProperties, WidgetStyleProperties } from './WidgetProperties'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AdditionalSettingsPanel, hexToRgba, rgbaToHex } from './AdditionalSettingsPanel'
 import { AlertsEditor } from './AlertsEditor'
@@ -57,6 +56,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   const [panelPreferences, setPanelPreferences] = useState<DashEditorUIPreferences>(DEFAULT_DASH_EDITOR_UI_PREFERENCES)
   const [advancedGeometryOpen, setAdvancedGeometryOpen] = useState(false)
+  const [styleOpen, setStyleOpen] = useState(false)
   const savedSettingsRef = useRef<AppSettings | null>(null)
   const persistPanelPreferencesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -64,13 +64,13 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const inspectorState = createInspectorSheetState({
     mode: controller.editorMode,
     selectedWidget: controller.selectedWidget,
-    selectedWrapperGroup: controller.selectedWrapperGroup,
+    selectedWidgetStack: controller.selectedWidgetStack,
     pageName: currentPageName,
   })
   const layerStripState = createLayerStripState({
     mode: controller.editorMode,
-    selectedWrapperGroup: controller.selectedWrapperGroup,
-    selectedVariantId: controller.selectedVariantId,
+    selectedWidgetStack: controller.selectedWidgetStack,
+    selectedLayerId: controller.selectedLayerId,
   })
 
   const persistPanelPreferences = useCallback((nextPreferences: DashEditorUIPreferences) => {
@@ -122,7 +122,8 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
   useEffect(() => {
     setAdvancedGeometryOpen(false)
-  }, [controller.activeTab, controller.selectedId, controller.selectedWrapperGroupId, controller.selectedVariantId, controller.editorMode])
+    setStyleOpen(false)
+  }, [controller.activeTab, controller.selectedId, controller.selectedWidgetStackId, controller.selectedLayerId, controller.editorMode])
 
   const handleSetPanelOpen = useCallback((panel: keyof DashEditorUIPreferences, open: boolean) => {
     updatePanelPreferences(current => ({
@@ -171,20 +172,11 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     tabsTriggerBaseClassName,
     tabsTriggerActiveClassName,
   )
-  const inspectorHeaderAction = inspectorState.showAdvancedGeometry ? (
-    <Button
-      variant={advancedGeometryOpen ? 'active' : 'ghost'}
-      size="xs"
-      onClick={() => setAdvancedGeometryOpen(current => !current)}
-    >
-      Advanced geometry
-    </Button>
-  ) : null
   const paletteContent = (
     <WidgetPalette
       catalog={controller.paletteWidgets}
       previewUrls={controller.widgetPreviewUrls}
-      includeMultiFunctionWidget={controller.editorMode === 'page'}
+      includeWidgetStack={controller.editorMode === 'page'}
       onDragStart={(type, previewUrl) => {
         controller.setPaletteDropType(type)
         controller.setPaletteDropPreviewUrl(previewUrl ?? null)
@@ -195,57 +187,30 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
       }}
     />
   )
-  const inspectorContent = (
-    <div className="space-y-4">
-      {layerStripState && (
-        <LayerListPanel
-          groupName={layerStripState.groupName}
-          layers={layerStripState.layers}
-          onAddLayer={controller.handleAddWrapperVariant}
-          onSelectLayer={controller.handleSelectWrapperVariant}
-          onSetDefaultLayer={controller.handleSetDefaultWrapperVariant}
-          onMoveLayerUp={layerId => controller.handleMoveWrapperVariant(layerId, -1)}
-          onMoveLayerDown={layerId => controller.handleMoveWrapperVariant(layerId, 1)}
-          onDeleteLayer={controller.handleDeleteWrapperVariant}
-          disableDelete={(controller.selectedWrapperGroup?.variants.length ?? 0) <= 1}
-        />
-      )}
-
-      {controller.currentPage && controller.editorMode === 'page' && !controller.selectedWidget && (
-        <PagePropertiesPanel
-          page={controller.currentPage}
-          themeBackground={controller.resolvedTheme.bg}
-          onBackgroundChange={controller.handlePageBackgroundChange}
-          onClearPage={controller.handleClearPage}
-        />
-      )}
-
-      {controller.editorMode === 'mfw' && controller.selectedWrapperGroup && controller.selectedWrapperVariant && (
-        <WrapperGroupPropertiesPanel
-          group={controller.selectedWrapperGroup}
-          selectedVariant={controller.selectedWrapperVariant}
-          gridCols={controller.layout.gridCols}
-          gridRows={controller.layout.gridRows}
-          onUpdateGroup={controller.updateSelectedWrapperGroup}
-          onDeleteGroup={controller.handleDeleteSelectedWrapperGroup}
-          onUpdateVariant={controller.updateSelectedVariant}
-          onClearLayer={controller.handleClearPage}
-          showAdvancedGeometry={advancedGeometryOpen}
-        />
-      )}
-
-      {controller.selectedWidget && (
-        <WidgetInspectorPanel
-          widget={controller.selectedWidget}
-          catalog={controller.catalog}
-          onUpdate={controller.updateSelectedWidget}
-          showAdvancedGeometry={advancedGeometryOpen}
-          onUpdateGeometry={updateSelectedWidgetGeometry}
-          onDelete={() => controller.setConfirmRemoveWidget(true)}
-        />
-      )}
-    </div>
-  )
+  const widgetInspectorContent = controller.selectedWidget ? (
+    <WidgetInspectorPanel
+      widget={controller.selectedWidget}
+      catalog={controller.catalog}
+      onUpdate={controller.updateSelectedWidget}
+      styleOpen={styleOpen}
+      onToggleStyle={() => setStyleOpen(current => !current)}
+      advancedGeometryOpen={advancedGeometryOpen}
+      onToggleAdvancedGeometry={() => setAdvancedGeometryOpen(current => !current)}
+      onUpdateGeometry={updateSelectedWidgetGeometry}
+      onDelete={() => controller.setConfirmRemoveWidget(true)}
+    />
+  ) : null
+  const pageInspectorContent = controller.currentPage && controller.editorMode === 'page' && !controller.selectedWidget ? (
+    <PagePropertiesPanel
+      page={controller.currentPage}
+      themeBackground={controller.resolvedTheme.bg}
+      onBackgroundChange={controller.handlePageBackgroundChange}
+      onClearPage={controller.handleClearPage}
+    />
+  ) : null
+  const inspectorContent = widgetInspectorContent ?? pageInspectorContent
+  const stackCanvasGridCols = controller.selectedWidgetStack?.colSpan ?? controller.layout.gridCols
+  const stackCanvasGridRows = controller.selectedWidgetStack?.rowSpan ?? controller.layout.gridRows
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -334,10 +299,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           </button>
           {controller.editorTab === 'designer' && (
             <>
-              {controller.editorMode === 'mfw' && (
+              {controller.editorMode === 'stack' && (
                 <button
                   type="button"
-                  onClick={controller.exitMultiFunctionWidgetEditMode}
+                  onClick={controller.exitWidgetStackEditMode}
                   data-state="inactive"
                   className={cn(topTabTriggerClassName, 'gap-1.5 px-3')}
                 >
@@ -385,121 +350,283 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           onChange={controller.handleAlertsChange}
         />
       ) : (
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          {paletteDocked && (
-            <EditorSidebar
-              side="left"
-              mode="docked"
-              className="w-72 flex-shrink-0"
-              title="Widgets"
-              pinned={panelPreferences.palette.pinned}
-              onTogglePinned={() => handleTogglePanelPinned('palette')}
-              onClose={() => handleSetPanelOpen('palette', false)}
-            >
-              {paletteContent}
-            </EditorSidebar>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {controller.editorMode === 'stack' && controller.currentPage && controller.selectedWidgetStack && (
+            <FocusModeHeader
+              pageName={controller.currentPage.name}
+              stackName={controller.selectedWidgetStack.name}
+              compareEnabled={controller.compareEnabled}
+              compareDisabled={(controller.selectedWidgetStack.layers.length ?? 0) < 2}
+              onBack={controller.exitWidgetStackEditMode}
+              onToggleCompare={controller.handleToggleCompare}
+              onAddLayer={controller.handleAddLayer}
+            />
           )}
 
-          <div className="relative flex min-h-0 min-w-0 flex-1 items-stretch p-2">
-            {!panelPreferences.palette.open && (
-              <EditorEdgeHandle
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            {paletteDocked && (
+              <EditorSidebar
                 side="left"
-                label="Widgets"
-                onClick={() => handleTogglePanelOpen('palette')}
-              />
+                mode="docked"
+                className="w-72 flex-shrink-0"
+                title="WIDGETS"
+                pinned={panelPreferences.palette.pinned}
+                onTogglePinned={() => handleTogglePanelPinned('palette')}
+                onClose={() => handleSetPanelOpen('palette', false)}
+              >
+                {paletteContent}
+              </EditorSidebar>
             )}
 
-            {!panelPreferences.inspector.open && (
-              <EditorEdgeHandle
-                side="right"
-                label="Inspector"
-                onClick={() => handleTogglePanelOpen('inspector')}
-              />
-            )}
-
-            <div
-              ref={controller.canvasPaneRef}
-              className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-sm"
-            >
-              <div style={controller.fittedCanvas ? { width: controller.fittedCanvas.w, height: controller.fittedCanvas.h } : { width: '100%' }}>
-                <DashCanvas
-                  widgets={controller.canvasWidgets}
-                  gridCols={controller.layout.gridCols}
-                  gridRows={controller.layout.gridRows}
-                  selectedId={controller.selectedId}
-                  catalog={controller.catalog}
-                  screenW={controller.screenW}
-                  screenH={controller.screenH}
-                  theme={controller.resolvedTheme}
-                  domainPalette={controller.resolvedDomainPalette}
-                  blockedAreas={controller.blockedAreas}
-                  placementBounds={controller.placementBounds}
-                  overlayRects={controller.overlayRects}
-                  overlayBlockedAreas={controller.currentPage?.widgets ?? []}
-                  overlayEditMode={controller.editingMultiFunctionWidget}
-                  paletteDropType={controller.paletteDropType}
-                  palettePreviewUrl={controller.paletteDropPreviewUrl}
-                  previewUrl={controller.previewUrl ?? undefined}
-                  onBackgroundClick={controller.handleCanvasBackgroundClick}
-                  onSelect={controller.handleCanvasSelectWidget}
-                  onSelectOverlay={controller.handleCanvasSelectWrapperGroup}
-                  onUpdateOverlay={controller.handleCanvasUpdateWrapperGroup}
-                  onEnterOverlay={controller.handleCanvasEnterWrapperGroup}
-                  onDropMultiFunctionWidget={controller.handleCanvasCreateMultiFunctionWidget}
-                  onUpdate={controller.handleUpdate}
+            <div className="relative flex min-h-0 min-w-0 flex-1 items-stretch p-2">
+              {!panelPreferences.palette.open && (
+                <EditorEdgeHandle
+                  side="left"
+                  label="WIDGETS"
+                  onClick={() => handleTogglePanelOpen('palette')}
                 />
+              )}
+
+              {controller.editorMode === 'page' && !panelPreferences.inspector.open && (
+                <EditorEdgeHandle
+                  side="right"
+                  label="INSPECTOR"
+                  onClick={() => handleTogglePanelOpen('inspector')}
+                />
+              )}
+
+              <div
+                ref={controller.canvasPaneRef}
+                className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-sm"
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) {
+                    controller.handleCanvasBackgroundClick()
+                  }
+                }}
+              >
+                {controller.editorMode === 'stack' && controller.selectedWidgetStack ? (
+                  controller.compareEnabled && controller.referenceLayer ? (
+                    <div className="grid h-full w-full min-h-0 min-w-0 grid-cols-2 gap-3">
+                      <CanvasStage title="ACTIVE LAYER" subtitle={controller.selectedLayer?.name}>
+                        <CanvasViewport screenW={controller.screenW} screenH={controller.screenH}>
+                          <DashCanvas
+                            fillParent
+                            widgets={controller.canvasWidgets}
+                            gridCols={stackCanvasGridCols}
+                            gridRows={stackCanvasGridRows}
+                            selectedId={controller.selectedId}
+                            catalog={controller.catalog}
+                            screenW={controller.screenW}
+                            screenH={controller.screenH}
+                            theme={controller.resolvedTheme}
+                            domainPalette={controller.resolvedDomainPalette}
+                            blockedAreas={[]}
+                            placementBounds={null}
+                            overlayRects={[]}
+                            overlayBlockedAreas={[]}
+                            overlayEditMode={false}
+                            paletteDropType={controller.paletteDropType}
+                            palettePreviewUrl={controller.paletteDropPreviewUrl}
+                            previewUrl={controller.previewUrl ?? undefined}
+                            onBackgroundClick={controller.handleCanvasBackgroundClick}
+                            onSelect={controller.handleCanvasSelectWidget}
+                            onUpdate={controller.handleUpdate}
+                          />
+                        </CanvasViewport>
+                      </CanvasStage>
+                      <button
+                        type="button"
+                        onClick={controller.handlePromoteReferenceLayer}
+                        className="flex min-h-0 min-w-0 text-left"
+                      >
+                        <CanvasStage title="REFERENCE LAYER" subtitle={`${controller.referenceLayer.name} · click to edit`}>
+                          <div className="pointer-events-none h-full w-full">
+                            <CanvasViewport screenW={controller.screenW} screenH={controller.screenH}>
+                              <DashCanvas
+                                readOnly
+                                fillParent
+                                widgets={controller.referenceLayer.widgets}
+                                gridCols={stackCanvasGridCols}
+                                gridRows={stackCanvasGridRows}
+                                selectedId={null}
+                                catalog={controller.catalog}
+                                screenW={controller.screenW}
+                                screenH={controller.screenH}
+                                theme={controller.resolvedTheme}
+                                domainPalette={controller.resolvedDomainPalette}
+                                blockedAreas={[]}
+                                placementBounds={null}
+                                overlayRects={[]}
+                                overlayBlockedAreas={[]}
+                                overlayEditMode={false}
+                                onSelect={() => {}}
+                                onUpdate={() => {}}
+                              />
+                            </CanvasViewport>
+                          </div>
+                        </CanvasStage>
+                      </button>
+                    </div>
+                  ) : (
+                    <CanvasStage title="ACTIVE LAYER" subtitle={controller.selectedLayer?.name}>
+                      <CanvasViewport screenW={controller.screenW} screenH={controller.screenH}>
+                        <DashCanvas
+                          fillParent
+                          widgets={controller.canvasWidgets}
+                          gridCols={stackCanvasGridCols}
+                          gridRows={stackCanvasGridRows}
+                          selectedId={controller.selectedId}
+                          catalog={controller.catalog}
+                          screenW={controller.screenW}
+                          screenH={controller.screenH}
+                          theme={controller.resolvedTheme}
+                          domainPalette={controller.resolvedDomainPalette}
+                          blockedAreas={[]}
+                          placementBounds={null}
+                          overlayRects={[]}
+                          overlayBlockedAreas={[]}
+                          overlayEditMode={false}
+                          paletteDropType={controller.paletteDropType}
+                          palettePreviewUrl={controller.paletteDropPreviewUrl}
+                          previewUrl={controller.previewUrl ?? undefined}
+                          onBackgroundClick={controller.handleCanvasBackgroundClick}
+                          onSelect={controller.handleCanvasSelectWidget}
+                          onUpdate={controller.handleUpdate}
+                        />
+                      </CanvasViewport>
+                    </CanvasStage>
+                  )
+                ) : (
+                  <div style={controller.fittedCanvas ? { width: controller.fittedCanvas.w, height: controller.fittedCanvas.h } : { width: '100%' }}>
+                    <DashCanvas
+                      widgets={controller.canvasWidgets}
+                      gridCols={controller.layout.gridCols}
+                      gridRows={controller.layout.gridRows}
+                      selectedId={controller.selectedId}
+                      catalog={controller.catalog}
+                      screenW={controller.screenW}
+                      screenH={controller.screenH}
+                      theme={controller.resolvedTheme}
+                      domainPalette={controller.resolvedDomainPalette}
+                      blockedAreas={controller.blockedAreas}
+                      placementBounds={controller.placementBounds}
+                      overlayRects={controller.overlayRects}
+                      overlayBlockedAreas={controller.currentPage?.widgets ?? []}
+                      overlayEditMode={false}
+                      paletteDropType={controller.paletteDropType}
+                      palettePreviewUrl={controller.paletteDropPreviewUrl}
+                      previewUrl={controller.previewUrl ?? undefined}
+                      onBackgroundClick={controller.handleCanvasBackgroundClick}
+                      onSelect={controller.handleCanvasSelectWidget}
+                      onSelectOverlay={controller.handleCanvasSelectWidgetStack}
+                      onUpdateOverlay={controller.handleCanvasUpdateWidgetStack}
+                      onEnterOverlay={controller.handleCanvasEnterWidgetStack}
+                      onDropWidgetStack={controller.handleCanvasCreateWidgetStack}
+                      onUpdate={controller.handleUpdate}
+                    />
+                  </div>
+                )}
               </div>
+
+              {paletteOverlay && (
+                <div className="pointer-events-none absolute inset-y-2 left-0 z-20 flex w-72 max-w-[calc(100%-1rem)]">
+                  <EditorSidebar
+                    side="left"
+                    mode="overlay"
+                    className="pointer-events-auto flex-1"
+                    title="WIDGETS"
+                    pinned={panelPreferences.palette.pinned}
+                    onTogglePinned={() => handleTogglePanelPinned('palette')}
+                    onClose={() => handleSetPanelOpen('palette', false)}
+                  >
+                    {paletteContent}
+                  </EditorSidebar>
+                </div>
+              )}
+
+              {controller.editorMode === 'page' && inspectorOverlay && inspectorContent && (
+                <div className="pointer-events-none absolute inset-y-2 right-0 z-20 flex w-80 max-w-[calc(100%-1rem)]">
+                  <EditorSidebar
+                    side="right"
+                    mode="overlay"
+                    className="pointer-events-auto flex-1"
+                    title={inspectorState.title}
+                    pinned={panelPreferences.inspector.pinned}
+                    onTogglePinned={() => handleTogglePanelPinned('inspector')}
+                    onClose={() => handleSetPanelOpen('inspector', false)}
+                  >
+                    {inspectorContent}
+                  </EditorSidebar>
+                </div>
+              )}
+
+              {controller.editorMode === 'stack' && widgetInspectorContent && (
+                <div className="pointer-events-none absolute inset-y-2 right-0 z-20 flex w-80 max-w-[calc(100%-1rem)]">
+                  <EditorSidebar
+                    side="right"
+                    mode="overlay"
+                    className="pointer-events-auto flex-1"
+                    title={inspectorState.title}
+                    pinned={false}
+                    onTogglePinned={() => {}}
+                    onClose={() => controller.setSelectedId(null)}
+                    showPinButton={false}
+                  >
+                    {widgetInspectorContent}
+                  </EditorSidebar>
+                </div>
+              )}
             </div>
 
-            {paletteOverlay && (
-              <div className="pointer-events-none absolute inset-y-2 left-0 z-20 flex w-72 max-w-[calc(100%-1rem)]">
-                <EditorSidebar
-                  side="left"
-                  mode="overlay"
-                  className="pointer-events-auto flex-1"
-                  title="Widgets"
-                  pinned={panelPreferences.palette.pinned}
-                  onTogglePinned={() => handleTogglePanelPinned('palette')}
-                  onClose={() => handleSetPanelOpen('palette', false)}
-                >
-                  {paletteContent}
-                </EditorSidebar>
-              </div>
+            {controller.editorMode === 'stack' && controller.selectedWidgetStack && layerStripState && (
+              <EditorSidebar
+                side="right"
+                mode="docked"
+                className="w-80 flex-shrink-0"
+                title={`STACK · ${controller.selectedWidgetStack.name}`}
+                pinned
+                onTogglePinned={() => {}}
+                onClose={() => {}}
+                showPinButton={false}
+                showCloseButton={false}
+              >
+                <LayerListPanel
+                  stack={controller.selectedWidgetStack}
+                  layers={layerStripState.layers}
+                  selectedLayerId={controller.selectedLayerId}
+                  compareEnabled={controller.compareEnabled}
+                  referenceLayerId={controller.referenceLayer?.id ?? null}
+                  onRenameStack={controller.handleRenameWidgetStack}
+                  onAddLayer={controller.handleAddLayer}
+                  onSelectLayer={controller.handleSelectLayer}
+                  onRenameLayer={controller.handleRenameLayer}
+                  onSetReferenceLayer={controller.handleSelectReferenceLayer}
+                  onSetDefaultLayer={controller.handleSetDefaultLayer}
+                  onDuplicateLayer={controller.handleDuplicateLayer}
+                  onMoveLayerUp={layerId => controller.handleMoveLayer(layerId, -1)}
+                  onMoveLayerDown={layerId => controller.handleMoveLayer(layerId, 1)}
+                  onDeleteLayer={controller.handleDeleteLayer}
+                  onDeleteStack={controller.handleDeleteSelectedWidgetStack}
+                  onClearLayer={controller.handleClearPage}
+                  disableDelete={(controller.selectedWidgetStack.layers.length ?? 0) <= 1}
+                />
+              </EditorSidebar>
             )}
 
-            {inspectorOverlay && (
-              <div className="pointer-events-none absolute inset-y-2 right-0 z-20 flex w-80 max-w-[calc(100%-1rem)]">
-                <EditorSidebar
-                  side="right"
-                  mode="overlay"
-                  className="pointer-events-auto flex-1"
-                  title={inspectorState.title}
-                  pinned={panelPreferences.inspector.pinned}
-                  onTogglePinned={() => handleTogglePanelPinned('inspector')}
-                  onClose={() => handleSetPanelOpen('inspector', false)}
-                  headerAction={inspectorHeaderAction}
-                >
-                  {inspectorContent}
-                </EditorSidebar>
-              </div>
+            {controller.editorMode === 'page' && inspectorDocked && inspectorContent && (
+              <EditorSidebar
+                side="right"
+                mode="docked"
+                className="w-80 flex-shrink-0"
+                title={inspectorState.title}
+                pinned={panelPreferences.inspector.pinned}
+                onTogglePinned={() => handleTogglePanelPinned('inspector')}
+                onClose={() => handleSetPanelOpen('inspector', false)}
+              >
+                {inspectorContent}
+              </EditorSidebar>
             )}
           </div>
-
-          {inspectorDocked && (
-            <EditorSidebar
-              side="right"
-              mode="docked"
-              className="w-80 flex-shrink-0"
-              title={inspectorState.title}
-              pinned={panelPreferences.inspector.pinned}
-              onTogglePinned={() => handleTogglePanelPinned('inspector')}
-              onClose={() => handleSetPanelOpen('inspector', false)}
-              headerAction={inspectorHeaderAction}
-            >
-              {inspectorContent}
-            </EditorSidebar>
-          )}
-
         </div>
       )}
 
@@ -537,6 +664,115 @@ function CloseIcon() {
   )
 }
 
+function FocusModeHeader({
+  pageName,
+  stackName,
+  compareEnabled,
+  compareDisabled,
+  onBack,
+  onToggleCompare,
+  onAddLayer,
+}: {
+  pageName: string
+  stackName: string
+  compareEnabled: boolean
+  compareDisabled: boolean
+  onBack: () => void
+  onToggleCompare: () => void
+  onAddLayer: () => void
+}) {
+  return (
+    <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-shell px-3 py-2">
+      <div className="min-w-0">
+        <div className="font-mono text-[9px] uppercase tracking-wide text-text-disabled">
+          {pageName} / Widget Stack
+        </div>
+        <div className="truncate text-sm font-medium text-foreground">{stackName}</div>
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        <Button variant="outline" size="xs" onClick={onBack} className="font-mono text-[9px]">
+          BACK_TO_PAGE
+        </Button>
+        <Button
+          variant={compareEnabled ? 'primary' : 'outline'}
+          size="xs"
+          onClick={onToggleCompare}
+          disabled={compareDisabled}
+          className="font-mono text-[9px]"
+        >
+          COMPARE
+        </Button>
+        <Button variant="outline" size="xs" onClick={onAddLayer} className="font-mono text-[9px]">
+          ADD_LAYER
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function CanvasStage({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string | null
+  children: ReactNode
+}) {
+  return (
+    <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border bg-bg-shell">
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <span className="font-mono text-[9px] uppercase tracking-wide text-text-disabled">{title}</span>
+        {subtitle && <span className="truncate font-mono text-[10px] text-foreground">{subtitle}</span>}
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-3">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function CanvasViewport({
+  screenW,
+  screenH,
+  children,
+}: {
+  screenW: number
+  screenH: number
+  children: ReactNode
+}) {
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null)
+  const [fit, setFit] = useState<{ w: number; h: number } | null>(null)
+
+  useEffect(() => {
+    if (!containerEl) return
+
+    const ratio = screenW / screenH
+    const observer = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect
+      if (width <= 0 || height <= 0) return
+      if (width / height > ratio) {
+        setFit({ w: Math.floor(height * ratio), h: Math.floor(height) })
+      } else {
+        setFit({ w: Math.floor(width), h: Math.floor(width / ratio) })
+      }
+    })
+
+    observer.observe(containerEl)
+    return () => observer.disconnect()
+  }, [containerEl, screenH, screenW])
+
+  return (
+    <div ref={setContainerEl} className="flex h-full w-full items-center justify-center">
+      {fit && (
+        <div style={{ width: fit.w, height: fit.h }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EditorSidebar({
   side,
   mode,
@@ -545,6 +781,8 @@ function EditorSidebar({
   onTogglePinned,
   onClose,
   headerAction,
+  showPinButton = true,
+  showCloseButton = true,
   className,
   children,
 }: {
@@ -555,6 +793,8 @@ function EditorSidebar({
   onTogglePinned: () => void
   onClose: () => void
   headerAction?: ReactNode
+  showPinButton?: boolean
+  showCloseButton?: boolean
   className?: string
   children: ReactNode
 }) {
@@ -585,25 +825,29 @@ function EditorSidebar({
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {headerAction}
-          <button
-            type="button"
-            title={pinned ? 'Unpin panel' : 'Pin panel'}
-            onClick={onTogglePinned}
-            className={cn(
-              'rounded p-1 transition-colors',
-              pinned ? 'text-accent' : 'text-text-muted hover:text-foreground',
-            )}
-          >
-            <PinIcon />
-          </button>
-          <button
-            type="button"
-            title="Hide panel"
-            onClick={onClose}
-            className="rounded p-1 text-text-muted transition-colors hover:text-foreground"
-          >
-            <CloseIcon />
-          </button>
+          {showPinButton && (
+            <button
+              type="button"
+              title={pinned ? 'Unpin panel' : 'Pin panel'}
+              onClick={onTogglePinned}
+              className={cn(
+                'rounded p-1 transition-colors',
+                pinned ? 'text-accent' : 'text-text-muted hover:text-foreground',
+              )}
+            >
+              <PinIcon />
+            </button>
+          )}
+          {showCloseButton && (
+            <button
+              type="button"
+              title="Hide panel"
+              onClick={onClose}
+              className="rounded p-1 text-text-muted transition-colors hover:text-foreground"
+            >
+              <CloseIcon />
+            </button>
+          )}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
@@ -628,35 +872,113 @@ function SidebarSection({
   )
 }
 
+function SidebarDisclosureSection({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className="overflow-hidden border border-border/80">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 bg-bg-shell px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <span className="terminal-header text-[9px] font-bold text-text-muted">{title}</span>
+        <DisclosureChevron open={open} />
+      </button>
+      {open && (
+        <div className="border-t border-border/80">
+          {children}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function LayerListPanel({
+  stack,
   layers,
+  selectedLayerId,
+  compareEnabled,
+  referenceLayerId,
+  onRenameStack,
   onAddLayer,
   onSelectLayer,
+  onRenameLayer,
+  onSetReferenceLayer,
   onSetDefaultLayer,
+  onDuplicateLayer,
   onMoveLayerUp,
   onMoveLayerDown,
   onDeleteLayer,
+  onDeleteStack,
+  onClearLayer,
   disableDelete,
 }: {
-  groupName: string
+  stack: DashWidgetStack
   layers: DashLayerChipState[]
+  selectedLayerId: string | null
+  compareEnabled: boolean
+  referenceLayerId: string | null
+  onRenameStack: (name: string) => void
   onAddLayer: () => void
   onSelectLayer: (layerId: string) => void
+  onRenameLayer: (layerId: string, name: string) => void
+  onSetReferenceLayer: (layerId: string) => void
   onSetDefaultLayer: (layerId: string) => void
+  onDuplicateLayer: (layerId: string) => void
   onMoveLayerUp: (layerId: string) => void
   onMoveLayerDown: (layerId: string) => void
   onDeleteLayer: (layerId: string) => void
+  onDeleteStack: () => void
+  onClearLayer: () => void
   disableDelete: boolean
 }) {
   return (
-    <SidebarSection title="Layers">
-      <div className="space-y-2">
+    <div className="space-y-4">
+      <SidebarSection title="STACK">
+        <div className="space-y-3">
+          <FieldRow label="NAME">
+            <input
+              type="text"
+              value={stack.name}
+              onChange={event => onRenameStack(event.target.value)}
+              className="w-full border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+            />
+          </FieldRow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="xs" onClick={onClearLayer} className="font-mono text-[9px]">
+              CLEAR_LAYER
+            </Button>
+            <Button variant="destructive" size="xs" onClick={onDeleteStack} className="font-mono text-[9px]">
+              DELETE_STACK
+            </Button>
+          </div>
+        </div>
+      </SidebarSection>
+
+      <SidebarSection title="LAYERS">
+        <div className="space-y-2">
         {layers.map(layer => (
           <LayerListItem
             key={layer.id}
             layer={layer}
+            selectedLayerId={selectedLayerId}
+            compareEnabled={compareEnabled}
+            referenceLayerId={referenceLayerId}
             onSelect={() => onSelectLayer(layer.id)}
+            onRename={name => onRenameLayer(layer.id, name)}
+            onSetReference={() => onSetReferenceLayer(layer.id)}
             onSetDefault={() => onSetDefaultLayer(layer.id)}
+            onDuplicate={() => onDuplicateLayer(layer.id)}
             onMoveUp={() => onMoveLayerUp(layer.id)}
             onMoveDown={() => onMoveLayerDown(layer.id)}
             onDelete={() => onDeleteLayer(layer.id)}
@@ -666,23 +988,36 @@ function LayerListPanel({
         <Button variant="outline" size="xs" onClick={onAddLayer} className="w-full justify-center font-mono text-[9px]">
           + LAYER
         </Button>
-      </div>
-    </SidebarSection>
+        </div>
+      </SidebarSection>
+    </div>
   )
 }
 
 function LayerListItem({
   layer,
+  selectedLayerId,
+  compareEnabled,
+  referenceLayerId,
   onSelect,
+  onRename,
+  onSetReference,
   onSetDefault,
+  onDuplicate,
   onMoveUp,
   onMoveDown,
   onDelete,
   disableDelete,
 }: {
   layer: DashLayerChipState
+  selectedLayerId: string | null
+  compareEnabled: boolean
+  referenceLayerId: string | null
   onSelect: () => void
+  onRename: (name: string) => void
+  onSetReference: () => void
   onSetDefault: () => void
+  onDuplicate: () => void
   onMoveUp: () => void
   onMoveDown: () => void
   onDelete: () => void
@@ -698,16 +1033,45 @@ function LayerListItem({
       )}
     >
       <div className="flex items-start gap-2">
-        <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 flex-col items-start text-left">
-          <span className={cn('truncate font-mono text-[10px]', layer.selected ? 'text-foreground' : 'text-text-muted')}>
-            {layer.name}
-          </span>
+        <div className="min-w-0 flex-1 space-y-2">
+          <button type="button" onClick={onSelect} className="flex min-w-0 w-full flex-col items-start text-left">
+            <span className={cn('truncate font-mono text-[10px]', layer.selected ? 'text-foreground' : 'text-text-muted')}>
+              {layer.name}
+            </span>
+          </button>
+          <input
+            type="text"
+            value={layer.name}
+            onChange={event => onRename(event.target.value)}
+            className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          />
+          <div className="flex flex-wrap items-center gap-1">
           {layer.isDefault && (
             <span className="mt-1 rounded border border-border/80 px-1 py-0.5 font-mono text-[8px] uppercase tracking-wide text-text-disabled">
               default
             </span>
           )}
-        </button>
+            {compareEnabled && !layer.selected && (
+              <button
+                type="button"
+                onClick={onSetReference}
+                className={cn(
+                  'rounded border px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide transition-colors',
+                  referenceLayerId === layer.id
+                    ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-200'
+                    : 'border-border text-text-disabled hover:text-foreground',
+                )}
+              >
+                {referenceLayerId === layer.id ? 'REF' : 'SET_REF'}
+              </button>
+            )}
+            {selectedLayerId === layer.id && (
+              <span className="rounded border border-accent/50 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-foreground">
+                active
+              </span>
+            )}
+          </div>
+        </div>
         <div className="flex flex-shrink-0 items-center gap-1">
           <button
             type="button"
@@ -717,6 +1081,14 @@ function LayerListItem({
             title="Set default layer"
           >
             D
+          </button>
+          <button
+            type="button"
+            onClick={onDuplicate}
+            className="rounded border border-border px-1 text-[9px] text-text-disabled transition-colors hover:text-foreground"
+            title="Duplicate layer"
+          >
+            +
           </button>
           <button
             type="button"
@@ -790,160 +1162,64 @@ function WidgetInspectorPanel({
   widget,
   catalog,
   onUpdate,
-  showAdvancedGeometry,
+  styleOpen,
+  onToggleStyle,
+  advancedGeometryOpen,
+  onToggleAdvancedGeometry,
   onUpdateGeometry,
   onDelete,
 }: {
   widget: DashWidget
   catalog: DashLayout extends never ? never : Parameters<typeof WidgetProperties>[0]['catalog']
   onUpdate: (widget: DashWidget) => void
-  showAdvancedGeometry: boolean
+  styleOpen: boolean
+  onToggleStyle: () => void
+  advancedGeometryOpen: boolean
+  onToggleAdvancedGeometry: () => void
   onUpdateGeometry: (patch: Partial<Pick<DashWidget, 'col' | 'row' | 'colSpan' | 'rowSpan'>>) => void
   onDelete: () => void
 }) {
   return (
     <div className="space-y-4">
-      <SidebarSection title="Widget">
-        <div className="space-y-3">
-          <WidgetProperties
-            widget={widget}
-            catalog={catalog}
-            onUpdate={onUpdate}
-          />
-          <div className="flex justify-end">
-            <Button
-              variant="destructive"
-              size="xs"
-              onClick={onDelete}
-              className="inline-flex items-center gap-1 font-mono text-[9px]"
-            >
-              <TrashIcon />
-              REMOVE_WIDGET
-            </Button>
-          </div>
-        </div>
-      </SidebarSection>
+      <WidgetProperties
+        widget={widget}
+        catalog={catalog}
+        onUpdate={onUpdate}
+      />
 
-      {showAdvancedGeometry && (
-        <SidebarSection title="Advanced geometry">
+      <SidebarDisclosureSection title="STYLE" open={styleOpen} onToggle={onToggleStyle}>
+        <WidgetStyleProperties
+          widget={widget}
+          onUpdate={onUpdate}
+        />
+      </SidebarDisclosureSection>
+
+      <SidebarDisclosureSection
+        title="ADVANCED_GEOMETRY"
+        open={advancedGeometryOpen}
+        onToggle={onToggleAdvancedGeometry}
+      >
+        <div className="px-3 py-3">
           <div className="grid grid-cols-2 gap-2">
             <NumberField label="Col" value={widget.col} min={0} max={999} onChange={value => onUpdateGeometry({ col: value })} />
             <NumberField label="Row" value={widget.row} min={0} max={999} onChange={value => onUpdateGeometry({ row: value })} />
             <NumberField label="Width" value={widget.colSpan} min={1} max={999} onChange={value => onUpdateGeometry({ colSpan: value })} />
             <NumberField label="Height" value={widget.rowSpan} min={1} max={999} onChange={value => onUpdateGeometry({ rowSpan: value })} />
           </div>
-        </SidebarSection>
-      )}
-    </div>
-  )
-}
-
-function WrapperGroupPropertiesPanel({
-  group,
-  selectedVariant,
-  gridCols,
-  gridRows,
-  onUpdateGroup,
-  onDeleteGroup,
-  onUpdateVariant,
-  onClearLayer,
-  showAdvancedGeometry,
-}: {
-  group: DashWrapperGroup
-  selectedVariant: DashWrapperVariant
-  gridCols: number
-  gridRows: number
-  onUpdateGroup: (patch: Partial<DashWrapperGroup>) => void
-  onDeleteGroup: () => void
-  onUpdateVariant: (patch: { name?: string; defaultVariantId?: string }) => void
-  onClearLayer: () => void
-  showAdvancedGeometry: boolean
-}) {
-  return (
-    <div className="space-y-4">
-      <SidebarSection title="MFW">
-        <div className="space-y-3">
-          <FieldRow label="Name">
-            <input
-              type="text"
-              value={group.name}
-              onChange={event => onUpdateGroup({ name: event.target.value })}
-              className="w-full border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
-            />
-          </FieldRow>
-
-          <FieldRow label="Active layer">
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={selectedVariant.name}
-                onChange={event => onUpdateVariant({ name: event.target.value })}
-                className="w-full border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
-              />
-              {group.defaultVariantId === selectedVariant.id && (
-                <span className="rounded border border-border px-2 py-1 font-mono text-[8px] uppercase tracking-wide text-text-disabled">
-                  DEFAULT
-                </span>
-              )}
-            </div>
-          </FieldRow>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={onClearLayer}
-              className="font-mono text-[9px]"
-            >
-              CLEAR_LAYER
-            </Button>
-            <Button
-              variant="destructive"
-              size="xs"
-              onClick={onDeleteGroup}
-              className="inline-flex items-center gap-1 font-mono text-[9px]"
-            >
-              <TrashIcon />
-              DELETE_MFW
-            </Button>
-          </div>
         </div>
-      </SidebarSection>
+      </SidebarDisclosureSection>
 
-      {showAdvancedGeometry && (
-        <SidebarSection title="Advanced geometry">
-          <div className="grid grid-cols-2 gap-2">
-            <NumberField
-              label="Col"
-              value={group.col}
-              min={0}
-              max={Math.max(0, gridCols - group.colSpan)}
-              onChange={value => onUpdateGroup({ col: value })}
-            />
-            <NumberField
-              label="Row"
-              value={group.row}
-              min={0}
-              max={Math.max(0, gridRows - group.rowSpan)}
-              onChange={value => onUpdateGroup({ row: value })}
-            />
-            <NumberField
-              label="Width"
-              value={group.colSpan}
-              min={1}
-              max={gridCols}
-              onChange={value => onUpdateGroup({ colSpan: value })}
-            />
-            <NumberField
-              label="Height"
-              value={group.rowSpan}
-              min={1}
-              max={gridRows}
-              onChange={value => onUpdateGroup({ rowSpan: value })}
-            />
-          </div>
-        </SidebarSection>
-      )}
+      <div className="flex justify-end">
+        <Button
+          variant="destructive"
+          size="xs"
+          onClick={onDelete}
+          className="inline-flex items-center gap-1 font-mono text-[9px]"
+        >
+          <TrashIcon />
+          REMOVE_WIDGET
+        </Button>
+      </div>
     </div>
   )
 }
@@ -1073,6 +1349,25 @@ function TrashIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 3h7M4.5 3V2h2v1M3.5 3v5.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5V3" />
+    </svg>
+  )
+}
+
+function DisclosureChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 11 11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn('text-text-disabled transition-transform', open && 'rotate-90')}
+      aria-hidden="true"
+    >
+      <polyline points="4,2.5 7.5,5.5 4,8.5" />
     </svg>
   )
 }
