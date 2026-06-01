@@ -125,10 +125,10 @@ function placeholder(binding?: string, format?: string, text?: string): string {
 // ── Font helpers ──────────────────────────────────────────────────────────────
 
 const FONT_MAP: Record<FontStyle, string> = {
-  label:  'Space Grotesk, sans-serif',
-  bold:   'Space Grotesk, sans-serif',
-  number: 'JetBrains Mono, monospace',
-  mono:   'JetBrains Mono, monospace',
+  label:  'Bahnschrift, IBM Plex Sans Condensed, IBM Plex Sans, sans-serif',
+  bold:   'Bahnschrift, IBM Plex Sans Condensed, IBM Plex Sans, sans-serif',
+  number: 'Bahnschrift, IBM Plex Mono, ui-monospace, monospace',
+  mono:   'Bahnschrift, IBM Plex Mono, ui-monospace, monospace',
 }
 
 function fontFamily(f?: FontStyle): string { return FONT_MAP[f ?? 'label'] }
@@ -512,11 +512,11 @@ function renderAbsElem(
               padding: '0 4px',
             }}>
               {cell.label && (
-                <span style={{ fontSize: '0.8cqh', color: r('muted'), fontFamily: 'Space Grotesk, sans-serif' }}>
+                <span style={{ fontSize: '0.8cqh', color: r('muted'), fontFamily: FONT_MAP.label }}>
                   {cell.label}
                 </span>
               )}
-              <span style={{ fontSize: '1cqh', color: r('fg'), fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>
+              <span style={{ fontSize: '1cqh', color: r('fg'), fontFamily: FONT_MAP.number, fontWeight: 700 }}>
                 —
               </span>
             </div>
@@ -572,7 +572,7 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
       ) : (
         <div className="absolute inset-0 flex items-center justify-center"
           style={{ background: resolveRef('surface', theme, domainPalette, widgetStyle) }}>
-          <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette, widgetStyle), fontFamily: 'JetBrains Mono, monospace' }}>
+          <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette, widgetStyle), fontFamily: FONT_MAP.mono }}>
             {entry?.name ?? widget.type}
           </span>
         </div>

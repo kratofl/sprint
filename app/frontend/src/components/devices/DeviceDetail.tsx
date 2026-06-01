@@ -219,9 +219,9 @@ export function DeviceDetail({
   })
   const activeDashId = bindingDashContext.activeDashId
   const typeLabel =
-    device.type === 'wheel' ? 'WHEEL' :
-      device.type === 'buttonbox' ? 'BUTTON_BOX' :
-        'SCREEN'
+    device.type === 'wheel' ? 'Wheel' :
+      device.type === 'buttonbox' ? 'Button box' :
+        'Screen'
   const bindingView = useMemo(
     () => buildDeviceBindingsViewModel({
       commands: deviceOnlyCmds,
@@ -270,7 +270,7 @@ export function DeviceDetail({
             </button>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="neutral" className="terminal-header">{typeLabel}</Badge>
+            <Badge variant="neutral" className="ui-label">{typeLabel}</Badge>
             {isScreen && device.driver ? (
               <span className="font-mono text-[9px] uppercase text-text-muted">{device.driver}</span>
             ) : null}
@@ -285,7 +285,7 @@ export function DeviceDetail({
 
         <div className="flex flex-shrink-0 items-center gap-2">
           {isScreen && screenStatus === 'connected' ? (
-            <Badge variant="connected" className="terminal-header">CONNECTED</Badge>
+            <Badge variant="connected" className="ui-label">Connected</Badge>
           ) : null}
           {isScreen ? (
             <Switch
@@ -316,7 +316,7 @@ export function DeviceDetail({
             <>
               {isScreenOnly && import.meta.env.DEV ? (
                 <div className="space-y-1.5">
-                  <p className="font-mono text-[9px] font-bold text-text-muted">PURPOSE</p>
+                  <p className="ui-value text-[10px] font-semibold text-text-muted">Purpose</p>
                   <select
                     value={purpose}
                     onChange={event => handlePurposeChange(event.target.value as DevicePurpose)}
@@ -329,7 +329,7 @@ export function DeviceDetail({
               ) : null}
 
               <div className="space-y-1.5">
-                <p className="font-mono text-[9px] font-bold text-text-muted">ORIENTATION</p>
+                <p className="ui-value text-[10px] font-semibold text-text-muted">Orientation</p>
                 <div className="flex flex-wrap gap-1.5">
                   {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
                     <button
@@ -354,7 +354,7 @@ export function DeviceDetail({
                 <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_POSITION (px)</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-1.5">
-                    <span className="font-mono text-[9px] text-text-muted">LEFT</span>
+                    <span className="ui-value text-[10px] text-text-muted">Left</span>
                     <input
                       type="number"
                       min={0}
@@ -365,7 +365,7 @@ export function DeviceDetail({
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
-                    <span className="font-mono text-[9px] text-text-muted">TOP</span>
+                    <span className="ui-value text-[10px] text-text-muted">Top</span>
                     <input
                       type="number"
                       min={0}
@@ -376,7 +376,7 @@ export function DeviceDetail({
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
-                    <span className="font-mono text-[9px] text-text-muted">MARGIN</span>
+                    <span className="ui-value text-[10px] text-text-muted">Margin</span>
                     <input
                       type="number"
                       min={0}
@@ -400,8 +400,8 @@ export function DeviceDetail({
                   <div className="space-y-2">
                     <Tabs defaultValue="capture">
                       <TabsList variant="compact" className="w-full font-mono text-[9px]">
-                        <TabsTrigger value="capture" className="flex-1">CAPTURE</TabsTrigger>
-                        <TabsTrigger value="idle" className="flex-1">IDLE SCREEN</TabsTrigger>
+                        <TabsTrigger value="capture" className="flex-1">Capture</TabsTrigger>
+                        <TabsTrigger value="idle" className="flex-1">Idle screen</TabsTrigger>
                       </TabsList>
 
                       <TabsContent value="capture" className="space-y-2 pt-2">
@@ -426,7 +426,7 @@ export function DeviceDetail({
                       </TabsContent>
 
                       <TabsContent value="idle" className="space-y-2 pt-2">
-                        <p className="font-mono text-[9px] font-bold text-text-muted">IDLE_MODE</p>
+                        <p className="ui-value text-[10px] font-semibold text-text-muted">Idle mode</p>
                         <select
                           value={idleMode}
                           onChange={event => handleIdleModeChange(event.target.value as RearViewIdleMode)}
@@ -448,7 +448,7 @@ export function DeviceDetail({
                   </p>
                   {layouts.length === 0 ? (
                     <p className="font-mono text-[9px] text-text-muted">
-                      No layouts saved yet — create one in DASH_STUDIO
+                      No layouts saved yet. Create one in Dash Studio.
                     </p>
                   ) : (
                     <select
@@ -471,7 +471,7 @@ export function DeviceDetail({
         <TabsContent value="bindings" className="space-y-3 pt-1">
           {bindingDashContext.showDashPicker && layouts.length > 0 ? (
             <div className="space-y-1.5">
-              <p className="font-mono text-[8px] text-text-muted">BINDING_DASH_LAYOUT</p>
+              <p className="ui-value text-[9px] text-text-muted">Binding dash layout</p>
               <select
                 value={activeDashId}
                 onChange={event => setSelectedBindingDashId(event.target.value)}
@@ -485,7 +485,7 @@ export function DeviceDetail({
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-[8px] text-text-muted">ACTIVE_DASH_ONLY</p>
+            <p className="ui-value text-[9px] text-text-muted">Active dash only</p>
             {bindingView.hiddenBindingCount > 0 ? (
               <Badge variant="outline" className="font-mono text-[8px]">
                 {bindingView.hiddenBindingCount}_HIDDEN
@@ -520,7 +520,7 @@ export function DeviceDetail({
             </div>
           ) : (
             <div className="surface-panel px-4 py-3">
-              <p className="font-mono text-[9px] text-text-muted">NO_ACTIVE_DASH_BINDINGS</p>
+              <p className="ui-value text-[10px] text-text-muted">No active dash bindings</p>
             </div>
           )}
         </TabsContent>
@@ -530,11 +530,11 @@ export function DeviceDetail({
         <Button
           variant="destructive"
           size="sm"
-          className="terminal-header h-7 px-3 text-[9px]"
+          className="ui-label h-7 px-3 text-[9px]"
           disabled={removing}
           onClick={handleRemove}
         >
-          {removing ? 'REMOVING…' : 'REMOVE_DEVICE'}
+          {removing ? 'Removing…' : 'Remove device'}
         </Button>
       </div>
     </div>

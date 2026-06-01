@@ -21,7 +21,7 @@ test('tabs root keeps horizontal and vertical orientation contracts', () => {
 test('top tabs variant uses shell chrome and bottom-divider framing', () => {
   assert.match(tabsListVariantClassNames.top, /\bbg-bg-shell\b/)
   assert.match(tabsListVariantClassNames.top, /\bborder-b\b/)
-  assert.match(tabsTriggerBaseClassName, /group-data-\[variant=top\]\/tabs-list:font-mono/)
+  assert.match(tabsTriggerBaseClassName, /\bui-control\b/)
   assert.match(tabsTriggerActiveClassName, /group-data-\[variant=top\]\/tabs-list:data-\[state=active\]:border-b-accent/)
 })
 

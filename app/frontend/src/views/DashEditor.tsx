@@ -112,9 +112,9 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <PageHeader
-          heading="DASH_STUDIO"
+          heading="Dash Studio"
           caption="Use the real Wails desktop window for layout creation, live preview, and agent-driven UI inspection."
-          status={<Badge variant="warning" className="terminal-header">{runtimeNotice.title}</Badge>}
+          status={<Badge variant="warning" className="ui-label">{runtimeNotice.title}</Badge>}
         />
         <div className="flex flex-1 items-center justify-center p-6">
           <div className="surface-panel flex w-full max-w-3xl flex-col gap-5 p-5">
@@ -125,21 +125,21 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-2">
-                <p className="terminal-header text-[9px] font-bold text-text-muted">1. LAUNCH_DESKTOP</p>
+                <p className="ui-label text-[9px] font-bold text-text-muted">1. LAUNCH_DESKTOP</p>
                 <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
                   {runtimeNotice.launchCommand}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="terminal-header text-[9px] font-bold text-text-muted">2. WAIT_FOR_WAILS_DEVSERVER</p>
+                <p className="ui-label text-[9px] font-bold text-text-muted">2. WAIT_FOR_WAILS_DEVSERVER</p>
                 <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
                   {runtimeNotice.waitCommand}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="terminal-header text-[9px] font-bold text-text-muted">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
+                <p className="ui-label text-[9px] font-bold text-text-muted">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
                 <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
                   {runtimeNotice.browserSurfaceUrl}
                 </div>
@@ -168,12 +168,12 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <PageHeader
-          heading="GLOBAL_DASH_SETTINGS"
+          heading="Global dash settings"
           caption="Theme, domain palette, and formatting defaults"
           status={(
             <>
-              {globalSaveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
-              {globalSaveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+              {globalSaveStatus === 'saved' && <Badge variant="success" className="ui-label">Saved</Badge>}
+              {globalSaveStatus === 'error' && <Badge variant="destructive" className="ui-label">Failed</Badge>}
             </>
           )}
           actions={(
@@ -182,7 +182,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
                 BACK
               </Button>
               <Button variant="primary" size="sm" onClick={handleGlobalSave} disabled={globalSaving}>
-                {globalSaving ? 'SAVING…' : 'SAVE'}
+                {globalSaving ? 'Saving…' : 'Save'}
               </Button>
             </>
           )}

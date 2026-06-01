@@ -91,7 +91,7 @@ export function CatalogPanel({
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="terminal-header text-[10px] font-bold">
+          <h3 className="ui-label text-[10px] font-bold">
             ADD_FROM_CATALOG_{SECTION_LABELS[deviceType]}
           </h3>
           <p className="mt-1 font-mono text-[8px] text-text-muted">
@@ -105,7 +105,7 @@ export function CatalogPanel({
 
       {entries.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center">
-          <p className="terminal-header text-[9px] text-text-muted">NO_CATALOG_ENTRIES</p>
+          <p className="ui-label text-[10px] text-text-muted">No catalog entries</p>
           <p className="max-w-xs font-mono text-[8px] text-text-muted">
             No {deviceType} devices are available in the local catalog yet.
           </p>
@@ -132,11 +132,11 @@ export function CatalogPanel({
                 <Button
                   variant="primary"
                   size="sm"
-                  className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+                  className="ui-label h-7 flex-shrink-0 px-3 text-[9px]"
                   disabled={scanning !== null || adding !== null}
                   onClick={() => handleAdd(entry)}
                 >
-                  {scanning === entry.id ? 'SCANNING…' : adding === entry.id ? 'ADDING…' : 'ADD'}
+                  {scanning === entry.id ? 'Scanning…' : adding === entry.id ? 'Adding…' : 'Add'}
                 </Button>
               </div>
             )

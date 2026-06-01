@@ -11,19 +11,21 @@ import (
 	"golang.org/x/image/font/opentype"
 )
 
-// fontFileName maps a FontFamily and bold flag to the actual TTF file name.
-func fontFileName(family widgets.FontFamily, bold bool) string {
+// fontFileNames maps a FontFamily and bold flag to preferred TTF files.
+// Bahnschrift / IBM Plex files are used when present; existing bundled fonts
+// remain fallbacks so macOS development works without installing fonts.
+func fontFileNames(family widgets.FontFamily, bold bool) []string {
 	switch family {
 	case widgets.FontFamilyMono:
 		if bold {
-			return "JetBrainsMono-Bold.ttf"
+			return []string{"Bahnschrift-SemiBold.ttf", "IBMPlexMono-Bold.ttf", "JetBrainsMono-Bold.ttf"}
 		}
-		return "JetBrainsMono-Regular.ttf"
+		return []string{"Bahnschrift-Regular.ttf", "IBMPlexMono-Regular.ttf", "JetBrainsMono-Regular.ttf"}
 	default:
 		if bold {
-			return "SpaceGrotesk-Bold.ttf"
+			return []string{"Bahnschrift-SemiBold.ttf", "Bahnschrift-Bold.ttf", "IBMPlexSans-SemiBold.ttf", "Inter-Bold.ttf", "SpaceGrotesk-Bold.ttf"}
 		}
-		return "SpaceGrotesk-Regular.ttf"
+		return []string{"Bahnschrift-Regular.ttf", "IBMPlexSans-Regular.ttf", "Inter-Regular.ttf", "SpaceGrotesk-Regular.ttf"}
 	}
 }
 
@@ -74,6 +76,24 @@ func (p *Painter) face(dc *gg.Context, name string, size float64) {
 	}
 	p.fontFaces[key] = face
 	dc.SetFontFace(face)
+}
+
+func (p *Painter) faceAny(dc *gg.Context, names []string, size float64) {
+	for _, name := range names {
+		if _, ok := p.fontFiles[name]; ok {
+			p.face(dc, name, size)
+			return
+		}
+		if p.fontDir != "" {
+			if _, err := os.Stat(filepath.Join(p.fontDir, name)); err == nil {
+				p.face(dc, name, size)
+				return
+			}
+		}
+	}
+	if len(names) > 0 {
+		p.face(dc, names[len(names)-1], size)
+	}
 }
 
 // extractFonts extracts the embedded TTF files to a temporary directory so

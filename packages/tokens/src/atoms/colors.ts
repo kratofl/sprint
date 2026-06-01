@@ -10,6 +10,13 @@ export const orange = {
   700: '#E55C30',
 } as const
 
+/** Figma heat accent used for small alert labels and progress fills. */
+export const heat = {
+  400: '#ff8a2a',
+  500: '#ff6a00',
+  600: '#e85e00',
+} as const
+
 /** Vibrant cyan — secondary accent, system status, comparison data */
 export const cyan = {
   400: '#8afcff',
@@ -24,26 +31,26 @@ export const cyan = {
  */
 export const teal = cyan
 
-/** Near-neutral with a faint warm undertone to complement the orange accent. */
+/** Warm neutral scale from the flat Figma theme. */
 export const neutral = {
-  950: '#0a0a0a',
-  900: '#0f0f0f',
-  850: '#141414',
-  800: '#1a1a1a',
-  750: '#1f1f1f',
-  700: '#2a2a2a',
-  600: '#3a3a3a',
-  500: '#525252',
-  400: '#808080',
-  300: '#A1A1AA',
-  200: '#D4D4D8',
-  100: '#ffffff',
+  950: '#090907',
+  900: '#12110f',
+  850: '#1a1815',
+  800: '#24100d',
+  750: '#343027',
+  700: '#6f675f',
+  600: '#8e867d',
+  500: '#a9a095',
+  400: '#c8bfb2',
+  300: '#e6dacb',
+  200: '#f6f0e6',
+  100: '#fffaf2',
 } as const
 
 export const semantic = {
   success:     '#34D399',
   warning:     '#FBBF24',
-  destructive: '#F87171',
+  destructive: '#ff3b30',
   info:        '#60A5FA',
   /** Telemetry alert chips (Live, Pit, Gear) */
   tertiary:    '#f1afff',

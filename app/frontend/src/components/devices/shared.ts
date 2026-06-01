@@ -3,9 +3,9 @@ import type { DeviceType, SavedDevice } from '@/lib/dash'
 export const DEVICE_TYPES: DeviceType[] = ['wheel', 'screen', 'buttonbox']
 
 export const SECTION_LABELS: Record<DeviceType, string> = {
-  wheel: 'WHEELS',
-  screen: 'SCREENS',
-  buttonbox: 'BUTTON_BOXES',
+  wheel: 'Wheels',
+  screen: 'Screens',
+  buttonbox: 'Button boxes',
 }
 
 export type PanelView =

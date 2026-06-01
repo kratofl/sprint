@@ -4,28 +4,28 @@ import (
 	"image/color"
 )
 
-// Sprint design-system palette — mirrors packages/tokens/src/atoms/colors.ts + molecules/surfaces.ts.
+// Sprint design-system palette — mirrors the flat Figma theme tokens.
 var (
 	// Surfaces
-	ColorBackground = color.RGBA{10, 10, 10, 255} // #0a0a0a  surfaces.base
-	ColorSurface    = color.RGBA{20, 20, 20, 255} // #141414  surfaces.container
-	ColorElevated   = color.RGBA{31, 31, 31, 255} // #1f1f1f  surfaces.elevated
-	ColorBorder     = color.RGBA{42, 42, 42, 255} // #2a2a2a  borders.outline
+	ColorBackground = color.RGBA{9, 9, 7, 255}      // #090907  surfaces.base
+	ColorSurface    = color.RGBA{18, 17, 15, 255}   // #12110f  surfaces.container
+	ColorElevated   = color.RGBA{26, 24, 21, 255}   // #1a1815  surfaces.elevated
+	ColorBorder     = color.RGBA{111, 103, 95, 255} // #6f675f  strong Figma outline
 
 	// Semantic accents
 	ColorPrimary = color.RGBA{255, 144, 108, 255} // #ff906c  orange — driver/primary
 	ColorAccent  = color.RGBA{90, 248, 251, 255}  // #5af8fb  cyan — engineer/comparison
 	ColorSuccess = color.RGBA{52, 211, 153, 255}  // #34D399
-	ColorDanger  = color.RGBA{248, 113, 113, 255} // #F87171
+	ColorDanger  = color.RGBA{255, 59, 48, 255}   // #ff3b30
 	ColorWarning = color.RGBA{251, 191, 36, 255}  // #FBBF24
 
 	// Text
-	ColorForeground = color.RGBA{255, 255, 255, 255} // #ffffff  neutral[100]
-	ColorMuted      = color.RGBA{128, 128, 128, 255} // #808080  neutral[400]
-	ColorSecondary  = color.RGBA{161, 161, 170, 255} // #A1A1AA  neutral[300]
+	ColorForeground = color.RGBA{246, 240, 230, 255} // #f6f0e6
+	ColorMuted      = color.RGBA{169, 160, 149, 255} // #a9a095
+	ColorSecondary  = color.RGBA{200, 191, 178, 255} // #c8bfb2
 
 	// Specialty
-	ColorRPMRed = color.RGBA{248, 113, 113, 255} // #F87171  RPM bar >92% zone
+	ColorRPMRed = color.RGBA{255, 59, 48, 255} // #ff3b30  RPM bar >92% zone
 )
 
 // DimColor multiplies each RGB channel by factor (0–1).

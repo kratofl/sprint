@@ -30,7 +30,7 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="terminal-header text-[10px] font-bold">
+          <h3 className="ui-label text-[10px] font-bold">
             PICK_DETECTED_{SECTION_LABELS[deviceType]}
           </h3>
           <p className="mt-1 font-mono text-[8px] text-text-muted">
@@ -62,11 +62,11 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
               <Button
                 variant="primary"
                 size="sm"
-                className="terminal-header h-7 flex-shrink-0 px-3 text-[9px]"
+                className="ui-label h-7 flex-shrink-0 px-3 text-[9px]"
                 disabled={picking !== null}
                 onClick={() => handlePick(screen)}
               >
-                {picking === key ? 'ADDING…' : 'SELECT'}
+                {picking === key ? 'Adding…' : 'Select'}
               </Button>
             </div>
           )

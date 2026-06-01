@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 
 import { surfaces } from './surfaces.ts'
 
-test('standard desktop surfaces flatten to one black base', () => {
-  assert.equal(surfaces.base, '#0a0a0a')
-  assert.equal(surfaces.shell, surfaces.base)
-  assert.equal(surfaces.container, surfaces.base)
-  assert.equal(surfaces.elevated, surfaces.base)
+test('standard desktop surfaces follow the flat Figma warm-black scale', () => {
+  assert.equal(surfaces.base, '#090907')
+  assert.equal(surfaces.shell, '#090907')
+  assert.equal(surfaces.container, '#12110f')
+  assert.equal(surfaces.elevated, '#1a1815')
 })
 
 test('overlay panel stays slightly lifted instead of becoming a second gray ladder step', () => {

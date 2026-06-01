@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 // Atomic token imports.
-import { orange, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
+import { orange, heat, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
 import { surfaces, outlineColor, outlineStrongColor } from './src/molecules/surfaces'
@@ -9,8 +9,8 @@ import { borders }                                   from './src/molecules/borde
 
 /**
  * Shared design tokens for the Sprint platform.
- * "Pitwall" aesthetic: HUD terminal look, Space Grotesk, solid outline borders,
- * orange primary (#ff906c) + cyan secondary (#5af8fb).
+ * Flat Figma theme: warm black surfaces, Bahnschrift/IBM Plex typography,
+ * orange primary (#ff906c) + compact red/heat states.
  */
 const tokens: Partial<Config> = {
   darkMode: 'class',
@@ -24,12 +24,13 @@ const tokens: Partial<Config> = {
         destructive: { DEFAULT: semantic.destructive, foreground: '#ffffff' },
         success:     { DEFAULT: semantic.success,     foreground: '#000000' },
         warning:     { DEFAULT: semantic.warning,     foreground: '#000000' },
+        heat:        { DEFAULT: heat[500],            foreground: '#000000' },
 
         // Surface hierarchy.
         background: surfaces.base,
-        foreground: neutral[100],
-        card:    { DEFAULT: surfaces.base, foreground: neutral[100] },
-        popover: { DEFAULT: surfaces.overlayPanel, foreground: neutral[100] },
+        foreground: neutral[200],
+        card:    { DEFAULT: surfaces.container, foreground: neutral[200] },
+        popover: { DEFAULT: surfaces.overlayPanel, foreground: neutral[200] },
         muted:   { DEFAULT: surfaces.variant, foreground: neutral[400] },
         input:   surfaces.base,
         ring:    orange[500],
@@ -70,15 +71,15 @@ const tokens: Partial<Config> = {
 
         // Text hierarchy.
         text: {
-          primary:   neutral[100],
-          secondary: neutral[300],
-          muted:     neutral[400],
-          disabled:  neutral[500],
+          primary:   neutral[200],
+          secondary: neutral[400],
+          muted:     neutral[500],
+          disabled:  neutral[700],
         },
 
         // "On-surface" aliases matching the HTML reference naming.
-        'on-surface':         neutral[100],
-        'on-surface-variant': neutral[400],
+        'on-surface':         neutral[200],
+        'on-surface-variant': neutral[500],
 
         // Border and outline tokens.
         border: {
@@ -112,10 +113,10 @@ const tokens: Partial<Config> = {
       },
 
       boxShadow: {
-        overlay:    '0 8px 24px rgba(0,0,0,0.40)',
-        panel:      '0 2px 8px rgba(0,0,0,0.30)',
-        glow:       '0 0 14px rgba(255,144,108,0.25)',
-        'glow-teal':'0 0 14px rgba(90,248,251,0.20)',
+        overlay:    '0 8px 24px rgba(0,0,0,0.32)',
+        panel:      'none',
+        glow:       '0 0 0 1px rgba(255,144,108,0.32)',
+        'glow-teal':'0 0 0 1px rgba(90,248,251,0.24)',
       },
     },
   },

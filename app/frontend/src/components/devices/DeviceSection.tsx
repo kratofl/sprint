@@ -21,9 +21,9 @@ import { loadDeviceBindingReferenceData } from './deviceBindingReferenceData'
 import { DEVICE_TYPES, type PanelView, SECTION_LABELS, deviceKey } from './shared'
 
 const EMPTY_ACTIONS = {
-  wheel: { label: 'ADD_WHEEL', icon: IconCpu },
-  screen: { label: 'ADD_SCREEN', icon: IconUsb },
-  buttonbox: { label: 'ADD_BUTTON_BOX', icon: IconKeyboard },
+  wheel: { label: 'Add wheel', icon: IconCpu },
+  screen: { label: 'Add screen', icon: IconUsb },
+  buttonbox: { label: 'Add button box', icon: IconKeyboard },
 } as const
 
 export function DeviceSection() {
@@ -150,7 +150,7 @@ export function DeviceSection() {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-border bg-bg-shell">
         <div className="border-b border-border bg-bg-shell px-4 py-3">
-          <h3 className="terminal-header text-[10px] font-bold text-text-muted">DEVICE_LIBRARY</h3>
+          <h3 className="ui-label text-[11px] font-semibold text-text-muted">Device library</h3>
           <p className="mt-1 font-mono text-[8px] text-text-muted">
             Registered hardware and quick-add actions.
           </p>
@@ -170,7 +170,7 @@ export function DeviceSection() {
               <div key={type} className="mb-3">
                 <div className="flex items-center justify-between px-4 py-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="terminal-header text-[9px] font-bold text-text-muted">
+                    <span className="ui-label text-[9px] font-bold text-text-muted">
                       {SECTION_LABELS[type]}
                     </span>
                     <Badge variant="outline" className="font-mono text-[8px]">
@@ -274,7 +274,7 @@ export function DeviceSection() {
         {panel.tag === 'empty' ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
             <div className="space-y-2">
-              <p className="terminal-header text-[10px] text-text-muted">SELECT_OR_ADD</p>
+              <p className="ui-label text-[11px] text-text-muted">Select or add a device</p>
               <p className="font-mono text-[9px] text-text-muted">
                 Pick a registered device from the left, or start a new registration flow.
               </p>

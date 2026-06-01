@@ -128,14 +128,14 @@ function WidgetList({
 
                   const previewUrl = previewUrls[widget.type]
                   const dragImage = document.createElement('div')
-                  dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid rgba(255,255,255,0.2);background:#090a0c;overflow:hidden;border-radius:4px'
+                  dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid #6f675f;background:#090907;overflow:hidden;border-radius:6px'
                   if (previewUrl) {
                     const image = document.createElement('img')
                     image.src = previewUrl
                     image.style.cssText = 'width:100%;height:100%;display:block'
                     dragImage.appendChild(image)
                   } else {
-                    dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:#f5f7fa;font:700 11px JetBrains Mono, monospace'
+                    dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:#f6f0e6;font:600 11px Bahnschrift, IBM Plex Sans, sans-serif'
                     dragImage.textContent = widget.name
                   }
                   document.body.appendChild(dragImage)

@@ -10,17 +10,17 @@ interface WidgetPropertiesProps {
 }
 
 const FONT_OPTIONS: { value: FontStyle; label: string }[] = [
-  { value: 'label',  label: 'Space Grotesk (default)' },
-  { value: 'bold',   label: 'Space Grotesk Bold' },
-  { value: 'number', label: 'JetBrains Mono Bold' },
-  { value: 'mono',   label: 'JetBrains Mono' },
+  { value: 'label',  label: 'Bahnschrift / IBM Plex' },
+  { value: 'bold',   label: 'Bahnschrift Semibold' },
+  { value: 'number', label: 'Bahnschrift Numbers' },
+  { value: 'mono',   label: 'IBM Plex Mono' },
 ]
 
 export function WidgetProperties({ widget, catalog, onUpdate }: WidgetPropertiesProps) {
   if (!widget) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-text-muted font-mono text-[10px] p-4">
-        <span>SELECT A WIDGET</span>
+        <span>Select a widget</span>
         <span className="text-[9px] mt-1 text-text-disabled">to view properties</span>
       </div>
     )

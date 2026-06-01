@@ -82,7 +82,7 @@ export function buildDeviceBindingsViewModel({
     cards.push({
       key: 'global',
       kind: 'global',
-      title: 'DEVICE_COMMANDS',
+      title: 'Device commands',
       rows: globalRows,
     })
   }

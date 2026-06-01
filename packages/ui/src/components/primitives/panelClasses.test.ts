@@ -13,7 +13,7 @@ test('overlay backdrop uses one dimmed blur treatment across dialogs and sheets'
   assert.match(overlayBackdropClassName, /\bbackdrop-blur-sm\b/)
 })
 
-test('overlay panel class keeps the shared terminal chrome', () => {
+test('overlay panel class keeps the shared flat chrome', () => {
   assert.match(overlayPanelClassName, /\bsurface-overlay-panel\b/)
   assert.match(overlayPanelClassName, /\bborder-border\b/)
   assert.doesNotMatch(overlayPanelClassName, /\bborder-border-strong\b/)

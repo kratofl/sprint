@@ -50,18 +50,18 @@ const (
 type FontStyle string
 
 const (
-	FontLabel  FontStyle = "label"  // SpaceGrotesk-Regular
-	FontBold   FontStyle = "bold"   // SpaceGrotesk-Bold
-	FontNumber FontStyle = "number" // JetBrainsMono-Bold
-	FontMono   FontStyle = "mono"   // JetBrainsMono-Regular
+	FontLabel  FontStyle = "label"  // Bahnschrift/IBM Plex Sans regular
+	FontBold   FontStyle = "bold"   // Bahnschrift/IBM Plex Sans semibold
+	FontNumber FontStyle = "number" // Bahnschrift/IBM Plex Mono bold
+	FontMono   FontStyle = "mono"   // Bahnschrift/IBM Plex Mono regular
 )
 
 // FontFamily selects the typeface family for a text element.
 type FontFamily string
 
 const (
-	FontFamilyUI   FontFamily = "ui"   // Space Grotesk
-	FontFamilyMono FontFamily = "mono" // JetBrains Mono
+	FontFamilyUI   FontFamily = "ui"   // Bahnschrift / IBM Plex Sans
+	FontFamilyMono FontFamily = "mono" // Bahnschrift / IBM Plex Mono
 )
 
 // TextStyle groups the presentation properties for a Text or GridCell element.
@@ -163,10 +163,10 @@ const (
 // the condition is satisfied, applies a semantic panel fill colour.
 // Rules are stored per DashWidget and evaluated first-match-wins at render time.
 type ConditionalRule struct {
-	Property  Binding  `json:"property"`       // binding path (e.g. BindingCarBrakeBiasPct)
-	Op        RuleOp   `json:"op"`             // comparison operator
-	Threshold float64  `json:"threshold"`      // right-hand operand
-	Color     ColorRef `json:"color"`          // semantic fill colour when matched
+	Property  Binding  `json:"property"`        // binding path (e.g. BindingCarBrakeBiasPct)
+	Op        RuleOp   `json:"op"`              // comparison operator
+	Threshold float64  `json:"threshold"`       // right-hand operand
+	Color     ColorRef `json:"color"`           // semantic fill colour when matched
 	Alpha     float64  `json:"alpha,omitempty"` // fill alpha 0–1; 0 = default 0.35
 }
 

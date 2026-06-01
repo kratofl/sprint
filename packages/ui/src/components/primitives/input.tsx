@@ -10,7 +10,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       className={cn(
         "h-7 w-full min-w-0 rounded-sm border border-border bg-bg-shell px-2 py-0.5 text-xs/relaxed text-foreground transition-colors outline-none",
         "placeholder:text-text-disabled",
-        "hover:border-border",
+        "hover:border-border-strong",
         "file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs/relaxed file:font-medium file:text-foreground",
         "focus:border-primary focus:text-foreground focus:ring-0 focus:outline-none",
         "data-[readout=true]:font-mono data-[readout=true]:tabular-nums",
@@ -26,4 +26,3 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
 }
 
 export { Input }
-

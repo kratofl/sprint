@@ -56,11 +56,11 @@ import { onEvent } from '@/lib/wails'
 type View = AppView
 
 const NAV = [
-  { id: 'home', label: 'HOME', icon: IconHome2 },
-  { id: 'telemetry', label: 'LIVE_SESSION', icon: IconGauge },
-  { id: 'dash', label: 'DASH_EDITOR', icon: IconLayoutDashboard },
-  { id: 'devices', label: 'DEVICES', icon: IconUsb },
-  { id: 'controls', label: 'CONTROLS', icon: IconKeyboard },
+  { id: 'home', label: 'Home', icon: IconHome2 },
+  { id: 'telemetry', label: 'Live Session', icon: IconGauge },
+  { id: 'dash', label: 'Dash Editor', icon: IconLayoutDashboard },
+  { id: 'devices', label: 'Devices', icon: IconUsb },
+  { id: 'controls', label: 'Controls', icon: IconKeyboard },
 ] as const satisfies ReadonlyArray<{
   id: Extract<View, 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'>
   label: string
@@ -252,7 +252,7 @@ export default function App() {
               aria-label="View settings"
             >
               <IconSettings size={14} />
-              <span>SETTINGS</span>
+              <span>Settings</span>
             </Button>
             <Button
               variant="ghost"
@@ -265,7 +265,7 @@ export default function App() {
               aria-label="Help"
             >
               <IconHelp size={14} />
-              <span>HELP</span>
+              <span>Help</span>
             </Button>
           </div>
           <div className={windowControlsRailClassName}>
@@ -323,8 +323,8 @@ export default function App() {
             version={version}
             leftSlot={(
               <>
-                <span>FRAME_RATE: {fps ?? 0}Hz</span>
-                <span>GAME: {frame?.session.game?.toUpperCase() ?? '——'}</span>
+                <span>Frame rate: {fps ?? 0} Hz</span>
+                <span>Game: {frame?.session.game ?? '—'}</span>
               </>
             )}
           />

@@ -44,17 +44,17 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
     >
       {/* Left: track + car */}
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-bold uppercase tracking-wide text-foreground text-sm">
-          {session.track || 'No_Track'}
+        <span className="truncate text-sm font-semibold text-foreground">
+          {session.track || 'No track'}
         </span>
-        <span className="truncate terminal-header text-[10px] text-on-surface-variant">
+        <span className="truncate ui-label text-[10px] text-on-surface-variant">
           {session.car || '——'}
         </span>
       </div>
 
       {/* Centre: session type + time */}
       <div className="flex shrink-0 items-center gap-2">
-        <Badge variant="default">{sessionLabel.toUpperCase()}</Badge>
+        <Badge variant="default">{sessionLabel}</Badge>
         {session.sessionTime > 0 && (
           <span className="font-mono text-xs tabular-nums text-on-surface-variant">
             {formatSessionTime(session.sessionTime)}
@@ -70,10 +70,10 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
             connected ? 'bg-secondary animate-pulse' : 'bg-on-surface-variant',
           )}
         />
-        <span className={cn('terminal-header text-[10px]', connected ? 'text-secondary' : 'text-on-surface-variant')}>
+        <span className={cn('ui-label text-[10px]', connected ? 'text-secondary' : 'text-on-surface-variant')}>
           {connected
-            ? fps !== undefined ? `${fps}_FPS` : 'LIVE'
-            : 'OFFLINE'}
+            ? fps !== undefined ? `${fps} FPS` : 'Live'
+            : 'Offline'}
         </span>
       </div>
     </div>

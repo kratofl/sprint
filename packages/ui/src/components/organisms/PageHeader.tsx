@@ -27,11 +27,11 @@ export function PageHeader({
       {...props}
     >
       <div className="min-w-0">
-        <h2 className="terminal-header text-sm font-bold tracking-[0.2em] text-foreground">
+        <h2 className="ui-label text-base font-semibold text-foreground">
           {heading}
         </h2>
         {caption ? (
-          <p className="status-readout mt-0.5 text-[10px] text-text-muted">
+          <p className="mt-0.5 text-xs text-text-muted">
             {caption}
           </p>
         ) : null}

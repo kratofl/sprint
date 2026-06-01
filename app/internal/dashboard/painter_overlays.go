@@ -82,7 +82,7 @@ func (p *Painter) applyAlertOverlay(dc *gg.Context, w, h float64) {
 	dc.Fill()
 
 	fontHeight := h * 0.28
-	p.face(dc, "JetBrainsMono-Bold.ttf", h*0.28)
+	p.faceAny(dc, fontFileNames(widgets.FontFamilyMono, true), h*0.28)
 	dc.SetColor(color.RGBA{R: c.R, G: c.G, B: c.B, A: 255})
 	dc.DrawStringAnchored(p.alert.text, w/2, h/2-fontHeight/2, 0.5, 0.5)
 }
@@ -108,7 +108,7 @@ func (p *Painter) applyFlagOverlay(dc *gg.Context, frame *dto.TelemetryFrame, w,
 	dc.SetColor(flagCol)
 	dc.DrawRectangle(0, h-30, w, 30)
 	dc.Fill()
-	p.face(dc, "SpaceGrotesk-Bold.ttf", 14)
+	p.faceAny(dc, fontFileNames(widgets.FontFamilyUI, true), 14)
 	dc.SetColor(widgets.ColorBackground)
 	dc.DrawStringAnchored(flagText, w/2, h-15, 0.5, 0.5)
 }

@@ -27,7 +27,7 @@ import type {
   WidgetStyle,
 } from './types.ts'
 import { DEFAULT_DASH_THEME } from './defaults.ts'
-import { resolveDashTheme } from './themeOverrides.ts'
+import { migrateLegacyDashThemeOverrides, resolveDashTheme } from './themeOverrides.ts'
 
 type RawRecord = Record<string, unknown>
 
@@ -238,7 +238,7 @@ function adaptPage(raw: RawRecord): DashPage {
 
 function adaptTheme(raw: unknown): DashThemeOverrides | undefined {
   if (!raw || typeof raw !== 'object') return undefined
-  return raw as DashThemeOverrides
+  return migrateLegacyDashThemeOverrides(raw as DashThemeOverrides)
 }
 
 function adaptTypography(raw: unknown): TypographySettings | undefined {

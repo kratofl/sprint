@@ -22,11 +22,11 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="terminal-header text-[11px] font-bold text-foreground">
-              UPDATE_AVAILABLE
+            <span className="ui-label text-[11px] font-semibold text-foreground">
+              Update available
             </span>
             {releaseInfo.isPrerelease && (
-              <Badge variant="warning" className="text-[9px]">PRE</Badge>
+              <Badge variant="warning" className="text-[9px]">Pre</Badge>
             )}
           </div>
           <span className="font-mono text-[10px] text-text-muted">

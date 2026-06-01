@@ -67,7 +67,7 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
       {/* Left: alert type palette */}
       <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
         <div className="border-b border-border px-4 py-3">
-          <h4 className="terminal-header text-[10px] font-bold text-text-muted">ALERT_TYPES</h4>
+          <h4 className="ui-label text-[11px] font-semibold text-text-muted">Alert types</h4>
         </div>
         <div className="flex-1 overflow-y-auto">
           {catalog.length === 0 ? (
@@ -105,12 +105,12 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
       {/* Center: configured instance list */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         <div className="border-b border-border px-4 py-3">
-          <h4 className="terminal-header text-[10px] font-bold text-text-muted">CONFIGURED_ALERTS</h4>
+          <h4 className="ui-label text-[11px] font-semibold text-text-muted">Configured alerts</h4>
         </div>
         <div className="flex-1 overflow-y-auto">
           {instances.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted font-mono text-[10px] p-6">
-              <span>NO_ALERTS_CONFIGURED</span>
+              <span>No alerts configured</span>
               <span className="text-[9px] text-text-disabled text-center">Click an alert type on the left to add it</span>
             </div>
           ) : (
@@ -153,12 +153,12 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
       {/* Right: instance config panel */}
       <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-border">
         <div className="border-b border-border px-4 py-3">
-          <h4 className="terminal-header text-[10px] font-bold text-text-muted">PROPERTIES</h4>
+          <h4 className="ui-label text-[11px] font-semibold text-text-muted">Properties</h4>
         </div>
         <div className="flex-1 overflow-y-auto">
           {!selectedInstance || !selectedMeta ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted font-mono text-[10px] p-4">
-              <span>SELECT AN ALERT</span>
+              <span>Select an alert</span>
               <span className="text-[9px] mt-1 text-text-disabled">to view properties</span>
             </div>
           ) : (

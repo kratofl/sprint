@@ -19,26 +19,26 @@ interface FeatureDef {
 const FEATURES: FeatureDef[] = [
   {
     id: 'telemetry',
-    label: 'LIVE_SESSION',
+    label: 'Live Session',
     description: 'Real-time telemetry from your sim. Lap times, tire temps, delta, and more.',
     Icon: IconGauge,
     devOnly: true,
   },
   {
     id: 'dash',
-    label: 'DASH_EDITOR',
+    label: 'Dash Editor',
     description: 'Design and configure your VoCore wheel display layouts.',
     Icon: IconLayout,
   },
   {
     id: 'devices',
-    label: 'DEVICES',
+    label: 'Devices',
     description: 'Register wheels, screens, and button boxes. Configure the VoCore target.',
     Icon: IconUsb,
   },
   {
     id: 'controls',
-    label: 'CONTROLS',
+    label: 'Controls',
     description: 'Bind wheel buttons to Sprint commands.',
     Icon: IconKeyboard,
   },
@@ -50,7 +50,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <PageHeader
-        heading="HOME"
+        heading="Home"
         caption="Mission control for Sprint"
         status={(
           <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
             connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
           )} />
           <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-            {connected ? 'UPLINK_STABLE' : 'UPLINK_OFFLINE'}
+            {connected ? 'Connected' : 'Offline'}
           </Badge>
           </div>
         )}
@@ -67,7 +67,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
 
       <div className="flex-1 px-6 py-6 space-y-6">
         <div>
-          <h4 className="terminal-header mb-3 text-[10px] font-bold text-text-muted">QUICK_ACCESS</h4>
+          <h4 className="ui-label mb-3 text-[11px] font-semibold text-text-muted">Quick access</h4>
           <div className={cn('grid gap-3', features.length >= 4 ? 'grid-cols-2' : 'grid-cols-3')}>
             {features.map(feature => (
               <button
@@ -88,7 +88,7 @@ export default function Home({ connected, onNavigate }: HomeProps) {
                       />
                     </div>
                     <div>
-                      <p className="terminal-header text-[11px] font-bold text-foreground mb-1.5">
+                      <p className="ui-label text-[11px] font-bold text-foreground mb-1.5">
                         {feature.label}
                       </p>
                       <p className="font-mono text-[9px] text-text-muted leading-relaxed">

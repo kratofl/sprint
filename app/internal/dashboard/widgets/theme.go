@@ -86,6 +86,70 @@ func DefaultTheme() DashTheme {
 	}
 }
 
+func legacyDefaultThemes() []DashTheme {
+	return []DashTheme{
+		{
+			Primary: color.RGBA{R: 255, G: 144, B: 108, A: 255},
+			Accent:  color.RGBA{R: 90, G: 248, B: 251, A: 255},
+			Fg:      color.RGBA{R: 255, G: 255, B: 255, A: 255},
+			Muted:   color.RGBA{R: 128, G: 128, B: 128, A: 255},
+			Muted2:  color.RGBA{R: 161, G: 161, B: 170, A: 255},
+			Success: color.RGBA{R: 52, G: 211, B: 153, A: 255},
+			Warning: color.RGBA{R: 251, G: 191, B: 36, A: 255},
+			Danger:  color.RGBA{R: 248, G: 113, B: 113, A: 255},
+			Surface: color.RGBA{R: 20, G: 20, B: 20, A: 255},
+			Bg:      color.RGBA{R: 10, G: 10, B: 10, A: 255},
+			Border:  color.RGBA{R: 42, G: 42, B: 42, A: 255},
+			RPMRed:  color.RGBA{R: 248, G: 113, B: 113, A: 255},
+		},
+		{
+			Primary: color.RGBA{R: 255, G: 139, B: 97, A: 255},
+			Accent:  color.RGBA{R: 121, G: 214, B: 230, A: 255},
+			Fg:      color.RGBA{R: 245, G: 247, B: 250, A: 255},
+			Muted:   color.RGBA{R: 139, G: 147, B: 161, A: 255},
+			Muted2:  color.RGBA{R: 183, G: 191, B: 202, A: 255},
+			Success: color.RGBA{R: 79, G: 209, B: 155, A: 255},
+			Warning: color.RGBA{R: 242, G: 184, B: 75, A: 255},
+			Danger:  color.RGBA{R: 240, G: 125, B: 125, A: 255},
+			Surface: color.RGBA{R: 21, G: 23, B: 28, A: 255},
+			Bg:      color.RGBA{R: 9, G: 10, B: 12, A: 255},
+			Border:  color.RGBA{R: 45, G: 49, B: 56, A: 255},
+			RPMRed:  color.RGBA{R: 230, G: 74, B: 74, A: 255},
+		},
+	}
+}
+
+func migrateLegacyColor(value color.RGBA, key func(DashTheme) color.RGBA, replacement color.RGBA) color.RGBA {
+	if value == (color.RGBA{}) {
+		return value
+	}
+	for _, legacy := range legacyDefaultThemes() {
+		if value == key(legacy) {
+			return replacement
+		}
+	}
+	return value
+}
+
+// MigrateLegacyThemeOverrides converts explicit old default colors to the
+// current flat Figma defaults while preserving genuinely custom colors.
+func MigrateLegacyThemeOverrides(theme DashTheme) DashTheme {
+	current := DefaultTheme()
+	theme.Primary = migrateLegacyColor(theme.Primary, func(t DashTheme) color.RGBA { return t.Primary }, current.Primary)
+	theme.Accent = migrateLegacyColor(theme.Accent, func(t DashTheme) color.RGBA { return t.Accent }, current.Accent)
+	theme.Fg = migrateLegacyColor(theme.Fg, func(t DashTheme) color.RGBA { return t.Fg }, current.Fg)
+	theme.Muted = migrateLegacyColor(theme.Muted, func(t DashTheme) color.RGBA { return t.Muted }, current.Muted)
+	theme.Muted2 = migrateLegacyColor(theme.Muted2, func(t DashTheme) color.RGBA { return t.Muted2 }, current.Muted2)
+	theme.Success = migrateLegacyColor(theme.Success, func(t DashTheme) color.RGBA { return t.Success }, current.Success)
+	theme.Warning = migrateLegacyColor(theme.Warning, func(t DashTheme) color.RGBA { return t.Warning }, current.Warning)
+	theme.Danger = migrateLegacyColor(theme.Danger, func(t DashTheme) color.RGBA { return t.Danger }, current.Danger)
+	theme.Surface = migrateLegacyColor(theme.Surface, func(t DashTheme) color.RGBA { return t.Surface }, current.Surface)
+	theme.Bg = migrateLegacyColor(theme.Bg, func(t DashTheme) color.RGBA { return t.Bg }, current.Bg)
+	theme.Border = migrateLegacyColor(theme.Border, func(t DashTheme) color.RGBA { return t.Border }, current.Border)
+	theme.RPMRed = migrateLegacyColor(theme.RPMRed, func(t DashTheme) color.RGBA { return t.RPMRed }, current.RPMRed)
+	return theme
+}
+
 // DomainPalette holds sim-racing domain-specific highlight colours.
 // Each field maps to a domain ColorRef ("abs", "tc", "brakeBias", "energy", "motor", "brakeMig").
 // Zero-value fields fall back to DefaultDomainPalette at render time.
@@ -147,6 +211,7 @@ func DefaultDomainPalette() DomainPalette {
 
 // MergeTheme overlays sparse theme overrides onto a fully-resolved base theme.
 func MergeTheme(base, override DashTheme) DashTheme {
+	override = MigrateLegacyThemeOverrides(override)
 	if override.Primary != (color.RGBA{}) {
 		base.Primary = override.Primary
 	}

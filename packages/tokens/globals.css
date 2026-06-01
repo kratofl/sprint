@@ -1,6 +1,6 @@
 /* Fonts */
-/* Space Grotesk is the primary UI font. JetBrains Mono is for telemetry data. */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
+/* Bahnschrift is referenced as a local/system font. IBM Plex Sans is the bundled web fallback. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,8 +11,9 @@
   /* Primary — orange (driver-owned actions / active state) */
   --accent:        #ff906c;
   --accent-dark:   #ff784d;
-  --accent-muted:  rgba(255, 144, 108, 0.10);
-  --accent-surface: rgba(255, 144, 108, 0.10);
+  --accent-muted:  rgba(255, 144, 108, 0.12);
+  --accent-surface: rgba(255, 144, 108, 0.12);
+  --heat:          #ff6a00;
 
   /* Secondary — cyan (system status / engineer-originated / comparison data) */
   --secondary:     #5af8fb;
@@ -23,24 +24,24 @@
   /* Status surfaces */
   --success-surface: rgba(52, 211, 153, 0.10);
   --warning-surface: rgba(251, 191, 36, 0.10);
-  --destructive-surface: rgba(248, 113, 113, 0.12);
+  --destructive-surface: rgba(255, 59, 48, 0.14);
   --tertiary-surface: rgba(241, 175, 255, 0.10);
 
   /* Surfaces */
-  --bg-base:       #0a0a0a;
-  --bg-shell:      #0a0a0a;
-  --bg-container:  #0a0a0a;
-  --bg-elevated:   #0a0a0a;
-  --bg-overlay:    #0a0a0a;
-  --bg-overlay-panel: rgba(10, 10, 10, 0.94);
+  --bg-base:       #090907;
+  --bg-shell:      #090907;
+  --bg-container:  #12110f;
+  --bg-elevated:   #1a1815;
+  --bg-overlay:    #090907;
+  --bg-overlay-panel: rgba(9, 9, 7, 0.96);
 
   /* Structural border — used for all section/card/table dividers */
-  --outline:       #202020;
-  --outline-strong:#262626;
+  --outline:       #343027;
+  --outline-strong:#6f675f;
 
   /* Text */
-  --on-surface:    #ffffff;
-  --on-surface-variant: #808080;
+  --on-surface:    #f6f0e6;
+  --on-surface-variant: #a9a095;
 }
 
 /* Base styles */
@@ -53,21 +54,23 @@ body {
 .tabular { font-variant-numeric: tabular-nums; }
 
 /* Typography helpers */
-.terminal-header {
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.ui-label {
+  font-family: Bahnschrift, 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.terminal-label {
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.ui-control {
+  font-family: Bahnschrift, 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-.status-readout {
-  font-family: 'JetBrains Mono', monospace;
+.ui-value {
+  font-family: Bahnschrift, 'IBM Plex Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 /* Surface utilities */
@@ -75,7 +78,7 @@ body {
   /* Container surface — cards, panels, section areas */
   .surface,
   .surface-panel {
-    background: var(--bg-base);
+    background: var(--bg-container);
     border: 1px solid var(--outline);
   }
 
@@ -86,7 +89,7 @@ body {
 
   /* Elevated surface — active widgets, emphasized cards */
   .surface-elevated {
-    background: var(--bg-base);
+    background: var(--bg-elevated);
     border: 1px solid var(--outline);
   }
 
@@ -104,13 +107,13 @@ body {
   }
 
   .surface-inline {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--bg-elevated);
     border: 1px solid var(--outline);
   }
 
   .surface-active {
     background: var(--accent-surface);
-    border-color: rgba(255, 144, 108, 0.42);
+    border-color: rgba(255, 144, 108, 0.48);
   }
 
   .surface-secondary {
@@ -140,7 +143,7 @@ body {
 
   /* Floating glass overlays — modals, dropdowns, nav bar */
   .glass {
-    background: rgba(10, 10, 10, 0.9);
+    background: rgba(9, 9, 7, 0.92);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--outline);

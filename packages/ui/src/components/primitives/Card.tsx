@@ -11,7 +11,7 @@ import {
 } from "./controlClasses"
 
 const cardVariants = cva(
-  `group/card flex flex-col overflow-hidden rounded-sm text-xs/relaxed text-foreground transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-sm *:[img:last-child]:rounded-b-sm ${cardDefaultClassName}`,
+  `group/card flex flex-col overflow-hidden rounded-md text-xs/relaxed text-foreground transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-md *:[img:last-child]:rounded-b-md ${cardDefaultClassName}`,
   {
     variants: {
       size: {
@@ -80,7 +80,7 @@ function CardTitle({ className, ...props }: CardTitleProps) {
   return (
     <div
       data-slot="card-title"
-      className={cn("terminal-label text-[10px] text-text-muted", className)}
+      className={cn("ui-label text-[11px] font-semibold text-text-secondary", className)}
       {...props}
     />
   )
@@ -90,7 +90,7 @@ function CardDescription({ className, ...props }: CardDescriptionProps) {
   return (
     <div
       data-slot="card-description"
-      className={cn("status-readout text-[10px] text-text-muted", className)}
+      className={cn("text-[11px] text-text-muted", className)}
       {...props}
     />
   )
@@ -142,4 +142,3 @@ export {
   CardContent,
   cardVariants,
 }
-

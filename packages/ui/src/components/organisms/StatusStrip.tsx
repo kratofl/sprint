@@ -26,8 +26,8 @@ export function StatusStrip({
   connected = true,
   version,
   channel,
-  onlineLabel = "UPLINK_STABLE",
-  offlineLabel = "UPLINK_OFFLINE",
+  onlineLabel = "Connected",
+  offlineLabel = "Offline",
   leftSlot,
   rightSlot,
   className,
@@ -40,7 +40,7 @@ export function StatusStrip({
       data-slot="status-strip"
       className={cn(
         "flex h-6 shrink-0 items-center border-t border-border bg-bg-shell px-4",
-        "font-mono text-[9px] text-text-muted",
+        "ui-value text-[10px] text-text-muted",
         className
       )}
       {...props}
@@ -54,7 +54,7 @@ export function StatusStrip({
               connected ? "bg-secondary animate-pulse" : "bg-text-muted"
             )}
           />
-          <Badge variant={connected ? "connected" : "neutral"} className="font-mono">
+          <Badge variant={connected ? "connected" : "neutral"}>
             {connected ? onlineLabel : offlineLabel}
           </Badge>
         </div>
@@ -64,10 +64,10 @@ export function StatusStrip({
         <div className="ml-auto flex items-center gap-2">
           {rightSlot}
           {version ? (
-            <span className="italic tracking-widest opacity-40">SPRINT v{version}</span>
+            <span className="opacity-50">Sprint v{version}</span>
           ) : null}
           {showChannel ? (
-            <Badge variant={channelVariant[channel]} className="font-mono">
+            <Badge variant={channelVariant[channel]}>
               {channel.toUpperCase()}
             </Badge>
           ) : null}

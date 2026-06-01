@@ -57,10 +57,10 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
           {installing ? (
             <span className="flex items-center gap-1">
               <IconLoader2 className="size-3 animate-spin" />
-              INSTALLING…
+              Installing…
             </span>
           ) : (
-            'INSTALL_DRIVER'
+            'Install driver'
           )}
         </Button>
         <span className="font-mono text-[8px] text-text-disabled">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@sprint/ui'
 
-const STATUS_STEPS = ['INITIALISING...', 'LOADING MODULES...', 'READY'] as const
+const STATUS_STEPS = ['Initialising…', 'Loading modules…', 'Ready'] as const
 
 interface SplashScreenProps {
   /** When false, the overlay fades out and calls onDone when the transition ends. */
@@ -42,18 +42,18 @@ export default function SplashScreen({ visible, onDone }: SplashScreenProps) {
           fading ? 'pointer-events-none opacity-0' : 'opacity-100',
         )}
       >
-        <h1 className="terminal-header text-5xl font-bold italic tracking-[0.2em] text-primary">
-          SPRINT
+        <h1 className="ui-label text-5xl font-semibold text-primary">
+          Sprint
         </h1>
-        <p className="mt-2 font-mono text-[10px] tracking-[0.4em] text-text-muted">
-          TELEMETRY SYSTEM
+        <p className="mt-2 text-xs text-text-muted">
+          Telemetry system
         </p>
 
         <div className="mt-10 h-px w-64 overflow-hidden bg-border">
           <div className="splash-bar h-full bg-primary" />
         </div>
 
-        <p className="mt-3 font-mono text-[10px] tracking-widest text-text-muted">
+        <p className="mt-3 ui-value text-[10px] text-text-muted">
           {STATUS_STEPS[statusIdx]}
         </p>
       </div>

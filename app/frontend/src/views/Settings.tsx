@@ -68,14 +68,14 @@ export default function Settings() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <PageHeader
-        heading="SETTINGS"
+        heading="Settings"
         caption="Application preferences"
       />
 
       <div className="flex flex-col gap-6 px-6 py-6 max-w-lg">
         <section className="flex flex-col gap-4">
-          <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            PROFILE
+          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
+            Profile
           </h3>
 
           <div className="surface rounded p-4 flex flex-col gap-4">
@@ -106,8 +106,8 @@ export default function Settings() {
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            UPDATES
+          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
+            Updates
           </h3>
 
           <div className="surface rounded p-4 flex flex-col gap-4">
@@ -132,7 +132,7 @@ export default function Settings() {
                     {settings.updateChannel === ch && (
                       <IconCheck size={11} className="text-primary" />
                     )}
-                    {ch.toUpperCase().replace('-', '_')}
+                    {ch === 'pre-release' ? 'Pre-release' : 'Stable'}
                   </button>
                 ))}
               </div>
@@ -151,10 +151,10 @@ export default function Settings() {
                 ) : (
                   <IconRefresh size={12} />
                 )}
-                CHECK_NOW
+                Check now
               </Button>
               {checkState === 'up-to-date' && (
-                <span className="font-mono text-[10px] text-success">UP_TO_DATE</span>
+                <span className="ui-value text-[10px] text-success">Up to date</span>
               )}
               {checkState === 'update-found' && foundRelease && (
                 <span className="font-mono text-[10px] text-primary">
@@ -166,17 +166,17 @@ export default function Settings() {
         </section>
 
         <section className="flex flex-col gap-4">
-          <h3 className="terminal-header text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            ABOUT
+          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
+            About
           </h3>
 
           <div className="surface rounded p-4 flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] text-text-muted">VERSION</span>
+              <span className="ui-value text-[10px] text-text-muted">Version</span>
               <span className="font-mono text-[10px] text-foreground">v{version}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] text-text-muted">CHANNEL</span>
+              <span className="ui-value text-[10px] text-text-muted">Channel</span>
               <Badge
                 variant={
                   buildChannel === 'dev' ? 'warning' :

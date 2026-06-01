@@ -73,7 +73,7 @@ export function PageTabs({
             className={topTriggerClassName}
           >
             <LockIcon />
-            <span>IDLE</span>
+            <span>Idle</span>
           </button>
 
           <button
@@ -83,7 +83,7 @@ export function PageTabs({
             className={topTriggerClassName}
           >
             <LockIcon />
-            <span>ALERTS</span>
+            <span>Alerts</span>
           </button>
 
           <div className="my-1.5 w-px self-stretch bg-border" />

@@ -66,7 +66,7 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
         </div>
       <div className="ml-4 flex flex-shrink-0 items-center gap-2">
         {bound ? (
-          <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
+          <Badge variant="active" className="ui-label">BTN_{button}</Badge>
         ) : null}
         {bound ? (
           <Button
@@ -91,13 +91,13 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
           size="sm"
           disabled={captureState === 'capturing'}
           onClick={handleCapture}
-          className="terminal-header w-20 font-bold text-[9px]"
+          className="ui-label w-20 font-bold text-[9px]"
         >
           {captureState === 'capturing'
             ? `LISTENING_${countdown}`
             : captureState === 'timeout'
-              ? 'NO_INPUT'
-              : 'CAPTURE'}
+              ? 'No input'
+              : 'Capture'}
         </Button>
       </div>
     </div>

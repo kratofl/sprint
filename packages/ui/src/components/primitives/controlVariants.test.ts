@@ -8,11 +8,11 @@ import {
   cardDestructiveClassName,
 } from './controlClasses.ts'
 
-test('primary button gets a tinted terminal surface instead of a plain transparent outline', () => {
+test('primary button gets a tinted flat surface instead of a plain transparent outline', () => {
   const className = buttonPrimaryClassName
 
-  assert.match(className, /\bbg-accent\/10\b/)
-  assert.match(className, /\bborder-primary\b/)
+  assert.match(className, /\bbg-accent\/15\b/)
+  assert.match(className, /\bborder-primary\/70\b/)
   assert.match(className, /\bhover:bg-primary\b/)
 })
 

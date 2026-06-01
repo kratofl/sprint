@@ -59,7 +59,7 @@ test('buildDeviceBindingsViewModel keeps global commands visible and groups acti
   assert.equal(viewModel.hiddenBindingCount, 1)
   assert.equal(viewModel.cards.length, 3)
   assert.deepEqual(viewModel.cards.map(card => card.title), [
-    'DEVICE_COMMANDS',
+    'Device commands',
     'Fuel MFW',
     'Speed MFW',
   ])
@@ -112,11 +112,11 @@ test('buildDeviceBindingsViewModel switches visible MFW cards with the active da
 
   assert.deepEqual(
     alphaView.cards.map(card => card.title),
-    ['DEVICE_COMMANDS', 'Speed MFW'],
+    ['Device commands', 'Speed MFW'],
   )
   assert.deepEqual(
     betaView.cards.map(card => card.title),
-    ['DEVICE_COMMANDS', 'Radio MFW'],
+    ['Device commands', 'Radio MFW'],
   )
   assert.equal(alphaView.hiddenBindingCount, 1)
   assert.equal(betaView.hiddenBindingCount, 1)

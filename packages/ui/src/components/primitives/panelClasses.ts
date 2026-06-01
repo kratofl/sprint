@@ -2,13 +2,13 @@ export const overlayBackdropClassName =
   "fixed inset-0 isolate z-50 bg-black/72 duration-100 supports-backdrop-filter:backdrop-blur-sm data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
 
 export const overlayPanelClassName =
-  "surface-overlay-panel border-border shadow-overlay rounded-sm"
+  "surface-overlay-panel border-border shadow-overlay rounded-md"
 
 export const overlayTitleClassName =
-  "terminal-label text-[10px] text-text-muted"
+  "ui-label text-xs font-semibold text-foreground"
 
 export const overlayDescriptionClassName =
-  "status-readout text-[10px] text-text-muted *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
+  "text-xs text-text-muted *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground"
 
 export const overlayDialogContentClassName =
   `fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 ${overlayPanelClassName} p-4 text-xs/relaxed text-foreground duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95`

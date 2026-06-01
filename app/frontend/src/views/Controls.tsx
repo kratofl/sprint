@@ -67,15 +67,15 @@ export default function Controls() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        heading="CONTROLS"
+        heading="Controls"
         caption="Assign wheel buttons to commands"
         status={(
           <>
           {saveStatus === 'saved' && (
-            <Badge variant="success" className="terminal-header">SAVED</Badge>
+            <Badge variant="success" className="ui-label">Saved</Badge>
           )}
           {saveStatus === 'error' && (
-            <Badge variant="destructive" className="terminal-header">SAVE_FAILED</Badge>
+            <Badge variant="destructive" className="ui-label">Save failed</Badge>
           )}
           </>
         )}
@@ -84,9 +84,9 @@ export default function Controls() {
             onClick={handleSave}
             disabled={saving || catalog.length === 0}
             variant="primary"
-            className="terminal-header font-bold"
+            className="ui-label font-bold"
           >
-            {saving ? 'SAVING…' : 'SAVE_BINDINGS'}
+            {saving ? 'Saving…' : 'Save bindings'}
           </Button>
         )}
       />
@@ -108,12 +108,12 @@ export default function Controls() {
             {/* How-to note */}
             <Card size="sm" className="gap-0 py-0">
               <CardHeader className="border-b border-border px-4 py-2.5">
-                <CardTitle className="text-foreground">HOW_TO_USE</CardTitle>
+                <CardTitle className="text-foreground">How to use</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
                 <p>Click <span className="text-foreground">[ CAPTURE ]</span> next to a command, then press the physical button on your wheel.</p>
                 <p>The channel is detected automatically. Leave a command unbound to disable it.</p>
-              <p>Commands marked <span className="text-text-muted opacity-80">DEVICE ONLY</span> must be triggered from a hardware button.</p>
+              <p>Commands marked <span className="text-text-muted opacity-80">device only</span> must be triggered from a hardware button.</p>
               </CardContent>
             </Card>
 
@@ -149,7 +149,7 @@ function CommandGroup({
 }) {
   return (
     <div>
-      <h4 className="terminal-header mb-2 text-[10px] font-bold text-text-muted">{label}</h4>
+      <h4 className="ui-label mb-2 text-[10px] font-bold text-text-muted">{label}</h4>
       <div className="space-y-1">
         {commands.map(cmd => (
           <CommandRow
@@ -235,7 +235,7 @@ function CommandRow({
 
         <div className="ml-4 flex flex-shrink-0 items-center gap-2">
           {bound && (
-            <Badge variant="active" className="terminal-header">BTN_{button}</Badge>
+            <Badge variant="active" className="ui-label">BTN_{button}</Badge>
           )}
           {bound && (
             <Button
@@ -277,13 +277,13 @@ function CommandRow({
               size="sm"
               disabled={captureState === 'capturing'}
               onClick={handleCapture}
-              className="terminal-header w-24 font-bold text-[9px]"
+              className="ui-label w-24 font-bold text-[9px]"
             >
               {captureState === 'capturing'
                 ? `LISTENING_${countdown}`
                 : captureState === 'timeout'
-                  ? 'NO_INPUT'
-                  : 'CAPTURE'}
+                  ? 'No input'
+                  : 'Capture'}
             </Button>
           )}
         </div>

@@ -51,30 +51,30 @@ export default function Telemetry({ frame }: TelemetryProps) {
           {/* Section header: title + big stats */}
           <div className="mb-6 flex items-start justify-between flex-shrink-0">
             <div>
-              <h2 className="terminal-header mb-1 text-sm font-bold tracking-[0.2em]">
+              <h2 className="ui-label mb-1 text-sm font-bold tracking-[0.2em]">
                 LIVE_TELEMETRY_FEED
               </h2>
-              <p className="font-mono text-[10px] text-text-muted">
-                SESSION: {frame?.session.sessionType?.toUpperCase() ?? 'NO_SESSION'} | TRACK: {frame?.session.track?.toUpperCase().replace(/\s+/g, '_') ?? '——'}
+              <p className="text-xs text-text-muted">
+                Session: {frame?.session.sessionType ?? 'No session'} | Track: {frame?.session.track ?? '—'}
               </p>
             </div>
             <div className="flex gap-12">
               <div className="text-right">
-                <span className="terminal-header block mb-1 text-[9px] text-text-muted">Velocity</span>
+                <span className="ui-label block mb-1 text-[9px] text-text-muted">Velocity</span>
                 <span className="font-mono text-3xl font-bold leading-none">
                    {frame ? fmtSpeed(frame.car.speedMS, prefs) : '——'}
                    <span className="text-[10px] text-text-muted"> {speedUnitLabel(prefs)}</span>
                 </span>
               </div>
               <div className="text-right">
-                <span className="terminal-header block mb-1 text-[9px] text-text-muted">T_Angular</span>
+                <span className="ui-label block mb-1 text-[9px] text-text-muted">T_Angular</span>
                 <span className="font-mono text-3xl font-bold leading-none text-primary">
                   {frame ? Math.round(frame.car.rpm).toLocaleString('en-US') : '——'}
                   <span className="text-[10px] text-text-muted"> RPM</span>
                 </span>
               </div>
               <div className="text-right">
-                <span className="terminal-header block mb-1 text-[9px] text-text-muted">Gear</span>
+                <span className="ui-label block mb-1 text-[9px] text-text-muted">Gear</span>
                 <span className="font-mono text-3xl font-bold leading-none">
                   {frame ? (frame.car.gear === 0 ? 'N' : frame.car.gear === -1 ? 'R' : String(frame.car.gear)) : '—'}
                 </span>
@@ -86,7 +86,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
           <div className="flex flex-col gap-4 flex-shrink-0">
             <RPMBar rpm={frame?.car.rpm ?? 0} maxRpm={frame?.car.maxRPM || 10000} />
             <div>
-              <span className="terminal-header mb-2 block text-[9px] text-text-muted">DRIVER_INPUTS</span>
+              <span className="ui-label mb-2 block text-[10px] text-text-muted">Driver inputs</span>
               <InputTrace
                 throttle={frame?.car.throttle ?? 0}
                 brake={frame?.car.brake ?? 0}
@@ -100,25 +100,25 @@ export default function Telemetry({ frame }: TelemetryProps) {
         {/* Right: chrono — col-span-3 */}
         <section className="col-span-3 flex flex-col overflow-hidden">
           <div className="border-b border-border p-4">
-              <h3 className="terminal-header mb-4 text-[10px] font-bold text-text-muted">
+              <h3 className="ui-label mb-4 text-[10px] font-bold text-text-muted">
               CHRONO_SUMMARY
             </h3>
             <div className="space-y-1">
               <div className="surface-panel flex items-center justify-between p-3">
-                <span className="font-mono text-[9px] text-text-muted">P1_BEST</span>
+                <span className="ui-value text-[10px] text-text-muted">P1 best</span>
                 <span className="font-mono text-lg font-bold text-secondary">
                   {fmt(frame?.lap.bestLapTime)}
                 </span>
               </div>
               <div className="surface-inline flex items-center justify-between p-3">
-                <span className="font-mono text-[9px] text-text-muted">L_SESS</span>
+                <span className="ui-value text-[10px] text-text-muted">Session lap</span>
                 <span className="font-mono text-lg font-bold">
                   {fmt(frame?.lap.lastLapTime)}
                 </span>
               </div>
               {frame && frame.lap.targetLapTime > 0 && (
                 <div className="mt-2">
-                  <span className="terminal-header text-[9px] text-text-muted block mb-1">Δ_TARGET</span>
+                  <span className="ui-label text-[9px] text-text-muted block mb-1">Δ_TARGET</span>
                   <DeltaBar delta={frame.lap.delta} />
                 </div>
               )}
@@ -153,7 +153,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
                   </>
                 ) : (
                   <tr>
-                    <td colSpan={3} className="px-4 py-4 text-center text-text-muted">AWAITING_DATA</td>
+                    <td colSpan={3} className="px-4 py-4 text-center text-text-muted">Awaiting data</td>
                   </tr>
                 )}
               </tbody>
@@ -169,7 +169,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
           const temp = tire?.tempMiddle ?? 0
           const isHot = temp > 105
           const isCold = temp > 0 && temp < 70
-          const stateLabel = temp === 0 ? '——' : isHot ? 'OVERHEAT' : isCold ? 'WARMING' : 'OPTIMAL'
+          const stateLabel = temp === 0 ? '—' : isHot ? 'Overheat' : isCold ? 'Warming' : 'Optimal'
           const stateColor = isHot ? 'var(--accent)' : isCold ? 'var(--secondary)' : undefined
 
           return (
@@ -183,8 +183,8 @@ export default function Telemetry({ frame }: TelemetryProps) {
               {/* Header */}
               <div className="mb-4 flex items-start justify-between flex-shrink-0">
                 <div>
-                  <span className="terminal-header block text-[9px] text-text-muted">{pos}</span>
-                  <span className="terminal-header text-[10px] font-bold">{name}</span>
+                  <span className="ui-label block text-[9px] text-text-muted">{pos}</span>
+                  <span className="ui-label text-[10px] font-bold">{name}</span>
                 </div>
                 <span
                   className="font-mono text-xl font-bold"
@@ -218,7 +218,7 @@ export default function Telemetry({ frame }: TelemetryProps) {
                 {/* State label */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span
-                    className="terminal-header text-[10px] font-bold tracking-[0.4em] opacity-40"
+                    className="ui-label text-[10px] font-bold tracking-[0.4em] opacity-40"
                     style={{ color: stateColor }}
                   >
                     {stateLabel}
@@ -229,11 +229,11 @@ export default function Telemetry({ frame }: TelemetryProps) {
               {/* Stats row */}
               <div className="mt-4 grid grid-cols-2 gap-2 font-mono text-[9px] text-text-muted flex-shrink-0">
                 <div className="flex justify-between border-b border-border/30 pb-1">
-                  <span>WEAR</span>
+                  <span>Wear</span>
                   <span className="text-white">{tire?.wearPercent != null ? `${tire.wearPercent.toFixed(0)}%` : '——'}</span>
                 </div>
                 <div className="flex justify-between border-b border-border/30 pb-1">
-                  <span>CMPD</span>
+                  <span>Compound</span>
                   <span className="text-white">{tire?.compound ?? '——'}</span>
                 </div>
               </div>
@@ -245,5 +245,3 @@ export default function Telemetry({ frame }: TelemetryProps) {
     </div>
   )
 }
-
-

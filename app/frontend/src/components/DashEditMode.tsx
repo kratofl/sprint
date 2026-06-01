@@ -177,7 +177,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
       size="xs"
       onClick={() => setAdvancedGeometryOpen(current => !current)}
     >
-      ADVANCED_GEOMETRY
+      Advanced geometry
     </Button>
   ) : null
   const paletteContent = (
@@ -283,16 +283,16 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-accent" />
             </button>
           )}
-          {controller.isDirty && <Badge variant="warning" className="terminal-header">DIRTY</Badge>}
-          {controller.saveStatus === 'saved' && <Badge variant="success" className="terminal-header">SAVED</Badge>}
-          {controller.saveStatus === 'error' && <Badge variant="destructive" className="terminal-header">FAILED</Badge>}
+          {controller.isDirty && <Badge variant="warning" className="ui-label">Unsaved</Badge>}
+          {controller.saveStatus === 'saved' && <Badge variant="success" className="ui-label">Saved</Badge>}
+          {controller.saveStatus === 'error' && <Badge variant="destructive" className="ui-label">Failed</Badge>}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={controller.handleBack}>
             BACK
           </Button>
           <Button variant="primary" size="sm" onClick={controller.handleSave} disabled={controller.saving}>
-            {controller.saving ? 'SAVING…' : 'SAVE'}
+            {controller.saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
       </div>
@@ -322,7 +322,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             data-state={controller.editorTab === 'designer' ? 'active' : 'inactive'}
             className={topTabTriggerClassName}
           >
-            DESIGNER
+            Designer
           </button>
           <button
             type="button"
@@ -330,7 +330,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             data-state={controller.editorTab === 'settings' ? 'active' : 'inactive'}
             className={topTabTriggerClassName}
           >
-            SETTINGS
+            Settings
           </button>
           {controller.editorTab === 'designer' && (
             <>
@@ -342,7 +342,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   className={cn(topTabTriggerClassName, 'gap-1.5 px-3')}
                 >
                   <span className="text-text-disabled">←</span>
-                  <span>PAGE</span>
+                  <span>Page</span>
                 </button>
               )}
               <div className="my-1 w-px self-stretch bg-border" />
@@ -391,7 +391,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               side="left"
               mode="docked"
               className="w-72 flex-shrink-0"
-              title="WIDGETS"
+              title="Widgets"
               pinned={panelPreferences.palette.pinned}
               onTogglePinned={() => handleTogglePanelPinned('palette')}
               onClose={() => handleSetPanelOpen('palette', false)}
@@ -404,7 +404,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             {!panelPreferences.palette.open && (
               <EditorEdgeHandle
                 side="left"
-                label="WIDGETS"
+                label="Widgets"
                 onClick={() => handleTogglePanelOpen('palette')}
               />
             )}
@@ -412,7 +412,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             {!panelPreferences.inspector.open && (
               <EditorEdgeHandle
                 side="right"
-                label="INSPECTOR"
+                label="Inspector"
                 onClick={() => handleTogglePanelOpen('inspector')}
               />
             )}
@@ -457,7 +457,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   side="left"
                   mode="overlay"
                   className="pointer-events-auto flex-1"
-                  title="WIDGETS"
+                  title="Widgets"
                   pinned={panelPreferences.palette.pinned}
                   onTogglePinned={() => handleTogglePanelPinned('palette')}
                   onClose={() => handleSetPanelOpen('palette', false)}
@@ -622,7 +622,7 @@ function SidebarSection({
 }) {
   return (
     <section className="space-y-2">
-      <h5 className="terminal-header text-[9px] font-bold text-text-muted">{title}</h5>
+      <h5 className="ui-label text-[9px] font-bold text-text-muted">{title}</h5>
       {children}
     </section>
   )
@@ -649,7 +649,7 @@ function LayerListPanel({
   disableDelete: boolean
 }) {
   return (
-    <SidebarSection title="LAYERS">
+    <SidebarSection title="Layers">
       <div className="space-y-2">
         {layers.map(layer => (
           <LayerListItem
@@ -763,13 +763,13 @@ function PagePropertiesPanel({
   onClearPage: () => void
 }) {
   return (
-    <SidebarSection title="PAGE">
+    <SidebarSection title="Page">
       <div className="space-y-3">
-        <FieldRow label="NAME">
+        <FieldRow label="Name">
           <span className="font-mono text-[10px] text-foreground">{page.name}</span>
         </FieldRow>
         <ColorField
-          label="BACKGROUND"
+          label="Background"
           value={page.background}
           fallback={themeBackground}
           inheritedLabel="Using the dash theme background."
@@ -803,7 +803,7 @@ function WidgetInspectorPanel({
 }) {
   return (
     <div className="space-y-4">
-      <SidebarSection title="WIDGET">
+      <SidebarSection title="Widget">
         <div className="space-y-3">
           <WidgetProperties
             widget={widget}
@@ -825,12 +825,12 @@ function WidgetInspectorPanel({
       </SidebarSection>
 
       {showAdvancedGeometry && (
-        <SidebarSection title="ADVANCED_GEOMETRY">
+        <SidebarSection title="Advanced geometry">
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="COL" value={widget.col} min={0} max={999} onChange={value => onUpdateGeometry({ col: value })} />
-            <NumberField label="ROW" value={widget.row} min={0} max={999} onChange={value => onUpdateGeometry({ row: value })} />
-            <NumberField label="WIDTH" value={widget.colSpan} min={1} max={999} onChange={value => onUpdateGeometry({ colSpan: value })} />
-            <NumberField label="HEIGHT" value={widget.rowSpan} min={1} max={999} onChange={value => onUpdateGeometry({ rowSpan: value })} />
+            <NumberField label="Col" value={widget.col} min={0} max={999} onChange={value => onUpdateGeometry({ col: value })} />
+            <NumberField label="Row" value={widget.row} min={0} max={999} onChange={value => onUpdateGeometry({ row: value })} />
+            <NumberField label="Width" value={widget.colSpan} min={1} max={999} onChange={value => onUpdateGeometry({ colSpan: value })} />
+            <NumberField label="Height" value={widget.rowSpan} min={1} max={999} onChange={value => onUpdateGeometry({ rowSpan: value })} />
           </div>
         </SidebarSection>
       )}
@@ -863,7 +863,7 @@ function WrapperGroupPropertiesPanel({
     <div className="space-y-4">
       <SidebarSection title="MFW">
         <div className="space-y-3">
-          <FieldRow label="NAME">
+          <FieldRow label="Name">
             <input
               type="text"
               value={group.name}
@@ -872,7 +872,7 @@ function WrapperGroupPropertiesPanel({
             />
           </FieldRow>
 
-          <FieldRow label="ACTIVE_LAYER">
+          <FieldRow label="Active layer">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -911,31 +911,31 @@ function WrapperGroupPropertiesPanel({
       </SidebarSection>
 
       {showAdvancedGeometry && (
-        <SidebarSection title="ADVANCED_GEOMETRY">
+        <SidebarSection title="Advanced geometry">
           <div className="grid grid-cols-2 gap-2">
             <NumberField
-              label="COL"
+              label="Col"
               value={group.col}
               min={0}
               max={Math.max(0, gridCols - group.colSpan)}
               onChange={value => onUpdateGroup({ col: value })}
             />
             <NumberField
-              label="ROW"
+              label="Row"
               value={group.row}
               min={0}
               max={Math.max(0, gridRows - group.rowSpan)}
               onChange={value => onUpdateGroup({ row: value })}
             />
             <NumberField
-              label="WIDTH"
+              label="Width"
               value={group.colSpan}
               min={1}
               max={gridCols}
               onChange={value => onUpdateGroup({ colSpan: value })}
             />
             <NumberField
-              label="HEIGHT"
+              label="Height"
               value={group.rowSpan}
               min={1}
               max={gridRows}

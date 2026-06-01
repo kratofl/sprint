@@ -582,7 +582,7 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 	}
 
 	family, bold := resolveTextStyle(style, rt)
-	p.face(dc, fontFileName(family, bold), size)
+	p.faceAny(dc, fontFileNames(family, bold), size)
 	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
 
 	var tx float64
@@ -791,11 +791,11 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 
 		if cell.Label != "" && cell.Binding != "" {
 			// Legacy label+value layout (e.g. TyreTemp): label small top-left, value large right.
-			p.face(dc, "SpaceGrotesk-Regular.ttf", cellH*0.28)
+			p.faceAny(dc, fontFileNames(widgets.FontFamilyUI, false), cellH*0.28)
 			dc.SetColor(p.resolveColorExpr(frame, rt, prefs, cell.LabelColor))
 			dc.DrawString(cell.Label, cx+4, cy+cellH*0.4)
 			if val, ok := widgets.ResolveWithPrefs(frame, cell.Binding, prefs); ok {
-				p.face(dc, "JetBrainsMono-Bold.ttf", cellH*0.48)
+				p.faceAny(dc, fontFileNames(widgets.FontFamilyMono, true), cellH*0.48)
 				var col color.RGBA
 				if cell.ColorFn != "" {
 					col = p.resolveColorFn(cell.ColorFn, val)
@@ -830,7 +830,7 @@ func (p *Painter) renderGrid(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 			continue
 		}
 		family, bold := resolveTextStyle(style, rt)
-		p.face(dc, fontFileName(family, bold), size)
+		p.faceAny(dc, fontFileNames(family, bold), size)
 
 		colorExpr := style.Color
 		if colorExpr.Ref == "" && colorExpr.DynamicRef == "" && len(colorExpr.When) == 0 {

@@ -60,10 +60,10 @@ const DOMAIN_ROWS: { key: keyof DomainPalette; label: string }[] = [
 ]
 
 const TYPOGRAPHY_FONT_OPTIONS: { value: FontStyle; label: string }[] = [
-  { value: 'label', label: 'Space Grotesk' },
-  { value: 'bold', label: 'Space Grotesk Bold' },
-  { value: 'number', label: 'JetBrains Mono Bold' },
-  { value: 'mono', label: 'JetBrains Mono' },
+  { value: 'label', label: 'Bahnschrift / IBM Plex' },
+  { value: 'bold', label: 'Bahnschrift Semibold' },
+  { value: 'number', label: 'Bahnschrift Numbers' },
+  { value: 'mono', label: 'IBM Plex Mono' },
 ]
 
 export function AdditionalSettingsPanel({
@@ -107,7 +107,7 @@ export function AdditionalSettingsPanel({
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="flex items-center justify-between border-b border-border px-6 py-3 flex-shrink-0">
-        <h4 className="terminal-header text-[10px] font-bold text-text-muted">ADDITIONAL_SETTINGS</h4>
+        <h4 className="ui-label text-[11px] font-semibold text-text-muted">Additional settings</h4>
         <div className="flex items-center gap-2">
           {inheritsGlobalColors && (
             <Button size="xs" variant="neutral" onClick={handleResetAllToGlobal}>
@@ -125,7 +125,7 @@ export function AdditionalSettingsPanel({
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
         <div className="grid gap-6 xl:grid-cols-3">
           <Section
-            label="BASE_AND_HIGHLIGHTS"
+            label="Base and highlights"
             description="Neutral surfaces, text, and the two general-purpose highlight colors."
           >
             {BASE_THEME_ROWS.map(({ key, label }) => {
@@ -154,7 +154,7 @@ export function AdditionalSettingsPanel({
           </Section>
 
           <Section
-            label="SEMANTIC_STATES"
+            label="Semantic states"
             description="Reserve these for state meaning so alerts and thresholds stay readable."
           >
             {SEMANTIC_THEME_ROWS.map(({ key, label }) => {
@@ -183,7 +183,7 @@ export function AdditionalSettingsPanel({
           </Section>
 
           <Section
-            label="DOMAIN_SIGNALS"
+            label="Domain signals"
             description="Racing-system colors that widgets should use only for their matching domains."
           >
             {DOMAIN_ROWS.map(({ key, label }) => {
@@ -214,7 +214,7 @@ export function AdditionalSettingsPanel({
         </div>
 
         {onTypographyChange && (
-          <Section label="TYPOGRAPHY_DEFAULTS">
+          <Section label="Typography defaults">
             <TypographySection
               typography={typography ?? {}}
               globalTypography={globalTypography}
@@ -224,7 +224,7 @@ export function AdditionalSettingsPanel({
         )}
 
         {onFormatPreferencesChange && (
-          <Section label="FORMAT_PREFERENCES">
+          <Section label="Format preferences">
             <FormatPreferencesSection
               prefs={formatPreferences ?? {}}
               globalPrefs={globalFormatPreferences}
@@ -248,7 +248,7 @@ function Section({
 }) {
   return (
     <div>
-      <p className="terminal-header text-[9px] font-bold text-text-disabled uppercase tracking-wider mb-2">
+      <p className="ui-label text-[9px] font-bold text-text-disabled uppercase tracking-wider mb-2">
         {label}
       </p>
       {description && (

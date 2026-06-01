@@ -33,7 +33,7 @@ export interface NavRailProps {
  *
  * Collapsed (52px): icons only, labels appear as tooltips.
  * Expanded (200px): icons + labels, left-aligned.
- * Active item: left-side 2px accent bar + faint orange tint.
+ * Active item: flat orange-tinted row with quiet left indicator.
  */
 export function NavRail({
   items,
@@ -95,14 +95,14 @@ export function NavRail({
                 className={cn(
                   // Layout — full width, no horizontal container padding so border-l reaches edge
                   "group relative flex h-9 w-full shrink-0 items-center gap-3",
-                  "text-[11px] font-bold whitespace-nowrap uppercase tracking-[0.1em]",
+                  "ui-control text-[11px] whitespace-nowrap",
                   "transition-colors duration-100 outline-none",
                   isCollapsed ? "justify-center px-0" : "pl-4 pr-3",
                   // Inactive
-                  !isActive && "text-on-surface-variant hover:bg-white/[0.03] hover:text-foreground",
+                  !isActive && "text-on-surface-variant hover:bg-bg-elevated hover:text-foreground",
                   // Active: left accent bar + subtle tint
                   isActive && [
-                    "text-accent bg-accent/[0.06]",
+                    "text-accent bg-accent/[0.12]",
                     "border-l-2 border-accent",
                     // Compensate left padding so icon stays aligned
                     !isCollapsed && "pl-[calc(1rem-2px)]",
@@ -159,9 +159,9 @@ export function NavRail({
               aria-label={isCollapsed ? "Expand navigation" : "Collapse navigation"}
               className={cn(
                 "flex h-7 w-full items-center rounded text-on-surface-variant",
-                "transition-colors duration-100 hover:bg-white/[0.03] hover:text-foreground",
+                "transition-colors duration-100 hover:bg-bg-elevated hover:text-foreground",
                 "outline-none focus-visible:ring-1 focus-visible:ring-accent/40",
-                isCollapsed ? "justify-center" : "justify-end gap-1.5 pr-1 text-[0.625rem] uppercase tracking-widest"
+                isCollapsed ? "justify-center" : "justify-end gap-1.5 pr-1 text-[0.625rem]"
               )}
             >
               {!isCollapsed && <span>Collapse</span>}

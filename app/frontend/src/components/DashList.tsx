@@ -55,7 +55,7 @@ function DashRow({
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm truncate">{layout.name}</span>
             {layout.default && (
-              <Badge variant="active" className="terminal-header text-[9px] flex-shrink-0">DEFAULT</Badge>
+              <Badge variant="active" className="ui-label text-[9px] flex-shrink-0">Default</Badge>
             )}
           </div>
           <span className="font-mono text-[10px] text-text-muted">
@@ -128,14 +128,14 @@ export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, on
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
-        heading="DASH_STUDIO"
+        heading="Dash Studio"
         caption="Manage saved layouts and device-ready dash presets"
         actions={(
           <>
-          <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="terminal-header font-bold">
+          <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="ui-label font-bold">
             GLOBAL SETTINGS
           </Button>
-          <Button variant="primary" size="sm" onClick={onCreate} className="terminal-header font-bold">
+          <Button variant="primary" size="sm" onClick={onCreate} className="ui-label font-bold">
             + NEW DASH
           </Button>
           </>
