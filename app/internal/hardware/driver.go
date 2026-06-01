@@ -43,7 +43,7 @@ type ScreenDriver interface {
 	SetGlobalPrefs(prefs widgets.FormatPreferences)
 	SetGlobalTypography(typography widgets.TypographySettings)
 	SetProfile(profile dashboard.RenderProfile)
-	SetWrapperVariant(pageID, groupID, variantID string)
+	SetWidgetStackLayer(pageID, groupID, variantID string)
 	SetActivePage(index int)
 	SetIdle(idle bool)
 	OnFrame(frame *dto.TelemetryFrame)

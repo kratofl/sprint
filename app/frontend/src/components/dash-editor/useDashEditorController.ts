@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type AlertInstance,
   type AlertMeta,
@@ -7,7 +7,8 @@ import {
   type DashTheme,
   type DashThemeOverrides,
   type DashWidget,
-  type DashWrapperGroup,
+  type DashWidgetStack,
+  type DashWidgetStackLayer,
   type DomainPalette,
   type FormatPreferences,
   type RGBAColor,
@@ -23,20 +24,20 @@ import {
   resolveDomainPalette,
   widgetCatalogAPI,
 } from '@/lib/dash'
-import { createDashLayerId, createDashPageId } from '@/lib/dash/ids'
+import { createDashLayerId, createDashPageId, createDashWidgetId } from '@/lib/dash/ids'
 import { DASH_EVENTS } from '@/lib/desktopEvents'
 import { onEvent } from '@/lib/wails'
 import { useNavigationGuard, useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { DEFAULT_SCREEN_H, DEFAULT_SCREEN_W } from '@/components/DashCanvas'
 import {
   clampWidgetToLayerBounds,
-  createClearedWrapperGroupSelectionState,
-  createMultiFunctionWidgetOnDrop,
+  createClearedWidgetStackSelectionState,
+  createWidgetStackOnDrop,
   createPageEditContext,
-  createWrapperGroupEditState,
-  createWrapperGroupSelectionState,
-  enterMultiFunctionWidgetMode,
-  isValidMultiFunctionWidgetPlacement,
+  createWidgetStackEditState,
+  createWidgetStackSelectionState,
+  enterWidgetStackMode,
+  isValidWidgetStackPlacement,
   type DashEditContext,
 } from './multiFunctionWidgetState'
 
@@ -47,29 +48,53 @@ interface UseDashEditorControllerArgs {
   onDirtyChange: (dirty: boolean) => void
 }
 
-function wrapperSelectionKey(pageID: string, groupID: string): string {
+function widgetStackSelectionKey(pageID: string, groupID: string): string {
   return `${pageID}:${groupID}`
 }
 
-function withPreviewWrapperSelections(layout: DashLayout, selections: Record<string, string>): DashLayout {
+function withPreviewWidgetStackSelections(layout: DashLayout, selections: Record<string, string>): DashLayout {
   const applyPageSelections = (page: DashPage): DashPage => {
-    if (!page.wrapperGroups?.length) return page
+    if (!page.widgetStacks?.length) return page
 
     let changed = false
-    const wrapperGroups = page.wrapperGroups.map(group => {
-      const selectedVariantId = selections[wrapperSelectionKey(page.id, group.id)]
-      if (!selectedVariantId || selectedVariantId === group.defaultVariantId) return group
+    const widgetStacks = page.widgetStacks.map(group => {
+      const selectedLayerId = selections[widgetStackSelectionKey(page.id, group.id)]
+      if (!selectedLayerId || selectedLayerId === group.defaultLayerId) return group
       changed = true
-      return { ...group, defaultVariantId: selectedVariantId }
+      return { ...group, defaultLayerId: selectedLayerId }
     })
 
-    return changed ? { ...page, wrapperGroups } : page
+    return changed ? { ...page, widgetStacks } : page
   }
 
   return {
     ...layout,
     idlePage: applyPageSelections(layout.idlePage),
     pages: layout.pages.map(applyPageSelections),
+  }
+}
+
+function createWidgetStackPreviewLayout(
+  layout: DashLayout,
+  page: DashPage,
+  stack: DashWidgetStack,
+  layer: DashWidgetStackLayer,
+): DashLayout {
+  const previewPage: DashPage = {
+    id: `${page.id}:${stack.id}:${layer.id}:focus-preview`,
+    name: `${stack.name} / ${layer.name}`,
+    background: page.background,
+    widgets: layer.widgets,
+    widgetStacks: [],
+  }
+
+  return {
+    ...layout,
+    gridCols: stack.colSpan,
+    gridRows: stack.rowSpan,
+    idlePage: previewPage,
+    pages: [previewPage],
+    alerts: [],
   }
 }
 
@@ -96,10 +121,12 @@ export function useDashEditorController({
   const [renamingDash, setRenamingDash] = useState(false)
   const [dashNameValue, setDashNameValue] = useState(initialLayout.name)
   const [confirmRemoveWidget, setConfirmRemoveWidget] = useState(false)
-  const [selectedWrapperGroupId, setSelectedWrapperGroupId] = useState<string | null>(null)
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
-  const [wrapperVariantSelections, setWrapperVariantSelections] = useState<Record<string, string>>({})
+  const [selectedWidgetStackId, setSelectedWidgetStackId] = useState<string | null>(null)
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
+  const [widgetStackLayerSelections, setWidgetStackLayerSelections] = useState<Record<string, string>>({})
   const [editContext, setEditContext] = useState<DashEditContext>(createPageEditContext())
+  const [compareEnabled, setCompareEnabled] = useState(false)
+  const [referenceLayerId, setReferenceLayerId] = useState<string | null>(null)
   const [canvasPaneEl, setCanvasPaneEl] = useState<HTMLDivElement | null>(null)
   const [fittedCanvas, setFittedCanvas] = useState<{ w: number; h: number } | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -197,18 +224,81 @@ export function useDashEditorController({
     })
   }, [])
 
-  useEffect(() => {
-    previewTargetRef.current = {
+  const currentPage = activeTab === 'idle'
+    ? layout.idlePage
+    : activeTab === 'alerts'
+      ? null
+      : (layout.pages[activeTab as number] ?? null)
+
+  const widgetStacks = currentPage?.widgetStacks ?? []
+  const selectedWidgetStack = widgetStacks.find(group => group.id === selectedWidgetStackId) ?? null
+  const selectedLayerKey = currentPage && selectedWidgetStack
+    ? widgetStackSelectionKey(currentPage.id, selectedWidgetStack.id)
+    : null
+  const activeSelectedLayerId = selectedLayerKey
+    ? widgetStackLayerSelections[selectedLayerKey]
+      ?? selectedLayerId
+      ?? selectedWidgetStack?.defaultLayerId
+      ?? selectedWidgetStack?.layers[0]?.id
+      ?? null
+    : null
+  const selectedLayer = selectedWidgetStack
+    ? selectedWidgetStack.layers.find(layer => layer.id === activeSelectedLayerId)
+      ?? selectedWidgetStack.layers.find(layer => layer.id === selectedWidgetStack.defaultLayerId)
+      ?? selectedWidgetStack.layers[0]
+      ?? null
+    : null
+  const editingWidgetStack = editContext.kind === 'widget-stack'
+  const editorMode: 'page' | 'stack' = editingWidgetStack ? 'stack' : 'page'
+  const editingSelectedWidgetStack = editingWidgetStack && selectedWidgetStack && selectedWidgetStack.id === editContext.groupId
+  const editingSelectedLayer = editingSelectedWidgetStack
+    ? selectedWidgetStack.layers.find(layer => layer.id === editContext.layerId)
+      ?? selectedLayer
+      ?? null
+    : null
+
+  const previewBaseLayout = useMemo(
+    () => withPreviewWidgetStackSelections(layout, widgetStackLayerSelections),
+    [layout, widgetStackLayerSelections],
+  )
+
+  const previewSession = useMemo(() => {
+    if (editingSelectedWidgetStack && editingSelectedLayer && currentPage && selectedWidgetStack) {
+      return {
+        layout: createWidgetStackPreviewLayout(layout, currentPage, selectedWidgetStack, editingSelectedLayer),
+        pageIndex: 0,
+        idle: false,
+      }
+    }
+
+    return {
+      layout: previewBaseLayout,
       pageIndex: typeof activeTab === 'number' ? activeTab : 0,
       idle: activeTab === 'idle',
     }
-  }, [activeTab])
+  }, [
+    activeTab,
+    currentPage,
+    editingSelectedLayer,
+    editingSelectedWidgetStack,
+    layout,
+    previewBaseLayout,
+    selectedWidgetStack,
+  ])
 
   useEffect(() => {
-    const idle = activeTab === 'idle'
-    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
-    previewTargetRef.current = { pageIndex, idle }
-    void dashAPI.startPreview(withPreviewWrapperSelections(layout, wrapperVariantSelections), pageIndex, idle)
+    previewTargetRef.current = {
+      pageIndex: previewSession.pageIndex,
+      idle: previewSession.idle,
+    }
+  }, [previewSession.idle, previewSession.pageIndex])
+
+  useEffect(() => {
+    previewTargetRef.current = {
+      pageIndex: previewSession.pageIndex,
+      idle: previewSession.idle,
+    }
+    void dashAPI.startPreview(previewSession.layout, previewSession.pageIndex, previewSession.idle)
     return () => { void dashAPI.stopPreview() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -224,75 +314,35 @@ export function useDashEditorController({
   }, [])
 
   useEffect(() => {
-    const idle = activeTab === 'idle'
-    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
-    previewTargetRef.current = { pageIndex, idle }
+    previewTargetRef.current = {
+      pageIndex: previewSession.pageIndex,
+      idle: previewSession.idle,
+    }
     setPreviewUrl(null)
-    void dashAPI.updatePreview(withPreviewWrapperSelections(layout, wrapperVariantSelections), pageIndex, idle)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
-
-  useEffect(() => {
-    const idle = activeTab === 'idle'
-    const pageIndex = typeof activeTab === 'number' ? activeTab : 0
-    previewTargetRef.current = { pageIndex, idle }
-    void dashAPI.updatePreview(withPreviewWrapperSelections(layout, wrapperVariantSelections), pageIndex, idle)
-  }, [activeTab, layout, wrapperVariantSelections])
+    void dashAPI.updatePreview(previewSession.layout, previewSession.pageIndex, previewSession.idle)
+  }, [previewSession])
 
   useEffect(() => {
     if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
     previewDebounceRef.current = setTimeout(() => {
-      const { idle, pageIndex } = previewTargetRef.current
-      void dashAPI.updatePreview(withPreviewWrapperSelections(layout, wrapperVariantSelections), pageIndex, idle)
+      void dashAPI.updatePreview(previewSession.layout, previewSession.pageIndex, previewSession.idle)
     }, 150)
 
     return () => {
       if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current)
     }
-  }, [layout, wrapperVariantSelections])
-
-  const currentPage = activeTab === 'idle'
-    ? layout.idlePage
-    : activeTab === 'alerts'
-      ? null
-      : (layout.pages[activeTab as number] ?? null)
-
-  const wrapperGroups = currentPage?.wrapperGroups ?? []
-  const selectedWrapperGroup = wrapperGroups.find(group => group.id === selectedWrapperGroupId) ?? null
-  const selectedVariantKey = currentPage && selectedWrapperGroup
-    ? wrapperSelectionKey(currentPage.id, selectedWrapperGroup.id)
-    : null
-  const activeSelectedVariantId = selectedVariantKey
-    ? wrapperVariantSelections[selectedVariantKey]
-      ?? selectedVariantId
-      ?? selectedWrapperGroup?.defaultVariantId
-      ?? selectedWrapperGroup?.variants[0]?.id
-      ?? null
-    : null
-  const selectedWrapperVariant = selectedWrapperGroup
-    ? selectedWrapperGroup.variants.find(variant => variant.id === activeSelectedVariantId)
-      ?? selectedWrapperGroup.variants.find(variant => variant.id === selectedWrapperGroup.defaultVariantId)
-      ?? selectedWrapperGroup.variants[0]
-      ?? null
-    : null
-  const editingMultiFunctionWidget = editContext.kind === 'multi-function-widget'
-  const editorMode: 'page' | 'mfw' = editingMultiFunctionWidget ? 'mfw' : 'page'
-  const editingSelectedGroup = editingMultiFunctionWidget && selectedWrapperGroup && selectedWrapperGroup.id === editContext.groupId
-  const editingSelectedVariant = editingSelectedGroup
-    ? selectedWrapperGroup.variants.find(variant => variant.id === editContext.layerId)
-      ?? selectedWrapperVariant
-      ?? null
-    : null
+  }, [previewSession])
 
   const canvasWidgets = activeTab === 'alerts'
     ? []
-    : editingSelectedGroup && editingSelectedVariant
-      ? editingSelectedVariant.widgets.map(widget => ({
-        ...widget,
-        col: widget.col + selectedWrapperGroup.col,
-        row: widget.row + selectedWrapperGroup.row,
-      }))
+    : editingSelectedWidgetStack && editingSelectedLayer
+      ? editingSelectedLayer.widgets
       : (currentPage?.widgets ?? [])
+  const referenceLayer = compareEnabled && selectedWidgetStack && selectedLayer
+    ? selectedWidgetStack.layers.find(layer => layer.id === referenceLayerId && layer.id !== selectedLayer.id)
+      ?? selectedWidgetStack.layers.find(layer => layer.id !== selectedLayer.id)
+      ?? null
+    : null
 
   const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
   const resolvedTheme = resolveDashTheme(globalDefaults?.theme, layout.theme)
@@ -305,71 +355,94 @@ export function useDashEditorController({
 
   useEffect(() => {
     if (activeTab === 'alerts') {
-      setSelectedWrapperGroupId(null)
-      setSelectedVariantId(null)
+      setSelectedWidgetStackId(null)
+      setSelectedLayerId(null)
       setEditContext(createPageEditContext())
       return
     }
-    if (!selectedWrapperGroupId) return
-    const group = wrapperGroups.find(candidate => candidate.id === selectedWrapperGroupId)
-    if (!group) {
-      setSelectedWrapperGroupId(null)
-      setSelectedVariantId(null)
+    if (!selectedWidgetStackId) return
+    const widgetStack = widgetStacks.find(candidate => candidate.id === selectedWidgetStackId)
+    if (!widgetStack) {
+      setSelectedWidgetStackId(null)
+      setSelectedLayerId(null)
       setEditContext(createPageEditContext())
       return
     }
-    const nextVariantId = currentPage
-      ? wrapperVariantSelections[wrapperSelectionKey(currentPage.id, group.id)]
-        ?? selectedVariantId
-        ?? group.defaultVariantId
-        ?? group.variants[0]?.id
+    const nextLayerId = currentPage
+      ? widgetStackLayerSelections[widgetStackSelectionKey(currentPage.id, widgetStack.id)]
+        ?? selectedLayerId
+        ?? widgetStack.defaultLayerId
+        ?? widgetStack.layers[0]?.id
         ?? null
       : null
-    if (!group.variants.some(variant => variant.id === nextVariantId)) {
-      const fallbackVariantId = group.defaultVariantId ?? group.variants[0]?.id ?? null
-      setSelectedVariantId(fallbackVariantId)
+    if (!widgetStack.layers.some(layer => layer.id === nextLayerId)) {
+      const fallbackLayerId = widgetStack.defaultLayerId ?? widgetStack.layers[0]?.id ?? null
+      setSelectedLayerId(fallbackLayerId)
       if (currentPage) {
-        setWrapperVariantSelections(previous => {
-          const key = wrapperSelectionKey(currentPage.id, group.id)
-          if (!fallbackVariantId) {
+        setWidgetStackLayerSelections(previous => {
+          const key = widgetStackSelectionKey(currentPage.id, widgetStack.id)
+          if (!fallbackLayerId) {
             if (!(key in previous)) return previous
             const next = { ...previous }
             delete next[key]
             return next
           }
-          return { ...previous, [key]: fallbackVariantId }
+          return { ...previous, [key]: fallbackLayerId }
         })
       }
     }
-  }, [activeTab, currentPage, selectedVariantId, selectedWrapperGroupId, wrapperGroups, wrapperVariantSelections])
+  }, [activeTab, currentPage, selectedLayerId, selectedWidgetStackId, widgetStacks, widgetStackLayerSelections])
 
   useEffect(() => {
-    if (editContext.kind !== 'multi-function-widget') return
-    if (!currentPage || !selectedWrapperGroup || !selectedWrapperVariant) {
+    if (editContext.kind !== 'widget-stack') return
+    if (!currentPage || !selectedWidgetStack || !selectedLayer) {
       setEditContext(createPageEditContext())
       return
     }
-    if (editContext.groupId !== selectedWrapperGroup.id || !selectedWrapperGroup.variants.some(variant => variant.id === editContext.layerId)) {
-      const nextContext = enterMultiFunctionWidgetMode(currentPage, selectedWrapperGroup.id, wrapperVariantSelections)
+    if (editContext.groupId !== selectedWidgetStack.id || !selectedWidgetStack.layers.some(layer => layer.id === editContext.layerId)) {
+      const nextContext = enterWidgetStackMode(currentPage, selectedWidgetStack.id, widgetStackLayerSelections)
       setEditContext(nextContext ?? createPageEditContext())
     }
-  }, [currentPage, editContext, selectedWrapperGroup, selectedWrapperVariant, wrapperVariantSelections])
+  }, [currentPage, editContext, selectedWidgetStack, selectedLayer, widgetStackLayerSelections])
 
-  const clearWrapperVariantSelections = useCallback(() => {
-    setWrapperVariantSelections({})
+  useEffect(() => {
+    if (!editingWidgetStack || !selectedWidgetStack || !selectedLayer) {
+      setCompareEnabled(false)
+      setReferenceLayerId(null)
+      return
+    }
+    const candidateLayers = selectedWidgetStack.layers.filter(layer => layer.id !== selectedLayer.id)
+    if (candidateLayers.length === 0) {
+      setCompareEnabled(false)
+      setReferenceLayerId(null)
+      return
+    }
+    if (!compareEnabled) {
+      if (referenceLayerId && !candidateLayers.some(layer => layer.id === referenceLayerId)) {
+        setReferenceLayerId(null)
+      }
+      return
+    }
+    if (!referenceLayerId || !candidateLayers.some(layer => layer.id === referenceLayerId)) {
+      setReferenceLayerId(candidateLayers[0].id)
+    }
+  }, [compareEnabled, editingWidgetStack, referenceLayerId, selectedLayer, selectedWidgetStack])
+
+  const clearWidgetStackLayerSelections = useCallback(() => {
+    setWidgetStackLayerSelections({})
   }, [])
 
-  const updateWrapperVariantSelection = useCallback((pageID: string, groupID: string, variantID: string | null) => {
-    setWrapperVariantSelections(previous => {
-      const key = wrapperSelectionKey(pageID, groupID)
-      if (!variantID) {
+  const updateWidgetStackLayerSelection = useCallback((pageID: string, groupID: string, layerID: string | null) => {
+    setWidgetStackLayerSelections(previous => {
+      const key = widgetStackSelectionKey(pageID, groupID)
+      if (!layerID) {
         if (!(key in previous)) return previous
         const next = { ...previous }
         delete next[key]
         return next
       }
-      if (previous[key] === variantID) return previous
-      return { ...previous, [key]: variantID }
+      if (previous[key] === layerID) return previous
+      return { ...previous, [key]: layerID }
     })
   }, [])
 
@@ -386,24 +459,18 @@ export function useDashEditorController({
   }, [activeTab])
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
-    if (editingSelectedGroup && editingSelectedVariant) {
+    if (editingSelectedWidgetStack && editingSelectedLayer) {
       updateCurrentPage(page => ({
         ...page,
-        wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id
+            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id
               ? {
-                ...variant,
-                widgets: widgets.map(widget => ({
-                  ...clampWidgetToLayerBounds({
-                    ...widget,
-                    col: widget.col - group.col,
-                    row: widget.row - group.row,
-                  }, group),
-                })),
+                ...layer,
+                widgets: widgets.map(widget => clampWidgetToLayerBounds(widget, group)),
               }
-              : variant),
+              : layer),
           }
           : group),
       }))
@@ -411,40 +478,40 @@ export function useDashEditorController({
     }
 
     updateCurrentPage(page => ({ ...page, widgets }))
-  }, [editingSelectedGroup, editingSelectedVariant, selectedWrapperGroup, updateCurrentPage])
+  }, [editingSelectedWidgetStack, editingSelectedLayer, selectedWidgetStack, updateCurrentPage])
 
   const selectCanvasTab = useCallback((tab: 'idle' | 'alerts' | number) => {
     setActiveTab(tab)
-    setSelectedWrapperGroupId(null)
-    setSelectedVariantId(null)
-    clearWrapperVariantSelections()
+    setSelectedWidgetStackId(null)
+    setSelectedLayerId(null)
+    clearWidgetStackLayerSelections()
     setEditContext(createPageEditContext())
     setSelectedId(null)
-  }, [clearWrapperVariantSelections])
+  }, [clearWidgetStackLayerSelections])
 
   const handleAddPage = useCallback(() => {
     const name = `Page ${layout.pages.length + 1}`
-    const newPage: DashPage = { id: createDashPageId(), name, widgets: [], wrapperGroups: [] }
+    const newPage: DashPage = { id: createDashPageId(), name, widgets: [], widgetStacks: [] }
     setLayout(previous => ({ ...previous, pages: [...previous.pages, newPage] }))
     setActiveTab(layout.pages.length)
-    setSelectedWrapperGroupId(null)
-    setSelectedVariantId(null)
-    clearWrapperVariantSelections()
+    setSelectedWidgetStackId(null)
+    setSelectedLayerId(null)
+    clearWidgetStackLayerSelections()
     setEditContext(createPageEditContext())
     setSelectedId(null)
-  }, [clearWrapperVariantSelections, layout.pages.length])
+  }, [clearWidgetStackLayerSelections, layout.pages.length])
 
   const handleDeletePage = useCallback((index: number) => {
     if (layout.pages.length <= 1) return
 
     setLayout(previous => ({ ...previous, pages: previous.pages.filter((_, pageIndex) => pageIndex !== index) }))
     setActiveTab(previous => typeof previous === 'number' && previous >= index ? Math.max(0, previous - 1) : previous)
-    setSelectedWrapperGroupId(null)
-    setSelectedVariantId(null)
-    clearWrapperVariantSelections()
+    setSelectedWidgetStackId(null)
+    setSelectedLayerId(null)
+    clearWidgetStackLayerSelections()
     setEditContext(createPageEditContext())
     setSelectedId(null)
-  }, [clearWrapperVariantSelections, layout.pages.length])
+  }, [clearWidgetStackLayerSelections, layout.pages.length])
 
   const handleRenamePage = useCallback((index: number, name: string) => {
     setLayout(previous => ({
@@ -454,13 +521,13 @@ export function useDashEditorController({
   }, [])
 
   const handleClearPage = useCallback(() => {
-    if (editingSelectedGroup && editingSelectedVariant) {
+    if (editingSelectedWidgetStack && editingSelectedLayer) {
       updateCurrentPage(page => ({
         ...page,
-        wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id ? { ...variant, widgets: [] } : variant),
+            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id ? { ...layer, widgets: [] } : layer),
           }
           : group),
       }))
@@ -468,7 +535,7 @@ export function useDashEditorController({
       updateCurrentPage(page => ({ ...page, widgets: [] }))
     }
     setSelectedId(null)
-  }, [editingSelectedGroup, editingSelectedVariant, selectedWrapperGroup, updateCurrentPage])
+  }, [editingSelectedWidgetStack, editingSelectedLayer, selectedWidgetStack, updateCurrentPage])
 
   const handleSettingsChange = useCallback((theme: DashThemeOverrides, domain: Partial<DomainPalette>) => {
     setLayout(previous => ({
@@ -498,15 +565,15 @@ export function useDashEditorController({
 
   const doRemoveSelectedWidget = useCallback(() => {
     if (selectedId === null) return
-    if (editingSelectedGroup && editingSelectedVariant) {
+    if (editingSelectedWidgetStack && editingSelectedLayer) {
       updateCurrentPage(page => ({
         ...page,
-        wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
           ? {
             ...group,
-            variants: group.variants.map(variant => variant.id === editingSelectedVariant.id
-              ? { ...variant, widgets: variant.widgets.filter((_, index) => index !== selectedId) }
-              : variant),
+            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id
+              ? { ...layer, widgets: layer.widgets.filter((_, index) => index !== selectedId) }
+              : layer),
           }
           : group),
       }))
@@ -515,239 +582,293 @@ export function useDashEditorController({
     }
 
     setSelectedId(null)
-  }, [editingSelectedGroup, editingSelectedVariant, selectedId, selectedWrapperGroup, updateCurrentPage])
+  }, [editingSelectedWidgetStack, editingSelectedLayer, selectedId, selectedWidgetStack, updateCurrentPage])
 
   const updateSelectedWidget = useCallback((updated: DashWidget) => {
     if (selectedId === null) return
     handleUpdate(canvasWidgets.map((widget, index) => index === selectedId ? updated : widget))
   }, [canvasWidgets, handleUpdate, selectedId])
 
-  const exitMultiFunctionWidgetEditMode = useCallback(() => {
-    const nextState = createClearedWrapperGroupSelectionState()
-    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
-    setSelectedVariantId(nextState.selectedVariantId)
-    setEditContext(nextState.editContext)
+  const exitWidgetStackEditMode = useCallback(() => {
+    if (!currentPage || !selectedWidgetStack) {
+      const nextState = createClearedWidgetStackSelectionState()
+      setSelectedWidgetStackId(nextState.selectedWidgetStackId)
+      setSelectedLayerId(nextState.selectedLayerId)
+      setEditContext(nextState.editContext)
+      setSelectedId(null)
+      return
+    }
+    const nextState = createWidgetStackSelectionState(currentPage, selectedWidgetStack.id, widgetStackLayerSelections)
+    setSelectedWidgetStackId(nextState?.selectedWidgetStackId ?? selectedWidgetStack.id)
+    setSelectedLayerId(nextState?.selectedLayerId ?? selectedLayerId)
+    setEditContext(createPageEditContext())
     setSelectedId(null)
-  }, [])
+  }, [currentPage, selectedLayerId, selectedWidgetStack, widgetStackLayerSelections])
 
-  const enterSelectedWrapperGroup = useCallback((groupId?: string | null) => {
+  const enterSelectedWidgetStack = useCallback((groupId?: string | null) => {
     if (!currentPage) return
-    const targetGroupId = groupId ?? selectedWrapperGroupId
+    const targetGroupId = groupId ?? selectedWidgetStackId
     if (!targetGroupId) return
-    const nextState = createWrapperGroupEditState(currentPage, targetGroupId, wrapperVariantSelections)
+    const nextState = createWidgetStackEditState(currentPage, targetGroupId, widgetStackLayerSelections)
     if (!nextState) return
-    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
-    setSelectedVariantId(nextState.selectedVariantId)
+    setSelectedWidgetStackId(nextState.selectedWidgetStackId)
+    setSelectedLayerId(nextState.selectedLayerId)
     setEditContext(nextState.editContext)
     setSelectedId(null)
-  }, [currentPage, selectedWrapperGroupId, wrapperVariantSelections])
+  }, [currentPage, selectedWidgetStackId, widgetStackLayerSelections])
 
-  const selectWrapperGroup = useCallback((groupId: string | null) => {
+  const selectWidgetStack = useCallback((groupId: string | null) => {
     if (!groupId) {
-      if (editContext.kind !== 'multi-function-widget') {
-        const clearedState = createClearedWrapperGroupSelectionState()
-        setSelectedWrapperGroupId(clearedState.selectedWrapperGroupId)
-        setSelectedVariantId(clearedState.selectedVariantId)
+      if (editContext.kind !== 'widget-stack') {
+        const clearedState = createClearedWidgetStackSelectionState()
+        setSelectedWidgetStackId(clearedState.selectedWidgetStackId)
+        setSelectedLayerId(clearedState.selectedLayerId)
       }
       setSelectedId(null)
       return
     }
     if (!currentPage) return
-    const nextState = createWrapperGroupSelectionState(currentPage, groupId, wrapperVariantSelections)
+    const nextState = createWidgetStackSelectionState(currentPage, groupId, widgetStackLayerSelections)
     if (!nextState) return
-    setSelectedWrapperGroupId(nextState.selectedWrapperGroupId)
-    setSelectedVariantId(nextState.selectedVariantId)
-    if (editContext.kind !== 'multi-function-widget' || editContext.groupId !== groupId) {
+    setSelectedWidgetStackId(nextState.selectedWidgetStackId)
+    setSelectedLayerId(nextState.selectedLayerId)
+    if (editContext.kind !== 'widget-stack' || editContext.groupId !== groupId) {
       setEditContext(nextState.editContext)
     }
     setSelectedId(null)
-  }, [currentPage, editContext, wrapperVariantSelections])
+  }, [currentPage, editContext, widgetStackLayerSelections])
 
-  const handleAddWrapperGroup = useCallback(() => {
+  const handleAddWidgetStack = useCallback(() => {
     if (!currentPage) return
-    const created = createMultiFunctionWidgetOnDrop({
+    const created = createWidgetStackOnDrop({
       page: currentPage,
       drop: { col: 0, row: 0 },
       gridCols: layout.gridCols,
       gridRows: layout.gridRows,
     })
-    const nextGroups = created.page.wrapperGroups ?? []
+    const nextGroups = created.page.widgetStacks ?? []
     const nextGroup = nextGroups[nextGroups.length - 1]
-    if (!nextGroup || !isValidMultiFunctionWidgetPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
+    if (!nextGroup || !isValidWidgetStackPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
       return
     }
     updateCurrentPage(() => created.page)
-    updateWrapperVariantSelection(currentPage.id, created.context.groupId, created.context.layerId)
-    setSelectedWrapperGroupId(created.context.groupId)
-    setSelectedVariantId(created.context.layerId)
+    updateWidgetStackLayerSelection(currentPage.id, created.context.groupId, created.context.layerId)
+    setSelectedWidgetStackId(created.context.groupId)
+    setSelectedLayerId(created.context.layerId)
     setEditContext(created.context)
     setSelectedId(null)
-  }, [currentPage, layout.gridCols, layout.gridRows, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, layout.gridCols, layout.gridRows, updateCurrentPage, updateWidgetStackLayerSelection])
 
-  const updateSelectedWrapperGroup = useCallback((patch: Partial<DashWrapperGroup>) => {
-    if (!selectedWrapperGroup || !currentPage) return
+  const updateSelectedWidgetStack = useCallback((patch: Partial<DashWidgetStack>) => {
+    if (!selectedWidgetStack || !currentPage) return
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => {
-        if (group.id !== selectedWrapperGroup.id) return group
+      widgetStacks: (page.widgetStacks ?? []).map(group => {
+        if (group.id !== selectedWidgetStack.id) return group
         const next = { ...group, ...patch }
         next.colSpan = Math.max(1, Math.min(next.colSpan, layout.gridCols))
         next.rowSpan = Math.max(1, Math.min(next.rowSpan, layout.gridRows))
         next.col = Math.max(0, Math.min(next.col, layout.gridCols - next.colSpan))
         next.row = Math.max(0, Math.min(next.row, layout.gridRows - next.rowSpan))
-        if (!isValidMultiFunctionWidgetPlacement(next, page, layout.gridCols, layout.gridRows, group.id)) {
+        if (!isValidWidgetStackPlacement(next, page, layout.gridCols, layout.gridRows, group.id)) {
           return group
         }
         return {
           ...next,
-          variants: next.variants.map(variant => ({
-            ...variant,
-            widgets: variant.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
+          layers: next.layers.map(layer => ({
+            ...layer,
+            widgets: layer.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
           })),
         }
       }),
     }))
-  }, [currentPage, layout.gridCols, layout.gridRows, selectedWrapperGroup, updateCurrentPage])
+  }, [currentPage, layout.gridCols, layout.gridRows, selectedWidgetStack, updateCurrentPage])
 
-  const handleDeleteSelectedWrapperGroup = useCallback(() => {
-    if (!selectedWrapperGroup || !currentPage) return
+  const handleDeleteSelectedWidgetStack = useCallback(() => {
+    if (!selectedWidgetStack || !currentPage) return
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).filter(group => group.id !== selectedWrapperGroup.id),
+      widgetStacks: (page.widgetStacks ?? []).filter(group => group.id !== selectedWidgetStack.id),
     }))
-    updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, null)
-    setSelectedWrapperGroupId(null)
-    setSelectedVariantId(null)
+    updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, null)
+    setSelectedWidgetStackId(null)
+    setSelectedLayerId(null)
     setEditContext(createPageEditContext())
     setSelectedId(null)
-  }, [currentPage, selectedWrapperGroup, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, selectedWidgetStack, updateCurrentPage, updateWidgetStackLayerSelection])
 
-  const handleSelectWrapperVariant = useCallback((variantId: string) => {
-    if (currentPage && selectedWrapperGroup) {
-      updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, variantId)
+  const handleSelectLayer = useCallback((layerId: string) => {
+    if (currentPage && selectedWidgetStack) {
+      updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, layerId)
     }
-    setSelectedVariantId(variantId)
-    if (editContext.kind === 'multi-function-widget' && selectedWrapperGroup) {
+    setSelectedLayerId(layerId)
+    if (editContext.kind === 'widget-stack' && selectedWidgetStack) {
       setEditContext({
-        kind: 'multi-function-widget',
-        groupId: selectedWrapperGroup.id,
-        layerId: variantId,
+        kind: 'widget-stack',
+        groupId: selectedWidgetStack.id,
+        layerId,
       })
     }
     setSelectedId(null)
-  }, [currentPage, editContext.kind, selectedWrapperGroup, updateWrapperVariantSelection])
+  }, [currentPage, editContext.kind, selectedWidgetStack, updateWidgetStackLayerSelection])
 
-  const handleAddWrapperVariant = useCallback(() => {
-    if (!selectedWrapperGroup || !currentPage) return
-    const nextVariant = { id: createDashLayerId(), name: `Layer ${selectedWrapperGroup.variants.length + 1}`, widgets: [] }
+  const handleAddLayer = useCallback(() => {
+    if (!selectedWidgetStack || !currentPage) return
+    const nextLayer = { id: createDashLayerId(), name: `Layer ${selectedWidgetStack.layers.length + 1}`, widgets: [] }
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
         ? {
           ...group,
-          variants: [...group.variants, nextVariant],
-          defaultVariantId: group.defaultVariantId ?? nextVariant.id,
+          layers: [...group.layers, nextLayer],
+          defaultLayerId: group.defaultLayerId ?? nextLayer.id,
         }
         : group),
     }))
-    updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, nextVariant.id)
-    setSelectedVariantId(nextVariant.id)
-    if (editContext.kind === 'multi-function-widget') {
+    updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, nextLayer.id)
+    setSelectedLayerId(nextLayer.id)
+    if (editContext.kind === 'widget-stack') {
       setEditContext({
-        kind: 'multi-function-widget',
-        groupId: selectedWrapperGroup.id,
-        layerId: nextVariant.id,
+        kind: 'widget-stack',
+        groupId: selectedWidgetStack.id,
+        layerId: nextLayer.id,
       })
     }
     setSelectedId(null)
-  }, [currentPage, editContext.kind, selectedWrapperGroup, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, editContext.kind, selectedWidgetStack, updateCurrentPage, updateWidgetStackLayerSelection])
 
-  const handleDeleteWrapperVariant = useCallback((variantId: string) => {
-    if (!selectedWrapperGroup || !currentPage || selectedWrapperGroup.variants.length <= 1) return
-    const targetVariant = selectedWrapperGroup.variants.find(variant => variant.id === variantId)
-    if (!targetVariant) return
-    const nextVariantId = selectedWrapperGroup.variants.find(variant => variant.id !== variantId)?.id ?? null
+  const handleDuplicateLayer = useCallback((layerId: string) => {
+    if (!selectedWidgetStack || !currentPage) return
+    const sourceIndex = selectedWidgetStack.layers.findIndex(layer => layer.id === layerId)
+    if (sourceIndex < 0) return
+    const sourceLayer = selectedWidgetStack.layers[sourceIndex]
+    const duplicatedLayerId = createDashLayerId()
+    const duplicatedLayer = {
+      ...sourceLayer,
+      id: duplicatedLayerId,
+      name: `${sourceLayer.name} Copy`,
+      widgets: sourceLayer.widgets.map(widget => ({ ...widget, id: createDashWidgetId() })),
+    }
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => {
-        if (group.id !== selectedWrapperGroup.id) return group
-        const variants = group.variants.filter(variant => variant.id !== variantId)
+      widgetStacks: (page.widgetStacks ?? []).map(group => {
+        if (group.id !== selectedWidgetStack.id) return group
+        const layers = [...group.layers]
+        layers.splice(sourceIndex + 1, 0, duplicatedLayer)
+        return { ...group, layers }
+      }),
+    }))
+    updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, duplicatedLayerId)
+    setSelectedLayerId(duplicatedLayerId)
+    if (editContext.kind === 'widget-stack') {
+      setEditContext({
+        kind: 'widget-stack',
+        groupId: selectedWidgetStack.id,
+        layerId: duplicatedLayerId,
+      })
+    }
+    setSelectedId(null)
+  }, [currentPage, editContext.kind, selectedWidgetStack, updateCurrentPage, updateWidgetStackLayerSelection])
+
+  const handleRenameLayer = useCallback((layerId: string, name: string) => {
+    if (!selectedWidgetStack) return
+    updateCurrentPage(page => ({
+      ...page,
+      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
+        ? {
+          ...group,
+          layers: group.layers.map(layer => layer.id === layerId ? { ...layer, name } : layer),
+        }
+        : group),
+    }))
+  }, [selectedWidgetStack, updateCurrentPage])
+
+  const handleDeleteLayer = useCallback((layerId: string) => {
+    if (!selectedWidgetStack || !currentPage || selectedWidgetStack.layers.length <= 1) return
+    const targetLayer = selectedWidgetStack.layers.find(layer => layer.id === layerId)
+    if (!targetLayer) return
+    const nextLayerId = selectedWidgetStack.layers.find(layer => layer.id !== layerId)?.id ?? null
+    updateCurrentPage(page => ({
+      ...page,
+      widgetStacks: (page.widgetStacks ?? []).map(group => {
+        if (group.id !== selectedWidgetStack.id) return group
+        const layers = group.layers.filter(layer => layer.id !== layerId)
         return {
           ...group,
-          variants,
-          defaultVariantId: group.defaultVariantId === variantId ? variants[0]?.id : group.defaultVariantId,
+          layers,
+          defaultLayerId: group.defaultLayerId === layerId ? layers[0]?.id : group.defaultLayerId,
         }
       }),
     }))
-    updateWrapperVariantSelection(currentPage.id, selectedWrapperGroup.id, nextVariantId)
-    const deletedSelectedVariant = selectedWrapperVariant?.id === variantId
-    if (deletedSelectedVariant) {
-      setSelectedVariantId(nextVariantId)
+    updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, nextLayerId)
+    const deletedSelectedLayer = selectedLayer?.id === layerId
+    if (deletedSelectedLayer) {
+      setSelectedLayerId(nextLayerId)
     }
-    if (nextVariantId && editContext.kind === 'multi-function-widget' && deletedSelectedVariant) {
+    if (nextLayerId && editContext.kind === 'widget-stack' && deletedSelectedLayer) {
       setEditContext({
-        kind: 'multi-function-widget',
-        groupId: selectedWrapperGroup.id,
-        layerId: nextVariantId,
+        kind: 'widget-stack',
+        groupId: selectedWidgetStack.id,
+        layerId: nextLayerId,
       })
-    } else if (deletedSelectedVariant) {
+    } else if (deletedSelectedLayer) {
       setEditContext(createPageEditContext())
     }
-    if (deletedSelectedVariant) {
+    if (deletedSelectedLayer) {
       setSelectedId(null)
     }
-  }, [currentPage, editContext.kind, selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, editContext.kind, selectedWidgetStack, selectedLayer, updateCurrentPage, updateWidgetStackLayerSelection])
 
-  const handleDeleteSelectedVariant = useCallback(() => {
-    if (!selectedWrapperVariant) return
-    handleDeleteWrapperVariant(selectedWrapperVariant.id)
-  }, [handleDeleteWrapperVariant, selectedWrapperVariant])
+  const handleDeleteSelectedLayer = useCallback(() => {
+    if (!selectedLayer) return
+    handleDeleteLayer(selectedLayer.id)
+  }, [handleDeleteLayer, selectedLayer])
 
-  const handleMoveWrapperVariant = useCallback((variantId: string, direction: -1 | 1) => {
-    if (!selectedWrapperGroup) return
-    const currentIndex = selectedWrapperGroup.variants.findIndex(variant => variant.id === variantId)
+  const handleMoveLayer = useCallback((layerId: string, direction: -1 | 1) => {
+    if (!selectedWidgetStack) return
+    const currentIndex = selectedWidgetStack.layers.findIndex(layer => layer.id === layerId)
     const nextIndex = currentIndex + direction
-    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedWrapperGroup.variants.length) return
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedWidgetStack.layers.length) return
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => {
-        if (group.id !== selectedWrapperGroup.id) return group
-        const variants = [...group.variants]
-        const [variant] = variants.splice(currentIndex, 1)
-        variants.splice(nextIndex, 0, variant)
-        return { ...group, variants }
+      widgetStacks: (page.widgetStacks ?? []).map(group => {
+        if (group.id !== selectedWidgetStack.id) return group
+        const layers = [...group.layers]
+        const [layer] = layers.splice(currentIndex, 1)
+        layers.splice(nextIndex, 0, layer)
+        return { ...group, layers }
       }),
     }))
-  }, [selectedWrapperGroup, updateCurrentPage])
+  }, [selectedWidgetStack, updateCurrentPage])
 
-  const handleMoveSelectedVariant = useCallback((direction: -1 | 1) => {
-    if (!selectedWrapperVariant) return
-    handleMoveWrapperVariant(selectedWrapperVariant.id, direction)
-  }, [handleMoveWrapperVariant, selectedWrapperVariant])
+  const handleMoveSelectedLayer = useCallback((direction: -1 | 1) => {
+    if (!selectedLayer) return
+    handleMoveLayer(selectedLayer.id, direction)
+  }, [handleMoveLayer, selectedLayer])
 
-  const handleSetDefaultWrapperVariant = useCallback((variantId: string) => {
-    if (!selectedWrapperGroup) return
+  const handleSetDefaultLayer = useCallback((layerId: string) => {
+    if (!selectedWidgetStack) return
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
-        ? { ...group, defaultVariantId: variantId }
+      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
+        ? { ...group, defaultLayerId: layerId }
         : group),
     }))
-  }, [selectedWrapperGroup, updateCurrentPage])
+  }, [selectedWidgetStack, updateCurrentPage])
 
-  const updateSelectedVariant = useCallback((patch: { name?: string; defaultVariantId?: string }) => {
-    if (!selectedWrapperGroup || !selectedWrapperVariant) return
+  const updateSelectedLayer = useCallback((patch: { name?: string; defaultLayerId?: string }) => {
+    if (!selectedWidgetStack || !selectedLayer) return
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => group.id === selectedWrapperGroup.id
+      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
         ? {
           ...group,
-          defaultVariantId: patch.defaultVariantId ?? group.defaultVariantId,
-          variants: group.variants.map(variant => variant.id === selectedWrapperVariant.id ? { ...variant, ...(patch.name !== undefined ? { name: patch.name } : {}) } : variant),
+          defaultLayerId: patch.defaultLayerId ?? group.defaultLayerId,
+          layers: group.layers.map(layer => layer.id === selectedLayer.id ? { ...layer, ...(patch.name !== undefined ? { name: patch.name } : {}) } : layer),
         }
         : group),
     }))
-  }, [selectedWrapperGroup, selectedWrapperVariant, updateCurrentPage])
+  }, [selectedWidgetStack, selectedLayer, updateCurrentPage])
 
   const handlePageBackgroundChange = useCallback((background?: RGBAColor) => {
     updateCurrentPage(page => ({ ...page, background }))
@@ -755,41 +876,40 @@ export function useDashEditorController({
 
   const handleCanvasSelectWidget = useCallback((id: number | null) => {
     setSelectedId(id)
-    if (id !== null && !editingMultiFunctionWidget) {
-      setSelectedWrapperGroupId(null)
-      setSelectedVariantId(null)
+    if (id !== null && !editingWidgetStack) {
+      setSelectedWidgetStackId(null)
+      setSelectedLayerId(null)
     }
-  }, [editingMultiFunctionWidget])
+  }, [editingWidgetStack])
 
   const handleCanvasBackgroundClick = useCallback(() => {
-    if (editingMultiFunctionWidget) {
-      exitMultiFunctionWidgetEditMode()
+    if (editingWidgetStack) {
       setSelectedId(null)
       return
     }
-    const clearedState = createClearedWrapperGroupSelectionState()
+    const clearedState = createClearedWidgetStackSelectionState()
     setSelectedId(null)
-    setSelectedWrapperGroupId(clearedState.selectedWrapperGroupId)
-    setSelectedVariantId(clearedState.selectedVariantId)
-  }, [editingMultiFunctionWidget, exitMultiFunctionWidgetEditMode])
+    setSelectedWidgetStackId(clearedState.selectedWidgetStackId)
+    setSelectedLayerId(clearedState.selectedLayerId)
+  }, [editingWidgetStack, exitWidgetStackEditMode])
 
-  const handleCanvasSelectWrapperGroup = useCallback((groupId: string | null) => {
+  const handleCanvasSelectWidgetStack = useCallback((groupId: string | null) => {
     if (!groupId) {
-      selectWrapperGroup(null)
+      selectWidgetStack(null)
       return
     }
-    selectWrapperGroup(groupId)
-  }, [selectWrapperGroup])
+    selectWidgetStack(groupId)
+  }, [selectWidgetStack])
 
-  const handleCanvasEnterWrapperGroup = useCallback((groupId: string) => {
-    enterSelectedWrapperGroup(groupId)
-  }, [enterSelectedWrapperGroup])
+  const handleCanvasEnterWidgetStack = useCallback((groupId: string) => {
+    enterSelectedWidgetStack(groupId)
+  }, [enterSelectedWidgetStack])
 
-  const handleCanvasUpdateWrapperGroup = useCallback((groupId: string, rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
-    setSelectedWrapperGroupId(groupId)
+  const handleCanvasUpdateWidgetStack = useCallback((groupId: string, rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
+    setSelectedWidgetStackId(groupId)
     updateCurrentPage(page => ({
       ...page,
-      wrapperGroups: (page.wrapperGroups ?? []).map(group => {
+      widgetStacks: (page.widgetStacks ?? []).map(group => {
         if (group.id !== groupId) return group
         const next = {
           ...group,
@@ -798,59 +918,77 @@ export function useDashEditorController({
           colSpan: Math.max(1, Math.min(rect.colSpan, layout.gridCols)),
           rowSpan: Math.max(1, Math.min(rect.rowSpan, layout.gridRows)),
         }
-        if (!isValidMultiFunctionWidgetPlacement(next, page, layout.gridCols, layout.gridRows, groupId)) {
+        if (!isValidWidgetStackPlacement(next, page, layout.gridCols, layout.gridRows, groupId)) {
           return group
         }
         return {
           ...next,
-          variants: next.variants.map(variant => ({
-            ...variant,
-            widgets: variant.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
+          layers: next.layers.map(layer => ({
+            ...layer,
+            widgets: layer.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
           })),
         }
       }),
     }))
   }, [layout.gridCols, layout.gridRows, updateCurrentPage])
 
-  const handleCanvasCreateMultiFunctionWidget = useCallback((rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
-    if (!currentPage || editingMultiFunctionWidget) return
-    const created = createMultiFunctionWidgetOnDrop({
+  const handleCanvasCreateWidgetStack = useCallback((rect: { col: number; row: number; colSpan: number; rowSpan: number }) => {
+    if (!currentPage || editingWidgetStack) return
+    const created = createWidgetStackOnDrop({
       page: currentPage,
       drop: { col: rect.col, row: rect.row },
       gridCols: layout.gridCols,
       gridRows: layout.gridRows,
     })
-    const nextGroups = created.page.wrapperGroups ?? []
+    const nextGroups = created.page.widgetStacks ?? []
     const nextGroup = nextGroups[nextGroups.length - 1]
-    if (!nextGroup || !isValidMultiFunctionWidgetPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
+    if (!nextGroup || !isValidWidgetStackPlacement(nextGroup, currentPage, layout.gridCols, layout.gridRows)) {
       return
     }
     updateCurrentPage(() => created.page)
-    updateWrapperVariantSelection(currentPage.id, created.context.groupId, created.context.layerId)
-    setSelectedWrapperGroupId(created.context.groupId)
-    setSelectedVariantId(created.context.layerId)
+    updateWidgetStackLayerSelection(currentPage.id, created.context.groupId, created.context.layerId)
+    setSelectedWidgetStackId(created.context.groupId)
+    setSelectedLayerId(created.context.layerId)
     setEditContext(created.context)
     setSelectedId(null)
-  }, [currentPage, editingMultiFunctionWidget, layout.gridCols, layout.gridRows, updateCurrentPage, updateWrapperVariantSelection])
+  }, [currentPage, editingWidgetStack, layout.gridCols, layout.gridRows, updateCurrentPage, updateWidgetStackLayerSelection])
 
-  const blockedAreas = editingMultiFunctionWidget
+  const blockedAreas = editingWidgetStack
     ? []
-    : wrapperGroups.map(group => ({ col: group.col, row: group.row, colSpan: group.colSpan, rowSpan: group.rowSpan }))
+    : widgetStacks.map(group => ({ col: group.col, row: group.row, colSpan: group.colSpan, rowSpan: group.rowSpan }))
 
-  const placementBounds = editingSelectedGroup
-    ? { col: selectedWrapperGroup.col, row: selectedWrapperGroup.row, colSpan: selectedWrapperGroup.colSpan, rowSpan: selectedWrapperGroup.rowSpan }
+  const placementBounds = editingWidgetStack
+    ? null
+    : selectedWidgetStack
+      ? { col: selectedWidgetStack.col, row: selectedWidgetStack.row, colSpan: selectedWidgetStack.colSpan, rowSpan: selectedWidgetStack.rowSpan }
     : null
 
-  const overlayRects = wrapperGroups.map(group => ({
+  const overlayRects = widgetStacks.map(group => ({
+    defaultLayerName: group.layers.find(layer => layer.id === group.defaultLayerId)?.name ?? group.layers[0]?.name ?? null,
+    activeLayerName: group.layers.find(layer => layer.id === (
+      widgetStackLayerSelections[widgetStackSelectionKey(currentPage?.id ?? '', group.id)]
+      ?? group.defaultLayerId
+      ?? group.layers[0]?.id
+      ?? null
+    ))?.name ?? group.layers[0]?.name ?? null,
     id: group.id,
     col: group.col,
     row: group.row,
     colSpan: group.colSpan,
     rowSpan: group.rowSpan,
     label: group.name,
-    selected: group.id === selectedWrapperGroupId,
-    locked: editingMultiFunctionWidget && group.id !== selectedWrapperGroupId,
-    editing: editingMultiFunctionWidget && group.id === selectedWrapperGroupId,
+    meta: `${group.layers.length} ${group.layers.length === 1 ? 'layer' : 'layers'}`,
+    detail: `Default ${group.layers.find(layer => layer.id === group.defaultLayerId)?.name ?? group.layers[0]?.name ?? 'Layer'}`,
+    secondaryDetail: group.layers.find(layer => layer.id === (
+      widgetStackLayerSelections[widgetStackSelectionKey(currentPage?.id ?? '', group.id)]
+      ?? group.defaultLayerId
+      ?? group.layers[0]?.id
+      ?? null
+    ))?.name ?? undefined,
+    actionLabel: group.id === selectedWidgetStackId && !editingWidgetStack ? 'Open Stack' : undefined,
+    selected: group.id === selectedWidgetStackId,
+    locked: editingWidgetStack && group.id !== selectedWidgetStackId,
+    editing: editingWidgetStack && group.id === selectedWidgetStackId,
   }))
 
   useEffect(() => {
@@ -862,31 +1000,31 @@ export function useDashEditorController({
           setConfirmRemoveWidget(true)
           return
         }
-        if (selectedWrapperGroup) {
-          handleDeleteSelectedWrapperGroup()
+        if (selectedWidgetStack) {
+          handleDeleteSelectedWidgetStack()
         }
         return
       }
 
-      if (event.key === 'Enter' && selectedWrapperGroup && !editingMultiFunctionWidget) {
-        enterSelectedWrapperGroup(selectedWrapperGroup.id)
+      if (event.key === 'Enter' && selectedWidgetStack && !editingWidgetStack) {
+        enterSelectedWidgetStack(selectedWidgetStack.id)
         return
       }
 
-      if (event.key === 'Escape' && editingMultiFunctionWidget) {
-        exitMultiFunctionWidgetEditMode()
+      if (event.key === 'Escape' && editingWidgetStack) {
+        exitWidgetStackEditMode()
       }
     }
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [
-    editingMultiFunctionWidget,
-    enterSelectedWrapperGroup,
-    exitMultiFunctionWidgetEditMode,
-    handleDeleteSelectedWrapperGroup,
+    editingWidgetStack,
+    enterSelectedWidgetStack,
+    exitWidgetStackEditMode,
+    handleDeleteSelectedWidgetStack,
     selectedId,
-    selectedWrapperGroup,
+    selectedWidgetStack,
   ])
 
   const handleSave = useCallback(async () => {
@@ -912,6 +1050,42 @@ export function useDashEditorController({
     setRenamingDash(false)
   }, [layout.name])
 
+  const handleToggleCompare = useCallback(() => {
+    if (!selectedWidgetStack || !selectedLayer) return
+    const nextEnabled = !compareEnabled
+    if (!nextEnabled) {
+      setCompareEnabled(false)
+      setReferenceLayerId(null)
+      return
+    }
+    const candidateLayer = selectedWidgetStack.layers.find(layer => layer.id !== selectedLayer.id)
+    if (!candidateLayer) return
+    setCompareEnabled(true)
+    setReferenceLayerId(previous => previous && previous !== selectedLayer.id
+      ? previous
+      : candidateLayer.id)
+  }, [compareEnabled, selectedLayer, selectedWidgetStack])
+
+  const handleSelectReferenceLayer = useCallback((layerId: string) => {
+    if (!selectedWidgetStack || layerId === selectedLayer?.id) return
+    setCompareEnabled(true)
+    setReferenceLayerId(layerId)
+  }, [selectedLayer, selectedWidgetStack])
+
+  const handlePromoteReferenceLayer = useCallback(() => {
+    if (!currentPage || !selectedWidgetStack || !selectedLayer || !referenceLayer) return
+    const previousLayerId = selectedLayer.id
+    updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, referenceLayer.id)
+    setSelectedLayerId(referenceLayer.id)
+    setReferenceLayerId(previousLayerId)
+    setEditContext({
+      kind: 'widget-stack',
+      groupId: selectedWidgetStack.id,
+      layerId: referenceLayer.id,
+    })
+    setSelectedId(null)
+  }, [currentPage, referenceLayer, selectedLayer, selectedWidgetStack, updateWidgetStackLayerSelection])
+
   return {
     activeTab,
     alertCatalog,
@@ -920,13 +1094,14 @@ export function useDashEditorController({
     catalog,
     confirm,
     confirmRemoveWidget,
+    compareEnabled,
     dashNameValue,
     doRemoveSelectedWidget,
     editorMode,
-    editingMultiFunctionWidget,
+    editingWidgetStack,
     editorTab,
-    enterSelectedWrapperGroup,
-    exitMultiFunctionWidgetEditMode,
+    enterSelectedWidgetStack,
+    exitWidgetStackEditMode,
     fittedCanvas,
     globalDefaults,
     handleAddPage,
@@ -950,33 +1125,40 @@ export function useDashEditorController({
     currentPage,
     resolvedDomainPalette,
     resolvedTheme,
-    handleAddWrapperGroup,
-    handleDeleteSelectedVariant,
-    handleDeleteWrapperVariant,
-    handleDeleteSelectedWrapperGroup,
-    handleMoveWrapperVariant,
-    handleMoveSelectedVariant,
+    handleAddWidgetStack,
+    handleDeleteSelectedLayer,
+    handleDeleteLayer,
+    handleDeleteSelectedWidgetStack,
+    handleDuplicateLayer,
+    handleMoveLayer,
+    handleMoveSelectedLayer,
     handlePageBackgroundChange,
-    handleSetDefaultWrapperVariant,
+    handlePromoteReferenceLayer,
+    handleRenameLayer,
+    handleRenameWidgetStack: (name: string) => updateSelectedWidgetStack({ name }),
+    handleSelectReferenceLayer,
+    handleSetDefaultLayer,
+    handleToggleCompare,
     handleCanvasBackgroundClick,
-    handleCanvasCreateMultiFunctionWidget,
-    handleCanvasEnterWrapperGroup,
+    handleCanvasCreateWidgetStack,
+    handleCanvasEnterWidgetStack,
     handleCanvasSelectWidget,
-    handleCanvasSelectWrapperGroup,
-    handleCanvasUpdateWrapperGroup,
-    handleSelectWrapperVariant,
-    handleAddWrapperVariant,
+    handleCanvasSelectWidgetStack,
+    handleCanvasUpdateWidgetStack,
+    handleSelectLayer,
+    handleAddLayer,
     previewUrl,
     overlayRects,
     placementBounds,
+    referenceLayer,
     renamingDash,
     saveStatus,
     saving,
     selectedId,
-    selectedVariantId: selectedWrapperVariant?.id ?? null,
-    selectedWrapperGroup,
-    selectedWrapperGroupId,
-    selectedWrapperVariant,
+    selectedLayerId: selectedLayer?.id ?? null,
+    selectedWidgetStack,
+    selectedWidgetStackId,
+    selectedLayer,
     selectedWidget,
     setConfirmRemoveWidget,
     setDashNameValue,
@@ -986,11 +1168,11 @@ export function useDashEditorController({
     setRenamingDash,
     setSelectedId,
     showDialog,
-    selectWrapperGroup,
-    wrapperGroups,
+    selectWidgetStack,
+    widgetStacks,
     widgetPreviewUrls,
-    updateSelectedVariant,
-    updateSelectedWrapperGroup,
+    updateSelectedLayer,
+    updateSelectedWidgetStack,
     screenH,
     screenW,
     selectCanvasTab,

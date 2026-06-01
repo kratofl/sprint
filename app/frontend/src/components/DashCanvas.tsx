@@ -4,10 +4,10 @@ import { type DashWidget, type DashTheme, type DomainPalette, type WidgetCatalog
 import { createDashWidgetId } from '@/lib/dash/ids'
 import { WidgetPreview } from './WidgetPreview'
 import {
-  DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN,
-  DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN,
-  getMultiFunctionWidgetOverlayMode,
-  MULTI_FUNCTION_WIDGET_PALETTE_TYPE,
+  DEFAULT_WIDGET_STACK_COL_SPAN,
+  DEFAULT_WIDGET_STACK_ROW_SPAN,
+  getWidgetStackOverlayMode,
+  WIDGET_STACK_PALETTE_TYPE,
 } from './dash-editor/multiFunctionWidgetState'
 import {
   consumeCanvasClick,
@@ -29,6 +29,10 @@ export interface GridRect {
   colSpan: number
   rowSpan: number
   label?: string
+  meta?: string
+  detail?: string
+  secondaryDetail?: string
+  actionLabel?: string
   selected?: boolean
   locked?: boolean
   editing?: boolean
@@ -142,14 +146,22 @@ export interface DashCanvasProps {
   gridRows?: number
   screenW?: number
   screenH?: number
+  readOnly?: boolean
+  fillParent?: boolean
   paletteDropType?: string | null
   palettePreviewUrl?: string | null
   previewUrl?: string
+  previewCrop?: {
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null
   onBackgroundClick?: () => void
   onSelectOverlay?: (id: string | null) => void
   onUpdateOverlay?: (id: string, rect: GridRect) => void
   onEnterOverlay?: (id: string) => void
-  onDropMultiFunctionWidget?: (rect: GridRect) => void
+  onDropWidgetStack?: (rect: GridRect) => void
   onSelect: (id: number | null) => void
   onUpdate: (widgets: DashWidget[]) => void
 }
@@ -169,14 +181,17 @@ export function DashCanvas({
   overlayEditMode = false,
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
+  readOnly = false,
+  fillParent = false,
   paletteDropType = null,
   palettePreviewUrl = null,
   previewUrl,
+  previewCrop = null,
   onBackgroundClick,
   onSelectOverlay,
   onUpdateOverlay,
   onEnterOverlay,
-  onDropMultiFunctionWidget,
+  onDropWidgetStack,
   onSelect,
   onUpdate,
 }: DashCanvasProps) {
@@ -412,49 +427,51 @@ export function DashCanvas({
 
   // ── Palette drop ──────────────────────────────────────────────────────────
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (readOnly) return
     e.preventDefault()
     if (!paletteDropType) return
     e.dataTransfer.dropEffect = 'copy'
     const meta    = catalog.find(wt => wt.type === paletteDropType)
-    const colSpan = paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
-      ? DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN
+    const colSpan = paletteDropType === WIDGET_STACK_PALETTE_TYPE
+      ? DEFAULT_WIDGET_STACK_COL_SPAN
       : (meta?.defaultColSpan ?? 4)
-    const rowSpan = paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
-      ? DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN
+    const rowSpan = paletteDropType === WIDGET_STACK_PALETTE_TYPE
+      ? DEFAULT_WIDGET_STACK_ROW_SPAN
       : (meta?.defaultRowSpan ?? 2)
     const { col, row } = gridPos(e.clientX, e.clientY)
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
-    if (paletteDropType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE) {
+    if (paletteDropType === WIDGET_STACK_PALETTE_TYPE) {
       setOverlayGhost({ ...proposed, valid: isValidOverlayPlacement(proposed, overlaysRef.current, null, gridCols, gridRows, overlayBlockedAreas) })
       setGhost(null)
       return
     }
     setGhost({ ...proposed, valid: isValidPlacement(proposed, widgetsRef.current, null, gridCols, gridRows, blockedAreas, placementBounds) })
     setOverlayGhost(null)
-  }, [paletteDropType, catalog, blockedAreas, gridCols, gridRows, gridPos, overlayBlockedAreas, placementBounds])
+  }, [readOnly, paletteDropType, catalog, blockedAreas, gridCols, gridRows, gridPos, overlayBlockedAreas, placementBounds])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
+    if (readOnly) return
     e.preventDefault()
     setGhost(null)
     setOverlayGhost(null)
     const widgetType = e.dataTransfer.getData('widget-type')
     if (!widgetType) return
     const meta    = catalog.find(wt => wt.type === widgetType)
-    const colSpan = widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
-      ? DEFAULT_MULTI_FUNCTION_WIDGET_COL_SPAN
+    const colSpan = widgetType === WIDGET_STACK_PALETTE_TYPE
+      ? DEFAULT_WIDGET_STACK_COL_SPAN
       : (meta?.defaultColSpan ?? 4)
-    const rowSpan = widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE
-      ? DEFAULT_MULTI_FUNCTION_WIDGET_ROW_SPAN
+    const rowSpan = widgetType === WIDGET_STACK_PALETTE_TYPE
+      ? DEFAULT_WIDGET_STACK_ROW_SPAN
       : (meta?.defaultRowSpan ?? 2)
     const { col, row } = gridPos(e.clientX, e.clientY)
     const snapCol  = Math.max(0, Math.min(Math.floor(col), gridCols - colSpan))
     const snapRow  = Math.max(0, Math.min(Math.floor(row), gridRows - rowSpan))
     const proposed = { col: snapCol, row: snapRow, colSpan, rowSpan }
-    if (widgetType === MULTI_FUNCTION_WIDGET_PALETTE_TYPE) {
+    if (widgetType === WIDGET_STACK_PALETTE_TYPE) {
       if (isValidOverlayPlacement(proposed, overlaysRef.current, null, gridCols, gridRows, overlayBlockedAreas)) {
-        onDropMultiFunctionWidget?.(proposed)
+        onDropWidgetStack?.(proposed)
       }
       return
     }
@@ -468,16 +485,39 @@ export function DashCanvas({
     const updated = [...widgetsRef.current, newWidget]
     onUpdate(updated)
     onSelect(updated.length - 1)
-  }, [catalog, blockedAreas, gridCols, gridRows, onUpdate, onSelect, gridPos, placementBounds])
+  }, [readOnly, catalog, blockedAreas, gridCols, gridRows, onUpdate, onSelect, gridPos, placementBounds])
 
   const isDragging = activeMove !== null || activeResize !== null || activeOverlayMove !== null || activeOverlayResize !== null
+  const hasPreviewCrop = previewCrop
+    && previewCrop.width > 0
+    && previewCrop.height > 0
+    && previewCrop.width <= 1
+    && previewCrop.height <= 1
+  const previewImageStyle = hasPreviewCrop
+    ? {
+      left: `${-(previewCrop.left / previewCrop.width) * 100}%`,
+      top: `${-(previewCrop.top / previewCrop.height) * 100}%`,
+      width: `${(1 / previewCrop.width) * 100}%`,
+      height: `${(1 / previewCrop.height) * 100}%`,
+      objectFit: 'fill' as const,
+      zIndex: 0,
+      maxWidth: 'none',
+    }
+    : {
+      left: 0,
+      top: 0,
+      width: '100%',
+      height: '100%',
+      objectFit: 'contain' as const,
+      zIndex: 0,
+    }
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full overflow-hidden border border-border bg-black"
+      className={cn('relative w-full overflow-hidden border border-border bg-black', fillParent && 'h-full')}
       style={{
-        aspectRatio: `${screenW} / ${screenH}`,
+        aspectRatio: fillParent ? undefined : `${screenW} / ${screenH}`,
         cursor: activeMove ? 'grabbing' : undefined,
       }}
       onDragOver={handleDragOver}
@@ -492,7 +532,7 @@ export function DashCanvas({
         event.stopPropagation()
       }}
       onClick={() => {
-        if (!isDragging) {
+        if (!isDragging && !readOnly) {
           onSelect(null)
           onBackgroundClick?.()
         }
@@ -509,8 +549,8 @@ export function DashCanvas({
           src={previewUrl}
           alt=""
           draggable={false}
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ objectFit: 'contain', zIndex: 0 }}
+          className="pointer-events-none absolute"
+          style={previewImageStyle}
         />
       )}
 
@@ -592,14 +632,14 @@ export function DashCanvas({
       </svg>
 
       {overlayRects.map((rect, index) => {
-        const overlayMode = getMultiFunctionWidgetOverlayMode({
+        const overlayMode = getWidgetStackOverlayMode({
           selected: Boolean(rect.selected),
           editing: Boolean(rect.editing),
           locked: Boolean(rect.locked),
         })
-        const canSelectByBody = Boolean(rect.id && onSelectOverlay && overlayMode.bodyInteractive)
-        const canUseMoveHandle = Boolean(rect.id && onSelectOverlay && overlayMode.moveHandleInteractive)
-        const canResize = Boolean(rect.id && onSelectOverlay && rect.selected && overlayMode.resizeHandlesInteractive)
+        const canSelectByBody = !readOnly && Boolean(rect.id && onSelectOverlay && overlayMode.bodyInteractive)
+        const canUseMoveHandle = !readOnly && Boolean(rect.id && onSelectOverlay && overlayMode.moveHandleInteractive)
+        const canResize = !readOnly && Boolean(rect.id && onSelectOverlay && rect.selected && overlayMode.resizeHandlesInteractive)
         const isBeingMoved = activeOverlayMove?.overlayIdx === index
         return (
           <div
@@ -645,50 +685,86 @@ export function DashCanvas({
             />
 
             {rect.label && (
-              <button
-                type="button"
-                onMouseDown={event => {
-                  if (!canUseMoveHandle || event.button !== 0) return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  const { col, row } = gridPos(event.clientX, event.clientY)
-                  if (rect.id) {
-                    onSelectOverlay?.(rect.id)
-                  }
-                  setActiveOverlayMove({
-                    overlayIdx: index,
-                    grabOffsetCol: col - rect.col,
-                    grabOffsetRow: row - rect.row,
-                    startRect: { ...rect },
-                  })
-                }}
-                onClick={event => {
-                  event.stopPropagation()
-                  if (rect.id) {
-                    onSelectOverlay?.(rect.id)
-                  }
-                }}
-                onDoubleClick={event => {
-                  event.stopPropagation()
-                  if (rect.id) {
-                    onEnterOverlay?.(rect.id)
-                  }
-                }}
-                className={cn(
-                  'absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide shadow-sm',
-                  canUseMoveHandle ? (activeOverlayMove ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+              <>
+                <button
+                  type="button"
+                  onMouseDown={event => {
+                    if (!canUseMoveHandle || event.button !== 0) return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    const { col, row } = gridPos(event.clientX, event.clientY)
+                    if (rect.id) {
+                      onSelectOverlay?.(rect.id)
+                    }
+                    setActiveOverlayMove({
+                      overlayIdx: index,
+                      grabOffsetCol: col - rect.col,
+                      grabOffsetRow: row - rect.row,
+                      startRect: { ...rect },
+                    })
+                  }}
+                  onClick={event => {
+                    event.stopPropagation()
+                    if (rect.id) {
+                      onSelectOverlay?.(rect.id)
+                    }
+                  }}
+                  onDoubleClick={event => {
+                    event.stopPropagation()
+                    if (rect.id) {
+                      onEnterOverlay?.(rect.id)
+                    }
+                  }}
+                  className={cn(
+                    'absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide shadow-sm',
+                    canUseMoveHandle ? (activeOverlayMove ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+                  )}
+                  style={{
+                    zIndex: 18,
+                    pointerEvents: canUseMoveHandle ? 'auto' : 'none',
+                    background: rect.selected ? 'rgba(255,144,108,0.95)' : 'rgba(255,255,255,0.2)',
+                    color: rect.selected ? '#0a0a0a' : '#f5f7fa',
+                  }}
+                >
+                  <span>STACK</span>
+                  <span className={rect.selected ? 'opacity-80' : 'opacity-60'}>/</span>
+                  <span className="max-w-[10rem] truncate normal-case tracking-normal">{rect.label}</span>
+                </button>
+
+                {rect.selected && !rect.editing && (rect.meta || rect.detail || rect.actionLabel) && (
+                  <div
+                    className="absolute inset-x-2 bottom-2 rounded-sm border border-border bg-black/80 px-2 py-2 text-left backdrop-blur-sm"
+                    style={{ zIndex: 18, pointerEvents: 'auto' }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <div className="truncate font-mono text-[10px] text-foreground">{rect.label}</div>
+                        {rect.meta && (
+                          <div className="font-mono text-[9px] uppercase tracking-wide text-text-disabled">{rect.meta}</div>
+                        )}
+                        {rect.detail && (
+                          <div className="truncate font-mono text-[10px] text-text-muted">{rect.detail}</div>
+                        )}
+                        {rect.secondaryDetail && (
+                          <div className="truncate font-mono text-[10px] text-foreground">Current {rect.secondaryDetail}</div>
+                        )}
+                      </div>
+                      {rect.actionLabel && rect.id && onEnterOverlay && (
+                        <button
+                          type="button"
+                          onClick={event => {
+                            event.stopPropagation()
+                            onEnterOverlay(rect.id!)
+                          }}
+                          className="flex-shrink-0 rounded-sm border border-accent/50 bg-accent/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wide text-foreground transition-colors hover:bg-accent/20"
+                        >
+                          {rect.actionLabel}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
-                style={{
-                  zIndex: 18,
-                  pointerEvents: canUseMoveHandle ? 'auto' : 'none',
-                  background: rect.selected ? 'rgba(255,144,108,0.95)' : 'rgba(255,255,255,0.2)',
-                  color: rect.selected ? '#0a0a0a' : '#f5f7fa',
-                }}
-              >
-                <span>MFW</span>
-                <span className={rect.selected ? 'opacity-80' : 'opacity-60'}>/</span>
-                <span className="max-w-[10rem] truncate normal-case tracking-normal">{rect.label}</span>
-              </button>
+              </>
             )}
 
             {canResize && ALL_HANDLES.map(handle => {
@@ -778,11 +854,11 @@ export function DashCanvas({
               zIndex:  isSelected ? 14 : 2,
               opacity: isBeingMoved ? 0.2 : 1,
             }}
-            onClick={e => { e.stopPropagation(); if (!isDragging) onSelect(idx) }}
+            onClick={e => { e.stopPropagation(); if (!isDragging && !readOnly) onSelect(idx) }}
           >
             <div
               onMouseDown={e => {
-                if (e.button !== 0 || activeResize) return
+                if (readOnly || e.button !== 0 || activeResize) return
                 e.preventDefault()
                 e.stopPropagation()
                 const { col, row } = gridPos(e.clientX, e.clientY)
@@ -796,7 +872,7 @@ export function DashCanvas({
               }}
               className={cn(
                 'absolute inset-0 flex flex-col items-start justify-start overflow-hidden select-none border',
-                activeMove ? 'cursor-grabbing' : 'cursor-grab',
+                readOnly ? 'cursor-default' : activeMove ? 'cursor-grabbing' : 'cursor-grab',
                 isSelected
                   ? previewUrl ? 'bg-transparent border-accent ring-1 ring-accent/30' : 'bg-white/8 border-accent ring-1 ring-accent/30'
                   : previewUrl ? 'bg-transparent border-transparent hover:border-white/20' : 'bg-white/5 border-white/10 hover:border-white/20',
@@ -812,7 +888,7 @@ export function DashCanvas({
               )}
             </div>
 
-            {isSelected && ALL_HANDLES.map(handle => {
+            {isSelected && !readOnly && ALL_HANDLES.map(handle => {
               const [hLeft, hTop] = HANDLE_OFFSETS[handle]
               return (
                 <div
