@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Badge, NavRail, NavRailItem, SprintIcon } from '@sprint/ui'
+import { Badge, NavRail, NavRailItem } from '@sprint/ui'
 import {
   IconLayoutDashboard,
   IconHistory,
@@ -34,7 +34,11 @@ export default function WebNavRail() {
       items={NAV_ITEMS}
       activeId={activeId}
       onSelect={(id) => router.push(id)}
-      header={<SprintIcon size={18} />}
+      header={
+        <span className="grid size-[18px] place-items-center rounded-[4px] border border-border bg-bg-raised font-mono text-[10px] font-bold text-accent">
+          S
+        </span>
+      }
       footer={<Badge variant="neutral" className="font-mono">WEB</Badge>}
     />
   )
