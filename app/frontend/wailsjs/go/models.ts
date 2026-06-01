@@ -109,13 +109,13 @@ export namespace commands {
 
 export namespace dashboard {
 	
-	export class DashWrapperVariant {
+	export class DashWidgetStackLayer {
 	    id: string;
 	    name: string;
 	    widgets: DashWidget[];
 	
 	    static createFrom(source: any = {}) {
-	        return new DashWrapperVariant(source);
+	        return new DashWidgetStackLayer(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -143,18 +143,18 @@ export namespace dashboard {
 		    return a;
 		}
 	}
-	export class DashWrapperGroup {
+	export class DashWidgetStack {
 	    id: string;
 	    name: string;
 	    col: number;
 	    row: number;
 	    colSpan: number;
 	    rowSpan: number;
-	    defaultVariantId?: string;
-	    variants: DashWrapperVariant[];
+	    defaultLayerId?: string;
+	    layers: DashWidgetStackLayer[];
 	
 	    static createFrom(source: any = {}) {
-	        return new DashWrapperGroup(source);
+	        return new DashWidgetStack(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -165,8 +165,8 @@ export namespace dashboard {
 	        this.row = source["row"];
 	        this.colSpan = source["colSpan"];
 	        this.rowSpan = source["rowSpan"];
-	        this.defaultVariantId = source["defaultVariantId"];
-	        this.variants = this.convertValues(source["variants"], DashWrapperVariant);
+	        this.defaultLayerId = source["defaultLayerId"];
+	        this.layers = this.convertValues(source["layers"], DashWidgetStackLayer);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -238,7 +238,7 @@ export namespace dashboard {
 	    name: string;
 	    background?: color.RGBA;
 	    widgets: DashWidget[];
-	    wrapperGroups?: DashWrapperGroup[];
+	    widgetStacks?: DashWidgetStack[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DashPage(source);
@@ -250,7 +250,7 @@ export namespace dashboard {
 	        this.name = source["name"];
 	        this.background = this.convertValues(source["background"], color.RGBA);
 	        this.widgets = this.convertValues(source["widgets"], DashWidget);
-	        this.wrapperGroups = this.convertValues(source["wrapperGroups"], DashWrapperGroup);
+	        this.widgetStacks = this.convertValues(source["widgetStacks"], DashWidgetStack);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

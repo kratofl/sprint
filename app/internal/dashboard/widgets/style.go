@@ -73,6 +73,9 @@ type TextStyle struct {
 	HAlign     HAlign     `json:"hAlign,omitempty"`
 	VAlign     VAlign     `json:"vAlign,omitempty"`
 	Color      ColorExpr  `json:"color,omitempty"`
+	// OpticalCenter centers the rendered glyph mass instead of the font advance.
+	// Use it for large, single-character readouts such as gear.
+	OpticalCenter bool `json:"opticalCenter,omitempty"`
 }
 
 // ColorRef is a semantic color name resolved at render time.
@@ -163,10 +166,10 @@ const (
 // the condition is satisfied, applies a semantic panel fill colour.
 // Rules are stored per DashWidget and evaluated first-match-wins at render time.
 type ConditionalRule struct {
-	Property  Binding  `json:"property"`       // binding path (e.g. BindingCarBrakeBiasPct)
-	Op        RuleOp   `json:"op"`             // comparison operator
-	Threshold float64  `json:"threshold"`      // right-hand operand
-	Color     ColorRef `json:"color"`          // semantic fill colour when matched
+	Property  Binding  `json:"property"`        // binding path (e.g. BindingCarBrakeBiasPct)
+	Op        RuleOp   `json:"op"`              // comparison operator
+	Threshold float64  `json:"threshold"`       // right-hand operand
+	Color     ColorRef `json:"color"`           // semantic fill colour when matched
 	Alpha     float64  `json:"alpha,omitempty"` // fill alpha 0–1; 0 = default 0.35
 }
 

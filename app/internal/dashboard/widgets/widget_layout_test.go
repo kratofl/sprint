@@ -62,4 +62,7 @@ func TestGearWidgetUsesGeometricCenterTextPosition(t *testing.T) {
 	if text.Style.HAlign != HAlignCenter || text.Style.VAlign != VAlignCenter {
 		t.Fatalf("gear alignment = hAlign %d vAlign %d, want center/center", text.Style.HAlign, text.Style.VAlign)
 	}
+	if !text.Style.OpticalCenter {
+		t.Fatal("gear text should opt into optical centering")
+	}
 }

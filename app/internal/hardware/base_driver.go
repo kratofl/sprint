@@ -228,8 +228,8 @@ func (d *baseDriver) SetProfile(profile dashboard.RenderProfile) {
 	d.forceRedraw.Store(true)
 }
 
-// SetWrapperVariant stores the selected wrapper variant and applies it to the current Painter.
-func (d *baseDriver) SetWrapperVariant(pageID, groupID, variantID string) {
+// SetWidgetStackLayer stores the selected wrapper variant and applies it to the current Painter.
+func (d *baseDriver) SetWidgetStackLayer(pageID, groupID, variantID string) {
 	d.wrapperMu.Lock()
 	if d.currentWrappers == nil {
 		d.currentWrappers = map[string]string{}
@@ -238,7 +238,7 @@ func (d *baseDriver) SetWrapperVariant(pageID, groupID, variantID string) {
 	d.wrapperMu.Unlock()
 	if sptr := d.source.Load(); sptr != nil {
 		if p, ok := (*sptr).(*dashboard.Painter); ok {
-			p.SetWrapperVariant(pageID, groupID, variantID)
+			p.SetWidgetStackLayer(pageID, groupID, variantID)
 		}
 	}
 	d.forceRedraw.Store(true)
@@ -317,7 +317,7 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	for key, variantID := range d.currentWrappers {
 		pageID, groupID, ok := strings.Cut(key, "::")
 		if ok {
-			p.SetWrapperVariant(pageID, groupID, variantID)
+			p.SetWidgetStackLayer(pageID, groupID, variantID)
 		}
 	}
 	d.wrapperMu.Unlock()

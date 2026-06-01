@@ -1,19 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import type { DashPage, DashWidget, DashWrapperGroup } from '../../lib/dash/types.ts'
+import type { DashPage, DashWidget, DashWidgetStack } from '../../lib/dash/types.ts'
 import {
   clampWidgetToLayerBounds,
-  createClearedWrapperGroupSelectionState,
-  createMultiFunctionWidgetOnDrop,
+  createClearedWidgetStackSelectionState,
+  createWidgetStackOnDrop,
   createPageEditContext,
-  createWrapperGroupEditState,
-  createWrapperGroupSelectionState,
-  enterMultiFunctionWidgetMode,
+  createWidgetStackEditState,
+  createWidgetStackSelectionState,
+  enterWidgetStackMode,
   exitToPageEditMode,
-  getMultiFunctionWidgetOverlayMode,
+  getWidgetStackOverlayMode,
   getPaletteDropTarget,
-  isValidMultiFunctionWidgetPlacement,
+  isValidWidgetStackPlacement,
 } from './multiFunctionWidgetState.ts'
 
 function createPage(overrides: Partial<DashPage> = {}): DashPage {
@@ -21,12 +21,12 @@ function createPage(overrides: Partial<DashPage> = {}): DashPage {
     id: 'page-main',
     name: 'Main',
     widgets: [],
-    wrapperGroups: [],
+    widgetStacks: [],
     ...overrides,
   }
 }
 
-function createGroup(overrides: Partial<DashWrapperGroup> = {}): DashWrapperGroup {
+function createGroup(overrides: Partial<DashWidgetStack> = {}): DashWidgetStack {
   return {
     id: 'group-a',
     name: 'Stack',
@@ -34,17 +34,17 @@ function createGroup(overrides: Partial<DashWrapperGroup> = {}): DashWrapperGrou
     row: 1,
     colSpan: 6,
     rowSpan: 4,
-    defaultVariantId: 'layer-a',
-    variants: [{ id: 'layer-a', name: 'Layer 1', widgets: [] }],
+    defaultLayerId: 'layer-a',
+    layers: [{ id: 'layer-a', name: 'Layer 1', widgets: [] }],
     ...overrides,
   }
 }
 
-test('createMultiFunctionWidgetOnDrop adds a default-sized multi-function widget and enters layer mode', () => {
+test('createWidgetStackOnDrop adds a default-sized multi-function widget and enters layer mode', () => {
   const page = createPage()
   let nextID = 0
 
-  const result = createMultiFunctionWidgetOnDrop({
+  const result = createWidgetStackOnDrop({
     page,
     drop: { col: 18, row: 10 },
     gridCols: 20,
@@ -55,60 +55,60 @@ test('createMultiFunctionWidgetOnDrop adds a default-sized multi-function widget
     },
   })
 
-  assert.equal(result.page.wrapperGroups?.length, 1)
-  assert.deepEqual(result.page.wrapperGroups?.[0], {
+  assert.equal(result.page.widgetStacks?.length, 1)
+  assert.deepEqual(result.page.widgetStacks?.[0], {
     id: 'generated-id-1',
-    name: 'Multi-Function Widget 1',
+    name: 'Widget Stack 1',
     col: 14,
     row: 8,
     colSpan: 6,
     rowSpan: 4,
-    defaultVariantId: 'generated-id-2',
-    variants: [{ id: 'generated-id-2', name: 'Layer 1', widgets: [] }],
+    defaultLayerId: 'generated-id-2',
+    layers: [{ id: 'generated-id-2', name: 'Layer 1', widgets: [] }],
   })
   assert.deepEqual(result.context, {
-    kind: 'multi-function-widget',
+    kind: 'widget-stack',
     groupId: 'generated-id-1',
     layerId: 'generated-id-2',
   })
 })
 
-test('enterMultiFunctionWidgetMode resolves the active layer and exitToPageEditMode leaves it', () => {
-  const page = createPage({ wrapperGroups: [createGroup()] })
+test('enterWidgetStackMode resolves the active layer and exitToPageEditMode leaves it', () => {
+  const page = createPage({ widgetStacks: [createGroup()] })
 
-  const context = enterMultiFunctionWidgetMode(page, 'group-a', { 'page-main:group-a': 'layer-a' })
+  const context = enterWidgetStackMode(page, 'group-a', { 'page-main:group-a': 'layer-a' })
 
   assert.deepEqual(context, {
-    kind: 'multi-function-widget',
+    kind: 'widget-stack',
     groupId: 'group-a',
     layerId: 'layer-a',
   })
   assert.deepEqual(exitToPageEditMode(), createPageEditContext())
 })
 
-test('createWrapperGroupSelectionState keeps page mode active while selecting a multi-function widget', () => {
-  const page = createPage({ wrapperGroups: [createGroup()] })
+test('createWidgetStackSelectionState keeps page mode active while selecting a multi-function widget', () => {
+  const page = createPage({ widgetStacks: [createGroup()] })
 
   assert.deepEqual(
-    createWrapperGroupSelectionState(page, 'group-a', { 'page-main:group-a': 'layer-a' }),
+    createWidgetStackSelectionState(page, 'group-a', { 'page-main:group-a': 'layer-a' }),
     {
-      selectedWrapperGroupId: 'group-a',
-      selectedVariantId: 'layer-a',
+      selectedWidgetStackId: 'group-a',
+      selectedLayerId: 'layer-a',
       editContext: createPageEditContext(),
     },
   )
 })
 
-test('createWrapperGroupEditState enters multi-function widget edit mode explicitly', () => {
-  const page = createPage({ wrapperGroups: [createGroup()] })
+test('createWidgetStackEditState enters multi-function widget edit mode explicitly', () => {
+  const page = createPage({ widgetStacks: [createGroup()] })
 
   assert.deepEqual(
-    createWrapperGroupEditState(page, 'group-a', { 'page-main:group-a': 'layer-a' }),
+    createWidgetStackEditState(page, 'group-a', { 'page-main:group-a': 'layer-a' }),
     {
-      selectedWrapperGroupId: 'group-a',
-      selectedVariantId: 'layer-a',
+      selectedWidgetStackId: 'group-a',
+      selectedLayerId: 'layer-a',
       editContext: {
-        kind: 'multi-function-widget',
+        kind: 'widget-stack',
         groupId: 'group-a',
         layerId: 'layer-a',
       },
@@ -116,10 +116,10 @@ test('createWrapperGroupEditState enters multi-function widget edit mode explici
   )
 })
 
-test('createClearedWrapperGroupSelectionState drops the current selection and exits edit mode', () => {
-  assert.deepEqual(createClearedWrapperGroupSelectionState(), {
-    selectedWrapperGroupId: null,
-    selectedVariantId: null,
+test('createClearedWidgetStackSelectionState drops the current selection and exits edit mode', () => {
+  assert.deepEqual(createClearedWidgetStackSelectionState(), {
+    selectedWidgetStackId: null,
+    selectedLayerId: null,
     editContext: createPageEditContext(),
   })
 })
@@ -127,14 +127,14 @@ test('createClearedWrapperGroupSelectionState drops the current selection and ex
 test('getPaletteDropTarget routes drops to the page or the active layer based on edit context', () => {
   assert.deepEqual(getPaletteDropTarget(createPageEditContext()), { scope: 'page' })
   assert.deepEqual(
-    getPaletteDropTarget({ kind: 'multi-function-widget', groupId: 'group-a', layerId: 'layer-a' }),
+    getPaletteDropTarget({ kind: 'widget-stack', groupId: 'group-a', layerId: 'layer-a' }),
     { scope: 'layer', groupId: 'group-a', layerId: 'layer-a' },
   )
 })
 
-test('getMultiFunctionWidgetOverlayMode stops the MFW body from capturing input during layer edit mode', () => {
+test('getWidgetStackOverlayMode stops the STACK body from capturing input during layer edit mode', () => {
   assert.deepEqual(
-    getMultiFunctionWidgetOverlayMode({ selected: true, editing: false, locked: false }),
+    getWidgetStackOverlayMode({ selected: true, editing: false, locked: false }),
     {
       bodyInteractive: true,
       moveHandleInteractive: true,
@@ -144,7 +144,7 @@ test('getMultiFunctionWidgetOverlayMode stops the MFW body from capturing input 
   )
 
   assert.deepEqual(
-    getMultiFunctionWidgetOverlayMode({ selected: true, editing: true, locked: false }),
+    getWidgetStackOverlayMode({ selected: true, editing: true, locked: false }),
     {
       bodyInteractive: false,
       moveHandleInteractive: true,
@@ -173,14 +173,14 @@ test('clampWidgetToLayerBounds keeps child widgets inside multi-function widget 
   })
 })
 
-test('isValidMultiFunctionWidgetPlacement blocks collisions with page widgets and sibling multi-function widgets', () => {
+test('isValidWidgetStackPlacement blocks collisions with page widgets and sibling multi-function widgets', () => {
   const page = createPage({
     widgets: [{ id: 'top-level', type: 'text', col: 0, row: 0, colSpan: 4, rowSpan: 2 }],
-    wrapperGroups: [createGroup()],
+    widgetStacks: [createGroup()],
   })
 
   assert.equal(
-    isValidMultiFunctionWidgetPlacement(
+    isValidWidgetStackPlacement(
       { col: 1, row: 0, colSpan: 6, rowSpan: 4 },
       page,
       20,
@@ -189,7 +189,7 @@ test('isValidMultiFunctionWidgetPlacement blocks collisions with page widgets an
     false,
   )
   assert.equal(
-    isValidMultiFunctionWidgetPlacement(
+    isValidWidgetStackPlacement(
       { col: 4, row: 2, colSpan: 6, rowSpan: 4 },
       page,
       20,
@@ -198,7 +198,7 @@ test('isValidMultiFunctionWidgetPlacement blocks collisions with page widgets an
     false,
   )
   assert.equal(
-    isValidMultiFunctionWidgetPlacement(
+    isValidWidgetStackPlacement(
       { col: 12, row: 6, colSpan: 6, rowSpan: 4 },
       page,
       20,

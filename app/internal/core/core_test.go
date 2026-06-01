@@ -65,24 +65,24 @@ func TestCycleWrapperWrapsAroundBothDirections(t *testing.T) {
 				driver:        driver,
 				layoutID:      layout.ID,
 				currentLayout: layout,
-				wrapperStates: defaultWrapperStates(layout),
+				widgetStackStates: defaultWidgetStackStates(layout),
 			},
 		},
 	}
 
 	pageID := layout.Pages[0].ID
-	groupID := layout.Pages[0].WrapperGroups[0].ID
+	groupID := layout.Pages[0].WidgetStacks[0].ID
 
-	coord.cycleWrapper("", layout.ID, pageID, groupID, -1)
-	if got, want := coord.entries["screen-a"].wrapperStates[wrapperStateKey(pageID, groupID)], "variant-b"; got != want {
+	coord.cycleWidgetStack("", layout.ID, pageID, groupID, -1)
+	if got, want := coord.entries["screen-a"].widgetStackStates[widgetStackStateKey(pageID, groupID)], "variant-b"; got != want {
 		t.Fatalf("expected prev from first layer to wrap to %q, got %q", want, got)
 	}
 	if got, want := driver.lastVariantID, "variant-b"; got != want {
 		t.Fatalf("expected driver to receive wrapped prev variant %q, got %q", want, got)
 	}
 
-	coord.cycleWrapper("", layout.ID, pageID, groupID, 1)
-	if got, want := coord.entries["screen-a"].wrapperStates[wrapperStateKey(pageID, groupID)], "variant-a"; got != want {
+	coord.cycleWidgetStack("", layout.ID, pageID, groupID, 1)
+	if got, want := coord.entries["screen-a"].widgetStackStates[widgetStackStateKey(pageID, groupID)], "variant-a"; got != want {
 		t.Fatalf("expected next from last layer to wrap to %q, got %q", want, got)
 	}
 	if got, want := driver.lastVariantID, "variant-a"; got != want {
@@ -111,7 +111,7 @@ func testLayoutWithWrapperGroup() *dashboard.DashLayout {
 			{
 				ID:   "page-main",
 				Name: "Main",
-				WrapperGroups: []dashboard.DashWrapperGroup{
+				WidgetStacks: []dashboard.DashWidgetStack{
 					{
 						ID:               "stack",
 						Name:             "Stack",
@@ -119,8 +119,8 @@ func testLayoutWithWrapperGroup() *dashboard.DashLayout {
 						Row:              0,
 						ColSpan:          4,
 						RowSpan:          2,
-						DefaultVariantID: "variant-a",
-						Variants: []dashboard.DashWrapperVariant{
+						DefaultLayerID: "variant-a",
+						Layers: []dashboard.DashWidgetStackLayer{
 							{
 								ID:   "variant-a",
 								Name: "A",
@@ -164,4 +164,4 @@ func (d *stubScreenDriver) IsConnected() bool                                   
 func (d *stubScreenDriver) SetEmit(func(string, ...any))                              {}
 func (d *stubScreenDriver) SetFrameSource(hardware.FrameSource)                       {}
 func (d *stubScreenDriver) ClearExternalSource()                                      {}
-func (d *stubScreenDriver) SetWrapperVariant(_, _, variantID string)                  { d.lastVariantID = variantID }
+func (d *stubScreenDriver) SetWidgetStackLayer(_, _, variantID string)                  { d.lastVariantID = variantID }

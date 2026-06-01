@@ -4,9 +4,9 @@ import type {
   CatalogEntry,
   DashLayout,
   DashPage,
-  DashWrapperGroup,
-  DashWrapperVariant,
   DashThemeOverrides,
+  DashWidgetStack,
+  DashWidgetStackLayer,
   DashWidget,
   DetectedScreen,
   DeviceBinding,
@@ -197,7 +197,7 @@ function adaptWidget(raw: RawRecord): DashWidget {
   }
 }
 
-function adaptWrapperVariant(raw: RawRecord): DashWrapperVariant {
+function adaptWidgetStackLayer(raw: RawRecord): DashWidgetStackLayer {
   return {
     id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
@@ -207,7 +207,12 @@ function adaptWrapperVariant(raw: RawRecord): DashWrapperVariant {
   }
 }
 
-function adaptWrapperGroup(raw: RawRecord): DashWrapperGroup {
+function adaptWidgetStack(raw: RawRecord): DashWidgetStack {
+  const rawLayers = Array.isArray(raw.layers)
+    ? raw.layers
+    : Array.isArray(raw.variants)
+      ? raw.variants
+      : []
   return {
     id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
@@ -215,14 +220,21 @@ function adaptWrapperGroup(raw: RawRecord): DashWrapperGroup {
     row: Number(raw.row ?? 0),
     colSpan: Number(raw.colSpan ?? 1),
     rowSpan: Number(raw.rowSpan ?? 1),
-    defaultVariantId: raw.defaultVariantId ? String(raw.defaultVariantId) : undefined,
-    variants: Array.isArray(raw.variants)
-      ? raw.variants.map(variant => adaptWrapperVariant(variant as RawRecord))
-      : [],
+    defaultLayerId: raw.defaultLayerId
+      ? String(raw.defaultLayerId)
+      : raw.defaultVariantId
+        ? String(raw.defaultVariantId)
+        : undefined,
+    layers: rawLayers.map(layer => adaptWidgetStackLayer(layer as RawRecord)),
   }
 }
 
 function adaptPage(raw: RawRecord): DashPage {
+  const rawWidgetStacks = Array.isArray(raw.widgetStacks)
+    ? raw.widgetStacks
+    : Array.isArray(raw.wrapperGroups)
+      ? raw.wrapperGroups
+      : []
   return {
     id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
@@ -230,9 +242,7 @@ function adaptPage(raw: RawRecord): DashPage {
     widgets: Array.isArray(raw.widgets)
       ? raw.widgets.map(widget => adaptWidget(widget as RawRecord))
       : [],
-    wrapperGroups: Array.isArray(raw.wrapperGroups)
-      ? raw.wrapperGroups.map(group => adaptWrapperGroup(group as RawRecord))
-      : [],
+    widgetStacks: rawWidgetStacks.map(group => adaptWidgetStack(group as RawRecord)),
   }
 }
 
@@ -269,6 +279,7 @@ function adaptGoTextStyle(elem: RawRecord): void {
   if (typeof style.hAlign === 'number' && elem.hAlign === undefined) elem.hAlign = style.hAlign as HAlign
   if (typeof style.vAlign === 'number' && elem.vAlign === undefined) elem.vAlign = style.vAlign as VAlign
   if (isRecord(style.color) && elem.color === undefined) elem.color = style.color
+  if (typeof style.opticalCenter === 'boolean' && elem.opticalCenter === undefined) elem.opticalCenter = style.opticalCenter
   delete elem.style
 }
 

@@ -17,7 +17,8 @@ func (gearWidget) Definition(_ map[string]any) []Element {
 	return []Element{
 		Text{Binding: BindingCarGearStr, X: 0.5, Y: 0.5, Style: TextStyle{
 			Font: FontFamilyMono, FontSize: 0.7, IsBold: true,
-			HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
+			HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr(),
+			OpticalCenter: true}},
 	}
 }
 

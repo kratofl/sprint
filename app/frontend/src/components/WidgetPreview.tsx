@@ -1,4 +1,4 @@
-import type { ReactNode, CSSProperties } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type {
   DashWidget, DashTheme, DomainPalette, WidgetCatalogEntry,
   ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle, HAlign, VAlign,
@@ -141,6 +141,138 @@ function resolveFont(elemFont: FontStyle | undefined, style?: WidgetStyle): Font
   return f
 }
 
+const opticalCenterCache = new Map<string, number>()
+
+function canvasFont(style: CSSStyleDeclaration): string {
+  const fontStyle = style.fontStyle || 'normal'
+  const fontWeight = style.fontWeight || '400'
+  const fontSize = style.fontSize || '16px'
+  const fontFamily = style.fontFamily || 'sans-serif'
+  return `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`
+}
+
+function measureOpticalCenterOffset(text: string, font: string): number {
+  if (typeof document === 'undefined' || text === '' || font === '') return 0
+
+  const cacheKey = `${font}\n${text}`
+  const cached = opticalCenterCache.get(cacheKey)
+  if (cached !== undefined) return cached
+
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return 0
+
+  ctx.font = font
+  ctx.textBaseline = 'alphabetic'
+  const metrics = ctx.measureText(text)
+  const padding = 8
+  const width = Math.max(1, Math.ceil(metrics.width + metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight + padding * 2))
+  const height = Math.max(1, Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + padding * 2))
+  canvas.width = width
+  canvas.height = height
+
+  ctx.font = font
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#fff'
+  const baselineX = padding + metrics.actualBoundingBoxLeft
+  const baselineY = padding + metrics.actualBoundingBoxAscent
+  ctx.fillText(text, baselineX, baselineY)
+
+  const { data } = ctx.getImageData(0, 0, width, height)
+  let weightedX = 0
+  let total = 0
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = data[(y * width + x) * 4 + 3]
+      if (alpha === 0) continue
+      weightedX += (x + 0.5) * alpha
+      total += alpha
+    }
+  }
+  if (total === 0) return 0
+
+  const offset = baselineX + metrics.width / 2 - weightedX / total
+  opticalCenterCache.set(cacheKey, offset)
+  return offset
+}
+
+function transformWithOpticalOffset(translateXValue: string, translateYValue: string, offsetPx: number): string {
+  if (offsetPx === 0) return `translate(${translateXValue}, ${translateYValue})`
+  return `translate(calc(${translateXValue} + ${offsetPx.toFixed(2)}px), ${translateYValue})`
+}
+
+function PreviewTextNode({
+  text,
+  css,
+  left,
+  top,
+  translateXValue,
+  translateYValue,
+  opticalCenter,
+}: {
+  text: string
+  css: CSSProperties
+  left: string
+  top: string
+  translateXValue: string
+  translateYValue: string
+  opticalCenter: boolean
+}): ReactNode {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [offsetPx, setOffsetPx] = useState(0)
+  const fontKey = `${css.fontStyle ?? ''}|${css.fontWeight ?? ''}|${css.fontSize ?? ''}|${css.fontFamily ?? ''}`
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element || !opticalCenter) {
+      setOffsetPx(0)
+      return
+    }
+
+    const measure = () => {
+      const current = ref.current
+      if (!current) return
+      const next = measureOpticalCenterOffset(text, canvasFont(window.getComputedStyle(current)))
+      setOffsetPx(prev => Math.abs(prev - next) < 0.01 ? prev : next)
+    }
+
+    measure()
+    const frame = window.requestAnimationFrame(measure)
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(() => measure())
+    resizeObserver?.observe(element)
+
+    let cancelled = false
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined
+    fonts?.ready.then(() => {
+      if (!cancelled) measure()
+    }).catch(() => {})
+
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frame)
+      resizeObserver?.disconnect()
+    }
+  }, [fontKey, opticalCenter, text])
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...css,
+        position: 'absolute',
+        left,
+        top,
+        transform: transformWithOpticalOffset(translateXValue, translateYValue, opticalCenter ? offsetPx : 0),
+        pointerEvents: 'none',
+      }}
+    >
+      {text}
+    </div>
+  )
+}
+
 // ── Zone layout helpers ───────────────────────────────────────────────────────
 
 // Flatten conditions to their then-branch for preview purposes.
@@ -251,7 +383,7 @@ function translateX(hAlign: HAlign | undefined): string {
     case 2:
       return '-100%'
     default:
-      return '0'
+      return '0px'
   }
 }
 
@@ -263,7 +395,7 @@ function translateY(vAlign: VAlign | undefined, explicitY: boolean): string {
     case 2:
       return '-100%'
     default:
-      return '0'
+      return '0px'
   }
 }
 
@@ -293,31 +425,31 @@ function ZoneTextItem({
 
   // Explicit X → absolute positioning within the zone row.
   if (typeof elem.x === 'number') {
-    const tx = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'
+    const tx = elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0px'
     return (
-      <span style={{
-        ...css,
-        position:  'absolute',
-        left:      `${elem.x * 100}%`,
-        top:       `${yFrac * 100}%`,
-        transform: `translate(${tx}, -50%)`,
-      }}>
-        {text}
-      </span>
+      <PreviewTextNode
+        text={text}
+        css={css}
+        left={`${elem.x * 100}%`}
+        top={`${yFrac * 100}%`}
+        translateXValue={tx}
+        translateYValue="-50%"
+        opticalCenter={elem.opticalCenter === true && elem.hAlign === 1}
+      />
     )
   }
 
   // No explicit X → use backend-style zone alignment anchors.
   return (
-    <span style={{
-      ...css,
-      position: 'absolute',
-      left: elem.hAlign === 1 ? '50%' : elem.hAlign === 2 ? '97.5%' : '2.5%',
-      top: `${yFrac * 100}%`,
-      transform: `translate(${elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0'}, -50%)`,
-    }}>
-      {text}
-    </span>
+    <PreviewTextNode
+      text={text}
+      css={css}
+      left={elem.hAlign === 1 ? '50%' : elem.hAlign === 2 ? '97.5%' : '2.5%'}
+      top={`${yFrac * 100}%`}
+      translateXValue={elem.hAlign === 1 ? '-50%' : elem.hAlign === 2 ? '-100%' : '0px'}
+      translateYValue="-50%"
+      opticalCenter={elem.opticalCenter === true && elem.hAlign === 1}
+    />
   )
 }
 
@@ -395,21 +527,23 @@ function renderAbsElem(
       const hasExplicitY = typeof elem.y === 'number'
       const autoY = hasExplicitY ? 0.5 : (textYs[textState.nextIndex++] ?? 0.5)
       return (
-        <div key={key} style={{
-          position:   'absolute',
-          left:       hasExplicitX ? `${elem.x! * 100}%` : defaultTextLeft(elem.hAlign),
-          top:        hasExplicitY ? `${elem.y! * 100}%` : `${autoY * 100}%`,
-          transform:  `translate(${translateX(elem.hAlign)}, ${translateY(elem.vAlign, hasExplicitY)})`,
-          fontSize:   `${fs * 100}cqh`,
-          fontFamily: fontFamily(ef),
-          fontWeight: fontWeight(ef),
-          color,
-          whiteSpace: 'nowrap',
-          lineHeight: 1,
-          pointerEvents: 'none',
-        }}>
-          {text}
-        </div>
+        <PreviewTextNode
+          key={key}
+          text={text}
+          css={{
+            fontSize: `${fs * 100}cqh`,
+            fontFamily: fontFamily(ef),
+            fontWeight: fontWeight(ef),
+            color,
+            whiteSpace: 'nowrap',
+            lineHeight: 1,
+          }}
+          left={hasExplicitX ? `${elem.x! * 100}%` : defaultTextLeft(elem.hAlign)}
+          top={hasExplicitY ? `${elem.y! * 100}%` : `${autoY * 100}%`}
+          translateXValue={translateX(elem.hAlign)}
+          translateYValue={translateY(elem.vAlign, hasExplicitY)}
+          opticalCenter={elem.opticalCenter === true && elem.hAlign === 1}
+        />
       )
     }
 

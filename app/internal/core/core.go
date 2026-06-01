@@ -34,7 +34,7 @@ type deviceEntry struct {
 	pageIndex     int
 	layoutID      string
 	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
-	wrapperStates map[string]string
+	widgetStackStates map[string]string
 	cancel        context.CancelFunc
 }
 
@@ -113,7 +113,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 						drv.SetLayout(layout)
 						entry.layoutID = layout.ID
 						entry.currentLayout = layout
-						entry.wrapperStates = defaultWrapperStates(layout)
+						entry.widgetStackStates = defaultWidgetStackStates(layout)
 						logger.Info("dash layout assigned", "device", id, "layout_id", layout.ID, "idle_widgets", len(layout.IdlePage.Widgets))
 					} else if lerr != nil {
 						logger.Warn("failed to load dash layout for device, screen will render black", "device", id, "err", lerr)
@@ -246,7 +246,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 			drv.SetLayout(layout)
 			entry.layoutID = layout.ID
 			entry.currentLayout = layout
-			entry.wrapperStates = defaultWrapperStates(layout)
+			entry.widgetStackStates = defaultWidgetStackStates(layout)
 		} else if lerr != nil {
 			c.logger.Warn("failed to load dash layout for device", "device", deviceID, "err", lerr)
 		}
@@ -275,7 +275,7 @@ func (c *Coordinator) SetDashLayout(deviceID string, layout *dashboard.DashLayou
 	e.driver.SetLayout(layout)
 	e.layoutID = layout.ID
 	e.currentLayout = layout
-	e.wrapperStates = defaultWrapperStates(layout)
+	e.widgetStackStates = defaultWidgetStackStates(layout)
 	e.pageIndex = 0
 	e.driver.SetActivePage(0)
 }
@@ -288,7 +288,7 @@ func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
 		if e.driver != nil && e.layoutID == layout.ID {
 			e.driver.SetLayout(layout)
 			e.currentLayout = layout
-			e.wrapperStates = defaultWrapperStates(layout)
+			e.widgetStackStates = defaultWidgetStackStates(layout)
 		}
 	}
 }
@@ -380,7 +380,7 @@ func (c *Coordinator) ReloadDashCommands() {
 			continue
 		}
 		for _, page := range append([]dashboard.DashPage{layout.IdlePage}, layout.Pages...) {
-			for _, group := range page.WrapperGroups {
+			for _, group := range page.WidgetStacks {
 				baseLabel := layout.Name + " / " + page.Name + " / " + group.Name
 				layoutID := layout.ID
 				pageID := page.ID
@@ -396,7 +396,7 @@ func (c *Coordinator) ReloadDashCommands() {
 						},
 						Handler: func(payload any) {
 							screenID, _ := payload.(string)
-							c.cycleWrapper(screenID, layoutID, pageID, groupID, 1)
+							c.cycleWidgetStack(screenID, layoutID, pageID, groupID, 1)
 						},
 					},
 					commands.DynamicCommand{
@@ -409,7 +409,7 @@ func (c *Coordinator) ReloadDashCommands() {
 						},
 						Handler: func(payload any) {
 							screenID, _ := payload.(string)
-							c.cycleWrapper(screenID, layoutID, pageID, groupID, -1)
+							c.cycleWidgetStack(screenID, layoutID, pageID, groupID, -1)
 						},
 					},
 				)
@@ -420,7 +420,7 @@ func (c *Coordinator) ReloadDashCommands() {
 	commands.ReplaceDynamic(dynamic)
 }
 
-func (c *Coordinator) cycleWrapper(screenID, layoutID, pageID, groupID string, direction int) {
+func (c *Coordinator) cycleWidgetStack(screenID, layoutID, pageID, groupID string, direction int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for id, entry := range c.entries {
@@ -430,29 +430,29 @@ func (c *Coordinator) cycleWrapper(screenID, layoutID, pageID, groupID string, d
 		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
 			continue
 		}
-		group := findWrapperGroup(entry.currentLayout, pageID, groupID)
-		if group == nil || len(group.Variants) == 0 {
+		group := findWidgetStack(entry.currentLayout, pageID, groupID)
+		if group == nil || len(group.Layers) == 0 {
 			continue
 		}
-		currentID := entry.wrapperStates[wrapperStateKey(pageID, groupID)]
+		currentID := entry.widgetStackStates[widgetStackStateKey(pageID, groupID)]
 		if currentID == "" {
-			currentID = groupDefaultVariantID(*group)
+			currentID = groupDefaultLayerID(*group)
 		}
 		currentIndex := 0
-		for i, variant := range group.Variants {
+		for i, variant := range group.Layers {
 			if variant.ID == currentID {
 				currentIndex = i
 				break
 			}
 		}
-		nextIndex := ((currentIndex + direction) % len(group.Variants) + len(group.Variants)) % len(group.Variants)
-		nextID := group.Variants[nextIndex].ID
-		entry.wrapperStates[wrapperStateKey(pageID, groupID)] = nextID
-		entry.driver.SetWrapperVariant(pageID, groupID, nextID)
+		nextIndex := ((currentIndex + direction) % len(group.Layers) + len(group.Layers)) % len(group.Layers)
+		nextID := group.Layers[nextIndex].ID
+		entry.widgetStackStates[widgetStackStateKey(pageID, groupID)] = nextID
+		entry.driver.SetWidgetStackLayer(pageID, groupID, nextID)
 	}
 }
 
-func (c *Coordinator) setWrapperVariant(screenID, layoutID, pageID, groupID, variantID string) {
+func (c *Coordinator) setWidgetStackLayer(screenID, layoutID, pageID, groupID, variantID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for id, entry := range c.entries {
@@ -462,11 +462,11 @@ func (c *Coordinator) setWrapperVariant(screenID, layoutID, pageID, groupID, var
 		if entry.driver == nil || entry.currentLayout == nil || entry.currentLayout.ID != layoutID {
 			continue
 		}
-		if group := findWrapperGroup(entry.currentLayout, pageID, groupID); group != nil {
-			for _, variant := range group.Variants {
+		if group := findWidgetStack(entry.currentLayout, pageID, groupID); group != nil {
+			for _, variant := range group.Layers {
 				if variant.ID == variantID {
-					entry.wrapperStates[wrapperStateKey(pageID, groupID)] = variantID
-					entry.driver.SetWrapperVariant(pageID, groupID, variantID)
+					entry.widgetStackStates[widgetStackStateKey(pageID, groupID)] = variantID
+					entry.driver.SetWidgetStackLayer(pageID, groupID, variantID)
 					break
 				}
 			}
@@ -489,7 +489,7 @@ func (c *Coordinator) CyclePage(deviceID string, direction int) {
 		n := len(e.currentLayout.Pages)
 		e.pageIndex = ((e.pageIndex+direction)%n + n) % n
 		e.driver.SetActivePage(e.pageIndex)
-		resetPageWrapperStates(e, e.currentLayout.Pages[e.pageIndex])
+		resetPageWidgetStackStates(e, e.currentLayout.Pages[e.pageIndex])
 		c.emit("dash:page-changed", DashPageChangedEvent{
 			DeviceID:  id,
 			PageIndex: e.pageIndex,
@@ -723,7 +723,7 @@ func (c *Coordinator) updateIdleState(frame *dto.TelemetryFrame) {
 			e.driver.SetActivePage(0)
 			pageName := ""
 			if e.currentLayout != nil && len(e.currentLayout.Pages) > 0 {
-				resetPageWrapperStates(e, e.currentLayout.Pages[0])
+				resetPageWidgetStackStates(e, e.currentLayout.Pages[0])
 				pageName = e.currentLayout.Pages[0].Name
 			}
 			c.emit("dash:page-changed", DashPageChangedEvent{
@@ -746,52 +746,52 @@ func (c *Coordinator) setAllIdle(idle bool) {
 	}
 }
 
-func defaultWrapperStates(layout *dashboard.DashLayout) map[string]string {
+func defaultWidgetStackStates(layout *dashboard.DashLayout) map[string]string {
 	states := map[string]string{}
 	if layout == nil {
 		return states
 	}
-	collectPageWrapperDefaults(states, layout.IdlePage)
+	collectPageWidgetStackDefaults(states, layout.IdlePage)
 	for _, page := range layout.Pages {
-		collectPageWrapperDefaults(states, page)
+		collectPageWidgetStackDefaults(states, page)
 	}
 	return states
 }
 
-func collectPageWrapperDefaults(states map[string]string, page dashboard.DashPage) {
-	for _, group := range page.WrapperGroups {
-		states[wrapperStateKey(page.ID, group.ID)] = groupDefaultVariantID(group)
+func collectPageWidgetStackDefaults(states map[string]string, page dashboard.DashPage) {
+	for _, group := range page.WidgetStacks {
+		states[widgetStackStateKey(page.ID, group.ID)] = groupDefaultLayerID(group)
 	}
 }
 
-func resetPageWrapperStates(entry *deviceEntry, page dashboard.DashPage) {
-	if entry.wrapperStates == nil {
-		entry.wrapperStates = map[string]string{}
+func resetPageWidgetStackStates(entry *deviceEntry, page dashboard.DashPage) {
+	if entry.widgetStackStates == nil {
+		entry.widgetStackStates = map[string]string{}
 	}
-	for _, group := range page.WrapperGroups {
-		variantID := groupDefaultVariantID(group)
-		entry.wrapperStates[wrapperStateKey(page.ID, group.ID)] = variantID
+	for _, group := range page.WidgetStacks {
+		variantID := groupDefaultLayerID(group)
+		entry.widgetStackStates[widgetStackStateKey(page.ID, group.ID)] = variantID
 		if entry.driver != nil && variantID != "" {
-			entry.driver.SetWrapperVariant(page.ID, group.ID, variantID)
+			entry.driver.SetWidgetStackLayer(page.ID, group.ID, variantID)
 		}
 	}
 }
 
-func groupDefaultVariantID(group dashboard.DashWrapperGroup) string {
-	if group.DefaultVariantID != "" {
-		return group.DefaultVariantID
+func groupDefaultLayerID(group dashboard.DashWidgetStack) string {
+	if group.DefaultLayerID != "" {
+		return group.DefaultLayerID
 	}
-	if len(group.Variants) > 0 {
-		return group.Variants[0].ID
+	if len(group.Layers) > 0 {
+		return group.Layers[0].ID
 	}
 	return ""
 }
 
-func wrapperStateKey(pageID, groupID string) string {
+func widgetStackStateKey(pageID, groupID string) string {
 	return pageID + "::" + groupID
 }
 
-func findWrapperGroup(layout *dashboard.DashLayout, pageID, groupID string) *dashboard.DashWrapperGroup {
+func findWidgetStack(layout *dashboard.DashLayout, pageID, groupID string) *dashboard.DashWidgetStack {
 	if layout == nil {
 		return nil
 	}
@@ -800,9 +800,9 @@ func findWrapperGroup(layout *dashboard.DashLayout, pageID, groupID string) *das
 		if page.ID != pageID {
 			continue
 		}
-		for i := range page.WrapperGroups {
-			if page.WrapperGroups[i].ID == groupID {
-				return &page.WrapperGroups[i]
+		for i := range page.WidgetStacks {
+			if page.WidgetStacks[i].ID == groupID {
+				return &page.WidgetStacks[i]
 			}
 		}
 	}

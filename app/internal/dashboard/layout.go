@@ -35,32 +35,32 @@ type DashWidget struct {
 
 // DashPage is a single page within a dashboard layout.
 type DashPage struct {
-	ID            string             `json:"id"`
-	Name          string             `json:"name"`
-	Background    *color.RGBA        `json:"background,omitempty"`
-	Widgets       []DashWidget       `json:"widgets"`
-	WrapperGroups []DashWrapperGroup `json:"wrapperGroups,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Background   *color.RGBA       `json:"background,omitempty"`
+	Widgets      []DashWidget      `json:"widgets"`
+	WidgetStacks []DashWidgetStack `json:"widgetStacks,omitempty"`
 }
 
-// DashWrapperVariant is one named stack item inside a wrapper group.
+// DashWidgetStackLayer is one named layer inside a widget stack.
 // Child widget coordinates are relative to the group bounds.
-type DashWrapperVariant struct {
+type DashWidgetStackLayer struct {
 	ID      string       `json:"id"`
 	Name    string       `json:"name"`
 	Widgets []DashWidget `json:"widgets"`
 }
 
-// DashWrapperGroup is a page-local rectangular region that can render one of
-// multiple named widget variants at a time.
-type DashWrapperGroup struct {
-	ID               string               `json:"id"`
-	Name             string               `json:"name"`
-	Col              int                  `json:"col"`
-	Row              int                  `json:"row"`
-	ColSpan          int                  `json:"colSpan"`
-	RowSpan          int                  `json:"rowSpan"`
-	DefaultVariantID string               `json:"defaultVariantId,omitempty"`
-	Variants         []DashWrapperVariant `json:"variants"`
+// DashWidgetStack is a page-local rectangular region that can render one of
+// multiple named widget layers at a time.
+type DashWidgetStack struct {
+	ID             string                 `json:"id"`
+	Name           string                 `json:"name"`
+	Col            int                    `json:"col"`
+	Row            int                    `json:"row"`
+	ColSpan        int                    `json:"colSpan"`
+	RowSpan        int                    `json:"rowSpan"`
+	DefaultLayerID string                 `json:"defaultLayerId,omitempty"`
+	Layers         []DashWidgetStackLayer `json:"layers"`
 }
 
 // DashLayout is the full configuration for one named dashboard.
@@ -79,6 +79,44 @@ type DashLayout struct {
 	DomainPalette     widgets.DomainPalette     `json:"domainPalette,omitempty"`
 	Typography        widgets.TypographySettings `json:"typography,omitempty"`
 	FormatPreferences widgets.FormatPreferences `json:"formatPreferences,omitempty"`
+}
+
+func (p *DashPage) UnmarshalJSON(data []byte) error {
+	type Alias DashPage
+	aux := &struct {
+		WrapperGroups []DashWidgetStack `json:"wrapperGroups"`
+		*Alias
+	}{
+		Alias: (*Alias)(p),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if len(p.WidgetStacks) == 0 && len(aux.WrapperGroups) > 0 {
+		p.WidgetStacks = aux.WrapperGroups
+	}
+	return nil
+}
+
+func (s *DashWidgetStack) UnmarshalJSON(data []byte) error {
+	type Alias DashWidgetStack
+	aux := &struct {
+		DefaultVariantID string                 `json:"defaultVariantId"`
+		Variants         []DashWidgetStackLayer `json:"variants"`
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if s.DefaultLayerID == "" && aux.DefaultVariantID != "" {
+		s.DefaultLayerID = aux.DefaultVariantID
+	}
+	if len(s.Layers) == 0 && len(aux.Variants) > 0 {
+		s.Layers = aux.Variants
+	}
+	return nil
 }
 
 // NewPage creates a DashPage with a compact page ID.
@@ -141,22 +179,22 @@ func validatePage(layout *DashLayout, page DashPage, label string) error {
 			return fmt.Errorf("dash: %s widget %d %w", label, wi, err)
 		}
 	}
-	for gi, group := range page.WrapperGroups {
-		if err := validateGroupBounds(group, layout.GridCols, layout.GridRows); err != nil {
-			return fmt.Errorf("dash: %s wrapper group %d %w", label, gi, err)
+	for gi, stack := range page.WidgetStacks {
+		if err := validateWidgetStackBounds(stack, layout.GridCols, layout.GridRows); err != nil {
+			return fmt.Errorf("dash: %s widget stack %d %w", label, gi, err)
 		}
 		for wi := range page.Widgets {
-			if widgetsOverlap(page.Widgets[wi], DashWidget{Col: group.Col, Row: group.Row, ColSpan: group.ColSpan, RowSpan: group.RowSpan}) {
-				return fmt.Errorf("dash: %s wrapper group %d overlaps page widget %d", label, gi, wi)
+			if widgetsOverlap(page.Widgets[wi], DashWidget{Col: stack.Col, Row: stack.Row, ColSpan: stack.ColSpan, RowSpan: stack.RowSpan}) {
+				return fmt.Errorf("dash: %s widget stack %d overlaps page widget %d", label, gi, wi)
 			}
 		}
-		for gj := gi + 1; gj < len(page.WrapperGroups); gj++ {
-			other := page.WrapperGroups[gj]
+		for gj := gi + 1; gj < len(page.WidgetStacks); gj++ {
+			other := page.WidgetStacks[gj]
 			if widgetsOverlap(
-				DashWidget{Col: group.Col, Row: group.Row, ColSpan: group.ColSpan, RowSpan: group.RowSpan},
+				DashWidget{Col: stack.Col, Row: stack.Row, ColSpan: stack.ColSpan, RowSpan: stack.RowSpan},
 				DashWidget{Col: other.Col, Row: other.Row, ColSpan: other.ColSpan, RowSpan: other.RowSpan},
 			) {
-				return fmt.Errorf("dash: %s wrapper group %d overlaps wrapper group %d", label, gi, gj)
+				return fmt.Errorf("dash: %s widget stack %d overlaps widget stack %d", label, gi, gj)
 			}
 		}
 	}
@@ -176,32 +214,32 @@ func validateWidgetBounds(w DashWidget, cols, rows int) error {
 	return nil
 }
 
-func validateGroupBounds(group DashWrapperGroup, cols, rows int) error {
-	if group.Col < 0 || group.Row < 0 || group.ColSpan < 1 || group.RowSpan < 1 {
+func validateWidgetStackBounds(stack DashWidgetStack, cols, rows int) error {
+	if stack.Col < 0 || stack.Row < 0 || stack.ColSpan < 1 || stack.RowSpan < 1 {
 		return fmt.Errorf("has invalid grid position/size")
 	}
-	if group.Col+group.ColSpan > cols {
+	if stack.Col+stack.ColSpan > cols {
 		return fmt.Errorf("exceeds grid columns")
 	}
-	if group.Row+group.RowSpan > rows {
+	if stack.Row+stack.RowSpan > rows {
 		return fmt.Errorf("exceeds grid rows")
 	}
-	if len(group.Variants) == 0 {
-		return fmt.Errorf("must contain at least one variant")
+	if len(stack.Layers) == 0 {
+		return fmt.Errorf("must contain at least one layer")
 	}
-	defaultFound := group.DefaultVariantID == ""
-	for vi, variant := range group.Variants {
-		if group.DefaultVariantID != "" && variant.ID == group.DefaultVariantID {
+	defaultFound := stack.DefaultLayerID == ""
+	for li, layer := range stack.Layers {
+		if stack.DefaultLayerID != "" && layer.ID == stack.DefaultLayerID {
 			defaultFound = true
 		}
-		for wi, w := range variant.Widgets {
-			if err := validateWidgetBounds(w, group.ColSpan, group.RowSpan); err != nil {
-				return fmt.Errorf("variant %d widget %d %w", vi, wi, err)
+		for wi, w := range layer.Widgets {
+			if err := validateWidgetBounds(w, stack.ColSpan, stack.RowSpan); err != nil {
+				return fmt.Errorf("layer %d widget %d %w", li, wi, err)
 			}
 		}
 	}
 	if !defaultFound {
-		return fmt.Errorf("default variant %q not found", group.DefaultVariantID)
+		return fmt.Errorf("default layer %q not found", stack.DefaultLayerID)
 	}
 	return nil
 }

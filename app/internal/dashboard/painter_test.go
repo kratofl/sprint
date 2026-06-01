@@ -348,6 +348,122 @@ func TestPainterPreservesRightBordersInStackedDefaultLayout(t *testing.T) {
 	}
 }
 
+func TestPainterGearWidgetCentersVisibleGlyphHorizontally(t *testing.T) {
+	for _, scenario := range []struct {
+		name    string
+		screenW int
+		screenH int
+		cols    int
+		rows    int
+		widget  DashWidget
+	}{
+		{
+			name:    "live-canvas",
+			screenW: 800,
+			screenH: 480,
+			cols:    20,
+			rows:    12,
+			widget: DashWidget{
+				ID:      "gear",
+				Type:    widgets.WidgetGear,
+				Col:     8,
+				Row:     1,
+				ColSpan: 4,
+				RowSpan: 6,
+			},
+		},
+		{
+			name:    "widget-preview",
+			screenW: 144,
+			screenH: 144,
+			cols:    1,
+			rows:    1,
+			widget: DashWidget{
+				ID:      "gear",
+				Type:    widgets.WidgetGear,
+				Col:     0,
+				Row:     0,
+				ColSpan: 1,
+				RowSpan: 1,
+			},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			layout := &DashLayout{
+				ID:       "gear-center",
+				Name:     "Gear Center",
+				GridCols: scenario.cols,
+				GridRows: scenario.rows,
+				IdlePage: NewPage("Idle"),
+				Pages: []DashPage{{
+					ID:      "p1",
+					Name:    "Main",
+					Widgets: []DashWidget{scenario.widget},
+				}},
+			}
+			painter := NewPainter(scenario.screenW, scenario.screenH)
+			defer painter.Close()
+			painter.SetLayout(layout)
+			painter.SetIdle(false)
+			painter.SetActivePage(0)
+
+			left, top, right, bottom := widgetPixelBounds(scenario.cols, scenario.rows, scenario.screenW, scenario.screenH, scenario.widget)
+			for _, tc := range []struct {
+				name string
+				gear int8
+			}{
+				{name: "reverse", gear: -1},
+				{name: "neutral", gear: 0},
+				{name: "first", gear: 1},
+				{name: "third", gear: 3},
+				{name: "eighth", gear: 8},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					painter.widgetCaches = nil
+					frame := &dto.TelemetryFrame{}
+					frame.Car.Gear = tc.gear
+					raw, err := painter.Paint(frame)
+					if err != nil {
+						t.Fatalf("Paint returned error: %v", err)
+					}
+					img, ok := raw.(*image.RGBA)
+					if !ok {
+						t.Fatalf("expected RGBA image, got %T", raw)
+					}
+
+					widgetCenter := float64(left+right) / 2
+					massCenter, ok := foregroundInkHorizontalCenterOfMass(img, image.Rect(left, top, right, bottom))
+					if !ok {
+						t.Fatal("expected gear foreground pixel mass")
+					}
+					if diff := math.Abs(massCenter - widgetCenter); diff > 0.5 {
+						t.Fatalf("gear visible glyph mass center = %.2f, widget center = %.2f, diff %.2fpx", massCenter, widgetCenter, diff)
+					}
+				})
+			}
+		})
+	}
+}
+
+func foregroundInkHorizontalCenterOfMass(img *image.RGBA, bounds image.Rectangle) (float64, bool) {
+	var weightedX, total float64
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			c := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+			if c.R <= 180 || c.G <= 180 || c.B <= 180 || c.A == 0 {
+				continue
+			}
+			weight := (float64(c.R) + float64(c.G) + float64(c.B)) / 3
+			weightedX += (float64(x) + 0.5) * weight
+			total += weight
+		}
+	}
+	if total == 0 {
+		return 0, false
+	}
+	return weightedX / total, true
+}
+
 func widgetPixelBounds(cols, rows, screenW, screenH int, widget DashWidget) (left, top, right, bottom int) {
 	left = int(math.Round(float64(widget.Col) * float64(screenW) / float64(cols)))
 	right = int(math.Round(float64(widget.Col+widget.ColSpan) * float64(screenW) / float64(cols)))
@@ -438,7 +554,7 @@ func TestPainterWrapperGroupRendersSelectedVariant(t *testing.T) {
 
 	layout := makeTestLayout()
 	layout.Pages[0].Widgets = nil
-	layout.Pages[0].WrapperGroups = []DashWrapperGroup{
+	layout.Pages[0].WidgetStacks = []DashWidgetStack{
 		{
 			ID:               "stack",
 			Name:             "Stack",
@@ -446,8 +562,8 @@ func TestPainterWrapperGroupRendersSelectedVariant(t *testing.T) {
 			Row:              3,
 			ColSpan:          8,
 			RowSpan:          3,
-			DefaultVariantID: "variant-a",
-			Variants: []DashWrapperVariant{
+			DefaultLayerID: "variant-a",
+			Layers: []DashWidgetStackLayer{
 				{
 					ID:   "variant-a",
 					Name: "A",
@@ -479,7 +595,7 @@ func TestPainterWrapperGroupRendersSelectedVariant(t *testing.T) {
 	}
 	pixA := append([]byte(nil), imgA.Pix...)
 
-	painter.SetWrapperVariant(layout.Pages[0].ID, "stack", "variant-b")
+	painter.SetWidgetStackLayer(layout.Pages[0].ID, "stack", "variant-b")
 	rawVariantB, err := painter.Paint(&dto.TelemetryFrame{})
 	if err != nil {
 		t.Fatalf("Paint variant B: %v", err)

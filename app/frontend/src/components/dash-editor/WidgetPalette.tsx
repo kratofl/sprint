@@ -7,7 +7,7 @@ import {
   cn,
 } from '@sprint/ui'
 import type { WidgetCatalogEntry } from '@/lib/dash'
-import { MULTI_FUNCTION_WIDGET_PALETTE_TYPE } from './multiFunctionWidgetState'
+import { WIDGET_STACK_PALETTE_TYPE } from './multiFunctionWidgetState'
 
 const CATEGORY_ORDER = ['layout', 'timing', 'car', 'race']
 interface PaletteWidget extends Pick<WidgetCatalogEntry, 'type' | 'name' | 'category' | 'categoryLabel'> {
@@ -17,7 +17,7 @@ interface PaletteWidget extends Pick<WidgetCatalogEntry, 'type' | 'name' | 'cate
 interface WidgetPaletteProps {
   catalog: WidgetCatalogEntry[]
   previewUrls: Record<string, string>
-  includeMultiFunctionWidget?: boolean
+  includeWidgetStack?: boolean
   onDragStart?: (type: string, previewUrl?: string) => void
   onDragEnd?: () => void
 }
@@ -25,15 +25,15 @@ interface WidgetPaletteProps {
 export function WidgetPalette({
   catalog,
   previewUrls,
-  includeMultiFunctionWidget = false,
+  includeWidgetStack = false,
   onDragStart,
   onDragEnd,
 }: WidgetPaletteProps) {
-  const paletteCatalog: PaletteWidget[] = includeMultiFunctionWidget
+  const paletteCatalog: PaletteWidget[] = includeWidgetStack
     ? [
       {
-        type: MULTI_FUNCTION_WIDGET_PALETTE_TYPE,
-        name: 'Multi-Function Widget',
+        type: WIDGET_STACK_PALETTE_TYPE,
+        name: 'Widget Stack',
         category: 'layout',
         categoryLabel: 'layout',
         synthetic: true,

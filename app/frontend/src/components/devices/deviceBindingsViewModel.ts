@@ -3,7 +3,7 @@ import type { CommandMeta } from '@/lib/controls'
 
 const WRAPPER_ACTIONS = new Set(['next', 'prev'])
 
-type BindingCardKind = 'global' | 'multi-function-widget'
+type BindingCardKind = 'global' | 'widget-stack'
 
 interface ParsedWrapperCommandId {
   layoutId: string
@@ -70,7 +70,7 @@ export function buildDeviceBindingsViewModel({
     const { title, subtitle } = describeWrapperCard(command.label)
     wrapperCards.set(key, {
       key,
-      kind: 'multi-function-widget',
+      kind: 'widget-stack',
       title,
       subtitle,
       rows: [row],
