@@ -1,5 +1,6 @@
 /* Shared design tokens. */
 @import '@sprint/tokens/globals.css';
+@config "../tailwind.config.ts";
 
 /* Wails-specific rules. */
 html, body, #root {
