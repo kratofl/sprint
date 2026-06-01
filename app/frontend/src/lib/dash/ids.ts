@@ -22,8 +22,8 @@ export function createDashPageId(): string {
   return createPrefixedId('page')
 }
 
-export function createDashMfwId(): string {
-  return createPrefixedId('mfw')
+export function createDashWidgetStackId(): string {
+  return createPrefixedId('stack')
 }
 
 export function createDashLayerId(): string {
