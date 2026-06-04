@@ -111,3 +111,4 @@ temp/
 # codebase-memory-mcp tool data and installer
 .codebase-memory/
 install.ps1
+.superpowers/
