@@ -30,7 +30,7 @@ export const componentTokens = {
     nav: {
       bg: semanticTokens.color.platform.winui.mica,
       itemBgHover: semanticTokens.color.platform.winui.controlHover,
-      itemBgActive: semanticTokens.color.platform.winui.accentMuted,
+      itemBgActive: semanticTokens.color.surface.inset,
       itemText: semanticTokens.color.platform.winui.textTertiary,
       itemTextActive: semanticTokens.color.platform.winui.accent,
       itemIndicator: semanticTokens.color.platform.winui.accent,
@@ -77,11 +77,11 @@ export const componentTokens = {
   },
   input: {
     bg: semanticTokens.color.surface.raised,
-    border: semanticTokens.color.border.strong,
+    border: semanticTokens.color.border.default,
     borderFocus: semanticTokens.color.border.focus,
     text: semanticTokens.color.text.primary,
     radius: semanticTokens.radius.control,
-    height: '40px',
+    height: '32px',
   },
   badge: {
     neutral: {
@@ -111,7 +111,7 @@ export const componentTokens = {
   },
   nav: {
     railBg: semanticTokens.color.bg.deep,
-    itemBgActive: semanticTokens.color.action.primaryMuted,
+    itemBgActive: semanticTokens.color.surface.inset,
     itemTextActive: semanticTokens.color.action.primary,
     itemTextIdle: semanticTokens.color.text.muted,
     itemBorderActive: semanticTokens.color.action.primaryBorder,

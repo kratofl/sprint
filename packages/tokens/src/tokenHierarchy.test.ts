@@ -50,6 +50,33 @@ test('secondary compatibility aliases map to the Figma blue info channel', () =>
   assert.match(globalsSource, /--secondary-surface:\s*var\(--blue-tint\);/)
 })
 
+test('component tokens match Figma nav, action, and input parity', () => {
+  const colors = tokensConfig.theme?.extend?.colors as Record<string, any>
+
+  assert.equal(publicTokens.component.shell.nav.itemBgActive, '#1a1a1a')
+  assert.equal(publicTokens.component.nav.itemBgActive, '#1a1a1a')
+  assert.equal(colors.component.shell.nav.itemBgActive, '#1a1a1a')
+  assert.equal(colors.component.nav.active, '#1a1a1a')
+  assert.match(globalsSource, /--component-shell-nav-item-active-bg:\s*var\(--panel-3\);/)
+
+  assert.equal(publicTokens.semantic.color.action.primaryMuted, 'rgba(255,106,0,.13)')
+  assert.match(globalsSource, /--semantic-color-action-primary-muted:\s*rgba\(255,\s*106,\s*0,\s*\.13\);/)
+  assert.match(globalsSource, /--semantic-color-platform-winui-accent-muted:\s*rgba\(255,\s*106,\s*0,\s*\.14\);/)
+  assert.match(globalsSource, /--accent-muted:\s*var\(--orange-soft\);/)
+  assert.match(globalsSource, /--orange-tint:\s*#33170a;/)
+
+  assert.equal(publicTokens.component.input.bg, '#141414')
+  assert.equal(publicTokens.component.input.border, '#2e2e2e')
+  assert.equal(publicTokens.component.input.radius, '8px')
+  assert.equal(publicTokens.component.input.height, '32px')
+  assert.equal(colors.component.input.bg, '#141414')
+  assert.equal(colors.component.input.border, '#2e2e2e')
+  assert.match(globalsSource, /--component-input-bg:\s*var\(--panel-2\);/)
+  assert.match(globalsSource, /--component-input-border:\s*var\(--border\);/)
+  assert.match(globalsSource, /--component-input-radius:\s*var\(--primitive-radius-control\);/)
+  assert.match(globalsSource, /--component-input-height:\s*32px;/)
+})
+
 test('semantic tokens describe product meaning instead of raw palette groups', () => {
   assert.match(semanticSource, /action:\s*\{[\s\S]*primary:\s*primitiveColor\.orange\[500\]/)
   assert.match(semanticSource, /status:\s*\{[\s\S]*success:\s*primitiveColor\.green\[500\]/)

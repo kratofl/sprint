@@ -84,7 +84,7 @@
   --semantic-color-border-default: var(--border);
   --semantic-color-border-strong: var(--border-2);
   --semantic-color-action-primary: var(--orange);
-  --semantic-color-action-primary-muted: var(--orange-tint);
+  --semantic-color-action-primary-muted: rgba(255, 106, 0, .13);
   --semantic-color-status-success: var(--green);
   --semantic-color-status-success-muted: var(--green-tint);
   --semantic-color-status-danger: var(--red);
@@ -106,7 +106,7 @@
   --semantic-color-platform-winui-text-secondary: var(--muted);
   --semantic-color-platform-winui-text-tertiary: var(--muted-2);
   --semantic-color-platform-winui-accent: var(--orange);
-  --semantic-color-platform-winui-accent-muted: var(--orange-tint);
+  --semantic-color-platform-winui-accent-muted: rgba(255, 106, 0, .14);
 
   /* Component */
   --component-button-primary-bg: var(--orange);
@@ -133,6 +133,8 @@
   --component-card-radius: var(--primitive-radius-panel);
   --component-input-bg: var(--panel-2);
   --component-input-border: var(--border);
+  --component-input-radius: var(--primitive-radius-control);
+  --component-input-height: 32px;
   --component-nav-rail-bg: var(--bg-deep);
   --component-dash-editor-well: var(--bg-deep);
   --component-dash-editor-rail: var(--panel);
@@ -142,8 +144,8 @@
   /* Backward-compatible aliases mapped onto the Figma system. */
   --accent: var(--orange);
   --accent-dark: #e65d00;
-  --accent-muted: var(--orange-tint);
-  --accent-surface: var(--orange-tint);
+  --accent-muted: var(--orange-soft);
+  --accent-surface: var(--orange-soft);
   --heat: var(--orange);
   --secondary: var(--blue);
   --secondary-dark: var(--blue-ring);
