@@ -2,11 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
+import tokensConfig from '../tailwind.config.ts'
+import * as publicTokens from './index.ts'
 import { primitive } from './primitive/index.ts'
 
 const colorSteps = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950']
 const semanticSource = readFileSync(new URL('./semantic/index.ts', import.meta.url), 'utf8')
 const componentSource = readFileSync(new URL('./component/index.ts', import.meta.url), 'utf8')
+const globalsSource = readFileSync(new URL('../globals.css', import.meta.url), 'utf8')
 
 test('primitive color groups expose Figma-style 50-950 ramps', () => {
   for (const group of ['orange', 'green', 'red', 'yellow', 'blue', 'purple', 'neutral'] as const) {
@@ -28,6 +31,21 @@ test('primitive tokens expose exact Figma anchors', () => {
   assert.equal(primitive.radius.control, '8px')
   assert.equal(primitive.radius.tile, '6px')
   assert.equal(primitive.radius.badge, '4px')
+})
+
+test('public token entrypoint exports Figma token layers', () => {
+  assert.equal(publicTokens.primitive.color.orange[500], '#ff6a00')
+  assert.equal(publicTokens.semanticTokens.color.status.info, '#1f7fe6')
+  assert.equal(publicTokens.componentTokens.button.primary.bg, '#ff6a00')
+})
+
+test('secondary compatibility aliases map to the Figma blue info channel', () => {
+  const colors = tokensConfig.theme?.extend?.colors as Record<string, unknown>
+  assert.deepEqual(colors.secondary, { DEFAULT: 'var(--blue)', foreground: '#ffffff' })
+  assert.match(globalsSource, /--secondary:\s*var\(--blue\);/)
+  assert.match(globalsSource, /--secondary-dark:\s*var\(--blue-ring\);/)
+  assert.match(globalsSource, /--secondary-muted:\s*rgba\(31,\s*127,\s*230,\s*\.12\);/)
+  assert.match(globalsSource, /--secondary-surface:\s*var\(--blue-tint\);/)
 })
 
 test('semantic tokens describe product meaning instead of raw palette groups', () => {

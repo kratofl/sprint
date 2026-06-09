@@ -145,10 +145,10 @@
   --accent-muted: var(--orange-tint);
   --accent-surface: var(--orange-tint);
   --heat: var(--orange);
-  --secondary: var(--muted);
-  --secondary-dark: var(--muted-2);
-  --secondary-muted: rgba(122, 122, 122, .10);
-  --secondary-surface: var(--panel-2);
+  --secondary: var(--blue);
+  --secondary-dark: var(--blue-ring);
+  --secondary-muted: rgba(31, 127, 230, .12);
+  --secondary-surface: var(--blue-tint);
   --success-surface: var(--green-tint);
   --warning-surface: var(--amber-tint);
   --destructive-surface: var(--red-tint);
@@ -247,8 +247,8 @@ body {
   }
 
   .surface-secondary {
-    background: var(--panel-2);
-    border-color: var(--border-2);
+    background: var(--blue-tint);
+    border-color: var(--blue-ring);
   }
 
   .surface-success {

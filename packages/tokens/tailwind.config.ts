@@ -105,7 +105,7 @@ const tokens: Partial<Config> = {
         foreground: 'var(--text)',
         primary:     { DEFAULT: 'var(--orange)', foreground: '#141414' },
         'primary-foreground': '#141414',
-        secondary:   { DEFAULT: neutral[400], foreground: 'var(--text)' },
+        secondary:   { DEFAULT: 'var(--blue)', foreground: '#ffffff' },
         tertiary:    { DEFAULT: semantic.tertiary, foreground: 'var(--bg)' },
         destructive: { DEFAULT: 'var(--red)', foreground: '#ffffff' },
         success:     { DEFAULT: 'var(--green)', foreground: 'var(--bg)' },
