@@ -1,163 +1,285 @@
 /* Fonts */
-/* Bahnschrift is referenced as a local/system font. IBM Plex Sans is the bundled web fallback. */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Saira:wght@400;500;600;700&family=Saira+Semi+Condensed:wght@500;700&family=Space+Grotesk:wght@700&display=swap');
 
 @import "tailwindcss";
 
-/* CSS variables */
 :root {
-  /* Primary — orange (driver-owned actions / active state) */
-  --accent:        #ff906c;
-  --accent-dark:   #ff784d;
-  --accent-muted:  rgba(255, 144, 108, 0.12);
-  --accent-surface: rgba(255, 144, 108, 0.12);
-  --heat:          #ff6a00;
+  /* Primitive / Color */
+  --primitive-color-orange-500: #ff6a00;
+  --primitive-color-green-500: #16b566;
+  --primitive-color-red-500: #f02744;
+  --primitive-color-yellow-500: #e0a30c;
+  --primitive-color-blue-500: #1f7fe6;
+  --primitive-color-neutral-950: #0a0a0a;
+  --primitive-color-neutral-900: #050505;
+  --primitive-color-neutral-850: #0f0f0f;
+  --primitive-color-neutral-800: #141414;
+  --primitive-color-neutral-750: #1a1a1a;
+  --primitive-color-neutral-700: #1f1f1f;
+  --primitive-color-neutral-600: #2e2e2e;
+  --primitive-color-neutral-500: #424242;
+  --primitive-color-neutral-400: #7a7a7a;
+  --primitive-color-neutral-300: #5a5a5a;
+  --primitive-color-neutral-50: #f6f6f6;
 
-  /* Secondary — cyan (system status / engineer-originated / comparison data) */
-  --secondary:     #5af8fb;
-  --secondary-dark:#2ae4e8;
-  --secondary-muted: rgba(90, 248, 251, 0.08);
-  --secondary-surface: rgba(90, 248, 251, 0.08);
+  /* Primitive / Radius + Space */
+  --primitive-radius-panel: 14px;
+  --primitive-radius-alert: 10px;
+  --primitive-radius-control: 8px;
+  --primitive-radius-tile: 6px;
+  --primitive-radius-badge: 4px;
+  --primitive-radius-pill: 999px;
+  --primitive-space-0: 0px;
+  --primitive-space-0-5: 2px;
+  --primitive-space-1: 4px;
+  --primitive-space-1-5: 6px;
+  --primitive-space-2: 8px;
+  --primitive-space-2-5: 10px;
+  --primitive-space-3-5: 14px;
 
-  /* Status surfaces */
-  --success-surface: rgba(52, 211, 153, 0.10);
-  --warning-surface: rgba(251, 191, 36, 0.10);
-  --destructive-surface: rgba(255, 59, 48, 0.14);
-  --tertiary-surface: rgba(241, 175, 255, 0.10);
+  /* Exact Figma public variables */
+  --bg: #0a0a0a;
+  --bg-deep: #050505;
+  --win: #0f0f0f;
+  --panel: #0f0f0f;
+  --tile: #0f0f0f;
+  --panel-2: #141414;
+  --tile-2: #141414;
+  --panel-3: #1a1a1a;
+  --tile-3: #1a1a1a;
+  --panel-4: #1f1f1f;
+  --tile-4: #1f1f1f;
+  --border: #2e2e2e;
+  --border-2: #424242;
+  --win-edge: #404040;
+  --text: #f6f6f6;
+  --muted: #7a7a7a;
+  --muted-2: #5a5a5a;
+  --orange: #ff6a00;
+  --green: #16b566;
+  --red: #f02744;
+  --amber: #e0a30c;
+  --blue: #1f7fe6;
+  --green-tint: #05281a;
+  --green-ring: #0e7445;
+  --red-tint: #3a0a10;
+  --red-ring: #851727;
+  --amber-tint: #2b2003;
+  --amber-ring: #8a6507;
+  --blue-tint: #071a30;
+  --blue-ring: #11457f;
+  --orange-tint: #33170a;
+  --orange-ring: #9c4505;
 
-  /* Surfaces */
-  --bg-base:       #090907;
-  --bg-shell:      #090907;
-  --bg-container:  #12110f;
-  --bg-elevated:   #1a1815;
-  --bg-overlay:    #090907;
-  --bg-overlay-panel: rgba(9, 9, 7, 0.96);
+  /* Semantic */
+  --semantic-color-bg-base: var(--bg);
+  --semantic-color-bg-deep: var(--bg-deep);
+  --semantic-color-surface-panel: var(--panel);
+  --semantic-color-surface-raised: var(--panel-2);
+  --semantic-color-surface-inset: var(--panel-3);
+  --semantic-color-surface-tile-4: var(--panel-4);
+  --semantic-color-text-primary: var(--text);
+  --semantic-color-text-muted: var(--muted);
+  --semantic-color-text-disabled: var(--muted-2);
+  --semantic-color-border-default: var(--border);
+  --semantic-color-border-strong: var(--border-2);
+  --semantic-color-action-primary: var(--orange);
+  --semantic-color-action-primary-muted: var(--orange-tint);
+  --semantic-color-status-success: var(--green);
+  --semantic-color-status-success-muted: var(--green-tint);
+  --semantic-color-status-danger: var(--red);
+  --semantic-color-status-danger-muted: var(--red-tint);
+  --semantic-color-status-warning: var(--amber);
+  --semantic-color-status-warning-muted: var(--amber-tint);
+  --semantic-color-status-info: var(--blue);
+  --semantic-color-status-info-muted: var(--blue-tint);
+  --semantic-color-platform-winui-mica: var(--win);
+  --semantic-color-platform-winui-mica-alt: var(--bg-deep);
+  --semantic-color-platform-winui-layer: var(--panel-2);
+  --semantic-color-platform-winui-layer-alt: var(--panel-3);
+  --semantic-color-platform-winui-control: var(--panel-4);
+  --semantic-color-platform-winui-control-hover: var(--border);
+  --semantic-color-platform-winui-control-pressed: var(--win);
+  --semantic-color-platform-winui-stroke: var(--border);
+  --semantic-color-platform-winui-stroke-subtle: var(--border-2);
+  --semantic-color-platform-winui-text-primary: var(--text);
+  --semantic-color-platform-winui-text-secondary: var(--muted);
+  --semantic-color-platform-winui-text-tertiary: var(--muted-2);
+  --semantic-color-platform-winui-accent: var(--orange);
+  --semantic-color-platform-winui-accent-muted: var(--orange-tint);
 
-  /* Structural border — used for all section/card/table dividers */
-  --outline:       #343027;
-  --outline-strong:#6f675f;
+  /* Component */
+  --component-button-primary-bg: var(--orange);
+  --component-button-primary-text: var(--panel-2);
+  --component-button-primary-border: var(--orange);
+  --component-shell-window-bg: var(--bg-deep);
+  --component-shell-window-border: var(--win-edge);
+  --component-shell-titlebar-bg: var(--win);
+  --component-shell-titlebar-border: var(--border);
+  --component-shell-titlebar-text: var(--text);
+  --component-shell-titlebar-muted-text: var(--muted-2);
+  --component-shell-command-button-hover-bg: var(--border);
+  --component-shell-command-button-pressed-bg: var(--win);
+  --component-shell-nav-bg: var(--win);
+  --component-shell-nav-border: var(--border);
+  --component-shell-nav-item-hover-bg: var(--panel-2);
+  --component-shell-nav-item-active-bg: var(--panel-3);
+  --component-shell-nav-item-active-text: var(--orange);
+  --component-shell-nav-item-indicator: var(--orange);
+  --component-shell-page-header-bg: var(--panel-2);
+  --component-shell-page-header-border: var(--border);
+  --component-card-bg: var(--panel);
+  --component-card-border: var(--border);
+  --component-card-radius: var(--primitive-radius-panel);
+  --component-input-bg: var(--panel-2);
+  --component-input-border: var(--border);
+  --component-nav-rail-bg: var(--bg-deep);
+  --component-dash-editor-well: var(--bg-deep);
+  --component-dash-editor-rail: var(--panel);
+  --component-dash-editor-inset: var(--bg);
+  --component-dash-editor-seam: var(--bg-deep);
 
-  /* Text */
-  --on-surface:    #f6f0e6;
-  --on-surface-variant: #a9a095;
+  /* Backward-compatible aliases mapped onto the Figma system. */
+  --accent: var(--orange);
+  --accent-dark: #e65d00;
+  --accent-muted: var(--orange-tint);
+  --accent-surface: var(--orange-tint);
+  --heat: var(--orange);
+  --secondary: var(--muted);
+  --secondary-dark: var(--muted-2);
+  --secondary-muted: rgba(122, 122, 122, .10);
+  --secondary-surface: var(--panel-2);
+  --success-surface: var(--green-tint);
+  --warning-surface: var(--amber-tint);
+  --destructive-surface: var(--red-tint);
+  --tertiary-surface: var(--green-tint);
+  --orange-soft: rgba(255, 106, 0, .13);
+  --green-soft: rgba(22, 181, 102, .13);
+  --red-soft: rgba(240, 39, 68, .12);
+  --amber-soft: rgba(224, 163, 12, .13);
+  --blue-soft: rgba(31, 127, 230, .12);
+  --bg-base: var(--bg);
+  --bg-shell: var(--bg-deep);
+  --bg-container: var(--panel);
+  --bg-elevated: var(--panel-2);
+  --bg-overlay: var(--bg-deep);
+  --bg-overlay-panel: var(--panel);
+  --outline: var(--border);
+  --outline-strong: var(--border-2);
+  --on-surface: var(--text);
+  --on-surface-variant: var(--muted);
 }
 
-/* Base styles */
 body {
-  background-color: var(--bg-base);
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Typography helpers */
+.mono,
+.ui-value {
+  font-family: 'Saira', sans-serif;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
 .ui-label {
-  font-family: Bahnschrift, 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
-  letter-spacing: 0;
-  text-transform: none;
+  color: var(--muted-2);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
 }
 
 .ui-control {
-  font-family: Bahnschrift, 'IBM Plex Sans Condensed', 'IBM Plex Sans', system-ui, sans-serif;
-  font-weight: 600;
+  font-family: Inter, system-ui, sans-serif;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
 }
 
-.ui-value {
-  font-family: Bahnschrift, 'IBM Plex Mono', ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+.ui-wordmark {
+  font-family: 'Saira Semi Condensed', Inter, sans-serif;
+  font-weight: 700;
 }
 
-/* Surface utilities */
 @layer utilities {
-  /* Container surface — cards, panels, section areas */
   .surface,
   .surface-panel {
-    background: var(--bg-container);
-    border: 1px solid var(--outline);
+    background: var(--panel);
+    border: 1px solid var(--border);
   }
 
   .surface-shell {
-    background: var(--bg-base);
-    border: 1px solid var(--outline);
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
   }
 
-  /* Elevated surface — active widgets, emphasized cards */
   .surface-elevated {
-    background: var(--bg-elevated);
-    border: 1px solid var(--outline);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
   }
 
-  /* Top-level overlay */
   .surface-overlay {
-    background: var(--bg-overlay);
-    border: 1px solid var(--outline);
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
   }
 
   .surface-overlay-panel {
-    background: var(--bg-overlay-panel);
-    border: 1px solid var(--outline);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--panel);
+    border: 1px solid var(--border);
   }
 
   .surface-inline {
-    background: var(--bg-elevated);
-    border: 1px solid var(--outline);
+    background: var(--panel-2);
+    border: 1px solid var(--border-2);
   }
 
   .surface-active {
-    background: var(--accent-surface);
-    border-color: rgba(255, 144, 108, 0.48);
+    background: var(--orange-tint);
+    border-color: var(--orange-ring);
   }
 
   .surface-secondary {
-    background: var(--secondary-surface);
-    border-color: rgba(90, 248, 251, 0.42);
+    background: var(--panel-2);
+    border-color: var(--border-2);
   }
 
   .surface-success {
-    background: var(--success-surface);
-    border-color: rgba(52, 211, 153, 0.42);
+    background: var(--green-tint);
+    border-color: var(--green-ring);
   }
 
   .surface-warning {
-    background: var(--warning-surface);
-    border-color: rgba(251, 191, 36, 0.42);
+    background: var(--amber-tint);
+    border-color: var(--amber-ring);
   }
 
   .surface-destructive {
-    background: var(--destructive-surface);
-    border-color: rgba(248, 113, 113, 0.55);
+    background: var(--red-tint);
+    border-color: var(--red-ring);
   }
 
   .surface-tertiary {
-    background: var(--tertiary-surface);
-    border-color: rgba(241, 175, 255, 0.42);
+    background: var(--green-tint);
+    border-color: var(--green-ring);
   }
 
-  /* Floating glass overlays — modals, dropdowns, nav bar */
-  .glass {
-    background: rgba(9, 9, 7, 0.92);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--outline);
-  }
-
+  /* Inert compatibility aliases: no blur, no glow, no glass elevation. */
+  .glass,
   .glass-overlay {
-    background: var(--bg-overlay-panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--outline);
+    background: var(--panel);
+    border: 1px solid var(--border);
   }
-
 }
 
-/* Scrollbar */
-::-webkit-scrollbar         { width: 4px; height: 4px; }
-::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(246, 246, 246, .12); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(246, 246, 246, .20); }

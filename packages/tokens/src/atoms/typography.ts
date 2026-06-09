@@ -1,14 +1,16 @@
 /**
  * Typography atoms.
- * Bahnschrift: compact Figma display/readout face.
- * IBM Plex Sans: primary app text face.
- * IBM Plex Mono: compact numeric fallback when a true monospace is useful.
+ * Inter is the UI family, Saira is used for tabular telemetry values, and
+ * Saira Semi Condensed / Space Grotesk cover Sprint brand moments.
  */
 
-export const fontFamily: Record<'display' | 'sans' | 'mono', string[]> = {
-  display: ['Bahnschrift', 'IBM Plex Sans Condensed', 'IBM Plex Sans', 'system-ui', 'sans-serif'],
-  sans: ['IBM Plex Sans', 'Bahnschrift', 'system-ui', 'sans-serif'],
-  mono: ['Bahnschrift', 'IBM Plex Mono', 'ui-monospace', 'monospace'],
+export const fontFamily: Record<'display' | 'sans' | 'mono' | 'wordmark' | 'ui' | 'numeric', string[]> = {
+  display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+  wordmark: ['Saira Semi Condensed', 'Inter', 'system-ui', 'sans-serif'],
+  sans: ['Inter', 'system-ui', 'sans-serif'],
+  ui: ['Inter', 'system-ui', 'sans-serif'],
+  mono: ['Saira', 'Inter', 'system-ui', 'sans-serif'],
+  numeric: ['Saira', 'Inter', 'system-ui', 'sans-serif'],
 }
 
 export const fontWeight = {

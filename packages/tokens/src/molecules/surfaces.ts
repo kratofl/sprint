@@ -1,24 +1,30 @@
-/**
- * Surface tokens from the flat Figma theme.
- * Warm black base with quiet, solid panels and minimal elevation.
- */
+import { primitiveColor } from '../primitive'
+
+/** Surface tokens from the true-neutral Sprint design language. */
 
 export const surfaces = {
-  base:      '#090907',
-  shell:     '#090907',
-  container: '#12110f',
-  elevated:  '#1a1815',
-  overlay:   '#090907',
-  overlayPanel: 'rgba(9, 9, 7, 0.96)',
-  /** restrained inline fill for hover/selected states on the flat base */
-  variant:   '#1a1815',
+  screen: primitiveColor.neutral[950],
+  deep: primitiveColor.neutral[900],
+  panel: primitiveColor.neutral[850],
+  tile2: primitiveColor.neutral[800],
+  tile3: primitiveColor.neutral[750],
+  tile4: primitiveColor.neutral[700],
+
+  base: primitiveColor.neutral[950],
+  shell: primitiveColor.neutral[900],
+  container: primitiveColor.neutral[850],
+  elevated: primitiveColor.neutral[800],
+  overlay: primitiveColor.neutral[900],
+  overlayPanel: primitiveColor.neutral[850],
+  /** Deepest inset fill for sliders, nested fields, and hover states. */
+  variant: primitiveColor.neutral[750],
 } as const
 
 /** Backward-compat alias */
 export const surface = surfaces.container
 
 /** Structural outline border — used for all section/card/table dividers */
-export const outlineColor = '#343027'
+export const outlineColor = primitiveColor.neutral[600]
 
 /** Stronger outline — reserved for floating surfaces and active shell boundaries */
-export const outlineStrongColor = '#6f675f'
+export const outlineStrongColor = primitiveColor.neutral[500]

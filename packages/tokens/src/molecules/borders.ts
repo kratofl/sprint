@@ -1,23 +1,21 @@
+import { primitiveColor } from '../primitive'
+
 /**
  * Border tokens.
  *
- * `outline` is the quiet structural separator used everywhere — header bars, sidebar,
- * card edges, table rows, chart areas.
- *
- * Ghost borders (semi-transparent) are reserved for interactive state overlays
- * and hover highlights only.
+ * `outline` is the quiet structural separator used everywhere: cards, rows,
+ * dividers, and chart areas. Emphasis uses the stronger neutral border.
  */
-import { orange, cyan, semantic } from '../atoms/colors'
 
 export const borders = {
-  /** Structural outline — header, sidebar, cards, table rows, chart areas */
-  outline:     '#343027',
-  /** Subtle variant — dividers inside surfaces */
-  outlineSubtle: 'rgba(246, 240, 230, 0.08)',
-  /** Accent — orange-500 at 30% opacity, highlighted/active cards */
-  accent:      `${orange[500]}4d`,
-  /** Red-orange focus/error border from the Figma chip/input states */
-  danger:      `${semantic.destructive}cc`,
-  /** Cyan — cyan-500 at 30% opacity, secondary call-out highlights */
-  teal:        `${cyan[500]}4d`,
+  /** Structural outline — cards, table rows, chart areas */
+  outline:     primitiveColor.neutral[600],
+  /** Stronger neutral outline — inputs, buttons, active boundaries */
+  outlineSubtle: primitiveColor.neutral[500],
+  /** Accent — racing orange at 30% opacity, highlighted/active cards */
+  accent:      'rgba(255,106,0,.30)',
+  danger:      '#851727',
+  success:     '#0e7445',
+  /** Compatibility cyan — explicit comparison call-outs only */
+  teal:        'rgba(31,127,230,.30)',
 } as const
