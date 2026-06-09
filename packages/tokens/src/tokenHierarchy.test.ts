@@ -35,6 +35,8 @@ test('primitive tokens expose exact Figma anchors', () => {
 
 test('public token entrypoint exports Figma token layers', () => {
   assert.equal(publicTokens.primitive.color.orange[500], '#ff6a00')
+  assert.equal(publicTokens.semantic.color.status.info, '#1f7fe6')
+  assert.equal(publicTokens.component.button.primary.bg, '#ff6a00')
   assert.equal(publicTokens.semanticTokens.color.status.info, '#1f7fe6')
   assert.equal(publicTokens.componentTokens.button.primary.bg, '#ff6a00')
 })

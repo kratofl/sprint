@@ -13,6 +13,8 @@ export * from './atoms/motion'
 // Semantic/component token layers
 export * from './semantic'
 export * from './component'
+export { semanticTokens as semantic } from './semantic'
+export { componentTokens as component } from './component'
 
 // Molecules
 export * from './molecules/surfaces'
