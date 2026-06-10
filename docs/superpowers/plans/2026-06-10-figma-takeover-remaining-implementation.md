@@ -1,6 +1,6 @@
 # Figma Theme Takeover Remaining Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Finish the Sprint Figma migration from the current committed state (`516a327`) through desktop verification and web migration.
 
@@ -86,7 +86,7 @@ Verification:
 - Modify: `app/frontend/src/components/dash-editor/widgetInspectorSections.test.ts`
 - Modify: `app/frontend/src/components/dash-editor/dashEditorSidebarChrome.test.ts`
 
-- [ ] **Step 1: Add failing tests for selected widget chrome and inspector flat styling.**
+- [x] **Step 1: Add failing tests for selected widget chrome and inspector flat styling.**
 
 Patch `app/frontend/src/components/dash-editor/dashCanvasChrome.test.ts` with:
 
@@ -110,7 +110,7 @@ test('widget inspector sections use Figma panel and field tokens', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests and confirm they fail.**
+- [x] **Step 2: Run tests and confirm they fail.**
 
 Run:
 
@@ -121,7 +121,7 @@ pnpm dlx tsx app\frontend\src\components\dash-editor\widgetInspectorSections.tes
 
 Expected: failures reference missing `outline-[var(--orange)]`, badge label classes, or old token classes.
 
-- [ ] **Step 3: Update `DashCanvas.tsx` selected state classes.**
+- [x] **Step 3: Update `DashCanvas.tsx` selected state classes.**
 
 Use this target for selected widget containers and labels:
 
@@ -140,7 +140,7 @@ className="rounded-badge bg-[var(--orange)] px-1.5 py-0.5 font-saira-sc text-[10
 
 Keep drag, resize, overlay, and stack click behavior unchanged.
 
-- [ ] **Step 4: Update inspector section and edge handle classes.**
+- [x] **Step 4: Update inspector section and edge handle classes.**
 
 In `DashEditMode.tsx`, use:
 
@@ -160,7 +160,7 @@ In `EditorEdgeHandle.tsx`, use a 25px icon-tile style:
 "flex size-[25px] items-center justify-center rounded-tile border border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--orange)] hover:text-[var(--orange)]"
 ```
 
-- [ ] **Step 5: Update `WidgetProperties.tsx` fields to Figma field tokens.**
+- [x] **Step 5: Update `WidgetProperties.tsx` fields to Figma field tokens.**
 
 Use:
 
@@ -174,7 +174,7 @@ Use labels:
 className="font-inter text-[11px] text-[var(--muted)]"
 ```
 
-- [ ] **Step 6: Run checks.**
+- [x] **Step 6: Run checks.**
 
 Run:
 
@@ -187,7 +187,7 @@ pnpm --filter @sprint/desktop type-check
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
 
 Run:
 
@@ -207,7 +207,7 @@ Expected: staged files are only the Task 1 files and commit succeeds.
 - Modify: `app/frontend/src/components/AdditionalSettingsPanel.tsx`
 - Modify: `app/frontend/src/components/dash-editor/dashEditorUIPreferences.test.ts`
 
-- [ ] **Step 1: Add failing source test for hidden gallery.**
+- [x] **Step 1: Add failing source test for hidden gallery.**
 
 Patch `app/frontend/src/components/dash-editor/dashEditorUIPreferences.test.ts` with:
 
@@ -225,7 +225,7 @@ test('default editor path does not expose theme or font gallery controls', () =>
 })
 ```
 
-- [ ] **Step 2: Run test and confirm it fails.**
+- [x] **Step 2: Run test and confirm it fails.**
 
 Run:
 
@@ -235,7 +235,7 @@ pnpm dlx tsx app\frontend\src\components\dash-editor\dashEditorUIPreferences.tes
 
 Expected: fails because the settings tab is still visible or `defaultDashBrand` is missing.
 
-- [ ] **Step 3: Remove the settings tab from default editor tabs.**
+- [x] **Step 3: Remove the settings tab from default editor tabs.**
 
 In `DashEditMode.tsx`, keep persisted settings handlers but remove the visible Designer/Settings tab switch from default navigation. Add:
 
@@ -248,7 +248,7 @@ const defaultDashBrand = {
 
 Keep `AdditionalSettingsPanel` reachable only from non-default/global settings paths already owned by `DashEditor.tsx`, not from the default edit screen.
 
-- [ ] **Step 4: Ensure hardcoded theme defaults remain Figma-facing.**
+- [x] **Step 4: Ensure hardcoded theme defaults remain Figma-facing.**
 
 Where local editor defaults are displayed, use:
 
@@ -261,7 +261,7 @@ const defaultDashBrand = {
 
 Do not delete persisted `theme`, `domainPalette`, `typography`, or `formatPreferences` data.
 
-- [ ] **Step 5: Run checks.**
+- [x] **Step 5: Run checks.**
 
 Run:
 
@@ -272,7 +272,7 @@ pnpm --filter @sprint/desktop type-check
 
 Expected: both pass.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 Run:
 
@@ -293,7 +293,7 @@ Expected: staged files are only Task 2 files and commit succeeds.
 - Modify: `app/frontend/src/components/WidgetPreview.tsx`
 - Modify: `app/frontend/src/components/dash-editor/dashEditorCatalogLoading.test.ts`
 
-- [ ] **Step 1: Add failing tests for list cards and loading states.**
+- [x] **Step 1: Add failing tests for list cards and loading states.**
 
 In `app/frontend/src/components/dash-editor/dashEditorCatalogLoading.test.ts`, assert:
 
@@ -303,7 +303,7 @@ assert.match(alertsEditorSource, /rounded-alert border border-\[var\(--border\)\
 assert.doesNotMatch(`${dashListSource}\n${alertsEditorSource}`, /bg-bg-container|bg-bg-panel|border-border-input|shadow-lg/)
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -313,7 +313,7 @@ pnpm dlx tsx app\frontend\src\components\dash-editor\dashEditorCatalogLoading.te
 
 Expected: fails on old card or border classes.
 
-- [ ] **Step 3: Repaint `DashList.tsx` cards.**
+- [x] **Step 3: Repaint `DashList.tsx` cards.**
 
 Use:
 
@@ -327,7 +327,7 @@ For layout metadata:
 <span className="font-saira text-[12px] tabular-nums text-[var(--muted)]">
 ```
 
-- [ ] **Step 4: Repaint `AlertsEditor.tsx` alert rows.**
+- [x] **Step 4: Repaint `AlertsEditor.tsx` alert rows.**
 
 Use:
 
@@ -337,7 +337,7 @@ Use:
 </div>
 ```
 
-- [ ] **Step 5: Repaint `WidgetPreview.tsx` placeholder/content shell.**
+- [x] **Step 5: Repaint `WidgetPreview.tsx` placeholder/content shell.**
 
 Use:
 
@@ -351,7 +351,7 @@ For captions:
 className="font-saira text-[10px] tabular-nums text-[var(--muted-2)]"
 ```
 
-- [ ] **Step 6: Run checks and commit.**
+- [x] **Step 6: Run checks and commit.**
 
 Run:
 
@@ -377,7 +377,7 @@ Expected: checks and commit succeed.
 - Modify: `app/frontend/src/views/Telemetry.tsx`
 - Modify: `app/frontend/src/views/telemetryHandoff.test.ts`
 
-- [ ] **Step 1: Add failing Dashboard view source tests.**
+- [x] **Step 1: Add failing Dashboard view source tests.**
 
 In `app/frontend/src/views/telemetryHandoff.test.ts`, assert:
 
@@ -390,7 +390,7 @@ assert.match(telemetrySource, /rounded-alert border border-\[var\(--border\)\] b
 assert.doesNotMatch(telemetrySource, /Live Session|bg-bg-|text-text-|font-mono|cyan|purple/)
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -400,7 +400,7 @@ pnpm dlx tsx app\frontend\src\views\telemetryHandoff.test.ts
 
 Expected: fails on legacy labels/classes.
 
-- [ ] **Step 3: Repaint `Telemetry.tsx` as Dashboard.**
+- [x] **Step 3: Repaint `Telemetry.tsx` as Dashboard.**
 
 Use this top-level layout:
 
@@ -436,7 +436,7 @@ Use alert rows:
 </div>
 ```
 
-- [ ] **Step 4: Run checks and commit.**
+- [x] **Step 4: Run checks and commit.**
 
 Run:
 
@@ -467,7 +467,7 @@ Expected: checks and commit succeed.
 - Modify: `app/frontend/src/components/devices/ScanPicker.tsx`
 - Test: create or modify `app/frontend/src/views/appHandoffSource.test.ts`
 
-- [ ] **Step 1: Add source test for devices chrome.**
+- [x] **Step 1: Add source test for devices chrome.**
 
 Add assertions:
 
@@ -478,7 +478,7 @@ assert.match(deviceComponentsSource, /h-8[^'"]*rounded-control/)
 assert.doesNotMatch(`${devicesSource}\n${deviceComponentsSource}`, /bg-bg-|border-border-input|shadow-lg|cyan|purple/)
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -488,7 +488,7 @@ pnpm dlx tsx app\frontend\src\views\appHandoffSource.test.ts
 
 Expected: fails on old classes.
 
-- [ ] **Step 3: Repaint devices components using Figma panels and alerts.**
+- [x] **Step 3: Repaint devices components using Figma panels and alerts.**
 
 Use panel:
 
@@ -508,7 +508,7 @@ Use missing driver banner:
 className="flex gap-[10px] rounded-alert border border-[var(--amber-ring)] bg-[var(--amber-tint)] p-[10px] text-[var(--amber)]"
 ```
 
-- [ ] **Step 4: Run checks and commit.**
+- [x] **Step 4: Run checks and commit.**
 
 Run:
 
@@ -536,7 +536,7 @@ Expected: checks and commit succeed.
 - Modify: `app/frontend/src/components/ConfirmDialog.tsx`
 - Modify: `app/frontend/src/views/appHandoffSource.test.ts`
 
-- [ ] **Step 1: Add source tests for system views and overlays.**
+- [x] **Step 1: Add source tests for system views and overlays.**
 
 Add:
 
@@ -548,7 +548,7 @@ assert.match(confirmDialogSource, /rounded-panel border border-\[var\(--border\)
 assert.doesNotMatch(`${settingsSource}\n${helpSource}\n${updateToastSource}\n${confirmDialogSource}`, /shadow-lg|backdrop-blur|bg-bg-|text-text-/)
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -558,7 +558,7 @@ pnpm dlx tsx app\frontend\src\views\appHandoffSource.test.ts
 
 Expected: fails on old classes.
 
-- [ ] **Step 3: Repaint Settings and Help.**
+- [x] **Step 3: Repaint Settings and Help.**
 
 Use panel:
 
@@ -570,7 +570,7 @@ Use panel:
 </section>
 ```
 
-- [ ] **Step 4: Repaint `UpdateToast.tsx` and `ConfirmDialog.tsx`.**
+- [x] **Step 4: Repaint `UpdateToast.tsx` and `ConfirmDialog.tsx`.**
 
 Use alert/dialog surface:
 
@@ -584,7 +584,7 @@ For dialog body:
 className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] shadow-none"
 ```
 
-- [ ] **Step 5: Run checks and commit.**
+- [x] **Step 5: Run checks and commit.**
 
 Run:
 
@@ -609,7 +609,7 @@ Expected: checks and commit succeed.
 **Files:**
 - Modify only files needed for focused visual fixes.
 
-- [ ] **Step 1: Run desktop verification commands.**
+- [x] **Step 1: Run desktop verification commands.**
 
 Run:
 
@@ -621,7 +621,7 @@ pnpm --filter @sprint/desktop build
 
 Expected: all exit 0.
 
-- [ ] **Step 2: Run browser-safe desktop.**
+- [x] **Step 2: Run browser-safe desktop.**
 
 Run in a long-running shell:
 
@@ -643,7 +643,7 @@ Expected visual facts:
 - Widget tiles are 107×46.
 - No visible cyan/purple/glass/elevated legacy chrome.
 
-- [ ] **Step 3: Fix any visual defects with focused commits.**
+- [x] **Step 3: Fix any visual defects with focused commits.**
 
 For each defect:
 
@@ -664,7 +664,7 @@ Expected: no broad staging.
 - Modify: `web/components/nav.tsx`
 - Modify: `web/tailwind.config.ts`
 
-- [ ] **Step 1: Add web shell source assertions.**
+- [x] **Step 1: Add web shell source assertions.**
 
 Create or update `web/components/webShellFigma.test.ts`:
 
@@ -693,7 +693,7 @@ test('web nav rows match Figma sidebar metrics', () => {
 })
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -703,7 +703,7 @@ pnpm dlx tsx web\components\webShellFigma.test.ts
 
 Expected: fails on old web shell/nav classes.
 
-- [ ] **Step 3: Import shared tokens in `web/app/globals.css`.**
+- [x] **Step 3: Import shared tokens in `web/app/globals.css`.**
 
 Use:
 
@@ -718,7 +718,7 @@ body {
 }
 ```
 
-- [ ] **Step 4: Rebuild web layout without desktop chrome.**
+- [x] **Step 4: Rebuild web layout without desktop chrome.**
 
 Use:
 
@@ -733,7 +733,7 @@ Use:
 </body>
 ```
 
-- [ ] **Step 5: Rebuild web nav rows.**
+- [x] **Step 5: Rebuild web nav rows.**
 
 Use:
 
@@ -746,7 +746,7 @@ className={cn(
 )}
 ```
 
-- [ ] **Step 6: Run checks and commit.**
+- [x] **Step 6: Run checks and commit.**
 
 Run:
 
@@ -775,7 +775,7 @@ Expected: checks and commit succeed.
 - Modify: `web/app/dash/page.tsx`
 - Test: create `web/app/webRoutesFigma.test.ts`
 
-- [ ] **Step 1: Add route source assertions.**
+- [x] **Step 1: Add route source assertions.**
 
 Create `web/app/webRoutesFigma.test.ts`:
 
@@ -801,7 +801,7 @@ test('web routes use Figma page, card, and numeric styling', () => {
 })
 ```
 
-- [ ] **Step 2: Run test and confirm failure.**
+- [x] **Step 2: Run test and confirm failure.**
 
 Run:
 
@@ -811,7 +811,7 @@ pnpm dlx tsx web\app\webRoutesFigma.test.ts
 
 Expected: fails on old route classes.
 
-- [ ] **Step 3: Repaint each route page header.**
+- [x] **Step 3: Repaint each route page header.**
 
 Use on every page:
 
@@ -824,7 +824,7 @@ Use on every page:
 </section>
 ```
 
-- [ ] **Step 4: Repaint web cards, tables, forms, and dash preview.**
+- [x] **Step 4: Repaint web cards, tables, forms, and dash preview.**
 
 Use cards:
 
@@ -844,7 +844,7 @@ Use numeric values:
 <span className="font-saira tabular-nums text-[var(--orange)]" />
 ```
 
-- [ ] **Step 5: Run checks and commit.**
+- [x] **Step 5: Run checks and commit.**
 
 Run:
 
@@ -869,7 +869,7 @@ Expected: checks and commit succeed.
 **Files:**
 - Modify only focused fix files if verification fails.
 
-- [ ] **Step 1: Run full relevant checks.**
+- [x] **Step 1: Run full relevant checks.**
 
 Run:
 
@@ -883,7 +883,7 @@ pnpm --filter @sprint/web build
 
 Expected: all exit 0.
 
-- [ ] **Step 2: Run final source drift scan.**
+- [x] **Step 2: Run final source drift scan.**
 
 Run:
 
@@ -893,7 +893,7 @@ Select-String -Path app\frontend\src\**,packages\ui\src\**,packages\tokens\**,we
 
 Expected: matches are either removed, compatibility-only aliases, old unused files outside visible routes, or explicitly documented exceptions. Any visible UI match must be fixed.
 
-- [ ] **Step 3: Verify desktop visually.**
+- [x] **Step 3: Verify desktop visually.**
 
 Run:
 
@@ -910,7 +910,7 @@ Expected:
 - No Home or Controls route in primary shell.
 - Wails update/settings/device flows remain callable.
 
-- [ ] **Step 4: Verify web visually.**
+- [x] **Step 4: Verify web visually.**
 
 Run:
 
@@ -925,7 +925,7 @@ Expected:
 - Web does not include desktop titlebar/window chrome.
 - All routes use panel/card/button/numeric Figma styling.
 
-- [ ] **Step 5: Commit verification fixes if any.**
+- [x] **Step 5: Commit verification fixes if any.**
 
 If fixes were made:
 
@@ -942,11 +942,11 @@ Expected: no empty commit if no fixes were needed.
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-10-figma-takeover-remaining-implementation.md`
 
-- [ ] **Step 1: Mark plan tasks complete.**
+- [x] **Step 1: Mark plan tasks complete.**
 
 Update each completed checkbox in this plan.
 
-- [ ] **Step 2: Capture final evidence.**
+- [x] **Step 2: Capture final evidence.**
 
 Record the final successful commands in the final response:
 
@@ -958,7 +958,43 @@ pnpm --filter @sprint/web type-check
 pnpm --filter @sprint/web build
 ```
 
-- [ ] **Step 3: Summarize residual risks.**
+- [x] **Step 3: Summarize residual risks.**
 
 If Go files remain dirty from unrelated work, state they were not part of the Figma UI migration unless touched by this plan.
 
+## Execution Evidence
+
+Completed implementation commits:
+
+- `a967591` feat: align dash editor canvas chrome with figma
+- `eda0d35` feat: simplify dash editor defaults for figma
+- `cc7e838` feat: finish dash editor figma chrome
+- `f5849c5` feat: migrate desktop dashboard view to figma
+- `a0b0c9b` feat: migrate desktop devices view to figma
+- `bcbc10d` feat: migrate desktop system views to figma
+- `d2e4210` feat: migrate web shell to figma foundation
+- `13a38e4` feat: migrate web routes to figma theme
+- `466df4e` fix: remove legacy alert swatch colors
+- `69e14e9` fix: add web sprint app icon
+
+Final verification run:
+
+- `pnpm --filter @sprint/ui build` exited 0.
+- `pnpm --filter @sprint/desktop type-check` exited 0.
+- `pnpm --filter @sprint/desktop build` exited 0.
+- `pnpm --filter @sprint/web type-check` exited 0.
+- `pnpm --filter @sprint/web build` compiled and generated static pages, then exited 1 while copying standalone traced files because Windows denied symlink creation under `web/.next/standalone`.
+
+Symlink root cause check:
+
+- `New-Item -ItemType SymbolicLink` inside `C:\Projects\sprint\.codex-tmp\symlink-check` failed with `Administrator privilege required for this operation`.
+- No repo config was changed to bypass `output: 'standalone'`, because that setting is documented in `web/next.config.ts` as required for optimized Docker output.
+
+Browser verification:
+
+- Desktop browser-safe Vite endpoint `http://localhost:5173/`: wallpaper asset present, `1570x883` frame with `14px` radius, `32px` titlebar, `220px` sidebar, `41px` topbar, no legacy cyan/purple/glass classes.
+- Web dev endpoint `http://localhost:3000/`: `220px` web sidebar, `rgb(10, 10, 10)` body background, no desktop titlebar text, no legacy cyan/purple/glass classes, Dash route palette measured `240px`, console errors zero after adding `web/app/icon.svg`.
+
+Residual risk:
+
+- The working tree still contains pre-existing unrelated dirty Go/backend/token files. They were not staged or committed as part of this Figma UI migration.
