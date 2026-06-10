@@ -17,18 +17,18 @@ export function EditorEdgeHandle({ side, label, onClick }: EditorEdgeHandleProps
       aria-label={`Open ${label.toLowerCase()} panel`}
       className={cn(
         'group absolute top-1/2 z-10 flex h-14 w-5 -translate-y-1/2 items-center justify-center',
-        'bg-bg-shell/95 text-text-muted backdrop-blur-sm transition-colors',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60',
-        'hover:bg-bg-panel hover:text-foreground',
+        'border border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] transition-colors',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
+        'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]',
         side === 'left'
-          ? 'left-0 rounded-r-sm border border-l-0 border-border'
-          : 'right-0 rounded-l-sm border border-r-0 border-border',
+          ? 'left-0 rounded-r-[6px] border-l-0'
+          : 'right-0 rounded-l-[6px] border-r-0',
       )}
     >
       <span
         aria-hidden="true"
         className={cn(
-          'absolute inset-y-3 w-px bg-border transition-colors group-hover:bg-accent/60',
+          'absolute inset-y-3 w-px bg-[var(--border)] transition-colors group-hover:bg-[var(--orange)]',
           side === 'left' ? 'right-0' : 'left-0',
         )}
       />

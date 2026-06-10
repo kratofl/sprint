@@ -1241,8 +1241,8 @@ function FieldRow({
   children: ReactNode
 }) {
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[9px] text-text-muted">{label}</span>
+    <label className="flex flex-col gap-[6px]">
+      <span className="ui-label text-[11px] text-[var(--muted)]">{label}</span>
       {children}
     </label>
   )
@@ -1272,7 +1272,7 @@ function NumberField({
           const next = parseInt(event.target.value, 10)
           if (!Number.isNaN(next)) onChange(next)
         }}
-        className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+        className="h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
       />
     </FieldRow>
   )
@@ -1307,7 +1307,7 @@ function ColorField({
     <FieldRow label={label}>
       <div className="flex items-center gap-2">
         <label
-          className="h-8 w-8 cursor-pointer rounded border border-border"
+          className="h-8 w-8 cursor-pointer rounded-[8px] border border-[var(--border)]"
           style={{ backgroundColor: hex }}
           title={hex}
         >
@@ -1327,20 +1327,20 @@ function ColorField({
           onKeyDown={event => {
             if (event.key === 'Enter') applyHex(event.currentTarget.value)
           }}
-          className="w-24 rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+          className="h-8 w-24 rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
         />
         <Button
           variant="ghost"
           size="xs"
           onClick={onReset}
           disabled={!value}
-          className="font-mono text-[9px]"
+          className="font-saira text-[11px]"
         >
           RESET
         </Button>
       </div>
       {!value && (
-        <span className="font-mono text-[9px] text-text-disabled">{inheritedLabel}</span>
+        <span className="font-saira text-[11px] text-[var(--muted-2)]">{inheritedLabel}</span>
       )}
     </FieldRow>
   )

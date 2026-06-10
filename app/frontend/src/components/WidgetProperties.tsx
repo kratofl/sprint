@@ -16,10 +16,13 @@ const FONT_OPTIONS: { value: FontStyle; label: string }[] = [
   { value: 'mono',   label: 'IBM Plex Mono' },
 ]
 
+const inspectorInputClassName = 'h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none'
+const inspectorLabelClassName = 'ui-label text-[11px] text-[var(--muted)]'
+
 export function WidgetProperties({ widget, catalog, onUpdate }: WidgetPropertiesProps) {
   if (!widget) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-text-muted font-mono text-[10px] p-4">
+      <div className="flex h-full flex-col items-center justify-center p-4 text-[12px] text-text-muted">
         <span>Select a widget</span>
         <span className="text-[9px] mt-1 text-text-disabled">to view properties</span>
       </div>
@@ -49,7 +52,7 @@ export function WidgetProperties({ widget, catalog, onUpdate }: WidgetProperties
           ))}
         </div>
       ) : (
-        <div className="px-1 py-0.5 font-mono text-[9px] text-text-disabled">No configurable options</div>
+        <div className="px-1 py-0.5 text-[12px] text-text-disabled">No configurable options</div>
       )}
     </div>
   )
@@ -121,13 +124,13 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
   const current = value !== undefined ? String(value) : def.default
 
   return (
-    <div className="flex flex-col gap-1 px-4 py-2.5 border-b border-border/50">
-      <label className="font-mono text-[9px] text-text-muted uppercase tracking-wide">{def.label}</label>
+    <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
+      <label className={inspectorLabelClassName}>{def.label}</label>
       {def.type === 'select' && def.options && (
         <select
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className={inspectorInputClassName}
         >
           {def.options.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -139,20 +142,20 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="number"
           value={current}
           onChange={e => onChange(Number(e.target.value))}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className={inspectorInputClassName}
         />
       )}
       {def.type === 'boolean' && (
         <button
           onClick={() => onChange(current !== 'true')}
           className={cn(
-            'flex items-center gap-2 px-2 py-1 border font-mono text-[10px] transition-colors w-full text-left',
+            'flex h-8 w-full items-center gap-[8px] rounded-[8px] border px-[10px] text-left text-[12px] transition-colors',
             current === 'true'
-              ? 'border-accent bg-accent/10 text-accent'
-              : 'border-border text-text-muted hover:border-border'
+              ? 'border-[var(--orange-ring)] bg-[var(--orange-tint)] text-[var(--orange)]'
+              : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)]'
           )}
         >
-          <span className={cn('w-3 h-3 border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
+          <span className={cn('h-3 w-3 flex-shrink-0 rounded-[3px] border', current === 'true' ? 'border-[var(--orange)] bg-[var(--orange)]' : 'border-[var(--border-2)]')} />
           {current === 'true' ? 'Enabled' : 'Disabled'}
         </button>
       )}
@@ -161,7 +164,7 @@ function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown;
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className={inspectorInputClassName}
         />
       )}
     </div>
@@ -176,9 +179,9 @@ function FontSelectRow({ label, value, onChange, onReset }: {
 }) {
   const isSet = value !== undefined
   return (
-    <div className="flex flex-col gap-1 px-4 py-2 border-b border-border/50">
+    <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
       <div className="flex items-center justify-between">
-        <label className={cn('font-mono text-[9px] uppercase tracking-wide', isSet ? 'text-foreground' : 'text-text-muted')}>
+        <label className={cn(inspectorLabelClassName, isSet && 'text-[var(--text)]')}>
           {label}
         </label>
         {isSet && (
@@ -193,7 +196,7 @@ function FontSelectRow({ label, value, onChange, onReset }: {
           const v = e.target.value as FontStyle
           if (v) onChange(v); else onReset()
         }}
-        className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+        className={inspectorInputClassName}
       >
         <option value="">— default —</option>
         {FONT_OPTIONS.map(opt => (
@@ -212,9 +215,9 @@ function FontSizeRow({ value, onChange, onReset }: {
   const isSet = value !== undefined && value !== 0
   const displayVal = isSet ? value : 1
   return (
-    <div className="flex flex-col gap-1 px-4 py-2 border-b border-border/50">
+    <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
       <div className="flex items-center justify-between">
-        <label className={cn('font-mono text-[9px] uppercase tracking-wide', isSet ? 'text-foreground' : 'text-text-muted')}>
+        <label className={cn(inspectorLabelClassName, isSet && 'text-[var(--text)]')}>
           Font Size
         </label>
         {isSet && (
@@ -233,7 +236,7 @@ function FontSizeRow({ value, onChange, onReset }: {
           const v = parseFloat(e.target.value)
           if (!isNaN(v) && v > 0) onChange(v); else onReset()
         }}
-        className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+        className={inspectorInputClassName}
       />
     </div>
   )
@@ -257,8 +260,8 @@ function ColorRow({ label, value, onChange, onReset }: {
   }, [onChange, value?.A])
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50">
-      <span className={cn('font-mono text-[9px] uppercase tracking-wide flex-1 min-w-0 truncate', isSet ? 'text-foreground' : 'text-text-muted')}>
+    <div className="flex items-center gap-[8px] border-b border-[var(--border)] px-[14px] py-[10px]">
+      <span className={cn(inspectorLabelClassName, 'min-w-0 flex-1 truncate', isSet && 'text-[var(--text)]')}>
         {label}
       </span>
 
@@ -267,7 +270,7 @@ function ColorRow({ label, value, onChange, onReset }: {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="w-5 h-5 flex-shrink-0 border border-border rounded-sm overflow-hidden focus:outline-none focus:ring-1 focus:ring-accent"
+            className="h-6 w-6 flex-shrink-0 overflow-hidden rounded-[6px] border border-[var(--border)] focus:outline-none focus:ring-1 focus:ring-[var(--orange)]"
             style={{ backgroundColor: hex! }}
             title={hex!}
           >
@@ -287,7 +290,7 @@ function ColorRow({ label, value, onChange, onReset }: {
             key={hex!}
             onBlur={e => handleHexInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleHexInput(e.currentTarget.value) }}
-            className="w-16 border border-border bg-bg-shell px-1 py-0.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+            className="h-8 w-20 rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
           />
 
           <button
@@ -303,7 +306,7 @@ function ColorRow({ label, value, onChange, onReset }: {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="font-mono text-[9px] text-text-disabled hover:text-foreground border border-dashed border-border hover:border-border px-2 py-0.5 transition-colors"
+          className="h-8 rounded-[8px] border border-dashed border-[var(--border)] px-[10px] text-[11px] text-[var(--muted-2)] transition-colors hover:border-[var(--border-2)] hover:text-[var(--text)]"
           title="Set color"
         >
           <input

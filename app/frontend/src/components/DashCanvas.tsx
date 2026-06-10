@@ -673,13 +673,13 @@ export function DashCanvas({
                 canSelectByBody ? 'cursor-pointer' : 'cursor-default',
               )}
               style={{
-                borderColor: rect.selected ? 'var(--accent)' : 'rgba(255,255,255,0.34)',
+                borderColor: rect.selected ? 'var(--orange)' : 'rgba(255,255,255,0.34)',
                 background: rect.editing
                   ? 'transparent'
                   : rect.selected
-                    ? 'rgba(255,144,108,0.08)'
+                    ? 'color-mix(in srgb, var(--orange) 10%, transparent)'
                     : 'rgba(255,255,255,0.04)',
-                boxShadow: rect.editing ? '0 0 0 1px rgba(255,144,108,0.55) inset' : undefined,
+                boxShadow: rect.editing ? '0 0 0 1px var(--orange) inset' : undefined,
                 borderWidth: rect.selected ? 2 : 1,
               }}
             />
@@ -716,14 +716,14 @@ export function DashCanvas({
                     }
                   }}
                   className={cn(
-                    'absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-sm px-1.5 py-1 font-mono text-[9px] font-bold uppercase tracking-wide shadow-sm',
+                    'absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-badge px-2 py-1 font-saira-sc text-[10px] font-bold uppercase tracking-wide',
                     canUseMoveHandle ? (activeOverlayMove ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
                   )}
                   style={{
                     zIndex: 18,
                     pointerEvents: canUseMoveHandle ? 'auto' : 'none',
-                    background: rect.selected ? 'rgba(255,144,108,0.95)' : 'rgba(255,255,255,0.2)',
-                    color: rect.selected ? '#0a0a0a' : '#f5f7fa',
+                    background: rect.selected ? 'var(--orange)' : 'var(--panel-3)',
+                    color: rect.selected ? 'var(--bg)' : 'var(--text)',
                   }}
                 >
                   <span>STACK</span>
@@ -733,7 +733,7 @@ export function DashCanvas({
 
                 {rect.selected && !rect.editing && (rect.meta || rect.detail || rect.actionLabel) && (
                   <div
-                    className="absolute inset-x-2 bottom-2 rounded-sm border border-border bg-black/80 px-2 py-2 text-left backdrop-blur-sm"
+                    className="absolute inset-x-2 bottom-2 rounded-[8px] border border-[var(--border)] bg-[var(--panel)] px-[10px] py-2 text-left"
                     style={{ zIndex: 18, pointerEvents: 'auto' }}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -756,7 +756,7 @@ export function DashCanvas({
                             event.stopPropagation()
                             onEnterOverlay(rect.id!)
                           }}
-                          className="flex-shrink-0 rounded-sm border border-accent/50 bg-accent/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wide text-foreground transition-colors hover:bg-accent/20"
+                          className="flex-shrink-0 rounded-badge border border-[var(--orange-ring)] bg-[var(--orange-tint)] px-2 py-1 font-saira-sc text-[10px] font-bold uppercase tracking-wide text-[var(--orange)] transition-colors hover:bg-[color-mix(in_srgb,var(--orange)_18%,transparent)]"
                         >
                           {rect.actionLabel}
                         </button>
@@ -784,9 +784,9 @@ export function DashCanvas({
                     transform: 'translate(-50%, -50%)',
                     width: 8,
                     height: 8,
-                    background: 'var(--accent)',
-                    border: '1px solid black',
-                    borderRadius: 1,
+                    background: 'var(--orange)',
+                    border: '1px solid var(--bg-deep)',
+                    borderRadius: 2,
                     cursor: HANDLE_CURSORS[handle],
                     zIndex: 20,
                   }}
@@ -807,8 +807,8 @@ export function DashCanvas({
             width:      `${(ghost.colSpan / gridCols) * 100}%`,
             height:     `${(ghost.rowSpan / gridRows) * 100}%`,
             zIndex:     50,
-            border:     `2px dashed ${ghost.valid ? 'var(--accent)' : '#F87171'}`,
-            background:  ghost.valid ? 'rgba(255,144,108,0.12)' : 'rgba(248,113,113,0.12)',
+            border:     `2px dashed ${ghost.valid ? 'var(--orange)' : 'var(--red)'}`,
+            background:  ghost.valid ? 'color-mix(in srgb, var(--orange) 12%, transparent)' : 'color-mix(in srgb, var(--red) 12%, transparent)',
             overflow:   'hidden',
           }}
         >
@@ -832,8 +832,8 @@ export function DashCanvas({
             width: `${(overlayGhost.colSpan / gridCols) * 100}%`,
             height: `${(overlayGhost.rowSpan / gridRows) * 100}%`,
             zIndex: 15,
-            border: `2px dashed ${overlayGhost.valid ? 'var(--accent)' : '#F87171'}`,
-            background: overlayGhost.valid ? 'rgba(255,144,108,0.12)' : 'rgba(248,113,113,0.12)',
+            border: `2px dashed ${overlayGhost.valid ? 'var(--orange)' : 'var(--red)'}`,
+            background: overlayGhost.valid ? 'color-mix(in srgb, var(--orange) 12%, transparent)' : 'color-mix(in srgb, var(--red) 12%, transparent)',
           }}
         />
       )}
@@ -874,7 +874,7 @@ export function DashCanvas({
                 'absolute inset-0 flex flex-col items-start justify-start overflow-hidden select-none border',
                 readOnly ? 'cursor-default' : activeMove ? 'cursor-grabbing' : 'cursor-grab',
                 isSelected
-                  ? previewUrl ? 'bg-transparent border-accent ring-1 ring-accent/30' : 'bg-white/8 border-accent ring-1 ring-accent/30'
+                  ? previewUrl ? 'border-[var(--orange)] bg-transparent outline outline-2 outline-[var(--orange)]' : 'border-[var(--orange)] bg-[color-mix(in_srgb,var(--orange)_8%,transparent)] outline outline-2 outline-[var(--orange)]'
                   : previewUrl ? 'bg-transparent border-transparent hover:border-white/20' : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
@@ -887,6 +887,12 @@ export function DashCanvas({
                 />
               )}
             </div>
+
+            {isSelected && !readOnly && (
+              <span className="pointer-events-none absolute left-1.5 top-1.5 z-20 rounded-badge bg-[var(--orange)] px-2 py-0.5 font-saira-sc text-[10px] font-bold uppercase tracking-wide text-[var(--bg)]">
+                Selected
+              </span>
+            )}
 
             {isSelected && !readOnly && ALL_HANDLES.map(handle => {
               const [hLeft, hTop] = HANDLE_OFFSETS[handle]
@@ -905,9 +911,9 @@ export function DashCanvas({
                     transform:    'translate(-50%, -50%)',
                     width:        8,
                     height:       8,
-                    background:   'var(--accent)',
-                    border:       '1px solid black',
-                    borderRadius: 1,
+                    background:   'var(--orange)',
+                    border:       '1px solid var(--bg-deep)',
+                    borderRadius: 2,
                     cursor:       HANDLE_CURSORS[handle],
                     zIndex:       20,
                   }}

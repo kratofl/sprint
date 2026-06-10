@@ -12,6 +12,11 @@ const dashCanvasSource = readFileSync(
   'utf8',
 )
 
+const edgeHandleSource = readFileSync(
+  new URL('./EditorEdgeHandle.tsx', import.meta.url),
+  'utf8',
+)
+
 test('dash editor canvas wrapper stays visually passive', () => {
   const canvasPaneBlock = dashEditModeSource.match(/ref=\{controller\.canvasPaneRef\}[\s\S]{0,260}/)?.[0] ?? ''
 
@@ -47,6 +52,28 @@ test('dash canvas keeps the only visible frame', () => {
 test('selected widget stacks expose inline context with an open action on the page canvas', () => {
   assert.match(dashCanvasSource, /rect\.actionLabel/)
   assert.match(dashCanvasSource, /Current \{rect\.secondaryDetail\}/)
+})
+
+test('selected widgets use Figma orange outline and badge chrome', () => {
+  assert.match(dashCanvasSource, /outline outline-2 outline-\[var\(--orange\)\]/)
+  assert.match(dashCanvasSource, /rounded-badge bg-\[var\(--orange\)\]/)
+  assert.match(dashCanvasSource, /font-saira-sc text-\[10px\] font-bold uppercase/)
+  assert.doesNotMatch(dashCanvasSource, /ring-primary\/30/)
+})
+
+test('canvas ghost and resize states use tokenized Figma signal colors', () => {
+  assert.match(dashCanvasSource, /ghost\.valid \? 'var\(--orange\)' : 'var\(--red\)'/)
+  assert.match(dashCanvasSource, /color-mix\(in srgb, var\(--orange\) 12%, transparent\)/)
+  assert.match(dashCanvasSource, /background:\s+'var\(--orange\)'/)
+  assert.doesNotMatch(dashCanvasSource, /#F87171/)
+  assert.doesNotMatch(dashCanvasSource, /var\(--accent\)/)
+})
+
+test('collapsed editor edge handles are flat Figma panel tiles', () => {
+  assert.match(edgeHandleSource, /bg-\[var\(--panel\)\]/)
+  assert.match(edgeHandleSource, /focus-visible:ring-\[var\(--orange\)\]/)
+  assert.match(edgeHandleSource, /rounded-r-\[6px\]/)
+  assert.doesNotMatch(edgeHandleSource, /backdrop-blur/)
 })
 
 test('dash canvas can fill the focus stage while cropping a shared preview frame', () => {
