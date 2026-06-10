@@ -1,2 +1,9 @@
-@import '@sprint/tokens/globals.css';
+@import "@sprint/tokens/globals.css";
 @config "../tailwind.config.ts";
+
+html,
+body {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}

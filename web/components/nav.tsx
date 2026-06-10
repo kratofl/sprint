@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { cn } from '@sprint/ui'
+import { IconLayoutDashboard } from '@tabler/icons-react'
 
 const NAV_ITEMS = [
   { href: '/',           label: 'Dashboard' },
@@ -10,24 +12,29 @@ const NAV_ITEMS = [
 
 export default function Nav() {
   return (
-    <header className="border-b border-border-base bg-bg-surface sticky top-0 z-50">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-14 items-center justify-between">
-          <Link href="/" className="text-sm font-semibold tracking-widest text-accent">
-            SPRINT
-          </Link>
-          <nav className="flex items-center gap-1">
-            {NAV_ITEMS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className="rounded px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-              >
-                {label}
-              </Link>
-            ))}
-          </nav>
-        </div>
+    <header className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-1">
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/" className="flex h-8 items-center gap-[10px] rounded-control px-[10px] py-2 font-inter text-[13px] font-bold text-[var(--orange)]">
+          <span className="grid size-5 place-items-center rounded-[6px] bg-[var(--orange)] text-[var(--panel)]">
+            S
+          </span>
+          SPRINT
+        </Link>
+        <nav className="flex items-center gap-[2px]">
+          {NAV_ITEMS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                "flex h-8 items-center gap-[10px] rounded-control border px-[10px] py-2 font-inter text-[13px] font-medium",
+                "border-transparent text-[var(--muted)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]",
+              )}
+            >
+              <IconLayoutDashboard className="size-4" stroke={1.8} />
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </header>
   )
