@@ -15,15 +15,13 @@ import {
   type DashWidget,
   type DashWidgetStack,
   type RGBAColor,
-  DEFAULT_DASH_THEME,
-  DEFAULT_DOMAIN_PALETTE,
 } from '@/lib/dash'
 import type { AppSettings, DashEditorUIPreferences } from '@sprint/types'
 import { DashCanvas } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
 import { WidgetProperties, WidgetStyleProperties } from './WidgetProperties'
 import { ConfirmDialog } from './ConfirmDialog'
-import { AdditionalSettingsPanel, hexToRgba, rgbaToHex } from './AdditionalSettingsPanel'
+import { hexToRgba, rgbaToHex } from './AdditionalSettingsPanel'
 import { AlertsEditor } from './AlertsEditor'
 import { WidgetPalette } from './dash-editor/WidgetPalette'
 import { settingsAPI } from '@/lib/settings'
@@ -54,6 +52,11 @@ const dashEditorSurfaceStyle = {
   '--de-inset': '#0a0a0a',
   '--de-seam': '#000000',
 } as CSSProperties
+
+const defaultDashBrand = {
+  accent: 'var(--orange)',
+  numericFont: 'Saira',
+} as const
 
 export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyChange }: DashEditModeProps) {
   const controller = useDashEditorController({
@@ -220,6 +223,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const inspectorContent = widgetInspectorContent ?? pageInspectorContent
   const stackCanvasGridCols = controller.selectedWidgetStack?.colSpan ?? controller.layout.gridCols
   const stackCanvasGridRows = controller.selectedWidgetStack?.rowSpan ?? controller.layout.gridRows
+  void defaultDashBrand
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden" style={dashEditorSurfaceStyle}>
@@ -298,14 +302,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           >
             Designer
           </button>
-          <button
-            type="button"
-            onClick={() => controller.setEditorTab('settings')}
-            data-state={controller.editorTab === 'settings' ? 'active' : 'inactive'}
-            className={topTabTriggerClassName}
-          >
-            Settings
-          </button>
           {controller.editorTab === 'designer' && (
             <>
               {controller.editorMode === 'stack' && (
@@ -337,21 +333,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         </div>
       </div>
 
-      {controller.editorTab === 'settings' ? (
-        <AdditionalSettingsPanel
-          theme={controller.layout.theme ?? {}}
-          domainPalette={controller.layout.domainPalette ?? {}}
-          hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
-          globalDefaults={controller.globalDefaults}
-          typography={controller.layout.typography ?? {}}
-          globalTypography={controller.globalDefaults?.typography}
-          formatPreferences={controller.layout.formatPreferences ?? {}}
-          globalFormatPreferences={controller.globalDefaults?.formatPreferences}
-          onChange={controller.handleSettingsChange}
-          onTypographyChange={controller.handleTypographyChange}
-          onFormatPreferencesChange={controller.handleFormatPreferencesChange}
-        />
-      ) : controller.activeTab === 'alerts' ? (
+      {controller.activeTab === 'alerts' ? (
         <AlertsEditor
           instances={controller.layout.alerts ?? []}
           catalog={controller.alertCatalog}
