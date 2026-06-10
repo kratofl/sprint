@@ -3,14 +3,14 @@ import { cn } from '@sprint/ui'
 import { type AlertInstance, type AlertMeta, type DomainPalette, type ConfigDef } from '@/lib/dash'
 
 const DOMAIN_COLOR_MAP: Record<string, string> = {
-  tc:        '#33D27E',
-  abs:       '#fbbf24',
-  motor:     '#FF6A00',
-  primary:   '#FF6A00',
-  accent:    '#FF6A00',
-  success:   '#33D27E',
-  warning:   '#fbbf24',
-  danger:    '#FF4D63',
+  tc:        'var(--green)',
+  abs:       'var(--amber)',
+  motor:     'var(--orange)',
+  primary:   'var(--orange)',
+  accent:    'var(--orange)',
+  success:   'var(--green)',
+  warning:   'var(--amber)',
+  danger:    'var(--red)',
 }
 
 function resolveSwatchColor(colorRef: string, domain?: Partial<DomainPalette>): string {
