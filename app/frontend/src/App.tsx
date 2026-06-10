@@ -22,6 +22,7 @@ import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import UpdateToast from '@/components/UpdateToast'
+import { PageTabs } from '@/components/PageTabs'
 import { APP_EVENTS } from '@/lib/desktopEvents'
 import {
   createViewHistory,
@@ -64,12 +65,12 @@ const NAV_SECTIONS: NavRailSection[] = [
 
 const PRIMARY_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items)
 
-const VIEW_TITLE: Record<ShellView, string> = {
-  telemetry: 'Developer / Dashboard',
-  dash: 'Configure / Dash Editor',
-  devices: 'Configure / Devices',
-  settings: 'System / Settings',
-  help: 'System / Help',
+const VIEW_META: Record<ShellView, { title: string; primary: string | null }> = {
+  telemetry: { title: 'Developer / Dashboard', primary: 'Pause' },
+  dash: { title: 'Configure / Dash Editor', primary: 'Save' },
+  devices: { title: 'Configure / Devices', primary: 'Scan' },
+  settings: { title: 'System / Settings', primary: 'Save' },
+  help: { title: 'System / Help', primary: null },
 }
 
 export default function App() {
@@ -177,7 +178,8 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [switchView, visibleNav])
 
-  const currentTitle = view in VIEW_TITLE ? VIEW_TITLE[view as ShellView] : VIEW_TITLE.dash
+  const currentView = view in VIEW_META ? view as ShellView : 'dash'
+  const currentMeta = VIEW_META[currentView]
 
   return (
     <div
@@ -250,12 +252,17 @@ export default function App() {
               >
                 <IconArrowLeft size={13} />
               </button>
-              <span className="font-saira text-[11px] text-white">{currentTitle}</span>
-              <div className="mx-auto rounded-alert bg-[var(--panel-2)] p-1" />
+              <span className="font-saira text-[11px] text-white">{currentMeta.title}</span>
+              <PageTabs activeView={currentView} onSelect={switchView} />
               <div className="ml-auto flex items-center gap-1">
                 <Button variant="secondary" size="sm" onClick={stepForward} disabled={!viewHistory.canGoForward}>
                   Forward
                 </Button>
+                {currentMeta.primary ? (
+                  <Button variant="primary" size="sm">
+                    {currentMeta.primary}
+                  </Button>
+                ) : null}
               </div>
             </div>
 

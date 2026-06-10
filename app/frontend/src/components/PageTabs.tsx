@@ -10,7 +10,14 @@ import {
 import type { DashPage } from '@/lib/dash'
 import { ConfirmDialog } from './ConfirmDialog'
 
-export interface PageTabsProps {
+type ShellView = 'telemetry' | 'dash' | 'devices' | 'settings' | 'help'
+
+interface ShellPageTabsProps {
+  activeView: ShellView
+  onSelect: (view: ShellView) => void
+}
+
+interface DashPageTabsProps {
   idlePage: DashPage
   pages: DashPage[]
   activeTab: 'idle' | 'alerts' | number
@@ -23,7 +30,60 @@ export interface PageTabsProps {
   embedded?: boolean
 }
 
-export function PageTabs({
+export type PageTabsProps = ShellPageTabsProps | DashPageTabsProps
+
+const SHELL_TABS: Array<{ id: ShellView; label: string; locked?: boolean; closable?: boolean }> = [
+  { id: 'telemetry', label: 'Dashboard' },
+  { id: 'dash', label: 'Dash Editor' },
+  { id: 'devices', label: 'Devices' },
+  { id: 'settings', label: 'Settings', locked: true },
+  { id: 'help', label: 'Help', locked: true },
+]
+
+export function PageTabs(props: PageTabsProps) {
+  if ('activeView' in props) {
+    return <ShellPageTabs {...props} />
+  }
+
+  return <DashEditorPageTabs {...props} />
+}
+
+function ShellPageTabs({ activeView, onSelect }: ShellPageTabsProps) {
+  return (
+    <div className="mx-auto flex min-w-0 items-center gap-[2px] rounded-alert bg-[var(--panel-2)] p-1">
+      {SHELL_TABS.map((tab) => {
+        const selected = activeView === tab.id
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onSelect(tab.id)}
+            className={cn(
+              "flex h-[25px] items-center gap-1 rounded-control border px-[10px] py-[6px] font-wordmark text-[13px] font-medium transition-colors",
+              selected
+                ? "border-[var(--orange)] bg-[var(--panel-4)] text-[var(--orange)]"
+                : "border-transparent text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
+            )}
+          >
+            {tab.locked ? <LockIcon /> : null}
+            <span>{tab.label}</span>
+            {tab.closable ? <span className="text-[10px] text-[var(--muted)]">x</span> : null}
+          </button>
+        )
+      })}
+      <button
+        type="button"
+        className="flex size-[18px] items-center justify-center rounded-badge border border-dashed border-[var(--border)] text-[var(--muted)] hover:border-[var(--orange)] hover:text-[var(--orange)]"
+        aria-label="Add tab"
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
+function DashEditorPageTabs({
   pages,
   activeTab,
   livePageIndex,
@@ -33,7 +93,7 @@ export function PageTabs({
   onDeletePage,
   onRenamePage,
   embedded = false,
-}: PageTabsProps) {
+}: DashPageTabsProps) {
   const [renamingIdx, setRenamingIdx] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null)
@@ -126,7 +186,7 @@ export function PageTabs({
                       e.stopPropagation()
                     }}
                     onClick={e => e.stopPropagation()}
-                    className="w-24 border-b border-accent bg-transparent font-mono text-[11px] text-foreground outline-none"
+                    className="w-24 border-b border-primary bg-transparent font-mono text-[11px] text-foreground outline-none"
                   />
                 ) : (
                   <span>{page.name}</span>

@@ -26,3 +26,8 @@ test('desktop shell exposes Figma frame, sidebar, and content screen metrics', (
   assert.match(appSource, /w-\[220px\]/)
   assert.match(appSource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--bg\)\] p-\[14px\]/)
 })
+
+test('desktop topbar renders shell page tabs from the Figma navigation set', () => {
+  assert.match(appSource, /<PageTabs activeView=\{currentView\} onSelect=\{switchView\}/)
+  assert.doesNotMatch(appSource, /view === 'home'|view === 'controls'/)
+})
