@@ -1,14 +1,14 @@
 export const windowControlsRailClassName =
-  'ml-2 flex h-full items-stretch self-stretch border-l border-border'
+  'flex h-full items-stretch [--wails-draggable:nodrag]'
 
 export const windowControlButtonBaseClassName =
-  'flex h-full w-11 items-center justify-center self-stretch text-text-muted transition-colors focus:outline-none'
+  'flex h-full w-10 items-center justify-center self-stretch text-[var(--muted)] transition-colors focus:outline-none'
 
 export const windowControlMinimiseButtonClassName =
-  `${windowControlButtonBaseClassName} hover:bg-white/[0.08] hover:text-foreground focus-visible:bg-white/[0.08] focus-visible:text-foreground`
+  `${windowControlButtonBaseClassName} hover:bg-[var(--panel-2)] hover:text-white focus-visible:bg-[var(--panel-2)] focus-visible:text-white`
 
 export const windowControlMaximiseButtonClassName =
-  `${windowControlButtonBaseClassName} hover:bg-white/[0.08] hover:text-foreground focus-visible:bg-white/[0.08] focus-visible:text-foreground`
+  `${windowControlButtonBaseClassName} hover:bg-[var(--panel-2)] hover:text-white focus-visible:bg-[var(--panel-2)] focus-visible:text-white`
 
 export const windowControlCloseButtonClassName =
-  `${windowControlButtonBaseClassName} hover:bg-[#c42b1c] hover:text-white focus-visible:bg-[#c42b1c] focus-visible:text-white`
+  `${windowControlButtonBaseClassName} hover:bg-[var(--red)] hover:text-white focus-visible:bg-[var(--red)] focus-visible:text-white`

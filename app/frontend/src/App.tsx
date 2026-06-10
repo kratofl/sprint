@@ -1,32 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import {
-  Button,
-  cn,
-  NavRail,
-  StatusStrip,
-} from '@sprint/ui'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Button, NavRail, type NavRailSection } from '@sprint/ui'
 import {
   IconArrowLeft,
-  IconArrowRight,
   IconGauge,
   IconHelp,
-  IconHome2,
-  IconKeyboard,
   IconLayoutDashboard,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
   IconMinus,
   IconSettings,
   IconSquare,
   IconUsb,
   IconX,
 } from '@tabler/icons-react'
-import logoIcon from '@/assets/sprint_logo_icon.png'
-import Home from '@/views/Home'
+import wallpaperUrl from '@/assets/brand/sprint-wallpaper.png'
 import Telemetry from '@/views/Telemetry'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
-import Controls from '@/views/Controls'
 import Settings from '@/views/Settings'
 import Help from '@/views/Help'
 import { useTelemetry } from '@/hooks/useTelemetry'
@@ -43,7 +31,6 @@ import {
   type AppView,
   type ViewHistory,
 } from '@/lib/appShell'
-import { appInfoAPI } from '@/lib/settings'
 import { windowAPI } from '@/lib/window'
 import {
   windowControlCloseButtonClassName,
@@ -54,32 +41,45 @@ import {
 import { onEvent } from '@/lib/wails'
 
 type View = AppView
+type ShellView = Extract<View, 'telemetry' | 'dash' | 'devices' | 'settings' | 'help'>
 
-const NAV = [
-  { id: 'home', label: 'Home', icon: IconHome2 },
-  { id: 'telemetry', label: 'Live Session', icon: IconGauge },
-  { id: 'dash', label: 'Dash Editor', icon: IconLayoutDashboard },
-  { id: 'devices', label: 'Devices', icon: IconUsb },
-  { id: 'controls', label: 'Controls', icon: IconKeyboard },
-] as const satisfies ReadonlyArray<{
-  id: Extract<View, 'home' | 'telemetry' | 'dash' | 'devices' | 'controls'>
-  label: string
-  icon: ComponentType<{ className?: string; size?: number }>
-}>
+const NAV_SECTIONS: NavRailSection[] = [
+  { label: 'Developer', items: [{ id: 'telemetry', label: 'Dashboard', icon: IconGauge }] },
+  {
+    label: 'Configure',
+    items: [
+      { id: 'dash', label: 'Dash Editor', icon: IconLayoutDashboard },
+      { id: 'devices', label: 'Devices', icon: IconUsb },
+    ],
+  },
+  {
+    label: 'System',
+    pinned: 'bottom',
+    items: [
+      { id: 'settings', label: 'Settings', icon: IconSettings },
+      { id: 'help', label: 'Help', icon: IconHelp },
+    ],
+  },
+]
+
+const PRIMARY_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items)
+
+const VIEW_TITLE: Record<ShellView, string> = {
+  telemetry: 'Developer / Dashboard',
+  dash: 'Configure / Dash Editor',
+  devices: 'Configure / Devices',
+  settings: 'System / Settings',
+  help: 'System / Help',
+}
 
 export default function App() {
-  const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory('home'))
-  const [navCollapsed, setNavCollapsed] = useState(false)
-  const visibleNav = useMemo(
-    () => import.meta.env.DEV ? [...NAV] : NAV.filter(item => item.id !== 'telemetry'),
-    []
-  )
-  const { frame, connected, fps } = useTelemetry()
+  const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory())
+  const visibleNav = useMemo(() => PRIMARY_NAV_ITEMS, [])
+  const { frame } = useTelemetry()
   const { releaseInfo, installing, dismiss, install } = useUpdateCheck()
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
-  const [version, setVersion] = useState('dev')
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
   const [pendingHistory, setPendingHistory] = useState<ViewHistory | null>(null)
@@ -140,10 +140,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    appInfoAPI.getVersion().then(setVersion).catch(() => {})
-  }, [])
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target
       if (
@@ -174,100 +170,38 @@ export default function App() {
       }
 
       event.preventDefault()
-      switchView(targetView.id)
+      switchView(targetView.id as View)
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [switchView, visibleNav])
 
+  const currentTitle = view in VIEW_TITLE ? VIEW_TITLE[view as ShellView] : VIEW_TITLE.dash
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden border-t border-border bg-background font-sans text-foreground">
+    <div
+      className="min-h-screen overflow-hidden bg-cover bg-center p-4 font-inter text-[var(--text)]"
+      style={{ backgroundImage: `url(${wallpaperUrl})` }}
+    >
       {splashMounted && (
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      <header
-        className="flex h-10 shrink-0 items-center border-b border-border bg-bg-shell pl-3 pr-0 [--wails-draggable:drag]"
-        onDoubleClick={(event) => {
-          if ((event.target as HTMLElement).closest('button, a, input')) return
-          void windowAPI.toggleMaximise()
-        }}
-      >
-        <div className="flex items-center gap-1.5 [--wails-draggable:nodrag]">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={stepBackward}
-            disabled={!viewHistory.canGoBack}
-            aria-label="Back"
-          >
-            <IconArrowLeft size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={stepForward}
-            disabled={!viewHistory.canGoForward}
-            aria-label="Forward"
-          >
-            <IconArrowRight size={14} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setNavCollapsed(value => !value)}
-            aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {navCollapsed ? (
-              <IconLayoutSidebarLeftExpand size={14} />
-            ) : (
-              <IconLayoutSidebarLeftCollapse size={14} />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => switchView('home')}
-            className="gap-2 px-2.5 text-foreground"
-            aria-label="Go to home"
-          >
-            <img src={logoIcon} alt="Sprint" className="h-4 w-auto shrink-0" />
-            <span className="text-[11px] font-semibold tracking-[0.04em]">Sprint</span>
-          </Button>
-        </div>
-
-        <div className="flex-1" />
-
-        <div className="flex h-full self-stretch items-stretch [--wails-draggable:nodrag]">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => switchView('settings')}
-              className={cn(
-                'gap-1.5 text-text-muted hover:text-foreground',
-                view === 'settings' && 'surface-inline text-foreground',
-              )}
-              aria-label="View settings"
-            >
-              <IconSettings size={14} />
-              <span>Settings</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => switchView('help')}
-              className={cn(
-                'gap-1.5 text-text-muted hover:text-foreground',
-                view === 'help' && 'surface-inline text-foreground',
-              )}
-              aria-label="Help"
-            >
-              <IconHelp size={14} />
-              <span>Help</span>
-            </Button>
+      <div className="mx-auto flex h-[883px] w-[1570px] max-w-full origin-top-left flex-col overflow-hidden rounded-panel border border-[var(--win-edge)] bg-[var(--win)] shadow-[0_4px_2px_rgba(0,0,0,.14),0_8px_16px_rgba(0,0,0,.14)]">
+        <header
+          className="flex h-8 shrink-0 items-center gap-2 px-[14px] [--wails-draggable:drag]"
+          onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest('button, a, input')) return
+            void windowAPI.toggleMaximise()
+          }}
+        >
+          <div className="flex size-5 items-center justify-center rounded-tile bg-[var(--orange)] font-space text-[13px] font-bold text-[var(--panel)]">
+            S
           </div>
+          <span className="font-inter text-[13px] font-bold text-white">Sprint</span>
+          <span className="font-inter text-[13px] text-[var(--muted)]">- Telemetry System</span>
+          <div className="flex-1" />
           <div className={windowControlsRailClassName}>
             <button
               type="button"
@@ -294,40 +228,45 @@ export default function App() {
               <IconX size={11} />
             </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <NavRail
-          items={visibleNav.map(({ id, label, icon }) => ({ id, label, icon }))}
-          activeId={view}
-          onSelect={(id) => switchView(id as View)}
-          collapsed={navCollapsed}
-          onCollapsedChange={setNavCollapsed}
-          showCollapseToggle={false}
-        />
+        <div className="flex min-h-0 flex-1">
+          <aside className="flex w-[220px] shrink-0 flex-col justify-between gap-[14px] p-[10px]">
+            <NavRail
+              sections={NAV_SECTIONS}
+              activeId={view}
+              onSelect={(id) => switchView(id as View)}
+            />
+          </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <main className="flex flex-1 flex-col overflow-hidden bg-background">
-            {view === 'home' && <Home connected={connected} onNavigate={switchView} />}
-            {view === 'telemetry' && <Telemetry frame={frame} />}
-            {view === 'dash' && <DashEditor ref={dashEditorRef} />}
-            {view === 'devices' && <Devices />}
-            {view === 'controls' && <Controls />}
-            {view === 'settings' && <Settings />}
-            {view === 'help' && <Help />}
-          </main>
+          <section className="flex min-w-0 flex-1 flex-col gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--bg)] p-[14px]">
+            <div className="flex h-[41px] shrink-0 items-center gap-2 rounded-panel border border-[var(--border)] bg-[var(--panel)] px-2 py-1">
+              <button
+                type="button"
+                onClick={stepBackward}
+                disabled={!viewHistory.canGoBack}
+                className="flex size-[21px] items-center justify-center rounded-tile bg-[var(--panel-2)] text-[var(--muted)] disabled:opacity-40"
+                aria-label="Back"
+              >
+                <IconArrowLeft size={13} />
+              </button>
+              <span className="font-saira text-[11px] text-white">{currentTitle}</span>
+              <div className="mx-auto rounded-alert bg-[var(--panel-2)] p-1" />
+              <div className="ml-auto flex items-center gap-1">
+                <Button variant="secondary" size="sm" onClick={stepForward} disabled={!viewHistory.canGoForward}>
+                  Forward
+                </Button>
+              </div>
+            </div>
 
-          <StatusStrip
-            connected={connected}
-            version={version}
-            leftSlot={(
-              <>
-                <span>Frame rate: {fps ?? 0} Hz</span>
-                <span>Game: {frame?.session.game ?? '—'}</span>
-              </>
-            )}
-          />
+            <main className="min-h-0 flex-1 overflow-hidden">
+              {view === 'telemetry' && <Telemetry frame={frame} />}
+              {view === 'dash' && <DashEditor ref={dashEditorRef} />}
+              {view === 'devices' && <Devices />}
+              {view === 'settings' && <Settings />}
+              {view === 'help' && <Help />}
+            </main>
+          </section>
         </div>
       </div>
 

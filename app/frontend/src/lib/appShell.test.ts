@@ -6,24 +6,25 @@ import {
   navigateToView,
   goBack,
   goForward,
+  primaryNavIds,
   type AppView,
 } from './appShell.ts'
 
 test('navigateToView appends new views and truncates forward history after branching', () => {
-  const home = createViewHistory('home')
-  const afterDevices = navigateToView(home, 'devices')
+  const dash = createViewHistory()
+  const afterDevices = navigateToView(dash, 'devices')
   const afterControls = navigateToView(afterDevices, 'controls')
   const rewound = goBack(afterControls)
   const branched = navigateToView(rewound, 'settings')
 
-  assert.deepEqual(branched.stack, ['home', 'devices', 'settings'] satisfies AppView[])
+  assert.deepEqual(branched.stack, ['dash', 'devices', 'settings'] satisfies AppView[])
   assert.equal(branched.index, 2)
   assert.equal(branched.current, 'settings')
 })
 
 test('goBack and goForward stop at the history boundaries', () => {
   const history = navigateToView(
-    navigateToView(createViewHistory('home'), 'devices'),
+    navigateToView(createViewHistory(), 'devices'),
     'help',
   )
 
@@ -35,8 +36,8 @@ test('goBack and goForward stop at the history boundaries', () => {
   const thirdForward = goForward(secondForward)
 
   assert.equal(firstBack.current, 'devices')
-  assert.equal(secondBack.current, 'home')
-  assert.equal(thirdBack.current, 'home')
+  assert.equal(secondBack.current, 'dash')
+  assert.equal(thirdBack.current, 'dash')
   assert.equal(thirdBack.canGoBack, false)
   assert.equal(firstForward.current, 'devices')
   assert.equal(secondForward.current, 'help')
@@ -45,10 +46,15 @@ test('goBack and goForward stop at the history boundaries', () => {
 })
 
 test('navigateToView ignores duplicate consecutive view selections', () => {
-  const history = navigateToView(createViewHistory('home'), 'home')
+  const history = navigateToView(createViewHistory(), 'dash')
 
-  assert.deepEqual(history.stack, ['home'] satisfies AppView[])
+  assert.deepEqual(history.stack, ['dash'] satisfies AppView[])
   assert.equal(history.index, 0)
   assert.equal(history.canGoBack, false)
   assert.equal(history.canGoForward, false)
+})
+
+test('default landing and primary nav ids follow the Figma application frame', () => {
+  assert.equal(createViewHistory().current, 'dash')
+  assert.deepEqual(primaryNavIds, ['telemetry', 'dash', 'devices', 'settings', 'help'] satisfies AppView[])
 })

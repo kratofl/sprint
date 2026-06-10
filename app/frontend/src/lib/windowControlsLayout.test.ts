@@ -10,13 +10,19 @@ const appSource = readFileSync(
 test('right header cluster stretches window controls to the full titlebar height', () => {
   assert.match(
     appSource,
-    /className="flex h-full self-stretch items-stretch \[--wails-draggable:nodrag\]"/,
+    /className=\{windowControlsRailClassName\}/,
   )
 })
 
-test('settings and help stay in their own centered group next to the stretched window controls', () => {
-  assert.match(
-    appSource,
-    /className="flex h-full self-stretch items-stretch \[--wails-draggable:nodrag\]"[\s\S]{0,220}className="flex items-center gap-1"/,
-  )
+test('desktop titlebar uses the Figma 32px height and product title slots', () => {
+  assert.match(appSource, /className="flex h-8 shrink-0/)
+  assert.match(appSource, />Sprint</)
+  assert.match(appSource, />- Telemetry System</)
+})
+
+test('desktop shell exposes Figma frame, sidebar, and content screen metrics', () => {
+  assert.match(appSource, /h-\[883px\]/)
+  assert.match(appSource, /w-\[1570px\]/)
+  assert.match(appSource, /w-\[220px\]/)
+  assert.match(appSource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--bg\)\] p-\[14px\]/)
 })
