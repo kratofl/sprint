@@ -148,17 +148,17 @@ export function DeviceSection() {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-72 flex-shrink-0 flex-col overflow-hidden border-r border-border bg-bg-shell">
-        <div className="border-b border-border bg-bg-shell px-4 py-3">
-          <h3 className="ui-label text-[11px] font-semibold text-text-muted">Device library</h3>
-          <p className="mt-1 font-mono text-[8px] text-text-muted">
+      <aside className="flex w-[286px] flex-shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--panel)]">
+        <div className="border-b border-[var(--border)] bg-[var(--panel)] px-[14px] py-[10px]">
+          <h3 className="ui-label text-[11px] font-semibold text-[var(--muted)]">Device library</h3>
+          <p className="mt-1 text-[12px] text-[var(--muted)]">
             Registered hardware and quick-add actions.
           </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto py-[10px]">
           {error ? (
-            <p className="mx-3 mb-2 font-mono text-[9px] text-destructive">{error}</p>
+            <p className="mx-[10px] mb-[10px] rounded-alert border border-[var(--red-ring)] bg-[var(--red-tint)] p-[10px] font-saira text-[12px] text-[var(--red)]">{error}</p>
           ) : null}
 
           {DEVICE_TYPES.map(type => {
@@ -170,28 +170,28 @@ export function DeviceSection() {
               <div key={type} className="mb-3">
                 <div className="flex items-center justify-between px-4 py-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="ui-label text-[9px] font-bold text-text-muted">
+                    <span className="ui-label text-[10px] font-bold text-[var(--muted)]">
                       {SECTION_LABELS[type]}
                     </span>
-                    <Badge variant="outline" className="font-mono text-[8px]">
+                    <Badge variant="outline" className="font-saira text-[10px]">
                       {deviceCounts[type]}
                     </Badge>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-5 px-1.5 font-mono text-[9px]"
+                    className="h-8 rounded-control px-[10px] text-[11px]"
                     onClick={() => handleAddForType(type)}
                   >
                     + ADD
                   </Button>
                 </div>
 
-                <div className="space-y-1 px-3">
+                <div className="space-y-[8px] px-[10px]">
                   {loading && group.length === 0 ? (
                     <Skeleton className="h-9 w-full" />
                   ) : group.length === 0 ? (
-                    <p className="px-1 font-mono text-[8px] text-text-disabled">None added yet</p>
+                    <p className="px-1 font-saira text-[10px] text-[var(--muted-2)]">None added yet</p>
                   ) : (
                     group.map(device => {
                       const key = deviceKey(device)
@@ -212,19 +212,19 @@ export function DeviceSection() {
                           type="button"
                           onClick={() => handleDeviceClick(device)}
                           className={cn(
-                            'w-full border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+                            'w-full rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
                             selected
-                              ? 'surface-active'
-                              : 'surface-panel hover:border-border hover:bg-bg-panel',
+                              ? 'border-[var(--orange)] text-[var(--orange)]'
+                              : 'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]',
                           )}
                         >
                           <div className="flex min-w-0 items-center gap-1.5">
                             {dotColor ? (
                               <span className={cn('size-1.5 flex-shrink-0 rounded-full', dotColor)} />
                             ) : null}
-                            <p className="truncate font-mono text-[10px] font-bold">{device.name}</p>
+                            <p className="truncate font-saira text-[12px] font-bold">{device.name}</p>
                           </div>
-                          <p className="font-mono text-[8px] uppercase text-text-muted">
+                          <p className="font-saira text-[10px] uppercase text-[var(--muted)]">
                             {device.driver || device.type || 'unknown'}
                           </p>
                         </button>
@@ -238,7 +238,7 @@ export function DeviceSection() {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+      <section className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--bg-deep)]">
         {driverMissingType ? (
           <DriverMissingBanner
             driverType={driverMissingType}
@@ -274,8 +274,8 @@ export function DeviceSection() {
         {panel.tag === 'empty' ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
             <div className="space-y-2">
-              <p className="ui-label text-[11px] text-text-muted">Select or add a device</p>
-              <p className="font-mono text-[9px] text-text-muted">
+              <p className="ui-label text-[11px] text-[var(--muted)]">Select or add a device</p>
+              <p className="max-w-sm text-[13px] text-[var(--muted)]">
                 Pick a registered device from the left, or start a new registration flow.
               </p>
             </div>

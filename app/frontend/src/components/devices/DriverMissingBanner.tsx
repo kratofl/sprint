@@ -26,20 +26,21 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
   }
 
   return (
-    <div className="surface-warning mx-4 mt-4 flex flex-col gap-2 px-4 py-3">
+    <div className="mx-[10px] mt-[10px] flex gap-[10px] rounded-alert border border-[var(--amber-ring)] bg-[var(--amber-tint)] p-[10px] text-[var(--amber)]">
+      <div className="flex flex-1 flex-col gap-[8px]">
       <div className="flex items-start gap-2">
-        <IconAlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-warning" />
+        <IconAlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-[var(--amber)]" />
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[10px] font-bold uppercase tracking-wide text-warning">
+          <p className="font-saira text-[12px] font-bold uppercase tracking-wide text-[var(--amber)]">
             DRIVER_NOT_INSTALLED
           </p>
-          <p className="mt-0.5 font-mono text-[9px] text-text-muted">
+          <p className="mt-0.5 text-[12px] text-[var(--muted)]">
             The WinUSB driver is not bound to this {driverType.toUpperCase()} device.
-            Click <span className="text-foreground">Install Driver</span> to install it automatically
+            Click <span className="text-[var(--text)]">Install Driver</span> to install it automatically
             (requires administrator approval).
           </p>
           {installError ? (
-            <p className="mt-1 font-mono text-[9px] text-destructive">{installError}</p>
+            <p className="mt-1 font-saira text-[10px] text-[var(--red)]">{installError}</p>
           ) : null}
         </div>
         <Button type="button" variant="ghost" size="icon-xs" onClick={onDismiss} aria-label="Dismiss driver warning">
@@ -50,7 +51,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
         <Button
           size="sm"
           variant="outline"
-          className="h-6 border-warning/40 px-3 font-mono text-[9px] text-warning hover:bg-warning/10 disabled:opacity-50"
+          className="h-8 rounded-control border-[var(--amber-ring)] px-[10px] font-saira text-[11px] text-[var(--amber)] disabled:opacity-50"
           onClick={handleInstall}
           disabled={installing}
         >
@@ -63,9 +64,10 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
             'Install driver'
           )}
         </Button>
-        <span className="font-mono text-[8px] text-text-disabled">
+        <span className="font-saira text-[10px] text-[var(--muted-2)]">
           Alternatively, use Zadig or Ref&apos;s VOCOREScreenSetup
         </span>
+      </div>
       </div>
     </div>
   )

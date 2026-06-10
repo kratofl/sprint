@@ -88,43 +88,43 @@ export function CatalogPanel({
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-[14px] p-[14px]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="ui-label text-[10px] font-bold">
             ADD_FROM_CATALOG_{SECTION_LABELS[deviceType]}
           </h3>
-          <p className="mt-1 font-mono text-[8px] text-text-muted">
+          <p className="mt-1 text-[12px] text-[var(--muted)]">
             Register supported hardware or scan for compatible USB devices.
           </p>
         </div>
-        <Button variant="ghost" size="sm" className="h-6 px-2 font-mono text-[9px]" onClick={onClose}>
+        <Button variant="ghost" size="sm" className="h-8 rounded-control px-[10px] font-saira text-[11px]" onClick={onClose}>
           CANCEL
         </Button>
       </div>
 
       {entries.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center">
-          <p className="ui-label text-[10px] text-text-muted">No catalog entries</p>
-          <p className="max-w-xs font-mono text-[8px] text-text-muted">
+          <p className="ui-label text-[10px] text-[var(--muted)]">No catalog entries</p>
+          <p className="max-w-xs font-saira text-[10px] text-[var(--muted)]">
             No {deviceType} devices are available in the local catalog yet.
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-[10px]">
           {entries.map(entry => {
             const isGeneric = entry.vid === 0 && entry.pid === 0
             return (
-              <div key={entry.id} className="surface-panel flex items-start justify-between gap-3 px-4 py-3">
+              <div key={entry.id} className="flex items-start justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
                 <div className="min-w-0 flex-1">
-                  <p className="font-mono text-[10px] font-bold">{entry.name}</p>
-                  <p className="mt-0.5 font-mono text-[8px] text-text-muted">{entry.description}</p>
+                  <p className="font-saira text-[12px] font-bold text-[var(--text)]">{entry.name}</p>
+                  <p className="mt-0.5 font-saira text-[10px] text-[var(--muted)]">{entry.description}</p>
                   {isGeneric ? (
-                    <p className="mt-0.5 font-mono text-[8px] text-text-disabled">
+                    <p className="mt-0.5 font-saira text-[10px] text-[var(--muted-2)]">
                       Scans USB for {entry.driver.toUpperCase()} devices
                     </p>
                   ) : (
-                    <p className="mt-0.5 font-mono text-[8px] uppercase text-text-disabled">
+                    <p className="mt-0.5 font-saira text-[10px] uppercase text-[var(--muted-2)]">
                       {entry.driver} · {entry.width}×{entry.height}
                     </p>
                   )}
@@ -132,7 +132,7 @@ export function CatalogPanel({
                 <Button
                   variant="primary"
                   size="sm"
-                  className="ui-label h-7 flex-shrink-0 px-3 text-[9px]"
+                  className="ui-label h-8 flex-shrink-0 rounded-control px-[10px] text-[11px]"
                   disabled={scanning !== null || adding !== null}
                   onClick={() => handleAdd(entry)}
                 >

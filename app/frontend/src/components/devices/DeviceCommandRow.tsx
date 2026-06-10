@@ -55,14 +55,16 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
 
   return (
     <div className={cn(
-      'flex items-center justify-between px-3 py-2',
-      bound ? 'surface-active' : 'surface-panel',
+      'flex items-center justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]',
+      bound
+        ? 'border-[var(--orange)]'
+        : 'hover:border-[var(--border-2)]',
     )}>
         <div className="flex flex-col gap-0.5">
-          <span className={cn('font-mono text-[11px] font-bold', bound ? 'text-white' : 'text-text-muted')}>
+          <span className={cn('font-saira text-[12px] font-bold', bound ? 'text-[var(--text)]' : 'text-[var(--muted)]')}>
             {cmd.label}
           </span>
-        <span className="font-mono text-[9px] text-text-muted opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
+        <span className="font-saira text-[10px] text-[var(--muted)] opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
         </div>
       <div className="ml-4 flex flex-shrink-0 items-center gap-2">
         {bound ? (
@@ -91,7 +93,7 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
           size="sm"
           disabled={captureState === 'capturing'}
           onClick={handleCapture}
-          className="ui-label w-20 font-bold text-[9px]"
+          className="ui-label h-8 w-20 rounded-control font-bold text-[11px]"
         >
           {captureState === 'capturing'
             ? `LISTENING_${countdown}`

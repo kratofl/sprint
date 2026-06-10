@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { IconDeviceMobile } from '@tabler/icons-react'
-import { Badge, Button, Switch, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@sprint/ui'
+import { Badge, Button, Input, Switch, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@sprint/ui'
 import {
   type DeviceBinding,
   type DevicePurpose,
@@ -231,18 +231,16 @@ export function DeviceDetail({
     [activeDashId, bindings, deviceOnlyCmds],
   )
   const nativeSelectClassName = cn(
-    'w-full border border-border bg-bg-shell px-3 py-1.5 font-mono text-[10px] text-foreground',
-    'focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50',
+    'h-8 w-full rounded-control border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)]',
+    'focus:border-[var(--orange)] focus:outline-none disabled:opacity-50',
   )
-  const numericFieldClassName =
-    'w-16 border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-[14px] p-[14px]">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-1.5">
           {renaming ? (
-            <input
+            <Input
               autoFocus
               value={draft}
               onChange={event => setDraft(event.target.value)}
@@ -254,31 +252,31 @@ export function DeviceDetail({
                 }
               }}
               onBlur={commitRename}
-              className="surface-inline px-2 font-mono text-sm font-bold outline-none focus:border-primary"
+              className="h-8 w-72 rounded-control font-saira text-[12px] font-bold"
             />
           ) : (
             <button
               type="button"
               onClick={() => setRenaming(true)}
-              className="group flex items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
+              className="group flex items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]"
               aria-label="Rename device"
             >
-              <span className="font-mono text-sm font-bold transition-colors group-hover:text-primary">
+              <span className="font-saira text-[13px] font-bold transition-colors group-hover:text-[var(--orange)]">
                 {device.name}
               </span>
-              <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-primary" />
+              <PencilIcon className="flex-shrink-0 text-[var(--muted-2)] transition-colors group-hover:text-[var(--orange)]" />
             </button>
           )}
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="neutral" className="ui-label">{typeLabel}</Badge>
             {isScreen && device.driver ? (
-              <span className="font-mono text-[9px] uppercase text-text-muted">{device.driver}</span>
+              <span className="font-saira text-[10px] uppercase text-[var(--muted)]">{device.driver}</span>
             ) : null}
             {isScreen && device.width > 0 ? (
-              <span className="font-mono text-[9px] text-text-muted">{device.width}×{device.height}</span>
+              <span className="font-saira text-[10px] text-[var(--muted)]">{device.width}×{device.height}</span>
             ) : null}
             {device.serial ? (
-              <span className="font-mono text-[9px] text-text-muted">S/N: {device.serial}</span>
+              <span className="font-saira text-[10px] text-[var(--muted)]">S/N: {device.serial}</span>
             ) : null}
           </div>
         </div>
@@ -298,10 +296,10 @@ export function DeviceDetail({
         </div>
       </div>
 
-      <Tabs key={id} defaultValue={isScreen ? 'settings' : 'bindings'} className="space-y-4">
+      <Tabs key={id} defaultValue={isScreen ? 'settings' : 'bindings'} className="space-y-[14px]">
         <TabsList
           variant="top"
-          className="font-mono text-[9px]"
+          className="font-saira text-[11px]"
         >
           <TabsTrigger value="settings" className="px-3">
             SETTINGS
@@ -311,12 +309,12 @@ export function DeviceDetail({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="settings" className="space-y-6 pt-1">
+        <TabsContent value="settings" className="space-y-[14px] pt-1">
           {isScreen ? (
             <>
               {isScreenOnly && import.meta.env.DEV ? (
                 <div className="space-y-1.5">
-                  <p className="ui-value text-[10px] font-semibold text-text-muted">Purpose</p>
+                  <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Purpose</p>
                   <select
                     value={purpose}
                     onChange={event => handlePurposeChange(event.target.value as DevicePurpose)}
@@ -329,7 +327,7 @@ export function DeviceDetail({
               ) : null}
 
               <div className="space-y-1.5">
-                <p className="ui-value text-[10px] font-semibold text-text-muted">Orientation</p>
+                <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Orientation</p>
                 <div className="flex flex-wrap gap-1.5">
                   {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
                     <button
@@ -337,10 +335,10 @@ export function DeviceDetail({
                       type="button"
                       onClick={() => handleRotation(degrees)}
                       className={cn(
-                        'flex items-center gap-1.5 border px-3 py-1 font-mono text-[10px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
+                        'flex h-8 items-center gap-1.5 rounded-control border px-[10px] font-saira text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
                         rotation === degrees
-                          ? 'border-accent bg-accent/10 text-accent'
-                          : 'border-border bg-bg-shell text-text-muted hover:text-foreground',
+                          ? 'border-[var(--orange-ring)] bg-[var(--orange-tint)] text-[var(--orange)]'
+                          : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)] hover:text-[var(--text)]',
                       )}
                     >
                       <IconDeviceMobile size={12} className={iconRotation} />
@@ -351,39 +349,42 @@ export function DeviceDetail({
               </div>
 
               <div className="space-y-1.5">
-                <p className="font-mono text-[9px] font-bold text-text-muted">SCREEN_POSITION (px)</p>
+                <p className="ui-label text-[11px] font-bold text-[var(--muted)]">Screen position (px)</p>
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-1.5">
-                    <span className="ui-value text-[10px] text-text-muted">Left</span>
-                    <input
+                    <span className="ui-label text-[11px] text-[var(--muted)]">Left</span>
+                    <Input
                       type="number"
                       min={0}
                       max={512}
                       value={offsetX}
                       onChange={event => handleOffsetChange('x', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                      className={numericFieldClassName}
+                      data-readout="true"
+                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
-                    <span className="ui-value text-[10px] text-text-muted">Top</span>
-                    <input
+                    <span className="ui-label text-[11px] text-[var(--muted)]">Top</span>
+                    <Input
                       type="number"
                       min={0}
                       max={512}
                       value={offsetY}
                       onChange={event => handleOffsetChange('y', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                      className={numericFieldClassName}
+                      data-readout="true"
+                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
-                    <span className="ui-value text-[10px] text-text-muted">Margin</span>
-                    <input
+                    <span className="ui-label text-[11px] text-[var(--muted)]">Margin</span>
+                    <Input
                       type="number"
                       min={0}
                       max={512}
                       value={margin}
                       onChange={event => handleOffsetChange('margin', Math.max(0, parseInt(event.target.value, 10) || 0))}
-                      className={numericFieldClassName}
+                      data-readout="true"
+                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
                     />
                   </label>
                 </div>
@@ -399,7 +400,7 @@ export function DeviceDetail({
                 return (
                   <div className="space-y-2">
                     <Tabs defaultValue="capture">
-                      <TabsList variant="compact" className="w-full font-mono text-[9px]">
+                      <TabsList variant="compact" className="w-full font-saira text-[11px]">
                         <TabsTrigger value="capture" className="flex-1">Capture</TabsTrigger>
                         <TabsTrigger value="idle" className="flex-1">Idle screen</TabsTrigger>
                       </TabsList>
@@ -408,25 +409,25 @@ export function DeviceDetail({
                         <Button
                           variant="active"
                           size="sm"
-                          className="w-full font-mono text-[10px]"
+                          className="h-8 w-full rounded-control font-saira text-[12px]"
                           onClick={handleSelectBounds}
                           disabled={selectingBounds}
                         >
                           {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
                         </Button>
                         {captureW > 0 && captureH > 0 ? (
-                          <p className="font-mono text-[9px] text-text-muted">
+                          <p className="font-saira text-[10px] text-[var(--muted)]">
                             X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
                           </p>
                         ) : (
-                          <p className="font-mono text-[9px] text-text-muted">
+                          <p className="font-saira text-[10px] text-[var(--muted)]">
                             No region set — click Set Bounds
                           </p>
                         )}
                       </TabsContent>
 
                       <TabsContent value="idle" className="space-y-2 pt-2">
-                        <p className="ui-value text-[10px] font-semibold text-text-muted">Idle mode</p>
+                        <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Idle mode</p>
                         <select
                           value={idleMode}
                           onChange={event => handleIdleModeChange(event.target.value as RearViewIdleMode)}
@@ -443,11 +444,11 @@ export function DeviceDetail({
 
               {!import.meta.env.DEV || purpose === 'dash' ? (
                 <div className="space-y-1.5">
-                  <p className="font-mono text-[9px] font-bold text-text-muted">
+                  <p className="ui-label text-[11px] font-bold text-[var(--muted)]">
                     DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
                   </p>
                   {layouts.length === 0 ? (
-                    <p className="font-mono text-[9px] text-text-muted">
+                    <p className="font-saira text-[10px] text-[var(--muted)]">
                       No layouts saved yet. Create one in Dash Studio.
                     </p>
                   ) : (
@@ -468,10 +469,10 @@ export function DeviceDetail({
           ) : null}
         </TabsContent>
 
-        <TabsContent value="bindings" className="space-y-3 pt-1">
+        <TabsContent value="bindings" className="space-y-[10px] pt-1">
           {bindingDashContext.showDashPicker && layouts.length > 0 ? (
             <div className="space-y-1.5">
-              <p className="ui-value text-[9px] text-text-muted">Binding dash layout</p>
+              <p className="ui-label text-[11px] text-[var(--muted)]">Binding dash layout</p>
               <select
                 value={activeDashId}
                 onChange={event => setSelectedBindingDashId(event.target.value)}
@@ -485,9 +486,9 @@ export function DeviceDetail({
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="ui-value text-[9px] text-text-muted">Active dash only</p>
+            <p className="ui-label text-[11px] text-[var(--muted)]">Active dash only</p>
             {bindingView.hiddenBindingCount > 0 ? (
-              <Badge variant="outline" className="font-mono text-[8px]">
+              <Badge variant="outline" className="font-saira text-[10px]">
                 {bindingView.hiddenBindingCount}_HIDDEN
               </Badge>
             ) : null}
@@ -496,11 +497,11 @@ export function DeviceDetail({
           {bindingView.cards.length > 0 ? (
             <div className="grid gap-3 xl:grid-cols-2">
               {bindingView.cards.map(card => (
-                <div key={card.key} className="surface-panel space-y-2 px-4 py-3">
+                <div key={card.key} className="space-y-[10px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
                   <div className="min-w-0">
-                    <p className="font-mono text-[10px] font-bold uppercase text-foreground">{card.title}</p>
+                    <p className="font-saira text-[12px] font-bold uppercase text-[var(--text)]">{card.title}</p>
                     {card.subtitle ? (
-                      <p className="truncate font-mono text-[8px] text-text-muted">{card.subtitle}</p>
+                      <p className="truncate font-saira text-[10px] text-[var(--muted)]">{card.subtitle}</p>
                     ) : null}
                   </div>
 
@@ -519,18 +520,18 @@ export function DeviceDetail({
               ))}
             </div>
           ) : (
-            <div className="surface-panel px-4 py-3">
-              <p className="ui-value text-[10px] text-text-muted">No active dash bindings</p>
+            <div className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+              <p className="ui-label text-[11px] text-[var(--muted)]">No active dash bindings</p>
             </div>
           )}
         </TabsContent>
       </Tabs>
 
-      <div className="border-t border-border pt-4">
+      <div className="border-t border-[var(--border)] pt-[14px]">
         <Button
           variant="destructive"
           size="sm"
-          className="ui-label h-7 px-3 text-[9px]"
+          className="ui-label h-8 rounded-control px-[10px] text-[11px]"
           disabled={removing}
           onClick={handleRemove}
         >
