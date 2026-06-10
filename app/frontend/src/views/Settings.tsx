@@ -1,11 +1,24 @@
-import { useState, useEffect, useCallback } from 'react'
-import { IconRefresh, IconLoader2, IconCheck } from '@tabler/icons-react'
-import { Badge, Button, PageHeader, cn } from '@sprint/ui'
+import { useCallback, useEffect, useState } from 'react'
+import { IconCheck, IconLoader2, IconRefresh } from '@tabler/icons-react'
+import { Badge, Button, Input, PageHeader, cn } from '@sprint/ui'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { appInfoAPI, settingsAPI, updateAPI, type BuildChannel } from '@/lib/settings'
 import type { AppSettings, ReleaseInfo } from '@sprint/types'
 
 type CheckState = 'idle' | 'checking' | 'up-to-date' | 'update-found'
+
+function SettingsPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+      <h2 className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</h2>
+      <div className="mt-[14px] flex flex-col gap-[14px]">{children}</div>
+    </div>
+  )
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <label className="ui-label text-[11px] font-bold text-[var(--muted)]">{children}</label>
+}
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>({ updateChannel: 'stable' })
@@ -21,20 +34,17 @@ export default function Settings() {
     appInfoAPI.getBuildChannel().then(setBuildChannel).catch(() => {})
   }, [])
 
-  const handleChannelChange = useCallback((channel: AppSettings['updateChannel']) => {
-    if (channel === settings.updateChannel) return
-    if (channel === 'pre-release') {
-      setPendingChannel(channel)
-    } else {
-      applyChannel(channel)
-    }
-  }, [settings.updateChannel])
-
   const applyChannel = useCallback((channel: AppSettings['updateChannel']) => {
     const next: AppSettings = { ...settings, updateChannel: channel }
     setSettings(next)
     settingsAPI.saveSettings(next).catch(() => {})
   }, [settings])
+
+  const handleChannelChange = useCallback((channel: AppSettings['updateChannel']) => {
+    if (channel === settings.updateChannel) return
+    if (channel === 'pre-release') setPendingChannel(channel)
+    else applyChannel(channel)
+  }, [applyChannel, settings.updateChannel])
 
   const applyProfile = useCallback((patch: Partial<AppSettings>) => {
     const next: AppSettings = { ...settings, ...patch }
@@ -43,11 +53,10 @@ export default function Settings() {
   }, [settings])
 
   const confirmPrerelease = useCallback(() => {
-    if (pendingChannel) {
-      applyChannel(pendingChannel)
-      setPendingChannel(null)
-    }
-  }, [pendingChannel, applyChannel])
+    if (!pendingChannel) return
+    applyChannel(pendingChannel)
+    setPendingChannel(null)
+  }, [applyChannel, pendingChannel])
 
   const checkNow = useCallback(async () => {
     setCheckState('checking')
@@ -67,130 +76,80 @@ export default function Settings() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
-      <PageHeader
-        heading="Settings"
-        caption="Application preferences"
-      />
+      <PageHeader heading="Settings" caption="Application preferences" />
 
-      <div className="flex flex-col gap-6 px-6 py-6 max-w-lg">
-        <section className="flex flex-col gap-4">
-          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            Profile
-          </h3>
-
-          <div className="surface rounded p-4 flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-muted">Driver name</label>
-              <input
-                type="text"
-                value={settings.driverName ?? ''}
-                onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
-                onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
-                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
-                placeholder="Your Name"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="font-mono text-[10px] text-text-muted">Driver number</label>
-              <input
-                type="text"
-                value={settings.driverNumber ?? ''}
-                onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
-                onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
-                className="border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
-                placeholder="#22"
-              />
-            </div>
+      <section className="max-w-2xl space-y-[14px] p-[14px]">
+        <SettingsPanel title="Driver Identity">
+          <div className="flex flex-col gap-[6px]">
+            <FieldLabel>Driver name</FieldLabel>
+            <Input
+              type="text"
+              value={settings.driverName ?? ''}
+              onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
+              onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
+              placeholder="Your Name"
+              className="h-8 rounded-control"
+            />
           </div>
-        </section>
+          <div className="flex flex-col gap-[6px]">
+            <FieldLabel>Driver number</FieldLabel>
+            <Input
+              type="text"
+              value={settings.driverNumber ?? ''}
+              onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
+              onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
+              placeholder="#22"
+              className="h-8 rounded-control"
+            />
+          </div>
+        </SettingsPanel>
 
-        <section className="flex flex-col gap-4">
-          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            Updates
-          </h3>
-
-          <div className="surface rounded p-4 flex flex-col gap-4">
-            <div>
-              <p className="text-[11px] font-bold text-foreground mb-1">Update channel</p>
-              <p className="font-mono text-[9px] text-text-muted mb-3">
-                Switch to pre-release to get alpha and beta builds ahead of stable releases.
-              </p>
-              <div className="flex gap-2">
-                {(['stable', 'pre-release'] as const).map(ch => (
-                  <button
-                    key={ch}
-                    onClick={() => handleChannelChange(ch)}
-                    className={cn(
-                      'flex items-center gap-2 rounded border px-3 py-1.5 font-mono text-[10px] transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
-                      settings.updateChannel === ch
-                        ? 'border-primary text-primary bg-accent/5'
-                        : 'border-border text-text-muted hover:border-border hover:text-foreground',
-                    )}
-                  >
-                    {settings.updateChannel === ch && (
-                      <IconCheck size={11} className="text-primary" />
-                    )}
-                    {ch === 'pre-release' ? 'Pre-release' : 'Stable'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={checkNow}
-                disabled={checkState === 'checking'}
-                className="gap-2 font-mono text-[10px]"
-              >
-                {checkState === 'checking' ? (
-                  <IconLoader2 size={12} className="animate-spin" />
-                ) : (
-                  <IconRefresh size={12} />
+        <SettingsPanel title="Update Channel">
+          <p className="font-inter text-[11px] text-[var(--muted)]">
+            Stable builds by default. Pre-release gets alpha and beta builds ahead of stable releases.
+          </p>
+          <div className="flex gap-[8px]">
+            {(['stable', 'pre-release'] as const).map(channel => (
+              <button
+                key={channel}
+                onClick={() => handleChannelChange(channel)}
+                className={cn(
+                  'flex h-8 items-center gap-[8px] rounded-control border px-[10px] font-inter text-[12px] font-bold transition-colors',
+                  settings.updateChannel === channel
+                    ? 'border-[var(--orange)] bg-[var(--orange-tint)] text-[var(--orange)]'
+                    : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)]',
                 )}
-                Check now
-              </Button>
-              {checkState === 'up-to-date' && (
-                <span className="ui-value text-[10px] text-success">Up to date</span>
-              )}
-              {checkState === 'update-found' && foundRelease && (
-                <span className="font-mono text-[10px] text-primary">
-                  v{foundRelease.version} available
-                </span>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-4">
-          <h3 className="ui-label text-[11px] font-bold tracking-[0.15em] text-text-muted">
-            About
-          </h3>
-
-          <div className="surface rounded p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="ui-value text-[10px] text-text-muted">Version</span>
-              <span className="font-mono text-[10px] text-foreground">v{version}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="ui-value text-[10px] text-text-muted">Channel</span>
-              <Badge
-                variant={
-                  buildChannel === 'dev' ? 'warning' :
-                  buildChannel === 'alpha' ? 'active' :
-                  buildChannel === 'beta' ? 'neutral' : 'connected'
-                }
-                className="font-mono text-[9px]"
               >
-                {buildChannel.toUpperCase()}
-              </Badge>
-            </div>
+                {settings.updateChannel === channel && <IconCheck size={11} />}
+                {channel === 'pre-release' ? 'Pre-release' : 'Stable'}
+              </button>
+            ))}
           </div>
-        </section>
-      </div>
+          <div className="flex items-center gap-[10px]">
+            <Button variant="outline" size="sm" onClick={checkNow} disabled={checkState === 'checking'} className="h-8 gap-2 font-saira text-[11px]">
+              {checkState === 'checking' ? <IconLoader2 size={12} className="animate-spin" /> : <IconRefresh size={12} />}
+              Check now
+            </Button>
+            {checkState === 'up-to-date' && <Badge variant="success">Up to date</Badge>}
+            {checkState === 'update-found' && foundRelease && (
+              <span className="font-saira text-[12px] tabular-nums text-[var(--orange)]">v{foundRelease.version} available</span>
+            )}
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel title="About">
+          <div className="flex items-center justify-between">
+            <span className="font-inter text-[11px] text-[var(--muted)]">Version</span>
+            <span className="font-saira text-[12px] tabular-nums text-[var(--text)]">v{version}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-inter text-[11px] text-[var(--muted)]">Channel</span>
+            <Badge variant={buildChannel === 'dev' ? 'warning' : buildChannel === 'alpha' ? 'active' : buildChannel === 'beta' ? 'neutral' : 'connected'}>
+              {buildChannel.toUpperCase()}
+            </Badge>
+          </div>
+        </SettingsPanel>
+      </section>
 
       <ConfirmDialog
         open={pendingChannel !== null}

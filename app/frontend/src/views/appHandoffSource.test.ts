@@ -28,6 +28,10 @@ const sources = sourceFiles.map((path) => ({
 }))
 
 const devicesSource = sources.find((entry) => entry.path === './Devices.tsx')?.contents ?? ''
+const settingsSource = sources.find((entry) => entry.path === './Settings.tsx')?.contents ?? ''
+const helpSource = sources.find((entry) => entry.path === './Help.tsx')?.contents ?? ''
+const updateToastSource = sources.find((entry) => entry.path === '../components/UpdateToast.tsx')?.contents ?? ''
+const confirmDialogSource = sources.find((entry) => entry.path === '../components/ConfirmDialog.tsx')?.contents ?? ''
 const deviceComponentsSource = sources
   .filter((entry) => entry.path.startsWith('../components/devices/'))
   .map((entry) => entry.contents)
@@ -56,4 +60,12 @@ test('devices view and components use Figma panel and alert chrome', () => {
   assert.match(deviceComponentsSource, /rounded-alert border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[10px\]/)
   assert.match(deviceComponentsSource, /h-8[^'"]*rounded-control/)
   assert.doesNotMatch(`${devicesSource}\n${deviceComponentsSource}`, /bg-bg-|border-border-input|shadow-lg|cyan|purple/)
+})
+
+test('system views and overlays use Figma panel chrome', () => {
+  assert.match(settingsSource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[14px\]/)
+  assert.match(helpSource, /font-inter text-\[13px\] font-bold text-\[var\(--text\)\]/)
+  assert.match(updateToastSource, /rounded-alert border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[10px\]/)
+  assert.match(confirmDialogSource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--panel\)\]/)
+  assert.doesNotMatch(`${settingsSource}\n${helpSource}\n${updateToastSource}\n${confirmDialogSource}`, /shadow-lg|backdrop-blur|bg-bg-|text-text-/)
 })

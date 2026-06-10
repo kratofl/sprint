@@ -15,21 +15,21 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
   return (
     <div
       className={cn(
-        'fixed bottom-8 right-6 z-50 w-72 surface-overlay-panel rounded-sm shadow-overlay',
-        'flex flex-col gap-3 p-4',
+        'fixed bottom-8 right-6 z-50 w-72 rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]',
+        'flex flex-col gap-[10px]',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="ui-label text-[11px] font-semibold text-foreground">
+            <span className="font-inter text-[13px] font-bold text-[var(--text)]">
               Update available
             </span>
             {releaseInfo.isPrerelease && (
               <Badge variant="warning" className="text-[9px]">Pre</Badge>
             )}
           </div>
-          <span className="font-mono text-[10px] text-text-muted">
+          <span className="font-saira text-[12px] tabular-nums text-[var(--muted)]">
             v{releaseInfo.version}
           </span>
         </div>
@@ -41,7 +41,7 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
       <Button
         variant="active"
         size="sm"
-        className="w-full gap-2 font-mono text-[10px]"
+        className="h-8 w-full gap-2 rounded-control font-saira text-[11px]"
         onClick={onInstall}
         disabled={installing}
       >

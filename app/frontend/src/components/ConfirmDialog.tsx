@@ -25,7 +25,10 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel() }}>
-      <DialogContent showCloseButton={false}>
+      <DialogContent
+        showCloseButton={false}
+        className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] shadow-none"
+      >
         <DialogHeader>
           <DialogTitle className={variant === 'destructive' ? 'text-destructive' : undefined}>
             {title}
