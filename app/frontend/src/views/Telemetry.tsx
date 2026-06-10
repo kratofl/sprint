@@ -1,16 +1,106 @@
 import { useEffect, useState } from 'react'
-import {
-  DeltaBar,
-  RPMBar,
-  InputTrace,
-} from '@sprint/ui'
-import type { TelemetryFrame, FormatPreferences } from '@sprint/types'
-import { cn } from '@sprint/ui'
+import type { FormatPreferences, TelemetryFrame } from '@sprint/types'
 import { dashAPI } from '@/lib/dash'
-import { fmtLap, fmtDelta as _fmtDelta, fmtSpeed, speedUnitLabel, resolvedPrefs } from '@/lib/format'
+import { fmtDelta, fmtLap, resolvedPrefs } from '@/lib/format'
 
 export interface TelemetryProps {
   frame: TelemetryFrame | null
+}
+
+type Tone = 'default' | 'orange' | 'green' | 'red' | 'amber'
+
+function toneClass(tone: Tone): string {
+  switch (tone) {
+    case 'orange': return 'text-[var(--orange)]'
+    case 'green': return 'text-[var(--green)]'
+    case 'red': return 'text-[var(--red)]'
+    case 'amber': return 'text-[var(--amber)]'
+    default: return 'text-[var(--text)]'
+  }
+}
+
+function Panel({
+  title,
+  subtitle,
+  children,
+  className = '',
+}: {
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <section className={`rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] ${className}`}>
+      <div className="mb-[14px] flex items-start justify-between gap-[10px]">
+        <div>
+          <div className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</div>
+          {subtitle && <div className="font-inter text-[11px] text-[var(--muted)]">{subtitle}</div>}
+        </div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function Metric({
+  label,
+  value,
+  unit,
+  tone = 'default',
+}: {
+  label: string
+  value: string
+  unit?: string
+  tone?: Tone
+}) {
+  return (
+    <div className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+      <div className="font-inter text-[10px] font-bold uppercase tracking-[.12em] text-[var(--muted)]">{label}</div>
+      <div className={`mt-[6px] font-saira text-[32px] font-semibold tabular-nums leading-none ${toneClass(tone)}`}>
+        {value}
+        {unit && <span className="ml-[6px] font-inter text-[11px] font-normal text-[var(--muted)]">{unit}</span>}
+      </div>
+    </div>
+  )
+}
+
+function AlertRow({
+  title,
+  body,
+  tone,
+}: {
+  title: string
+  body: string
+  tone: 'red' | 'amber' | 'green'
+}) {
+  const ring = tone === 'red' ? 'var(--red-ring)' : tone === 'amber' ? 'var(--amber-ring)' : 'var(--green-ring)'
+  const tint = tone === 'red' ? 'var(--red-tint)' : tone === 'amber' ? 'var(--amber-tint)' : 'var(--green-tint)'
+  const ink = tone === 'red' ? 'var(--red)' : tone === 'amber' ? 'var(--amber)' : 'var(--green)'
+
+  return (
+    <div className="flex gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
+      <div
+        className="flex size-[28px] items-center justify-center rounded-tile border text-[13px] font-bold"
+        style={{ borderColor: ring, backgroundColor: tint, color: ink }}
+      >
+        !
+      </div>
+      <div className="min-w-0">
+        <div className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</div>
+        <div className="font-inter text-[11px] leading-relaxed text-[var(--muted)]">{body}</div>
+      </div>
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel-2)] px-[10px] py-[8px]">
+      <span className="font-inter text-[11px] text-[var(--muted)]">{label}</span>
+      <span className="font-saira text-[12px] tabular-nums text-[var(--text)]">{value}</span>
+    </div>
+  )
 }
 
 export default function Telemetry({ frame }: TelemetryProps) {
@@ -18,230 +108,82 @@ export default function Telemetry({ frame }: TelemetryProps) {
 
   useEffect(() => {
     dashAPI.getGlobalSettings()
-      .then(gs => setFormatPrefs(gs.formatPreferences))
+      .then(settings => setFormatPrefs(settings.formatPreferences))
       .catch(() => {})
   }, [])
 
   const prefs = resolvedPrefs(formatPrefs)
-
-  function fmt(sec: number | undefined): string {
-    return fmtLap(sec, prefs)
-  }
-
-  function fmtDelta(sec: number): string {
-    return _fmtDelta(sec, prefs)
-  }
-
-  const tires = frame?.tires ?? []
-  const TIRE_LABELS = [
-    { pos: 'POS_FL', name: 'FRONT_LEFT' },
-    { pos: 'POS_FR', name: 'FRONT_RIGHT' },
-    { pos: 'POS_RL', name: 'REAR_LEFT'  },
-    { pos: 'POS_RR', name: 'REAR_RIGHT' },
-  ]
+  const speed = frame ? Math.round(frame.car.speedMS * 3.6).toString() : '247'
+  const gear = frame?.car.gear?.toString() ?? '3'
+  const rpm = frame?.car.rpm ? Math.round(frame.car.rpm).toLocaleString('en-US') : '8,543'
+  const fuel = frame?.car.fuel ? frame.car.fuel.toFixed(1) : '32.5'
+  const bestLap = fmtLap(frame?.lap.bestLapTime ?? 93.892, prefs)
+  const lastLap = fmtLap(frame?.lap.lastLapTime ?? 94.123, prefs)
+  const delta = frame ? fmtDelta(frame.lap.delta ?? 0, prefs) : '+0.234'
+  const deltaTone: Tone = frame && (frame.lap.delta ?? 0) < 0 ? 'green' : 'red'
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-
-      {/* Top row: 12-column grid */}
-      <div className="grid grid-cols-12 border-b border-border flex-[0_0_auto] min-h-0" style={{ height: '60%' }}>
-
-        {/* Left: chart area — col-span-9 */}
-        <section className="col-span-9 flex flex-col border-r border-border p-6 overflow-hidden">
-          {/* Section header: title + big stats */}
-          <div className="mb-6 flex items-start justify-between flex-shrink-0">
-            <div>
-              <h2 className="ui-label mb-1 text-sm font-bold tracking-[0.2em]">
-                LIVE_TELEMETRY_FEED
-              </h2>
-              <p className="text-xs text-text-muted">
-                Session: {frame?.session.sessionType ?? 'No session'} | Track: {frame?.session.track ?? '—'}
-              </p>
-            </div>
-            <div className="flex gap-12">
-              <div className="text-right">
-                <span className="ui-label block mb-1 text-[9px] text-text-muted">Velocity</span>
-                <span className="font-mono text-3xl font-bold leading-none">
-                   {frame ? fmtSpeed(frame.car.speedMS, prefs) : '——'}
-                   <span className="text-[10px] text-text-muted"> {speedUnitLabel(prefs)}</span>
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="ui-label block mb-1 text-[9px] text-text-muted">T_Angular</span>
-                <span className="font-mono text-3xl font-bold leading-none text-primary">
-                  {frame ? Math.round(frame.car.rpm).toLocaleString('en-US') : '——'}
-                  <span className="text-[10px] text-text-muted"> RPM</span>
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="ui-label block mb-1 text-[9px] text-text-muted">Gear</span>
-                <span className="font-mono text-3xl font-bold leading-none">
-                  {frame ? (frame.car.gear === 0 ? 'N' : frame.car.gear === -1 ? 'R' : String(frame.car.gear)) : '—'}
-                </span>
-              </div>
-            </div>
+    <section className="grid h-full min-h-0 grid-cols-12 gap-[14px] overflow-hidden">
+      <div className="col-span-8 flex min-h-0 flex-col gap-[14px]">
+        <Panel title="Dashboard" subtitle={frame ? 'Live telemetry stream' : 'Simulation preview'}>
+          <div className="grid grid-cols-4 gap-[10px]">
+            <Metric label="Speed" value={speed} unit="km/h" tone="orange" />
+            <Metric label="Gear" value={gear} />
+            <Metric label="RPM" value={rpm} tone="amber" />
+            <Metric label="Fuel" value={fuel} unit="L" tone="green" />
           </div>
+        </Panel>
 
-          {/* RPM bar + inputs */}
-          <div className="flex flex-col gap-4 flex-shrink-0">
-            <RPMBar rpm={frame?.car.rpm ?? 0} maxRpm={frame?.car.maxRPM || 10000} />
-            <div>
-              <span className="ui-label mb-2 block text-[10px] text-text-muted">Driver inputs</span>
-              <InputTrace
-                throttle={frame?.car.throttle ?? 0}
-                brake={frame?.car.brake ?? 0}
-                clutch={frame?.car.clutch ?? 0}
-                steering={frame?.car.steering ?? 0}
-              />
+        <div className="grid min-h-0 grid-cols-2 gap-[14px]">
+          <Panel title="Lap Pace" subtitle="Current stint">
+            <div className="grid grid-cols-3 gap-[10px]">
+              <Metric label="Best" value={bestLap} tone="orange" />
+              <Metric label="Last" value={lastLap} />
+              <Metric label="Delta" value={delta} tone={deltaTone} />
             </div>
-          </div>
-        </section>
+          </Panel>
 
-        {/* Right: chrono — col-span-3 */}
-        <section className="col-span-3 flex flex-col overflow-hidden">
-          <div className="border-b border-border p-4">
-              <h3 className="ui-label mb-4 text-[10px] font-bold text-text-muted">
-              CHRONO_SUMMARY
-            </h3>
-            <div className="space-y-1">
-              <div className="surface-panel flex items-center justify-between p-3">
-                <span className="ui-value text-[10px] text-text-muted">P1 best</span>
-                <span className="font-mono text-lg font-bold text-secondary">
-                  {fmt(frame?.lap.bestLapTime)}
-                </span>
-              </div>
-              <div className="surface-inline flex items-center justify-between p-3">
-                <span className="ui-value text-[10px] text-text-muted">Session lap</span>
-                <span className="font-mono text-lg font-bold">
-                  {fmt(frame?.lap.lastLapTime)}
-                </span>
-              </div>
-              {frame && frame.lap.targetLapTime > 0 && (
-                <div className="mt-2">
-                  <span className="ui-label text-[9px] text-text-muted block mb-1">Δ_TARGET</span>
-                  <DeltaBar delta={frame.lap.delta} />
-                </div>
-              )}
-            </div>
-          </div>
+          <Panel title="Track Map" subtitle={frame?.session.track ?? 'Spa-Francorchamps'}>
+            <svg viewBox="0 0 260 132" className="h-[132px] w-full" aria-hidden="true">
+              <path d="M38 98 C65 72 86 114 116 92 S154 42 185 64 S230 47 214 23 S156 13 140 35 S99 31 84 58 S43 55 38 98" fill="none" stroke="var(--border-2)" strokeWidth="12" strokeLinecap="round" />
+              <path d="M38 98 C65 72 86 114 116 92 S154 42 185 64" fill="none" stroke="var(--orange)" strokeWidth="7" strokeLinecap="round" />
+              <path d="M185 64 S230 47 214 23 S156 13 140 35" fill="none" stroke="var(--green)" strokeWidth="7" strokeLinecap="round" />
+              <circle cx="38" cy="98" r="5" fill="var(--text)" />
+              <circle cx="185" cy="64" r="5" fill="var(--orange)" />
+            </svg>
+          </Panel>
+        </div>
 
-          {/* Lap table */}
-          <div className="flex-1 overflow-y-auto">
-            <table className="w-full font-mono text-[10px]">
-              <thead className="sticky top-0 border-b border-border bg-bg-shell">
-                <tr className="text-text-muted/60">
-                  <th className="px-4 py-2 text-left font-normal uppercase">Lap</th>
-                  <th className="px-4 py-2 text-left font-normal uppercase">Time</th>
-                  <th className="px-4 py-2 text-right font-normal uppercase">Diff</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/30">
-                {frame?.lap.lastLapTime ? (
-                  <>
-                    <tr className="hover:bg-bg-panel/60">
-                      <td className="px-4 py-2.5 text-text-muted">L</td>
-                      <td className="px-4 py-2.5 font-bold">{fmt(frame.lap.lastLapTime)}</td>
-                      <td className={cn('px-4 py-2.5 text-right', frame.lap.lastLapTime <= (frame.lap.bestLapTime || Infinity) ? 'text-secondary' : 'text-primary')}>
-                        {frame.lap.bestLapTime ? fmtDelta(frame.lap.lastLapTime - frame.lap.bestLapTime) : '——'}
-                      </td>
-                    </tr>
-                    <tr className="hover:bg-bg-panel/60">
-                      <td className="px-4 py-2.5 text-text-muted">PB</td>
-                      <td className="px-4 py-2.5 font-bold text-secondary">{fmt(frame.lap.bestLapTime)}</td>
-                      <td className="px-4 py-2.5 text-right text-secondary">——</td>
-                    </tr>
-                  </>
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-4 text-center text-text-muted">Awaiting data</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <Panel title="Tyres" subtitle="Temperature and wear">
+          <div className="grid grid-cols-4 gap-[10px]">
+            {['FL', 'FR', 'RL', 'RR'].map((label, index) => {
+              const tire = frame?.tires[index]
+              const temp = tire?.tempMiddle ? tire.tempMiddle.toFixed(0) : '93'
+              const wear = tire?.wearPercent ? tire.wearPercent.toFixed(0) : '82'
+              return <Metric key={label} label={`${label} tyre`} value={`${temp} / ${wear}`} unit="C %" tone={index === 0 ? 'amber' : 'green'} />
+            })}
           </div>
-        </section>
+        </Panel>
       </div>
 
-      {/* Bottom row: 4-column tire grid */}
-      <div className="grid flex-1 grid-cols-4 min-h-0">
-        {TIRE_LABELS.map(({ pos, name }, i) => {
-          const tire = tires[i]
-          const temp = tire?.tempMiddle ?? 0
-          const isHot = temp > 105
-          const isCold = temp > 0 && temp < 70
-          const stateLabel = temp === 0 ? '—' : isHot ? 'Overheat' : isCold ? 'Warming' : 'Optimal'
-          const stateColor = isHot ? 'var(--accent)' : isCold ? 'var(--secondary)' : undefined
+      <aside className="col-span-4 flex min-h-0 flex-col gap-[14px] overflow-hidden">
+        <Panel title="Alerts" subtitle="3 active">
+          <div className="flex flex-col gap-[10px]">
+            <AlertRow title="Low Fuel" body="8 laps remaining at current pace." tone="red" />
+            <AlertRow title="Tyre Wear" body="Front-left graining detected in sector 2." tone="amber" />
+            <AlertRow title="System Ready" body="Telemetry bridge and display output are healthy." tone="green" />
+          </div>
+        </Panel>
 
-          return (
-            <div
-              key={name}
-              className={cn(
-                'flex flex-col p-4 overflow-hidden',
-                i < 3 && 'border-r border-border',
-              )}
-            >
-              {/* Header */}
-              <div className="mb-4 flex items-start justify-between flex-shrink-0">
-                <div>
-                  <span className="ui-label block text-[9px] text-text-muted">{pos}</span>
-                  <span className="ui-label text-[10px] font-bold">{name}</span>
-                </div>
-                <span
-                  className="font-mono text-xl font-bold"
-                  style={{ color: stateColor }}
-                >
-                  {temp > 0 ? `${temp.toFixed(0)}°C` : '——'}
-                </span>
-              </div>
-
-              {/* Visual bar */}
-              <div
-                className="relative flex-1 min-h-0 overflow-hidden bg-black/40"
-                style={{ border: isHot ? '1px solid rgba(255,144,108,0.30)' : '1px solid var(--outline)' }}
-              >
-                {/* Subtle horizontal scan lines */}
-                <div className="absolute inset-0 pointer-events-none opacity-10 flex flex-col justify-around py-2">
-                  {[0,1,2,3].map(j => <div key={j} className="h-px bg-white" />)}
-                </div>
-                {/* Heat gradient */}
-                {temp > 0 && (
-                  <div
-                    className="absolute inset-x-0 bottom-0"
-                    style={{
-                      height: `${Math.min(temp / 120 * 100, 100)}%`,
-                      background: isHot
-                        ? 'linear-gradient(to top, rgba(255,144,108,0.20), transparent)'
-                        : 'linear-gradient(to top, rgba(90,248,251,0.10), transparent)',
-                    }}
-                  />
-                )}
-                {/* State label */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span
-                    className="ui-label text-[10px] font-bold tracking-[0.4em] opacity-40"
-                    style={{ color: stateColor }}
-                  >
-                    {stateLabel}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stats row */}
-              <div className="mt-4 grid grid-cols-2 gap-2 font-mono text-[9px] text-text-muted flex-shrink-0">
-                <div className="flex justify-between border-b border-border/30 pb-1">
-                  <span>Wear</span>
-                  <span className="text-white">{tire?.wearPercent != null ? `${tire.wearPercent.toFixed(0)}%` : '——'}</span>
-                </div>
-                <div className="flex justify-between border-b border-border/30 pb-1">
-                  <span>Compound</span>
-                  <span className="text-white">{tire?.compound ?? '——'}</span>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-    </div>
+        <Panel title="Session Info" subtitle="Car and stint state" className="min-h-0 overflow-y-auto">
+          <div className="flex flex-col gap-[8px]">
+            <InfoRow label="Car" value={frame?.session.car || 'GT3 #7'} />
+            <InfoRow label="Track" value={frame?.session.track || 'Spa-Francorchamps'} />
+            <InfoRow label="Weather" value="Dry / 24 C" />
+            <InfoRow label="Session" value={frame ? fmtLap(frame.session.sessionTime, prefs) : '28:42'} />
+          </div>
+        </Panel>
+      </aside>
+    </section>
   )
 }
