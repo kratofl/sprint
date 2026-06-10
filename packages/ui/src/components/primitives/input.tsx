@@ -8,16 +8,16 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       type={type}
       data-slot="input"
       className={cn(
-        "h-7 w-full min-w-0 rounded-sm border border-border bg-bg-shell px-2 py-0.5 text-xs/relaxed text-foreground transition-colors outline-none",
-        "placeholder:text-text-disabled",
-        "hover:border-border-strong",
+        "h-8 w-full min-w-0 rounded-control border border-[var(--border)] bg-[var(--panel-2)] px-[10px] text-[13px] text-[var(--text)] transition-colors outline-none",
+        "placeholder:text-[var(--muted-2)]",
+        "hover:border-[var(--border-2)]",
         "file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs/relaxed file:font-medium file:text-foreground",
-        "focus:border-primary focus:text-foreground focus:ring-0 focus:outline-none",
-        "data-[readout=true]:font-mono data-[readout=true]:tabular-nums",
-        "data-[status=accent]:border-primary/50 data-[status=accent]:text-primary data-[status=accent]:focus:border-primary",
-        "data-[status=neutral]:text-text-muted data-[status=neutral]:focus:border-border data-[status=neutral]:focus:text-foreground",
+        "focus:border-primary focus:text-[var(--text)] focus:ring-0 focus:outline-none",
+        "data-[readout=true]:text-right data-[readout=true]:font-mono data-[readout=true]:tabular-nums",
+        "data-[status=accent]:border-[var(--orange)] data-[status=accent]:text-[var(--orange)] data-[status=accent]:focus:border-[var(--orange)]",
+        "data-[status=neutral]:text-[var(--muted)] data-[status=neutral]:focus:border-[var(--border)] data-[status=neutral]:focus:text-[var(--text)]",
         "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
-        "aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20",
+        "aria-invalid:border-[var(--red)] aria-invalid:ring-0",
         className
       )}
       {...props}

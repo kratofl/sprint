@@ -13,7 +13,7 @@ import {
 } from "./controlClasses"
 
 const buttonVariants = cva(
-  "group/button ui-control inline-flex shrink-0 items-center justify-center rounded border bg-transparent bg-clip-padding whitespace-nowrap text-foreground transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button ui-control inline-flex shrink-0 items-center justify-center border bg-transparent bg-clip-padding whitespace-nowrap transition-colors outline-none select-none focus-visible:border-[var(--orange)] focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--red)] aria-invalid:ring-0 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -29,14 +29,14 @@ const buttonVariants = cva(
       },
       size: {
         default:
-          "h-7 gap-1.5 px-3 text-[11px] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3.5",
-        xs: "h-5 gap-1 rounded px-2 text-[10px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
-        sm: "h-6 gap-1.5 px-2.5 text-[11px] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
-        lg: "h-8 gap-2 px-4 text-xs has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3 [&_svg:not([class*='size-'])]:size-4",
-        icon: "size-7 p-0 [&_svg:not([class*='size-'])]:size-3.5",
-        "icon-xs": "size-5 rounded-sm p-0 [&_svg:not([class*='size-'])]:size-2.5",
-        "icon-sm": "size-6 p-0 [&_svg:not([class*='size-'])]:size-3",
-        "icon-lg": "size-8 p-0 [&_svg:not([class*='size-'])]:size-4",
+          "h-[25px] gap-1.5 rounded-control px-[14px] py-[6px] text-[13px] has-data-[icon=inline-end]:pr-[10px] has-data-[icon=inline-start]:pl-[10px] [&_svg:not([class*='size-'])]:size-[13px]",
+        xs: "h-5 gap-1 rounded-badge px-2 py-1 text-[10px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
+        sm: "h-[21px] gap-1 rounded-control px-[10px] py-[4px] text-[12px] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
+        lg: "h-[25px] gap-1.5 rounded-control px-[14px] py-[6px] text-[13px] has-data-[icon=inline-end]:pr-[10px] has-data-[icon=inline-start]:pl-[10px] [&_svg:not([class*='size-'])]:size-[13px]",
+        icon: "size-[25px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-[13px]",
+        "icon-xs": "size-5 rounded-badge p-0 [&_svg:not([class*='size-'])]:size-2.5",
+        "icon-sm": "size-[25px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-[13px]",
+        "icon-lg": "size-[28px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-4",
       },
     },
     compoundVariants: [

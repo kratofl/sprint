@@ -10,7 +10,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-xs", className)}
+        className={cn("w-full caption-bottom border-separate border-spacing-0 text-xs tabular-nums", className)}
         {...props}
       />
     </div>
@@ -42,7 +42,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
     <tfoot
       data-slot="table-footer"
       className={cn(
-        "border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+        "border-t border-[var(--border)] bg-[var(--panel)] font-medium [&>tr]:last:border-b-0",
         className
       )}
       {...props}
@@ -55,7 +55,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+        "border-b border-[var(--border)] transition-colors hover:bg-[var(--panel-2)] data-[state=selected]:bg-[var(--panel-3)]",
         className
       )}
       {...props}
@@ -68,7 +68,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-8 px-2 text-left align-middle font-inter text-[10px] font-bold tracking-[0.13em] whitespace-nowrap text-[var(--muted-2)] uppercase [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -81,7 +81,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "border-t border-[var(--border)] p-2 align-middle whitespace-nowrap text-[var(--text)] [&:has([role=checkbox])]:pr-0 data-[numeric=true]:text-right data-[numeric=true]:font-mono data-[numeric=true]:tabular-nums",
         className
       )}
       {...props}
@@ -96,7 +96,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("mt-4 text-xs text-muted-foreground", className)}
+      className={cn("mt-4 text-xs text-[var(--muted)]", className)}
       {...props}
     />
   )

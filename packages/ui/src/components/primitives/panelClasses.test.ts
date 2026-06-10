@@ -8,21 +8,21 @@ import {
   overlaySheetContentClassName,
 } from './panelClasses.ts'
 
-test('overlay backdrop uses one dimmed blur treatment across dialogs and sheets', () => {
+test('overlay backdrop is dimmed without blur', () => {
   assert.match(overlayBackdropClassName, /\bbg-black\/72\b/)
-  assert.match(overlayBackdropClassName, /\bbackdrop-blur-sm\b/)
+  assert.doesNotMatch(overlayBackdropClassName, /backdrop-blur/)
 })
 
 test('overlay panel class keeps the shared flat chrome', () => {
-  assert.match(overlayPanelClassName, /\bsurface-overlay-panel\b/)
-  assert.match(overlayPanelClassName, /\bborder-border\b/)
+  assert.match(overlayPanelClassName, /bg-\[var\(--panel\)\]/)
+  assert.match(overlayPanelClassName, /border-\[var\(--border\)\]/)
   assert.doesNotMatch(overlayPanelClassName, /\bborder-border-strong\b/)
-  assert.match(overlayPanelClassName, /\bshadow-overlay\b/)
+  assert.match(overlayPanelClassName, /\bshadow-none\b/)
 })
 
 test('popover and sheet content build on the same overlay panel contract', () => {
   assert.match(overlayPopoverContentClassName, /origin-\(--radix-popover-content-transform-origin\)/)
-  assert.match(overlayPopoverContentClassName, /\bsurface-overlay-panel\b/)
-  assert.match(overlaySheetContentClassName, /\bsurface-overlay-panel\b/)
+  assert.match(overlayPopoverContentClassName, /bg-\[var\(--panel\)\]/)
+  assert.match(overlaySheetContentClassName, /bg-\[var\(--panel\)\]/)
   assert.match(overlaySheetContentClassName, /\btext-xs\/relaxed\b/)
 })

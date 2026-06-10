@@ -5,36 +5,36 @@ import { Slot } from "radix-ui"
 import { cn } from "../../lib/utils"
 
 const badgeVariants = cva(
-  "group/badge ui-control inline-flex min-h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded border px-2 py-0.5 text-[10px] whitespace-nowrap text-foreground transition-colors focus-visible:border-ring focus-visible:outline-none has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-2.5!",
+  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-[10px] overflow-hidden rounded-badge border px-[10px] py-1 font-wordmark text-[12px] font-bold whitespace-nowrap uppercase transition-colors focus-visible:border-[var(--orange)] focus-visible:outline-none has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-[var(--red)] [&>svg]:pointer-events-none [&>svg]:size-[10px]!",
   {
     variants: {
       variant: {
         default:
-          "surface-active text-primary",
+          "border-[var(--orange)] bg-transparent text-[var(--orange)]",
         primary:
-          "surface-active text-primary",
+          "border-[var(--orange)] bg-[var(--orange)] text-[var(--bg)]",
         secondary:
-          "surface-secondary text-secondary",
+          "border-[var(--border)] bg-transparent text-[var(--muted)]",
         connected:
-          "surface-secondary text-secondary",
+          "border-[var(--green)] bg-transparent text-[var(--green)]",
         /** Telemetry alert chips: Live, Pit, Gear */
         tertiary:
-          "surface-tertiary text-tertiary",
+          "border-[var(--blue)] bg-transparent text-[var(--blue)]",
         success:
-          "surface-success text-success",
+          "border-[var(--green)] bg-transparent text-[var(--green)]",
         warning:
-          "surface-warning text-warning",
+          "border-[var(--amber)] bg-transparent text-[var(--amber)]",
         destructive:
-          "surface-destructive text-destructive [a]:hover:text-destructive",
+          "border-[var(--red)] bg-transparent text-[var(--red)] [a]:hover:text-[var(--red)]",
         outline:
-          "border-border text-text-muted",
+          "border-[var(--border)] text-[var(--muted)]",
         neutral:
-          "border-border text-text-muted",
+          "border-[var(--border)] text-[var(--muted)]",
         active:
-          "surface-active text-primary",
+          "border-[var(--orange)] bg-[var(--orange)] text-[var(--bg)]",
         ghost:
-          "border-transparent text-text-muted",
-        link: "text-accent underline-offset-4 hover:underline",
+          "border-transparent text-[var(--muted)]",
+        link: "border-transparent text-[var(--orange)] underline-offset-4 hover:underline",
       },
     },
     defaultVariants: {
