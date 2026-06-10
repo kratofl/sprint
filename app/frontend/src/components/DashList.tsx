@@ -40,8 +40,8 @@ function DashRow({
   return (
     <>
       <div className={cn(
-        'flex cursor-pointer items-center gap-4 border-b border-border px-6 py-3 transition-colors hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/40',
-        layout.default && 'bg-bg-panel',
+        'flex cursor-pointer items-center gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] transition-colors hover:border-[var(--border-2)] hover:bg-[var(--panel-2)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
+        layout.default && 'border-[var(--orange)]',
       )}
         role="button"
         tabIndex={0}
@@ -56,10 +56,10 @@ function DashRow({
         }}
       >
         {/* Preview thumbnail */}
-        <div className="surface-shell h-12 w-20 flex-shrink-0 overflow-hidden flex items-center justify-center">
+        <div className="flex h-12 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-[var(--border)] bg-[var(--bg-deep)]">
           {preview
             ? <img src={`data:image/png;base64,${preview}`} className="w-full h-full object-cover" alt={layout.name} />
-            : <span className="font-mono text-base text-white/20">{layout.name.slice(0, 2).toUpperCase()}</span>
+            : <span className="font-saira text-base text-[var(--muted-2)]">{layout.name.slice(0, 2).toUpperCase()}</span>
           }
         </div>
 
@@ -71,7 +71,7 @@ function DashRow({
               <Badge variant="active" className="ui-label text-[9px] flex-shrink-0">Default</Badge>
             )}
           </div>
-          <span className="font-mono text-[10px] text-text-muted">
+          <span className="font-saira text-[12px] tabular-nums text-[var(--muted)]">
             {layout.gridCols}×{layout.gridRows} grid · {layout.pageCount} page{layout.pageCount !== 1 ? 's' : ''}
           </span>
         </div>
@@ -155,11 +155,11 @@ export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, on
         )}
       />
       {layouts.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center font-mono text-[10px] text-text-muted">
+        <div className="flex flex-1 items-center justify-center font-saira text-[12px] tabular-nums text-[var(--muted)]">
           NO_LAYOUTS — create your first dash
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[14px]">
           {layouts.map(layout => (
             <DashRow
               key={layout.id}

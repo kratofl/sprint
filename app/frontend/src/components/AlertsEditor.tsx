@@ -3,14 +3,14 @@ import { cn } from '@sprint/ui'
 import { type AlertInstance, type AlertMeta, type DomainPalette, type ConfigDef } from '@/lib/dash'
 
 const DOMAIN_COLOR_MAP: Record<string, string> = {
-  tc:        '#5af8fb',
+  tc:        '#33D27E',
   abs:       '#fbbf24',
-  motor:     '#ff906c',
-  primary:   '#ff906c',
-  accent:    '#5af8fb',
-  success:   '#34d399',
+  motor:     '#FF6A00',
+  primary:   '#FF6A00',
+  accent:    '#FF6A00',
+  success:   '#33D27E',
   warning:   '#fbbf24',
-  danger:    '#f87171',
+  danger:    '#FF4D63',
 }
 
 function resolveSwatchColor(colorRef: string, domain?: Partial<DomainPalette>): string {
@@ -63,15 +63,15 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden min-h-0">
+    <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--bg-deep)]">
       {/* Left: alert type palette */}
-      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-border">
-        <div className="border-b border-border px-4 py-3">
+      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--panel)]">
+        <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
           <h4 className="ui-label text-[11px] font-semibold text-text-muted">Alert types</h4>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[10px]">
           {catalog.length === 0 ? (
-            <div className="p-4 text-center font-mono text-[10px] text-text-muted">LOADING…</div>
+            <div className="p-[10px] text-center font-saira text-[12px] tabular-nums text-[var(--muted)]">LOADING...</div>
           ) : (
             catalog.map(meta => {
               const alreadyAdded = addedTypes.has(meta.type)
@@ -79,22 +79,24 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
                 <div
                   key={meta.type}
                   className={cn(
-                    'flex flex-col gap-0.5 px-3 py-2.5 border-b border-border/40',
+                    'flex gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] transition-colors',
                     alreadyAdded
-                      ? 'opacity-40 cursor-not-allowed'
-                      : 'hover:bg-white/[0.03] cursor-pointer'
+                      ? 'cursor-not-allowed opacity-40'
+                      : 'cursor-pointer hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]'
                   )}
                   onClick={() => { if (!alreadyAdded) handleAdd(meta) }}
                   title={alreadyAdded ? 'Already added' : `Add ${meta.label}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex size-[28px] flex-shrink-0 items-center justify-center rounded-tile border border-[var(--amber-ring)] bg-[var(--amber-tint)] text-[var(--amber)]">
                     <span
-                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      className="size-2 rounded-full"
                       style={{ backgroundColor: resolveSwatchColor(meta.defaultColor, domainPalette) }}
                     />
-                    <span className="font-mono text-[10px] text-foreground truncate">{meta.label}</span>
                   </div>
-                  <p className="font-mono text-[9px] text-text-muted leading-tight pl-4">{meta.description}</p>
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate text-[13px] font-bold text-[var(--text)]">{meta.label}</span>
+                    <p className="font-saira text-[10px] leading-tight tabular-nums text-[var(--muted)]">{meta.description}</p>
+                  </div>
                 </div>
               )
             })
@@ -103,15 +105,15 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
       </div>
 
       {/* Center: configured instance list */}
-      <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-        <div className="border-b border-border px-4 py-3">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="border-b border-[var(--border)] bg-[var(--panel)] px-[14px] py-[10px]">
           <h4 className="ui-label text-[11px] font-semibold text-text-muted">Configured alerts</h4>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[10px]">
           {instances.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-text-muted font-mono text-[10px] p-6">
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 font-saira text-[12px] tabular-nums text-[var(--muted)]">
               <span>No alerts configured</span>
-              <span className="text-[9px] text-text-disabled text-center">Click an alert type on the left to add it</span>
+              <span className="text-center text-[10px] text-[var(--muted-2)]">Click an alert type on the left to add it</span>
             </div>
           ) : (
             instances.map(inst => {
@@ -122,19 +124,19 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
                   key={inst.id}
                   onClick={() => setSelectedId(isSelected ? null : inst.id)}
                   className={cn(
-                    'flex items-center gap-3 px-4 py-3 border-b border-border/40 cursor-pointer transition-colors',
+                    'flex gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] cursor-pointer transition-colors',
                     isSelected
-                      ? 'bg-white/[0.05] border-l-2 border-l-warning'
-                      : 'hover:bg-white/[0.03] border-l-2 border-l-transparent'
+                      ? 'border-[var(--orange)]'
+                      : 'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]'
                   )}
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: resolveSwatchColor(meta?.defaultColor ?? '', domainPalette) }}
-                  />
-                  <span className="font-mono text-[10px] text-foreground flex-1 truncate">
-                    {meta?.label ?? inst.type}
-                  </span>
+                  <div className="flex size-[28px] flex-shrink-0 items-center justify-center rounded-tile border border-[var(--amber-ring)] bg-[var(--amber-tint)] text-[var(--amber)]">
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: resolveSwatchColor(meta?.defaultColor ?? '', domainPalette) }}
+                    />
+                  </div>
+                  <span className="flex-1 truncate text-[13px] font-bold text-[var(--text)]">{meta?.label ?? inst.type}</span>
                   <button
                     type="button"
                     onClick={e => { e.stopPropagation(); handleRemove(inst.id) }}
@@ -151,20 +153,20 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
       </div>
 
       {/* Right: instance config panel */}
-      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-border">
-        <div className="border-b border-border px-4 py-3">
+      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--panel)]">
+        <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
           <h4 className="ui-label text-[11px] font-semibold text-text-muted">Properties</h4>
         </div>
         <div className="flex-1 overflow-y-auto">
           {!selectedInstance || !selectedMeta ? (
-            <div className="flex flex-col items-center justify-center h-full text-text-muted font-mono text-[10px] p-4">
+            <div className="flex h-full flex-col items-center justify-center p-4 font-saira text-[12px] tabular-nums text-[var(--muted)]">
               <span>Select an alert</span>
-              <span className="text-[9px] mt-1 text-text-disabled">to view properties</span>
+              <span className="mt-1 text-[10px] text-[var(--muted-2)]">to view properties</span>
             </div>
           ) : (
             <div className="flex flex-col gap-0">
-              <div className="border-b border-border px-4 py-3">
-                <p className="font-mono text-[10px] font-bold text-foreground uppercase tracking-wider">
+              <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
+                <p className="ui-label text-[11px] font-bold text-[var(--text)]">
                   {selectedMeta.label}
                 </p>
               </div>
@@ -180,7 +182,7 @@ export function AlertsEditor({ instances, catalog, domainPalette, onChange }: Al
                   ))}
                 </div>
               ) : (
-                <div className="px-4 py-3 font-mono text-[9px] text-text-disabled">No configurable options</div>
+                <div className="px-[14px] py-[10px] font-saira text-[12px] text-[var(--muted-2)]">No configurable options</div>
               )}
             </div>
           )}
@@ -202,13 +204,13 @@ function AlertConfigField({
   const current = value !== undefined ? String(value) : def.default
 
   return (
-    <div className="flex flex-col gap-1 px-4 py-2.5 border-b border-border/50">
-      <label className="font-mono text-[9px] text-text-muted uppercase tracking-wide">{def.label}</label>
+    <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
+      <label className="ui-label text-[11px] text-[var(--muted)]">{def.label}</label>
       {def.type === 'select' && def.options && (
         <select
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className="h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
         >
           {def.options.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -222,20 +224,20 @@ function AlertConfigField({
           step="0.5"
           min="0.5"
           onChange={e => onChange(Number(e.target.value))}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className="h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
         />
       )}
       {def.type === 'boolean' && (
         <button
           onClick={() => onChange(current !== 'true')}
           className={cn(
-            'flex items-center gap-2 px-2 py-1 border font-mono text-[10px] transition-colors w-full text-left',
+            'flex h-8 w-full items-center gap-[8px] rounded-[8px] border px-[10px] text-left font-saira text-[12px] transition-colors',
             current === 'true'
-              ? 'border-accent bg-accent/10 text-accent'
-              : 'border-border text-text-muted hover:border-border'
+              ? 'border-[var(--orange-ring)] bg-[var(--orange-tint)] text-[var(--orange)]'
+              : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)]'
           )}
         >
-          <span className={cn('w-3 h-3 border flex-shrink-0', current === 'true' ? 'bg-accent border-accent' : 'border-border')} />
+          <span className={cn('h-3 w-3 flex-shrink-0 rounded-[3px] border', current === 'true' ? 'border-[var(--orange)] bg-[var(--orange)]' : 'border-[var(--border-2)]')} />
           {current === 'true' ? 'Enabled' : 'Disabled'}
         </button>
       )}
@@ -244,7 +246,7 @@ function AlertConfigField({
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className="h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type {
   DashWidget, DashTheme, DomainPalette, WidgetCatalogEntry,
   ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle, HAlign, VAlign,
@@ -676,7 +676,11 @@ function renderAbsElem(
     }
 
     case 'condition':
-      return <>{flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, widgetStyle, fontScaleMul, textYs, textState, i))}</>
+      return (
+        <Fragment key={key}>
+          {flattenElements(elem.then ?? []).map((e, i) => renderAbsElem(e, theme, dp, widgetStyle, fontScaleMul, textYs, textState, i))}
+        </Fragment>
+      )
 
     default:
       return null
@@ -695,7 +699,7 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden"
+      className="absolute inset-0 overflow-hidden rounded-alert border border-[var(--border)] bg-[var(--panel-2)]"
       style={{ containerType: 'size' } as CSSProperties}
     >
       {elements.length > 0 ? (
@@ -704,9 +708,11 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
           <ZoneLayer elems={elements} theme={theme} dp={domainPalette} widgetStyle={widgetStyle} fontScaleMul={fontScale} />
         </>
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center"
-          style={{ background: resolveRef('surface', theme, domainPalette, widgetStyle) }}>
-          <span style={{ fontSize: '0.7em', color: resolveRef('muted', theme, domainPalette, widgetStyle), fontFamily: FONT_MAP.mono }}>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span
+            className="font-saira text-[10px] tabular-nums text-[var(--muted-2)]"
+            style={{ color: resolveRef('muted', theme, domainPalette, widgetStyle) }}
+          >
             {entry?.name ?? widget.type}
           </span>
         </div>
