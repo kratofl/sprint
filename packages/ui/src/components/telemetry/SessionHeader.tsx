@@ -37,17 +37,17 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-4 rounded border border-[var(--outline)] bg-bg-container px-4 py-2.5',
+        'flex items-center justify-between gap-4 rounded-panel border border-[var(--border)] bg-[var(--panel)] px-[14px] py-[10px]',
         className,
       )}
       {...props}
     >
       {/* Left: track + car */}
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm font-semibold text-foreground">
+        <span className="truncate font-inter text-[13px] font-bold text-[var(--text)]">
           {session.track || 'No track'}
         </span>
-        <span className="truncate ui-label text-[10px] text-on-surface-variant">
+        <span className="truncate font-inter text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
           {session.car || '——'}
         </span>
       </div>
@@ -56,7 +56,7 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
       <div className="flex shrink-0 items-center gap-2">
         <Badge variant="default">{sessionLabel}</Badge>
         {session.sessionTime > 0 && (
-          <span className="font-mono text-xs tabular-nums text-on-surface-variant">
+          <span className="font-saira text-xs tabular-nums text-[var(--muted)]">
             {formatSessionTime(session.sessionTime)}
           </span>
         )}
@@ -67,10 +67,10 @@ export function SessionHeader({ session, connected, fps, className, ...props }: 
         <span
           className={cn(
             'h-1.5 w-1.5 rounded-full',
-            connected ? 'bg-secondary animate-pulse' : 'bg-on-surface-variant',
+            connected ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--muted)]',
           )}
         />
-        <span className={cn('ui-label text-[10px]', connected ? 'text-secondary' : 'text-on-surface-variant')}>
+        <span className={cn('ui-label text-[10px]', connected ? 'text-[var(--green)]' : 'text-[var(--muted)]')}>
           {connected
             ? fps !== undefined ? `${fps} FPS` : 'Live'
             : 'Offline'}

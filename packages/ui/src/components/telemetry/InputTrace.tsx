@@ -15,10 +15,10 @@ export interface InputTraceProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const GRADIENTS = {
-  throttle: 'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)',
-  brake:    'linear-gradient(90deg, #D96A10 0%, #F5922A 100%)',
-  clutch:   'linear-gradient(90deg, #3B3B42 0%, #52525C 100%)',
-  steering: 'linear-gradient(90deg, #71717A 0%, #A1A1AA 100%)',
+  throttle: 'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)',
+  brake:    'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)',
+  clutch:   'linear-gradient(90deg, var(--muted-2) 0%, var(--muted) 100%)',
+  steering: 'linear-gradient(90deg, var(--muted-2) 0%, var(--text) 100%)',
 } as const
 
 type InputKey = keyof typeof GRADIENTS
@@ -39,13 +39,13 @@ function Bar({ label, value, gradient, centered }: BarProps) {
 
   return (
     <div className="flex items-center gap-2.5">
-      <span className="w-14 text-[11px] text-text-muted">{label}</span>
-      <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-bg-elevated">
+      <span className="w-14 text-[11px] text-[var(--muted)]">{label}</span>
+      <div className="relative h-1.5 flex-1 overflow-hidden rounded-pill bg-[var(--panel-3)]">
         {centered ? (
           <>
-            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-px bg-border-base" />
+            <div className="absolute left-1/2 top-0 h-full w-px -translate-x-px bg-[var(--border)]" />
             <div
-              className="absolute top-0 h-full rounded-full transition-[width,left] duration-75"
+              className="absolute top-0 h-full rounded-pill transition-[width,left] duration-75"
               style={{
                 background: gradient,
                 left: steerClamped <= 0 ? `${50 - steerPct}%` : '50%',
@@ -55,12 +55,12 @@ function Bar({ label, value, gradient, centered }: BarProps) {
           </>
         ) : (
           <div
-            className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-75"
+            className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-75"
             style={{ width: `${pct}%`, background: gradient }}
           />
         )}
       </div>
-      <span className="w-9 text-right text-[11px] tabular-nums text-text-secondary">
+      <span className="w-9 text-right font-saira text-[11px] tabular-nums text-[var(--muted)]">
         {centered
           ? `${(steerClamped * 100).toFixed(0)}%`
           : `${(clamped * 100).toFixed(0)}%`}

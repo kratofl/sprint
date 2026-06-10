@@ -19,38 +19,38 @@ export function FuelWidget({ fuel, capacity, fuelPerLap, className, ...props }: 
   const lapsLeft = fuelPerLap > 0 ? fuel / fuelPerLap : null
 
   const fillGradient =
-    fillPct < 10 ? 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)' :
-    fillPct < 25 ? 'linear-gradient(90deg, #D96A10 0%, #F5922A 100%)' :
-    'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)'
+    fillPct < 10 ? 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)' :
+    fillPct < 25 ? 'linear-gradient(90deg, var(--orange) 0%, var(--orange) 100%)' :
+    'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)'
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>
       {/* Bar */}
-      <div className="relative h-2 w-full overflow-hidden rounded-full bg-bg-elevated">
+      <div className="relative h-2 w-full overflow-hidden rounded-pill bg-[var(--panel-3)]">
         <div
-          className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-300"
+          className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-300"
           style={{ width: `${fillPct}%`, background: fillGradient }}
         />
       </div>
 
       {/* Stats row */}
       <div className="flex items-center justify-between text-xs">
-        <span className="font-mono tabular-nums font-semibold text-text-primary">
+        <span className="font-saira font-semibold tabular-nums text-[var(--text)]">
           {fuel.toFixed(1)}
-          <span className="ml-0.5 text-[10px] font-normal text-text-muted">L</span>
+          <span className="ml-0.5 text-[10px] font-normal text-[var(--muted)]">L</span>
         </span>
 
         {fuelPerLap > 0 && (
-          <span className="text-text-secondary">
+          <span className="text-[var(--muted)]">
             {fuelPerLap.toFixed(2)}
-            <span className="ml-0.5 text-text-muted">L/lap</span>
+            <span className="ml-0.5 text-[var(--muted)]">L/lap</span>
           </span>
         )}
 
         {lapsLeft !== null && (
-          <span className={cn('font-mono tabular-nums', fillPct < 10 ? 'text-red-400' : 'text-text-secondary')}>
+          <span className={cn('font-saira tabular-nums', fillPct < 10 ? 'text-[var(--red)]' : 'text-[var(--muted)]')}>
             ~{Math.floor(lapsLeft)}
-            <span className="ml-0.5 text-text-muted">laps</span>
+            <span className="ml-0.5 text-[var(--muted)]">laps</span>
           </span>
         )}
       </div>

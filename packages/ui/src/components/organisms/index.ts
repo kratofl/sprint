@@ -1,5 +1,5 @@
 export { NavRail } from "./NavRail"
-export type { NavRailItem, NavRailProps } from "./NavRail"
+export type { NavRailItem, NavRailProps, NavRailSection } from "./NavRail"
 export { PageHeader } from "./PageHeader"
 export type { PageHeaderProps } from "./PageHeader"
 export { StatusStrip } from "./StatusStrip"

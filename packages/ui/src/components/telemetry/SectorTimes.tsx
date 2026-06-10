@@ -28,11 +28,11 @@ function sectorState(time: number, best: number, active: boolean): SectorState {
 }
 
 const STATE_CLASS: Record<SectorState, string> = {
-  pb:       'text-purple-400',
-  faster:   'text-teal',
-  slower:   'text-accent',
-  inactive: 'text-text-disabled',
-  active:   'text-text-primary',
+  pb:       'text-[var(--orange)]',
+  faster:   'text-[var(--green)]',
+  slower:   'text-[var(--red)]',
+  inactive: 'text-[var(--muted-2)]',
+  active:   'text-[var(--text)]',
 }
 
 interface SectorCellProps {
@@ -50,8 +50,8 @@ function SectorCell({ label, time, state }: SectorCellProps) {
 
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</span>
-      <span className={cn('font-mono text-sm tabular-nums font-semibold', STATE_CLASS[state])}>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">{label}</span>
+      <span className={cn('font-saira text-sm font-semibold tabular-nums', STATE_CLASS[state])}>
         {display}
       </span>
     </div>
@@ -60,7 +60,7 @@ function SectorCell({ label, time, state }: SectorCellProps) {
 
 /**
  * Three-sector time display (S1 · S2 · S3/current).
- * Colours: purple = personal best, teal = faster-than-best, orange = slower, pulsing = active sector.
+ * Colours: orange = personal best, green = faster-than-best, red = slower, neutral = active sector.
  */
 export function SectorTimes({
   sector1Time,
@@ -79,9 +79,9 @@ export function SectorTimes({
   return (
     <div className={cn('flex justify-around', className)} {...props}>
       <SectorCell label="S1" time={currentSector === 1 ? currentSectorTime : sector1Time} state={s1State} />
-      <div className="w-px self-stretch bg-border-base" />
+      <div className="w-px self-stretch bg-[var(--border)]" />
       <SectorCell label="S2" time={currentSector === 2 ? currentSectorTime : sector2Time} state={s2State} />
-      <div className="w-px self-stretch bg-border-base" />
+      <div className="w-px self-stretch bg-[var(--border)]" />
       <SectorCell label="S3" time={currentSector === 3 ? currentSectorTime : 0} state={s3State} />
     </div>
   )

@@ -13,8 +13,8 @@ export interface DeltaBarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 /**
  * Shows a +/- delta bar relative to the target lap time.
- * - Negative (faster): teal bar extending left from centre
- * - Positive (slower): orange/accent bar extending right from centre
+ * - Negative (faster): green bar extending left from centre
+ * - Positive (slower): red bar extending right from centre
  */
 export function DeltaBar({ delta, maxDelta = 2.0, className, ...props }: DeltaBarProps) {
   const clamped = Math.max(-maxDelta, Math.min(maxDelta, delta))
@@ -27,17 +27,17 @@ export function DeltaBar({ delta, maxDelta = 2.0, className, ...props }: DeltaBa
   return (
     <div className={cn('flex flex-col gap-1', className)} {...props}>
       {/* Bar track */}
-      <div className="relative h-2 w-full rounded-full bg-bg-surface overflow-hidden">
+      <div className="relative h-2 w-full overflow-hidden rounded-pill bg-[var(--panel-3)]">
         {/* Centre line */}
-        <div className="absolute left-1/2 top-0 h-full w-px bg-border-base -translate-x-px" />
+        <div className="absolute left-1/2 top-0 h-full w-px -translate-x-px bg-[var(--border)]" />
         {/* Fill */}
         {clamped !== 0 && (
           <div
-            className="absolute top-0 h-full rounded-full transition-all duration-100"
+            className="absolute top-0 h-full rounded-pill transition-all duration-100"
             style={{
               ...(isFaster
-                ? { right: '50%', background: 'linear-gradient(270deg, #8afcff 0%, #2ae4e8 100%)' }
-                : { left:  '50%', background: 'linear-gradient(90deg, #F5922A 0%, #D96A10 100%)' }
+                ? { right: '50%', background: 'linear-gradient(270deg, var(--green) 0%, var(--green) 100%)' }
+                : { left:  '50%', background: 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)' }
               ),
               width: `${pct}%`,
             }}
@@ -47,8 +47,8 @@ export function DeltaBar({ delta, maxDelta = 2.0, className, ...props }: DeltaBa
       {/* Label */}
       <div
         className={cn(
-          'text-center text-xs font-mono tabular-nums font-semibold',
-          isFaster ? 'text-teal' : clamped === 0 ? 'text-text-muted' : 'text-accent',
+          'text-center font-saira text-xs font-semibold tabular-nums',
+          isFaster ? 'text-[var(--green)]' : clamped === 0 ? 'text-[var(--muted)]' : 'text-[var(--red)]',
         )}
       >
         {label}

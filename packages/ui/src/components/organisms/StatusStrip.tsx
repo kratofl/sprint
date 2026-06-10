@@ -39,8 +39,8 @@ export function StatusStrip({
     <footer
       data-slot="status-strip"
       className={cn(
-        "flex h-6 shrink-0 items-center border-t border-border bg-bg-shell px-4",
-        "ui-value text-[10px] text-text-muted",
+        "flex h-6 shrink-0 items-center rounded-alert border border-[var(--border)] bg-[var(--panel)] px-[10px]",
+        "font-saira text-[10px] tabular-nums text-[var(--muted)]",
         className
       )}
       {...props}
@@ -51,7 +51,7 @@ export function StatusStrip({
             aria-hidden="true"
             className={cn(
               "h-1.5 w-1.5 shrink-0",
-              connected ? "bg-secondary animate-pulse" : "bg-text-muted"
+              connected ? "animate-pulse bg-[var(--green)]" : "bg-[var(--muted)]"
             )}
           />
           <Badge variant={connected ? "connected" : "neutral"}>

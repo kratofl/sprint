@@ -21,17 +21,17 @@ export function PageHeader({
     <header
       data-slot="page-header"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg-shell px-6 py-4",
+        "flex flex-wrap items-center justify-between gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]",
         className
       )}
       {...props}
     >
       <div className="min-w-0">
-        <h2 className="ui-label text-base font-semibold text-foreground">
+        <h2 className="font-inter text-[13px] font-bold text-[var(--text)]">
           {heading}
         </h2>
         {caption ? (
-          <p className="mt-0.5 text-xs text-text-muted">
+          <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">
             {caption}
           </p>
         ) : null}

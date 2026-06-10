@@ -24,16 +24,16 @@ const TEMP_HOT   = 110
 
 /** Returns a warm-gradient style based on temperature */
 function tempGradient(temp: number): string {
-  if (temp < TEMP_COLD)  return 'linear-gradient(180deg, #60A5FA 0%, #3B82F6 100%)'
-  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, #8afcff 0%, #5af8fb 100%)'
-  if (temp < TEMP_HOT)   return 'linear-gradient(180deg, #FFAA8A 0%, #ff906c 100%)'
-  return 'linear-gradient(180deg, #EF4444 0%, #DC2626 100%)'
+  if (temp < TEMP_COLD)  return 'linear-gradient(180deg, var(--muted-2) 0%, var(--muted-2) 100%)'
+  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, var(--green) 0%, var(--green) 100%)'
+  if (temp < TEMP_HOT)   return 'linear-gradient(180deg, var(--orange) 0%, var(--orange) 100%)'
+  return 'linear-gradient(180deg, var(--red) 0%, var(--red) 100%)'
 }
 
 function wearGradient(wear: number): string {
-  if (wear > 80) return 'linear-gradient(90deg, #DC2626 0%, #EF4444 100%)'
-  if (wear > 50) return 'linear-gradient(90deg, #ff784d 0%, #ff906c 100%)'
-  return 'linear-gradient(90deg, #5af8fb 0%, #8afcff 100%)'
+  if (wear > 80) return 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)'
+  if (wear > 50) return 'linear-gradient(90deg, var(--orange) 0%, var(--orange) 100%)'
+  return 'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)'
 }
 
 function TireCell({ data, label }: { data: TireData; label: string }) {
@@ -41,14 +41,14 @@ function TireCell({ data, label }: { data: TireData; label: string }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">{label}</span>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">{label}</span>
 
       {/* Three-zone temp strip */}
       <div className="flex h-10 gap-0.5">
         {[data.tempOuter, data.tempMiddle, data.tempInner].map((t, i) => (
           <div
             key={i}
-            className="w-3 rounded-sm transition-colors duration-300"
+            className="w-3 rounded-badge transition-colors duration-300"
             style={{ background: tempGradient(t) }}
             title={`${t.toFixed(0)}°C`}
           />
@@ -56,14 +56,14 @@ function TireCell({ data, label }: { data: TireData; label: string }) {
       </div>
 
       {/* Avg temp */}
-      <span className="font-mono text-xs tabular-nums text-text-secondary">
+      <span className="font-saira text-xs tabular-nums text-[var(--muted)]">
         {avgTemp.toFixed(0)}°
       </span>
 
       {/* Wear */}
-      <div className="h-1 w-full overflow-hidden rounded-full bg-bg-surface">
+      <div className="h-1 w-full overflow-hidden rounded-pill bg-[var(--panel-3)]">
         <div
-          className="h-full rounded-full transition-all duration-300"
+          className="h-full rounded-pill transition-all duration-300"
           style={{
             width: `${Math.min(100, data.wearPercent)}%`,
             background: wearGradient(data.wearPercent),

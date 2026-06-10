@@ -16,7 +16,7 @@ export interface RPMBarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 /**
  * Horizontal RPM bar with three colour zones:
- *   0–85% of maxRpm  → teal (normal)
+ *   0–85% of maxRpm  → green (normal)
  *   85–92%           → orange/accent (approach redline)
  *   92–100%          → red (redline)
  *
@@ -33,28 +33,28 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
   return (
     <div className={cn('flex flex-col gap-1', className)} {...props}>
       {/* Track */}
-      <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-bg-elevated">
+      <div className="relative h-2.5 w-full overflow-hidden rounded-pill bg-[var(--panel-3)]">
         {/* Warn zone marker */}
         <div
-          className="absolute top-0 h-full w-px bg-accent/25"
+          className="absolute top-0 h-full w-px bg-[var(--orange)]/25"
           style={{ left: `${warnThreshold * 100}%` }}
         />
         {/* Redline marker */}
         <div
-          className="absolute top-0 h-full w-px bg-red-500/30"
+          className="absolute top-0 h-full w-px bg-[var(--red)]/30"
           style={{ left: `${redThreshold * 100}%` }}
         />
         {/* Gradient fill — single gradient covers all zones, reveals with width */}
         <div
-          className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-75"
+          className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-75"
           style={{
             width: `${pct}%`,
-            background: 'linear-gradient(90deg, #5af8fb 0%, #8afcff 62%, #ff906c 80%, #FFAA8A 88%, #DC2626 96%)',
+            background: 'linear-gradient(90deg, var(--green) 0%, var(--green) 62%, var(--orange) 82%, var(--red) 96%)',
           }}
         />
       </div>
       {/* Numeric */}
-      <div className="flex justify-between text-[10px] tabular-nums text-text-muted">
+      <div className="flex justify-between font-saira text-[10px] tabular-nums text-[var(--muted)]">
         <span>{Math.round(rpm).toLocaleString('en-US')} rpm</span>
         <span>{Math.round(maxRpm).toLocaleString('en-US')}</span>
       </div>
