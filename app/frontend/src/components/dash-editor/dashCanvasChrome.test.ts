@@ -21,6 +21,15 @@ test('dash editor canvas wrapper stays visually passive', () => {
   assert.doesNotMatch(canvasPaneBlock, /shadow-\[inset_/)
 })
 
+test('dash editor designer uses the Figma editor grid and VoCore canvas metrics', () => {
+  assert.match(dashEditModeSource, /grid-cols-\[240px_minmax\(0,1fr\)_286px\]/)
+  assert.match(dashEditModeSource, /gap-\[14px\]/)
+  assert.match(dashEditModeSource, /screenW=\{controller\.screenW\}/)
+  assert.match(dashEditModeSource, /screenH=\{controller\.screenH\}/)
+  assert.match(dashCanvasSource, /DEFAULT_SCREEN_W = 800/)
+  assert.match(dashCanvasSource, /DEFAULT_SCREEN_H = 480/)
+})
+
 test('dash editor canvas wrapper clears selection only for direct empty-space clicks', () => {
   const canvasPaneBlock = dashEditModeSource.match(/ref=\{controller\.canvasPaneRef\}[\s\S]{0,420}/)?.[0] ?? ''
 

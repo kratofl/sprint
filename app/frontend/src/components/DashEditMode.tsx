@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   Badge,
   Button,
@@ -45,6 +45,15 @@ interface DashEditModeProps {
   onBack: () => void
   onDirtyChange: (dirty: boolean) => void
 }
+
+const dashEditorSurfaceStyle = {
+  '--de-well': '#030303',
+  '--de-well-top': '#0a0a0a',
+  '--de-rail': '#121212',
+  '--de-rail-head': '#171717',
+  '--de-inset': '#0a0a0a',
+  '--de-seam': '#000000',
+} as CSSProperties
 
 export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyChange }: DashEditModeProps) {
   const controller = useDashEditorController({
@@ -213,8 +222,8 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const stackCanvasGridRows = controller.selectedWidgetStack?.rowSpan ?? controller.layout.gridRows
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border bg-bg-shell px-4 py-2">
+    <div className="flex flex-1 flex-col overflow-hidden" style={dashEditorSurfaceStyle}>
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--de-seam)] bg-[var(--de-rail)] px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
           {controller.renamingDash ? (
             <input
@@ -230,7 +239,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                 }
                 event.stopPropagation()
               }}
-              className="surface-inline min-w-0 px-2 text-sm font-bold outline-none focus:border-accent"
+              className="min-w-0 rounded-control border border-border-input bg-[var(--de-inset)] px-2 text-sm font-bold outline-none focus:border-primary"
             />
           ) : (
             <button
@@ -242,10 +251,10 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               className="group flex items-center gap-1.5 text-left"
               aria-label="Rename dash layout"
             >
-              <span className="truncate text-sm font-bold transition-colors group-hover:text-accent">
+              <span className="truncate text-sm font-bold transition-colors group-hover:text-primary">
                 {controller.layout.name}
               </span>
-              <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-accent" />
+              <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-primary" />
             </button>
           )}
           {controller.isDirty && <Badge variant="warning" className="ui-label">Unsaved</Badge>}
@@ -277,7 +286,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
           className={cn(
             tabsListBaseClassName,
             tabsListVariantClassNames.top,
-            'min-w-0 overflow-x-auto',
+            'h-[54px] min-w-0 overflow-x-auto border-b border-[var(--de-seam)] bg-[var(--de-rail)]',
           )}
           data-variant="top"
         >
@@ -363,12 +372,12 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             />
           )}
 
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_286px] gap-[14px] overflow-hidden bg-[var(--bg-deep)] p-[14px]">
             {paletteDocked && (
               <EditorSidebar
                 side="left"
                 mode="docked"
-                className="w-72 flex-shrink-0"
+                className="w-[240px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
                 title="WIDGETS"
                 pinned={panelPreferences.palette.pinned}
                 onTogglePinned={() => handleTogglePanelPinned('palette')}
@@ -378,7 +387,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               </EditorSidebar>
             )}
 
-            <div className="relative flex min-h-0 min-w-0 flex-1 items-stretch p-2">
+            <div className="relative flex min-h-0 min-w-0 flex-1 items-stretch rounded-panel border border-[var(--border)] bg-[var(--bg-deep)] p-[14px]">
               {!panelPreferences.palette.open && (
                 <EditorEdgeHandle
                   side="left"
@@ -397,7 +406,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
               <div
                 ref={controller.canvasPaneRef}
-                className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-sm"
+                className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden"
                 onClick={(event) => {
                   if (event.target === event.currentTarget) {
                     controller.handleCanvasBackgroundClick()
@@ -582,7 +591,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               <EditorSidebar
                 side="right"
                 mode="docked"
-                className="w-80 flex-shrink-0"
+                className="w-[286px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
                 title={`STACK · ${controller.selectedWidgetStack.name}`}
                 pinned
                 onTogglePinned={() => {}}
@@ -617,7 +626,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               <EditorSidebar
                 side="right"
                 mode="docked"
-                className="w-80 flex-shrink-0"
+                className="w-[286px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
                 title={inspectorState.title}
                 pinned={panelPreferences.inspector.pinned}
                 onTogglePinned={() => handleTogglePanelPinned('inspector')}
@@ -682,28 +691,28 @@ function FocusModeHeader({
   onAddLayer: () => void
 }) {
   return (
-    <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border bg-bg-shell px-3 py-2">
+    <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
       <div className="min-w-0">
-        <div className="font-mono text-[9px] uppercase tracking-wide text-text-disabled">
+            <div className="ui-label text-[9px] text-text-disabled">
           {pageName} / Widget Stack
         </div>
         <div className="truncate text-sm font-medium text-foreground">{stackName}</div>
       </div>
       <div className="flex flex-shrink-0 items-center gap-2">
-        <Button variant="outline" size="xs" onClick={onBack} className="font-mono text-[9px]">
-          BACK_TO_PAGE
+          <Button variant="outline" size="xs" onClick={onBack}>
+            Back to page
         </Button>
         <Button
           variant={compareEnabled ? 'primary' : 'outline'}
           size="xs"
           onClick={onToggleCompare}
           disabled={compareDisabled}
-          className="font-mono text-[9px]"
+              className="text-[12px]"
         >
           COMPARE
         </Button>
-        <Button variant="outline" size="xs" onClick={onAddLayer} className="font-mono text-[9px]">
-          ADD_LAYER
+          <Button variant="outline" size="xs" onClick={onAddLayer}>
+            Add layer
         </Button>
       </div>
     </div>
@@ -720,9 +729,9 @@ function CanvasStage({
   children: ReactNode
 }) {
   return (
-    <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border bg-bg-shell">
-      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <span className="font-mono text-[9px] uppercase tracking-wide text-text-disabled">{title}</span>
+    <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-[var(--de-seam)] bg-[var(--de-well)]">
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
+      <span className="ui-label text-[9px] text-text-disabled">{title}</span>
         {subtitle && <span className="truncate font-mono text-[10px] text-foreground">{subtitle}</span>}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-3">
@@ -809,19 +818,19 @@ function EditorSidebar({
       data-mode={mode}
       className={cn(
         'flex h-full min-h-0 flex-col overflow-hidden',
-        mode === 'overlay' ? 'surface-overlay-panel shadow-overlay' : 'surface-panel shadow-none',
+        'bg-[var(--de-rail)] shadow-none',
         side === 'left'
-          ? 'border-y-0 border-l-0 border-r border-border'
-          : 'border-y-0 border-r-0 border-l border-border',
+          ? 'border-y-0 border-l-0 border-r border-r-[var(--de-seam)] shadow-[inset_-1px_0_0_rgba(255,255,255,.022)]'
+          : 'border-y-0 border-r-0 border-l border-l-[var(--de-seam)] shadow-[inset_1px_0_0_rgba(255,255,255,.022)]',
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-[var(--de-rail-head)] px-3 py-2">
         <div className="flex min-w-0 items-baseline gap-1.5">
           {prefix && (
-            <span className="flex-shrink-0 font-mono text-[9px] uppercase tracking-wider text-text-muted">{prefix}</span>
+            <span className="ui-label flex-shrink-0 text-[9px] text-text-muted">{prefix}</span>
           )}
-          <h2 className="truncate font-mono text-[10px] font-medium uppercase tracking-wide text-foreground">{label}</h2>
+          <h2 className="ui-label truncate text-[10px] font-semibold text-foreground">{label}</h2>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           {headerAction}
@@ -832,7 +841,7 @@ function EditorSidebar({
               onClick={onTogglePinned}
               className={cn(
                 'rounded p-1 transition-colors',
-                pinned ? 'text-accent' : 'text-text-muted hover:text-foreground',
+                pinned ? 'text-primary' : 'text-text-muted hover:text-foreground',
               )}
             >
               <PinIcon />
@@ -884,14 +893,14 @@ function SidebarDisclosureSection({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden border border-border/80">
+    <section className="overflow-hidden rounded-control border border-border/80">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 bg-bg-shell px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
+        className="flex w-full items-center justify-between gap-3 bg-[var(--de-rail-head)] px-3 py-2 text-left transition-colors hover:bg-bg-panel"
       >
-        <span className="terminal-header text-[9px] font-bold text-text-muted">{title}</span>
+            <span className="ui-label text-[9px] font-semibold text-text-muted">{title}</span>
         <DisclosureChevron open={open} />
       </button>
       {open && (
@@ -944,28 +953,28 @@ function LayerListPanel({
 }) {
   return (
     <div className="space-y-4">
-      <SidebarSection title="STACK">
+        <SidebarSection title="Stack">
         <div className="space-y-3">
-          <FieldRow label="NAME">
+          <FieldRow label="Name">
             <input
               type="text"
               value={stack.name}
               onChange={event => onRenameStack(event.target.value)}
-              className="w-full border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+              className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
             />
           </FieldRow>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="xs" onClick={onClearLayer} className="font-mono text-[9px]">
-              CLEAR_LAYER
+            <Button variant="ghost" size="xs" onClick={onClearLayer}>
+              Clear layer
             </Button>
-            <Button variant="destructive" size="xs" onClick={onDeleteStack} className="font-mono text-[9px]">
-              DELETE_STACK
+            <Button variant="destructive" size="xs" onClick={onDeleteStack}>
+              Delete stack
             </Button>
           </div>
         </div>
       </SidebarSection>
 
-      <SidebarSection title="LAYERS">
+        <SidebarSection title="Layers">
         <div className="space-y-2">
         {layers.map(layer => (
           <LayerListItem
@@ -985,8 +994,8 @@ function LayerListPanel({
             disableDelete={disableDelete}
           />
         ))}
-        <Button variant="outline" size="xs" onClick={onAddLayer} className="w-full justify-center font-mono text-[9px]">
-          + LAYER
+        <Button variant="outline" size="xs" onClick={onAddLayer} className="w-full justify-center">
+          Add layer
         </Button>
         </div>
       </SidebarSection>
@@ -1026,10 +1035,10 @@ function LayerListItem({
   return (
     <div
       className={cn(
-        'rounded-sm border px-3 py-2 transition-colors',
+        'rounded-control border px-3 py-2 transition-colors',
         layer.selected
-          ? 'border-primary bg-accent/10'
-          : 'surface-panel',
+          ? 'border-primary/40 bg-primary-muted'
+          : 'border-border bg-bg-panel',
       )}
     >
       <div className="flex items-start gap-2">
@@ -1043,7 +1052,7 @@ function LayerListItem({
             type="text"
             value={layer.name}
             onChange={event => onRename(event.target.value)}
-            className="w-full border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+            className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
           />
           <div className="flex flex-wrap items-center gap-1">
           {layer.isDefault && (
@@ -1058,15 +1067,15 @@ function LayerListItem({
                 className={cn(
                   'rounded border px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide transition-colors',
                   referenceLayerId === layer.id
-                    ? 'border-cyan-400/60 bg-cyan-400/10 text-cyan-200'
+                    ? 'border-success/60 bg-success-muted text-success'
                     : 'border-border text-text-disabled hover:text-foreground',
                 )}
               >
-                {referenceLayerId === layer.id ? 'REF' : 'SET_REF'}
+                {referenceLayerId === layer.id ? 'Reference' : 'Use as reference'}
               </button>
             )}
             {selectedLayerId === layer.id && (
-              <span className="rounded border border-accent/50 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-foreground">
+              <span className="rounded-tag border border-primary/50 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-primary">
                 active
               </span>
             )}
@@ -1149,8 +1158,8 @@ function PagePropertiesPanel({
           onReset={() => onBackgroundChange(undefined)}
         />
         <div className="flex justify-end">
-          <Button variant="ghost" size="xs" onClick={onClearPage} className="font-mono text-[9px]">
-            CLEAR_PAGE
+          <Button variant="ghost" size="xs" onClick={onClearPage}>
+            Clear page
           </Button>
         </div>
       </div>
@@ -1187,7 +1196,7 @@ function WidgetInspectorPanel({
         onUpdate={onUpdate}
       />
 
-      <SidebarDisclosureSection title="STYLE" open={styleOpen} onToggle={onToggleStyle}>
+        <SidebarDisclosureSection title="Style" open={styleOpen} onToggle={onToggleStyle}>
         <WidgetStyleProperties
           widget={widget}
           onUpdate={onUpdate}
@@ -1195,7 +1204,7 @@ function WidgetInspectorPanel({
       </SidebarDisclosureSection>
 
       <SidebarDisclosureSection
-        title="ADVANCED_GEOMETRY"
+          title="Advanced geometry"
         open={advancedGeometryOpen}
         onToggle={onToggleAdvancedGeometry}
       >
@@ -1214,10 +1223,10 @@ function WidgetInspectorPanel({
           variant="destructive"
           size="xs"
           onClick={onDelete}
-          className="inline-flex items-center gap-1 font-mono text-[9px]"
+          className="inline-flex items-center gap-1"
         >
           <TrashIcon />
-          REMOVE_WIDGET
+          Remove widget
         </Button>
       </div>
     </div>
@@ -1263,7 +1272,7 @@ function NumberField({
           const next = parseInt(event.target.value, 10)
           if (!Number.isNaN(next)) onChange(next)
         }}
-        className="w-full border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+        className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
       />
     </FieldRow>
   )
@@ -1318,7 +1327,7 @@ function ColorField({
           onKeyDown={event => {
             if (event.key === 'Enter') applyHex(event.currentTarget.value)
           }}
-          className="w-24 border border-border bg-bg-shell px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          className="w-24 rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
         />
         <Button
           variant="ghost"
