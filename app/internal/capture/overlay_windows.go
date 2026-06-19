@@ -54,49 +54,49 @@ var (
 )
 
 const (
-	wsPopup      = 0x80000000
-	wsVisible    = 0x10000000
-	wsExTopmost  = 0x00000008
-	wsExLayered  = 0x00080000
-	lwaAlpha      = uintptr(0x00000002)
-	overlayAlpha  = uintptr(180)        // ~71% opaque
-	bgColor       = uintptr(0x000a0a0a) // BGR near-black background
-	borderColor   = uintptr(0x006C90FF) // BGR for orange #ff906c
-	smCxScreen   = 0
-	smCyScreen   = 1
-	hwndTop      = 0
-	swpNoActivate = 0x0010
-	htCaption     = 2
-	htTopLeft     = 13
-	htTopRight    = 14
-	htBottomLeft  = 16
-	htBottomRight = 17
-	wmPaint       = 0x000F
-	wmNcHitTest   = 0x0084
-	wmSizing      = 0x0214
-	wmKeyDown     = 0x0100
-	wmDestroy     = 0x0002
-	wmCreate      = 0x0001
-	vkReturn      = 0x0D
-	vkEscape      = 0x1B
-	wmsLeft       = 1
-	wmsRight      = 2
-	wmsTop        = 3
-	wmsTopLeft    = 4
-	wmsTopRight   = 5
-	wmsBottom     = 6
-	wmsBottomLeft = 7
+	wsPopup        = 0x80000000
+	wsVisible      = 0x10000000
+	wsExTopmost    = 0x00000008
+	wsExLayered    = 0x00080000
+	lwaAlpha       = uintptr(0x00000002)
+	overlayAlpha   = uintptr(180)        // ~71% opaque
+	bgColor        = uintptr(0x000a0a0a) // BGR near-black background
+	borderColor    = uintptr(0x006C90FF) // BGR for orange #ff906c
+	smCxScreen     = 0
+	smCyScreen     = 1
+	hwndTop        = 0
+	swpNoActivate  = 0x0010
+	htCaption      = 2
+	htTopLeft      = 13
+	htTopRight     = 14
+	htBottomLeft   = 16
+	htBottomRight  = 17
+	wmPaint        = 0x000F
+	wmNcHitTest    = 0x0084
+	wmSizing       = 0x0214
+	wmKeyDown      = 0x0100
+	wmDestroy      = 0x0002
+	wmCreate       = 0x0001
+	vkReturn       = 0x0D
+	vkEscape       = 0x1B
+	wmsLeft        = 1
+	wmsRight       = 2
+	wmsTop         = 3
+	wmsTopLeft     = 4
+	wmsTopRight    = 5
+	wmsBottom      = 6
+	wmsBottomLeft  = 7
 	wmsBottomRight = 8
-	dtCenter      = 0x00000001
-	dtVCenter     = 0x00000004
-	dtSingleLine  = 0x00000020
-	transparent   = 1
-	swShow        = 5
-	swpNone       = 0
-	borderThick   = int32(3)
-	handleSize    = int32(8)
-	minSide       = 80
-	instrHeight   = int32(22)
+	dtCenter       = 0x00000001
+	dtVCenter      = 0x00000004
+	dtSingleLine   = 0x00000020
+	transparent    = 1
+	swShow         = 5
+	swpNone        = 0
+	borderThick    = int32(3)
+	handleSize     = int32(8)
+	minSide        = 80
+	instrHeight    = int32(22)
 )
 
 type wndClassExW struct {
@@ -128,12 +128,12 @@ type point struct {
 }
 
 type paintStruct struct {
-	Hdc         uintptr
-	Erase       int32
-	RcPaint     winRect
-	Restore     int32
-	IncUpdate   int32
-	Reserved    [32]byte
+	Hdc       uintptr
+	Erase     int32
+	RcPaint   winRect
+	Restore   int32
+	IncUpdate int32
+	Reserved  [32]byte
 }
 
 type winRect struct {
@@ -343,7 +343,10 @@ func paintOverlay(hwnd, hdc uintptr) {
 // size (pass zeros to auto-center). It blocks until the user presses Enter or Esc.
 // Returns (x, y, w, h, confirmed). x/y are in primary monitor screen coordinates.
 func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h int, confirmed bool) {
-	result := make(chan struct{ x, y, w, h int; ok bool }, 1)
+	result := make(chan struct {
+		x, y, w, h int
+		ok         bool
+	}, 1)
 
 	go func() {
 		runtime.LockOSThread()
@@ -394,7 +397,10 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 			0, 0, hInst, 0,
 		)
 		if hwnd == 0 {
-			result <- struct{ x, y, w, h int; ok bool }{}
+			result <- struct {
+				x, y, w, h int
+				ok         bool
+			}{}
 			return
 		}
 
@@ -416,7 +422,10 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 		}
 
 		if overlayState.confirmed.Load() {
-			result <- struct{ x, y, w, h int; ok bool }{
+			result <- struct {
+				x, y, w, h int
+				ok         bool
+			}{
 				x:  int(overlayState.resultX),
 				y:  int(overlayState.resultY),
 				w:  int(overlayState.resultW),
@@ -424,7 +433,10 @@ func SelectRegion(aspectW, aspectH, initX, initY, initW, initH int) (x, y, w, h 
 				ok: true,
 			}
 		} else {
-			result <- struct{ x, y, w, h int; ok bool }{}
+			result <- struct {
+				x, y, w, h int
+				ok         bool
+			}{}
 		}
 	}()
 

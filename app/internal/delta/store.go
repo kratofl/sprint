@@ -61,7 +61,7 @@ func (r *ReferenceLap) DeltaAt(pos float32) (float64, bool) {
 
 // referenceOnDisk is the JSON structure written to disk.
 type referenceOnDisk struct {
-	LapTime float64     `json:"lapTime"`
+	LapTime float64      `json:"lapTime"`
 	Samples [][2]float64 `json:"samples"` // [pos, time] pairs
 }
 

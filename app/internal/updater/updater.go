@@ -115,11 +115,11 @@ func downloadFile(ctx context.Context, url, dest string) error {
 }
 
 type githubRelease struct {
-	TagName    string         `json:"tag_name"`
-	Prerelease bool           `json:"prerelease"`
-	Draft      bool           `json:"draft"`
-	Body       string         `json:"body"`
-	Assets     []githubAsset  `json:"assets"`
+	TagName    string        `json:"tag_name"`
+	Prerelease bool          `json:"prerelease"`
+	Draft      bool          `json:"draft"`
+	Body       string        `json:"body"`
+	Assets     []githubAsset `json:"assets"`
 }
 
 type githubAsset struct {

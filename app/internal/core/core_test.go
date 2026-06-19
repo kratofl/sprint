@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/kratofl/sprint/app/internal/commands"
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/pkg/dto"
 )
@@ -62,9 +62,9 @@ func TestCycleWrapperWrapsAroundBothDirections(t *testing.T) {
 	coord := &Coordinator{
 		entries: map[string]*deviceEntry{
 			"screen-a": {
-				driver:        driver,
-				layoutID:      layout.ID,
-				currentLayout: layout,
+				driver:            driver,
+				layoutID:          layout.ID,
+				currentLayout:     layout,
 				widgetStackStates: defaultWidgetStackStates(layout),
 			},
 		},
@@ -113,12 +113,12 @@ func testLayoutWithWrapperGroup() *dashboard.DashLayout {
 				Name: "Main",
 				WidgetStacks: []dashboard.DashWidgetStack{
 					{
-						ID:               "stack",
-						Name:             "Stack",
-						Col:              0,
-						Row:              0,
-						ColSpan:          4,
-						RowSpan:          2,
+						ID:             "stack",
+						Name:           "Stack",
+						Col:            0,
+						Row:            0,
+						ColSpan:        4,
+						RowSpan:        2,
 						DefaultLayerID: "variant-a",
 						Layers: []dashboard.DashWidgetStackLayer{
 							{
@@ -147,21 +147,21 @@ type stubScreenDriver struct {
 	lastVariantID string
 }
 
-func (d *stubScreenDriver) Configure(hardware.ScreenConfig)                           {}
-func (d *stubScreenDriver) SetLayout(*dashboard.DashLayout)                           {}
-func (d *stubScreenDriver) SetGlobalTheme(widgets.DashTheme)                         {}
-func (d *stubScreenDriver) SetGlobalDomainPalette(widgets.DomainPalette)             {}
-func (d *stubScreenDriver) SetGlobalPrefs(widgets.FormatPreferences)                  {}
-func (d *stubScreenDriver) SetGlobalTypography(widgets.TypographySettings)            {}
-func (d *stubScreenDriver) SetProfile(dashboard.RenderProfile)                        {}
-func (d *stubScreenDriver) SetActivePage(int)                                         {}
-func (d *stubScreenDriver) SetIdle(bool)                                              {}
-func (d *stubScreenDriver) OnFrame(*dto.TelemetryFrame)                               {}
-func (d *stubScreenDriver) Run(context.Context)                                       {}
-func (d *stubScreenDriver) SetDisabled(bool)                                          {}
-func (d *stubScreenDriver) GetDisabled() bool                                         { return false }
-func (d *stubScreenDriver) IsConnected() bool                                         { return false }
-func (d *stubScreenDriver) SetEmit(func(string, ...any))                              {}
-func (d *stubScreenDriver) SetFrameSource(hardware.FrameSource)                       {}
-func (d *stubScreenDriver) ClearExternalSource()                                      {}
-func (d *stubScreenDriver) SetWidgetStackLayer(_, _, variantID string)                  { d.lastVariantID = variantID }
+func (d *stubScreenDriver) Configure(hardware.ScreenConfig)                {}
+func (d *stubScreenDriver) SetLayout(*dashboard.DashLayout)                {}
+func (d *stubScreenDriver) SetGlobalTheme(widgets.DashTheme)               {}
+func (d *stubScreenDriver) SetGlobalDomainPalette(widgets.DomainPalette)   {}
+func (d *stubScreenDriver) SetGlobalPrefs(widgets.FormatPreferences)       {}
+func (d *stubScreenDriver) SetGlobalTypography(widgets.TypographySettings) {}
+func (d *stubScreenDriver) SetProfile(dashboard.RenderProfile)             {}
+func (d *stubScreenDriver) SetActivePage(int)                              {}
+func (d *stubScreenDriver) SetIdle(bool)                                   {}
+func (d *stubScreenDriver) OnFrame(*dto.TelemetryFrame)                    {}
+func (d *stubScreenDriver) Run(context.Context)                            {}
+func (d *stubScreenDriver) SetDisabled(bool)                               {}
+func (d *stubScreenDriver) GetDisabled() bool                              { return false }
+func (d *stubScreenDriver) IsConnected() bool                              { return false }
+func (d *stubScreenDriver) SetEmit(func(string, ...any))                   {}
+func (d *stubScreenDriver) SetFrameSource(hardware.FrameSource)            {}
+func (d *stubScreenDriver) ClearExternalSource()                           {}
+func (d *stubScreenDriver) SetWidgetStackLayer(_, _, variantID string)     { d.lastVariantID = variantID }

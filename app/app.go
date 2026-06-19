@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/kratofl/sprint/app/internal/core"
-	"github.com/kratofl/sprint/app/internal/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
 	"github.com/kratofl/sprint/app/internal/logger"

@@ -12,8 +12,8 @@ import (
 
 	"github.com/kratofl/sprint/app/internal/capture"
 	"github.com/kratofl/sprint/app/internal/commands"
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/kratofl/sprint/app/internal/delta"
 	"github.com/kratofl/sprint/app/internal/devices"
 	"github.com/kratofl/sprint/app/internal/hardware"
@@ -29,13 +29,13 @@ type EmitFn func(event string, data ...any)
 
 // deviceEntry holds the runtime state for a single registered device.
 type deviceEntry struct {
-	driver        hardware.ScreenDriver // nil for button-box type devices
-	purpose       devices.DevicePurpose // PurposeDash or PurposeRearView
-	pageIndex     int
-	layoutID      string
-	currentLayout *dashboard.DashLayout // stored for page count during CyclePage
+	driver            hardware.ScreenDriver // nil for button-box type devices
+	purpose           devices.DevicePurpose // PurposeDash or PurposeRearView
+	pageIndex         int
+	layoutID          string
+	currentLayout     *dashboard.DashLayout // stored for page count during CyclePage
 	widgetStackStates map[string]string
-	cancel        context.CancelFunc
+	cancel            context.CancelFunc
 }
 
 // Coordinator is the top-level wiring of all backend subsystems.
@@ -445,7 +445,7 @@ func (c *Coordinator) cycleWidgetStack(screenID, layoutID, pageID, groupID strin
 				break
 			}
 		}
-		nextIndex := ((currentIndex + direction) % len(group.Layers) + len(group.Layers)) % len(group.Layers)
+		nextIndex := ((currentIndex+direction)%len(group.Layers) + len(group.Layers)) % len(group.Layers)
 		nextID := group.Layers[nextIndex].ID
 		entry.widgetStackStates[widgetStackStateKey(pageID, groupID)] = nextID
 		entry.driver.SetWidgetStackLayer(pageID, groupID, nextID)

@@ -34,12 +34,12 @@ type DynamicCommand struct {
 }
 
 var (
-	mu            sync.RWMutex
-	staticOrder   []Command
-	staticCatalog = map[Command]CommandMeta{}
-	dynamicOrder  []Command
+	mu             sync.RWMutex
+	staticOrder    []Command
+	staticCatalog  = map[Command]CommandMeta{}
+	dynamicOrder   []Command
 	dynamicCatalog = map[Command]CommandMeta{}
-	handlers      = map[Command]HandlerFn{}
+	handlers       = map[Command]HandlerFn{}
 )
 
 // RegisterMeta adds a command to the catalog. Call from init() functions in

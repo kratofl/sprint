@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -33,10 +33,10 @@ type previewService struct {
 	painterOnce sync.Once
 	painter     *dashboard.Painter // created lazily on first Activate call; 800×480
 
-	layout atomic.Pointer[dashboard.DashLayout]
-	page   atomic.Int32
-	idle   atomic.Bool
-	active atomic.Bool
+	layout           atomic.Pointer[dashboard.DashLayout]
+	page             atomic.Int32
+	idle             atomic.Bool
+	active           atomic.Bool
 	globalTheme      atomic.Pointer[widgets.DashTheme]
 	globalDomain     atomic.Pointer[widgets.DomainPalette]
 	globalTypography atomic.Pointer[widgets.TypographySettings]

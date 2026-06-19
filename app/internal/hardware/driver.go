@@ -9,8 +9,8 @@ package hardware
 import (
 	"context"
 
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 

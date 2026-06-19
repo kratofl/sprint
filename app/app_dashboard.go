@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kratofl/sprint/app/internal/dashboard"
-	"github.com/kratofl/sprint/app/internal/dashboard/alerts"
-	"github.com/kratofl/sprint/app/internal/dashboard/widgets"
+	"github.com/kratofl/sprint/app/internal/core/dashboard"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/alerts"
+	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
