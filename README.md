@@ -170,13 +170,15 @@ The Go backend renders RGB565 image frames and sends them to a USB screen embedd
 
 Both require the WinUSB driver bound in Windows (installed automatically by the vendor setup tool, or manually via [Zadig](https://zadig.akeo.ie)). Layout and content are controlled by the dash layout configuration editable in the desktop app's **Dash Designer**.
 
+Low-level WinUSB and frame-transfer details are documented in [`docs/SCREEN_PROTOCOLS.md`](docs/SCREEN_PROTOCOLS.md).
+
 ### Dash Designer
 A built-in visual editor lets you build custom wheel display layouts without writing any code:
 - **Widget palette** — drag widgets from categorised groups (Layout, Timing, Car, Race) onto a grid canvas
 - **Grid canvas** — 20×12 grid matching the 800×480 native screen. Widgets snap to cells; ghost overlay shows valid (orange) or invalid (red) placements in real-time
 - **Properties panel** — configure widget-specific parameters (TC level 1/2/3, etc.)
 - **Multiple pages** — cycle between pages via a wheel button; a dedicated Idle page is shown when no session is running
-- **Live hot-reload** — saving a layout immediately updates the VoCore screen without restarting
+- **Live hot-reload** — saving a layout immediately updates the configured USB screen without restarting
 
 ### Wheel button — set target lap
 Press a configurable wheel button to set the current delta reference to the most recent **valid lap**. A valid lap must pass all of:
@@ -185,7 +187,7 @@ Press a configurable wheel button to set the current delta reference to the most
 - No track limits violation
 - Lap time within ±5% of session best
 
-The change triggers an immediate VoCore re-render and is broadcast to all connected engineers.
+The change triggers an immediate USB screen re-render and is broadcast to all connected engineers.
 
 ### Race Engineer mode
 - Share a live session via LAN (direct IP:port) or remote invite link (via web app)
@@ -198,12 +200,12 @@ The change triggers an immediate VoCore re-render and is broadcast to all connec
 
 ## Design system
 
-Full specification: [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md)
+Full specification: [`docs/DESIGN.md`](docs/DESIGN.md)
 
-The UI uses a glassmorphism dark theme — frosted glass surfaces over a near-black background, with two accent colors that carry semantic meaning throughout both apps:
+Sprint uses the Graphite product language: flat near-black surfaces, hairline borders, tabular data, and one ember accent. Shared tokens live in `packages/tokens`; reusable controls live in `packages/ui`; desktop pages compose those controls instead of recreating local variants.
 
-- **Orange `#ff906c`** — driver actions, primary buttons, driver-owned data
-- **Cyan `#5af8fb`** — engineer actions, comparison highlights, secondary CTAs
+- **Ember `#FF6A00`** — primary action, active state, selection, and focus.
+- **Graphite surfaces** — `#070707`, `#0D0D0D`, `#131313`, `#1B1B1B`.
 
 ---
 

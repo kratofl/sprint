@@ -112,3 +112,8 @@ temp/
 .codebase-memory/
 install.ps1
 .superpowers/
+
+# ─── Agent / workflow artifacts ──────────────────────────────────────────────
+# Playwright visual-verification screenshots and session handoff docs.
+output/
+handoffs/
