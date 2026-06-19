@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IconDeviceMobile, IconPencil } from '@tabler/icons-react'
 import {
   Badge,
@@ -115,6 +115,9 @@ export function DeviceDetail({
   const [selectingBounds, setSelectingBounds] = useState(false)
   const [bindings, setBindings] = useState<DeviceBinding[]>([])
   const [listeningCommandId, setListeningCommandId] = useState<string | null>(null)
+  // Tracks the in-flight global button capture so a row switch can wait for it
+  // to settle rather than colliding with the detector's single-flight guard.
+  const capturePendingRef = useRef<Promise<void> | null>(null)
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
 
@@ -279,21 +282,42 @@ export function DeviceDetail({
   // real wheel/button press (or encoder tick) binds the command — the full HID
   // range, not just keyboard digits 1-9/0. The keyboard path above remains as a
   // fallback. CaptureNextButton is global and cannot be aborted from the frontend,
-  // so we arm once per listening session and drop a stale result via the guard.
+  // so a stale result is dropped via the `cancelled` guard.
   useEffect(() => {
     if (!listeningCommandId) return
     const commandId = listeningCommandId
     let cancelled = false
-    controlsAPI
-      .captureButton(CAPTURE_TIMEOUT_SECS)
-      .then(button => {
-        if (cancelled || button <= 0) return
-        setListeningCommandId(null)
-        void setDeviceButton(commandId, button)
+
+    const arm = () => {
+      const pending = controlsAPI
+        .captureButton(CAPTURE_TIMEOUT_SECS)
+        .then(button => {
+          if (cancelled || button <= 0) return
+          setListeningCommandId(null)
+          void setDeviceButton(commandId, button)
+        })
+        .catch(() => {
+          // Timeout, no input service, or browser (non-desktop): keyboard fallback remains.
+        })
+        .finally(() => {
+          if (capturePendingRef.current === pending) capturePendingRef.current = null
+        })
+      capturePendingRef.current = pending
+    }
+
+    // The detector is single-flight (a second concurrent capture returns
+    // ErrCaptureInProgress). If a prior listening session is still occupying it,
+    // wait for it to settle before arming this one instead of colliding; the
+    // prior session's late result is dropped by its own `cancelled` guard.
+    const prior = capturePendingRef.current
+    if (prior) {
+      void prior.then(() => {
+        if (!cancelled) arm()
       })
-      .catch(() => {
-        // Timeout, no input service, or browser (non-desktop): keyboard fallback remains.
-      })
+    } else {
+      arm()
+    }
+
     return () => {
       cancelled = true
     }

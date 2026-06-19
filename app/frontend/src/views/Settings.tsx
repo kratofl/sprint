@@ -72,17 +72,25 @@ export default function Settings() {
   const [checkState, setCheckState] = useState<CheckState>('idle')
   const [foundRelease, setFoundRelease] = useState<ReleaseInfo | null>(null)
   const [confirmResetOpen, setConfirmResetOpen] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
-    settingsAPI.getSettings().then(setSettings).catch(() => {})
+    settingsAPI.getSettings().then((s) => { setSettings(s); setLoaded(true) }).catch(() => setLoaded(true))
     appInfoAPI.getVersion().then(setVersion).catch(() => {})
     appInfoAPI.getBuildChannel().then(setBuildChannel).catch(() => {})
   }, [])
 
+  // Persist only after the initial load resolves. Saving in the brief pre-load
+  // window would write an AppSettings missing fields this view doesn't manage
+  // (e.g. dashEditorUI), which would clobber them on disk on the next load.
+  const persist = (next: AppSettings) => {
+    if (loaded) settingsAPI.saveSettings(next).catch(() => {})
+  }
+
   // Persist a fully-formed settings object, keeping local state in sync.
   const save = (next: AppSettings) => {
     setSettings(next)
-    settingsAPI.saveSettings(next).catch(() => {})
+    persist(next)
   }
 
   const defaults = { ...DEFAULT_NEW_DASH, ...settings.newDashDefaults }
@@ -93,7 +101,7 @@ export default function Settings() {
         ...prev,
         newDashDefaults: { ...DEFAULT_NEW_DASH, ...prev.newDashDefaults, ...patch },
       }
-      settingsAPI.saveSettings(next).catch(() => {})
+      persist(next)
       return next
     })
   }
@@ -101,7 +109,7 @@ export default function Settings() {
   const commitDriver = (field: 'driverName' | 'driverNumber', value: string) => {
     setSettings((prev) => {
       const next: AppSettings = { ...prev, [field]: value.trim() }
-      settingsAPI.saveSettings(next).catch(() => {})
+      persist(next)
       return next
     })
   }
@@ -109,7 +117,7 @@ export default function Settings() {
   const applyChannel = (channel: Channel) => {
     setSettings((prev) => {
       const next: AppSettings = { ...prev, updateChannel: channel }
-      settingsAPI.saveSettings(next).catch(() => {})
+      persist(next)
       return next
     })
   }
