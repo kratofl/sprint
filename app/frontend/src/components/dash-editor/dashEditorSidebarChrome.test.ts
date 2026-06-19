@@ -1,61 +1,47 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 
 const dashEditModeSource = readFileSync(
   new URL('../DashEditMode.tsx', import.meta.url),
   'utf8',
 )
 
-const edgeHandleUrl = new URL('./EditorEdgeHandle.tsx', import.meta.url)
-const edgeHandleExists = existsSync(edgeHandleUrl)
-const edgeHandleSource = edgeHandleExists ? readFileSync(edgeHandleUrl, 'utf8') : ''
-
-test('dash editor replaces full-height strip rails with local edge handles', () => {
-  assert.doesNotMatch(dashEditModeSource, /\bEditorTabStrip\b/)
-  assert.equal(edgeHandleExists, true)
-  assert.match(dashEditModeSource, /<EditorEdgeHandle/)
+test('dash editor uses the reference left rail and properties rail model', () => {
+  assert.match(dashEditModeSource, /type EditorLeftRailView = 'pages' \| 'widgets'/)
+  assert.match(dashEditModeSource, /const \[leftRailView, setLeftRailView\] = useState<EditorLeftRailView>\('widgets'\)/)
+  assert.match(dashEditModeSource, /<EditorLeftRail/)
+  assert.match(dashEditModeSource, /<EditorPropertiesRail/)
+  assert.match(dashEditModeSource, /Pages/)
+  assert.match(dashEditModeSource, /Widgets/)
+  assert.doesNotMatch(dashEditModeSource, /title="WIDGETS"/)
+  assert.doesNotMatch(dashEditModeSource, /title=\{inspectorState\.title\}/)
 })
 
-test('dash editor exposes closed-panel handles inside the editor container', () => {
-  assert.match(
-    dashEditModeSource,
-    /!panelPreferences\.palette\.open[\s\S]{0,220}<EditorEdgeHandle[\s\S]{0,120}side="left"/,
-  )
-  assert.match(
-    dashEditModeSource,
-    /!panelPreferences\.inspector\.open[\s\S]{0,220}<EditorEdgeHandle[\s\S]{0,120}side="right"/,
-  )
-})
-
-test('dash editor overlay sidebars no longer keep the old horizontal gutter', () => {
-  assert.doesNotMatch(dashEditModeSource, /max-w-\[calc\(100%-1rem\)\][^"\n]*\bpr-2\b/)
-  assert.doesNotMatch(dashEditModeSource, /max-w-\[calc\(100%-1rem\)\][^"\n]*\bpl-2\b/)
-})
-
-test('editor edge handle stays compact and centered instead of rendering a vertical label rail', () => {
-  assert.equal(edgeHandleExists, true)
-  assert.match(edgeHandleSource, /data-slot="editor-edge-handle"/)
-  assert.match(edgeHandleSource, /top-1\/2/)
-  assert.doesNotMatch(edgeHandleSource, /writingMode:\s*'vertical-lr'/)
-})
-
-test('widget inspector header no longer prefixes widget titles with WIDGET', () => {
-  assert.match(dashEditModeSource, /title=\{inspectorState\.title\}/)
-  assert.doesNotMatch(dashEditModeSource, /ADVANCED_GEOMETRY[\s\S]{0,120}headerAction=/)
+test('dash editor removes docked overlay sidebar preferences from the primary layout', () => {
+  assert.doesNotMatch(dashEditModeSource, /<EditorEdgeHandle/)
+  assert.doesNotMatch(dashEditModeSource, /<EditorSidebar/)
+  assert.doesNotMatch(dashEditModeSource, /data-palette-docked=/)
+  assert.doesNotMatch(dashEditModeSource, /data-inspector-docked=/)
 })
 
 test('focus mode renders a dedicated stack workspace header with compare controls', () => {
   assert.match(dashEditModeSource, /<FocusModeHeader/)
-  assert.match(dashEditModeSource, /BACK_TO_PAGE/)
+  assert.match(dashEditModeSource, /Back to page/)
   assert.match(dashEditModeSource, /COMPARE/)
   assert.match(dashEditModeSource, /REFERENCE LAYER/)
+})
+
+test('dash editor no longer exposes terminal-style underscore command labels', () => {
+  for (const legacyLabel of ['BACK_TO_PAGE', 'ADD_LAYER', 'CLEAR_LAYER', 'DELETE_STACK', 'ADVANCED_GEOMETRY', 'REMOVE_WIDGET', 'SET_REF']) {
+    assert.doesNotMatch(dashEditModeSource, new RegExp(legacyLabel))
+  }
 })
 
 test('focus mode active layer uses a full-stage live preview viewport', () => {
   assert.doesNotMatch(dashEditModeSource, /const focusPreviewCrop = controller\.selectedWidgetStack/)
   assert.match(dashEditModeSource, /function CanvasViewport\(/)
-  assert.match(dashEditModeSource, /className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-border bg-bg-shell"/)
+  assert.match(dashEditModeSource, /className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-\[var\(--de-seam\)\] bg-\[var\(--de-well\)\]"/)
   assert.match(dashEditModeSource, /<CanvasViewport screenW=\{controller\.screenW\} screenH=\{controller\.screenH\}>/)
   assert.match(dashEditModeSource, /previewUrl=\{controller\.previewUrl \?\? undefined\}/)
   assert.doesNotMatch(dashEditModeSource, /previewCrop=\{focusPreviewCrop\}/)

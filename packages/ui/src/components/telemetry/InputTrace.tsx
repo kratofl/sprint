@@ -14,23 +14,21 @@ export interface InputTraceProps extends React.HTMLAttributes<HTMLDivElement> {
   showClutch?: boolean
 }
 
-const GRADIENTS = {
-  throttle: 'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)',
-  brake:    'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)',
-  clutch:   'linear-gradient(90deg, var(--muted-2) 0%, var(--muted) 100%)',
-  steering: 'linear-gradient(90deg, var(--muted-2) 0%, var(--text) 100%)',
+const BAR_COLORS = {
+  throttle: 'var(--green)',
+  brake:    'var(--red)',
+  clutch:   'var(--muted)',
+  steering: 'var(--text)',
 } as const
-
-type InputKey = keyof typeof GRADIENTS
 
 interface BarProps {
   label: string
   value: number
-  gradient: string
+  color: string
   centered?: boolean
 }
 
-function Bar({ label, value, gradient, centered }: BarProps) {
+function Bar({ label, value, color, centered }: BarProps) {
   const clamped = Math.max(0, Math.min(1, value))
   const pct = clamped * 100
 
@@ -47,7 +45,7 @@ function Bar({ label, value, gradient, centered }: BarProps) {
             <div
               className="absolute top-0 h-full rounded-pill transition-[width,left] duration-75"
               style={{
-                background: gradient,
+                background: color,
                 left: steerClamped <= 0 ? `${50 - steerPct}%` : '50%',
                 width: `${steerPct}%`,
               }}
@@ -56,7 +54,7 @@ function Bar({ label, value, gradient, centered }: BarProps) {
         ) : (
           <div
             className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-75"
-            style={{ width: `${pct}%`, background: gradient }}
+            style={{ width: `${pct}%`, background: color }}
           />
         )}
       </div>
@@ -84,12 +82,12 @@ export function InputTrace({
 }: InputTraceProps) {
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>
-      <Bar label="Throttle" value={throttle} gradient={GRADIENTS.throttle} />
-      <Bar label="Brake"    value={brake}    gradient={GRADIENTS.brake} />
+      <Bar label="Throttle" value={throttle} color={BAR_COLORS.throttle} />
+      <Bar label="Brake"    value={brake}    color={BAR_COLORS.brake} />
       {showClutch && (
-        <Bar label="Clutch" value={clutch} gradient={GRADIENTS.clutch} />
+        <Bar label="Clutch" value={clutch} color={BAR_COLORS.clutch} />
       )}
-      <Bar label="Steering" value={steering} gradient={GRADIENTS.steering} centered />
+      <Bar label="Steering" value={steering} color={BAR_COLORS.steering} centered />
     </div>
   )
 }

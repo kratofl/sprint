@@ -1,112 +1,61 @@
-import { IconGauge, IconLayout, IconUsb, IconKeyboard, IconChevronRight } from '@tabler/icons-react'
-import { Badge, Card, CardContent, PageHeader, cn } from '@sprint/ui'
+import { useState } from 'react'
+import { PageHeader, SegmentedControl, StatusPill, cn } from '@sprint/ui'
+import type { TelemetryFrame } from '@sprint/types'
+import Telemetry from './Telemetry'
+import Engineer from './Engineer'
+import Controls from './Controls'
 
-type NavigableView = 'telemetry' | 'dash' | 'devices' | 'controls'
+type HomeSection = 'live' | 'engineer' | 'setup'
 
 interface HomeProps {
+  frame: TelemetryFrame | null
   connected: boolean
-  onNavigate: (view: NavigableView) => void
+  fps: number
 }
 
-interface FeatureDef {
-  id: NavigableView
-  label: string
-  description: string
-  Icon: React.ComponentType<{ size?: number; className?: string }>
-  devOnly?: boolean
-}
+const HOME_SECTIONS = [
+  { value: 'live', label: 'Live' },
+  { value: 'engineer', label: 'Engineer' },
+  { value: 'setup', label: 'Setup' },
+] as const
 
-const FEATURES: FeatureDef[] = [
-  {
-    id: 'telemetry',
-    label: 'Live Session',
-    description: 'Real-time telemetry from your sim. Lap times, tire temps, delta, and more.',
-    Icon: IconGauge,
-    devOnly: true,
-  },
-  {
-    id: 'dash',
-    label: 'Dash Editor',
-    description: 'Design and configure your VoCore wheel display layouts.',
-    Icon: IconLayout,
-  },
-  {
-    id: 'devices',
-    label: 'Devices',
-    description: 'Register wheels, screens, and button boxes. Configure the VoCore target.',
-    Icon: IconUsb,
-  },
-  {
-    id: 'controls',
-    label: 'Controls',
-    description: 'Bind wheel buttons to Sprint commands.',
-    Icon: IconKeyboard,
-  },
-]
-
-export default function Home({ connected, onNavigate }: HomeProps) {
-  const features = FEATURES.filter(f => !f.devOnly || import.meta.env.DEV)
+export default function Home({ frame, connected, fps }: HomeProps) {
+  const [section, setSection] = useState<HomeSection>('live')
+  const demoTelemetryActive = !frame && !connected
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         heading="Home"
-        caption="Mission control for Sprint"
+        caption="Live telemetry, race engineer controls, and setup programs"
+        actions={(
+          <SegmentedControl
+            label="Home section"
+            value={section}
+            variant="neutral"
+            options={HOME_SECTIONS}
+            onChange={value => setSection(value as HomeSection)}
+          />
+        )}
         status={(
           <div className="flex items-center gap-2">
-          <span className={cn(
-            'h-1.5 w-1.5',
-            connected ? 'bg-secondary animate-pulse' : 'bg-text-muted',
-          )} />
-          <Badge variant={connected ? 'connected' : 'neutral'} className="font-mono">
-            {connected ? 'Connected' : 'Offline'}
-          </Badge>
+            <span
+              className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                connected || demoTelemetryActive ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--text3)]',
+              )}
+            />
+            <StatusPill status={connected ? 'success' : demoTelemetryActive ? 'info' : 'neutral'}>
+              {connected ? 'Connected' : demoTelemetryActive ? 'Demo' : 'Offline'}
+            </StatusPill>
           </div>
         )}
       />
 
-      <div className="flex-1 px-6 py-6 space-y-6">
-        <div>
-          <h4 className="ui-label mb-3 text-[11px] font-semibold text-text-muted">Quick access</h4>
-          <div className={cn('grid gap-3', features.length >= 4 ? 'grid-cols-2' : 'grid-cols-3')}>
-            {features.map(feature => (
-              <button
-                key={feature.id}
-                onClick={() => onNavigate(feature.id)}
-                className="group text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-              >
-                <Card
-                  size="sm"
-                  className="h-full cursor-pointer gap-0 py-0 group-hover:border-primary/40 transition-colors"
-                >
-                  <CardContent className="flex h-full flex-col gap-3 px-4 py-4">
-                    <div className="flex items-start justify-between">
-                      <feature.Icon size={18} className="text-text-muted mt-0.5" />
-                      <IconChevronRight
-                        size={12}
-                        className="text-text-muted opacity-40 mt-0.5 transition-transform group-hover:translate-x-0.5"
-                      />
-                    </div>
-                    <div>
-                      <p className="ui-label text-[11px] font-bold text-foreground mb-1.5">
-                        {feature.label}
-                      </p>
-                      <p className="font-mono text-[9px] text-text-muted leading-relaxed">
-                        {feature.description}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {!import.meta.env.DEV && (
-          <p className="font-mono text-[9px] text-text-muted opacity-40">
-            LIVE_SESSION telemetry is not available in this build.
-          </p>
-        )}
+      <div className="min-h-0 flex-1 overflow-hidden p-6">
+        {section === 'live' && <Telemetry frame={frame} connected={connected} fps={fps} />}
+        {section === 'engineer' && <Engineer connected={connected} />}
+        {section === 'setup' && <Controls compact />}
       </div>
     </div>
   )

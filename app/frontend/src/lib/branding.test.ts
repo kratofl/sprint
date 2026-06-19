@@ -8,13 +8,14 @@ const appFile = resolve(repoRoot, 'app', 'frontend', 'src', 'App.tsx')
 const uiIndexFile = resolve(repoRoot, 'packages', 'ui', 'src', 'index.ts')
 const uiAtomsFile = resolve(repoRoot, 'packages', 'ui', 'src', 'components', 'atoms', 'index.ts')
 
-test('app shell uses the provided png logo asset instead of shared Sprint icon components', () => {
+test('app titlebar uses the racing-line brand icon asset, not a letter tile or shared icon component', () => {
   const appSource = readFileSync(appFile, 'utf8')
 
-  assert.match(appSource, /import logoIcon from ['"]@\/assets\/sprint_logo_icon\.png['"]/)
-  assert.doesNotMatch(appSource, /SprintIcon/)
-  assert.match(appSource, /<img src=\{logoIcon\} alt="Sprint"/)
-  assert.doesNotMatch(appSource, /view === 'home' && 'border-border bg-white\/\[0\.04\]'/)
+  assert.match(appSource, /import sprintIconUrl from ['"]@\/assets\/brand\/sprint-icon\.svg['"]/)
+  assert.match(appSource, /<img src=\{sprintIconUrl\} alt="Sprint"/)
+  // Not the shared icon components, not the old hardcoded "S" letter tile.
+  assert.doesNotMatch(appSource, /SprintIcon|SprintLogo/)
+  assert.doesNotMatch(appSource, /font-space text-\[13px\] font-bold/)
 })
 
 test('packages/ui no longer exports the old Sprint logo components', () => {

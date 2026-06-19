@@ -29,6 +29,10 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
 
   const warnThreshold = 0.85
   const redThreshold  = shiftPoint
+  const fillColor =
+    fraction >= redThreshold ? 'var(--red)' :
+    fraction >= warnThreshold ? 'var(--orange)' :
+    'var(--green)'
 
   return (
     <div className={cn('flex flex-col gap-1', className)} {...props}>
@@ -44,12 +48,11 @@ export function RPMBar({ rpm, maxRpm, shiftPoint = 0.92, className, ...props }: 
           className="absolute top-0 h-full w-px bg-[var(--red)]/30"
           style={{ left: `${redThreshold * 100}%` }}
         />
-        {/* Gradient fill — single gradient covers all zones, reveals with width */}
         <div
           className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-75"
           style={{
             width: `${pct}%`,
-            background: 'linear-gradient(90deg, var(--green) 0%, var(--green) 62%, var(--orange) 82%, var(--red) 96%)',
+            background: fillColor,
           }}
         />
       </div>

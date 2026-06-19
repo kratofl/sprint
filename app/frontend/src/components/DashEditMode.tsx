@@ -1,41 +1,46 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  IconArrowLeft,
+  IconChevronRight,
+  IconCopy,
+  IconChevronUp,
+  IconChevronDown,
+  IconPencil,
+  IconTargetArrow,
+  IconTrash,
+  IconX,
+} from '@tabler/icons-react'
 import {
   Badge,
   Button,
+  ConfirmDialog,
+  IconButton,
+  Input,
+  SegmentedControl,
+  SettingsCard,
+  Stepper,
   cn,
-  tabsListBaseClassName,
-  tabsListVariantClassNames,
-  tabsRootBaseClassName,
-  tabsTriggerActiveClassName,
-  tabsTriggerBaseClassName,
 } from '@sprint/ui'
 import {
+  DEFAULT_DASH_THEME,
+  DEFAULT_DOMAIN_PALETTE,
   type DashLayout,
   type DashPage,
   type DashWidget,
   type DashWidgetStack,
   type RGBAColor,
 } from '@/lib/dash'
-import type { AppSettings, DashEditorUIPreferences } from '@sprint/types'
 import { DashCanvas } from '@/components/DashCanvas'
 import { PageTabs } from '@/components/PageTabs'
 import { WidgetProperties, WidgetStyleProperties } from './WidgetProperties'
-import { ConfirmDialog } from './ConfirmDialog'
-import { hexToRgba, rgbaToHex } from './AdditionalSettingsPanel'
+import { AdditionalSettingsPanel, hexToRgba, rgbaToHex } from './AdditionalSettingsPanel'
 import { AlertsEditor } from './AlertsEditor'
 import { WidgetPalette } from './dash-editor/WidgetPalette'
-import { settingsAPI } from '@/lib/settings'
 import { useDashEditorController } from './dash-editor/useDashEditorController'
-import { EditorEdgeHandle } from './dash-editor/EditorEdgeHandle'
 import {
   type DashLayerChipState,
-  createInspectorSheetState,
   createLayerStripState,
 } from './dash-editor/layoutViewModel'
-import {
-  DEFAULT_DASH_EDITOR_UI_PREFERENCES,
-  normalizeDashEditorUIPreferences,
-} from './dash-editor/dashEditorUIPreferences'
 
 interface DashEditModeProps {
   layout: DashLayout
@@ -43,6 +48,16 @@ interface DashEditModeProps {
   onBack: () => void
   onDirtyChange: (dirty: boolean) => void
 }
+
+type EditorLeftRailView = 'pages' | 'widgets'
+type EditorScale = '50' | '75' | '100' | '125'
+
+const EDITOR_SCALE_OPTIONS = [
+  { value: '50', label: '50%' },
+  { value: '75', label: '75%' },
+  { value: '100', label: '100%' },
+  { value: '125', label: '125%' },
+] as const
 
 const dashEditorSurfaceStyle = {
   '--de-well': '#030303',
@@ -53,11 +68,6 @@ const dashEditorSurfaceStyle = {
   '--de-seam': '#000000',
 } as CSSProperties
 
-const defaultDashBrand = {
-  accent: 'var(--orange)',
-  numericFont: 'Saira',
-} as const
-
 export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyChange }: DashEditModeProps) {
   const controller = useDashEditorController({
     initialLayout,
@@ -66,65 +76,17 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     onDirtyChange,
   })
 
-  const [panelPreferences, setPanelPreferences] = useState<DashEditorUIPreferences>(DEFAULT_DASH_EDITOR_UI_PREFERENCES)
+  const [leftRailView, setLeftRailView] = useState<EditorLeftRailView>('widgets')
+  const [editorScale, setEditorScale] = useState<EditorScale>('100')
   const [advancedGeometryOpen, setAdvancedGeometryOpen] = useState(false)
   const [styleOpen, setStyleOpen] = useState(false)
-  const savedSettingsRef = useRef<AppSettings | null>(null)
-  const persistPanelPreferencesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showGrid, setShowGrid] = useState(true)
 
-  const currentPageName = controller.currentPage?.name ?? controller.layout.idlePage.name
-  const inspectorState = createInspectorSheetState({
-    mode: controller.editorMode,
-    selectedWidget: controller.selectedWidget,
-    selectedWidgetStack: controller.selectedWidgetStack,
-    pageName: currentPageName,
-  })
   const layerStripState = createLayerStripState({
     mode: controller.editorMode,
     selectedWidgetStack: controller.selectedWidgetStack,
     selectedLayerId: controller.selectedLayerId,
   })
-
-  const persistPanelPreferences = useCallback((nextPreferences: DashEditorUIPreferences) => {
-    const nextSettings: AppSettings = {
-      ...(savedSettingsRef.current ?? { updateChannel: 'stable' }),
-      dashEditorUI: nextPreferences,
-    }
-    savedSettingsRef.current = nextSettings
-    if (persistPanelPreferencesTimeoutRef.current) {
-      clearTimeout(persistPanelPreferencesTimeoutRef.current)
-    }
-    persistPanelPreferencesTimeoutRef.current = setTimeout(() => {
-      void settingsAPI.saveSettings(nextSettings).catch(() => {})
-    }, 150)
-  }, [])
-
-  const updatePanelPreferences = useCallback((updater: (current: DashEditorUIPreferences) => DashEditorUIPreferences) => {
-    setPanelPreferences(current => {
-      const next = updater(current)
-      persistPanelPreferences(next)
-      return next
-    })
-  }, [persistPanelPreferences])
-
-  useEffect(() => {
-    let cancelled = false
-
-    void settingsAPI.getSettings()
-      .then(settings => {
-        if (cancelled) return
-        savedSettingsRef.current = settings
-        setPanelPreferences(normalizeDashEditorUIPreferences(settings.dashEditorUI))
-      })
-      .catch(() => {})
-
-    return () => {
-      cancelled = true
-      if (persistPanelPreferencesTimeoutRef.current) {
-        clearTimeout(persistPanelPreferencesTimeoutRef.current)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     if (controller.editorMode === 'page') {
@@ -137,37 +99,6 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     setStyleOpen(false)
   }, [controller.activeTab, controller.selectedId, controller.selectedWidgetStackId, controller.selectedLayerId, controller.editorMode])
 
-  const handleSetPanelOpen = useCallback((panel: keyof DashEditorUIPreferences, open: boolean) => {
-    updatePanelPreferences(current => ({
-      ...current,
-      [panel]: {
-        ...current[panel],
-        open,
-      },
-    }))
-  }, [updatePanelPreferences])
-
-  const handleTogglePanelOpen = useCallback((panel: keyof DashEditorUIPreferences) => {
-    updatePanelPreferences(current => ({
-      ...current,
-      [panel]: {
-        ...current[panel],
-        open: !current[panel].open,
-      },
-    }))
-  }, [updatePanelPreferences])
-
-  const handleTogglePanelPinned = useCallback((panel: keyof DashEditorUIPreferences) => {
-    updatePanelPreferences(current => ({
-      ...current,
-      [panel]: {
-        ...current[panel],
-        open: true,
-        pinned: !current[panel].pinned,
-      },
-    }))
-  }, [updatePanelPreferences])
-
   const updateSelectedWidgetGeometry = (patch: Partial<Pick<DashWidget, 'col' | 'row' | 'colSpan' | 'rowSpan'>>) => {
     if (!controller.selectedWidget) return
     controller.updateSelectedWidget({
@@ -176,14 +107,27 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     })
   }
 
-  const paletteDocked = panelPreferences.palette.open && panelPreferences.palette.pinned
-  const inspectorDocked = panelPreferences.inspector.open && panelPreferences.inspector.pinned
-  const paletteOverlay = panelPreferences.palette.open && !paletteDocked
-  const inspectorOverlay = panelPreferences.inspector.open && !inspectorDocked
-  const topTabTriggerClassName = cn(
-    tabsTriggerBaseClassName,
-    tabsTriggerActiveClassName,
-  )
+  const activeEditorView = controller.editorTab === 'settings'
+    ? 'settings'
+    : controller.activeTab === 'alerts'
+      ? 'alerts'
+      : 'layout'
+  const modeLabel = controller.layout.name.toLowerCase().includes('basic') ? 'Basic' : 'Advanced'
+  const resolutionLabel = `${controller.screenW}x${controller.screenH}`
+  const handleSelectEditorView = (view: 'layout' | 'alerts' | 'settings') => {
+    if (view === 'settings') {
+      controller.setEditorTab('settings')
+      return
+    }
+    controller.setEditorTab('designer')
+    if (view === 'alerts') {
+      controller.selectCanvasTab('alerts')
+      return
+    }
+    if (controller.activeTab === 'alerts') {
+      controller.selectCanvasTab(0)
+    }
+  }
   const paletteContent = (
     <WidgetPalette
       catalog={controller.paletteWidgets}
@@ -223,52 +167,118 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   const inspectorContent = widgetInspectorContent ?? pageInspectorContent
   const stackCanvasGridCols = controller.selectedWidgetStack?.colSpan ?? controller.layout.gridCols
   const stackCanvasGridRows = controller.selectedWidgetStack?.rowSpan ?? controller.layout.gridRows
-  void defaultDashBrand
+  const propertiesContent = controller.editorMode === 'stack' && controller.selectedWidgetStack && layerStripState
+    ? (
+      <div className="space-y-4">
+        <LayerListPanel
+          stack={controller.selectedWidgetStack}
+          layers={layerStripState.layers}
+          selectedLayerId={controller.selectedLayerId}
+          compareEnabled={controller.compareEnabled}
+          referenceLayerId={controller.referenceLayer?.id ?? null}
+          onRenameStack={controller.handleRenameWidgetStack}
+          onAddLayer={controller.handleAddLayer}
+          onSelectLayer={controller.handleSelectLayer}
+          onRenameLayer={controller.handleRenameLayer}
+          onSetReferenceLayer={controller.handleSelectReferenceLayer}
+          onSetDefaultLayer={controller.handleSetDefaultLayer}
+          onDuplicateLayer={controller.handleDuplicateLayer}
+          onMoveLayerUp={layerId => controller.handleMoveLayer(layerId, -1)}
+          onMoveLayerDown={layerId => controller.handleMoveLayer(layerId, 1)}
+          onDeleteLayer={controller.handleDeleteLayer}
+          onDeleteStack={controller.handleDeleteSelectedWidgetStack}
+          onClearLayer={controller.handleClearPage}
+          disableDelete={(controller.selectedWidgetStack.layers.length ?? 0) <= 1}
+        />
+        {widgetInspectorContent}
+      </div>
+    )
+    : inspectorContent
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" style={dashEditorSurfaceStyle}>
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-[var(--de-seam)] bg-[var(--de-rail)] px-4 py-2">
+    <div className="ds-editor" style={dashEditorSurfaceStyle}>
+      <div className="ds-etop">
         <div className="flex min-w-0 items-center gap-2">
-          {controller.renamingDash ? (
-            <input
-              autoFocus
-              value={controller.dashNameValue}
-              onChange={event => controller.setDashNameValue(event.target.value)}
-              onBlur={() => controller.commitDashName(controller.dashNameValue)}
-              onKeyDown={event => {
-                if (event.key === 'Enter') event.currentTarget.blur()
-                if (event.key === 'Escape') {
+          <button type="button" onClick={controller.handleBack} className="ds-back">
+            <IconArrowLeft size={14} />
+            <span>Dashboards</span>
+          </button>
+
+          <div className="flex min-w-0 items-center gap-2">
+            {controller.renamingDash ? (
+              <Input
+                autoFocus
+                value={controller.dashNameValue}
+                onChange={event => controller.setDashNameValue(event.target.value)}
+                onBlur={() => controller.commitDashName(controller.dashNameValue)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') event.currentTarget.blur()
+                  if (event.key === 'Escape') {
+                    controller.setDashNameValue(controller.layout.name)
+                    controller.setRenamingDash(false)
+                  }
+                  event.stopPropagation()
+                }}
+                className="h-[30px] w-[200px] text-[13px] font-bold"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
                   controller.setDashNameValue(controller.layout.name)
-                  controller.setRenamingDash(false)
-                }
-                event.stopPropagation()
-              }}
-              className="min-w-0 rounded-control border border-border-input bg-[var(--de-inset)] px-2 text-sm font-bold outline-none focus:border-primary"
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                controller.setDashNameValue(controller.layout.name)
-                controller.setRenamingDash(true)
-              }}
-              className="group flex items-center gap-1.5 text-left"
-              aria-label="Rename dash layout"
-            >
-              <span className="truncate text-sm font-bold transition-colors group-hover:text-primary">
-                {controller.layout.name}
-              </span>
-              <PencilIcon className="flex-shrink-0 text-text-disabled transition-colors group-hover:text-primary" />
-            </button>
-          )}
-          {controller.isDirty && <Badge variant="warning" className="ui-label">Unsaved</Badge>}
-          {controller.saveStatus === 'saved' && <Badge variant="success" className="ui-label">Saved</Badge>}
-          {controller.saveStatus === 'error' && <Badge variant="destructive" className="ui-label">Failed</Badge>}
+                  controller.setRenamingDash(true)
+                }}
+                className="ds-etitle"
+                aria-label="Rename dashboard"
+              >
+                <span className="truncate">{controller.layout.name}</span>
+                <IconPencil size={14} className="flex-shrink-0 text-[var(--text3)]" />
+              </button>
+            )}
+            <Badge variant={modeLabel === 'Basic' ? 'success' : 'tertiary'}>
+              {modeLabel}
+            </Badge>
+            {controller.layout.id === 'default' && <Badge variant="active">System</Badge>}
+            {controller.isDirty && <Badge variant="warning">Unsaved</Badge>}
+            {controller.saveStatus === 'saved' && <Badge variant="success">Saved</Badge>}
+            {controller.saveStatus === 'error' && <Badge variant="destructive">Failed</Badge>}
+          </div>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-2">
-          <Button variant="outline" size="sm" onClick={controller.handleBack}>
-            BACK
-          </Button>
+
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-[10px] font-semibold uppercase text-[var(--text3)]">Scale</span>
+          <SegmentedControl
+            label="Editor scale"
+            value={editorScale}
+            variant="neutral"
+            options={EDITOR_SCALE_OPTIONS}
+            onChange={value => setEditorScale(value as EditorScale)}
+          />
+        </div>
+
+        <div className="flex min-w-0 items-center justify-end gap-2">
+          <SegmentedControl
+            label="Editor view"
+            value={activeEditorView}
+            onChange={view => handleSelectEditorView(view as 'layout' | 'alerts' | 'settings')}
+            options={[
+              { value: 'layout', label: 'Layout' },
+              { value: 'alerts', label: 'Alerts' },
+              { value: 'settings', label: 'Settings' },
+            ]}
+          />
+          {activeEditorView === 'layout' && (
+            <IconButton
+              label={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
+              title={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
+              icon={<IconTargetArrow size={15} />}
+              size="icon-sm"
+              variant={showGrid ? 'active' : 'outline'}
+              aria-pressed={showGrid}
+              onClick={() => setShowGrid(current => !current)}
+            />
+          )}
+          <Badge variant="outline">{resolutionLabel}</Badge>
           <Button variant="primary" size="sm" onClick={controller.handleSave} disabled={controller.saving}>
             {controller.saving ? 'Saving…' : 'Save'}
           </Button>
@@ -285,61 +295,47 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         onCancel={controller.cancel}
       />
 
-      <div className={cn(tabsRootBaseClassName, 'gap-0')} data-orientation="horizontal">
-        <div
-          className={cn(
-            tabsListBaseClassName,
-            tabsListVariantClassNames.top,
-            'h-[54px] min-w-0 overflow-x-auto border-b border-[var(--de-seam)] bg-[var(--de-rail)]',
-          )}
-          data-variant="top"
-        >
-          <button
-            type="button"
-            onClick={() => controller.setEditorTab('designer')}
-            data-state={controller.editorTab === 'designer' ? 'active' : 'inactive'}
-            className={topTabTriggerClassName}
-          >
-            Designer
-          </button>
-          {controller.editorTab === 'designer' && (
-            <>
-              {controller.editorMode === 'stack' && (
-                <button
-                  type="button"
-                  onClick={controller.exitWidgetStackEditMode}
-                  data-state="inactive"
-                  className={cn(topTabTriggerClassName, 'gap-1.5 px-3')}
-                >
-                  <span className="text-text-disabled">←</span>
-                  <span>Page</span>
-                </button>
-              )}
-              <div className="my-1 w-px self-stretch bg-border" />
-              <PageTabs
-                embedded
-                idlePage={controller.layout.idlePage}
-                pages={controller.layout.pages}
-                activeTab={controller.activeTab}
-                livePageIndex={controller.livePageIndex}
-                onSelectTab={controller.selectCanvasTab}
-                onSelectAlerts={() => controller.selectCanvasTab('alerts')}
-                onAddPage={controller.handleAddPage}
-                onDeletePage={controller.handleDeletePage}
-                onRenamePage={controller.handleRenamePage}
+      {activeEditorView === 'alerts' ? (
+        <div className="ds-settings-scroll">
+          <div className="ds-settings-wrap">
+            <SettingsCard className="min-h-[420px] overflow-hidden p-0">
+              <AlertsEditor
+                instances={controller.layout.alerts ?? []}
+                catalog={controller.alertCatalog}
+                domainPalette={controller.resolvedDomainPalette}
+                onChange={controller.handleAlertsChange}
               />
-            </>
-          )}
+            </SettingsCard>
+            <DashEditorPreviewCard
+              title="Live preview"
+              controller={controller}
+            />
+          </div>
         </div>
-      </div>
-
-      {controller.activeTab === 'alerts' ? (
-        <AlertsEditor
-          instances={controller.layout.alerts ?? []}
-          catalog={controller.alertCatalog}
-          domainPalette={controller.resolvedDomainPalette}
-          onChange={controller.handleAlertsChange}
-        />
+      ) : activeEditorView === 'settings' ? (
+        <div className="ds-settings-scroll">
+          <div className="ds-settings-wrap">
+            <SettingsCard className="min-h-[420px] overflow-hidden p-0">
+              <AdditionalSettingsPanel
+                theme={controller.layout.theme ?? {}}
+                domainPalette={controller.layout.domainPalette ?? {}}
+                hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
+                globalDefaults={controller.globalDefaults}
+                typography={controller.layout.typography}
+                globalTypography={controller.globalDefaults?.typography}
+                formatPreferences={controller.layout.formatPreferences}
+                globalFormatPreferences={controller.globalDefaults?.formatPreferences}
+                onChange={controller.handleSettingsChange}
+                onTypographyChange={controller.handleTypographyChange}
+                onFormatPreferencesChange={controller.handleFormatPreferencesChange}
+              />
+            </SettingsCard>
+            <DashEditorPreviewCard
+              title="Live preview"
+              controller={controller}
+            />
+          </div>
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {controller.editorMode === 'stack' && controller.currentPage && controller.selectedWidgetStack && (
@@ -354,41 +350,32 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             />
           )}
 
-          <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)_286px] gap-[14px] overflow-hidden bg-[var(--bg-deep)] p-[14px]">
-            {paletteDocked && (
-              <EditorSidebar
-                side="left"
-                mode="docked"
-                className="w-[240px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
-                title="WIDGETS"
-                pinned={panelPreferences.palette.pinned}
-                onTogglePinned={() => handleTogglePanelPinned('palette')}
-                onClose={() => handleSetPanelOpen('palette', false)}
-              >
-                {paletteContent}
-              </EditorSidebar>
-            )}
-
-            <div className="relative flex min-h-0 min-w-0 flex-1 items-stretch rounded-panel border border-[var(--border)] bg-[var(--bg-deep)] p-[14px]">
-              {!panelPreferences.palette.open && (
-                <EditorEdgeHandle
-                  side="left"
-                  label="WIDGETS"
-                  onClick={() => handleTogglePanelOpen('palette')}
+          <div className="ds-ework" data-layout="reference">
+            <EditorLeftRail
+              view={leftRailView}
+              onViewChange={setLeftRailView}
+              pages={(
+                <PageTabs
+                  embedded
+                  idlePage={controller.layout.idlePage}
+                  pages={controller.layout.pages}
+                  activeTab={controller.activeTab}
+                  livePageIndex={controller.livePageIndex}
+                  onSelectTab={controller.selectCanvasTab}
+                  onSelectAlerts={() => controller.selectCanvasTab('alerts')}
+                  onAddPage={controller.handleAddPage}
+                  onDeletePage={controller.handleDeletePage}
+                  onRenamePage={controller.handleRenamePage}
                 />
               )}
+              widgets={paletteContent}
+            />
 
-              {controller.editorMode === 'page' && !panelPreferences.inspector.open && (
-                <EditorEdgeHandle
-                  side="right"
-                  label="INSPECTOR"
-                  onClick={() => handleTogglePanelOpen('inspector')}
-                />
-              )}
-
+            <div className="ds-canvas-wrap">
               <div
                 ref={controller.canvasPaneRef}
-                className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden"
+                className="ds-canvas-stage"
+                data-scale={editorScale}
                 onClick={(event) => {
                   if (event.target === event.currentTarget) {
                     controller.handleCanvasBackgroundClick()
@@ -416,6 +403,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                             overlayRects={[]}
                             overlayBlockedAreas={[]}
                             overlayEditMode={false}
+                            showGrid={showGrid}
                             paletteDropType={controller.paletteDropType}
                             palettePreviewUrl={controller.paletteDropPreviewUrl}
                             previewUrl={controller.previewUrl ?? undefined}
@@ -477,6 +465,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                           overlayRects={[]}
                           overlayBlockedAreas={[]}
                           overlayEditMode={false}
+                          showGrid={showGrid}
                           paletteDropType={controller.paletteDropType}
                           palettePreviewUrl={controller.paletteDropPreviewUrl}
                           previewUrl={controller.previewUrl ?? undefined}
@@ -488,7 +477,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                     </CanvasStage>
                   )
                 ) : (
-                  <div style={controller.fittedCanvas ? { width: controller.fittedCanvas.w, height: controller.fittedCanvas.h } : { width: '100%' }}>
+                  <div className="ds-reference-canvas">
                     <DashCanvas
                       widgets={controller.canvasWidgets}
                       gridCols={controller.layout.gridCols}
@@ -504,6 +493,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                       overlayRects={controller.overlayRects}
                       overlayBlockedAreas={controller.currentPage?.widgets ?? []}
                       overlayEditMode={false}
+                      showGrid={showGrid}
                       paletteDropType={controller.paletteDropType}
                       palettePreviewUrl={controller.paletteDropPreviewUrl}
                       previewUrl={controller.previewUrl ?? undefined}
@@ -518,105 +508,16 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   </div>
                 )}
               </div>
-
-              {paletteOverlay && (
-                <div className="pointer-events-none absolute inset-y-2 left-0 z-20 flex w-72 max-w-[calc(100%-1rem)]">
-                  <EditorSidebar
-                    side="left"
-                    mode="overlay"
-                    className="pointer-events-auto flex-1"
-                    title="WIDGETS"
-                    pinned={panelPreferences.palette.pinned}
-                    onTogglePinned={() => handleTogglePanelPinned('palette')}
-                    onClose={() => handleSetPanelOpen('palette', false)}
-                  >
-                    {paletteContent}
-                  </EditorSidebar>
-                </div>
-              )}
-
-              {controller.editorMode === 'page' && inspectorOverlay && inspectorContent && (
-                <div className="pointer-events-none absolute inset-y-2 right-0 z-20 flex w-80 max-w-[calc(100%-1rem)]">
-                  <EditorSidebar
-                    side="right"
-                    mode="overlay"
-                    className="pointer-events-auto flex-1"
-                    title={inspectorState.title}
-                    pinned={panelPreferences.inspector.pinned}
-                    onTogglePinned={() => handleTogglePanelPinned('inspector')}
-                    onClose={() => handleSetPanelOpen('inspector', false)}
-                  >
-                    {inspectorContent}
-                  </EditorSidebar>
-                </div>
-              )}
-
-              {controller.editorMode === 'stack' && widgetInspectorContent && (
-                <div className="pointer-events-none absolute inset-y-2 right-0 z-20 flex w-80 max-w-[calc(100%-1rem)]">
-                  <EditorSidebar
-                    side="right"
-                    mode="overlay"
-                    className="pointer-events-auto flex-1"
-                    title={inspectorState.title}
-                    pinned={false}
-                    onTogglePinned={() => {}}
-                    onClose={() => controller.setSelectedId(null)}
-                    showPinButton={false}
-                  >
-                    {widgetInspectorContent}
-                  </EditorSidebar>
-                </div>
-              )}
             </div>
 
-            {controller.editorMode === 'stack' && controller.selectedWidgetStack && layerStripState && (
-              <EditorSidebar
-                side="right"
-                mode="docked"
-                className="w-[286px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
-                title={`STACK · ${controller.selectedWidgetStack.name}`}
-                pinned
-                onTogglePinned={() => {}}
-                onClose={() => {}}
-                showPinButton={false}
-                showCloseButton={false}
-              >
-                <LayerListPanel
-                  stack={controller.selectedWidgetStack}
-                  layers={layerStripState.layers}
-                  selectedLayerId={controller.selectedLayerId}
-                  compareEnabled={controller.compareEnabled}
-                  referenceLayerId={controller.referenceLayer?.id ?? null}
-                  onRenameStack={controller.handleRenameWidgetStack}
-                  onAddLayer={controller.handleAddLayer}
-                  onSelectLayer={controller.handleSelectLayer}
-                  onRenameLayer={controller.handleRenameLayer}
-                  onSetReferenceLayer={controller.handleSelectReferenceLayer}
-                  onSetDefaultLayer={controller.handleSetDefaultLayer}
-                  onDuplicateLayer={controller.handleDuplicateLayer}
-                  onMoveLayerUp={layerId => controller.handleMoveLayer(layerId, -1)}
-                  onMoveLayerDown={layerId => controller.handleMoveLayer(layerId, 1)}
-                  onDeleteLayer={controller.handleDeleteLayer}
-                  onDeleteStack={controller.handleDeleteSelectedWidgetStack}
-                  onClearLayer={controller.handleClearPage}
-                  disableDelete={(controller.selectedWidgetStack.layers.length ?? 0) <= 1}
-                />
-              </EditorSidebar>
-            )}
-
-            {controller.editorMode === 'page' && inspectorDocked && inspectorContent && (
-              <EditorSidebar
-                side="right"
-                mode="docked"
-                className="w-[286px] flex-shrink-0 rounded-panel border border-[var(--border)] bg-[var(--panel)]"
-                title={inspectorState.title}
-                pinned={panelPreferences.inspector.pinned}
-                onTogglePinned={() => handleTogglePanelPinned('inspector')}
-                onClose={() => handleSetPanelOpen('inspector', false)}
-              >
-                {inspectorContent}
-              </EditorSidebar>
-            )}
+            <EditorPropertiesRail>
+              {propertiesContent ?? (
+                <div className="space-y-2">
+                  <h2 className="text-[13px] font-semibold text-[var(--text)]">Properties</h2>
+                  <p className="text-[12px] text-[var(--text3)]">Select a widget or page to edit its properties.</p>
+                </div>
+              )}
+            </EditorPropertiesRail>
           </div>
         </div>
       )}
@@ -637,21 +538,47 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
   )
 }
 
-function PinIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="12" y1="17" x2="12" y2="22" />
-      <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z" />
-    </svg>
-  )
-}
+function DashEditorPreviewCard({
+  title,
+  controller,
+}: {
+  title: string
+  controller: ReturnType<typeof useDashEditorController>
+}) {
+  const previewPage = controller.layout.pages[0] ?? controller.layout.idlePage
 
-function CloseIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
+    <SettingsCard>
+      <h3>{title}</h3>
+      <div className="mt-3 aspect-[2.25/1] overflow-hidden rounded-[calc(var(--r)-2px)] border border-[var(--line)] bg-black">
+        <CanvasViewport screenW={controller.screenW} screenH={controller.screenH}>
+          <DashCanvas
+            readOnly
+            fillParent
+            widgets={previewPage.widgets}
+            gridCols={controller.layout.gridCols}
+            gridRows={controller.layout.gridRows}
+            selectedId={null}
+            catalog={controller.catalog}
+            screenW={controller.screenW}
+            screenH={controller.screenH}
+            theme={controller.resolvedTheme}
+            domainPalette={controller.resolvedDomainPalette}
+            blockedAreas={[]}
+            placementBounds={null}
+            overlayRects={[]}
+            overlayBlockedAreas={[]}
+            overlayEditMode={false}
+            previewUrl={controller.previewUrl ?? undefined}
+            onSelect={() => {}}
+            onUpdate={() => {}}
+          />
+        </CanvasViewport>
+      </div>
+      <p className="sc-note mt-3">
+        {controller.screenW}x{controller.screenH} · {controller.layout.gridCols}x{controller.layout.gridRows} grid
+      </p>
+    </SettingsCard>
   )
 }
 
@@ -675,7 +602,7 @@ function FocusModeHeader({
   return (
     <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
       <div className="min-w-0">
-            <div className="ui-label text-[9px] text-text-disabled">
+            <div className="ui-label text-[10px] uppercase text-[var(--muted)]">
           {pageName} / Widget Stack
         </div>
         <div className="truncate text-sm font-medium text-foreground">{stackName}</div>
@@ -713,8 +640,8 @@ function CanvasStage({
   return (
     <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-[var(--de-seam)] bg-[var(--de-well)]">
       <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
-      <span className="ui-label text-[9px] text-text-disabled">{title}</span>
-        {subtitle && <span className="truncate font-mono text-[10px] text-foreground">{subtitle}</span>}
+      <span className="ui-label text-[10px] uppercase text-[var(--muted)]">{title}</span>
+        {subtitle && <span className="truncate font-inter text-[11px] text-foreground">{subtitle}</span>}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-3">
         {children}
@@ -764,84 +691,43 @@ function CanvasViewport({
   )
 }
 
-function EditorSidebar({
-  side,
-  mode,
-  title,
-  pinned,
-  onTogglePinned,
-  onClose,
-  headerAction,
-  showPinButton = true,
-  showCloseButton = true,
-  className,
-  children,
+function EditorLeftRail({
+  view,
+  onViewChange,
+  pages,
+  widgets,
 }: {
-  side: 'left' | 'right'
-  mode: 'docked' | 'overlay'
-  title: string
-  pinned: boolean
-  onTogglePinned: () => void
-  onClose: () => void
-  headerAction?: ReactNode
-  showPinButton?: boolean
-  showCloseButton?: boolean
-  className?: string
-  children: ReactNode
+  view: EditorLeftRailView
+  onViewChange: (view: EditorLeftRailView) => void
+  pages: ReactNode
+  widgets: ReactNode
 }) {
-  const dotIndex = title.indexOf(' · ')
-  const prefix = dotIndex >= 0 ? title.slice(0, dotIndex) : null
-  const label = dotIndex >= 0 ? title.slice(dotIndex + 3) : title
-
   return (
-    <aside
-      data-slot="editor-sidebar"
-      data-side={side}
-      data-mode={mode}
-      className={cn(
-        'flex h-full min-h-0 flex-col overflow-hidden',
-        'bg-[var(--de-rail)] shadow-none',
-        side === 'left'
-          ? 'border-y-0 border-l-0 border-r border-r-[var(--de-seam)] shadow-[inset_-1px_0_0_rgba(255,255,255,.022)]'
-          : 'border-y-0 border-r-0 border-l border-l-[var(--de-seam)] shadow-[inset_1px_0_0_rgba(255,255,255,.022)]',
-        className,
-      )}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-border bg-[var(--de-rail-head)] px-3 py-2">
-        <div className="flex min-w-0 items-baseline gap-1.5">
-          {prefix && (
-            <span className="ui-label flex-shrink-0 text-[9px] text-text-muted">{prefix}</span>
-          )}
-          <h2 className="ui-label truncate text-[10px] font-semibold text-foreground">{label}</h2>
-        </div>
-        <div className="flex flex-shrink-0 items-center gap-1.5">
-          {headerAction}
-          {showPinButton && (
-            <button
-              type="button"
-              title={pinned ? 'Unpin panel' : 'Pin panel'}
-              onClick={onTogglePinned}
-              className={cn(
-                'rounded p-1 transition-colors',
-                pinned ? 'text-primary' : 'text-text-muted hover:text-foreground',
-              )}
-            >
-              <PinIcon />
-            </button>
-          )}
-          {showCloseButton && (
-            <button
-              type="button"
-              title="Hide panel"
-              onClick={onClose}
-              className="rounded p-1 text-text-muted transition-colors hover:text-foreground"
-            >
-              <CloseIcon />
-            </button>
-          )}
-        </div>
+    <aside className="ds-col" data-side="left">
+      <div className="border-b border-[var(--line)] p-3">
+        <SegmentedControl
+          label="Editor left rail"
+          value={view}
+          variant="accent"
+          options={[
+            { value: 'pages', label: 'Pages' },
+            { value: 'widgets', label: 'Widgets' },
+          ]}
+          onChange={value => onViewChange(value as EditorLeftRailView)}
+          className="w-full justify-center"
+        />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="ds-col-bd">
+        {view === 'pages' ? pages : widgets}
+      </div>
+    </aside>
+  )
+}
+
+function EditorPropertiesRail({ children }: { children: ReactNode }) {
+  return (
+    <aside className="ds-col" data-side="right">
+      <div className="ds-col-bd">
         {children}
       </div>
     </aside>
@@ -857,7 +743,7 @@ function SidebarSection({
 }) {
   return (
     <section className="space-y-2">
-      <h5 className="ui-label text-[9px] font-bold text-text-muted">{title}</h5>
+      <h5 className="ui-label text-[10px] font-bold text-text-muted">{title}</h5>
       {children}
     </section>
   )
@@ -882,7 +768,7 @@ function SidebarDisclosureSection({
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-3 bg-[var(--de-rail-head)] px-3 py-2 text-left transition-colors hover:bg-bg-panel"
       >
-            <span className="ui-label text-[9px] font-semibold text-text-muted">{title}</span>
+            <span className="ui-label text-[10px] font-semibold text-text-muted">{title}</span>
         <DisclosureChevron open={open} />
       </button>
       {open && (
@@ -938,11 +824,11 @@ function LayerListPanel({
         <SidebarSection title="Stack">
         <div className="space-y-3">
           <FieldRow label="Name">
-            <input
+            <Input
               type="text"
               value={stack.name}
               onChange={event => onRenameStack(event.target.value)}
-              className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1.5 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+              className="h-8"
             />
           </FieldRow>
           <div className="flex flex-wrap items-center gap-2">
@@ -1025,89 +911,92 @@ function LayerListItem({
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1 space-y-2">
-          <button type="button" onClick={onSelect} className="flex min-w-0 w-full flex-col items-start text-left">
-            <span className={cn('truncate font-mono text-[10px]', layer.selected ? 'text-foreground' : 'text-text-muted')}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={onSelect}
+            className="flex h-auto min-w-0 w-full flex-col items-start justify-start px-0 py-0 text-left"
+          >
+            <span className={cn('truncate font-inter text-[13px]', layer.selected ? 'text-foreground' : 'text-[var(--muted)]')}>
               {layer.name}
             </span>
-          </button>
-          <input
+          </Button>
+          <Input
             type="text"
             value={layer.name}
             onChange={event => onRename(event.target.value)}
-            className="w-full rounded-control border border-border-input bg-bg-panel px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-primary"
+            className="h-8"
           />
           <div className="flex flex-wrap items-center gap-1">
           {layer.isDefault && (
-            <span className="mt-1 rounded border border-border/80 px-1 py-0.5 font-mono text-[8px] uppercase tracking-wide text-text-disabled">
+            <span className="mt-1 rounded border border-border/80 px-1 py-0.5 font-inter text-[10px] uppercase tracking-wide text-[var(--muted)]">
               default
             </span>
           )}
             {compareEnabled && !layer.selected && (
-              <button
+              <Button
                 type="button"
                 onClick={onSetReference}
+                variant={referenceLayerId === layer.id ? 'active' : 'outline'}
+                size="xs"
                 className={cn(
-                  'rounded border px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide transition-colors',
+                  'h-6 px-1.5 font-inter text-[10px]',
                   referenceLayerId === layer.id
-                    ? 'border-success/60 bg-success-muted text-success'
-                    : 'border-border text-text-disabled hover:text-foreground',
+                    ? 'text-success'
+                    : 'text-[var(--muted)] hover:text-foreground',
                 )}
               >
                 {referenceLayerId === layer.id ? 'Reference' : 'Use as reference'}
-              </button>
+              </Button>
             )}
             {selectedLayerId === layer.id && (
-              <span className="rounded-tag border border-primary/50 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wide text-primary">
+              <span className="rounded-tag border border-primary/50 px-1.5 py-0.5 font-inter text-[10px] uppercase tracking-wide text-primary">
                 active
               </span>
             )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1">
-          <button
-            type="button"
+          <IconButton
+            label="Set default layer"
+            icon={<IconTargetArrow size={14} />}
             onClick={onSetDefault}
             disabled={layer.isDefault}
-            className="rounded border border-border px-1 text-[9px] text-text-disabled transition-colors hover:text-foreground disabled:opacity-25"
-            title="Set default layer"
-          >
-            D
-          </button>
-          <button
-            type="button"
+            size="icon-xs"
+            variant="outline"
+          />
+          <IconButton
+            label="Duplicate layer"
+            icon={<IconCopy size={14} />}
             onClick={onDuplicate}
-            className="rounded border border-border px-1 text-[9px] text-text-disabled transition-colors hover:text-foreground"
-            title="Duplicate layer"
-          >
-            +
-          </button>
-          <button
-            type="button"
+            size="icon-xs"
+            variant="outline"
+          />
+          <IconButton
+            label="Move layer up"
+            icon={<IconChevronUp size={14} />}
             onClick={onMoveUp}
             disabled={!layer.canMoveLeft}
-            className="rounded border border-border px-1 text-[9px] text-text-disabled transition-colors hover:text-foreground disabled:opacity-25"
-            title="Move layer up"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
+            size="icon-xs"
+            variant="outline"
+          />
+          <IconButton
+            label="Move layer down"
+            icon={<IconChevronDown size={14} />}
             onClick={onMoveDown}
             disabled={!layer.canMoveRight}
-            className="rounded border border-border px-1 text-[9px] text-text-disabled transition-colors hover:text-foreground disabled:opacity-25"
-            title="Move layer down"
-          >
-            ↓
-          </button>
-          <button
-            type="button"
+            size="icon-xs"
+            variant="outline"
+          />
+          <IconButton
+            label="Delete layer"
+            icon={<IconX size={14} />}
             onClick={onDelete}
             disabled={disableDelete}
-            className="rounded border border-destructive/60 bg-destructive/10 px-1 text-[9px] text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-25"
-            title="Delete layer"
-          >
-            ×
-          </button>
+            size="icon-xs"
+            variant="destructive"
+          />
         </div>
       </div>
     </div>
@@ -1129,7 +1018,7 @@ function PagePropertiesPanel({
     <SidebarSection title="Page">
       <div className="space-y-3">
         <FieldRow label="Name">
-          <span className="font-mono text-[10px] text-foreground">{page.name}</span>
+          <span className="font-inter text-[13px] text-foreground">{page.name}</span>
         </FieldRow>
         <ColorField
           label="Background"
@@ -1192,10 +1081,18 @@ function WidgetInspectorPanel({
       >
         <div className="px-3 py-3">
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Col" value={widget.col} min={0} max={999} onChange={value => onUpdateGeometry({ col: value })} />
-            <NumberField label="Row" value={widget.row} min={0} max={999} onChange={value => onUpdateGeometry({ row: value })} />
-            <NumberField label="Width" value={widget.colSpan} min={1} max={999} onChange={value => onUpdateGeometry({ colSpan: value })} />
-            <NumberField label="Height" value={widget.rowSpan} min={1} max={999} onChange={value => onUpdateGeometry({ rowSpan: value })} />
+            <FieldRow label="Col">
+              <Stepper inputLabel="Column" value={widget.col} min={0} max={999} onChange={value => onUpdateGeometry({ col: value })} />
+            </FieldRow>
+            <FieldRow label="Row">
+              <Stepper inputLabel="Row" value={widget.row} min={0} max={999} onChange={value => onUpdateGeometry({ row: value })} />
+            </FieldRow>
+            <FieldRow label="Width">
+              <Stepper inputLabel="Width" value={widget.colSpan} min={1} max={999} onChange={value => onUpdateGeometry({ colSpan: value })} />
+            </FieldRow>
+            <FieldRow label="Height">
+              <Stepper inputLabel="Height" value={widget.rowSpan} min={1} max={999} onChange={value => onUpdateGeometry({ rowSpan: value })} />
+            </FieldRow>
           </div>
         </div>
       </SidebarDisclosureSection>
@@ -1207,7 +1104,7 @@ function WidgetInspectorPanel({
           onClick={onDelete}
           className="inline-flex items-center gap-1"
         >
-          <TrashIcon />
+          <IconTrash size={14} />
           Remove widget
         </Button>
       </div>
@@ -1227,36 +1124,6 @@ function FieldRow({
       <span className="ui-label text-[11px] text-[var(--muted)]">{label}</span>
       {children}
     </label>
-  )
-}
-
-function NumberField({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string
-  value: number
-  min: number
-  max: number
-  onChange: (value: number) => void
-}) {
-  return (
-    <FieldRow label={label}>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        onChange={event => {
-          const next = parseInt(event.target.value, 10)
-          if (!Number.isNaN(next)) onChange(next)
-        }}
-        className="h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
-      />
-    </FieldRow>
   )
 }
 
@@ -1300,65 +1167,40 @@ function ColorField({
             className="sr-only"
           />
         </label>
-        <input
-          type="text"
-          maxLength={7}
-          defaultValue={hex}
+            <Input
+              type="text"
+              maxLength={7}
+              defaultValue={hex}
           key={hex}
           onBlur={event => applyHex(event.target.value)}
           onKeyDown={event => {
             if (event.key === 'Enter') applyHex(event.currentTarget.value)
           }}
-          className="h-8 w-24 rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
-        />
+              className="h-8 w-24"
+            />
         <Button
           variant="ghost"
           size="xs"
           onClick={onReset}
           disabled={!value}
-          className="font-saira text-[11px]"
+          className="font-inter text-[11px]"
         >
           RESET
         </Button>
       </div>
       {!value && (
-        <span className="font-saira text-[11px] text-[var(--muted-2)]">{inheritedLabel}</span>
+        <span className="font-inter text-[11px] text-[var(--muted)]">{inheritedLabel}</span>
       )}
     </FieldRow>
   )
 }
 
-function PencilIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7.5 1.5 9.5 3.5 3.5 9.5H1.5v-2z" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h7M4.5 3V2h2v1M3.5 3v5.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5V3" />
-    </svg>
-  )
-}
-
 function DisclosureChevron({ open }: { open: boolean }) {
   return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 11 11"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={cn('text-text-disabled transition-transform', open && 'rotate-90')}
+    <IconChevronRight
+      size={14}
+      className={cn('text-[var(--muted)] transition-transform', open && 'rotate-90')}
       aria-hidden="true"
-    >
-      <polyline points="4,2.5 7.5,5.5 4,8.5" />
-    </svg>
+    />
   )
 }

@@ -177,19 +177,23 @@ export function useDashEditorController({
   }, [])
 
   useEffect(() => {
-    Promise.all([
-      widgetCatalogAPI.getWidgetCatalog(),
-      deviceAPI.getSavedDevices(),
-      alertCatalogAPI.getAlertCatalog(),
-    ]).then(([widgets, devices, alerts]) => {
-      setCatalog(widgets)
-      setAlertCatalog(alerts)
+    widgetCatalogAPI.getWidgetCatalog()
+      .then(widgets => setCatalog(widgets))
+      .catch(() => {})
+
+    deviceAPI.getSavedDevices()
+      .then(devices => {
       const screen = devices.find(device => deviceHasScreen(device.type))
       if (screen) {
         setScreenW(screen.width)
         setScreenH(screen.height)
       }
-    }).catch(() => {})
+    })
+      .catch(() => {})
+
+    alertCatalogAPI.getAlertCatalog()
+      .then(alerts => setAlertCatalog(alerts))
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -355,9 +359,11 @@ export function useDashEditorController({
 
   useEffect(() => {
     if (activeTab === 'alerts') {
-      setSelectedWidgetStackId(null)
-      setSelectedLayerId(null)
-      setEditContext(createPageEditContext())
+      if (selectedWidgetStackId !== null) setSelectedWidgetStackId(null)
+      if (selectedLayerId !== null) setSelectedLayerId(null)
+      if (editContext.kind !== 'page') {
+        setEditContext(createPageEditContext())
+      }
       return
     }
     if (!selectedWidgetStackId) return
@@ -391,7 +397,7 @@ export function useDashEditorController({
         })
       }
     }
-  }, [activeTab, currentPage, selectedLayerId, selectedWidgetStackId, widgetStacks, widgetStackLayerSelections])
+  }, [activeTab, currentPage, editContext.kind, selectedLayerId, selectedWidgetStackId, widgetStacks, widgetStackLayerSelections])
 
   useEffect(() => {
     if (editContext.kind !== 'widget-stack') return

@@ -14,6 +14,12 @@ func TestSaveAndLoadRoundTripsDriverProfile(t *testing.T) {
 		UpdateChannel: "stable",
 		DriverName:    "Alice Example",
 		DriverNumber:  "#22",
+		NewDashDefaults: NewDashDefaults{
+			Mode:      "basic",
+			Display:   "GT 5in 800x480",
+			SpeedUnit: "mph",
+			TempUnit:  "f",
+		},
 		DashEditorUI: DashEditorUIPreferences{
 			Palette: DashEditorPanelPreferences{
 				Open:   true,
@@ -38,6 +44,9 @@ func TestSaveAndLoadRoundTripsDriverProfile(t *testing.T) {
 	}
 	if got.DriverNumber != want.DriverNumber {
 		t.Fatalf("expected driver number %q, got %q", want.DriverNumber, got.DriverNumber)
+	}
+	if got.NewDashDefaults != want.NewDashDefaults {
+		t.Fatalf("expected new dash defaults %+v, got %+v", want.NewDashDefaults, got.NewDashDefaults)
 	}
 	if got.DashEditorUI.Palette != want.DashEditorUI.Palette {
 		t.Fatalf("expected palette prefs %+v, got %+v", want.DashEditorUI.Palette, got.DashEditorUI.Palette)

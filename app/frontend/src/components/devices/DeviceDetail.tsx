@@ -1,6 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
-import { IconDeviceMobile } from '@tabler/icons-react'
-import { Badge, Button, Input, Switch, Tabs, TabsContent, TabsList, TabsTrigger, cn } from '@sprint/ui'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { IconDeviceMobile, IconPencil } from '@tabler/icons-react'
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  Input,
+  SegmentedControl,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SettingsRow,
+  Switch,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@sprint/ui'
 import {
   type DeviceBinding,
   type DevicePurpose,
@@ -13,10 +30,16 @@ import {
   deviceHasScreen,
   deviceID,
 } from '@/lib/dash'
-import type { CommandMeta } from '@/lib/controls'
+import { controlsAPI, type CommandMeta } from '@/lib/controls'
 import { DeviceCommandRow } from './DeviceCommandRow'
 import { resolveBindingDashContext } from './bindingDashContext'
 import { buildDeviceBindingsViewModel } from './deviceBindingsViewModel'
+import {
+  buttonNumberFromKeyboardKey,
+  cancelDeviceBindingListen,
+  reduceDeviceBindingKey,
+  startDeviceBindingListen,
+} from './deviceBindingListenState'
 
 const ORIENTATION_OPTIONS = [
   { degrees: 0 as const, label: 'Portrait', iconRotation: 'rotate-0' },
@@ -26,6 +49,31 @@ const ORIENTATION_OPTIONS = [
 ] as const
 
 type Rotation = (typeof ORIENTATION_OPTIONS)[number]['degrees']
+
+const PURPOSE_OPTIONS: Array<{ value: DevicePurpose; label: string }> = [
+  { value: 'dash', label: 'Dash' },
+  { value: 'rear_view', label: 'Rear View Mirror' },
+]
+
+const IDLE_MODE_OPTIONS: Array<{ value: RearViewIdleMode; label: string }> = [
+  { value: 'black', label: 'BLACK - screen off' },
+  { value: 'clock', label: 'CLOCK - digital HH:MM:SS' },
+]
+
+const ORIENTATION_SEGMENT_OPTIONS = ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => ({
+  value: String(degrees),
+  label: (
+    <span className="flex items-center gap-1.5">
+      <IconDeviceMobile size={12} className={iconRotation} />
+      {label}
+    </span>
+  ),
+}))
+
+// How long (seconds) the input detector stays armed for a physical button press
+// per listening session. CaptureNextButton is global and cannot be aborted from
+// the frontend, so we keep this short enough that a stale capture clears quickly.
+const CAPTURE_TIMEOUT_SECS = 8
 
 interface DeviceDetailProps {
   device: SavedDevice
@@ -66,6 +114,8 @@ export function DeviceDetail({
   const [purpose, setPurpose] = useState<DevicePurpose>(device.purpose ?? 'dash')
   const [selectingBounds, setSelectingBounds] = useState(false)
   const [bindings, setBindings] = useState<DeviceBinding[]>([])
+  const [listeningCommandId, setListeningCommandId] = useState<string | null>(null)
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const [removing, setRemoving] = useState(false)
 
   const disabled = disabledMap[id] ?? false
@@ -80,6 +130,8 @@ export function DeviceDetail({
     setSelectedBindingDashId(device.dashId || layouts[0]?.id || '')
     setPurpose(device.purpose ?? 'dash')
     setRenaming(false)
+    setListeningCommandId(null)
+    setConfirmRemoveOpen(false)
     deviceBindingsAPI
       .getDeviceBindings(device.vid, device.pid, device.serial)
       .then(setBindings)
@@ -191,7 +243,7 @@ export function DeviceDetail({
     }
   }
 
-  const setDeviceButton = async (commandId: string, button: number) => {
+  const setDeviceButton = useCallback(async (commandId: string, button: number) => {
     const updated = bindings.filter(binding => binding.command !== commandId)
     if (button > 0) updated.push({ command: commandId, button })
     setBindings(updated)
@@ -200,7 +252,52 @@ export function DeviceDetail({
     } catch (error) {
       onError(String(error))
     }
-  }
+  }, [bindings, device.pid, device.serial, device.vid, onError])
+
+  useEffect(() => {
+    if (!listeningCommandId) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isAssignmentKey = buttonNumberFromKeyboardKey(event.key) !== null
+      const result = reduceDeviceBindingKey({ listeningCommandId }, event.key)
+      if (result.state.listeningCommandId !== listeningCommandId) {
+        setListeningCommandId(result.state.listeningCommandId)
+      }
+      if (result.assignment) {
+        event.preventDefault()
+        void setDeviceButton(result.assignment.commandId, result.assignment.button)
+      } else if (event.key === 'Escape' || isAssignmentKey) {
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [listeningCommandId, setDeviceButton])
+
+  // Physical button capture: while a row is listening, arm the input detector so a
+  // real wheel/button press (or encoder tick) binds the command — the full HID
+  // range, not just keyboard digits 1-9/0. The keyboard path above remains as a
+  // fallback. CaptureNextButton is global and cannot be aborted from the frontend,
+  // so we arm once per listening session and drop a stale result via the guard.
+  useEffect(() => {
+    if (!listeningCommandId) return
+    const commandId = listeningCommandId
+    let cancelled = false
+    controlsAPI
+      .captureButton(CAPTURE_TIMEOUT_SECS)
+      .then(button => {
+        if (cancelled || button <= 0) return
+        setListeningCommandId(null)
+        void setDeviceButton(commandId, button)
+      })
+      .catch(() => {
+        // Timeout, no input service, or browser (non-desktop): keyboard fallback remains.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [listeningCommandId, setDeviceButton])
 
   const handleRemove = async () => {
     setRemoving(true)
@@ -230,14 +327,10 @@ export function DeviceDetail({
     }),
     [activeDashId, bindings, deviceOnlyCmds],
   )
-  const nativeSelectClassName = cn(
-    'h-8 w-full rounded-control border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)]',
-    'focus:border-[var(--orange)] focus:outline-none disabled:opacity-50',
-  )
 
   return (
-    <div className="space-y-[14px] p-[14px]">
-      <div className="flex items-start justify-between gap-4">
+    <div className="ds-bindwrap">
+      <div className="ds-dev-head">
         <div className="min-w-0 flex flex-col gap-1.5">
           {renaming ? (
             <Input
@@ -252,7 +345,7 @@ export function DeviceDetail({
                 }
               }}
               onBlur={commitRename}
-              className="h-8 w-72 rounded-control font-saira text-[12px] font-bold"
+              className="h-8 w-72 rounded-control font-sans text-[13px] font-bold"
             />
           ) : (
             <button
@@ -261,22 +354,22 @@ export function DeviceDetail({
               className="group flex items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]"
               aria-label="Rename device"
             >
-              <span className="font-saira text-[13px] font-bold transition-colors group-hover:text-[var(--orange)]">
+              <span className="font-sans text-[13px] font-bold transition-colors group-hover:text-[var(--orange)]">
                 {device.name}
               </span>
-              <PencilIcon className="flex-shrink-0 text-[var(--muted-2)] transition-colors group-hover:text-[var(--orange)]" />
+              <IconPencil size={12} className="flex-shrink-0 text-[var(--muted-2)] transition-colors group-hover:text-[var(--orange)]" />
             </button>
           )}
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="neutral" className="ui-label">{typeLabel}</Badge>
             {isScreen && device.driver ? (
-              <span className="font-saira text-[10px] uppercase text-[var(--muted)]">{device.driver}</span>
+              <span className="font-sans text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">{device.driver}</span>
             ) : null}
             {isScreen && device.width > 0 ? (
-              <span className="font-saira text-[10px] text-[var(--muted)]">{device.width}×{device.height}</span>
+              <span className="font-sans text-[11px] tabular-nums text-[var(--muted)]">{device.width}×{device.height}</span>
             ) : null}
             {device.serial ? (
-              <span className="font-saira text-[10px] text-[var(--muted)]">S/N: {device.serial}</span>
+              <span className="font-sans text-[11px] tabular-nums text-[var(--muted)]">S/N: {device.serial}</span>
             ) : null}
           </div>
         </div>
@@ -296,10 +389,10 @@ export function DeviceDetail({
         </div>
       </div>
 
-      <Tabs key={id} defaultValue={isScreen ? 'settings' : 'bindings'} className="space-y-[14px]">
+      <Tabs key={id} defaultValue={isScreen ? 'settings' : 'bindings'} className="min-h-0 flex-1 space-y-[14px] overflow-y-auto p-[14px]">
         <TabsList
           variant="top"
-          className="font-saira text-[11px]"
+          className="font-sans text-[11px]"
         >
           <TabsTrigger value="settings" className="px-3">
             SETTINGS
@@ -315,37 +408,31 @@ export function DeviceDetail({
               {isScreenOnly && import.meta.env.DEV ? (
                 <div className="space-y-1.5">
                   <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Purpose</p>
-                  <select
+                  <Select
                     value={purpose}
-                    onChange={event => handlePurposeChange(event.target.value as DevicePurpose)}
-                    className={nativeSelectClassName}
+                    onValueChange={value => { void handlePurposeChange(value as DevicePurpose) }}
                   >
-                    <option value="dash">Dash</option>
-                    <option value="rear_view">Rear View Mirror</option>
-                  </select>
+                    <SelectTrigger aria-label="Device purpose" size="sm" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PURPOSE_OPTIONS.map(option => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               ) : null}
 
               <div className="space-y-1.5">
                 <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Orientation</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {ORIENTATION_OPTIONS.map(({ degrees, label, iconRotation }) => (
-                    <button
-                      key={degrees}
-                      type="button"
-                      onClick={() => handleRotation(degrees)}
-                      className={cn(
-                        'flex h-8 items-center gap-1.5 rounded-control border px-[10px] font-saira text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
-                        rotation === degrees
-                          ? 'border-[var(--orange-ring)] bg-[var(--orange-tint)] text-[var(--orange)]'
-                          : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)] hover:text-[var(--text)]',
-                      )}
-                    >
-                      <IconDeviceMobile size={12} className={iconRotation} />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  label="Screen orientation"
+                  value={String(rotation)}
+                  options={ORIENTATION_SEGMENT_OPTIONS}
+                  onChange={value => { void handleRotation(Number(value) as Rotation) }}
+                  className="flex-wrap"
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -360,7 +447,7 @@ export function DeviceDetail({
                       value={offsetX}
                       onChange={event => handleOffsetChange('x', Math.max(0, parseInt(event.target.value, 10) || 0))}
                       data-readout="true"
-                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
+                      className="h-8 w-16 rounded-control text-right font-sans text-[12px]"
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
@@ -372,7 +459,7 @@ export function DeviceDetail({
                       value={offsetY}
                       onChange={event => handleOffsetChange('y', Math.max(0, parseInt(event.target.value, 10) || 0))}
                       data-readout="true"
-                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
+                      className="h-8 w-16 rounded-control text-right font-sans text-[12px]"
                     />
                   </label>
                   <label className="flex items-center gap-1.5">
@@ -384,7 +471,7 @@ export function DeviceDetail({
                       value={margin}
                       onChange={event => handleOffsetChange('margin', Math.max(0, parseInt(event.target.value, 10) || 0))}
                       data-readout="true"
-                      className="h-8 w-16 rounded-control text-right font-saira text-[12px]"
+                      className="h-8 w-16 rounded-control text-right font-sans text-[12px]"
                     />
                   </label>
                 </div>
@@ -400,7 +487,7 @@ export function DeviceDetail({
                 return (
                   <div className="space-y-2">
                     <Tabs defaultValue="capture">
-                      <TabsList variant="compact" className="w-full font-saira text-[11px]">
+                      <TabsList variant="compact" className="w-full font-sans text-[11px]">
                         <TabsTrigger value="capture" className="flex-1">Capture</TabsTrigger>
                         <TabsTrigger value="idle" className="flex-1">Idle screen</TabsTrigger>
                       </TabsList>
@@ -409,18 +496,18 @@ export function DeviceDetail({
                         <Button
                           variant="active"
                           size="sm"
-                          className="h-8 w-full rounded-control font-saira text-[12px]"
+                          className="h-8 w-full rounded-control font-sans text-[12px]"
                           onClick={handleSelectBounds}
                           disabled={selectingBounds}
                         >
-                          {selectingBounds ? 'SELECTING… (Enter to confirm, Esc to cancel)' : 'SET BOUNDS'}
+                          {selectingBounds ? 'Selecting… (Enter to confirm, Esc to cancel)' : 'Set bounds'}
                         </Button>
                         {captureW > 0 && captureH > 0 ? (
-                          <p className="font-saira text-[10px] text-[var(--muted)]">
+                          <p className="font-sans text-[10px] text-[var(--muted)]">
                             X: {captureX}  Y: {captureY}  W: {captureW}  H: {captureH}
                           </p>
                         ) : (
-                          <p className="font-saira text-[10px] text-[var(--muted)]">
+                          <p className="font-sans text-[10px] text-[var(--muted)]">
                             No region set — click Set Bounds
                           </p>
                         )}
@@ -428,14 +515,19 @@ export function DeviceDetail({
 
                       <TabsContent value="idle" className="space-y-2 pt-2">
                         <p className="ui-label text-[11px] font-semibold text-[var(--muted)]">Idle mode</p>
-                        <select
+                        <Select
                           value={idleMode}
-                          onChange={event => handleIdleModeChange(event.target.value as RearViewIdleMode)}
-                          className={nativeSelectClassName}
+                          onValueChange={value => { void handleIdleModeChange(value as RearViewIdleMode) }}
                         >
-                          <option value="black">BLACK — screen off</option>
-                          <option value="clock">CLOCK — digital HH:MM:SS</option>
-                        </select>
+                          <SelectTrigger aria-label="Rear view idle mode" size="sm" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {IDLE_MODE_OPTIONS.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TabsContent>
                     </Tabs>
                   </div>
@@ -448,20 +540,24 @@ export function DeviceDetail({
                     DASH_LAYOUT{savingDash ? ' SAVING…' : ''}
                   </p>
                   {layouts.length === 0 ? (
-                    <p className="font-saira text-[10px] text-[var(--muted)]">
-                      No layouts saved yet. Create one in Dash Studio.
+                    <p className="font-sans text-[10px] text-[var(--muted)]">
+                      No dashboards saved yet. Create one in Dashboards.
                     </p>
                   ) : (
-                    <select
+                    <Select
                       value={activeDashId}
-                      onChange={event => handleDashChange(event.target.value)}
                       disabled={savingDash}
-                      className={nativeSelectClassName}
+                      onValueChange={value => { void handleDashChange(value) }}
                     >
-                      {layouts.map(layout => (
-                        <option key={layout.id} value={layout.id}>{layout.name}</option>
-                      ))}
-                    </select>
+                      <SelectTrigger aria-label="Assigned dash layout" size="sm" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {layouts.map(layout => (
+                          <SelectItem key={layout.id} value={layout.id}>{layout.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
               ) : null}
@@ -471,24 +567,31 @@ export function DeviceDetail({
 
         <TabsContent value="bindings" className="space-y-[10px] pt-1">
           {bindingDashContext.showDashPicker && layouts.length > 0 ? (
-            <div className="space-y-1.5">
-              <p className="ui-label text-[11px] text-[var(--muted)]">Binding dash layout</p>
-              <select
+            <SettingsRow>
+              <div>
+                <span className="font-medium text-[var(--text)]">Assigned dash</span>
+                <p className="mt-1 text-[11px] text-[var(--text3)]">Select the dash whose stack actions should be exposed.</p>
+              </div>
+              <Select
                 value={activeDashId}
-                onChange={event => setSelectedBindingDashId(event.target.value)}
-                className={nativeSelectClassName}
+                onValueChange={setSelectedBindingDashId}
               >
-                {layouts.map(layout => (
-                  <option key={layout.id} value={layout.id}>{layout.name}</option>
-                ))}
-              </select>
-            </div>
+                <SelectTrigger aria-label="Binding dash context" size="sm" className="w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {layouts.map(layout => (
+                    <SelectItem key={layout.id} value={layout.id}>{layout.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingsRow>
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="ui-label text-[11px] text-[var(--muted)]">Active dash only</p>
             {bindingView.hiddenBindingCount > 0 ? (
-              <Badge variant="outline" className="font-saira text-[10px]">
+              <Badge variant="outline" className="font-sans text-[10px]">
                 {bindingView.hiddenBindingCount}_HIDDEN
               </Badge>
             ) : null}
@@ -497,11 +600,11 @@ export function DeviceDetail({
           {bindingView.cards.length > 0 ? (
             <div className="grid gap-3 xl:grid-cols-2">
               {bindingView.cards.map(card => (
-                <div key={card.key} className="space-y-[10px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+                <div key={card.key} className="ds-bindgrp space-y-[10px] rounded-[var(--r)] border border-[var(--line)] bg-[var(--panel)]">
                   <div className="min-w-0">
-                    <p className="font-saira text-[12px] font-bold uppercase text-[var(--text)]">{card.title}</p>
+                    <p className="font-sans text-[12px] font-bold text-[var(--text)]">{card.title}</p>
                     {card.subtitle ? (
-                      <p className="truncate font-saira text-[10px] text-[var(--muted)]">{card.subtitle}</p>
+                      <p className="truncate font-sans text-[10px] text-[var(--muted)]">{card.subtitle}</p>
                     ) : null}
                   </div>
 
@@ -512,7 +615,17 @@ export function DeviceDetail({
                         cmd={row.command}
                         button={row.button}
                         bound={row.button > 0}
-                        onButtonChange={nextButton => setDeviceButton(row.command.id, nextButton)}
+                        listening={listeningCommandId === row.command.id}
+                        onListenToggle={() => setListeningCommandId(current =>
+                          startDeviceBindingListen({ listeningCommandId: current }, row.command.id).listeningCommandId,
+                        )}
+                        onCancelListen={() => setListeningCommandId(current =>
+                          cancelDeviceBindingListen({ listeningCommandId: current }).listeningCommandId,
+                        )}
+                        onButtonChange={nextButton => {
+                          setListeningCommandId(null)
+                          void setDeviceButton(row.command.id, nextButton)
+                        }}
                       />
                     ))}
                   </div>
@@ -520,39 +633,37 @@ export function DeviceDetail({
               ))}
             </div>
           ) : (
-            <div className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+            <div className="ds-wheel-hint">
               <p className="ui-label text-[11px] text-[var(--muted)]">No active dash bindings</p>
             </div>
           )}
         </TabsContent>
       </Tabs>
 
-      <div className="border-t border-[var(--border)] pt-[14px]">
+      <div className="border-t border-[var(--line)] p-[14px]">
         <Button
           variant="destructive"
           size="sm"
           className="ui-label h-8 rounded-control px-[10px] text-[11px]"
           disabled={removing}
-          onClick={handleRemove}
+          onClick={() => setConfirmRemoveOpen(true)}
         >
           {removing ? 'Removing…' : 'Remove device'}
         </Button>
       </div>
-    </div>
-  )
-}
 
-function PencilIcon({ className }: { className?: string }) {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" className={className}>
-      <path
-        d="M7.5 1.5 L9.5 3.5 L3.5 9.5 L1 10 L1.5 7.5 Z"
-        stroke="currentColor"
-        strokeWidth="1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+      <ConfirmDialog
+        open={confirmRemoveOpen}
+        title="Remove device?"
+        message={`${device.name} will be removed from Sprint. Saved dash layouts are not deleted.`}
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          setConfirmRemoveOpen(false)
+          void handleRemove()
+        }}
+        onCancel={() => setConfirmRemoveOpen(false)}
       />
-      <path d="M6.5 2.5 L8.5 4.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-    </svg>
+    </div>
   )
 }

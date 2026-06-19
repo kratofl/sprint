@@ -88,7 +88,7 @@ export function CatalogPanel({
   }
 
   return (
-    <div className="space-y-[14px] p-[14px]">
+    <div className="space-y-[14px]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="ui-label text-[10px] font-bold">
@@ -98,15 +98,15 @@ export function CatalogPanel({
             Register supported hardware or scan for compatible USB devices.
           </p>
         </div>
-        <Button variant="ghost" size="sm" className="h-8 rounded-control px-[10px] font-saira text-[11px]" onClick={onClose}>
-          CANCEL
+        <Button variant="ghost" size="sm" className="h-8 rounded-control px-[10px] font-sans text-[11px]" onClick={onClose}>
+          Cancel
         </Button>
       </div>
 
       {entries.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center">
           <p className="ui-label text-[10px] text-[var(--muted)]">No catalog entries</p>
-          <p className="max-w-xs font-saira text-[10px] text-[var(--muted)]">
+          <p className="max-w-xs font-sans text-[10px] text-[var(--muted)]">
             No {deviceType} devices are available in the local catalog yet.
           </p>
         </div>
@@ -117,14 +117,14 @@ export function CatalogPanel({
             return (
               <div key={entry.id} className="flex items-start justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
                 <div className="min-w-0 flex-1">
-                  <p className="font-saira text-[12px] font-bold text-[var(--text)]">{entry.name}</p>
-                  <p className="mt-0.5 font-saira text-[10px] text-[var(--muted)]">{entry.description}</p>
+                  <p className="font-sans text-[12px] font-bold text-[var(--text)]">{entry.name}</p>
+                  <p className="mt-0.5 font-sans text-[10px] text-[var(--muted)]">{entry.description}</p>
                   {isGeneric ? (
-                    <p className="mt-0.5 font-saira text-[10px] text-[var(--muted-2)]">
+                    <p className="mt-0.5 font-sans text-[10px] text-[var(--muted-2)]">
                       Scans USB for {entry.driver.toUpperCase()} devices
                     </p>
                   ) : (
-                    <p className="mt-0.5 font-saira text-[10px] uppercase text-[var(--muted-2)]">
+                    <p className="mt-0.5 font-sans text-[10px] uppercase text-[var(--muted-2)]">
                       {entry.driver} · {entry.width}×{entry.height}
                     </p>
                   )}

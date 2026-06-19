@@ -1,293 +1,379 @@
-import { useState, useEffect, useRef } from 'react'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, PageHeader, cn } from '@sprint/ui'
-import { type CommandMeta, type ControlsConfig, controlsAPI } from '@/lib/controls'
-import { formatCommandIdForDisplay } from '@/lib/controls/commandIdDisplay'
+import { useMemo, useRef, useState } from 'react'
+import {
+  Button,
+  ConfirmDialog,
+  Input,
+  PageHeader,
+  SegmentedControl,
+  SettingsCard,
+  SettingsRow,
+  StatusPill,
+  Stepper,
+  cn,
+} from '@sprint/ui'
+import {
+  BASELINE_SETUP_ID,
+  SETUP_GROUPS,
+  cancelDeleteSetupProgram,
+  confirmDeleteSetupProgram,
+  createSetupProgramState,
+  duplicateSelectedSetupProgram,
+  formatSetupDelta,
+  formatSetupLapTime,
+  formatSetupValue,
+  getComparedSetupProgram,
+  getSetupDifferenceRows,
+  getSetupPrediction,
+  getSelectedSetupProgram,
+  renameSelectedSetupProgram,
+  requestDeleteSetupProgram,
+  selectSetupProgram,
+  setSetupProgramMode,
+  updateSelectedSetupParam,
+  type SetupParamKey,
+  type SetupProgramMode,
+} from './setupProgramModel'
 
-// Category display order.
-const CATEGORY_ORDER = ['dash', 'lap']
-const CATEGORY_LABEL: Record<string, string> = {
-  dash: 'DASH',
-  lap:  'LAP',
+const SETUP_AREAS = ['Aero', 'Suspension', 'Tires', 'Brakes'] as const
+const MODE_OPTIONS = [
+  { value: 'edit', label: 'Edit' },
+  { value: 'comparison', label: 'Comparison' },
+] as const
+
+export interface ControlsProps {
+  compact?: boolean
 }
 
-// Controls.
+let nextSetupCopyId = 1
 
-export default function Controls() {
-  const [catalog,     setCatalog]     = useState<CommandMeta[]>([])
-  const [config,      setConfig]      = useState<ControlsConfig>({ bindings: [] })
-  const [saving,      setSaving]      = useState(false)
-  const [saveStatus,  setSaveStatus]  = useState<'idle' | 'saved' | 'error'>('idle')
-  const [loadError,   setLoadError]   = useState<string | null>(null)
-
-  // Load catalog + current bindings on mount.
-  useEffect(() => {
-    let cancelled = false
-    Promise.all([controlsAPI.getCommandCatalog(), controlsAPI.getBindings()])
-      .then(([cat, cfg]) => {
-        if (cancelled) return
-        setCatalog(cat)
-        setConfig(cfg)
-      })
-      .catch(e => { if (!cancelled) setLoadError(String(e)) })
-    return () => { cancelled = true }
-  }, [])
-
-  const getButton = (commandId: string): number => {
-    return config.bindings.find(b => b.command === commandId)?.button ?? 0
-  }
-
-  const setButton = (commandId: string, button: number) => {
-    setConfig(prev => {
-      const bindings = prev.bindings.filter(b => b.command !== commandId)
-      if (button > 0) bindings.push({ command: commandId, button })
-      return { bindings }
-    })
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    setSaveStatus('idle')
-    try {
-      await controlsAPI.saveBindings(config)
-      setSaveStatus('saved')
-      setTimeout(() => setSaveStatus('idle'), 2000)
-    } catch {
-      setSaveStatus('error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Derive ordered categories — exclude device-only commands (those live in Devices tab).
-  const bindableCatalog  = catalog.filter(c => !c.deviceOnly)
-  const knownCategories  = CATEGORY_ORDER.filter(c => bindableCatalog.some(cmd => cmd.category === c))
-  const extraCategories  = [...new Set(bindableCatalog.map(cmd => cmd.category))].filter(c => !CATEGORY_ORDER.includes(c))
-  const categories       = [...knownCategories, ...extraCategories]
-
-  return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <PageHeader
-        heading="Controls"
-        caption="Assign wheel buttons to commands"
-        status={(
-          <>
-          {saveStatus === 'saved' && (
-            <Badge variant="success" className="ui-label">Saved</Badge>
-          )}
-          {saveStatus === 'error' && (
-            <Badge variant="destructive" className="ui-label">Save failed</Badge>
-          )}
-          </>
-        )}
-        actions={(
-          <Button
-            onClick={handleSave}
-            disabled={saving || catalog.length === 0}
-            variant="primary"
-            className="ui-label font-bold"
-          >
-            {saving ? 'Saving…' : 'Save bindings'}
-          </Button>
-        )}
-      />
-
-      {loadError && (
-        <div className="surface-destructive border-x-0 border-t-0 px-6 py-2 font-mono text-[10px] text-destructive">
-          {loadError}
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto">
-        {catalog.length === 0 && !loadError ? (
-          <div className="flex items-center justify-center py-12 font-mono text-[10px] text-text-muted">
-            LOADING_COMMANDS…
-          </div>
-        ) : (
-          <div className="space-y-6 px-6 py-4">
-            {/* How-to note */}
-            <Card size="sm" className="gap-0 py-0">
-              <CardHeader className="border-b border-border px-4 py-2.5">
-                <CardTitle className="text-foreground">How to use</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1 px-4 py-3 font-mono text-[10px] text-text-muted">
-                <p>Click <span className="text-foreground">[ CAPTURE ]</span> next to a command, then press the physical button on your wheel.</p>
-                <p>The channel is detected automatically. Leave a command unbound to disable it.</p>
-              <p>Commands marked <span className="text-text-muted opacity-80">device only</span> must be triggered from a hardware button.</p>
-              </CardContent>
-            </Card>
-
-            {/* Command groups */}
-            {categories.map(cat => (
-              <CommandGroup
-                key={cat}
-                label={CATEGORY_LABEL[cat] ?? cat.toUpperCase()}
-                commands={bindableCatalog.filter(c => c.category === cat)}
-                getButton={getButton}
-                setButton={setButton}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+function createSetupCopyId() {
+  const id = nextSetupCopyId
+  nextSetupCopyId += 1
+  return `setup-copy-${id}`
 }
 
-// CommandGroup.
-
-function CommandGroup({
+function SetupMetricTile({
   label,
-  commands,
-  getButton,
-  setButton,
+  value,
+  valueClassName,
 }: {
   label: string
-  commands: CommandMeta[]
-  getButton: (id: string) => number
-  setButton: (id: string, button: number) => void
+  value: string
+  valueClassName?: string
 }) {
   return (
-    <div>
-      <h4 className="ui-label mb-2 text-[10px] font-bold text-text-muted">{label}</h4>
-      <div className="space-y-1">
-        {commands.map(cmd => (
-          <CommandRow
-            key={cmd.id}
-            cmd={cmd}
-            button={getButton(cmd.id)}
-            onButtonChange={btn => setButton(cmd.id, btn)}
-          />
-        ))}
+    <div className="rounded-[calc(var(--r)-2px)] border border-[var(--line)] bg-[var(--panel2)] p-3">
+      <div className="text-[10px] font-semibold uppercase text-[var(--text3)]">{label}</div>
+      <div className={cn('mt-2 font-sans tabular-nums text-[18px] font-semibold text-[var(--text)]', valueClassName)}>
+        {value}
       </div>
     </div>
   )
 }
 
-// CommandRow.
+export default function Controls({ compact = false }: ControlsProps) {
+  const [setupState, setSetupState] = useState(createSetupProgramState)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const renameCanceledRef = useRef(false)
 
-type CaptureState = 'idle' | 'capturing' | 'timeout'
+  const selected = getSelectedSetupProgram(setupState)
+  const compared = useMemo(() => getComparedSetupProgram(setupState), [setupState])
+  const selectedPrediction = useMemo(() => getSetupPrediction(selected), [selected])
+  const comparedPrediction = useMemo(() => getSetupPrediction(compared), [compared])
+  const differenceRows = useMemo(() => getSetupDifferenceRows(selected, compared), [compared, selected])
+  const delta = selectedPrediction.lapTime - comparedPrediction.lapTime
+  const pendingDeleteProgram = setupState.programs.find(program => program.id === setupState.pendingDeleteId)
 
-function CommandRow({
-  cmd,
-  button,
-  onButtonChange,
-}: {
-  cmd: CommandMeta
-  button: number
-  onButtonChange: (button: number) => void
-}) {
-  const bound = button > 0
-  const [captureState, setCaptureState] = useState<CaptureState>('idle')
-  const [countdown, setCountdown] = useState(3)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
+  const startRename = () => {
+    renameCanceledRef.current = false
+    setRenaming(selected.name)
   }
 
-  const handleCapture = async () => {
-    if (captureState === 'capturing') return
-    setCaptureState('capturing')
-    setCountdown(3)
-
-    timerRef.current = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) { clearTimer(); return 0 }
-        return prev - 1
-      })
-    }, 1000)
-
-    try {
-      const btn = await controlsAPI.captureButton(3)
-      clearTimer()
-      onButtonChange(btn)
-      setCaptureState('idle')
-    } catch {
-      clearTimer()
-      setCaptureState('timeout')
-      setTimeout(() => setCaptureState('idle'), 1200)
-    }
+  const cancelRename = () => {
+    renameCanceledRef.current = true
+    setRenaming(null)
   }
 
-  // Clean up interval on unmount.
-  useEffect(() => () => clearTimer(), [])
+  const selectProgram = (programId: string) => {
+    cancelRename()
+    setSetupState(current => selectSetupProgram(current, programId))
+  }
+
+  const duplicateSelected = () => {
+    const id = createSetupCopyId()
+    const copyName = `${selected.name} copy`
+    renameCanceledRef.current = false
+    setSetupState(current => duplicateSelectedSetupProgram(current, id))
+    setRenaming(copyName)
+  }
+
+  const requestDeleteSelected = () => {
+    setSetupState(current => requestDeleteSetupProgram(current))
+  }
+
+  const confirmDeleteSelected = () => {
+    cancelRename()
+    setSetupState(current => confirmDeleteSetupProgram(current))
+  }
+
+  const cancelDeleteSelected = () => {
+    setSetupState(current => cancelDeleteSetupProgram(current))
+  }
+
+  const updateSelectedParam = (key: SetupParamKey, value: number) => {
+    setSetupState(current => updateSelectedSetupParam(current, key, value))
+  }
+
+  const commitRename = () => {
+    if (renaming === null) return
+    if (renameCanceledRef.current) {
+      renameCanceledRef.current = false
+      return
+    }
+
+    setSetupState(current => renameSelectedSetupProgram(current, renaming))
+    setRenaming(null)
+  }
 
   return (
-    <Card
-      size="sm"
-      variant={bound ? 'selected' : 'default'}
-      className="gap-0 py-0"
-    >
-      <CardContent className="flex items-center justify-between px-4 py-2.5">
-        <div className="flex flex-col gap-0.5">
-          <span className={cn(
-            'font-mono text-[11px] font-bold',
-            bound ? 'text-white' : 'text-text-muted',
-          )}>
-            {cmd.label}
-          </span>
-          <span className="font-mono text-[9px] text-text-muted opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
-        </div>
-
-        <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-          {bound && (
-            <Badge variant="active" className="ui-label">BTN_{button}</Badge>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {!compact && (
+        <PageHeader
+          heading="Setup"
+          caption="Setup programs, field edits, and A/B comparison"
+          status={(
+            <>
+              <StatusPill status="info">A/B {setupState.mode === 'comparison' ? 'active' : 'ready'}</StatusPill>
+              <StatusPill status="success">Baseline loaded</StatusPill>
+            </>
           )}
-          {bound && (
-            <Button
-              onClick={() => onButtonChange(0)}
-              variant="destructive"
-              size="icon-xs"
-              className="h-5 w-5 p-0 text-[13px]"
-              title="Clear binding"
-              aria-label={`Clear binding for ${cmd.label}`}
-            >
-              ×
-            </Button>
-          )}
+        />
+      )}
 
-          <Input
-            type="number"
-            min={0}
-            max={255}
-            value={button === 0 ? '' : button}
-            placeholder="—"
-            data-readout="true"
-            data-status={bound ? 'accent' : 'neutral'}
-            onChange={e => {
-              const v = parseInt(e.target.value, 10)
-              onButtonChange(isNaN(v) ? 0 : Math.max(0, Math.min(255, v)))
-            }}
-            className="w-14 text-center font-mono text-[10px] tabular-nums"
-          />
+      <div className={cn('grid min-h-0 flex-1 grid-cols-12 gap-[14px] overflow-y-auto', compact ? 'p-0' : 'p-6')}>
+        <aside className="col-span-12 lg:col-span-4 xl:col-span-3">
+          <SettingsCard>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-3 py-3">
+              <div>
+                <h2 className="text-[13px] font-semibold text-[var(--text)]">Programs</h2>
+                <p className="mt-1 text-[11px] text-[var(--text3)]">
+                  {SETUP_AREAS.join(' · ')} setup fields
+                </p>
+              </div>
+              <StatusPill status="neutral">{setupState.programs.length}</StatusPill>
+            </div>
 
-          {cmd.capturable && (
-            <Button
-              variant={
-                captureState === 'capturing'
-                  ? 'ghost'
-                  : captureState === 'timeout'
-                    ? 'destructive'
-                    : 'secondary'
-              }
-              size="sm"
-              disabled={captureState === 'capturing'}
-              onClick={handleCapture}
-              className="ui-label w-24 font-bold text-[9px]"
-            >
-              {captureState === 'capturing'
-                ? `LISTENING_${countdown}`
-                : captureState === 'timeout'
-                  ? 'No input'
-                  : 'Capture'}
-            </Button>
+            <div className="flex flex-col">
+              {setupState.programs.map(program => {
+                const isSelected = program.id === selected.id
+                const isCompared = setupState.mode === 'comparison' && program.id === compared.id && program.id !== selected.id
+                const prediction = getSetupPrediction(program)
+
+                return (
+                  <button
+                    key={program.id}
+                    type="button"
+                    className={cn(
+                      'grid gap-2 border-b border-[var(--line)] px-3 py-3 text-left transition-colors last:border-b-0 hover:bg-[var(--panel2)] focus-visible:border-[var(--accent)] focus-visible:outline-none',
+                      isSelected && 'bg-[var(--panel2)]',
+                    )}
+                    onClick={() => selectProgram(program.id)}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--text)]">{program.name}</span>
+                      <span className="font-sans tabular-nums text-[11px] text-[var(--text2)]">
+                        {formatSetupLapTime(prediction.lapTime)}
+                      </span>
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {isSelected ? <StatusPill status="info">A</StatusPill> : null}
+                      {isCompared ? <StatusPill status="warning">B</StatusPill> : null}
+                      {program.id === BASELINE_SETUP_ID ? <StatusPill status="success">Baseline</StatusPill> : null}
+                      {!isSelected && !isCompared && program.id !== BASELINE_SETUP_ID ? (
+                        <StatusPill status="neutral">Program</StatusPill>
+                      ) : null}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="space-y-3 border-t border-[var(--line)] px-3 py-3">
+              <SegmentedControl
+                label="Setup mode"
+                value={setupState.mode}
+                options={MODE_OPTIONS}
+                onChange={value => setSetupState(current => setSetupProgramMode(current, value as SetupProgramMode))}
+                className="w-full justify-center"
+              />
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" size="sm" className="flex-1" onClick={duplicateSelected}>
+                  Duplicate
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="flex-1"
+                  disabled={setupState.programs.length <= 1}
+                  onClick={requestDeleteSelected}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          </SettingsCard>
+        </aside>
+
+        <section className="col-span-12 flex min-h-0 flex-col gap-[14px] lg:col-span-8 xl:col-span-9">
+          {setupState.mode === 'edit' ? (
+            <>
+              <SettingsCard>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-3 py-3">
+                  <div className="min-w-0">
+                    {renaming !== null ? (
+                      <Input
+                        autoFocus
+                        value={renaming}
+                        aria-label="Setup program name"
+                        className="h-[30px] max-w-[360px] font-semibold"
+                        onChange={event => setRenaming(event.currentTarget.value)}
+                        onBlur={commitRename}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            commitRename()
+                          }
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            cancelRename()
+                          }
+                        }}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="truncate text-left text-[13px] font-semibold text-[var(--text)] outline-none hover:text-[var(--accent)] focus-visible:text-[var(--accent)]"
+                        onClick={startRename}
+                      >
+                        {selected.name}
+                      </button>
+                    )}
+                    <p className="mt-1 text-[11px] text-[var(--text3)]">
+                      Predicted lap {formatSetupLapTime(selectedPrediction.lapTime)}
+                    </p>
+                  </div>
+                  <StatusPill status={selected.id === BASELINE_SETUP_ID ? 'success' : 'info'}>
+                    {selected.id === BASELINE_SETUP_ID ? 'Baseline' : 'Editable'}
+                  </StatusPill>
+                </div>
+              </SettingsCard>
+
+              {SETUP_GROUPS.map(group => (
+                <SettingsCard key={group.name}>
+                  <div className="border-b border-[var(--line)] px-3 py-3">
+                    <h2 className="text-[13px] font-semibold text-[var(--text)]">{group.name}</h2>
+                    <p className="mt-1 text-[11px] text-[var(--text3)]">
+                      {group.params.length} setup parameters
+                    </p>
+                  </div>
+
+                  {group.params.map(param => (
+                    <SettingsRow key={param.key}>
+                      <div>
+                        <div className="text-[12px] font-medium text-[var(--text)]">{param.label}</div>
+                        <div className="mt-1 text-[11px] text-[var(--text3)]">
+                          Range {formatSetupValue(param, param.min)} to {formatSetupValue(param, param.max)}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="min-w-[72px] text-right font-sans tabular-nums text-[11px] text-[var(--text2)]">
+                          {formatSetupValue(param, selected.params[param.key])}
+                        </span>
+                        <Stepper
+                          value={selected.params[param.key]}
+                          min={param.min}
+                          max={param.max}
+                          step={param.step}
+                          inputLabel={param.label}
+                          decrementLabel={`Decrease ${param.label}`}
+                          incrementLabel={`Increase ${param.label}`}
+                          onChange={value => updateSelectedParam(param.key, value)}
+                        />
+                      </div>
+                    </SettingsRow>
+                  ))}
+                </SettingsCard>
+              ))}
+            </>
+          ) : (
+            <SettingsCard>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-3 py-3">
+                <div>
+                  <h2 className="text-[13px] font-semibold text-[var(--text)]">A/B Comparison</h2>
+                  <p className="mt-1 text-[11px] text-[var(--text3)]">
+                    Compare {selected.name} against {compared.name}
+                  </p>
+                </div>
+                <StatusPill status={delta <= 0 ? 'success' : 'danger'}>
+                  {formatSetupDelta(delta)}s
+                </StatusPill>
+              </div>
+
+              <div className="grid gap-3 border-b border-[var(--line)] p-3 md:grid-cols-3">
+                <SetupMetricTile
+                  label="A prediction"
+                  value={formatSetupLapTime(selectedPrediction.lapTime)}
+                  valueClassName="text-[var(--accent)]"
+                />
+                <SetupMetricTile
+                  label="B prediction"
+                  value={formatSetupLapTime(comparedPrediction.lapTime)}
+                />
+                <SetupMetricTile
+                  label="Delta"
+                  value={`${formatSetupDelta(delta)}s`}
+                  valueClassName={delta <= 0 ? 'text-[var(--green)]' : 'text-[var(--red)]'}
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <SettingsRow className="bg-[var(--panel2)] sm:grid-cols-[minmax(0,1fr)_100px_100px]">
+                  <div className="text-[11px] font-semibold uppercase text-[var(--text3)]">
+                    {differenceRows.length} changed fields
+                  </div>
+                  <div className="text-right text-[11px] font-semibold uppercase text-[var(--accent)]">A</div>
+                  <div className="text-right text-[11px] font-semibold uppercase text-[var(--text2)]">B</div>
+                </SettingsRow>
+
+                {differenceRows.map(row => (
+                  <SettingsRow
+                    key={`${row.group}-${row.label}`}
+                    className="sm:grid-cols-[minmax(0,1fr)_100px_100px]"
+                  >
+                    <div>
+                      <div className="text-[12px] font-medium text-[var(--text)]">{row.label}</div>
+                      <div className="mt-1 text-[11px] text-[var(--text3)]">{row.group}</div>
+                    </div>
+                    <div className="text-right font-sans tabular-nums text-[11px] text-[var(--accent)]">{row.a}</div>
+                    <div className="text-right font-sans tabular-nums text-[11px] text-[var(--text2)]">{row.b}</div>
+                  </SettingsRow>
+                ))}
+              </div>
+            </SettingsCard>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </section>
+      </div>
+
+      <ConfirmDialog
+        open={setupState.pendingDeleteId !== null}
+        title="Delete setup program?"
+        message={`${pendingDeleteProgram?.name ?? 'This setup program'} will be removed from this local Setup list.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDeleteSelected}
+        onCancel={cancelDeleteSelected}
+      />
+    </div>
   )
 }

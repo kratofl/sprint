@@ -1,32 +1,77 @@
-import { useCallback, useEffect, useState } from 'react'
-import { IconCheck, IconLoader2, IconRefresh } from '@tabler/icons-react'
-import { Badge, Button, Input, PageHeader, cn } from '@sprint/ui'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { useEffect, useState } from 'react'
+import {
+  Button,
+  ConfirmDialog,
+  Input,
+  PageHeader,
+  SegmentedControl,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SettingsCard,
+  SettingsRow,
+  StatusPill,
+} from '@sprint/ui'
 import { appInfoAPI, settingsAPI, updateAPI, type BuildChannel } from '@/lib/settings'
-import type { AppSettings, ReleaseInfo } from '@sprint/types'
+import type { AppSettings, NewDashDefaults, ReleaseInfo } from '@sprint/types'
 
+type DashMode = 'advanced' | 'basic'
+type SpeedUnit = 'km/h' | 'mph'
+type TempUnit = 'c' | 'f'
+type Channel = AppSettings['updateChannel']
 type CheckState = 'idle' | 'checking' | 'up-to-date' | 'update-found'
 
-function SettingsPanel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
-      <h2 className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</h2>
-      <div className="mt-[14px] flex flex-col gap-[14px]">{children}</div>
-    </div>
-  )
+const DASH_MODE_OPTIONS = [
+  { value: 'advanced', label: 'Advanced' },
+  { value: 'basic', label: 'Basic' },
+] satisfies Array<{ value: DashMode; label: string }>
+
+const SPEED_UNIT_OPTIONS = [
+  { value: 'km/h', label: 'km/h' },
+  { value: 'mph', label: 'mph' },
+] satisfies Array<{ value: SpeedUnit; label: string }>
+
+const TEMP_UNIT_OPTIONS = [
+  { value: 'c', label: 'C' },
+  { value: 'f', label: 'F' },
+] satisfies Array<{ value: TempUnit; label: string }>
+
+const CHANNEL_OPTIONS = [
+  { value: 'stable', label: 'Stable' },
+  { value: 'pre-release', label: 'Pre-release' },
+] satisfies Array<{ value: Channel; label: string }>
+
+const DISPLAY_OPTIONS = [
+  'Formula 1080x480',
+  'GT 5in 800x480',
+  'Ultrawide 1920x480',
+  'Square 480x480',
+] as const
+
+const DEFAULT_NEW_DASH: Required<NewDashDefaults> = {
+  mode: 'advanced',
+  display: 'Formula 1080x480',
+  speedUnit: 'km/h',
+  tempUnit: 'c',
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="ui-label text-[11px] font-bold text-[var(--muted)]">{children}</label>
+const channelStatus: Record<BuildChannel, 'success' | 'warning' | 'info' | 'neutral'> = {
+  dev: 'warning',
+  alpha: 'info',
+  beta: 'neutral',
+  release: 'success',
 }
 
 export default function Settings() {
   const [settings, setSettings] = useState<AppSettings>({ updateChannel: 'stable' })
-  const [pendingChannel, setPendingChannel] = useState<AppSettings['updateChannel'] | null>(null)
-  const [checkState, setCheckState] = useState<CheckState>('idle')
-  const [foundRelease, setFoundRelease] = useState<ReleaseInfo | null>(null)
   const [version, setVersion] = useState('dev')
   const [buildChannel, setBuildChannel] = useState<BuildChannel>('dev')
+  const [pendingChannel, setPendingChannel] = useState<Channel | null>(null)
+  const [checkState, setCheckState] = useState<CheckState>('idle')
+  const [foundRelease, setFoundRelease] = useState<ReleaseInfo | null>(null)
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false)
 
   useEffect(() => {
     settingsAPI.getSettings().then(setSettings).catch(() => {})
@@ -34,31 +79,53 @@ export default function Settings() {
     appInfoAPI.getBuildChannel().then(setBuildChannel).catch(() => {})
   }, [])
 
-  const applyChannel = useCallback((channel: AppSettings['updateChannel']) => {
-    const next: AppSettings = { ...settings, updateChannel: channel }
+  // Persist a fully-formed settings object, keeping local state in sync.
+  const save = (next: AppSettings) => {
     setSettings(next)
     settingsAPI.saveSettings(next).catch(() => {})
-  }, [settings])
+  }
 
-  const handleChannelChange = useCallback((channel: AppSettings['updateChannel']) => {
+  const defaults = { ...DEFAULT_NEW_DASH, ...settings.newDashDefaults }
+
+  const updateDefaults = (patch: Partial<NewDashDefaults>) => {
+    setSettings((prev) => {
+      const next: AppSettings = {
+        ...prev,
+        newDashDefaults: { ...DEFAULT_NEW_DASH, ...prev.newDashDefaults, ...patch },
+      }
+      settingsAPI.saveSettings(next).catch(() => {})
+      return next
+    })
+  }
+
+  const commitDriver = (field: 'driverName' | 'driverNumber', value: string) => {
+    setSettings((prev) => {
+      const next: AppSettings = { ...prev, [field]: value.trim() }
+      settingsAPI.saveSettings(next).catch(() => {})
+      return next
+    })
+  }
+
+  const applyChannel = (channel: Channel) => {
+    setSettings((prev) => {
+      const next: AppSettings = { ...prev, updateChannel: channel }
+      settingsAPI.saveSettings(next).catch(() => {})
+      return next
+    })
+  }
+
+  const handleChannelChange = (channel: Channel) => {
     if (channel === settings.updateChannel) return
-    if (channel === 'pre-release') setPendingChannel(channel)
-    else applyChannel(channel)
-  }, [applyChannel, settings.updateChannel])
+    if (channel === 'pre-release') setPendingChannel('pre-release')
+    else applyChannel('stable')
+  }
 
-  const applyProfile = useCallback((patch: Partial<AppSettings>) => {
-    const next: AppSettings = { ...settings, ...patch }
-    setSettings(next)
-    settingsAPI.saveSettings(next).catch(() => {})
-  }, [settings])
-
-  const confirmPrerelease = useCallback(() => {
-    if (!pendingChannel) return
-    applyChannel(pendingChannel)
+  const confirmPrerelease = () => {
+    applyChannel('pre-release')
     setPendingChannel(null)
-  }, [applyChannel, pendingChannel])
+  }
 
-  const checkNow = useCallback(async () => {
+  const checkNow = async () => {
     setCheckState('checking')
     setFoundRelease(null)
     try {
@@ -72,84 +139,169 @@ export default function Settings() {
     } catch {
       setCheckState('idle')
     }
-  }, [])
+  }
+
+  const resetDefaults = () => {
+    save({ ...settings, newDashDefaults: { ...DEFAULT_NEW_DASH } })
+    setConfirmResetOpen(false)
+  }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
-      <PageHeader heading="Settings" caption="Application preferences" />
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <PageHeader heading="Settings" caption="Global studio preferences" />
 
-      <section className="max-w-2xl space-y-[14px] p-[14px]">
-        <SettingsPanel title="Driver Identity">
-          <div className="flex flex-col gap-[6px]">
-            <FieldLabel>Driver name</FieldLabel>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <SettingsCard>
+          <div className="border-b border-[var(--line)] px-3 py-3">
+            <h3 className="text-[13px] font-semibold text-[var(--text)]">New dashboard defaults</h3>
+          </div>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Default mode</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Applied only when creating a new dash.</p>
+            </div>
+            <SegmentedControl
+              label="Default dash mode"
+              value={defaults.mode}
+              options={DASH_MODE_OPTIONS}
+              onChange={(value) => updateDefaults({ mode: value as DashMode })}
+            />
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Wheel display</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Default resolution preset for new layouts.</p>
+            </div>
+            <Select
+              value={defaults.display}
+              onValueChange={(value) => updateDefaults({ display: value })}
+            >
+              <SelectTrigger aria-label="Default wheel display" size="sm" className="w-[190px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DISPLAY_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Speed unit</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Used by newly-created dash widgets.</p>
+            </div>
+            <SegmentedControl
+              label="Default speed unit"
+              value={defaults.speedUnit}
+              options={SPEED_UNIT_OPTIONS}
+              onChange={(value) => updateDefaults({ speedUnit: value as SpeedUnit })}
+            />
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Temperature</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Used by tyre and engine temperature widgets.</p>
+            </div>
+            <SegmentedControl
+              label="Default temperature unit"
+              value={defaults.tempUnit}
+              options={TEMP_UNIT_OPTIONS}
+              onChange={(value) => updateDefaults({ tempUnit: value as TempUnit })}
+            />
+          </SettingsRow>
+        </SettingsCard>
+
+        <SettingsCard>
+          <div className="border-b border-[var(--line)] px-3 py-3">
+            <h3 className="text-[13px] font-semibold text-[var(--text)]">Driver identity</h3>
+            <p className="mt-1 text-[11px] text-[var(--text3)]">Shown on dashboards and saved with the session.</p>
+          </div>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Driver name</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Used by name widgets and exports.</p>
+            </div>
             <Input
               type="text"
               value={settings.driverName ?? ''}
-              onChange={event => setSettings(previous => ({ ...previous, driverName: event.target.value }))}
-              onBlur={event => applyProfile({ driverName: event.target.value.trim() })}
-              placeholder="Your Name"
-              className="h-8 rounded-control"
+              onChange={(event) => setSettings((prev) => ({ ...prev, driverName: event.target.value }))}
+              onBlur={(event) => commitDriver('driverName', event.target.value)}
+              placeholder="Your name"
+              aria-label="Driver name"
+              className="h-8 w-[190px] rounded-control"
             />
-          </div>
-          <div className="flex flex-col gap-[6px]">
-            <FieldLabel>Driver number</FieldLabel>
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Driver number</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Optional race number.</p>
+            </div>
             <Input
               type="text"
               value={settings.driverNumber ?? ''}
-              onChange={event => setSettings(previous => ({ ...previous, driverNumber: event.target.value }))}
-              onBlur={event => applyProfile({ driverNumber: event.target.value.trim() })}
+              onChange={(event) => setSettings((prev) => ({ ...prev, driverNumber: event.target.value }))}
+              onBlur={(event) => commitDriver('driverNumber', event.target.value)}
               placeholder="#22"
-              className="h-8 rounded-control"
+              aria-label="Driver number"
+              className="h-8 w-[190px] rounded-control"
             />
-          </div>
-        </SettingsPanel>
+          </SettingsRow>
+        </SettingsCard>
 
-        <SettingsPanel title="Update Channel">
-          <p className="font-inter text-[11px] text-[var(--muted)]">
-            Stable builds by default. Pre-release gets alpha and beta builds ahead of stable releases.
-          </p>
-          <div className="flex gap-[8px]">
-            {(['stable', 'pre-release'] as const).map(channel => (
-              <button
-                key={channel}
-                onClick={() => handleChannelChange(channel)}
-                className={cn(
-                  'flex h-8 items-center gap-[8px] rounded-control border px-[10px] font-inter text-[12px] font-bold transition-colors',
-                  settings.updateChannel === channel
-                    ? 'border-[var(--orange)] bg-[var(--orange-tint)] text-[var(--orange)]'
-                    : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)]',
-                )}
-              >
-                {settings.updateChannel === channel && <IconCheck size={11} />}
-                {channel === 'pre-release' ? 'Pre-release' : 'Stable'}
-              </button>
-            ))}
+        <SettingsCard>
+          <div className="border-b border-[var(--line)] px-3 py-3">
+            <h3 className="text-[13px] font-semibold text-[var(--text)]">Updates</h3>
+            <p className="mt-1 text-[11px] text-[var(--text3)]">
+              Stable builds by default. Pre-release receives alpha and beta builds early.
+            </p>
           </div>
-          <div className="flex items-center gap-[10px]">
-            <Button variant="outline" size="sm" onClick={checkNow} disabled={checkState === 'checking'} className="h-8 gap-2 font-saira text-[11px]">
-              {checkState === 'checking' ? <IconLoader2 size={12} className="animate-spin" /> : <IconRefresh size={12} />}
-              Check now
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Update channel</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Pre-release builds may be unstable.</p>
+            </div>
+            <SegmentedControl
+              label="Update channel"
+              value={settings.updateChannel}
+              options={CHANNEL_OPTIONS}
+              onChange={(value) => handleChannelChange(value as Channel)}
+            />
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Check for updates</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Manually query the release feed now.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {checkState === 'up-to-date' ? <StatusPill status="success">Up to date</StatusPill> : null}
+              {checkState === 'update-found' && foundRelease ? (
+                <StatusPill status="info">v{foundRelease.version} available</StatusPill>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={checkNow} disabled={checkState === 'checking'}>
+                {checkState === 'checking' ? 'Checking…' : 'Check now'}
+              </Button>
+            </div>
+          </SettingsRow>
+          <SettingsRow>
+            <div>
+              <span className="font-medium text-[var(--text)]">Version</span>
+              <p className="mt-1 text-[11px] text-[var(--text3)]">Desktop build metadata.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] tabular-nums text-[var(--text)]">v{version}</span>
+              <StatusPill status={channelStatus[buildChannel]}>
+                {buildChannel.toUpperCase()}
+              </StatusPill>
+            </div>
+          </SettingsRow>
+          <SettingsRow>
+            <Button variant="ghost" size="sm" className="w-full justify-center" onClick={() => setConfirmResetOpen(true)}>
+              Reset new dashboard defaults
             </Button>
-            {checkState === 'up-to-date' && <Badge variant="success">Up to date</Badge>}
-            {checkState === 'update-found' && foundRelease && (
-              <span className="font-saira text-[12px] tabular-nums text-[var(--orange)]">v{foundRelease.version} available</span>
-            )}
-          </div>
-        </SettingsPanel>
-
-        <SettingsPanel title="About">
-          <div className="flex items-center justify-between">
-            <span className="font-inter text-[11px] text-[var(--muted)]">Version</span>
-            <span className="font-saira text-[12px] tabular-nums text-[var(--text)]">v{version}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="font-inter text-[11px] text-[var(--muted)]">Channel</span>
-            <Badge variant={buildChannel === 'dev' ? 'warning' : buildChannel === 'alpha' ? 'active' : buildChannel === 'beta' ? 'neutral' : 'connected'}>
-              {buildChannel.toUpperCase()}
-            </Badge>
-          </div>
-        </SettingsPanel>
-      </section>
+          </SettingsRow>
+        </SettingsCard>
+      </div>
 
       <ConfirmDialog
         open={pendingChannel !== null}
@@ -159,6 +311,16 @@ export default function Settings() {
         cancelLabel="Keep Stable"
         onConfirm={confirmPrerelease}
         onCancel={() => setPendingChannel(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset dashboard defaults?"
+        message="New dashboard defaults will return to the Graphite baseline. Driver identity and update settings are unaffected."
+        confirmLabel="Reset"
+        cancelLabel="Cancel"
+        onConfirm={resetDefaults}
+        onCancel={() => setConfirmResetOpen(false)}
       />
     </div>
   )

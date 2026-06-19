@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Badge, Button, PageHeader, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, cn } from '@sprint/ui'
+import { useEffect, useState } from 'react'
+import { IconPencil, IconPlus, IconStar, IconTrash } from '@tabler/icons-react'
+import { Badge, Button, ConfirmDialog, PageHeader, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@sprint/ui'
 import { type LayoutMeta, dashAPI } from '@/lib/dash'
-import { ConfirmDialog } from './ConfirmDialog'
 
 interface DashListProps {
   layouts: LayoutMeta[]
@@ -39,13 +39,11 @@ function DashRow({
 
   return (
     <>
-      <div className={cn(
-        'flex cursor-pointer items-center gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] transition-colors hover:border-[var(--border-2)] hover:bg-[var(--panel-2)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
-        layout.default && 'border-[var(--orange)]',
-      )}
+      <div
+        className="ds-dash-card cursor-pointer focus-visible:border-[var(--accent)] focus-visible:outline-none"
         role="button"
         tabIndex={0}
-        aria-label={`Edit ${layout.name}`}
+        aria-label={`Edit dashboard ${layout.name}`}
         onClick={openEditor}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return
@@ -55,79 +53,93 @@ function DashRow({
           }
         }}
       >
-        {/* Preview thumbnail */}
-        <div className="flex h-12 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-[var(--border)] bg-[var(--bg-deep)]">
-          {preview
-            ? <img src={`data:image/png;base64,${preview}`} className="w-full h-full object-cover" alt={layout.name} />
-            : <span className="font-saira text-base text-[var(--muted-2)]">{layout.name.slice(0, 2).toUpperCase()}</span>
-          }
+        <div className="ds-dash-preview flex items-center justify-center">
+          {preview ? (
+            <img
+              src={`data:image/png;base64,${preview}`}
+              className="h-full w-full object-cover"
+              alt={layout.name}
+            />
+          ) : (
+            <span className="text-[22px] font-bold text-[var(--text3)]">
+              {layout.name.slice(0, 2).toUpperCase()}
+            </span>
+          )}
         </div>
 
-        {/* Name + info */}
-        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm truncate">{layout.name}</span>
-            {layout.default && (
-              <Badge variant="active" className="ui-label text-[9px] flex-shrink-0">Default</Badge>
-            )}
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[13px] font-bold text-[var(--text)]">{layout.name}</span>
+              {layout.default && (
+                <Badge variant="active" className="flex-shrink-0">Default</Badge>
+              )}
+            </div>
+            <span className="text-[11px] tabular-nums text-[var(--text3)]">
+              {layout.gridCols}x{layout.gridRows} grid · {layout.pageCount} page{layout.pageCount !== 1 ? 's' : ''}
+            </span>
           </div>
-          <span className="font-saira text-[12px] tabular-nums text-[var(--muted)]">
-            {layout.gridCols}×{layout.gridRows} grid · {layout.pageCount} page{layout.pageCount !== 1 ? 's' : ''}
-          </span>
+          <Badge
+            variant={isBuiltIn ? 'active' : layout.default ? 'success' : 'tertiary'}
+          >
+            {isBuiltIn ? 'System' : layout.default ? 'Basic' : 'Advanced'}
+          </Badge>
         </div>
 
-        {/* Action buttons with icons */}
-        <TooltipProvider>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="xs" variant="primary" onClick={(event) => { event.stopPropagation(); onEdit(layout.id) }}>
-                  <span className="sr-only">Edit {layout.name}</span>
-                  <EditIcon />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Edit layout</TooltipContent>
-            </Tooltip>
-
-            {!layout.default && (
+        <div className="flex items-center justify-between gap-2 border-t border-[var(--line)] pt-[10px]">
+          <span className="ui-label text-[9px]">Dash layout</span>
+          <TooltipProvider>
+            <div className="flex flex-shrink-0 items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                    <Button size="xs" variant="neutral" onClick={(event) => { event.stopPropagation(); void onSetDefault(layout.id) }}>
-                      <span className="sr-only">Set {layout.name} as default</span>
-                      <StarIcon />
-                    </Button>
+                  <Button size="icon-xs" variant="primary" onClick={(event) => { event.stopPropagation(); onEdit(layout.id) }}>
+                    <span className="sr-only">Edit dashboard {layout.name}</span>
+                    <IconPencil size={12} />
+                  </Button>
                 </TooltipTrigger>
-                <TooltipContent>Set as default</TooltipContent>
+                <TooltipContent>Edit dashboard</TooltipContent>
               </Tooltip>
-            )}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
+              {!layout.default && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="icon-xs" variant="neutral" onClick={(event) => { event.stopPropagation(); void onSetDefault(layout.id) }}>
+                      <span className="sr-only">Set {layout.name} as default</span>
+                      <IconStar size={12} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Set as default</TooltipContent>
+                </Tooltip>
+              )}
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
                     <Button
-                      size="xs"
+                      size="icon-xs"
                       variant="destructive"
                       disabled={isBuiltIn}
                       className="disabled:pointer-events-none disabled:opacity-30"
                       onClick={(event) => { event.stopPropagation(); if (!isBuiltIn) setConfirmOpen(true) }}
                     >
-                      <span className="sr-only">Delete {layout.name}</span>
-                      <TrashIcon />
+                      <span className="sr-only">Delete dashboard {layout.name}</span>
+                      <IconTrash size={12} />
                     </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isBuiltIn ? 'Cannot delete the built-in default layout' : 'Delete layout'}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isBuiltIn ? 'Cannot delete the built-in default dashboard' : 'Delete dashboard'}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        </div>
       </div>
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Delete layout?"
-        message={`"${layout.name}" will be permanently deleted.`}
+        title="Delete dashboard?"
+        message={`The "${layout.name}" dashboard will be permanently deleted.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={() => { setConfirmOpen(false); void onDelete(layout.id) }}
@@ -139,64 +151,46 @@ function DashRow({
 
 export function DashList({ layouts, onEdit, onCreate, onDelete, onSetDefault, onOpenGlobalSettings }: DashListProps) {
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="ds-page">
       <PageHeader
-        heading="Dash Studio"
-        caption="Manage saved layouts and device-ready dash presets"
+        heading="Dashboards"
+        caption="Manage saved dashboards and device-ready presets"
         actions={(
           <>
-          <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings} className="ui-label font-bold">
-            GLOBAL SETTINGS
-          </Button>
-          <Button variant="primary" size="sm" onClick={onCreate} className="ui-label font-bold">
-            + NEW DASH
-          </Button>
+            <Button variant="neutral" size="sm" onClick={onOpenGlobalSettings}>
+              Global settings
+            </Button>
+            <Button variant="primary" size="sm" onClick={onCreate}>
+              Create dashboard
+            </Button>
           </>
         )}
       />
-      {layouts.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center font-saira text-[12px] tabular-nums text-[var(--muted)]">
-          NO_LAYOUTS — create your first dash
-        </div>
-      ) : (
-        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[14px]">
-          {layouts.map(layout => (
-            <DashRow
-              key={layout.id}
-              layout={layout}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onSetDefault={onSetDefault}
-            />
-          ))}
-        </div>
-      )}
+      <div className="ds-dash-grid">
+        {layouts.map(layout => (
+          <DashRow
+            key={layout.id}
+            layout={layout}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onSetDefault={onSetDefault}
+          />
+        ))}
+        <button
+          type="button"
+          className="ds-dash-card ds-dash-create flex min-h-[260px] flex-col items-center justify-center gap-3 border-dashed border-[var(--accent)]/50 bg-[color-mix(in_srgb,var(--accent)_6%,transparent)] text-center transition-colors hover:border-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] focus-visible:border-[var(--accent)] focus-visible:outline-none"
+          onClick={onCreate}
+          aria-label="Create dashboard"
+        >
+          <span className="flex h-12 w-12 items-center justify-center rounded-full border border-[var(--accent)]/50 bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)]">
+            <IconPlus size={22} />
+          </span>
+          <span className="text-[13px] font-bold text-[var(--text)]">Create dashboard</span>
+          <span className="max-w-[220px] text-[11px] text-[var(--text3)]">
+            Start from the Graphite baseline and tune pages, alerts, and widgets.
+          </span>
+        </button>
+      </div>
     </div>
-  )
-}
-
-function EditIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8.5 1.5 10.5 3.5 4 10H2v-2l6.5-6.5z" />
-    </svg>
-  )
-}
-
-function StarIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="6,1 7.5,4.5 11,5 8.5,7.5 9,11 6,9.5 3,11 3.5,7.5 1,5 4.5,4.5" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h8M5 3V2h2v1M4 3v6.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5V3" />
-      <line x1="5" y1="5.5" x2="5" y2="8" />
-      <line x1="7" y1="5.5" x2="7" y2="8" />
-    </svg>
   )
 }

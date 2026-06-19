@@ -31,8 +31,8 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
       <div className="flex items-start gap-2">
         <IconAlertTriangle className="mt-0.5 size-4 flex-shrink-0 text-[var(--amber)]" />
         <div className="min-w-0 flex-1">
-          <p className="font-saira text-[12px] font-bold uppercase tracking-wide text-[var(--amber)]">
-            DRIVER_NOT_INSTALLED
+          <p className="font-sans text-[12px] font-bold text-[var(--amber)]">
+            Driver not installed
           </p>
           <p className="mt-0.5 text-[12px] text-[var(--muted)]">
             The WinUSB driver is not bound to this {driverType.toUpperCase()} device.
@@ -40,7 +40,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
             (requires administrator approval).
           </p>
           {installError ? (
-            <p className="mt-1 font-saira text-[10px] text-[var(--red)]">{installError}</p>
+            <p className="mt-1 font-sans text-[10px] text-[var(--red)]">{installError}</p>
           ) : null}
         </div>
         <Button type="button" variant="ghost" size="icon-xs" onClick={onDismiss} aria-label="Dismiss driver warning">
@@ -51,7 +51,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
         <Button
           size="sm"
           variant="outline"
-          className="h-8 rounded-control border-[var(--amber-ring)] px-[10px] font-saira text-[11px] text-[var(--amber)] disabled:opacity-50"
+          className="h-8 rounded-control border-[var(--amber-ring)] px-[10px] font-sans text-[11px] text-[var(--amber)] disabled:opacity-50"
           onClick={handleInstall}
           disabled={installing}
         >
@@ -64,7 +64,7 @@ export function DriverMissingBanner({ driverType, onDismiss }: DriverMissingBann
             'Install driver'
           )}
         </Button>
-        <span className="font-saira text-[10px] text-[var(--muted-2)]">
+        <span className="font-sans text-[10px] text-[var(--muted-2)]">
           Alternatively, use Zadig or Ref&apos;s VOCOREScreenSetup
         </span>
       </div>

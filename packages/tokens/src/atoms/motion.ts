@@ -4,9 +4,9 @@
  */
 export const duration = {
   instant: '0ms',    // live data updates — never animate
-  fast:    '100ms',  // tooltips, badge state changes
-  normal:  '150ms',  // modals, dropdowns, panel transitions
-  slow:    '250ms',  // page-level transitions
+  fast:    '120ms',  // tooltips, badge state changes
+  normal:  '160ms',  // modals, dropdowns, panel transitions
+  slow:    '240ms',  // page-level transitions
 } as const
 
 export const easing = {

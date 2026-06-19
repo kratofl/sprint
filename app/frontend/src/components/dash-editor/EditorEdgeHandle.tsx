@@ -1,4 +1,5 @@
-import { cn } from '@sprint/ui'
+import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
+import { Button, cn } from '@sprint/ui'
 
 interface EditorEdgeHandleProps {
   side: 'left' | 'right'
@@ -8,15 +9,17 @@ interface EditorEdgeHandleProps {
 
 export function EditorEdgeHandle({ side, label, onClick }: EditorEdgeHandleProps) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="icon-xs"
       data-slot="editor-edge-handle"
       data-side={side}
       onClick={onClick}
       title={label}
       aria-label={`Open ${label.toLowerCase()} panel`}
       className={cn(
-        'group absolute top-1/2 z-10 flex h-14 w-5 -translate-y-1/2 items-center justify-center',
+        'group absolute top-1/2 z-10 flex !h-14 !w-5 -translate-y-1/2 items-center justify-center px-0',
         'border border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] transition-colors',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
         'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]',
@@ -32,18 +35,10 @@ export function EditorEdgeHandle({ side, label, onClick }: EditorEdgeHandleProps
           side === 'left' ? 'right-0' : 'left-0',
         )}
       />
-      <EdgeChevron side={side} />
-      <span className="sr-only">{label}</span>
-    </button>
-  )
-}
-
-function EdgeChevron({ side }: { side: 'left' | 'right' }) {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {side === 'left'
-        ? <path d="M3.5 2 6.5 5 3.5 8" />
-        : <path d="M6.5 2 3.5 5 6.5 8" />}
-    </svg>
+        ? <IconChevronRight size={10} aria-hidden="true" />
+        : <IconChevronLeft size={10} aria-hidden="true" />}
+      <span className="sr-only">{label}</span>
+    </Button>
   )
 }

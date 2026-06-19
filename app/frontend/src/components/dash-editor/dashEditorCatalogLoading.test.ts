@@ -17,8 +17,14 @@ test('dash editor loads widget catalog independently from device and alert APIs'
   assert.match(controllerSource, /alertCatalogAPI\.getAlertCatalog\(\)[\s\S]{0,160}setAlertCatalog/)
 })
 
-test('dash editor list, alert, and preview chrome uses Figma panels', () => {
-  assert.match(dashListSource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[14px\]/)
+test('dash editor list, alert, and preview chrome uses Graphite panels', () => {
+  assert.match(dashListSource, /\bds-page\b/)
+  assert.match(dashListSource, /\bds-dash-grid\b/)
+  assert.match(dashListSource, /\bds-dash-card\b/)
+  assert.match(dashListSource, /\bds-dash-create\b/)
+  assert.match(dashListSource, /\bds-dash-preview\b/)
+  assert.match(dashListSource, /\bBadge\b/)
+  assert.doesNotMatch(dashListSource, /\bds-pill\b/)
   assert.match(alertsEditorSource, /rounded-alert border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[10px\]/)
   assert.match(widgetPreviewSource, /rounded-alert border border-\[var\(--border\)\] bg-\[var\(--panel-2\)\]/)
   assert.match(`${dashListSource}\n${widgetPreviewSource}`, /font-saira text-\[1[02]px\] tabular-nums text-\[var\(--muted/)

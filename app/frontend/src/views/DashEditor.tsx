@@ -112,38 +112,38 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <PageHeader
-          heading="Dash Studio"
-          caption="Use the real Wails desktop window for layout creation, live preview, and agent-driven UI inspection."
+          heading="Dashboards"
+          caption="Use the real Wails desktop window for dashboard creation, live preview, and agent-driven UI inspection."
           status={<Badge variant="warning" className="ui-label">{runtimeNotice.title}</Badge>}
         />
         <div className="flex flex-1 items-center justify-center p-6">
-          <div className="surface-panel flex w-full max-w-3xl flex-col gap-5 p-5">
+          <div className="flex w-full max-w-3xl flex-col gap-5 rounded-card border border-border bg-[var(--panel)] p-5">
             <div className="space-y-2">
-              <p className="font-mono text-[10px] leading-relaxed text-foreground">{runtimeNotice.description}</p>
-              <p className="font-mono text-[10px] leading-relaxed text-text-muted">{runtimeNotice.browserHint}</p>
+              <p className="font-sans tabular-nums text-[10px] leading-relaxed text-[var(--text)]">{runtimeNotice.description}</p>
+              <p className="font-sans tabular-nums text-[10px] leading-relaxed text-[var(--text2)]">{runtimeNotice.browserHint}</p>
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="space-y-2">
-                <p className="ui-label text-[9px] font-bold text-text-muted">1. LAUNCH_DESKTOP</p>
-                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                <p className="ui-label text-[9px] font-bold text-[var(--text2)]">1. LAUNCH_DESKTOP</p>
+                <div className="rounded-control border border-[var(--line)] bg-[var(--panel2)] px-3 py-2 font-sans tabular-nums text-[10px] text-[var(--text)]">
                   {runtimeNotice.launchCommand}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="ui-label text-[9px] font-bold text-text-muted">2. WAIT_FOR_WAILS_DEVSERVER</p>
-                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                <p className="ui-label text-[9px] font-bold text-[var(--text2)]">2. WAIT_FOR_WAILS_DEVSERVER</p>
+                <div className="rounded-control border border-[var(--line)] bg-[var(--panel2)] px-3 py-2 font-sans tabular-nums text-[10px] text-[var(--text)]">
                   {runtimeNotice.waitCommand}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <p className="ui-label text-[9px] font-bold text-text-muted">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
-                <div className="rounded-sm border border-border bg-bg-shell px-3 py-2 font-mono text-[10px] text-foreground">
+                <p className="ui-label text-[9px] font-bold text-[var(--text2)]">3. OPEN_WITH_PLAYWRIGHT_MCP</p>
+                <div className="rounded-control border border-[var(--line)] bg-[var(--panel2)] px-3 py-2 font-sans tabular-nums text-[10px] text-[var(--text)]">
                   {runtimeNotice.browserSurfaceUrl}
                 </div>
-                <p className="font-mono text-[9px] leading-relaxed text-text-muted">{runtimeNotice.browserSurfaceNote}</p>
+                <p className="font-sans tabular-nums text-[9px] leading-relaxed text-[var(--text2)]">{runtimeNotice.browserSurfaceNote}</p>
               </div>
             </div>
           </div>
@@ -168,7 +168,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <PageHeader
-          heading="Global dash settings"
+          heading="Global dashboard settings"
           caption="Theme, domain palette, and formatting defaults"
           status={(
             <>
@@ -179,7 +179,7 @@ const DashEditor = forwardRef<DashEditorHandle>(function DashEditor(_, ref) {
           actions={(
             <>
               <Button variant="outline" size="sm" onClick={() => setMode('list')}>
-                BACK
+                Back
               </Button>
               <Button variant="primary" size="sm" onClick={handleGlobalSave} disabled={globalSaving}>
                 {globalSaving ? 'Saving…' : 'Save'}

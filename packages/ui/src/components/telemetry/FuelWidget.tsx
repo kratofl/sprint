@@ -18,10 +18,10 @@ export function FuelWidget({ fuel, capacity, fuelPerLap, className, ...props }: 
   const fillPct = Math.max(0, Math.min(100, (fuel / safeCap) * 100))
   const lapsLeft = fuelPerLap > 0 ? fuel / fuelPerLap : null
 
-  const fillGradient =
-    fillPct < 10 ? 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)' :
-    fillPct < 25 ? 'linear-gradient(90deg, var(--orange) 0%, var(--orange) 100%)' :
-    'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)'
+  const fillColor =
+    fillPct < 10 ? 'var(--red)' :
+    fillPct < 25 ? 'var(--orange)' :
+    'var(--green)'
 
   return (
     <div className={cn('flex flex-col gap-2', className)} {...props}>
@@ -29,7 +29,7 @@ export function FuelWidget({ fuel, capacity, fuelPerLap, className, ...props }: 
       <div className="relative h-2 w-full overflow-hidden rounded-pill bg-[var(--panel-3)]">
         <div
           className="absolute left-0 top-0 h-full rounded-pill transition-[width] duration-300"
-          style={{ width: `${fillPct}%`, background: fillGradient }}
+          style={{ width: `${fillPct}%`, background: fillColor }}
         />
       </div>
 

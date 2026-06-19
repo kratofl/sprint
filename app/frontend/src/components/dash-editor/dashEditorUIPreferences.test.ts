@@ -36,10 +36,14 @@ test('dash editor ui preferences preserve per-panel open and pinned flags from p
   )
 })
 
-test('default editor path does not expose theme or font gallery controls', () => {
-  assert.doesNotMatch(dashEditModeSource, /setEditorTab\('settings'\)/)
-  assert.doesNotMatch(dashEditModeSource, />Settings<\/button>/)
-  assert.match(dashEditModeSource, /const defaultDashBrand/)
-  assert.match(dashEditModeSource, /numericFont: 'Saira'/)
-  assert.match(dashEditModeSource, /accent: 'var\(--orange\)'/)
+test('editor top bar exposes the Graphite layout alerts and settings views', () => {
+  assert.match(dashEditModeSource, /setEditorTab\('settings'\)/)
+  assert.match(dashEditModeSource, /\bSegmentedControl\b/)
+  assert.match(dashEditModeSource, /label="Editor view"/)
+  assert.match(dashEditModeSource, /\{ value: 'layout', label: 'Layout' \}/)
+  assert.match(dashEditModeSource, /\{ value: 'alerts', label: 'Alerts' \}/)
+  assert.match(dashEditModeSource, /\{ value: 'settings', label: 'Settings' \}/)
+  assert.doesNotMatch(dashEditModeSource, /\bfseg\b/)
+  assert.doesNotMatch(dashEditModeSource, /const defaultDashBrand/)
+  assert.doesNotMatch(dashEditModeSource, /numericFont: 'Saira'/)
 })

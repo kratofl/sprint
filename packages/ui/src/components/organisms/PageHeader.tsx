@@ -21,24 +21,24 @@ export function PageHeader({
     <header
       data-slot="page-header"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]",
+        "ds-head",
         className
       )}
       {...props}
     >
       <div className="min-w-0">
-        <h2 className="font-inter text-[13px] font-bold text-[var(--text)]">
+        <h1>
           {heading}
-        </h2>
+        </h1>
         {caption ? (
-          <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">
+          <p>
             {caption}
           </p>
         ) : null}
       </div>
 
       {status || actions ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="ds-acts">
           {status ? (
             <div className="flex flex-wrap items-center gap-2">
               {status}

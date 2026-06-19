@@ -9,6 +9,8 @@ export * from './atoms/colors'
 export * from './atoms/typography'
 export * from './atoms/radii'
 export * from './atoms/motion'
+export * from './graphite'
+export * from './figma'
 
 // Semantic/component token layers
 export * from './semantic'

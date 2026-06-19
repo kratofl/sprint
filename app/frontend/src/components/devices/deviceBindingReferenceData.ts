@@ -20,14 +20,16 @@ export async function loadDeviceBindingReferenceData({
     getCommandCatalog().catch(() => [] as CommandMeta[]),
   ])
 
+  // Go marshals an empty/nil slice as JSON `null`, which resolves successfully
+  // (bypassing the `.catch` above), so coalesce to an empty array before use.
   return {
-    layouts,
+    layouts: layouts ?? [],
     deviceOnlyCmds: selectDeviceBindingCommands(commands),
   }
 }
 
 export function selectDeviceBindingCommands(commands: CommandMeta[]): CommandMeta[] {
-  return commands.filter(command => command.deviceOnly || isDashWrapperCycleCommand(command.id))
+  return (commands ?? []).filter(command => command.deviceOnly || isDashWrapperCycleCommand(command.id))
 }
 
 function isDashWrapperCycleCommand(commandId: string): boolean {

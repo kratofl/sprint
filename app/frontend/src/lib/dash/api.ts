@@ -76,7 +76,7 @@ export const dashAPI = {
   async listLayouts(): Promise<LayoutMeta[]> {
     return runDesktopCall('DashListLayouts', async () => {
       const layouts = await DashListLayouts()
-      return layouts.map(layout => adaptLayoutMeta(layout as unknown as Record<string, unknown>))
+      return (layouts ?? []).map(layout => adaptLayoutMeta(layout as unknown as Record<string, unknown>))
     })
   },
 
@@ -149,14 +149,14 @@ export const deviceAPI = {
   async getCatalog(): Promise<CatalogEntry[]> {
     return runDesktopCall('DeviceGetCatalog', async () => {
       const entries = await DeviceGetCatalog()
-      return entries.map(entry => adaptCatalogEntry(entry as unknown as Record<string, unknown>))
+      return (entries ?? []).map(entry => adaptCatalogEntry(entry as unknown as Record<string, unknown>))
     })
   },
 
   async getSavedDevices(): Promise<SavedDevice[]> {
     return runDesktopCall('DeviceGetSavedDevices', async () => {
       const devices = await DeviceGetSavedDevices()
-      return devices.map(device => adaptSavedDevice(device as unknown as Record<string, unknown>))
+      return (devices ?? []).map(device => adaptSavedDevice(device as unknown as Record<string, unknown>))
     })
   },
 
@@ -167,7 +167,7 @@ export const deviceAPI = {
   async scanUnregistered(catalogID: string): Promise<DetectedScreen[]> {
     return runDesktopCall('DeviceScanUnregistered', async () => {
       const devices = await DeviceScanUnregistered(catalogID)
-      return devices.map(device => adaptDetectedScreen(device as unknown as Record<string, unknown>))
+      return (devices ?? []).map(device => adaptDetectedScreen(device as unknown as Record<string, unknown>))
     })
   },
 
@@ -224,7 +224,7 @@ export const deviceBindingsAPI = {
   async getDeviceBindings(vid: number, pid: number, serial: string): Promise<DeviceBinding[]> {
     return runDesktopCall('DeviceGetDeviceBindings', async () => {
       const bindings = await DeviceGetDeviceBindings(vid, pid, serial)
-      return bindings.map(binding => ({ button: binding.button, command: binding.command }))
+      return (bindings ?? []).map(binding => ({ button: binding.button, command: binding.command }))
     })
   },
 
@@ -237,7 +237,7 @@ export const widgetCatalogAPI = {
   async getWidgetCatalog(): Promise<WidgetCatalogEntry[]> {
     return runDesktopCall('GetWidgetCatalog', async () => {
       const widgets = await GetWidgetCatalog()
-      return widgets.map(widget => adaptWidgetCatalogEntry(widget as unknown as Record<string, unknown>))
+      return (widgets ?? []).map(widget => adaptWidgetCatalogEntry(widget as unknown as Record<string, unknown>))
     })
   },
 
@@ -250,7 +250,7 @@ export const alertCatalogAPI = {
   async getAlertCatalog(): Promise<AlertMeta[]> {
     return runDesktopCall('GetAlertCatalog', async () => {
       const alerts = await GetAlertCatalog()
-      return alerts.map(alert => adaptAlertMeta(alert as unknown as Record<string, unknown>))
+      return (alerts ?? []).map(alert => adaptAlertMeta(alert as unknown as Record<string, unknown>))
     })
   },
 }

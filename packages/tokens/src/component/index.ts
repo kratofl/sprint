@@ -17,7 +17,7 @@ export const componentTokens = {
       border: semanticTokens.color.platform.winui.strokeSubtle,
       text: semanticTokens.color.platform.winui.textPrimary,
       mutedText: semanticTokens.color.platform.winui.textTertiary,
-      height: '32px',
+      height: '40px',
     },
     commandButton: {
       bg: 'transparent',
@@ -51,14 +51,14 @@ export const componentTokens = {
       text: semanticTokens.color.text.inverse,
       border: semanticTokens.color.action.primary,
       radius: semanticTokens.radius.control,
-      height: '25px',
+      height: '34px',
     },
     secondary: {
       bg: semanticTokens.color.surface.raised,
       text: semanticTokens.color.text.muted,
       border: semanticTokens.color.border.default,
       radius: semanticTokens.radius.control,
-      height: '25px',
+      height: '34px',
     },
     destructive: {
       bg: semanticTokens.color.status.dangerMuted,
@@ -66,7 +66,7 @@ export const componentTokens = {
       text: semanticTokens.color.status.danger,
       border: semanticTokens.color.status.dangerBorder,
       radius: semanticTokens.radius.control,
-      height: '25px',
+      height: '34px',
     },
   },
   card: {
@@ -81,7 +81,7 @@ export const componentTokens = {
     borderFocus: semanticTokens.color.border.focus,
     text: semanticTokens.color.text.primary,
     radius: semanticTokens.radius.control,
-    height: '32px',
+    height: '34px',
   },
   badge: {
     neutral: {

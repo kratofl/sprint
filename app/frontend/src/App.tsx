@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, NavRail, type NavRailSection } from '@sprint/ui'
 import {
-  IconArrowLeft,
+  AppShell,
+  BodyTray,
+  ConfirmDialog,
+  IconButton,
+  NavRail,
+  Titlebar,
+  type NavRailSection,
+} from '@sprint/ui'
+import {
+  IconChevronLeft,
+  IconChevronRight,
   IconGauge,
   IconHelp,
   IconLayoutDashboard,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconMinus,
   IconSettings,
   IconSquare,
   IconUsb,
   IconX,
 } from '@tabler/icons-react'
-import wallpaperUrl from '@/assets/brand/sprint-wallpaper.png'
-import Telemetry from '@/views/Telemetry'
+import sprintIconUrl from '@/assets/brand/sprint-icon.svg'
+import Home from '@/views/Home'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
 import Settings from '@/views/Settings'
@@ -20,9 +31,7 @@ import Help from '@/views/Help'
 import { useTelemetry } from '@/hooks/useTelemetry'
 import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
-import { ConfirmDialog } from '@/components/ConfirmDialog'
 import UpdateToast from '@/components/UpdateToast'
-import { PageTabs } from '@/components/PageTabs'
 import { APP_EVENTS } from '@/lib/desktopEvents'
 import {
   createViewHistory,
@@ -42,19 +51,21 @@ import {
 import { onEvent } from '@/lib/wails'
 
 type View = AppView
-type ShellView = Extract<View, 'telemetry' | 'dash' | 'devices' | 'settings' | 'help'>
 
 const NAV_SECTIONS: NavRailSection[] = [
-  { label: 'Developer', items: [{ id: 'telemetry', label: 'Dashboard', icon: IconGauge }] },
   {
-    label: 'Configure',
     items: [
-      { id: 'dash', label: 'Dash Editor', icon: IconLayoutDashboard },
-      { id: 'devices', label: 'Devices', icon: IconUsb },
+      { id: 'home', label: 'Home', icon: IconGauge },
     ],
   },
   {
-    label: 'System',
+    label: 'Devices',
+    items: [
+      { id: 'devices', label: 'Devices', icon: IconUsb },
+      { id: 'dashboards', label: 'Dashboards', icon: IconLayoutDashboard },
+    ],
+  },
+  {
     pinned: 'bottom',
     items: [
       { id: 'settings', label: 'Settings', icon: IconSettings },
@@ -64,29 +75,27 @@ const NAV_SECTIONS: NavRailSection[] = [
 ]
 
 const PRIMARY_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items)
-
-const VIEW_META: Record<ShellView, { title: string; primary: string | null }> = {
-  telemetry: { title: 'Developer / Dashboard', primary: 'Pause' },
-  dash: { title: 'Configure / Dash Editor', primary: 'Save' },
-  devices: { title: 'Configure / Devices', primary: 'Scan' },
-  settings: { title: 'System / Settings', primary: 'Save' },
-  help: { title: 'System / Help', primary: null },
-}
+const noDragRegionProps = { 'app-region': 'no-drag' } as const
 
 export default function App() {
   const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory())
   const visibleNav = useMemo(() => PRIMARY_NAV_ITEMS, [])
-  const { frame } = useTelemetry()
+  const { frame, connected, fps } = useTelemetry()
   const { releaseInfo, installing, dismiss, install } = useUpdateCheck()
 
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
   const [pendingHistory, setPendingHistory] = useState<ViewHistory | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   const view = viewHistory.current
+  const currentLabel = PRIMARY_NAV_ITEMS.find((item) => item.id === view)?.label ?? 'Home'
+  const demoTelemetryActive = !frame && !connected
+  const titlebarConnected = connected || demoTelemetryActive
+  const titlebarFps = fps || (demoTelemetryActive ? 60 : 0)
 
   const applyHistory = useCallback((nextHistory: ViewHistory) => {
     if (
@@ -97,7 +106,7 @@ export default function App() {
       return
     }
 
-    if (view === 'dash' && dashEditorRef.current?.isDirty) {
+    if (view === 'dashboards' && dashEditorRef.current?.isDirty) {
       setPendingHistory(nextHistory)
       setShowLeaveConfirm(true)
       return
@@ -178,104 +187,128 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [switchView, visibleNav])
 
-  const currentView = view in VIEW_META ? view as ShellView : 'dash'
-  const currentMeta = VIEW_META[currentView]
-
   return (
-    <div
-      className="min-h-screen overflow-hidden bg-cover bg-center p-4 font-inter text-[var(--text)]"
-      style={{ backgroundImage: `url(${wallpaperUrl})` }}
+    <AppShell
+      sidebarCollapsed={sidebarCollapsed}
+      titlebar={
+        <Titlebar
+          app-region="drag"
+          onDoubleClick={(event) => {
+            if ((event.target as HTMLElement).closest('button, a, input')) return
+            void windowAPI.toggleMaximise()
+          }}
+          logo={<img src={sprintIconUrl} alt="Sprint" className="size-5 rounded-[6px]" draggable={false} />}
+          navigation={
+            <>
+              <IconButton
+                {...noDragRegionProps}
+                label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-pressed={sidebarCollapsed}
+                variant="ghost"
+                size="icon-sm"
+                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)]"
+                icon={sidebarCollapsed ? <IconLayoutSidebarLeftExpand size={15} /> : <IconLayoutSidebarLeftCollapse size={15} />}
+                onClick={() => setSidebarCollapsed(current => !current)}
+              />
+              <IconButton
+                {...noDragRegionProps}
+                label="Back"
+                variant="ghost"
+                size="icon-sm"
+                disabled={!viewHistory.canGoBack}
+                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)] disabled:opacity-30"
+                icon={<IconChevronLeft size={15} />}
+                onClick={stepBackward}
+              />
+              <IconButton
+                {...noDragRegionProps}
+                label="Forward"
+                variant="ghost"
+                size="icon-sm"
+                disabled={!viewHistory.canGoForward}
+                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)] disabled:opacity-30"
+                icon={<IconChevronRight size={15} />}
+                onClick={stepForward}
+              />
+            </>
+          }
+          breadcrumb={
+            <div className="ml-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text3)]">
+              <span>SPRINT TELEMETRY</span>
+              <span className="text-[var(--line2)]">/</span>
+              <span className="text-[var(--text)]">{currentLabel}</span>
+            </div>
+          }
+          status={
+            <div
+              {...noDragRegionProps}
+              className="flex h-[24px] items-center gap-2 rounded-[999px] border border-[var(--line2)] bg-[var(--panel2)] px-3 text-[9.5px] font-bold uppercase tracking-[0.14em] text-[var(--text2)]"
+            >
+              <span
+                aria-hidden="true"
+                className={
+                  titlebarConnected
+                    ? 'size-1.5 rounded-full bg-[var(--green)] animate-[fdpulse_1.2s_ease-in-out_infinite]'
+                    : 'size-1.5 rounded-full bg-[var(--red)]'
+                }
+              />
+              <span>{titlebarConnected ? demoTelemetryActive ? 'SIM DEMO' : 'Assetto Corsa' : 'NO SIGNAL'}</span>
+            </div>
+          }
+          metrics={<span className="text-[10px] font-semibold tabular-nums text-[var(--text3)]">{titlebarFps}Hz</span>}
+          windowControls={
+            <div className={windowControlsRailClassName}>
+              <button
+                type="button"
+                app-region="no-drag"
+                onClick={() => { void windowAPI.minimise() }}
+                aria-label="Minimise"
+                className={windowControlMinimiseButtonClassName}
+              >
+                <IconMinus size={10} />
+              </button>
+              <button
+                type="button"
+                app-region="no-drag"
+                onClick={() => { void windowAPI.toggleMaximise() }}
+                aria-label="Maximise"
+                className={windowControlMaximiseButtonClassName}
+              >
+                <IconSquare size={10} />
+              </button>
+              <button
+                type="button"
+                app-region="no-drag"
+                onClick={() => { void windowAPI.close() }}
+                aria-label="Close"
+                className={windowControlCloseButtonClassName}
+              >
+                <IconX size={11} />
+              </button>
+            </div>
+          }
+        />
+      }
+      sidebar={
+        <NavRail
+          collapsed={sidebarCollapsed}
+          sections={NAV_SECTIONS}
+          activeId={view}
+          onSelect={(id) => switchView(id as View)}
+        />
+      }
     >
       {splashMounted && (
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      <div className="mx-auto flex h-[883px] w-[1570px] max-w-full origin-top-left flex-col overflow-hidden rounded-panel border border-[var(--win-edge)] bg-[var(--win)] shadow-[0_4px_2px_rgba(0,0,0,.14),0_8px_16px_rgba(0,0,0,.14)]">
-        <header
-          className="flex h-8 shrink-0 items-center gap-2 px-[14px] [--wails-draggable:drag]"
-          onDoubleClick={(event) => {
-            if ((event.target as HTMLElement).closest('button, a, input')) return
-            void windowAPI.toggleMaximise()
-          }}
-        >
-          <div className="flex size-5 items-center justify-center rounded-tile bg-[var(--orange)] font-space text-[13px] font-bold text-[var(--panel)]">
-            S
-          </div>
-          <span className="font-inter text-[13px] font-bold text-white">Sprint</span>
-          <span className="font-inter text-[13px] text-[var(--muted)]">- Telemetry System</span>
-          <div className="flex-1" />
-          <div className={windowControlsRailClassName}>
-            <button
-              type="button"
-              onClick={() => { void windowAPI.minimise() }}
-              aria-label="Minimise"
-              className={windowControlMinimiseButtonClassName}
-            >
-              <IconMinus size={10} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { void windowAPI.toggleMaximise() }}
-              aria-label="Maximise"
-              className={windowControlMaximiseButtonClassName}
-            >
-              <IconSquare size={10} />
-            </button>
-            <button
-              type="button"
-              onClick={() => { void windowAPI.close() }}
-              aria-label="Close"
-              className={windowControlCloseButtonClassName}
-            >
-              <IconX size={11} />
-            </button>
-          </div>
-        </header>
-
-        <div className="flex min-h-0 flex-1">
-          <aside className="flex w-[220px] shrink-0 flex-col justify-between gap-[14px] p-[10px]">
-            <NavRail
-              sections={NAV_SECTIONS}
-              activeId={view}
-              onSelect={(id) => switchView(id as View)}
-            />
-          </aside>
-
-          <section className="flex min-w-0 flex-1 flex-col gap-[14px] rounded-panel border border-[var(--border)] bg-[var(--bg)] p-[14px]">
-            <div className="flex h-[41px] shrink-0 items-center gap-2 rounded-panel border border-[var(--border)] bg-[var(--panel)] px-2 py-1">
-              <button
-                type="button"
-                onClick={stepBackward}
-                disabled={!viewHistory.canGoBack}
-                className="flex size-[21px] items-center justify-center rounded-tile bg-[var(--panel-2)] text-[var(--muted)] disabled:opacity-40"
-                aria-label="Back"
-              >
-                <IconArrowLeft size={13} />
-              </button>
-              <span className="font-saira text-[11px] text-white">{currentMeta.title}</span>
-              <PageTabs activeView={currentView} onSelect={switchView} />
-              <div className="ml-auto flex items-center gap-1">
-                <Button variant="secondary" size="sm" onClick={stepForward} disabled={!viewHistory.canGoForward}>
-                  Forward
-                </Button>
-                {currentMeta.primary ? (
-                  <Button variant="primary" size="sm">
-                    {currentMeta.primary}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            <main className="min-h-0 flex-1 overflow-hidden">
-              {view === 'telemetry' && <Telemetry frame={frame} />}
-              {view === 'dash' && <DashEditor ref={dashEditorRef} />}
-              {view === 'devices' && <Devices />}
-              {view === 'settings' && <Settings />}
-              {view === 'help' && <Help />}
-            </main>
-          </section>
-        </div>
-      </div>
+      <BodyTray>
+        {view === 'home' && <Home frame={frame} connected={connected} fps={fps} />}
+        {view === 'devices' && <Devices />}
+        {view === 'dashboards' && <DashEditor ref={dashEditorRef} />}
+        {view === 'settings' && <Settings />}
+        {view === 'help' && <Help />}
+      </BodyTray>
 
       <ConfirmDialog
         open={showLeaveConfirm}
@@ -293,6 +326,6 @@ export default function App() {
         onInstall={install}
         onDismiss={dismiss}
       />
-    </div>
+    </AppShell>
   )
 }

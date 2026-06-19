@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { IconCpu, IconKeyboard, IconUsb } from '@tabler/icons-react'
-import { Badge, Button, Skeleton, cn } from '@sprint/ui'
+import { Badge, Button, Modal, Skeleton, cn } from '@sprint/ui'
 import {
   type CatalogEntry,
   type DetectedScreen,
@@ -26,6 +26,10 @@ const EMPTY_ACTIONS = {
   buttonbox: { label: 'Add button box', icon: IconKeyboard },
 } as const
 
+function isMissingWailsMethod(error: unknown, methodName: string): boolean {
+  return error instanceof Error && error.message === `Wails method not available: ${methodName}`
+}
+
 export function DeviceSection() {
   const [devices, setDevices] = useState<SavedDevice[]>([])
   const [catalog, setCatalog] = useState<CatalogEntry[]>([])
@@ -40,7 +44,9 @@ export function DeviceSection() {
 
   const loadDevices = useCallback(async () => {
     try {
-      const savedDevices = await deviceAPI.getSavedDevices()
+      // Go nil slices arrive as JSON `null`; coalesce so downstream .filter/.map are safe.
+      const savedDevices = (await deviceAPI.getSavedDevices()) ?? []
+      setError(null)
       setDevices(savedDevices)
       const screens = savedDevices.filter(device => deviceHasScreen(device.type))
       const entries = await Promise.all(
@@ -53,6 +59,11 @@ export function DeviceSection() {
       setDisabledMap(Object.fromEntries(entries))
       return savedDevices
     } catch (error) {
+      if (isMissingWailsMethod(error, 'DeviceGetSavedDevices')) {
+        setError(null)
+        setDevices([])
+        return []
+      }
       setError(String(error))
       return []
     }
@@ -71,7 +82,7 @@ export function DeviceSection() {
     Promise.all([
       loadDevices(),
       deviceAPI.getCatalog().then(setCatalog).catch(() => {}),
-      deviceAPI.getScreenStatus().then(setScreenStatus),
+      deviceAPI.getScreenStatus().then(setScreenStatus).catch(() => setScreenStatus('unknown')),
       loadBindingReferenceData(),
     ]).finally(() => setLoading(false))
   }, [loadBindingReferenceData, loadDevices])
@@ -147,18 +158,17 @@ export function DeviceSection() {
   ) as Record<typeof DEVICE_TYPES[number], number>, [devices])
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="flex w-[286px] flex-shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--panel)]">
-        <div className="border-b border-[var(--border)] bg-[var(--panel)] px-[14px] py-[10px]">
-          <h3 className="ui-label text-[11px] font-semibold text-[var(--muted)]">Device library</h3>
-          <p className="mt-1 text-[12px] text-[var(--muted)]">
-            Registered hardware and quick-add actions.
-          </p>
+    <div className="ds-dev">
+      <aside className="ds-dev-list">
+        <div className="border-b border-[var(--line)] px-[14px] py-[10px]">
+          <h3 className="ui-label text-[10px] font-bold text-[var(--text3)]">
+            Connected · {devices.length}
+          </h3>
         </div>
 
         <div className="flex-1 overflow-y-auto py-[10px]">
           {error ? (
-            <p className="mx-[10px] mb-[10px] rounded-alert border border-[var(--red-ring)] bg-[var(--red-tint)] p-[10px] font-saira text-[12px] text-[var(--red)]">{error}</p>
+            <p className="mx-[10px] mb-[10px] rounded-alert border border-[var(--red-ring)] bg-[var(--red-tint)] p-[10px] font-sans text-[12px] text-[var(--red)]">{error}</p>
           ) : null}
 
           {DEVICE_TYPES.map(type => {
@@ -173,14 +183,14 @@ export function DeviceSection() {
                     <span className="ui-label text-[10px] font-bold text-[var(--muted)]">
                       {SECTION_LABELS[type]}
                     </span>
-                    <Badge variant="outline" className="font-saira text-[10px]">
+                    <Badge variant="outline" className="font-sans text-[10px] tabular-nums">
                       {deviceCounts[type]}
                     </Badge>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 rounded-control px-[10px] text-[11px]"
+                    className="h-8 px-[10px] text-[11px]"
                     onClick={() => handleAddForType(type)}
                   >
                     + ADD
@@ -191,7 +201,7 @@ export function DeviceSection() {
                   {loading && group.length === 0 ? (
                     <Skeleton className="h-9 w-full" />
                   ) : group.length === 0 ? (
-                    <p className="px-1 font-saira text-[10px] text-[var(--muted-2)]">None added yet</p>
+                    <p className="px-1 font-sans text-[11px] text-[var(--muted)]">None added yet</p>
                   ) : (
                     group.map(device => {
                       const key = deviceKey(device)
@@ -212,19 +222,17 @@ export function DeviceSection() {
                           type="button"
                           onClick={() => handleDeviceClick(device)}
                           className={cn(
-                            'w-full rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--orange)]',
-                            selected
-                              ? 'border-[var(--orange)] text-[var(--orange)]'
-                              : 'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]',
+                            'ds-devpick',
+                            selected && 'sel',
                           )}
                         >
                           <div className="flex min-w-0 items-center gap-1.5">
                             {dotColor ? (
                               <span className={cn('size-1.5 flex-shrink-0 rounded-full', dotColor)} />
                             ) : null}
-                            <p className="truncate font-saira text-[12px] font-bold">{device.name}</p>
+                            <p className="truncate font-sans text-[13px] font-bold">{device.name}</p>
                           </div>
-                          <p className="font-saira text-[10px] uppercase text-[var(--muted)]">
+                          <p className="font-sans text-[11px] text-[var(--muted)]">
                             {device.driver || device.type || 'unknown'}
                           </p>
                         </button>
@@ -235,17 +243,25 @@ export function DeviceSection() {
               </div>
             )
           })}
+
+          <button
+            type="button"
+            onClick={() => handleAddForType('screen')}
+            className="ds-adddev mx-[10px] mt-2"
+          >
+            + Add device
+          </button>
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-[var(--bg-deep)]">
-        {driverMissingType ? (
-          <DriverMissingBanner
-            driverType={driverMissingType}
-            onDismiss={() => setDriverMissingType(null)}
-          />
-        ) : null}
-
+      <Modal
+        open={panel.tag === 'catalog'}
+        title={`Add ${panel.tag === 'catalog' ? SECTION_LABELS[panel.filterType].toLowerCase() : 'device'}`}
+        onOpenChange={open => {
+          if (!open) setPanel({ tag: 'empty' })
+        }}
+        contentProps={{ className: 'w-[min(720px,calc(100vw-48px))]' }}
+      >
         {panel.tag === 'catalog' ? (
           <CatalogPanel
             entries={catalogForType}
@@ -254,6 +270,15 @@ export function DeviceSection() {
             onAddScanned={handleCatalogAddScanned}
             onClose={() => setPanel({ tag: 'empty' })}
             onError={setError}
+          />
+        ) : null}
+      </Modal>
+
+      <section className="min-h-0 min-w-0 overflow-hidden">
+        {driverMissingType ? (
+          <DriverMissingBanner
+            driverType={driverMissingType}
+            onDismiss={() => setDriverMissingType(null)}
           />
         ) : null}
 
@@ -272,7 +297,8 @@ export function DeviceSection() {
         ) : null}
 
         {panel.tag === 'empty' ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
+          <div className="ds-bindwrap flex items-center justify-center">
+            <div className="flex max-w-md flex-col items-center gap-5 px-8 text-center">
             <div className="space-y-2">
               <p className="ui-label text-[11px] text-[var(--muted)]">Select or add a device</p>
               <p className="max-w-sm text-[13px] text-[var(--muted)]">
@@ -295,6 +321,7 @@ export function DeviceSection() {
                   </Button>
                 )
               })}
+            </div>
             </div>
           </div>
         ) : null}

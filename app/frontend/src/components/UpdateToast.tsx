@@ -15,21 +15,21 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
   return (
     <div
       className={cn(
-        'fixed bottom-8 right-6 z-50 w-72 rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]',
+        'fixed bottom-8 right-6 z-50 w-72 rounded-alert border border-[var(--line)] bg-[var(--panel)] p-[10px]',
         'flex flex-col gap-[10px]',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="font-inter text-[13px] font-bold text-[var(--text)]">
+            <span className="font-sans text-[13px] font-bold text-[var(--text)]">
               Update available
             </span>
             {releaseInfo.isPrerelease && (
               <Badge variant="warning" className="text-[9px]">Pre</Badge>
             )}
           </div>
-          <span className="font-saira text-[12px] tabular-nums text-[var(--muted)]">
+          <span className="font-sans text-[12px] tabular-nums text-[var(--muted)]">
             v{releaseInfo.version}
           </span>
         </div>
@@ -41,19 +41,19 @@ export default function UpdateToast({ releaseInfo, installing, onInstall, onDism
       <Button
         variant="active"
         size="sm"
-        className="h-8 w-full gap-2 rounded-control font-saira text-[11px]"
+        className="h-8 w-full gap-2 rounded-control font-sans text-[11px]"
         onClick={onInstall}
         disabled={installing}
       >
         {installing ? (
           <>
             <IconLoader2 size={13} className="animate-spin" />
-            DOWNLOADING…
+            Downloading…
           </>
         ) : (
           <>
             <IconDownload size={13} />
-            INSTALL_NOW
+            Install now
           </>
         )}
       </Button>

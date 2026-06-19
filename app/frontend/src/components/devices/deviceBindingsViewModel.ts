@@ -39,12 +39,15 @@ export function buildDeviceBindingsViewModel({
   bindings: DeviceBinding[]
   activeDashId: string
 }): DeviceBindingsViewModel {
-  const buttonByCommand = new Map(bindings.map(binding => [binding.command, binding.button]))
+  // Defend against Go nil slices arriving as JSON `null`.
+  const safeCommands = commands ?? []
+  const safeBindings = bindings ?? []
+  const buttonByCommand = new Map(safeBindings.map(binding => [binding.command, binding.button]))
 
   const globalRows: DeviceBindingCardRow[] = []
   const wrapperCards = new Map<string, DeviceBindingCard>()
 
-  for (const command of commands) {
+  for (const command of safeCommands) {
     const parsed = parseWrapperCommandId(command.id)
     const row = {
       command,
@@ -91,7 +94,7 @@ export function buildDeviceBindingsViewModel({
 
   return {
     cards,
-    hiddenBindingCount: bindings.filter(binding => {
+    hiddenBindingCount: safeBindings.filter(binding => {
       const parsed = parseWrapperCommandId(binding.command)
       return parsed !== null && parsed.layoutId !== activeDashId
     }).length,

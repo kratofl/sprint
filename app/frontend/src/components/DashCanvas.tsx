@@ -142,6 +142,7 @@ export interface DashCanvasProps {
   overlayRects?: GridRect[]
   overlayBlockedAreas?: GridRect[]
   overlayEditMode?: boolean
+  showGrid?: boolean
   gridCols?: number
   gridRows?: number
   screenW?: number
@@ -179,6 +180,7 @@ export function DashCanvas({
   overlayRects = [],
   overlayBlockedAreas = [],
   overlayEditMode = false,
+  showGrid = true,
   screenW = DEFAULT_SCREEN_W,
   screenH = DEFAULT_SCREEN_H,
   readOnly = false,
@@ -561,75 +563,77 @@ export function DashCanvas({
         />
       )}
 
-      <svg
-        className="pointer-events-none absolute inset-0"
-        viewBox={`0 0 ${gridCols} ${gridRows}`}
-        preserveAspectRatio="none"
-        style={{ zIndex: 1 }}
-      >
-        <defs>
-          <mask id={gridMaskId}>
-            <rect x="0" y="0" width={gridCols} height={gridRows} fill="white" />
-            {widgets.map(widget => (
-              <rect
-                key={widget.id}
-                x={widget.col}
-                y={widget.row}
-                width={widget.colSpan}
-                height={widget.rowSpan}
-                fill="black"
+      {showGrid && (
+        <svg
+          className="pointer-events-none absolute inset-0"
+          viewBox={`0 0 ${gridCols} ${gridRows}`}
+          preserveAspectRatio="none"
+          style={{ zIndex: 1 }}
+        >
+          <defs>
+            <mask id={gridMaskId}>
+              <rect x="0" y="0" width={gridCols} height={gridRows} fill="white" />
+              {widgets.map(widget => (
+                <rect
+                  key={widget.id}
+                  x={widget.col}
+                  y={widget.row}
+                  width={widget.colSpan}
+                  height={widget.rowSpan}
+                  fill="black"
+                />
+              ))}
+            </mask>
+          </defs>
+
+          <g mask={`url(#${gridMaskId})`}>
+            {minorVerticals.map(col => (
+              <line
+                key={`minor-v-${col}`}
+                x1={col}
+                y1={0}
+                x2={col}
+                y2={gridRows}
+                stroke="rgba(255,255,255,0.08)"
+                vectorEffect="non-scaling-stroke"
               />
             ))}
-          </mask>
-        </defs>
-
-        <g mask={`url(#${gridMaskId})`}>
-          {minorVerticals.map(col => (
-            <line
-              key={`minor-v-${col}`}
-              x1={col}
-              y1={0}
-              x2={col}
-              y2={gridRows}
-              stroke="rgba(255,255,255,0.08)"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {minorHorizontals.map(row => (
-            <line
-              key={`minor-h-${row}`}
-              x1={0}
-              y1={row}
-              x2={gridCols}
-              y2={row}
-              stroke="rgba(255,255,255,0.08)"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {majorVerticals.map(col => (
-            <line
-              key={`major-v-${col}`}
-              x1={col}
-              y1={0}
-              x2={col}
-              y2={gridRows}
-              stroke="rgba(255,255,255,0.14)"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {majorHorizontals.map(row => (
-            <line
-              key={`major-h-${row}`}
-              x1={0}
-              y1={row}
-              x2={gridCols}
-              y2={row}
-              stroke="rgba(255,255,255,0.14)"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </g>
-      </svg>
+            {minorHorizontals.map(row => (
+              <line
+                key={`minor-h-${row}`}
+                x1={0}
+                y1={row}
+                x2={gridCols}
+                y2={row}
+                stroke="rgba(255,255,255,0.08)"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+            {majorVerticals.map(col => (
+              <line
+                key={`major-v-${col}`}
+                x1={col}
+                y1={0}
+                x2={col}
+                y2={gridRows}
+                stroke="rgba(255,255,255,0.14)"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+            {majorHorizontals.map(row => (
+              <line
+                key={`major-h-${row}`}
+                x1={0}
+                y1={row}
+                x2={gridCols}
+                y2={row}
+                stroke="rgba(255,255,255,0.14)"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </g>
+        </svg>
+      )}
 
       {overlayRects.map((rect, index) => {
         const overlayMode = getWidgetStackOverlayMode({

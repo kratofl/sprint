@@ -83,20 +83,31 @@ func (p *DashEditorUIPreferences) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// NewDashDefaults holds the preferences applied when creating a new dash.
+// All fields are optional; an empty value means "use the UI default".
+type NewDashDefaults struct {
+	Mode      string `json:"mode,omitempty"`      // "advanced" | "basic"
+	Display   string `json:"display,omitempty"`   // wheel display preset label
+	SpeedUnit string `json:"speedUnit,omitempty"` // "km/h" | "mph"
+	TempUnit  string `json:"tempUnit,omitempty"`  // "c" | "f"
+}
+
 // Settings holds persistent application preferences.
 type Settings struct {
-	UpdateChannel string                  `json:"updateChannel"` // "stable" | "pre-release"
-	DriverName    string                  `json:"driverName,omitempty"`
-	DriverNumber  string                  `json:"driverNumber,omitempty"`
-	DashEditorUI  DashEditorUIPreferences `json:"dashEditorUI"`
+	UpdateChannel   string                  `json:"updateChannel"` // "stable" | "pre-release"
+	DriverName      string                  `json:"driverName,omitempty"`
+	DriverNumber    string                  `json:"driverNumber,omitempty"`
+	NewDashDefaults NewDashDefaults         `json:"newDashDefaults"`
+	DashEditorUI    DashEditorUIPreferences `json:"dashEditorUI"`
 }
 
 func (s *Settings) UnmarshalJSON(data []byte) error {
 	type rawSettings struct {
-		UpdateChannel string                   `json:"updateChannel"`
-		DriverName    string                   `json:"driverName,omitempty"`
-		DriverNumber  string                   `json:"driverNumber,omitempty"`
-		DashEditorUI  *DashEditorUIPreferences `json:"dashEditorUI"`
+		UpdateChannel   string                   `json:"updateChannel"`
+		DriverName      string                   `json:"driverName,omitempty"`
+		DriverNumber    string                   `json:"driverNumber,omitempty"`
+		NewDashDefaults *NewDashDefaults         `json:"newDashDefaults"`
+		DashEditorUI    *DashEditorUIPreferences `json:"dashEditorUI"`
 	}
 
 	var raw rawSettings
@@ -110,6 +121,9 @@ func (s *Settings) UnmarshalJSON(data []byte) error {
 	}
 	s.DriverName = raw.DriverName
 	s.DriverNumber = raw.DriverNumber
+	if raw.NewDashDefaults != nil {
+		s.NewDashDefaults = *raw.NewDashDefaults
+	}
 	if raw.DashEditorUI != nil {
 		s.DashEditorUI = *raw.DashEditorUI
 	} else {

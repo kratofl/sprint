@@ -15,12 +15,12 @@ test('window controls rail stretches across the full header height', () => {
 
 test('neutral window controls keep a full-height button contract', () => {
   assert.match(windowControlMinimiseButtonClassName, /\bh-full\b/)
-  assert.match(windowControlMinimiseButtonClassName, /\bw-10\b/)
-  assert.match(windowControlMinimiseButtonClassName, /hover:bg-\[var\(--panel-2\)\]/)
+  assert.match(windowControlMinimiseButtonClassName, /w-\[40px\]/)
+  assert.match(windowControlMinimiseButtonClassName, /hover:bg-\[var\(--panel3\)\]/)
   assert.match(windowControlMaximiseButtonClassName, /\bh-full\b/)
 })
 
-test('close control uses the Figma red hover treatment', () => {
+test('close control uses the Dash Studio red hover treatment', () => {
   assert.match(windowControlCloseButtonClassName, /hover:bg-\[var\(--red\)\]/)
   assert.match(windowControlCloseButtonClassName, /hover:text-white/)
 })

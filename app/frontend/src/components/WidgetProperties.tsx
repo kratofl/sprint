@@ -1,5 +1,17 @@
 ﻿import { useCallback, useRef } from 'react'
-import { cn } from '@sprint/ui'
+import { IconRotate } from '@tabler/icons-react'
+import {
+  Button,
+  IconButton,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Stepper,
+  cn,
+} from '@sprint/ui'
 import type { DashWidget, WidgetCatalogEntry, ConfigDef, FontStyle, RGBAColor, WidgetStyle } from '../lib/dash'
 import { rgbaToHex, hexToRgba } from '@/lib/color'
 
@@ -16,8 +28,8 @@ const FONT_OPTIONS: { value: FontStyle; label: string }[] = [
   { value: 'mono',   label: 'IBM Plex Mono' },
 ]
 
-const inspectorInputClassName = 'h-8 w-full rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none'
 const inspectorLabelClassName = 'ui-label text-[11px] text-[var(--muted)]'
+const DEFAULT_FONT_OPTION_VALUE = '__default__'
 
 export function WidgetProperties({ widget, catalog, onUpdate }: WidgetPropertiesProps) {
   if (!widget) {
@@ -122,49 +134,51 @@ export function WidgetStyleProperties({ widget, onUpdate }: WidgetStylePropertie
 
 function ConfigField({ def, value, onChange }: { def: ConfigDef; value: unknown; onChange: (v: unknown) => void }) {
   const current = value !== undefined ? String(value) : def.default
+  const numericValue = Number(current)
 
   return (
     <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
       <label className={inspectorLabelClassName}>{def.label}</label>
       {def.type === 'select' && def.options && (
-        <select
+        <Select
           value={current}
-          onChange={e => onChange(e.target.value)}
-          className={inspectorInputClassName}
+          onValueChange={onChange}
         >
-          {def.options.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          <SelectTrigger size="sm" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {def.options.map(opt => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       )}
       {def.type === 'number' && (
-        <input
-          type="number"
-          value={current}
-          onChange={e => onChange(Number(e.target.value))}
-          className={inspectorInputClassName}
+        <Stepper
+          inputLabel={def.label}
+          value={Number.isFinite(numericValue) ? numericValue : 0}
+          onChange={onChange}
         />
       )}
       {def.type === 'boolean' && (
-        <button
+        <Button
+          type="button"
+          variant={current === 'true' ? 'active' : 'outline'}
+          size="sm"
           onClick={() => onChange(current !== 'true')}
-          className={cn(
-            'flex h-8 w-full items-center gap-[8px] rounded-[8px] border px-[10px] text-left text-[12px] transition-colors',
-            current === 'true'
-              ? 'border-[var(--orange-ring)] bg-[var(--orange-tint)] text-[var(--orange)]'
-              : 'border-[var(--border)] bg-[var(--panel-2)] text-[var(--muted)] hover:border-[var(--border-2)]'
-          )}
+          className="w-full justify-start gap-[8px] text-left"
         >
           <span className={cn('h-3 w-3 flex-shrink-0 rounded-[3px] border', current === 'true' ? 'border-[var(--orange)] bg-[var(--orange)]' : 'border-[var(--border-2)]')} />
           {current === 'true' ? 'Enabled' : 'Disabled'}
-        </button>
+        </Button>
       )}
       {def.type === 'text' && (
-        <input
+        <Input
           type="text"
           value={current}
           onChange={e => onChange(e.target.value)}
-          className={inspectorInputClassName}
+          className="h-8"
         />
       )}
     </div>
@@ -185,24 +199,35 @@ function FontSelectRow({ label, value, onChange, onReset }: {
           {label}
         </label>
         {isSet && (
-          <button type="button" onClick={onReset} className="text-text-disabled hover:text-foreground transition-colors" title="Reset">
-            <ResetIcon />
-          </button>
+          <IconButton
+            label={`Reset ${label}`}
+            icon={<IconRotate size={11} />}
+            size="icon-xs"
+            variant="ghost"
+            onClick={onReset}
+          />
         )}
       </div>
-      <select
-        value={value ?? ''}
-        onChange={e => {
-          const v = e.target.value as FontStyle
-          if (v) onChange(v); else onReset()
+      <Select
+        value={value ?? DEFAULT_FONT_OPTION_VALUE}
+        onValueChange={nextValue => {
+          if (nextValue === DEFAULT_FONT_OPTION_VALUE) {
+            onReset()
+            return
+          }
+          onChange(nextValue as FontStyle)
         }}
-        className={inspectorInputClassName}
       >
-        <option value="">— default —</option>
-        {FONT_OPTIONS.map(opt => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={DEFAULT_FONT_OPTION_VALUE}>default</SelectItem>
+          {FONT_OPTIONS.map(opt => (
+            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -221,22 +246,22 @@ function FontSizeRow({ value, onChange, onReset }: {
           Font Size
         </label>
         {isSet && (
-          <button type="button" onClick={onReset} className="text-text-disabled hover:text-foreground transition-colors" title="Reset">
-            <ResetIcon />
-          </button>
+          <IconButton
+            label="Reset font size"
+            icon={<IconRotate size={11} />}
+            size="icon-xs"
+            variant="ghost"
+            onClick={onReset}
+          />
         )}
       </div>
-      <input
-        type="number"
-        step="0.05"
-        min="0.5"
-        max="3"
+      <Stepper
+        inputLabel="Font size"
+        step={0.05}
+        min={0.5}
+        max={3}
         value={displayVal}
-        onChange={e => {
-          const v = parseFloat(e.target.value)
-          if (!isNaN(v) && v > 0) onChange(v); else onReset()
-        }}
-        className={inspectorInputClassName}
+        onChange={onChange}
       />
     </div>
   )
@@ -267,10 +292,12 @@ function ColorRow({ label, value, onChange, onReset }: {
 
       {isSet ? (
         <>
-          <button
+          <Button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="h-6 w-6 flex-shrink-0 overflow-hidden rounded-[6px] border border-[var(--border)] focus:outline-none focus:ring-1 focus:ring-[var(--orange)]"
+            variant="neutral"
+            size="icon-xs"
+            className="flex-shrink-0 overflow-hidden p-0"
             style={{ backgroundColor: hex! }}
             title={hex!}
           >
@@ -281,32 +308,33 @@ function ColorRow({ label, value, onChange, onReset }: {
               className="sr-only"
               onChange={e => onChange(hexToRgba(e.target.value, value?.A ?? 255))}
             />
-          </button>
+          </Button>
 
-          <input
+          <Input
             type="text"
             maxLength={7}
             defaultValue={hex!}
             key={hex!}
             onBlur={e => handleHexInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleHexInput(e.currentTarget.value) }}
-            className="h-8 w-20 rounded-[8px] border border-[var(--border)] bg-[var(--panel-2)] px-[10px] font-saira text-[12px] text-[var(--text)] focus:border-[var(--orange)] focus:outline-none"
+            className="h-8 w-20"
           />
 
-          <button
-            type="button"
+          <IconButton
+            label={`Remove ${label} override`}
+            icon={<IconRotate size={11} />}
             onClick={onReset}
-            className="text-text-disabled hover:text-foreground transition-colors flex-shrink-0"
-            title="Remove override"
-          >
-            <ResetIcon />
-          </button>
+            size="icon-xs"
+            variant="ghost"
+            className="flex-shrink-0"
+          />
         </>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="h-8 rounded-[8px] border border-dashed border-[var(--border)] px-[10px] text-[11px] text-[var(--muted-2)] transition-colors hover:border-[var(--border-2)] hover:text-[var(--text)]"
+          variant="outline"
+          size="sm"
           title="Set color"
         >
           <input
@@ -317,17 +345,8 @@ function ColorRow({ label, value, onChange, onReset }: {
             onChange={e => onChange(hexToRgba(e.target.value, 255))}
           />
           set
-        </button>
+        </Button>
       )}
     </div>
-  )
-}
-
-function ResetIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 5.5A3.5 3.5 0 1 1 5.5 9" />
-      <polyline points="2,3 2,5.5 4.5,5.5" />
-    </svg>
   )
 }

@@ -10,7 +10,7 @@ export interface NavRailItem {
 }
 
 export interface NavRailSection {
-  label: string
+  label?: string
   items: NavRailItem[]
   pinned?: "top" | "bottom"
 }
@@ -20,6 +20,7 @@ export interface NavRailProps {
   sections?: NavRailSection[]
   activeId: string
   onSelect: (id: string) => void
+  collapsed?: boolean
   /** Slot rendered at the very top (e.g. app wordmark) */
   header?: React.ReactNode
   /** Slot rendered at the bottom below pinned sections. */
@@ -32,6 +33,7 @@ export function NavRail({
   sections,
   activeId,
   onSelect,
+  collapsed = false,
   header,
   footer,
   className,
@@ -41,11 +43,20 @@ export function NavRail({
   const bottomSections = resolvedSections.filter((section) => section.pinned === "bottom")
 
   function renderSection(section: NavRailSection) {
+    const sectionKey = section.label ?? section.items.map((item) => item.id).join("|")
+
     return (
-      <div key={section.label} className="flex flex-col gap-[6px]">
-        <div className="px-[6px] font-saira text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--muted)]">
-          {section.label}
-        </div>
+      <div key={sectionKey} className="flex flex-col gap-[6px]">
+        {section.label && (
+          <div
+            className={cn(
+              "px-[8px] text-[8.5px] font-bold uppercase tracking-[0.22em] text-[var(--text3)]",
+              collapsed && "mx-[8px] h-px overflow-hidden rounded-[1px] bg-[var(--panel2)] px-0 text-[0px] leading-none",
+            )}
+          >
+            {section.label}
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           {section.items.map((item) => {
             const isActive = item.id === activeId
@@ -53,25 +64,28 @@ export function NavRail({
 
             return (
               <button
+                type="button"
                 key={item.id}
                 data-slot="nav-rail-item"
+                aria-current={isActive ? "page" : undefined}
                 data-active={isActive}
                 onClick={() => onSelect(item.id)}
                 className={cn(
-                  "group flex h-8 w-full items-center gap-[10px] rounded-control border px-[10px] py-2 text-left font-inter text-[13px] font-medium transition-colors outline-none focus-visible:border-[var(--orange)] focus-visible:ring-0",
+                  "group relative flex h-[34px] w-full items-center gap-[10px] rounded-[calc(var(--r)-2px)] border px-[12px] py-2 text-left text-[12px] font-medium transition-colors outline-none before:absolute before:left-0 before:top-[7px] before:h-5 before:w-[3px] before:rounded-r before:bg-transparent focus-visible:border-[var(--line2)] focus-visible:ring-0",
+                  collapsed && "justify-center gap-0 px-0",
                   isActive
-                    ? "border-[var(--orange)] bg-[var(--panel-3)] text-[var(--orange)]"
-                    : "border-transparent text-[var(--muted)] hover:border-[var(--border)] hover:bg-[var(--panel-2)] hover:text-[var(--text)]"
+                    ? "border-[var(--line)] bg-[var(--panel3)] text-[var(--accent)] before:bg-[var(--accent)]"
+                    : "border-transparent text-[var(--text2)] hover:border-[var(--line)] hover:bg-[var(--panel2)] hover:text-[var(--text)]"
                 )}
               >
                 <Icon
                   size={16}
                   className={cn(
                     "shrink-0 transition-colors",
-                    isActive ? "text-[var(--orange)]" : "text-[var(--muted)] group-hover:text-[var(--text)]"
+                    isActive ? "text-[var(--accent)]" : "text-[var(--text3)] group-hover:text-[var(--text)]"
                   )}
                 />
-                <span className="truncate">{item.label}</span>
+                <span className={cn("truncate", collapsed && "sr-only")}>{item.label}</span>
               </button>
             )
           })}

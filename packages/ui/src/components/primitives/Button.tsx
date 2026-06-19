@@ -13,7 +13,7 @@ import {
 } from "./controlClasses"
 
 const buttonVariants = cva(
-  "group/button ui-control inline-flex shrink-0 items-center justify-center border bg-transparent bg-clip-padding whitespace-nowrap transition-colors outline-none select-none focus-visible:border-[var(--orange)] focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--red)] aria-invalid:ring-0 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "btn group/button ui-control inline-flex shrink-0 items-center justify-center border bg-transparent bg-clip-padding text-[13px] font-semibold tracking-[0] whitespace-nowrap normal-case transition-colors outline-none select-none focus-visible:border-[var(--accent)] focus-visible:ring-0 focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-30 aria-invalid:border-[var(--red)] aria-invalid:ring-0 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -22,21 +22,21 @@ const buttonVariants = cva(
         outline: buttonNeutralClassName,
         neutral: buttonNeutralClassName,
         secondary: buttonSecondaryClassName,
-        ghost: buttonGhostClassName,
-        destructive: buttonDestructiveClassName,
+        ghost: cn("ghost", buttonGhostClassName),
+        destructive: cn("danger", buttonDestructiveClassName),
         active: buttonActiveClassName,
-        link: "border-transparent text-text-muted underline-offset-4 hover:text-primary hover:underline",
+        link: "border-transparent text-[var(--text2)] underline-offset-4 hover:text-[var(--accent)] hover:underline",
       },
       size: {
         default:
-          "h-[25px] gap-1.5 rounded-control px-[14px] py-[6px] text-[13px] has-data-[icon=inline-end]:pr-[10px] has-data-[icon=inline-start]:pl-[10px] [&_svg:not([class*='size-'])]:size-[13px]",
-        xs: "h-5 gap-1 rounded-badge px-2 py-1 text-[10px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
-        sm: "h-[21px] gap-1 rounded-control px-[10px] py-[4px] text-[12px] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
-        lg: "h-[25px] gap-1.5 rounded-control px-[14px] py-[6px] text-[13px] has-data-[icon=inline-end]:pr-[10px] has-data-[icon=inline-start]:pl-[10px] [&_svg:not([class*='size-'])]:size-[13px]",
-        icon: "size-[25px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-[13px]",
-        "icon-xs": "size-5 rounded-badge p-0 [&_svg:not([class*='size-'])]:size-2.5",
-        "icon-sm": "size-[25px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-[13px]",
-        "icon-lg": "size-[28px] rounded-tile p-[6px] [&_svg:not([class*='size-'])]:size-4",
+          "h-[36px] gap-1.5 rounded-[999px] px-5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4 [&_svg:not([class*='size-'])]:size-[15px]",
+        xs: "h-[24px] gap-1 rounded-[999px] px-2 text-[11px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-[30px] gap-1 rounded-[999px] px-3 text-[12px] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-[14px]",
+        lg: "h-[40px] gap-2 rounded-[999px] px-6 text-[14px] has-data-[icon=inline-end]:pr-5 has-data-[icon=inline-start]:pl-5 [&_svg:not([class*='size-'])]:size-4",
+        icon: "size-[36px] rounded-[999px] p-0 [&_svg:not([class*='size-'])]:size-[16px]",
+        "icon-xs": "size-6 rounded-[999px] p-0 [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-[30px] rounded-[999px] p-0 [&_svg:not([class*='size-'])]:size-[14px]",
+        "icon-lg": "size-[40px] rounded-[999px] p-0 [&_svg:not([class*='size-'])]:size-[17px]",
       },
     },
     compoundVariants: [

@@ -1,16 +1,16 @@
 /**
  * Typography atoms.
- * Inter is the UI family, Saira is used for tabular telemetry values, and
- * Saira Semi Condensed / Space Grotesk cover Sprint brand moments.
+ * IBM Plex Sans is the UI family. Numeric telemetry inherits the UI face with
+ * tabular numerals so values stay stable without a separate display family.
  */
 
 export const fontFamily: Record<'display' | 'sans' | 'mono' | 'wordmark' | 'ui' | 'numeric', string[]> = {
-  display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
-  wordmark: ['Saira Semi Condensed', 'Inter', 'system-ui', 'sans-serif'],
-  sans: ['Inter', 'system-ui', 'sans-serif'],
-  ui: ['Inter', 'system-ui', 'sans-serif'],
-  mono: ['Saira', 'Inter', 'system-ui', 'sans-serif'],
-  numeric: ['Saira', 'Inter', 'system-ui', 'sans-serif'],
+  display: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  wordmark: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  sans: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  ui: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  mono: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  numeric: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
 }
 
 export const fontWeight = {

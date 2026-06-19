@@ -5,36 +5,36 @@ import { Slot } from "radix-ui"
 import { cn } from "../../lib/utils"
 
 const badgeVariants = cva(
-  "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-[10px] overflow-hidden rounded-badge border px-[10px] py-1 font-wordmark text-[12px] font-bold whitespace-nowrap uppercase transition-colors focus-visible:border-[var(--orange)] focus-visible:outline-none has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-[var(--red)] [&>svg]:pointer-events-none [&>svg]:size-[10px]!",
+  "tag group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-[6px] overflow-hidden rounded-[6px] border px-[8px] py-0 font-sans text-[9.5px] font-bold tracking-[0.14em] whitespace-nowrap uppercase transition-colors focus-visible:border-[var(--accent)] focus-visible:outline-none has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-[var(--red)] [&>svg]:pointer-events-none [&>svg]:size-[10px]!",
   {
     variants: {
       variant: {
         default:
-          "border-[var(--orange)] bg-transparent text-[var(--orange)]",
+          "t-accent border-[var(--accent)] bg-transparent text-[var(--accent)]",
         primary:
-          "border-[var(--orange)] bg-[var(--orange)] text-[var(--bg)]",
+          "t-solid border-[var(--accent)] bg-[var(--accent)] text-[#050505]",
         secondary:
-          "border-[var(--border)] bg-transparent text-[var(--muted)]",
+          "border-[var(--line)] bg-transparent text-[var(--text2)]",
         connected:
-          "border-[var(--green)] bg-transparent text-[var(--green)]",
+          "t-green border-[var(--green)] bg-transparent text-[var(--green)]",
         /** Telemetry alert chips: Live, Pit, Gear */
         tertiary:
-          "border-[var(--blue)] bg-transparent text-[var(--blue)]",
+          "t-blue border-[var(--blue)] bg-transparent text-[var(--blue)]",
         success:
-          "border-[var(--green)] bg-transparent text-[var(--green)]",
+          "t-green border-[var(--green)] bg-transparent text-[var(--green)]",
         warning:
-          "border-[var(--amber)] bg-transparent text-[var(--amber)]",
+          "border-[var(--yellow)] bg-transparent text-[var(--yellow)]",
         destructive:
-          "border-[var(--red)] bg-transparent text-[var(--red)] [a]:hover:text-[var(--red)]",
+          "t-red border-[var(--red)] bg-transparent text-[var(--red)] [a]:hover:text-[var(--red)]",
         outline:
-          "border-[var(--border)] text-[var(--muted)]",
+          "border-[var(--line)] text-[var(--text2)]",
         neutral:
-          "border-[var(--border)] text-[var(--muted)]",
+          "border-[var(--line)] text-[var(--text2)]",
         active:
-          "border-[var(--orange)] bg-[var(--orange)] text-[var(--bg)]",
+          "t-solid border-[var(--accent)] bg-[var(--accent)] text-[#050505]",
         ghost:
-          "border-transparent text-[var(--muted)]",
-        link: "border-transparent text-[var(--orange)] underline-offset-4 hover:underline",
+          "border-transparent text-[var(--text2)]",
+        link: "border-transparent text-[var(--accent)] underline-offset-4 hover:underline",
       },
     },
     defaultVariants: {

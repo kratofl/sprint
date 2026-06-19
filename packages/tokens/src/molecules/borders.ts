@@ -14,8 +14,8 @@ export const borders = {
   outlineSubtle: primitiveColor.neutral[500],
   /** Accent — racing orange at 30% opacity, highlighted/active cards */
   accent:      'rgba(255,106,0,.30)',
-  danger:      '#851727',
-  success:     '#0e7445',
+  danger:      'rgba(245,72,61,.52)',
+  success:     'rgba(22,181,102,.48)',
   /** Compatibility cyan — explicit comparison call-outs only */
-  teal:        'rgba(31,127,230,.30)',
+  teal:        'rgba(79,156,255,.30)',
 } as const

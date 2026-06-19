@@ -59,6 +59,30 @@ test('adaptSavedDevice maps snake_case desktop payloads into camelCase frontend 
   })
 })
 
+test('adaptSavedDevice treats null Go binding slices as empty frontend arrays', () => {
+  const adapted = adaptSavedDevice({
+    vid: 1,
+    pid: 2,
+    serial: 'abc',
+    type: 'screen',
+    width: 800,
+    height: 480,
+    name: 'Screen',
+    rotation: 0,
+    target_fps: 60,
+    offset_x: 0,
+    offset_y: 0,
+    margin: 0,
+    driver: 'vocore',
+    dash_id: 'default',
+    purpose: 'dash',
+    bindings: null,
+    disabled: false,
+  })
+
+  assert.deepEqual(adapted.bindings, [])
+})
+
 test('adaptCatalogEntry preserves optional bindings and defaults the purpose to dash', () => {
   const adapted = adaptCatalogEntry({
     id: 'generic-vocore',

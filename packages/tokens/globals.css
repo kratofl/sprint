@@ -1,30 +1,40 @@
 /* Shared CSS variables and base styles. Apps load fonts and compile Tailwind. */
-:root {
+:root,
+.fd,
+.tone-graphite {
   /* Primitive / Color */
-  --primitive-color-orange-500: #ff6a00;
-  --primitive-color-green-500: #16b566;
-  --primitive-color-red-500: #f02744;
-  --primitive-color-yellow-500: #e0a30c;
-  --primitive-color-blue-500: #1f7fe6;
-  --primitive-color-neutral-950: #0a0a0a;
-  --primitive-color-neutral-900: #050505;
-  --primitive-color-neutral-850: #0f0f0f;
-  --primitive-color-neutral-800: #141414;
-  --primitive-color-neutral-750: #1a1a1a;
-  --primitive-color-neutral-700: #1f1f1f;
-  --primitive-color-neutral-600: #2e2e2e;
-  --primitive-color-neutral-500: #424242;
-  --primitive-color-neutral-400: #7a7a7a;
-  --primitive-color-neutral-300: #5a5a5a;
-  --primitive-color-neutral-50: #f6f6f6;
+  --primitive-color-orange-500: #FF6A00;
+  --primitive-color-green-500: #16B566;
+  --primitive-color-red-500: #F5483D;
+  --primitive-color-yellow-500: #F5C518;
+  --primitive-color-blue-500: #4F9CFF;
+  --primitive-color-purple-500: #A06BFF;
+  --primitive-color-neutral-950: #070707;
+  --primitive-color-neutral-900: #0D0D0D;
+  --primitive-color-neutral-850: #101010;
+  --primitive-color-neutral-800: #131313;
+  --primitive-color-neutral-750: #1B1B1B;
+  --primitive-color-neutral-700: #1F1F1F;
+  --primitive-color-neutral-600: #1A1A1A;
+  --primitive-color-neutral-500: #232323;
+  --primitive-color-neutral-400: #9A9A9A;
+  --primitive-color-neutral-300: #5C5C5C;
+  --primitive-color-neutral-50: #ECECEC;
 
   /* Primitive / Radius + Space */
-  --primitive-radius-panel: 14px;
+  --primitive-radius-panel: 10px;
   --primitive-radius-alert: 10px;
   --primitive-radius-control: 8px;
-  --primitive-radius-tile: 6px;
-  --primitive-radius-badge: 4px;
+  --primitive-radius-tile: 8px;
+  --primitive-radius-badge: 6px;
   --primitive-radius-pill: 999px;
+  --primitive-motion-duration-instant: 0ms;
+  --primitive-motion-duration-fast: 120ms;
+  --primitive-motion-duration-normal: 160ms;
+  --primitive-motion-duration-slow: 240ms;
+  --primitive-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --primitive-motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --primitive-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --primitive-space-0: 0px;
   --primitive-space-0-5: 2px;
   --primitive-space-1: 4px;
@@ -33,145 +43,178 @@
   --primitive-space-2-5: 10px;
   --primitive-space-3-5: 14px;
 
-  /* Exact Figma public variables */
-  --bg: #0a0a0a;
-  --bg-deep: #050505;
-  --win: #0f0f0f;
-  --panel: #0f0f0f;
-  --tile: #0f0f0f;
-  --panel-2: #141414;
-  --tile-2: #141414;
-  --panel-3: #1a1a1a;
-  --tile-3: #1a1a1a;
-  --panel-4: #1f1f1f;
-  --tile-4: #1f1f1f;
-  --border: #2e2e2e;
-  --border-2: #424242;
-  --win-edge: #404040;
-  --text: #f6f6f6;
-  --muted: #7a7a7a;
-  --muted-2: #5a5a5a;
-  --orange: #ff6a00;
-  --green: #16b566;
-  --red: #f02744;
-  --amber: #e0a30c;
-  --blue: #1f7fe6;
-  --green-tint: #05281a;
-  --green-ring: #0e7445;
-  --red-tint: #3a0a10;
-  --red-ring: #851727;
-  --amber-tint: #2b2003;
-  --amber-ring: #8a6507;
-  --blue-tint: #071a30;
-  --blue-ring: #11457f;
-  --orange-tint: #33170a;
-  --orange-ring: #9c4505;
+  /* Dash Studio public variables */
+  --bg: #070707;
+  --panel: #0D0D0D;
+  --panel2: #131313;
+  --panel3: #1B1B1B;
+  --line: #1A1A1A;
+  --line2: #232323;
+  --text: #ECECEC;
+  --text2: #9A9A9A;
+  --text3: #5C5C5C;
+  --accent: #FF6A00;
+  --radius: 10px;
+  --r: var(--radius);
+  --radius-panel: var(--primitive-radius-panel);
+  --radius-alert: var(--primitive-radius-alert);
+  --radius-control: var(--primitive-radius-control);
+  --radius-tile: var(--primitive-radius-tile);
+  --radius-badge: var(--primitive-radius-badge);
+  --radius-pill: var(--primitive-radius-pill);
+  --motion-duration-instant: 0ms;
+  --motion-duration-fast: 120ms;
+  --motion-duration-normal: 160ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --green: #16B566;
+  --red: #F5483D;
+  --yellow: #F5C518;
+  --blue: #4F9CFF;
+  --purple: #A06BFF;
+
+  /* Compatibility aliases mapped to Dash Studio */
+  --bg-deep: var(--bg);
+  --win: var(--panel);
+  --tile: var(--panel);
+  --panel-2: var(--panel2);
+  --tile-2: var(--panel2);
+  --panel-3: var(--panel3);
+  --tile-3: var(--panel3);
+  --panel-4: #1F1F1F;
+  --tile-4: #1F1F1F;
+  --border: var(--line);
+  --border-2: var(--line2);
+  --win-edge: var(--line2);
+  --muted: var(--text2);
+  --muted-2: var(--text3);
+  --orange: var(--accent);
+  --amber: var(--yellow);
+  --green-soft: rgba(22, 181, 102, .13);
+  --green-tint: var(--green-soft);
+  --green-ring: rgba(22, 181, 102, .48);
+  --red-soft: rgba(245, 72, 61, .12);
+  --red-tint: var(--red-soft);
+  --red-ring: rgba(245, 72, 61, .52);
+  --amber-soft: rgba(245, 197, 24, .13);
+  --amber-tint: var(--amber-soft);
+  --amber-ring: rgba(245, 197, 24, .48);
+  --blue-soft: rgba(79, 156, 255, .12);
+  --blue-tint: var(--blue-soft);
+  --blue-ring: rgba(79, 156, 255, .44);
+  --orange-soft: rgba(255, 106, 0, .13);
+  --orange-tint: rgba(255, 106, 0, .13);
+  --orange-ring: rgba(255, 106, 0, .30);
+  --duration-fast: var(--motion-duration-fast);
+  --duration-normal: var(--motion-duration-normal);
+  --duration-slow: var(--motion-duration-slow);
+  --ease-standard: var(--motion-ease);
+  --ease-out: var(--motion-ease-out);
+  --ease-in: var(--motion-ease-in);
+  --accent-dark: #E8590C;
+  --accent-muted: var(--orange-soft);
+  --accent-surface: var(--orange-soft);
+  --heat: var(--accent);
+  --secondary: var(--blue);
+  --secondary-dark: var(--blue-ring);
+  --secondary-muted: rgba(79, 156, 255, .12);
+  --secondary-surface: var(--blue-tint);
+  --success-surface: var(--green-soft);
+  --warning-surface: var(--amber-soft);
+  --destructive-surface: var(--red-soft);
+  --tertiary-surface: var(--green-soft);
+  --bg-base: var(--bg);
+  --bg-shell: var(--bg);
+  --bg-container: var(--panel);
+  --bg-elevated: var(--panel2);
+  --bg-overlay: var(--bg);
+  --bg-overlay-panel: var(--panel);
+  --outline: var(--line);
+  --outline-strong: var(--line2);
+  --on-surface: var(--text);
+  --on-surface-variant: var(--text2);
 
   /* Semantic */
   --semantic-color-bg-base: var(--bg);
-  --semantic-color-bg-deep: var(--bg-deep);
+  --semantic-color-bg-deep: var(--bg);
   --semantic-color-surface-panel: var(--panel);
-  --semantic-color-surface-raised: var(--panel-2);
-  --semantic-color-surface-inset: var(--panel-3);
+  --semantic-color-surface-raised: var(--panel2);
+  --semantic-color-surface-inset: var(--panel3);
   --semantic-color-surface-tile-4: var(--panel-4);
   --semantic-color-text-primary: var(--text);
-  --semantic-color-text-muted: var(--muted);
-  --semantic-color-text-disabled: var(--muted-2);
-  --semantic-color-border-default: var(--border);
-  --semantic-color-border-strong: var(--border-2);
-  --semantic-color-action-primary: var(--orange);
+  --semantic-color-text-muted: var(--text2);
+  --semantic-color-text-disabled: var(--text3);
+  --semantic-color-border-default: var(--line);
+  --semantic-color-border-strong: var(--line2);
+  --semantic-color-action-primary: var(--accent);
   --semantic-color-action-primary-muted: rgba(255, 106, 0, .13);
   --semantic-color-status-success: var(--green);
-  --semantic-color-status-success-muted: var(--green-tint);
+  --semantic-color-status-success-muted: var(--green-soft);
   --semantic-color-status-danger: var(--red);
-  --semantic-color-status-danger-muted: var(--red-tint);
-  --semantic-color-status-warning: var(--amber);
-  --semantic-color-status-warning-muted: var(--amber-tint);
+  --semantic-color-status-danger-muted: var(--red-soft);
+  --semantic-color-status-warning: var(--yellow);
+  --semantic-color-status-warning-muted: var(--amber-soft);
   --semantic-color-status-info: var(--blue);
-  --semantic-color-status-info-muted: var(--blue-tint);
-  --semantic-color-platform-winui-mica: var(--win);
-  --semantic-color-platform-winui-mica-alt: var(--bg-deep);
-  --semantic-color-platform-winui-layer: var(--panel-2);
-  --semantic-color-platform-winui-layer-alt: var(--panel-3);
+  --semantic-color-status-info-muted: var(--blue-soft);
+  --semantic-color-platform-winui-mica: var(--panel);
+  --semantic-color-platform-winui-mica-alt: var(--bg);
+  --semantic-color-platform-winui-layer: var(--panel2);
+  --semantic-color-platform-winui-layer-alt: var(--panel3);
   --semantic-color-platform-winui-control: var(--panel-4);
-  --semantic-color-platform-winui-control-hover: var(--border);
-  --semantic-color-platform-winui-control-pressed: var(--win);
-  --semantic-color-platform-winui-stroke: var(--border);
-  --semantic-color-platform-winui-stroke-subtle: var(--border-2);
+  --semantic-color-platform-winui-control-hover: var(--line);
+  --semantic-color-platform-winui-control-pressed: var(--primitive-color-neutral-850);
+  --semantic-color-platform-winui-stroke: var(--line);
+  --semantic-color-platform-winui-stroke-subtle: var(--line2);
   --semantic-color-platform-winui-text-primary: var(--text);
-  --semantic-color-platform-winui-text-secondary: var(--muted);
-  --semantic-color-platform-winui-text-tertiary: var(--muted-2);
-  --semantic-color-platform-winui-accent: var(--orange);
+  --semantic-color-platform-winui-text-secondary: var(--text2);
+  --semantic-color-platform-winui-text-tertiary: var(--text3);
+  --semantic-color-platform-winui-accent: var(--accent);
   --semantic-color-platform-winui-accent-muted: rgba(255, 106, 0, .14);
 
   /* Component */
-  --component-button-primary-bg: var(--orange);
-  --component-button-primary-text: var(--panel-2);
-  --component-button-primary-border: var(--orange);
-  --component-shell-window-bg: var(--bg-deep);
-  --component-shell-window-border: var(--win-edge);
-  --component-shell-titlebar-bg: var(--win);
-  --component-shell-titlebar-border: var(--border);
+  --component-button-primary-bg: var(--accent);
+  --component-button-primary-text: #050505;
+  --component-button-primary-border: var(--accent);
+  --component-shell-window-bg: var(--bg);
+  --component-shell-window-border: #404040;
+  --component-shell-titlebar-bg: var(--panel);
+  --component-shell-titlebar-border: var(--line2);
   --component-shell-titlebar-text: var(--text);
-  --component-shell-titlebar-muted-text: var(--muted-2);
-  --component-shell-command-button-hover-bg: var(--border);
-  --component-shell-command-button-pressed-bg: var(--win);
-  --component-shell-nav-bg: var(--win);
-  --component-shell-nav-border: var(--border);
-  --component-shell-nav-item-hover-bg: var(--panel-2);
+  --component-shell-titlebar-muted-text: var(--text3);
+  --component-shell-command-button-hover-bg: var(--line);
+  --component-shell-command-button-pressed-bg: var(--primitive-color-neutral-850);
+  --component-shell-nav-bg: var(--panel);
+  --component-shell-nav-border: var(--line2);
+  --component-shell-nav-item-hover-bg: var(--line);
   --component-shell-nav-item-active-bg: var(--panel-3);
-  --component-shell-nav-item-active-text: var(--orange);
-  --component-shell-nav-item-indicator: var(--orange);
-  --component-shell-page-header-bg: var(--panel-2);
-  --component-shell-page-header-border: var(--border);
+  --component-shell-nav-item-active-text: var(--accent);
+  --component-shell-nav-item-indicator: var(--accent);
+  --component-shell-page-header-bg: var(--panel2);
+  --component-shell-page-header-border: var(--line2);
   --component-card-bg: var(--panel);
-  --component-card-border: var(--border);
+  --component-card-border: var(--line);
   --component-card-radius: var(--primitive-radius-panel);
-  --component-input-bg: var(--panel-2);
-  --component-input-border: var(--border);
+  --component-input-bg: var(--panel2);
+  --component-input-border: var(--line);
   --component-input-radius: var(--primitive-radius-control);
-  --component-input-height: 32px;
-  --component-nav-rail-bg: var(--bg-deep);
-  --component-dash-editor-well: var(--bg-deep);
+  --component-input-height: 34px;
+  --component-nav-rail-bg: var(--bg);
+  --component-dash-editor-well: var(--bg);
+  --component-dash-editor-well-top: var(--bg);
   --component-dash-editor-rail: var(--panel);
+  --component-dash-editor-rail-head: var(--panel2);
   --component-dash-editor-inset: var(--bg);
-  --component-dash-editor-seam: var(--bg-deep);
-
-  /* Backward-compatible aliases mapped onto the Figma system. */
-  --accent: var(--orange);
-  --accent-dark: #e65d00;
-  --accent-muted: var(--orange-soft);
-  --accent-surface: var(--orange-soft);
-  --heat: var(--orange);
-  --secondary: var(--blue);
-  --secondary-dark: var(--blue-ring);
-  --secondary-muted: rgba(31, 127, 230, .12);
-  --secondary-surface: var(--blue-tint);
-  --success-surface: var(--green-tint);
-  --warning-surface: var(--amber-tint);
-  --destructive-surface: var(--red-tint);
-  --tertiary-surface: var(--green-tint);
-  --orange-soft: rgba(255, 106, 0, .13);
-  --green-soft: rgba(22, 181, 102, .13);
-  --red-soft: rgba(240, 39, 68, .12);
-  --amber-soft: rgba(224, 163, 12, .13);
-  --blue-soft: rgba(31, 127, 230, .12);
-  --bg-base: var(--bg);
-  --bg-shell: var(--bg-deep);
-  --bg-container: var(--panel);
-  --bg-elevated: var(--panel-2);
-  --bg-overlay: var(--bg-deep);
-  --bg-overlay-panel: var(--panel);
-  --outline: var(--border);
-  --outline-strong: var(--border-2);
-  --on-surface: var(--text);
-  --on-surface-variant: var(--muted);
+  --component-dash-editor-seam: var(--bg);
 }
 
+html,
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -181,103 +224,119 @@ body {
 
 .mono,
 .ui-value {
-  font-family: 'Saira', sans-serif;
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
 
 .ui-label {
-  color: var(--muted-2);
-  font-family: Inter, system-ui, sans-serif;
+  color: var(--text3);
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: .13em;
+  letter-spacing: .18em;
   text-transform: uppercase;
 }
 
 .ui-control {
-  font-family: Inter, system-ui, sans-serif;
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0;
-  text-transform: none;
+  letter-spacing: .1em;
+  text-transform: uppercase;
 }
 
 .ui-wordmark {
-  font-family: 'Saira Semi Condensed', Inter, sans-serif;
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
   font-weight: 700;
+}
+
+@keyframes fdpulse {
+  0%, 100% { opacity: .42; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fdrise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @layer utilities {
   .surface,
   .surface-panel {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
   }
 
   .surface-shell {
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
+    background: var(--bg);
+    border: 1px solid var(--line);
   }
 
   .surface-elevated {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
+    background: var(--panel2);
+    border: 1px solid var(--line);
   }
 
   .surface-overlay {
-    background: var(--bg-deep);
-    border: 1px solid var(--border);
+    background: var(--bg);
+    border: 1px solid var(--line2);
   }
 
   .surface-overlay-panel {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line2);
   }
 
   .surface-inline {
-    background: var(--panel-2);
-    border: 1px solid var(--border-2);
+    background: var(--panel2);
+    border: 1px solid var(--line2);
   }
 
   .surface-active {
-    background: var(--orange-tint);
-    border-color: var(--orange-ring);
+    background: var(--orange-soft);
+    border-color: var(--accent);
   }
 
   .surface-secondary {
-    background: var(--blue-tint);
+    background: var(--blue-soft);
     border-color: var(--blue-ring);
   }
 
   .surface-success {
-    background: var(--green-tint);
+    background: var(--green-soft);
     border-color: var(--green-ring);
   }
 
   .surface-warning {
-    background: var(--amber-tint);
+    background: var(--amber-soft);
     border-color: var(--amber-ring);
   }
 
   .surface-destructive {
-    background: var(--red-tint);
+    background: var(--red-soft);
     border-color: var(--red-ring);
   }
 
   .surface-tertiary {
-    background: var(--green-tint);
+    background: var(--green-soft);
     border-color: var(--green-ring);
   }
 
-  /* Inert compatibility aliases: no blur, no glow, no glass elevation. */
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+  }
+
   .glass,
   .glass-overlay {
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--line);
   }
 }
 
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(246, 246, 246, .12); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(246, 246, 246, .20); }
+::-webkit-scrollbar-thumb { background: var(--panel3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--line2); }

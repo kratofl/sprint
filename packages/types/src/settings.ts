@@ -10,10 +10,19 @@ export interface DashEditorUIPreferences {
   inspector: DashEditorPanelPreferences
 }
 
+/** Preferences applied when creating a new dash. Mirrors settings.NewDashDefaults. */
+export interface NewDashDefaults {
+  mode?: 'advanced' | 'basic'
+  display?: string
+  speedUnit?: 'km/h' | 'mph'
+  tempUnit?: 'c' | 'f'
+}
+
 export interface AppSettings {
   updateChannel: 'stable' | 'pre-release'
   driverName?: string
   driverNumber?: string
+  newDashDefaults?: NewDashDefaults
   dashEditorUI?: DashEditorUIPreferences
 }
 

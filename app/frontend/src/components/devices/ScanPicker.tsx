@@ -37,8 +37,8 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
             {screens.length} candidate devices found. Pick the one to register.
           </p>
         </div>
-        <Button variant="ghost" size="sm" className="h-8 rounded-control px-[10px] font-saira text-[11px]" onClick={onBack}>
-          BACK
+        <Button variant="ghost" size="sm" className="h-8 rounded-control px-[10px] font-sans text-[11px]" onClick={onBack}>
+          Back
         </Button>
       </div>
       <div className="space-y-[10px]">
@@ -49,14 +49,14 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
           return (
             <div key={key} className="flex items-start justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
               <div className="min-w-0 flex-1">
-                <p className="font-saira text-[12px] font-bold text-[var(--text)]">
+                <p className="font-sans text-[12px] font-bold text-[var(--text)]">
                   {screen.description || screen.driver.toUpperCase()}
                 </p>
-                <p className="mt-0.5 font-saira text-[10px] uppercase text-[var(--muted)]">
+                <p className="mt-0.5 font-sans text-[10px] text-[var(--muted)]">
                   {screen.width}×{screen.height} · {vidHex}:{pidHex}
                 </p>
                 {screen.serial ? (
-                  <p className="mt-0.5 font-saira text-[10px] text-[var(--muted-2)]">S/N {screen.serial}</p>
+                  <p className="mt-0.5 font-sans text-[10px] text-[var(--muted-2)]">S/N {screen.serial}</p>
                 ) : null}
               </div>
               <Button

@@ -7,10 +7,10 @@ test('does not show a desktop runtime notice when the Wails bridge is available'
   assert.equal(getDashEditorRuntimeNotice(true), null)
 })
 
-test('shows desktop attach guidance when Dash Studio runs outside the Wails runtime', () => {
+test('shows desktop attach guidance when Dashboards runs outside the Wails runtime', () => {
   assert.deepEqual(getDashEditorRuntimeNotice(false), {
     title: 'Desktop runtime required',
-    description: 'Dash Studio uses Wails bindings for layout creation, preview rendering, and widget catalog data.',
+    description: 'Dashboards uses Wails bindings for dashboard creation, preview rendering, and widget catalog data.',
     browserHint: 'The Vite page at http://localhost:5173/ is only for browser-safe UI checks.',
     launchCommand: 'make dev-app-agent',
     waitCommand: 'pwsh -File .\\app\\scripts\\wait-desktop-browser.ps1',

@@ -1,76 +1,44 @@
-import { useEffect, useRef, useState } from 'react'
-import { Badge, Button, cn } from '@sprint/ui'
+import { Button, KeyChip, SettingsRow, cn } from '@sprint/ui'
 import type { CommandMeta } from '@/lib/controls'
-import { controlsAPI } from '@/lib/controls'
 import { formatCommandIdForDisplay } from '@/lib/controls/commandIdDisplay'
-
-type DeviceCaptureState = 'idle' | 'capturing' | 'timeout'
 
 interface DeviceCommandRowProps {
   cmd: CommandMeta
   button: number
   bound: boolean
+  listening: boolean
+  onListenToggle: () => void
+  onCancelListen: () => void
   onButtonChange: (button: number) => void
 }
 
-export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceCommandRowProps) {
-  const [captureState, setCaptureState] = useState<DeviceCaptureState>('idle')
-  const [countdown, setCountdown] = useState(3)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-  }
-
-  const handleCapture = async () => {
-    if (captureState === 'capturing') return
-    setCaptureState('capturing')
-    setCountdown(3)
-    timerRef.current = setInterval(() => {
-      setCountdown(previous => {
-        if (previous <= 1) {
-          clearTimer()
-          return 0
-        }
-        return previous - 1
-      })
-    }, 1000)
-
-    try {
-      const nextButton = await controlsAPI.captureButton(3)
-      clearTimer()
-      onButtonChange(nextButton)
-      setCaptureState('idle')
-    } catch {
-      clearTimer()
-      setCaptureState('timeout')
-      setTimeout(() => setCaptureState('idle'), 1200)
-    }
-  }
-
-  useEffect(() => () => clearTimer(), [])
-
+export function DeviceCommandRow({
+  cmd,
+  button,
+  bound,
+  listening,
+  onListenToggle,
+  onCancelListen,
+  onButtonChange,
+}: DeviceCommandRowProps) {
   return (
-    <div className={cn(
-      'flex items-center justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]',
-      bound
-        ? 'border-[var(--orange)]'
-        : 'hover:border-[var(--border-2)]',
-    )}>
-        <div className="flex flex-col gap-0.5">
-          <span className={cn('font-saira text-[12px] font-bold', bound ? 'text-[var(--text)]' : 'text-[var(--muted)]')}>
-            {cmd.label}
-          </span>
-        <span className="font-saira text-[10px] text-[var(--muted)] opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
-        </div>
+    <SettingsRow
+      className={cn(
+        'rounded-[calc(var(--r)-2px)] border border-[var(--line)] border-b-0 bg-[var(--panel)]',
+        (bound || listening) && 'border-[var(--accent)] bg-[rgba(255,106,0,.08)]',
+      )}
+    >
+      <div className="flex flex-col gap-0.5">
+        <span className={cn('font-sans text-[12px] font-bold', bound ? 'text-[var(--text)]' : 'text-[var(--muted)]')}>
+          {cmd.label}
+        </span>
+        <span className="font-sans text-[10px] text-[var(--muted)] opacity-60">{formatCommandIdForDisplay(cmd.id)}</span>
+      </div>
       <div className="ml-4 flex flex-shrink-0 items-center gap-2">
-        {bound ? (
-          <Badge variant="active" className="ui-label">BTN_{button}</Badge>
+        {bound && !listening ? (
+          <KeyChip>BTN {button}</KeyChip>
         ) : null}
-        {bound ? (
+        {bound && !listening ? (
           <Button
             onClick={() => onButtonChange(0)}
             variant="destructive"
@@ -79,29 +47,22 @@ export function DeviceCommandRow({ cmd, button, bound, onButtonChange }: DeviceC
             title="Clear binding"
             aria-label={`Clear binding for ${cmd.label}`}
           >
-            ×
+            x
           </Button>
         ) : null}
-        <Button
-          variant={
-            captureState === 'capturing'
-              ? 'ghost'
-              : captureState === 'timeout'
-                ? 'destructive'
-                : 'secondary'
-          }
-          size="sm"
-          disabled={captureState === 'capturing'}
-          onClick={handleCapture}
-          className="ui-label h-8 w-20 rounded-control font-bold text-[11px]"
-        >
-          {captureState === 'capturing'
-            ? `LISTENING_${countdown}`
-            : captureState === 'timeout'
-              ? 'No input'
-              : 'Capture'}
-        </Button>
+        {listening ? (
+          <>
+            <KeyChip className="border-[var(--accent)] text-[var(--accent)]">Press a button...</KeyChip>
+            <Button variant="ghost" size="sm" onClick={onCancelListen}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button variant="secondary" size="sm" onClick={onListenToggle}>
+            Assign
+          </Button>
+        )}
       </div>
-    </div>
+    </SettingsRow>
   )
 }

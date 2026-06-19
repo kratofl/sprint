@@ -22,18 +22,17 @@ const TEMP_COLD  = 70
 const TEMP_IDEAL = 90
 const TEMP_HOT   = 110
 
-/** Returns a warm-gradient style based on temperature */
-function tempGradient(temp: number): string {
-  if (temp < TEMP_COLD)  return 'linear-gradient(180deg, var(--muted-2) 0%, var(--muted-2) 100%)'
-  if (temp < TEMP_IDEAL) return 'linear-gradient(180deg, var(--green) 0%, var(--green) 100%)'
-  if (temp < TEMP_HOT)   return 'linear-gradient(180deg, var(--orange) 0%, var(--orange) 100%)'
-  return 'linear-gradient(180deg, var(--red) 0%, var(--red) 100%)'
+function tempColor(temp: number): string {
+  if (temp < TEMP_COLD)  return 'var(--muted-2)'
+  if (temp < TEMP_IDEAL) return 'var(--green)'
+  if (temp < TEMP_HOT)   return 'var(--orange)'
+  return 'var(--red)'
 }
 
-function wearGradient(wear: number): string {
-  if (wear > 80) return 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)'
-  if (wear > 50) return 'linear-gradient(90deg, var(--orange) 0%, var(--orange) 100%)'
-  return 'linear-gradient(90deg, var(--green) 0%, var(--green) 100%)'
+function wearColor(wear: number): string {
+  if (wear > 80) return 'var(--red)'
+  if (wear > 50) return 'var(--orange)'
+  return 'var(--green)'
 }
 
 function TireCell({ data, label }: { data: TireData; label: string }) {
@@ -49,7 +48,7 @@ function TireCell({ data, label }: { data: TireData; label: string }) {
           <div
             key={i}
             className="w-3 rounded-badge transition-colors duration-300"
-            style={{ background: tempGradient(t) }}
+            style={{ background: tempColor(t) }}
             title={`${t.toFixed(0)}°C`}
           />
         ))}
@@ -66,7 +65,7 @@ function TireCell({ data, label }: { data: TireData; label: string }) {
           className="h-full rounded-pill transition-all duration-300"
           style={{
             width: `${Math.min(100, data.wearPercent)}%`,
-            background: wearGradient(data.wearPercent),
+            background: wearColor(data.wearPercent),
           }}
         />
       </div>

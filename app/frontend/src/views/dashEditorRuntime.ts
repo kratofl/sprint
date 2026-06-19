@@ -13,7 +13,7 @@ export function getDashEditorRuntimeNotice(desktopRuntimeAvailable: boolean): Da
 
   return {
     title: 'Desktop runtime required',
-    description: 'Dash Studio uses Wails bindings for layout creation, preview rendering, and widget catalog data.',
+    description: 'Dashboards uses Wails bindings for dashboard creation, preview rendering, and widget catalog data.',
     browserHint: 'The Vite page at http://localhost:5173/ is only for browser-safe UI checks.',
     launchCommand: 'make dev-app-agent',
     waitCommand: 'pwsh -File .\\app\\scripts\\wait-desktop-browser.ps1',

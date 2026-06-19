@@ -36,8 +36,8 @@ export function DeltaBar({ delta, maxDelta = 2.0, className, ...props }: DeltaBa
             className="absolute top-0 h-full rounded-pill transition-all duration-100"
             style={{
               ...(isFaster
-                ? { right: '50%', background: 'linear-gradient(270deg, var(--green) 0%, var(--green) 100%)' }
-                : { left:  '50%', background: 'linear-gradient(90deg, var(--red) 0%, var(--red) 100%)' }
+                ? { right: '50%', background: 'var(--green)' }
+                : { left:  '50%', background: 'var(--red)' }
               ),
               width: `${pct}%`,
             }}

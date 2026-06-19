@@ -31,10 +31,14 @@ test('widget editor labels use handoff UI labels instead of terminal mono upperc
   assert.doesNotMatch(widgetPropertiesSource, /font-mono text-\[9px\][^'"]*uppercase/)
 })
 
-test('widget inspector fields use Figma 32px r8 tokenized input chrome', () => {
-  assert.match(widgetPropertiesSource, /const inspectorInputClassName = 'h-8 w-full rounded-\[8px\] border border-\[var\(--border\)\] bg-\[var\(--panel-2\)\] px-\[10px\] font-saira text-\[12px\]/)
-  assert.match(widgetPropertiesSource, /focus:border-\[var\(--orange\)\]/)
+test('widget inspector fields use shared Graphite form primitives', () => {
+  for (const primitive of ['Input', 'Select', 'SelectTrigger', 'SelectContent', 'SelectItem', 'Stepper', 'IconButton']) {
+    assert.match(widgetPropertiesSource, new RegExp(`\\b${primitive}\\b`), `${primitive} is missing from widget properties`)
+  }
   assert.match(widgetPropertiesSource, /const inspectorLabelClassName = 'ui-label text-\[11px\] text-\[var\(--muted\)\]'/)
-  assert.match(dashEditModeSource, /className="h-8 w-full rounded-\[8px\] border border-\[var\(--border\)\] bg-\[var\(--panel-2\)\] px-\[10px\] font-saira text-\[12px\]/)
+  assert.doesNotMatch(widgetPropertiesSource, /inspectorInputClassName/)
+  assert.doesNotMatch(widgetPropertiesSource, /focus:border-\[var\(--orange\)\]/)
+  assert.match(dashEditModeSource, /\bStepper\b/)
+  assert.match(dashEditModeSource, /\bInput\b/)
   assert.match(dashEditModeSource, /className="ui-label text-\[11px\] text-\[var\(--muted\)\]"/)
 })

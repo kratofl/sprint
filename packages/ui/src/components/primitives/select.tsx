@@ -42,7 +42,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "ui-value flex w-fit items-center justify-between gap-1.5 rounded-control border border-[var(--border)] bg-[var(--panel-2)] px-[10px] whitespace-nowrap text-[13px] text-[var(--text)] transition-colors outline-none hover:border-[var(--border-2)] focus-visible:border-primary focus-visible:ring-0 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--red)] aria-invalid:ring-0 data-placeholder:text-[var(--muted)] data-[size=default]:h-8 data-[size=sm]:h-[25px] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[13px]",
+        "ui-value flex w-fit items-center justify-between gap-1.5 rounded-[calc(var(--r)-2px)] border border-[var(--line)] bg-[var(--panel2)] px-3 whitespace-nowrap text-[12px] text-[var(--text)] transition-colors outline-none hover:border-[var(--line2)] focus-visible:border-primary focus-visible:ring-0 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-[var(--red)] aria-invalid:ring-0 data-placeholder:text-[var(--text2)] data-[size=default]:h-[34px] data-[size=sm]:h-[28px] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-[13px]",
         className
       )}
       {...props}
@@ -68,7 +68,7 @@ function SelectContent({
         data-slot="select-content"
         data-align-trigger={position === "item-aligned"}
         className={cn(
-          "z-50 max-h-(--radix-select-content-available-height) min-w-32 origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-control border border-[var(--border)] bg-[var(--panel)] text-[var(--text)] shadow-none duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 animate-none!",
+        "z-50 max-h-(--radix-select-content-available-height) min-w-32 origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-[calc(var(--r)-2px)] border border-[var(--line2)] bg-[var(--panel)] text-[var(--text)] shadow-none duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 animate-none!",
           position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
           className
         )}
@@ -99,7 +99,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("ui-label px-2 py-1.5 text-[10px] text-[var(--muted)]", className)}
+      className={cn("ui-label px-2 py-1.5 text-[10px] text-[var(--text3)]", className)}
       {...props}
     />
   )
@@ -114,7 +114,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "ui-value relative flex min-h-8 w-full cursor-default items-center gap-2 rounded-control px-2 py-1 text-[12px] text-[var(--text)] outline-hidden select-none data-highlighted:bg-[var(--panel-2)] data-highlighted:text-[var(--text)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "ui-value relative flex min-h-8 w-full cursor-default items-center gap-2 rounded-[calc(var(--r)-2px)] px-2 py-1 text-[12px] text-[var(--text)] outline-hidden select-none data-highlighted:bg-[var(--panel2)] data-highlighted:text-[var(--text)] data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
       )}
       {...props}
@@ -137,7 +137,7 @@ function SelectSeparator({
     <SelectPrimitive.Separator
       data-slot="select-separator"
       className={cn(
-        "pointer-events-none -mx-1 my-1 h-px bg-[var(--border)]",
+        "pointer-events-none -mx-1 my-1 h-px bg-[var(--line)]",
         className
       )}
       {...props}

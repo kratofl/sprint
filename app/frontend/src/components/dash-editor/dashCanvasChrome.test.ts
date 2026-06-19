@@ -12,11 +12,6 @@ const dashCanvasSource = readFileSync(
   'utf8',
 )
 
-const edgeHandleSource = readFileSync(
-  new URL('./EditorEdgeHandle.tsx', import.meta.url),
-  'utf8',
-)
-
 test('dash editor canvas wrapper stays visually passive', () => {
   const canvasPaneBlock = dashEditModeSource.match(/ref=\{controller\.canvasPaneRef\}[\s\S]{0,260}/)?.[0] ?? ''
 
@@ -26,13 +21,21 @@ test('dash editor canvas wrapper stays visually passive', () => {
   assert.doesNotMatch(canvasPaneBlock, /shadow-\[inset_/)
 })
 
-test('dash editor designer uses the Figma editor grid and VoCore canvas metrics', () => {
-  assert.match(dashEditModeSource, /grid-cols-\[240px_minmax\(0,1fr\)_286px\]/)
-  assert.match(dashEditModeSource, /gap-\[14px\]/)
+test('dash editor designer uses the Graphite editor grid and VoCore canvas metrics', () => {
+  assert.match(dashEditModeSource, /data-layout="reference"/)
+  assert.match(dashEditModeSource, /\bds-ework\b/)
   assert.match(dashEditModeSource, /screenW=\{controller\.screenW\}/)
   assert.match(dashEditModeSource, /screenH=\{controller\.screenH\}/)
   assert.match(dashCanvasSource, /DEFAULT_SCREEN_W = 800/)
   assert.match(dashCanvasSource, /DEFAULT_SCREEN_H = 480/)
+})
+
+test('dash editor canvas stage matches the reference rounded black board', () => {
+  assert.match(dashEditModeSource, /\bds-reference-canvas\b/)
+  assert.match(dashEditModeSource, /data-scale=\{editorScale\}/)
+  assert.match(dashEditModeSource, />Scale</)
+  assert.match(dashEditModeSource, /label: '100%'/)
+  assert.match(dashCanvasSource, /showGrid\?: boolean/)
 })
 
 test('dash editor canvas wrapper clears selection only for direct empty-space clicks', () => {
@@ -67,13 +70,6 @@ test('canvas ghost and resize states use tokenized Figma signal colors', () => {
   assert.match(dashCanvasSource, /background:\s+'var\(--orange\)'/)
   assert.doesNotMatch(dashCanvasSource, /#F87171/)
   assert.doesNotMatch(dashCanvasSource, /var\(--accent\)/)
-})
-
-test('collapsed editor edge handles are flat Figma panel tiles', () => {
-  assert.match(edgeHandleSource, /bg-\[var\(--panel\)\]/)
-  assert.match(edgeHandleSource, /focus-visible:ring-\[var\(--orange\)\]/)
-  assert.match(edgeHandleSource, /rounded-r-\[6px\]/)
-  assert.doesNotMatch(edgeHandleSource, /backdrop-blur/)
 })
 
 test('dash canvas can fill the focus stage while cropping a shared preview frame', () => {

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { cn } from '@sprint/ui'
+import { IconSearch } from '@tabler/icons-react'
+import { Input, Tile, cn } from '@sprint/ui'
 import type { WidgetCatalogEntry } from '@/lib/dash'
 import { WIDGET_STACK_PALETTE_TYPE } from './multiFunctionWidgetState'
 
@@ -55,20 +56,21 @@ export function WidgetPalette({
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <div>
-        <h3 className="font-inter text-[11px] font-bold text-[var(--muted)]">Widgets</h3>
-        <p className="mt-1 text-[11px] text-[var(--muted-2)]">Drag onto the grid to place</p>
-      </div>
+      <p className="text-[11px] text-[var(--text3)]">Drag onto the grid to place</p>
 
-      <label className="flex h-8 items-center gap-2 rounded-control border border-[var(--border)] bg-[var(--panel-2)] px-[10px] text-[var(--muted)] focus-within:border-[var(--orange)]">
-        <SearchIcon />
-        <input
-          type="search"
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-          placeholder="Search widgets..."
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)] outline-none placeholder:text-[var(--muted-2)]"
-        />
+      <label className="flex flex-col gap-2">
+        <span className="text-[12px] text-[var(--text3)]">Search</span>
+        <div className="flex h-[36px] items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--panel2)] px-3 text-[var(--text3)] focus-within:border-[var(--accent)]">
+          <Input
+            type="search"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder=""
+            aria-label="Search widgets"
+            className="h-[32px] min-w-0 flex-1 border-0 bg-transparent px-0 focus:border-transparent"
+          />
+          <IconSearch size={15} aria-hidden="true" />
+        </div>
       </label>
 
       {paletteCatalog.length === 0 ? (
@@ -117,7 +119,7 @@ function WidgetGrid({
   return (
     <div className="grid grid-cols-2 gap-2">
       {widgets.map(widget => (
-        <div
+        <Tile
           key={widget.type}
           draggable
           title="Drag onto canvas to add"
@@ -144,16 +146,17 @@ function WidgetGrid({
             onDragStart?.(widget.type, previewUrl)
           }}
           onDragEnd={() => onDragEnd?.()}
+          selected={widget.synthetic}
           className={cn(
-            'group flex h-[46px] w-[107px] cursor-grab select-none items-center gap-2 rounded-alert border border-[var(--border-2)] bg-[var(--panel-3)] p-2 active:cursor-grabbing',
+            'group flex h-[54px] min-w-0 cursor-grab select-none flex-col items-start justify-center gap-1 p-3 active:cursor-grabbing',
             'text-left text-[11px] font-bold text-[var(--muted)] transition-colors',
             'hover:border-[var(--orange)] hover:text-[var(--text)]',
-            widget.synthetic ? 'border-[var(--orange)] bg-[var(--orange-tint)] text-[var(--text)]' : '',
+            widget.synthetic ? 'text-[var(--text)]' : '',
           )}
         >
           <WidgetGlyph widgetType={widget.type} />
           <span className="line-clamp-2">{widget.name}</span>
-        </div>
+        </Tile>
       ))}
     </div>
   )
@@ -168,14 +171,5 @@ function WidgetGlyph({ widgetType }: { widgetType: string }) {
     <span className="inline-flex size-[13px] shrink-0 items-center justify-center rounded-badge font-saira text-[10px] font-bold text-[var(--muted)] group-hover:text-[var(--orange)]">
       {glyph}
     </span>
-  )
-}
-
-function SearchIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <circle cx="6" cy="6" r="4" />
-      <path d="m9.2 9.2 3 3" strokeLinecap="round" />
-    </svg>
   )
 }

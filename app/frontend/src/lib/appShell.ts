@@ -1,13 +1,11 @@
 export type AppView =
   | 'home'
-  | 'telemetry'
-  | 'dash'
   | 'devices'
-  | 'controls'
+  | 'dashboards'
   | 'settings'
   | 'help'
 
-export const primaryNavIds = ['telemetry', 'dash', 'devices', 'settings', 'help'] as const satisfies AppView[]
+export const primaryNavIds = ['home', 'devices', 'dashboards', 'settings', 'help'] as const satisfies AppView[]
 
 export interface ViewHistory {
   stack: AppView[]
@@ -27,7 +25,7 @@ function toHistory(stack: AppView[], index: number): ViewHistory {
   }
 }
 
-export function createViewHistory(initialView: AppView = 'dash'): ViewHistory {
+export function createViewHistory(initialView: AppView = 'home'): ViewHistory {
   return toHistory([initialView], 0)
 }
 

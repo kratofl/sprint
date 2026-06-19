@@ -1,6 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
+import { IconLock, IconPencil, IconPlus, IconTrash } from '@tabler/icons-react'
 import {
+  Button,
   cn,
+  ConfirmDialog,
+  IconButton,
+  Input,
   tabsListBaseClassName,
   tabsListVariantClassNames,
   tabsRootBaseClassName,
@@ -8,16 +13,8 @@ import {
   tabsTriggerBaseClassName,
 } from '@sprint/ui'
 import type { DashPage } from '@/lib/dash'
-import { ConfirmDialog } from './ConfirmDialog'
 
-type ShellView = 'telemetry' | 'dash' | 'devices' | 'settings' | 'help'
-
-interface ShellPageTabsProps {
-  activeView: ShellView
-  onSelect: (view: ShellView) => void
-}
-
-interface DashPageTabsProps {
+export interface PageTabsProps {
   idlePage: DashPage
   pages: DashPage[]
   activeTab: 'idle' | 'alerts' | number
@@ -30,60 +27,8 @@ interface DashPageTabsProps {
   embedded?: boolean
 }
 
-export type PageTabsProps = ShellPageTabsProps | DashPageTabsProps
-
-const SHELL_TABS: Array<{ id: ShellView; label: string; locked?: boolean; closable?: boolean }> = [
-  { id: 'telemetry', label: 'Dashboard' },
-  { id: 'dash', label: 'Dash Editor' },
-  { id: 'devices', label: 'Devices' },
-  { id: 'settings', label: 'Settings', locked: true },
-  { id: 'help', label: 'Help', locked: true },
-]
-
-export function PageTabs(props: PageTabsProps) {
-  if ('activeView' in props) {
-    return <ShellPageTabs {...props} />
-  }
-
-  return <DashEditorPageTabs {...props} />
-}
-
-function ShellPageTabs({ activeView, onSelect }: ShellPageTabsProps) {
-  return (
-    <div className="mx-auto flex min-w-0 items-center gap-[2px] rounded-alert bg-[var(--panel-2)] p-1">
-      {SHELL_TABS.map((tab) => {
-        const selected = activeView === tab.id
-
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onSelect(tab.id)}
-            className={cn(
-              "flex h-[25px] items-center gap-1 rounded-control border px-[10px] py-[6px] font-wordmark text-[13px] font-medium transition-colors",
-              selected
-                ? "border-[var(--orange)] bg-[var(--panel-4)] text-[var(--orange)]"
-                : "border-transparent text-[var(--muted)] hover:bg-[var(--panel-3)] hover:text-[var(--text)]"
-            )}
-          >
-            {tab.locked ? <LockIcon /> : null}
-            <span>{tab.label}</span>
-            {tab.closable ? <span className="text-[10px] text-[var(--muted)]">x</span> : null}
-          </button>
-        )
-      })}
-      <button
-        type="button"
-        className="flex size-[18px] items-center justify-center rounded-badge border border-dashed border-[var(--border)] text-[var(--muted)] hover:border-[var(--orange)] hover:text-[var(--orange)]"
-        aria-label="Add tab"
-      >
-        +
-      </button>
-    </div>
-  )
-}
-
-function DashEditorPageTabs({
+export function PageTabs({
+  idlePage,
   pages,
   activeTab,
   livePageIndex,
@@ -93,21 +38,18 @@ function DashEditorPageTabs({
   onDeletePage,
   onRenamePage,
   embedded = false,
-}: DashPageTabsProps) {
+}: PageTabsProps) {
   const [renamingIdx, setRenamingIdx] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (renamingIdx !== null) inputRef.current?.select()
-  }, [renamingIdx])
-
-  const topTriggerClassName = cn(
-    tabsTriggerBaseClassName,
-    tabsTriggerActiveClassName,
-    'flex-shrink-0 gap-2',
-  )
+  const topTriggerClassName = embedded
+    ? 'flex min-h-[34px] w-full cursor-pointer items-center justify-start gap-2 rounded-[calc(var(--r)-2px)] border border-[var(--line)] bg-[var(--panel)] px-3 text-[11px] font-medium text-[var(--text2)] transition-colors hover:border-[var(--line2)] hover:bg-[var(--panel2)] data-[state=active]:border-[var(--accent)] data-[state=active]:text-[var(--accent)]'
+    : cn(
+      tabsTriggerBaseClassName,
+      tabsTriggerActiveClassName,
+      'flex-shrink-0 gap-2',
+    )
 
   const startRename = (idx: number) => {
     setRenamingIdx(idx)
@@ -126,27 +68,29 @@ function DashEditorPageTabs({
     {(() => {
       const tabContent = (
         <>
-          <button
+          <Button
             type="button"
             onClick={() => onSelectTab('idle')}
             data-state={activeTab === 'idle' ? 'active' : 'inactive'}
-            className={topTriggerClassName}
+            className={cn(topTriggerClassName, embedded && activeTab === 'idle' && 'sel')}
           >
-            <LockIcon />
-            <span>Idle</span>
-          </button>
+            <IconLock size={12} className="flex-shrink-0 opacity-60" />
+            <span>{idlePage.name || 'Idle'}</span>
+          </Button>
 
-          <button
-            type="button"
-            onClick={onSelectAlerts}
-            data-state={activeTab === 'alerts' ? 'active' : 'inactive'}
-            className={topTriggerClassName}
-          >
-            <LockIcon />
-            <span>Alerts</span>
-          </button>
+          {!embedded && (
+            <Button
+              type="button"
+              onClick={onSelectAlerts}
+              data-state={activeTab === 'alerts' ? 'active' : 'inactive'}
+              className={topTriggerClassName}
+            >
+              <IconLock size={12} className="flex-shrink-0 opacity-60" />
+              <span>Alerts</span>
+            </Button>
+          )}
 
-          <div className="my-1.5 w-px self-stretch bg-border" />
+          <div className={embedded ? 'h-px w-full bg-[var(--line)]' : 'my-1.5 w-px self-stretch bg-border'} />
 
           {pages.map((page, idx) => {
             const isActive = activeTab === idx
@@ -167,7 +111,8 @@ function DashEditorPageTabs({
                 data-state={isActive ? 'active' : 'inactive'}
                 className={cn(
                   topTriggerClassName,
-                  'group min-h-full cursor-pointer select-none px-3',
+                  !embedded && 'group min-h-full cursor-pointer select-none px-3',
+                  embedded && isActive && 'sel',
                 )}
               >
                 {isLive && (
@@ -175,9 +120,10 @@ function DashEditorPageTabs({
                 )}
 
                 {renamingIdx === idx ? (
-                  <input
-                    ref={inputRef}
+                  <Input
+                    autoFocus
                     value={renameValue}
+                    onFocus={e => e.currentTarget.select()}
                     onChange={e => setRenameValue(e.target.value)}
                     onBlur={commitRename}
                     onKeyDown={e => {
@@ -186,7 +132,7 @@ function DashEditorPageTabs({
                       e.stopPropagation()
                     }}
                     onClick={e => e.stopPropagation()}
-                    className="w-24 border-b border-primary bg-transparent font-mono text-[11px] text-foreground outline-none"
+                    className="h-7 w-28"
                   />
                 ) : (
                   <span>{page.name}</span>
@@ -194,51 +140,51 @@ function DashEditorPageTabs({
 
                 {isActive && renamingIdx !== idx && (
                   <span className="ml-1 flex items-center gap-1">
-                    <button
-                      type="button"
+                    <IconButton
+                      label={`Rename ${page.name}`}
+                      icon={<IconPencil size={11} />}
                       onClick={e => { e.stopPropagation(); startRename(idx) }}
-                      className="cursor-pointer rounded-sm p-1 text-text-muted opacity-50 transition-colors transition-opacity hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80"
-                      title="Rename page"
-                      aria-label={`Rename ${page.name}`}
-                    >
-                      <PencilIcon />
-                    </button>
-                    <button
-                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      className="opacity-60 hover:opacity-100"
+                    />
+                    <IconButton
+                      label={pages.length > 1 ? `Delete ${page.name}` : `Cannot delete ${page.name}`}
+                      icon={<IconTrash size={11} />}
                       onClick={e => { e.stopPropagation(); if (pages.length > 1) setDeleteIdx(idx) }}
+                      title={pages.length > 1 ? 'Delete page' : 'Cannot delete the only page'}
+                      disabled={pages.length <= 1}
+                      size="icon-xs"
+                      variant="ghost"
                       className={cn(
-                        'cursor-pointer rounded-sm p-1 transition-colors transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/80',
                         pages.length > 1
-                          ? 'text-destructive opacity-75 hover:bg-destructive/10 hover:opacity-100'
+                          ? 'text-destructive opacity-75 hover:opacity-100'
                           : 'cursor-not-allowed text-text-disabled opacity-20'
                       )}
-                      title={pages.length > 1 ? 'Delete page' : 'Cannot delete the only page'}
-                      aria-label={pages.length > 1 ? `Delete ${page.name}` : `Cannot delete ${page.name}`}
-                      disabled={pages.length <= 1}
-                    >
-                      <TrashIcon />
-                    </button>
+                    />
                   </span>
                 )}
               </div>
             )
           })}
 
-          <button
+          <Button
             type="button"
             onClick={onAddPage}
             data-state="inactive"
-            className={cn(topTriggerClassName, 'ml-1 gap-1.5 px-3')}
+            size="sm"
+            variant="outline"
+            className={embedded ? 'min-h-full justify-center gap-1.5 px-3' : cn(topTriggerClassName, 'ml-1 gap-1.5 px-3')}
             title="Add page"
           >
-            <span className="text-base leading-none">+</span>
+            <IconPlus size={12} />
             <span>Page</span>
-          </button>
+          </Button>
         </>
       )
 
-      return embedded
-        ? tabContent
+          return embedded
+            ? <div className="flex flex-col gap-2">{tabContent}</div>
         : (
           <div className={cn(tabsRootBaseClassName, 'gap-0')} data-orientation="horizontal">
             <div
@@ -265,30 +211,5 @@ function DashEditorPageTabs({
       onCancel={() => setDeleteIdx(null)}
     />
     </>
-  )
-}
-
-function LockIcon() {
-  return (
-    <svg width="10" height="12" viewBox="0 0 10 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 opacity-60">
-      <rect x="1" y="5" width="8" height="6" rx="1" />
-      <path d="M3 5V3.5a2 2 0 0 1 4 0V5" />
-    </svg>
-  )
-}
-
-function PencilIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M7.5 1.5 9.5 3.5 3.5 9.5H1.5v-2z" />
-    </svg>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h7M4.5 3V2h2v1M3.5 3v5.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5V3" />
-    </svg>
   )
 }

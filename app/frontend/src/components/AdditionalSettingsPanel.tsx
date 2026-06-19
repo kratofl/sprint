@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
-import { Button, cn } from '@sprint/ui'
+import { IconRotate } from '@tabler/icons-react'
+import { Button, IconButton, Input, SegmentedControl, Stepper, cn } from '@sprint/ui'
 import {
   type DashTheme,
   type DomainPalette,
@@ -66,6 +67,22 @@ const TYPOGRAPHY_FONT_OPTIONS: { value: FontStyle; label: string }[] = [
   { value: 'mono', label: 'IBM Plex Mono' },
 ]
 
+type FormatOption = { value: string; label: string }
+
+function withInheritedMarker(options: FormatOption[], inherited?: string) {
+  return options.map(option => ({
+    ...option,
+    label: option.value === inherited
+      ? (
+        <span className="inline-flex items-center gap-1" title="Inherited from global">
+          {option.label}
+          <span className="text-[8px] text-[var(--text3)]">↑</span>
+        </span>
+      )
+      : option.label,
+  }))
+}
+
 export function AdditionalSettingsPanel({
   theme,
   domainPalette,
@@ -107,7 +124,7 @@ export function AdditionalSettingsPanel({
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       <div className="flex items-center justify-between border-b border-border px-6 py-3 flex-shrink-0">
-        <h4 className="ui-label text-[11px] font-semibold text-text-muted">Additional settings</h4>
+        <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Additional settings</h4>
         <div className="flex items-center gap-2">
           {inheritsGlobalColors && (
             <Button size="xs" variant="neutral" onClick={handleResetAllToGlobal}>
@@ -248,11 +265,11 @@ function Section({
 }) {
   return (
     <div>
-      <p className="ui-label text-[9px] font-bold text-text-disabled uppercase tracking-wider mb-2">
+      <p className="ui-label text-[9px] font-bold text-[var(--text3)] uppercase tracking-wider mb-2">
         {label}
       </p>
       {description && (
-        <p className="mb-3 font-mono text-[9px] leading-relaxed text-text-muted">
+        <p className="mb-3 font-sans tabular-nums text-[9px] leading-relaxed text-[var(--text2)]">
           {description}
         </p>
       )}
@@ -287,13 +304,15 @@ function ColorRow({ label, value, defaultValue, isOverridden, onChange, onReset,
 
   return (
     <div className="flex items-center gap-2 py-1">
-      <span className="font-mono text-[10px] text-text-muted flex-1 min-w-0 truncate">{label}</span>
+      <span className="font-sans tabular-nums text-[10px] text-[var(--text2)] flex-1 min-w-0 truncate">{label}</span>
 
       {/* Color swatch — opens native color picker */}
-      <button
+      <Button
         type="button"
         onClick={() => inputRef.current?.click()}
-        className="w-6 h-6 flex-shrink-0 border border-border rounded-sm overflow-hidden focus:outline-none focus:ring-1 focus:ring-accent"
+        variant="neutral"
+        size="icon-xs"
+        className="flex-shrink-0 overflow-hidden p-0"
         style={{ backgroundColor: hex }}
         title={hex}
       >
@@ -304,42 +323,30 @@ function ColorRow({ label, value, defaultValue, isOverridden, onChange, onReset,
           className="sr-only"
           onChange={e => onChange(hexToRgba(e.target.value, value.A))}
         />
-      </button>
+      </Button>
 
       {/* Hex input */}
-      <input
+      <Input
         type="text"
         maxLength={7}
         defaultValue={hex}
         key={hex}
         onBlur={e => handleHexInput(e.target.value)}
         onKeyDown={e => { if (e.key === 'Enter') handleHexInput(e.currentTarget.value) }}
-        className={cn(
-          'w-20 border border-border bg-bg-shell px-1.5 py-0.5 font-mono text-[10px] text-foreground',
-          'focus:outline-none focus:border-accent',
-        )}
+        className="h-8 w-20 font-sans tabular-nums text-[10px]"
       />
 
       {/* Reset button */}
-      <button
-        type="button"
+      <IconButton
+        label={`Reset ${label}`}
+        icon={<IconRotate size={11} />}
         onClick={onReset}
         disabled={!isOverridden}
-        className="text-text-disabled hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
         title={`${resetTitle} (${resetHex})`}
-      >
-        <ResetIcon />
-      </button>
+        size="icon-xs"
+        variant="ghost"
+      />
     </div>
-  )
-}
-
-function ResetIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 5.5A3.5 3.5 0 1 1 5.5 9" />
-      <polyline points="2,3 2,5.5 4.5,5.5" />
-    </svg>
   )
 }
 
@@ -370,14 +377,14 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
         onReset={() => reset('lapFormat')}
         showReset={globalPrefs !== undefined}
       >
-        <ToggleGroup
-          options={[
+        <SegmentedControl
+          label="Lap format"
+          options={withInheritedMarker([
             { value: 'M:SS.mmm', label: 'M:SS.mmm' },
             { value: 'M:SS.mm',  label: 'M:SS.mm' },
             { value: 'SS.mmm',   label: 'SS.mmm' },
-          ]}
+          ], prefs.lapFormat === undefined ? globalEffective.lapFormat : undefined)}
           value={effective.lapFormat!}
-          inherited={prefs.lapFormat === undefined ? globalEffective.lapFormat : undefined}
           onChange={v => set('lapFormat', v as FormatPreferences['lapFormat'])}
         />
       </FormatRow>
@@ -388,13 +395,13 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
         onReset={() => reset('speedUnit')}
         showReset={globalPrefs !== undefined}
       >
-        <ToggleGroup
-          options={[
+        <SegmentedControl
+          label="Speed"
+          options={withInheritedMarker([
             { value: 'kph', label: 'KPH' },
             { value: 'mph', label: 'MPH' },
-          ]}
+          ], prefs.speedUnit === undefined ? globalEffective.speedUnit : undefined)}
           value={effective.speedUnit!}
-          inherited={prefs.speedUnit === undefined ? globalEffective.speedUnit : undefined}
           onChange={v => set('speedUnit', v as FormatPreferences['speedUnit'])}
         />
       </FormatRow>
@@ -405,13 +412,13 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
         onReset={() => reset('tempUnit')}
         showReset={globalPrefs !== undefined}
       >
-        <ToggleGroup
-          options={[
+        <SegmentedControl
+          label="Temperature"
+          options={withInheritedMarker([
             { value: 'c', label: '°C' },
             { value: 'f', label: '°F' },
-          ]}
+          ], prefs.tempUnit === undefined ? globalEffective.tempUnit : undefined)}
           value={effective.tempUnit!}
-          inherited={prefs.tempUnit === undefined ? globalEffective.tempUnit : undefined}
           onChange={v => set('tempUnit', v as FormatPreferences['tempUnit'])}
         />
       </FormatRow>
@@ -422,14 +429,14 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
         onReset={() => reset('pressureUnit')}
         showReset={globalPrefs !== undefined}
       >
-        <ToggleGroup
-          options={[
+        <SegmentedControl
+          label="Pressure"
+          options={withInheritedMarker([
             { value: 'kpa', label: 'kPa' },
             { value: 'psi', label: 'PSI' },
             { value: 'bar', label: 'bar' },
-          ]}
+          ], prefs.pressureUnit === undefined ? globalEffective.pressureUnit : undefined)}
           value={effective.pressureUnit!}
-          inherited={prefs.pressureUnit === undefined ? globalEffective.pressureUnit : undefined}
           onChange={v => set('pressureUnit', v as FormatPreferences['pressureUnit'])}
         />
       </FormatRow>
@@ -440,13 +447,13 @@ function FormatPreferencesSection({ prefs, globalPrefs, onChange }: FormatPrefsS
         onReset={() => reset('deltaPrecision')}
         showReset={globalPrefs !== undefined}
       >
-        <ToggleGroup
-          options={[
+        <SegmentedControl
+          label="Delta precision"
+          options={withInheritedMarker([
             { value: '3', label: '0.123' },
             { value: '2', label: '0.12' },
-          ]}
+          ], prefs.deltaPrecision === undefined ? globalEffective.deltaPrecision : undefined)}
           value={effective.deltaPrecision!}
-          inherited={prefs.deltaPrecision === undefined ? globalEffective.deltaPrecision : undefined}
           onChange={v => set('deltaPrecision', v as FormatPreferences['deltaPrecision'])}
         />
       </FormatRow>
@@ -482,10 +489,10 @@ function TypographySection({
         onReset={() => reset('font')}
         showReset={globalTypography !== undefined}
       >
-        <ToggleGroup
-          options={TYPOGRAPHY_FONT_OPTIONS}
+        <SegmentedControl
+          label="Value font"
+          options={withInheritedMarker(TYPOGRAPHY_FONT_OPTIONS, typography.font === undefined ? globalTypography?.font : undefined)}
           value={effective.font ?? 'number'}
-          inherited={typography.font === undefined ? globalTypography?.font : undefined}
           onChange={value => set('font', value as TypographySettings['font'])}
         />
       </FormatRow>
@@ -496,10 +503,10 @@ function TypographySection({
         onReset={() => reset('labelFont')}
         showReset={globalTypography !== undefined}
       >
-        <ToggleGroup
-          options={TYPOGRAPHY_FONT_OPTIONS}
+        <SegmentedControl
+          label="Label font"
+          options={withInheritedMarker(TYPOGRAPHY_FONT_OPTIONS, typography.labelFont === undefined ? globalTypography?.labelFont : undefined)}
           value={effective.labelFont ?? 'label'}
-          inherited={typography.labelFont === undefined ? globalTypography?.labelFont : undefined}
           onChange={value => set('labelFont', value as TypographySettings['labelFont'])}
         />
       </FormatRow>
@@ -510,17 +517,13 @@ function TypographySection({
         onReset={() => reset('fontScale')}
         showReset={globalTypography !== undefined}
       >
-        <input
-          type="number"
-          step="0.05"
-          min="0.5"
-          max="3"
+        <Stepper
+          inputLabel="Font scale"
+          step={0.05}
+          min={0.5}
+          max={3}
           value={effective.fontScale ?? 1}
-          onChange={event => {
-            const next = parseFloat(event.target.value)
-            if (!Number.isNaN(next) && next > 0) set('fontScale', next)
-          }}
-          className="w-24 border border-border bg-bg-shell px-2 py-1 font-mono text-[10px] text-foreground focus:outline-none focus:border-accent"
+          onChange={next => set('fontScale', next)}
         />
       </FormatRow>
     </div>
@@ -543,64 +546,22 @@ function FormatRow({
   return (
     <div className="flex flex-col gap-1 py-1">
       <div className="flex items-center gap-2">
-        <span className={cn('font-mono text-[10px] flex-1', isOverridden ? 'text-foreground' : 'text-text-muted')}>
+        <span className={cn('font-sans tabular-nums text-[10px] flex-1', isOverridden ? 'text-[var(--text)]' : 'text-[var(--text2)]')}>
           {label}
         </span>
         {showReset && (
-          <button
-            type="button"
+          <IconButton
+            label={`Reset ${label}`}
+            icon={<IconRotate size={11} />}
             onClick={onReset}
             disabled={!isOverridden}
-            className="text-text-disabled hover:text-foreground disabled:opacity-20 disabled:pointer-events-none transition-colors"
             title="Reset to global default"
-          >
-            <ResetIcon />
-          </button>
+            size="icon-xs"
+            variant="ghost"
+          />
         )}
       </div>
       {children}
-    </div>
-  )
-}
-
-function ToggleGroup({
-  options,
-  value,
-  inherited,
-  onChange,
-}: {
-  options: { value: string; label: string }[]
-  value: string
-  inherited?: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div className="flex gap-1 flex-wrap">
-      {options.map(opt => {
-        const isActive = opt.value === value
-        const isInherited = opt.value === inherited
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              'flex items-center gap-1 rounded border px-2 py-1 font-mono text-[10px] transition-colors',
-              isActive && !isInherited
-                ? 'border-primary text-primary bg-primary/5'
-                : isActive && isInherited
-                  ? 'border-border text-text-muted border-dashed'
-                  : 'border-border text-text-disabled hover:border-border hover:text-foreground',
-            )}
-            title={isInherited ? 'Inherited from global' : undefined}
-          >
-            {opt.label}
-            {isInherited && isActive && (
-              <span className="text-[8px] text-text-disabled">↑</span>
-            )}
-          </button>
-        )
-      })}
     </div>
   )
 }

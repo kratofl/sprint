@@ -61,7 +61,7 @@ interface RawSavedDevice {
   dash_id?: string
   purpose?: DevicePurpose
   purpose_config?: RawRearViewConfig
-  bindings?: RawDeviceBinding[]
+  bindings?: RawDeviceBinding[] | null
   disabled?: boolean
 }
 
@@ -80,7 +80,7 @@ interface RawCatalogEntry {
   margin?: number
   driver?: CatalogEntry['driver']
   purpose?: DevicePurpose
-  bindings?: RawDeviceBinding[]
+  bindings?: RawDeviceBinding[] | null
 }
 
 interface RawDetectedScreen {
@@ -93,7 +93,7 @@ interface RawDetectedScreen {
   driver?: DetectedScreen['driver']
 }
 
-function adaptBindings(raw: RawDeviceBinding[] | undefined): DeviceBinding[] {
+function adaptBindings(raw: RawDeviceBinding[] | null | undefined): DeviceBinding[] {
   if (!Array.isArray(raw)) return []
 
   return raw.map(binding => ({
