@@ -25,11 +25,11 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "react": "^19.0.0",
+    "@types/react": "^19.2.16",
+    "react": "^19.2.7",
     "typescript": "^5.7.2"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.2.7"
   }
 }

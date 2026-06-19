@@ -1,11 +1,5 @@
 /* Fonts */
 /* Space Grotesk is the primary UI font. JetBrains Mono is for telemetry data. */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 /* CSS variables */
 :root {
   /* Primary — orange (driver-owned actions / active state) */
