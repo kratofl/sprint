@@ -575,7 +575,7 @@ function DashEditorPreviewCard({
           />
         </CanvasViewport>
       </div>
-      <p className="sc-note mt-3">
+      <p className="mt-3 text-[11px] text-[var(--text3)]">
         {controller.screenW}x{controller.screenH} · {controller.layout.gridCols}x{controller.layout.gridRows} grid
       </p>
     </SettingsCard>

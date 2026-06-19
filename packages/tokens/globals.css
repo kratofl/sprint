@@ -75,6 +75,12 @@
   --blue: #4F9CFF;
   --purple: #A06BFF;
 
+  /* Typography stacks. IBM Plex Sans is the single UI family (see
+     packages/tokens/src/atoms/typography.ts); display/body/ui share it. */
+  --font-display: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  --font-ui: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+
   /* Compatibility aliases mapped to Dash Studio */
   --bg-deep: var(--bg);
   --win: var(--panel);

@@ -72,7 +72,7 @@ export function PageTabs({
             type="button"
             onClick={() => onSelectTab('idle')}
             data-state={activeTab === 'idle' ? 'active' : 'inactive'}
-            className={cn(topTriggerClassName, embedded && activeTab === 'idle' && 'sel')}
+            className={topTriggerClassName}
           >
             <IconLock size={12} className="flex-shrink-0 opacity-60" />
             <span>{idlePage.name || 'Idle'}</span>
@@ -112,7 +112,6 @@ export function PageTabs({
                 className={cn(
                   topTriggerClassName,
                   !embedded && 'group min-h-full cursor-pointer select-none px-3',
-                  embedded && isActive && 'sel',
                 )}
               >
                 {isLive && (
