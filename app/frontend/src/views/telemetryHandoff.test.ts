@@ -7,8 +7,9 @@ const telemetrySource = readFileSync(new URL('./Telemetry.tsx', import.meta.url)
 test('telemetry view uses the Figma dashboard shell and card chrome', () => {
   // 12-column dashboard grid on the Figma spacing scale.
   assert.match(telemetrySource, /grid-cols-12 gap-\[14px\]/)
-  // Panels use flat Figma card chrome.
-  assert.match(telemetrySource, /rounded-panel border border-\[var\(--border\)\] bg-\[var\(--panel\)\] p-\[14px\]/)
+  // Panels compose the shared flat Card primitive (Graphite card chrome).
+  assert.match(telemetrySource, /<Card\b/)
+  assert.match(telemetrySource, /\bCardTitle\b/)
   // No legacy tokens, glassmorphism, mock "Live Session" copy, or non-design fonts/colors.
   assert.doesNotMatch(telemetrySource, /Live Session|bg-bg-|text-text-|font-mono|cyan|purple|backdrop-blur/)
 })

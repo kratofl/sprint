@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '@sprint/ui'
+import { Button, Card } from '@sprint/ui'
 import type { DetectedScreen, DeviceType } from '@/lib/dash'
 import { SECTION_LABELS } from './shared'
 
@@ -47,7 +47,7 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
           const vidHex = screen.vid.toString(16).padStart(4, '0').toUpperCase()
           const pidHex = screen.pid.toString(16).padStart(4, '0').toUpperCase()
           return (
-            <div key={key} className="flex items-start justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
+            <Card key={key} size="sm" className="flex-row items-start justify-between">
               <div className="min-w-0 flex-1">
                 <p className="font-sans text-[12px] font-bold text-[var(--text)]">
                   {screen.description || screen.driver.toUpperCase()}
@@ -68,7 +68,7 @@ export function ScanPicker({ screens, deviceType, onPick, onBack }: ScanPickerPr
               >
                 {picking === key ? 'Adding…' : 'Select'}
               </Button>
-            </div>
+            </Card>
           )
         })}
       </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '@sprint/ui'
+import { Button, Card } from '@sprint/ui'
 import { type CatalogEntry, type DetectedScreen, type DeviceType, deviceAPI } from '@/lib/dash'
 import { ScanPicker } from './ScanPicker'
 import { SECTION_LABELS } from './shared'
@@ -115,7 +115,7 @@ export function CatalogPanel({
           {entries.map(entry => {
             const isGeneric = entry.vid === 0 && entry.pid === 0
             return (
-              <div key={entry.id} className="flex items-start justify-between gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px]">
+              <Card key={entry.id} size="sm" className="flex-row items-start justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="font-sans text-[12px] font-bold text-[var(--text)]">{entry.name}</p>
                   <p className="mt-0.5 font-sans text-[10px] text-[var(--muted)]">{entry.description}</p>
@@ -138,7 +138,7 @@ export function CatalogPanel({
                 >
                   {scanning === entry.id ? 'Scanning…' : adding === entry.id ? 'Adding…' : 'Add'}
                 </Button>
-              </div>
+              </Card>
             )
           })}
         </div>

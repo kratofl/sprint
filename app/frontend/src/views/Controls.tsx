@@ -9,6 +9,7 @@ import {
   SettingsRow,
   StatusPill,
   Stepper,
+  Tile,
   cn,
 } from '@sprint/ui'
 import {
@@ -62,12 +63,12 @@ function SetupMetricTile({
   valueClassName?: string
 }) {
   return (
-    <div className="rounded-[calc(var(--r)-2px)] border border-[var(--line)] bg-[var(--panel2)] p-3">
+    <Tile>
       <div className="text-[10px] font-semibold uppercase text-[var(--text3)]">{label}</div>
       <div className={cn('mt-2 font-sans tabular-nums text-[18px] font-semibold text-[var(--text)]', valueClassName)}>
         {value}
       </div>
-    </div>
+    </Tile>
   )
 }
 

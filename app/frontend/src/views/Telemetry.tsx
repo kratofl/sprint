@@ -1,4 +1,7 @@
 import {
+  Card,
+  CardDescription,
+  CardTitle,
   DeltaBar,
   FlagBanner,
   FuelWidget,
@@ -10,6 +13,7 @@ import {
   SessionHeader,
   TireTemp,
   TrackMap,
+  cn,
 } from '@sprint/ui'
 import type { TelemetryFrame } from '@sprint/types'
 
@@ -168,13 +172,13 @@ function Panel({
   className?: string
 }) {
   return (
-    <section className={`flex flex-col rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px] ${className}`}>
+    <Card className={cn('gap-0', className)}>
       <div className="mb-[14px] flex items-baseline justify-between gap-[10px]">
-        <div className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</div>
-        {subtitle && <div className="font-inter text-[11px] text-[var(--muted)]">{subtitle}</div>}
+        <CardTitle>{title}</CardTitle>
+        {subtitle && <CardDescription>{subtitle}</CardDescription>}
       </div>
       {children}
-    </section>
+    </Card>
   )
 }
 
