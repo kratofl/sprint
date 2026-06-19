@@ -1,8 +1,4 @@
-/* Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Saira:wght@400;500;600;700&family=Saira+Semi+Condensed:wght@500;700&family=Space+Grotesk:wght@700&display=swap');
-
-@import "tailwindcss";
-
+/* Shared CSS variables and base styles. Apps load fonts and compile Tailwind. */
 :root {
   /* Primitive / Color */
   --primitive-color-orange-500: #ff6a00;
