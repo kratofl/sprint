@@ -1,0 +1,145 @@
+CANVAS  "Components"
+  FRAME  "Segments"  117×8  AL:col gap6  r[16,16,16,16]
+    FRAME  "Frame 11"  117×8  AL:row gap2  r[999,999,999,999]
+      FRAME  "Frame 3"  21.8×8  r[16,16,16,16]  fill:#FF6A00
+      FRAME  "Frame 7"  21.8×8  r[16,16,16,16]  fill:#FF6A00
+      FRAME  "Frame 4"  21.8×8  r[16,16,16,16]  fill:#FF6A00
+      FRAME  "Frame 5"  21.8×8  r[16,16,16,16]  fill:#1F1F1F
+      FRAME  "Frame 6"  21.8×8  r[16,16,16,16]  fill:#1F1F1F
+  FRAME  "Progress Bar"  117×8  AL:col gap10  r[999,999,999,999]  fill:#1F1F1F
+    FRAME  "Frame 3"  71×8  r[16,16,16,16]  fill:#FF6A00
+  FRAME  "Button"  392×196  AL:grid gap6 pad[20,20,20,20]  r5  stroke:#8A38F5/1I  PROPS{Label:TEXT, Icon:INSTANCE_SWAP, Variant:VARIANT, Size:VARIANT, Icon:VARIANT, Icon Position:VARIANT}  VARIANT-SET
+    SYMBOL  "Variant=Primary, Size=Default, Icon=Hide, Icon Position=Left"  66×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#FF6A00  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#141414  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Secondary, Size=Default, Icon=Hide, Icon Position=Left"  66×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#F6F6F6  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Destructive, Size=Default, Icon=Hide, Icon Position=Left"  66×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#F02744  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Disabled, Size=Default, Icon=Hide, Icon Position=Left"  66×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#141414  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#7A7A7A  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Primary, Size=Default, Icon=Show, Icon Position=Left"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#FF6A00  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  13×13
+      TEXT  "Label"  34×13  fill:#141414  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Secondary, Size=Default, Icon=Show, Icon Position=Left"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  13×13
+      TEXT  "Label"  34×13  fill:#F6F6F6  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Destructive, Size=Default, Icon=Show, Icon Position=Left"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  13×13
+      TEXT  "Label"  34×13  fill:#F02744  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Disabled, Size=Default, Icon=Show, Icon Position=Left"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#141414  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  13×13
+      TEXT  "Label"  34×13  fill:#7A7A7A  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "Variant=Primary, Size=Default, Icon=Show, Icon Position=Right"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#FF6A00  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#141414  text="Label"  Inter/Medium  13px  lh:auto
+      INSTANCE  "tabler/chevron-left"  13×13
+    SYMBOL  "Variant=Secondary, Size=Default, Icon=Show, Icon Position=Right"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#F6F6F6  text="Label"  Inter/Medium  13px  lh:auto
+      INSTANCE  "tabler/chevron-left"  13×13
+    SYMBOL  "Variant=Destructive, Size=Default, Icon=Show, Icon Position=Right"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#F02744  text="Label"  Inter/Medium  13px  lh:auto
+      INSTANCE  "tabler/chevron-left"  13×13
+    SYMBOL  "Variant=Disabled, Size=Default, Icon=Show, Icon Position=Right"  83×25  AL:row gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#141414  PROPS{undefined:undefined, undefined:undefined}
+      TEXT  "Label"  34×13  fill:#7A7A7A  text="Label"  Inter/Medium  13px  lh:auto
+      INSTANCE  "tabler/chevron-left"  13×13
+    SYMBOL  "Variant=Primary, Size=Icon, Icon=Show, Icon Position=Left"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#FF6A00  stroke:#FF8636/1I  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  24×24
+    SYMBOL  "Variant=Secondary, Size=Icon, Icon=Show, Icon Position=Left"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F  stroke:#2E2E2E/1I  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  24×24
+    SYMBOL  "Variant=Destructive, Size=Icon, Icon=Show, Icon Position=Left"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F  stroke:#2E2E2E/1I  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  24×24
+    SYMBOL  "Variant=Disabled, Size=Icon, Icon=Show, Icon Position=Right"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[18,18,18,18]  fill:#141414  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/chevron-left"  24×24
+    SYMBOL  "Variant=Primary_Success, Size=Default, Icon=Show, Icon Position=Left"  84×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#16B566  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/check"  13×13
+    SYMBOL  "Variant=Primary_Error, Size=Default, Icon=Show, Icon Position=Left"  84×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[18,18,18,18]  fill:#F02744  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/x"  13×13
+  FRAME  "Navigation Item"  190×124  AL:col gap20 pad[20,20,20,20]  r5  stroke:#8A38F5/1I  PROPS{Label:TEXT, Icon:INSTANCE_SWAP, State:VARIANT}  VARIANT-SET
+    SYMBOL  "State=Default"  150×32  AL:row gap10 pad[8,10,8,10] a:CENTER  r[999,999,999,999]  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/home"  16×16
+      TEXT  "Label"  104×16  fill:#A0A0A0  text="Label"  Inter/Medium  13px  lh:auto
+    SYMBOL  "State=Selected"  150×32  AL:row gap8 pad[8,10,8,10] a:CENTER  r[18,18,18,18]  fill:#2E2E2E  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "tabler/home"  16×16
+      TEXT  "Label"  106×16  fill:#FF6A00  text="Label"  Inter/Medium  13px  lh:auto
+      ROUNDED_RECTANGLE  "Rectangle 1"  2×18  r[999,999,999,999]  fill:#FF6A00  HIDDEN
+      ROUNDED_RECTANGLE  "Rectangle 2"  150×32  r[18,18,18,18]  stroke:#FF6A00/1I  HIDDEN
+  FRAME  "Input w Label"  260×345  AL:col gap20 pad[20,20,20,20]  r5  stroke:#8A38F5/1I  PROPS{Text:TEXT, Label:TEXT, Hint:TEXT, Error Mesage:TEXT, Icon:INSTANCE_SWAP, Show Icon:BOOL, Show Hint:BOOL, Show Label:BOOL, State:VARIANT}  VARIANT-SET
+    SYMBOL  "State=Default"  220×61  AL:col gap2 j:CENTER  PROPS{undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined}
+      TEXT  "Label"  66×13  fill:#A0A0A0  text="Label"  Inter/Regular  11px  lh:auto
+      FRAME  "Input"  220×32  AL:row gap6 pad[8,10,8,10] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#2E2E2E/1I
+        TEXT  "Value"  178×16  fill:#F6F6F6  text="Text which is the value"  Inter/Regular  13px  lh:auto
+        INSTANCE  "tabler/search"  16×16
+      FRAME  "Frame 6"  220×12  AL:row gap10 j:MAX a:CENTER
+        TEXT  "Hint"  28×12  fill:#7A7A7A  text="0/20"  Saira/Regular  12px  lh:auto  RIGHT
+    SYMBOL  "State=Focus"  220×61  AL:col gap2 j:CENTER  PROPS{undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined}
+      TEXT  "Label"  66×13  fill:#A0A0A0  text="Label"  Inter/Regular  11px  lh:auto
+      ROUNDED_RECTANGLE  "Rectangle 2"  220×32  r[18,18,18,18]  stroke:#FF6A00/1I  HIDDEN
+      FRAME  "Frame 6"  220×12  AL:row gap10 j:MAX a:CENTER
+        TEXT  "Hint"  28×12  fill:#7A7A7A  text="0/20"  Saira/Regular  12px  lh:auto  RIGHT
+    SYMBOL  "State=Error"  220×62  AL:col gap2 j:CENTER  PROPS{undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined}
+      TEXT  "Label"  66×13  fill:#F02744  text="Label"  Inter/Regular  11px  lh:auto
+      FRAME  "Input"  220×32  AL:row gap10 pad[8,10,8,10] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#F02744/1I
+        TEXT  "Value"  174×16  fill:#F6F6F6  text="Text which is the value"  Inter/Regular  13px  lh:auto
+        INSTANCE  "tabler/search"  16×16
+      ROUNDED_RECTANGLE  "Rectangle 2"  220×32  r[18,18,18,18]  stroke:#F02744/1I  HIDDEN
+      FRAME  "Frame 6"  220×13  AL:row gap10 j:SPACE_EVENLY a:CENTER
+        TEXT  "Error Message"  106×13  fill:#F02744  text="This field is required"  Inter/Regular  11px  lh:100%  RIGHT
+        TEXT  "Hint"  28×12  fill:#7A7A7A  text="0/20"  Saira/Regular  12px  lh:auto  RIGHT
+    SYMBOL  "State=Disabled"  220×61  AL:col gap2 j:CENTER  PROPS{undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined, undefined:undefined}
+      TEXT  "Label"  66×13  fill:#A0A0A0  text="Label"  Inter/Regular  11px  lh:auto
+      FRAME  "Input"  220×32  AL:row gap6 pad[8,10,8,10] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#2E2E2E/1I
+        TEXT  "Value"  178×16  fill:#7A7A7A  text="Text which is the value"  Inter/Regular  13px  lh:auto
+        INSTANCE  "tabler/search"  16×16
+      FRAME  "Frame 6"  220×12  AL:row gap10 j:MAX a:CENTER
+        TEXT  "Hint"  28×12  fill:#7A7A7A  text="0/20"  Saira/Regular  12px  lh:auto  RIGHT
+  FRAME  "Chip / Badge"  202×40  AL:row gap10 pad[10,10,10,10] a:CENTER  r5  stroke:#8A38F5/1I  PROPS{Label:TEXT, Color:VARIANT}  VARIANT-SET
+    SYMBOL  "Color=Red"  54×20  AL:row gap10 pad[4,10,4,10] j:CENTER a:CENTER  r[4,4,4,4]  stroke:#F02744/1I  PROPS{undefined:undefined}
+      TEXT  "SPORT"  34×12  fill:#F02744  text="SPORT"  Saira SemiCondensed/Bold  12px  lh:auto
+    SYMBOL  "Color=Green"  54×20  AL:row gap10 pad[4,10,4,10] j:CENTER a:CENTER  r[4,4,4,4]  stroke:#16B566/1I  PROPS{undefined:undefined}
+      TEXT  "SPORT"  34×12  fill:#16B566  text="SPORT"  Saira SemiCondensed/Bold  12px  lh:auto
+    SYMBOL  "Color=Blue"  54×20  AL:row gap10 pad[4,10,4,10] j:CENTER a:CENTER  r[4,4,4,4]  stroke:#1F7FE6/1I  PROPS{undefined:undefined}
+      TEXT  "SPORT"  34×12  fill:#1F7FE6  text="SPORT"  Saira SemiCondensed/Bold  12px  lh:auto
+  FRAME  "Toast"  265×148  AL:col gap20 pad[20,20,20,20]  r5  stroke:#8A38F5/1I  PROPS{Title:TEXT, Message:TEXT, Type:VARIANT}  VARIANT-SET
+    SYMBOL  "Type=Succes"  225×44  AL:row gap10 pad[6,16,6,8] a:CENTER  r[999,999,999,999]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "Indicator"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#05281A  stroke:#0E7445/1O
+      FRAME  "Content"  47×30  AL:col gap4 j:CENTER
+        TEXT  "Title"  29×13  fill:#F6F6F6  text="Title"  Inter/Bold  13px  lh:auto
+        TEXT  "Message"  47×13  fill:#A0A0A0  text="Message"  Inter/Regular  11px  lh:auto
+    SYMBOL  "Type=Danger"  225×44  AL:row gap10 pad[6,16,6,8] a:CENTER  r[999,999,999,999]  fill:#1F1F1F  PROPS{undefined:undefined, undefined:undefined}
+      INSTANCE  "Indicator"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#3A0A10  stroke:#A4172C/1O
+      FRAME  "Content"  47×30  AL:col gap4 j:CENTER
+        TEXT  "Title"  29×13  fill:#F6F6F6  text="Title"  Inter/Bold  13px  lh:auto
+        TEXT  "Message"  47×13  fill:#A0A0A0  text="Message"  Inter/Regular  11px  lh:auto
+  FRAME  "Alert"  265×82  AL:col gap20 pad[20,20,20,20]  r5  stroke:#8A38F5/1I  PROPS{Title:TEXT, Message:TEXT, Type:VARIANT}  VARIANT-SET
+    SYMBOL  "Type=Succes"  225×42  AL:row gap10 pad[6,16,6,8] a:CENTER  r[12,12,12,12]  fill:#05281A  PROPS{undefined:undefined, undefined:undefined}
+      FRAME  "Indicator"  28×28  AL:row pad[6,6,6,6] j:CENTER a:CENTER  r[999,999,999,999]
+        INSTANCE  "tabler/check"  16×16
+      FRAME  "Content"  47×30  AL:col gap4 j:CENTER
+        TEXT  "Title"  29×13  fill:#F6F6F6  text="Title"  Inter/Bold  13px  lh:auto
+        TEXT  "Message"  47×13  fill:#A0A0A0  text="Message"  Inter/Regular  11px  lh:auto
+  FRAME  "Indicator"  280×72  AL:row gap20 pad[20,20,20,20] a:CENTER  r5  stroke:#8A38F5/1I  PROPS{Icon:INSTANCE_SWAP, Color:VARIANT}  VARIANT-SET
+    SYMBOL  "Color=Green"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#05281A  stroke:#0E7445/1O  PROPS{undefined:undefined}
+      INSTANCE  "tabler/check"  24×24
+    SYMBOL  "Color=Red"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#3A0A10  stroke:#A4172C/1O  PROPS{undefined:undefined}
+      INSTANCE  "tabler/check"  24×24
+    SYMBOL  "Color=Orange"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#421A02  stroke:#BF4D00/1O  PROPS{undefined:undefined}
+      INSTANCE  "tabler/check"  24×24
+    SYMBOL  "Color=Blue"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#091D38  stroke:#114F99/1O  PROPS{undefined:undefined}
+      INSTANCE  "tabler/check"  24×24
+    SYMBOL  "Color=Neutral"  32×32  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#141414  stroke:#2E2E2E/1O  PROPS{undefined:undefined}
+      INSTANCE  "tabler/check"  24×24
+  FRAME  "Toggle"  97×232  r5  stroke:#8A38F5/1I  PROPS{State:VARIANT}  VARIANT-SET
+    SYMBOL  "State=On"  57×33  AL:row pad[4,4,4,4] j:MAX a:CENTER  r[999,999,999,999]  fill:#16B566
+      FRAME  "Knob"  24×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#F6F6F6
+    SYMBOL  "State=On_DIsabled"  57×33  AL:row pad[4,4,4,4] j:MAX a:CENTER  r[999,999,999,999]  fill:#0F5B38
+      FRAME  "Knob"  24×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#424242
+    SYMBOL  "State=Off"  57×33  AL:row pad[4,4,4,4] a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+      FRAME  "Knob"  24×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#F6F6F6
+    SYMBOL  "State=Off_Disabled"  57×33  AL:row pad[4,4,4,4] a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+      FRAME  "Knob"  24×25  AL:row pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#424242
+  FRAME  "Segmented Controls"  205×25  AL:row j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+    FRAME  "Segment"  102.5×25  AL:col gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+      TEXT  "Label"  39×13  fill:#F6F6F6  text="Pages"  Inter/Medium  13px  lh:auto
+    FRAME  "Segment"  102.5×25  AL:col gap4 pad[6,16,6,16] j:CENTER a:CENTER  r[999,999,999,999]  fill:#FF6A00
+      TEXT  "Label"  52×13  fill:#141414  text="Widgets"  Inter/Medium  13px  lh:auto
+  FRAME  "Tab View"  238×33  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#2E2E2E/1I
+    FRAME  "Separator"  1×14  fill:#2E2E2E

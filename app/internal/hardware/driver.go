@@ -10,7 +10,6 @@ import (
 	"context"
 
 	"github.com/kratofl/sprint/app/internal/core/dashboard"
-	"github.com/kratofl/sprint/app/internal/core/dashboard/widgets"
 	"github.com/kratofl/sprint/pkg/dto"
 )
 
@@ -38,11 +37,11 @@ type ScreenDriver interface {
 	// connect attempt.
 	Configure(cfg ScreenConfig)
 	SetLayout(layout *dashboard.DashLayout)
-	SetGlobalTheme(theme widgets.DashTheme)
-	SetGlobalDomainPalette(domain widgets.DomainPalette)
-	SetGlobalPrefs(prefs widgets.FormatPreferences)
-	SetGlobalTypography(typography widgets.TypographySettings)
-	SetProfile(profile dashboard.RenderProfile)
+	// ApplyRenderPreferences applies a full RenderPreferences bundle (theme,
+	// domain palette, format preferences, typography, theme library, profile)
+	// in one call. The coordinator owns the authoritative bundle and broadcasts
+	// it here — this is the single seam for global render settings.
+	ApplyRenderPreferences(prefs dashboard.RenderPreferences)
 	SetWidgetStackLayer(pageID, groupID, variantID string)
 	SetActivePage(index int)
 	SetIdle(idle bool)

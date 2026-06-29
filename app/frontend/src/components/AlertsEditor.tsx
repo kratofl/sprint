@@ -1,268 +1,175 @@
-import { useState } from 'react'
-import { IconX } from '@tabler/icons-react'
+import { Button, Stepper, cn } from '@sprint/ui'
 import {
-  Button,
-  IconButton,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Stepper,
-  cn,
-} from '@sprint/ui'
-import { type AlertInstance, type AlertMeta, type DomainPalette, type ConfigDef } from '@/lib/dash'
+  type AlertColorMode,
+  type AlertConfig,
+  type AlertDisplayMode,
+  type AlertMeta,
+  type DomainPalette,
+} from '@/lib/dash'
 
 const DOMAIN_COLOR_MAP: Record<string, string> = {
-  tc:        'var(--green)',
-  abs:       'var(--amber)',
-  motor:     'var(--orange)',
-  primary:   'var(--orange)',
-  accent:    'var(--orange)',
-  success:   'var(--green)',
-  warning:   'var(--amber)',
-  danger:    'var(--red)',
+  tc:      'var(--green)',
+  abs:     'var(--amber)',
+  motor:   'var(--orange)',
+  primary: 'var(--orange)',
+  accent:  'var(--orange)',
+  success: 'var(--green)',
+  warning: 'var(--amber)',
+  danger:  'var(--red)',
 }
 
 function resolveSwatchColor(colorRef: string, domain?: Partial<DomainPalette>): string {
   if (domain) {
-    const key = colorRef as keyof DomainPalette
-    const val = domain[key]
+    const val = domain[colorRef as keyof DomainPalette]
     if (val && typeof val === 'object' && 'R' in val) {
       const { R, G, B } = val as { R: number; G: number; B: number }
       return `rgb(${R},${G},${B})`
     }
   }
-  return DOMAIN_COLOR_MAP[colorRef] ?? '#808080'
+  return DOMAIN_COLOR_MAP[colorRef] ?? 'var(--text3)'
 }
 
 interface AlertsEditorProps {
-  instances: AlertInstance[]
+  config: AlertConfig
   catalog: AlertMeta[]
   domainPalette?: Partial<DomainPalette>
-  onChange: (instances: AlertInstance[]) => void
+  onChange: (config: AlertConfig) => void
 }
 
-export function AlertsEditor({ instances, catalog, domainPalette, onChange }: AlertsEditorProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+// AlertsEditor presents one shared set of alert display controls above a catalog
+// of alert tiles with on/off toggles. There is no per-instance placement or
+// configuration — enabling an alert is a single toggle, and disabling it is
+// non-destructive (the shared settings are untouched).
+export function AlertsEditor({ config, catalog, domainPalette, onChange }: AlertsEditorProps) {
+  const enabled = new Set(config.enabledTypes ?? [])
+  const displayMode: AlertDisplayMode = config.displayMode ?? 'full'
+  const colorMode: AlertColorMode = config.colorMode ?? 'normal'
+  const duration = config.duration ?? 1.5
 
-  const addedTypes = new Set(instances.map(i => i.type))
-  const selectedInstance = instances.find(i => i.id === selectedId) ?? null
-  const selectedMeta = selectedInstance
-    ? catalog.find(m => m.type === selectedInstance.type) ?? null
-    : null
-
-  const handleAdd = (meta: AlertMeta) => {
-    const id = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)
-    const next: AlertInstance = { id, type: meta.type }
-    onChange([...instances, next])
-    setSelectedId(id)
+  const patch = (next: Partial<AlertConfig>) => {
+    onChange({ displayMode, colorMode, duration, enabledTypes: [...enabled], ...next })
   }
 
-  const handleRemove = (id: string) => {
-    onChange(instances.filter(i => i.id !== id))
-    if (selectedId === id) setSelectedId(null)
-  }
-
-  const handleConfigChange = (key: string, value: unknown) => {
-    if (!selectedInstance) return
-    onChange(instances.map(i =>
-      i.id === selectedInstance.id
-        ? { ...i, config: { ...(i.config ?? {}), [key]: value } }
-        : i
-    ))
+  const toggleType = (type: string) => {
+    const next = new Set(enabled)
+    if (next.has(type)) {
+      next.delete(type)
+    } else {
+      next.add(type)
+    }
+    patch({ enabledTypes: [...next].sort() })
   }
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--bg-deep)]">
-      {/* Left: alert type palette */}
-      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--panel)]">
-        <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
-          <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Alert types</h4>
-        </div>
-        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[10px]">
-          {catalog.length === 0 ? (
-            <div className="p-[10px] text-center font-sans text-[12px] tabular-nums text-[var(--muted)]">Loading…</div>
-          ) : (
-            catalog.map(meta => {
-              const alreadyAdded = addedTypes.has(meta.type)
-              return (
-                <div
-                  key={meta.type}
-                  className={cn(
-                    'flex gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] transition-colors',
-                    alreadyAdded
-                      ? 'cursor-not-allowed opacity-40'
-                      : 'cursor-pointer hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]'
-                  )}
-                  onClick={() => { if (!alreadyAdded) handleAdd(meta) }}
-                  title={alreadyAdded ? 'Already added' : `Add ${meta.label}`}
-                >
-                  <div className="flex size-[28px] flex-shrink-0 items-center justify-center rounded-tile border border-[var(--amber-ring)] bg-[var(--amber-tint)] text-[var(--amber)]">
-                    <span
-                      className="size-2 rounded-full"
-                      style={{ backgroundColor: resolveSwatchColor(meta.defaultColor, domainPalette) }}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate text-[13px] font-bold text-[var(--text)]">{meta.label}</span>
-                    <p className="font-sans text-[10px] leading-tight tabular-nums text-[var(--muted)]">{meta.description}</p>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[var(--bg-deep)]">
+      {/* Shared alert settings — configured once for the whole dashboard. */}
+      <section className="flex flex-col gap-[14px] border-b border-[var(--border)] bg-[var(--panel)] px-[16px] py-[14px]">
+        <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Alert settings</h4>
 
-      {/* Center: configured instance list */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="border-b border-[var(--border)] bg-[var(--panel)] px-[14px] py-[10px]">
-          <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Configured alerts</h4>
+        <SegmentedRow
+          label="Display"
+          options={[
+            { value: 'full', label: 'Full' },
+            { value: 'middle', label: 'Middle' },
+          ]}
+          value={displayMode}
+          onChange={value => patch({ displayMode: value as AlertDisplayMode })}
+        />
+
+        <SegmentedRow
+          label="Color"
+          options={[
+            { value: 'normal', label: 'Normal' },
+            { value: 'inverted', label: 'Inverted' },
+          ]}
+          value={colorMode}
+          onChange={value => patch({ colorMode: value as AlertColorMode })}
+        />
+
+        <div className="flex items-center justify-between gap-[10px]">
+          <span className="ui-label text-[11px] text-[var(--muted)]">Duration (s)</span>
+          <div className="w-[140px]">
+            <Stepper
+              inputLabel="Alert duration"
+              value={duration}
+              step={0.5}
+              min={0.5}
+              onChange={value => patch({ duration: value })}
+            />
+          </div>
         </div>
-        <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto p-[10px]">
-          {instances.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 font-sans text-[12px] tabular-nums text-[var(--muted)]">
-              <span>No alerts configured</span>
-              <span className="text-center text-[10px] text-[var(--muted-2)]">Click an alert type on the left to add it</span>
-            </div>
-          ) : (
-            instances.map(inst => {
-              const meta = catalog.find(m => m.type === inst.type)
-              const isSelected = inst.id === selectedId
-              return (
-                <div
-                  key={inst.id}
-                  onClick={() => setSelectedId(isSelected ? null : inst.id)}
-                  className={cn(
-                    'flex gap-[10px] rounded-alert border border-[var(--border)] bg-[var(--panel)] p-[10px] cursor-pointer transition-colors',
-                    isSelected
-                      ? 'border-[var(--orange)]'
-                      : 'hover:border-[var(--border-2)] hover:bg-[var(--panel-2)]'
-                  )}
-                >
-                  <div className="flex size-[28px] flex-shrink-0 items-center justify-center rounded-tile border border-[var(--amber-ring)] bg-[var(--amber-tint)] text-[var(--amber)]">
-                    <span
-                      className="size-2.5 rounded-full"
-                      style={{ backgroundColor: resolveSwatchColor(meta?.defaultColor ?? '', domainPalette) }}
-                    />
-                  </div>
-                  <span className="flex-1 truncate text-[13px] font-bold text-[var(--text)]">{meta?.label ?? inst.type}</span>
-                  <IconButton
-                    label="Remove alert"
-                    icon={<IconX size={11} />}
-                    onClick={e => { e.stopPropagation(); handleRemove(inst.id) }}
-                    size="icon-xs"
-                    variant="ghost"
-                    className="flex-shrink-0 text-destructive/80 hover:text-destructive"
+      </section>
+
+      {/* Alert catalog — each type is a toggle tile. */}
+      <div className="flex flex-col gap-[10px] p-[12px]">
+        {catalog.length === 0 ? (
+          <div className="p-[10px] text-center font-sans text-[12px] tabular-nums text-[var(--muted)]">Loading…</div>
+        ) : (
+          catalog.map(meta => {
+            const isOn = enabled.has(meta.type)
+            return (
+              <div
+                key={meta.type}
+                className={cn(
+                  'flex items-center gap-[10px] rounded-alert border p-[10px] transition-colors',
+                  isOn
+                    ? 'border-[var(--orange)] bg-[color-mix(in_srgb,var(--orange)_8%,transparent)]'
+                    : 'border-[var(--border)] bg-[var(--panel)]',
+                )}
+              >
+                <div className="flex size-[28px] flex-shrink-0 items-center justify-center rounded-tile border border-[var(--amber-ring)] bg-[var(--amber-tint)]">
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: resolveSwatchColor(meta.defaultColor, domainPalette) }}
                   />
                 </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Right: instance config panel */}
-      <div className="flex w-52 flex-shrink-0 flex-col overflow-hidden border-l border-[var(--border)] bg-[var(--panel)]">
-        <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
-          <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Properties</h4>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {!selectedInstance || !selectedMeta ? (
-            <div className="flex h-full flex-col items-center justify-center p-4 font-sans text-[12px] tabular-nums text-[var(--muted)]">
-              <span>Select an alert</span>
-              <span className="mt-1 text-[10px] text-[var(--muted-2)]">to view properties</span>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-0">
-              <div className="border-b border-[var(--border)] px-[14px] py-[10px]">
-                <p className="ui-label text-[11px] font-bold text-[var(--text)]">
-                  {selectedMeta.label}
-                </p>
-              </div>
-              {selectedMeta.configDefs && selectedMeta.configDefs.length > 0 ? (
-                <div className="flex flex-col gap-px">
-                  {selectedMeta.configDefs.map(def => (
-                    <AlertConfigField
-                      key={def.key}
-                      def={def}
-                      value={selectedInstance.config?.[def.key]}
-                      onChange={value => handleConfigChange(def.key, value)}
-                    />
-                  ))}
+                <div className="min-w-0 flex-1">
+                  <span className="truncate text-[13px] font-bold text-[var(--text)]">{meta.label}</span>
+                  <p className="font-sans text-[10px] leading-tight tabular-nums text-[var(--muted)]">{meta.description}</p>
                 </div>
-              ) : (
-                <div className="px-[14px] py-[10px] font-sans text-[12px] text-[var(--muted-2)]">No configurable options</div>
-              )}
-            </div>
-          )}
-        </div>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant={isOn ? 'active' : 'neutral'}
+                  aria-pressed={isOn}
+                  aria-label={`Toggle ${meta.label}`}
+                  onClick={() => toggleType(meta.type)}
+                >
+                  {isOn ? 'On' : 'Off'}
+                </Button>
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )
 }
 
-function AlertConfigField({
-  def,
-  value,
-  onChange,
-}: {
-  def: ConfigDef
-  value: unknown
-  onChange: (v: unknown) => void
+function SegmentedRow({ label, options, value, onChange }: {
+  label: string
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
 }) {
-  const current = value !== undefined ? String(value) : def.default
-  const numericValue = Number(current)
-
   return (
-    <div className="flex flex-col gap-[6px] border-b border-[var(--border)] px-[14px] py-[10px]">
-      <label className="ui-label text-[11px] text-[var(--muted)]">{def.label}</label>
-      {def.type === 'select' && def.options && (
-        <Select
-          value={current}
-          onValueChange={onChange}
-        >
-          <SelectTrigger size="sm" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {def.options.map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {def.type === 'number' && (
-        <Stepper
-          inputLabel={def.label}
-          value={Number.isFinite(numericValue) ? numericValue : 0}
-          step={0.5}
-          min={0.5}
-          onChange={onChange}
-        />
-      )}
-      {def.type === 'boolean' && (
-        <Button
-          type="button"
-          variant={current === 'true' ? 'active' : 'outline'}
-          size="sm"
-          onClick={() => onChange(current !== 'true')}
-          className="w-full justify-start gap-[8px] text-left"
-        >
-          <span className={cn('h-3 w-3 flex-shrink-0 rounded-[3px] border', current === 'true' ? 'border-[var(--orange)] bg-[var(--orange)]' : 'border-[var(--border-2)]')} />
-          {current === 'true' ? 'Enabled' : 'Disabled'}
-        </Button>
-      )}
-      {def.type === 'text' && (
-        <Input
-          type="text"
-          value={current}
-          onChange={e => onChange(e.target.value)}
-          className="h-8"
-        />
-      )}
+    <div className="flex items-center justify-between gap-[10px]">
+      <span className="ui-label text-[11px] text-[var(--muted)]">{label}</span>
+      <div className="flex items-center gap-[2px]">
+        {options.map(opt => (
+          <Button
+            key={opt.value}
+            type="button"
+            size="xs"
+            variant={value === opt.value ? 'active' : 'neutral'}
+            aria-pressed={value === opt.value}
+            aria-label={opt.label}
+            onClick={() => onChange(opt.value)}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }

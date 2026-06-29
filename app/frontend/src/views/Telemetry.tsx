@@ -15,149 +15,13 @@ import {
   TrackMap,
   cn,
 } from '@sprint/ui'
+import { IconSteeringWheel } from '@tabler/icons-react'
 import type { TelemetryFrame } from '@sprint/types'
 
 export interface TelemetryProps {
   frame: TelemetryFrame | null
   connected: boolean
   fps: number
-}
-
-const DEMO_TELEMETRY_FRAME: TelemetryFrame = {
-  timestamp: Date.now(),
-  session: {
-    game: 'Assetto Corsa Competizione',
-    track: 'Falkenberg GP',
-    car: 'Porsche 992 GT3 R',
-    sessionType: 'race',
-    sessionTime: 1842,
-    bestLapTime: 83.418,
-    maxLaps: 42,
-    inCar: true,
-  },
-  car: {
-    speedMS: 67.8,
-    gear: 5,
-    rpm: 7420,
-    maxRPM: 8800,
-    throttle: 0.78,
-    brake: 0.12,
-    clutch: 0,
-    steering: -0.18,
-    fuel: 38.6,
-    fuelPerLap: 2.74,
-    positionX: 142,
-    positionY: 0,
-    positionZ: -86,
-    brakeBiasRear: 0.44,
-  },
-  tires: [
-    {
-      position: 0,
-      tempInner: 84,
-      tempMiddle: 87,
-      tempOuter: 91,
-      tempSurface: 89,
-      tempCore: 86,
-      pressureKPa: 183,
-      wearPercent: 8,
-      compound: 'Soft',
-    },
-    {
-      position: 1,
-      tempInner: 86,
-      tempMiddle: 88,
-      tempOuter: 92,
-      tempSurface: 90,
-      tempCore: 87,
-      pressureKPa: 184,
-      wearPercent: 9,
-      compound: 'Soft',
-    },
-    {
-      position: 2,
-      tempInner: 82,
-      tempMiddle: 84,
-      tempOuter: 87,
-      tempSurface: 86,
-      tempCore: 84,
-      pressureKPa: 181,
-      wearPercent: 7,
-      compound: 'Soft',
-    },
-    {
-      position: 3,
-      tempInner: 83,
-      tempMiddle: 85,
-      tempOuter: 88,
-      tempSurface: 86,
-      tempCore: 84,
-      pressureKPa: 182,
-      wearPercent: 8,
-      compound: 'Soft',
-    },
-  ],
-  lap: {
-    currentLap: 18,
-    currentLapTime: 47.632,
-    positionLapTime: 47.632,
-    lastLapTime: 84.106,
-    bestLapTime: 83.418,
-    targetLapTime: 83.418,
-    delta: -0.214,
-    sector: 2,
-    sector1Time: 26.731,
-    sector2Time: 28.916,
-    isInLap: false,
-    isOutLap: false,
-    isValid: true,
-    trackPosition: 0.58,
-  },
-  flags: {
-    yellow: false,
-    doubleYellow: false,
-    red: false,
-    safetyCar: false,
-    vsc: false,
-    checkered: false,
-  },
-  electronics: {
-    tcActive: true,
-    tc: 4,
-    tcMax: 10,
-    tcCut: 2,
-    tcCutMax: 10,
-    tcSlip: 3,
-    tcSlipMax: 10,
-    absActive: false,
-    abs: 3,
-    absMax: 8,
-    motorMap: 2,
-    motorMapMax: 4,
-    drsActive: false,
-    absAvailable: true,
-    tcAvailable: true,
-    tcCutAvailable: true,
-    tcSlipAvailable: true,
-    motorMapAvailable: true,
-  },
-  race: {
-    position: 4,
-    totalPositions: 28,
-    gapAhead: 1.42,
-    gapBehind: 0.86,
-  },
-  energy: {
-    virtualEnergy: 2280,
-    soc: 0.62,
-    regenPower: 18,
-    deployPower: 42,
-  },
-  penalties: {
-    incidents: 1,
-    trackLimitSteps: 0,
-    pitStops: 1,
-  },
 }
 
 function Panel({
@@ -188,17 +52,46 @@ function StatLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
-  const liveFrame = frame ?? DEMO_TELEMETRY_FRAME
-  const liveConnected = connected || frame == null
-  const liveFps = frame ? fps : 60
+// Shown when there is no live telemetry frame. Distinguishes "sim connected but
+// no frame yet" from "nothing running" — no demo/placeholder data is rendered.
+function TelemetryEmptyState({ connected }: { connected: boolean }) {
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-[18px] text-center">
+      <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border border-[var(--line)] bg-[var(--panel)] text-[var(--text3)]">
+        <IconSteeringWheel size={34} stroke={1.5} />
+      </div>
+      <div className="flex flex-col gap-[6px]">
+        <h2 className="text-[18px] font-bold text-[var(--text)]">
+          {connected ? 'Waiting for telemetry' : 'No sim connected'}
+        </h2>
+        <p className="max-w-[360px] text-[12px] leading-relaxed text-[var(--text3)]">
+          {connected
+            ? 'Connected to your sim — get in the car and start a session to see live telemetry.'
+            : 'Start your sim to stream live telemetry. Nothing is running right now.'}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text3)]">
+        <span
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            connected ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--text3)]',
+          )}
+        />
+        {connected ? 'Sim link active' : 'Offline'}
+      </div>
+    </div>
+  )
+}
 
-  const { car, lap, tires, session, flags } = liveFrame
+export default function Telemetry({ frame, connected, fps }: TelemetryProps) {
+  if (!frame) return <TelemetryEmptyState connected={connected} />
+
+  const { car, lap, tires, session, flags } = frame
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[14px] overflow-hidden">
       <FlagBanner flags={flags} />
-      <SessionHeader session={session} connected={liveConnected} fps={liveFps} />
+      <SessionHeader session={session} connected={connected} fps={fps} />
 
       <div className="grid min-h-0 flex-1 grid-cols-12 gap-[14px] overflow-y-auto">
         {/* Primary column */}

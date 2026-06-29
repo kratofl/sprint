@@ -31,6 +31,9 @@ interface AdditionalSettingsPanelProps {
   onChange: (theme: Partial<DashTheme>, domain: Partial<DomainPalette>) => void
   onTypographyChange?: (typography: Partial<TypographySettings>) => void
   onFormatPreferencesChange?: (prefs: Partial<FormatPreferences>) => void
+  /** Per-dashboard usage hides the colour editors — a dashboard picks a theme
+      preset by reference; colours are edited only in the global theme editor. */
+  showColors?: boolean
 }
 
 const BASE_THEME_ROWS: { key: keyof DashTheme; label: string }[] = [
@@ -95,6 +98,7 @@ export function AdditionalSettingsPanel({
   onChange,
   onTypographyChange,
   onFormatPreferencesChange,
+  showColors = true,
 }: AdditionalSettingsPanelProps) {
   const inheritsGlobalColors = globalDefaults !== undefined
   const inheritedTheme = globalDefaults?.theme ?? hardcodedDefaults.theme
@@ -126,12 +130,12 @@ export function AdditionalSettingsPanel({
       <div className="flex items-center justify-between border-b border-border px-6 py-3 flex-shrink-0">
         <h4 className="ui-label text-[11px] font-semibold text-[var(--text2)]">Additional settings</h4>
         <div className="flex items-center gap-2">
-          {inheritsGlobalColors && (
+          {showColors && inheritsGlobalColors && (
             <Button size="xs" variant="neutral" onClick={handleResetAllToGlobal}>
               INHERIT_GLOBALS
             </Button>
           )}
-          {!inheritsGlobalColors && (
+          {showColors && !inheritsGlobalColors && (
             <Button size="xs" variant="ghost" onClick={handleResetAllToHardcoded}>
               RESET ALL
             </Button>
@@ -140,6 +144,7 @@ export function AdditionalSettingsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+        {showColors && (
         <div className="grid gap-6 xl:grid-cols-3">
           <Section
             label="Base and highlights"
@@ -229,25 +234,32 @@ export function AdditionalSettingsPanel({
             })}
           </Section>
         </div>
-
-        {onTypographyChange && (
-          <Section label="Typography defaults">
-            <TypographySection
-              typography={typography ?? {}}
-              globalTypography={globalTypography}
-              onChange={onTypographyChange}
-            />
-          </Section>
         )}
 
-        {onFormatPreferencesChange && (
-          <Section label="Format preferences">
-            <FormatPreferencesSection
-              prefs={formatPreferences ?? {}}
-              globalPrefs={globalFormatPreferences}
-              onChange={onFormatPreferencesChange}
-            />
-          </Section>
+        {(onTypographyChange || onFormatPreferencesChange) && (
+          // Constrained so the rows read as a tidy settings list instead of
+          // stretching the full panel width.
+          <div className="max-w-[640px] space-y-6">
+            {onTypographyChange && (
+              <Section label="Typography defaults">
+                <TypographySection
+                  typography={typography ?? {}}
+                  globalTypography={globalTypography}
+                  onChange={onTypographyChange}
+                />
+              </Section>
+            )}
+
+            {onFormatPreferencesChange && (
+              <Section label="Format preferences">
+                <FormatPreferencesSection
+                  prefs={formatPreferences ?? {}}
+                  globalPrefs={globalFormatPreferences}
+                  onChange={onFormatPreferencesChange}
+                />
+              </Section>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -544,11 +556,12 @@ function FormatRow({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-1 py-1">
-      <div className="flex items-center gap-2">
-        <span className={cn('font-sans tabular-nums text-[10px] flex-1', isOverridden ? 'text-[var(--text)]' : 'text-[var(--text2)]')}>
-          {label}
-        </span>
+    <div className="flex items-center gap-3 py-1.5">
+      <span className={cn('w-[104px] shrink-0 font-sans tabular-nums text-[10px]', isOverridden ? 'text-[var(--text)]' : 'text-[var(--text2)]')}>
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {children}
         {showReset && (
           <IconButton
             label={`Reset ${label}`}
@@ -561,7 +574,6 @@ function FormatRow({
           />
         )}
       </div>
-      {children}
     </div>
   )
 }

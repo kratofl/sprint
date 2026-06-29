@@ -165,10 +165,15 @@ func Register(w Widget) {
 		}
 		lbl := Text{
 			Text: text,
+			// Pin the label as a small restrained header near the top (explicit Y
+			// removes it from the value auto-stack), so the live value dominates the
+			// instrument and the label never collides with the top edge. (PRD #4)
+			Y: 0.14,
 			Style: TextStyle{
 				Font:     FontFamilyUI,
 				FontSize: fontScale,
 				HAlign:   m.Label.Align,
+				VAlign:   VAlignCenter,
 				Color:    ColorRefMuted.Expr(),
 			},
 		}

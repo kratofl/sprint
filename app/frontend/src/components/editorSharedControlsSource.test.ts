@@ -11,11 +11,18 @@ const alertsEditorSource = read('./AlertsEditor.tsx')
 const additionalSettingsPanelSource = read('./AdditionalSettingsPanel.tsx')
 
 test('editor property panels render reusable field controls through @sprint/ui', () => {
+  // Each panel must compose the shared @sprint/ui controls it needs (and never raw
+  // native controls). AlertsEditor's toggle-tile redesign (PRD #106) uses Button +
+  // Stepper only — it no longer needs Select/Input now that alerts are simple toggles.
+  const requiredPrimitives: Record<string, string[]> = {
+    WidgetProperties: ['Input', 'Select', 'SelectTrigger', 'SelectItem', 'Stepper', 'Button'],
+    AlertsEditor: ['Stepper', 'Button'],
+  }
   for (const [name, source] of [
     ['WidgetProperties', widgetPropertiesSource],
     ['AlertsEditor', alertsEditorSource],
   ] as const) {
-    for (const primitive of ['Input', 'Select', 'SelectTrigger', 'SelectItem', 'Stepper', 'Button']) {
+    for (const primitive of requiredPrimitives[name]) {
       assert.match(source, new RegExp(`\\b${primitive}\\b`), `${name} should use shared ${primitive}`)
     }
 

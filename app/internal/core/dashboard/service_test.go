@@ -29,6 +29,7 @@ type fakeDashboardRuntime struct {
 	globalTypography []widgets.TypographySettings
 	globalThemes     []widgets.DashTheme
 	globalDomains    []widgets.DomainPalette
+	themeLibraries   []ThemeLibrary
 	reloadCommands   int
 }
 
@@ -57,6 +58,10 @@ func (f *fakeDashboardRuntime) SetGlobalTheme(theme widgets.DashTheme) {
 
 func (f *fakeDashboardRuntime) SetGlobalDomainPalette(domain widgets.DomainPalette) {
 	f.globalDomains = append(f.globalDomains, domain)
+}
+
+func (f *fakeDashboardRuntime) SetThemeLibrary(lib ThemeLibrary) {
+	f.themeLibraries = append(f.themeLibraries, lib)
 }
 
 func (f *fakeDashboardRuntime) ReloadDashCommands() {

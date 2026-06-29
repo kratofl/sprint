@@ -5,6 +5,11 @@ export function rgbaToHex(c: RGBAColor): string {
   return `#${hex(c.R)}${hex(c.G)}${hex(c.B)}`
 }
 
+/** Canonical RGBAColor → CSS `rgba()` string (alpha is the 0–255 A channel). */
+export function rgbaToCss(c: RGBAColor): string {
+  return `rgba(${c.R},${c.G},${c.B},${(c.A / 255).toFixed(3)})`
+}
+
 export function hexToRgba(hex: string, alpha = 255): RGBAColor {
   const clean = hex.replace('#', '')
   const full = clean.length === 3

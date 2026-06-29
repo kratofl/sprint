@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { IconSearch } from '@tabler/icons-react'
-import { Input, Tile, cn } from '@sprint/ui'
+import { Input, cn } from '@sprint/ui'
 import type { WidgetCatalogEntry } from '@/lib/dash'
 import { WIDGET_STACK_PALETTE_TYPE } from './multiFunctionWidgetState'
 
@@ -56,40 +56,41 @@ export function WidgetPalette({
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <p className="text-[11px] text-[var(--text3)]">Drag onto the grid to place</p>
+      <p className="text-[10px] text-[var(--text3)]">Drag onto the grid to place</p>
 
-      <label className="flex flex-col gap-2">
-        <span className="text-[12px] text-[var(--text3)]">Search</span>
-        <div className="flex h-[36px] items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--panel2)] px-3 text-[var(--text3)] focus-within:border-[var(--accent)]">
+      {/* Figma "Input w Label": Search field, radius 18, trailing search icon. */}
+      <label className="flex flex-col gap-[6px]">
+        <span className="text-[11px] text-[var(--text2)]">Search</span>
+        <div className="flex h-[32px] items-center gap-2 rounded-[18px] border border-[var(--line)] bg-[var(--panel2)] px-[10px] text-[var(--text3)] focus-within:border-[var(--accent)]">
           <Input
             type="search"
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder=""
+            placeholder="Search widgets"
             aria-label="Search widgets"
-            className="h-[32px] min-w-0 flex-1 border-0 bg-transparent px-0 focus:border-transparent"
+            className="h-[28px] min-w-0 flex-1 border-0 bg-transparent px-0 text-[13px] focus:border-transparent focus-visible:border-transparent"
           />
           <IconSearch size={15} aria-hidden="true" />
         </div>
       </label>
 
       {paletteCatalog.length === 0 ? (
-        <div className="rounded-control border border-[var(--border)] bg-[var(--panel)] p-3 text-sm text-[var(--muted)]">
+        <div className="rounded-[12px] border border-[var(--line)] bg-[var(--panel2)] p-3 text-[12px] text-[var(--text2)]">
           Loading widget catalog...
         </div>
       ) : categories.length === 0 ? (
-        <div className="rounded-control border border-[var(--border)] bg-[var(--panel)] p-3 text-sm text-[var(--muted)]">
+        <div className="rounded-[12px] border border-[var(--line)] bg-[var(--panel2)] p-3 text-[12px] text-[var(--text2)]">
           No widgets match this search.
         </div>
       ) : (
-        <div className="space-y-[14px]">
+        <div className="flex flex-col gap-[14px]">
           {categories.map(category => {
             const widgets = filteredCatalog.filter(widget => widget.category === category)
             const categoryLabel = widgets[0]?.categoryLabel ?? category
 
             return (
-              <section key={category} className="space-y-2">
-                <h4 className="font-inter text-[10px] font-bold uppercase text-[var(--muted-2)]">{categoryLabel}</h4>
+              <section key={category} className="flex flex-col gap-[6px]">
+                <h4 className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text3)]">{categoryLabel}</h4>
                 <WidgetGrid
                   widgets={widgets}
                   previewUrls={previewUrls}
@@ -117,10 +118,12 @@ function WidgetGrid({
   onDragEnd?: () => void
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-[6px]">
       {widgets.map(widget => (
-        <Tile
+        <div
           key={widget.type}
+          role="button"
+          tabIndex={0}
           draggable
           title="Drag onto canvas to add"
           onDragStart={event => {
@@ -129,14 +132,14 @@ function WidgetGrid({
 
             const previewUrl = previewUrls[widget.type]
             const dragImage = document.createElement('div')
-            dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid #2C2C2C;background:#171717;overflow:hidden;border-radius:9px'
+            dragImage.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:144px;height:96px;border:1px solid var(--line);background:var(--panel2);overflow:hidden;border-radius:12px'
             if (previewUrl) {
               const image = document.createElement('img')
               image.src = previewUrl
               image.style.cssText = 'width:100%;height:100%;display:block'
               dragImage.appendChild(image)
             } else {
-              dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:#F3F3F3;font:600 11px Inter, sans-serif'
+              dragImage.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--text);font:600 11px Inter, sans-serif'
               dragImage.textContent = widget.name
             }
             document.body.appendChild(dragImage)
@@ -146,29 +149,38 @@ function WidgetGrid({
             onDragStart?.(widget.type, previewUrl)
           }}
           onDragEnd={() => onDragEnd?.()}
-          selected={widget.synthetic}
           className={cn(
-            'group flex h-[54px] min-w-0 cursor-grab select-none flex-col items-start justify-center gap-1 p-3 active:cursor-grabbing',
-            'text-left text-[11px] font-bold text-[var(--muted)] transition-colors',
-            'hover:border-[var(--orange)] hover:text-[var(--text)]',
-            widget.synthetic ? 'text-[var(--text)]' : '',
+            // Figma "Widget" tile: 107×46, Surface/Tile, radius 12, pad 8, gap 6.
+            // min-h (not fixed h) so longer labels wrap to a second line instead
+            // of being clipped.
+            'group flex min-h-[46px] min-w-0 cursor-grab select-none flex-col items-start justify-center gap-[6px] rounded-[12px] border bg-[var(--panel2)] p-[8px] text-left transition-colors active:cursor-grabbing',
+            'hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]',
+            widget.synthetic ? 'border-[var(--accent)]' : 'border-[var(--line)]',
           )}
         >
-          <WidgetGlyph widgetType={widget.type} />
-          <span className="line-clamp-2">{widget.name}</span>
-        </Tile>
+          <WidgetGlyph widgetType={widget.type} synthetic={widget.synthetic} />
+          <span className={cn(
+            'line-clamp-2 text-[11px] font-semibold leading-[1.15] text-[var(--text2)] transition-colors group-hover:text-[var(--text)]',
+            widget.synthetic && 'text-[var(--text)]',
+          )}>
+            {widget.name}
+          </span>
+        </div>
       ))}
     </div>
   )
 }
 
-function WidgetGlyph({ widgetType }: { widgetType: string }) {
+function WidgetGlyph({ widgetType, synthetic }: { widgetType: string; synthetic?: boolean }) {
   const glyph = widgetType === WIDGET_STACK_PALETTE_TYPE
     ? '+'
     : widgetType.split(/[_-]/).map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase()
 
   return (
-    <span className="inline-flex size-[13px] shrink-0 items-center justify-center rounded-badge font-saira text-[10px] font-bold text-[var(--muted)] group-hover:text-[var(--orange)]">
+    <span className={cn(
+      'inline-flex h-[13px] min-w-[13px] shrink-0 items-center justify-center font-saira text-[10px] font-bold leading-none transition-colors',
+      synthetic ? 'text-[var(--accent)]' : 'text-[var(--text3)] group-hover:text-[var(--accent)]',
+    )}>
       {glyph}
     </span>
   )

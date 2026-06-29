@@ -125,6 +125,55 @@ func TestMergeDomainPaletteAppliesSparseOverrides(t *testing.T) {
 	}
 }
 
+func TestRenderThemeFixesBackgroundAndSurfaceRegardlessOfTheme(t *testing.T) {
+	// PRD #106: background and surface are no longer theme-driven visual defaults.
+	// A theme may carry any Bg/Surface, but the renderer resolves fixed system
+	// colours so a theme can never reintroduce an elevated/tinted surface.
+	rt := RenderTheme{Theme: DashTheme{
+		Bg:      color.RGBA{R: 40, G: 60, B: 90, A: 255},
+		Surface: color.RGBA{R: 90, G: 80, B: 70, A: 255},
+		Accent:  color.RGBA{R: 12, G: 34, B: 56, A: 255},
+		Danger:  color.RGBA{R: 33, G: 22, B: 11, A: 255},
+	}}
+
+	if got := rt.Resolve("bg"); got != FixedCanvasBackground {
+		t.Fatalf("bg ref: want fixed %#v, got %#v", FixedCanvasBackground, got)
+	}
+	if got := rt.Resolve("surface"); got != ColorSurface {
+		t.Fatalf("surface ref: want fixed %#v, got %#v", ColorSurface, got)
+	}
+	// Accent and status colours remain fully themeable.
+	if got := rt.Resolve("accent"); got != rt.Theme.Accent {
+		t.Fatalf("accent ref should stay themeable: want %#v, got %#v", rt.Theme.Accent, got)
+	}
+	if got := rt.Resolve("danger"); got != rt.Theme.Danger {
+		t.Fatalf("danger ref should stay themeable: want %#v, got %#v", rt.Theme.Danger, got)
+	}
+}
+
+func TestRenderThemeKeepsExplicitWidgetBackgroundOverride(t *testing.T) {
+	// The one sanctioned exception: an explicit per-widget background override still
+	// wins over the fixed surface (PRD #9).
+	override := color.RGBA{R: 200, G: 30, B: 30, A: 255}
+	rt := RenderTheme{
+		Theme: DashTheme{Surface: color.RGBA{R: 1, G: 2, B: 3, A: 255}},
+		Style: WidgetStyle{Background: &override},
+	}
+	if got := rt.Resolve("surface"); got != override {
+		t.Fatalf("explicit background override must win for surface ref: want %#v, got %#v", override, got)
+	}
+}
+
+func TestRenderThemeResolvesDomainOverrides(t *testing.T) {
+	rt := RenderTheme{
+		Theme:  DefaultTheme(),
+		Domain: DomainPalette{TC: color.RGBA{R: 5, G: 6, B: 7, A: 255}},
+	}
+	if got := rt.Resolve("tc"); got != rt.Domain.TC {
+		t.Fatalf("domain TC ref should resolve from the domain palette: want %#v, got %#v", rt.Domain.TC, got)
+	}
+}
+
 func assertColorEqual(t *testing.T, name string, got, want color.RGBA, r, g, b, a uint8) {
 	t.Helper()
 

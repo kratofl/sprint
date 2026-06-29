@@ -1,0 +1,189 @@
+
+### VARIABLE SET: Primitive  (modes: Mode 1)
+  Radius/md  [FLOAT]  Mode 1=12
+  Radius/xl  [FLOAT]  Mode 1=18
+  Radius/lg  [FLOAT]  Mode 1=16
+  Radius/sm  [FLOAT]  Mode 1=8
+  Radius/xs  [FLOAT]  Mode 1=6
+  Color/Orange/500  [COLOR]  Mode 1=#FF6A00
+  Color/Orange/600  [COLOR]  Mode 1=#E65D00
+  Color/Orange/900  [COLOR]  Mode 1=#7A3204
+  Color/Red/950  [COLOR]  Mode 1=#3A0A10
+  Color/Red/500  [COLOR]  Mode 1=#F02744
+  Color/Neutral/500  [COLOR]  Mode 1=#5A5A5A
+  Color/Neutral/950  [COLOR]  Mode 1=#0A0A0A
+  Color/Neutral/50  [COLOR]  Mode 1=#F6F6F6
+  Color/Neutral/300  [COLOR]  Mode 1=#A0A0A0
+  Color/Neutral/700  [COLOR]  Mode 1=#2E2E2E
+  Color/Neutral/800  [COLOR]  Mode 1=#1F1F1F
+  Color/Neutral/850  [COLOR]  Mode 1=#1A1A1A
+  Color/Neutral/900  [COLOR]  Mode 1=#141414
+  Color/Neutral/925  [COLOR]  Mode 1=#0F0F0F
+  Color/Neutral/990  [COLOR]  Mode 1=#050505
+  Space/1  [FLOAT]  Mode 1=2
+  Space/2  [FLOAT]  Mode 1=4
+  Space/3  [FLOAT]  Mode 1=6
+  Space/4  [FLOAT]  Mode 1=8
+  Space/5  [FLOAT]  Mode 1=10
+  Space/6  [FLOAT]  Mode 1=14
+  Space/8  [FLOAT]  Mode 1=18
+  Space/10  [FLOAT]  Mode 1=22
+  Space/12  [FLOAT]  Mode 1=36
+  Radius/pill  [FLOAT]  Mode 1=999
+  Color/Green/400  [COLOR]  Mode 1=#2ED47C
+  Color/Green/500  [COLOR]  Mode 1=#16B566
+  Color/Green/800  [COLOR]  Mode 1=#0F5B38
+  Color/Green/950  [COLOR]  Mode 1=#05281A
+  Color/Green/600  [COLOR]  Mode 1=#0F9355
+  Color/Green/700  [COLOR]  Mode 1=#0E7445
+  Color/Orange/700  [COLOR]  Mode 1=#BF4D00
+  Color/Orange/800  [COLOR]  Mode 1=#983D00
+  Color/Orange/400  [COLOR]  Mode 1=#FF8636
+  Color/Orange/300  [COLOR]  Mode 1=#FFA363
+  Color/Orange/200  [COLOR]  Mode 1=#FFC59A
+  Color/Orange/100  [COLOR]  Mode 1=#FFE3CF
+  Color/Orange/50  [COLOR]  Mode 1=#FFF4EC
+  Color/Orange/950  [COLOR]  Mode 1=#421A02
+  Color/Green/900  [COLOR]  Mode 1=#0C4A2E
+  Color/Green/300  [COLOR]  Mode 1=#52EAA3
+  Color/Green/200  [COLOR]  Mode 1=#8FF4C4
+  Color/Green/100  [COLOR]  Mode 1=#C2FBE0
+  Color/Green/50  [COLOR]  Mode 1=#E6FFF2
+  Color/Red/600  [COLOR]  Mode 1=#C91A34
+  Color/Red/700  [COLOR]  Mode 1=#A4172C
+  Color/Red/800  [COLOR]  Mode 1=#851727
+  Color/Red/900  [COLOR]  Mode 1=#6D1421
+  Color/Red/100  [COLOR]  Mode 1=#FFDBE0
+  Color/Red/200  [COLOR]  Mode 1=#FFB6C0
+  Color/Red/300  [COLOR]  Mode 1=#FF8493
+  Color/Red/400  [COLOR]  Mode 1=#FF4D62
+  Color/Red/50  [COLOR]  Mode 1=#FFF0F2
+  Color/Yellow/50  [COLOR]  Mode 1=#FFF8E0
+  Color/Yellow/100  [COLOR]  Mode 1=#FFEDB0
+  Color/Yellow/200  [COLOR]  Mode 1=#FFDD6E
+  Color/Yellow/300  [COLOR]  Mode 1=#FFCD3A
+  Color/Yellow/400  [COLOR]  Mode 1=#FFC21A
+  Color/Yellow/500  [COLOR]  Mode 1=#E0A30C
+  Color/Yellow/600  [COLOR]  Mode 1=#B78207
+  Color/Yellow/700  [COLOR]  Mode 1=#8F6406
+  Color/Yellow/800  [COLOR]  Mode 1=#6F4D06
+  Color/Yellow/900  [COLOR]  Mode 1=#583D05
+  Color/Yellow/950  [COLOR]  Mode 1=#2E2002
+  Color/Blue/50  [COLOR]  Mode 1=#ECF5FF
+  Color/Blue/100  [COLOR]  Mode 1=#CFE6FF
+  Color/Blue/200  [COLOR]  Mode 1=#A3D0FF
+  Color/Blue/300  [COLOR]  Mode 1=#6BB4FF
+  Color/Blue/400  [COLOR]  Mode 1=#3B9EFF
+  Color/Blue/500  [COLOR]  Mode 1=#1F7FE6
+  Color/Blue/600  [COLOR]  Mode 1=#1564BF
+  Color/Blue/700  [COLOR]  Mode 1=#114F99
+  Color/Blue/800  [COLOR]  Mode 1=#12407A
+  Color/Blue/900  [COLOR]  Mode 1=#103563
+  Color/Blue/950  [COLOR]  Mode 1=#091D38
+  Color/Neutral/100  [COLOR]  Mode 1=#E4E4E4
+  Color/Neutral/200  [COLOR]  Mode 1=#C6C6C6
+  Color/Neutral/400  [COLOR]  Mode 1=#7A7A7A
+  Color/Neutral/600  [COLOR]  Mode 1=#424242
+  Color/Purple/50  [COLOR]  Mode 1=#F3F0FF
+  Color/Purple/100  [COLOR]  Mode 1=#E4DCFF
+  Color/Purple/200  [COLOR]  Mode 1=#C9B9FF
+  Color/Purple/300  [COLOR]  Mode 1=#AD97FF
+  Color/Purple/400  [COLOR]  Mode 1=#9B84FF
+  Color/Purple/500  [COLOR]  Mode 1=#8F76FF
+  Color/Purple/600  [COLOR]  Mode 1=#7259E6
+  Color/Purple/700  [COLOR]  Mode 1=#5943B3
+  Color/Purple/800  [COLOR]  Mode 1=#403180
+  Color/Purple/900  [COLOR]  Mode 1=#2A205C
+  Color/Purple/950  [COLOR]  Mode 1=#120D2A
+  Space/9  [FLOAT]  Mode 1=20
+  Space/7  [FLOAT]  Mode 1=16
+  Color/Orange/990  [COLOR]  Mode 1=#230E01
+  Radius/xxs  [FLOAT]  Mode 1=4
+
+### VARIABLE SET: Semantic  (modes: Mode 1)
+  Color/Primary  [FLOAT]  Mode 1=→2:8 (Radius/lg)
+  Color/Primary/Text  [COLOR]  Mode 1=→67:43 (Color/Primary/Primary)
+  Color/Primary/Border  [COLOR]  Mode 1=→25:21 (Color/Orange/700)
+  Color/Error/BG-Soft  [COLOR]  Mode 1=→3:29 (Color/Red/950)
+  Color/Warning/BG-Soft  [COLOR]  Mode 1=→25:53 (Color/Yellow/950)
+  Color/Surface/App  [COLOR]  Mode 1=→3:43 (Color/Neutral/925)
+  Color/Surface/Panel  [COLOR]  Mode 1=→3:42 (Color/Neutral/900)
+  Color/Text/Default  [COLOR]  Mode 1=→3:37 (Color/Neutral/50)
+  Color/Text/Muted  [COLOR]  Mode 1=→3:38 (Color/Neutral/300)
+  Color/Text/Subtle  [COLOR]  Mode 1=→25:67 (Color/Neutral/400)
+  Color/Border/Default  [COLOR]  Mode 1=→3:39 (Color/Neutral/700)
+  Color/Border/Strong  [COLOR]  Mode 1=→25:68 (Color/Neutral/600)
+  Color/Primary/BG-Soft  [COLOR]  Mode 1=#FF6A001A
+  Color/Warning/Border  [COLOR]  Mode 1=→25:50 (Color/Yellow/700)
+  Color/Warning/Text  [COLOR]  Mode 1=→67:46 (Color/Warning/Warning)
+  Color/Error/Text  [COLOR]  Mode 1=→67:47 (Color/Error/Error)
+  Color/Error/Border  [COLOR]  Mode 1=→25:36 (Color/Red/800)
+  Color/Success/Text  [COLOR]  Mode 1=→67:45 (Color/Success/Success)
+  Color/Success/Border  [COLOR]  Mode 1=→23:20 (Color/Green/700)
+  Color/Success/BG-Soft  [COLOR]  Mode 1=→23:18 (Color/Green/950)
+  Color/Info/Text  [COLOR]  Mode 1=→67:44 (Color/Info/Info)
+  Color/Info/Border  [COLOR]  Mode 1=→25:61 (Color/Blue/700)
+  Color/Info/BG-Soft  [COLOR]  Mode 1=→25:64 (Color/Blue/950)
+  Color/Surface/Tile  [COLOR]  Mode 1=→3:40 (Color/Neutral/800)
+  Color/Surface/Tile 2  [COLOR]  Mode 1=→3:39 (Color/Neutral/700)
+  Color/Surface/Tile 3  [COLOR]  Mode 1=→25:68 (Color/Neutral/600)
+  Color/Surface/Screen  [COLOR]  Mode 1=→3:44 (Color/Neutral/990)
+  Color/Primary/Primary  [COLOR]  Mode 1=→2:15 (Color/Orange/500)
+  Color/Info/Info  [COLOR]  Mode 1=→25:59 (Color/Blue/500)
+  Color/Success/Success  [COLOR]  Mode 1=→23:16 (Color/Green/500)
+  Color/Warning/Warning  [COLOR]  Mode 1=→25:48 (Color/Yellow/500)
+  Color/Error/Error  [COLOR]  Mode 1=→3:30 (Color/Red/500)
+  Color/Text/Dark  [COLOR]  Mode 1=→3:42 (Color/Neutral/900)
+
+### VARIABLE SET: Component  (modes: Mode 1)
+  Button/PaddingX  [FLOAT]  Mode 1=→48:3 (Space/7)
+  Button/Radius  [FLOAT]  Mode 1=→2:7 (Radius/xl)
+  Button/Gap  [FLOAT]  Mode 1=→3:48 (Space/2)
+  Input/md/PaddingX  [FLOAT]  Mode 1=→3:51 (Space/5)
+  Input/Radius  [FLOAT]  Mode 1=→2:7 (Radius/xl)
+  Input/md/PaddingY  [FLOAT]  Mode 1=→3:50 (Space/4)
+  Button/PaddingY  [FLOAT]  Mode 1=→3:49 (Space/3)
+  Badges/Red/Icon  [COLOR]  Mode 1=→3:30 (Color/Red/500)
+  Badges/Red/Border  [COLOR]  Mode 1=→25:35 (Color/Red/700)
+  Badges/Red/Background  [COLOR]  Mode 1=→3:29 (Color/Red/950)
+  Badges/Green/Icon  [COLOR]  Mode 1=→23:16 (Color/Green/500)
+  Badges/Green/Border  [COLOR]  Mode 1=→23:20 (Color/Green/700)
+  Badges/Green/Background  [COLOR]  Mode 1=→23:18 (Color/Green/950)
+  Badges/Orange/Icon  [COLOR]  Mode 1=→2:15 (Color/Orange/500)
+  Badges/Orange/Border  [COLOR]  Mode 1=→25:21 (Color/Orange/700)
+  Badges/Orange/Background  [COLOR]  Mode 1=→25:28 (Color/Orange/950)
+  Badges/Neutral/Icon  [COLOR]  Mode 1=→3:38 (Color/Neutral/300)
+  Badges/Neutral/Border  [COLOR]  Mode 1=→3:39 (Color/Neutral/700)
+  Badges/Neutral/Background  [COLOR]  Mode 1=→3:42 (Color/Neutral/900)
+  Button/Primary/Background  [COLOR]  Mode 1=→67:43 (Color/Primary/Primary)
+  Button/Primary/Text  [COLOR]  Mode 1=→3:42 (Color/Neutral/900)
+  Button/Secondary/Background  [COLOR]  Mode 1=→48:24 (Color/Surface/Tile)
+  Button/Secondary/Text  [COLOR]  Mode 1=→3:68 (Color/Text/Default)
+  Button/Danger/Background  [COLOR]  Mode 1=→48:6 (Button/Secondary/Background)
+  Button/Danger/Text  [COLOR]  Mode 1=→26:15 (Color/Error/Text)
+  Button/Disabled/Background  [COLOR]  Mode 1=→3:65 (Color/Surface/Panel)
+  Button/Disabled/Text  [COLOR]  Mode 1=→3:70 (Color/Text/Subtle)
+  Button/Secondary/Icon  [COLOR]  Mode 1=→3:68 (Color/Text/Default)
+  Toast/Background  [COLOR]  Mode 1=→48:24 (Color/Surface/Tile)
+  Toast/Title  [COLOR]  Mode 1=→3:68 (Color/Text/Default)
+  Toast/Message  [COLOR]  Mode 1=→3:69 (Color/Text/Muted)
+
+### VARIABLE SET: tw/colors  (modes: Mode 1)
+
+### VARIABLE SET: mode  (modes: light mode, dark mode)
+
+### VARIABLE SET: Tokens  (modes: Mode 1)
+
+### VARIABLE SET: tw/gap  (modes: Mode 1)
+
+### VARIABLE SET: tw/padding  (modes: Mode 1)
+
+### VARIABLE SET: tw/border-radius  (modes: Mode 1)
+
+### VARIABLE SET: tokens  (modes: Mode 1)
+
+### VARIABLE SET: tw/border-width  (modes: Mode 1)
+
+### VARIABLE SET: tw/font  (modes: Mode 1)
+
+### VARIABLE SET: tw/stroke-width  (modes: Mode 1)

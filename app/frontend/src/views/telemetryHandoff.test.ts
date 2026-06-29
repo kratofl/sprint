@@ -27,9 +27,11 @@ test('telemetry view renders live data via shared telemetry components', () => {
   assert.doesNotMatch(telemetrySource, /'247'|'8,543'|'32\.5'|93\.892/)
 })
 
-test('telemetry view shows a Graphite demo frame instead of an empty default dashboard', () => {
-  assert.match(telemetrySource, /DEMO_TELEMETRY_FRAME/)
-  assert.match(telemetrySource, /const liveFrame = frame \?\? DEMO_TELEMETRY_FRAME/)
-  assert.doesNotMatch(telemetrySource, /if \(!frame\)/)
-  assert.doesNotMatch(telemetrySource, /Waiting for telemetry/)
+test('telemetry view renders an empty/waiting state instead of demo data when no frame is live', () => {
+  // No hardcoded demo frame is shipped anymore — nothing fake renders when no game runs.
+  assert.doesNotMatch(telemetrySource, /DEMO_TELEMETRY_FRAME/)
+  // The view distinguishes "no frame" and shows a real empty state rather than substituting data.
+  assert.match(telemetrySource, /if \(!frame\) return <TelemetryEmptyState/)
+  assert.match(telemetrySource, /Waiting for telemetry/)
+  assert.match(telemetrySource, /No sim connected/)
 })

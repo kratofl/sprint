@@ -1,6 +1,8 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
-  IconArrowLeft,
+  IconAlertTriangle,
+  IconCheck,
+  IconChevronLeft,
   IconChevronRight,
   IconCopy,
   IconChevronUp,
@@ -19,8 +21,12 @@ import {
   SegmentedControl,
   SettingsCard,
   Stepper,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   cn,
 } from '@sprint/ui'
+import { HeaderPortal } from '@/components/shell/shellHeader'
 import {
   DEFAULT_DASH_THEME,
   DEFAULT_DOMAIN_PALETTE,
@@ -59,14 +65,9 @@ const EDITOR_SCALE_OPTIONS = [
   { value: '125', label: '125%' },
 ] as const
 
-const dashEditorSurfaceStyle = {
-  '--de-well': '#030303',
-  '--de-well-top': '#0a0a0a',
-  '--de-rail': '#121212',
-  '--de-rail-head': '#171717',
-  '--de-inset': '#0a0a0a',
-  '--de-seam': '#000000',
-} as CSSProperties
+// Sentinel for the "no themeId — inherit the global default" option, since Radix
+// Select forbids an empty-string item value.
+const GLOBAL_THEME_VALUE = '__global__'
 
 export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyChange }: DashEditModeProps) {
   const controller = useDashEditorController({
@@ -196,15 +197,20 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
     : inspectorContent
 
   return (
-    <div className="ds-editor" style={dashEditorSurfaceStyle}>
-      <div className="ds-etop">
-        <div className="flex min-w-0 items-center gap-2">
-          <button type="button" onClick={controller.handleBack} className="ds-back">
-            <IconArrowLeft size={14} />
-            <span>Dashboards</span>
-          </button>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <HeaderPortal>
+        <div className="flex min-w-0 items-center gap-[10px]">
+          {/* Figma "Back_Button": 32 circle #1F1F1F / #2E2E2E, returns to the dash list. */}
+          <IconButton
+            app-region="no-drag"
+            label="Back to dashboards"
+            tone="secondary"
+            size="icon"
+            icon={<IconChevronLeft size={16} />}
+            onClick={controller.handleBack}
+          />
 
-          <div className="flex min-w-0 items-center gap-2">
+          <div app-region="no-drag" className="flex min-w-0 items-center gap-[8px]">
             {controller.renamingDash ? (
               <Input
                 autoFocus
@@ -219,7 +225,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   }
                   event.stopPropagation()
                 }}
-                className="h-[30px] w-[200px] text-[13px] font-bold"
+                className="h-[28px] w-[200px] text-[13px] font-bold"
               />
             ) : (
               <button
@@ -228,62 +234,52 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   controller.setDashNameValue(controller.layout.name)
                   controller.setRenamingDash(true)
                 }}
-                className="ds-etitle"
+                className="inline-flex min-w-0 max-w-[260px] items-center gap-[6px] rounded-[10px] border border-transparent px-2 py-1 text-[14px] font-bold text-[var(--text)] transition-colors hover:bg-[var(--panel2)]"
                 aria-label="Rename dashboard"
               >
                 <span className="truncate">{controller.layout.name}</span>
-                <IconPencil size={14} className="flex-shrink-0 text-[var(--text3)]" />
+                <IconPencil size={14} className="shrink-0 text-[var(--text3)]" />
               </button>
             )}
-            <Badge variant={modeLabel === 'Basic' ? 'success' : 'tertiary'}>
-              {modeLabel}
-            </Badge>
-            {controller.layout.id === 'default' && <Badge variant="active">System</Badge>}
-            {controller.isDirty && <Badge variant="warning">Unsaved</Badge>}
-            {controller.saveStatus === 'saved' && <Badge variant="success">Saved</Badge>}
-            {controller.saveStatus === 'error' && <Badge variant="destructive">Failed</Badge>}
+            <div className="flex shrink-0 items-center gap-1">
+              <Badge variant={modeLabel === 'Basic' ? 'success' : 'tertiary'}>
+                {modeLabel}
+              </Badge>
+              {controller.layout.id === 'default' && <Badge variant="active">System</Badge>}
+              {controller.isDirty && <Badge variant="warning">Unsaved</Badge>}
+              {controller.saveStatus === 'saved' && <Badge variant="success">Saved</Badge>}
+              {controller.saveStatus === 'error' && <Badge variant="destructive">Failed</Badge>}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-[10px] font-semibold uppercase text-[var(--text3)]">Scale</span>
-          <SegmentedControl
-            label="Editor scale"
-            value={editorScale}
-            variant="neutral"
-            options={EDITOR_SCALE_OPTIONS}
-            onChange={value => setEditorScale(value as EditorScale)}
-          />
+        {/* Figma "Tab View": bordered pill with 1px dividers (not a segmented control). */}
+        <div className="flex flex-1 items-center justify-center">
+          <Tabs
+            app-region="no-drag"
+            value={activeEditorView}
+            onValueChange={view => handleSelectEditorView(view as 'layout' | 'alerts' | 'settings')}
+          >
+            <TabsList>
+              <TabsTrigger value="layout">Layout</TabsTrigger>
+              <TabsTrigger value="alerts">Alerts</TabsTrigger>
+              <TabsTrigger value="settings">Settings</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          <SegmentedControl
-            label="Editor view"
-            value={activeEditorView}
-            onChange={view => handleSelectEditorView(view as 'layout' | 'alerts' | 'settings')}
-            options={[
-              { value: 'layout', label: 'Layout' },
-              { value: 'alerts', label: 'Alerts' },
-              { value: 'settings', label: 'Settings' },
-            ]}
+        {/* Figma "Save_Button": 32 circle #FF6A00 / #FF8636, tabler/check glyph. */}
+        <div app-region="no-drag" className="flex shrink-0 items-center">
+          <IconButton
+            label={controller.saving ? 'Saving…' : controller.saveDisabledReason ?? 'Save dashboard'}
+            tone="primary"
+            size="icon"
+            icon={<IconCheck size={16} />}
+            onClick={controller.handleSave}
+            disabled={!controller.canSave}
           />
-          {activeEditorView === 'layout' && (
-            <IconButton
-              label={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
-              title={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
-              icon={<IconTargetArrow size={15} />}
-              size="icon-sm"
-              variant={showGrid ? 'active' : 'outline'}
-              aria-pressed={showGrid}
-              onClick={() => setShowGrid(current => !current)}
-            />
-          )}
-          <Badge variant="outline">{resolutionLabel}</Badge>
-          <Button variant="primary" size="sm" onClick={controller.handleSave} disabled={controller.saving}>
-            {controller.saving ? 'Saving…' : 'Save'}
-          </Button>
         </div>
-      </div>
+      </HeaderPortal>
 
       <ConfirmDialog
         open={controller.showDialog}
@@ -295,15 +291,26 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         onCancel={controller.cancel}
       />
 
+      {!controller.layoutValid && (
+        <div
+          role="alert"
+          data-testid="layout-validation-banner"
+          className="flex shrink-0 items-center gap-2 border-b border-[var(--red)] bg-[color-mix(in_srgb,var(--red)_14%,transparent)] px-4 py-2 text-[12px] font-medium text-[var(--text)]"
+        >
+          <IconAlertTriangle size={14} className="shrink-0 text-[var(--red)]" />
+          <span>{controller.validationMessages.join(' · ')} — resolve before saving.</span>
+        </div>
+      )}
+
       {activeEditorView === 'alerts' ? (
         <div className="ds-settings-scroll">
           <div className="ds-settings-wrap">
             <SettingsCard className="min-h-[420px] overflow-hidden p-0">
               <AlertsEditor
-                instances={controller.layout.alerts ?? []}
+                config={controller.layout.alertConfig ?? {}}
                 catalog={controller.alertCatalog}
                 domainPalette={controller.resolvedDomainPalette}
-                onChange={controller.handleAlertsChange}
+                onChange={controller.handleAlertConfigChange}
               />
             </SettingsCard>
             <DashEditorPreviewCard
@@ -316,18 +323,63 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
         <div className="ds-settings-scroll">
           <div className="ds-settings-wrap">
             <SettingsCard className="min-h-[420px] overflow-hidden p-0">
+              {/* Theme is chosen by reference — a row of preset buttons with a
+                  colour dot (Figma "Appearance" pattern). Per-dashboard colour
+                  editing is intentionally absent; colours live in the global
+                  theme editor so editing a preset updates every dash using it. */}
+              <div className="border-b border-border px-6 py-4">
+                <p className="ui-label text-[11px] font-semibold text-[var(--text2)]">Theme</p>
+                <p className="mb-3 font-sans tabular-nums text-[9px] leading-relaxed text-[var(--text2)]">
+                  Base palette for this dashboard. Edit colours in the global theme editor.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    {
+                      id: GLOBAL_THEME_VALUE,
+                      name: 'Global default',
+                      dot: controller.themeDefaults?.theme?.primary
+                        ? rgbaToHex(controller.themeDefaults.theme.primary)
+                        : 'var(--accent)',
+                    },
+                    ...controller.themes.map(t => ({
+                      id: t.id,
+                      name: t.name,
+                      dot: t.theme?.primary ? rgbaToHex(t.theme.primary) : 'var(--accent)',
+                    })),
+                  ].map(opt => {
+                    const active = opt.id === (controller.themeId || GLOBAL_THEME_VALUE)
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        data-active={active}
+                        aria-pressed={active}
+                        onClick={() => controller.handleThemeIdChange(opt.id === GLOBAL_THEME_VALUE ? '' : opt.id)}
+                        className="inline-flex items-center gap-2 rounded-pill border border-[var(--line)] bg-[var(--panel2)] px-3 py-1.5 text-[13px] font-medium text-[var(--text2)] transition-colors hover:border-[var(--line2)] hover:text-[var(--text)] focus-visible:border-[var(--accent)] focus-visible:outline-none data-[active=true]:border-[var(--accent)] data-[active=true]:bg-[var(--orange-soft)] data-[active=true]:text-[var(--text)]"
+                      >
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full border border-black/40"
+                          style={{ backgroundColor: opt.dot }}
+                        />
+                        {opt.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               <AdditionalSettingsPanel
                 theme={controller.layout.theme ?? {}}
                 domainPalette={controller.layout.domainPalette ?? {}}
                 hardcodedDefaults={{ theme: DEFAULT_DASH_THEME, domain: DEFAULT_DOMAIN_PALETTE }}
-                globalDefaults={controller.globalDefaults}
+                globalDefaults={controller.themeDefaults}
                 typography={controller.layout.typography}
-                globalTypography={controller.globalDefaults?.typography}
+                globalTypography={controller.themeDefaults?.typography}
                 formatPreferences={controller.layout.formatPreferences}
-                globalFormatPreferences={controller.globalDefaults?.formatPreferences}
+                globalFormatPreferences={controller.themeDefaults?.formatPreferences}
                 onChange={controller.handleSettingsChange}
                 onTypographyChange={controller.handleTypographyChange}
                 onFormatPreferencesChange={controller.handleFormatPreferencesChange}
+                showColors={false}
               />
             </SettingsCard>
             <DashEditorPreviewCard
@@ -350,7 +402,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
             />
           )}
 
-          <div className="ds-ework" data-layout="reference">
+          <div className="flex min-h-0 flex-1 gap-[10px] overflow-hidden">
             <EditorLeftRail
               view={leftRailView}
               onViewChange={setLeftRailView}
@@ -371,7 +423,26 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
               widgets={paletteContent}
             />
 
-            <div className="ds-canvas-wrap">
+            <div className="flex min-w-0 flex-1 flex-col gap-[10px]">
+              <div className="flex shrink-0 items-center justify-end gap-2">
+                <Badge variant="outline">{resolutionLabel}</Badge>
+                <SegmentedControl
+                  label="Editor scale"
+                  value={editorScale}
+                  variant="neutral"
+                  options={EDITOR_SCALE_OPTIONS}
+                  onChange={value => setEditorScale(value as EditorScale)}
+                />
+                <IconButton
+                  label={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
+                  title={showGrid ? 'Hide grid overlay' : 'Show grid overlay'}
+                  icon={<IconTargetArrow size={15} />}
+                  size="icon-sm"
+                  variant={showGrid ? 'active' : 'outline'}
+                  aria-pressed={showGrid}
+                  onClick={() => setShowGrid(current => !current)}
+                />
+              </div>
               <div
                 ref={controller.canvasPaneRef}
                 className="ds-canvas-stage"
@@ -390,6 +461,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                           <DashCanvas
                             fillParent
                             widgets={controller.canvasWidgets}
+                            invalidIds={controller.invalidWidgetIds}
                             gridCols={stackCanvasGridCols}
                             gridRows={stackCanvasGridRows}
                             selectedId={controller.selectedId}
@@ -452,6 +524,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                         <DashCanvas
                           fillParent
                           widgets={controller.canvasWidgets}
+                          invalidIds={controller.invalidWidgetIds}
                           gridCols={stackCanvasGridCols}
                           gridRows={stackCanvasGridRows}
                           selectedId={controller.selectedId}
@@ -480,6 +553,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
                   <div className="ds-reference-canvas">
                     <DashCanvas
                       widgets={controller.canvasWidgets}
+                      invalidIds={controller.invalidWidgetIds}
                       gridCols={controller.layout.gridCols}
                       gridRows={controller.layout.gridRows}
                       selectedId={controller.selectedId}
@@ -512,10 +586,7 @@ export function DashEditMode({ layout: initialLayout, onSave, onBack, onDirtyCha
 
             <EditorPropertiesRail>
               {propertiesContent ?? (
-                <div className="space-y-2">
-                  <h2 className="text-[13px] font-semibold text-[var(--text)]">Properties</h2>
-                  <p className="text-[12px] text-[var(--text3)]">Select a widget or page to edit its properties.</p>
-                </div>
+                <p className="text-[12px] text-[var(--text3)]">Select a widget or page to edit its properties.</p>
               )}
             </EditorPropertiesRail>
           </div>
@@ -600,7 +671,7 @@ function FocusModeHeader({
   onAddLayer: () => void
 }) {
   return (
-    <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
+    <div className="flex flex-shrink-0 items-center justify-between gap-3 rounded-[12px] border border-[var(--line)] bg-[var(--panel2)] px-3 py-2">
       <div className="min-w-0">
             <div className="ui-label text-[10px] uppercase text-[var(--muted)]">
           {pageName} / Widget Stack
@@ -638,8 +709,8 @@ function CanvasStage({
   children: ReactNode
 }) {
   return (
-    <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-[var(--de-seam)] bg-[var(--de-well)]">
-      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--de-seam)] bg-[var(--de-rail-head)] px-3 py-2">
+    <div className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[16px] border border-[var(--line)] bg-[var(--bg-deep)]">
+      <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel2)] px-3 py-2">
       <span className="ui-label text-[10px] uppercase text-[var(--muted)]">{title}</span>
         {subtitle && <span className="truncate font-inter text-[11px] text-foreground">{subtitle}</span>}
       </div>
@@ -703,21 +774,19 @@ function EditorLeftRail({
   widgets: ReactNode
 }) {
   return (
-    <aside className="ds-col" data-side="left">
-      <div className="border-b border-[var(--line)] p-3">
-        <SegmentedControl
-          label="Editor left rail"
-          value={view}
-          variant="accent"
-          options={[
-            { value: 'pages', label: 'Pages' },
-            { value: 'widgets', label: 'Widgets' },
-          ]}
-          onChange={value => onViewChange(value as EditorLeftRailView)}
-          className="w-full justify-center"
-        />
-      </div>
-      <div className="ds-col-bd">
+    <aside className="flex w-[248px] shrink-0 flex-col gap-[14px] overflow-hidden rounded-[18px] border border-[var(--line)] bg-[var(--panel)] p-[14px]">
+      <SegmentedControl
+        label="Editor left rail"
+        value={view}
+        variant="accent"
+        options={[
+          { value: 'pages', label: 'Pages' },
+          { value: 'widgets', label: 'Widgets' },
+        ]}
+        onChange={value => onViewChange(value as EditorLeftRailView)}
+        className="w-full justify-center [&>button]:flex-1"
+      />
+      <div className="-mr-[8px] min-h-0 flex-1 overflow-y-auto pr-[8px]">
         {view === 'pages' ? pages : widgets}
       </div>
     </aside>
@@ -726,8 +795,15 @@ function EditorLeftRail({
 
 function EditorPropertiesRail({ children }: { children: ReactNode }) {
   return (
-    <aside className="ds-col" data-side="right">
-      <div className="ds-col-bd">
+    // Figma "Properties": #141414, radius 18, pad 14, "PROPERTIES" title.
+    // Widened from the 155px Figma mock to 240px so the live inspector
+    // (color fields, steppers) stays usable — a deliberate usability deviation.
+    <aside className="flex w-[240px] shrink-0 flex-col gap-[14px] overflow-hidden rounded-[18px] border border-[var(--line)] bg-[var(--panel)] p-[14px]">
+      <div className="flex flex-col gap-[4px]">
+        <h2 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--text2)]">Properties</h2>
+        <p className="text-[10px] text-[var(--text3)]">Selected widget and page settings</p>
+      </div>
+      <div className="-mr-[8px] min-h-0 flex-1 overflow-y-auto pr-[8px]">
         {children}
       </div>
     </aside>
@@ -766,7 +842,7 @@ function SidebarDisclosureSection({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 bg-[var(--de-rail-head)] px-3 py-2 text-left transition-colors hover:bg-bg-panel"
+        className="flex w-full items-center justify-between gap-3 bg-[var(--panel2)] px-3 py-2 text-left transition-colors hover:bg-[var(--panel3)]"
       >
             <span className="ui-label text-[10px] font-semibold text-text-muted">{title}</span>
         <DisclosureChevron open={open} />
@@ -905,8 +981,8 @@ function LayerListItem({
       className={cn(
         'rounded-control border px-3 py-2 transition-colors',
         layer.selected
-          ? 'border-primary/40 bg-primary-muted'
-          : 'border-border bg-bg-panel',
+          ? 'border-[var(--accent)]/40 bg-[var(--orange-soft)]'
+          : 'border-[var(--line)] bg-[var(--panel)]',
       )}
     >
       <div className="flex items-start gap-2">

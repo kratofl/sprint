@@ -16,6 +16,7 @@ type Runtime interface {
 	SetGlobalDomainPalette(domain widgets.DomainPalette)
 	SetGlobalFormatPrefs(prefs widgets.FormatPreferences)
 	SetGlobalTypography(typography widgets.TypographySettings)
+	SetThemeLibrary(lib ThemeLibrary)
 	ReloadDashCommands()
 }
 
@@ -114,6 +115,34 @@ func (s *Service) rewriteInheritedColorOverrides(previous, _ *GlobalDashSettings
 	}
 
 	return nil
+}
+
+// SaveTheme creates or updates a user theme preset and propagates the refreshed
+// library to all painters so dashboards referencing it update immediately.
+func (s *Service) SaveTheme(p ThemePreset) (*ThemePreset, error) {
+	saved, err := SaveTheme(p)
+	if err != nil {
+		return nil, err
+	}
+	s.propagateThemeLibrary()
+	return saved, nil
+}
+
+// DeleteTheme removes a user theme preset and propagates the refreshed library.
+func (s *Service) DeleteTheme(id string) error {
+	if err := DeleteTheme(id); err != nil {
+		return err
+	}
+	s.propagateThemeLibrary()
+	return nil
+}
+
+// propagateThemeLibrary pushes the current theme library to the runtime so every
+// active painter (devices + editor preview) resolves ThemeID references freshly.
+func (s *Service) propagateThemeLibrary() {
+	if s.runtime != nil {
+		s.runtime.SetThemeLibrary(BuildThemeLibrary())
+	}
 }
 
 func (s *Service) DeleteLayout(id string) error {

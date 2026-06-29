@@ -1,16 +1,22 @@
+// Wails bridge gotcha: Go bindings serialize empty slices as JSON `null`, even
+// though the generated TS return type says `Array`. Always coalesce array
+// results with `?? []` before `.map`/`.filter` (done throughout this file).
 import {
   DashCreateLayout,
   DashCyclePage,
   DashDeleteLayout,
+  DashDeleteTheme,
   DashGetDefaultDomainPalette,
   DashGetDefaultFormatPreferences,
   DashGetDefaultTheme,
   DashGetGlobalSettings,
   DashGetPreview,
   DashListLayouts,
+  DashListThemes,
   DashLoadLayoutByID,
   DashSaveGlobalSettings,
   DashSaveLayout,
+  DashSaveTheme,
   DashSetDefault,
   DashStartPreview,
   DashStopPreview,
@@ -47,6 +53,7 @@ import {
   adaptLayout,
   adaptLayoutMeta,
   adaptSavedDevice,
+  adaptThemePreset,
   adaptWidgetCatalogEntry,
   encodePurposeConfig,
 } from './adapters.ts'
@@ -63,6 +70,7 @@ import type {
   RearViewConfig,
   SavedDevice,
   ScreenStatus,
+  ThemePreset,
   WidgetCatalogEntry,
 } from './types.ts'
 import type { DomainPalette, FormatPreferences } from './types.ts'
@@ -129,6 +137,22 @@ export const dashAPI = {
 
   async saveGlobalSettings(settings: GlobalDashSettings): Promise<void> {
     await runDesktopCall('DashSaveGlobalSettings', () => DashSaveGlobalSettings(settings as never))
+  },
+
+  async listThemes(): Promise<ThemePreset[]> {
+    return runDesktopCall('DashListThemes', async () => {
+      const themes = await DashListThemes()
+      return (themes ?? []).map(theme => adaptThemePreset(theme as unknown as Record<string, unknown>))
+    })
+  },
+
+  async saveTheme(preset: ThemePreset): Promise<ThemePreset> {
+    return runDesktopCall('DashSaveTheme', async () =>
+      adaptThemePreset(await DashSaveTheme(preset as never) as unknown as Record<string, unknown>))
+  },
+
+  async deleteTheme(id: string): Promise<void> {
+    await runDesktopCall('DashDeleteTheme', () => DashDeleteTheme(id))
   },
 
   async getDefaultTheme(): Promise<DashTheme> {

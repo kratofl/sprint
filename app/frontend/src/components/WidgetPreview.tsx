@@ -1,8 +1,27 @@
 import { Fragment, useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type {
   DashWidget, DashTheme, DomainPalette, WidgetCatalogEntry,
-  ColorRef, RGBAColor, ColorExpr, WidgetElement, FontStyle, WidgetStyle, HAlign, VAlign,
+  ColorRef, ColorExpr, WidgetElement, WidgetStyle,
 } from '@/lib/dash'
+import {
+  FONT_MAP,
+  fontFamily,
+  fontWeight,
+  placeholder,
+  resolveExpr,
+  resolveFont,
+  resolveRef,
+} from './widgetPreview/colorResolution'
+import {
+  countAutoStackTexts,
+  countFillRows,
+  defaultTextLeft,
+  flattenElements,
+  stackYs,
+  translateX,
+  translateY,
+  zoneYFrac,
+} from './widgetPreview/zoneLayout'
 
 interface Props {
   widget:         DashWidget
@@ -11,135 +30,7 @@ interface Props {
   catalog?:       WidgetCatalogEntry[]
 }
 
-// ── Color resolution ──────────────────────────────────────────────────────────
-
-function toCSS(c: RGBAColor): string {
-  return `rgba(${c.R},${c.G},${c.B},${(c.A / 255).toFixed(3)})`
-}
-
-function resolveRef(
-  ref: ColorRef | undefined,
-  theme: DashTheme,
-  dp?: DomainPalette,
-  style?: WidgetStyle,
-): string {
-  if (!ref) return 'rgba(255,255,255,0.5)'
-  if (ref === 'fg'      && style?.textColor)  return toCSS(style.textColor)
-  if (ref === 'muted'   && style?.labelColor) return toCSS(style.labelColor)
-  if (ref === 'surface' && style?.background) return toCSS(style.background)
-  switch (ref) {
-    case 'primary':   return toCSS(theme.primary)
-    case 'accent':    return toCSS(theme.accent)
-    case 'fg':        return toCSS(theme.fg)
-    case 'muted':     return toCSS(theme.muted)
-    case 'muted2':    return toCSS(theme.muted2)
-    case 'success':   return toCSS(theme.success)
-    case 'warning':   return toCSS(theme.warning)
-    case 'danger':    return toCSS(theme.danger)
-    case 'surface':   return toCSS(theme.surface)
-    case 'bg':        return toCSS(theme.bg)
-    case 'border':    return toCSS(theme.border)
-    case 'rpmred':    return toCSS(theme.rpmRed)
-    case 'abs':       return toCSS(dp?.abs       ?? theme.warning)
-    case 'tc':        return toCSS(dp?.tc        ?? theme.accent)
-    case 'brakeBias': return toCSS(dp?.brakeBias ?? theme.warning)
-    case 'energy':    return toCSS(dp?.energy    ?? theme.success)
-    case 'motor':     return toCSS(dp?.motor     ?? theme.primary)
-    case 'brakeMig':  return toCSS(dp?.brakeMig  ?? theme.accent)
-    default:          return 'rgba(255,255,255,0.5)'
-  }
-}
-
-function resolveExpr(
-  expr: ColorExpr | undefined,
-  theme: DashTheme,
-  dp?: DomainPalette,
-  style?: WidgetStyle,
-): string {
-  return resolveRef(expr?.ref ?? 'fg', theme, dp, style)
-}
-
-// ── Static placeholder values per binding path ────────────────────────────────
-
-const PLACEHOLDERS: Record<string, string> = {
-  'car.gearStr':           '3',
-  'car.speedMS':           '247',
-  'car.speedKPH':          '247',
-  'car.rpm':               '8 543',
-  'car.rpmPct':            '0.7',
-  'car.throttle':          '0.85',
-  'car.brake':             '0.2',
-  'car.fuel':              '32.5',
-  'car.fuelLapsRemaining': '5.2',
-  'car.fuelPerLap':        '3.1',
-  'car.brakeBiasPct':      '57.3',
-  'car.brakeBiasRear':     '0.57',
-  'car.brakeMigration':    '2',
-  'lap.currentLapTime':    '1:34.567',
-  'lap.lastLapTime':       '1:34.123',
-  'lap.bestLapTime':       '1:33.892',
-  'lap.targetLapTime':     '1:33.500',
-  'lap.delta':             '+0.234',
-  'lap.counterStr':        '5 / 20',
-  'lap.currentLap':        '5',
-  'lap.sector1Time':       '34.1',
-  'lap.sector2Time':       '21.4',
-  'lap.sector':            '2',
-  'race.positionStr':      'P3',
-  'race.gapAhead':         '+1.234',
-  'race.gapBehind':        '-2.456',
-  'electronics.tc':        '2',
-  'electronics.tcCut':     '3',
-  'electronics.tcSlip':    '4',
-  'electronics.abs':       '3',
-  'electronics.motorMap':  '5',
-  'session.sessionTime':   '12:34',
-  'session.track':         'Silverstone',
-  'session.car':           'GT3 #42',
-  'session.sessionType':   'Race',
-  'penalties.incidents':   '3',
-  'energy.virtualEnergy':  '4.2',
-  'flags.activeText':      'GREEN',
-  'tires.fl.avgTemp':      '93.0',
-  'tires.fr.avgTemp':      '94.0',
-  'tires.rl.avgTemp':      '90.0',
-  'tires.rr.avgTemp':      '91.0',
-  'tires.fl.coreTemp':     '95.0',
-  'tires.fr.coreTemp':     '96.0',
-  'tires.rl.coreTemp':     '92.0',
-  'tires.rr.coreTemp':     '93.0',
-}
-
-function placeholder(binding?: string, format?: string, text?: string): string {
-  if (text) return text
-  if (!binding) return '—'
-  if (PLACEHOLDERS[binding]) return PLACEHOLDERS[binding]
-  if (format === 'lap' || format === 'sector') return '1:34.567'
-  if (format === 'delta') return '+0.234'
-  if (format === 'speed') return '247'
-  if (format === 'int')   return '0'
-  if (format === 'gap')   return '+1.2'
-  return '—'
-}
-
-// ── Font helpers ──────────────────────────────────────────────────────────────
-
-const FONT_MAP: Record<FontStyle, string> = {
-  label:  'Bahnschrift, IBM Plex Sans Condensed, IBM Plex Sans, sans-serif',
-  bold:   'Bahnschrift, IBM Plex Sans Condensed, IBM Plex Sans, sans-serif',
-  number: 'Bahnschrift, IBM Plex Mono, ui-monospace, monospace',
-  mono:   'Bahnschrift, IBM Plex Mono, ui-monospace, monospace',
-}
-
-function fontFamily(f?: FontStyle): string { return FONT_MAP[f ?? 'label'] }
-function fontWeight(f?: FontStyle): number  { return f === 'bold' || f === 'number' ? 700 : 400 }
-
-function resolveFont(elemFont: FontStyle | undefined, style?: WidgetStyle): FontStyle {
-  const f = elemFont ?? 'label'
-  if ((f === 'number' || f === 'bold') && style?.font)      return style.font
-  if ((f === 'label'  || f === 'mono') && style?.labelFont) return style.labelFont
-  return f
-}
+// ── Optical-center text measurement (DOM-bound) ─────────────────────────────────
 
 const opticalCenterCache = new Map<string, number>()
 
@@ -173,7 +64,7 @@ function measureOpticalCenterOffset(text: string, font: string): number {
 
   ctx.font = font
   ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = '#fff'
+  ctx.fillStyle = 'white'
   const baselineX = padding + metrics.actualBoundingBoxLeft
   const baselineY = padding + metrics.actualBoundingBoxAscent
   ctx.fillText(text, baselineX, baselineY)
@@ -273,131 +164,7 @@ function PreviewTextNode({
   )
 }
 
-// ── Zone layout helpers ───────────────────────────────────────────────────────
-
-// Flatten conditions to their then-branch for preview purposes.
-function flattenElements(elems: WidgetElement[]): WidgetElement[] {
-  const out: WidgetElement[] = []
-  for (const e of elems) {
-    if (e.kind === 'condition') out.push(...flattenElements(e.then ?? []))
-    else out.push(e)
-  }
-  return out
-}
-
-const defaultFillYFrac = 0.5
-
-function fillZoneYs(n: number): number[] {
-  switch (n) {
-    case 1:
-      return [defaultFillYFrac]
-    case 2:
-      return [0.38, 0.72]
-    case 3:
-      return [0.30, 0.52, 0.74]
-    case 4:
-      return [0.20, 0.40, 0.60, 0.80]
-    default: {
-      if (n <= 0) return []
-      const ys: number[] = []
-      for (let i = 0; i < n; i += 1) ys.push(0.18 + (0.64 * i) / (n - 1))
-      return ys
-    }
-  }
-}
-
-function countFillRows(elems: WidgetElement[]): number {
-  let max = -1
-  for (const e of elems) {
-    if (e.kind !== 'text' || !e.zone?.startsWith('fill:')) continue
-    const n = Number.parseInt(e.zone.slice(5), 10)
-    if (!Number.isNaN(n) && n > max) max = n
-  }
-  return max + 1
-}
-
-function zoneYFrac(zone: string | undefined, fillRows: number[]): number {
-  switch (zone) {
-    case 'header':
-      return 0.20
-    case 'fill':
-      return defaultFillYFrac
-    case 'footer':
-      return 0.84
-    default:
-      if (zone?.startsWith('fill:')) {
-        const idx = Number.parseInt(zone.slice(5), 10)
-        if (!Number.isNaN(idx) && idx >= 0 && idx < fillRows.length) return fillRows[idx]
-      }
-      return defaultFillYFrac
-  }
-}
-
-function autoStackYs(n: number): number[] {
-  switch (n) {
-    case 0:
-      return []
-    case 1:
-      return [0.5]
-    case 2:
-      return [0.38, 0.72]
-    case 3:
-      return [0.30, 0.52, 0.74]
-    case 4:
-      return [0.20, 0.40, 0.60, 0.80]
-    default: {
-      const ys: number[] = []
-      for (let i = 0; i < n; i += 1) ys.push(0.18 + (0.64 * i) / (n - 1))
-      return ys
-    }
-  }
-}
-
-function countAutoStackTexts(elems: WidgetElement[]): number {
-  let count = 0
-  for (const elem of elems) {
-    if (elem.kind === 'condition') {
-      count += countAutoStackTexts(flattenElements(elem.then ?? []))
-      continue
-    }
-    if (elem.kind === 'text' && !elem.zone && typeof elem.y !== 'number') count += 1
-  }
-  return count
-}
-
-function defaultTextLeft(hAlign: HAlign | undefined): string {
-  switch (hAlign) {
-    case 1:
-      return '50%'
-    case 2:
-      return '97.5%'
-    default:
-      return '2.5%'
-  }
-}
-
-function translateX(hAlign: HAlign | undefined): string {
-  switch (hAlign) {
-    case 1:
-      return '-50%'
-    case 2:
-      return '-100%'
-    default:
-      return '0px'
-  }
-}
-
-function translateY(vAlign: VAlign | undefined, explicitY: boolean): string {
-  if (!explicitY) return '-50%'
-  switch (vAlign) {
-    case 1:
-      return '-50%'
-    case 2:
-      return '-100%'
-    default:
-      return '0px'
-  }
-}
+// ── Zone layout rendering ───────────────────────────────────────────────────────
 
 // Render a single text element in a zone.
 function ZoneTextItem({
@@ -466,7 +233,7 @@ function ZoneLayer({
   const flat = flattenElements(elems)
   const zoneText = flat.filter(e => e.kind === 'text' && !!e.zone)
   if (zoneText.length === 0) return null
-  const fillRows = fillZoneYs(countFillRows(zoneText))
+  const fillRows = stackYs(countFillRows(zoneText))
 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
@@ -675,6 +442,24 @@ function renderAbsElem(
       )
     }
 
+    case 'badge': {
+      const color = x(elem.badgeColor)
+      const frac = (elem.badgeR && elem.badgeR > 0 ? elem.badgeR : 0.82) * 100
+      return (
+        <div key={key} style={{
+          position:     'absolute',
+          left:         '50%',
+          top:          '50%',
+          width:        `${frac}cqmin`,
+          height:       `${frac}cqmin`,
+          transform:    'translate(-50%, -50%)',
+          borderRadius: '50%',
+          border:       `2px solid ${color}`,
+          background:   elem.badgeFill ? `color-mix(in srgb, ${color} ${Math.round((elem.badgeFill ?? 0) * 100)}%, transparent)` : 'transparent',
+        }} />
+      )
+    }
+
     case 'condition':
       return (
         <Fragment key={key}>
@@ -694,7 +479,7 @@ export function WidgetPreview({ widget, theme, domainPalette, catalog = [] }: Pr
   const elements    = entry?.defaultDefinition ?? []
   const widgetStyle = widget.style
   const fontScale   = Math.max(0.5, widgetStyle?.fontSize ?? 1)
-  const textYs      = autoStackYs(countAutoStackTexts(elements))
+  const textYs      = stackYs(countAutoStackTexts(elements))
   const textState   = { nextIndex: 0 }
 
   return (

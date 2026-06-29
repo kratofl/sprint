@@ -36,13 +36,13 @@ test('dash editor ui preferences preserve per-panel open and pinned flags from p
   )
 })
 
-test('editor top bar exposes the Graphite layout alerts and settings views', () => {
+test('editor top bar exposes the layout, alerts, and settings tab views', () => {
   assert.match(dashEditModeSource, /setEditorTab\('settings'\)/)
-  assert.match(dashEditModeSource, /\bSegmentedControl\b/)
-  assert.match(dashEditModeSource, /label="Editor view"/)
-  assert.match(dashEditModeSource, /\{ value: 'layout', label: 'Layout' \}/)
-  assert.match(dashEditModeSource, /\{ value: 'alerts', label: 'Alerts' \}/)
-  assert.match(dashEditModeSource, /\{ value: 'settings', label: 'Settings' \}/)
+  // Figma "Tab View" component (bordered pill + dividers), not a segmented control.
+  assert.match(dashEditModeSource, /<TabsList>/)
+  assert.match(dashEditModeSource, /<TabsTrigger value="layout">Layout<\/TabsTrigger>/)
+  assert.match(dashEditModeSource, /<TabsTrigger value="alerts">Alerts<\/TabsTrigger>/)
+  assert.match(dashEditModeSource, /<TabsTrigger value="settings">Settings<\/TabsTrigger>/)
   assert.doesNotMatch(dashEditModeSource, /\bfseg\b/)
   assert.doesNotMatch(dashEditModeSource, /const defaultDashBrand/)
   assert.doesNotMatch(dashEditModeSource, /numericFont: 'Saira'/)

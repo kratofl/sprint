@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  type AlertConfig,
   type AlertInstance,
   type AlertMeta,
   type DashLayout,
@@ -12,6 +13,7 @@ import {
   type DomainPalette,
   type FormatPreferences,
   type RGBAColor,
+  type ThemePreset,
   type TypographySettings,
   type WidgetCatalogEntry,
   alertCatalogAPI,
@@ -30,6 +32,7 @@ import { onEvent } from '@/lib/wails'
 import { useNavigationGuard, useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { DEFAULT_SCREEN_H, DEFAULT_SCREEN_W } from '@/components/DashCanvas'
 import {
+  appendLayer,
   clampWidgetToLayerBounds,
   createClearedWidgetStackSelectionState,
   createWidgetStackOnDrop,
@@ -37,9 +40,18 @@ import {
   createWidgetStackEditState,
   createWidgetStackSelectionState,
   enterWidgetStackMode,
+  insertLayerAfter,
   isValidWidgetStackPlacement,
+  mapLayer,
+  mapWidgetStack,
+  moveLayer,
+  removeLayer,
+  renameLayer,
+  setDefaultLayer,
+  setLayerWidgets,
   type DashEditContext,
 } from './multiFunctionWidgetState'
+import { deriveSaveEligibility, validateLayout } from './layoutValidation'
 
 interface UseDashEditorControllerArgs {
   initialLayout: DashLayout
@@ -136,6 +148,7 @@ export function useDashEditorController({
     typography?: Partial<TypographySettings>
     formatPreferences?: Partial<FormatPreferences>
   }>()
+  const [themes, setThemes] = useState<ThemePreset[]>([])
 
   const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTargetRef = useRef<{ pageIndex: number; idle: boolean }>({ pageIndex: 0, idle: false })
@@ -147,6 +160,12 @@ export function useDashEditorController({
   useEffect(() => {
     onDirtyChange(isDirty)
   }, [isDirty, onDirtyChange])
+
+  // Layout validity is an additional save gate: temporary overlaps are allowed
+  // while editing but can never be persisted. The canvas marks invalidWidgetIds
+  // and the save control surfaces saveDisabledReason.
+  const layoutValidation = useMemo(() => validateLayout(layout), [layout])
+  const saveEligibility = deriveSaveEligibility({ validation: layoutValidation, isDirty, saving })
 
   useEffect(() => {
     if (!canvasPaneEl) return
@@ -174,6 +193,16 @@ export function useDashEditorController({
         formatPreferences: settings.formatPreferences,
       }))
       .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    dashAPI.listThemes()
+      .then(setThemes)
+      .catch(() => {})
+  }, [])
+
+  const handleThemeIdChange = useCallback((themeId: string) => {
+    setLayout(previous => ({ ...previous, themeId: themeId || undefined }))
   }, [])
 
   useEffect(() => {
@@ -349,8 +378,21 @@ export function useDashEditorController({
     : null
 
   const selectedWidget = selectedId !== null ? (canvasWidgets[selectedId] ?? null) : null
-  const resolvedTheme = resolveDashTheme(globalDefaults?.theme, layout.theme)
-  const resolvedDomainPalette = resolveDomainPalette(globalDefaults?.domain, layout.domainPalette)
+  // When the layout references a theme preset, that preset (colours + typography)
+  // is the base under per-dash overrides; otherwise the global defaults are.
+  const referencedTheme = layout.themeId
+    ? themes.find(preset => preset.id === layout.themeId)
+    : undefined
+  const themeDefaults = referencedTheme
+    ? {
+        theme: referencedTheme.theme,
+        domain: referencedTheme.domainPalette,
+        typography: referencedTheme.typography,
+        formatPreferences: globalDefaults?.formatPreferences,
+      }
+    : globalDefaults
+  const resolvedTheme = resolveDashTheme(themeDefaults?.theme, layout.theme)
+  const resolvedDomainPalette = resolveDomainPalette(themeDefaults?.domain, layout.domainPalette)
   const paletteWidgets = activeTab === 'idle'
     ? catalog.filter(widget => widget.idleCapable)
     : activeTab === 'alerts'
@@ -466,20 +508,9 @@ export function useDashEditorController({
 
   const handleUpdate = useCallback((widgets: DashWidget[]) => {
     if (editingSelectedWidgetStack && editingSelectedLayer) {
-      updateCurrentPage(page => ({
-        ...page,
-        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-          ? {
-            ...group,
-            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id
-              ? {
-                ...layer,
-                widgets: widgets.map(widget => clampWidgetToLayerBounds(widget, group)),
-              }
-              : layer),
-          }
-          : group),
-      }))
+      updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group =>
+        setLayerWidgets(group, editingSelectedLayer.id, widgets.map(widget => clampWidgetToLayerBounds(widget, group))),
+      ))
       return
     }
 
@@ -528,15 +559,9 @@ export function useDashEditorController({
 
   const handleClearPage = useCallback(() => {
     if (editingSelectedWidgetStack && editingSelectedLayer) {
-      updateCurrentPage(page => ({
-        ...page,
-        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-          ? {
-            ...group,
-            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id ? { ...layer, widgets: [] } : layer),
-          }
-          : group),
-      }))
+      updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group =>
+        setLayerWidgets(group, editingSelectedLayer.id, []),
+      ))
     } else {
       updateCurrentPage(page => ({ ...page, widgets: [] }))
     }
@@ -569,20 +594,20 @@ export function useDashEditorController({
     setLayout(previous => ({ ...previous, alerts: instances }))
   }, [])
 
+  // The shared alert config supersedes the retired per-instance alert list; clear
+  // the legacy `alerts` so a migrated dashboard persists under the new model only.
+  const handleAlertConfigChange = useCallback((alertConfig: AlertConfig) => {
+    setLayout(previous => ({ ...previous, alertConfig, alerts: [] }))
+  }, [])
+
   const doRemoveSelectedWidget = useCallback(() => {
     if (selectedId === null) return
     if (editingSelectedWidgetStack && editingSelectedLayer) {
-      updateCurrentPage(page => ({
-        ...page,
-        widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-          ? {
-            ...group,
-            layers: group.layers.map(layer => layer.id === editingSelectedLayer.id
-              ? { ...layer, widgets: layer.widgets.filter((_, index) => index !== selectedId) }
-              : layer),
-          }
-          : group),
-      }))
+      updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group =>
+        mapLayer(group, editingSelectedLayer.id, layer =>
+          ({ ...layer, widgets: layer.widgets.filter((_, index) => index !== selectedId) }),
+        ),
+      ))
     } else {
       updateCurrentPage(page => ({ ...page, widgets: page.widgets.filter((_, index) => index !== selectedId) }))
     }
@@ -667,26 +692,22 @@ export function useDashEditorController({
 
   const updateSelectedWidgetStack = useCallback((patch: Partial<DashWidgetStack>) => {
     if (!selectedWidgetStack || !currentPage) return
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => {
-        if (group.id !== selectedWidgetStack.id) return group
-        const next = { ...group, ...patch }
-        next.colSpan = Math.max(1, Math.min(next.colSpan, layout.gridCols))
-        next.rowSpan = Math.max(1, Math.min(next.rowSpan, layout.gridRows))
-        next.col = Math.max(0, Math.min(next.col, layout.gridCols - next.colSpan))
-        next.row = Math.max(0, Math.min(next.row, layout.gridRows - next.rowSpan))
-        if (!isValidWidgetStackPlacement(next, page, layout.gridCols, layout.gridRows, group.id)) {
-          return group
-        }
-        return {
-          ...next,
-          layers: next.layers.map(layer => ({
-            ...layer,
-            widgets: layer.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
-          })),
-        }
-      }),
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => {
+      const next = { ...group, ...patch }
+      next.colSpan = Math.max(1, Math.min(next.colSpan, layout.gridCols))
+      next.rowSpan = Math.max(1, Math.min(next.rowSpan, layout.gridRows))
+      next.col = Math.max(0, Math.min(next.col, layout.gridCols - next.colSpan))
+      next.row = Math.max(0, Math.min(next.row, layout.gridRows - next.rowSpan))
+      if (!isValidWidgetStackPlacement(next, page, layout.gridCols, layout.gridRows, group.id)) {
+        return group
+      }
+      return {
+        ...next,
+        layers: next.layers.map(layer => ({
+          ...layer,
+          widgets: layer.widgets.map(widget => clampWidgetToLayerBounds(widget, next)),
+        })),
+      }
     }))
   }, [currentPage, layout.gridCols, layout.gridRows, selectedWidgetStack, updateCurrentPage])
 
@@ -721,16 +742,7 @@ export function useDashEditorController({
   const handleAddLayer = useCallback(() => {
     if (!selectedWidgetStack || !currentPage) return
     const nextLayer = { id: createDashLayerId(), name: `Layer ${selectedWidgetStack.layers.length + 1}`, widgets: [] }
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-        ? {
-          ...group,
-          layers: [...group.layers, nextLayer],
-          defaultLayerId: group.defaultLayerId ?? nextLayer.id,
-        }
-        : group),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => appendLayer(group, nextLayer)))
     updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, nextLayer.id)
     setSelectedLayerId(nextLayer.id)
     if (editContext.kind === 'widget-stack') {
@@ -755,15 +767,7 @@ export function useDashEditorController({
       name: `${sourceLayer.name} Copy`,
       widgets: sourceLayer.widgets.map(widget => ({ ...widget, id: createDashWidgetId() })),
     }
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => {
-        if (group.id !== selectedWidgetStack.id) return group
-        const layers = [...group.layers]
-        layers.splice(sourceIndex + 1, 0, duplicatedLayer)
-        return { ...group, layers }
-      }),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => insertLayerAfter(group, layerId, duplicatedLayer)))
     updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, duplicatedLayerId)
     setSelectedLayerId(duplicatedLayerId)
     if (editContext.kind === 'widget-stack') {
@@ -778,15 +782,7 @@ export function useDashEditorController({
 
   const handleRenameLayer = useCallback((layerId: string, name: string) => {
     if (!selectedWidgetStack) return
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-        ? {
-          ...group,
-          layers: group.layers.map(layer => layer.id === layerId ? { ...layer, name } : layer),
-        }
-        : group),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => renameLayer(group, layerId, name)))
   }, [selectedWidgetStack, updateCurrentPage])
 
   const handleDeleteLayer = useCallback((layerId: string) => {
@@ -794,18 +790,7 @@ export function useDashEditorController({
     const targetLayer = selectedWidgetStack.layers.find(layer => layer.id === layerId)
     if (!targetLayer) return
     const nextLayerId = selectedWidgetStack.layers.find(layer => layer.id !== layerId)?.id ?? null
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => {
-        if (group.id !== selectedWidgetStack.id) return group
-        const layers = group.layers.filter(layer => layer.id !== layerId)
-        return {
-          ...group,
-          layers,
-          defaultLayerId: group.defaultLayerId === layerId ? layers[0]?.id : group.defaultLayerId,
-        }
-      }),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => removeLayer(group, layerId)))
     updateWidgetStackLayerSelection(currentPage.id, selectedWidgetStack.id, nextLayerId)
     const deletedSelectedLayer = selectedLayer?.id === layerId
     if (deletedSelectedLayer) {
@@ -835,16 +820,7 @@ export function useDashEditorController({
     const currentIndex = selectedWidgetStack.layers.findIndex(layer => layer.id === layerId)
     const nextIndex = currentIndex + direction
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= selectedWidgetStack.layers.length) return
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => {
-        if (group.id !== selectedWidgetStack.id) return group
-        const layers = [...group.layers]
-        const [layer] = layers.splice(currentIndex, 1)
-        layers.splice(nextIndex, 0, layer)
-        return { ...group, layers }
-      }),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => moveLayer(group, layerId, direction)))
   }, [selectedWidgetStack, updateCurrentPage])
 
   const handleMoveSelectedLayer = useCallback((direction: -1 | 1) => {
@@ -854,26 +830,18 @@ export function useDashEditorController({
 
   const handleSetDefaultLayer = useCallback((layerId: string) => {
     if (!selectedWidgetStack) return
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-        ? { ...group, defaultLayerId: layerId }
-        : group),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group => setDefaultLayer(group, layerId)))
   }, [selectedWidgetStack, updateCurrentPage])
 
   const updateSelectedLayer = useCallback((patch: { name?: string; defaultLayerId?: string }) => {
     if (!selectedWidgetStack || !selectedLayer) return
-    updateCurrentPage(page => ({
-      ...page,
-      widgetStacks: (page.widgetStacks ?? []).map(group => group.id === selectedWidgetStack.id
-        ? {
-          ...group,
-          defaultLayerId: patch.defaultLayerId ?? group.defaultLayerId,
-          layers: group.layers.map(layer => layer.id === selectedLayer.id ? { ...layer, ...(patch.name !== undefined ? { name: patch.name } : {}) } : layer),
-        }
-        : group),
-    }))
+    updateCurrentPage(page => mapWidgetStack(page, selectedWidgetStack.id, group =>
+      mapLayer(
+        { ...group, defaultLayerId: patch.defaultLayerId ?? group.defaultLayerId },
+        selectedLayer.id,
+        layer => ({ ...layer, ...(patch.name !== undefined ? { name: patch.name } : {}) }),
+      ),
+    ))
   }, [selectedWidgetStack, selectedLayer, updateCurrentPage])
 
   const handlePageBackgroundChange = useCallback((background?: RGBAColor) => {
@@ -1034,6 +1002,11 @@ export function useDashEditorController({
   ])
 
   const handleSave = useCallback(async () => {
+    // Never submit an invalid (overlapping / out-of-bounds) layout to persistence.
+    if (!validateLayout(layout).valid) {
+      setSaveStatus('error')
+      return
+    }
     setSaving(true)
     try {
       await onSave(layout)
@@ -1110,8 +1083,13 @@ export function useDashEditorController({
     exitWidgetStackEditMode,
     fittedCanvas,
     globalDefaults,
+    themeDefaults,
+    themes,
+    themeId: layout.themeId ?? '',
+    handleThemeIdChange,
     handleAddPage,
     handleAlertsChange,
+    handleAlertConfigChange,
     handleBack,
     handleClearPage,
     handleDeletePage,
@@ -1123,6 +1101,11 @@ export function useDashEditorController({
     handleUpdate,
     isDirty,
     layout,
+    invalidWidgetIds: layoutValidation.invalidWidgetIds,
+    validationMessages: layoutValidation.messages,
+    layoutValid: layoutValidation.valid,
+    canSave: saveEligibility.canSave,
+    saveDisabledReason: saveEligibility.reason,
     livePageIndex,
     paletteDropPreviewUrl,
     paletteDropType,

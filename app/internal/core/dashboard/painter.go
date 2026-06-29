@@ -71,6 +71,8 @@ type Painter struct {
 	globalDomain atomic.Pointer[widgets.DomainPalette]
 	// globalTypography holds the global-level dash typography defaults.
 	globalTypography atomic.Pointer[widgets.TypographySettings]
+	// themeLibrary resolves a layout's ThemeID reference to a preset palette.
+	themeLibrary atomic.Pointer[ThemeLibrary]
 	// profile holds app-level display strings such as driver name/number.
 	profile atomic.Pointer[RenderProfile]
 
@@ -156,10 +158,28 @@ func (p *Painter) SetGlobalTypography(typography widgets.TypographySettings) {
 	p.widgetCaches = nil
 }
 
+// SetThemeLibrary stores the theme-preset library used to resolve a layout's
+// ThemeID reference. Call whenever the user adds/edits/removes a theme so all
+// active painters reflect the change immediately.
+func (p *Painter) SetThemeLibrary(lib ThemeLibrary) {
+	p.themeLibrary.Store(&lib)
+	p.widgetCaches = nil
+}
+
 // SetProfile stores app-level display strings used by profile.* text bindings.
 func (p *Painter) SetProfile(profile RenderProfile) {
 	p.profile.Store(&profile)
 	p.widgetCaches = nil
+}
+
+// ApplyRenderPreferences applies a full RenderPreferences bundle to the painter.
+func (p *Painter) ApplyRenderPreferences(prefs RenderPreferences) {
+	p.SetGlobalTheme(prefs.Theme)
+	p.SetGlobalDomainPalette(prefs.DomainPalette)
+	p.SetGlobalPrefs(prefs.FormatPrefs)
+	p.SetGlobalTypography(prefs.Typography)
+	p.SetThemeLibrary(prefs.ThemeLibrary)
+	p.SetProfile(prefs.Profile)
 }
 
 // SetWidgetStackLayer selects the active wrapper variant for a specific page/group.
@@ -202,7 +222,7 @@ func (p *Painter) Paint(frame *dto.TelemetryFrame) (image.Image, error) {
 		return dc.Image(), nil
 	}
 
-	p.ensureBg(widgets.ColorBackground)
+	p.ensureBg(widgets.FixedCanvasBackground)
 	dc := p.getContext()
 	p.applyFlagOverlay(dc, frame, float64(p.width), float64(p.height))
 	return dc.Image(), nil
@@ -249,7 +269,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 		Domain:           p.resolvedDomainPalette(layout),
 		Style:            w.Style,
 		Typography:       layout.Typography,
-		GlobalTypography: p.currentGlobalTypography(),
+		GlobalTypography: p.resolvedGlobalTypography(layout),
 	}
 
 	// Resolve FormatPreferences: global settings → layout-level overrides → widget config overrides.
@@ -262,8 +282,21 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	elems := widget.Definition(w.Config)
 
 	// Auto-prepend panel element from meta unless disabled.
-	if !meta.Panel.Disabled {
-		panel := widgets.Panel{CornerR: meta.Panel.CornerR, NoBorder: meta.Panel.NoBorder}
+	// Effective border = metadata default unless a per-instance override flips it.
+	// A panel element is still needed for a default-disabled panel when the override
+	// explicitly turns the outline on.
+	border := widgets.PanelBorderEnabled(meta.Panel, w.Style)
+	if !meta.Panel.Disabled || border {
+		// Widgets read as rounded instruments: use the widget type's corner radius
+		// when set, otherwise the default, capped so it never exceeds the widget.
+		cornerR := meta.Panel.CornerR
+		if cornerR <= 0 {
+			cornerR = defaultPanelCornerRadius
+		}
+		if maxR := math.Min(fw, fh) / 2; cornerR > maxR {
+			cornerR = maxR
+		}
+		panel := widgets.Panel{CornerR: cornerR, NoBorder: !border}
 		elems = append([]widgets.Element{panel}, elems...)
 	}
 
@@ -272,7 +305,7 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	if meta.CapabilityBinding != "" {
 		if val, ok := widgets.Resolve(frame, meta.CapabilityBinding); ok {
 			if available, _ := val.(bool); !available {
-				cache.ctx.SetColor(widgets.ColorBackground)
+				cache.ctx.SetColor(widgetBackground(w.Style))
 				cache.ctx.Clear()
 				p.renderPanel(cache.ctx, rt, 0, 0, fw, fh, widgets.Panel{})
 				naHdrStyle := widgets.TextStyle{
@@ -318,7 +351,9 @@ func (p *Painter) dispatchWidget(dc *gg.Context, frame *dto.TelemetryFrame, w Da
 	// absolute position. This replaces the previous dc.Clip() approach which
 	// allocated a 384 KB image.Alpha per widget per frame, causing severe GC
 	// pressure and progressive FPS degradation after several laps.
-	cache.ctx.SetColor(widgets.ColorBackground)
+	// The tile clears to the widget's effective background — fixed pure black for a
+	// standard widget (no elevation), or its explicit background override.
+	cache.ctx.SetColor(widgetBackground(w.Style))
 	cache.ctx.Clear()
 	p.renderElements(cache.ctx, frame, rt, prefs, 0, 0, fw, fh, elems)
 
@@ -489,7 +524,34 @@ func (p *Painter) renderElement(dc *gg.Context, frame *dto.TelemetryFrame, rt wi
 		p.renderGrid(dc, frame, rt, prefs, x, y, w, h, e)
 	case widgets.Condition:
 		p.renderCondition(dc, frame, rt, prefs, x, y, w, h, e)
+	case widgets.Badge:
+		p.renderBadge(dc, frame, rt, prefs, x, y, w, h, e)
 	}
+}
+
+// renderBadge draws a circular instrument ring centred in the widget, with an
+// optional faint status fill. The widget's value text is drawn centred on top.
+func (p *Painter) renderBadge(dc *gg.Context, frame *dto.TelemetryFrame, rt widgets.RenderTheme, prefs widgets.FormatPreferences, x, y, w, h float64, elem widgets.Badge) {
+	col := p.resolveColorExpr(frame, rt, prefs, elem.Color)
+	cx, cy := x+w/2, y+h/2
+	frac := elem.Radius
+	if frac <= 0 {
+		frac = 0.82
+	}
+	rad := math.Min(w, h) / 2 * frac
+	if rad <= 0 {
+		return
+	}
+	lw := math.Max(2, rad*0.09)
+	if elem.Fill > 0 {
+		dc.SetRGBA255(int(col.R), int(col.G), int(col.B), int(clamp01(elem.Fill)*255))
+		dc.DrawCircle(cx, cy, rad-lw)
+		dc.Fill()
+	}
+	dc.SetColor(col)
+	dc.SetLineWidth(lw)
+	dc.DrawCircle(cx, cy, rad-lw/2)
+	dc.Stroke()
 }
 
 // renderPanel draws the widget background (border + fill) plus an optional FillColor overlay.
@@ -501,8 +563,17 @@ func (p *Painter) renderPanel(dc *gg.Context, rt widgets.RenderTheme, x, y, w, h
 		dc.Fill()
 	}
 	if !elem.NoBorder {
-		painterDrawPanel(dc, x, y, w, h, elem.CornerR, 1)
+		painterDrawPanel(dc, x, y, w, h, elem.CornerR, 1, widgetBackground(rt.Style))
 	}
+}
+
+// widgetBackground is the fill of a standard widget surface: fixed pure black (no
+// elevation) unless the widget carries an explicit background override (PRD #9).
+func widgetBackground(style widgets.WidgetStyle) color.RGBA {
+	if style.Background != nil {
+		return *style.Background
+	}
+	return widgets.FixedCanvasBackground
 }
 
 func halignFrac(a widgets.HAlign) float64 {
@@ -584,6 +655,17 @@ func (p *Painter) renderText(dc *gg.Context, frame *dto.TelemetryFrame, rt widge
 
 	family, bold := resolveTextStyle(style, rt)
 	face, faceOK := p.faceAny(dc, fontFileNames(family, bold), size)
+	// Auto-fit: shrink the face so the string never bleeds past the widget. Keeps a
+	// small horizontal inset so values/labels read as instrument content, not clipped
+	// text. This is what stops dense widgets ("ENGINE MAP", "212 km/h") overflowing.
+	if faceOK {
+		const inset = 0.12 // 6% padding each side
+		avail := w * (1 - inset)
+		if tw, _ := dc.MeasureString(display); tw > avail && tw > 0 {
+			size *= avail / tw
+			face, faceOK = p.faceAny(dc, fontFileNames(family, bold), size)
+		}
+	}
 	dc.SetColor(p.resolveColorExpr(frame, rt, prefs, style.Color))
 
 	var tx float64
@@ -936,16 +1018,31 @@ func (p *Painter) currentPage(layout *DashLayout) DashPage {
 	return layout.Pages[idx]
 }
 
-func (p *Painter) pageBackground(layout *DashLayout, page DashPage) color.RGBA {
-	if page.Background != nil {
-		return *page.Background
+// pageBackground is fixed to opaque #000000 for the on-wheel renderer. The canvas
+// is no longer theme- or page-driven: see widgets.FixedCanvasBackground for the
+// contract. (layout/page are retained for signature stability with callers/tests.)
+func (p *Painter) pageBackground(_ *DashLayout, _ DashPage) color.RGBA {
+	return widgets.FixedCanvasBackground
+}
+
+// referencedPreset resolves the layout's ThemeID against the painter's theme
+// library. When set, the preset supplies the base palette/typography in place of
+// the global default; per-layout overrides still layer on top (non-destructive).
+func (p *Painter) referencedPreset(layout *DashLayout) (ThemePreset, bool) {
+	if layout == nil || layout.ThemeID == "" {
+		return ThemePreset{}, false
 	}
-	return p.resolvedTheme(layout).Bg
+	if lib := p.themeLibrary.Load(); lib != nil {
+		return lib.Get(layout.ThemeID)
+	}
+	return ThemePreset{}, false
 }
 
 func (p *Painter) resolvedTheme(layout *DashLayout) widgets.DashTheme {
 	theme := widgets.DefaultTheme()
-	if global := p.globalTheme.Load(); global != nil {
+	if preset, ok := p.referencedPreset(layout); ok {
+		theme = widgets.MergeTheme(theme, preset.Theme)
+	} else if global := p.globalTheme.Load(); global != nil {
 		theme = widgets.MergeTheme(theme, *global)
 	}
 	return widgets.MergeTheme(theme, layout.Theme)
@@ -953,10 +1050,21 @@ func (p *Painter) resolvedTheme(layout *DashLayout) widgets.DashTheme {
 
 func (p *Painter) resolvedDomainPalette(layout *DashLayout) widgets.DomainPalette {
 	domain := widgets.DefaultDomainPalette()
-	if global := p.globalDomain.Load(); global != nil {
+	if preset, ok := p.referencedPreset(layout); ok {
+		domain = widgets.MergeDomainPalette(domain, preset.DomainPalette)
+	} else if global := p.globalDomain.Load(); global != nil {
 		domain = widgets.MergeDomainPalette(domain, *global)
 	}
 	return widgets.MergeDomainPalette(domain, layout.DomainPalette)
+}
+
+// resolvedGlobalTypography returns the base typography under per-layout overrides:
+// the referenced preset's typography when a ThemeID is set, else the global default.
+func (p *Painter) resolvedGlobalTypography(layout *DashLayout) widgets.TypographySettings {
+	if preset, ok := p.referencedPreset(layout); ok {
+		return preset.Typography
+	}
+	return p.currentGlobalTypography()
 }
 
 func (p *Painter) currentGlobalTypography() widgets.TypographySettings {

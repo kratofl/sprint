@@ -1,5 +1,23 @@
 export namespace alerts {
 	
+	export class AlertConfig {
+	    displayMode?: string;
+	    colorMode?: string;
+	    duration?: number;
+	    enabledTypes?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AlertConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.displayMode = source["displayMode"];
+	        this.colorMode = source["colorMode"];
+	        this.duration = source["duration"];
+	        this.enabledTypes = source["enabledTypes"];
+	    }
+	}
 	export class AlertInstance {
 	    id: string;
 	    type: string;
@@ -280,6 +298,8 @@ export namespace dashboard {
 	    idlePage: DashPage;
 	    pages: DashPage[];
 	    alerts?: alerts.AlertInstance[];
+	    alertConfig?: alerts.AlertConfig;
+	    themeId?: string;
 	    theme?: widgets.DashTheme;
 	    domainPalette?: widgets.DomainPalette;
 	    typography?: widgets.TypographySettings;
@@ -299,6 +319,8 @@ export namespace dashboard {
 	        this.idlePage = this.convertValues(source["idlePage"], DashPage);
 	        this.pages = this.convertValues(source["pages"], DashPage);
 	        this.alerts = this.convertValues(source["alerts"], alerts.AlertInstance);
+	        this.alertConfig = this.convertValues(source["alertConfig"], alerts.AlertConfig);
+	        this.themeId = source["themeId"];
 	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
 	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
 	        this.typography = this.convertValues(source["typography"], widgets.TypographySettings);
@@ -386,6 +408,46 @@ export namespace dashboard {
 	        this.gridRows = source["gridRows"];
 	        this.previewAvailable = source["previewAvailable"];
 	    }
+	}
+	export class ThemePreset {
+	    id: string;
+	    name: string;
+	    builtIn: boolean;
+	    theme: widgets.DashTheme;
+	    domainPalette: widgets.DomainPalette;
+	    typography?: widgets.TypographySettings;
+	
+	    static createFrom(source: any = {}) {
+	        return new ThemePreset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.builtIn = source["builtIn"];
+	        this.theme = this.convertValues(source["theme"], widgets.DashTheme);
+	        this.domainPalette = this.convertValues(source["domainPalette"], widgets.DomainPalette);
+	        this.typography = this.convertValues(source["typography"], widgets.TypographySettings);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -653,10 +715,29 @@ export namespace settings {
 		    return a;
 		}
 	}
+	export class NewDashDefaults {
+	    mode?: string;
+	    display?: string;
+	    speedUnit?: string;
+	    tempUnit?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NewDashDefaults(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.display = source["display"];
+	        this.speedUnit = source["speedUnit"];
+	        this.tempUnit = source["tempUnit"];
+	    }
+	}
 	export class Settings {
 	    updateChannel: string;
 	    driverName?: string;
 	    driverNumber?: string;
+	    newDashDefaults: NewDashDefaults;
 	    dashEditorUI: DashEditorUIPreferences;
 	
 	    static createFrom(source: any = {}) {
@@ -668,6 +749,7 @@ export namespace settings {
 	        this.updateChannel = source["updateChannel"];
 	        this.driverName = source["driverName"];
 	        this.driverNumber = source["driverNumber"];
+	        this.newDashDefaults = this.convertValues(source["newDashDefaults"], NewDashDefaults);
 	        this.dashEditorUI = this.convertValues(source["dashEditorUI"], DashEditorUIPreferences);
 	    }
 	
@@ -1017,6 +1099,7 @@ export namespace widgets {
 	    labelColor?: color.RGBA;
 	    labelFont?: string;
 	    background?: color.RGBA;
+	    border?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new WidgetStyle(source);
@@ -1030,6 +1113,7 @@ export namespace widgets {
 	        this.labelColor = this.convertValues(source["labelColor"], color.RGBA);
 	        this.labelFont = source["labelFont"];
 	        this.background = this.convertValues(source["background"], color.RGBA);
+	        this.border = source["border"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

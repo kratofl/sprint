@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -90,6 +91,51 @@ func TestCycleWrapperWrapsAroundBothDirections(t *testing.T) {
 	}
 }
 
+func TestApplyRenderPreferencesBroadcastsBundleToAllDrivers(t *testing.T) {
+	d1 := &stubScreenDriver{}
+	d2 := &stubScreenDriver{}
+	coord := &Coordinator{
+		entries: map[string]*deviceEntry{
+			"a": {driver: d1},
+			"b": {driver: d2},
+		},
+	}
+
+	prefs := dashboard.RenderPreferences{Profile: dashboard.RenderProfile{DriverName: "Alice"}}
+	coord.ApplyRenderPreferences(prefs)
+
+	if !d1.applied || !reflect.DeepEqual(d1.lastPrefs, prefs) {
+		t.Fatalf("driver a did not receive the bundle: applied=%v prefs=%#v", d1.applied, d1.lastPrefs)
+	}
+	if !d2.applied || !reflect.DeepEqual(d2.lastPrefs, prefs) {
+		t.Fatalf("driver b did not receive the bundle: applied=%v prefs=%#v", d2.applied, d2.lastPrefs)
+	}
+}
+
+func TestCoordinatorSetProfileMergesAndPreservesDefaults(t *testing.T) {
+	coord := New(slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
+	stub := &stubScreenDriver{}
+	coord.entries = map[string]*deviceEntry{"a": {driver: stub}}
+
+	coord.SetProfile(dashboard.RenderProfile{DriverName: "Bob"})
+
+	if !stub.applied {
+		t.Fatal("SetProfile did not broadcast a render-preferences bundle to the driver")
+	}
+	if stub.lastPrefs.Profile.DriverName != "Bob" {
+		t.Fatalf("profile not applied: %#v", stub.lastPrefs.Profile)
+	}
+	// A single-field update must not clobber the other fields with zero values:
+	// they should remain the coordinator's current (default) preferences.
+	def := dashboard.DefaultRenderPreferences()
+	if stub.lastPrefs.Theme != def.Theme {
+		t.Fatalf("SetProfile clobbered theme: got %#v, want default %#v", stub.lastPrefs.Theme, def.Theme)
+	}
+	if stub.lastPrefs.FormatPrefs != def.FormatPrefs {
+		t.Fatalf("SetProfile clobbered format prefs: got %#v, want default %#v", stub.lastPrefs.FormatPrefs, def.FormatPrefs)
+	}
+}
+
 func assertHasCommand(t *testing.T, ids []string, want string) {
 	t.Helper()
 	for _, id := range ids {
@@ -145,15 +191,17 @@ func testLayoutWithWrapperGroup() *dashboard.DashLayout {
 
 type stubScreenDriver struct {
 	lastVariantID string
+	applied       bool
+	lastPrefs     dashboard.RenderPreferences
+}
+
+func (d *stubScreenDriver) ApplyRenderPreferences(prefs dashboard.RenderPreferences) {
+	d.applied = true
+	d.lastPrefs = prefs
 }
 
 func (d *stubScreenDriver) Configure(hardware.ScreenConfig)                {}
 func (d *stubScreenDriver) SetLayout(*dashboard.DashLayout)                {}
-func (d *stubScreenDriver) SetGlobalTheme(widgets.DashTheme)               {}
-func (d *stubScreenDriver) SetGlobalDomainPalette(widgets.DomainPalette)   {}
-func (d *stubScreenDriver) SetGlobalPrefs(widgets.FormatPreferences)       {}
-func (d *stubScreenDriver) SetGlobalTypography(widgets.TypographySettings) {}
-func (d *stubScreenDriver) SetProfile(dashboard.RenderProfile)             {}
 func (d *stubScreenDriver) SetActivePage(int)                              {}
 func (d *stubScreenDriver) SetIdle(bool)                                   {}
 func (d *stubScreenDriver) OnFrame(*dto.TelemetryFrame)                    {}

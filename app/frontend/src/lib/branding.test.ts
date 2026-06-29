@@ -4,18 +4,18 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..', '..', '..')
-const appFile = resolve(repoRoot, 'app', 'frontend', 'src', 'App.tsx')
+const sidebarBrandFile = resolve(repoRoot, 'app', 'frontend', 'src', 'components', 'shell', 'SidebarBrand.tsx')
 const uiIndexFile = resolve(repoRoot, 'packages', 'ui', 'src', 'index.ts')
 const uiAtomsFile = resolve(repoRoot, 'packages', 'ui', 'src', 'components', 'atoms', 'index.ts')
 
-test('app titlebar uses the racing-line brand icon asset, not a letter tile or shared icon component', () => {
-  const appSource = readFileSync(appFile, 'utf8')
+test('sidebar brand uses the racing-line brand icon asset, not a letter tile or shared icon component', () => {
+  const sidebarBrandSource = readFileSync(sidebarBrandFile, 'utf8')
 
-  assert.match(appSource, /import sprintIconUrl from ['"]@\/assets\/brand\/sprint-icon\.svg['"]/)
-  assert.match(appSource, /<img src=\{sprintIconUrl\} alt="Sprint"/)
-  // Not the shared icon components, not the old hardcoded "S" letter tile.
-  assert.doesNotMatch(appSource, /SprintIcon|SprintLogo/)
-  assert.doesNotMatch(appSource, /font-space text-\[13px\] font-bold/)
+  assert.match(sidebarBrandSource, /import sprintIconUrl from ['"]@\/assets\/brand\/sprint-icon\.svg['"]/)
+  assert.match(sidebarBrandSource, /<img\s+src=\{sprintIconUrl\}/)
+  // The Figma wordmark renders as text, not the shared icon components or an "S" tile.
+  assert.doesNotMatch(sidebarBrandSource, /SprintIcon|SprintLogo/)
+  assert.match(sidebarBrandSource, />\s*SPRINT\s*</)
 })
 
 test('packages/ui no longer exports the old Sprint logo components', () => {

@@ -194,15 +194,26 @@ func TestWidgetCatalog(t *testing.T) {
 				t.Errorf("tc widget mode=%q returned no elements", tc.mode)
 				continue
 			}
-			if len(elems) < 2 {
-				t.Errorf("tc widget mode=%q returned %d elements, want >= 2", tc.mode, len(elems))
-				continue
+			// The TC widget is a ring badge: [Badge, label Text, value Text].
+			var gotLabel string
+			var gotBinding Binding
+			for _, e := range elems {
+				t, ok := e.(Text)
+				if !ok {
+					continue
+				}
+				if t.Text != "" && gotLabel == "" {
+					gotLabel = t.Text
+				}
+				if t.Binding != "" {
+					gotBinding = t.Binding
+				}
 			}
-			if elems[0].(Text).Text != tc.wantLabel {
-				t.Errorf("tc widget mode=%q label = %q, want %q", tc.mode, elems[0].(Text).Text, tc.wantLabel)
+			if gotLabel != tc.wantLabel {
+				t.Errorf("tc widget mode=%q label = %q, want %q", tc.mode, gotLabel, tc.wantLabel)
 			}
-			if elems[1].(Text).Binding != tc.wantBinding {
-				t.Errorf("tc widget mode=%q binding = %q, want %q", tc.mode, elems[1].(Text).Binding, tc.wantBinding)
+			if gotBinding != tc.wantBinding {
+				t.Errorf("tc widget mode=%q binding = %q, want %q", tc.mode, gotBinding, tc.wantBinding)
 			}
 		}
 	})

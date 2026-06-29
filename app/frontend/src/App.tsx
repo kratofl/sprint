@@ -1,28 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AppShell,
-  BodyTray,
   ConfirmDialog,
-  IconButton,
   NavRail,
-  Titlebar,
   type NavRailSection,
 } from '@sprint/ui'
 import {
-  IconChevronLeft,
-  IconChevronRight,
   IconGauge,
   IconHelp,
   IconLayoutDashboard,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
-  IconMinus,
   IconSettings,
-  IconSquare,
   IconUsb,
-  IconX,
 } from '@tabler/icons-react'
-import sprintIconUrl from '@/assets/brand/sprint-icon.svg'
 import Home from '@/views/Home'
 import DashEditor, { type DashEditorHandle } from '@/views/DashEditor'
 import Devices from '@/views/Devices'
@@ -32,22 +21,17 @@ import { useTelemetry } from '@/hooks/useTelemetry'
 import { useUpdateCheck } from '@/hooks/useUpdateCheck'
 import SplashScreen from '@/components/SplashScreen'
 import UpdateToast from '@/components/UpdateToast'
+import { SidebarBrand } from '@/components/shell/SidebarBrand'
+import { WindowControls } from '@/components/shell/WindowControls'
+import { ShellHeaderSlotProvider } from '@/components/shell/shellHeader'
 import { APP_EVENTS } from '@/lib/desktopEvents'
 import {
   createViewHistory,
-  goBack,
-  goForward,
   navigateToView,
   type AppView,
   type ViewHistory,
 } from '@/lib/appShell'
 import { windowAPI } from '@/lib/window'
-import {
-  windowControlCloseButtonClassName,
-  windowControlMaximiseButtonClassName,
-  windowControlMinimiseButtonClassName,
-  windowControlsRailClassName,
-} from '@/lib/windowControls'
 import { onEvent } from '@/lib/wails'
 
 type View = AppView
@@ -75,7 +59,6 @@ const NAV_SECTIONS: NavRailSection[] = [
 ]
 
 const PRIMARY_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items)
-const noDragRegionProps = { 'app-region': 'no-drag' } as const
 
 export default function App() {
   const [viewHistory, setViewHistory] = useState<ViewHistory>(() => createViewHistory())
@@ -86,16 +69,13 @@ export default function App() {
   const [booting, setBooting] = useState(true)
   const [splashMounted, setSplashMounted] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null)
 
   const dashEditorRef = useRef<DashEditorHandle>(null)
   const [pendingHistory, setPendingHistory] = useState<ViewHistory | null>(null)
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
 
   const view = viewHistory.current
-  const currentLabel = PRIMARY_NAV_ITEMS.find((item) => item.id === view)?.label ?? 'Home'
-  const demoTelemetryActive = !frame && !connected
-  const titlebarConnected = connected || demoTelemetryActive
-  const titlebarFps = fps || (demoTelemetryActive ? 60 : 0)
 
   const applyHistory = useCallback((nextHistory: ViewHistory) => {
     if (
@@ -117,14 +97,6 @@ export default function App() {
 
   const switchView = useCallback((newView: View) => {
     applyHistory(navigateToView(viewHistory, newView))
-  }, [applyHistory, viewHistory])
-
-  const stepBackward = useCallback(() => {
-    applyHistory(goBack(viewHistory))
-  }, [applyHistory, viewHistory])
-
-  const stepForward = useCallback(() => {
-    applyHistory(goForward(viewHistory))
   }, [applyHistory, viewHistory])
 
   const confirmLeave = useCallback(() => {
@@ -190,111 +162,18 @@ export default function App() {
   return (
     <AppShell
       sidebarCollapsed={sidebarCollapsed}
-      titlebar={
-        <Titlebar
-          app-region="drag"
-          onDoubleClick={(event) => {
-            if ((event.target as HTMLElement).closest('button, a, input')) return
-            void windowAPI.toggleMaximise()
-          }}
-          logo={<img src={sprintIconUrl} alt="Sprint" className="size-5 rounded-[6px]" draggable={false} />}
-          navigation={
-            <>
-              <IconButton
-                {...noDragRegionProps}
-                label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-pressed={sidebarCollapsed}
-                variant="ghost"
-                size="icon-sm"
-                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)]"
-                icon={sidebarCollapsed ? <IconLayoutSidebarLeftExpand size={15} /> : <IconLayoutSidebarLeftCollapse size={15} />}
-                onClick={() => setSidebarCollapsed(current => !current)}
-              />
-              <IconButton
-                {...noDragRegionProps}
-                label="Back"
-                variant="ghost"
-                size="icon-sm"
-                disabled={!viewHistory.canGoBack}
-                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)] disabled:opacity-30"
-                icon={<IconChevronLeft size={15} />}
-                onClick={stepBackward}
-              />
-              <IconButton
-                {...noDragRegionProps}
-                label="Forward"
-                variant="ghost"
-                size="icon-sm"
-                disabled={!viewHistory.canGoForward}
-                className="size-[27px] border-transparent text-[var(--text3)] hover:bg-[var(--panel2)] hover:text-[var(--text)] disabled:opacity-30"
-                icon={<IconChevronRight size={15} />}
-                onClick={stepForward}
-              />
-            </>
-          }
-          breadcrumb={
-            <div className="ml-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text3)]">
-              <span>SPRINT TELEMETRY</span>
-              <span className="text-[var(--line2)]">/</span>
-              <span className="text-[var(--text)]">{currentLabel}</span>
-            </div>
-          }
-          status={
-            <div
-              {...noDragRegionProps}
-              className="flex h-[24px] items-center gap-2 rounded-[999px] border border-[var(--line2)] bg-[var(--panel2)] px-3 text-[9.5px] font-bold uppercase tracking-[0.14em] text-[var(--text2)]"
-            >
-              <span
-                aria-hidden="true"
-                className={
-                  titlebarConnected
-                    ? 'size-1.5 rounded-full bg-[var(--green)] animate-[fdpulse_1.2s_ease-in-out_infinite]'
-                    : 'size-1.5 rounded-full bg-[var(--red)]'
-                }
-              />
-              <span>{titlebarConnected ? demoTelemetryActive ? 'SIM DEMO' : 'Assetto Corsa' : 'NO SIGNAL'}</span>
-            </div>
-          }
-          metrics={<span className="text-[10px] font-semibold tabular-nums text-[var(--text3)]">{titlebarFps}Hz</span>}
-          windowControls={
-            <div className={windowControlsRailClassName}>
-              <button
-                type="button"
-                app-region="no-drag"
-                onClick={() => { void windowAPI.minimise() }}
-                aria-label="Minimise"
-                className={windowControlMinimiseButtonClassName}
-              >
-                <IconMinus size={10} />
-              </button>
-              <button
-                type="button"
-                app-region="no-drag"
-                onClick={() => { void windowAPI.toggleMaximise() }}
-                aria-label="Maximise"
-                className={windowControlMaximiseButtonClassName}
-              >
-                <IconSquare size={10} />
-              </button>
-              <button
-                type="button"
-                app-region="no-drag"
-                onClick={() => { void windowAPI.close() }}
-                aria-label="Close"
-                className={windowControlCloseButtonClassName}
-              >
-                <IconX size={11} />
-              </button>
-            </div>
-          }
-        />
-      }
       sidebar={
         <NavRail
           collapsed={sidebarCollapsed}
           sections={NAV_SECTIONS}
           activeId={view}
           onSelect={(id) => switchView(id as View)}
+          header={
+            <SidebarBrand
+              collapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed((current) => !current)}
+            />
+          }
         />
       }
     >
@@ -302,13 +181,38 @@ export default function App() {
         <SplashScreen visible={booting} onDone={() => setSplashMounted(false)} />
       )}
 
-      <BodyTray>
-        {view === 'home' && <Home frame={frame} connected={connected} fps={fps} />}
-        {view === 'devices' && <Devices />}
-        {view === 'dashboards' && <DashEditor ref={dashEditorRef} />}
-        {view === 'settings' && <Settings />}
-        {view === 'help' && <Help />}
-      </BodyTray>
+      {/* Single content header (Figma "Header", h45): per-view toolbar slot + window controls. */}
+      <header
+        app-region="drag"
+        onDoubleClick={(event) => {
+          if ((event.target as HTMLElement).closest('button, a, input')) return
+          void windowAPI.toggleMaximise()
+        }}
+        className="flex h-[45px] shrink-0 items-center gap-[10px] pl-[14px]"
+      >
+        <div ref={setHeaderSlot} className="flex min-w-0 flex-1 items-center gap-[14px]" />
+        <WindowControls />
+      </header>
+
+      {/* Figma "Main": the content column sits in a single shared inset
+          (pad 0/14/14/14, plus a small 8px gap under the window-controls header).
+          Owning it here means no individual view can forget its page padding. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-[14px] pb-[14px] pt-[8px]">
+        <ShellHeaderSlotProvider value={headerSlot}>
+          {/* Keyed on the view so each page springs in on navigation (fdrise +
+              the gentle overshoot ease). motion-safe → respects reduced-motion. */}
+          <div
+            key={view}
+            className="flex min-h-0 flex-1 flex-col motion-safe:animate-[fdrise_260ms_var(--ease-spring)_both]"
+          >
+            {view === 'home' && <Home frame={frame} connected={connected} fps={fps} />}
+            {view === 'devices' && <Devices />}
+            {view === 'dashboards' && <DashEditor ref={dashEditorRef} />}
+            {view === 'settings' && <Settings />}
+            {view === 'help' && <Help />}
+          </div>
+        </ShellHeaderSlotProvider>
+      </main>
 
       <ConfirmDialog
         open={showLeaveConfirm}

@@ -128,6 +128,49 @@ export function WidgetStyleProperties({ widget, onUpdate }: WidgetStylePropertie
         onChange={v => updateStyle({ background: v })}
         onReset={() => clearStyleField('background')}
       />
+
+      <BorderRow
+        value={widget.style?.border}
+        onChange={v => updateStyle({ border: v })}
+        onReset={() => clearStyleField('border')}
+      />
+    </div>
+  )
+}
+
+// BorderRow is a tri-state override of the widget type's default outline:
+// Default (inherit the widget's metadata default), On (force outline), Off (hide it).
+function BorderRow({ value, onChange, onReset }: {
+  value: boolean | undefined
+  onChange: (v: boolean) => void
+  onReset: () => void
+}) {
+  const isSet = value !== undefined
+  const options: { key: 'default' | 'on' | 'off'; label: string; active: boolean; apply: () => void }[] = [
+    { key: 'default', label: 'Default', active: value === undefined, apply: onReset },
+    { key: 'on', label: 'On', active: value === true, apply: () => onChange(true) },
+    { key: 'off', label: 'Off', active: value === false, apply: () => onChange(false) },
+  ]
+  return (
+    <div className="flex items-center gap-[8px] border-b border-[var(--border)] px-[14px] py-[10px]">
+      <span className={cn(inspectorLabelClassName, 'min-w-0 flex-1 truncate', isSet && 'text-[var(--text)]')}>
+        Border
+      </span>
+      <div className="flex items-center gap-[2px]">
+        {options.map(opt => (
+          <Button
+            key={opt.key}
+            type="button"
+            size="xs"
+            variant={opt.active ? 'active' : 'neutral'}
+            aria-pressed={opt.active}
+            aria-label={`Border ${opt.key}`}
+            onClick={opt.apply}
+          >
+            {opt.label}
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }

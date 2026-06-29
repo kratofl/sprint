@@ -74,7 +74,11 @@ type DashLayout struct {
 	GridRows          int                        `json:"gridRows"`
 	IdlePage          DashPage                   `json:"idlePage"`
 	Pages             []DashPage                 `json:"pages"` // at least 1 required
-	Alerts            []alerts.AlertInstance     `json:"alerts,omitempty"`
+	// Alerts is the retired per-instance alert list, retained for migration of
+	// legacy dashboards into AlertConfig. New dashboards use AlertConfig only.
+	Alerts      []alerts.AlertInstance `json:"alerts,omitempty"`
+	AlertConfig alerts.AlertConfig     `json:"alertConfig,omitempty"`
+	ThemeID           string                     `json:"themeId,omitempty"` // references a ThemePreset; empty = global default
 	Theme             widgets.DashTheme          `json:"theme,omitempty"`
 	DomainPalette     widgets.DomainPalette      `json:"domainPalette,omitempty"`
 	Typography        widgets.TypographySettings `json:"typography,omitempty"`

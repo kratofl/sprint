@@ -17,6 +17,7 @@ const (
 	ElemSegBar    ElementKind = "segbar"
 	ElemGrid      ElementKind = "grid"
 	ElemCondition ElementKind = "condition"
+	ElemBadge     ElementKind = "badge"
 )
 
 // Element is implemented by all concrete visual primitive types.
@@ -146,6 +147,23 @@ func (v Grid) MarshalJSON() ([]byte, error) {
 	return marshalWithKind(ElemGrid, alias(v))
 }
 
+// Badge draws a circular instrument ring centred in the widget, optionally with a
+// faint status fill, in a resolved colour. The widget's value Text renders centred
+// inside it. Used to turn discrete car-setting indicators (TC, ABS, engine map) into
+// rounded badge instruments rather than plain numbers. (PRD #106 #5)
+type Badge struct {
+	Color  ColorExpr `json:"badgeColor,omitempty"`
+	Radius float64   `json:"badgeR,omitempty"`    // fraction of min(w,h)/2; 0 ⇒ default 0.82
+	Fill   float64   `json:"badgeFill,omitempty"` // 0..1 alpha of the faint interior fill
+}
+
+func (Badge) elemKind() ElementKind { return ElemBadge }
+
+func (v Badge) MarshalJSON() ([]byte, error) {
+	type alias Badge
+	return marshalWithKind(ElemBadge, alias(v))
+}
+
 // Condition renders Then or Else sub-elements based on a data binding value.
 type Condition struct {
 	Binding Binding     `json:"condBinding,omitempty"`
@@ -248,6 +266,9 @@ func unmarshalElement(raw json.RawMessage) (Element, error) {
 		return v, json.Unmarshal(raw, &v)
 	case ElemCondition:
 		var v Condition
+		return v, json.Unmarshal(raw, &v)
+	case ElemBadge:
+		var v Badge
 		return v, json.Unmarshal(raw, &v)
 	default:
 		return nil, fmt.Errorf("unknown element kind: %q", kindOnly.Kind)

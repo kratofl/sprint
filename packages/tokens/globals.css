@@ -1,33 +1,60 @@
-/* Shared CSS variables and base styles. Apps load fonts and compile Tailwind. */
+/* Shared CSS variables and base styles. Apps load fonts and compile Tailwind.
+   Dark-only, single mode. Values mirror the Figma flat-UI token set
+   (see packages/tokens/src + tmp/figma-extract/SPEC.md). */
 :root,
 .fd,
 .tone-graphite {
-  /* Primitive / Color */
-  --primitive-color-orange-500: #FF6A00;
-  --primitive-color-green-500: #16B566;
-  --primitive-color-red-500: #F5483D;
-  --primitive-color-yellow-500: #F5C518;
-  --primitive-color-blue-500: #4F9CFF;
-  --primitive-color-purple-500: #A06BFF;
-  --primitive-color-neutral-950: #070707;
-  --primitive-color-neutral-900: #0D0D0D;
-  --primitive-color-neutral-850: #101010;
-  --primitive-color-neutral-800: #131313;
-  --primitive-color-neutral-750: #1B1B1B;
-  --primitive-color-neutral-700: #1F1F1F;
-  --primitive-color-neutral-600: #1A1A1A;
-  --primitive-color-neutral-500: #232323;
-  --primitive-color-neutral-400: #9A9A9A;
-  --primitive-color-neutral-300: #5C5C5C;
-  --primitive-color-neutral-50: #ECECEC;
+  /* Primitive / Color — Neutral ramp */
+  --primitive-color-neutral-50: #F6F6F6;
+  --primitive-color-neutral-100: #E4E4E4;
+  --primitive-color-neutral-200: #C6C6C6;
+  --primitive-color-neutral-300: #A0A0A0;
+  --primitive-color-neutral-400: #7A7A7A;
+  --primitive-color-neutral-500: #5A5A5A;
+  --primitive-color-neutral-600: #424242;
+  --primitive-color-neutral-700: #2E2E2E;
+  --primitive-color-neutral-800: #1F1F1F;
+  --primitive-color-neutral-850: #1A1A1A;
+  --primitive-color-neutral-900: #141414;
+  --primitive-color-neutral-925: #0F0F0F;
+  --primitive-color-neutral-950: #0A0A0A;
+  --primitive-color-neutral-990: #050505;
 
-  /* Primitive / Radius + Space */
-  --primitive-radius-panel: 10px;
-  --primitive-radius-alert: 10px;
-  --primitive-radius-control: 8px;
-  --primitive-radius-tile: 8px;
-  --primitive-radius-badge: 6px;
+  /* Primitive / Color — accent + status anchors */
+  --primitive-color-orange-400: #FF8636;
+  --primitive-color-orange-500: #FF6A00;
+  --primitive-color-orange-700: #BF4D00;
+  --primitive-color-orange-950: #421A02;
+  --primitive-color-green-500: #16B566;
+  --primitive-color-green-700: #0E7445;
+  --primitive-color-green-800: #0F5B38;
+  --primitive-color-green-950: #05281A;
+  --primitive-color-red-500: #F02744;
+  --primitive-color-red-700: #A4172C;
+  --primitive-color-red-800: #851727;
+  --primitive-color-red-950: #3A0A10;
+  --primitive-color-yellow-500: #E0A30C;
+  --primitive-color-yellow-700: #8F6406;
+  --primitive-color-yellow-950: #2E2002;
+  --primitive-color-blue-500: #1F7FE6;
+  --primitive-color-blue-700: #114F99;
+  --primitive-color-blue-950: #091D38;
+  --primitive-color-purple-500: #8F76FF;
+
+  /* Primitive / Radius + Space + Motion */
+  --primitive-radius-xxs: 4px;
+  --primitive-radius-xs: 6px;
+  --primitive-radius-sm: 8px;
+  --primitive-radius-md: 12px;
+  --primitive-radius-lg: 16px;
+  --primitive-radius-xl: 18px;
   --primitive-radius-pill: 999px;
+  /* Back-compat radius names → closest Figma step */
+  --primitive-radius-panel: var(--primitive-radius-xl);
+  --primitive-radius-alert: var(--primitive-radius-md);
+  --primitive-radius-control: var(--primitive-radius-xl);
+  --primitive-radius-tile: var(--primitive-radius-md);
+  --primitive-radius-badge: var(--primitive-radius-xxs);
   --primitive-motion-duration-instant: 0ms;
   --primitive-motion-duration-fast: 120ms;
   --primitive-motion-duration-normal: 160ms;
@@ -35,27 +62,39 @@
   --primitive-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --primitive-motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
   --primitive-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --primitive-space-0: 0px;
-  --primitive-space-0-5: 2px;
-  --primitive-space-1: 4px;
-  --primitive-space-1-5: 6px;
-  --primitive-space-2: 8px;
-  --primitive-space-2-5: 10px;
-  --primitive-space-3-5: 14px;
+  --primitive-space-1: 2px;
+  --primitive-space-2: 4px;
+  --primitive-space-3: 6px;
+  --primitive-space-4: 8px;
+  --primitive-space-5: 10px;
+  --primitive-space-6: 14px;
+  --primitive-space-7: 16px;
+  --primitive-space-8: 18px;
+  --primitive-space-9: 20px;
+  --primitive-space-10: 22px;
+  --primitive-space-12: 36px;
 
-  /* Dash Studio public variables */
-  --bg: #070707;
-  --panel: #0D0D0D;
-  --panel2: #131313;
-  --panel3: #1B1B1B;
-  --line: #1A1A1A;
-  --line2: #232323;
-  --text: #ECECEC;
-  --text2: #9A9A9A;
-  --text3: #5C5C5C;
-  --accent: #FF6A00;
-  --radius: 10px;
+  /* Legacy compact public variables (back-compat alias layer).
+     Each points at the closest NEW Figma value so not-yet-migrated app
+     surfaces keep rendering. */
+  --bg: var(--primitive-color-neutral-925);     /* #0F0F0F Surface/App */
+  --panel: var(--primitive-color-neutral-900);  /* #141414 Surface/Panel */
+  --panel2: var(--primitive-color-neutral-800); /* #1F1F1F Surface/Tile */
+  --panel3: var(--primitive-color-neutral-700); /* #2E2E2E Surface/Tile 2 */
+  --line: var(--primitive-color-neutral-700);   /* #2E2E2E Border/Default */
+  --line2: var(--primitive-color-neutral-600);  /* #424242 Border/Strong */
+  --text: var(--primitive-color-neutral-50);    /* #F6F6F6 Text/Default */
+  --text2: var(--primitive-color-neutral-300);  /* #A0A0A0 Text/Muted */
+  --text3: var(--primitive-color-neutral-400);  /* #7A7A7A Text/Subtle */
+  --accent: var(--primitive-color-orange-500);  /* #FF6A00 Primary */
+  --radius: 18px;
   --r: var(--radius);
+  --radius-xxs: var(--primitive-radius-xxs);
+  --radius-xs: var(--primitive-radius-xs);
+  --radius-sm: var(--primitive-radius-sm);
+  --radius-md: var(--primitive-radius-md);
+  --radius-lg: var(--primitive-radius-lg);
+  --radius-xl: var(--primitive-radius-xl);
   --radius-panel: var(--primitive-radius-panel);
   --radius-alert: var(--primitive-radius-alert);
   --radius-control: var(--primitive-radius-control);
@@ -69,28 +108,37 @@
   --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
   --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --green: #16B566;
-  --red: #F5483D;
-  --yellow: #F5C518;
-  --blue: #4F9CFF;
-  --purple: #A06BFF;
+  --green: var(--primitive-color-green-500);    /* #16B566 */
+  --red: var(--primitive-color-red-500);        /* #F02744 */
+  --yellow: var(--primitive-color-yellow-500);  /* #E0A30C */
+  --blue: var(--primitive-color-blue-500);      /* #1F7FE6 */
+  --purple: var(--primitive-color-purple-500);  /* #8F76FF */
 
-  /* Typography stacks. IBM Plex Sans is the single UI family (see
-     packages/tokens/src/atoms/typography.ts); display/body/ui share it. */
-  --font-display: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  --font-body: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  --font-ui: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  /* Typography stacks (self-hosted via @fontsource; offline Wails app).
+     Strings match the @fontsource font-family names exactly. */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-wordmark: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-numeric: 'Saira', system-ui, sans-serif;
+  --font-saira: 'Saira', system-ui, sans-serif;
+  --font-saira-sc: 'Saira Semi Condensed', system-ui, sans-serif;
+  --font-condensed: 'Saira Semi Condensed', system-ui, sans-serif;
+  --font-incidental: 'Sora', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Compatibility aliases mapped to Dash Studio */
-  --bg-deep: var(--bg);
+  /* Compatibility aliases mapped to the Figma scale */
+  --bg-deep: var(--primitive-color-neutral-990);
+  --bg-app: var(--bg);
   --win: var(--panel);
   --tile: var(--panel);
   --panel-2: var(--panel2);
   --tile-2: var(--panel2);
   --panel-3: var(--panel3);
   --tile-3: var(--panel3);
-  --panel-4: #1F1F1F;
-  --tile-4: #1F1F1F;
+  --panel-4: var(--primitive-color-neutral-600);
+  --tile-4: var(--primitive-color-neutral-600);
   --border: var(--line);
   --border-2: var(--line2);
   --win-edge: var(--line2);
@@ -98,44 +146,46 @@
   --muted-2: var(--text3);
   --orange: var(--accent);
   --amber: var(--yellow);
-  --green-soft: rgba(22, 181, 102, .13);
+  --green-soft: var(--primitive-color-green-950);
   --green-tint: var(--green-soft);
-  --green-ring: rgba(22, 181, 102, .48);
-  --red-soft: rgba(245, 72, 61, .12);
+  --green-ring: var(--primitive-color-green-700);
+  --red-soft: var(--primitive-color-red-950);
   --red-tint: var(--red-soft);
-  --red-ring: rgba(245, 72, 61, .52);
-  --amber-soft: rgba(245, 197, 24, .13);
+  --red-ring: var(--primitive-color-red-800);
+  --amber-soft: var(--primitive-color-yellow-950);
   --amber-tint: var(--amber-soft);
-  --amber-ring: rgba(245, 197, 24, .48);
-  --blue-soft: rgba(79, 156, 255, .12);
+  --amber-ring: var(--primitive-color-yellow-700);
+  --blue-soft: var(--primitive-color-blue-950);
   --blue-tint: var(--blue-soft);
-  --blue-ring: rgba(79, 156, 255, .44);
-  --orange-soft: rgba(255, 106, 0, .13);
-  --orange-tint: rgba(255, 106, 0, .13);
-  --orange-ring: rgba(255, 106, 0, .30);
+  --blue-ring: var(--primitive-color-blue-700);
+  --orange-soft: #FF6A001A;
+  --orange-tint: #FF6A001A;
+  --orange-ring: var(--primitive-color-orange-700);
   --duration-fast: var(--motion-duration-fast);
   --duration-normal: var(--motion-duration-normal);
   --duration-slow: var(--motion-duration-slow);
   --ease-standard: var(--motion-ease);
   --ease-out: var(--motion-ease-out);
   --ease-in: var(--motion-ease-in);
-  --accent-dark: #E8590C;
+  /* Gentle overshoot for the sliding segmented indicator + button color-change pop. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --accent-dark: var(--primitive-color-orange-700);
   --accent-muted: var(--orange-soft);
   --accent-surface: var(--orange-soft);
   --heat: var(--accent);
   --secondary: var(--blue);
   --secondary-dark: var(--blue-ring);
-  --secondary-muted: rgba(79, 156, 255, .12);
+  --secondary-muted: var(--blue-soft);
   --secondary-surface: var(--blue-tint);
   --success-surface: var(--green-soft);
   --warning-surface: var(--amber-soft);
   --destructive-surface: var(--red-soft);
   --tertiary-surface: var(--green-soft);
-  --bg-base: var(--bg);
-  --bg-shell: var(--bg);
+  --bg-base: var(--bg-deep);
+  --bg-shell: var(--bg-deep);
   --bg-container: var(--panel);
   --bg-elevated: var(--panel2);
-  --bg-overlay: var(--bg);
+  --bg-overlay: var(--bg-deep);
   --bg-overlay-panel: var(--panel);
   --outline: var(--line);
   --outline-strong: var(--line2);
@@ -143,83 +193,110 @@
   --on-surface-variant: var(--text2);
 
   /* Semantic */
-  --semantic-color-bg-base: var(--bg);
-  --semantic-color-bg-deep: var(--bg);
+  --semantic-color-bg-base: var(--bg-deep);
+  --semantic-color-bg-deep: var(--bg-deep);
+  --semantic-color-bg-app: var(--bg);
+  --semantic-color-surface-app: var(--bg);
   --semantic-color-surface-panel: var(--panel);
   --semantic-color-surface-raised: var(--panel2);
+  --semantic-color-surface-tile: var(--panel2);
   --semantic-color-surface-inset: var(--panel3);
-  --semantic-color-surface-tile-4: var(--panel-4);
+  --semantic-color-surface-tile-2: var(--panel3);
+  --semantic-color-surface-tile-3: var(--primitive-color-neutral-600);
+  --semantic-color-surface-tile-4: var(--primitive-color-neutral-600);
   --semantic-color-text-primary: var(--text);
   --semantic-color-text-muted: var(--text2);
+  --semantic-color-text-subtle: var(--text3);
   --semantic-color-text-disabled: var(--text3);
+  --semantic-color-text-dark: var(--panel);
   --semantic-color-border-default: var(--line);
   --semantic-color-border-strong: var(--line2);
+  --semantic-color-border-window: #404040;
   --semantic-color-action-primary: var(--accent);
-  --semantic-color-action-primary-muted: rgba(255, 106, 0, .13);
+  --semantic-color-action-primary-border: var(--primitive-color-orange-700);
+  --semantic-color-action-primary-stroke: var(--primitive-color-orange-400);
+  --semantic-color-action-primary-muted: #FF6A001A;
   --semantic-color-status-success: var(--green);
+  --semantic-color-status-success-border: var(--primitive-color-green-700);
   --semantic-color-status-success-muted: var(--green-soft);
   --semantic-color-status-danger: var(--red);
+  --semantic-color-status-danger-border: var(--primitive-color-red-800);
   --semantic-color-status-danger-muted: var(--red-soft);
   --semantic-color-status-warning: var(--yellow);
+  --semantic-color-status-warning-border: var(--primitive-color-yellow-700);
   --semantic-color-status-warning-muted: var(--amber-soft);
   --semantic-color-status-info: var(--blue);
+  --semantic-color-status-info-border: var(--primitive-color-blue-700);
   --semantic-color-status-info-muted: var(--blue-soft);
-  --semantic-color-platform-winui-mica: var(--panel);
-  --semantic-color-platform-winui-mica-alt: var(--bg);
-  --semantic-color-platform-winui-layer: var(--panel2);
-  --semantic-color-platform-winui-layer-alt: var(--panel3);
-  --semantic-color-platform-winui-control: var(--panel-4);
-  --semantic-color-platform-winui-control-hover: var(--line);
-  --semantic-color-platform-winui-control-pressed: var(--primitive-color-neutral-850);
-  --semantic-color-platform-winui-stroke: var(--line);
-  --semantic-color-platform-winui-stroke-subtle: var(--line2);
-  --semantic-color-platform-winui-text-primary: var(--text);
-  --semantic-color-platform-winui-text-secondary: var(--text2);
-  --semantic-color-platform-winui-text-tertiary: var(--text3);
-  --semantic-color-platform-winui-accent: var(--accent);
-  --semantic-color-platform-winui-accent-muted: rgba(255, 106, 0, .14);
 
   /* Component */
+  --component-button-padding-x: var(--primitive-space-7);
+  --component-button-padding-y: var(--primitive-space-3);
+  --component-button-radius: var(--primitive-radius-xl);
+  --component-button-gap: var(--primitive-space-2);
   --component-button-primary-bg: var(--accent);
-  --component-button-primary-text: #050505;
+  --component-button-primary-text: var(--panel);
   --component-button-primary-border: var(--accent);
+  --component-button-primary-stroke: var(--primitive-color-orange-400);
+  --component-button-secondary-bg: var(--panel2);
+  --component-button-secondary-text: var(--text);
+  --component-button-destructive-bg: var(--panel2);
+  --component-button-destructive-text: var(--red);
+  --component-button-disabled-bg: var(--panel);
+  --component-button-disabled-text: var(--text3);
   --component-shell-window-bg: var(--bg);
   --component-shell-window-border: #404040;
   --component-shell-titlebar-bg: var(--panel);
-  --component-shell-titlebar-border: var(--line2);
+  --component-shell-titlebar-border: var(--line);
   --component-shell-titlebar-text: var(--text);
   --component-shell-titlebar-muted-text: var(--text3);
-  --component-shell-command-button-hover-bg: var(--line);
+  --component-shell-command-button-hover-bg: var(--panel3);
   --component-shell-command-button-pressed-bg: var(--primitive-color-neutral-850);
   --component-shell-nav-bg: var(--panel);
-  --component-shell-nav-border: var(--line2);
-  --component-shell-nav-item-hover-bg: var(--line);
-  --component-shell-nav-item-active-bg: var(--panel-3);
+  --component-shell-nav-border: var(--line);
+  --component-shell-nav-item-hover-bg: var(--panel3);
+  --component-shell-nav-item-active-bg: var(--panel3);
   --component-shell-nav-item-active-text: var(--accent);
   --component-shell-nav-item-indicator: var(--accent);
-  --component-shell-page-header-bg: var(--panel2);
-  --component-shell-page-header-border: var(--line2);
+  --component-shell-page-header-bg: var(--panel);
+  --component-shell-page-header-border: var(--line);
   --component-card-bg: var(--panel);
   --component-card-border: var(--line);
-  --component-card-radius: var(--primitive-radius-panel);
+  --component-card-radius: var(--primitive-radius-xl);
   --component-input-bg: var(--panel2);
   --component-input-border: var(--line);
-  --component-input-radius: var(--primitive-radius-control);
-  --component-input-height: 34px;
-  --component-nav-rail-bg: var(--bg);
-  --component-dash-editor-well: var(--bg);
-  --component-dash-editor-well-top: var(--bg);
+  --component-input-border-focus: var(--accent);
+  --component-input-radius: var(--primitive-radius-xl);
+  --component-input-padding-x: var(--primitive-space-5);
+  --component-input-padding-y: var(--primitive-space-4);
+  --component-input-height: 32px;
+  --component-badge-radius: var(--primitive-radius-xxs);
+  --component-toast-bg: var(--panel2);
+  --component-toast-title: var(--text);
+  --component-toast-message: var(--text2);
+  --component-toast-radius: var(--primitive-radius-pill);
+  --component-toggle-track-on: var(--green);
+  --component-toggle-track-off: var(--panel2);
+  --component-toggle-track-on-disabled: var(--primitive-color-green-800);
+  --component-toggle-knob: var(--text);
+  --component-toggle-knob-disabled: var(--primitive-color-neutral-600);
+  --component-segmented-bg: var(--panel2);
+  --component-segmented-active-bg: var(--accent);
+  --component-segmented-active-text: var(--panel);
+  --component-nav-rail-bg: var(--panel);
+  --component-dash-editor-well: var(--bg-deep);
+  --component-dash-editor-well-top: var(--bg-deep);
   --component-dash-editor-rail: var(--panel);
   --component-dash-editor-rail-head: var(--panel2);
-  --component-dash-editor-inset: var(--bg);
-  --component-dash-editor-seam: var(--bg);
+  --component-dash-editor-inset: var(--bg-deep);
+  --component-dash-editor-seam: var(--bg-deep);
 }
 
 html,
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
@@ -230,14 +307,14 @@ body {
 
 .mono,
 .ui-value {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: 'Saira', system-ui, sans-serif;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
 
 .ui-label {
   color: var(--text3);
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .18em;
@@ -245,7 +322,7 @@ body {
 }
 
 .ui-control {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .1em;
@@ -253,7 +330,7 @@ body {
 }
 
 .ui-wordmark {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 700;
 }
 
@@ -285,7 +362,7 @@ body {
   }
 
   .surface-overlay {
-    background: var(--bg);
+    background: var(--bg-deep);
     border: 1px solid var(--line2);
   }
 

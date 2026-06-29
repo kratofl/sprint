@@ -4,6 +4,14 @@ import (
 	"image/color"
 )
 
+// FixedCanvasBackground is the fixed-background contract for the on-wheel dashboard
+// renderer: the canvas and every standard widget surface are painted opaque #000000.
+// This is intentionally NOT theme-driven — themes resolve accent/status/RPM/domain
+// colours only and can never reintroduce an elevated or tinted surface here. The one
+// sanctioned exception is an explicit per-widget WidgetStyle.Background override.
+// "Pure black" means #000000, not the desktop Surface/Screen token. (PRD #106, #12/#46.)
+var FixedCanvasBackground = color.RGBA{0, 0, 0, 255}
+
 // Sprint design-system palette — mirrors the flat Figma theme tokens.
 var (
 	// Surfaces
@@ -11,6 +19,10 @@ var (
 	ColorSurface    = color.RGBA{18, 17, 15, 255}   // #12110f  surfaces.container
 	ColorElevated   = color.RGBA{26, 24, 21, 255}   // #1a1815  surfaces.elevated
 	ColorBorder     = color.RGBA{111, 103, 95, 255} // #6f675f  strong Figma outline
+	// ColorInstrumentOutline is the fine hairline used to frame on-wheel widgets on
+	// pure black — deliberately subtle so the dashboard reads as composed instruments,
+	// not a grid of hard boxes (PRD #106 #6).
+	ColorInstrumentOutline = color.RGBA{48, 46, 43, 255} // #302e2b
 
 	// Semantic accents
 	ColorPrimary = color.RGBA{255, 144, 108, 255} // #ff906c  orange — driver/primary
@@ -27,6 +39,17 @@ var (
 	// Specialty
 	ColorRPMRed = color.RGBA{255, 59, 48, 255} // #ff3b30  RPM bar >92% zone
 )
+
+// ContrastForeground returns black or white — whichever reads better on top of
+// bg. Used by alert "normal" mode to pick a legible foreground over the semantic
+// fill colour. Uses the standard perceptual luminance weighting.
+func ContrastForeground(bg color.RGBA) color.RGBA {
+	luminance := 0.299*float64(bg.R) + 0.587*float64(bg.G) + 0.114*float64(bg.B)
+	if luminance > 140 {
+		return color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	}
+	return color.RGBA{R: 255, G: 255, B: 255, A: 255}
+}
 
 // DimColor multiplies each RGB channel by factor (0–1).
 func DimColor(c color.RGBA, factor float64) color.RGBA {

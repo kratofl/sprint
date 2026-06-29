@@ -22,6 +22,10 @@ export function DashDeleteLayout(arg1) {
   return window['go']['main']['App']['DashDeleteLayout'](arg1);
 }
 
+export function DashDeleteTheme(arg1) {
+  return window['go']['main']['App']['DashDeleteTheme'](arg1);
+}
+
 export function DashGetDefaultDomainPalette() {
   return window['go']['main']['App']['DashGetDefaultDomainPalette']();
 }
@@ -46,6 +50,10 @@ export function DashListLayouts() {
   return window['go']['main']['App']['DashListLayouts']();
 }
 
+export function DashListThemes() {
+  return window['go']['main']['App']['DashListThemes']();
+}
+
 export function DashLoadLayoutByID(arg1) {
   return window['go']['main']['App']['DashLoadLayoutByID'](arg1);
 }
@@ -56,6 +64,10 @@ export function DashSaveGlobalSettings(arg1) {
 
 export function DashSaveLayout(arg1) {
   return window['go']['main']['App']['DashSaveLayout'](arg1);
+}
+
+export function DashSaveTheme(arg1) {
+  return window['go']['main']['App']['DashSaveTheme'](arg1);
 }
 
 export function DashSetDefault(arg1) {

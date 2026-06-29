@@ -62,15 +62,9 @@ export const figmaTokens = {
         danger: { $type: 'color', $value: semanticTokens.color.status.danger },
         info: { $type: 'color', $value: semanticTokens.color.status.info },
       },
-      platform: {
-        winui: {
-          mica: { $type: 'color', $value: semanticTokens.color.platform.winui.mica },
-          micaAlt: { $type: 'color', $value: semanticTokens.color.platform.winui.micaAlt },
-          layer: { $type: 'color', $value: semanticTokens.color.platform.winui.layer },
-          control: { $type: 'color', $value: semanticTokens.color.platform.winui.control },
-          stroke: { $type: 'color', $value: semanticTokens.color.platform.winui.stroke },
-          accent: { $type: 'color', $value: semanticTokens.color.platform.winui.accent },
-        },
+      border: {
+        default: { $type: 'color', $value: semanticTokens.color.border.default },
+        strong: { $type: 'color', $value: semanticTokens.color.border.strong },
       },
     },
     radius: typedScale(semanticTokens.radius, 'dimension'),

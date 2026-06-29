@@ -58,6 +58,9 @@ jobs:
           pnpm --filter @sprint/types build
           pnpm --filter @sprint/ui build
 
+      - name: Frontend quality gate
+        run: pnpm check:frontend-quality
+
       - name: Type check web
         run: pnpm --filter @sprint/web type-check
 

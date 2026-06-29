@@ -12,9 +12,9 @@ test('dash editor tab bars share the flat accent active-state token', () => {
   const dashEditModeSource = readFileSync(dashEditModeFile, 'utf8')
 
   assert.match(dashEditModeSource, /\bSegmentedControl\b/)
-  assert.match(dashEditModeSource, /label="Editor view"/)
+  assert.match(dashEditModeSource, /<TabsTrigger/)
   assert.match(dashEditModeSource, /value=\{activeEditorView\}/)
-  assert.match(dashEditModeSource, /onChange=\{view => handleSelectEditorView\(view as 'layout' \| 'alerts' \| 'settings'\)\}/)
+  assert.match(dashEditModeSource, /onValueChange=\{view => handleSelectEditorView\(view as 'layout' \| 'alerts' \| 'settings'\)\}/)
   assert.doesNotMatch(dashEditModeSource, /\bfseg\b/)
 
   assert.doesNotMatch(pageTabsSource, /border-warning/)

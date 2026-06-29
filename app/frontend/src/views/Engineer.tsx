@@ -12,6 +12,9 @@ import {
 
 interface EngineerProps {
   connected: boolean
+  /** Embedded inside Home's section switcher: drop the redundant page header
+      and outer padding so it sits in the shared shell inset. */
+  compact?: boolean
 }
 
 type EngineerControlKey = 'tcCut' | 'tcSlip' | 'abs' | 'brakeBias' | 'engineMap' | 'fuelTarget'
@@ -183,7 +186,7 @@ export function pushEngineerStagedChanges(state: EngineerState): EngineerState {
   )
 }
 
-export default function Engineer({ connected }: EngineerProps) {
+export default function Engineer({ connected, compact = false }: EngineerProps) {
   const [engineerState, setEngineerState] = useState(createEngineerState)
 
   const { carValues, stagedValues, radioLog } = engineerState
@@ -210,25 +213,27 @@ export default function Engineer({ connected }: EngineerProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader
-        heading="Engineer"
-        caption="Race engineer console and quick-message control"
-        status={(
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                connected ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--text3)]',
-              )}
-            />
-            <StatusPill status={connected ? 'success' : 'neutral'}>
-              {connected ? 'Connected' : 'Offline'}
-            </StatusPill>
-          </div>
-        )}
-      />
+      {!compact && (
+        <PageHeader
+          heading="Engineer"
+          caption="Race engineer console and quick-message control"
+          status={(
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  connected ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--text3)]',
+                )}
+              />
+              <StatusPill status={connected ? 'success' : 'neutral'}>
+                {connected ? 'Connected' : 'Offline'}
+              </StatusPill>
+            </div>
+          )}
+        />
+      )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-12 gap-[14px] overflow-y-auto p-6">
+      <div className={cn('grid min-h-0 flex-1 grid-cols-12 gap-[14px] overflow-y-auto', compact ? 'p-0' : 'p-6')}>
         <section className="col-span-12 flex flex-col gap-[14px] xl:col-span-8">
           <SettingsCard>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-3 py-3">

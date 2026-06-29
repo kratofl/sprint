@@ -1,21 +1,24 @@
 import { primitiveColor } from '../primitive'
 
 /**
- * Border tokens.
+ * Border tokens — Figma flat-UI 1px hairlines.
  *
- * `outline` is the quiet structural separator used everywhere: cards, rows,
- * dividers, and chart areas. Emphasis uses the stronger neutral border.
+ * `outline` is the quiet structural separator (Border/Default #2E2E2E) used
+ * everywhere; emphasis uses Border/Strong #424242. Status borders take the
+ * family/700 (Error uses 800) per the Figma semantic set.
  */
 
 export const borders = {
-  /** Structural outline — cards, table rows, chart areas */
-  outline:     primitiveColor.neutral[600],
-  /** Stronger neutral outline — inputs, buttons, active boundaries */
-  outlineSubtle: primitiveColor.neutral[500],
-  /** Accent — racing orange at 30% opacity, highlighted/active cards */
-  accent:      'rgba(255,106,0,.30)',
-  danger:      'rgba(245,72,61,.52)',
-  success:     'rgba(22,181,102,.48)',
-  /** Compatibility cyan — explicit comparison call-outs only */
-  teal:        'rgba(79,156,255,.30)',
+  /** Structural outline — Border/Default #2E2E2E */
+  outline:       primitiveColor.neutral[700],
+  /** Stronger outline — Border/Strong #424242 */
+  outlineSubtle: primitiveColor.neutral[600],
+  /** Accent — Primary/Border Orange/700 #BF4D00 */
+  accent:        primitiveColor.orange[700],
+  /** Error/Border Red/800 #851727 */
+  danger:        primitiveColor.red[800],
+  /** Success/Border Green/700 #0E7445 */
+  success:       primitiveColor.green[700],
+  /** Info/Border Blue/700 #114F99 (legacy `teal` alias retained) */
+  teal:          primitiveColor.blue[700],
 } as const

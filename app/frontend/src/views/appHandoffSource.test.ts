@@ -62,7 +62,7 @@ test('primary desktop views use the shared handoff page header', () => {
 
 test('Home owns live, engineer, and setup instead of separate top-level pages', () => {
   assert.match(homeSource, /<Telemetry frame=\{frame\} connected=\{connected\} fps=\{fps\} \/>/)
-  assert.match(homeSource, /<Engineer connected=\{connected\} \/>/)
+  assert.match(homeSource, /<Engineer connected=\{connected\} compact \/>/)
   assert.match(homeSource, /<Controls compact \/>/)
   assert.doesNotMatch(appSource, /import Telemetry/)
   assert.doesNotMatch(appSource, /import Controls/)

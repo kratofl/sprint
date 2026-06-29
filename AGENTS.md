@@ -36,7 +36,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - `web/`: Next.js frontend.
 - `pkg/`: shared Go packages, including DTOs, game adapters, and shared memory.
 - `packages/types/`: shared TypeScript contracts.
-- `packages/tokens/`: Graphite design tokens.
+- `packages/tokens/`: design tokens (Figma flat system; see `docs/DESIGN.md`).
 - `packages/ui/`: reusable token-backed React components.
 
 ## Source Of Truth
@@ -73,10 +73,12 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Test shared Go only: `make test-pkg`
 - Type-check desktop frontend: `pnpm --filter @sprint/desktop type-check`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
+- Test desktop frontend: `pnpm --filter @sprint/desktop test`
 - Test shared UI: `pnpm --filter @sprint/ui test`
 - Test tokens: `pnpm --filter @sprint/tokens test`
-- Lint: `make lint`
-- Format: `make fmt`
+- Lint: `make lint` runs `go vet` on api/pkg. The `@sprint/desktop` JS/TS lint is
+  currently a no-op (eslint is not wired); `type-check` is the real frontend gate.
+- Format: `make fmt` formats Go only; JS/TS formatting is not enforced.
 
 Run the smallest relevant checks for your change set. Do not claim checks you
 did not run.
@@ -86,18 +88,26 @@ did not run.
 the desktop frontend first with `pnpm --filter @sprint/desktop build` when
 needed.
 
-Frontend dash-editor source-assertion tests under
-`app/frontend/src/components/dash-editor/*.test.ts` use Node's built-in runner
-and are run directly, for example `node --test <file>`.
+Run the whole desktop frontend test suite with `pnpm --filter @sprint/desktop
+test` (= `node --test "src/**/*.test.ts"`). These need no build and no
+`@sprint/ui` rebuild. Most `app/frontend/src/**/*.test.ts` files are
+**source-assertion guards**: they `readFileSync` a component and regex its text,
+so a green run means "expected source pattern present", not "the UI renders or
+behaves". They will false-fail on legitimate markup/class/prop refactors — when
+you intentionally change markup, update the asserted string. Behavioral render
+tests are `*.test.tsx` (vitest); add one when you add or change a component's
+behavior.
 
 ## Browser And Desktop Checks
 
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
-- Browser-safe desktop UI checks use `http://localhost:5173/` while
-  `cd app; wails dev` is running.
-- The `make dev-app-agent` target and frontend metadata reference scripts under
-  `app/scripts/`, but that directory is not present in the current working tree.
-  Restore those scripts before relying on the fixed-port desktop attach flow.
+- Start the dev server with `cd app; wails dev` (or `pnpm --filter
+  @sprint/desktop dev`), then open `http://localhost:5173/`.
+- Caveat: at bare `localhost:5173` there is no `window.go` mock, so every
+  backend-backed screen (telemetry, dashboards, devices, settings) shows
+  empty/error states — `runDesktopCall` rejects when `window.go.main.App` is
+  absent. For visual verification of data-driven screens you need a full
+  `wails dev` run on Windows.
 
 ## Architecture Notes
 
@@ -113,14 +123,51 @@ and are run directly, for example `node --test <file>`.
 - Desktop event streams should avoid blocking telemetry reads. Prefer buffered
   latest-value handoff patterns already used by the core runtime.
 
+## Frontend Wails Bridge
+
+- **nil slice → JSON null.** Go bindings serialize empty slices as `null`, even
+  though the generated TS type says `Array`. Always coalesce array results with
+  `?? []` before `.map`/`.filter`. See `app/frontend/src/lib/dash/api.ts`.
+- **Regenerate then restart.** After changing a Wails-exported `App` method, run
+  `cd app; wails generate module`, then restart the Vite dev server (kill port
+  5173). The regenerated `wailsjs/go/main/App.js` is otherwise served stale,
+  giving a blank page and a missing-export error.
+- **Type boundary (3 parallel definitions).** Shapes exist as Go structs → the
+  generated `app/frontend/wailsjs/go/models.ts` → the hand-written
+  `app/frontend/src/lib/dash/types.ts`. The generated `models.ts` is
+  intentionally **never imported** — do not import from it. `types.ts` is the
+  frontend contract; `lib/dash/adapters.ts` is the only place Go JSON is mapped
+  in. A changed Go DTO field requires hand-editing **both** `types.ts` and the
+  matching `adaptX` function — type-check will NOT flag a missed field. Device
+  fields are camelCased by the adapter; color/theme shapes keep Go's `R/G/B/A`.
+
+## Frontend Code Structure
+
+- `app/frontend/src/views/` — page roots wired into `App.tsx` nav (Home, Devices,
+  DashEditor, Settings, Help). Engineer/Telemetry/Controls views exist but are
+  not currently mounted.
+- `app/frontend/src/components/<feature>/` — feature composites (`dash-editor/`,
+  `devices/`, `shell/`).
+- `app/frontend/src/lib/` — framework-free helpers. `lib/dash` is imported via
+  the barrel `@/lib/dash` (= the file `lib/dash.ts`) — do not create
+  `lib/dash/index.ts`, it would shadow the barrel.
+- State is local `useState` plus per-feature controller hooks
+  (`useDashEditorController.ts`); there is no global store and only one Context
+  (shell header). Put pure/branching logic in a sibling `*State.ts` /
+  `*ViewModel.ts` module with a co-located `*.test.ts`, and keep `.tsx` files
+  presentational. Extend this pattern rather than inflating components.
+- For frontend or UX changes, follow `docs/FRONTEND_QUALITY.md` before editing:
+  write a short change contract, preserve existing behavior, reuse shared UI and
+  tokens, and run the frontend quality gate.
+
 ## UI Rules
 
-- Graphite from `docs/DESIGN.md` is the canonical product UI system.
-- Ember orange `#FF6A00` is the primary action, active, focus, and selection
-  color.
-- Blue `#4F9CFF` is informational, advanced, and comparison.
-- Use the Graphite surface stack and 1px borders for depth. Do not revive old
-  glass, glow, gradient, or neumorphic directions.
+- `docs/DESIGN.md` (the Figma flat system) is the canonical product UI contract.
+  Do not hardcode hex — use token names from `packages/tokens`.
+- The previous "Graphite / IBM Plex" direction and its values (`#070707`,
+  `#4F9CFF`, `#F5483D`, IBM Plex, radius 10, 40px titlebar) are **RETIRED** — see
+  the supersede note at the top of `docs/DESIGN.md`. Do not revive them, and do
+  not revive old glass, glow, gradient, or neumorphic directions.
 - Reuse tokens from `packages/tokens` instead of inventing theme values.
 - Reuse controls from `packages/ui`; local desktop components are only for
   Wails, hardware, or page-specific runtime behavior.
@@ -133,6 +180,8 @@ and are run directly, for example `node --test <file>`.
 
 - Repository overview and current architecture: `README.md`
 - Design system and UI implementation contract: `docs/DESIGN.md`
+- Decoded, agent-readable Figma spec: `docs/figma-spec/SPEC.md`
+- Backend/runtime architecture decision record: `docs/ARCHITECTURE.md`
 - Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
 - Release notes: `docs/RELEASE.md`
 - Package-local notes: `api/README.md`, `pkg/README.md`, and package

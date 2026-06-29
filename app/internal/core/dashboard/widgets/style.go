@@ -26,6 +26,23 @@ type WidgetStyle struct {
 
 	// Background overrides the "surface" semantic color (panel background).
 	Background *color.RGBA `json:"background,omitempty"`
+
+	// Border overrides the widget type's default border state. nil = use the
+	// metadata default; true = force the outline on (even for a type that is
+	// open by default); false = force it off. (PRD #106 #7/#8.)
+	Border *bool `json:"border,omitempty"`
+}
+
+// PanelBorderEnabled reports whether a widget's outline should be drawn. Each
+// widget type owns a sensible default in its metadata (a panel that is enabled
+// and not NoBorder draws an outline by default); a per-instance WidgetStyle.Border
+// override wins, and can both enable an open widget's outline or disable a
+// bordered widget's outline.
+func PanelBorderEnabled(panel PanelConfig, style WidgetStyle) bool {
+	if style.Border != nil {
+		return *style.Border
+	}
+	return !panel.Disabled && !panel.NoBorder
 }
 
 // HAlign is the horizontal text alignment for an ElemText element.

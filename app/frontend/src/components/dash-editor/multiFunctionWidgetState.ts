@@ -1,4 +1,4 @@
-import type { DashPage, DashWidget, DashWidgetStack } from '../../lib/dash/types.ts'
+import type { DashPage, DashWidget, DashWidgetStack, DashWidgetStackLayer } from '../../lib/dash/types.ts'
 import { createDashLayerId, createDashWidgetStackId } from '../../lib/dash/ids.ts'
 
 export const DEFAULT_WIDGET_STACK_COL_SPAN = 6
@@ -251,4 +251,93 @@ export function createWidgetStackOnDrop({
       layerId: layerID,
     },
   }
+}
+
+// ── Pure widget-stack / layer reducers ──────────────────────────────────────────
+//
+// The dash editor controller used to hand-write the same immutable update shell
+// `(page.widgetStacks ?? []).map(g => g.id === id ? {...} : g)` (and a matching
+// per-layer map) in ~10 handlers. These reducers are the single source of those
+// shapes so the controller handlers only orchestrate selection/persistence side
+// effects. They are pure (no IDs/DOM) — callers pass any generated ids/layers in.
+
+/** Replace the matching widget stack on a page via `transform`; others untouched. */
+export function mapWidgetStack(
+  page: DashPage,
+  stackId: string,
+  transform: (stack: DashWidgetStack) => DashWidgetStack,
+): DashPage {
+  return {
+    ...page,
+    widgetStacks: (page.widgetStacks ?? []).map(group => group.id === stackId ? transform(group) : group),
+  }
+}
+
+/** Replace the matching layer in a stack via `transform`; others untouched. */
+export function mapLayer(
+  stack: DashWidgetStack,
+  layerId: string,
+  transform: (layer: DashWidgetStackLayer) => DashWidgetStackLayer,
+): DashWidgetStack {
+  return {
+    ...stack,
+    layers: stack.layers.map(layer => layer.id === layerId ? transform(layer) : layer),
+  }
+}
+
+/** Replace all widgets on one layer (callers clamp/filter the array beforehand). */
+export function setLayerWidgets(stack: DashWidgetStack, layerId: string, widgets: DashWidget[]): DashWidgetStack {
+  return mapLayer(stack, layerId, layer => ({ ...layer, widgets }))
+}
+
+/** Append a pre-built layer; it becomes the default when the stack has none. */
+export function appendLayer(stack: DashWidgetStack, layer: DashWidgetStackLayer): DashWidgetStack {
+  return {
+    ...stack,
+    layers: [...stack.layers, layer],
+    defaultLayerId: stack.defaultLayerId ?? layer.id,
+  }
+}
+
+/** Insert a pre-built layer directly after `sourceLayerId` (assumed present). */
+export function insertLayerAfter(
+  stack: DashWidgetStack,
+  sourceLayerId: string,
+  layer: DashWidgetStackLayer,
+): DashWidgetStack {
+  const sourceIndex = stack.layers.findIndex(candidate => candidate.id === sourceLayerId)
+  const layers = [...stack.layers]
+  layers.splice(sourceIndex + 1, 0, layer)
+  return { ...stack, layers }
+}
+
+/** Rename one layer. */
+export function renameLayer(stack: DashWidgetStack, layerId: string, name: string): DashWidgetStack {
+  return mapLayer(stack, layerId, layer => ({ ...layer, name }))
+}
+
+/** Remove a layer, repointing `defaultLayerId` to the first survivor if needed. */
+export function removeLayer(stack: DashWidgetStack, layerId: string): DashWidgetStack {
+  const layers = stack.layers.filter(layer => layer.id !== layerId)
+  return {
+    ...stack,
+    layers,
+    defaultLayerId: stack.defaultLayerId === layerId ? layers[0]?.id : stack.defaultLayerId,
+  }
+}
+
+/** Move a layer one slot in `direction`; no-op when the move is out of range. */
+export function moveLayer(stack: DashWidgetStack, layerId: string, direction: -1 | 1): DashWidgetStack {
+  const currentIndex = stack.layers.findIndex(layer => layer.id === layerId)
+  const nextIndex = currentIndex + direction
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= stack.layers.length) return stack
+  const layers = [...stack.layers]
+  const [moved] = layers.splice(currentIndex, 1)
+  layers.splice(nextIndex, 0, moved)
+  return { ...stack, layers }
+}
+
+/** Set the stack's default layer. */
+export function setDefaultLayer(stack: DashWidgetStack, layerId: string): DashWidgetStack {
+  return { ...stack, defaultLayerId: layerId }
 }

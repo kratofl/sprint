@@ -77,6 +77,8 @@ type baseDriver struct {
 	currentGlobalDomain atomic.Pointer[widgets.DomainPalette]
 	// currentGlobalTypography stores the latest global dash typography defaults.
 	currentGlobalTypography atomic.Pointer[widgets.TypographySettings]
+	// currentThemeLibrary stores the latest theme-preset library for ThemeID resolution.
+	currentThemeLibrary atomic.Pointer[dashboard.ThemeLibrary]
 	// currentProfile stores app-level profile strings such as driver name/number.
 	currentProfile atomic.Pointer[dashboard.RenderProfile]
 }
@@ -183,6 +185,17 @@ func (d *baseDriver) SetGlobalPrefs(prefs widgets.FormatPreferences) {
 	d.forceRedraw.Store(true)
 }
 
+// ApplyRenderPreferences applies a full RenderPreferences bundle by delegating
+// to the individual global setters.
+func (d *baseDriver) ApplyRenderPreferences(prefs dashboard.RenderPreferences) {
+	d.SetGlobalTheme(prefs.Theme)
+	d.SetGlobalDomainPalette(prefs.DomainPalette)
+	d.SetGlobalPrefs(prefs.FormatPrefs)
+	d.SetGlobalTypography(prefs.Typography)
+	d.SetThemeLibrary(prefs.ThemeLibrary)
+	d.SetProfile(prefs.Profile)
+}
+
 // SetGlobalTheme stores the global dash palette and applies it to the current Painter.
 func (d *baseDriver) SetGlobalTheme(theme widgets.DashTheme) {
 	d.currentGlobalTheme.Store(&theme)
@@ -212,6 +225,17 @@ func (d *baseDriver) SetGlobalTypography(typography widgets.TypographySettings) 
 	if sptr := d.source.Load(); sptr != nil {
 		if p, ok := (*sptr).(*dashboard.Painter); ok {
 			p.SetGlobalTypography(typography)
+		}
+	}
+	d.forceRedraw.Store(true)
+}
+
+// SetThemeLibrary stores the theme-preset library and applies it to the current Painter.
+func (d *baseDriver) SetThemeLibrary(lib dashboard.ThemeLibrary) {
+	d.currentThemeLibrary.Store(&lib)
+	if sptr := d.source.Load(); sptr != nil {
+		if p, ok := (*sptr).(*dashboard.Painter); ok {
+			p.SetThemeLibrary(lib)
 		}
 	}
 	d.forceRedraw.Store(true)
@@ -295,6 +319,9 @@ func (d *baseDriver) ensureDashSource(w, h int) {
 	}
 	if gt := d.currentGlobalTypography.Load(); gt != nil {
 		p.SetGlobalTypography(*gt)
+	}
+	if lib := d.currentThemeLibrary.Load(); lib != nil {
+		p.SetThemeLibrary(*lib)
 	}
 	if profile := d.currentProfile.Load(); profile != nil {
 		p.SetProfile(*profile)

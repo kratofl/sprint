@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Minus, Plus } from "lucide-react"
+import { IconMinus, IconPlus } from "@tabler/icons-react"
 
 import { cn } from "../../lib/utils"
 import { Button } from "./Button"
@@ -79,7 +79,7 @@ function Stepper({
         onClick={() => setNextValue(value - step)}
         disabled={typeof min === "number" && value <= min}
       >
-        <Minus />
+        <IconMinus />
       </Button>
       <Input
         type="number"
@@ -107,7 +107,7 @@ function Stepper({
         onClick={() => setNextValue(value + step)}
         disabled={typeof max === "number" && value >= max}
       >
-        <Plus />
+        <IconPlus />
       </Button>
     </div>
   )

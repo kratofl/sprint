@@ -10,15 +10,17 @@ func (speedWidget) Meta() WidgetMeta {
 		DefaultColSpan: 4, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: Hz30,
 		Label: LabelConfig{Hidden: true},
+		// Primary readout — open (no frame).
+		Panel: PanelConfig{Disabled: true},
 	}
 }
 
 func (speedWidget) Definition(_ map[string]any) []Element {
 	return []Element{
-		Text{Binding: BindingCarSpeedMS, Format: FormatSpeed, Style: TextStyle{
-			Font: FontFamilyMono, FontSize: 0.45, IsBold: true, HAlign: HAlignCenter, Color: ColorRefForeground.Expr()}},
-		Text{Text: "km/h", Style: TextStyle{
-			Font: FontFamilyUI, FontSize: 0.18, HAlign: HAlignCenter, Color: ColorRefMuted.Expr()}},
+		Text{Binding: BindingCarSpeedMS, Format: FormatSpeed, X: 0.5, Y: 0.43, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.5, IsBold: true, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefForeground.Expr()}},
+		Text{Text: "km/h", X: 0.5, Y: 0.78, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: 0.14, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefMuted.Expr()}},
 	}
 }
 

@@ -10,6 +10,9 @@ func (gearWidget) Meta() WidgetMeta {
 		DefaultColSpan: 3, DefaultRowSpan: 3,
 		IdleCapable: false, DefaultUpdateHz: Hz30,
 		Label: LabelConfig{Hidden: true},
+		// The gear is the hero readout — open (no frame) so it reads as a central
+		// instrument rather than a box.
+		Panel: PanelConfig{Disabled: true},
 	}
 }
 

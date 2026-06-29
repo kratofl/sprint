@@ -2,10 +2,10 @@ export { Button } from './Button'
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 
 export { IconButton } from './IconButton'
-export type { IconButtonProps } from './IconButton'
+export type { IconButtonProps, IconButtonTone } from './IconButton'
 
-export { Badge } from './Badge'
-export type { BadgeProps, BadgeVariant } from './Badge'
+export { Badge, badgeVariants } from './Badge'
+export type { BadgeProps, BadgeVariant, BadgeColor } from './Badge'
 
 export { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from './Card'
 export type {
@@ -18,9 +18,17 @@ export type {
   CardFooterProps,
 } from './Card'
 
-export { Input } from './input'
+export { Input, Field } from './input'
+export type { InputProps, FieldProps } from './input'
 export { SegmentedControl } from './SegmentedControl'
-export type { SegmentedControlOption, SegmentedControlProps } from './SegmentedControl'
+export type {
+  SegmentedControlOption,
+  SegmentedControlProps,
+  SegmentedControlTone,
+  SegmentedControlVariant,
+} from './SegmentedControl'
+export { Segments } from './Segments'
+export type { SegmentsProps } from './Segments'
 export { Stepper } from './Stepper'
 export type { StepperProps } from './Stepper'
 export { Tile } from './Tile'
@@ -33,6 +41,14 @@ export { KeyChip } from './KeyChip'
 export type { KeyChipProps } from './KeyChip'
 export { StatusPill, statusPillVariants } from './StatusPill'
 export type { StatusPillProps, StatusPillStatus } from './StatusPill'
+export { Indicator, indicatorVariants } from './Indicator'
+export type { IndicatorProps, IndicatorColor, IndicatorSize } from './Indicator'
+export { Toast } from './Toast'
+export type { ToastProps, ToastType } from './Toast'
+export { Alert } from './Alert'
+export type { AlertProps, AlertType } from './Alert'
+export { NavigationItem } from './NavigationItem'
+export type { NavigationItemProps } from './NavigationItem'
 export { Modal } from './Modal'
 export type { ModalProps } from './Modal'
 export { ConfirmDialog } from './ConfirmDialog'

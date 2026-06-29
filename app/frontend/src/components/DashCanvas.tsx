@@ -14,14 +14,17 @@ import {
   createCanvasInteractionState,
   suppressNextCanvasClick,
 } from './canvasInteractionState'
+import {
+  resolveMoveGeom,
+  resolveResizeGeom,
+  type ResizeHandle,
+} from './dash-editor/canvasDragMath'
 
 export const DEFAULT_SCREEN_W = 800
 export const DEFAULT_SCREEN_H = 480
 
 const DEFAULT_GRID_COLS = 20
 const DEFAULT_GRID_ROWS = 12
-
-type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 export interface GridRect {
   id?: string
   col: number
@@ -96,13 +99,16 @@ function overlaps(
   )
 }
 
-function isValidPlacement(
+const EMPTY_INVALID_IDS: ReadonlySet<string> = new Set()
+
+// Whether a rectangle sits inside the grid (and inside any placement bounds).
+// This is the *commit* gate: overlaps are allowed to be held temporarily while
+// editing (the save control gates on layout validity instead), but a widget may
+// never leave its grid rectangle or, for stack children, its stack bounds.
+function isWithinBounds(
   p: { col: number; row: number; colSpan: number; rowSpan: number },
-  widgets: DashWidget[],
-  excludeIdx: number | null,
   cols: number,
   rows: number,
-  blockedAreas: GridRect[] = [],
   placementBounds: GridRect | null = null,
 ): boolean {
   if (p.col < 0 || p.row < 0 || p.col + p.colSpan > cols || p.row + p.rowSpan > rows) return false
@@ -114,6 +120,22 @@ function isValidPlacement(
       p.row + p.rowSpan <= placementBounds.row + placementBounds.rowSpan
     if (!insideBounds) return false
   }
+  return true
+}
+
+// Whether a placement is fully valid (in bounds AND non-overlapping). Used only
+// to colour the drag ghost — an overlapping ghost shows red as a warning, but the
+// move/resize still commits so the editor can hold the temporary overlap.
+function isValidPlacement(
+  p: { col: number; row: number; colSpan: number; rowSpan: number },
+  widgets: DashWidget[],
+  excludeIdx: number | null,
+  cols: number,
+  rows: number,
+  blockedAreas: GridRect[] = [],
+  placementBounds: GridRect | null = null,
+): boolean {
+  if (!isWithinBounds(p, cols, rows, placementBounds)) return false
   return widgets.every((w, i) => i === excludeIdx || !overlaps(p, w)) &&
     blockedAreas.every(area => !overlaps(p, area))
 }
@@ -139,6 +161,8 @@ export interface DashCanvasProps {
   domainPalette?: DomainPalette
   blockedAreas?: GridRect[]
   placementBounds?: GridRect | null
+  /** Widget / widget-stack ids that layout validation has flagged as invalid (overlapping or out of bounds). */
+  invalidIds?: ReadonlySet<string>
   overlayRects?: GridRect[]
   overlayBlockedAreas?: GridRect[]
   overlayEditMode?: boolean
@@ -177,6 +201,7 @@ export function DashCanvas({
   domainPalette,
   blockedAreas = [],
   placementBounds = null,
+  invalidIds = EMPTY_INVALID_IDS,
   overlayRects = [],
   overlayBlockedAreas = [],
   overlayEditMode = false,
@@ -206,8 +231,6 @@ export function DashCanvas({
   const gridMaskId = useId()
   const minorVerticals = Array.from({ length: Math.max(0, gridCols - 1) }, (_, idx) => idx + 1)
   const minorHorizontals = Array.from({ length: Math.max(0, gridRows - 1) }, (_, idx) => idx + 1)
-  const majorVerticals = minorVerticals.filter(col => col % 5 === 0)
-  const majorHorizontals = minorHorizontals.filter(row => row % 3 === 0)
 
   const [activeResize, setActiveResize] = useState<ActiveResize | null>(null)
   const [activeMove,   setActiveMove]   = useState<ActiveMove   | null>(null)
@@ -249,43 +272,22 @@ export function DashCanvas({
   useEffect(() => {
     if (!activeOverlayResize) return
     const { overlayIdx, handle, startRect } = activeOverlayResize
-    const right = startRect.col + startRect.colSpan
-    const bottom = startRect.row + startRect.rowSpan
+
+    const resolveRect = (e: MouseEvent) => {
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      return { ...startRect, ...resolveResizeGeom(startRect, handle, col, row, gridCols, gridRows) }
+    }
 
     const onMouseMove = (e: MouseEvent) => {
-      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
-      const col = Math.round(rawCol)
-      const row = Math.round(rawRow)
-
-      const rect = { ...startRect }
-      if (handle.includes('e')) rect.colSpan = Math.max(1, col - rect.col)
-      if (handle.includes('s')) rect.rowSpan = Math.max(1, row - rect.row)
-      if (handle.includes('w')) { rect.col = Math.max(0, Math.min(col, right - 1)); rect.colSpan = right - rect.col }
-      if (handle.includes('n')) { rect.row = Math.max(0, Math.min(row, bottom - 1)); rect.rowSpan = bottom - rect.row }
-      rect.col = Math.max(0, rect.col)
-      rect.row = Math.max(0, rect.row)
-      rect.colSpan = Math.max(1, Math.min(rect.colSpan, gridCols - rect.col))
-      rect.rowSpan = Math.max(1, Math.min(rect.rowSpan, gridRows - rect.row))
-
+      const rect = resolveRect(e)
       const valid = isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)
       setOverlayGhost({ col: rect.col, row: rect.row, colSpan: rect.colSpan, rowSpan: rect.rowSpan, valid })
     }
 
     const onMouseUp = (e: MouseEvent) => {
-      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
-      const col = Math.round(rawCol)
-      const row = Math.round(rawRow)
-      const rect = { ...startRect }
-      if (handle.includes('e')) rect.colSpan = Math.max(1, col - rect.col)
-      if (handle.includes('s')) rect.rowSpan = Math.max(1, row - rect.row)
-      if (handle.includes('w')) { rect.col = Math.max(0, Math.min(col, right - 1)); rect.colSpan = right - rect.col }
-      if (handle.includes('n')) { rect.row = Math.max(0, Math.min(row, bottom - 1)); rect.rowSpan = bottom - rect.row }
-      rect.col = Math.max(0, rect.col)
-      rect.row = Math.max(0, rect.row)
-      rect.colSpan = Math.max(1, Math.min(rect.colSpan, gridCols - rect.col))
-      rect.rowSpan = Math.max(1, Math.min(rect.rowSpan, gridRows - rect.row))
-
-      if (rect.id && isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)) {
+      const rect = resolveRect(e)
+      // Overlaps are held as temporary invalid state; only the grid bounds gate the commit.
+      if (rect.id && isWithinBounds(rect, gridCols, gridRows)) {
         onUpdateOverlay?.(rect.id, rect)
       }
       if (isPointerInsideCanvas(e.clientX, e.clientY)) {
@@ -307,21 +309,21 @@ export function DashCanvas({
     if (!activeOverlayMove) return
     const { overlayIdx, grabOffsetCol, grabOffsetRow, startRect } = activeOverlayMove
 
-    const onMouseMove = (e: MouseEvent) => {
+    const resolveRect = (e: MouseEvent) => {
       const { col, row } = gridPos(e.clientX, e.clientY)
-      const snapCol = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startRect.colSpan))
-      const snapRow = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startRect.rowSpan))
-      const rect = { ...startRect, col: snapCol, row: snapRow }
+      return { ...startRect, ...resolveMoveGeom(startRect, grabOffsetCol, grabOffsetRow, col, row, gridCols, gridRows) }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      const rect = resolveRect(e)
       const valid = isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)
       setOverlayGhost({ col: rect.col, row: rect.row, colSpan: rect.colSpan, rowSpan: rect.rowSpan, valid })
     }
 
     const onMouseUp = (e: MouseEvent) => {
-      const { col, row } = gridPos(e.clientX, e.clientY)
-      const snapCol = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startRect.colSpan))
-      const snapRow = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startRect.rowSpan))
-      const rect = { ...startRect, col: snapCol, row: snapRow }
-      if (rect.id && isValidOverlayPlacement(rect, overlaysRef.current, overlayIdx, gridCols, gridRows, overlayBlockedAreas)) {
+      const rect = resolveRect(e)
+      // Overlaps are held as temporary invalid state; only the grid bounds gate the commit.
+      if (rect.id && isWithinBounds(rect, gridCols, gridRows)) {
         onUpdateOverlay?.(rect.id, rect)
       }
       if (isPointerInsideCanvas(e.clientX, e.clientY)) {
@@ -343,33 +345,20 @@ export function DashCanvas({
   useEffect(() => {
     if (!activeResize) return
     const { widgetIdx, handle, startWidget } = activeResize
-    const right  = startWidget.col + startWidget.colSpan
-    const bottom = startWidget.row + startWidget.rowSpan
 
     const onMouseMove = (e: MouseEvent) => {
-      const { col: rawCol, row: rawRow } = gridPos(e.clientX, e.clientY)
-      const col = Math.round(rawCol)
-      const row = Math.round(rawRow)
-
-      const w = { ...startWidget }
-      if (handle.includes('e')) w.colSpan = Math.max(1, col - w.col)
-      if (handle.includes('s')) w.rowSpan = Math.max(1, row - w.row)
-      if (handle.includes('w')) { w.col = Math.max(0, Math.min(col, right - 1)); w.colSpan = right - w.col }
-      if (handle.includes('n')) { w.row = Math.max(0, Math.min(row, bottom - 1)); w.rowSpan = bottom - w.row }
-      w.col     = Math.max(0, w.col)
-      w.row     = Math.max(0, w.row)
-      w.colSpan = Math.max(1, Math.min(w.colSpan, gridCols - w.col))
-      w.rowSpan = Math.max(1, Math.min(w.rowSpan, gridRows - w.row))
-
+      const { col, row } = gridPos(e.clientX, e.clientY)
+      const w = { ...startWidget, ...resolveResizeGeom(startWidget, handle, col, row, gridCols, gridRows) }
       const valid = isValidPlacement(w, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)
       setGhost({ col: w.col, row: w.row, colSpan: w.colSpan, rowSpan: w.rowSpan, valid })
       onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? w : ww)))
     }
 
     const onMouseUp = (e: MouseEvent) => {
-      // If the final position overlaps another widget, revert to start
+      // Overlaps are held as temporary invalid state (save is gated on validity);
+      // only revert when the final position would leave the grid / stack bounds.
       const cur = widgetsRef.current[widgetIdx]
-      if (cur && !isValidPlacement(cur, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
+      if (cur && !isWithinBounds(cur, gridCols, gridRows, placementBounds)) {
         onUpdate(widgetsRef.current.map((ww, i) => (i === widgetIdx ? startWidget : ww)))
       }
       if (isPointerInsideCanvas(e.clientX, e.clientY)) {
@@ -394,21 +383,22 @@ export function DashCanvas({
     if (!activeMove) return
     const { widgetIdx, grabOffsetCol, grabOffsetRow, startWidget } = activeMove
 
-    const onMouseMove = (e: MouseEvent) => {
+    const resolveWidget = (e: MouseEvent) => {
       const { col, row } = gridPos(e.clientX, e.clientY)
-      const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
-      const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
-      const proposed = { ...startWidget, col: snapCol, row: snapRow }
+      return { ...startWidget, ...resolveMoveGeom(startWidget, grabOffsetCol, grabOffsetRow, col, row, gridCols, gridRows) }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      const proposed = resolveWidget(e)
       const valid    = isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)
-      setGhost({ col: snapCol, row: snapRow, colSpan: startWidget.colSpan, rowSpan: startWidget.rowSpan, valid })
+      setGhost({ col: proposed.col, row: proposed.row, colSpan: proposed.colSpan, rowSpan: proposed.rowSpan, valid })
     }
 
     const onMouseUp = (e: MouseEvent) => {
-      const { col, row } = gridPos(e.clientX, e.clientY)
-      const snapCol  = Math.max(0, Math.min(Math.round(col - grabOffsetCol), gridCols - startWidget.colSpan))
-      const snapRow  = Math.max(0, Math.min(Math.round(row - grabOffsetRow), gridRows - startWidget.rowSpan))
-      const proposed = { ...startWidget, col: snapCol, row: snapRow }
-      if (isValidPlacement(proposed, widgetsRef.current, widgetIdx, gridCols, gridRows, blockedAreas, placementBounds)) {
+      const proposed = resolveWidget(e)
+      // Commit even when overlapping (held as temporary invalid state); the bounds
+      // check keeps the widget inside the grid / its stack region.
+      if (isWithinBounds(proposed, gridCols, gridRows, placementBounds)) {
         onUpdate(widgetsRef.current.map((w, i) => (i === widgetIdx ? proposed : w)))
       }
       if (isPointerInsideCanvas(e.clientX, e.clientY)) {
@@ -565,6 +555,7 @@ export function DashCanvas({
 
       {showGrid && (
         <svg
+          data-testid="placement-grid"
           className="pointer-events-none absolute inset-0"
           viewBox={`0 0 ${gridCols} ${gridRows}`}
           preserveAspectRatio="none"
@@ -586,51 +577,24 @@ export function DashCanvas({
             </mask>
           </defs>
 
+          {/* Subtle dotted placement field at interior grid intersections (PRD #27).
+              The snapping grid (cols/rows) is unchanged — only the visual changed
+              from boxing lines to dots; major intersections are slightly emphasised. */}
           <g mask={`url(#${gridMaskId})`}>
-            {minorVerticals.map(col => (
-              <line
-                key={`minor-v-${col}`}
-                x1={col}
-                y1={0}
-                x2={col}
-                y2={gridRows}
-                stroke="rgba(255,255,255,0.08)"
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-            {minorHorizontals.map(row => (
-              <line
-                key={`minor-h-${row}`}
-                x1={0}
-                y1={row}
-                x2={gridCols}
-                y2={row}
-                stroke="rgba(255,255,255,0.08)"
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-            {majorVerticals.map(col => (
-              <line
-                key={`major-v-${col}`}
-                x1={col}
-                y1={0}
-                x2={col}
-                y2={gridRows}
-                stroke="rgba(255,255,255,0.14)"
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-            {majorHorizontals.map(row => (
-              <line
-                key={`major-h-${row}`}
-                x1={0}
-                y1={row}
-                x2={gridCols}
-                y2={row}
-                stroke="rgba(255,255,255,0.14)"
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
+            {minorVerticals.map(col =>
+              minorHorizontals.map(row => {
+                const major = col % 5 === 0 && row % 3 === 0
+                return (
+                  <circle
+                    key={`dot-${col}-${row}`}
+                    cx={col}
+                    cy={row}
+                    r={major ? 0.07 : 0.045}
+                    fill={major ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.11)'}
+                  />
+                )
+              }),
+            )}
           </g>
         </svg>
       )}
@@ -645,9 +609,11 @@ export function DashCanvas({
         const canUseMoveHandle = !readOnly && Boolean(rect.id && onSelectOverlay && overlayMode.moveHandleInteractive)
         const canResize = !readOnly && Boolean(rect.id && onSelectOverlay && rect.selected && overlayMode.resizeHandlesInteractive)
         const isBeingMoved = activeOverlayMove?.overlayIdx === index
+        const isInvalid = Boolean(rect.id && invalidIds.has(rect.id))
         return (
           <div
             key={rect.id ?? `${rect.label ?? 'overlay'}-${index}`}
+            data-invalid={isInvalid || undefined}
             className="absolute"
             style={{
               left: `${(rect.col / gridCols) * 100}%`,
@@ -677,14 +643,16 @@ export function DashCanvas({
                 canSelectByBody ? 'cursor-pointer' : 'cursor-default',
               )}
               style={{
-                borderColor: rect.selected ? 'var(--orange)' : 'rgba(255,255,255,0.34)',
-                background: rect.editing
-                  ? 'transparent'
-                  : rect.selected
-                    ? 'color-mix(in srgb, var(--orange) 10%, transparent)'
-                    : 'rgba(255,255,255,0.04)',
-                boxShadow: rect.editing ? '0 0 0 1px var(--orange) inset' : undefined,
-                borderWidth: rect.selected ? 2 : 1,
+                borderColor: isInvalid ? 'var(--red)' : rect.selected ? 'var(--orange)' : 'rgba(255,255,255,0.34)',
+                background: isInvalid
+                  ? 'color-mix(in srgb, var(--red) 16%, transparent)'
+                  : rect.editing
+                    ? 'transparent'
+                    : rect.selected
+                      ? 'color-mix(in srgb, var(--orange) 10%, transparent)'
+                      : 'rgba(255,255,255,0.04)',
+                boxShadow: isInvalid ? '0 0 0 2px var(--red) inset' : rect.editing ? '0 0 0 1px var(--orange) inset' : undefined,
+                borderWidth: isInvalid || rect.selected ? 2 : 1,
               }}
             />
 
@@ -845,17 +813,19 @@ export function DashCanvas({
       {widgets.map((widget, idx) => {
         const isSelected   = selectedId === idx
         const isBeingMoved = activeMove?.widgetIdx === idx
+        const isInvalid    = Boolean(widget.id && invalidIds.has(widget.id))
 
         return (
           <div
             key={idx}
+            data-invalid={isInvalid || undefined}
             className="absolute"
             style={{
               left:    `${(widget.col     / gridCols) * 100}%`,
               top:     `${(widget.row     / gridRows) * 100}%`,
               width:   `${(widget.colSpan / gridCols) * 100}%`,
               height:  `${(widget.rowSpan / gridRows) * 100}%`,
-              zIndex:  isSelected ? 14 : 2,
+              zIndex:  isInvalid ? 16 : isSelected ? 14 : 2,
               opacity: isBeingMoved ? 0.2 : 1,
             }}
             onClick={e => { e.stopPropagation(); if (!isDragging && !readOnly) onSelect(idx) }}
@@ -877,9 +847,12 @@ export function DashCanvas({
               className={cn(
                 'absolute inset-0 flex flex-col items-start justify-start overflow-hidden select-none border',
                 readOnly ? 'cursor-default' : activeMove ? 'cursor-grabbing' : 'cursor-grab',
-                isSelected
-                  ? previewUrl ? 'border-[var(--orange)] bg-transparent outline outline-2 outline-[var(--orange)]' : 'border-[var(--orange)] bg-[color-mix(in_srgb,var(--orange)_8%,transparent)] outline outline-2 outline-[var(--orange)]'
-                  : previewUrl ? 'bg-transparent border-transparent hover:border-white/20' : 'bg-white/5 border-white/10 hover:border-white/20',
+                // Collision treatment is the most prominent state — it overrides selected/hover styling.
+                isInvalid
+                  ? 'border-[var(--red)] bg-[color-mix(in_srgb,var(--red)_14%,transparent)] outline outline-2 outline-[var(--red)]'
+                  : isSelected
+                    ? previewUrl ? 'border-[var(--orange)] bg-transparent outline outline-2 outline-[var(--orange)]' : 'border-[var(--orange)] bg-[color-mix(in_srgb,var(--orange)_8%,transparent)] outline outline-2 outline-[var(--orange)]'
+                    : previewUrl ? 'bg-transparent border-transparent hover:border-white/20' : 'bg-white/5 border-white/10 hover:border-white/20',
               )}
             >
               {!previewUrl && theme && (

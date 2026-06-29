@@ -19,6 +19,8 @@ export function DashCyclePage(arg1:number):Promise<void>;
 
 export function DashDeleteLayout(arg1:string):Promise<void>;
 
+export function DashDeleteTheme(arg1:string):Promise<void>;
+
 export function DashGetDefaultDomainPalette():Promise<widgets.DomainPalette>;
 
 export function DashGetDefaultFormatPreferences():Promise<widgets.FormatPreferences>;
@@ -31,11 +33,15 @@ export function DashGetPreview(arg1:string):Promise<string>;
 
 export function DashListLayouts():Promise<Array<dashboard.LayoutMeta>>;
 
+export function DashListThemes():Promise<Array<dashboard.ThemePreset>>;
+
 export function DashLoadLayoutByID(arg1:string):Promise<dashboard.DashLayout>;
 
 export function DashSaveGlobalSettings(arg1:dashboard.GlobalDashSettings):Promise<void>;
 
 export function DashSaveLayout(arg1:dashboard.DashLayout):Promise<void>;
+
+export function DashSaveTheme(arg1:dashboard.ThemePreset):Promise<dashboard.ThemePreset>;
 
 export function DashSetDefault(arg1:string):Promise<void>;
 

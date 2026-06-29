@@ -6,7 +6,7 @@ const SHORTCUTS = [
   ['Add widget to the canvas', 'Double-click in library'],
   ['Remove selected widget', 'Del / Backspace'],
   ['Deselect', 'Esc'],
-  ['Switch between sections', 'Titlebar arrows'],
+  ['Switch between sections', 'Header arrows'],
 ] as const
 
 const GUIDE_CARDS = [
@@ -19,7 +19,7 @@ const GUIDE_CARDS = [
 
 export default function Help() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
       <PageHeader heading="Help" caption="Reference for editor controls and dashboard concepts" />
 
       <div className="grid gap-4 xl:grid-cols-2">

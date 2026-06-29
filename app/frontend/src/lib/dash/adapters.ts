@@ -1,4 +1,12 @@
+// Wails type boundary. Shapes exist three times: Go structs → the generated
+// wailsjs/go/models.ts → the hand-written ./types.ts here. The generated
+// models.ts is intentionally NEVER imported; ./types.ts is the frontend
+// contract and this file is the only place Go JSON is mapped in. When a Go DTO
+// field changes you must update BOTH ./types.ts AND the matching adaptX below —
+// type-check will NOT catch a missed field. Device fields are camelCased here;
+// color/theme shapes keep Go's R/G/B/A names.
 import type {
+  AlertConfig,
   AlertInstance,
   AlertMeta,
   CatalogEntry,
@@ -20,6 +28,7 @@ import type {
   LayoutMeta,
   RearViewConfig,
   SavedDevice,
+  ThemePreset,
   TypographySettings,
   VAlign,
   WidgetCatalogEntry,
@@ -27,7 +36,8 @@ import type {
   WidgetStyle,
 } from './types.ts'
 import { DEFAULT_DASH_THEME } from './defaults.ts'
-import { migrateLegacyDashThemeOverrides, resolveDashTheme } from './themeOverrides.ts'
+import { migrateAlertConfig } from './alertConfig.ts'
+import { migrateLegacyDashThemeOverrides, resolveDashTheme, resolveDomainPalette } from './themeOverrides.ts'
 
 type RawRecord = Record<string, unknown>
 
@@ -314,6 +324,13 @@ export function adaptLayout(raw: RawRecord): DashLayout {
       ? raw.pages.map(page => adaptPage(page as RawRecord))
       : [],
     alerts: (raw.alerts as AlertInstance[] | undefined) ?? [],
+    // Surface the shared alert config to the editor, migrating any legacy
+    // per-instance `alerts` so old dashboards load under the simplified model.
+    alertConfig: migrateAlertConfig(
+      (raw.alerts as AlertInstance[] | undefined) ?? [],
+      raw.alertConfig as AlertConfig | undefined,
+    ),
+    themeId: raw.themeId ? String(raw.themeId) : undefined,
     theme: adaptTheme(raw.theme),
     domainPalette: raw.domainPalette as DomainPalette | undefined,
     typography: adaptTypography(raw.typography),
@@ -330,6 +347,17 @@ export function adaptLayoutMeta(raw: RawRecord): LayoutMeta {
     gridCols: Number(raw.gridCols ?? 20),
     gridRows: Number(raw.gridRows ?? 12),
     previewAvailable: Boolean(raw.previewAvailable ?? false),
+  }
+}
+
+export function adaptThemePreset(raw: RawRecord): ThemePreset {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    builtIn: Boolean(raw.builtIn ?? false),
+    theme: resolveDashTheme(undefined, adaptTheme(raw.theme)) ?? DEFAULT_DASH_THEME,
+    domainPalette: resolveDomainPalette(undefined, raw.domainPalette as DomainPalette | undefined),
+    typography: adaptTypography(raw.typography),
   }
 }
 

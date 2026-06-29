@@ -39,7 +39,9 @@ type previewService struct {
 	active           atomic.Bool
 	globalTheme      atomic.Pointer[widgets.DashTheme]
 	globalDomain     atomic.Pointer[widgets.DomainPalette]
+	globalPrefs      atomic.Pointer[widgets.FormatPreferences]
 	globalTypography atomic.Pointer[widgets.TypographySettings]
+	themeLibrary     atomic.Pointer[dashboard.ThemeLibrary]
 	profile          atomic.Pointer[dashboard.RenderProfile]
 
 	latestFrame atomic.Pointer[dto.TelemetryFrame]
@@ -69,6 +71,22 @@ func (s *previewService) setEmit(fn EmitFn) {
 	s.emitMu.Unlock()
 }
 
+// ApplyRenderPreferences applies a full RenderPreferences bundle to the preview
+// painter so the editor preview reflects the same global settings as the
+// physical screens.
+func (s *previewService) ApplyRenderPreferences(prefs dashboard.RenderPreferences) {
+	s.SetGlobalTheme(prefs.Theme)
+	s.SetGlobalDomainPalette(prefs.DomainPalette)
+	s.SetGlobalFormatPrefs(prefs.FormatPrefs)
+	s.SetGlobalTypography(prefs.Typography)
+	s.SetThemeLibrary(prefs.ThemeLibrary)
+	s.SetProfile(prefs.Profile)
+}
+
+func (s *previewService) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
+	s.globalPrefs.Store(&prefs)
+}
+
 func (s *previewService) SetGlobalTypography(typography widgets.TypographySettings) {
 	s.globalTypography.Store(&typography)
 }
@@ -79,6 +97,10 @@ func (s *previewService) SetGlobalTheme(theme widgets.DashTheme) {
 
 func (s *previewService) SetGlobalDomainPalette(domain widgets.DomainPalette) {
 	s.globalDomain.Store(&domain)
+}
+
+func (s *previewService) SetThemeLibrary(lib dashboard.ThemeLibrary) {
+	s.themeLibrary.Store(&lib)
 }
 
 func (s *previewService) SetProfile(profile dashboard.RenderProfile) {
@@ -181,8 +203,14 @@ func (s *previewService) renderAndEmit() {
 	if domain := s.globalDomain.Load(); domain != nil {
 		s.painter.SetGlobalDomainPalette(*domain)
 	}
+	if prefs := s.globalPrefs.Load(); prefs != nil {
+		s.painter.SetGlobalPrefs(*prefs)
+	}
 	if typography := s.globalTypography.Load(); typography != nil {
 		s.painter.SetGlobalTypography(*typography)
+	}
+	if lib := s.themeLibrary.Load(); lib != nil {
+		s.painter.SetThemeLibrary(*lib)
 	}
 	if profile := s.profile.Load(); profile != nil {
 		s.painter.SetProfile(*profile)

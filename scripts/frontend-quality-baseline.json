@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generatedAt": "2026-06-24T20:00:39.992Z",
+  "violations": [
+    {
+      "id": "no-clickable-div|app/frontend/src/components/DashCanvas.tsx|614|<div",
+      "rule": "no-clickable-div",
+      "path": "app/frontend/src/components/DashCanvas.tsx",
+      "line": 614,
+      "match": "<div",
+      "message": "Clickable divs need role and keyboard access, or should be buttons."
+    },
+    {
+      "id": "no-clickable-div|app/frontend/src/components/DashCanvas.tsx|819|<div",
+      "rule": "no-clickable-div",
+      "path": "app/frontend/src/components/DashCanvas.tsx",
+      "line": 819,
+      "match": "<div",
+      "message": "Clickable divs need role and keyboard access, or should be buttons."
+    },
+    {
+      "id": "no-clickable-div|app/frontend/src/components/DashEditMode.tsx|446|<div",
+      "rule": "no-clickable-div",
+      "path": "app/frontend/src/components/DashEditMode.tsx",
+      "line": 446,
+      "match": "<div",
+      "message": "Clickable divs need role and keyboard access, or should be buttons."
+    },
+    {
+      "id": "no-clickable-div|app/frontend/src/components/PageTabs.tsx|100|<div",
+      "rule": "no-clickable-div",
+      "path": "app/frontend/src/components/PageTabs.tsx",
+      "line": 100,
+      "match": "<div",
+      "message": "Clickable divs need role and keyboard access, or should be buttons."
+    },
+    {
+      "id": "no-raw-hex|app/frontend/src/components/WidgetProperties.tsx|386|#ffffff",
+      "rule": "no-raw-hex",
+      "path": "app/frontend/src/components/WidgetProperties.tsx",
+      "line": 386,
+      "match": "#ffffff",
+      "message": "Use packages/tokens values instead of raw hex."
+    }
+  ]
+}

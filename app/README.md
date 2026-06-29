@@ -31,13 +31,14 @@ app/
 │   ├── settings/           ← Persistent app preferences (settings.json)
 │   ├── logger/             ← slog wrapper + multi-writer
 │   └── appdata/            ← Platform config dir resolver
-└── frontend/               ← React/TS frontend (Vite)
+└── frontend/               ← React/TS frontend (Vite), pkg @sprint/desktop
     ├── src/
-    │   ├── App.tsx
-    │   ├── views/          ← Telemetry, DashEditor, Setups, EngineerStatus
-    │   ├── hooks/          ← useTelemetry
-    │   └── lib/            ← Wails runtime bindings
-    ├── package.json        ← @sprint/desktop
+    │   ├── App.tsx         ← shell + nav (mounts Home, Devices, DashEditor, Settings, Help)
+    │   ├── views/          ← page roots (also Engineer, Telemetry, Controls — not currently mounted)
+    │   ├── components/     ← composites + feature folders (dash-editor/, devices/, shell/)
+    │   ├── hooks/          ← useTelemetry, useUnsavedChanges, useUpdateCheck
+    │   └── lib/            ← framework-free helpers + Wails bindings (lib/dash barrel)
+    ├── package.json
     └── vite.config.ts
 ```
 

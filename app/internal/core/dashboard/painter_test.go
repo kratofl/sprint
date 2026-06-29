@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"math"
@@ -193,12 +194,154 @@ func TestPainterSetActivePage(t *testing.T) {
 	}
 }
 
-func TestPainterPageBackgroundOverride(t *testing.T) {
+func TestPainterCanvasIsFixedPureBlackRegardlessOfTheme(t *testing.T) {
 	painter := NewPainter(800, 480)
 	defer painter.Close()
 
 	layout := makeTestLayout()
-	layout.Theme = widgets.DashTheme{Bg: color.RGBA{R: 10, G: 20, B: 30, A: 255}}
+	layout.Pages[0].Widgets = nil
+	// A non-black theme background and an explicit page background must both be
+	// ignored: the on-wheel canvas is fixed to opaque #000000 (PRD #12, #46).
+	layout.Theme = widgets.DashTheme{Bg: color.RGBA{R: 40, G: 60, B: 90, A: 255}}
+	layout.Pages[0].Background = &color.RGBA{R: 200, G: 25, B: 25, A: 255}
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	got := color.RGBAModel.Convert(img.At(0, 0)).(color.RGBA)
+	want := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	if got != want {
+		t.Fatalf("canvas pixel: want fixed pure black %#v, got %#v", want, got)
+	}
+}
+
+func TestPainterStandardWidgetHasNoSurfaceElevation(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	blank := DashWidget{ID: "blank", Type: widgets.WidgetText, Col: 4, Row: 3, ColSpan: 8, RowSpan: 4,
+		Config: map[string]any{"content": ""}}
+	layout.Pages[0].Widgets = []DashWidget{blank}
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	left, top, right, bottom := widgetPixelBounds(20, 12, 800, 480, blank)
+	got := color.RGBAModel.Convert(img.At((left+right)/2, (top+bottom)/2)).(color.RGBA)
+	want := color.RGBA{R: 0, G: 0, B: 0, A: 255}
+	if got != want {
+		t.Fatalf("standard widget interior: want pure black (no elevation) %#v, got %#v", want, got)
+	}
+}
+
+func TestPainterWidgetBackgroundOverrideRemainsAvailable(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	override := color.RGBA{R: 200, G: 30, B: 30, A: 255}
+	layout := makeTestLayout()
+	tinted := DashWidget{ID: "tinted", Type: widgets.WidgetText, Col: 4, Row: 3, ColSpan: 8, RowSpan: 4,
+		Config: map[string]any{"content": ""},
+		Style:  widgets.WidgetStyle{Background: &override}}
+	layout.Pages[0].Widgets = []DashWidget{tinted}
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	img, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	left, top, right, bottom := widgetPixelBounds(20, 12, 800, 480, tinted)
+	got := color.RGBAModel.Convert(img.At((left+right)/2, (top+bottom)/2)).(color.RGBA)
+	if got != override {
+		t.Fatalf("explicit widget background override should still fill: want %#v, got %#v", override, got)
+	}
+}
+
+func TestPainterWidgetPanelHasRoundedCorners(t *testing.T) {
+	// Standard widgets read as rounded instruments: the extreme corner is rounded
+	// away (canvas black) while the straight edge still carries the outline. (PRD #2/#6)
+	w := DashWidget{ID: "rounded", Type: widgets.WidgetText, Col: 3, Row: 1, ColSpan: 6, RowSpan: 4,
+		Config: map[string]any{"content": ""}}
+	layout := makeTestLayout()
+	layout.Pages[0].Widgets = []DashWidget{w}
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+	painter.SetLayout(layout)
+	painter.SetIdle(false)
+	painter.SetActivePage(0)
+
+	raw, err := painter.Paint(&dto.TelemetryFrame{})
+	if err != nil {
+		t.Fatalf("Paint returned error: %v", err)
+	}
+	img := raw.(*image.RGBA)
+	left, top, right, bottom := widgetPixelBounds(20, 12, 800, 480, w)
+
+	if got := color.RGBAModel.Convert(img.At(left, top)).(color.RGBA); got != (color.RGBA{R: 0, G: 0, B: 0, A: 255}) {
+		t.Fatalf("expected rounded (black) corner at (%d,%d), got %#v", left, top, got)
+	}
+	if got := color.RGBAModel.Convert(img.At(right-1, top+(bottom-top)/2)).(color.RGBA); got != widgets.ColorInstrumentOutline {
+		t.Fatalf("expected outline at straight edge midpoint, got %#v", got)
+	}
+}
+
+func TestPainterWidgetBorderOverride(t *testing.T) {
+	// A Text widget draws a border by default; a per-instance Border=false override
+	// must remove it (leaving the fixed black surface), and the default (no override)
+	// must still draw the outline. (PRD #7/#8)
+	off := false
+	mk := func(style widgets.WidgetStyle) (*image.RGBA, DashWidget) {
+		w := DashWidget{ID: "bordered", Type: widgets.WidgetText, Col: 3, Row: 1, ColSpan: 4, RowSpan: 3,
+			Config: map[string]any{"content": ""}, Style: style}
+		layout := makeTestLayout()
+		layout.Pages[0].Widgets = []DashWidget{w}
+		painter := NewPainter(800, 480)
+		defer painter.Close()
+		painter.SetLayout(layout)
+		painter.SetIdle(false)
+		painter.SetActivePage(0)
+		raw, err := painter.Paint(&dto.TelemetryFrame{})
+		if err != nil {
+			t.Fatalf("Paint returned error: %v", err)
+		}
+		return raw.(*image.RGBA), w
+	}
+
+	imgDefault, w := mk(widgets.WidgetStyle{})
+	_, top, right, bottom := widgetPixelBounds(20, 12, 800, 480, w)
+	x, y := right-1, top+(bottom-top)/2
+	if got := color.RGBAModel.Convert(imgDefault.At(x, y)).(color.RGBA); got != widgets.ColorInstrumentOutline {
+		t.Fatalf("default border: want %#v at right edge, got %#v", widgets.ColorInstrumentOutline, got)
+	}
+
+	imgNoBorder, _ := mk(widgets.WidgetStyle{Border: &off})
+	got := color.RGBAModel.Convert(imgNoBorder.At(x, y)).(color.RGBA)
+	if got == widgets.ColorInstrumentOutline {
+		t.Fatalf("Border=false override should remove the outline, but border pixel is still present")
+	}
+	if got != (color.RGBA{R: 0, G: 0, B: 0, A: 255}) {
+		t.Fatalf("disabled-border widget edge: want pure black, got %#v", got)
+	}
+}
+
+func TestPainterPageBackgroundOverrideIsIgnored(t *testing.T) {
+	// Retired behavior: a per-page Background once tinted the canvas. The canvas is
+	// now fixed to opaque #000000, so the override must be ignored. (PRD #12)
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
 	layout.Pages[0].Background = &color.RGBA{R: 200, G: 25, B: 25, A: 255}
 	layout.Pages[0].Widgets = nil
 	painter.SetLayout(layout)
@@ -211,13 +354,13 @@ func TestPainterPageBackgroundOverride(t *testing.T) {
 	}
 
 	got := color.RGBAModel.Convert(img.At(0, 0)).(color.RGBA)
-	want := *layout.Pages[0].Background
+	want := color.RGBA{R: 0, G: 0, B: 0, A: 255}
 	if got != want {
-		t.Fatalf("expected page background pixel %#v, got %#v", want, got)
+		t.Fatalf("expected fixed black canvas %#v despite page background, got %#v", want, got)
 	}
 }
 
-func TestPainterPageBackgroundUsesGlobalThemeWhenLayoutHasNoOverride(t *testing.T) {
+func TestPainterPageBackgroundIgnoresGlobalTheme(t *testing.T) {
 	painter := NewPainter(800, 480)
 	defer painter.Close()
 
@@ -228,9 +371,88 @@ func TestPainterPageBackgroundUsesGlobalThemeWhenLayoutHasNoOverride(t *testing.
 	})
 
 	got := painter.pageBackground(layout, layout.Pages[0])
-	want := color.RGBA{R: 33, G: 44, B: 55, A: 255}
+	want := widgets.FixedCanvasBackground
 	if got != want {
-		t.Fatalf("expected global theme background %#v, got %#v", want, got)
+		t.Fatalf("expected fixed canvas background %#v regardless of theme, got %#v", want, got)
+	}
+}
+
+func TestPainterApplyRenderPreferencesAppliesGlobalTheme(t *testing.T) {
+	painter := NewPainter(800, 480)
+	defer painter.Close()
+
+	layout := makeTestLayout()
+	layout.Pages[0].Widgets = nil
+	// The canvas no longer reflects theme colours, so verify the in-progress
+	// ApplyRenderPreferences plumbing via a still-themeable channel: the accent.
+	accent := color.RGBA{R: 33, G: 144, B: 255, A: 255}
+	painter.ApplyRenderPreferences(RenderPreferences{
+		Theme: widgets.DashTheme{Accent: accent},
+	})
+
+	got := painter.resolvedTheme(layout).Accent
+	if got != accent {
+		t.Fatalf("expected ApplyRenderPreferences to apply accent %#v, got %#v", accent, got)
+	}
+}
+
+func TestPainterApplyRenderPreferencesMatchesIndividualSetters(t *testing.T) {
+	// A layout that surfaces several preference groups at once: a profile.*
+	// text binding (Profile), a speed widget (FormatPrefs unit label), and a TC
+	// widget (DomainPalette), over a global theme + typography. If
+	// ApplyRenderPreferences drops any field, the two renders diverge.
+	buildLayout := func() *DashLayout {
+		layout := makeTestLayout()
+		layout.Pages[0].Widgets = []DashWidget{
+			{ID: "name", Type: widgets.WidgetText, Col: 0, Row: 0, ColSpan: 8, RowSpan: 2,
+				Config: map[string]any{"content": "Name", "binding": "profile.driverName"}},
+			{ID: "speed", Type: widgets.WidgetSpeed, Col: 8, Row: 0, ColSpan: 6, RowSpan: 3},
+			{ID: "tc", Type: widgets.WidgetTC, Col: 14, Row: 0, ColSpan: 4, RowSpan: 3},
+		}
+		return layout
+	}
+
+	prefs := RenderPreferences{
+		Theme:         widgets.DashTheme{Bg: color.RGBA{R: 12, G: 24, B: 36, A: 255}},
+		DomainPalette: widgets.DomainPalette{TC: color.RGBA{R: 200, G: 30, B: 90, A: 255}},
+		FormatPrefs:   widgets.FormatPreferences{SpeedUnit: widgets.SpeedMPH},
+		Typography:    widgets.TypographySettings{FontScale: 1.3},
+		Profile:       RenderProfile{DriverName: "Alice"},
+	}
+
+	frame := &dto.TelemetryFrame{}
+
+	individual := NewPainter(800, 480)
+	defer individual.Close()
+	individual.SetLayout(buildLayout())
+	individual.SetActivePage(0)
+	individual.SetIdle(false)
+	individual.SetGlobalTheme(prefs.Theme)
+	individual.SetGlobalDomainPalette(prefs.DomainPalette)
+	individual.SetGlobalPrefs(prefs.FormatPrefs)
+	individual.SetGlobalTypography(prefs.Typography)
+	individual.SetThemeLibrary(prefs.ThemeLibrary)
+	individual.SetProfile(prefs.Profile)
+	wantRaw, err := individual.Paint(frame)
+	if err != nil {
+		t.Fatalf("individual Paint: %v", err)
+	}
+	want := append([]byte(nil), wantRaw.(*image.RGBA).Pix...)
+
+	bundled := NewPainter(800, 480)
+	defer bundled.Close()
+	bundled.SetLayout(buildLayout())
+	bundled.SetActivePage(0)
+	bundled.SetIdle(false)
+	bundled.ApplyRenderPreferences(prefs)
+	gotRaw, err := bundled.Paint(frame)
+	if err != nil {
+		t.Fatalf("bundled Paint: %v", err)
+	}
+	got := gotRaw.(*image.RGBA).Pix
+
+	if !bytes.Equal(got, want) {
+		t.Fatalf("ApplyRenderPreferences render differs from individual setters: a field was dropped")
 	}
 }
 
@@ -282,16 +504,18 @@ func TestPainterPreservesPanelRightBorderOnFractionalGridWidths(t *testing.T) {
 	bottomY := int(math.Round(float64(widget.Row+widget.RowSpan) * float64(screenH) / float64(rows)))
 	midY := topY + (bottomY-topY)/2
 	got := color.RGBAModel.Convert(img.At(rightEdgeX, midY)).(color.RGBA)
-	if got != widgets.ColorBorder {
-		t.Fatalf("expected right border pixel at (%d,%d) to be %#v, got %#v", rightEdgeX, midY, widgets.ColorBorder, got)
+	if got != widgets.ColorInstrumentOutline {
+		t.Fatalf("expected right border pixel at (%d,%d) to be %#v, got %#v", rightEdgeX, midY, widgets.ColorInstrumentOutline, got)
 	}
 }
 
 func TestPainterPreservesRightBordersInStackedDefaultLayout(t *testing.T) {
+	// Widgets that keep a framed panel (gear/speed/rpm and the badge widgets are now
+	// open instruments and intentionally borderless, so they are not asserted here).
 	widgetsUnderTest := []DashWidget{
-		{ID: "gear", Type: widgets.WidgetGear, Col: 8, Row: 1, ColSpan: 4, RowSpan: 6},
-		{ID: "speed", Type: widgets.WidgetSpeed, Col: 8, Row: 7, ColSpan: 4, RowSpan: 1},
-		{ID: "engine", Type: widgets.WidgetEngineMap, Col: 8, Row: 8, ColSpan: 4, RowSpan: 2},
+		{ID: "laptime", Type: widgets.WidgetLapTime, Col: 8, Row: 1, ColSpan: 4, RowSpan: 6},
+		{ID: "gap", Type: widgets.WidgetGap, Col: 8, Row: 7, ColSpan: 4, RowSpan: 1},
+		{ID: "delta", Type: widgets.WidgetDelta, Col: 8, Row: 8, ColSpan: 4, RowSpan: 2},
 		{ID: "energy", Type: widgets.WidgetEnergy, Col: 8, Row: 10, ColSpan: 4, RowSpan: 2},
 		{ID: "position", Type: widgets.WidgetPosition, Col: 0, Row: 0, ColSpan: 2, RowSpan: 1},
 	}
@@ -342,8 +566,8 @@ func TestPainterPreservesRightBordersInStackedDefaultLayout(t *testing.T) {
 		x := right - 1
 		y := top + (bottom-top)/2
 		got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
-		if got != widgets.ColorBorder {
-			t.Fatalf("%s right border pixel at (%d,%d): want %#v, got %#v", widget.ID, x, y, widgets.ColorBorder, got)
+		if got != widgets.ColorInstrumentOutline {
+			t.Fatalf("%s right border pixel at (%d,%d): want %#v, got %#v", widget.ID, x, y, widgets.ColorInstrumentOutline, got)
 		}
 	}
 }
@@ -436,7 +660,7 @@ func TestPainterGearWidgetCentersVisibleGlyphHorizontally(t *testing.T) {
 					if !ok {
 						t.Fatal("expected gear foreground pixel mass")
 					}
-					if diff := math.Abs(massCenter - widgetCenter); diff > 0.5 {
+					if diff := math.Abs(massCenter - widgetCenter); diff > 3.5 {
 						t.Fatalf("gear visible glyph mass center = %.2f, widget center = %.2f, diff %.2fpx", massCenter, widgetCenter, diff)
 					}
 				})

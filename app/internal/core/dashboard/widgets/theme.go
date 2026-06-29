@@ -412,9 +412,13 @@ func ThemeColor(theme DashTheme, ref ColorRef) color.RGBA {
 	case "danger":
 		return theme.Danger
 	case "surface":
-		return theme.Surface
+		// Fixed system surface — no longer theme-driven (PRD #106). A per-widget
+		// background override still wins, but that is handled earlier in Resolve.
+		return ColorSurface
 	case "bg":
-		return theme.Bg
+		// The canvas/standard widget background is fixed to pure black; a theme can
+		// never tint it via the bg ref. See FixedCanvasBackground.
+		return FixedCanvasBackground
 	case "border":
 		return theme.Border
 	case "rpmred":

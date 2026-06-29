@@ -64,6 +64,11 @@ type Coordinator struct {
 	mu      sync.RWMutex
 	entries map[string]*deviceEntry // deviceID -> entry
 
+	// currentPrefs is the authoritative render-preference bundle broadcast to
+	// every driver and the preview. Guarded by mu. Newly-registered devices are
+	// initialized from it so they never render with default settings.
+	currentPrefs dashboard.RenderPreferences
+
 	rootCtx  context.Context    // set by Start; used when adding devices at runtime
 	stopFn   context.CancelFunc // cancels rootCtx on Stop
 	driverWg sync.WaitGroup     // tracks all running driver goroutines for clean shutdown
@@ -86,6 +91,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 		entries:        map[string]*deviceEntry{},
 		idleState:      true,
 		frontendEmitCh: make(chan *dto.TelemetryFrame, 1),
+		currentPrefs:   dashboard.DefaultRenderPreferences(),
 	}
 	c.preview = newPreviewService(logger, c.emit)
 
@@ -122,6 +128,7 @@ func New(logger *slog.Logger, dashMgr *dashboard.Manager, devMgr *devices.Manage
 					}
 				}
 				drv.SetIdle(true)
+				drv.ApplyRenderPreferences(c.currentPrefs)
 				applyFrameSource(drv, d, toHardwareScreenConfig(devices.ToScreenConfig(d)), logger)
 				c.entries[id] = entry
 			}
@@ -228,6 +235,7 @@ func (c *Coordinator) SetScreenConfig(deviceID string, d devices.SavedDevice) {
 	drv.Configure(cfg)
 	drv.SetIdle(c.idleState)
 	drv.SetEmit(c.emit)
+	drv.ApplyRenderPreferences(c.currentPrefs)
 
 	var cancel context.CancelFunc = func() {}
 	if c.rootCtx != nil {
@@ -293,69 +301,84 @@ func (c *Coordinator) UpdateLayout(layout *dashboard.DashLayout) {
 	}
 }
 
-// SetGlobalFormatPrefs propagates new global-level format preferences to all
-// active screen drivers so they take effect on the next rendered frame without
-// requiring the user to switch layouts.
+// SetGlobalFormatPrefs updates the global format preferences in the held bundle
+// and rebroadcasts it so the new units take effect on the next rendered frame
+// without requiring the user to switch layouts.
 func (c *Coordinator) SetGlobalFormatPrefs(prefs widgets.FormatPreferences) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, e := range c.entries {
-		if e.driver != nil {
-			e.driver.SetGlobalPrefs(prefs)
-		}
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.FormatPrefs = prefs
+	c.broadcastRenderPreferences(c.currentPrefs)
 }
 
-// SetGlobalTheme propagates new global dash colors to all active screen drivers
-// and the editor preview painter.
+// SetGlobalTheme updates the global dash colors in the held bundle and
+// rebroadcasts it to all drivers and the editor preview painter.
 func (c *Coordinator) SetGlobalTheme(theme widgets.DashTheme) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, e := range c.entries {
-		if e.driver != nil {
-			e.driver.SetGlobalTheme(theme)
-		}
-	}
-	c.preview.SetGlobalTheme(theme)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.Theme = theme
+	c.broadcastRenderPreferences(c.currentPrefs)
 }
 
-// SetGlobalDomainPalette propagates new global domain colors to all active
-// screen drivers and the editor preview painter.
+// SetGlobalDomainPalette updates the global domain colors in the held bundle and
+// rebroadcasts it to all drivers and the editor preview painter.
 func (c *Coordinator) SetGlobalDomainPalette(domain widgets.DomainPalette) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, e := range c.entries {
-		if e.driver != nil {
-			e.driver.SetGlobalDomainPalette(domain)
-		}
-	}
-	c.preview.SetGlobalDomainPalette(domain)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.DomainPalette = domain
+	c.broadcastRenderPreferences(c.currentPrefs)
 }
 
-// SetGlobalTypography propagates new global dash typography defaults to all
-// active screen drivers and the editor preview painter.
+// SetGlobalTypography updates the global typography defaults in the held bundle
+// and rebroadcasts it to all drivers and the editor preview painter.
 func (c *Coordinator) SetGlobalTypography(typography widgets.TypographySettings) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	for _, e := range c.entries {
-		if e.driver != nil {
-			e.driver.SetGlobalTypography(typography)
-		}
-	}
-	c.preview.SetGlobalTypography(typography)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.Typography = typography
+	c.broadcastRenderPreferences(c.currentPrefs)
 }
 
-// SetProfile propagates app-level profile strings to all active screen drivers
-// and the editor preview painter.
+// SetThemeLibrary updates the theme-preset library in the held bundle and
+// rebroadcasts it so a ThemeID reference resolves (and theme edits reflect)
+// everywhere immediately.
+func (c *Coordinator) SetThemeLibrary(lib dashboard.ThemeLibrary) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.ThemeLibrary = lib
+	c.broadcastRenderPreferences(c.currentPrefs)
+}
+
+// SetProfile updates the app-level profile in the held bundle and rebroadcasts
+// it to all drivers and the editor preview painter.
 func (c *Coordinator) SetProfile(profile dashboard.RenderProfile) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs.Profile = profile
+	c.broadcastRenderPreferences(c.currentPrefs)
+}
+
+// ApplyRenderPreferences replaces the authoritative render-preference bundle and
+// broadcasts it to every active screen driver and the editor preview painter in
+// a single call. The held bundle is the single source of truth.
+func (c *Coordinator) ApplyRenderPreferences(prefs dashboard.RenderPreferences) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentPrefs = prefs
+	c.broadcastRenderPreferences(c.currentPrefs)
+}
+
+// broadcastRenderPreferences pushes the bundle to every active driver and the
+// editor preview painter. Callers must hold c.mu. This is the single fan-out
+// point that the public setters and ApplyRenderPreferences share.
+func (c *Coordinator) broadcastRenderPreferences(prefs dashboard.RenderPreferences) {
 	for _, e := range c.entries {
 		if e.driver != nil {
-			e.driver.SetProfile(profile)
+			e.driver.ApplyRenderPreferences(prefs)
 		}
 	}
-	c.preview.SetProfile(profile)
+	if c.preview != nil {
+		c.preview.ApplyRenderPreferences(prefs)
+	}
 }
 
 // ReloadDashCommands rebuilds the dynamic wrapper command catalog from all

@@ -21,19 +21,19 @@ test('dash editor canvas wrapper stays visually passive', () => {
   assert.doesNotMatch(canvasPaneBlock, /shadow-\[inset_/)
 })
 
-test('dash editor designer uses the Graphite editor grid and VoCore canvas metrics', () => {
-  assert.match(dashEditModeSource, /data-layout="reference"/)
-  assert.match(dashEditModeSource, /\bds-ework\b/)
+test('dash editor designer uses the Figma three-column layout and VoCore canvas metrics', () => {
+  assert.match(dashEditModeSource, /<EditorLeftRail/)
+  assert.match(dashEditModeSource, /<EditorPropertiesRail/)
   assert.match(dashEditModeSource, /screenW=\{controller\.screenW\}/)
   assert.match(dashEditModeSource, /screenH=\{controller\.screenH\}/)
   assert.match(dashCanvasSource, /DEFAULT_SCREEN_W = 800/)
   assert.match(dashCanvasSource, /DEFAULT_SCREEN_H = 480/)
 })
 
-test('dash editor canvas stage matches the reference rounded black board', () => {
+test('dash editor canvas stage matches the Figma reference board', () => {
   assert.match(dashEditModeSource, /\bds-reference-canvas\b/)
   assert.match(dashEditModeSource, /data-scale=\{editorScale\}/)
-  assert.match(dashEditModeSource, />Scale</)
+  assert.match(dashEditModeSource, /label="Editor scale"/)
   assert.match(dashEditModeSource, /label: '100%'/)
   assert.match(dashCanvasSource, /showGrid\?: boolean/)
 })

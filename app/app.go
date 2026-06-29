@@ -63,6 +63,9 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	a.coord.SetEmit(emit)
 	a.dashSvc = dashboard.NewService(a.dash, a.devMgr, a.coord)
+	// Seed painters with the theme library so dashboards referencing a ThemeID
+	// render with the correct preset from boot (before any settings save).
+	a.coord.SetThemeLibrary(dashboard.BuildThemeLibrary())
 	a.devices = devices.NewService(a.devMgr, a.coord, emit, func(deviceID, dashID string) error {
 		layout, err := a.dash.Load(dashID)
 		if err != nil {

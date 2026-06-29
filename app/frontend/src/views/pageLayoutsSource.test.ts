@@ -89,17 +89,21 @@ test('Dashboards is the user-facing name for the dash editor area', () => {
   assert.match(dashListSource, /Delete dashboard/)
   assert.doesNotMatch(dashListSource, /Dash Studio/)
   assert.doesNotMatch(dashListSource, />Dashes</)
-  assert.match(dashEditModeSource, />Dashboards</)
+  // The editor returns to the list via the Figma circular Back_Button (icon only).
+  assert.match(dashEditModeSource, /label="Back to dashboards"/)
 })
 
-test('Dash editor uses the top bar, fixed rails, workspace, and reference canvas primitives', () => {
-  for (const className of ['ds-editor', 'ds-etop', 'ds-back', 'ds-etitle', 'ds-ework', 'ds-col', 'ds-canvas-wrap', 'ds-canvas-stage', 'ds-reference-canvas']) {
+test('Dash editor uses the single shell header, fixed rails, and reference canvas primitives', () => {
+  for (const className of ['ds-canvas-stage', 'ds-reference-canvas']) {
     assert.match(dashEditModeSource, new RegExp(`\\b${className}\\b`), `${className} is missing`)
   }
+  // The editor toolbar is portaled into the one shell header (Figma "Header").
+  assert.match(dashEditModeSource, /<HeaderPortal>/)
+  assert.match(dashEditModeSource, /<EditorLeftRail/)
+  assert.match(dashEditModeSource, /<EditorPropertiesRail/)
   assert.match(dashEditModeSource, /\bSegmentedControl\b/)
   assert.match(dashEditModeSource, /\bIconButton\b/)
   assert.doesNotMatch(dashEditModeSource, /\bfseg\b|\bicobtn\b/)
-  assert.match(dashEditModeSource, /data-layout="reference"/)
   assert.doesNotMatch(dashEditModeSource, /data-palette-docked=|data-inspector-docked=/)
   assert.match(dashEditModeSource, /Layout/)
   assert.match(dashEditModeSource, /Alerts/)
@@ -126,7 +130,7 @@ test('Home combines Live, Engineer, and Setup as local segmented sections', () =
   assert.match(homeSource, /<SegmentedControl/)
   assert.match(homeSource, /variant="neutral"/)
   assert.match(homeSource, /<Telemetry frame=\{frame\} connected=\{connected\} fps=\{fps\} \/>/)
-  assert.match(homeSource, /<Engineer connected=\{connected\} \/>/)
+  assert.match(homeSource, /<Engineer connected=\{connected\} compact \/>/)
   assert.match(homeSource, /<Controls compact \/>/)
   assert.doesNotMatch(homeSource, /onNavigate|NavigableView/)
 })

@@ -41,7 +41,7 @@ test('dash editor no longer exposes terminal-style underscore command labels', (
 test('focus mode active layer uses a full-stage live preview viewport', () => {
   assert.doesNotMatch(dashEditModeSource, /const focusPreviewCrop = controller\.selectedWidgetStack/)
   assert.match(dashEditModeSource, /function CanvasViewport\(/)
-  assert.match(dashEditModeSource, /className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-\[var\(--de-seam\)\] bg-\[var\(--de-well\)\]"/)
+  assert.match(dashEditModeSource, /className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-\[16px\] border border-\[var\(--line\)\] bg-\[var\(--bg-deep\)\]"/)
   assert.match(dashEditModeSource, /<CanvasViewport screenW=\{controller\.screenW\} screenH=\{controller\.screenH\}>/)
   assert.match(dashEditModeSource, /previewUrl=\{controller\.previewUrl \?\? undefined\}/)
   assert.doesNotMatch(dashEditModeSource, /previewCrop=\{focusPreviewCrop\}/)

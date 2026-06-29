@@ -155,7 +155,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
       <PageHeader heading="Settings" caption="Global studio preferences" />
 
       <div className="grid gap-4 xl:grid-cols-2">

@@ -10,6 +10,7 @@ func (tcWidget) Meta() WidgetMeta {
 		DefaultColSpan: 3, DefaultRowSpan: 2,
 		IdleCapable: false, DefaultUpdateHz: Hz15,
 		Label:             LabelConfig{Hidden: true},
+		Panel:             PanelConfig{NoBorder: true},
 		CapabilityBinding: BindingElectronicsTCAvailable,
 		ConfigDefs: []ConfigDef{{
 			Key:   "tcMode",
@@ -46,10 +47,11 @@ func (tcWidget) Definition(config map[string]any) []Element {
 		col = ColorRefForeground.When(WhenActive(activeBinding, ColorRefTC))
 	}
 	return []Element{
-		Text{Text: label, X: 0.015, Y: 0.035, Style: TextStyle{
-			Font: FontFamilyUI, FontSize: 0.13, HAlign: HAlignStart, VAlign: VAlignStart, Color: ColorRefMuted.Expr()}},
-		Text{Binding: binding, Format: FormatInt, X: 0.5, Y: 0.56, Style: TextStyle{
-			Font: FontFamilyMono, FontSize: 0.52, IsBold: true, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: col}},
+		Badge{Color: ColorRefTC.Expr(), Radius: 0.74, Fill: 0.1},
+		Text{Text: label, X: 0.5, Y: 0.14, Style: TextStyle{
+			Font: FontFamilyUI, FontSize: 0.12, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: ColorRefMuted.Expr()}},
+		Text{Binding: binding, Format: FormatInt, X: 0.5, Y: 0.52, Style: TextStyle{
+			Font: FontFamilyMono, FontSize: 0.36, IsBold: true, HAlign: HAlignCenter, VAlign: VAlignCenter, Color: col}},
 	}
 }
 

@@ -1,0 +1,145 @@
+CANVAS  "Layout"
+  ROUNDED_RECTANGLE  "background"  2559×1439  fill:IMG(FILL)
+  FRAME  "application"  1570×883  AL:row  r[12,12,12,12]  fill:#0F0F0F  stroke:#404040/1O  fx:DROP_SHADOW(#00000024 0,8 b16 s0),DROP_SHADOW(#00000024 0,4 b2 s0)
+    FRAME  "Frame 3"  1570×883  AL:row a:CENTER
+      FRAME  "Sidebar"  220×883  AL:col gap14 pad[14,14,14,14]  r[undefined,18,18,undefined]  fill:#141414  stroke:#2E2E2E/1I
+        FRAME  "Frame 5"  192×43  AL:row gap10 a:CENTER
+          FRAME  "sprint-icon 1"  24×24
+            VECTOR  "Vector"  23.44×23.44  fill:#0B0B0B  stroke:#2E2E2E/1C
+            FRAME  "Clip path group"  23.44×23.44
+              FRAME  "sprintTile"  23.44×23.44
+                VECTOR  "Vector"  23.44×23.44  fill:#000000
+              FRAME  "Group"  22.39×23.31
+                VECTOR  "Vector"  22.39×23.31  fill:GRADIENT_LINEAR(#FF8636:0 #FF6A00:0.55 #D35200:1)  stroke:GRADIENT_LINEAR(#FFB272:0 #FF9445:0.55 #F07A2C:1)/0.25C
+                VECTOR  "Vector"  11.26×15.26  fill:GRADIENT_LINEAR(#FFA24F:0 #FF6A00:0.35 #A8430A:0.72 #5E2600:1)  stroke:GRADIENT_LINEAR(#FFC790:0 #FF9445:0.35 #CC6A24:0.72 #8C4418:1)/0.25C
+          FRAME  "sprint-wordmark 1"  116×43  AL:col gap2 j:CENTER
+            TEXT  "SPRINT"  95×28  fill:#FF6A00  text="SPRINT"  Space Grotesk/Bold  28px  lh:auto
+            TEXT  "TELEMETRYSYSTEM"  87×9  fill:#CDCDCD  text="TELEMETRYSYSTEM"  Saira/Bold  9px  lh:auto
+            VECTOR  "Vector"  116×2  fill:GRADIENT_LINEAR(#FF6A00:0 #FF6A0000:0.72)
+          FRAME  "Frame 7"  32×32  AL:row gap8 pad[4,4,4,4]  r[999,999,999,999]
+            INSTANCE  "tabler/layout-sidebar"  24×24
+        FRAME  "Nav"  192×798  AL:col gap10 j:SPACE_EVENLY
+          FRAME  "Top"  192×118  AL:col gap8
+            INSTANCE  "Navigation Item"  192×32  AL:row gap10 pad[8,10,8,10]  r[999,999,999,999]
+            FRAME  "Section"  192×78  AL:col gap4
+              FRAME  "Frame 9"  50×10  AL:row gap10 pad[0,0,0,6] j:CENTER a:CENTER
+                TEXT  "DEVICES"  44×10  fill:#7A7A7A  text="DEVICES"  Inter/Bold  10px  lh:auto  CENTER
+              FRAME  "Section Items"  192×64  AL:col
+                INSTANCE  "Navigation Item"  192×32  AL:row gap10 pad[8,10,8,10]  r[999,999,999,999]
+                INSTANCE  "Navigation Item"  192×32  AL:row gap8 pad[8,10,8,10] a:CENTER  r[18,18,18,18]  fill:#2E2E2E
+          FRAME  "Bottom"  192×64  AL:col
+            INSTANCE  "Navigation Item"  192×32  AL:row gap10 pad[8,10,8,10]  r[999,999,999,999]
+            INSTANCE  "Navigation Item"  192×32  AL:row gap10 pad[8,10,8,10] a:CENTER  r[999,999,999,999]
+      FRAME  "Content"  1350×883  AL:col j:CENTER  r[18,18,18,18]
+        FRAME  "Header"  1350×45  AL:row pad[0,0,0,14] a:CENTER
+          FRAME  "Header"  1208×45  AL:row gap14 pad[6,0,6,0] a:CENTER
+            FRAME  "Top"  1208×33  AL:row gap16 j:SPACE_EVENLY a:CENTER  r[999,999,999,999]
+              FRAME  "Navigation"  347×32  AL:row gap10 a:CENTER
+                INSTANCE  "Back_Button"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F  stroke:#2E2E2E/1I
+                INSTANCE  "Input w Label"  220×32  AL:col gap2 j:CENTER
+                INSTANCE  "Chip"  75×20  AL:row gap10 pad[4,10,4,10] j:CENTER a:CENTER  r[4,4,4,4]  stroke:#1F7FE6/1I
+              FRAME  "Controls"  581×25  AL:row gap4 j:SPACE_EVENLY a:CENTER  r[999,999,999,999]
+                FRAME  "Pages"  769×33  AL:row gap4 a:CENTER  HIDDEN
+                  FRAME  "Segmented Control"  370×33  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                    FRAME  "Item"  59×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                      TEXT  "Idle"  23×13  fill:#A0A0A0  text="Idle"  Inter/Medium  13px  lh:auto
+                      FRAME  "Options"  13×13  AL:row j:CENTER a:CENTER
+                        INSTANCE  "tabler/lock"  13×13
+                    FRAME  "Item"  67×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                      TEXT  "Main"  31×13  fill:#A0A0A0  text="Main"  Inter/Medium  13px  lh:auto
+                      FRAME  "Options"  13×13  AL:row j:CENTER a:CENTER
+                        INSTANCE  "tabler/lock"  13×13
+                    FRAME  "Item"  77×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                      TEXT  "Page 1"  41×13  fill:#A0A0A0  text="Page 1"  Inter/Medium  13px  lh:auto
+                      FRAME  "Options"  39×12  AL:row j:CENTER a:CENTER  HIDDEN
+                        FRAME  "Move_page_left"  13×12  AL:row gap10 j:CENTER a:CENTER  r[6,undefined,undefined,6]  fill:#E4E4E4
+                          INSTANCE  "tabler/chevron-left"  12×12
+                        FRAME  "Move_page_right"  13×12  AL:row gap10 j:CENTER a:CENTER  r[undefined,undefined,undefined,undefined]  fill:#E4E4E4
+                          INSTANCE  "tabler/chevron-right"  12×12
+                        FRAME  "Delete_page"  13×12  AL:row gap10 j:CENTER a:CENTER  r[undefined,8,8,undefined]  fill:#E4E4E4
+                          INSTANCE  "tabler/trash"  8×8  r[12,12,12,12]
+                    FRAME  "Item"  79×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#F6F6F6
+                      TEXT  "Page 2"  43×13  fill:#141414  text="Page 2"  Inter/Medium  13px  lh:auto
+                    FRAME  "Item"  80×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                      TEXT  "Page 3"  44×13  fill:#A0A0A0  text="Page 3"  Inter/Medium  13px  lh:auto
+                      FRAME  "Options"  39×12  AL:row j:CENTER a:CENTER  HIDDEN
+                        FRAME  "Move_page_left"  13×12  AL:row gap10 j:CENTER a:CENTER  r[6,undefined,undefined,6]  fill:#E4E4E4
+                          INSTANCE  "tabler/chevron-left"  12×12
+                        FRAME  "Move_page_right"  13×12  AL:row gap10 j:CENTER a:CENTER  r[undefined,undefined,undefined,undefined]  fill:#E4E4E4
+                          INSTANCE  "tabler/chevron-right"  12×12
+                        FRAME  "Delete_page"  13×12  AL:row gap10 j:CENTER a:CENTER  r[undefined,8,8,undefined]  fill:#E4E4E4
+                          INSTANCE  "tabler/trash"  8×8  r[12,12,12,12]
+                  FRAME  "Button Group"  244×49  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F  HIDDEN
+                  INSTANCE  "Button"  25×25  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F  stroke:#2E2E2E/1I
+                  ROUNDED_RECTANGLE  "Seperator"  2×22  r[999,999,999,999]  fill:#2E2E2E  HIDDEN
+              FRAME  "Controls"  280×33  AL:row gap10 a:CENTER
+                FRAME  "Tab_View"  238×33  AL:row pad[4,4,4,4] j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#2E2E2E/1I
+                  FRAME  "Separator"  1×14  fill:#2E2E2E
+                INSTANCE  "Save_Button"  32×32  AL:row gap4 pad[4,4,4,4] j:CENTER a:CENTER  r[999,999,999,999]  fill:#FF6A00  stroke:#FF8636/1I
+            FRAME  "Frame 4"  164×32  AL:row gap10 a:CENTER  HIDDEN
+              FRAME  "Window_Segmented_Control"  65×32  AL:row j:CENTER a:CENTER  r[18,18,18,18]  fill:#1F1F1F  stroke:#2E2E2E/1I
+                FRAME  "Separator"  1×14  fill:#2E2E2E
+              FRAME  "Frame 13"  89×16  AL:row a:CENTER
+                TEXT  "Sprint"  39×16  fill:#FFFFFF  text="Sprint"  Inter/Bold  13px  lh:auto
+                TEXT  "- Home"  50×16  fill:#A0A0A0  text=" - Home"  Inter/Regular  13px  lh:auto
+          FRAME  "Frame 4"  128×45  AL:row j:CENTER a:CENTER
+            FRAME  "shrink"  44×45  AL:col gap10 j:CENTER a:CENTER
+              INSTANCE  "tabler/minus"  16×16
+            FRAME  "maximize"  44×45  AL:col gap10 j:CENTER a:CENTER
+              INSTANCE  "tabler/square-dashed"  16×16
+            FRAME  "Close"  40×40  AL:col gap10 j:CENTER a:CENTER
+              INSTANCE  "tabler/x"  16×16
+        FRAME  "Main"  1350×838  AL:col gap14 pad[0,14,14,14]  r[18,18,18,18]
+          FRAME  "Dash_Editor"  1322×824  AL:col gap10
+            FRAME  "Bottom"  1322×824  AL:row gap10
+              FRAME  "Left"  248×824  AL:col gap14 pad[14,14,14,14]  r[18,18,18,18]  fill:#141414  stroke:#2E2E2E/1I
+                FRAME  "Segmented Controls"  220×25  AL:row j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                  FRAME  "Item"  110×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#1F1F1F
+                    TEXT  "Pages"  39×13  fill:#F6F6F6  text="Pages"  Inter/Medium  13px  lh:auto
+                  FRAME  "Item"  110×25  AL:col gap4 pad[6,18,6,18] j:CENTER a:CENTER  r[999,999,999,999]  fill:#FF6A00
+                    TEXT  "Widgets"  52×13  fill:#141414  text="Widgets"  Inter/Medium  13px  lh:auto
+                FRAME  "Title"  127×10  AL:col gap4
+                  TEXT  "Drag onto the grid to place"  127×10  fill:#7A7A7A  text="Drag onto the grid to place"  Inter/Regular  10px  lh:auto  RIGHT
+                INSTANCE  "Input w Label"  220×47  AL:col gap2 j:CENTER
+                FRAME  "Widgets"  220×60  AL:col gap10
+                  FRAME  "Container"  220×60  AL:col gap4
+                    TEXT  "DRIVING"  42×10  fill:#7A7A7A  text="DRIVING"  Inter/Semi Bold  10px  lh:auto  RIGHT
+                    FRAME  "Widgets"  220×46  AL:row gap6
+                      FRAME  "Widget"  107×46  AL:col gap6 pad[8,8,8,8]  r[12,12,12,12]  fill:#1F1F1F
+                        INSTANCE  "tabler/brand-speedtest"  13×13  r[12,12,12,12]
+                        TEXT  "Title"  26×11  fill:#A0A0A0  text="Gear"  Inter/Semi Bold  11px  lh:auto
+                      FRAME  "Widget"  107×46  AL:col gap6 pad[8,8,8,8]  r[12,12,12,12]  fill:#1F1F1F
+                        INSTANCE  "tabler/wheel"  13×13  r[12,12,12,12]
+                        TEXT  "Title"  62×11  fill:#A0A0A0  text="Tyre Temps"  Inter/Semi Bold  11px  lh:auto
+              FRAME  "Canvas"  899×824  AL:col gap10 a:CENTER
+                FRAME  "Container"  800×480  AL:grid  r[18,18,18,18]  fill:#050505  stroke:#2E2E2E/1I
+                  FRAME  "Frame 17"  800×4
+                    ROUNDED_RECTANGLE  "Rectangle 1"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 2"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 3"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 4"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 5"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 7"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 6"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 8"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 9"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 13"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 11"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 15"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 10"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 14"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 12"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 16"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 17"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 21"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 19"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 23"  4×4  r[999,999,999,999]  fill:#1F1F1F
+                    ROUNDED_RECTANGLE  "Rectangle 18"  4×4  r[999,999,999,999]  fill:#1F1F1F
+              FRAME  "Properties"  155×824  AL:col gap14 pad[14,14,14,14]  r[18,18,18,18]  fill:#141414  stroke:#2E2E2E/1I
+                FRAME  "Title"  127×26  AL:col gap4
+                  TEXT  "PROPERTIES"  74×12  fill:#A0A0A0  text="PROPERTIES"  Inter/Semi Bold  12px  lh:auto  RIGHT
+                  TEXT  "Drag onto the grid to place"  127×10  fill:#7A7A7A  text="Drag onto the grid to place"  Inter/Regular  10px  lh:auto  RIGHT
+                FRAME  "Widget"  127×29  AL:row gap10 a:CENTER
+                  FRAME  "Icon"  29×29  AL:col gap6 pad[8,8,8,8] j:CENTER a:CENTER  r[12,12,12,12]  fill:#1F1F1F
+                    INSTANCE  "tabler/brand-speedtest"  13×13  r[12,12,12,12]
+                  TEXT  "Gear"  28×12  fill:#F6F6F6  text="Gear"  Inter/Semi Bold  12px  lh:auto  RIGHT

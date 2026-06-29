@@ -10,8 +10,10 @@ import {
   cardSecondaryClassName,
 } from "./controlClasses"
 
+// Figma panel surface: bg Surface/Panel #141414, radius xl (18),
+// 1px Border/Default #2E2E2E, flat (no shadow). Title/Description use Inter.
 const cardVariants = cva(
-  `group/card flex flex-col overflow-hidden rounded-panel p-[14px] text-[13px] text-[var(--text)] transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-panel *:[img:last-child]:rounded-b-panel ${cardDefaultClassName}`,
+  `group/card flex flex-col overflow-hidden rounded-xl p-[14px] text-[13px] text-[var(--text)] transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl ${cardDefaultClassName}`,
   {
     variants: {
       size: {

@@ -1,57 +1,93 @@
 import { primitiveColor, primitiveRadius, primitiveSpace } from '../primitive'
 
 /**
- * Semantic tokens: product meaning.
+ * Semantic tokens: product meaning. Dark-only, single mode.
  *
- * These should be the default API for app and shared UI code.
+ * Mirrors the Figma `Semantic` variable set exactly (Surface / Text / Border /
+ * Primary / Success / Error / Warning / Info). This is the default API for app
+ * and shared UI code.
  */
 export const semanticTokens = {
   color: {
     bg: {
-      base: primitiveColor.neutral[950],
-      deep: primitiveColor.neutral[950],
-      canvas: primitiveColor.neutral[950],
+      // Surface/Screen — dash canvas, darkest
+      base: primitiveColor.neutral[990],
+      deep: primitiveColor.neutral[990],
+      canvas: primitiveColor.neutral[990],
+      // Surface/App — app window body
+      app: primitiveColor.neutral[925],
     },
     surface: {
+      // Surface/App #0F0F0F
+      app: primitiveColor.neutral[925],
+      // Surface/Panel #141414 — sidebar, side panels
       panel: primitiveColor.neutral[900],
+      // Surface/Tile #1F1F1F — controls, inputs, tiles
       raised: primitiveColor.neutral[800],
-      inset: primitiveColor.neutral[750],
+      tile: primitiveColor.neutral[800],
+      // Surface/Tile 2 #2E2E2E — hover/selected
+      inset: primitiveColor.neutral[700],
+      tile2: primitiveColor.neutral[700],
+      // Surface/Tile 3 #424242
+      tile3: primitiveColor.neutral[600],
       tile4: primitiveColor.neutral[700],
-      overlay: primitiveColor.neutral[950],
+      // Surface/Screen #050505 — solid overlay backdrops
+      overlay: primitiveColor.neutral[990],
     },
     text: {
+      // Text/Default #F6F6F6
       primary: primitiveColor.neutral[50],
-      muted: primitiveColor.neutral[400],
-      disabled: primitiveColor.neutral[300],
-      inverse: '#050505',
+      // Text/Muted #A0A0A0
+      muted: primitiveColor.neutral[300],
+      // Text/Subtle #7A7A7A
+      subtle: primitiveColor.neutral[400],
+      disabled: primitiveColor.neutral[400],
+      // Text/Dark #141414 — text on accent/light fills
+      dark: primitiveColor.neutral[900],
+      inverse: primitiveColor.neutral[900],
     },
     border: {
-      default: primitiveColor.neutral[600],
-      strong: primitiveColor.neutral[500],
+      // Border/Default #2E2E2E
+      default: primitiveColor.neutral[700],
+      // Border/Strong #424242
+      strong: primitiveColor.neutral[600],
+      // Drawn window frame (Layout page)
       window: '#404040',
       focus: primitiveColor.orange[500],
     },
     action: {
+      // Primary/Primary — Orange/500 #FF6A00
       primary: primitiveColor.orange[500],
       primaryHover: primitiveColor.orange[400],
-      primaryMuted: 'rgba(255,106,0,.13)',
-      primaryBorder: 'rgba(255,106,0,.30)',
+      // Primary text on accent = Text/Dark
+      primaryText: primitiveColor.neutral[900],
+      // Primary/Border — Orange/700 #BF4D00
+      primaryBorder: primitiveColor.orange[700],
+      // Icon-button inner stroke — Orange/400 #FF8636
+      primaryStroke: primitiveColor.orange[400],
+      // Primary/BG-Soft — #FF6A001A (10% orange)
+      primaryMuted: '#FF6A001A',
     },
     status: {
+      // Success — Green 500 / 700 / 950
       success: primitiveColor.green[500],
-      successMuted: 'rgba(22,181,102,.13)',
-      successBorder: 'rgba(22,181,102,.48)',
+      successBorder: primitiveColor.green[700],
+      successMuted: primitiveColor.green[950],
+      // Warning — Yellow 500 / 700 / 950
       warning: primitiveColor.yellow[500],
-      warningMuted: 'rgba(245,197,24,.13)',
-      warningBorder: 'rgba(245,197,24,.48)',
+      warningBorder: primitiveColor.yellow[700],
+      warningMuted: primitiveColor.yellow[950],
+      // Error — Red 500 / 800 / 950
       danger: primitiveColor.red[500],
-      dangerMuted: 'rgba(245,72,61,.12)',
-      dangerBorder: 'rgba(245,72,61,.52)',
+      dangerBorder: primitiveColor.red[800],
+      dangerMuted: primitiveColor.red[950],
+      // Info — Blue 500 / 700 / 950
       info: primitiveColor.blue[500],
-      infoMuted: 'rgba(79,156,255,.12)',
-      infoBorder: 'rgba(79,156,255,.44)',
-      primaryMuted: 'rgba(255,106,0,.13)',
-      primaryBorder: 'rgba(255,106,0,.30)',
+      infoBorder: primitiveColor.blue[700],
+      infoMuted: primitiveColor.blue[950],
+      // Primary status channel
+      primaryMuted: '#FF6A001A',
+      primaryBorder: primitiveColor.orange[700],
     },
     data: {
       driver: primitiveColor.orange[500],
@@ -60,42 +96,24 @@ export const semanticTokens = {
       comparison: primitiveColor.blue[500],
       reference: primitiveColor.neutral[300],
     },
-    platform: {
-      winui: {
-        mica: primitiveColor.neutral[900],
-        micaAlt: primitiveColor.neutral[950],
-        layer: primitiveColor.neutral[800],
-        layerAlt: primitiveColor.neutral[750],
-        control: primitiveColor.neutral[700],
-        controlHover: primitiveColor.neutral[600],
-        controlPressed: primitiveColor.neutral[850],
-        stroke: primitiveColor.neutral[600],
-        strokeSubtle: primitiveColor.neutral[500],
-        textPrimary: primitiveColor.neutral[50],
-        textSecondary: primitiveColor.neutral[400],
-        textTertiary: primitiveColor.neutral[300],
-        accent: primitiveColor.orange[500],
-        accentMuted: 'rgba(255,106,0,.14)',
-      },
-    },
   },
   radius: {
-    tag: primitiveRadius.badge,
-    icon: primitiveRadius.tile,
-    badge: primitiveRadius.badge,
-    control: primitiveRadius.control,
-    card: primitiveRadius.panel,
-    panel: primitiveRadius.panel,
-    alert: primitiveRadius.alert,
-    tile: primitiveRadius.tile,
+    tag: primitiveRadius.xxs,
+    icon: primitiveRadius.md,
+    badge: primitiveRadius.xxs,
+    control: primitiveRadius.xl,
+    card: primitiveRadius.xl,
+    panel: primitiveRadius.xl,
+    alert: primitiveRadius.md,
+    tile: primitiveRadius.md,
     pill: primitiveRadius.pill,
   },
   space: {
-    inline: primitiveSpace[1],
-    row: primitiveSpace[2],
-    group: primitiveSpace[3],
-    grid: primitiveSpace[4],
-    card: primitiveSpace[5],
-    page: primitiveSpace[6],
+    inline: primitiveSpace[2],   // 4px
+    row: primitiveSpace[3],      // 6px
+    group: primitiveSpace[4],    // 8px
+    grid: primitiveSpace[5],     // 10px
+    card: primitiveSpace[6],     // 14px
+    page: primitiveSpace[7],     // 16px
   },
 } as const

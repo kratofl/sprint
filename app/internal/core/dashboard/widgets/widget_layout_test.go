@@ -2,38 +2,51 @@ package widgets
 
 import "testing"
 
-func TestTCWidgetUsesCompactExplicitTextPositions(t *testing.T) {
+func TestTCWidgetRendersAsCenteredRingBadge(t *testing.T) {
 	w, ok := Get(WidgetTC)
 	if !ok {
 		t.Fatal("tc widget not in registry")
 	}
 
 	elems := w.Definition(map[string]any{"tcMode": "tc1"})
-	if len(elems) < 2 {
-		t.Fatalf("tc widget returned %d elements, want at least 2", len(elems))
+	if len(elems) < 3 {
+		t.Fatalf("tc widget returned %d elements, want a badge + label + value", len(elems))
 	}
 
-	label, ok := elems[0].(Text)
+	// The TC widget is now a ring badge: a Badge ring, a small label, and the value
+	// centred inside the ring. (PRD #106 #5)
+	badge, ok := elems[0].(Badge)
 	if !ok {
-		t.Fatalf("tc label element type = %T, want Text", elems[0])
+		t.Fatalf("tc first element type = %T, want Badge", elems[0])
 	}
-	value, ok := elems[1].(Text)
-	if !ok {
-		t.Fatalf("tc value element type = %T, want Text", elems[1])
-	}
-
-	if label.X != 0.015 || label.Y != 0.035 {
-		t.Fatalf("tc label position = (%.3f, %.3f), want (0.015, 0.035)", label.X, label.Y)
-	}
-	if label.Style.FontSize != 0.13 || label.Style.VAlign != VAlignStart {
-		t.Fatalf("tc label style = fontSize %.2f vAlign %d, want fontSize 0.13 vAlign start", label.Style.FontSize, label.Style.VAlign)
+	if badge.Color.When == nil && badge.Color.Ref != ColorRefTC {
+		t.Fatalf("tc badge colour ref = %q, want %q", badge.Color.Ref, ColorRefTC)
 	}
 
-	if value.X != 0.5 || value.Y != 0.56 {
-		t.Fatalf("tc value position = (%.3f, %.3f), want (0.500, 0.560)", value.X, value.Y)
+	var label, value *Text
+	for i := range elems {
+		t, ok := elems[i].(Text)
+		if !ok {
+			continue
+		}
+		switch {
+		case t.Binding != "":
+			v := t
+			value = &v
+		case t.Text != "":
+			l := t
+			label = &l
+		}
 	}
-	if value.Style.FontSize != 0.52 {
-		t.Fatalf("tc value fontSize = %.2f, want 0.52", value.Style.FontSize)
+	if label == nil || value == nil {
+		t.Fatal("tc widget should expose a label Text and a bound value Text")
+	}
+	// Label is a small header near the top; value is centred (in the ring).
+	if label.Y >= 0.3 {
+		t.Fatalf("tc label Y = %.3f, want a small top-header value (<0.3)", label.Y)
+	}
+	if value.X != 0.5 || value.Y < 0.4 || value.Y > 0.6 {
+		t.Fatalf("tc value position = (%.3f, %.3f), want centred (~0.5, ~0.5)", value.X, value.Y)
 	}
 	if value.Style.HAlign != HAlignCenter || value.Style.VAlign != VAlignCenter {
 		t.Fatalf("tc value alignment = hAlign %d vAlign %d, want center/center", value.Style.HAlign, value.Style.VAlign)

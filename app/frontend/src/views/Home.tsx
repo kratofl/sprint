@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PageHeader, SegmentedControl, StatusPill, cn } from '@sprint/ui'
+import { PageHeader, SegmentedControl } from '@sprint/ui'
 import type { TelemetryFrame } from '@sprint/types'
 import Telemetry from './Telemetry'
 import Engineer from './Engineer'
@@ -21,7 +21,6 @@ const HOME_SECTIONS = [
 
 export default function Home({ frame, connected, fps }: HomeProps) {
   const [section, setSection] = useState<HomeSection>('live')
-  const demoTelemetryActive = !frame && !connected
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -37,24 +36,11 @@ export default function Home({ frame, connected, fps }: HomeProps) {
             onChange={value => setSection(value as HomeSection)}
           />
         )}
-        status={(
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                connected || demoTelemetryActive ? 'animate-pulse bg-[var(--green)]' : 'bg-[var(--text3)]',
-              )}
-            />
-            <StatusPill status={connected ? 'success' : demoTelemetryActive ? 'info' : 'neutral'}>
-              {connected ? 'Connected' : demoTelemetryActive ? 'Demo' : 'Offline'}
-            </StatusPill>
-          </div>
-        )}
       />
 
-      <div className="min-h-0 flex-1 overflow-hidden p-6">
+      <div className="mt-[14px] min-h-0 flex-1 overflow-hidden">
         {section === 'live' && <Telemetry frame={frame} connected={connected} fps={fps} />}
-        {section === 'engineer' && <Engineer connected={connected} />}
+        {section === 'engineer' && <Engineer connected={connected} compact />}
         {section === 'setup' && <Controls compact />}
       </div>
     </div>

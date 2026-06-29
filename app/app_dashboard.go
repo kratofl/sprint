@@ -69,6 +69,36 @@ func (a *App) DashSaveGlobalSettings(s dashboard.GlobalDashSettings) error {
 	return nil
 }
 
+// DashListThemes returns the full theme library: built-in presets followed by
+// user-created presets.
+func (a *App) DashListThemes() ([]dashboard.ThemePreset, error) {
+	themes, err := dashboard.ListThemes()
+	if err != nil {
+		return nil, fmt.Errorf("DashListThemes: %w", err)
+	}
+	return themes, nil
+}
+
+// DashSaveTheme creates (empty id) or updates a user theme preset, propagates the
+// refreshed library to all painters, and returns the persisted preset.
+func (a *App) DashSaveTheme(p dashboard.ThemePreset) (*dashboard.ThemePreset, error) {
+	saved, err := a.dashSvc.SaveTheme(p)
+	if err != nil {
+		return nil, fmt.Errorf("DashSaveTheme: %w", err)
+	}
+	a.emitDashLayoutsUpdated()
+	return saved, nil
+}
+
+// DashDeleteTheme deletes a user theme preset (built-ins cannot be deleted).
+func (a *App) DashDeleteTheme(id string) error {
+	if err := a.dashSvc.DeleteTheme(id); err != nil {
+		return fmt.Errorf("DashDeleteTheme: %w", err)
+	}
+	a.emitDashLayoutsUpdated()
+	return nil
+}
+
 // DashGetDefaultTheme returns the compile-time default DashTheme.
 // Used by the editor to offer a "reset to default" action.
 func (a *App) DashGetDefaultTheme() widgets.DashTheme {

@@ -43,6 +43,17 @@ export interface DashTheme {
 
 export type DashThemeOverrides = Partial<DashTheme>
 
+// ThemePreset is a named, reusable dashboard theme (colors + typography).
+// Dashboards reference one by id (DashLayout.themeId); built-ins are read-only.
+export interface ThemePreset {
+  id: string
+  name: string
+  builtIn: boolean
+  theme: DashTheme
+  domainPalette: DomainPalette
+  typography?: TypographySettings
+}
+
 export interface GlobalDashSettings {
   theme: DashTheme
   domainPalette: DomainPalette
@@ -63,6 +74,9 @@ export interface WidgetStyle {
   labelColor?: RGBAColor
   labelFont?: FontStyle
   background?: RGBAColor
+  // Per-instance border override. undefined = use the widget type's default;
+  // true = force the outline on; false = force it off. (PRD #106 #7/#8)
+  border?: boolean
 }
 
 export interface ConditionalRule {
@@ -77,6 +91,19 @@ export interface AlertInstance {
   id: string
   type: string
   config?: Record<string, unknown>
+}
+
+export type AlertDisplayMode = 'full' | 'middle'
+export type AlertColorMode = 'normal' | 'inverted'
+
+// AlertConfig is the dashboard-level shared alert configuration: one set of
+// display controls plus the set of enabled alert types. It replaces the retired
+// per-instance placement/configuration model (DashLayout.alerts).
+export interface AlertConfig {
+  displayMode?: AlertDisplayMode
+  colorMode?: AlertColorMode
+  duration?: number
+  enabledTypes?: string[]
 }
 
 export interface AlertMeta {
@@ -133,6 +160,8 @@ export interface DashLayout {
   idlePage: DashPage
   pages: DashPage[]
   alerts: AlertInstance[]
+  alertConfig?: AlertConfig
+  themeId?: string
   theme?: DashThemeOverrides
   domainPalette?: DomainPalette
   typography?: TypographySettings
@@ -225,7 +254,7 @@ export interface ConfigDef {
   default: string
 }
 
-export type ElementKind = 'panel' | 'text' | 'dot' | 'hbar' | 'deltabar' | 'segbar' | 'grid' | 'condition'
+export type ElementKind = 'panel' | 'text' | 'dot' | 'hbar' | 'deltabar' | 'segbar' | 'grid' | 'condition' | 'badge'
 export type FontStyle = 'label' | 'bold' | 'number' | 'mono'
 export type HAlign = 0 | 1 | 2
 export type VAlign = 0 | 1 | 2
@@ -269,6 +298,9 @@ export interface WidgetElement {
   dotX?: number
   dotY?: number
   dotR?: number
+  badgeColor?: ColorExpr
+  badgeR?: number
+  badgeFill?: number
   barBinding?: string
   barX?: number
   barY?: number

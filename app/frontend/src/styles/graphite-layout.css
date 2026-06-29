@@ -59,18 +59,28 @@
   border-radius: var(--r);
   background: var(--panel);
   color: var(--text);
+  transition:
+    background-color .16s var(--ease-out),
+    border-color .16s var(--ease-out),
+    transform .18s var(--ease-spring);
 }
 
 .ds-dash-card:hover {
   border-color: var(--line2);
   background: var(--panel2);
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-dash-card { transition: none; }
+  .ds-dash-card:hover { transform: none; }
 }
 
 .ds-dash-preview {
   aspect-ratio: 2.25 / 1;
   overflow: hidden;
   border-bottom: 1px solid var(--line);
-  background: #000;
+  background: black;
 }
 
 .ds-dash-create {
@@ -229,19 +239,21 @@
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  place-items: start center;
+  place-items: center;
   overflow: auto;
-  background: var(--bg);
-  padding: 0 24px 24px;
+  background: transparent;
+  padding: 8px;
 }
 
+/* Figma "Canvas / Container": Surface/Screen #050505, radius 18. The single 1px
+   Border/Default stroke comes from the DashCanvas root and is clipped to this
+   radius (overflow:hidden), so no border is set here to avoid a doubled edge. */
 .ds-reference-canvas {
   width: min(100%, 960px);
   aspect-ratio: 800 / 480;
   overflow: hidden;
-  border: 1px solid var(--line2);
-  border-radius: calc(var(--r) + 8px);
-  background: #000;
+  border-radius: 18px;
+  background: var(--bg-deep);
 }
 
 .ds-canvas-stage[data-scale="50"] .ds-reference-canvas {

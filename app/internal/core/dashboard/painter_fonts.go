@@ -12,20 +12,24 @@ import (
 )
 
 // fontFileNames maps a FontFamily and bold flag to preferred TTF files.
-// Bahnschrift / IBM Plex files are used when present; existing bundled fonts
-// remain fallbacks so macOS development works without installing fonts.
+//
+// On-wheel typography mirrors the desktop product (PRD #106): telemetry VALUES use
+// Saira (the desktop `--font-numeric` face), and LABELS use Inter (the desktop
+// `--font-ui`/body face). JetBrains Mono / Space Grotesk remain as fallbacks.
 func fontFileNames(family widgets.FontFamily, bold bool) []string {
 	switch family {
 	case widgets.FontFamilyMono:
+		// Dominant telemetry values — Saira.
 		if bold {
-			return []string{"Bahnschrift-SemiBold.ttf", "IBMPlexMono-Bold.ttf", "JetBrainsMono-Bold.ttf"}
+			return []string{"Saira-SemiBold.ttf", "Saira-Regular.ttf", "JetBrainsMono-Bold.ttf"}
 		}
-		return []string{"Bahnschrift-Regular.ttf", "IBMPlexMono-Regular.ttf", "JetBrainsMono-Regular.ttf"}
+		return []string{"Saira-Regular.ttf", "JetBrainsMono-Regular.ttf"}
 	default:
+		// Restrained labels — Inter.
 		if bold {
-			return []string{"Bahnschrift-SemiBold.ttf", "Bahnschrift-Bold.ttf", "IBMPlexSans-SemiBold.ttf", "Inter-Bold.ttf", "SpaceGrotesk-Bold.ttf"}
+			return []string{"Inter-Bold.ttf", "SpaceGrotesk-Bold.ttf"}
 		}
-		return []string{"Bahnschrift-Regular.ttf", "IBMPlexSans-Regular.ttf", "Inter-Regular.ttf", "SpaceGrotesk-Regular.ttf"}
+		return []string{"Inter-Regular.ttf", "SpaceGrotesk-Regular.ttf"}
 	}
 }
 

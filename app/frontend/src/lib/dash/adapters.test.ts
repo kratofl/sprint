@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { adaptCatalogEntry, adaptGlobalDashSettings, adaptLayout, adaptSavedDevice, adaptWidgetCatalogEntry } from './adapters.ts'
+import { adaptCatalogEntry, adaptGlobalDashSettings, adaptLayout, adaptSavedDevice, adaptThemePreset, adaptWidgetCatalogEntry } from './adapters.ts'
 
 test('adaptSavedDevice maps snake_case desktop payloads into camelCase frontend models', () => {
   const adapted = adaptSavedDevice({
@@ -258,4 +258,46 @@ test('adaptWidgetCatalogEntry flattens Go text styles for widget previews', () =
   assert.equal(adapted.defaultDefinition?.[1]?.hAlign, 1)
   assert.equal(adapted.defaultDefinition?.[1]?.vAlign, 1)
   assert.equal(adapted.defaultDefinition?.[1]?.opticalCenter, true)
+})
+
+test('adaptThemePreset normalizes a desktop theme preset payload', () => {
+  const adapted = adaptThemePreset({
+    id: 'ice',
+    name: 'Ice',
+    builtIn: true,
+    theme: { primary: { R: 90, G: 200, B: 255, A: 255 } },
+    domainPalette: { tc: { R: 1, G: 2, B: 3, A: 255 } },
+    typography: { fontScale: 1.1 },
+  })
+
+  assert.equal(adapted.id, 'ice')
+  assert.equal(adapted.name, 'Ice')
+  assert.equal(adapted.builtIn, true)
+  // The provided colour is preserved; the rest of the palette is filled from defaults.
+  assert.deepEqual(adapted.theme.primary, { R: 90, G: 200, B: 255, A: 255 })
+  assert.ok(adapted.theme.bg)
+  assert.deepEqual(adapted.domainPalette.tc, { R: 1, G: 2, B: 3, A: 255 })
+  assert.equal(adapted.typography?.fontScale, 1.1)
+})
+
+test('adaptLayout carries the themeId reference (omitted when absent)', () => {
+  assert.equal(adaptLayout({ id: 'l1', name: 'L1', themeId: 'ice', pages: [] }).themeId, 'ice')
+  assert.equal(adaptLayout({ id: 'l2', name: 'L2', pages: [] }).themeId, undefined)
+})
+
+test('adaptLayout migrates legacy alert instances into the shared alert config', () => {
+  const adapted = adaptLayout({
+    id: 'd', name: 'D', gridCols: 20, gridRows: 12,
+    idlePage: { id: 'idle', name: 'Idle', widgets: [] },
+    pages: [{ id: 'p1', name: 'Main', widgets: [] }],
+    alerts: [
+      { id: '1', type: 'tc_change', config: { duration: '2' } },
+      { id: '2', type: 'abs_change' },
+    ],
+  })
+
+  assert.equal(adapted.alertConfig?.displayMode, 'full')
+  assert.equal(adapted.alertConfig?.colorMode, 'normal')
+  assert.equal(adapted.alertConfig?.duration, 2)
+  assert.deepEqual([...(adapted.alertConfig?.enabledTypes ?? [])].sort(), ['abs_change', 'tc_change'])
 })

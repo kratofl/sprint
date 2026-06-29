@@ -35,7 +35,7 @@ func (p *Painter) getContext() *gg.Context {
 	} else {
 		bg := p.bgCol
 		if bg == (color.RGBA{}) {
-			bg = widgets.ColorBackground
+			bg = widgets.FixedCanvasBackground
 		}
 		p.ctx.SetColor(bg)
 		p.ctx.Clear()
@@ -43,12 +43,20 @@ func (p *Painter) getContext() *gg.Context {
 	return p.ctx
 }
 
+// defaultPanelCornerRadius is the corner radius (in pixels) applied to a standard
+// widget surface when its metadata does not specify one, so every widget reads as a
+// rounded instrument rather than a square box. (PRD #106 #2/#6)
+const defaultPanelCornerRadius = 14.0
+
 // painterDrawPanel draws a bordered panel: border ring then background interior.
-func painterDrawPanel(dc *gg.Context, x, y, w, h, r, bw float64) {
-	dc.SetColor(widgets.ColorBorder)
+// The interior fill is supplied by the caller — standard widgets pass pure black
+// (widgets.FixedCanvasBackground) so the surface stays flat; an explicit per-widget
+// background override passes its colour instead.
+func painterDrawPanel(dc *gg.Context, x, y, w, h, r, bw float64, fill color.RGBA) {
+	dc.SetColor(widgets.ColorInstrumentOutline)
 	dc.DrawRoundedRectangle(x, y, w, h, r)
 	dc.Fill()
-	dc.SetColor(widgets.ColorBackground)
+	dc.SetColor(fill)
 	dc.DrawRoundedRectangle(x+bw, y+bw, w-bw*2, h-bw*2, r)
 	dc.Fill()
 }
