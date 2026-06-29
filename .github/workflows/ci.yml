@@ -23,12 +23,6 @@ jobs:
       - name: Vet API
         run: go vet ./api/... ./pkg/...
 
-      - name: Vet desktop app
-        run: |
-          cd app/frontend && pnpm install --frozen-lockfile && pnpm run build
-          cd ../.. && cd app && go vet ./...
-        continue-on-error: true  # requires Wails + built frontend
-
       - name: Test API
         run: go test ./api/...
 
@@ -64,5 +58,21 @@ jobs:
       - name: Build web
         run: pnpm --filter @sprint/web build
 
-      - name: Build desktop frontend
-        run: pnpm --filter @sprint/desktop build
+  desktop:
+    name: Desktop (.NET)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore desktop app
+        run: dotnet restore app/Sprint.Desktop.sln
+
+      - name: Build desktop app
+        run: dotnet build app/Sprint.Desktop.sln --no-restore
+
+      - name: Test desktop app
+        run: dotnet run --project app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj

@@ -1,57 +1,41 @@
 # Desktop App (`/app`)
 
-Wails application (Go backend + React/TypeScript frontend) that runs on the driver's rig.
+Native .NET 10/Avalonia desktop app for the driver's rig.
 
 ## Responsibilities
 
-- Read live telemetry from sim racing games via UDP/shared memory
-- Render RGB565 frames to USB wheel/dash screens (VoCore M-PRO, USBD480) via WinUSB
-- Host a WebSocket server for LAN race engineer connections
-- Detect wheel button presses (set target lap, etc.)
-- Manage car setups locally
-- Sync sessions, setups, and layouts with the API server
+- Host the Graphite desktop shell from the figma branch as native Avalonia UI.
+- Show live demo telemetry, engineer controls, setup programs, dash layouts, devices,
+  settings, and help pages.
+- Load desktop presets from `app/Sprint.Desktop.Client/presets`.
+- Persist user settings, saved devices, and created dash layouts under the Sprint
+  app-data folder.
 
 ## Structure
 
 ```
 app/
-├── main.go                 ← Wails entry point (embeds frontend/dist)
-├── app.go                  ← App struct bound to frontend
-├── wails.json              ← Wails config
-├── internal/
-│   ├── core/               ← Wires all services together (Coordinator)
-│   ├── hardware/           ← ScreenDriver interface, VoCoreDriver, USBD480Driver
-│   ├── dashboard/          ← DashLayout model, Manager, Painter, widgets/, alerts/
-│   ├── devices/            ← Device registry persistence (devices.json), catalog
-│   ├── input/              ← Wheel button Detector
-│   ├── delta/              ← Position-based lap delta Tracker + valid-lap detection
-│   ├── commands/           ← Button→action global registry
-│   ├── capture/            ← Windows screen capture (rear-view) + overlay window
-│   ├── updater/            ← GitHub Releases checker + self-replace installer
-│   ├── settings/           ← Persistent app preferences (settings.json)
-│   ├── logger/             ← slog wrapper + multi-writer
-│   └── appdata/            ← Platform config dir resolver
-└── frontend/               ← React/TS frontend (Vite)
-    ├── src/
-    │   ├── App.tsx
-    │   ├── views/          ← Telemetry, DashEditor, Setups, EngineerStatus
-    │   ├── hooks/          ← useTelemetry
-    │   └── lib/            ← Wails runtime bindings
-    ├── package.json        ← @sprint/desktop
-    └── vite.config.ts
+├── Sprint.Desktop.sln
+├── Sprint.Desktop.Client/ ← Avalonia app, feature slices, assets, presets
+├── Sprint.Desktop.Api/    ← shared desktop/game API contracts
+├── Sprint.Games/          ← game adapters and game-specific data paths
+└── Sprint.Desktop.Tests/  ← lightweight desktop regression tests
 ```
+
+The desktop app consumes shared telemetry contracts from `app/Sprint.Desktop.Api`.
+Game-specific paths, adapters, and source implementations live in `app/Sprint.Games`.
 
 ## Running
 
-```bash
-# Development (requires Wails CLI)
-cd app && wails dev
+```powershell
+dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
+make dev-app
+```
 
-# Production build
+## Building
+
+```powershell
 make build-app
 ```
 
-## Dependencies
-
-- Imports shared types from `/pkg` (via `go.work`)
-- Frontend imports design tokens from `@sprint/tokens` and types from `@sprint/types`
+The published app is written to `app/build/bin`.

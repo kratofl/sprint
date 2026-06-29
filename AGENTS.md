@@ -9,9 +9,11 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Stay inside this repository. Do not read, write, execute, or otherwise operate
   outside the project folder unless the user explicitly asks.
 - Do not install tools, CLIs, language servers, or other system-wide software.
-  Do not run `make setup` unless the user explicitly asks for Wails CLI setup.
+  Do not run `make setup` unless the user explicitly asks for full dependency
+  restore.
 - Only install project dependencies through the project's package managers when
-  needed for the apps, such as `pnpm install` or Go module commands.
+  needed for the apps, such as `pnpm install`, `dotnet restore`, or Go module
+  commands.
 - Prefer targeted fixes over broad refactors unless the task requires structural
   change.
 - Work with existing user changes. Do not revert unrelated edits or deleted
@@ -19,8 +21,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 
 ## Default Focus
 
-- Prioritize work in `app/`, especially the Wails desktop app and its embedded
-  React frontend.
+- Prioritize work in `app/`, especially the Avalonia desktop app.
 - Only change `api/` or `web/` when the user asks, or when a shared contract
   requires corresponding consumer updates.
 - When shared DTOs, shared TypeScript types, shared UI, or shared tokens change,
@@ -28,16 +29,13 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 
 ## Repo Layout
 
-- `app/`: Wails desktop app, Go backend plus embedded React frontend.
-- `app/frontend/`: Vite React app published as `@sprint/desktop`.
-- `app/internal/core/dashboard/`: dashboard manager, layout, painter, widgets,
-  alerts, and embedded fonts for wheel display rendering.
+- `app/`: .NET/Avalonia desktop app and desktop presets.
 - `api/`: Go API server and WebSocket relay.
 - `web/`: Next.js frontend.
 - `pkg/`: shared Go packages, including DTOs, game adapters, and shared memory.
 - `packages/types/`: shared TypeScript contracts.
 - `packages/tokens/`: Graphite design tokens.
-- `packages/ui/`: reusable token-backed React components.
+- `packages/ui/`: reusable token-backed React components for web surfaces.
 
 ## Source Of Truth
 
@@ -47,13 +45,12 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - `packages/tokens`: design tokens and theme primitives.
 - `packages/ui`: reusable UI components.
 - `api/internal/store`: API persistence ownership.
-- `app/internal/core`: desktop orchestration and Wails-facing runtime services.
-- `app/internal/hardware`: VoCore, USBD480, RGB565, and WinUSB hardware paths.
+- `app/DesktopRuntime.cs`: desktop preset loading and local persistence.
 
 ## Platform
 
 - This repo is Windows-first. The `Makefile` runs targets through PowerShell.
-- Desktop hardware paths use WinUSB and only fully work on Windows.
+- Desktop hardware integrations are Windows-first.
 - Use PowerShell syntax for shell examples and local automation in this repo.
 - Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal
   user-level Go cache.
@@ -64,14 +61,15 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - List targets: `make help`
 - Start API: `make dev-api`
 - Start web: `make dev-web`
-- Start desktop: `cd app; wails dev`
+- Start desktop: `dotnet run --project app/Sprint.Desktop.csproj`
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
 - Test API and shared Go: `make test`
 - Test API only: `make test-api`
 - Test shared Go only: `make test-pkg`
-- Type-check desktop frontend: `pnpm --filter @sprint/desktop type-check`
+- Test desktop only: `make test-app`
+- Build desktop: `dotnet build app/Sprint.Desktop.csproj`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
 - Test shared UI: `pnpm --filter @sprint/ui test`
 - Test tokens: `pnpm --filter @sprint/tokens test`
@@ -81,23 +79,13 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 Run the smallest relevant checks for your change set. Do not claim checks you
 did not run.
 
-`cd app; go test ./...`, `make lint-app`, and Wails builds require
-`app/frontend/dist` to exist because the Go app embeds the built frontend. Build
-the desktop frontend first with `pnpm --filter @sprint/desktop build` when
-needed.
-
-Frontend dash-editor source-assertion tests under
-`app/frontend/src/components/dash-editor/*.test.ts` use Node's built-in runner
-and are run directly, for example `node --test <file>`.
+`make lint-app` builds the Avalonia desktop project with warnings as errors.
 
 ## Browser And Desktop Checks
 
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
-- Browser-safe desktop UI checks use `http://localhost:5173/` while
-  `cd app; wails dev` is running.
-- The `make dev-app-agent` target and frontend metadata reference scripts under
-  `app/scripts/`, but that directory is not present in the current working tree.
-  Restore those scripts before relying on the fixed-port desktop attach flow.
+- Browser-safe desktop checks no longer apply to `app/`; use native Avalonia
+  build/run checks for the desktop app.
 
 ## Architecture Notes
 
@@ -105,13 +93,10 @@ and are run directly, for example `node --test <file>`.
   mapped into `pkg/dto` at the edge; downstream desktop, hardware, engineer,
   sync, API, and web consumers should depend on the shared contract.
 - To add a game adapter, implement `pkg/games.GameAdapter`, map raw data to
-  `pkg/dto`, then register the adapter in `app/internal/core/core.go`.
-- `app/internal/core.Coordinator` wires subsystems together. Keep business logic
-  in focused services instead of growing the coordinator.
-- Wails exported methods live on `App` in `app/app*.go`. Keep bridge methods
-  thin and use generated bindings from the frontend.
-- Desktop event streams should avoid blocking telemetry reads. Prefer buffered
-  latest-value handoff patterns already used by the core runtime.
+  `pkg/dto`, then add the desktop integration point in `app/DesktopRuntime.cs`
+  or a focused service next to it.
+- Keep desktop business logic in focused C# services instead of growing
+  `MainWindow.cs`.
 
 ## UI Rules
 
@@ -122,10 +107,8 @@ and are run directly, for example `node --test <file>`.
 - Use the Graphite surface stack and 1px borders for depth. Do not revive old
   glass, glow, gradient, or neumorphic directions.
 - Reuse tokens from `packages/tokens` instead of inventing theme values.
-- Reuse controls from `packages/ui`; local desktop components are only for
-  Wails, hardware, or page-specific runtime behavior.
-- Desktop pages should compose shared shell and control primitives. If a visual
-  control is reusable, put it in `packages/ui`.
+- Keep the Avalonia desktop shell aligned with the Graphite tokens in
+  `Graphite.cs` and `docs/DESIGN.md`.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
 
@@ -135,7 +118,7 @@ and are run directly, for example `node --test <file>`.
 - Design system and UI implementation contract: `docs/DESIGN.md`
 - Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
 - Release notes: `docs/RELEASE.md`
-- Package-local notes: `api/README.md`, `pkg/README.md`, and package
+- Package-local notes: `app/README.md`, `api/README.md`, `pkg/README.md`, and package
   `README.md` files when present.
 
 Tool-specific companion files such as `CLAUDE.md` may exist, but this file is

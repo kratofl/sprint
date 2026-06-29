@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sprint.Desktop.Client\Sprint.Desktop.Client.csproj" />
+    <ProjectReference Include="..\Sprint.Desktop.Api\Sprint.Desktop.Api.csproj" />
+    <ProjectReference Include="..\Sprint.Games\Sprint.Games.csproj" />
+  </ItemGroup>
+</Project>

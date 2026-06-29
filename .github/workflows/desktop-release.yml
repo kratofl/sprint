@@ -30,45 +30,20 @@ jobs:
           $isPrerelease = ($lower -match 'alpha|beta').ToString().ToLower()
           "IS_PRERELEASE=$isPrerelease" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          go-version-file: app/go.mod
+          dotnet-version: '10.0.x'
 
-      - name: Setup Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: '22'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-        with:
-          version: '10.32.1'
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build shared packages
-        run: pnpm turbo build --filter=@sprint/types --filter=@sprint/ui
-
-      - name: Update wails.json productVersion
-        shell: pwsh
-        working-directory: app
-        run: |
-          $config = Get-Content wails.json -Raw | ConvertFrom-Json
-          $config.info.productVersion = "${{ env.VERSION }}"
-          $config | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
+      - name: Restore desktop app
+        run: dotnet restore app/Sprint.Desktop.sln
 
       - name: Build desktop app
-        working-directory: app
-        run: wails build -clean -ldflags "-X main.Version=${{ env.VERSION }}"
+        run: dotnet publish app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj -c Release -r win-x64 --self-contained false -p:InformationalVersion=${{ env.VERSION }} -o app/build/bin
 
       - name: Rename artifact
         shell: pwsh
-        run: Move-Item app/build/bin/Sprint.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
+        run: Move-Item app/build/bin/Sprint.Desktop.Client.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
@@ -76,4 +51,3 @@ jobs:
           files: app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}
-

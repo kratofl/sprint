@@ -40,6 +40,12 @@
 *.out
 vendor/
 
+# ─── .NET ────────────────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+*.user
+*.rsuser
+
 # ─── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -83,16 +89,13 @@ Cargo.lock
 *.p12
 secrets/
 
-# ─── Wails ────────────────────────────────────────────────────────────────────
+# ─── Desktop app ──────────────────────────────────────────────────────────────
 app/build/bin/
-app/app
-app/app.exe
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/
 
 # ─── Vite / Frontend Build ───────────────────────────────────────────────────
-app/frontend/dist/
 *.tsbuildinfo
 
 # ─── Turbo ────────────────────────────────────────────────────────────────────
@@ -112,8 +115,10 @@ temp/
 .codebase-memory/
 install.ps1
 .superpowers/
+superpowers/
 
 # ─── Agent / workflow artifacts ──────────────────────────────────────────────
 # Playwright visual-verification screenshots and session handoff docs.
 output/
 handoffs/
+bash.exe.stackdump

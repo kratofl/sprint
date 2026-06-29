@@ -13,7 +13,7 @@ Canonical design direction:
 1. `docs/DESIGN.md` - implementation contract for agents and contributors.
 2. `packages/tokens` - runtime token implementation.
 3. `packages/ui` - reusable React component implementation.
-4. `app/frontend` - current desktop composition and runtime behavior.
+4. `app` - current native Avalonia desktop composition and runtime behavior.
 
 Do not revive previous non-Graphite design directions. Graphite replaces them.
 
@@ -33,16 +33,17 @@ Do not revive previous non-Graphite design directions. Graphite replaces them.
   switches, steppers, tooltips, modals;
 - data layout primitives: tiles, cards, setting rows, page headers, badges,
   status pills, binding rows, preview frames;
-- editor primitives that are reusable outside one Wails-only screen.
+- editor primitives that are reusable outside one desktop-only screen.
 
-`app/frontend` owns composition and desktop runtime behavior only:
+`app` owns native desktop composition and runtime behavior:
 
-- Wails routing, generated bindings, event subscriptions, and window controls;
-- page-level state and orchestration;
-- local components only when they are genuinely desktop-only or hardware-bound.
+- Avalonia shell, page-level state, and window controls;
+- preset loading, local persistence, and desktop orchestration;
+- local controls only when they are genuinely desktop-only or hardware-bound.
 
-No desktop page may introduce a reusable visual control locally when it belongs
-in `packages/ui`.
+No web page may introduce a reusable visual control locally when it belongs in
+`packages/ui`. Native Avalonia controls should stay aligned with the same
+Graphite tokens and interaction contracts.
 
 ## Foundations
 
@@ -109,7 +110,7 @@ Rules:
 The desktop shell is fixed and shared:
 
 - `40px` draggable titlebar with logo, sidebar collapse, history controls,
-  breadcrumb, sim-link pill, tick rate, and Wails window controls.
+  breadcrumb, sim-link pill, tick rate, and native window controls.
 - `208px` sidebar, collapsible to `62px`, with grouped primary navigation.
 - Body tray inset from the shell by `10px`, framed by `--line2`, filled with
   `--bg`, and rounded by `calc(var(--r) + 2px)`.
@@ -172,10 +173,8 @@ No backward compatibility is required for this rebuild.
 
 Use cleaner contracts when the Graphite UI needs them:
 
-- typed Go services own persistence and hardware/dashboard orchestration;
-- Wails exported methods remain thin;
-- generated Wails bindings are the frontend source for callable methods;
-- frontend adapters normalize only unavoidable transport shape differences;
+- typed C# services own desktop persistence and native runtime orchestration;
+- desktop adapters normalize only unavoidable transport shape differences;
 - shared DTOs move to `pkg/dto` or `packages/types` when multiple apps need
   them.
 
@@ -195,8 +194,7 @@ The UI must be keyboard-operable and screen-reader navigable:
 Before claiming a page is done:
 
 - run the smallest relevant type/test checks;
-- visually inspect desktop and browser-safe Wails surfaces;
+- visually inspect the native Avalonia desktop surface;
 - verify focus, hover, selected, disabled, empty, loading, and destructive states;
-- check that app pages import shared controls from `@sprint/ui` rather than
-  recreating them locally;
+- check that Avalonia controls follow the shared Graphite control contract;
 - scan for raw Graphite hex values outside `packages/tokens`.

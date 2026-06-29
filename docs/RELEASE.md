@@ -14,8 +14,8 @@ starts with `v`. Pushing the tag is the only manual step you need.
 When you push a tag the workflow:
 
 1. Strips the leading `v` to get a bare version number (`1.2.3`)
-2. Patches `app/wails.json` → `info.productVersion` with that number
-3. Builds the Windows `.exe` via `wails build -ldflags "-X main.Version=<ver>"`
+2. Restores the .NET desktop project
+3. Publishes the Windows `.exe` via `dotnet publish -p:InformationalVersion=<ver>`
 4. Renames the artifact to `sprint-<tag>-windows-amd64.exe`
 5. Uploads it to a GitHub Release (auto-generates release notes from commits)
 6. Also builds the API server binary (Linux) and attaches it to the same release
@@ -34,8 +34,8 @@ v<major>.<minor>.<patch>-rc.<n>      → release candidate
 Examples: `v0.1.0`, `v0.2.0-alpha.1`, `v1.0.0-rc.2`
 
 The full tag (e.g. `v0.2.0-alpha.1`) is used as the artifact filename.
-The bare version (e.g. `0.2.0-alpha.1`) is baked into the binary via
-`-ldflags "-X main.Version=..."` and shown in the app's about screen.
+The bare version (e.g. `0.2.0-alpha.1`) is passed to the .NET build through
+`-p:InformationalVersion=...`.
 
 ---
 
@@ -110,12 +110,9 @@ make build-app
 # Override the version explicitly
 make build-app VERSION=0.2.0-alpha.1-dev
 
-# Output is at
-app/build/bin/Sprint.exe
+# Output is under
+app/build/bin
 ```
-
-Requires the [Wails CLI](https://wails.io/docs/gettingstarted/installation)
-to be installed (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
 ---
 

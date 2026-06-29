@@ -1,7 +1,9 @@
 # Screen Protocols
 
 This is the low-level reference for the USB screen pipeline used by the Sprint
-desktop app. The implementation source of truth is `app/internal/hardware`.
+desktop app. The legacy Go implementation previously lived in
+`app/internal/hardware`; the .NET/Avalonia rebuild should use this document as
+the protocol reference when native hardware transport is reintroduced.
 Use this document when changing VoCore M-PRO, USBD480 NX, WinUSB, RGB565, or
 screen troubleshooting behavior.
 
@@ -23,8 +25,8 @@ Key implementation files:
 - `driver.go`: `ScreenDriver` and `ScreenConfig`.
 - `factory.go`: maps `devices.DriverType` to `VoCoreDriver` or
   `USBD480Driver`.
-- `base_driver.go`: connection retry loop, frame scheduling, double-buffered
-  render/send pipeline, disabled mode, and Wails screen events.
+- `base_driver.go`: legacy connection retry loop, frame scheduling,
+  double-buffered render/send pipeline, disabled mode, and screen events.
 - `rgb565.go`: RGBA to RGB565 conversion, rotation, margin, and offset.
 - `transport.go`: internal `screenTransport` interface.
 
