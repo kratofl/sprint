@@ -5,6 +5,26 @@ namespace Sprint.Desktop.Tests;
 
 public sealed class LeMansUltimateTelemetryTests
 {
+    private static byte[] EmptyLmuBuffer()
+    {
+        return new byte[LmuBinary.TotalBufferSize];
+    }
+
+    private static void WriteInt32(byte[] buffer, int offset, int value) =>
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset, sizeof(int)), value);
+
+    private static void WriteDouble(byte[] buffer, int offset, double value) =>
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset, sizeof(double)), value);
+
+    private static void WriteBool(byte[] buffer, int offset, bool value) =>
+        buffer[offset] = value ? (byte)1 : (byte)0;
+
+    private static void WriteString(byte[] buffer, int offset, int length, string value)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        bytes.AsSpan(0, Math.Min(bytes.Length, length)).CopyTo(buffer.AsSpan(offset, length));
+    }
+
     [Fact]
     public void Lmu_offsets_match_shared_memory_interface_layout()
     {
@@ -40,5 +60,34 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(123.25d, LmuBinary.ReadDouble(bytes, 0));
         Assert.Equal(42, LmuBinary.ReadInt32(bytes, 8));
         Assert.Equal(12.5f, LmuBinary.ReadSingle(bytes, 12));
+    }
+
+    [Fact]
+    public void Lmu_parser_returns_session_only_when_player_is_not_realtime()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteString(buffer, LmuBinary.ScoringStart, 64, "Fuji");
+        WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 68, 123.5);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 84, 31);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 88, 4563.2);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 42);
+        WriteBool(buffer, LmuBinary.ScoringStart + 114, false);
+        buffer[LmuBinary.PlayerIndexOffset] = 3;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        var parsed = LmuParser.Parse(buffer);
+
+        Assert.Equal("Fuji", parsed.ScoringInfo.TrackName);
+        Assert.Equal(10, parsed.ScoringInfo.Session);
+        Assert.Equal(123.5, parsed.ScoringInfo.CurrentElapsedTime);
+        Assert.Equal(31, parsed.ScoringInfo.MaxLaps);
+        Assert.Equal(4563.2, parsed.ScoringInfo.LapDistance);
+        Assert.Equal(42, parsed.ScoringInfo.NumVehicles);
+        Assert.Equal(3, parsed.PlayerIndex);
+        Assert.True(parsed.PlayerHasVehicle);
+        Assert.False(parsed.PlayerInCar);
+        Assert.Null(parsed.Telemetry);
+        Assert.Null(parsed.Scoring);
     }
 }
