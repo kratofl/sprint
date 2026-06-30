@@ -79,6 +79,44 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_connects_reads_and_publishes_connected_status()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
+        WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 68, 200.0);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+
+        source.Connect();
+        var fresh = source.TryRead(out var frame);
+
+        Assert.True(fresh);
+        Assert.Equal("Le Mans Ultimate", source.Name);
+        Assert.Equal(Sprint.Desktop.Api.Telemetry.TelemetryConnectionState.Connected, source.Status.State);
+        Assert.NotNull(source.Status.LastFrameAt);
+        Assert.True(source.Status.LastFrameValid);
+        Assert.Equal("Spa", frame.Session.Track);
+        Assert.Same(source.Current, frame);
+
+        var lastFrameAt = source.Status.LastFrameAt;
+        source.Connect();
+        Assert.Equal(lastFrameAt, source.Status.LastFrameAt);
+        Assert.True(source.Status.LastFrameValid);
+    }
+
+    [Fact]
+    public void Lmu_source_dispose_is_terminal()
+    {
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
+        source.Connect();
+        source.Dispose();
+
+        Assert.Equal(Sprint.Desktop.Api.Telemetry.TelemetryConnectionState.Disconnected, source.Status.State);
+        Assert.Throws<ObjectDisposedException>(() => source.Connect());
+        Assert.Throws<ObjectDisposedException>(() => source.TryRead(out _));
+    }
+
+    [Fact]
     public void Lmu_parser_returns_session_only_when_player_is_not_realtime()
     {
         var buffer = EmptyLmuBuffer();
