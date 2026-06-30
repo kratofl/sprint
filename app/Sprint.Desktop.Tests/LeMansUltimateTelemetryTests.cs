@@ -64,6 +64,21 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void In_memory_lmu_provider_copies_exact_snapshot_bytes()
+    {
+        var snapshot = EmptyLmuBuffer();
+        snapshot[123] = 77;
+        using var provider = new InMemoryLmuSnapshotProvider(snapshot);
+        var destination = new byte[LmuBinary.TotalBufferSize];
+
+        provider.Open();
+        provider.CopySnapshot(destination);
+
+        Assert.Equal(snapshot, destination);
+        Assert.True(provider.IsOpen);
+    }
+
+    [Fact]
     public void Lmu_parser_returns_session_only_when_player_is_not_realtime()
     {
         var buffer = EmptyLmuBuffer();
