@@ -90,4 +90,99 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Null(parsed.Telemetry);
         Assert.Null(parsed.Scoring);
     }
+
+    [Fact]
+    public void Lmu_parser_decodes_player_telemetry_and_scoring_when_realtime()
+    {
+        var buffer = EmptyLmuBuffer();
+        var scoringInfo = LmuBinary.ScoringStart;
+        WriteString(buffer, scoringInfo, 64, "Spa");
+        WriteInt32(buffer, scoringInfo + 64, 10);
+        WriteDouble(buffer, scoringInfo + 68, 200.0);
+        WriteDouble(buffer, scoringInfo + 88, 7004.0);
+        WriteInt32(buffer, scoringInfo + 104, 30);
+        WriteBool(buffer, scoringInfo + 114, true);
+
+        buffer[LmuBinary.PlayerIndexOffset] = 2;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        var telemetry = LmuBinary.TelemetryInfoBase + 2 * LmuBinary.VehicleTelemetrySize;
+        WriteDouble(buffer, telemetry + 12, 200.5);
+        WriteInt32(buffer, telemetry + 20, 7);
+        WriteDouble(buffer, telemetry + 24, 188.0);
+        WriteString(buffer, telemetry + 32, 64, "Peugeot 9X8");
+        WriteDouble(buffer, telemetry + 160, 1.0);
+        WriteDouble(buffer, telemetry + 168, 2.0);
+        WriteDouble(buffer, telemetry + 176, 3.0);
+        WriteDouble(buffer, telemetry + 184, 4.0);
+        WriteDouble(buffer, telemetry + 192, 5.0);
+        WriteDouble(buffer, telemetry + 200, 6.0);
+        WriteInt32(buffer, telemetry + 352, 5);
+        WriteDouble(buffer, telemetry + 356, 6500.0);
+        WriteDouble(buffer, telemetry + 524, 42.5);
+        WriteDouble(buffer, telemetry + 532, 8000.0);
+        WriteInt32(buffer, telemetry + 600, 1);
+        WriteString(buffer, telemetry + 620, 18, "Medium");
+        WriteString(buffer, telemetry + 638, 18, "Soft");
+        WriteDouble(buffer, telemetry + 664, 0.58);
+        WriteBool(buffer, telemetry + 746, true);
+        WriteBool(buffer, telemetry + 747, true);
+        buffer[telemetry + 750] = 4;
+        buffer[telemetry + 751] = 12;
+        buffer[telemetry + 756] = 7;
+        buffer[telemetry + 757] = 12;
+        buffer[telemetry + 758] = 3;
+        buffer[telemetry + 759] = 8;
+        buffer[telemetry + 767] = 2;
+        BitConverter.TryWriteBytes(buffer.AsSpan(768, sizeof(float)), 25.0f);
+        BitConverter.TryWriteBytes(buffer.AsSpan(772, sizeof(float)), 72.5f);
+        BitConverter.TryWriteBytes(buffer.AsSpan(776, sizeof(float)), 62.0f);
+        BitConverter.TryWriteBytes(buffer.AsSpan(780, sizeof(float)), 1.2f);
+        BitConverter.TryWriteBytes(buffer.AsSpan(784, sizeof(float)), 0.9f);
+
+        var wheel = telemetry + 848;
+        WriteDouble(buffer, wheel + 120, 190.0);
+        WriteDouble(buffer, wheel + 128, 363.15);
+        WriteDouble(buffer, wheel + 136, 365.15);
+        WriteDouble(buffer, wheel + 144, 367.15);
+        WriteDouble(buffer, wheel + 152, 0.12);
+        WriteDouble(buffer, wheel + 204, 360.15);
+
+        var wheel4 = telemetry + 848 + 3 * 260;
+        WriteDouble(buffer, wheel4 + 120, 193.0);
+
+        var vehicleScoring = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
+        buffer[vehicleScoring + 103] = unchecked((byte)1);
+        WriteDouble(buffer, vehicleScoring + 104, 7004.0);
+        WriteDouble(buffer, vehicleScoring + 144, 91.234);
+        WriteDouble(buffer, vehicleScoring + 152, 30.100);
+        WriteDouble(buffer, vehicleScoring + 160, 61.500);
+        WriteDouble(buffer, vehicleScoring + 168, 92.345);
+        buffer[vehicleScoring + 199] = 4;
+        buffer[vehicleScoring + 457] = 3;
+        WriteDouble(buffer, vehicleScoring + 464, 12.25);
+        WriteBool(buffer, vehicleScoring + 505, true);
+        buffer[vehicleScoring + 506] = 2;
+        WriteBool(buffer, vehicleScoring + 507, true);
+        WriteBool(buffer, vehicleScoring + 579, true);
+
+        var parsed = LmuParser.Parse(buffer);
+
+        Assert.True(parsed.PlayerInCar);
+        Assert.Equal("Peugeot 9X8", parsed.Telemetry!.VehicleName);
+        Assert.Equal(7, parsed.Telemetry.LapNumber);
+        Assert.Equal(1.0, parsed.Telemetry.Position.X);
+        Assert.Equal(4.0, parsed.Telemetry.LocalVelocity.X);
+        Assert.Equal(5, parsed.Telemetry.Gear);
+        Assert.Equal(6500.0, parsed.Telemetry.EngineRpm);
+        Assert.Equal(42.5, parsed.Telemetry.FuelLiters);
+        Assert.Equal(4, parsed.Scoring!.Place);
+        Assert.Equal(7004.0, parsed.Scoring.LapDistance);
+        Assert.Equal(12.25, parsed.Scoring.TimeIntoLap);
+        Assert.Equal(2, parsed.Scoring.CountLapFlag);
+        Assert.Equal(4, parsed.Telemetry.Wheels.Count);
+        Assert.Equal(190.0, parsed.Telemetry.Wheels[0].PressureKPa);
+        Assert.Equal(193.0, parsed.Telemetry.Wheels[3].PressureKPa);
+        Assert.True(parsed.Scoring.DrsState);
+    }
 }
