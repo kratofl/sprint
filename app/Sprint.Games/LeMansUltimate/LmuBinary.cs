@@ -29,6 +29,36 @@ internal static class LmuBinary
         return Encoding.UTF8.GetString(slice);
     }
 
+    public static byte ReadByte(ReadOnlySpan<byte> buffer, int offset) =>
+        Slice(buffer, offset, 1)[0];
+
+    public static bool ReadBool(ReadOnlySpan<byte> buffer, int offset) =>
+        ReadByte(buffer, offset) != 0;
+
+    public static short ReadInt16(ReadOnlySpan<byte> buffer, int offset) =>
+        System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(Slice(buffer, offset, sizeof(short)));
+
+    public static int ReadInt32(ReadOnlySpan<byte> buffer, int offset) =>
+        System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(Slice(buffer, offset, sizeof(int)));
+
+    public static uint ReadUInt32(ReadOnlySpan<byte> buffer, int offset) =>
+        System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Slice(buffer, offset, sizeof(uint)));
+
+    public static ulong ReadUInt64(ReadOnlySpan<byte> buffer, int offset) =>
+        System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(Slice(buffer, offset, sizeof(ulong)));
+
+    public static float ReadSingle(ReadOnlySpan<byte> buffer, int offset)
+    {
+        var bits = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(Slice(buffer, offset, sizeof(float)));
+        return BitConverter.Int32BitsToSingle(bits);
+    }
+
+    public static double ReadDouble(ReadOnlySpan<byte> buffer, int offset)
+    {
+        var bits = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(Slice(buffer, offset, sizeof(double)));
+        return BitConverter.Int64BitsToDouble(bits);
+    }
+
     public static ReadOnlySpan<byte> Slice(ReadOnlySpan<byte> buffer, int offset, int length)
     {
         if (offset < 0 || length < 0 || offset > buffer.Length || length > buffer.Length - offset)

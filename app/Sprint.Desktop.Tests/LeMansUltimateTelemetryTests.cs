@@ -28,4 +28,17 @@ public sealed class LeMansUltimateTelemetryTests
 
         Assert.Equal("LMU", LmuBinary.ReadNullTerminatedString(bytes));
     }
+
+    [Fact]
+    public void Lmu_binary_reads_little_endian_primitives()
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        BitConverter.TryWriteBytes(bytes[0..8], 123.25d);
+        BitConverter.TryWriteBytes(bytes[8..12], 42);
+        BitConverter.TryWriteBytes(bytes[12..16], 12.5f);
+
+        Assert.Equal(123.25d, LmuBinary.ReadDouble(bytes, 0));
+        Assert.Equal(42, LmuBinary.ReadInt32(bytes, 8));
+        Assert.Equal(12.5f, LmuBinary.ReadSingle(bytes, 12));
+    }
 }
