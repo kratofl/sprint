@@ -16,6 +16,7 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(2192, LmuBinary.VehicleScoringBase);
         Assert.Equal(128464, LmuBinary.TelemetryStart);
         Assert.Equal(128465, LmuBinary.PlayerIndexOffset);
+        Assert.Equal(128466, LmuBinary.PlayerHasVehicleOffset);
         Assert.Equal(128468, LmuBinary.TelemetryInfoBase);
         Assert.Equal(324820, LmuBinary.TotalBufferSize);
     }
