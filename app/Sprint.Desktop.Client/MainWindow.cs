@@ -40,6 +40,7 @@ public sealed class MainWindow : Window
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
     private SetupProgram _selectedSetup;
+    private DashEditorView? _dashEditor;
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
     {
@@ -278,8 +279,22 @@ public sealed class MainWindow : Window
 
     private void Navigate(AppView view)
     {
+        _dashEditor = null;
         _shell.Navigate(view);
         BuildShell();
+        RenderBody();
+    }
+
+    private void OpenDashEditor(DashLayout layout)
+    {
+        var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
+        _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor);
+        RenderBody();
+    }
+
+    private void CloseDashEditor()
+    {
+        _dashEditor = null;
         RenderBody();
     }
 
@@ -351,7 +366,7 @@ public sealed class MainWindow : Window
             AppView.Live => LivePage(),
             AppView.Engineer => EngineerPage(),
             AppView.Setup => SetupPage(),
-            AppView.Dashes => DashesPage(),
+            AppView.Dashes => _dashEditor as Control ?? DashesPage(),
             AppView.Devices => DevicesPage(),
             AppView.Settings => SettingsPage(),
             AppView.Help => HelpPage(),
@@ -916,23 +931,18 @@ public sealed class MainWindow : Window
         stack.Children.Add(title);
         stack.Children.Add(DashPreview(layout));
 
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        actions.Children.Add(ActionButton("Edit", ButtonTone.Primary, () => OpenDashEditor(layout)));
         if (!layout.IsDefault)
         {
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            actions.Children.Add(ActionButton("Add page", ButtonTone.Neutral, () =>
-            {
-                DashLayoutEditor.AddPage(layout, "Page");
-                _runtime.SaveDashLayout(layout);
-                RenderBody();
-            }));
             actions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
             {
                 _runtime.DeleteDashLayout(layout);
                 RenderBody();
             }));
-            stack.Children.Add(actions);
         }
 
+        stack.Children.Add(actions);
         return Graphite.Card(stack);
     }
 

@@ -13,6 +13,8 @@ public sealed class DashPainterTests
     [InlineData(-3, "--:--.---")]
     [InlineData(83.456, "1:23.456")]
     [InlineData(59.999, "0:59.999")]
+    [InlineData(59.9995, "1:00.000")]  // rounds up across the minute boundary, never ":60.000"
+    [InlineData(119.9996, "2:00.000")]
     public void FormatsLapTime(double seconds, string expected) =>
         Assert.Equal(expected, DashFormat.Lap(seconds));
 

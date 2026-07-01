@@ -92,8 +92,11 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, shell, telemetry);
                 window.Show();
 
-                var addPage = FindButton(window, "Add page");
-                addPage.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                // Add-page moved into the dash editor: open the custom layout's
+                // editor from its card, then add a page from the editor toolbar.
+                FindCardButton(window, layout.Name, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame(); // realize the swapped-in editor content in the visual tree
+                FindButton(window, "＋ Page").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(initialPageCount + 1, layout.Pages.Count);
                 Assert.Contains(layout.Pages, page => page.Name == "Page");
@@ -116,6 +119,28 @@ public class HeadlessShellTests
         return window.GetVisualDescendants()
             .OfType<Button>()
             .First(button => string.Equals(button.Content?.ToString(), content, StringComparison.Ordinal));
+    }
+
+    // Finds a button inside the card whose title matches cardTitle, by walking up
+    // from the unique title TextBlock to the nearest ancestor that owns the button.
+    private static Button FindCardButton(MainWindow window, string cardTitle, string content)
+    {
+        var title = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .First(text => string.Equals(text.Text, cardTitle, StringComparison.Ordinal));
+
+        for (Visual? node = title; node is not null; node = node.GetVisualParent())
+        {
+            var button = node.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(candidate => string.Equals(candidate.Content?.ToString(), content, StringComparison.Ordinal));
+            if (button is not null)
+            {
+                return button;
+            }
+        }
+
+        throw new InvalidOperationException($"No '{content}' button found in card '{cardTitle}'.");
     }
 }
 
