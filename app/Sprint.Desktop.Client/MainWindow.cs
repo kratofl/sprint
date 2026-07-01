@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Shell;
@@ -21,6 +22,7 @@ public sealed class MainWindow : Window
     private readonly IDesktopRuntime _runtime;
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
+    private readonly DeviceScreenService _screens;
     private readonly ContentControl _body = new();
     private readonly TextBlock _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.Text3Brush);
     private readonly TextBlock _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
@@ -58,6 +60,11 @@ public sealed class MainWindow : Window
         var snapshot = _engine.Snapshot;
         _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
         _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
+
+        // WS7: keep a hardware publisher running for each enabled screen device,
+        // rendering its assigned dash off the UI thread. Feeds live per-device status.
+        _screens = new DeviceScreenService(_runtime, () => _engine.Snapshot.Frame);
+        _screens.Sync();
 
         Title = "Sprint";
         Width = 1440;
@@ -351,6 +358,8 @@ public sealed class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _timer.Stop();
+        // Stop + release all hardware screen publishers before tearing down telemetry.
+        _screens.Dispose();
         // Disposing the engine cancels + joins the reader thread, then disposes the
         // wrapped source (terminal) — synchronous, so the source is fully released
         // before we return (the headless close-then-assert path relies on this).
@@ -599,6 +608,7 @@ public sealed class MainWindow : Window
             button.Click += (_, _) =>
             {
                 _runtime.AddDevice(entry);
+                _screens.Sync();
                 RenderBody();
             };
             catalog.Children.Add(button);
@@ -981,22 +991,108 @@ public sealed class MainWindow : Window
         var stack = new StackPanel { Spacing = 8 };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         AddGrid(title, Graphite.TextBlock(device.Name, 15, FontWeight.Bold, Graphite.TextBrush), 0, 0);
-        AddGrid(title, Graphite.StatusPill(device.Disabled ? "Disabled" : "Ready", device.Disabled ? Graphite.Text3Brush : Graphite.GreenBrush), 0, 1);
+        AddGrid(title, DeviceStatusPill(device), 0, 1);
         stack.Children.Add(title);
-        stack.Children.Add(Graphite.TextBlock($"{device.Driver} | {device.Width}x{device.Height} | rotation {device.Rotation}", 12, FontWeight.Normal, Graphite.Text2Brush));
+        stack.Children.Add(Graphite.TextBlock(
+            $"{device.Driver} · {device.Width}×{device.Height} · rot {device.Rotation}° · offset {device.OffsetX},{device.OffsetY} · margin {device.Margin}",
+            12, FontWeight.Normal, Graphite.Text2Brush));
+
+        if (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase))
+        {
+            stack.Children.Add(DeviceScreenControls(device));
+        }
+
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(ActionButton(device.Disabled ? "Enable" : "Disable", ButtonTone.Ghost, () =>
         {
             device.Disabled = !device.Disabled;
+            _screens.Sync();
             RenderBody();
         }));
         actions.Children.Add(ActionButton("Remove", ButtonTone.Danger, () =>
         {
             _runtime.RemoveDevice(device);
+            _screens.Sync();
             RenderBody();
         }));
         stack.Children.Add(actions);
         return Graphite.Card(stack);
+    }
+
+    private Border DeviceStatusPill(SavedDevice device)
+    {
+        if (device.Disabled)
+        {
+            return Graphite.StatusPill("Disabled", Graphite.Text3Brush);
+        }
+
+        var status = _screens.StatusFor(device.Id);
+        return status?.State switch
+        {
+            ScreenConnectionState.Connected => Graphite.StatusPill("Connected", Graphite.GreenBrush),
+            ScreenConnectionState.Connecting => Graphite.StatusPill("Connecting", Graphite.YellowBrush),
+            ScreenConnectionState.PermissionDenied => Graphite.StatusPill("Driver needed", Graphite.YellowBrush),
+            ScreenConnectionState.DeviceBusy => Graphite.StatusPill("Busy", Graphite.YellowBrush),
+            ScreenConnectionState.Unsupported => Graphite.StatusPill("Unsupported", Graphite.Text3Brush),
+            ScreenConnectionState.Faulted => Graphite.StatusPill("Fault", Graphite.RedBrush),
+            _ => Graphite.StatusPill("Offline", Graphite.Text3Brush),
+        };
+    }
+
+    private Control DeviceScreenControls(SavedDevice device)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 2) };
+
+        row.Children.Add(ActionButton("Rotate", ButtonTone.Ghost, () =>
+        {
+            _runtime.UpdateDevice(device, device.Name, (device.Rotation + 90) % 360, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+            _screens.Sync();
+            RenderBody();
+        }));
+
+        row.Children.Add(OffsetStepper("X", () => Nudge(device, -1, 0), () => Nudge(device, 1, 0)));
+        row.Children.Add(OffsetStepper("Y", () => Nudge(device, 0, -1), () => Nudge(device, 0, 1)));
+
+        var dashCombo = new ComboBox
+        {
+            ItemsSource = _runtime.DashLayouts.Select(layout => layout.Name).ToArray(),
+            SelectedItem = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId)?.Name
+                ?? _runtime.DashLayouts.FirstOrDefault()?.Name,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 130
+        };
+        dashCombo.SelectionChanged += (_, _) =>
+        {
+            var chosen = _runtime.DashLayouts.FirstOrDefault(layout => layout.Name == dashCombo.SelectedItem?.ToString());
+            if (chosen is not null && chosen.Id != device.DashId)
+            {
+                _runtime.UpdateDevice(device, device.Name, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, chosen.Id);
+                _screens.Sync();
+            }
+        };
+        row.Children.Add(dashCombo);
+
+        return row;
+    }
+
+    private void Nudge(SavedDevice device, int dx, int dy)
+    {
+        var x = Math.Max(0, device.OffsetX + dx);
+        var y = Math.Max(0, device.OffsetY + dy);
+        _runtime.UpdateDevice(device, device.Name, device.Rotation, x, y, device.Margin, device.DashId);
+        _screens.Sync();
+        RenderBody();
+    }
+
+    private Control OffsetStepper(string label, Action decrement, Action increment)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        panel.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Bold, Graphite.Text3Brush));
+        panel.Children.Add(StepButton("-", decrement));
+        panel.Children.Add(StepButton("+", increment));
+        return panel;
     }
 
     private static Control FormRow(string label, Control input)
