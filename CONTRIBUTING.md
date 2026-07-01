@@ -11,7 +11,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 | [Go](https://go.dev) | ≥ 1.26 |
 | [Node.js](https://nodejs.org) | ≥ 20 |
 | [pnpm](https://pnpm.io) | ≥ 9 |
-| [Wails CLI](https://wails.io) | v2 (desktop app only) |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x (desktop app only) |
 
 ### Getting started
 

@@ -18,7 +18,9 @@ When you push a tag the workflow:
 3. Publishes the Windows `.exe` via `dotnet publish -p:InformationalVersion=<ver>`
 4. Renames the artifact to `sprint-<tag>-windows-amd64.exe`
 5. Uploads it to a GitHub Release (auto-generates release notes from commits)
-6. Also builds the API server binary (Linux) and attaches it to the same release
+(The release workflow currently publishes only the desktop `.exe`. A Linux API
+   server binary is not built by `desktop-release.yml` today; build/ship it
+   separately if a server release is needed.)
 
 ---
 
@@ -121,10 +123,9 @@ app/build/bin
 | Artifact | Platform | Runner | Trigger |
 |---|---|---|---|
 | `sprint-<tag>-windows-amd64.exe` | Windows x64 | `windows-latest` | tag push |
-| `sprint-api-<tag>-linux-amd64` | Linux x64 | `ubuntu-latest` | tag push |
 
-Only the desktop `.exe` is relevant for driver installs. The API binary is for
-self-hosted server deployments.
+The desktop `.exe` is the only artifact produced by `desktop-release.yml`. (A
+self-hosted API server binary is not part of this release workflow today.)
 
 ---
 

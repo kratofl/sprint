@@ -18,9 +18,9 @@ namespace Sprint.Desktop;
 
 public sealed class MainWindow : Window
 {
-    private readonly DesktopRuntime _runtime = new();
-    private readonly ShellState _shell = new();
-    private readonly ITelemetrySource _telemetrySource = GameTelemetryPackage.CreateDemoSource();
+    private readonly IDesktopRuntime _runtime;
+    private readonly ShellState _shell;
+    private readonly TelemetryEngine _engine;
     private readonly ContentControl _body = new();
     private readonly TextBlock _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.Text3Brush);
     private readonly TextBlock _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
@@ -30,19 +30,33 @@ public sealed class MainWindow : Window
         Width = 7,
         Height = 7,
         CornerRadius = new CornerRadius(999),
-        Background = Graphite.GreenBrush
+        // Idle until the status presenter colours it — never a faked green dot.
+        Background = Graphite.Text3Brush
     };
 
     private readonly Grid _root = new();
     private readonly StackPanel _navRail = new() { Spacing = 8 };
     private readonly DispatcherTimer _timer;
     private TelemetrySnapshot _telemetry;
+    private TelemetryStatusView _statusView = new();
     private SetupProgram _selectedSetup;
 
-    public MainWindow()
+    public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
     {
+        _runtime = runtime;
+        _shell = shell;
+        // The window owns the WS4 engine wrapping the source: a background reader, a
+        // 5s reconnect loop, real-rate measurement and delta augmentation, all draining
+        // into a buffer this window samples at ~30Hz. Start() connects synchronously so
+        // the first paint reflects the real link state (Connect never throws for
+        // recoverable failures — it reflects them in Status).
+        _engine = new TelemetryEngine(telemetrySource);
         _selectedSetup = _runtime.SetupPrograms.First();
-        _telemetry = LiveTelemetryPresenter.ToSnapshot(_telemetrySource.Current);
+
+        _engine.Start();
+        var snapshot = _engine.Snapshot;
+        _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
+        _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
 
         Title = "Sprint";
         Width = 1440;
@@ -65,7 +79,10 @@ public sealed class MainWindow : Window
         BuildShell();
         RenderBody();
 
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        // ~30Hz UI handoff: drain the engine's latest-value buffer. Decoupled frontend
+        // emitter — the reader thread fills the buffer at the game's cadence; the UI
+        // samples the latest value here and never blocks on a read.
+        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
         _timer.Tick += (_, _) => TickTelemetry();
         _timer.Start();
     }
@@ -147,7 +164,10 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(10, 0, 0, 0)
         };
-        crumbWrap.Children.Add(Graphite.TextBlock("SPRINT TELEMETRY", 11, FontWeight.Bold, Graphite.Text3Brush));
+        var brandCrumb = Graphite.TextBlock("SPRINT TELEMETRY", 11, FontWeight.Bold, Graphite.Text3Brush);
+        brandCrumb.FontFamily = Graphite.DisplayFontStack;
+        brandCrumb.LetterSpacing = 1;
+        crumbWrap.Children.Add(brandCrumb);
         crumbWrap.Children.Add(Graphite.TextBlock("/", 11, FontWeight.Bold, Graphite.Line2Brush));
         crumbWrap.Children.Add(_breadcrumb);
         Grid.SetColumn(crumbWrap, 2);
@@ -281,7 +301,15 @@ public sealed class MainWindow : Window
 
     private void TickTelemetry()
     {
-        _telemetry = LiveTelemetryPresenter.ToSnapshot(_telemetrySource.Advance());
+        var now = DateTimeOffset.UtcNow;
+
+        // Drain the engine's latest published snapshot (a consistent, atomic value).
+        // The background reader owns acquisition, rate measurement and delta; freshness
+        // is applied here against the UI clock inside the status presenter.
+        var snapshot = _engine.Snapshot;
+        _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
+        _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, now);
+
         UpdateTitlebar();
         if (_shell.View == AppView.Live)
         {
@@ -292,9 +320,27 @@ public sealed class MainWindow : Window
     private void UpdateTitlebar()
     {
         _breadcrumb.Text = _shell.CurrentTitle;
-        _signalText.Text = "SIM DEMO";
-        _hzText.Text = "60Hz";
-        _signalDot.Background = Graphite.GreenBrush;
+        _signalText.Text = _statusView.Label;
+        _hzText.Text = _statusView.RateText;
+        _signalDot.Background = BrushForTone(_statusView.Tone);
+    }
+
+    private static IBrush BrushForTone(StatusTone tone) => tone switch
+    {
+        StatusTone.Live => Graphite.GreenBrush,
+        StatusTone.Warn => Graphite.YellowBrush,
+        StatusTone.Fault => Graphite.RedBrush,
+        _ => Graphite.Text3Brush
+    };
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _timer.Stop();
+        // Disposing the engine cancels + joins the reader thread, then disposes the
+        // wrapped source (terminal) — synchronous, so the source is fully released
+        // before we return (the headless close-then-assert path relies on this).
+        _engine.Dispose();
+        base.OnClosed(e);
     }
 
     private void RenderBody()
@@ -316,7 +362,7 @@ public sealed class MainWindow : Window
     private Control LivePage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Live", "Telemetry grid, timing, pedals, tyres", Graphite.StatusPill("Race link", Graphite.GreenBrush)));
+        stack.Children.Add(PageHeader("Live", "Telemetry grid, timing, pedals, tyres", Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
 
         var metricGrid = new Grid
         {
@@ -442,6 +488,7 @@ public sealed class MainWindow : Window
             };
             _runtime.SetupPrograms.Add(copy);
             _selectedSetup = copy;
+            _runtime.SaveSetupPrograms();
             RenderBody();
         }));
         AddGrid(grid, Graphite.Card(programs), 0, 0);
@@ -463,11 +510,13 @@ public sealed class MainWindow : Window
                     () =>
                     {
                         _selectedSetup.Values[parameter.Key] = Math.Max(parameter.Min, value - parameter.Step);
+                        _runtime.SaveSetupPrograms();
                         RenderBody();
                     },
                     () =>
                     {
                         _selectedSetup.Values[parameter.Key] = Math.Min(parameter.Max, value + parameter.Step);
+                        _runtime.SaveSetupPrograms();
                         RenderBody();
                     }));
             }
@@ -615,7 +664,7 @@ public sealed class MainWindow : Window
         stack.Children.Add(PageHeader("Help", "Reference cards and desktop shortcuts", Graphite.StatusPill("Avalonia", Graphite.BlueBrush)));
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-        AddGrid(grid, ReferenceCard("Telemetry", "Live data runs in the desktop process and updates the shell status at 60 Hz."), 0, 0);
+        AddGrid(grid, ReferenceCard("Telemetry", "Live data runs in the desktop process; the shell status pill shows the active link state and the measured update rate."), 0, 0);
         AddGrid(grid, ReferenceCard("Dash Studio", "Dash layouts are persisted as JSON and copied from the default preset on creation."), 0, 1);
         AddGrid(grid, ReferenceCard("Devices", "Device catalog presets remain with the desktop client for portable builds."), 0, 2);
         AddGrid(grid, ReferenceCard("Window", "The custom titlebar owns drag, minimise, maximise, and close controls."), 1, 0);
@@ -869,11 +918,19 @@ public sealed class MainWindow : Window
 
         if (!layout.IsDefault)
         {
-            stack.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            actions.Children.Add(ActionButton("Add page", ButtonTone.Neutral, () =>
+            {
+                DashLayoutEditor.AddPage(layout, "Page");
+                _runtime.SaveDashLayout(layout);
+                RenderBody();
+            }));
+            actions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
             {
                 _runtime.DeleteDashLayout(layout);
                 RenderBody();
             }));
+            stack.Children.Add(actions);
         }
 
         return Graphite.Card(stack);
@@ -881,40 +938,32 @@ public sealed class MainWindow : Window
 
     private Control DashPreview(DashLayout layout)
     {
-        var canvas = new Canvas
-        {
-            Width = 300,
-            Height = 180,
-            Background = Graphite.Panel2Brush,
-            ClipToBounds = true
-        };
-        var page = layout.Pages.FirstOrDefault();
-        if (page is null)
-        {
-            return canvas;
-        }
+        const int width = 300;
+        const int height = 180;
 
-        var cols = Math.Max(1, layout.GridCols);
-        var rows = Math.Max(1, layout.GridRows);
-        foreach (var widget in page.Widgets)
+        // Real on-wheel pixels via the SkiaSharp painter — the same output the
+        // hardware screen and saved thumbnail use, not a labelled-box mock.
+        var bitmap = DashImageRenderer.Render(
+            layout,
+            _engine.Snapshot.Frame,
+            _runtime.Settings,
+            width,
+            height);
+
+        return new Border
         {
-            var box = new Border
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            ClipToBounds = true,
+            Child = new Image
             {
-                Width = widget.ColSpan * 300.0 / cols - 4,
-                Height = widget.RowSpan * 180.0 / rows - 4,
-                Background = widget.Type.Contains("rpm", StringComparison.OrdinalIgnoreCase) ? Graphite.AccentBrush : Graphite.Panel3Brush,
-                BorderBrush = Graphite.Line2Brush,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
-                Child = Graphite.TextBlock(WidgetLabel(widget.Type), 9, FontWeight.Bold,
-                    widget.Type.Contains("rpm", StringComparison.OrdinalIgnoreCase) ? Brushes.Black : Graphite.Text2Brush)
-            };
-            Canvas.SetLeft(box, widget.Col * 300.0 / cols + 2);
-            Canvas.SetTop(box, widget.Row * 180.0 / rows + 2);
-            canvas.Children.Add(box);
-        }
-
-        return canvas;
+                Width = width,
+                Height = height,
+                Source = bitmap,
+                Stretch = Stretch.Fill
+            }
+        };
     }
 
     private Control DeviceCard(SavedDevice device)
@@ -979,8 +1028,4 @@ public sealed class MainWindow : Window
         grid.Children.Add(control);
     }
 
-    private static string WidgetLabel(string type)
-    {
-        return type.Replace("_", " ").ToUpperInvariant();
-    }
 }

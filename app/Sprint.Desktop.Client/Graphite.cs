@@ -45,7 +45,10 @@ internal static class Graphite
     public static readonly IBrush YellowBrush = Brush(Yellow);
     public static readonly IBrush BlueBrush = Brush(Blue);
 
-    public const string FontStack = "IBM Plex Sans, Segoe UI, Arial";
+    // Figma typography, bundled under Assets/Fonts (see docs/DESIGN.md):
+    // Inter is the UI/body face; Space Grotesk is the display/brand face.
+    public const string FontStack = "avares://Sprint.Desktop.Client/Assets/Fonts#Inter";
+    public const string DisplayFontStack = "avares://Sprint.Desktop.Client/Assets/Fonts#Space Grotesk";
 
     public static IBrush Brush(Color color) => new SolidColorBrush(color);
 

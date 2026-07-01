@@ -75,4 +75,4 @@ jobs:
         run: dotnet build app/Sprint.Desktop.sln --no-restore
 
       - name: Test desktop app
-        run: dotnet run --project app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj
+        run: dotnet test app/Sprint.Desktop.sln --no-build

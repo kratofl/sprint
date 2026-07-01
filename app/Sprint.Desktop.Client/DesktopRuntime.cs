@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
@@ -8,7 +10,7 @@ using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop;
 
-public sealed class DesktopRuntime
+public sealed class DesktopRuntime : IDesktopRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -18,10 +20,12 @@ public sealed class DesktopRuntime
 
     private readonly string _settingsPath;
     private readonly string _devicesPath;
+    private readonly string _setupProgramsPath;
     private readonly string _layoutsPath;
     private readonly string _presetRoot;
+    private readonly string? _legacyDataRoot;
 
-    public DesktopRuntime(string? dataRoot = null, string? presetRoot = null)
+    public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null)
     {
         var resolvedDataRoot = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -29,10 +33,14 @@ public sealed class DesktopRuntime
         Directory.CreateDirectory(resolvedDataRoot);
 
         _presetRoot = presetRoot ?? Path.Combine(AppContext.BaseDirectory, "presets");
+        _legacyDataRoot = legacyDataRoot ?? Path.Combine(AppContext.BaseDirectory, "data");
         _settingsPath = Path.Combine(resolvedDataRoot, "settings.json");
         _devicesPath = Path.Combine(resolvedDataRoot, "devices.json");
+        _setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
         _layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
         Directory.CreateDirectory(_layoutsPath);
+
+        MigrateLegacyDataIfNeeded();
 
         Settings = LoadSettings();
         foreach (var device in LoadCatalog())
@@ -50,7 +58,7 @@ public sealed class DesktopRuntime
             DashLayouts.Add(layout);
         }
 
-        foreach (var setup in CreateSetupPrograms())
+        foreach (var setup in LoadSetupPrograms())
         {
             SetupPrograms.Add(setup);
         }
@@ -77,6 +85,7 @@ public sealed class DesktopRuntime
     }
 
     public AppSettings Settings { get; }
+    public RenderProfile CurrentRenderProfile => new(Settings.DriverName, Settings.DriverNumber);
     public ObservableCollection<CatalogDevice> Catalog { get; } = [];
     public ObservableCollection<SavedDevice> Devices { get; } = [];
     public ObservableCollection<DashLayout> DashLayouts { get; } = [];
@@ -84,17 +93,24 @@ public sealed class DesktopRuntime
     public ObservableCollection<EngineerControl> EngineerControls { get; } = [];
     public ObservableCollection<RadioLogEntry> RadioLog { get; } = [];
 
+    public event EventHandler<RenderProfile>? RenderProfileChanged;
+
     public void SaveSettings()
     {
         SaveJson(_settingsPath, Settings);
+        RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
     }
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
         var width = catalog.Width > 0 ? catalog.Width : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 480 : 800;
         var height = catalog.Height > 0 ? catalog.Height : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 272 : 480;
-        var serial = catalog.Vid == 0 && catalog.Pid == 0 ? $"SIM-{Devices.Count + 1:000}" : "USB-001";
-        var id = $"{catalog.Driver}-{serial}".ToLowerInvariant();
+        var nextIndex = Devices.Count(device =>
+            device.Driver.Equals(catalog.Driver, StringComparison.OrdinalIgnoreCase) &&
+            device.Vid == catalog.Vid &&
+            device.Pid == catalog.Pid) + 1;
+        var serial = catalog.Vid == 0 && catalog.Pid == 0 ? $"SIM-{nextIndex:000}" : $"USB-{nextIndex:000}";
+        var id = $"{catalog.Driver}-{catalog.Vid:x4}-{catalog.Pid:x4}-{serial}".ToLowerInvariant();
 
         var saved = new SavedDevice
         {
@@ -108,12 +124,27 @@ public sealed class DesktopRuntime
             Width = width,
             Height = height,
             Rotation = catalog.Rotation,
+            OffsetX = catalog.OffsetX,
+            OffsetY = catalog.OffsetY,
+            Margin = catalog.Margin,
+            Bindings = Clone(catalog.Bindings),
             DashId = DashLayouts.FirstOrDefault(d => d.IsDefault)?.Id ?? "default"
         };
 
         Devices.Add(saved);
         SaveDevices();
         return saved;
+    }
+
+    public void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId)
+    {
+        device.Name = string.IsNullOrWhiteSpace(name) ? device.Name : name.Trim();
+        device.Rotation = rotation;
+        device.OffsetX = offsetX;
+        device.OffsetY = offsetY;
+        device.Margin = margin;
+        device.DashId = string.IsNullOrWhiteSpace(dashId) ? device.DashId : dashId.Trim();
+        SaveDevices();
     }
 
     public void RemoveDevice(SavedDevice device)
@@ -147,6 +178,22 @@ public sealed class DesktopRuntime
         {
             File.Delete(path);
         }
+
+        var thumbnailPath = GetDashThumbnailPath(layout);
+        if (File.Exists(thumbnailPath))
+        {
+            File.Delete(thumbnailPath);
+        }
+    }
+
+    public string GetDashThumbnailPath(DashLayout layout)
+    {
+        return Path.Combine(_layoutsPath, $"{layout.Id}.png");
+    }
+
+    public void SaveSetupPrograms()
+    {
+        SaveJson(_setupProgramsPath, SetupPrograms.ToList());
     }
 
     public void PushEngineerChanges()
@@ -206,7 +253,7 @@ public sealed class DesktopRuntime
         new() { Key = "bias", Label = "Brake bias", Min = 48, Max = 64, Step = 0.5, Unit = "%", Group = "Brakes" },
         new() { Key = "ducts", Label = "Brake ducts", Min = 1, Max = 6, Group = "Brakes" },
         new() { Key = "diff", Label = "Diff preload", Min = 20, Max = 120, Step = 5, Unit = "Nm", Group = "Brakes" },
-        new() { Key = "fuelLoad", Label = "Fuel load", Min = 10, Max = 90, Unit = "L", Group = "Brakes" }
+        new() { Key = "fuelLoad", Label = "Fuel load", Min = 10, Max = 90, Unit = "L", Group = "Fuel" }
     ];
 
     public static string FormatSetupValue(SetupParameter parameter, double value)
@@ -254,6 +301,11 @@ public sealed class DesktopRuntime
         return LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
     }
 
+    private IEnumerable<SetupProgram> LoadSetupPrograms()
+    {
+        return LoadJson<List<SetupProgram>>(_setupProgramsPath) ?? CreateSetupPrograms();
+    }
+
     private IEnumerable<DashLayout> LoadLayouts()
     {
         var layouts = new List<DashLayout>();
@@ -262,7 +314,7 @@ public sealed class DesktopRuntime
             foreach (var file in Directory.EnumerateFiles(_layoutsPath, "*.json"))
             {
                 var layout = LoadJson<DashLayout>(file);
-                if (layout is not null)
+                if (layout is not null && DashLayoutValidator.IsValid(layout))
                 {
                     layouts.Add(layout);
                 }
@@ -277,14 +329,130 @@ public sealed class DesktopRuntime
         return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);
     }
 
+    private void MigrateLegacyDataIfNeeded()
+    {
+        if (string.IsNullOrWhiteSpace(_legacyDataRoot) || !Directory.Exists(_legacyDataRoot))
+        {
+            return;
+        }
+
+        MigrateLegacySettingsIfNeeded();
+        MigrateLegacyDevicesIfNeeded();
+        MigrateLegacyLayoutsIfNeeded();
+    }
+
+    private void MigrateLegacySettingsIfNeeded()
+    {
+        if (File.Exists(_settingsPath))
+        {
+            return;
+        }
+
+        var legacySettingsPath = Path.Combine(_legacyDataRoot!, "settings.json");
+        var settings = LoadJson<AppSettings>(legacySettingsPath);
+        if (settings is not null)
+        {
+            SaveJson(_settingsPath, settings);
+        }
+    }
+
+    private void MigrateLegacyDevicesIfNeeded()
+    {
+        if (File.Exists(_devicesPath))
+        {
+            return;
+        }
+
+        var legacyDevicesDir = Path.Combine(_legacyDataRoot!, "devices");
+        if (!Directory.Exists(legacyDevicesDir))
+        {
+            return;
+        }
+
+        var saved = new List<SavedDevice>();
+        foreach (var fileName in new[] { "wheels.json", "screens.json", "buttonboxes.json" })
+        {
+            var path = Path.Combine(legacyDevicesDir, fileName);
+            var entries = LoadJson<List<LegacyDevice>>(path);
+            if (entries is null)
+            {
+                continue;
+            }
+
+            foreach (var entry in entries)
+            {
+                saved.Add(entry.ToSavedDevice(saved.Count + 1));
+            }
+        }
+
+        if (saved.Count > 0)
+        {
+            SaveJson(_devicesPath, saved);
+        }
+    }
+
+    private void MigrateLegacyLayoutsIfNeeded()
+    {
+        if (Directory.EnumerateFiles(_layoutsPath, "*.json").Any())
+        {
+            return;
+        }
+
+        var legacyLayoutsDir = Path.Combine(_legacyDataRoot!, "layouts");
+        if (!Directory.Exists(legacyLayoutsDir))
+        {
+            return;
+        }
+
+        foreach (var layoutDir in Directory.EnumerateDirectories(legacyLayoutsDir))
+        {
+            var legacyConfig = Path.Combine(layoutDir, "config.json");
+            var layout = LoadJson<DashLayout>(legacyConfig);
+            if (layout is null || !DashLayoutValidator.IsValid(layout))
+            {
+                continue;
+            }
+
+            SaveDashLayout(layout);
+        }
+    }
+
     private void SaveDevices()
     {
         SaveJson(_devicesPath, Devices.ToList());
     }
 
-    private void SaveDashLayout(DashLayout layout)
+    public void SaveDashLayout(DashLayout layout)
     {
+        if (!DashLayoutValidator.IsValid(layout))
+        {
+            throw new InvalidOperationException($"Dash layout '{layout.Id}' is invalid and cannot be saved.");
+        }
+
         SaveJson(Path.Combine(_layoutsPath, $"{layout.Id}.json"), layout);
+        GenerateDashThumbnail(layout);
+    }
+
+    private void GenerateDashThumbnail(DashLayout layout)
+    {
+        const int width = 320;
+        const int height = 192;
+
+        try
+        {
+            // Render the real dash (empty frame → deterministic placeholder values)
+            // so the thumbnail matches what the wheel display shows, not a box mock.
+            using var painter = new DashPainter(width, height);
+            var png = painter.RenderPng(layout, new TelemetryFrame(), Settings);
+            var path = GetDashThumbnailPath(layout);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, png);
+        }
+        catch (Exception)
+        {
+            // Thumbnail generation is a best-effort side artifact; never fail a
+            // layout save because a preview image could not be produced.
+        }
     }
 
     private void PrependRadioLog(string message, string detail, string status)
@@ -457,5 +625,46 @@ public sealed class DesktopRuntime
             CarValue = value,
             StagedValue = value
         };
+    }
+
+    private sealed class LegacyDevice
+    {
+        public string Name { get; set; } = "";
+        public string Driver { get; set; } = "";
+        public string Type { get; set; } = "screen";
+        public ushort Vid { get; set; }
+        public ushort Pid { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int Rotation { get; set; }
+        [JsonPropertyName("offset_x")]
+        public int OffsetX { get; set; }
+
+        [JsonPropertyName("offset_y")]
+        public int OffsetY { get; set; }
+        public int Margin { get; set; }
+
+        public SavedDevice ToSavedDevice(int index)
+        {
+            var driver = string.IsNullOrWhiteSpace(Driver) ? "unknown" : Driver;
+            var serial = $"MIGRATED-{index:000}";
+            return new SavedDevice
+            {
+                Id = $"{driver}-{Vid:x4}-{Pid:x4}-{serial}".ToLowerInvariant(),
+                Name = string.IsNullOrWhiteSpace(Name) ? $"Migrated {Type}" : Name,
+                Driver = driver,
+                Type = string.IsNullOrWhiteSpace(Type) ? "screen" : Type,
+                Vid = Vid,
+                Pid = Pid,
+                Serial = serial,
+                Width = Width,
+                Height = Height,
+                Rotation = Rotation,
+                OffsetX = OffsetX,
+                OffsetY = OffsetY,
+                Margin = Margin,
+                DashId = "default"
+            };
+        }
     }
 }

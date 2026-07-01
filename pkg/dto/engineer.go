@@ -9,7 +9,7 @@ const (
 	CmdRequestSync  CommandType = "request_sync"
 )
 
-// EngineerCommand is a message pushed from an engineer client to the driver's Wails app.
+// EngineerCommand is a message pushed from an engineer client to the driver's desktop app.
 // The Payload field is decoded according to Type.
 type EngineerCommand struct {
 	ID        string      `json:"id"` // UUID, set by sender

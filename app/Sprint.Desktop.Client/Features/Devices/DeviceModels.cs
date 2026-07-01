@@ -31,8 +31,20 @@ public sealed class CatalogDevice
     [JsonPropertyName("rotation")]
     public int Rotation { get; set; }
 
+    [JsonPropertyName("offset_x")]
+    public int OffsetX { get; set; }
+
+    [JsonPropertyName("offset_y")]
+    public int OffsetY { get; set; }
+
+    [JsonPropertyName("margin")]
+    public int Margin { get; set; }
+
     [JsonPropertyName("driver")]
     public string Driver { get; set; } = "";
+
+    [JsonPropertyName("bindings")]
+    public List<DeviceBinding> Bindings { get; set; } = [];
 }
 
 public sealed class SavedDevice
@@ -47,6 +59,19 @@ public sealed class SavedDevice
     public int Width { get; set; }
     public int Height { get; set; }
     public int Rotation { get; set; }
+    public int OffsetX { get; set; }
+    public int OffsetY { get; set; }
+    public int Margin { get; set; }
     public string DashId { get; set; } = "default";
+    public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
+}
+
+public sealed class DeviceBinding
+{
+    [JsonPropertyName("input")]
+    public string Input { get; set; } = "";
+
+    [JsonPropertyName("command")]
+    public string Command { get; set; } = "";
 }

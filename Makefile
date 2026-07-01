@@ -71,8 +71,8 @@ test-api: ## Run API server tests
 test-pkg: ## Run shared package tests
 	go test ./pkg/...
 
-test-app: ## Run Avalonia desktop unit/smoke tests
-	dotnet run --project $(APP_TEST_PROJECT)
+test-app: ## Run Avalonia desktop tests (xunit)
+	dotnet test $(APP_TEST_PROJECT)
 
 # ─── Lint & Format ────────────────────────────────────────────────────────────
 

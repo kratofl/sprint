@@ -91,6 +91,7 @@ secrets/
 
 # ─── Desktop app ──────────────────────────────────────────────────────────────
 app/build/bin/
+app/Sprint.Desktop.Tests/artifacts/
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/
@@ -116,6 +117,10 @@ temp/
 install.ps1
 .superpowers/
 superpowers/
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
 
 # ─── Agent / workflow artifacts ──────────────────────────────────────────────
 # Playwright visual-verification screenshots and session handoff docs.

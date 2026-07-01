@@ -14,16 +14,16 @@ Sprint is a full-stack telemetry system for sim racers. A native desktop app run
 Sim Game (e.g. LeMansUltimate)
         ↓  UDP / shared memory
 ┌──────────────────────────────────────────────────────┐
-│  Wails Desktop App  (/app)                          │
+│  .NET / Avalonia Desktop App  (/app)                 │
 │                                                      │
-│  Go backend:                                         │
-│    · Game telemetry reader + DTO pipeline            │
+│  C# backend (Sprint.Desktop.* projects):             │
+│    · Game telemetry reader + telemetry frame pipeline│
 │    · USB screen renderer  (RGB565 → WinUSB → wheel/dash screens)    │
 │    · Wheel button detector  (set target lap)         │
 │    · Race Engineer hub  (WebSocket, LAN or remote)   │
 │    · Setup manager & sync client                     │
 │                                                      │
-│  React/TS frontend:                                  │
+│  Avalonia UI (XAML/C#, Sprint.Desktop.Client):       │
 │    · Live telemetry  · Dash editor  · Setups         │
 │    · Race Engineer status panel                      │
 └──────────────────────────────────────────────────────┘
@@ -56,13 +56,13 @@ Sim Game (e.g. LeMansUltimate)
 
 | Path | Language | Description |
 |---|---|---|
-| `/app` | Go + React/TS | Wails desktop app — driver's rig |
+| `/app` | C# / .NET | Avalonia desktop app — driver's rig |
 | `/api` | Go | HTTP/WebSocket API server |
 | `/web` | TypeScript | Next.js web frontend |
 | `/pkg` | Go | Shared DTO types + game adapter interfaces |
 | `/packages` | TypeScript | Shared UI components, types + design tokens |
 
-The three Go modules (`app`, `api`, `pkg`) are linked by a `go.work` workspace. The two TypeScript apps (`web`, `app/frontend`) share a pnpm workspace managed by Turborepo.
+The two Go modules (`api`, `pkg`) are linked by a `go.work` workspace. The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET solution restored/built with the `dotnet` CLI. The web app and shared packages (`web`, `packages/*`) share a pnpm workspace managed by Turborepo.
 
 ---
 
@@ -70,9 +70,9 @@ The three Go modules (`app`, `api`, `pkg`) are linked by a `go.work` workspace. 
 
 | Tool | Version | Required for |
 |---|---|---|
-| [Go](https://go.dev) | ≥ 1.26 | API server, desktop app backend |
-| [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v2 | Desktop app build |
-| [Node.js](https://nodejs.org) | ≥ 20 | Web app, desktop frontend |
+| [Go](https://go.dev) | ≥ 1.26 | API server + shared packages |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x | Desktop app build |
+| [Node.js](https://nodejs.org) | ≥ 20 | Web app + shared packages |
 | [pnpm](https://pnpm.io) | ≥ 9 | Package manager |
 | [Docker](https://www.docker.com) | — | Containerised deployment |
 | [Make](https://www.gnu.org/software/make/) | — | Build shortcuts |
@@ -101,13 +101,18 @@ make dev-api
 # Terminal 2 — Web app
 make dev-web
 
-# Terminal 3 — Desktop app (requires Wails + game running)
-cd app && wails dev
+# Terminal 3 — Desktop app (requires .NET 10 SDK; game running for real telemetry)
+make dev-app
 ```
 
 ---
 
 ## Make targets
+
+> Run `make help` for the authoritative, always-current target list — the table
+> below is a summary. The desktop targets (`dev-app`, `build-app`, `lint-app`,
+> `test-app`) drive the .NET 10 Avalonia solution via the `dotnet` CLI; there is
+> no Wails build step.
 
 ```
 make help          # list all targets
@@ -119,7 +124,7 @@ Development
 Build
   build-api        Compile API server → bin/sprint-api
   build-web        Build Next.js production output
-  build-app        Build Wails desktop app (requires Wails CLI)
+  build-app        Publish the Avalonia desktop app → app/build/bin (dotnet publish)
   build            build-api + build-web
 
 Test & lint
@@ -127,7 +132,7 @@ Test & lint
   test-api         Run API server tests only
   test-pkg         Run shared package tests only
   lint             go vet (api/pkg) + pnpm lint
-  lint-app         go vet for the Wails app (requires built frontend)
+  lint-app         Build the Avalonia solution with warnings as errors (dotnet build -warnaserror)
   fmt              gofmt + pnpm format
 
 Docker
@@ -137,7 +142,7 @@ Docker
   docker-logs      Tail logs from all services
 
 Misc
-  clean            Remove bin/, web/.next/, app/build/, app/frontend/dist/
+  clean            Remove bin/, web/.next/, app/build/bin/, and .NET bin/obj dirs
 ```
 
 ---
@@ -164,7 +169,7 @@ The VoCore renderer, engineer hub, web app, and sync client all consume the unif
 ## Key features
 
 ### VoCore and USBD480 wheel displays
-The Go backend renders RGB565 image frames and sends them to a USB screen embedded in the steering wheel via **WinUSB** (no serial port — the screen uses a vendor-specific bulk transfer protocol). Two screen families are supported:
+The desktop app renders RGB565 image frames and sends them to a USB screen embedded in the steering wheel via **WinUSB** (no serial port — the screen uses a vendor-specific bulk transfer protocol). Two screen families are supported:
 - **VoCore M-PRO** (`VID 0xC872`) — 4"–10" OLED/LCD panels; model auto-detected via USB query
 - **USBD480** (`VID 0x16C0`, `PID 0x08A7`) — NX43/NX50 800×480 displays
 

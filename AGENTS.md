@@ -7,7 +7,9 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 ## Scope
 
 - Stay inside this repository. Do not read, write, execute, or otherwise operate
-  outside the project folder unless the user explicitly asks.
+  outside the project folder unless the user explicitly asks. This includes the
+  user's home directory, global tool caches, shell profiles, credential stores,
+  browser profiles, and system configuration.
 - Do not install tools, CLIs, language servers, or other system-wide software.
   Do not run `make setup` unless the user explicitly asks for full dependency
   restore.
@@ -18,6 +20,37 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
   change.
 - Work with existing user changes. Do not revert unrelated edits or deleted
   files unless the user explicitly requests it.
+
+## Local Machine Safety
+
+- Treat the developer machine as out of scope. Do not inspect user home
+  directories, shell history, SSH keys, cloud credentials, password stores,
+  browser profiles, desktop files, downloads, or other personal/system
+  locations.
+- Do not read or print environment variables wholesale. Only inspect a specific
+  variable when it is directly required for the task.
+- Do not modify global shell profiles, PATH, registry settings, services,
+  scheduled tasks, startup entries, certificate stores, Docker daemon settings,
+  Git global config, npm/pnpm global config, or system package manager state
+  unless the user explicitly asks.
+- Do not run commands that contact production systems, deploy, publish packages,
+  rotate secrets, send emails/messages, charge money, or mutate external
+  services unless the user explicitly asks and the target is confirmed.
+- Do not run destructive filesystem commands outside this repository. Inside the
+  repo, prefer targeted deletes and explain them first unless they are routine
+  generated artifacts.
+- Do not use recursive deletes, force flags, or cleanup commands against
+  computed paths unless the resolved absolute path has been checked and is
+  inside the repo.
+- Do not start background daemons, local servers, watchers, or GUI applications
+  without telling the user what will run and how it will be stopped.
+- Do not download or execute scripts from the internet, including install
+  snippets such as `irm ... | iex`, `curl ... | sh`, or remote PowerShell,
+  unless the user explicitly approves that exact source and purpose.
+- Do not commit, push, create PRs, publish releases, or comment on GitHub unless
+  the user asks or the task explicitly involves GitHub collaboration.
+- If a command needs elevated privileges, network access, system locations, or
+  credentials, ask first and state the concrete reason.
 
 ## Default Focus
 
@@ -45,7 +78,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - `packages/tokens`: design tokens and theme primitives.
 - `packages/ui`: reusable UI components.
 - `api/internal/store`: API persistence ownership.
-- `app/DesktopRuntime.cs`: desktop preset loading and local persistence.
+- `app/Sprint.Desktop.Client/DesktopRuntime.cs`: desktop preset loading and local persistence.
 
 ## Platform
 
@@ -54,6 +87,9 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Use PowerShell syntax for shell examples and local automation in this repo.
 - Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal
   user-level Go cache.
+- If `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and reports no
+  SDKs, use the installed x86 SDK at
+  `C:\Program Files (x86)\dotnet\dotnet.exe` for desktop test/build commands.
 
 ## Commands
 
@@ -61,7 +97,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - List targets: `make help`
 - Start API: `make dev-api`
 - Start web: `make dev-web`
-- Start desktop: `dotnet run --project app/Sprint.Desktop.csproj`
+- Start desktop: `make dev-app` (= `dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`)
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
@@ -69,7 +105,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Test API only: `make test-api`
 - Test shared Go only: `make test-pkg`
 - Test desktop only: `make test-app`
-- Build desktop: `dotnet build app/Sprint.Desktop.csproj`
+- Build desktop solution: `dotnet build app/Sprint.Desktop.sln`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
 - Test shared UI: `pnpm --filter @sprint/ui test`
 - Test tokens: `pnpm --filter @sprint/tokens test`
@@ -86,17 +122,26 @@ did not run.
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
 - Browser-safe desktop checks no longer apply to `app/`; use native Avalonia
   build/run checks for the desktop app.
+- After visual, layout, Graphite, or Avalonia shell changes in
+  `app/Sprint.Desktop.Client`, run the desktop visual smoke tests before
+  finishing:
+  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter VisualSmokeTests`.
+  If that filter is not implemented yet, run `make test-app` and call out the
+  missing visual harness. Inspect generated PNG artifacts under
+  `app/Sprint.Desktop.Tests/artifacts/visual/` on failures before editing again.
 
 ## Architecture Notes
 
 - The unified telemetry DTO is the spine of the app. Game-specific data is
   mapped into `pkg/dto` at the edge; downstream desktop, hardware, engineer,
   sync, API, and web consumers should depend on the shared contract.
-- To add a game adapter, implement `pkg/games.GameAdapter`, map raw data to
-  `pkg/dto`, then add the desktop integration point in `app/DesktopRuntime.cs`
-  or a focused service next to it.
+- For the desktop app, add a game by implementing a telemetry source in
+  `app/Sprint.Games` against the `Sprint.Desktop.Api` contract, then registering
+  it via `app/Sprint.Desktop.Client/DesktopRuntime.cs` or a focused service next
+  to it. (The Go `pkg/games.GameAdapter` + `pkg/dto` path remains the source of
+  truth for the API server and web, not the desktop app.)
 - Keep desktop business logic in focused C# services instead of growing
-  `MainWindow.cs`.
+  `app/Sprint.Desktop.Client/MainWindow.cs`.
 
 ## UI Rules
 
@@ -108,7 +153,7 @@ did not run.
   glass, glow, gradient, or neumorphic directions.
 - Reuse tokens from `packages/tokens` instead of inventing theme values.
 - Keep the Avalonia desktop shell aligned with the Graphite tokens in
-  `Graphite.cs` and `docs/DESIGN.md`.
+  `app/Sprint.Desktop.Client/Graphite.cs` and `docs/DESIGN.md`.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
 

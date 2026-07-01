@@ -86,7 +86,12 @@ Rules:
 
 ### Typography
 
-- UI font: `IBM Plex Sans`, with `Archivo` and system fonts as fallbacks.
+- UI font: `Inter`, with system fonts as fallback. Bundled in the Avalonia client
+  under `app/Sprint.Desktop.Client/Assets/Fonts` and exposed via `Graphite.FontStack`.
+- Display / brand font: `Space Grotesk` (wordmark, large headings), via
+  `Graphite.DisplayFontStack`.
+- Typography matches the maintainer's Figma (`docs/Sprint.fig`). (Earlier drafts
+  used `IBM Plex Sans`; that has been retired in favor of the Figma identity.)
 - Use `font-variant-numeric: tabular-nums` globally.
 - Base UI size: `13px`.
 - Page titles: `22px / 700`.
