@@ -159,10 +159,16 @@ Misc
        Read()       (*dto.TelemetryFrame, error)
    }
    ```
-3. Map raw game data to the unified DTO in `pkg/dto/telemetry.go` — **no other files need to change**
-4. Register the adapter in `app/internal/core/core.go`
+3. Map raw game data to the unified DTO in `pkg/dto/telemetry.go` — this Go path feeds the **API server + web**
 
-The VoCore renderer, engineer hub, web app, and sync client all consume the unified DTO and are unaffected by the new adapter.
+For the **desktop app** (.NET/Avalonia), games are added separately: implement
+`ITelemetrySource` (from `Sprint.Desktop.Api`) in `app/Sprint.Games`, mapping the
+game's shared memory to `TelemetryFrame`, then register it via
+`GameTelemetryPackage.CreateSource`. Full steps in [`app/README.md`](app/README.md#adding-a-game-desktop).
+
+Because both surfaces map to a unified contract (`pkg/dto` / `Sprint.Desktop.Api`),
+the dash renderer, engineer surfaces, web app, and sync client are unaffected by a
+new adapter.
 
 ---
 

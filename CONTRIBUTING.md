@@ -33,6 +33,23 @@ make test
 
 See the [README](README.md) for more options including Docker.
 
+### Desktop app (.NET / Avalonia)
+
+The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET 10 solution — see
+[`app/README.md`](app/README.md) for the full development guide (module
+boundaries, feature layout, testing seams, adding a game).
+
+```powershell
+make dev-app        # run the Avalonia shell (dotnet run)
+make lint-app       # build with warnings as errors (the real gate)
+make test-app       # xunit tests (dotnet test)
+make build-app      # publish → app/build/bin
+```
+
+> **SDK note:** the .NET `10.0.301` SDK (pinned by `global.json`) is installed
+> under the **x86** host on Windows. If a bare `dotnet` reports "no SDK found",
+> invoke it explicitly: `& 'C:\Program Files (x86)\dotnet\dotnet.exe' …`.
+
 ## Code Style
 
 ### Go
@@ -45,6 +62,14 @@ See the [README](README.md) for more options including Docker.
 - Format with Prettier
 - Lint with ESLint
 - Run `make fmt` before committing
+
+### C# (desktop app)
+- Nullable + implicit usings are on; the build must be clean with `-warnaserror`
+  (`make lint-app`)
+- Keep game-specific code in `Sprint.Games` and UI-free contracts in
+  `Sprint.Desktop.Api` — the project references enforce these seams
+- Prefer pure, testable presenter/reducer seams over growing `MainWindow.cs`; do
+  not hardcode hex outside `Graphite.cs`
 
 ### General
 - Comment only when the code isn't self-explanatory
@@ -87,8 +112,8 @@ refactor/<short-description>
 
 ### PR Checklist
 
-- [ ] Code compiles cleanly (`make build`)
-- [ ] Tests pass (`make test`)
+- [ ] Code compiles cleanly (`make build`; desktop: `make lint-app`)
+- [ ] Tests pass (`make test`; desktop: `make test-app`)
 - [ ] Linting passes (`make lint`)
 - [ ] Code is formatted (`make fmt`)
 - [ ] Documentation updated if applicable
@@ -97,10 +122,12 @@ refactor/<short-description>
 
 See the [README](README.md#adding-a-new-game) for the step-by-step guide. In short:
 
-1. Create `pkg/games/<gamename>/`
+1. Create `pkg/games/<gamename>/` (Go — feeds the API server + web)
 2. Implement the `GameAdapter` interface
 3. Map raw data to the unified DTO
-4. Register in the coordinator
+4. For the **desktop app**, implement `ITelemetrySource` in `app/Sprint.Games` and
+   register it via `GameTelemetryPackage.CreateSource` (see
+   [`app/README.md`](app/README.md#adding-a-game-desktop))
 
 ## Questions?
 
