@@ -45,6 +45,7 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer _timer;
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
+    private SurfaceState? _surfaceState;
     private SetupProgram _selectedSetup;
     private SetupProgram? _setupCompareBaseline;
     private DashEditorView? _dashEditor;
@@ -67,6 +68,7 @@ public sealed class MainWindow : Window
         var snapshot = _engine.Snapshot;
         _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
         _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
+        _surfaceState = SurfaceStatePresenter.FromTelemetry(snapshot.Status.State, snapshot.Status.LastFrameValid);
 
         // WS7: keep a hardware publisher running for each enabled screen device,
         // rendering its assigned dash off the UI thread. Feeds live per-device status.
@@ -176,9 +178,9 @@ public sealed class MainWindow : Window
             _shell.ToggleSidebar();
             BuildShell();
             RenderBody();
-        }));
-        controls.Children.Add(ChromeButton("<", () => Navigate(AppView.Live)));
-        controls.Children.Add(ChromeButton(">", () => Navigate(AppView.Settings)));
+        }, "Toggle sidebar"));
+        controls.Children.Add(ChromeButton("<", () => Navigate(AppView.Live), "Go to Live"));
+        controls.Children.Add(ChromeButton(">", () => Navigate(AppView.Settings), "Go to Settings"));
         Grid.SetColumn(controls, 1);
         grid.Children.Add(controls);
 
@@ -236,9 +238,9 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0)
         };
-        windowButtons.Children.Add(ChromeButton("-", () => WindowState = WindowState.Minimized));
-        windowButtons.Children.Add(ChromeButton("[]", ToggleMaximized));
-        windowButtons.Children.Add(ChromeButton("x", Close));
+        windowButtons.Children.Add(ChromeButton("-", () => WindowState = WindowState.Minimized, "Minimize"));
+        windowButtons.Children.Add(ChromeButton("[]", ToggleMaximized, "Maximize / restore"));
+        windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
         Grid.SetColumn(windowButtons, 5);
         grid.Children.Add(windowButtons);
 
@@ -287,10 +289,15 @@ public sealed class MainWindow : Window
         button.HorizontalContentAlignment = _shell.SidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
         button.Margin = new Thickness(0);
         button.Click += (_, _) => Navigate(view);
+        if (_shell.SidebarCollapsed)
+        {
+            ToolTip.SetTip(button, label); // full label as accessible name when collapsed to an icon
+        }
+
         return button;
     }
 
-    private Button ChromeButton(string text, Action action)
+    private Button ChromeButton(string text, Action action, string? tooltip = null)
     {
         var button = Graphite.Button(text, ButtonTone.Ghost);
         button.Width = 28;
@@ -298,6 +305,7 @@ public sealed class MainWindow : Window
         button.Padding = new Thickness(0);
         button.FontSize = 11;
         button.Click += (_, _) => action();
+        ToolTip.SetTip(button, tooltip ?? text); // accessible name for icon-only chrome
         return button;
     }
 
@@ -348,6 +356,7 @@ public sealed class MainWindow : Window
         var snapshot = _engine.Snapshot;
         _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
         _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, now);
+        _surfaceState = SurfaceStatePresenter.FromTelemetry(snapshot.Status.State, snapshot.Status.LastFrameValid);
 
         UpdateTitlebar();
         if (_shell.View == AppView.Live)
@@ -404,6 +413,13 @@ public sealed class MainWindow : Window
     {
         var stack = PageStack();
         stack.Children.Add(PageHeader("Live", "Telemetry grid, timing, pedals, tyres", Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
+
+        // Honest shared failure/empty state when the link isn't live + healthy.
+        if (_surfaceState is { } surface)
+        {
+            var view = SurfaceStatePresenter.Describe(surface);
+            stack.Children.Add(Graphite.StatePanel(view.Title, view.Detail, BrushForTone(view.Tone)));
+        }
 
         var metricGrid = new Grid
         {
@@ -694,7 +710,8 @@ public sealed class MainWindow : Window
         saved.Children.Add(Graphite.SectionLabel("Saved Devices"));
         if (_runtime.Devices.Count == 0)
         {
-            saved.Children.Add(Graphite.TextBlock("No saved devices", 13, FontWeight.SemiBold, Graphite.Text2Brush));
+            var empty = SurfaceStatePresenter.Describe(SurfaceState.Empty);
+            saved.Children.Add(Graphite.StatePanel("No saved devices", "Add a screen or wheel from the catalog on the left.", BrushForTone(empty.Tone)));
         }
         foreach (var device in _runtime.Devices)
         {
@@ -761,11 +778,22 @@ public sealed class MainWindow : Window
 
     private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
     {
-        if (!_capture.IsListening)
+        if (_capture.IsListening)
         {
+            HandleCaptureKey(e);
             return;
         }
 
+        // Alt+1..7 jumps between the seven views (keyboard navigation, WS11 a11y).
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt) && TryViewDigit(e.Key, out var index))
+        {
+            Navigate((AppView)index);
+            e.Handled = true;
+        }
+    }
+
+    private void HandleCaptureKey(KeyEventArgs e)
+    {
         if (e.Key == Key.Escape)
         {
             _capture = InputCaptureReducer.Cancel(_capture);
@@ -786,6 +814,22 @@ public sealed class MainWindow : Window
         _capture = InputCaptureState.Idle;
         RenderBody();
         e.Handled = true;
+    }
+
+    private static bool TryViewDigit(Key key, out int index)
+    {
+        index = key switch
+        {
+            Key.D1 or Key.NumPad1 => 0,
+            Key.D2 or Key.NumPad2 => 1,
+            Key.D3 or Key.NumPad3 => 2,
+            Key.D4 or Key.NumPad4 => 3,
+            Key.D5 or Key.NumPad5 => 4,
+            Key.D6 or Key.NumPad6 => 5,
+            Key.D7 or Key.NumPad7 => 6,
+            _ => -1,
+        };
+        return index >= 0;
     }
 
     private Control SettingsPage()

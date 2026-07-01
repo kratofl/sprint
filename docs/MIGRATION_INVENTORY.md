@@ -36,19 +36,50 @@ so that:
    feature parity users will notice missing (hardware output, input binding,
    editor depth, packaging); **P2** = nice-to-have / dev-gated / lower-traffic.
 
-> **Build verification (updated 2026-06-29):** the .NET **10.0.301** SDK is
+> **Build verification (updated 2026-07-01):** the .NET **10.0.301** SDK is
 > installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64
 > `dotnet` on PATH carries only a 6.0.5 runtime — which is why `dotnet --version`
 > first appeared to fail). `dotnet build app/Sprint.Desktop.sln -warnaserror`
-> **succeeds clean (0/0)** and `dotnet test` **passes 25/25** (up from 4 — WS3 added
-> contract/freshness/presenter/rate tests + a **headless Avalonia shell test** that
-> builds/shows/closes `MainWindow` under a real Avalonia context). `global.json`
-> pins the SDK (WS2). View *construction* is now headless-verified; full *visual*
-> behavior still needs a `make dev-app` GUI run. Use the x86 host explicitly — the
-> x64 `dotnet` on PATH lists no 10.x SDK, so a bare `dotnet`/`make` only works where
-> the x86 host resolves (CI installs the SDK via `global.json`).
+> **succeeds clean (0/0)** and `dotnet test` **passes 197/197** (up from 25 —
+> WS6–WS11 added the SkiaSharp dash painter + widgets + editor, RGB565 +
+> screen-driver + publisher, the command/binding/capture model, engineer staging +
+> setup A/B, the update checker, and the shared surface-state presenter, plus a
+> headless dash-editor render test). `dotnet publish -r win-x64` is verified to emit
+> the exe with presets/fonts/appicon included. `global.json` pins the SDK (WS2).
+> View *construction* + painter *pixels* are headless-verified; full on-wheel
+> *visual* behavior and any real hardware/game path still need a `make dev-app` GUI
+> run against live hardware. Use the x86 host explicitly — the x64 `dotnet` on PATH
+> lists no 10.x SDK (CI installs the SDK via `global.json`).
 
 ---
+
+## 0. Reconciliation (2026-07-01) — WS11 final gate
+
+Per-workstream final status after the WS6–WS11 implementation pass. Build is clean
+with `-warnaserror`; 197 desktop tests pass. Items marked **Deferred** are tracked,
+not forgotten (US44) — most are hardware/OS-interop paths that cannot be verified in
+CI without a physical device or a running game.
+
+| WS | Area | Status | Notes |
+| --- | --- | --- | --- |
+| WS1 | Inventory & cleanup | **Done** | This doc; stale-Wails purge landed earlier. |
+| WS2 | Solution & tooling | **Done** | 4 projects, DI composition root, xunit, `global.json`, `-warnaserror` gate, RID target (with WS10). |
+| WS3 | Shared contract | **Done** | Health/stale/invalid states; engineer command shapes. |
+| WS4 | LMU adapter | **Done (sw)** | Parser/mapper/engine/delta green over synthetic frames; **live-game run deferred**. |
+| WS5 | Persistence | **Done** | settings/devices/layouts/setup/controls round-trip; portable-vs-AppData is a product call. |
+| WS6 | Dash render + editor | **Done (core)** | SkiaSharp `DashPainter` renders the default preset + 12 critical widgets + flag/alert overlays; three-pane editor (palette/canvas drag-move-resize/inspector/page-tabs) on the `DashLayoutEditor` reducers; real preview + thumbnails. **Deferred:** full 23-widget catalog + ~90-binding resolver, widget stacks, theme manager, per-widget style/config inspector, in-editor grid resize of the layout itself. |
+| WS7 | Hardware display | **Done (fake-verified)** | RGB565 (ported + tested), `IScreenDriver`/fake adapter, `DashPainterFrameSource`, off-thread `ScreenPublisher`, `DeviceScreenService` coordinator, device UI (status/rotate/offset/dash-assign), WinUSB VoCore/USBD480 drivers + factory. **Deferred (hardware-gated, Open Q#3):** live USB verification, generic→scan device picker, WinUSB `.inf` installer, capture/rear-view (P2). |
+| WS8 | Input & binding | **Done (core)** | `CommandBus`, `controls.json` persistence, `BindingResolver`, `InputCaptureReducer`, keyboard-fallback bindings UI. **Deferred (Open Q#4):** Windows Raw Input physical-button capture, per-device binding-routing UI, page-cycle→on-hardware page effect. |
+| WS9 | Engineer/web | **Done (core)** | `EngineerStageService` (staged diff via the shared `StagedControlChange` contract, push/revert, command builders), setup A/B compare + delete. **Deferred:** real engineer↔web transport beyond the contract shapes. |
+| WS10 | Packaging/release | **Done** | Intentional win-x64 publish (verified), version+channel reporting (`BuildInfo` + Settings badge), channel-aware `UpdateChecker` + manual check. **Decision (Open Q#5):** check + notify + manual download; self-replacing auto-install deferred. |
+| WS11 | Final gate | **Done** | Shared `SurfaceState` presenter + `Graphite.StatePanel` (empty/loading/disconnected/stale/unsupported/permission-denied/device-busy/invalid-frame/retrying), keyboard nav (Alt+1..7) + icon tooltips + focus, `docs/DESKTOP_SMOKE.md`, this reconciliation. **Deferred:** splash overlay (P2), full GUI/hardware smoke run. |
+
+**Cross-cutting deferrals** (require a device, a running game, or a maintainer call —
+never silently "done"): live LMU telemetry, real VoCore/USBD480 output, physical
+joystick capture, portable-data-location decision, code signing, and the P2
+capture/rear-view + theme-manager surfaces. The dash painter DSL (ColorExpr /
+Condition / widget stacks / per-widget update-rate cache) was intentionally not
+ported — the fixed critical-widget set uses direct renderers (see WS6 §5).
 
 ## 1. Header context: the migration at a glance
 
@@ -779,11 +810,11 @@ model).
 
 | # | Topic | Risk / decision needed | Owning WS |
 | --- | --- | --- | --- |
-| 1 | **Dash painter port strategy** | The Go painter is a `gg`-based image pipeline with embedded TTFs, pre-baked backgrounds, per-widget sub-context caching, and RGB565 output. Re-implement in .NET via SkiaSharp? Avalonia's render surface? A standalone image library? This decision shapes WS6 + WS7 (frame source) heavily. | WS6 |
+| 1 | **Dash painter port strategy** — RESOLVED 2026-07-01 | Chosen: **SkiaSharp** (`DashPainter`), pinned to the exact version Avalonia already resolves. Renders off the UI thread to a BGRA buffer that feeds the on-screen preview (`DashImageRenderer`), PNG thumbnails, and hardware RGB565 alike. The Go runtime element-DSL (ColorExpr/Condition/widget-stacks/per-widget cache) was NOT ported — the fixed critical-widget set uses direct per-type renderers; richer config-driven widgets remain a deferred WS6 row. | WS6 |
 | 2 | **Shared-memory interop in .NET** | LMU reads a named shared-memory region with a packed `_pack_=4` binary layout (`MemoryMappedFile` + `Marshal`/`Span` struct reads). Field-alignment fidelity is parity-critical; needs captured frames to validate. | WS4 |
 | 3 | **WinUSB in .NET** | Go used native WinUSB (no CGO/libusb) + SetupDI enumeration + `pnputil` install. .NET has no CGO equivalent — P/Invoke to WinUSB/SetupAPI, or a managed USB wrapper? Affects VoCore/USBD480 + driver install. | WS7 |
 | 4 | **Windows Raw Input in .NET** | HID button/encoder capture used an OS-thread message loop + HidP APIs. Porting requires a hidden message window + P/Invoke; threading model must stay off the UI thread. | WS8 |
-| 5 | **Updater: port, replace, or drop** | The old GitHub-release self-replace flow is a Windows batch script. Decide whether to port, replace with a packaging-native updater, or drop (US40). Gates the Settings update UI + UpdateToast. | WS10 |
+| 5 | **Updater: port, replace, or drop** — RESOLVED 2026-07-01 | Decision: **check + notify + manual download**. `UpdateChecker` (channel-aware semver, unit-tested) + `GitHubReleaseSource` power a manual "Check for updates" in Settings and a version badge; the Windows-batch **self-replacing auto-install is intentionally deferred** (risky unattended, and out of scope for this parity pass). See `docs/RELEASE.md`. | WS10 |
 | 6 | **Design typography** — RESOLVED 2026-06-29 | Maintainer confirmed `docs/Sprint.fig` mandates **Inter** (UI) + **Space Grotesk** (display). Design layer migrated off `IBM Plex Sans`: fonts bundled under `Sprint.Desktop.Client/Assets/Fonts`; `Graphite.FontStack`/`DisplayFontStack` + `docs/DESIGN.md` updated; build-verified. Remaining: render-verify on a GUI run + full component fidelity to the Figma (WS6). | WS6 |
 | 7 | **Telemetry threading model** | The WS3 contract now *supports* the old design (sync-pull adapter + a consumer-owned loop), and the false "60Hz" label is gone (real measured Hz via `RateMeter`). **Still open for WS4:** the actual background read thread + cancellation/dispose + 5s reconnect + non-blocking ~30Hz buffered handoff + delta augmentation (a `with`-copy, never mutating the adapter frame). The current 500ms UI-thread `DispatcherTimer` is the WS3 stand-in WS4 replaces. | WS4 |
 | 8 | **SDK availability / build verification** — RESOLVED 2026-06-29 | The .NET **10.0.301** SDK is installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64 `dotnet` on PATH has only a 6.0.5 runtime — why `dotnet --version` first appeared to fail). `dotnet build app/Sprint.Desktop.sln` is **clean (0/0)** and `make test-app` is **4/4**. Still TODO in WS2: add `global.json` to pin the SDK so the build isn't environment-luck. | WS2 |

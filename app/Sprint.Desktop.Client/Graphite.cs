@@ -127,6 +127,54 @@ internal static class Graphite
         };
     }
 
+    // Reusable shared-state panel (empty/loading/disconnected/stale/… — WS11).
+    // Feature slices compose this instead of re-inventing per-view state visuals.
+    public static Control StatePanel(string title, string detail, IBrush accent)
+    {
+        var dot = new Border
+        {
+            Width = 10,
+            Height = 10,
+            CornerRadius = new CornerRadius(999),
+            Background = accent,
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+
+        var stack = new StackPanel
+        {
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        stack.Children.Add(dot);
+
+        var heading = TextBlock(title, 16, FontWeight.Bold, TextBrush);
+        heading.HorizontalAlignment = HorizontalAlignment.Center;
+        heading.TextAlignment = TextAlignment.Center;
+        stack.Children.Add(heading);
+
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            var body = TextBlock(detail, 12, FontWeight.Normal, Text3Brush, TextWrapping.Wrap);
+            body.HorizontalAlignment = HorizontalAlignment.Center;
+            body.TextAlignment = TextAlignment.Center;
+            body.MaxWidth = 380;
+            stack.Children.Add(body);
+        }
+
+        return new Border
+        {
+            Background = PanelBrush,
+            BorderBrush = LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(28),
+            MinHeight = 160,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = stack
+        };
+    }
+
     public static Border StatusPill(string text, IBrush? brush = null)
     {
         return new Border
