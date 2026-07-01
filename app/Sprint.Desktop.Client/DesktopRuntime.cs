@@ -205,31 +205,25 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public void PushEngineerChanges()
     {
-        var dirty = EngineerControls
-            .Where(control => Math.Abs(control.CarValue - control.StagedValue) > 0.001)
-            .ToList();
+        var dirty = EngineerStageService.DirtyChanges(EngineerControls);
         if (dirty.Count == 0)
         {
             return;
         }
 
-        var detail = string.Join(" | ", dirty.Select(control =>
-            $"{control.Label} {FormatControlValue(control, control.CarValue)} -> {FormatControlValue(control, control.StagedValue)}"));
-        foreach (var control in dirty)
-        {
-            control.CarValue = control.StagedValue;
-        }
+        // Build the human-readable radio detail before applying (push mutates CarValue).
+        var dirtyKeys = dirty.Select(change => change.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var detail = string.Join(" | ", EngineerControls
+            .Where(control => dirtyKeys.Contains(control.Key))
+            .Select(control => $"{control.Label} {FormatControlValue(control, control.CarValue)} -> {FormatControlValue(control, control.StagedValue)}"));
 
+        EngineerStageService.Push(EngineerControls);
         PrependRadioLog("Push staged changes", detail, "DASH");
     }
 
     public void RevertEngineerChanges()
     {
-        foreach (var control in EngineerControls)
-        {
-            control.StagedValue = control.CarValue;
-        }
-
+        EngineerStageService.Revert(EngineerControls);
         PrependRadioLog("Revert", "Staged car control changes cleared", "DASH");
     }
 

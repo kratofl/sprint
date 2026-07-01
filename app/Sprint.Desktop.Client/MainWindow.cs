@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
@@ -43,6 +44,7 @@ public sealed class MainWindow : Window
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
     private SetupProgram _selectedSetup;
+    private SetupProgram? _setupCompareBaseline;
     private DashEditorView? _dashEditor;
     private readonly CommandBus _commands = new();
     private InputCaptureState _capture = InputCaptureState.Idle;
@@ -482,6 +484,7 @@ public sealed class MainWindow : Window
         AddGrid(grid, Graphite.Card(controls), 0, 0);
 
         var side = new StackPanel { Spacing = 12 };
+        side.Children.Add(StagedChangesPanel());
         side.Children.Add(QuickMessagePanel());
         side.Children.Add(RadioLogPanel());
         AddGrid(grid, side, 0, 1);
@@ -515,7 +518,8 @@ public sealed class MainWindow : Window
             };
             programs.Children.Add(button);
         }
-        programs.Children.Add(ActionButton("Duplicate", ButtonTone.Neutral, () =>
+        var programActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        programActions.Children.Add(ActionButton("Duplicate", ButtonTone.Neutral, () =>
         {
             var copy = new SetupProgram
             {
@@ -528,6 +532,20 @@ public sealed class MainWindow : Window
             _runtime.SaveSetupPrograms();
             RenderBody();
         }));
+        if (_runtime.SetupPrograms.Count > 1)
+        {
+            programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
+            {
+                var removed = _selectedSetup;
+                _runtime.SetupPrograms.Remove(removed);
+                _selectedSetup = _runtime.SetupPrograms.First();
+                _runtime.SaveSetupPrograms();
+                RenderBody();
+            }));
+        }
+
+        programs.Children.Add(programActions);
+        programs.Children.Add(SetupComparePanel());
         AddGrid(grid, Graphite.Card(programs), 0, 0);
 
         var editor = new StackPanel { Spacing = 12 };
@@ -598,6 +616,47 @@ public sealed class MainWindow : Window
 
         stack.Children.Add(grid);
         return Scroll(stack);
+    }
+
+    private Control SetupComparePanel()
+    {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
+        panel.Children.Add(Graphite.SectionLabel("A/B Compare"));
+
+        var others = _runtime.SetupPrograms.Where(program => program != _selectedSetup).ToArray();
+        if (others.Length == 0)
+        {
+            panel.Children.Add(Graphite.TextBlock("Add another program to compare.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+            return panel;
+        }
+
+        if (_setupCompareBaseline is null || !others.Contains(_setupCompareBaseline))
+        {
+            _setupCompareBaseline = others[0];
+        }
+
+        var combo = new ComboBox
+        {
+            ItemsSource = others.Select(program => program.Name).ToArray(),
+            SelectedItem = _setupCompareBaseline.Name,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        combo.SelectionChanged += (_, _) =>
+        {
+            _setupCompareBaseline = others.FirstOrDefault(program => program.Name == combo.SelectedItem?.ToString()) ?? others[0];
+            RenderBody();
+        };
+        panel.Children.Add(combo);
+
+        var prediction = SetupComparison.Compare(_setupCompareBaseline, _selectedSetup);
+        var delta = prediction.LapDeltaSeconds;
+        var brush = delta < 0 ? Graphite.GreenBrush : delta > 0 ? Graphite.RedBrush : Graphite.Text2Brush;
+        panel.Children.Add(Graphite.TextBlock($"{_selectedSetup.Name} vs {_setupCompareBaseline.Name}", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        panel.Children.Add(Graphite.TextBlock($"{delta:+0.000;-0.000;0.000} s predicted", 17, FontWeight.Bold, brush));
+        return panel;
     }
 
     private Control DevicesPage()
@@ -989,6 +1048,36 @@ public sealed class MainWindow : Window
         button.Padding = new Thickness(0);
         button.Click += (_, _) => action();
         return button;
+    }
+
+    private Control StagedChangesPanel()
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(Graphite.SectionLabel("Staged Changes"));
+
+        var dirty = EngineerStageService.DirtyChanges(_runtime.EngineerControls);
+        if (dirty.Count == 0)
+        {
+            panel.Children.Add(Graphite.TextBlock("In sync with the car", 12, FontWeight.SemiBold, Graphite.GreenBrush));
+            return Graphite.Card(panel);
+        }
+
+        foreach (var change in dirty)
+        {
+            var control = _runtime.EngineerControls.First(item => item.Key == change.Key);
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            var label = Graphite.TextBlock(control.Label, 12, FontWeight.SemiBold, Graphite.Text2Brush);
+            Grid.SetColumn(label, 0);
+            row.Children.Add(label);
+            var pill = Graphite.StatusPill(
+                $"{DesktopRuntime.FormatControlValue(control, change.CarValue)} → {DesktopRuntime.FormatControlValue(control, change.StagedValue)}",
+                Graphite.YellowBrush);
+            Grid.SetColumn(pill, 1);
+            row.Children.Add(pill);
+            panel.Children.Add(row);
+        }
+
+        return Graphite.Card(panel);
     }
 
     private Control QuickMessagePanel()
