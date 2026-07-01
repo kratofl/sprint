@@ -88,6 +88,12 @@ public sealed class ScreenPublisher : IDisposable
         var thread = _thread;
         var joined = thread is null || !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(2));
 
+        // Only dispose once the loop thread has actually exited, so we never dispose
+        // the source/driver/CTS out from under an in-flight render or blocking USB
+        // write (which would fault a native handle or throw on the background thread).
+        // On a pathological join timeout — a real transport stalled in a non-cancelable
+        // native write — we accept leaking these until process exit over that race; the
+        // cancelled loop's exit still Disconnects best-effort. Mirrors TelemetryEngine.
         if (joined)
         {
             try { _driver.Disconnect(); } catch { /* terminal cleanup never throws */ }

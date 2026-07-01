@@ -50,6 +50,52 @@ public sealed class DeviceScreenServiceTests
     }
 
     [Fact]
+    public void AddDeviceGeneratesUniqueIdsEvenAfterRemoval()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var generic = runtime.Catalog.First(entry => entry.Vid == 0 && entry.Pid == 0); // SIM serial path
+
+            var a = runtime.AddDevice(generic);
+            var b = runtime.AddDevice(generic);
+            Assert.NotEqual(a.Id, b.Id);
+
+            runtime.RemoveDevice(a);
+            var c = runtime.AddDevice(generic);
+
+            // The re-added device must not collide with the surviving one.
+            Assert.NotEqual(b.Id, c.Id);
+            Assert.Equal(runtime.Devices.Count, runtime.Devices.Select(device => device.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SyncToleratesDuplicateDeviceIdsWithoutThrowing()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            runtime.Devices.Add(ScreenDevice("dup"));
+            runtime.Devices.Add(ScreenDevice("dup")); // defensively identical id
+
+            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => new FakeScreenDriver());
+            service.Sync(); // must not throw on the duplicate key
+            Assert.Contains("dup", service.ActiveDeviceIds);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SyncStopsPublisherWhenDeviceDisabled()
     {
         var dataRoot = TestEnv.NewTempDataRoot();

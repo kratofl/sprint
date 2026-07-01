@@ -46,12 +46,21 @@ public sealed class DeviceScreenService : IDisposable
             return;
         }
 
-        var desired = _runtime.Devices
-            .Where(device => string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
+        // Build with an indexer (last-wins) rather than ToDictionary: two saved
+        // devices can transiently share an Id, and ToDictionary would throw and
+        // crash the calling UI action. Reconciliation just tracks one publisher
+        // per id, which is the correct behaviour for same-id devices.
+        var desired = new Dictionary<string, SavedDevice>(StringComparer.OrdinalIgnoreCase);
+        foreach (var device in _runtime.Devices)
+        {
+            if (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
                 && !device.Disabled
                 && device.Width > 0
                 && device.Height > 0)
-            .ToDictionary(device => device.Id, StringComparer.OrdinalIgnoreCase);
+            {
+                desired[device.Id] = device;
+            }
+        }
 
         foreach (var id in _publishers.Keys.Where(id => !desired.ContainsKey(id)).ToArray())
         {

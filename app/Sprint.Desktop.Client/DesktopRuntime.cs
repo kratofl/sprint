@@ -112,12 +112,19 @@ public sealed class DesktopRuntime : IDesktopRuntime
     {
         var width = catalog.Width > 0 ? catalog.Width : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 480 : 800;
         var height = catalog.Height > 0 ? catalog.Height : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 272 : 480;
-        var nextIndex = Devices.Count(device =>
-            device.Driver.Equals(catalog.Driver, StringComparison.OrdinalIgnoreCase) &&
-            device.Vid == catalog.Vid &&
-            device.Pid == catalog.Pid) + 1;
-        var serial = catalog.Vid == 0 && catalog.Pid == 0 ? $"SIM-{nextIndex:000}" : $"USB-{nextIndex:000}";
-        var id = $"{catalog.Driver}-{catalog.Vid:x4}-{catalog.Pid:x4}-{serial}".ToLowerInvariant();
+        // Find the lowest index whose composite id is not already in use, so ids
+        // stay unique even after devices are removed (a plain count+1 can collide
+        // with a survivor and then crash reconciliation on a duplicate key).
+        var prefix = catalog.Vid == 0 && catalog.Pid == 0 ? "SIM" : "USB";
+        string serial, id;
+        var nextIndex = 1;
+        do
+        {
+            serial = $"{prefix}-{nextIndex:000}";
+            id = $"{catalog.Driver}-{catalog.Vid:x4}-{catalog.Pid:x4}-{serial}".ToLowerInvariant();
+            nextIndex++;
+        }
+        while (Devices.Any(device => device.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
 
         var saved = new SavedDevice
         {
