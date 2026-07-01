@@ -7,6 +7,16 @@
     <RootNamespace>Sprint.Desktop</RootNamespace>
     <AssemblyName>Sprint.Desktop.Client</AssemblyName>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- WS10: intentional Windows-first publish target. Framework-dependent (the
+         .NET 10 desktop runtime is a prerequisite) → small artifacts; flip
+         SelfContained to true for a standalone build. `make build-app` publishes
+         to app/build/bin. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AssemblyTitle>Sprint Desktop</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

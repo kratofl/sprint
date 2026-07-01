@@ -14,6 +14,8 @@ using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Updates;
+using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
 using Sprint.Games;
 
@@ -833,8 +835,35 @@ public sealed class MainWindow : Window
             RenderBody();
         }));
 
+        form.Children.Add(Graphite.SectionLabel("About"));
+        form.Children.Add(FormRow("Version", Graphite.StatusPill(
+            $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)));
+        var updateStatus = Graphite.TextBlock("Manual check — auto-install is deferred.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap);
+        var checkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+        checkRow.Children.Add(ActionButton("Check for updates", ButtonTone.Ghost, () => CheckForUpdates(updateStatus)));
+        checkRow.Children.Add(updateStatus);
+        form.Children.Add(FormRow("Updates", checkRow));
+
         stack.Children.Add(Graphite.Card(form));
         return Scroll(stack);
+    }
+
+    private async void CheckForUpdates(TextBlock status)
+    {
+        status.Text = "Checking…";
+        try
+        {
+            var releases = await new GitHubReleaseSource().FetchAsync("kratofl/sprint");
+            var result = UpdateChecker.Check(BuildInfo.Version, _runtime.Settings.UpdateChannel, releases);
+            status.Text = result is { UpdateAvailable: true, Latest: { } latest }
+                ? $"Update {latest.Version} available"
+                : "Up to date";
+        }
+        catch (Exception)
+        {
+            // Manual check is best-effort; a network failure must not crash the app.
+            status.Text = "Check failed — try again later.";
+        }
     }
 
     private Control HelpPage()

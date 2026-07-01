@@ -129,6 +129,50 @@ self-hosted API server binary is not part of this release workflow today.)
 
 ---
 
+## In-app version reporting & updates (WS10)
+
+The desktop client reports its own version and offers a manual update check:
+
+- **Version metadata** — `Directory.Build.props` carries `Version` (and
+  Product/Company); `make build-app` / the release workflow stamp the tag via
+  `-p:InformationalVersion=<ver>`. `Runtime/BuildInfo.Version` reads that back
+  (stripping any `+<sha>` suffix), shown as a badge on the **Settings → About**
+  card next to the active update channel.
+- **Update check** — `Features/Updates/UpdateChecker` is a pure, channel-aware
+  semver check: it picks the newest release visible on the user's channel
+  (`stable` sees stable; `beta` sees stable+beta; `alpha` sees all) and reports
+  whether it is newer than the running build. `GitHubReleaseSource` fetches the
+  repo's releases on an explicit **Check for updates** click and degrades to "no
+  releases" on any network failure (never crashes).
+- **Updater decision (resolves Open Question #5):** the client **checks and
+  notifies**; downloading + installing an update is **manual** (the user opens
+  the GitHub Release). The old Windows-batch **self-replacing auto-install is
+  intentionally deferred** — it is risky to run unattended and is out of scope
+  for the current parity pass. Revisit if unattended updates become a
+  requirement.
+
+## Publish target (WS10 / WS2)
+
+The client project declares an intentional Windows publish target
+(`<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>`, framework-dependent —
+`SelfContained=false`). Flip `SelfContained` to `true` for a standalone build
+that bundles the runtime. Assets, fonts, presets, and the app icon are marked
+`CopyToOutputDirectory` and are verified present in the publish output.
+
+## Release validation
+
+Before tagging, run the full local gate:
+
+```powershell
+& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.sln -warnaserror   # 0/0
+make test-app                                                                            # all green
+make build-app VERSION=<ver>                                                             # publishes to app/build/bin
+```
+
+Then smoke the artifact: launch `app/build/bin/Sprint.Desktop.Client.exe`, confirm
+the shell opens, and confirm the publish output contains `presets/`,
+`Assets/Fonts/`, and `build/appicon.png`.
+
 ## Checklist before tagging
 
 - [ ] `main` is green (CI passes)
