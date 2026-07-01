@@ -10,6 +10,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Shell;
@@ -43,6 +44,8 @@ public sealed class MainWindow : Window
     private TelemetryStatusView _statusView = new();
     private SetupProgram _selectedSetup;
     private DashEditorView? _dashEditor;
+    private readonly CommandBus _commands = new();
+    private InputCaptureState _capture = InputCaptureState.Idle;
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
     {
@@ -65,6 +68,16 @@ public sealed class MainWindow : Window
         // rendering its assigned dash off the UI thread. Feeds live per-device status.
         _screens = new DeviceScreenService(_runtime, () => _engine.Snapshot.Frame);
         _screens.Sync();
+
+        // WS8: the UI-independent command bus. Handlers are wired here (the shell owns
+        // the effects); input devices / the bindings UI dispatch by id. The on-wheel
+        // page-cycle effect on live hardware pages is a follow-up, so page commands
+        // dispatch cleanly today without a visible screen effect yet.
+        SprintCommands.RegisterDefaults(_commands);
+        _commands.Handle(SprintCommands.DashPageNext, _ => { });
+        _commands.Handle(SprintCommands.DashPagePrev, _ => { });
+        _commands.Handle(SprintCommands.DashTargetSet, _ => { });
+        KeyDown += OnGlobalKeyDown;
 
         Title = "Sprint";
         Width = 1440;
@@ -629,7 +642,89 @@ public sealed class MainWindow : Window
         AddGrid(grid, saved, 0, 1);
 
         stack.Children.Add(grid);
+        stack.Children.Add(BindingsCard());
         return Scroll(stack);
+    }
+
+    private Control BindingsCard()
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(Graphite.SectionLabel("Command Bindings"));
+        panel.Children.Add(Graphite.TextBlock(
+            "Bind wheel buttons or keyboard keys to Sprint commands. Click Listen, then press a key (physical wheel-button capture uses Windows Raw Input — deferred).",
+            11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+
+        foreach (var meta in _commands.Catalog())
+        {
+            var bound = _runtime.Controls.Bindings.FirstOrDefault(binding => binding.Command == meta.Id);
+            var capturing = _capture.IsListening && _capture.Command == meta.Id;
+
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 2) };
+            var text = new StackPanel { Spacing = 2 };
+            text.Children.Add(Graphite.TextBlock(meta.Label, 13, FontWeight.SemiBold, Graphite.TextBrush));
+            text.Children.Add(Graphite.TextBlock(
+                capturing ? "Press a key…  (Esc to cancel)" : bound?.Input ?? "Unbound",
+                11, FontWeight.Normal, capturing ? Graphite.AccentBrush : Graphite.Text3Brush));
+            Grid.SetColumn(text, 0);
+            row.Children.Add(text);
+
+            var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+            controls.Children.Add(ActionButton(capturing ? "Cancel" : "Listen", capturing ? ButtonTone.Neutral : ButtonTone.Ghost, () => ToggleListen(meta.Id)));
+            if (bound is not null)
+            {
+                controls.Children.Add(ActionButton("Clear", ButtonTone.Ghost, () => ClearBinding(meta.Id)));
+            }
+
+            Grid.SetColumn(controls, 1);
+            row.Children.Add(controls);
+            panel.Children.Add(row);
+        }
+
+        return Graphite.Card(panel);
+    }
+
+    private void ToggleListen(string commandId)
+    {
+        _capture = _capture.IsListening && _capture.Command == commandId
+            ? InputCaptureReducer.Cancel(_capture)
+            : InputCaptureReducer.Start(commandId, DateTimeOffset.UtcNow);
+        RenderBody();
+    }
+
+    private void ClearBinding(string commandId)
+    {
+        _runtime.Controls.Bindings.RemoveAll(binding => binding.Command == commandId);
+        _runtime.SaveControls();
+        RenderBody();
+    }
+
+    private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!_capture.IsListening)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            _capture = InputCaptureReducer.Cancel(_capture);
+            RenderBody();
+            e.Handled = true;
+            return;
+        }
+
+        _capture = InputCaptureReducer.Capture(_capture, $"key:{e.Key}");
+        if (InputCaptureReducer.ToBinding(_capture) is { } binding)
+        {
+            // One binding per command and per input token (avoid duplicates).
+            _runtime.Controls.Bindings.RemoveAll(existing => existing.Command == binding.Command || existing.Input == binding.Input);
+            _runtime.Controls.Bindings.Add(binding);
+            _runtime.SaveControls();
+        }
+
+        _capture = InputCaptureState.Idle;
+        RenderBody();
+        e.Handled = true;
     }
 
     private Control SettingsPage()

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
 
@@ -12,6 +13,7 @@ public interface IDesktopRuntime
     event EventHandler<RenderProfile>? RenderProfileChanged;
 
     AppSettings Settings { get; }
+    ControlsConfig Controls { get; }
     RenderProfile CurrentRenderProfile { get; }
     ObservableCollection<CatalogDevice> Catalog { get; }
     ObservableCollection<SavedDevice> Devices { get; }
@@ -21,6 +23,7 @@ public interface IDesktopRuntime
     ObservableCollection<RadioLogEntry> RadioLog { get; }
 
     void SaveSettings();
+    void SaveControls();
     SavedDevice AddDevice(CatalogDevice catalog);
     void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId);
     void RemoveDevice(SavedDevice device);

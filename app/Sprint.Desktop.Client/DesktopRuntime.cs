@@ -5,6 +5,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
 
@@ -24,6 +25,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly string _layoutsPath;
     private readonly string _presetRoot;
     private readonly string? _legacyDataRoot;
+    private readonly InputBindingStore _controlsStore;
 
     public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null)
     {
@@ -39,10 +41,12 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
         _layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
         Directory.CreateDirectory(_layoutsPath);
+        _controlsStore = new InputBindingStore(resolvedDataRoot);
 
         MigrateLegacyDataIfNeeded();
 
         Settings = LoadSettings();
+        Controls = _controlsStore.Load();
         foreach (var device in LoadCatalog())
         {
             Catalog.Add(device);
@@ -85,6 +89,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     public AppSettings Settings { get; }
+    public ControlsConfig Controls { get; }
     public RenderProfile CurrentRenderProfile => new(Settings.DriverName, Settings.DriverNumber);
     public ObservableCollection<CatalogDevice> Catalog { get; } = [];
     public ObservableCollection<SavedDevice> Devices { get; } = [];
@@ -100,6 +105,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         SaveJson(_settingsPath, Settings);
         RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
     }
+
+    public void SaveControls() => _controlsStore.Save(Controls);
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
