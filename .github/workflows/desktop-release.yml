@@ -9,45 +9,72 @@ permissions:
   contents: read
 
 jobs:
-  build-desktop:
-    name: Desktop (Windows)
-    runs-on: windows-latest
+  release-desktop:
+    name: Desktop (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            label: windows-amd64
+            ext: ".exe"
+          - os: ubuntu-latest
+            rid: linux-x64
+            label: linux-amd64
+            ext: ""
 
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-
-      - name: Extract version and channel
-        shell: pwsh
-        run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          $lower = $version.ToLower()
-          $isPrerelease = ($lower -match 'alpha|beta').ToString().ToLower()
-          "IS_PRERELEASE=$isPrerelease" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Setup .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore desktop app
-        run: dotnet restore app/Sprint.Desktop.sln
+      - name: Extract version and channel
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          lower=$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]')
+          if [[ "$lower" == *alpha* || "$lower" == *beta* || "$lower" == *rc* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
 
-      - name: Build desktop app
-        run: dotnet publish app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj -c Release -r win-x64 --self-contained false -p:InformationalVersion=${{ env.VERSION }} -o app/build/bin
+      - name: Publish self-contained single-file binary
+        shell: bash
+        run: >-
+          dotnet publish app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
+          -c Release -r ${{ matrix.rid }} -p:PublishSingleFile=true
+          -p:InformationalVersion="$VERSION" -o app/build/bin
 
-      - name: Rename artifact
-        shell: pwsh
-        run: Move-Item app/build/bin/Sprint.Desktop.Client.exe "app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe"
+      - name: Package artifact
+        shell: bash
+        run: |
+          name="sprint-${GITHUB_REF_NAME}-${{ matrix.label }}"
+          bin="app/build/bin/Sprint.Desktop.Client${{ matrix.ext }}"
+          [ -f "$bin" ] && chmod +x "$bin" || true
+          # Ship the self-contained binary + its presets/assets as one archive
+          # (the binary needs no installed .NET runtime).
+          cd app/build/bin
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "../../../${name}.zip" ./* >/dev/null
+            echo "ASSET=${name}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "../../../${name}.tar.gz" ./*
+            echo "ASSET=${name}.tar.gz" >> "$GITHUB_ENV"
+          fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
         with:
-          files: app/build/bin/sprint-${{ github.ref_name }}-windows-amd64.exe
+          files: ${{ env.ASSET }}
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE == 'true' }}

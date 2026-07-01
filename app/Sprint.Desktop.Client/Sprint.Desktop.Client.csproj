@@ -8,16 +8,37 @@
     <AssemblyName>Sprint.Desktop.Client</AssemblyName>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
-    <!-- WS10: intentional Windows-first publish target. Framework-dependent (the
-         .NET 10 desktop runtime is a prerequisite) → small artifacts; flip
-         SelfContained to true for a standalone build. `make build-app` publishes
-         to app/build/bin. -->
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <SelfContained>false</SelfContained>
-    <PublishSingleFile>false</PublishSingleFile>
+    <!-- Cross-platform publish targets (Windows + Linux x64). Dev build/run/test
+         stay framework-dependent; the single-file profile below makes `publish`
+         self-contained so shipped binaries need NO installed .NET runtime. -->
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <AssemblyTitle>Sprint Desktop</AssemblyTitle>
   </PropertyGroup>
+
+  <!-- Lightweight, self-contained, single-file publish (one binary, no runtime
+       dependency), applied whenever PublishSingleFile is requested — i.e.
+       `make build-app` and the release workflow. Native libs (SkiaSharp/Avalonia)
+       are bundled and the payload is compressed. Trimming + Native AOT would shrink
+       this further but need System.Text.Json source generators + a per-OS GUI smoke
+       first (our persistence uses reflection-based JSON) — see docs/RELEASE.md. -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- The SkiaSharp/HarfBuzz runtime packs copy 100+ MB of native .pdb debug
+       symbols into publish output; strip every .pdb from a shipping (single-file)
+       publish so the artifact stays lightweight. -->
+  <Target Name="StripPublishPdbs" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <_PublishPdb Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_PublishPdb)" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />

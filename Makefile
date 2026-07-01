@@ -17,6 +17,9 @@ APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.sln
 APP_CLIENT_PROJECT := $(APP_DIR)/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
 APP_TEST_PROJECT := $(APP_DIR)/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj
 
+# Publish runtime identifier. Override for Linux: make build-app RID=linux-x64
+RID ?= win-x64
+
 # Version: read from the most recent git tag (strips leading "v").
 # Override with: make build-app VERSION=1.2.3
 _RAW_VERSION := $(shell $$tag = git describe --tags --abbrev=0 2>&1; if ($$LASTEXITCODE -eq 0) { $$tag.Trim() } else { 'dev' })
@@ -56,8 +59,8 @@ build-api: $(BINARY_DIR) ## Build the API server binary → bin/sprint-api
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: ## Publish the Avalonia desktop app -> app/build/bin
-	dotnet publish $(APP_CLIENT_PROJECT) -c Release -r win-x64 --self-contained false -p:InformationalVersion=$(VERSION) -o $(APP_DIR)/build/bin
+build-app: ## Publish a lightweight self-contained desktop binary -> app/build/bin (RID=win-x64|linux-x64)
+	dotnet publish $(APP_CLIENT_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DIR)/build/bin
 
 build: build-api build-web ## Build all (API + web)
 

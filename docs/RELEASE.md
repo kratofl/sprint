@@ -14,12 +14,16 @@ starts with `v`. Pushing the tag is the only manual step you need.
 When you push a tag the workflow:
 
 1. Strips the leading `v` to get a bare version number (`1.2.3`)
-2. Restores the .NET desktop project
-3. Publishes the Windows `.exe` via `dotnet publish -p:InformationalVersion=<ver>`
-4. Renames the artifact to `sprint-<tag>-windows-amd64.exe`
-5. Uploads it to a GitHub Release (auto-generates release notes from commits)
-(The release workflow currently publishes only the desktop `.exe`. A Linux API
-   server binary is not built by `desktop-release.yml` today; build/ship it
+2. Runs a **Windows + Linux** matrix (`windows-latest` / `ubuntu-latest`)
+3. Publishes a **self-contained, single-file** binary per OS via `dotnet publish
+   -r <rid> -p:PublishSingleFile=true` — no installed .NET runtime is required to
+   run it
+4. Packages the binary + its `presets/`/`Assets/` into one archive per OS:
+   `sprint-<tag>-windows-amd64.zip` and `sprint-<tag>-linux-amd64.tar.gz`
+5. Uploads both to a single GitHub Release (auto-generates notes; marks
+   alpha/beta/rc tags as pre-releases)
+
+(The workflow ships the desktop app only. A Linux API server binary is built
    separately if a server release is needed.)
 
 ---
@@ -106,13 +110,16 @@ Use the Makefile to produce a local build without triggering a GitHub Release.
 The version defaults to the most recent git tag; override it with `VERSION=`.
 
 ```bash
-# Uses the most recent tag (e.g. 0.2.0-alpha.1) as the version
+# Windows self-contained single-file binary (default RID = win-x64)
 make build-app
+
+# Linux self-contained single-file binary (cross-publishes from any host)
+make build-app RID=linux-x64
 
 # Override the version explicitly
 make build-app VERSION=0.2.0-alpha.1-dev
 
-# Output is under
+# Output (one self-contained binary + presets/ + Assets/) is under
 app/build/bin
 ```
 
@@ -122,10 +129,12 @@ app/build/bin
 
 | Artifact | Platform | Runner | Trigger |
 |---|---|---|---|
-| `sprint-<tag>-windows-amd64.exe` | Windows x64 | `windows-latest` | tag push |
+| `sprint-<tag>-windows-amd64.zip` | Windows x64 | `windows-latest` | tag push |
+| `sprint-<tag>-linux-amd64.tar.gz` | Linux x64 | `ubuntu-latest` | tag push |
 
-The desktop `.exe` is the only artifact produced by `desktop-release.yml`. (A
-self-hosted API server binary is not part of this release workflow today.)
+Each archive contains one **self-contained, single-file** binary (no installed
+.NET runtime required) plus its `presets/` and `Assets/`. `desktop-release.yml`
+produces both; a self-hosted API server binary is not part of this workflow.
 
 ---
 
@@ -151,13 +160,32 @@ The desktop client reports its own version and offers a manual update check:
   for the current parity pass. Revisit if unattended updates become a
   requirement.
 
-## Publish target (WS10 / WS2)
+## Publish target
 
-The client project declares an intentional Windows publish target
-(`<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>`, framework-dependent —
-`SelfContained=false`). Flip `SelfContained` to `true` for a standalone build
-that bundles the runtime. Assets, fonts, presets, and the app icon are marked
-`CopyToOutputDirectory` and are verified present in the publish output.
+The client project targets `<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>`.
+Dev `build`/`run`/`test` stay framework-dependent (fast); a **publish** with
+`-p:PublishSingleFile=true` (what `make build-app` and the release workflow use)
+switches on the shipping profile:
+
+- **self-contained** — bundles the .NET runtime, so no runtime install is needed;
+- **single-file** with native libraries self-extracting (SkiaSharp/Avalonia) and
+  the payload compressed → one ~55 MB binary;
+- a post-publish target **strips the 100+ MB of native `.pdb`** the Skia/HarfBuzz
+  runtime packs would otherwise dump into the output.
+
+Assets, fonts, presets, and the app icon are `CopyToOutputDirectory` and verified
+present alongside the binary.
+
+### Going smaller: trimming / Native AOT (future)
+
+`-p:PublishTrimmed=true` roughly halves the size and **Native AOT**
+(`-p:PublishAot=true`) produces a true native binary with faster startup. Both are
+**not enabled yet** because the runtime persistence uses **reflection-based
+`System.Text.Json`**, which trimming/AOT can break — enabling them first requires
+`System.Text.Json` source generators (`JsonSerializerContext`) plus a per-OS GUI
+smoke run to confirm nothing was trimmed away. Native AOT additionally **cannot
+cross-compile** (each OS must build on its own runner — which the release matrix
+already does). Treat this as the follow-up once a GUI smoke harness exists.
 
 ## Release validation
 
