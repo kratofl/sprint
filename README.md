@@ -59,10 +59,9 @@ Sim Game (e.g. LeMansUltimate)
 | `/app` | C# / .NET | Avalonia desktop app — driver's rig |
 | `/api` | Go | HTTP/WebSocket API server |
 | `/web` | TypeScript | Next.js web frontend |
-| `/pkg` | Go | Shared DTO types + game adapter interfaces |
 | `/packages` | TypeScript | Shared UI components, types + design tokens |
 
-The two Go modules (`api`, `pkg`) are linked by a `go.work` workspace. The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET solution restored/built with the `dotnet` CLI. The web app and shared packages (`web`, `packages/*`) share a pnpm workspace managed by Turborepo.
+The API is a single Go module (`api`). The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET solution restored/built with the `dotnet` CLI. The web app and shared packages (`web`, `packages/*`) share a pnpm workspace managed by Turborepo.
 
 ---
 
@@ -70,7 +69,7 @@ The two Go modules (`api`, `pkg`) are linked by a `go.work` workspace. The deskt
 
 | Tool | Version | Required for |
 |---|---|---|
-| [Go](https://go.dev) | ≥ 1.26 | API server + shared packages |
+| [Go](https://go.dev) | ≥ 1.26 | API server |
 | [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x | Desktop app build |
 | [Node.js](https://nodejs.org) | ≥ 20 | Web app + shared packages |
 | [pnpm](https://pnpm.io) | ≥ 9 | Package manager |
@@ -128,10 +127,10 @@ Build
   build            build-api + build-web
 
 Test & lint
-  test             Run all Go tests (api + pkg)
+  test             Run API + desktop tests
   test-api         Run API server tests only
-  test-pkg         Run shared package tests only
-  lint             go vet (api/pkg) + pnpm lint
+  test-app         Run the Avalonia desktop tests (xunit)
+  lint             go vet (api) + pnpm lint
   lint-app         Build the Avalonia solution with warnings as errors (dotnet build -warnaserror)
   fmt              gofmt + pnpm format
 
@@ -149,26 +148,17 @@ Misc
 
 ## Adding a new game
 
-1. Create a new package under `pkg/games/` — e.g. `pkg/games/iracing/`
-2. Implement the `GameAdapter` interface from `pkg/games/adapter.go`:
-   ```go
-   type GameAdapter interface {
-       Name()       string
-       Connect()    error
-       Disconnect() error
-       Read()       (*dto.TelemetryFrame, error)
-   }
-   ```
-3. Map raw game data to the unified DTO in `pkg/dto/telemetry.go` — this Go path feeds the **API server + web**
+Games are added to the desktop app (.NET/Avalonia):
 
-For the **desktop app** (.NET/Avalonia), games are added separately: implement
-`ITelemetrySource` (from `Sprint.Desktop.Api`) in `app/Sprint.Games`, mapping the
-game's shared memory to `TelemetryFrame`, then register it via
-`GameTelemetryPackage.CreateSource`. Full steps in [`app/README.md`](app/README.md#adding-a-game-desktop).
+1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`app/Sprint.Games`**,
+   mapping the game's shared memory / structs to `TelemetryFrame`. Keep all
+   game-specific knowledge here.
+2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`.
+3. Wire it into the composition root. Full steps in
+   [`app/README.md`](app/README.md#adding-a-game-desktop).
 
-Because both surfaces map to a unified contract (`pkg/dto` / `Sprint.Desktop.Api`),
-the dash renderer, engineer surfaces, web app, and sync client are unaffected by a
-new adapter.
+Because every source maps to the unified `Sprint.Desktop.Api` contract, the dash
+renderer, engineer surfaces, and hardware pipeline are unaffected by a new adapter.
 
 ---
 

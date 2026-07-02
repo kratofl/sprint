@@ -3,7 +3,7 @@
 # Run `make help` to list all available targets.
 
 .PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build \
-        test test-api test-pkg test-app lint lint-app fmt \
+        test test-api test-app lint lint-app fmt \
         docker-build docker-up docker-down docker-logs \
         clean
 
@@ -66,28 +66,25 @@ build: build-api build-web ## Build all (API + web)
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
-test: test-api test-pkg test-app ## Run API, shared Go, and desktop tests
+test: test-api test-app ## Run API and desktop tests
 
 test-api: ## Run API server tests
 	go test ./api/...
-
-test-pkg: ## Run shared package tests
-	go test ./pkg/...
 
 test-app: ## Run Avalonia desktop tests (xunit)
 	dotnet test $(APP_TEST_PROJECT)
 
 # ─── Lint & Format ────────────────────────────────────────────────────────────
 
-lint: ## Run Go vet on api/pkg and pnpm lint
-	go vet ./api/... ./pkg/...
+lint: ## Run Go vet on api and pnpm lint
+	go vet ./api/...
 	pnpm lint
 
 lint-app: ## Build the Avalonia desktop app with warnings enabled
 	dotnet build $(APP_SOLUTION) -warnaserror
 
 fmt: ## Format Go, C#, and TS/JS code
-	gofmt -w ./api ./pkg
+	gofmt -w ./api
 	dotnet format $(APP_SOLUTION)
 	pnpm format
 

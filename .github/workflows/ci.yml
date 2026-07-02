@@ -21,13 +21,10 @@ jobs:
           go-version-file: api/go.mod
 
       - name: Vet API
-        run: go vet ./api/... ./pkg/...
+        run: go vet ./api/...
 
       - name: Test API
         run: go test ./api/...
-
-      - name: Test shared packages
-        run: go test ./pkg/...
 
   typescript:
     name: TypeScript (lint + build)

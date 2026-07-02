@@ -180,8 +180,8 @@ Use cleaner contracts when the Graphite UI needs them:
 
 - typed C# services own desktop persistence and native runtime orchestration;
 - desktop adapters normalize only unavoidable transport shape differences;
-- shared DTOs move to `pkg/dto` or `packages/types` when multiple apps need
-  them.
+- shared DTOs live in `Sprint.Desktop.Api` (desktop) or `packages/types` (web)
+  when multiple apps need them.
 
 ## Accessibility
 

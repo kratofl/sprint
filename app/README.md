@@ -89,7 +89,7 @@ package targets xunit v3 and collides with this suite's v2.
 
 ## Adding a game (desktop)
 
-The desktop path is separate from the Go `pkg/games` path (which feeds the API/web):
+Games are added entirely within the desktop solution:
 
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`Sprint.Games`**,
    mapping the game's shared memory / structs to `TelemetryFrame`. Keep all

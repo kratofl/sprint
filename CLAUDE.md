@@ -40,7 +40,7 @@ The .NET solution lives at `app/Sprint.Desktop.sln`:
 - **Run the app:** `make dev-app` (= `dotnet run --project
   app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`).
 - **Publish:** `make build-app` → `app/build/bin`.
-- **Shared Go (still used by api/web):** `make test-pkg`, `make test-api`.
+- **Go API (still used by api/web):** `make test-api`.
 - **SDK gotcha (verified 2026-06-29):** the .NET **10.0.301** SDK is installed,
   but under the **x86** host `C:\Program Files (x86)\dotnet` — the x64 `dotnet` on
   PATH has only a 6.0.5 runtime, so a bare `dotnet build` reports "no SDK found."

@@ -122,11 +122,10 @@ refactor/<short-description>
 
 See the [README](README.md#adding-a-new-game) for the step-by-step guide. In short:
 
-1. Create `pkg/games/<gamename>/` (Go — feeds the API server + web)
-2. Implement the `GameAdapter` interface
-3. Map raw data to the unified DTO
-4. For the **desktop app**, implement `ITelemetrySource` in `app/Sprint.Games` and
-   register it via `GameTelemetryPackage.CreateSource` (see
+1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in `app/Sprint.Games`,
+   mapping the game's shared memory / structs to `TelemetryFrame`
+2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`
+3. Wire it into the composition root (see
    [`app/README.md`](app/README.md#adding-a-game-desktop))
 
 ## Questions?

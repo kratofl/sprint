@@ -63,17 +63,16 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 ## Repo Layout
 
 - `app/`: .NET/Avalonia desktop app and desktop presets.
-- `api/`: Go API server and WebSocket relay.
+- `api/`: Go API server and WebSocket relay (slated to become a minimal C# API).
 - `web/`: Next.js frontend.
-- `pkg/`: shared Go packages, including DTOs, game adapters, and shared memory.
 - `packages/types/`: shared TypeScript contracts.
 - `packages/tokens/`: Graphite design tokens.
 - `packages/ui/`: reusable token-backed React components for web surfaces.
 
 ## Source Of Truth
 
-- `pkg/dto`: shared telemetry and engineer data contracts.
-- `pkg/games`: game adapter interfaces and implementations.
+- `app/Sprint.Desktop.Api`: telemetry + engineer data contracts (`TelemetryFrame`, `ITelemetrySource`).
+- `app/Sprint.Games`: game adapter implementations against the desktop contract.
 - `packages/types`: shared TypeScript contracts.
 - `packages/tokens`: design tokens and theme primitives.
 - `packages/ui`: reusable UI components.
@@ -101,9 +100,8 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
-- Test API and shared Go: `make test`
+- Test API and desktop: `make test`
 - Test API only: `make test-api`
-- Test shared Go only: `make test-pkg`
 - Test desktop only: `make test-app`
 - Build desktop solution: `dotnet build app/Sprint.Desktop.sln`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
@@ -132,14 +130,14 @@ did not run.
 
 ## Architecture Notes
 
-- The unified telemetry DTO is the spine of the app. Game-specific data is
-  mapped into `pkg/dto` at the edge; downstream desktop, hardware, engineer,
-  sync, API, and web consumers should depend on the shared contract.
+- The unified telemetry contract is the spine of the desktop app. Game-specific
+  data is mapped into `Sprint.Desktop.Api`'s `TelemetryFrame` at the edge;
+  downstream dash render, hardware, engineer, and UI consumers depend on that
+  shared contract. Web surfaces use `packages/types`.
 - For the desktop app, add a game by implementing a telemetry source in
   `app/Sprint.Games` against the `Sprint.Desktop.Api` contract, then registering
   it via `app/Sprint.Desktop.Client/DesktopRuntime.cs` or a focused service next
-  to it. (The Go `pkg/games.GameAdapter` + `pkg/dto` path remains the source of
-  truth for the API server and web, not the desktop app.)
+  to it.
 - Keep desktop business logic in focused C# services instead of growing
   `app/Sprint.Desktop.Client/MainWindow.cs`.
 
@@ -163,7 +161,7 @@ did not run.
 - Design system and UI implementation contract: `docs/DESIGN.md`
 - Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
 - Release notes: `docs/RELEASE.md`
-- Package-local notes: `app/README.md`, `api/README.md`, `pkg/README.md`, and package
+- Package-local notes: `app/README.md`, `api/README.md`, and package
   `README.md` files when present.
 
 Tool-specific companion files such as `CLAUDE.md` may exist, but this file is
