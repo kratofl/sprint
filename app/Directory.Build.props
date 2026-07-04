@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Shared MSBuild properties for every Sprint.Desktop.* project under app/.
+    TargetFramework stays per-project (all net10.0). Version metadata is
+    overridable from the command line, e.g. the Makefile passes
+    -p:InformationalVersion=$(VERSION).
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <Product>Sprint</Product>
+    <Company>Sprint</Company>
+    <Authors>Sprint</Authors>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+</Project>

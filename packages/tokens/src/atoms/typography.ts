@@ -1,14 +1,16 @@
 /**
  * Typography atoms.
- * Space Grotesk: primary UI font — forward-leaning, technical, racing aesthetic.
- *   Headings use Bold + Italic + All Caps.
- * JetBrains Mono: all numeric/monospace content — tabular, data-accurate.
+ * IBM Plex Sans is the UI family. Numeric telemetry inherits the UI face with
+ * tabular numerals so values stay stable without a separate display family.
  */
 
-export const fontFamily: Record<'display' | 'sans' | 'mono', string[]> = {
-  display: ['Space Grotesk', 'system-ui', 'sans-serif'],
-  sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
-  mono: ['JetBrains Mono Variable', 'JetBrains Mono', 'monospace'],
+export const fontFamily: Record<'display' | 'sans' | 'mono' | 'wordmark' | 'ui' | 'numeric', string[]> = {
+  display: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  wordmark: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  sans: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  ui: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  mono: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
+  numeric: ['IBM Plex Sans', 'Archivo', 'system-ui', 'sans-serif'],
 }
 
 export const fontWeight = {

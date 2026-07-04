@@ -1,122 +1,46 @@
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  PageHeader,
-} from '@sprint/ui'
-
 const setups = [
-  {
-    name: 'SPA_WET_SAFE',
-    car: 'McLaren 720S GT3 EVO',
-    track: 'Spa-Francorchamps',
-    author: 'krato',
-    lap: '2:15.482',
-    tags: ['WET', 'ENDURANCE'],
-  },
-  {
-    name: 'MONZA_QUALI_V3',
-    car: 'Ferrari 296 GT3',
-    track: 'Monza',
-    author: 'Marco',
-    lap: '1:47.931',
-    tags: ['LOW_DRAG', 'QUALI'],
-  },
-  {
-    name: 'IMOLA_RACE_BASE',
-    car: 'BMW M4 GT3',
-    track: 'Imola',
-    author: 'krato',
-    lap: '1:41.267',
-    tags: ['STINT', 'SAFE_REARS'],
-  },
-  {
-    name: 'BATHURST_NIGHT',
-    car: 'Audi R8 LMS Evo II',
-    track: 'Mount Panorama',
-    author: 'Nina',
-    lap: '2:03.908',
-    tags: ['NIGHT', 'CURB_SAFE'],
-  },
-  {
-    name: 'PAUL_RICARD_FAST_1',
-    car: 'Porsche 992 GT3 R',
-    track: 'Paul Ricard',
-    author: 'krato',
-    lap: '1:54.411',
-    tags: ['FAST', 'LOW_FUEL'],
-  },
-  {
-    name: 'NURB_SPRINT_TC1',
-    car: 'Lamborghini Huracan GT3 EVO2',
-    track: 'Nurburgring Sprint',
-    author: 'Elena',
-    lap: '1:27.404',
-    tags: ['TC_SAFE', 'AGGRESSIVE'],
-  },
-]
+  ['SPA_WET_SAFE', 'McLaren 720S GT3 EVO', 'Spa-Francorchamps', 'krato', '2:15.482', ['WET', 'ENDURANCE']],
+  ['MONZA_QUALI_V3', 'Ferrari 296 GT3', 'Monza', 'Marco', '1:47.931', ['LOW_DRAG', 'QUALI']],
+  ['IMOLA_RACE_BASE', 'BMW M4 GT3', 'Imola', 'krato', '1:41.267', ['STINT', 'SAFE_REARS']],
+  ['BATHURST_NIGHT', 'Audi R8 LMS Evo II', 'Mount Panorama', 'Nina', '2:03.908', ['NIGHT', 'CURB_SAFE']],
+] as const
 
 export default function Setups() {
   return (
-    <div className="flex min-h-full flex-col">
-      <PageHeader
-        heading="SETUPS"
-        caption="Track-tested car baselines synchronized from desktop and remote collaborators."
-        actions={<Button type="button" variant="outline" size="sm">UPLOAD_SETUP</Button>}
-      />
+    <section className="space-y-[14px]">
+      <header className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+        <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Sprint</p>
+        <h1 className="font-inter text-[13px] font-bold text-[var(--text)]">Setups</h1>
+        <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">
+          Track-tested car baselines synchronized from desktop and collaborators.
+        </p>
+      </header>
 
-      <div className="flex-1 space-y-6 px-6 py-6">
-        <section className="space-y-3">
-          <h3 className="terminal-header text-[10px] font-bold text-text-muted">
-            SETUP_LIBRARY
-          </h3>
-          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-            {setups.map((setup) => (
-              <Card key={setup.name} size="sm">
-                <CardContent className="space-y-4 py-4">
-                  <div className="space-y-1">
-                    <p className="terminal-header text-[11px] font-bold text-foreground">
-                      {setup.name}
-                    </p>
-                    <p className="status-readout text-[10px] text-text-muted">
-                      {setup.car} · {setup.track}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="terminal-header text-[10px] font-bold text-text-muted">
-                        AUTHOR
-                      </p>
-                      <p className="mt-1 text-sm text-foreground">{setup.author}</p>
-                    </div>
-                    <div>
-                      <p className="terminal-header text-[10px] font-bold text-text-muted">
-                        REF_LAP
-                      </p>
-                      <p className="mt-1 text-lg font-bold font-mono tabular-nums text-foreground">
-                        {setup.lap}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {setup.tags.map((tag, index) => (
-                      <Badge
-                        key={tag}
-                        variant={index === 0 ? 'default' : 'outline'}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+      <div className="grid gap-[14px] md:grid-cols-2 2xl:grid-cols-3">
+        {setups.map(([name, car, track, author, lap, tags]) => (
+          <article key={name} className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+            <p className="font-inter text-[13px] font-bold text-[var(--text)]">{name}</p>
+            <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">{car} / {track}</p>
+            <div className="mt-[14px] grid grid-cols-2 gap-[14px]">
+              <div>
+                <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Author</p>
+                <p className="font-inter text-[13px] text-[var(--text)]">{author}</p>
+              </div>
+              <div>
+                <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Ref Lap</p>
+                <p className="font-saira text-[18px] font-bold tabular-nums text-[var(--orange)]">{lap}</p>
+              </div>
+            </div>
+            <div className="mt-[14px] flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <span key={tag} className="rounded-[4px] border border-[var(--border)] px-[10px] py-1 font-saira-sc text-[12px] font-bold text-[var(--muted)]">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </article>
+        ))}
       </div>
-    </div>
+    </section>
   )
 }

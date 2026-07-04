@@ -11,12 +11,12 @@ import {
 } from "./controlClasses"
 
 const cardVariants = cva(
-  `group/card flex flex-col overflow-hidden rounded-sm text-xs/relaxed text-foreground transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-sm *:[img:last-child]:rounded-b-sm ${cardDefaultClassName}`,
+  `group/card flex flex-col overflow-hidden rounded-panel p-[14px] text-[13px] text-[var(--text)] transition-colors has-[>img:first-child]:pt-0 *:[img:first-child]:rounded-t-panel *:[img:last-child]:rounded-b-panel ${cardDefaultClassName}`,
   {
     variants: {
       size: {
-        default: "gap-4 py-4",
-        sm: "gap-3 py-3",
+        default: "gap-[14px]",
+        sm: "gap-[10px] p-[10px]",
       },
       variant: {
         default: "",
@@ -68,7 +68,7 @@ function CardHeader({ className, ...props }: CardHeaderProps) {
     <div
       data-slot="card-header"
       className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1.5 rounded-t px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+        "group/card-header @container/card-header grid auto-rows-min items-start gap-1.5 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-[14px] group-data-[size=sm]/card:[.border-b]:pb-[10px]",
         className
       )}
       {...props}
@@ -80,7 +80,7 @@ function CardTitle({ className, ...props }: CardTitleProps) {
   return (
     <div
       data-slot="card-title"
-      className={cn("terminal-label text-[10px] text-text-muted", className)}
+      className={cn("font-inter text-[13px] font-bold text-[var(--text)]", className)}
       {...props}
     />
   )
@@ -90,7 +90,7 @@ function CardDescription({ className, ...props }: CardDescriptionProps) {
   return (
     <div
       data-slot="card-description"
-      className={cn("status-readout text-[10px] text-text-muted", className)}
+      className={cn("font-inter text-[11px] text-[var(--muted)]", className)}
       {...props}
     />
   )
@@ -113,7 +113,7 @@ function CardContent({ className, ...props }: CardContentProps) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-4 group-data-[size=sm]/card:px-3", className)}
+      className={cn(className)}
       {...props}
     />
   )
@@ -124,7 +124,7 @@ function CardFooter({ className, ...props }: CardFooterProps) {
     <div
       data-slot="card-footer"
       className={cn(
-        "flex items-center rounded-b px-4 group-data-[size=sm]/card:px-3 [.border-t]:pt-4 group-data-[size=sm]/card:[.border-t]:pt-3",
+        "flex items-center [.border-t]:pt-[14px] group-data-[size=sm]/card:[.border-t]:pt-[10px]",
         className
       )}
       {...props}
@@ -142,4 +142,3 @@ export {
   CardContent,
   cardVariants,
 }
-

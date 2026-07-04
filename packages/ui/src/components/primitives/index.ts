@@ -1,6 +1,9 @@
 export { Button } from './Button'
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 
+export { IconButton } from './IconButton'
+export type { IconButtonProps } from './IconButton'
+
 export { Badge } from './Badge'
 export type { BadgeProps, BadgeVariant } from './Badge'
 
@@ -16,6 +19,24 @@ export type {
 } from './Card'
 
 export { Input } from './input'
+export { SegmentedControl } from './SegmentedControl'
+export type { SegmentedControlOption, SegmentedControlProps } from './SegmentedControl'
+export { Stepper } from './Stepper'
+export type { StepperProps } from './Stepper'
+export { Tile } from './Tile'
+export type { TileProps } from './Tile'
+export { SettingsCard } from './SettingsCard'
+export type { SettingsCardProps } from './SettingsCard'
+export { SettingsRow } from './SettingsRow'
+export type { SettingsRowProps } from './SettingsRow'
+export { KeyChip } from './KeyChip'
+export type { KeyChipProps } from './KeyChip'
+export { StatusPill, statusPillVariants } from './StatusPill'
+export type { StatusPillProps, StatusPillStatus } from './StatusPill'
+export { Modal } from './Modal'
+export type { ModalProps } from './Modal'
+export { ConfirmDialog } from './ConfirmDialog'
+export type { ConfirmDialogProps } from './ConfirmDialog'
 export { Textarea } from './textarea'
 export {
   Select,

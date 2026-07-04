@@ -14,11 +14,17 @@ starts with `v`. Pushing the tag is the only manual step you need.
 When you push a tag the workflow:
 
 1. Strips the leading `v` to get a bare version number (`1.2.3`)
-2. Patches `app/wails.json` → `info.productVersion` with that number
-3. Builds the Windows `.exe` via `wails build -ldflags "-X main.Version=<ver>"`
-4. Renames the artifact to `sprint-<tag>-windows-amd64.exe`
-5. Uploads it to a GitHub Release (auto-generates release notes from commits)
-6. Also builds the API server binary (Linux) and attaches it to the same release
+2. Runs a **Windows + Linux** matrix (`windows-latest` / `ubuntu-latest`)
+3. Publishes a **self-contained, single-file** binary per OS via `dotnet publish
+   -r <rid> -p:PublishSingleFile=true` — no installed .NET runtime is required to
+   run it
+4. Packages the binary + its `presets/`/`Assets/` into one archive per OS:
+   `sprint-<tag>-windows-amd64.zip` and `sprint-<tag>-linux-amd64.tar.gz`
+5. Uploads both to a single GitHub Release (auto-generates notes; marks
+   alpha/beta/rc tags as pre-releases)
+
+(The workflow ships the desktop app only. A Linux API server binary is built
+   separately if a server release is needed.)
 
 ---
 
@@ -34,8 +40,8 @@ v<major>.<minor>.<patch>-rc.<n>      → release candidate
 Examples: `v0.1.0`, `v0.2.0-alpha.1`, `v1.0.0-rc.2`
 
 The full tag (e.g. `v0.2.0-alpha.1`) is used as the artifact filename.
-The bare version (e.g. `0.2.0-alpha.1`) is baked into the binary via
-`-ldflags "-X main.Version=..."` and shown in the app's about screen.
+The bare version (e.g. `0.2.0-alpha.1`) is passed to the .NET build through
+`-p:InformationalVersion=...`.
 
 ---
 
@@ -104,18 +110,18 @@ Use the Makefile to produce a local build without triggering a GitHub Release.
 The version defaults to the most recent git tag; override it with `VERSION=`.
 
 ```bash
-# Uses the most recent tag (e.g. 0.2.0-alpha.1) as the version
+# Windows self-contained single-file binary (default RID = win-x64)
 make build-app
+
+# Linux self-contained single-file binary (cross-publishes from any host)
+make build-app RID=linux-x64
 
 # Override the version explicitly
 make build-app VERSION=0.2.0-alpha.1-dev
 
-# Output is at
-app/build/bin/Sprint.exe
+# Output (one self-contained binary + presets/ + Assets/) is under
+app/build/bin
 ```
-
-Requires the [Wails CLI](https://wails.io/docs/gettingstarted/installation)
-to be installed (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
 ---
 
@@ -123,13 +129,77 @@ to be installed (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`).
 
 | Artifact | Platform | Runner | Trigger |
 |---|---|---|---|
-| `sprint-<tag>-windows-amd64.exe` | Windows x64 | `windows-latest` | tag push |
-| `sprint-api-<tag>-linux-amd64` | Linux x64 | `ubuntu-latest` | tag push |
+| `sprint-<tag>-windows-amd64.zip` | Windows x64 | `windows-latest` | tag push |
+| `sprint-<tag>-linux-amd64.tar.gz` | Linux x64 | `ubuntu-latest` | tag push |
 
-Only the desktop `.exe` is relevant for driver installs. The API binary is for
-self-hosted server deployments.
+Each archive contains one **self-contained, single-file** binary (no installed
+.NET runtime required) plus its `presets/` and `Assets/`. `desktop-release.yml`
+produces both; a self-hosted API server binary is not part of this workflow.
 
 ---
+
+## In-app version reporting & updates (WS10)
+
+The desktop client reports its own version and offers a manual update check:
+
+- **Version metadata** — `Directory.Build.props` carries `Version` (and
+  Product/Company); `make build-app` / the release workflow stamp the tag via
+  `-p:InformationalVersion=<ver>`. `Runtime/BuildInfo.Version` reads that back
+  (stripping any `+<sha>` suffix), shown as a badge on the **Settings → About**
+  card next to the active update channel.
+- **Update check** — `Features/Updates/UpdateChecker` is a pure, channel-aware
+  semver check: it picks the newest release visible on the user's channel
+  (`stable` sees stable; `beta` sees stable+beta; `alpha` sees all) and reports
+  whether it is newer than the running build. `GitHubReleaseSource` fetches the
+  repo's releases on an explicit **Check for updates** click and degrades to "no
+  releases" on any network failure (never crashes).
+- **Updater decision (resolves Open Question #5):** the client **checks and
+  notifies**; downloading + installing an update is **manual** (the user opens
+  the GitHub Release). The old Windows-batch **self-replacing auto-install is
+  intentionally deferred** — it is risky to run unattended and is out of scope
+  for the current parity pass. Revisit if unattended updates become a
+  requirement.
+
+## Publish target
+
+The client project targets `<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>`.
+Dev `build`/`run`/`test` stay framework-dependent (fast); a **publish** with
+`-p:PublishSingleFile=true` (what `make build-app` and the release workflow use)
+switches on the shipping profile:
+
+- **self-contained** — bundles the .NET runtime, so no runtime install is needed;
+- **single-file** with native libraries self-extracting (SkiaSharp/Avalonia) and
+  the payload compressed → one ~55 MB binary;
+- a post-publish target **strips the 100+ MB of native `.pdb`** the Skia/HarfBuzz
+  runtime packs would otherwise dump into the output.
+
+Assets, fonts, presets, and the app icon are `CopyToOutputDirectory` and verified
+present alongside the binary.
+
+### Going smaller: trimming / Native AOT (future)
+
+`-p:PublishTrimmed=true` roughly halves the size and **Native AOT**
+(`-p:PublishAot=true`) produces a true native binary with faster startup. Both are
+**not enabled yet** because the runtime persistence uses **reflection-based
+`System.Text.Json`**, which trimming/AOT can break — enabling them first requires
+`System.Text.Json` source generators (`JsonSerializerContext`) plus a per-OS GUI
+smoke run to confirm nothing was trimmed away. Native AOT additionally **cannot
+cross-compile** (each OS must build on its own runner — which the release matrix
+already does). Treat this as the follow-up once a GUI smoke harness exists.
+
+## Release validation
+
+Before tagging, run the full local gate:
+
+```powershell
+& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.sln -warnaserror   # 0/0
+make test-app                                                                            # all green
+make build-app VERSION=<ver>                                                             # publishes to app/build/bin
+```
+
+Then smoke the artifact: launch `app/build/bin/Sprint.Desktop.Client.exe`, confirm
+the shell opens, and confirm the publish output contains `presets/`,
+`Assets/Fonts/`, and `build/appicon.png`.
 
 ## Checklist before tagging
 

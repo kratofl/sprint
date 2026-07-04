@@ -1,0 +1,42 @@
+# Docker build context excludes. The api/ and web/ images only need the Go
+# workspace (go.work + pkg/ + api/) and the pnpm workspace (package.json,
+# pnpm-*.yaml, web/, packages/). Everything below is dead weight in the context
+# (slower builds, larger cache) or must never be baked into an image.
+
+# Version control & CI
+.git
+.github
+.gitignore
+
+# Tooling caches
+.turbo
+**/.turbo
+
+# Node / web build output (rebuilt inside the image)
+**/node_modules
+web/.next
+web/out
+**/dist
+
+# .NET desktop app — native Windows/Linux app, NOT containerized (api/web don't need it)
+app/
+
+# Local Go / build artifacts
+bin/
+**/bin/
+**/obj/
+
+# Local env & logs (never bake secrets into an image)
+.env
+.env.local
+*.log
+bash.exe.stackdump
+
+# Agent / session scratch
+handoffs/
+docs/superpowers/plans/
+output/
+
+# OS cruft
+.DS_Store
+Thumbs.db

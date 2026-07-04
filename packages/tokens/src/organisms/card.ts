@@ -1,16 +1,18 @@
 /**
  * Card organism tokens.
- * Cards have a solid outline border (#2a2a2a) — structural, always visible.
- * Accent/teal border variants are opt-in emphasis on top of the outline.
+ * Cards have a solid neutral outline border; accent variants are opt-in.
  */
 import { borders } from '../molecules/borders'
 import { surfaces } from '../molecules/surfaces'
+import { componentTokens } from '../component'
 
 export const card = {
-  background: surfaces.container,
-  border:     borders.outline,
+  background: componentTokens.card.bg,
+  border:     componentTokens.card.border,
+  radius:     componentTokens.card.radius,
+  padding:    componentTokens.card.padding,
   /** Highlighted card (active session, selected item) — accent border */
   accentBorder: borders.accent,
-  /** Cyan variant — secondary call-out */
+  /** Compatibility cyan variant — explicit comparison call-out only. */
   tealBorder: borders.teal,
 } as const

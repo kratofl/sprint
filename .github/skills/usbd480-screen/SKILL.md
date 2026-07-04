@@ -1,8 +1,26 @@
 ---
 name: usbd480-screen
-description: Canonical version lives in docs/agents/skills/usbd480-screen.md.
+description: Use when touching the USBD480 driver or debugging device communication.
 ---
 
-# USBD480 Screen
+## USBD480 Screen Skill
 
-Canonical version: `docs/agents/skills/usbd480-screen.md`
+Use when touching the USBD480 driver or debugging device communication.
+
+### Scope
+
+- `app/internal/hardware/usbd480_*`
+
+### Rules
+
+- Query device details rather than hardcoding dimensions.
+- Treat the device as a composite USB device with a display interface and optional touchscreen HID.
+- Keep control transfer recipient and setup packet details exact; protocol mismatches cause failures.
+- Keep hardware protocol logic in the hardware layer.
+
+### Verify
+
+- open and enumerate flow
+- control transfer constants
+- brightness and frame send sequence
+- Windows WinUSB behavior

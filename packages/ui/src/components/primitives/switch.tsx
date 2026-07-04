@@ -16,11 +16,11 @@ function Switch({
       data-size={size}
       className={cn(
         "group/switch relative inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring/50",
-        "data-[state=checked]:bg-primary data-[state=unchecked]:bg-foreground/20",
-        "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
-        "data-[size=default]:h-[16px] data-[size=default]:w-[28px]",
-        "data-[size=sm]:h-[14px] data-[size=sm]:w-[24px]",
+        "focus-visible:border-[var(--accent)] focus-visible:ring-0",
+        "data-[state=checked]:bg-[var(--green)] data-[state=unchecked]:bg-[var(--panel2)]",
+        "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45",
+        "data-[size=default]:h-[30px] data-[size=default]:w-[52px]",
+        "data-[size=sm]:h-[24px] data-[size=sm]:w-[42px]",
         className
       )}
       {...props}
@@ -28,10 +28,11 @@ function Switch({
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
         className={cn(
-          "pointer-events-none block rounded-full bg-white shadow-sm ring-0 transition-transform",
-          "data-[state=checked]:translate-x-[calc(100%_-_1px)] data-[state=unchecked]:translate-x-[1px]",
-          "group-data-[size=default]/switch:size-3.5",
-          "group-data-[size=sm]/switch:size-3",
+          "pointer-events-none block rounded-full bg-[#f5f5f5] ring-0 transition-transform",
+          "data-[state=checked]:translate-x-[24px] data-[state=unchecked]:translate-x-[2px]",
+          "group-data-[size=sm]/switch:data-[state=checked]:translate-x-[20px]",
+          "group-data-[size=default]/switch:size-[26px]",
+          "group-data-[size=sm]/switch:size-5",
         )}
       />
     </SwitchPrimitive.Root>

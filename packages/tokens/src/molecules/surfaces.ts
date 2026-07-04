@@ -1,25 +1,30 @@
-/**
- * Surface tokens.
- * Desktop neutrals are intentionally flattened to one black base.
- * Only floating overlays stay slightly lifted through opacity/blur.
- */
+import { primitiveColor } from '../primitive'
+
+/** Surface tokens from the true-neutral Sprint design language. */
 
 export const surfaces = {
-  base:      '#0a0a0a',
-  shell:     '#0a0a0a',
-  container: '#0a0a0a',
-  elevated:  '#0a0a0a',
-  overlay:   '#0a0a0a',
-  overlayPanel: 'rgba(10, 10, 10, 0.94)',
-  /** restrained inline fill for hover/selected states on the flat base */
-  variant:   'rgba(255, 255, 255, 0.02)',
+  screen: primitiveColor.neutral[950],
+  deep: primitiveColor.neutral[950],
+  panel: primitiveColor.neutral[925],
+  tile2: primitiveColor.neutral[900],
+  tile3: primitiveColor.neutral[850],
+  tile4: primitiveColor.neutral[800],
+
+  base: primitiveColor.neutral[950],
+  shell: primitiveColor.neutral[950],
+  container: primitiveColor.neutral[925],
+  elevated: primitiveColor.neutral[900],
+  overlay: primitiveColor.neutral[950],
+  overlayPanel: primitiveColor.neutral[925],
+  /** Deepest inset fill for sliders, nested fields, and hover states. */
+  variant: primitiveColor.neutral[850],
 } as const
 
 /** Backward-compat alias */
 export const surface = surfaces.container
 
 /** Structural outline border — used for all section/card/table dividers */
-export const outlineColor = '#202020'
+export const outlineColor = primitiveColor.neutral[700]
 
 /** Stronger outline — reserved for floating surfaces and active shell boundaries */
-export const outlineStrongColor = '#262626'
+export const outlineStrongColor = primitiveColor.neutral[600]

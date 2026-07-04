@@ -4,10 +4,19 @@
  */
 
 // Atoms
+export * from './primitive'
 export * from './atoms/colors'
 export * from './atoms/typography'
 export * from './atoms/radii'
 export * from './atoms/motion'
+export * from './graphite'
+export * from './figma'
+
+// Semantic/component token layers
+export * from './semantic'
+export * from './component'
+export { semanticTokens as semantic } from './semantic'
+export { componentTokens as component } from './component'
 
 // Molecules
 export * from './molecules/surfaces'

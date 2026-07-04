@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -25,8 +26,10 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@types/react": "^19.2.16",
     "react": "^19.2.7",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   },
   "peerDependencies": {

@@ -26,15 +26,15 @@ export function GearDisplay({ gear, speedKph, className, ...props }: GearDisplay
     <div className={cn('flex flex-col items-center', className)} {...props}>
       <span
         className={cn(
-          'font-display font-bold leading-none tabular-nums text-accent',
+          'font-sans font-bold leading-none tabular-nums text-[var(--accent)]',
           'text-[5rem]',
         )}
       >
         {label}
       </span>
-      <span className="mt-1 font-mono text-2xl font-semibold tabular-nums text-text-primary">
+      <span className="mt-1 font-sans text-2xl font-semibold tabular-nums text-[var(--text)]">
         {speed}
-        <span className="ml-1 text-sm font-normal text-text-muted">km/h</span>
+        <span className="ml-1 text-sm font-normal text-[var(--text2)]">km/h</span>
       </span>
     </div>
   )

@@ -27,3 +27,6 @@ export type { FlagBannerProps } from './FlagBanner'
 
 export { SessionHeader } from './SessionHeader'
 export type { SessionHeaderProps } from './SessionHeader'
+
+export { TrackMap } from './TrackMap'
+export type { TrackMapProps } from './TrackMap'

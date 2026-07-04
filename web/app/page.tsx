@@ -1,15 +1,5 @@
 import Link from 'next/link'
 import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  PageHeader,
-} from '@sprint/ui'
-import {
   IconAdjustmentsHorizontal,
   IconArrowRight,
   IconHeadset,
@@ -18,210 +8,101 @@ import {
 } from '@tabler/icons-react'
 
 const overview = [
-  {
-    label: 'RECORDED_SESSIONS',
-    caption: 'Last 30 days',
-    value: '18',
-    meta: '+6 vs last week',
-    icon: IconHistory,
-    valueClass: 'text-foreground',
-    variant: 'default' as const,
-  },
-  {
-    label: 'ACTIVE_SETUPS',
-    caption: 'Wheel + car presets',
-    value: '42',
-    meta: '12 synced from desktop',
-    icon: IconAdjustmentsHorizontal,
-    valueClass: 'text-foreground',
-    variant: 'default' as const,
-  },
-  {
-    label: 'CONNECTED_ENGINEERS',
-    caption: 'Remote command links',
-    value: '3',
-    meta: 'Fastest RTT 38ms',
-    icon: IconHeadset,
-    valueClass: 'text-secondary',
-    variant: 'secondary' as const,
-  },
-]
+  ['RECORDED_SESSIONS', '18', '+6 vs last week', IconHistory],
+  ['ACTIVE_SETUPS', '42', '12 synced from desktop', IconAdjustmentsHorizontal],
+  ['CONNECTED_ENGINEERS', '3', 'Fastest RTT 38ms', IconHeadset],
+] as const
 
 const quickAccess = [
-  {
-    href: '/sessions',
-    label: 'SESSION_LIBRARY',
-    description: 'Review recorded laps, sector trends, and reference runs.',
-    icon: IconHistory,
-  },
-  {
-    href: '/engineer',
-    label: 'ENGINEER_LINK',
-    description: 'Open the remote engineer console and target-lap controls.',
-    icon: IconHeadset,
-  },
-  {
-    href: '/setups',
-    label: 'SETUP_BANK',
-    description: 'Track-tested car setups with baseline lap references.',
-    icon: IconAdjustmentsHorizontal,
-  },
-  {
-    href: '/dash',
-    label: 'DASH_EDITOR',
-    description: 'Compose VoCore widgets before pushing to the wheel display.',
-    icon: IconLayout,
-  },
-]
+  ['/sessions', 'SESSION_LIBRARY', 'Review recorded laps and sector trends.', IconHistory],
+  ['/engineer', 'ENGINEER_LINK', 'Open the remote engineer command console.', IconHeadset],
+  ['/setups', 'SETUP_BANK', 'Track-tested car setup baselines.', IconAdjustmentsHorizontal],
+  ['/dash', 'DASH_EDITOR', 'Compose VoCore widgets for wheel display.', IconLayout],
+] as const
 
 const activity = [
-  {
-    time: '16:42Z',
-    title: 'TARGET_LAP refreshed from wheel button',
-    detail: 'Spa · McLaren 720S GT3 · Reference set to 2:15.482',
-    badge: 'DRIVER',
-    variant: 'default' as const,
-  },
-  {
-    time: '16:31Z',
-    title: 'ENGINEER command accepted',
-    detail: 'Brake bias +0.3% applied from Marco over remote link',
-    badge: 'ENGINEER',
-    variant: 'secondary' as const,
-  },
-  {
-    time: '16:12Z',
-    title: 'SETUP synced from desktop',
-    detail: 'Monza_LowDrag_v7 uploaded to setup bank',
-    badge: 'SYNC',
-    variant: 'outline' as const,
-  },
-  {
-    time: '15:58Z',
-    title: 'DASH layout published',
-    detail: 'GT3_NIGHT_STINT pushed to VoCore M-PRO display',
-    badge: 'DISPLAY',
-    variant: 'tertiary' as const,
-  },
-]
+  ['16:42Z', 'TARGET_LAP refreshed from wheel button', 'Spa / McLaren 720S GT3 / Reference set to 2:15.482'],
+  ['16:31Z', 'ENGINEER command accepted', 'Brake bias +0.3% applied from Marco over remote link'],
+  ['16:12Z', 'SETUP synced from desktop', 'Monza_LowDrag_v7 uploaded to setup bank'],
+  ['15:58Z', 'DASH layout published', 'GT3_NIGHT_STINT pushed to VoCore display'],
+] as const
 
 export default function Home() {
   return (
-    <div className="flex min-h-full flex-col">
-      <PageHeader
-        heading="DASHBOARD"
-        caption="Mission control for telemetry sessions, setup sync, and remote engineer activity."
-        actions={(
-          <>
-            <Badge variant="connected">UPLINK_STABLE</Badge>
-            <Button asChild size="sm">
-              <Link href="/engineer">OPEN_ENGINEER</Link>
-            </Button>
-          </>
-        )}
-      />
+    <section className="space-y-[14px]">
+      <header className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+        <div className="flex flex-wrap items-center justify-between gap-[14px]">
+          <div>
+            <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Sprint</p>
+            <h1 className="font-inter text-[13px] font-bold text-[var(--text)]">Dashboard</h1>
+            <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">
+              Mission control for telemetry sessions, setup sync, and remote engineer activity.
+            </p>
+          </div>
+          <Link
+            href="/engineer"
+            className="inline-flex h-[25px] items-center rounded-control border border-[var(--orange)] bg-[var(--orange)] px-[14px] py-[6px] font-inter text-[13px] font-bold text-[#141414]"
+          >
+            OPEN_ENGINEER
+          </Link>
+        </div>
+      </header>
 
-      <div className="flex-1 space-y-6 px-6 py-6">
-        <section className="space-y-3">
-          <h3 className="terminal-header text-[10px] font-bold text-text-muted">
-            SESSION_OVERVIEW
-          </h3>
-          <div className="grid gap-3 md:grid-cols-3">
-            {overview.map((item) => {
-              const Icon = item.icon
-              return (
-                <Card key={item.label} size="sm" variant={item.variant}>
-                  <CardHeader>
-                    <CardTitle>{item.label}</CardTitle>
-                    <CardDescription>{item.caption}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className={`text-3xl font-bold font-mono tabular-nums ${item.valueClass}`}>
-                        {item.value}
-                      </p>
-                      <p className="status-readout mt-1 text-[10px] text-text-muted">
-                        {item.meta}
-                      </p>
-                    </div>
-                    <Icon size={18} className="mb-1 shrink-0 text-text-muted" />
-                  </CardContent>
-                </Card>
-              )
-            })}
+      <div className="grid gap-[14px] lg:grid-cols-3">
+        {overview.map(([label, value, meta, Icon]) => (
+          <article key={label} className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+            <div className="flex items-start justify-between gap-[14px]">
+              <div>
+                <p className="font-inter text-[13px] font-bold text-[var(--text)]">{label}</p>
+                <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">{meta}</p>
+              </div>
+              <Icon className="size-4 text-[var(--muted)]" stroke={1.8} />
+            </div>
+            <p className="mt-[14px] font-saira text-[32px] font-bold tabular-nums text-[var(--orange)]">
+              {value}
+            </p>
+          </article>
+        ))}
+      </div>
+
+      <div className="grid gap-[14px] xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+          <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Quick Access</p>
+          <div className="mt-[14px] grid gap-[10px] md:grid-cols-2">
+            {quickAccess.map(([href, label, description, Icon]) => (
+              <Link
+                key={href}
+                href={href}
+                className="group rounded-alert border border-[var(--border)] bg-[var(--panel-2)] p-[10px]"
+              >
+                <div className="flex items-start justify-between gap-[10px]">
+                  <Icon className="size-4 text-[var(--muted)]" stroke={1.8} />
+                  <IconArrowRight className="size-[14px] text-[var(--muted)] transition-transform group-hover:translate-x-0.5" stroke={1.8} />
+                </div>
+                <p className="mt-[14px] font-inter text-[13px] font-bold text-[var(--text)]">{label}</p>
+                <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">{description}</p>
+              </Link>
+            ))}
           </div>
         </section>
 
-        <section className="space-y-3">
-          <h3 className="terminal-header text-[10px] font-bold text-text-muted">
-            QUICK_ACCESS
-          </h3>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {quickAccess.map((item) => {
-              const Icon = item.icon
-              return (
-                <Link key={item.href} href={item.href} className="group">
-                  <Card
-                    size="sm"
-                    className="h-full transition-colors group-hover:border-primary/40"
-                  >
-                    <CardContent className="flex h-full flex-col gap-3 py-4">
-                      <div className="flex items-start justify-between">
-                        <Icon size={18} className="mt-0.5 text-text-muted" />
-                        <IconArrowRight
-                          size={14}
-                          className="mt-0.5 text-text-muted transition-transform group-hover:translate-x-0.5"
-                        />
-                      </div>
-                      <div>
-                        <p className="terminal-header text-[11px] font-bold text-foreground">
-                          {item.label}
-                        </p>
-                        <p className="status-readout mt-1 text-[10px] text-text-muted">
-                          {item.description}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <h3 className="terminal-header text-[10px] font-bold text-text-muted">
-            RECENT_ACTIVITY
-          </h3>
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>EVENT_FEED</CardTitle>
-              <CardDescription>Latest sync, telemetry, and engineer updates.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {activity.map((item) => (
-                <div
-                  key={`${item.time}-${item.title}`}
-                  className="grid gap-3 rounded-sm border border-border bg-bg-elevated/70 p-3 md:grid-cols-[72px_1fr_auto]"
-                >
-                  <p className="status-readout text-[10px] text-text-muted">{item.time}</p>
+        <section className="rounded-panel border border-[var(--border)] bg-[var(--panel)] p-[14px]">
+          <p className="font-saira text-[11px] uppercase tracking-[.12em] text-[var(--muted)]">Recent Activity</p>
+          <div className="mt-[14px] space-y-[10px]">
+            {activity.map(([time, title, detail]) => (
+              <div key={`${time}-${title}`} className="rounded-alert border border-[var(--border)] bg-[var(--panel-2)] p-[10px]">
+                <div className="flex items-start gap-[10px]">
+                  <span className="font-saira text-[12px] tabular-nums text-[var(--orange)]">{time}</span>
                   <div>
-                    <p className="terminal-header text-[10px] font-bold text-foreground">
-                      {item.title}
-                    </p>
-                    <p className="status-readout mt-1 text-[10px] text-text-muted">
-                      {item.detail}
-                    </p>
-                  </div>
-                  <div className="md:justify-self-end">
-                    <Badge variant={item.variant}>{item.badge}</Badge>
+                    <p className="font-inter text-[13px] font-bold text-[var(--text)]">{title}</p>
+                    <p className="mt-1 font-inter text-[11px] text-[var(--muted)]">{detail}</p>
                   </div>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
-    </div>
+    </section>
   )
 }

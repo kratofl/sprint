@@ -1,7 +1,7 @@
 version: 2
 updates:
-  # Go modules — desktop app
-  - package-ecosystem: gomod
+  # NuGet packages — .NET / Avalonia desktop app
+  - package-ecosystem: nuget
     directory: /app
     schedule:
       interval: monthly

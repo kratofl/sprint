@@ -1,23 +1,23 @@
 export const buttonPrimaryClassName =
-  "border-primary bg-accent/10 text-primary hover:bg-primary hover:text-primary-foreground"
+  "border-[var(--accent)] bg-[var(--accent)] text-[#050505] hover:border-[var(--accent)] hover:bg-[var(--accent)]"
 
 export const buttonNeutralClassName =
-  "border-border bg-bg-shell text-text-muted hover:border-border hover:bg-bg-panel hover:text-foreground"
+  "border-[var(--line)] bg-[var(--panel2)] text-[var(--text)] hover:border-[var(--line2)] hover:bg-[var(--panel3)] hover:text-[var(--text)]"
 
 export const buttonSecondaryClassName =
-  "border-secondary bg-secondary/10 text-secondary hover:bg-secondary hover:text-secondary-foreground"
+  "border-[var(--line)] bg-[var(--panel2)] text-[var(--text2)] hover:border-[var(--line2)] hover:bg-[var(--panel3)] hover:text-[var(--text)]"
 
 export const buttonGhostClassName =
-  "border-transparent text-text-muted hover:border-border hover:bg-white/[0.04] hover:text-foreground"
+  "border-transparent text-[var(--text2)] hover:border-[var(--line)] hover:bg-[var(--panel2)] hover:text-[var(--text)]"
 
 export const buttonDestructiveClassName =
-  "border-destructive/60 bg-destructive/10 text-destructive hover:border-destructive hover:bg-destructive hover:text-destructive-foreground"
+  "border-[var(--red)] bg-[var(--red)] text-[#050505] hover:border-[var(--red)] hover:bg-[var(--red)] hover:text-[#050505]"
 
 export const buttonActiveClassName =
-  "border-primary bg-accent/10 text-primary hover:bg-accent/[0.18]"
+  "border-[var(--accent)] bg-[var(--panel3)] text-[var(--accent)] hover:bg-[var(--panel3)]"
 
-export const cardDefaultClassName = "surface-panel"
-export const cardAccentClassName = "surface-active"
-export const cardSecondaryClassName = "surface-secondary"
-export const cardElevatedClassName = "surface-panel"
-export const cardDestructiveClassName = "surface-destructive"
+export const cardDefaultClassName = "border-[var(--line)] bg-[var(--panel)] shadow-none"
+export const cardAccentClassName = "border-[var(--accent)] bg-[var(--panel)]"
+export const cardSecondaryClassName = "border-[var(--line)] bg-[var(--panel2)] shadow-none"
+export const cardElevatedClassName = "border-[var(--line)] bg-[var(--panel)] shadow-none"
+export const cardDestructiveClassName = "border-[var(--red)] bg-[var(--red-soft)]"

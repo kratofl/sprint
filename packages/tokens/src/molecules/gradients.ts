@@ -1,21 +1,13 @@
-/**
- * Gradient tokens.
- * Primary CTA: warm coral orange.
- * Secondary CTA: vibrant cyan.
- */
+/** Compatibility fill tokens retained for legacy gradient import names. */
 
-/** Warm coral orange — primary CTA, driver-owned actions */
-export const gradientAccent =
-  'linear-gradient(135deg, #ff906c 0%, #ff784d 100%)'
+/** Primary compatibility fill maps to flat racing orange. */
+export const gradientAccent = '#FF6A00'
 
-/** Subtle orange tint — hover states, active backgrounds */
-export const gradientAccentSubtle =
-  'linear-gradient(135deg, rgba(255,144,108,0.14) 0%, rgba(255,120,77,0.07) 100%)'
+/** Subtle orange tint — hover states, active backgrounds. */
+export const gradientAccentSubtle = 'rgba(255,106,0,.13)'
 
-/** Vibrant cyan — secondary CTA, system/engineer-originated actions */
-export const gradientTeal =
-  'linear-gradient(135deg, #8afcff 0%, #2ae4e8 100%)'
+/** @deprecated Secondary CTA no longer defaults to cyan; maps to neutral panel fill. */
+export const gradientTeal = '#0F0F0F'
 
-/** Subtle cyan tint — secondary hover states */
-export const gradientTealSubtle =
-  'linear-gradient(135deg, rgba(90,248,251,0.14) 0%, rgba(42,228,232,0.07) 100%)'
+/** @deprecated Cyan-first hover is inert; maps to panel inset fill. */
+export const gradientTealSubtle = '#141414'
