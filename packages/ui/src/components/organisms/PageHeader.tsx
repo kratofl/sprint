@@ -21,24 +21,24 @@ export function PageHeader({
     <header
       data-slot="page-header"
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-bg-shell px-6 py-4",
+        "ds-head",
         className
       )}
       {...props}
     >
       <div className="min-w-0">
-        <h2 className="terminal-header text-sm font-bold tracking-[0.2em] text-foreground">
+        <h1>
           {heading}
-        </h2>
+        </h1>
         {caption ? (
-          <p className="status-readout mt-0.5 text-[10px] text-text-muted">
+          <p>
             {caption}
           </p>
         ) : null}
       </div>
 
       {status || actions ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="ds-acts">
           {status ? (
             <div className="flex flex-wrap items-center gap-2">
               {status}

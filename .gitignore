@@ -40,6 +40,12 @@
 *.out
 vendor/
 
+# ─── .NET ────────────────────────────────────────────────────────────────────
+**/bin/
+**/obj/
+*.user
+*.rsuser
+
 # ─── Python ──────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -83,16 +89,14 @@ Cargo.lock
 *.p12
 secrets/
 
-# ─── Wails ────────────────────────────────────────────────────────────────────
+# ─── Desktop app ──────────────────────────────────────────────────────────────
 app/build/bin/
-app/app
-app/app.exe
+app/Sprint.Desktop.Tests/artifacts/
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/
 
 # ─── Vite / Frontend Build ───────────────────────────────────────────────────
-app/frontend/dist/
 *.tsbuildinfo
 
 # ─── Turbo ────────────────────────────────────────────────────────────────────
@@ -111,3 +115,15 @@ temp/
 # codebase-memory-mcp tool data and installer
 .codebase-memory/
 install.ps1
+.superpowers/
+superpowers/
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/specs/*.md
+
+# ─── Agent / workflow artifacts ──────────────────────────────────────────────
+# Playwright visual-verification screenshots and session handoff docs.
+output/
+handoffs/
+bash.exe.stackdump

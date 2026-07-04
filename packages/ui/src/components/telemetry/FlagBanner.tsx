@@ -15,17 +15,17 @@ interface BannerConfig {
 
 function resolveFlag(flags: Flags): BannerConfig | null {
   if (flags.red)
-    return { label: 'RED FLAG', bg: 'bg-red-600', text: 'text-white', pulse: true }
+    return { label: 'RED FLAG', bg: 'bg-[var(--red)]', text: 'text-white', pulse: true }
   if (flags.safetyCar)
-    return { label: 'SAFETY CAR', bg: 'bg-yellow-500', text: 'text-black' }
+    return { label: 'SAFETY CAR', bg: 'bg-[var(--amber)]', text: 'text-black' }
   if (flags.vsc)
-    return { label: 'VIRTUAL SAFETY CAR', bg: 'bg-yellow-400', text: 'text-black' }
+    return { label: 'VIRTUAL SAFETY CAR', bg: 'bg-[var(--amber)]', text: 'text-black' }
   if (flags.doubleYellow)
-    return { label: 'DOUBLE YELLOW', bg: 'bg-yellow-400', text: 'text-black', pulse: true }
+    return { label: 'DOUBLE YELLOW', bg: 'bg-[var(--amber)]', text: 'text-black', pulse: true }
   if (flags.yellow)
-    return { label: 'YELLOW FLAG', bg: 'bg-yellow-400', text: 'text-black' }
+    return { label: 'YELLOW FLAG', bg: 'bg-[var(--amber)]', text: 'text-black' }
   if (flags.checkered)
-    return { label: 'CHEQUERED', bg: 'bg-text-primary', text: 'text-bg-base', pulse: true }
+    return { label: 'CHEQUERED', bg: 'bg-[var(--text)]', text: 'text-[var(--bg)]', pulse: true }
   return null
 }
 
@@ -40,7 +40,7 @@ export function FlagBanner({ flags, className, ...props }: FlagBannerProps) {
   return (
     <div
       className={cn(
-        'flex items-center justify-center rounded-md py-1.5 text-xs font-bold tracking-widest',
+        'flex items-center justify-center rounded-control py-1.5 text-xs font-bold tracking-widest',
         cfg.bg,
         cfg.text,
         cfg.pulse && 'animate-pulse',

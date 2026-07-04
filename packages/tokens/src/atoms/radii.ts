@@ -1,13 +1,22 @@
-/**
- * Border radius scale — flat data-app style.
- * Near-zero rounding; sharp corners signal precision and data density.
- */
+import { primitiveRadius } from '../primitive'
+
+/** Border radius scale — soft but never pill-like by default. */
 export const borderRadius = {
-  sm:      '0px',
-  DEFAULT: '2px',
-  md:      '2px',
-  lg:      '3px',
-  xl:      '3px',
-  '2xl':   '4px',
-  full:    '9999px',
+  xs:      primitiveRadius.xs,
+  sm:      primitiveRadius.sm,
+  tag:     primitiveRadius.badge,
+  icon:    primitiveRadius.icon,
+  badge:   primitiveRadius.badge,
+  control: primitiveRadius.control,
+  card:    primitiveRadius.card,
+  panel:   primitiveRadius.panel,
+  alert:   primitiveRadius.alert,
+  tile:    primitiveRadius.tile,
+  DEFAULT: primitiveRadius.control,
+  md:      primitiveRadius.control,
+  lg:      primitiveRadius.card,
+  xl:      primitiveRadius.panel,
+  '2xl':   primitiveRadius.panel,
+  pill:    primitiveRadius.pill,
+  full:    primitiveRadius.pill,
 } as const

@@ -1,94 +1,191 @@
 import type { Config } from 'tailwindcss'
 
 // Atomic token imports.
-import { orange, cyan, neutral, semantic, dataViz } from './src/atoms/colors'
+import { alertRed, orange, heat, cyan, green, neutral, semantic, dataViz } from './src/atoms/colors'
 import { fontFamily }                                from './src/atoms/typography'
 import { borderRadius }                              from './src/atoms/radii'
 import { surfaces, outlineColor, outlineStrongColor } from './src/molecules/surfaces'
 import { borders }                                   from './src/molecules/borders'
+import { shadows }                                   from './src/molecules/shadows'
+import { primitive }                                 from './src/primitive'
+import { semanticTokens }                            from './src/semantic'
+import { componentTokens }                           from './src/component'
 
 /**
  * Shared design tokens for the Sprint platform.
- * "Pitwall" aesthetic: HUD terminal look, Space Grotesk, solid outline borders,
- * orange primary (#ff906c) + cyan secondary (#5af8fb).
+ * Sprint redesign: true-neutral surfaces, racing orange primary, semantic
+ * green/red, and inert compatibility aliases for legacy cyan/glass/glow usage.
  */
 const tokens: Partial<Config> = {
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        primitive: {
+          color: primitive.color,
+        },
+        semantic: {
+          bg: semanticTokens.color.bg,
+          surface: semanticTokens.color.surface,
+          text: semanticTokens.color.text,
+          border: semanticTokens.color.border,
+          action: semanticTokens.color.action,
+          status: semanticTokens.color.status,
+          data: semanticTokens.color.data,
+          platform: semanticTokens.color.platform,
+        },
+        component: {
+          shell: {
+            window: {
+              bg: componentTokens.shell.window.bg,
+              border: componentTokens.shell.window.border,
+            },
+            titleBar: {
+              bg: componentTokens.shell.titleBar.bg,
+              border: componentTokens.shell.titleBar.border,
+              text: componentTokens.shell.titleBar.text,
+              mutedText: componentTokens.shell.titleBar.mutedText,
+            },
+            commandButton: {
+              hoverBg: componentTokens.shell.commandButton.bgHover,
+              pressedBg: componentTokens.shell.commandButton.bgPressed,
+              text: componentTokens.shell.commandButton.text,
+              hoverText: componentTokens.shell.commandButton.textHover,
+            },
+            nav: {
+              bg: componentTokens.shell.nav.bg,
+              itemBgHover: componentTokens.shell.nav.itemBgHover,
+              itemBgActive: componentTokens.shell.nav.itemBgActive,
+              itemText: componentTokens.shell.nav.itemText,
+              itemTextActive: componentTokens.shell.nav.itemTextActive,
+              itemIndicator: componentTokens.shell.nav.itemIndicator,
+              border: componentTokens.shell.nav.border,
+            },
+            pageHeader: {
+              bg: componentTokens.shell.pageHeader.bg,
+              border: componentTokens.shell.pageHeader.border,
+              title: componentTokens.shell.pageHeader.title,
+              caption: componentTokens.shell.pageHeader.caption,
+            },
+          },
+          button: {
+            primary: {
+              bg: componentTokens.button.primary.bg,
+              text: componentTokens.button.primary.text,
+              border: componentTokens.button.primary.border,
+            },
+            secondary: {
+              bg: componentTokens.button.secondary.bg,
+              text: componentTokens.button.secondary.text,
+              border: componentTokens.button.secondary.border,
+            },
+            destructive: {
+              bg: componentTokens.button.destructive.bg,
+              text: componentTokens.button.destructive.text,
+              border: componentTokens.button.destructive.border,
+            },
+          },
+          card: {
+            bg: componentTokens.card.bg,
+            border: componentTokens.card.border,
+          },
+          input: {
+            bg: componentTokens.input.bg,
+            border: componentTokens.input.border,
+            text: componentTokens.input.text,
+          },
+          nav: {
+            rail: componentTokens.nav.railBg,
+            active: componentTokens.nav.itemBgActive,
+            activeText: componentTokens.nav.itemTextActive,
+          },
+        },
         // Shadcn-compatible semantic aliases.
-        primary:     { DEFAULT: orange[500], foreground: '#000000' },
-        secondary:   { DEFAULT: cyan[500],   foreground: '#000000' },
-        tertiary:    { DEFAULT: semantic.tertiary, foreground: '#000000' },
-        destructive: { DEFAULT: semantic.destructive, foreground: '#ffffff' },
-        success:     { DEFAULT: semantic.success,     foreground: '#000000' },
-        warning:     { DEFAULT: semantic.warning,     foreground: '#000000' },
+        background: 'var(--bg)',
+        foreground: 'var(--text)',
+        primary:     { DEFAULT: 'var(--accent)', foreground: '#050505' },
+        'primary-foreground': '#050505',
+        secondary:   { DEFAULT: 'var(--blue)', foreground: '#ffffff' },
+        tertiary:    { DEFAULT: semantic.tertiary, foreground: 'var(--bg)' },
+        destructive: { DEFAULT: 'var(--red)', foreground: '#ffffff' },
+        success:     { DEFAULT: 'var(--green)', foreground: 'var(--bg)' },
+        warning:     { DEFAULT: 'var(--yellow)', foreground: '#050505' },
+        info:        { DEFAULT: 'var(--blue)', foreground: '#ffffff' },
+        heat:        { DEFAULT: heat[500], foreground: '#050505' },
+        'border-strong': 'var(--line2)',
+        'bg-panel': 'var(--panel)',
+        'bg-panel-2': 'var(--panel2)',
+        'bg-panel-3': 'var(--panel3)',
+        'bg-panel-4': 'var(--panel-4)',
 
         // Surface hierarchy.
-        background: surfaces.base,
-        foreground: neutral[100],
-        card:    { DEFAULT: surfaces.base, foreground: neutral[100] },
-        popover: { DEFAULT: surfaces.overlayPanel, foreground: neutral[100] },
-        muted:   { DEFAULT: surfaces.variant, foreground: neutral[400] },
-        input:   surfaces.base,
-        ring:    orange[500],
+        card:    { DEFAULT: surfaces.container, foreground: 'var(--text)' },
+        popover: { DEFAULT: surfaces.overlayPanel, foreground: 'var(--text)' },
+        muted:   { DEFAULT: surfaces.elevated, foreground: 'var(--muted)' },
+        input:   surfaces.elevated,
+        ring:    'var(--accent)',
 
         // Accent variants for driver-owned primary actions.
         accent: {
           DEFAULT:    orange[500],
-          hover:      orange[400],
-          dark:       orange[600],
-          muted:      'rgba(255,144,108,0.08)',
-          border:     'rgba(255,144,108,0.30)',
-          foreground: '#000000',
+          hover:      'var(--accent)',
+          dark:       'var(--accent-dark)',
+          muted:      'rgba(255,106,0,0.13)',
+          border:     'rgba(255,106,0,0.30)',
+          foreground: '#050505',
         },
 
-        // Secondary cyan variants.
+        // Compatibility cyan variants for explicit comparison data only.
         teal: {
           DEFAULT:    cyan[500],
           hover:      cyan[400],
           dark:       cyan[600],
-          muted:      'rgba(90,248,251,0.08)',
-          border:     'rgba(90,248,251,0.30)',
-          foreground: '#000000',
+          muted:      '#091D38',
+          border:     '#114F99',
+          foreground: 'var(--bg)',
         },
+        cyan,
+        orange,
+        green,
+        red: alertRed,
 
         // Background and surface scale.
         bg: {
           base:      surfaces.base,
+          deep:      surfaces.shell,
           shell:     surfaces.shell,
           container: surfaces.container,
           // backward-compat aliases
           surface:   surfaces.container,
-          panel:     surfaces.variant,
-          subtle:    surfaces.variant,
+          panel:     surfaces.elevated,
+          subtle:    surfaces.elevated,
           elevated:  surfaces.elevated,
           overlay:   surfaces.overlay,
           'overlay-panel': surfaces.overlayPanel,
+          inline:    surfaces.variant,
         },
 
         // Text hierarchy.
         text: {
-          primary:   neutral[100],
-          secondary: neutral[300],
-          muted:     neutral[400],
-          disabled:  neutral[500],
+          primary:   'var(--text)',
+          secondary: 'var(--muted)',
+          muted:     'var(--muted)',
+          disabled:  'var(--muted-2)',
         },
 
         // "On-surface" aliases matching the HTML reference naming.
-        'on-surface':         neutral[100],
-        'on-surface-variant': neutral[400],
+        'on-surface':         'var(--text)',
+        'on-surface-variant': 'var(--muted)',
 
         // Border and outline tokens.
         border: {
           DEFAULT: borders.outline,
           base:    borders.outline,
           subtle:  borders.outlineSubtle,
-          // keep 'strong' alias for any focus ring overrides
           strong:  outlineStrongColor,
           accent:  borders.accent,
           teal:    borders.teal,
+          input:   borders.outlineSubtle,
         },
         outline: outlineColor,
 
@@ -105,17 +202,29 @@ const tokens: Partial<Config> = {
 
       fontFamily: {
         display:  fontFamily.display,
+        wordmark: fontFamily.wordmark,
         sans:     fontFamily.sans,
+        ui:       fontFamily.ui,
+        inter:    fontFamily.ui,
+        plex:     fontFamily.ui,
         mono:     fontFamily.mono,
+        numeric:  fontFamily.numeric,
+        saira:    fontFamily.numeric,
+        "saira-sc": fontFamily.wordmark,
+        space:    fontFamily.display,
         headline: fontFamily.display,
         body:     fontFamily.sans,
       },
 
       boxShadow: {
-        overlay:    '0 8px 24px rgba(0,0,0,0.40)',
-        panel:      '0 2px 8px rgba(0,0,0,0.30)',
-        glow:       '0 0 14px rgba(255,144,108,0.25)',
-        'glow-teal':'0 0 14px rgba(90,248,251,0.20)',
+        sm:         shadows.sm,
+        md:         shadows.md,
+        lg:         shadows.lg,
+        overlay:    shadows.md,
+        panel:      shadows.card,
+        window:     shadows.window,
+        glow:       shadows.glow,
+        'glow-teal':shadows['glow-teal'],
       },
     },
   },

@@ -1,4 +1,4 @@
-// Mirrors pkg/dto/engineer.go — keep in sync with the Go source of truth.
+// Web-side engineer contract — keep in sync with the desktop `Sprint.Desktop.Api` (EngineerContract).
 
 export type CommandType = 'set_target_lap' | 'send_note' | 'request_sync'
 

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Nullable / ImplicitUsings inherited from app/Directory.Build.props -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sprint.Desktop.Client\Sprint.Desktop.Client.csproj" />
+    <ProjectReference Include="..\Sprint.Desktop.Api\Sprint.Desktop.Api.csproj" />
+    <ProjectReference Include="..\Sprint.Games\Sprint.Games.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- Headless Avalonia harness: construct/exercise real views (incl. the
+         composition root, which returns a Window) without a display (WS2).
+         NOTE: the Avalonia.Headless.XUnit integration package targets xunit v3
+         and collides with our xunit v2.9.3, so we drive HeadlessUnitTestSession
+         directly from Avalonia.Headless inside ordinary [Fact]s instead. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+  </ItemGroup>
+</Project>

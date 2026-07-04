@@ -1,21 +1,21 @@
+import { primitiveColor } from '../primitive'
+
 /**
  * Border tokens.
  *
- * `outline` is the quiet structural separator used everywhere — header bars, sidebar,
- * card edges, table rows, chart areas.
- *
- * Ghost borders (semi-transparent) are reserved for interactive state overlays
- * and hover highlights only.
+ * `outline` is the quiet structural separator used everywhere: cards, rows,
+ * dividers, and chart areas. Emphasis uses the stronger neutral border.
  */
-import { orange, cyan } from '../atoms/colors'
 
 export const borders = {
-  /** Structural outline — header, sidebar, cards, table rows, chart areas */
-  outline:     '#202020',
-  /** Subtle variant — dividers inside surfaces */
-  outlineSubtle: 'rgba(255, 255, 255, 0.06)',
-  /** Accent — orange-500 at 30% opacity, highlighted/active cards */
-  accent:      `${orange[500]}4d`,
-  /** Cyan — cyan-500 at 30% opacity, secondary call-out highlights */
-  teal:        `${cyan[500]}4d`,
+  /** Structural outline — cards, table rows, chart areas */
+  outline:     primitiveColor.neutral[700],
+  /** Stronger neutral outline — inputs, buttons, active boundaries */
+  outlineSubtle: primitiveColor.neutral[600],
+  /** Accent — racing orange at 30% opacity, highlighted/active cards */
+  accent:      primitiveColor.orange[700],
+  danger:      primitiveColor.red[800],
+  success:     primitiveColor.green[700],
+  /** Compatibility cyan — explicit comparison call-outs only */
+  teal:        primitiveColor.blue[700],
 } as const

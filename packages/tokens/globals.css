@@ -1,156 +1,358 @@
-/* Fonts */
-/* Space Grotesk is the primary UI font. JetBrains Mono is for telemetry data. */
-/* CSS variables */
-:root {
-  /* Primary — orange (driver-owned actions / active state) */
-  --accent:        #ff906c;
-  --accent-dark:   #ff784d;
-  --accent-muted:  rgba(255, 144, 108, 0.10);
-  --accent-surface: rgba(255, 144, 108, 0.10);
+/* Shared CSS variables and base styles. Apps load fonts and compile Tailwind. */
+:root,
+.fd,
+.tone-graphite {
+  /* Primitive / Color */
+  --primitive-color-orange-500: #FF6A00;
+  --primitive-color-green-500: #16B566;
+  --primitive-color-red-500: #F02744;
+  --primitive-color-yellow-500: #E0A30C;
+  --primitive-color-blue-500: #1F7FE6;
+  --primitive-color-purple-500: #A06BFF;
+  --primitive-color-neutral-990: #050505;
+  --primitive-color-neutral-950: #0A0A0A;
+  --primitive-color-neutral-925: #0F0F0F;
+  --primitive-color-neutral-900: #141414;
+  --primitive-color-neutral-850: #1A1A1A;
+  --primitive-color-neutral-800: #1F1F1F;
+  --primitive-color-neutral-750: #1F1F1F;
+  --primitive-color-neutral-700: #2E2E2E;
+  --primitive-color-neutral-600: #424242;
+  --primitive-color-neutral-500: #5A5A5A;
+  --primitive-color-neutral-400: #7A7A7A;
+  --primitive-color-neutral-300: #A0A0A0;
+  --primitive-color-neutral-50: #F6F6F6;
 
-  /* Secondary — cyan (system status / engineer-originated / comparison data) */
-  --secondary:     #5af8fb;
-  --secondary-dark:#2ae4e8;
-  --secondary-muted: rgba(90, 248, 251, 0.08);
-  --secondary-surface: rgba(90, 248, 251, 0.08);
+  /* Primitive / Radius + Space */
+  --primitive-radius-panel: 14px;
+  --primitive-radius-card: 10px;
+  --primitive-radius-alert: 10px;
+  --primitive-radius-control: 8px;
+  --primitive-radius-tile: 10px;
+  --primitive-radius-icon: 6px;
+  --primitive-radius-badge: 4px;
+  --primitive-radius-pill: 999px;
+  --primitive-motion-duration-instant: 0ms;
+  --primitive-motion-duration-fast: 120ms;
+  --primitive-motion-duration-normal: 160ms;
+  --primitive-motion-duration-slow: 240ms;
+  --primitive-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --primitive-motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --primitive-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --primitive-space-0: 0px;
+  --primitive-space-1: 2px;
+  --primitive-space-2: 4px;
+  --primitive-space-3: 6px;
+  --primitive-space-4: 8px;
+  --primitive-space-5: 10px;
+  --primitive-space-6: 14px;
+  --primitive-space-7: 16px;
+  --primitive-space-8: 18px;
+  --primitive-space-9: 20px;
+  --primitive-space-10: 22px;
+  --primitive-space-12: 36px;
 
-  /* Status surfaces */
-  --success-surface: rgba(52, 211, 153, 0.10);
-  --warning-surface: rgba(251, 191, 36, 0.10);
-  --destructive-surface: rgba(248, 113, 113, 0.12);
-  --tertiary-surface: rgba(241, 175, 255, 0.10);
+  /* Dash Studio public variables */
+  --bg: #0A0A0A;
+  --panel: #0F0F0F;
+  --panel2: #141414;
+  --panel3: #1A1A1A;
+  --line: #2E2E2E;
+  --line2: #424242;
+  --text: #F6F6F6;
+  --text2: #7A7A7A;
+  --text3: #5A5A5A;
+  --accent: #FF6A00;
+  --radius: 10px;
+  --r: var(--radius);
+  --radius-panel: var(--primitive-radius-panel);
+  --radius-alert: var(--primitive-radius-alert);
+  --radius-control: var(--primitive-radius-control);
+  --radius-tile: var(--primitive-radius-tile);
+  --radius-badge: var(--primitive-radius-badge);
+  --radius-pill: var(--primitive-radius-pill);
+  --motion-duration-instant: 0ms;
+  --motion-duration-fast: 120ms;
+  --motion-duration-normal: 160ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --green: #16B566;
+  --red: #F02744;
+  --yellow: #E0A30C;
+  --blue: #1F7FE6;
+  --purple: #A06BFF;
 
-  /* Surfaces */
-  --bg-base:       #0a0a0a;
-  --bg-shell:      #0a0a0a;
-  --bg-container:  #0a0a0a;
-  --bg-elevated:   #0a0a0a;
-  --bg-overlay:    #0a0a0a;
-  --bg-overlay-panel: rgba(10, 10, 10, 0.94);
+  /* Typography stacks. IBM Plex Sans is the single UI family (see
+     packages/tokens/src/atoms/typography.ts); display/body/ui share it. */
+  --font-display: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  --font-ui: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
 
-  /* Structural border — used for all section/card/table dividers */
-  --outline:       #202020;
-  --outline-strong:#262626;
+  /* Compatibility aliases mapped to Dash Studio */
+  --bg-deep: var(--bg);
+  --win: var(--panel);
+  --tile: var(--panel);
+  --panel-2: var(--panel2);
+  --tile-2: var(--panel2);
+  --panel-3: var(--panel3);
+  --tile-3: var(--panel3);
+  --panel-4: #1F1F1F;
+  --tile-4: #1F1F1F;
+  --border: var(--line);
+  --border-2: var(--line2);
+  --win-edge: var(--line2);
+  --muted: var(--text2);
+  --muted-2: var(--text3);
+  --orange: var(--accent);
+  --amber: var(--yellow);
+  --green-soft: #05281A;
+  --green-tint: var(--green-soft);
+  --green-ring: #0E7445;
+  --red-soft: #3A0A10;
+  --red-tint: var(--red-soft);
+  --red-ring: #851727;
+  --amber-soft: #2E2002;
+  --amber-tint: var(--amber-soft);
+  --amber-ring: #8F6406;
+  --blue-soft: #091D38;
+  --blue-tint: var(--blue-soft);
+  --blue-ring: #114F99;
+  --orange-soft: rgba(255, 106, 0, .13);
+  --orange-tint: rgba(255, 106, 0, .13);
+  --orange-ring: #BF4D00;
+  --duration-fast: var(--motion-duration-fast);
+  --duration-normal: var(--motion-duration-normal);
+  --duration-slow: var(--motion-duration-slow);
+  --ease-standard: var(--motion-ease);
+  --ease-out: var(--motion-ease-out);
+  --ease-in: var(--motion-ease-in);
+  --accent-dark: #E8590C;
+  --accent-muted: var(--orange-soft);
+  --accent-surface: var(--orange-soft);
+  --heat: var(--accent);
+  --secondary: var(--blue);
+  --secondary-dark: var(--blue-ring);
+  --secondary-muted: var(--blue-soft);
+  --secondary-surface: var(--blue-tint);
+  --success-surface: var(--green-soft);
+  --warning-surface: var(--amber-soft);
+  --destructive-surface: var(--red-soft);
+  --tertiary-surface: var(--green-soft);
+  --bg-base: var(--bg);
+  --bg-shell: var(--bg);
+  --bg-container: var(--panel);
+  --bg-elevated: var(--panel2);
+  --bg-overlay: var(--bg);
+  --bg-overlay-panel: var(--panel);
+  --outline: var(--line);
+  --outline-strong: var(--line2);
+  --on-surface: var(--text);
+  --on-surface-variant: var(--text2);
 
-  /* Text */
-  --on-surface:    #ffffff;
-  --on-surface-variant: #808080;
+  /* Semantic */
+  --semantic-color-bg-base: var(--bg);
+  --semantic-color-bg-deep: var(--bg);
+  --semantic-color-surface-panel: var(--panel);
+  --semantic-color-surface-raised: var(--panel2);
+  --semantic-color-surface-inset: var(--panel3);
+  --semantic-color-surface-tile-4: var(--panel-4);
+  --semantic-color-text-primary: var(--text);
+  --semantic-color-text-muted: var(--text2);
+  --semantic-color-text-disabled: var(--text3);
+  --semantic-color-border-default: var(--line);
+  --semantic-color-border-strong: var(--line2);
+  --semantic-color-action-primary: var(--accent);
+  --semantic-color-action-primary-muted: rgba(255, 106, 0, .13);
+  --semantic-color-status-success: var(--green);
+  --semantic-color-status-success-muted: var(--green-soft);
+  --semantic-color-status-danger: var(--red);
+  --semantic-color-status-danger-muted: var(--red-soft);
+  --semantic-color-status-warning: var(--yellow);
+  --semantic-color-status-warning-muted: var(--amber-soft);
+  --semantic-color-status-info: var(--blue);
+  --semantic-color-status-info-muted: var(--blue-soft);
+  --semantic-color-platform-winui-mica: var(--panel);
+  --semantic-color-platform-winui-mica-alt: var(--bg);
+  --semantic-color-platform-winui-layer: var(--panel2);
+  --semantic-color-platform-winui-layer-alt: var(--panel3);
+  --semantic-color-platform-winui-control: var(--panel-4);
+  --semantic-color-platform-winui-control-hover: var(--panel3);
+  --semantic-color-platform-winui-control-pressed: var(--panel);
+  --semantic-color-platform-winui-stroke: var(--line);
+  --semantic-color-platform-winui-stroke-subtle: var(--line2);
+  --semantic-color-platform-winui-text-primary: var(--text);
+  --semantic-color-platform-winui-text-secondary: var(--text2);
+  --semantic-color-platform-winui-text-tertiary: var(--text3);
+  --semantic-color-platform-winui-accent: var(--accent);
+  --semantic-color-platform-winui-accent-muted: rgba(255, 106, 0, .14);
+
+  /* Component */
+  --component-button-primary-bg: var(--accent);
+  --component-button-primary-text: var(--panel2);
+  --component-button-primary-border: var(--accent);
+  --component-shell-window-bg: var(--bg);
+  --component-shell-window-border: #404040;
+  --component-shell-titlebar-bg: var(--panel);
+  --component-shell-titlebar-border: var(--line2);
+  --component-shell-titlebar-text: var(--text);
+  --component-shell-titlebar-muted-text: var(--text3);
+  --component-shell-titlebar-height: 32px;
+  --component-shell-command-button-hover-bg: var(--panel3);
+  --component-shell-command-button-pressed-bg: var(--panel);
+  --component-shell-nav-bg: var(--panel);
+  --component-shell-nav-border: var(--line2);
+  --component-shell-nav-item-hover-bg: var(--panel3);
+  --component-shell-nav-item-active-bg: var(--panel-3);
+  --component-shell-nav-item-active-text: var(--accent);
+  --component-shell-nav-item-indicator: var(--accent);
+  --component-shell-page-header-bg: var(--panel2);
+  --component-shell-page-header-border: var(--line2);
+  --component-card-bg: var(--panel);
+  --component-card-border: var(--line);
+  --component-card-radius: var(--primitive-radius-card);
+  --component-input-bg: var(--panel2);
+  --component-input-border: var(--line);
+  --component-input-radius: var(--primitive-radius-control);
+  --component-input-height: 32px;
+  --component-nav-rail-bg: var(--bg);
+  --component-dash-editor-well: var(--bg);
+  --component-dash-editor-well-top: var(--bg);
+  --component-dash-editor-rail: var(--panel);
+  --component-dash-editor-rail-head: var(--panel2);
+  --component-dash-editor-inset: var(--bg);
+  --component-dash-editor-seam: var(--bg);
 }
 
-/* Base styles */
+html,
 body {
-  background-color: var(--bg-base);
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
-/* Typography helpers */
-.terminal-header {
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.terminal-label {
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.status-readout {
-  font-family: 'JetBrains Mono', monospace;
+.mono,
+.ui-value {
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.08em;
 }
 
-/* Surface utilities */
+.ui-label {
+  color: var(--text3);
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.ui-control {
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.ui-wordmark {
+  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-weight: 700;
+}
+
+@keyframes fdpulse {
+  0%, 100% { opacity: .42; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fdrise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @layer utilities {
-  /* Container surface — cards, panels, section areas */
   .surface,
   .surface-panel {
-    background: var(--bg-base);
-    border: 1px solid var(--outline);
+    background: var(--panel);
+    border: 1px solid var(--line);
   }
 
   .surface-shell {
-    background: var(--bg-base);
-    border: 1px solid var(--outline);
+    background: var(--bg);
+    border: 1px solid var(--line);
   }
 
-  /* Elevated surface — active widgets, emphasized cards */
   .surface-elevated {
-    background: var(--bg-base);
-    border: 1px solid var(--outline);
+    background: var(--panel2);
+    border: 1px solid var(--line);
   }
 
-  /* Top-level overlay */
   .surface-overlay {
-    background: var(--bg-overlay);
-    border: 1px solid var(--outline);
+    background: var(--bg);
+    border: 1px solid var(--line2);
   }
 
   .surface-overlay-panel {
-    background: var(--bg-overlay-panel);
-    border: 1px solid var(--outline);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--panel);
+    border: 1px solid var(--line2);
   }
 
   .surface-inline {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--outline);
+    background: var(--panel2);
+    border: 1px solid var(--line2);
   }
 
   .surface-active {
-    background: var(--accent-surface);
-    border-color: rgba(255, 144, 108, 0.42);
+    background: var(--orange-soft);
+    border-color: var(--accent);
   }
 
   .surface-secondary {
-    background: var(--secondary-surface);
-    border-color: rgba(90, 248, 251, 0.42);
+    background: var(--blue-soft);
+    border-color: var(--blue-ring);
   }
 
   .surface-success {
-    background: var(--success-surface);
-    border-color: rgba(52, 211, 153, 0.42);
+    background: var(--green-soft);
+    border-color: var(--green-ring);
   }
 
   .surface-warning {
-    background: var(--warning-surface);
-    border-color: rgba(251, 191, 36, 0.42);
+    background: var(--amber-soft);
+    border-color: var(--amber-ring);
   }
 
   .surface-destructive {
-    background: var(--destructive-surface);
-    border-color: rgba(248, 113, 113, 0.55);
+    background: var(--red-soft);
+    border-color: var(--red-ring);
   }
 
   .surface-tertiary {
-    background: var(--tertiary-surface);
-    border-color: rgba(241, 175, 255, 0.42);
+    background: var(--green-soft);
+    border-color: var(--green-ring);
   }
 
-  /* Floating glass overlays — modals, dropdowns, nav bar */
-  .glass {
-    background: rgba(10, 10, 10, 0.9);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--outline);
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r);
   }
 
+  .glass,
   .glass-overlay {
-    background: var(--bg-overlay-panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--outline);
+    background: var(--panel);
+    border: 1px solid var(--line);
   }
-
 }
 
-/* Scrollbar */
-::-webkit-scrollbar         { width: 4px; height: 4px; }
-::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(255,255,255,0.12); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--panel3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--line2); }

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 50" width="180" height="50" overflow="visible">
+  <defs>
+    
+    <linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff6a00" stop-opacity="1"></stop>
+      <stop offset="72%" stop-color="#ff6a00" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+
+  
+  <text x="0" y="26" font-family="&#39;Saira Semi Condensed&#39;, sans-serif" font-weight="700" font-size="28" fill="#ff6a00" letter-spacing="1">SPRINT</text>
+
+  
+  <text y="39" font-family="&#39;Saira Semi Condensed&#39;, sans-serif" font-weight="700" font-size="9">
+    <tspan x="0" fill="#cdcdcd" letter-spacing="2">TELEMETRY</tspan>
+    <tspan fill="#16b566" letter-spacing="2" dx="7">SYSTEM</tspan>
+  </text>
+
+  
+  <rect x="0" y="46" width="180" height="2" rx="2" fill="url(#sg)"></rect>
+</svg>

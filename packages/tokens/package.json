@@ -8,7 +8,15 @@
     "./globals.css": "./globals.css",
     "./src": "./src/index.ts"
   },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
   "devDependencies": {
-    "tailwindcss": "^4.3.0"
+    "@types/node": "^25.9.1",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.2"
   }
 }

@@ -1,4 +1,4 @@
-// Mirrors pkg/dto/telemetry.go — keep in sync with the Go source of truth.
+// Web-side telemetry contract — keep in sync with the desktop `Sprint.Desktop.Api` (TelemetryFrame).
 
 export type SessionType = 'practice' | 'qualify' | 'race' | 'warmup' | 'unknown'
 

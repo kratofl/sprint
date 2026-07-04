@@ -20,7 +20,7 @@ function Progress({
       data-slot="progress"
       data-variant={variant}
       className={cn(
-        "relative flex h-1 w-full items-center overflow-x-hidden bg-border",
+        "relative flex h-2 w-full items-center overflow-x-hidden rounded-pill bg-[var(--panel-3)]",
         className
       )}
       {...props}
@@ -29,10 +29,10 @@ function Progress({
         data-slot="progress-indicator"
         className={cn(
           "size-full flex-1 transition-all",
-          variant === "default" && "bg-primary",
-          variant === "secondary" && "bg-secondary",
-          variant === "neutral" && "bg-border-strong",
-          variant === "destructive" && "bg-destructive",
+          variant === "default" && "bg-[var(--orange)]",
+          variant === "secondary" && "bg-[var(--green)]",
+          variant === "neutral" && "bg-[var(--border-2)]",
+          variant === "destructive" && "bg-[var(--red)]",
           indicatorClassName
         )}
         style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
