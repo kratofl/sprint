@@ -11,6 +11,7 @@ public sealed class App : Application
     {
         RequestedThemeVariant = ThemeVariant.Dark;
         Styles.Add(new FluentTheme());
+        Styles.Add(new SprintComponentTheme());
     }
 
     public override void OnFrameworkInitializationCompleted()
