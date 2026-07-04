@@ -47,7 +47,7 @@
          (via Avalonia.Skia), so no new native assets or version conflict. The dash
          painter renders off the UI thread to a pixel buffer that feeds both the
          on-screen preview and hardware (WS6/WS7). -->
-    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp" Version="4.148.0" />
   </ItemGroup>
 
   <ItemGroup>
