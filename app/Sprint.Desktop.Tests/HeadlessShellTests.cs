@@ -74,6 +74,135 @@ public class HeadlessShellTests
     }
 
     [Fact]
+    public async Task ShellTitlebarUsesFigmaHeight()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell: new ShellState(), telemetrySource: telemetry);
+                window.Show();
+
+                var root = Assert.IsType<Grid>(window.Content);
+                Assert.Equal(32, root.RowDefinitions[0].Height.Value);
+
+                var titlebar = Assert.IsType<Grid>(root.Children.Single(child =>
+                    Grid.GetRow(child) == 0 &&
+                    Grid.GetColumnSpan(child) == 2));
+                Assert.Equal(32, titlebar.Height);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SidebarNavigationCanSwitchViewsWithoutCrashing()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell: new ShellState(), telemetrySource: telemetry);
+                window.Show();
+
+                FindButton(window, "Devices").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindButton(window, "Settings").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindButton(window, "Live").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SidebarNavigationItemsUseFigmaSelectedTreatment()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell: new ShellState(), telemetrySource: telemetry);
+                window.Show();
+
+                var active = FindButton(window, "Live");
+                Assert.Equal(Graphite.Panel3Brush, active.Background);
+                Assert.Equal(Graphite.AccentBrush, active.Foreground);
+                Assert.Equal(new CornerRadius(Graphite.RadiusMd), active.CornerRadius);
+                Assert.Equal(32, active.MinHeight);
+
+                var inactive = FindButton(window, "Engineer");
+                Assert.Equal(Graphite.PanelBrush, inactive.Background);
+                Assert.Equal(Graphite.Text2Brush, inactive.Foreground);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SidebarToggleWhileDashEditorIsOpenDoesNotReparentEditor()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.CreateDashLayout();
+                var shell = new ShellState();
+                shell.Navigate(AppView.Dashes);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                FindCardButton(window, layout.Name, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindButton(window, "<<").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DashesPageAddPageActionPersistsThroughRuntime()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);

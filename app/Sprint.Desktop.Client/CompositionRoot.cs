@@ -8,12 +8,9 @@ namespace Sprint.Desktop;
 /// Explicit composition root: builds the desktop app's dependency graph in one
 /// place and hands it to the shell window. Keeps wiring out of
 /// <see cref="MainWindow"/> — no hidden singletons or service-locator lookups.
-/// <para>The real Le Mans Ultimate adapter is now instantiable via
-/// <see cref="GameTelemetryPackage.CreateSource"/>; the dev/default source stays the
-/// demo so <c>make dev-app</c> shows a live, delta-augmented stream without a running
-/// game (selecting a real game per-launch — and the game-picker UI — is a follow-up
-/// product decision, tracked against PRD #107). The window wraps whichever source it
-/// is given in the WS4 <c>TelemetryEngine</c>.</para>
+/// <para>The app default is the first real game adapter. Demo telemetry remains
+/// available only through explicit test/dev wiring so startup never paints synthetic
+/// live data as if a sim were connected.</para>
 /// </summary>
 internal static class CompositionRoot
 {
@@ -21,7 +18,14 @@ internal static class CompositionRoot
     {
         var runtime = new DesktopRuntime();
         var shell = new ShellState();
-        ITelemetrySource telemetry = GameTelemetryPackage.CreateDemoSource();
+        var telemetry = CreateTelemetrySource();
         return new MainWindow(runtime, shell, telemetry);
+    }
+
+    internal static ITelemetrySource CreateTelemetrySource()
+    {
+        var descriptor = GameTelemetryPackage.SupportedGames.First(game =>
+            !game.Id.Equals("demo", StringComparison.OrdinalIgnoreCase));
+        return GameTelemetryPackage.CreateSource(descriptor);
     }
 }

@@ -4,9 +4,9 @@ namespace Sprint.Desktop.Api.Telemetry;
 /// Pure, clock-injected freshness logic: the single place that decides when a
 /// <see cref="TelemetryConnectionState.Connected"/> link has gone
 /// <see cref="TelemetryConnectionState.Stale"/>. A source never self-reports
-/// <c>Stale</c>; the consumer (the WS4 telemetry engine today, MainWindow's timer
-/// in WS3) calls <see cref="Evaluate"/> against a caller-supplied <c>now</c> so the
-/// rule is deterministic and unit-testable without a real clock.
+/// <c>Stale</c>; the live status presenter calls <see cref="Evaluate"/> against a
+/// caller-supplied <c>now</c> so the rule is deterministic and unit-testable
+/// without a real clock.
 /// </summary>
 public static class TelemetryFreshness
 {

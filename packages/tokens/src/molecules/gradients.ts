@@ -7,7 +7,7 @@ export const gradientAccent = '#FF6A00'
 export const gradientAccentSubtle = 'rgba(255,106,0,.13)'
 
 /** @deprecated Secondary CTA no longer defaults to cyan; maps to neutral panel fill. */
-export const gradientTeal = '#0D0D0D'
+export const gradientTeal = '#0F0F0F'
 
 /** @deprecated Cyan-first hover is inert; maps to panel inset fill. */
-export const gradientTealSubtle = '#131313'
+export const gradientTealSubtle = '#141414'

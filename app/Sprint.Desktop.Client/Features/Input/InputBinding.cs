@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Sprint.Desktop.Features.Input;
@@ -22,53 +21,6 @@ public sealed class ControlsConfig
 {
     [JsonPropertyName("bindings")]
     public List<InputBinding> Bindings { get; set; } = [];
-}
-
-/// <summary>
-/// Persists global button→command bindings to <c>controls.json</c> under an
-/// injectable data root (never the user's real AppData in tests), mirroring the
-/// Go <c>input.LoadConfig/SaveConfig</c>. Per-device bindings live on the device
-/// record; this is the global (wildcard) layer.
-/// </summary>
-public sealed class InputBindingStore
-{
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true,
-    };
-
-    private readonly string _path;
-
-    public InputBindingStore(string dataRoot)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
-        _path = Path.Combine(dataRoot, "controls.json");
-    }
-
-    public ControlsConfig Load()
-    {
-        if (!File.Exists(_path))
-        {
-            return new ControlsConfig();
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<ControlsConfig>(File.ReadAllText(_path), Options) ?? new ControlsConfig();
-        }
-        catch (JsonException)
-        {
-            return new ControlsConfig();
-        }
-    }
-
-    public void Save(ControlsConfig config)
-    {
-        ArgumentNullException.ThrowIfNull(config);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path, JsonSerializer.Serialize(config, Options));
-    }
 }
 
 /// <summary>

@@ -143,4 +143,14 @@ public sealed class DashEditorControllerTests
         Assert.True(controller.RenamePage("main", "Race Trim"));
         Assert.Contains(controller.PageTabs, t => t.Name == "Race Trim");
     }
+
+    [Fact]
+    public void ActivePageUsesStrictLayoutEditorLookup()
+    {
+        var layout = NewLayout();
+        var controller = new DashEditorController(layout, _ => { });
+
+        Assert.Same(layout.Pages[0], DashLayoutEditor.FindPage(layout, controller.ActivePageId));
+        Assert.Null(DashLayoutEditor.FindPage(layout, "missing-page"));
+    }
 }

@@ -26,6 +26,25 @@ public sealed class DashPainterTests
     public void FormatsSignedDelta(double seconds, string expected) =>
         Assert.Equal(expected, DashFormat.Delta(seconds));
 
+    [Fact]
+    public void DefaultDashPaletteUsesFigmaGraphiteAndStatusTokens()
+    {
+        var palette = DashPalette.Default;
+
+        AssertColor("#000000", palette.Background);
+        AssertColor("#1A1A1A", palette.Surface);
+        AssertColor("#2E2E2E", palette.Border);
+        AssertColor("#F6F6F6", palette.Foreground);
+        AssertColor("#7A7A7A", palette.Secondary);
+        AssertColor("#5A5A5A", palette.Muted);
+        AssertColor("#FF6A00", palette.Primary);
+        AssertColor("#1F7FE6", palette.Accent);
+        AssertColor("#16B566", palette.Success);
+        AssertColor("#E0A30C", palette.Warning);
+        AssertColor("#F02744", palette.Danger);
+        AssertColor("#F02744", palette.RpmRed);
+    }
+
     [Theory]
     [InlineData(0, "N")]
     [InlineData(-1, "R")]
@@ -62,6 +81,49 @@ public sealed class DashPainterTests
         {
             Directory.Delete(dataRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public void UnknownPageIdFallsBackToFirstPageInsteadOfBlank()
+    {
+        var layout = new DashLayout
+        {
+            Id = "fallback",
+            GridCols = 20,
+            GridRows = 12,
+            Pages =
+            [
+                new DashPage
+                {
+                    Id = "first",
+                    Name = "First",
+                    Widgets =
+                    [
+                        new DashWidget
+                        {
+                            Id = "gear",
+                            Type = "gear_speed",
+                            Col = 0,
+                            Row = 0,
+                            ColSpan = 20,
+                            RowSpan = 12
+                        }
+                    ]
+                },
+                new DashPage { Id = "second", Name = "Second" }
+            ]
+        };
+
+        using var painter = new DashPainter(320, 192);
+        var bitmap = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { Gear = 3, SpeedMetersPerSecond = 50 } },
+            new AppSettings(),
+            pageId: "missing-page");
+
+        var (visible, buckets) = Analyze(bitmap);
+        Assert.True(visible > 320 * 192 / 20, $"Expected first-page fallback content, saw {visible} lit pixels.");
+        Assert.True(buckets >= 3, $"Expected first-page fallback to render varied pixels, found {buckets} buckets.");
     }
 
     [Fact]
@@ -182,5 +244,11 @@ public sealed class DashPainterTests
         }
 
         return (visible, buckets.Count);
+    }
+
+    private static void AssertColor(string expectedHex, SKColor actual)
+    {
+        var expected = SKColor.Parse(expectedHex);
+        Assert.Equal(expected, actual);
     }
 }

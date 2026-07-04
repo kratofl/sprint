@@ -168,6 +168,8 @@ public sealed class DashEditorView : UserControl
             Background = Graphite.Panel2Brush,
             ClipToBounds = true
         };
+        _canvas.PointerMoved += OnPointerMoved;
+        _canvas.PointerReleased += OnPointerReleased;
 
         var page = _controller.ActivePage;
         var isIdle = page is not null && ReferenceEquals(page, _controller.Layout.IdlePage);
@@ -238,7 +240,7 @@ public sealed class DashEditorView : UserControl
             grip.PointerPressed += (_, e) => BeginResize(widget, e);
             grip.PointerMoved += OnPointerMoved;
             grip.PointerReleased += OnPointerReleased;
-            overlay.Child = grip;
+            overlay.Child = new Grid { Children = { grip } };
         }
 
         return overlay;
@@ -246,25 +248,29 @@ public sealed class DashEditorView : UserControl
 
     private void BeginMove(DashWidget widget, PointerPressedEventArgs e)
     {
+        var dragStart = e.GetPosition(this);
         _controller.SelectWidget(widget.Id);
+        var gestureCanvas = _canvas;
         _dragWidgetId = widget.Id;
         _resizing = false;
-        _dragStart = e.GetPosition(_canvas);
+        _dragStart = dragStart;
         _startCol = widget.Col;
         _startRow = widget.Row;
-        e.Pointer.Capture((IInputElement?)e.Source);
+        e.Pointer.Capture(gestureCanvas);
         e.Handled = true;
     }
 
     private void BeginResize(DashWidget widget, PointerPressedEventArgs e)
     {
+        var dragStart = e.GetPosition(this);
         _controller.SelectWidget(widget.Id);
+        var gestureCanvas = _canvas;
         _dragWidgetId = widget.Id;
         _resizing = true;
-        _dragStart = e.GetPosition(_canvas);
+        _dragStart = dragStart;
         _startColSpan = widget.ColSpan;
         _startRowSpan = widget.RowSpan;
-        e.Pointer.Capture((IInputElement?)e.Source);
+        e.Pointer.Capture(gestureCanvas);
         e.Handled = true;
     }
 
@@ -281,7 +287,7 @@ public sealed class DashEditorView : UserControl
             return;
         }
 
-        var end = e.GetPosition(_canvas);
+        var end = e.GetPosition(this);
         var dCol = (int)Math.Round((end.X - _dragStart.X) / CellW);
         var dRow = (int)Math.Round((end.Y - _dragStart.Y) / CellH);
 

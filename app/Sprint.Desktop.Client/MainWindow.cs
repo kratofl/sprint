@@ -27,22 +27,15 @@ public sealed class MainWindow : Window
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
     private readonly DeviceScreenService _screens;
-    private readonly ContentControl _body = new();
-    private readonly TextBlock _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.Text3Brush);
-    private readonly TextBlock _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
-    private readonly TextBlock _hzText = Graphite.TextBlock("", 10, FontWeight.SemiBold, Graphite.Text3Brush);
-    private readonly Border _signalDot = new()
-    {
-        Width = 7,
-        Height = 7,
-        CornerRadius = new CornerRadius(999),
-        // Idle until the status presenter colours it — never a faked green dot.
-        Background = Graphite.Text3Brush
-    };
-
     private readonly Grid _root = new();
-    private readonly StackPanel _navRail = new() { Spacing = 8 };
     private readonly DispatcherTimer _timer;
+    private ContentControl _body = new();
+    private Border? _bodyTray;
+    private StackPanel _navRail = new() { Spacing = 8 };
+    private TextBlock _breadcrumb = null!;
+    private TextBlock _signalText = null!;
+    private TextBlock _hzText = null!;
+    private Border _signalDot = null!;
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
     private SurfaceState? _surfaceState;
@@ -67,8 +60,9 @@ public sealed class MainWindow : Window
         _engine.Start();
         var snapshot = _engine.Snapshot;
         _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
-        _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
-        _surfaceState = SurfaceStatePresenter.FromTelemetry(snapshot.Status.State, snapshot.Status.LastFrameValid);
+        var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
+        _statusView = health.Titlebar;
+        _surfaceState = health.Surface;
 
         // WS7: keep a hardware publisher running for each enabled screen device,
         // rendering its assigned dash off the UI thread. Feeds live per-device status.
@@ -116,7 +110,8 @@ public sealed class MainWindow : Window
 
     private void BuildShell()
     {
-        _root.RowDefinitions = new RowDefinitions("40,*");
+        _bodyTray?.Child = null;
+        _root.RowDefinitions = new RowDefinitions($"{Graphite.TitlebarHeight},*");
         _root.ColumnDefinitions = new ColumnDefinitions($"{_shell.SidebarWidth},*");
         _root.Background = Graphite.PanelBrush;
         _root.Children.Clear();
@@ -140,6 +135,7 @@ public sealed class MainWindow : Window
             Margin = new Thickness(0, 0, 10, 10),
             Child = _body
         };
+        _bodyTray = tray;
         Grid.SetRow(tray, 1);
         Grid.SetColumn(tray, 1);
         _root.Children.Add(tray);
@@ -147,21 +143,32 @@ public sealed class MainWindow : Window
 
     private Control BuildTitlebar()
     {
+        _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.Text3Brush);
+        _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
+        _hzText = Graphite.TextBlock("", 10, FontWeight.SemiBold, Graphite.Text3Brush);
+        _signalDot = new Border
+        {
+            Width = 7,
+            Height = 7,
+            CornerRadius = new CornerRadius(999),
+            Background = Graphite.Text3Brush
+        };
+
         var grid = new Grid
         {
             Background = Graphite.PanelBrush,
             ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto,Auto"),
-            Height = 40
+            Height = Graphite.TitlebarHeight
         };
         grid.PointerPressed += BeginDrag;
 
         var logo = new Border
         {
-            Width = 24,
-            Height = 24,
+            Width = Graphite.Space9,
+            Height = Graphite.Space9,
             Background = Graphite.AccentBrush,
-            CornerRadius = new CornerRadius(6),
-            Margin = new Thickness(12, 8, 8, 8),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            Margin = new Thickness(Graphite.Space6, Graphite.Space3, Graphite.Space4, Graphite.Space3),
             Child = Graphite.TextBlock("S", 13, FontWeight.Bold, Brushes.Black)
         };
         Grid.SetColumn(logo, 0);
@@ -250,8 +257,7 @@ public sealed class MainWindow : Window
 
     private Control BuildSidebar()
     {
-        _navRail.Children.Clear();
-        _navRail.Margin = new Thickness(10, 12);
+        _navRail = new StackPanel { Spacing = 8, Margin = new Thickness(10, 12) };
 
         AddNavGroup(null, (AppView.Live, "Live"), (AppView.Engineer, "Engineer"), (AppView.Setup, "Setup"));
         AddNavGroup("Dash Studio", (AppView.Dashes, "Dashes"), (AppView.Devices, "Devices"));
@@ -285,8 +291,22 @@ public sealed class MainWindow : Window
     private Button NavButton(AppView view, string label)
     {
         var active = view == _shell.View;
-        var button = Graphite.Button(_shell.SidebarCollapsed ? label[..1] : label, active ? ButtonTone.Primary : ButtonTone.Ghost);
-        button.HorizontalContentAlignment = _shell.SidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        var button = new Button
+        {
+            Content = _shell.SidebarCollapsed ? label[..1] : label,
+            Background = active ? Graphite.Panel3Brush : Graphite.PanelBrush,
+            Foreground = active ? Graphite.AccentBrush : Graphite.Text2Brush,
+            BorderBrush = active ? Graphite.AccentBrush : Graphite.PanelBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            FontFamily = Graphite.FontStack,
+            FontSize = 13,
+            FontWeight = FontWeight.Medium,
+            Padding = new Thickness(10, 8),
+            MinHeight = 32,
+            HorizontalContentAlignment = _shell.SidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
         button.Margin = new Thickness(0);
         button.Click += (_, _) => Navigate(view);
         if (_shell.SidebarCollapsed)
@@ -355,8 +375,9 @@ public sealed class MainWindow : Window
         // is applied here against the UI clock inside the status presenter.
         var snapshot = _engine.Snapshot;
         _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
-        _statusView = TelemetryStatusPresenter.ToView(snapshot.Status, snapshot.Hz, now);
-        _surfaceState = SurfaceStatePresenter.FromTelemetry(snapshot.Status.State, snapshot.Status.LastFrameValid);
+        var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, now);
+        _statusView = health.Titlebar;
+        _surfaceState = health.Surface;
 
         UpdateTitlebar();
         if (_shell.View == AppView.Live)

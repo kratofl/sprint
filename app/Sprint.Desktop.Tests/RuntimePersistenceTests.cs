@@ -262,6 +262,57 @@ public sealed class RuntimePersistenceTests
         }
     }
 
+    [Theory]
+    [InlineData("settings.json")]
+    [InlineData("devices.json")]
+    [InlineData("setup-programs.json")]
+    [InlineData("controls.json")]
+    public void MalformedRuntimeJsonFallsBackToDefaultsWithoutDeletingFile(string fileName)
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var path = Path.Combine(dataRoot, fileName);
+            File.WriteAllText(path, "{ definitely not json");
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            Assert.NotNull(runtime.Settings);
+            Assert.Empty(runtime.Devices);
+            Assert.NotEmpty(runtime.SetupPrograms);
+            Assert.Empty(runtime.Controls.Bindings);
+            Assert.Equal("{ definitely not json", File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MalformedDashLayoutJsonFallsBackToPresetWithoutDeletingFile()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var layoutsPath = Path.Combine(dataRoot, "dash-layouts");
+            Directory.CreateDirectory(layoutsPath);
+            var path = Path.Combine(layoutsPath, "broken.json");
+            File.WriteAllText(path, "{ definitely not json");
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            Assert.Contains(runtime.DashLayouts, layout => layout.Id == "default");
+            Assert.Equal("{ definitely not json", File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public void LegacyPortableDataMigratesIntoNewRuntimeStoreOnce()
     {

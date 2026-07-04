@@ -36,15 +36,15 @@ so that:
    feature parity users will notice missing (hardware output, input binding,
    editor depth, packaging); **P2** = nice-to-have / dev-gated / lower-traffic.
 
-> **Build verification (updated 2026-07-01):** the .NET **10.0.301** SDK is
+> **Build verification (updated 2026-07-04):** the .NET **10.0.301** SDK is
 > installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64
 > `dotnet` on PATH carries only a 6.0.5 runtime — which is why `dotnet --version`
 > first appeared to fail). `dotnet build app/Sprint.Desktop.sln -warnaserror`
-> **succeeds clean (0/0)** and `dotnet test` **passes 197/197** (up from 25 —
+> **succeeds clean (0/0)** and `dotnet test` **passes 213/213** (up from 25 —
 > WS6–WS11 added the SkiaSharp dash painter + widgets + editor, RGB565 +
 > screen-driver + publisher, the command/binding/capture model, engineer staging +
-> setup A/B, the update checker, and the shared surface-state presenter, plus a
-> headless dash-editor render test). `dotnet publish -r win-x64` is verified to emit
+> setup A/B, the update checker, shared surface-state presenter, visual smoke,
+> and headless dash-editor render/click/drag/resize coverage). `dotnet publish -r win-x64` is verified to emit
 > the exe with presets/fonts/appicon included. `global.json` pins the SDK (WS2).
 > View *construction* + painter *pixels* are headless-verified; full on-wheel
 > *visual* behavior and any real hardware/game path still need a `make dev-app` GUI
@@ -56,7 +56,7 @@ so that:
 ## 0. Reconciliation (2026-07-01) — WS11 final gate
 
 Per-workstream final status after the WS6–WS11 implementation pass. Build is clean
-with `-warnaserror`; 197 desktop tests pass. Items marked **Deferred** are tracked,
+with `-warnaserror`; 213 desktop tests pass. Items marked **Deferred** are tracked,
 not forgotten (US44) — most are hardware/OS-interop paths that cannot be verified in
 CI without a physical device or a running game.
 
@@ -191,18 +191,18 @@ Design intent that is uncontested regardless of which palette wins:
 | Item | Status | Detail |
 | --- | --- | --- |
 | App / Program (composition root) | implemented (WS2, 2026-06-29) | `AppBuilder.Configure<App>().UsePlatformDetect()`, STAThread classic-desktop; Dark FluentTheme. **Explicit composition root** (`CompositionRoot.CreateMainWindow()`) now builds `DesktopRuntime`/`ShellState`/`ITelemetrySource` and injects them — no hidden `new()` inside the window. (No DI container; explicit root is sufficient at this size.) |
-| MainWindow shell (~990 lines) | implemented (monolithic) | Custom 40px titlebar, collapsible nav, **all 7 pages + every widget builder inline**; rebuilds whole control tree on each `RenderBody()`. No MVVM/XAML/view separation. **Deps now constructor-injected (WS2)**; per-page/view-model decomposition still TODO (WS6). |
+| MainWindow shell (~1,415 lines) | implemented (monolithic) | Custom 32px titlebar, collapsible nav, **all 7 pages + every widget builder inline**; rebuilds whole control tree on each `RenderBody()`. No MVVM/XAML/view separation. **Deps now constructor-injected (WS2)**; per-page/view-model decomposition still TODO (WS6). |
 | Live page | implemented (demo only) | Metric tiles, pedal bars, tyre temps, hardcoded polyline track map; bound to demo snapshot; refreshes every 500ms. |
 | Engineer page | implemented (session-only) | Stepper rows w/ staged-vs-car diff, dirty badge, Push/Revert wired to runtime, quick-messages, radio log (in-memory cap 8). |
 | Setup page | partial | 3 baseline programs + 14 grouped params + Duplicate; setup programs now persist to `setup-programs.json`; `fuelLoad` grouped under Fuel. |
-| Dashes page | partial | Lists layouts, Create (clones default JSON), Delete (guards default/last); preview tiles now use `DashPreviewRenderer` render plans for grid bounds + resolved telemetry/profile bindings. Model preserves idlePage/alerts/widget config, but the preview still renders labeled boxes rather than full widget visuals. |
+| Dashes page | partial | Lists layouts, Create (clones default JSON), Delete (guards default/last); preview tiles use `DashImageRenderer` over the SkiaSharp `DashPainter`, so on-screen previews share the same pixel path as thumbnails and hardware output. Model preserves idlePage/alerts/widget config; full widget catalog/theme parity remains incomplete. |
 | Devices page | implemented | Catalog add, saved-device cards w/ Enable/Disable/Remove; add/remove persist to `devices.json`. **Disable is session-only.** |
 | Settings page | partial | Driver name/number + update channel combo; Save writes `settings.json`. `dashEditorUI` and NewDashDefaults now round-trip; `SaveSettings()` publishes the current render profile for downstream re-apply. |
 | Help page | implemented | Six static reference cards. |
 | `DesktopRuntime` (461 lines) | implemented | App-data persistence: loads presets w/ fallbacks, persists settings/devices/per-layout JSON under `%AppData%/Sprint` (overridable dataRoot/presetRoot for tests). Clean, no UI deps. |
 | `ShellState` | implemented | POCO: AppView + sidebar collapsed/width (208/62) + CurrentTitle map. **No INotifyPropertyChanged.** |
 | `WindowDragPolicy` | implemented | Pure, unit-tested; blocks drag on Button/TextBox/ComboBox/Slider/ScrollBar/Thumb/SelectingItemsControl. |
-| Graphite design system (`Graphite.cs`) | implemented (matches `docs/DESIGN.md`) | Palette (`#070707`/`#0D0D0D`/`#131313`/`#1B1B1B`, accent `#FF6A00`, `#4F9CFF` informational), radius 10, 40px titlebar match `docs/DESIGN.md`. **Typography migrated to the Figma identity:** `FontStack`=Inter, `DisplayFontStack`=Space Grotesk, fonts bundled under `Assets/Fonts` (build-verified). Remaining gap is structural — factory methods, not templated controls (WS6). |
+| Graphite design system (`Graphite.cs`) | implemented (matches `docs/DESIGN.md`) | Palette (`#070707`/`#0D0D0D`/`#131313`/`#1B1B1B`, accent `#FF6A00`, `#4F9CFF` informational), radius 10, 32px titlebar match `docs/DESIGN.md`. **Typography migrated to the Figma identity:** `FontStack`=Inter, `DisplayFontStack`=Space Grotesk, fonts bundled under `Assets/Fonts` (build-verified). Remaining gap is structural — factory methods, not templated controls (WS6). |
 | `AppSettings` model | partial | updateChannel/driverName/driverNumber + `dashEditorUI` palette/inspector state + NewDashDefaults. `RenderProfile` exposes driver name/number for dash bindings. |
 | Feature models (Dash/Device/Engineer/Live/Setup) | partial | Dash models preserve idlePage/alerts/widget config; catalog/saved devices preserve offset_x/offset_y/margin/bindings. Broader dash widget/theme/config types still incomplete for WS6. |
 | `LiveTelemetryPresenter` / `TelemetrySnapshot` | implemented | The one real presenter seam: static pure mapper frame→flat snapshot (m/s→kph, lap format, per-corner surface temp). Unit-tested. Covers a subset (no flags/electronics/energy/penalties/session). |
@@ -222,13 +222,13 @@ Design intent that is uncontested regardless of which palette wins:
 | Item | Status | Detail |
 | --- | --- | --- |
 | Test runner | implemented (WS2, 2026-06-29) | Migrated from the hand-rolled console runner to **xunit** + `dotnet test`; `make test-app` and CI now run `dotnet test`. Verified 4/4 + clean `-warnaserror`. |
-| Tested seams | partial (broadened WS3/WS5/WS6) | xunit desktop suite includes runtime device/settings/dash/setup persistence, contract/freshness/presenter/rate tests, LMU parser/mapper/engine tests, dash catalog/binding/render-plan tests, headless shell lifecycle, and visual smoke PNG capture. **Still uncovered:** full painter-backed dash render/editor behavior, hardware, input binding, live LMU GUI run. |
+| Tested seams | partial (broadened WS3/WS5/WS6) | xunit desktop suite includes runtime device/settings/dash/setup persistence, contract/freshness/presenter/rate tests, LMU parser/mapper/engine tests, dash catalog/binding/painter tests, headless dash-editor click/drag/resize gesture coverage, headless shell lifecycle, and visual smoke PNG capture. **Still uncovered:** full hardware verification on physical devices, live LMU GUI run, and richer editor parity such as widget-stack/theme/config flows. |
 
 ### Assets & presets
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `presets/dash/default.json` | partial | Rich: 20×12 grid, idlePage, 9 typed widgets, alerts[]. C# model preserves idlePage/alerts/widget config; `DashPreviewRenderer` can plan bounds + bindings for the known subset, but painter/editor visuals still use only a subset. |
+| `presets/dash/default.json` | partial | Rich: 20×12 grid, idlePage, 9 typed widgets, alerts[]. C# model preserves idlePage/alerts/widget config; `DashPainter` renders the known/default subset, while full catalog/theme/editor parity remains incomplete. |
 | `presets/devices/*.json` (3) | implemented | generic-vocore, generic-usbd480, bavarian-omega-v2-pro; load into Catalog. offset_x/offset_y/margin/bindings present in JSON but **not modeled**. |
 | `presets/settings/default.json` | partial | Has updateChannel + dashEditorUI{palette,inspector}; both now round-trip. Dash editor UI behavior still pending WS6. |
 | Assets/Brand + appicon | implemented | appicon.png loaded as WindowIcon; brand SVGs/wallpaper packaged but **not referenced** by UI code. |
@@ -247,7 +247,7 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | --- | --- | --- | --- | --- | --- | --- |
 | App lifecycle (Startup/DomReady/Shutdown), deferred subsystem start | `app/app.go`, `main.go`, `embedded.go` | Partial | WS2 | P0 | WS2/US8 | .NET news up MainWindow directly; no DI; no DomReady-equivalent gating beyond timer. |
 | Boot gating on `app:ready` + splash | React `App.tsx`, `SplashScreen.tsx` | Missing | WS11 | P2 | WS11/US41 | No splash overlay / ready event in .NET. |
-| Frameless window + custom titlebar controls (min/max/close) | `app.go` (WindowMinimise/Maximise/Close), `WindowControls.tsx` | Done | WS11 | P0 | WS11/US11,US12 | .NET has 40px titlebar + drag + min/max/close (40px matches `docs/DESIGN.md` shell spec). Click-crash safety is US12 — verify titlebar button handlers cannot throw on click. |
+| Frameless window + custom titlebar controls (min/max/close) | `app.go` (WindowMinimise/Maximise/Close), `WindowControls.tsx` | Done | WS11 | P0 | WS11/US11,US12 | .NET has 32px titlebar + drag + min/max/close (32px matches `docs/DESIGN.md` shell spec). Click-crash safety is US12 — verify titlebar button handlers cannot throw on click. |
 | Window drag policy (chrome vs drag region) | `shellHeader.tsx` (app-region) | Done | WS11 | P0 | WS11/US12 | `WindowDragPolicy` pure + unit-tested. |
 | Nav rail w/ grouped sections + collapse | `App.tsx`, `appShell.ts`, `SidebarBrand.tsx` | Partial | WS2/WS6 | P1 | WS6/US26 | `ShellState` holds collapse/width (208/62) but no INotifyPropertyChanged; MainWindow manual rebuild. Needs reusable NavRail control. |
 | View history (back/forward) + unsaved-changes guard | `App.tsx` (createViewHistory), `DashEditorHandle` | Missing | WS6 | P2 | WS6/US27 | No history stack or dirty-guard ConfirmDialog in .NET. |
@@ -323,15 +323,15 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Layout schema (grid + IdlePage + Pages[] + WidgetStacks + per-layout theme/format/alerts) | `dashboard/layout.go` | Partial | WS6 | P0 | WS6/US26 | .NET `DashLayout` reads id/name/default/grid/idlePage/pages.widgets/alerts and preserves widget config; widget stacks, layout theme, format preferences, and validation still missing. |
 | Backwards-compatible layout migration (wrapperGroups→stacks, variants→layers) | `dashboard/layout.go` UnmarshalJSON | Missing | WS6 | P2 | WS6/US24 | |
 | Layout validation (bounds/overlap/layer rules) as save gate | `dashboard/layout.go` ValidateLayout; React `layoutValidation.ts` | Partial | WS6 | P0 | WS6/US28 | .NET validates known widget types, grid bounds, and same-page widget overlap on load/migration/save. Layer/stack-specific validation remains pending with widget stacks. |
-| Widget/layout preview rendering (single widget + thumbnail PNG) | `dashboard/painter.go` RenderWidgetPreview/renderPreview | Partial | WS6 | P1 | WS6/US25 | Runtime now generates basic grid/widget layout thumbnail PNGs on save. Painter-backed widget previews and content-accurate thumbnails are still missing. |
+| Widget/layout preview rendering (single widget + thumbnail PNG) | `dashboard/painter.go` RenderWidgetPreview/renderPreview | Partial | WS6 | P1 | WS6/US25 | Runtime thumbnails and on-screen preview cards now flow through `DashImageRenderer`/`DashPainter`. Single-widget preview cards and full catalog-accurate thumbnails are still incomplete. |
 | Editor live preview pipeline (StartPreview/UpdatePreview/StopPreview, base64 PNG @30Hz) | `core/preview.go`, `app.go` Dash*Preview | Missing | WS6 | P1 | WS6/US27 | Debounced 150ms in React. |
-| Dash list grid (cards, preview thumbnails, badges) | React `DashList.tsx` | Partial | WS6 | P1 | WS6/US26 | .NET lists + grid-math preview; no server PNG, no rich badges. |
+| Dash list grid (cards, preview thumbnails, badges) | React `DashList.tsx` | Partial | WS6 | P1 | WS6/US26 | .NET lists layouts and renders painter-backed preview cards; rich badges remain incomplete. |
 | Editor mode router (list/edit/global-settings/theme-edit) | React `DashEditor.tsx`, `dashEditorRuntime.ts` | Partial | WS6 | P1 | WS6/US27 | .NET has create/delete/set-default; no global-settings/theme-edit surfaces. |
-| Three-pane editor shell (rail/canvas/properties + toolbar) | `DashEditMode.tsx` | Missing | WS6 | P1 | WS6/US27 | |
-| Grid drag-place/move/resize + live ghost + clamp math | `DashCanvas.tsx`, `canvasDragMath.ts` | Missing | WS6 | P0 | WS6/US27,US28 | |
+| Three-pane editor shell (rail/canvas/properties + toolbar) | `DashEditMode.tsx` | Partial | WS6 | P1 | WS6/US27 | .NET has the three-pane `DashEditorView` with widget palette, painter-backed canvas overlays, inspector, page tabs, and toolbar actions. Rich palette search/categorization, theme/global-settings modes, and deeper per-widget configuration remain incomplete. |
+| Grid drag-place/move/resize + live ghost + clamp math | `DashCanvas.tsx`, `canvasDragMath.ts` | Partial | WS6 | P0 | WS6/US27,US28 | Headless Avalonia tests cover click selection, drag-move across selection rebuilds, resize minimum clamping, and resize collision rejection through the real editor view. Drag-place from the palette and live ghost rendering remain incomplete. |
 | Pages + idle page management (locked Idle/Alerts tabs, add/rename/delete) | `DashEditMode.tsx` PageTabs | Partial | WS6 | P1 | WS6/US27 | `DashLayoutEditor.AddPage`, `TryRenamePage`, and `TryDeletePage` provide tested regular-page reducers with unique ids/names and last-page protection; `IDesktopRuntime.SaveDashLayout` persists reducer output. The Dashes card has a headless-tested Add page action for custom layouts. Full page-tab UI, locked Idle/Alerts behavior, active-page state, rename/delete page UI, and full editor save wiring still missing. |
-| Selection/delete/page-background/clear-page | `DashEditMode.tsx` | Partial | WS6 | P2 | WS6/US27 | `DashLayoutEditor.TryDeleteWidget` and `TryClearPage` provide tested page-scoped reducers; `IDesktopRuntime.SaveDashLayout` persists reducer output. Selection state, page-background editing, toolbar UI, and UI save wiring still missing. |
-| Editor widget move/resize reducers (grid clamp + overlap guard) | `DashEditMode.tsx` drag/resize state | Partial | WS6 | P0 | WS6/US26,US28 | `DashLayoutEditor.TryMoveWidget` and `TryResizeWidget` clamp geometry to grid bounds, enforce minimum widget size, and reject overlaps through pure tested seams; `IDesktopRuntime.SaveDashLayout` persists reducer output. Avalonia drag handles, resize handles, selection UI, and UI save wiring still missing. |
+| Selection/delete/page-background/clear-page | `DashEditMode.tsx` | Partial | WS6 | P2 | WS6/US27 | `DashLayoutEditor.TryDeleteWidget` and `TryClearPage` provide tested page-scoped reducers; the editor exposes selection state, a delete button, and clear-page toolbar action that persist reducer output. Page-background editing and richer confirmation/empty-state affordances remain incomplete. |
+| Editor widget move/resize reducers (grid clamp + overlap guard) | `DashEditMode.tsx` drag/resize state | Partial | WS6 | P0 | WS6/US26,US28 | `DashLayoutEditor.TryMoveWidget` and `TryResizeWidget` clamp geometry to grid bounds, enforce minimum widget size, and reject overlaps through pure tested seams; `DashEditorView` now headless-tests the Avalonia selection, drag, and resize handles across rebuilds, and `IDesktopRuntime.SaveDashLayout` persists reducer output. Remaining gaps are drag-place/live ghost polish and richer inspector/config flows. |
 | Catalog-backed widget placement reducer | `WidgetPalette.tsx`, `DashCanvas.tsx` placement | Partial | WS6 | P1 | WS6/US26,US28 | `DashLayoutEditor.TryAddWidget` validates catalog types, creates unique widget ids, and places a default-size widget in the first available grid slot without overlaps. Searchable palette UI, drag ghost, custom default sizes, and config defaults still missing. |
 | Widget stacks: create/place/focus-mode/layer list/compare | `multiFunctionWidgetState.ts`, `DashEditMode.tsx` | Missing | WS6 | P1 | WS6/US27 | |
 | Searchable categorized widget palette + preview thumbnails | `WidgetPalette.tsx` | Missing | WS6 | P1 | WS6/US26 | |
@@ -343,7 +343,7 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Alerts editor (shared settings + per-type toggle catalog) | `AlertsEditor.tsx`, `alertConfig.ts` | Missing | WS6 | P1 | WS6/US29 | |
 | Legacy per-instance alert migration | `alertConfig.ts`, Go `alerts.MigrateAlertConfig` | Missing | WS6 | P2 | WS6/US24 | |
 | On-wheel widget preview renderer (in-browser HTML/CSS, placeholder data) | `WidgetPreview.tsx`, `widgetPreview/*` | Missing | WS6 | P2 | WS6/US25 | Client-side preview alternative to server PNG. |
-| Dash render-plan / live preview model | `dashboard/painter.go`; React preview pipeline | Partial | WS6 | P0 | WS6/US25,US29 | `DashPreviewRenderer` builds a pure render plan with per-widget pixel bounds and resolved catalog bindings, and the Dashes page consumes it for preview tiles. Full painter-backed pixels, themes, formatting, stacks, and hardware frame output remain missing. |
+| Dash painter / live preview model | `dashboard/painter.go`; React preview pipeline | Partial | WS6 | P0 | WS6/US25,US29 | .NET uses `DashPainter` as the single reachable render path for thumbnails, on-screen previews, and hardware frames via `DashImageRenderer`/screen services. The deleted render-plan path is no longer load-bearing. Full themes, formatting, stacks, and full widget parity remain incomplete. |
 | Widget registry & catalog (23 types, meta, auto config) | `widgets/widget.go`, `bindings.go` | Partial | WS6 | P0 | WS6/US29 | .NET has a small catalog for default/critical widget types (`header`, `text`, `rpm_bar`, `gear_speed`, `input_trace`, `sector`, `lap_time`, `delta`, `fuel`, `tyre_temp`, `flag`, `tc`) with binding metadata; full 23-type catalog/config defs still missing. |
 | Telemetry binding resolution (~90 dot-path bindings + derived) | `widgets/bindings.go`, `binding.go` | Partial | WS6 | P0 | WS6/US29 | .NET now resolves critical/default dash bindings across car speed/gear/rpm/fuel, inputs, lap timing/delta/sector, flags, electronics, tyre surface temps, and profile name/number. Full ~90-path resolver + derived binding engine still missing. |
 | Value formatting + format preferences (lap/sector/speed/temp/delta/units) | `widgets/format.go`, `format_prefs.go`; React `lib/format.ts` | Partial | WS6 | P1 | WS6/US29 | .NET presenter formats a subset (kph/lap). Full FormatPreferences merge missing. |
@@ -629,17 +629,20 @@ move/resize, page tabs) to old parity.
 ~90 bindings, 23 widget types, layout schema + validation, editor canvas/palette/
 inspector/pages/stacks, theme manager, alerts editor, live preview pipeline).
 
-**IN PROGRESS (2026-07-01):** First .NET renderer/model seam landed:
-`DashPreviewRenderer` produces test-covered render plans with per-widget bounds
-and resolved catalog bindings, and the Dashes page preview consumes that seam.
-The first editor reducer seam also landed: `DashLayoutEditor.TryMoveWidget`,
+**IN PROGRESS (2026-07-01, updated 2026-07-04):** The reachable .NET renderer
+path is painter-backed: `DashPainter` renders the known/default widget subset,
+`DashImageRenderer` bridges those pixels into Avalonia previews, and hardware
+screen services consume the same painter path. The old test-only render-plan
+preview seam was removed. The first editor reducer seam also landed:
+`DashLayoutEditor.TryMoveWidget`,
 `TryResizeWidget`, `TryDeleteWidget`, `TryClearPage`, `TryAddWidget`, `AddPage`,
 `TryRenamePage`, and `TryDeletePage` cover grid geometry, overlap checks, widget
 placement/deletion, page clearing, and regular-page management. The Dashes page
-now wires custom-layout Add page through the reducer and `SaveDashLayout`. This
-does not settle the painter backend, full widget visuals, drag/resize/delete UI,
-palette UI, full editor save wiring, locked Idle/Alerts behavior, or
-inspector/page-tab parity yet.
+now wires custom-layout Add page through the reducer and `SaveDashLayout`.
+Headless editor-view tests cover click selection, drag-move, resize clamping,
+and resize collision rejection through the real Avalonia pointer path. This does
+not settle full widget visuals, drag-place/live ghost polish, palette richness,
+locked Idle/Alerts behavior, or deeper inspector/page-tab parity yet.
 
 **DEFERRED / out-of-scope:**
 - **Dash painter port strategy is open** (re-implement `gg` pipeline in .NET vs

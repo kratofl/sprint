@@ -40,7 +40,7 @@ setup: ## Restore project dependencies
 # ─── Development ──────────────────────────────────────────────────────────────
 
 dev-app: ## Run the Avalonia desktop app in dev mode
-	dotnet run --project $(APP_CLIENT_PROJECT)
+	dotnet watch --project $(APP_CLIENT_PROJECT)
 
 dev-api: ## Run the API server locally (hot-reload with go run)
 	go run ./api

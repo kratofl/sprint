@@ -46,18 +46,7 @@ public sealed class DashEditorController
         }
     }
 
-    public DashPage? ActivePage
-    {
-        get
-        {
-            if (string.Equals(Layout.IdlePage?.Id, ActivePageId, StringComparison.OrdinalIgnoreCase))
-            {
-                return Layout.IdlePage;
-            }
-
-            return Layout.Pages.FirstOrDefault(p => string.Equals(p.Id, ActivePageId, StringComparison.OrdinalIgnoreCase));
-        }
-    }
+    public DashPage? ActivePage => DashLayoutEditor.FindPage(Layout, ActivePageId);
 
     public DashWidget? SelectedWidget =>
         SelectedWidgetId is null ? null : ActivePage?.Widgets.FirstOrDefault(w => string.Equals(w.Id, SelectedWidgetId, StringComparison.OrdinalIgnoreCase));

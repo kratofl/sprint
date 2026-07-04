@@ -21,11 +21,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private readonly string _settingsPath;
     private readonly string _devicesPath;
+    private readonly string _controlsPath;
     private readonly string _setupProgramsPath;
     private readonly string _layoutsPath;
     private readonly string _presetRoot;
     private readonly string? _legacyDataRoot;
-    private readonly InputBindingStore _controlsStore;
 
     public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null)
     {
@@ -38,15 +38,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _legacyDataRoot = legacyDataRoot ?? Path.Combine(AppContext.BaseDirectory, "data");
         _settingsPath = Path.Combine(resolvedDataRoot, "settings.json");
         _devicesPath = Path.Combine(resolvedDataRoot, "devices.json");
+        _controlsPath = Path.Combine(resolvedDataRoot, "controls.json");
         _setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
         _layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
         Directory.CreateDirectory(_layoutsPath);
-        _controlsStore = new InputBindingStore(resolvedDataRoot);
 
         MigrateLegacyDataIfNeeded();
 
         Settings = LoadSettings();
-        Controls = _controlsStore.Load();
+        Controls = LoadControls();
         foreach (var device in LoadCatalog())
         {
             Catalog.Add(device);
@@ -106,7 +106,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
     }
 
-    public void SaveControls() => _controlsStore.Save(Controls);
+    public void SaveControls() => SaveJson(_controlsPath, Controls);
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
@@ -309,6 +309,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
     }
 
+    private ControlsConfig LoadControls()
+    {
+        return LoadJson<ControlsConfig>(_controlsPath) ?? new ControlsConfig();
+    }
+
     private IEnumerable<SetupProgram> LoadSetupPrograms()
     {
         return LoadJson<List<SetupProgram>>(_setupProgramsPath) ?? CreateSetupPrograms();
@@ -493,7 +498,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
 
         using var stream = File.OpenRead(path);
-        return JsonSerializer.Deserialize<T>(stream, JsonOptions);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(stream, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
     }
 
     private static void SaveJson<T>(string path, T value)

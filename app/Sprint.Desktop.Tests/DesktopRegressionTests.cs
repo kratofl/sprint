@@ -29,7 +29,7 @@ public class DesktopRegressionTests
     {
         var shell = new ShellState();
         Assert.Equal(AppView.Live, shell.View);
-        Assert.Equal(208, shell.SidebarWidth);
+        Assert.Equal(220, shell.SidebarWidth);
 
         shell.ToggleSidebar();
         Assert.True(shell.SidebarCollapsed, "Sidebar should collapse after toggle.");
@@ -53,6 +53,15 @@ public class DesktopRegressionTests
         Assert.True(second.SpeedKph != first.SpeedKph, "Telemetry simulator should advance speed.");
         Assert.True(second.Rpm > 0, "Telemetry simulator should produce RPM.");
         Assert.True(second.Gear is >= 1 and <= 6, "Telemetry simulator should clamp gear.");
+    }
+
+    [Fact]
+    public void CompositionRootUsesRealTelemetrySourceByDefault()
+    {
+        using var source = CompositionRoot.CreateTelemetrySource();
+
+        Assert.Equal("Le Mans Ultimate", source.Name);
+        Assert.NotEqual("Sprint Demo", source.Name);
     }
 
     [Fact]

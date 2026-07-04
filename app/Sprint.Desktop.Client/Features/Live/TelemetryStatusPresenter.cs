@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Shell;
 
 namespace Sprint.Desktop.Features.Live;
 
@@ -33,6 +34,8 @@ public sealed record TelemetryStatusView
     public string? Detail { get; init; }
 }
 
+public sealed record TelemetryHealthView(TelemetryStatusView Titlebar, SurfaceState? Surface);
+
 /// <summary>
 /// Pure mapper from a <see cref="TelemetryStatus"/> (+ a measured Hz) to the
 /// honest titlebar/Live-page view — the replacement for the hardcoded
@@ -43,11 +46,25 @@ public sealed record TelemetryStatusView
 /// </summary>
 public static class TelemetryStatusPresenter
 {
-    public static TelemetryStatusView ToView(TelemetryStatus status, double measuredHz, DateTimeOffset now)
+    public static TelemetryHealthView Present(TelemetryStatus status, double measuredHz, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(status);
 
         var state = TelemetryFreshness.Evaluate(status, now);
+        var titlebar = ToTitlebarView(status, measuredHz, state);
+        var surface = ToSurfaceState(status, state);
+        return new TelemetryHealthView(titlebar, surface);
+    }
+
+    public static TelemetryStatusView ToView(TelemetryStatus status, double measuredHz, DateTimeOffset now)
+    {
+        return Present(status, measuredHz, now).Titlebar;
+    }
+
+    private static TelemetryStatusView ToTitlebarView(TelemetryStatus status, double measuredHz, TelemetryConnectionState state)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+
         var source = string.IsNullOrWhiteSpace(status.SourceName) ? "TELEMETRY" : status.SourceName.ToUpperInvariant();
 
         // A connected link whose latest frame failed validation: live, but flag it.
@@ -114,6 +131,27 @@ public static class TelemetryStatusPresenter
                 Tone = StatusTone.Idle,
                 Detail = status.Detail
             }
+        };
+    }
+
+    private static SurfaceState? ToSurfaceState(TelemetryStatus status, TelemetryConnectionState state)
+    {
+        if (state == TelemetryConnectionState.Connected)
+        {
+            return status.LastFrameValid ? null : SurfaceState.InvalidFrame;
+        }
+
+        return state switch
+        {
+            TelemetryConnectionState.Connecting when status.LastFrameAt is not null => SurfaceState.Retrying,
+            TelemetryConnectionState.Connecting => SurfaceState.Loading,
+            TelemetryConnectionState.WaitingForGame => SurfaceState.Disconnected,
+            TelemetryConnectionState.Disconnected => SurfaceState.Disconnected,
+            TelemetryConnectionState.Stale => SurfaceState.Stale,
+            TelemetryConnectionState.Unsupported => SurfaceState.Unsupported,
+            TelemetryConnectionState.PermissionDenied => SurfaceState.PermissionDenied,
+            TelemetryConnectionState.Faulted => SurfaceState.Fault,
+            _ => SurfaceState.Disconnected
         };
     }
 

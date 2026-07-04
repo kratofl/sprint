@@ -1,5 +1,6 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Shell;
 using Sprint.Games;
 using Xunit;
 
@@ -213,6 +214,74 @@ public class TelemetryContractTests
 
         Assert.Equal("STALE", view.Label);
         Assert.Equal(StatusTone.Warn, view.Tone);
+    }
+
+    [Theory]
+    [MemberData(nameof(TelemetryHealthCases))]
+    public void Presenter_returns_one_titlebar_and_surface_verdict(
+        TelemetryStatus status,
+        string expectedLabel,
+        StatusTone expectedTone,
+        SurfaceState? expectedSurface)
+    {
+        var view = TelemetryStatusPresenter.Present(status, 30, Now);
+
+        Assert.Equal(expectedLabel, view.Titlebar.Label);
+        Assert.Equal(expectedTone, view.Titlebar.Tone);
+        Assert.Equal(expectedSurface, view.Surface);
+    }
+
+    public static IEnumerable<object?[]> TelemetryHealthCases()
+    {
+        yield return new object?[]
+        {
+            new TelemetryStatus { State = TelemetryConnectionState.Faulted, Detail = "decode error" },
+            "FAULT",
+            StatusTone.Fault,
+            SurfaceState.Fault
+        };
+        yield return new object?[]
+        {
+            new TelemetryStatus
+            {
+                State = TelemetryConnectionState.Connected,
+                SourceName = "Sprint Demo",
+                LastFrameAt = Now.AddSeconds(-3),
+                LastFrameValid = false,
+                InvalidReason = "NaN tyre temps"
+            },
+            "STALE",
+            StatusTone.Warn,
+            SurfaceState.Stale
+        };
+        yield return new object?[]
+        {
+            new TelemetryStatus { State = TelemetryConnectionState.Connecting, LastFrameAt = Now.AddSeconds(-5) },
+            "RETRYING",
+            StatusTone.Warn,
+            SurfaceState.Retrying
+        };
+        yield return new object?[]
+        {
+            new TelemetryStatus
+            {
+                State = TelemetryConnectionState.Connected,
+                SourceName = "Sprint Demo",
+                LastFrameAt = Now,
+                LastFrameValid = false,
+                InvalidReason = "NaN tyre temps"
+            },
+            "INVALID FRAME",
+            StatusTone.Warn,
+            SurfaceState.InvalidFrame
+        };
+        yield return new object?[]
+        {
+            new TelemetryStatus { State = TelemetryConnectionState.Connected, SourceName = "Sprint Demo", LastFrameAt = Now },
+            "SPRINT DEMO",
+            StatusTone.Live,
+            null
+        };
     }
 
     // ---- Rate meter (pure) -----------------------------------------------

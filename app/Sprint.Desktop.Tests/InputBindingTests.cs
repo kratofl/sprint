@@ -90,29 +90,6 @@ public sealed class InputBindingTests
     }
 
     [Fact]
-    public void ControlsStoreRoundTripsBindings()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        try
-        {
-            var store = new InputBindingStore(dataRoot);
-            Assert.Empty(store.Load().Bindings);
-
-            var config = new ControlsConfig { Bindings = [new InputBinding { Input = "button:3", Command = "dash.page.next" }] };
-            store.Save(config);
-
-            var reloaded = new InputBindingStore(dataRoot).Load();
-            var binding = Assert.Single(reloaded.Bindings);
-            Assert.Equal("button:3", binding.Input);
-            Assert.Equal("dash.page.next", binding.Command);
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
     public void RuntimePersistsControlsAcrossReload()
     {
         var dataRoot = TestEnv.NewTempDataRoot();

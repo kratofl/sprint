@@ -162,8 +162,10 @@ public static class DashLayoutEditor
         return true;
     }
 
-    private static DashPage? FindPage(DashLayout layout, string pageId)
+    public static DashPage? FindPage(DashLayout layout, string pageId)
     {
+        ArgumentNullException.ThrowIfNull(layout);
+
         if (string.Equals(layout.IdlePage?.Id, pageId, StringComparison.OrdinalIgnoreCase))
         {
             return layout.IdlePage;

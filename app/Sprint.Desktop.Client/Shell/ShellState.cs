@@ -5,7 +5,7 @@ public sealed class ShellState
     public AppView View { get; private set; } = AppView.Live;
     public bool SidebarCollapsed { get; private set; }
 
-    public int SidebarWidth => SidebarCollapsed ? 62 : 208;
+    public int SidebarWidth => SidebarCollapsed ? Graphite.SidebarCollapsedWidth : Graphite.SidebarExpandedWidth;
 
     public void Navigate(AppView view)
     {

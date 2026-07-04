@@ -9,7 +9,7 @@ before cutting a release (see `docs/RELEASE.md`).
 
 ## 1. Launch & shell
 - [ ] `make dev-app` opens the window without an error dialog.
-- [ ] Custom 40px titlebar: minimize, maximize/restore, and **close** all work and
+- [ ] Custom 32px titlebar: minimize, maximize/restore, and **close** all work and
       do not throw on click (US12). Dragging the titlebar moves the window; dragging
       a button/combo does not.
 - [ ] Sidebar collapse/expand toggles; collapsed nav buttons show a tooltip.

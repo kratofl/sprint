@@ -1,4 +1,3 @@
-using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Live;
 
 namespace Sprint.Desktop.Shell;
@@ -12,6 +11,7 @@ public enum SurfaceState
     Stale,
     Unsupported,
     PermissionDenied,
+    Fault,
     DeviceBusy,
     InvalidFrame,
     Retrying,
@@ -35,24 +35,10 @@ public static class SurfaceStatePresenter
         SurfaceState.Stale => new("Signal stale", "The link is up but frames stopped arriving.", StatusTone.Warn),
         SurfaceState.Unsupported => new("Unsupported", "This game or device isn't supported yet.", StatusTone.Idle),
         SurfaceState.PermissionDenied => new("Permission needed", "Access was denied. Install the driver or grant permission, then retry.", StatusTone.Warn),
+        SurfaceState.Fault => new("Link fault", "The telemetry link failed. Sprint will keep retrying automatically.", StatusTone.Fault),
         SurfaceState.DeviceBusy => new("Device busy", "Another application is using this device.", StatusTone.Warn),
         SurfaceState.InvalidFrame => new("Invalid data", "The link is up but the last frame couldn't be read.", StatusTone.Warn),
         SurfaceState.Retrying => new("Reconnecting…", "Lost the link — retrying automatically.", StatusTone.Warn),
         _ => new("Unavailable", "", StatusTone.Idle),
-    };
-
-    /// <summary>Maps a telemetry link state to a shared surface state, or null when the link is live and healthy.</summary>
-    public static SurfaceState? FromTelemetry(TelemetryConnectionState state, bool lastFrameValid) => state switch
-    {
-        TelemetryConnectionState.Connected when !lastFrameValid => SurfaceState.InvalidFrame,
-        TelemetryConnectionState.Connected => null,
-        TelemetryConnectionState.Connecting => SurfaceState.Loading,
-        TelemetryConnectionState.WaitingForGame => SurfaceState.Disconnected,
-        TelemetryConnectionState.Disconnected => SurfaceState.Disconnected,
-        TelemetryConnectionState.Stale => SurfaceState.Stale,
-        TelemetryConnectionState.Unsupported => SurfaceState.Unsupported,
-        TelemetryConnectionState.PermissionDenied => SurfaceState.PermissionDenied,
-        TelemetryConnectionState.Faulted => SurfaceState.Retrying,
-        _ => SurfaceState.Disconnected,
     };
 }

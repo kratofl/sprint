@@ -10,10 +10,15 @@ clear interaction cues.
 
 Canonical design direction:
 
-1. `docs/DESIGN.md` - implementation contract for agents and contributors.
-2. `packages/tokens` - runtime token implementation.
-3. `packages/ui` - reusable React component implementation.
-4. `app` - current native Avalonia desktop composition and runtime behavior.
+1. `docs/FIGMA_COMPONENTS.md` - extracted component and token contract from
+   `docs/Sprint.fig`; this is the source of truth for exact values.
+2. `docs/DESIGN.md` - implementation contract for agents and contributors.
+3. `packages/tokens` - runtime token implementation.
+4. `packages/ui` - reusable React component implementation.
+5. `app` - current native Avalonia desktop composition and runtime behavior.
+
+When this document and `docs/FIGMA_COMPONENTS.md` disagree on token values,
+component dimensions, or component states, use `docs/FIGMA_COMPONENTS.md`.
 
 Do not revive previous non-Graphite design directions. Graphite replaces them.
 
@@ -53,15 +58,15 @@ Graphite default tokens:
 
 | Token | Value | Role |
 |---|---:|---|
-| `--bg` | `#070707` | body tray and content backdrop |
-| `--panel` | `#0D0D0D` | titlebar, sidebar, tiles |
-| `--panel2` | `#131313` | inset rows and controls |
-| `--panel3` | `#1B1B1B` | hover and raised inset state |
-| `--line` | `#1A1A1A` | default hairline |
-| `--line2` | `#232323` | stronger frame border |
-| `--text` | `#ECECEC` | primary text and values |
-| `--text2` | `#9A9A9A` | secondary labels and body |
-| `--text3` | `#5C5C5C` | captions and idle metadata |
+| `--bg` | `#0A0A0A` | body tray and content backdrop |
+| `--panel` | `#0F0F0F` | titlebar, sidebar, panels, cards |
+| `--panel2` | `#141414` | inset rows, controls, secondary buttons |
+| `--panel3` | `#1A1A1A` | raised and selected state |
+| `--line` | `#2E2E2E` | default hairline |
+| `--line2` | `#424242` | stronger frame and widget-card border |
+| `--text` | `#F6F6F6` | primary text and values |
+| `--text2` | `#7A7A7A` | secondary labels and body |
+| `--text3` | `#5A5A5A` | captions and idle metadata |
 | `--accent` | `#FF6A00` | active, primary, focus, selection |
 
 Status colors:
@@ -69,9 +74,9 @@ Status colors:
 | Token | Value | Role |
 |---|---:|---|
 | `--green` | `#16B566` | connected, good, improving |
-| `--red` | `#F5483D` | danger, destructive, slower |
-| `--yellow` | `#F5C518` | caution |
-| `--blue` | `#4F9CFF` | informational, advanced, comparison |
+| `--red` | `#F02744` | danger, destructive, slower |
+| `--yellow` | `#E0A30C` | caution |
+| `--blue` | `#1F7FE6` | informational, advanced, comparison |
 | `--purple` | `#A06BFF` | special states and personal best |
 
 Rules:
@@ -86,8 +91,12 @@ Rules:
 
 ### Typography
 
-- UI font: `Inter`, with system fonts as fallback. Bundled in the Avalonia client
-  under `app/Sprint.Desktop.Client/Assets/Fonts` and exposed via `Graphite.FontStack`.
+- UI font: `Inter`, with system fonts as fallback. Bundled in the Avalonia
+  client under `app/Sprint.Desktop.Client/Assets/Fonts` and exposed via
+  `Graphite.FontStack`. Figma requires Regular, Medium, SemiBold, and Bold.
+- Motorsport control fonts: `Saira` and `Saira SemiCondensed` for sidebar
+  section labels, toolbar document titles, segmented controls, chips, and compact
+  counters.
 - Display / brand font: `Space Grotesk` (wordmark, large headings), via
   `Graphite.DisplayFontStack`.
 - Typography matches the maintainer's Figma (`docs/Sprint.fig`). (Earlier drafts
@@ -102,8 +111,9 @@ Rules:
 
 ### Shape, Spacing, Motion
 
-- Default radius: `--radius: 10px`; expose as `--r`.
-- Nested controls use `calc(var(--r) - 2px)`.
+- Radius scale: xs `4px`, sm `6px`, md `8px`, lg `10px`, xl `14px`, pill `999px`.
+- Buttons, inputs, navigation items, and segmented items use `8px`; cards and
+  alerts use `10px`; shell panels and toolbars use `14px`.
 - Borders are 1px hairlines. Dashed `1.5px --line2` marks drop targets and add
   affordances.
 - Tiles pad `14px 16px`; page grids use `12px-14px` gaps.
@@ -114,9 +124,9 @@ Rules:
 
 The desktop shell is fixed and shared:
 
-- `40px` draggable titlebar with logo, sidebar collapse, history controls,
+- `32px` draggable titlebar with logo, sidebar collapse, history controls,
   breadcrumb, sim-link pill, tick rate, and native window controls.
-- `208px` sidebar, collapsible to `62px`, with grouped primary navigation.
+- `220px` sidebar, collapsible to `62px`, with grouped primary navigation.
 - Body tray inset from the shell by `10px`, framed by `--line2`, filled with
   `--bg`, and rounded by `calc(var(--r) + 2px)`.
 
