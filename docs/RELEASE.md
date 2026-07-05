@@ -23,8 +23,9 @@ When you push a tag the workflow:
 5. Uploads both to a single GitHub Release (auto-generates notes; marks
    alpha/beta/rc tags as pre-releases)
 
-(The workflow ships the desktop app only. A Linux API server binary is built
-   separately if a server release is needed.)
+(The workflow ships the desktop app only. The .NET API server is deployed as a
+   container image built from `api/Dockerfile` via `docker compose`, not as a
+   released binary.)
 
 ---
 
@@ -134,7 +135,8 @@ app/build/bin
 
 Each archive contains one **self-contained, single-file** binary (no installed
 .NET runtime required) plus its `presets/` and `Assets/`. `desktop-release.yml`
-produces both; a self-hosted API server binary is not part of this workflow.
+produces both; the .NET API server ships as a container (see `api/Dockerfile` /
+`docker-compose.yml`), not as part of this workflow.
 
 ---
 
@@ -192,7 +194,7 @@ already does). Treat this as the follow-up once a GUI smoke harness exists.
 Before tagging, run the full local gate:
 
 ```powershell
-& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.sln -warnaserror   # 0/0
+& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx -warnaserror   # 0/0
 make test-app                                                                            # all green
 make build-app VERSION=<ver>                                                             # publishes to app/build/bin
 ```

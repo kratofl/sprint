@@ -1,0 +1,222 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Query {
+  health: HealthStatus!
+  me: UserProfile @authorize @cost(weight: "10")
+  sessions: [SessionSummary!]! @authorize @cost(weight: "10")
+  session(id: String!): SessionSummary @authorize @cost(weight: "10")
+  setups: [SetupSummary!]! @authorize @cost(weight: "10")
+  setup(id: String!): SetupSummary @authorize @cost(weight: "10")
+  layouts: [LayoutSummary!]! @authorize @cost(weight: "10")
+  layout(id: String!): LayoutSummary @authorize @cost(weight: "10")
+  recentTelemetry(code: String!, limit: Int!): [TelemetrySample!]!
+    @authorize
+    @cost(weight: "10")
+}
+
+type Mutation {
+  register(input: AuthRequestInput!): AuthResponse! @cost(weight: "10")
+  login(input: AuthRequestInput!): AuthResponse! @cost(weight: "10")
+  createInviteCode(sessionId: String): InviteCodeDto!
+    @authorize
+    @cost(weight: "10")
+  joinAsDriver(code: String!): Boolean! @authorize @cost(weight: "10")
+  createSession(input: CreateSessionInput!): SessionSummary!
+    @authorize
+    @cost(weight: "10")
+  saveSetup(input: SaveSetupInput!): SetupSummary!
+    @authorize
+    @cost(weight: "10")
+  saveLayout(input: SaveLayoutInput!): LayoutSummary!
+    @authorize
+    @cost(weight: "10")
+  publishEngineerEvent(code: String!, message: EngineerEventMessageInput!): Boolean!
+    @authorize
+    @cost(weight: "10")
+  sendEngineerCommand(code: String!, message: EngineerCommandMessageInput!): Boolean!
+    @authorize
+    @cost(weight: "10")
+}
+
+type Subscription {
+  engineerEvents(token: String!, code: String!): EngineerEventMessage!
+  engineerCommands(token: String!, code: String!): EngineerCommandMessage!
+}
+
+type AuthResponse {
+  token: String!
+}
+
+type EngineerCommandMessage {
+  id: String!
+  type: EngineerCommandType!
+  payload: String
+  timestamp: Long!
+  from: String!
+}
+
+type EngineerEventMessage {
+  type: EngineerEventType!
+  payload: String
+  timestamp: Long!
+}
+
+type HealthStatus {
+  status: String!
+  version: String!
+}
+
+type InviteCodeDto {
+  value: String!
+  driverId: String!
+  sessionId: String
+  createdAt: DateTime!
+  expiresAt: DateTime!
+  driverJoined: Boolean!
+}
+
+type LayoutSummary {
+  id: String!
+  ownerId: String!
+  name: String!
+  data: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SessionSummary {
+  id: String!
+  ownerId: String!
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+  createdAt: DateTime!
+}
+
+type SetupSummary {
+  id: String!
+  ownerId: String!
+  name: String!
+  game: String!
+  car: String!
+  track: String!
+  data: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type TelemetrySample {
+  timestamp: DateTime!
+  speed: Float!
+  rpm: Float!
+  gear: Int!
+  lap: Int!
+  lapTime: Float!
+  throttle: Float!
+  brake: Float!
+}
+
+type UserProfile {
+  id: String!
+  email: String!
+  createdAt: DateTime!
+}
+
+input AuthRequestInput {
+  email: String!
+  password: String!
+}
+
+input CreateSessionInput {
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+}
+
+input EngineerCommandMessageInput {
+  id: String!
+  type: EngineerCommandType!
+  payload: String
+  timestamp: Long!
+  from: String!
+}
+
+input EngineerEventMessageInput {
+  type: EngineerEventType!
+  payload: String
+  timestamp: Long!
+}
+
+input SaveLayoutInput {
+  id: String
+  name: String!
+  data: String!
+}
+
+input SaveSetupInput {
+  id: String
+  name: String!
+  game: String!
+  car: String!
+  track: String!
+  data: String!
+}
+
+"Defines when a policy shall be executed."
+enum ApplyPolicy {
+  "Before the resolver was executed."
+  BEFORE_RESOLVER
+  "After the resolver was executed."
+  AFTER_RESOLVER
+  "The policy is applied in the validation step before the execution."
+  VALIDATION
+}
+
+enum EngineerCommandType {
+  SET_TARGET_LAP
+  SEND_NOTE
+  REQUEST_SYNC
+}
+
+enum EngineerEventType {
+  TELEMETRY_FRAME
+  TARGET_CHANGED
+  LAP_COMPLETED
+  SESSION_CHANGED
+}
+
+"The `DateTime` scalar type represents a date and time with time zone offset information."
+scalar DateTime
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/date-time.html")
+
+"The `Long` scalar type represents a signed 64-bit integer."
+scalar Long
+  @specifiedBy(url: "https://scalars.graphql.org/chillicream/long.html")
+
+"The authorize directive."
+directive @authorize(
+  "The name of the authorization policy that determines access to the annotated resource."
+  policy: String
+  "Roles that are allowed to access the annotated resource."
+  roles: [String!]
+  "Defines when the authorize directive shall be applied. By default the authorize directive is applied before the resolver is executed."
+  apply: ApplyPolicy! = BEFORE_RESOLVER
+) repeatable on OBJECT | FIELD_DEFINITION
+
+"The purpose of the `cost` directive is to define a `weight` for GraphQL types, fields, and arguments. Static analysis can use these weights when calculating the overall cost of a query or response."
+directive @cost(
+  "The `weight` argument defines what value to add to the overall cost for every appearance, or possible appearance, of a type, field, argument, etc."
+  weight: String!
+) on
+  | SCALAR
+  | OBJECT
+  | FIELD_DEFINITION
+  | ARGUMENT_DEFINITION
+  | ENUM
+  | INPUT_FIELD_DEFINITION

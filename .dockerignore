@@ -1,7 +1,8 @@
-# Docker build context excludes. The api/ and web/ images only need the Go
-# workspace (go.work + pkg/ + api/) and the pnpm workspace (package.json,
-# pnpm-*.yaml, web/, packages/). Everything below is dead weight in the context
-# (slower builds, larger cache) or must never be baked into an image.
+# Docker build context excludes. The api image needs the .NET server (api/) plus
+# the shared contract libs (app/Sprint.Contracts, app/Sprint.Desktop.Api) and
+# global.json; the web image needs the pnpm workspace (package.json, pnpm-*.yaml,
+# web/, packages/). Everything below is dead weight in the context (slower builds,
+# larger cache) or must never be baked into an image.
 
 # Version control & CI
 .git
@@ -18,10 +19,15 @@ web/.next
 web/out
 **/dist
 
-# .NET desktop app — native Windows/Linux app, NOT containerized (api/web don't need it)
-app/
+# .NET desktop app — native Windows/Linux app, NOT containerized. The API image
+# only needs the shared contract libs (Sprint.Contracts + Sprint.Desktop.Api), so
+# exclude the desktop-only projects and publish output.
+app/Sprint.Desktop.Client/
+app/Sprint.Games/
+app/Sprint.Desktop.Tests/
+app/build/
 
-# Local Go / build artifacts
+# Local build artifacts
 bin/
 **/bin/
 **/obj/

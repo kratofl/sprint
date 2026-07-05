@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Sprint.Api/Sprint.Api.csproj" />
+  <Project Path="Sprint.Api.Tests/Sprint.Api.Tests.csproj" />
+  <Project Path="../app/Sprint.Contracts/Sprint.Contracts.csproj" />
+  <Project Path="../app/Sprint.Desktop.Api/Sprint.Desktop.Api.csproj" />
+</Solution>

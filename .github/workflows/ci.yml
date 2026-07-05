@@ -10,24 +10,24 @@ permissions:
   contents: read
 
 jobs:
-  go:
-    name: Go (test + vet)
+  api:
+    name: API (.NET)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          go-version-file: api/go.mod
-          cache-dependency-path: api/go.sum
+          dotnet-version: '10.0.x'
 
-      - name: Vet API
-        working-directory: api
-        run: go vet ./...
+      - name: Restore API
+        run: dotnet restore api/Sprint.Api.slnx
+
+      - name: Build API (warnings as errors)
+        run: dotnet build api/Sprint.Api.slnx --no-restore -warnaserror
 
       - name: Test API
-        working-directory: api
-        run: go test ./...
+        run: dotnet test api/Sprint.Api.slnx --no-build
 
   typescript:
     name: TypeScript (lint + build)
@@ -52,6 +52,9 @@ jobs:
           pnpm --filter @sprint/types build
           pnpm --filter @sprint/ui build
 
+      - name: Check GraphQL codegen is up to date
+        run: pnpm --filter @sprint/web codegen:check
+
       - name: Type check web
         run: pnpm --filter @sprint/web type-check
 
@@ -69,10 +72,10 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore desktop app
-        run: dotnet restore app/Sprint.Desktop.sln
+        run: dotnet restore app/Sprint.Desktop.slnx
 
       - name: Build desktop app
-        run: dotnet build app/Sprint.Desktop.sln --no-restore
+        run: dotnet build app/Sprint.Desktop.slnx --no-restore
 
       - name: Test desktop app
-        run: dotnet test app/Sprint.Desktop.sln --no-build
+        run: dotnet test app/Sprint.Desktop.slnx --no-build

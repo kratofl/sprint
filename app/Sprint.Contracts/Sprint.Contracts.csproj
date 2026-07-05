@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Sprint.Contracts</RootNamespace>
+    <AssemblyName>Sprint.Contracts</AssemblyName>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pulls in the telemetry + engineer contracts (TelemetryFrame, EngineerContract)
+         so the server and desktop share one vocabulary through this single package. -->
+    <ProjectReference Include="..\Sprint.Desktop.Api\Sprint.Desktop.Api.csproj" />
+  </ItemGroup>
+</Project>

@@ -8,10 +8,9 @@ Thanks for your interest in contributing! This guide covers everything you need 
 
 | Tool | Version |
 |---|---|
-| [Go](https://go.dev) | ≥ 1.26 |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x (desktop app + API server) |
 | [Node.js](https://nodejs.org) | ≥ 20 |
 | [pnpm](https://pnpm.io) | ≥ 9 |
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x (desktop app only) |
 
 ### Getting started
 
@@ -35,7 +34,7 @@ See the [README](README.md) for more options including Docker.
 
 ### Desktop app (.NET / Avalonia)
 
-The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET 10 solution — see
+The desktop app (`app/Sprint.Desktop.slnx`) is a separate .NET 10 solution — see
 [`app/README.md`](app/README.md) for the full development guide (module
 boundaries, feature layout, testing seams, adding a game).
 
@@ -52,20 +51,21 @@ make build-app      # publish → app/build/bin
 
 ## Code Style
 
-### Go
-- Format with `gofmt` (enforced by CI)
-- Lint with `go vet`
-- Follow [Effective Go](https://go.dev/doc/effective_go) conventions
+### C# (API server + desktop app)
+- Nullable + implicit usings are on; the build must be clean with `-warnaserror`
+  (`make lint-api` / `make lint-app`)
+- API server (`api/Sprint.Api`): keep game/wire specifics in the shared contracts
+  (`app/Sprint.Contracts`), business logic in focused services, and resolvers thin
 - Run `make fmt` before committing
+- When the GraphQL schema changes, run `make schema` and `pnpm --filter @sprint/web
+  codegen` and commit `web/schema.graphql` + `web/lib/gql/generated.ts`
 
 ### TypeScript / React
 - Format with Prettier
 - Lint with ESLint
 - Run `make fmt` before committing
 
-### C# (desktop app)
-- Nullable + implicit usings are on; the build must be clean with `-warnaserror`
-  (`make lint-app`)
+### C# (desktop-specific)
 - Keep game-specific code in `Sprint.Games` and UI-free contracts in
   `Sprint.Desktop.Api` — the project references enforce these seams
 - Prefer pure, testable presenter/reducer seams over growing `MainWindow.cs`; do

@@ -14,8 +14,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
   Do not run `make setup` unless the user explicitly asks for full dependency
   restore.
 - Only install project dependencies through the project's package managers when
-  needed for the apps, such as `pnpm install`, `dotnet restore`, or Go module
-  commands.
+  needed for the apps, such as `pnpm install` or `dotnet restore`.
 - Prefer targeted fixes over broad refactors unless the task requires structural
   change.
 - Work with existing user changes. Do not revert unrelated edits or deleted
@@ -63,7 +62,8 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 ## Repo Layout
 
 - `app/`: .NET/Avalonia desktop app and desktop presets.
-- `api/`: Go API server and WebSocket relay (slated to become a minimal C# API).
+- `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
+  Postgres (relational) and InfluxDB (time-series telemetry).
 - `web/`: Next.js frontend.
 - `packages/types/`: shared TypeScript contracts.
 - `packages/tokens/`: Graphite design tokens.
@@ -72,11 +72,15 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 ## Source Of Truth
 
 - `app/Sprint.Desktop.Api`: telemetry + engineer data contracts (`TelemetryFrame`, `ITelemetrySource`).
+- `app/Sprint.Contracts`: shared cloud DTOs (auth/invite/session/setup/layout) used by
+  both the API server and the desktop client; references `Sprint.Desktop.Api`.
 - `app/Sprint.Games`: game adapter implementations against the desktop contract.
-- `packages/types`: shared TypeScript contracts.
+- `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
 - `packages/tokens`: design tokens and theme primitives.
 - `packages/ui`: reusable UI components.
-- `api/internal/store`: API persistence ownership.
+- `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
+  persistence ownership (Postgres relational; InfluxDB time-series).
+- `web/schema.graphql`: committed GraphQL schema; source for web codegen (`make schema`).
 - `app/Sprint.Desktop.Client/DesktopRuntime.cs`: desktop preset loading and local persistence.
 
 ## Platform
@@ -84,8 +88,7 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - This repo is Windows-first. The `Makefile` runs targets through PowerShell.
 - Desktop hardware integrations are Windows-first.
 - Use PowerShell syntax for shell examples and local automation in this repo.
-- Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal
-  user-level Go cache.
+- Do not set NuGet/dotnet caches to repo-local paths. Use the normal user-level caches.
 - If `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and reports no
   SDKs, use the installed x86 SDK at
   `C:\Program Files (x86)\dotnet\dotnet.exe` for desktop test/build commands.
@@ -103,7 +106,9 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Test API and desktop: `make test`
 - Test API only: `make test-api`
 - Test desktop only: `make test-app`
-- Build desktop solution: `dotnet build app/Sprint.Desktop.sln`
+- Build desktop solution: `dotnet build app/Sprint.Desktop.slnx`
+- Build API solution: `dotnet build api/Sprint.Api.slnx`
+- Export GraphQL schema: `make schema`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
 - Test shared UI: `pnpm --filter @sprint/ui test`
 - Test tokens: `pnpm --filter @sprint/tokens test`
