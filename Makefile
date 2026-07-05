@@ -3,19 +3,21 @@
 # Run `make help` to list all available targets.
 
 .PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build \
-        test test-api test-app lint lint-app fmt \
+        test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
         clean
 
 SHELL = powershell.exe
 .SHELLFLAGS = -NoProfile -Command
 
-BINARY_DIR := bin
-API_BINARY := $(BINARY_DIR)/sprint-api
 APP_DIR    := app
-APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.sln
+APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.slnx
 APP_CLIENT_PROJECT := $(APP_DIR)/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
 APP_TEST_PROJECT := $(APP_DIR)/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj
+API_DIR    := api
+API_SOLUTION := $(API_DIR)/Sprint.Api.slnx
+API_PROJECT := $(API_DIR)/Sprint.Api/Sprint.Api.csproj
+API_TEST_PROJECT := $(API_DIR)/Sprint.Api.Tests/Sprint.Api.Tests.csproj
 
 # Publish runtime identifier. Override for Linux: make build-app RID=linux-x64
 RID ?= win-x64
@@ -34,6 +36,7 @@ help: ## Show this help message
 
 setup: ## Restore project dependencies
 	dotnet restore $(APP_SOLUTION)
+	dotnet restore $(API_SOLUTION)
 	pnpm install
 	Write-Host 'Setup complete'
 
@@ -42,19 +45,19 @@ setup: ## Restore project dependencies
 dev-app: ## Run the Avalonia desktop app in dev mode
 	dotnet watch --project $(APP_CLIENT_PROJECT)
 
-dev-api: ## Run the API server locally (hot-reload with go run)
-	go run ./api
+dev-api: ## Run the API server locally (hot-reload)
+	dotnet watch --project $(API_PROJECT)
 
 dev-web: ## Run the Next.js web app in dev mode
 	pnpm --filter @sprint/web dev
 
+schema: ## Export the GraphQL schema → web/schema.graphql (for web codegen)
+	dotnet run --project $(API_PROJECT) -- export-schema ../../web/schema.graphql
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 
-$(BINARY_DIR):
-	New-Item -ItemType Directory -Force -Path '$(BINARY_DIR)' | Out-Null
-
-build-api: $(BINARY_DIR) ## Build the API server binary → bin/sprint-api
-	go build -trimpath -ldflags "-s -w -X main.Version=$(VERSION)" -o $(API_BINARY) ./api
+build-api: ## Publish the API server → api/build/bin
+	dotnet publish $(API_PROJECT) -c Release -p:InformationalVersion=$(VERSION) -o $(API_DIR)/build/bin
 
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
@@ -68,24 +71,27 @@ build: build-api build-web ## Build all (API + web)
 
 test: test-api test-app ## Run API and desktop tests
 
-test-api: ## Run API server tests
-	go test ./api/...
+test-api: ## Run API server tests (xunit)
+	dotnet test $(API_TEST_PROJECT)
 
 test-app: ## Run Avalonia desktop tests (xunit)
 	dotnet test $(APP_TEST_PROJECT)
 
 # ─── Lint & Format ────────────────────────────────────────────────────────────
 
-lint: ## Run Go vet on api and pnpm lint
-	go vet ./api/...
+lint: ## Build the API solution with warnings as errors and run pnpm lint
+	dotnet build $(API_SOLUTION) -warnaserror
 	pnpm lint
 
 lint-app: ## Build the Avalonia desktop app with warnings enabled
 	dotnet build $(APP_SOLUTION) -warnaserror
 
-fmt: ## Format Go, C#, and TS/JS code
-	gofmt -w ./api
+lint-api: ## Build the API solution with warnings as errors
+	dotnet build $(API_SOLUTION) -warnaserror
+
+fmt: ## Format C# and TS/JS code
 	dotnet format $(APP_SOLUTION)
+	dotnet format $(API_SOLUTION)
 	pnpm format
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
@@ -105,4 +111,4 @@ docker-logs: ## Tail logs from all running services
 # ─── Clean ────────────────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts
-	Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '$(BINARY_DIR)', 'web/.next', 'app/build/bin', 'app/Sprint.Desktop.Client/bin', 'app/Sprint.Desktop.Client/obj', 'app/Sprint.Desktop.Api/bin', 'app/Sprint.Desktop.Api/obj', 'app/Sprint.Games/bin', 'app/Sprint.Games/obj', 'app/Sprint.Desktop.Tests/bin', 'app/Sprint.Desktop.Tests/obj'
+	Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'web/.next', 'app/build/bin', 'api/build/bin', 'app/Sprint.Desktop.Client/bin', 'app/Sprint.Desktop.Client/obj', 'app/Sprint.Desktop.Api/bin', 'app/Sprint.Desktop.Api/obj', 'app/Sprint.Contracts/bin', 'app/Sprint.Contracts/obj', 'app/Sprint.Games/bin', 'app/Sprint.Games/obj', 'app/Sprint.Desktop.Tests/bin', 'app/Sprint.Desktop.Tests/obj', 'api/Sprint.Api/bin', 'api/Sprint.Api/obj', 'api/Sprint.Api.Tests/bin', 'api/Sprint.Api.Tests/obj'
