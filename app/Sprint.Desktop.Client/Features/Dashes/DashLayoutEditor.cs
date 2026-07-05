@@ -2,8 +2,8 @@ namespace Sprint.Desktop.Features.Dashes;
 
 public static class DashLayoutEditor
 {
-    private const int DefaultWidgetColSpan = 4;
-    private const int DefaultWidgetRowSpan = 2;
+    public const int DefaultWidgetColSpan = 4;
+    public const int DefaultWidgetRowSpan = 2;
 
     public static DashPage AddPage(DashLayout layout, string name)
     {
@@ -87,6 +87,96 @@ public static class DashLayoutEditor
         return false;
     }
 
+    /// <summary>
+    /// Add a widget at an explicit grid cell (drag-drop placement). The requested
+    /// cell is clamped in-bounds; placement is rejected (no fallback) if it would
+    /// overlap, so a drop onto an occupied cell fails rather than silently jumping.
+    /// </summary>
+    public static bool TryAddWidgetAt(DashLayout layout, string pageId, string type, int col, int row, out DashWidget? widget)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        widget = null;
+
+        var page = FindPage(layout, pageId);
+        if (page is null || !DashWidgetCatalog.IsKnown(type) || !DashLayoutValidator.IsValid(layout))
+        {
+            return false;
+        }
+
+        var colSpan = Math.Min(DefaultWidgetColSpan, layout.GridCols);
+        var rowSpan = Math.Min(DefaultWidgetRowSpan, layout.GridRows);
+        var c = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - colSpan));
+        var r = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - rowSpan));
+        if (WouldOverlap(page, movingWidget: null, c, r, colSpan, rowSpan))
+        {
+            return false;
+        }
+
+        widget = new DashWidget
+        {
+            Id = NextWidgetId(page, Slug(type.Replace('_', '-'))),
+            Type = type,
+            Col = c,
+            Row = r,
+            ColSpan = colSpan,
+            RowSpan = rowSpan
+        };
+        page.Widgets.Add(widget);
+        return true;
+    }
+
+    /// <summary>Non-mutating placement check for a not-yet-created widget (palette drag ghost).</summary>
+    public static bool CanPlaceNewWidget(DashLayout layout, string pageId, int col, int row, int colSpan, int rowSpan)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+
+        var page = FindPage(layout, pageId);
+        if (page is null || col < 0 || row < 0 || colSpan < 1 || rowSpan < 1)
+        {
+            return false;
+        }
+
+        if (col + colSpan > layout.GridCols || row + rowSpan > layout.GridRows)
+        {
+            return false;
+        }
+
+        return !WouldOverlap(page, movingWidget: null, col, row, colSpan, rowSpan);
+    }
+
+    /// <summary>
+    /// Set a widget's full geometry in one operation. Needed for edge/corner resize
+    /// from the top or left, which move the origin and change the span together.
+    /// </summary>
+    public static bool TrySetWidgetGeometry(DashLayout layout, string pageId, string widgetId, int col, int row, int colSpan, int rowSpan)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+
+        var page = FindPage(layout, pageId);
+        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        if (page is null || widget is null || !DashLayoutValidator.IsValid(layout))
+        {
+            return false;
+        }
+
+        if (col < 0 || row < 0 || colSpan < 1 || rowSpan < 1 ||
+            col + colSpan > layout.GridCols || row + rowSpan > layout.GridRows)
+        {
+            return false;
+        }
+
+        if (WouldOverlap(page, widget, col, row, colSpan, rowSpan))
+        {
+            return false;
+        }
+
+        widget.Col = col;
+        widget.Row = row;
+        widget.ColSpan = colSpan;
+        widget.RowSpan = rowSpan;
+        return true;
+    }
+
     public static bool TryMoveWidget(DashLayout layout, string pageId, string widgetId, int col, int row)
     {
         ArgumentNullException.ThrowIfNull(layout);
@@ -108,6 +198,35 @@ public static class DashLayoutEditor
         widget.Col = nextCol;
         widget.Row = nextRow;
         return true;
+    }
+
+    /// <summary>
+    /// Non-mutating placement check used by the editor to preview a live drag/resize
+    /// ghost. Returns true when the widget could occupy the given cell rectangle:
+    /// in-bounds, positive span, and no overlap with the page's other widgets.
+    /// </summary>
+    public static bool CanPlaceWidget(DashLayout layout, string pageId, string widgetId, int col, int row, int colSpan, int rowSpan)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+
+        var page = FindPage(layout, pageId);
+        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        if (page is null || widget is null)
+        {
+            return false;
+        }
+
+        if (col < 0 || row < 0 || colSpan < 1 || rowSpan < 1)
+        {
+            return false;
+        }
+
+        if (col + colSpan > layout.GridCols || row + rowSpan > layout.GridRows)
+        {
+            return false;
+        }
+
+        return !WouldOverlap(page, widget, col, row, colSpan, rowSpan);
     }
 
     public static bool TryResizeWidget(DashLayout layout, string pageId, string widgetId, int colSpan, int rowSpan)

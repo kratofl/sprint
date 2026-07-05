@@ -92,11 +92,44 @@ public sealed class DashEditorController
         return true;
     }
 
+    /// <summary>Default grid span a freshly-added widget occupies (for the palette drag ghost).</summary>
+    public (int ColSpan, int RowSpan) DefaultSpan => (
+        Math.Min(DashLayoutEditor.DefaultWidgetColSpan, Math.Max(1, Layout.GridCols)),
+        Math.Min(DashLayoutEditor.DefaultWidgetRowSpan, Math.Max(1, Layout.GridRows)));
+
+    /// <summary>Add a widget at an explicit grid cell (palette drag-drop).</summary>
+    public bool AddWidgetAt(string type, int col, int row)
+    {
+        if (!DashLayoutEditor.TryAddWidgetAt(Layout, ActivePageId, type, col, row, out var widget) || widget is null)
+        {
+            return false;
+        }
+
+        SelectedWidgetId = widget.Id;
+        Persist();
+        return true;
+    }
+
+    /// <summary>Non-mutating placement preview for the live drag/resize ghost.</summary>
+    public bool CanPlace(DashWidget widget, int col, int row, int colSpan, int rowSpan)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return DashLayoutEditor.CanPlaceWidget(Layout, ActivePageId, widget.Id, col, row, colSpan, rowSpan);
+    }
+
+    /// <summary>Non-mutating placement preview for a not-yet-created widget (palette drag).</summary>
+    public bool CanPlaceNew(int col, int row, int colSpan, int rowSpan) =>
+        DashLayoutEditor.CanPlaceNewWidget(Layout, ActivePageId, col, row, colSpan, rowSpan);
+
     public bool MoveSelected(int col, int row) =>
         WithSelected(id => DashLayoutEditor.TryMoveWidget(Layout, ActivePageId, id, col, row));
 
     public bool ResizeSelected(int colSpan, int rowSpan) =>
         WithSelected(id => DashLayoutEditor.TryResizeWidget(Layout, ActivePageId, id, colSpan, rowSpan));
+
+    /// <summary>Set the selected widget's full geometry (edge/corner resize that moves the origin).</summary>
+    public bool ResizeSelectedTo(int col, int row, int colSpan, int rowSpan) =>
+        WithSelected(id => DashLayoutEditor.TrySetWidgetGeometry(Layout, ActivePageId, id, col, row, colSpan, rowSpan));
 
     public bool DeleteSelected()
     {
@@ -140,6 +173,45 @@ public sealed class DashEditorController
 
         Persist();
         return true;
+    }
+
+    /// <summary>Rename the whole dash layout (editor header title). No-op on blank/unchanged.</summary>
+    public bool RenameLayout(string name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || string.Equals(trimmed, Layout.Name, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        Layout.Name = trimmed;
+        Persist();
+        return true;
+    }
+
+    /// <summary>Whether a change-alert of the given type is configured on the layout.</summary>
+    public bool IsAlertEnabled(string type) =>
+        Layout.Alerts.Any(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Enable/disable a change-alert type (adds/removes the layout alert entry).</summary>
+    public void SetAlert(string type, bool enabled)
+    {
+        var present = IsAlertEnabled(type);
+        if (present == enabled)
+        {
+            return;
+        }
+
+        if (enabled)
+        {
+            Layout.Alerts.Add(new DashAlert { Id = type, Type = type });
+        }
+        else
+        {
+            Layout.Alerts.RemoveAll(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
+        }
+
+        Persist();
     }
 
     public bool DeletePage(string pageId)

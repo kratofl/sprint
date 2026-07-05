@@ -1,8 +1,16 @@
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.VisualTree;
+using Sprint.Desktop;
+using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -62,6 +70,147 @@ public sealed class VisualSmokeTests
         }
     }
 
+    [Theory]
+    [InlineData(1440, 900)]
+    [InlineData(1120, 720)]
+    public async Task Dash_editor_captures_meaningful_rendered_png_artifact(int width, int height)
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(VisualSmokeTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window
+                {
+                    Width = width,
+                    Height = height,
+                    Content = view,
+                    Background = Graphite.BgBrush
+                };
+
+                window.Show();
+
+                // Select a placed widget so the capture exercises selection + resize grip.
+                var selectable = controller.ActivePage?.Widgets.FirstOrDefault();
+                if (selectable is not null)
+                {
+                    controller.SelectWidget(selectable.Id);
+                }
+
+                using var frame = SaveFrame(window, $"editor-{width}x{height}.png");
+                window.Close();
+
+                AssertMeaningfulImage(frame);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Dash_editor_alerts_panel_captures_toggles()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(VisualSmokeTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                controller.SetAlert("tc_change", true); // one alert on, so a green toggle is captured
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window { Width = 1440, Height = 900, Content = view, Background = Graphite.BgBrush };
+                window.Show();
+
+                // Switch the right panel to the alerts editor.
+                var alertsButton = view.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(button => string.Equals(button.Content?.ToString(), "Alerts", StringComparison.Ordinal));
+                alertsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                using var frame = SaveFrame(window, "editor-alerts-1440x900.png");
+                window.Close();
+
+                AssertMeaningfulImage(frame);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Dash_editor_drag_renders_snapping_ghost_overlay()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(VisualSmokeTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window
+                {
+                    Width = 1440,
+                    Height = 900,
+                    Content = view,
+                    Background = Graphite.BgBrush
+                };
+
+                window.Show();
+
+                // Drop a single widget onto a fresh page, then start a move gesture and
+                // pause mid-drag so the capture shows the live ghost preview.
+                controller.AddPage();
+                controller.AddWidget("fuel");
+                var widget = controller.SelectedWidget!;
+                window.CaptureRenderedFrame();
+
+                var overlay = window.GetVisualDescendants()
+                    .OfType<Border>()
+                    .First(border => string.Equals(border.Tag?.ToString(), widget.Id, StringComparison.Ordinal));
+                var point = new Point(overlay.Bounds.Width * 0.5, overlay.Bounds.Height * 0.5);
+                var start = overlay.TranslatePoint(point, window)!.Value;
+                var moved = start + new Vector(180, 120);
+
+                window.MouseDown(start, MouseButton.Left, RawInputModifiers.LeftMouseButton);
+                window.MouseMove(moved, RawInputModifiers.LeftMouseButton);
+
+                using var frame = SaveFrame(window, "editor-drag-ghost-1440x900.png");
+
+                // The move is a preview only until release; the widget must not have moved yet.
+                Assert.Equal(0, widget.Col);
+                Assert.Equal(0, widget.Row);
+
+                window.MouseUp(moved, MouseButton.Left, RawInputModifiers.None);
+                window.Close();
+
+                AssertMeaningfulImage(frame);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     private static string VisualArtifactRoot()
     {
         var path = Path.Combine(TestEnv.RepoRoot, "app", "Sprint.Desktop.Tests", "artifacts", "visual");
@@ -69,7 +218,7 @@ public sealed class VisualSmokeTests
         return path;
     }
 
-    private static Bitmap SaveFrame(MainWindow window, string fileName)
+    private static Bitmap SaveFrame(Window window, string fileName)
     {
         var path = Path.Combine(VisualArtifactRoot(), fileName);
         var frame = window.CaptureRenderedFrame();

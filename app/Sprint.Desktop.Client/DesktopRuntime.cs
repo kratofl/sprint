@@ -179,6 +179,27 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return clone;
     }
 
+    /// <summary>Make <paramref name="layout"/> the sole default, persisting the demoted one too.</summary>
+    public void SetDefaultDashLayout(DashLayout layout)
+    {
+        if (layout.IsDefault)
+        {
+            return;
+        }
+
+        foreach (var other in DashLayouts)
+        {
+            if (other.IsDefault && !ReferenceEquals(other, layout))
+            {
+                other.IsDefault = false;
+                SaveDashLayout(other);
+            }
+        }
+
+        layout.IsDefault = true;
+        SaveDashLayout(layout);
+    }
+
     public void DeleteDashLayout(DashLayout layout)
     {
         if (DashLayouts.Count <= 1 || layout.IsDefault)

@@ -1,24 +1,26 @@
 namespace Sprint.Desktop.Features.Dashes;
 
-public sealed record DashWidgetDefinition(string Type, string Name, IReadOnlyList<string> Bindings);
+public sealed record DashWidgetDefinition(string Type, string Name, IReadOnlyList<string> Bindings, bool IdleCapable = true);
 
 public static class DashWidgetCatalog
 {
+    // IdleCapable marks widgets meaningful on the idle (parked/pre-session) page.
+    // Live-timing/telemetry widgets are hidden from the idle palette.
     private static readonly IReadOnlyDictionary<string, DashWidgetDefinition> Definitions =
         new Dictionary<string, DashWidgetDefinition>(StringComparer.OrdinalIgnoreCase)
         {
-            ["header"] = Definition("header", "Header", "session.name", "flags.summary"),
-            ["text"] = Definition("text", "Text", "profile.driverName", "profile.driverNumber"),
-            ["rpm_bar"] = Definition("rpm_bar", "RPM Bar", "car.rpm", "car.maxRpm"),
-            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", "car.gear", "car.speed"),
-            ["input_trace"] = Definition("input_trace", "Input Trace", "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
-            ["sector"] = Definition("sector", "Sectors", "lap.sector", "lap.current", "lap.best"),
-            ["lap_time"] = Definition("lap_time", "Lap Time", "lap.current", "lap.last", "lap.best"),
-            ["delta"] = Definition("delta", "Delta", "lap.delta", "lap.target"),
-            ["fuel"] = Definition("fuel", "Fuel", "car.fuelLiters", "car.fuelPerLapLiters"),
-            ["tyre_temp"] = Definition("tyre_temp", "Tyre Temperature", "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
-            ["flag"] = Definition("flag", "Flags", "flags.yellow", "flags.red", "flags.safetyCar"),
-            ["tc"] = Definition("tc", "Traction Control", "electronics.tc", "electronics.tcActive")
+            ["header"] = Definition("header", "Header", idleCapable: true, "session.name", "flags.summary"),
+            ["text"] = Definition("text", "Text", idleCapable: true, "profile.driverName", "profile.driverNumber"),
+            ["rpm_bar"] = Definition("rpm_bar", "RPM Bar", idleCapable: false, "car.rpm", "car.maxRpm"),
+            ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, "car.gear", "car.speed"),
+            ["input_trace"] = Definition("input_trace", "Input Trace", idleCapable: false, "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
+            ["sector"] = Definition("sector", "Sectors", idleCapable: false, "lap.sector", "lap.current", "lap.best"),
+            ["lap_time"] = Definition("lap_time", "Lap Time", idleCapable: false, "lap.current", "lap.last", "lap.best"),
+            ["delta"] = Definition("delta", "Delta", idleCapable: false, "lap.delta", "lap.target"),
+            ["fuel"] = Definition("fuel", "Fuel", idleCapable: true, "car.fuelLiters", "car.fuelPerLapLiters"),
+            ["tyre_temp"] = Definition("tyre_temp", "Tyre Temperature", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
+            ["flag"] = Definition("flag", "Flags", idleCapable: true, "flags.yellow", "flags.red", "flags.safetyCar"),
+            ["tc"] = Definition("tc", "Traction Control", idleCapable: false, "electronics.tc", "electronics.tcActive")
         };
 
     public static IReadOnlyCollection<DashWidgetDefinition> All => Definitions.Values.ToArray();
@@ -38,8 +40,8 @@ public static class DashWidgetCatalog
         throw new KeyNotFoundException($"Unknown dash widget type '{type}'.");
     }
 
-    private static DashWidgetDefinition Definition(string type, string name, params string[] bindings)
+    private static DashWidgetDefinition Definition(string type, string name, bool idleCapable, params string[] bindings)
     {
-        return new DashWidgetDefinition(type, name, bindings);
+        return new DashWidgetDefinition(type, name, bindings, idleCapable);
     }
 }

@@ -164,12 +164,9 @@ public sealed class MainWindow : Window
 
         var logo = new Border
         {
-            Width = Graphite.Space9,
-            Height = Graphite.Space9,
-            Background = Graphite.AccentBrush,
-            CornerRadius = new CornerRadius(Graphite.RadiusSm),
-            Margin = new Thickness(Graphite.Space6, Graphite.Space3, Graphite.Space4, Graphite.Space3),
-            Child = Graphite.TextBlock("S", 13, FontWeight.Bold, Brushes.Black)
+            Margin = new Thickness(Graphite.Space6, 0, Graphite.Space4, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = Brand.LogoMark(20)
         };
         Grid.SetColumn(logo, 0);
         grid.Children.Add(logo);
@@ -180,14 +177,14 @@ public sealed class MainWindow : Window
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center
         };
-        controls.Children.Add(ChromeButton(_shell.SidebarCollapsed ? ">>" : "<<", () =>
+        controls.Children.Add(ChromeButton("layout-sidebar", () =>
         {
             _shell.ToggleSidebar();
             BuildShell();
             RenderBody();
         }, "Toggle sidebar"));
-        controls.Children.Add(ChromeButton("<", () => Navigate(AppView.Live), "Go to Live"));
-        controls.Children.Add(ChromeButton(">", () => Navigate(AppView.Settings), "Go to Settings"));
+        controls.Children.Add(ChromeButton("chevron-left", () => Navigate(AppView.Live), "Go to Live"));
+        controls.Children.Add(ChromeButton("chevron-right", () => Navigate(AppView.Settings), "Go to Settings"));
         Grid.SetColumn(controls, 1);
         grid.Children.Add(controls);
 
@@ -245,8 +242,8 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0)
         };
-        windowButtons.Children.Add(ChromeButton("-", () => WindowState = WindowState.Minimized, "Minimize"));
-        windowButtons.Children.Add(ChromeButton("[]", ToggleMaximized, "Maximize / restore"));
+        windowButtons.Children.Add(ChromeButton("minus", () => WindowState = WindowState.Minimized, "Minimize"));
+        windowButtons.Children.Add(ChromeButton("square", ToggleMaximized, "Maximize / restore"));
         windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
         Grid.SetColumn(windowButtons, 5);
         grid.Children.Add(windowButtons);
@@ -257,23 +254,56 @@ public sealed class MainWindow : Window
 
     private Control BuildSidebar()
     {
-        _navRail = new StackPanel { Spacing = 8, Margin = new Thickness(10, 12) };
+        var collapsed = _shell.SidebarCollapsed;
 
+        var brand = collapsed ? Brand.LogoMark(28) : Brand.Wordmark(30);
+        brand.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        var header = new Border
+        {
+            Padding = new Thickness(collapsed ? 10 : 14, 14, 14, 14),
+            Child = brand
+        };
+
+        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(10, 2) };
         AddNavGroup(null, (AppView.Live, "Live"), (AppView.Engineer, "Engineer"), (AppView.Setup, "Setup"));
         AddNavGroup("Dash Studio", (AppView.Dashes, "Dashes"), (AppView.Devices, "Devices"));
 
-        var spacer = new Border { Height = 1, Background = Graphite.LineBrush, Margin = new Thickness(0, 8) };
-        _navRail.Children.Add(spacer);
-        AddNavGroup(null, (AppView.Settings, "Settings"), (AppView.Help, "Help"));
+        // Settings/Help pin to the bottom of the rail (matches the Figma sidebar).
+        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(10, 6, 10, 12) };
+        footer.Children.Add(NavButton(AppView.Settings, "Settings"));
+        footer.Children.Add(NavButton(AppView.Help, "Help"));
+
+        var dock = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(header, Dock.Top);
+        DockPanel.SetDock(footer, Dock.Bottom);
+        dock.Children.Add(header);
+        dock.Children.Add(footer);
+        dock.Children.Add(new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = _navRail
+        });
 
         return new Border
         {
             Background = Graphite.PanelBrush,
             BorderBrush = Graphite.LineBrush,
             BorderThickness = new Thickness(0, 0, 1, 0),
-            Child = _navRail
+            Child = dock
         };
     }
+
+    private static string NavIconName(AppView view) => view switch
+    {
+        AppView.Live => "activity",
+        AppView.Engineer => "tool",
+        AppView.Setup => "adjustments",
+        AppView.Dashes => "layout-dashboard",
+        AppView.Devices => "device-desktop",
+        AppView.Settings => "settings",
+        AppView.Help => "help-circle",
+        _ => "square"
+    };
 
     private void AddNavGroup(string? label, params (AppView View, string Label)[] items)
     {
@@ -291,25 +321,54 @@ public sealed class MainWindow : Window
     private Button NavButton(AppView view, string label)
     {
         var active = view == _shell.View;
+        var collapsed = _shell.SidebarCollapsed;
+        var tint = active ? Graphite.AccentBrush : Graphite.Text2Brush;
+        var icon = Icons.Create(NavIconName(view), 16, tint);
+
+        Control content;
+        if (collapsed)
+        {
+            content = icon;
+        }
+        else
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            row.Children.Add(icon);
+            row.Children.Add(new TextBlock
+            {
+                Text = label,
+                FontFamily = Graphite.FontStackMedium,
+                FontSize = 13,
+                Foreground = tint,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            content = row;
+        }
+
         var button = new Button
         {
-            Content = _shell.SidebarCollapsed ? label[..1] : label,
+            Content = content,
+            // Figma NavigationItem: selected = filled #1A1A1A pill + hairline + ember
+            // content; default = panel fill, muted content (docs/FIGMA_COMPONENTS.md).
             Background = active ? Graphite.Panel3Brush : Graphite.PanelBrush,
-            Foreground = active ? Graphite.AccentBrush : Graphite.Text2Brush,
-            BorderBrush = active ? Graphite.AccentBrush : Graphite.PanelBrush,
+            Foreground = tint,
+            BorderBrush = active ? Graphite.LineBrush : Graphite.PanelBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(Graphite.RadiusMd),
-            FontFamily = Graphite.FontStack,
-            FontSize = 13,
-            FontWeight = FontWeight.Medium,
-            Padding = new Thickness(10, 8),
+            Padding = new Thickness(collapsed ? 0 : 10, 8),
             MinHeight = 32,
-            HorizontalContentAlignment = _shell.SidebarCollapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
+            Margin = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
             VerticalContentAlignment = VerticalAlignment.Center
         };
-        button.Margin = new Thickness(0);
         button.Click += (_, _) => Navigate(view);
-        if (_shell.SidebarCollapsed)
+        if (collapsed)
         {
             ToolTip.SetTip(button, label); // full label as accessible name when collapsed to an icon
         }
@@ -317,15 +376,17 @@ public sealed class MainWindow : Window
         return button;
     }
 
-    private Button ChromeButton(string text, Action action, string? tooltip = null)
+    private Button ChromeButton(string iconName, Action action, string? tooltip = null)
     {
-        var button = Graphite.Button(text, ButtonTone.Ghost);
-        button.Width = 28;
-        button.MinHeight = 26;
+        var button = Graphite.Button(string.Empty, ButtonTone.Ghost);
+        button.Content = Icons.Create(iconName, 16, Graphite.Text2Brush);
+        button.Width = 30;
+        button.MinHeight = 30;
         button.Padding = new Thickness(0);
-        button.FontSize = 11;
+        button.HorizontalContentAlignment = HorizontalAlignment.Center;
+        button.VerticalContentAlignment = VerticalAlignment.Center;
         button.Click += (_, _) => action();
-        ToolTip.SetTip(button, tooltip ?? text); // accessible name for icon-only chrome
+        ToolTip.SetTip(button, tooltip ?? iconName); // accessible name for icon-only chrome
         return button;
     }
 
@@ -901,7 +962,7 @@ public sealed class MainWindow : Window
         }));
 
         form.Children.Add(Graphite.SectionLabel("About"));
-        form.Children.Add(FormRow("Version", Graphite.StatusPill(
+        form.Children.Add(FormRow("Version", Graphite.Chip(
             $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)));
         var updateStatus = Graphite.TextBlock("Manual check — auto-install is deferred.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap);
         var checkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
@@ -1223,6 +1284,11 @@ public sealed class MainWindow : Window
         actions.Children.Add(ActionButton("Edit", ButtonTone.Primary, () => OpenDashEditor(layout)));
         if (!layout.IsDefault)
         {
+            actions.Children.Add(ActionButton("Set default", ButtonTone.Neutral, () =>
+            {
+                _runtime.SetDefaultDashLayout(layout);
+                RenderBody();
+            }));
             actions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
             {
                 _runtime.DeleteDashLayout(layout);

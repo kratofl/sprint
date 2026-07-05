@@ -29,6 +29,7 @@ public interface IDesktopRuntime
     void RemoveDevice(SavedDevice device);
     DashLayout CreateDashLayout();
     void SaveDashLayout(DashLayout layout);
+    void SetDefaultDashLayout(DashLayout layout);
     void DeleteDashLayout(DashLayout layout);
     string GetDashThumbnailPath(DashLayout layout);
     void SaveSetupPrograms();

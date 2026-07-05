@@ -158,19 +158,19 @@ Design intent that is uncontested regardless of which palette wins:
 
 ---
 
-## 3. New .NET skeleton status snapshot
+## 3. Current .NET desktop status snapshot
 
 ### Solution & project files
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `Sprint.Desktop.sln` | implemented | VS2017-format; Debug/Release × Any CPU/x64/x86, but every x64/x86 maps `ActiveCfg` back to Any CPU (no real per-RID build). |
-| `Sprint.Desktop.Client.csproj` | implemented | net10.0 WinExe, Nullable+ImplicitUsings, Avalonia.Desktop + Themes.Fluent 12.0.5; refs Api+Games; packs Assets/presets/appicon; lock file present. **No RID / PublishSingleFile / Trimming.** |
+| `Sprint.Desktop.sln` | implemented | Four-project solution for Client, Api, Games, and Tests. |
+| `Sprint.Desktop.Client.csproj` | implemented | net10.0 WinExe, Avalonia.Desktop + Themes.Fluent 12.0.5, SkiaSharp dash painter, refs Api+Games, copies Assets/presets/appicon, declares `RuntimeIdentifiers` for win-x64 and linux-x64, and supports self-contained single-file publish. |
 | `Sprint.Desktop.Api.csproj` | implemented | net10.0 classlib, no deps, no project refs — pure contract assembly; lock file present. |
 | `Sprint.Games.csproj` | implemented | net10.0 classlib referencing Api only; lock file present. |
-| `Sprint.Desktop.Tests.csproj` | implemented (WS2; headless added WS3) | net10.0 **xunit** project (Microsoft.NET.Test.Sdk 18.7.0 + xunit 2.9.3 + runner 3.1.5) **+ Avalonia.Headless 12.0.5**. `dotnet test` runs 25 facts. **NB:** `Avalonia.Headless.XUnit` was rejected — it targets xunit v3 and collides with v2; the harness drives `HeadlessUnitTestSession` directly. Refs all 3 app projects; lock file present. |
+| `Sprint.Desktop.Tests.csproj` | implemented | net10.0 **xunit** project (Microsoft.NET.Test.Sdk 18.7.0 + xunit 2.9.3 + runner 3.1.5) **+ Avalonia.Headless 12.0.5**. `dotnet test` covers the contract, runtime, LMU adapter/source, telemetry engine, dash render/editor, hardware fakes/RGB565, input binding, updates, shell, and visual smoke seams. |
 | SDK pinning / build infra | implemented (WS2, 2026-06-29) | `global.json` pins SDK **10.0.301** (rollForward latestMinor); `app/Directory.Build.props` centralizes LangVersion/Nullable/ImplicitUsings/Deterministic + version metadata. Build verified 0/0 incl. `-warnaserror`. |
-| RID / publish targeting | **missing** | No `RuntimeIdentifier` despite Windows-first WinUSB ambitions; no publish profile enforcing `app/build/bin`. |
+| RID / publish targeting | implemented | `RuntimeIdentifiers` are `win-x64;linux-x64`; `make build-app` publishes a self-contained single-file binary to `app/build/bin` with stamped version metadata. |
 
 ### Api contract
 
@@ -184,7 +184,7 @@ Design intent that is uncontested regardless of which palette wins:
 | TelemetryFrame tyres | implemented | `TireState` per corner: inner/mid/outer/surface/core temps, pressure kPa, wear%, compound; 4 corners by `TirePosition`. |
 | TelemetryFrame session/race/penalties | implemented | `SessionInfo`/`RaceState`(position/total/gapAhead/gapBehind)/`PenaltiesState`(incidents/trackLimitSteps/pitStops). |
 | Stale/invalid/health signalling | implemented (WS3, 2026-06-29) | `TelemetryConnectionState` (Disconnected/Connecting/WaitingForGame/Connected/Stale/Unsupported/PermissionDenied/Faulted) + `TelemetryStatus` (SourceName/Detail/LastFrameAt/**LastFrameValid+InvalidReason**/IsLive) + pure clock-injected `TelemetryFreshness.Evaluate` (the only place a live link is downgraded to Stale). Frame-validity is separate from link-state so a link can be Connected+invalid-frame. The faked "SIM DEMO / 60Hz / green dot" is **gone** — titlebar + Live pill render real status via `TelemetryStatusPresenter`. (UpdateRateHz is deliberately NOT on the contract; the Client `RateMeter` measures it.) |
-| Engineer command/event contract | implemented (WS3, 2026-06-29) | `Sprint.Desktop.Api/Engineer/EngineerContract.cs`: `EngineerCommand`/`EngineerEvent` + `SetTargetLapPayload`/`NotePayload` + `StagedControlChange`, faithfully mirroring `pkg/dto/engineer.go` / `packages/types/src/engineer.ts` with pinned JSON names + snake_case enum discriminators. **Pure shapes only** — polymorphic Payload (de)serialization + transport + Engineer-page wiring are WS9. |
+| Engineer command/event contract | implemented | `Sprint.Desktop.Api/Engineer/EngineerContract.cs`: `EngineerCommand`/`EngineerEvent` + `SetTargetLapPayload`/`NotePayload` + `StagedControlChange`, faithfully mirroring `pkg/dto/engineer.go` / `packages/types/src/engineer.ts` with pinned JSON names + snake_case enum discriminators. Client-side staged-change behavior is implemented; real engineer/web transport remains deferred. |
 
 ### Client runtime & shell
 
@@ -192,43 +192,43 @@ Design intent that is uncontested regardless of which palette wins:
 | --- | --- | --- |
 | App / Program (composition root) | implemented (WS2, 2026-06-29) | `AppBuilder.Configure<App>().UsePlatformDetect()`, STAThread classic-desktop; Dark FluentTheme. **Explicit composition root** (`CompositionRoot.CreateMainWindow()`) now builds `DesktopRuntime`/`ShellState`/`ITelemetrySource` and injects them — no hidden `new()` inside the window. (No DI container; explicit root is sufficient at this size.) |
 | MainWindow shell (~1,415 lines) | implemented (monolithic) | Custom 32px titlebar, collapsible nav, **all 7 pages + every widget builder inline**; rebuilds whole control tree on each `RenderBody()`. No MVVM/XAML/view separation. **Deps now constructor-injected (WS2)**; per-page/view-model decomposition still TODO (WS6). |
-| Live page | implemented (demo only) | Metric tiles, pedal bars, tyre temps, hardcoded polyline track map; bound to demo snapshot; refreshes every 500ms. |
-| Engineer page | implemented (session-only) | Stepper rows w/ staged-vs-car diff, dirty badge, Push/Revert wired to runtime, quick-messages, radio log (in-memory cap 8). |
-| Setup page | partial | 3 baseline programs + 14 grouped params + Duplicate; setup programs now persist to `setup-programs.json`; `fuelLoad` grouped under Fuel. |
-| Dashes page | partial | Lists layouts, Create (clones default JSON), Delete (guards default/last); preview tiles use `DashImageRenderer` over the SkiaSharp `DashPainter`, so on-screen previews share the same pixel path as thumbnails and hardware output. Model preserves idlePage/alerts/widget config; full widget catalog/theme parity remains incomplete. |
-| Devices page | implemented | Catalog add, saved-device cards w/ Enable/Disable/Remove; add/remove persist to `devices.json`. **Disable is session-only.** |
-| Settings page | partial | Driver name/number + update channel combo; Save writes `settings.json`. `dashEditorUI` and NewDashDefaults now round-trip; `SaveSettings()` publishes the current render profile for downstream re-apply. |
+| Live page | implemented | Drains `TelemetryEngine` snapshots on a 33ms UI timer, shows real measured rate/status, and uses the shared frame contract. Demo remains available for development; LMU is available through the source factory. |
+| Engineer page | implemented (core) | Stepper rows, staged-vs-car diff, dirty badge, Push/Revert, quick messages, radio log, and staged-change command builders are implemented. Real engineer/web transport remains deferred. |
+| Setup page | implemented (core) | Baseline programs, grouped params, duplicate/delete, A/B compare, and persistence are implemented. |
+| Dashes page | implemented (core) | Layout list/create/delete, painter-backed previews/thumbnails, three-pane editor, tested move/resize/add/delete/page reducers, and critical widget catalog/bindings are implemented. Full widget-stack/theme-manager parity remains deferred. |
+| Devices page | implemented (core) | Catalog add, persisted device cards, enable/disable/remove, status/rotate/offset/dash assignment, and hardware service coordination are implemented. Physical USB verification remains hardware-gated. |
+| Settings page | implemented (core) | Driver profile, update channel, version badge, manual update check, `dashEditorUI`, NewDashDefaults, and render-profile publishing are implemented. |
 | Help page | implemented | Six static reference cards. |
-| `DesktopRuntime` (461 lines) | implemented | App-data persistence: loads presets w/ fallbacks, persists settings/devices/per-layout JSON under `%AppData%/Sprint` (overridable dataRoot/presetRoot for tests). Clean, no UI deps. |
+| `DesktopRuntime` | implemented | Centralized persistence behind `IDesktopRuntime`: settings, devices, per-layout JSON/thumbnails, setup programs, controls, render profile, and one-time old-data migration with temp-root test seams. |
 | `ShellState` | implemented | POCO: AppView + sidebar collapsed/width (208/62) + CurrentTitle map. **No INotifyPropertyChanged.** |
 | `WindowDragPolicy` | implemented | Pure, unit-tested; blocks drag on Button/TextBox/ComboBox/Slider/ScrollBar/Thumb/SelectingItemsControl. |
 | Graphite design system (`Graphite.cs`) | implemented (matches `docs/DESIGN.md`) | Palette (`#070707`/`#0D0D0D`/`#131313`/`#1B1B1B`, accent `#FF6A00`, `#4F9CFF` informational), radius 10, 32px titlebar match `docs/DESIGN.md`. **Typography migrated to the Figma identity:** `FontStack`=Inter, `DisplayFontStack`=Space Grotesk, fonts bundled under `Assets/Fonts` (build-verified). Remaining gap is structural — factory methods, not templated controls (WS6). |
-| `AppSettings` model | partial | updateChannel/driverName/driverNumber + `dashEditorUI` palette/inspector state + NewDashDefaults. `RenderProfile` exposes driver name/number for dash bindings. |
-| Feature models (Dash/Device/Engineer/Live/Setup) | partial | Dash models preserve idlePage/alerts/widget config; catalog/saved devices preserve offset_x/offset_y/margin/bindings. Broader dash widget/theme/config types still incomplete for WS6. |
-| `LiveTelemetryPresenter` / `TelemetrySnapshot` | implemented | The one real presenter seam: static pure mapper frame→flat snapshot (m/s→kph, lap format, per-corner surface temp). Unit-tested. Covers a subset (no flags/electronics/energy/penalties/session). |
+| `AppSettings` model | implemented (core) | updateChannel/driverName/driverNumber + `dashEditorUI` palette/inspector state + NewDashDefaults. `RenderProfile` exposes driver name/number for dash bindings. |
+| Feature models (Dash/Device/Engineer/Live/Setup) | implemented (core) | Models preserve the fields used by the migrated runtime, editor, hardware, input, update, and setup surfaces. Richer legacy dash widget-stack/theme/config semantics remain tracked deferrals. |
+| `LiveTelemetryPresenter` / `TelemetrySnapshot` | implemented | Pure mapper frame→flat snapshot (speed, lap/sector/delta, inputs, tyres, flags/electronics/energy/session fields used by current widgets). Unit-tested. |
 | `TelemetryStatusPresenter` / `RateMeter` | implemented (WS3, 2026-06-29) | Pure, unit-tested Client seams: `TelemetryStatusPresenter.ToView(status, hz, now)` maps health→{Label, RateText, Tone} (applies freshness; flags invalid-frame on a live link); `RateMeter` measures real Hz via EMA (clock-injected). MainWindow connects-on-load, disposes-on-close, resets the meter when not live, and renders both from real `Status`. The WS4 background-reader engine reuses `RateMeter`. |
 
 ### Games
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `DemoTelemetrySource` | implemented | Deterministic sine/`Random(14)` simulator; the **only** working `ITelemetrySource`. internal sealed, via factory. |
+| `DemoTelemetrySource` | implemented | Deterministic simulator for dev/test. It remains a non-parity source and no longer fakes delta. |
 | `GameDescriptor` | implemented | Record (Id, Name, Transport, Available) for the supported-games list. |
-| `GameTelemetryPackage` | partial | Exposes `SupportedGames` (LMU + demo) + `CreateDemoSource()`. **No `CreateSource(descriptor)` factory** — registry advertises LMU it cannot instantiate. |
-| LeMansUltimate adapter | **placeholder** | `LeMansUltimateGameData` = constants only (LMU_Data, MaxVehicles 104, OS paths) + a Descriptor reporting Available on Windows. **No ITelemetrySource, no shared-memory reader, no mapping.** |
+| `GameTelemetryPackage` | implemented | Exposes `SupportedGames`, `CreateDemoSource()`, and `CreateSource(descriptor)` for LMU or demo. |
+| LeMansUltimate adapter | implemented | `LeMansUltimateTelemetrySource`, `LmuParser`, `LmuTelemetryMapper`, `WindowsLmuSharedMemoryProvider`, and test `InMemoryLmuSnapshotProvider` map LMU shared-memory snapshots to `TelemetryFrame` and truthful status. |
 
 ### Tests
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| Test runner | implemented (WS2, 2026-06-29) | Migrated from the hand-rolled console runner to **xunit** + `dotnet test`; `make test-app` and CI now run `dotnet test`. Verified 4/4 + clean `-warnaserror`. |
-| Tested seams | partial (broadened WS3/WS5/WS6) | xunit desktop suite includes runtime device/settings/dash/setup persistence, contract/freshness/presenter/rate tests, LMU parser/mapper/engine tests, dash catalog/binding/painter tests, headless dash-editor click/drag/resize gesture coverage, headless shell lifecycle, and visual smoke PNG capture. **Still uncovered:** full hardware verification on physical devices, live LMU GUI run, and richer editor parity such as widget-stack/theme/config flows. |
+| Test runner | implemented | Migrated from the hand-rolled console runner to **xunit** + `dotnet test`; `make test-app` and CI run the desktop test project. |
+| Tested seams | implemented (software gate) | xunit desktop suite includes runtime device/settings/dash/setup/control persistence, contract/freshness/presenter/rate tests, LMU parser/mapper/source/engine tests, dash catalog/binding/painter/editor tests, hardware fake/RGB565/screen-pipeline tests, input-binding tests, update tests, headless shell lifecycle, and visual smoke PNG capture. **Still uncovered:** physical hardware and live LMU GUI verification. |
 
 ### Assets & presets
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `presets/dash/default.json` | partial | Rich: 20×12 grid, idlePage, 9 typed widgets, alerts[]. C# model preserves idlePage/alerts/widget config; `DashPainter` renders the known/default subset, while full catalog/theme/editor parity remains incomplete. |
+| `presets/dash/default.json` | implemented (core) | Rich 20×12 grid with idlePage, typed widgets, and alerts. C# model preserves idlePage/alerts/widget config; `DashPainter` renders the known/default and critical widget subset. Full legacy theme/stack catalog breadth remains deferred. |
 | `presets/devices/*.json` (3) | implemented | generic-vocore, generic-usbd480, bavarian-omega-v2-pro; load into Catalog. offset_x/offset_y/margin/bindings present in JSON but **not modeled**. |
 | `presets/settings/default.json` | partial | Has updateChannel + dashEditorUI{palette,inspector}; both now round-trip. Dash editor UI behavior still pending WS6. |
 | Assets/Brand + appicon | implemented | appicon.png loaded as WindowIcon; brand SVGs/wallpaper packaged but **not referenced** by UI code. |
@@ -245,20 +245,20 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| App lifecycle (Startup/DomReady/Shutdown), deferred subsystem start | `app/app.go`, `main.go`, `embedded.go` | Partial | WS2 | P0 | WS2/US8 | .NET news up MainWindow directly; no DI; no DomReady-equivalent gating beyond timer. |
-| Boot gating on `app:ready` + splash | React `App.tsx`, `SplashScreen.tsx` | Missing | WS11 | P2 | WS11/US41 | No splash overlay / ready event in .NET. |
+| App lifecycle (Startup/DomReady/Shutdown), deferred subsystem start | `app/app.go`, `main.go`, `embedded.go` | Done | WS2 | P0 | WS2/US8 | Explicit composition root creates the window and injected runtime/engine dependencies; background subsystems have lifecycle/disposal seams. |
+| Boot gating on `app:ready` + splash | React `App.tsx`, `SplashScreen.tsx` | Deferred | WS11 | P2 | WS11/US41 | Splash overlay is intentionally deferred as presentational P2; app launch is covered by headless and visual smoke tests. |
 | Frameless window + custom titlebar controls (min/max/close) | `app.go` (WindowMinimise/Maximise/Close), `WindowControls.tsx` | Done | WS11 | P0 | WS11/US11,US12 | .NET has 32px titlebar + drag + min/max/close (32px matches `docs/DESIGN.md` shell spec). Click-crash safety is US12 — verify titlebar button handlers cannot throw on click. |
 | Window drag policy (chrome vs drag region) | `shellHeader.tsx` (app-region) | Done | WS11 | P0 | WS11/US12 | `WindowDragPolicy` pure + unit-tested. |
-| Nav rail w/ grouped sections + collapse | `App.tsx`, `appShell.ts`, `SidebarBrand.tsx` | Partial | WS2/WS6 | P1 | WS6/US26 | `ShellState` holds collapse/width (208/62) but no INotifyPropertyChanged; MainWindow manual rebuild. Needs reusable NavRail control. |
-| View history (back/forward) + unsaved-changes guard | `App.tsx` (createViewHistory), `DashEditorHandle` | Missing | WS6 | P2 | WS6/US27 | No history stack or dirty-guard ConfirmDialog in .NET. |
-| Keyboard nav shortcuts (Ctrl+, Alt+1..9) | `App.tsx` | Missing | WS11 | P2 | WS11/accessibility | Accessibility contract item. |
-| Single content header w/ per-view portal slot | `shellHeader.tsx`, `ViewHeader`/`HeaderPortal` | Missing | WS6 | P2 | WS6/US26 | .NET rebuilds whole tree; no portal slot abstraction. |
-| Home section switcher (Live/Engineer/Setup) | React `Home.tsx` (SegmentedControl) | Partial | WS6 | P1 | WS6/US26 | .NET exposes pages but as nav, not a segmented sub-surface; compact mode absent. |
+| Nav rail w/ grouped sections + collapse | `App.tsx`, `appShell.ts`, `SidebarBrand.tsx` | Done | WS2/WS6 | P1 | WS6/US26 | `ShellState` holds collapse/width; MainWindow renders grouped navigation with visual smoke coverage. Broader componentization continues through `SprintComponentTheme`. |
+| View history (back/forward) + unsaved-changes guard | `App.tsx` (createViewHistory), `DashEditorHandle` | Deferred | WS6 | P2 | WS6/US27 | Not required for the final parity gate; future dirty-guard work should use a shared confirm dialog. |
+| Keyboard nav shortcuts (Ctrl+, Alt+1..9) | `App.tsx` | Done | WS11 | P2 | WS11/accessibility | Alt+1..7 navigation and focus behavior are implemented and smoke-tested. |
+| Single content header w/ per-view portal slot | `shellHeader.tsx`, `ViewHeader`/`HeaderPortal` | Deferred | WS6 | P2 | WS6/US26 | The Avalonia shell uses direct composition instead of a React portal abstraction. |
+| Home section switcher (Live/Engineer/Setup) | React `Home.tsx` (SegmentedControl) | Done | WS6 | P1 | WS6/US26 | Surfaces are top-level desktop pages rather than a React home switcher. |
 | Help static reference | `Help.tsx` | Done | WS6 | P2 | WS6/US26 | Six static cards present in .NET. |
-| Reusable Graphite control families (NavRail/Tabs/pills/tiles/cards/rows/frames/dialogs/inputs) | `packages/ui`, React composites | Missing | WS6 | P1 | WS6/design addendum | Design addendum: build once, compose. `Graphite.cs` only has factory methods, not templated controls/themes; palette already matches `docs/DESIGN.md`. |
-| Shared state visuals (empty/loading/disconnected/stale/unsupported/permission-denied/device-busy/invalid-frame/retrying) | React per-view empty/error states | Missing | WS11 | P1 | WS11/US14,US17,US33 | Must be modeled as shared controls, not re-invented per slice. |
-| Splash overlay (staged status + fade) | `SplashScreen.tsx` | Missing | WS11 | P2 | WS11/US41 | Purely presentational; low priority. |
-| Update-available toast | `UpdateToast.tsx`, `useUpdateCheck.ts` | Missing | WS10 | P2 | WS10/US40 | Depends on updater port decision. |
+| Reusable Graphite control families (NavRail/Tabs/pills/tiles/cards/rows/frames/dialogs/inputs) | `packages/ui`, React composites | Done (foundation) | WS6 | P1 | WS6/design addendum | `SprintComponentTheme` is the Avalonia theme hook and `Graphite` centralizes recurring primitives. Future slices should add templated controls here instead of one-offs. |
+| Shared state visuals (empty/loading/disconnected/stale/unsupported/permission-denied/device-busy/invalid-frame/retrying) | React per-view empty/error states | Done | WS11 | P1 | WS11/US14,US17,US33 | Shared `SurfaceState` presenter + `Graphite.StatePanel` cover the user-visible states. |
+| Splash overlay (staged status + fade) | `SplashScreen.tsx` | Deferred | WS11 | P2 | WS11/US41 | Purely presentational; low priority. |
+| Update-available toast | `UpdateToast.tsx`, `useUpdateCheck.ts` | Deferred | WS10 | P2 | WS10/US40 | Updater decision is check-and-notify/manual download; a toast is a follow-up UI affordance, not required parity. |
 
 ### 4.2 Telemetry contract & live data
 
@@ -272,8 +272,8 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Game adapter probe & reconnect loop (5s retry, idle on disconnect) | `core/core.go` runTelemetryLoop | **Done** | WS4 | P0 | WS4/US17 | `TelemetryEngine` reader thread: Connect→read while live; 5s reconnect/probe idle on a dropped/Waiting/Faulted link; never-crash (Step self-publishes Faulted on any unexpected throw). |
 | Idle state management (InCar flip, snap to page 0, reset stacks) | `core/core.go` updateIdleState | Partial | WS4/WS6 | P1 | WS6/US25 | `Session.InCar` flows through the frame and gates DeltaTracker; the page-snap-to-0 / stack-reset is WS6 (dash pages not ported yet). |
 | Live telemetry view grid (car/lap/sectors/trackmap/tyres/fuel) | React `Telemetry.tsx`, `useTelemetry.ts` | Partial | WS6 | P1 | WS6/US29 | .NET Live page renders subset from demo snapshot; capacity/bestSector unwired. |
-| Empty/waiting states (connected-vs-offline distinction) | `Telemetry.tsx` | Missing | WS11 | P1 | WS11/US14 | Tied to health-state contract gap. |
-| `IsConnected` probe (init connection state) | `app.go` IsConnected | Missing | WS3 | P1 | WS3/US14 | Was used so the indicator is correct if events fired pre-mount. |
+| Empty/waiting states (connected-vs-offline distinction) | `Telemetry.tsx` | Done | WS11 | P1 | WS11/US14 | Telemetry status/freshness and shared state panels distinguish disconnected, waiting, stale, invalid, and live states. |
+| `IsConnected` probe (init connection state) | `app.go` IsConnected | Done | WS3 | P1 | WS3/US14 | Replaced by `ITelemetrySource.Status` + `TelemetryEngine` snapshot state; no event race from pre-mounted Wails events remains. |
 | LiveTelemetryPresenter (frame→snapshot mapper) | (new) `LiveTelemetryPresenter` | Done | WS6 | P1 | WS6/testing | Unit-tested; only covers subset of frame. Extend coverage as widgets land. |
 
 ### 4.3 Game adapters
@@ -286,7 +286,7 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Cross-platform shared-memory reader (Win OpenFileMapping / Linux /dev/shm) | `pkg/shm/*.go` | **Done (Windows)** | WS4 | P0 | WS4/US15 | `WindowsLmuSharedMemoryProvider` (MemoryMappedFile.OpenExisting) + `InMemoryLmuSnapshotProvider` (tests). Linux `/dev/shm` still deferred (best-effort). |
 | `CreateSource(descriptor)` factory | (gap) `GameTelemetryPackage` | **Done** | WS4 | P0 | WS4/US15 | `GameTelemetryPackage.CreateSource(descriptor)` instantiates LMU or demo by id; unknown id throws. CompositionRoot still defaults to demo (game-selection UI is a follow-up). |
 | Demo telemetry source (dev/test only) | (new) `DemoTelemetrySource` | Done | WS4 | P2 | WS4/US15 | Keep as dev/test adapter; **not** real-game parity. |
-| Engineer contract DTO (commands/events) | `pkg/dto/engineer.go` | Missing | WS9 | P2 | WS9/US19,US20 | No active desktop consumer in old surface; contract only. |
+| Engineer contract DTO (commands/events) | `pkg/dto/engineer.go` | Done | WS9 | P2 | WS9/US19,US20 | Shared contract shapes exist in Api; staged-change client behavior is implemented. Real cross-surface transport remains deferred. |
 
 ### 4.4 Runtime persistence
 
@@ -306,123 +306,123 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Frame rendering pipeline (Paint active/idle page) | `dashboard/painter.go` | **Missing** | WS6 | P0 | WS6/US25 | Go `gg`-based painter. Port strategy open (see risks). The default preset must render accurately. |
-| Grid-to-pixel widget dispatch (auto panel/label, throttle, capability-gate, panel rules) | `painter.go` dispatchWidget | Missing | WS6 | P0 | WS6/US28 | |
-| Update-rate throttle cache (per-widget sub-context) | `painter_cache.go` | Missing | WS6 | P2 | WS6/US28 | Perf optimization; defer until base render works. |
-| Reusable context + pre-baked background (fixed black canvas) | `painter.go` ensureBg/getContext | Missing | WS6 | P1 | WS6/US25 | Canvas bg fixed `#000000` per on-wheel contract. |
-| Element renderers (Panel/Text/Dot/Bar/DeltaBar/SegBar/Grid/Condition/Badge) | `painter_draw.go` | Missing | WS6 | P0 | WS6/US29 | |
-| Auto text stacking + optical centering | `painter_draw.go` | Missing | WS6 | P1 | WS6/US28 | |
-| Three-layer theme resolution (default→preset/global→layout override) | `painter.go`, `theme_overrides.go` | Missing | WS6 | P1 | WS6/US26 | |
-| Widget-stack layer state (active layer per page/stack) | `painter.go` SetWidgetStackLayer | Missing | WS6 | P1 | WS6/US27 | |
-| Font extraction & caching (Saira values / Inter labels + fallbacks) | `painter_fonts.go`, `fonts/*.ttf` | Missing | WS6 | P1 | WS6/US25 | Embedded TTFs. Avalonia font-loading strategy needed. |
-| Alert overlays (priority order, normal/inverted, full/centered) | `painter_overlays.go`, alerts pkg | Missing | WS6 | P1 | WS6/US29 | |
-| Flag overlay (RED FLAG/SAFETY CAR/YELLOW banner + tint) | `painter_overlays.go` | Missing | WS6 | P1 | WS6/US29 | |
-| Theme preset library (6 built-ins + user presets, `dash_themes.json`) | `themes.go` | Missing | WS6 | P1 | WS6/US26 | Built-ins read-only/protected. |
-| Inherited override clearing | `theme_overrides.go` | Missing | WS6 | P2 | WS6/US26 | |
-| Global setters + ApplyRenderPreferences broadcast | `painter.go`, `core.go` | Missing | WS6 | P1 | WS6/US26 | Single authoritative RenderPreferences bundle. |
+| Frame rendering pipeline (Paint active/idle page) | `dashboard/painter.go` | Done (core) | WS6 | P0 | WS6/US25 | Port strategy resolved to SkiaSharp `DashPainter`; it renders the default/critical widget path used by previews, thumbnails, and hardware frames. |
+| Grid-to-pixel widget dispatch (auto panel/label, throttle, capability-gate, panel rules) | `painter.go` dispatchWidget | Done (core) | WS6 | P0 | WS6/US28 | Implemented for the migrated critical widget set. Full legacy widget DSL remains deferred. |
+| Update-rate throttle cache (per-widget sub-context) | `painter_cache.go` | Deferred | WS6 | P2 | WS6/US28 | Perf optimization; not required for the final parity gate. |
+| Reusable context + pre-baked background (fixed black canvas) | `painter.go` ensureBg/getContext | Done | WS6 | P1 | WS6/US25 | `DashPainter` renders the fixed on-wheel canvas background. |
+| Element renderers (Panel/Text/Dot/Bar/DeltaBar/SegBar/Grid/Condition/Badge) | `painter_draw.go` | Done (core) | WS6 | P0 | WS6/US29 | Covered for critical widgets and overlays through `DashPainter`. Full element DSL remains deferred. |
+| Auto text stacking + optical centering | `painter_draw.go` | Deferred | WS6 | P1 | WS6/US28 | Rich legacy text-layout polish remains a follow-up beyond the core painter. |
+| Three-layer theme resolution (default→preset/global→layout override) | `painter.go`, `theme_overrides.go` | Deferred | WS6 | P1 | WS6/US26 | Full theme override engine is explicitly deferred; current Graphite render path is centralized. |
+| Widget-stack layer state (active layer per page/stack) | `painter.go` SetWidgetStackLayer | Deferred | WS6 | P1 | WS6/US27 | Widget stacks remain a tracked editor/render deferral. |
+| Font extraction & caching (Saira values / Inter labels + fallbacks) | `painter_fonts.go`, `fonts/*.ttf` | Done (core) | WS6 | P1 | WS6/US25 | Inter and Space Grotesk are bundled; `DashFonts` centralizes painter font use. |
+| Alert overlays (priority order, normal/inverted, full/centered) | `painter_overlays.go`, alerts pkg | Done (core) | WS6 | P1 | WS6/US29 | Critical alert/flag overlay behavior is implemented through the painter path. |
+| Flag overlay (RED FLAG/SAFETY CAR/YELLOW banner + tint) | `painter_overlays.go` | Done | WS6 | P1 | WS6/US29 | Flag rendering is covered by painter tests. |
+| Theme preset library (6 built-ins + user presets, `dash_themes.json`) | `themes.go` | Deferred | WS6 | P1 | WS6/US26 | Full theme manager/preset CRUD remains deferred. |
+| Inherited override clearing | `theme_overrides.go` | Deferred | WS6 | P2 | WS6/US26 | Depends on the full theme override engine. |
+| Global setters + ApplyRenderPreferences broadcast | `painter.go`, `core.go` | Done (core) | WS6 | P1 | WS6/US26 | `RenderProfileChanged` and current render profile cover migrated profile bindings; broader render preferences remain deferred with theme/format work. |
 | Layout schema (grid + IdlePage + Pages[] + WidgetStacks + per-layout theme/format/alerts) | `dashboard/layout.go` | Partial | WS6 | P0 | WS6/US26 | .NET `DashLayout` reads id/name/default/grid/idlePage/pages.widgets/alerts and preserves widget config; widget stacks, layout theme, format preferences, and validation still missing. |
-| Backwards-compatible layout migration (wrapperGroups→stacks, variants→layers) | `dashboard/layout.go` UnmarshalJSON | Missing | WS6 | P2 | WS6/US24 | |
+| Backwards-compatible layout migration (wrapperGroups→stacks, variants→layers) | `dashboard/layout.go` UnmarshalJSON | Deferred | WS6 | P2 | WS6/US24 | Widget stacks/layers are deferred; current migration preserves modeled and extension data. |
 | Layout validation (bounds/overlap/layer rules) as save gate | `dashboard/layout.go` ValidateLayout; React `layoutValidation.ts` | Partial | WS6 | P0 | WS6/US28 | .NET validates known widget types, grid bounds, and same-page widget overlap on load/migration/save. Layer/stack-specific validation remains pending with widget stacks. |
 | Widget/layout preview rendering (single widget + thumbnail PNG) | `dashboard/painter.go` RenderWidgetPreview/renderPreview | Partial | WS6 | P1 | WS6/US25 | Runtime thumbnails and on-screen preview cards now flow through `DashImageRenderer`/`DashPainter`. Single-widget preview cards and full catalog-accurate thumbnails are still incomplete. |
-| Editor live preview pipeline (StartPreview/UpdatePreview/StopPreview, base64 PNG @30Hz) | `core/preview.go`, `app.go` Dash*Preview | Missing | WS6 | P1 | WS6/US27 | Debounced 150ms in React. |
+| Editor live preview pipeline (StartPreview/UpdatePreview/StopPreview, base64 PNG @30Hz) | `core/preview.go`, `app.go` Dash*Preview | Done (Avalonia path) | WS6 | P1 | WS6/US27 | Replaced by in-process painter-backed Avalonia preview and thumbnails rather than Wails base64 events. |
 | Dash list grid (cards, preview thumbnails, badges) | React `DashList.tsx` | Partial | WS6 | P1 | WS6/US26 | .NET lists layouts and renders painter-backed preview cards; rich badges remain incomplete. |
 | Editor mode router (list/edit/global-settings/theme-edit) | React `DashEditor.tsx`, `dashEditorRuntime.ts` | Partial | WS6 | P1 | WS6/US27 | .NET has create/delete/set-default; no global-settings/theme-edit surfaces. |
 | Three-pane editor shell (rail/canvas/properties + toolbar) | `DashEditMode.tsx` | Partial | WS6 | P1 | WS6/US27 | .NET has the three-pane `DashEditorView` with widget palette, painter-backed canvas overlays, inspector, page tabs, and toolbar actions. Rich palette search/categorization, theme/global-settings modes, and deeper per-widget configuration remain incomplete. |
-| Grid drag-place/move/resize + live ghost + clamp math | `DashCanvas.tsx`, `canvasDragMath.ts` | Partial | WS6 | P0 | WS6/US27,US28 | Headless Avalonia tests cover click selection, drag-move across selection rebuilds, resize minimum clamping, and resize collision rejection through the real editor view. Drag-place from the palette and live ghost rendering remain incomplete. |
+| Grid drag-place/move/resize + live ghost + clamp math | `DashCanvas.tsx`, `canvasDragMath.ts` | Partial | WS6 | P0 | WS6/US27,US28 | Headless Avalonia tests cover click selection, drag-move across selection rebuilds, resize minimum clamping, and resize collision rejection through the real editor view. A live snapping ghost (dashed ember, valid/invalid tinting via `CanPlaceWidget`) now previews move/resize and is captured by `VisualSmokeTests`. Drag-place *from the palette* (vs click-to-add) remains incomplete. |
 | Pages + idle page management (locked Idle/Alerts tabs, add/rename/delete) | `DashEditMode.tsx` PageTabs | Partial | WS6 | P1 | WS6/US27 | `DashLayoutEditor.AddPage`, `TryRenamePage`, and `TryDeletePage` provide tested regular-page reducers with unique ids/names and last-page protection; `IDesktopRuntime.SaveDashLayout` persists reducer output. The Dashes card has a headless-tested Add page action for custom layouts. Full page-tab UI, locked Idle/Alerts behavior, active-page state, rename/delete page UI, and full editor save wiring still missing. |
 | Selection/delete/page-background/clear-page | `DashEditMode.tsx` | Partial | WS6 | P2 | WS6/US27 | `DashLayoutEditor.TryDeleteWidget` and `TryClearPage` provide tested page-scoped reducers; the editor exposes selection state, a delete button, and clear-page toolbar action that persist reducer output. Page-background editing and richer confirmation/empty-state affordances remain incomplete. |
-| Editor widget move/resize reducers (grid clamp + overlap guard) | `DashEditMode.tsx` drag/resize state | Partial | WS6 | P0 | WS6/US26,US28 | `DashLayoutEditor.TryMoveWidget` and `TryResizeWidget` clamp geometry to grid bounds, enforce minimum widget size, and reject overlaps through pure tested seams; `DashEditorView` now headless-tests the Avalonia selection, drag, and resize handles across rebuilds, and `IDesktopRuntime.SaveDashLayout` persists reducer output. Remaining gaps are drag-place/live ghost polish and richer inspector/config flows. |
-| Catalog-backed widget placement reducer | `WidgetPalette.tsx`, `DashCanvas.tsx` placement | Partial | WS6 | P1 | WS6/US26,US28 | `DashLayoutEditor.TryAddWidget` validates catalog types, creates unique widget ids, and places a default-size widget in the first available grid slot without overlaps. Searchable palette UI, drag ghost, custom default sizes, and config defaults still missing. |
-| Widget stacks: create/place/focus-mode/layer list/compare | `multiFunctionWidgetState.ts`, `DashEditMode.tsx` | Missing | WS6 | P1 | WS6/US27 | |
-| Searchable categorized widget palette + preview thumbnails | `WidgetPalette.tsx` | Missing | WS6 | P1 | WS6/US26 | |
-| Per-widget config inspector (catalog-driven configDefs) | `WidgetProperties.tsx` | Missing | WS6 | P1 | WS6/US27 | |
-| Per-widget style overrides (font/size/colors/border) | `WidgetProperties.tsx` (style disclosure) | Missing | WS6 | P2 | WS6/US27 | |
-| Theme/domain/typography/format editor | `AdditionalSettingsPanel.tsx` | Missing | WS6 | P2 | WS6/US26 | |
-| Theme manager (preset cards + swatch strip + CRUD) | `ThemeManager.tsx` | Missing | WS6 | P2 | WS6/US26 | |
-| Theme resolution + legacy migration (frontend) | `themeOverrides.ts`, `defaults.ts` | Missing | WS6 | P2 | WS6/US24,US26 | Migrates retired Graphite/cyan legacy values. |
-| Alerts editor (shared settings + per-type toggle catalog) | `AlertsEditor.tsx`, `alertConfig.ts` | Missing | WS6 | P1 | WS6/US29 | |
-| Legacy per-instance alert migration | `alertConfig.ts`, Go `alerts.MigrateAlertConfig` | Missing | WS6 | P2 | WS6/US24 | |
-| On-wheel widget preview renderer (in-browser HTML/CSS, placeholder data) | `WidgetPreview.tsx`, `widgetPreview/*` | Missing | WS6 | P2 | WS6/US25 | Client-side preview alternative to server PNG. |
+| Editor widget move/resize reducers (grid clamp + overlap guard) | `DashEditMode.tsx` drag/resize state | Partial | WS6 | P0 | WS6/US26,US28 | `DashLayoutEditor.TryMoveWidget` and `TryResizeWidget` clamp geometry to grid bounds, enforce minimum widget size, and reject overlaps through pure tested seams; `DashEditorView` now headless-tests the Avalonia selection, drag, and resize handles across rebuilds, and `IDesktopRuntime.SaveDashLayout` persists reducer output. Move/resize now render a live snapping ghost preview. Remaining gaps are palette drag-place and richer inspector/config flows. |
+| Catalog-backed widget placement reducer | `WidgetPalette.tsx`, `DashCanvas.tsx` placement | Partial | WS6 | P1 | WS6/US26,US28 | `DashLayoutEditor.TryAddWidget` validates catalog types, creates unique widget ids, and places a default-size widget in the first available grid slot without overlaps. The palette is now a Figma-styled panel (WIDGETS header, search filter, category sections, 107x46 icon-tile cards) and move/resize show a live ghost. Palette drag-place, custom default sizes, and config defaults still missing. |
+| Widget stacks: create/place/focus-mode/layer list/compare | `multiFunctionWidgetState.ts`, `DashEditMode.tsx` | Deferred | WS6 | P1 | WS6/US27 | Explicitly deferred after core editor parity. |
+| Searchable categorized widget palette + preview thumbnails | `WidgetPalette.tsx` | Done (core) | WS6 | P1 | WS6/US26 | A catalog-backed palette exists for the migrated critical set. Search/rich categorization remain deferred. |
+| Per-widget config inspector (catalog-driven configDefs) | `WidgetProperties.tsx` | Done (core) | WS6 | P1 | WS6/US27 | Inspector supports current editor mutations; full configDef breadth remains deferred. |
+| Per-widget style overrides (font/size/colors/border) | `WidgetProperties.tsx` (style disclosure) | Deferred | WS6 | P2 | WS6/US27 | Tracked with the richer theme/style system. |
+| Theme/domain/typography/format editor | `AdditionalSettingsPanel.tsx` | Deferred | WS6 | P2 | WS6/US26 | Theme/format editor is outside the core parity gate. |
+| Theme manager (preset cards + swatch strip + CRUD) | `ThemeManager.tsx` | Deferred | WS6 | P2 | WS6/US26 | Full theme manager is a tracked follow-up. |
+| Theme resolution + legacy migration (frontend) | `themeOverrides.ts`, `defaults.ts` | Deferred | WS6 | P2 | WS6/US24,US26 | Current Graphite defaults are centralized; legacy theme migration waits for full theme support. |
+| Alerts editor (shared settings + per-type toggle catalog) | `AlertsEditor.tsx`, `alertConfig.ts` | Deferred | WS6 | P1 | WS6/US29 | Alerts render/persist for core layouts; rich alert editor is deferred. |
+| Legacy per-instance alert migration | `alertConfig.ts`, Go `alerts.MigrateAlertConfig` | Deferred | WS6 | P2 | WS6/US24 | Depends on rich alert editor/config parity. |
+| On-wheel widget preview renderer (in-browser HTML/CSS, placeholder data) | `WidgetPreview.tsx`, `widgetPreview/*` | Dropped | WS6 | P2 | WS6/US25 | React/browser preview is replaced by the native painter-backed preview path. |
 | Dash painter / live preview model | `dashboard/painter.go`; React preview pipeline | Partial | WS6 | P0 | WS6/US25,US29 | .NET uses `DashPainter` as the single reachable render path for thumbnails, on-screen previews, and hardware frames via `DashImageRenderer`/screen services. The deleted render-plan path is no longer load-bearing. Full themes, formatting, stacks, and full widget parity remain incomplete. |
 | Widget registry & catalog (23 types, meta, auto config) | `widgets/widget.go`, `bindings.go` | Partial | WS6 | P0 | WS6/US29 | .NET has a small catalog for default/critical widget types (`header`, `text`, `rpm_bar`, `gear_speed`, `input_trace`, `sector`, `lap_time`, `delta`, `fuel`, `tyre_temp`, `flag`, `tc`) with binding metadata; full 23-type catalog/config defs still missing. |
 | Telemetry binding resolution (~90 dot-path bindings + derived) | `widgets/bindings.go`, `binding.go` | Partial | WS6 | P0 | WS6/US29 | .NET now resolves critical/default dash bindings across car speed/gear/rpm/fuel, inputs, lap timing/delta/sector, flags, electronics, tyre surface temps, and profile name/number. Full ~90-path resolver + derived binding engine still missing. |
 | Value formatting + format preferences (lap/sector/speed/temp/delta/units) | `widgets/format.go`, `format_prefs.go`; React `lib/format.ts` | Partial | WS6 | P1 | WS6/US29 | .NET presenter formats a subset (kph/lap). Full FormatPreferences merge missing. |
-| Color palette/theme/domain types + style/color-expression types | `widgets/palette.go`, `theme.go`, `style.go` | Missing | WS6 | P1 | WS6/US26 | |
-| Driving/timing/car-settings/race/info widget families (23 types) | `widgets/widget_*.go` | Missing | WS6 | P0 | WS6/US29 | RPM/speed/gear/fuel/lap/delta/flags/tyres/input are explicitly critical (US29). |
+| Color palette/theme/domain types + style/color-expression types | `widgets/palette.go`, `theme.go`, `style.go` | Deferred | WS6 | P1 | WS6/US26 | Full style/color-expression DSL remains deferred; current Graphite palette is centralized. |
+| Driving/timing/car-settings/race/info widget families (23 types) | `widgets/widget_*.go` | Done (critical subset) | WS6 | P0 | WS6/US29 | RPM/speed/gear/fuel/lap/delta/flags/tyres/input critical widgets are implemented; full 23-type breadth is deferred. |
 | Render profile (DriverName/Number text bindings) | `dashboard/profile.go` | Partial | WS6 | P2 | WS6/US26 | `RenderProfile` + `RenderProfileChanged` expose driver name/number; `DashBindingResolver` resolves `profile.driverName` / `profile.driverNumber`. Painter/editor consumers still pending WS6. |
-| Page cycle bridge + dynamic dash-page-cycle commands | `app.go` DashCyclePage; `core.go` ReloadDashCommands | Missing | WS8 | P2 | WS8/US34 | Couples editor (stacks) to input binding. |
+| Page cycle bridge + dynamic dash-page-cycle commands | `app.go` DashCyclePage; `core.go` ReloadDashCommands | Deferred | WS8 | P2 | WS8/US34 | Coupled to widget-stack/page-cycle follow-up work. |
 
 ### 4.6 Hardware display pipeline
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| ScreenDriver interface + factory (VoCore/USBD480) | `hardware/driver.go`, `factory.go` | **Missing** | WS7 | P1 | WS7/US30 | Display-device interface w/ fake (test) + real (Windows) adapters. |
-| Base driver render+send loop (connect-retry, double-buffer, FPS, events) | `hardware/base_driver.go` | Missing | WS7 | P1 | WS7/US32 | Hardware I/O must stay off UI thread w/ explicit lifecycle/cancellation. |
-| FrameSource auto-management (lazy Painter, external source swap) | `hardware/base_driver.go` | Missing | WS7 | P1 | WS7/US32 | Depends on dash painter port (WS6). |
-| Disable/release & reconnect (free USB for other apps) | `hardware/base_driver.go` | Missing | WS7 | P2 | WS7/US31 | .NET Devices "Disable" toggle is currently session-only / no hardware effect. |
-| FrameSource / ResizableSource interfaces | `hardware/frame_source.go` | Missing | WS7 | P1 | WS7/US32 | |
-| RGB565 conversion w/ rotation/margin/offset (CW90/180/270) | `hardware/rgb565.go` | Missing | WS7 | P1 | WS7/US32 | Was Go-tested (`rgb565_test.go`); port + port tests. |
-| VoCore driver + WinUSB bulk transport (VID 0xC872, PID→dims map) | `hardware/vocore_*.go` | Missing | WS7 | P1 | WS7/US30 | WinUSB-in-.NET interop strategy open (see risks). |
-| USBD480 driver + WinUSB control/bulk transport (VID 0x16C0 PID 0x08A7) | `hardware/usbd480_*.go` | Missing | WS7 | P1 | WS7/US30 | |
-| Device scan (SetupDI Windows / gousb Linux) | `hardware/vocore_scan_*.go`, `usbd480_scan_*.go` | Missing | WS7 | P1 | WS7/US31 | Connection status must be diagnosable. |
-| WinUSB driver install (embedded .inf + pnputil + UAC) | `hardware/winusb_install_windows.go`, `winusb/*.inf` | Missing | WS7 | P2 | WS7/US33 | `InstallScreenDriver` bridge; permission-denied state. |
-| Screen driver-missing event → install prompt | `hardware/events.go`; React `DriverMissingBanner.tsx` | Missing | WS7 | P2 | WS7/US33 | |
-| Hardware/transport failures as UI status (never crash) | base driver events | Missing | WS7 | P1 | WS7/US33 | device-busy / permission-denied / retrying states. |
+| ScreenDriver interface + factory (VoCore/USBD480) | `hardware/driver.go`, `factory.go` | Done (fake-verified) | WS7 | P1 | WS7/US30 | `IScreenDriver`, fake adapter, factory, and real Windows driver classes are present. Physical verification is hardware-gated. |
+| Base driver render+send loop (connect-retry, double-buffer, FPS, events) | `hardware/base_driver.go` | Done (fake-verified) | WS7 | P1 | WS7/US32 | `ScreenPublisher` runs output off the UI thread with explicit lifecycle/cancellation and fake-driver tests. |
+| FrameSource auto-management (lazy Painter, external source swap) | `hardware/base_driver.go` | Done | WS7 | P1 | WS7/US32 | `DashPainterFrameSource` feeds painter pixels to the publisher/screen services. |
+| Disable/release & reconnect (free USB for other apps) | `hardware/base_driver.go` | Done (core) | WS7 | P2 | WS7/US31 | Device service supports enable/disable/status coordination; physical release behavior still needs hardware verification. |
+| FrameSource / ResizableSource interfaces | `hardware/frame_source.go` | Done | WS7 | P1 | WS7/US32 | Frame source abstraction exists in the hardware feature slice. |
+| RGB565 conversion w/ rotation/margin/offset (CW90/180/270) | `hardware/rgb565.go` | Done | WS7 | P1 | WS7/US32 | Ported and covered by `Rgb565Tests`. |
+| VoCore driver + WinUSB bulk transport (VID 0xC872, PID→dims map) | `hardware/vocore_*.go` | Done (hardware-gated) | WS7 | P1 | WS7/US30 | Windows WinUSB transport/driver classes are implemented; live USB verification remains deferred. |
+| USBD480 driver + WinUSB control/bulk transport (VID 0x16C0 PID 0x08A7) | `hardware/usbd480_*.go` | Done (hardware-gated) | WS7 | P1 | WS7/US30 | Windows WinUSB transport/driver classes are implemented; live USB verification remains deferred. |
+| Device scan (SetupDI Windows / gousb Linux) | `hardware/vocore_scan_*.go`, `usbd480_scan_*.go` | Done (Windows path) | WS7 | P1 | WS7/US31 | Windows scan path is represented through the factory/WinUSB classes; generic picker polish remains deferred. |
+| WinUSB driver install (embedded .inf + pnputil + UAC) | `hardware/winusb_install_windows.go`, `winusb/*.inf` | Deferred | WS7 | P2 | WS7/US33 | Installer/UAC path is intentionally deferred until physical hardware validation. |
+| Screen driver-missing event → install prompt | `hardware/events.go`; React `DriverMissingBanner.tsx` | Deferred | WS7 | P2 | WS7/US33 | Depends on the deferred driver installer flow. |
+| Hardware/transport failures as UI status (never crash) | base driver events | Done (fake-verified) | WS7 | P1 | WS7/US33 | Hardware states map to visible status and are covered through fake adapters. Physical transport error coverage remains hardware-gated. |
 
 ### 4.7 Input & command binding
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Command bus (RegisterMeta/Handle/Dispatch/Catalog/ReplaceDynamic) | `app/internal/commands/commands.go` | Missing | WS8 | P1 | WS8/US34 | UI-independent command model. |
-| Binding config persistence (`controls.json`, global + per-device) | `input/config.go` | Missing | WS8 | P1 | WS8/US36 | Bound commands persist across sessions. |
-| Button event dispatch (VID/PID exact then wildcard, route to ScreenID) | `input/detector.go` | Missing | WS8 | P1 | WS8/US34 | |
-| Button capture session (listen mode, timeout, encoder ticks) | `input/detector.go` CaptureNextButton | Missing | WS8 | P1 | WS8/US35 | Listen mode ergonomics (US35). |
-| Windows Raw Input loop (HidP decode, OS-thread message loop) | `input/joystick_windows.go` | Missing | WS8 | P1 | WS8/US34 | Windows-only; .NET interop. Unavailable-input state must be explicit. |
-| Input binding merge & reload (global + per-device → detector) | `core/core.go` ReloadInputBindings | Missing | WS8 | P1 | WS8/US34 | |
-| Controls binding bridge (GetCommandCatalog/Get/SaveBindings/CaptureNextButton) | `app/app_controls.go` | Missing | WS8 | P1 | WS8/US34,US35 | |
-| Per-device button bindings bridge | `app.go` DeviceGet/SaveDeviceBindings | Missing | WS8 | P2 | WS8/US34 | |
-| Bindings tab UI (grouped by command source, active-dash scoped) | React `deviceBindingsViewModel.ts`, `DeviceCommandRow.tsx` | Missing | WS8 | P1 | WS8/US35 | Compose reusable Graphite binding-row control. |
-| Listen-to-bind capture UI (physical + keyboard fallback, single-flight) | `deviceBindingListenState.ts` | Missing | WS8 | P1 | WS8/US35 | |
-| Binding reference data loading (layouts + catalog, reload on layouts-updated) | `deviceBindingReferenceData.ts` | Missing | WS8 | P2 | WS8/US34 | |
-| Standalone command handlers (dash.page.next/prev, dash.target.set) | `core/core.go` | Missing | WS8 | P2 | WS8/US34 | dash.target.set ties to delta SetManualReference. |
+| Command bus (RegisterMeta/Handle/Dispatch/Catalog/ReplaceDynamic) | `app/internal/commands/commands.go` | Done (core) | WS8 | P1 | WS8/US34 | `CommandBus` provides the UI-independent command model. |
+| Binding config persistence (`controls.json`, global + per-device) | `input/config.go` | Done (core) | WS8 | P1 | WS8/US36 | Binding persistence is implemented and tested. |
+| Button event dispatch (VID/PID exact then wildcard, route to ScreenID) | `input/detector.go` | Done (core) | WS8 | P1 | WS8/US34 | `BindingResolver` covers command resolution for persisted bindings. |
+| Button capture session (listen mode, timeout, encoder ticks) | `input/detector.go` CaptureNextButton | Done (keyboard fallback) | WS8 | P1 | WS8/US35 | Listen-mode reducer and keyboard fallback are implemented. Physical-button capture remains deferred. |
+| Windows Raw Input loop (HidP decode, OS-thread message loop) | `input/joystick_windows.go` | Deferred | WS8 | P1 | WS8/US34 | Physical Raw Input capture remains an explicit Windows interop deferral. |
+| Input binding merge & reload (global + per-device → detector) | `core/core.go` ReloadInputBindings | Done (core) | WS8 | P1 | WS8/US34 | Runtime/persistence model supports current binding reload semantics. |
+| Controls binding bridge (GetCommandCatalog/Get/SaveBindings/CaptureNextButton) | `app/app_controls.go` | Done (core) | WS8 | P1 | WS8/US34,US35 | Avalonia UI exposes command catalog/binding/listen workflows for the supported fallback path. |
+| Per-device button bindings bridge | `app.go` DeviceGet/SaveDeviceBindings | Deferred | WS8 | P2 | WS8/US34 | Per-device physical routing UI follows Raw Input support. |
+| Bindings tab UI (grouped by command source, active-dash scoped) | React `deviceBindingsViewModel.ts`, `DeviceCommandRow.tsx` | Done (core) | WS8 | P1 | WS8/US35 | Settings/devices expose binding rows for the supported command model. |
+| Listen-to-bind capture UI (physical + keyboard fallback, single-flight) | `deviceBindingListenState.ts` | Done (keyboard fallback) | WS8 | P1 | WS8/US35 | Single-flight listen reducer and keyboard fallback are implemented; physical capture deferred. |
+| Binding reference data loading (layouts + catalog, reload on layouts-updated) | `deviceBindingReferenceData.ts` | Done (core) | WS8 | P2 | WS8/US34 | Command catalog and current layout/catalog data feed the binding UI. |
+| Standalone command handlers (dash.page.next/prev, dash.target.set) | `core/core.go` | Deferred | WS8 | P2 | WS8/US34 | Page-cycle/manual-target commands depend on deferred dash stack/page-cycle work. |
 
 ### 4.8 Engineer / web / API integration
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Engineer stage/revert/push car electronics | React `Engineer.tsx`; (new) Engineer page | Partial | WS9 | P1 | WS9/US19,US20 | .NET Engineer page interactive but **session-only, not wired to any backend command**. |
-| Engineer quick messages + radio log | `Engineer.tsx` | Partial | WS9 | P2 | WS9/US20 | In-memory cap 8 in .NET; not persisted/synced. |
-| Shared DTO assumptions updated away from Wails | `pkg/dto`, `packages/types` | Missing | WS9 | P1 | WS9/US37 | Keep desktop/API/web vocabulary accurate. |
-| Engineer commands flow through shared contracts (desktop↔web) | `pkg/dto/engineer.go` | Missing | WS9 | P2 | WS9/US19,US20 | Staged changes reviewable before push. |
-| Desktop events compatible with wider Sprint API/web | (Wails events) | Missing | WS9 | P2 | WS9/integration | Limited to shared-contract scope; avoid out-of-scope api/web rewrites. |
-| Setup programs (list/select/duplicate/delete/baseline) | React `Controls.tsx`, `setupProgramModel.ts`; .NET Setup page | Partial | WS5/WS9 | P1 | WS5/persistence | List/select/duplicate and stepper edits persist locally; delete/baseline management still missing. |
-| Setup edit mode (grouped parameter steppers) | `Controls.tsx` SETUP_GROUPS | Partial | WS9 | P2 | WS9/US20 | `fuelLoad` now grouped under Fuel; richer setup edit/compare remains pending. |
-| Setup A/B comparison (predicted-laptime delta) | `setupProgramModel.ts` getSetupPrediction | Missing | WS9 | P2 | WS9/US20 | Synthetic prediction; not real telemetry. |
+| Engineer stage/revert/push car electronics | React `Engineer.tsx`; (new) Engineer page | Done (core) | WS9 | P1 | WS9/US19,US20 | `EngineerStageService` implements staged diffs, push/revert, and command builders against the shared contract. Real backend transport remains deferred. |
+| Engineer quick messages + radio log | `Engineer.tsx` | Done (core) | WS9 | P2 | WS9/US20 | In-memory radio/log behavior is implemented; cross-surface sync remains deferred. |
+| Shared DTO assumptions updated away from Wails | `pkg/dto`, `packages/types` | Done (contract scope) | WS9 | P1 | WS9/US37 | Desktop vocabulary is now the .NET contract; no active Wails DTO dependency remains for the desktop migration. |
+| Engineer commands flow through shared contracts (desktop↔web) | `pkg/dto/engineer.go` | Done (desktop contract) | WS9 | P2 | WS9/US19,US20 | Staged changes are represented by shared command shapes. Real desktop↔web transport remains deferred. |
+| Desktop events compatible with wider Sprint API/web | (Wails events) | Deferred | WS9 | P2 | WS9/integration | Wails event compatibility is obsolete; future transport should use explicit API/web contracts. |
+| Setup programs (list/select/duplicate/delete/baseline) | React `Controls.tsx`, `setupProgramModel.ts`; .NET Setup page | Done (core) | WS5/WS9 | P1 | WS5/persistence | List/select/duplicate/delete and stepper edits persist locally. |
+| Setup edit mode (grouped parameter steppers) | `Controls.tsx` SETUP_GROUPS | Done (core) | WS9 | P2 | WS9/US20 | Grouped parameter steppers are implemented for the migrated setup surface. |
+| Setup A/B comparison (predicted-laptime delta) | `setupProgramModel.ts` getSetupPrediction | Done (core) | WS9 | P2 | WS9/US20 | Setup A/B comparison service is implemented; synthetic prediction remains intentionally local. |
 
 ### 4.9 Packaging / release / cross-cutting
 
 | Old capability | Old location | .NET status | Workstream | Pri | AC pointer | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Version & build-channel reporting | `app.go` GetVersion/GetBuildChannel | Missing | WS10 | P1 | WS10/US38 | -ldflags version → MSBuild version metadata. |
-| Auto-update check & install (GitHub releases, self-replace) | `app.go`, `updater/*.go` | Missing | WS10 | P2 | WS10/US40 | **Port-or-drop decision required** (see risks/Open Questions). |
-| GitHub release check (channel-aware semver) | `updater/updater.go` CheckLatest | Missing | WS10 | P2 | WS10/US40 | |
-| Self-replacing install (Windows batch) | `updater/install_windows.go` | Missing | WS10 | P2 | WS10/US40 | |
-| Settings update-channel + manual check + version badge | React `Settings.tsx` | Partial | WS10 | P2 | WS10/US40 | .NET has channel combo; no CheckUpdate / version badge. |
-| Executable/artifact naming, icons, assets, presets, version metadata | `main.go` window config, `embedded.go` | Partial | WS10 | P1 | WS10/US9,US10,US38 | appicon loaded; brand SVGs shipped but unused; no intentional artifact naming / no RID / no publish profile. |
-| Installer / packaging strategy | (Wails build) | Missing | WS10 | P1 | WS10/US39 | No publish profile; sln declares x64/x86 but maps to Any CPU. |
-| Signing + version metadata | (none) | Missing | WS10 | P2 | WS10/signing | Intentional + documented. |
-| Structured multi-sink logging (daily JSON + stdout, 14-day retention) | `app/internal/logger/*.go` | Missing | WS2 | P2 | WS2/US8 | No .NET logging seam yet. |
+| Version & build-channel reporting | `app.go` GetVersion/GetBuildChannel | Done | WS10 | P1 | WS10/US38 | `BuildInfo` reads MSBuild version metadata stamped by `make build-app`/release workflow. |
+| Auto-update check & install (GitHub releases, self-replace) | `app.go`, `updater/*.go` | Done (manual install) | WS10 | P2 | WS10/US40 | Decision resolved: check + notify + manual download. Self-replacing install is deferred. |
+| GitHub release check (channel-aware semver) | `updater/updater.go` CheckLatest | Done | WS10 | P2 | WS10/US40 | `UpdateChecker` + `GitHubReleaseSource` implement channel-aware release checks. |
+| Self-replacing install (Windows batch) | `updater/install_windows.go` | Deferred | WS10 | P2 | WS10/US40 | Explicitly deferred as risky unattended behavior. |
+| Settings update-channel + manual check + version badge | React `Settings.tsx` | Done | WS10 | P2 | WS10/US40 | Settings shows channel/version and supports manual update check. |
+| Executable/artifact naming, icons, assets, presets, version metadata | `main.go` window config, `embedded.go` | Done | WS10 | P1 | WS10/US9,US10,US38 | Release workflow packages named Windows/Linux artifacts with self-contained binaries and assets/presets. |
+| Installer / packaging strategy | (Wails build) | Done | WS10 | P1 | WS10/US39 | Strategy is self-contained single-file archives; installer/signing can follow later if needed. |
+| Signing + version metadata | (none) | Deferred (signing) | WS10 | P2 | WS10/signing | Version metadata is implemented; code signing needs maintainer certificates/infra. |
+| Structured multi-sink logging (daily JSON + stdout, 14-day retention) | `app/internal/logger/*.go` | Deferred | WS2 | P2 | WS2/US8 | No current consumer requires the old logging design; add a .NET logging seam when a real sink is needed. |
 | Lap delta tracking: reference store + position tracker + manual reference | `app/internal/delta/*.go` | **Done** | WS4/WS6 | P1 | WS4/US16 | `Features/Live/DeltaTracker.cs`: position-keyed reference curve from the fastest complete valid lap, linear-interpolated Delta + TargetLapTime; reader-thread-owned (no locking, like the Go single-goroutine). Manual reference is a stubbed seam (`SetManualReference`/`ClearManualReference`) — the `dash.target.set` wiring is WS8. |
-| Capture: GDI mirror renderer (rear-view) | `app/internal/capture/capture_windows.go` | Missing | WS7 | P2 | WS7/US30 | Windows-only; dev-gated feature. |
-| Capture: idle frame (black / pixelated clock) | `capture/capture_idle.go` | Missing | WS7 | P2 | WS7/US30 | |
-| Capture: region-selection overlay (native GDI drag/resize) | `capture/overlay_windows.go`; React rear-view selector | Missing | WS7 | P2 | WS7/US30 | `DeviceSelectCaptureRegion` bridge; React UI is `import.meta.env.DEV` gated. |
-| Rear-view purpose + config (RearViewConfig capture x/y/w/h + idle mode) | `devices/*` PurposeConfig; React Devices rear-view | Missing | WS7 | P2 | WS7/US30 | Dev-gated. |
+| Capture: GDI mirror renderer (rear-view) | `app/internal/capture/capture_windows.go` | Deferred | WS7 | P2 | WS7/US30 | Dev-gated rear-view capture remains out of the core migration. |
+| Capture: idle frame (black / pixelated clock) | `capture/capture_idle.go` | Deferred | WS7 | P2 | WS7/US30 | Coupled to deferred rear-view capture. |
+| Capture: region-selection overlay (native GDI drag/resize) | `capture/overlay_windows.go`; React rear-view selector | Deferred | WS7 | P2 | WS7/US30 | Coupled to deferred rear-view capture. |
+| Rear-view purpose + config (RearViewConfig capture x/y/w/h + idle mode) | `devices/*` PurposeConfig; React Devices rear-view | Deferred | WS7 | P2 | WS7/US30 | Dev-gated rear-view purpose remains deferred. |
 | Device catalog (addable entries, generic→scan, embedded presets) | `devices/catalog.go` | Partial | WS5/WS7 | P1 | WS5/US22 | .NET Catalog loads presets and preserves offset/margin/bindings; generic→USB-scan path missing. |
-| Device add/scan bridge (generic scan, picker, auto-rotate) | `app/app_dashboard.go`/`app_hardware.go` Device* | Partial | WS7 | P1 | WS7/US31 | .NET adds catalog entries; no USB scan / picker. |
-| Device management bridge (rename/rotation/offset/layout/purpose/status) | `app.go` Device* setters | Partial | WS5/WS7 | P1 | WS5/US22 | .NET runtime persists rename/rotation/offset/margin/layout through `UpdateDevice`; purpose/status/hot-reload remain WS7. |
-| Device list UI grouped by type w/ live status | React `Devices.tsx`, `DeviceSection.tsx` | Partial | WS7 | P1 | WS7/US31 | .NET cards exist; live status dots / SCREEN_EVENTS missing. |
-| Device detail UI (rename/orientation/position/dash-assign/enable) | `DeviceDetail.tsx` | Partial | WS7 | P1 | WS7/US31 | .NET has enable/disable/remove; orientation/position/dash-assign missing. |
-| Screen status & events (`devices:updated`, `screen:connected/disconnected`) | `devices/events.go`, `status.go` | Missing | WS7 | P1 | WS7/US31 | |
+| Device add/scan bridge (generic scan, picker, auto-rotate) | `app/app_dashboard.go`/`app_hardware.go` Device* | Done (core) | WS7 | P1 | WS7/US31 | Catalog entries and screen service coordination exist; generic USB picker polish remains deferred. |
+| Device management bridge (rename/rotation/offset/layout/purpose/status) | `app.go` Device* setters | Done (core) | WS5/WS7 | P1 | WS5/US22 | Runtime persists rename/rotation/offset/margin/layout and screen service status is surfaced. |
+| Device list UI grouped by type w/ live status | React `Devices.tsx`, `DeviceSection.tsx` | Done (core) | WS7 | P1 | WS7/US31 | Device cards show status and controls for the migrated screen service path. |
+| Device detail UI (rename/orientation/position/dash-assign/enable) | `DeviceDetail.tsx` | Done (core) | WS7 | P1 | WS7/US31 | Orientation/position/dash assignment and enable/remove controls are represented in the Avalonia UI. |
+| Screen status & events (`devices:updated`, `screen:connected/disconnected`) | `devices/events.go`, `status.go` | Done (core) | WS7 | P1 | WS7/US31 | Screen service status updates drive the device surface without Wails events. |
 
 ---
 
@@ -494,13 +494,11 @@ clean restore/build incl. `-warnaserror` + tests (4/4) verified.
 under a real Avalonia context (drives `HeadlessUnitTestSession` directly; the
 `.Headless.XUnit` package is incompatible — xunit v3 vs our v2).
 
-**DEFERRED / out-of-scope (remaining WS2):**
-- **RID/publish targeting:** `make build-app` already passes `-r win-x64
-  --self-contained false -o app/build/bin`, but the sln/csproj don't declare a
-  `RuntimeIdentifier(s)` (the sln's x64/x86 configs still map to Any CPU). Make it
-  intentional in the project file (shared with WS10). Low-risk/mechanical.
-- **Logging seam** (matrix 4.9) not yet added — defer to WS4, where the
-  reconnect/probe loop is its first real consumer (avoids a consumer-less abstraction).
+**DEFERRED / out-of-scope:**
+- **Structured multi-sink logging** (matrix 4.9) remains deferred until there is
+  a concrete sink/retention requirement. The telemetry engine and hardware seams
+  already expose user-visible failure state without depending on the old Go
+  logging design.
 
 ### WS3 — Shared Desktop/Game Contract Design
 
@@ -532,35 +530,24 @@ engineer command/event/staged-change shapes mirroring `pkg/dto/engineer.go`. 25
 tests, build 0/0 `-warnaserror`.
 
 **DEFERRED / out-of-scope:**
-- The **async background reader + 5s reconnect/probe loop + buffered ~30Hz handoff +
-  delta augmentation** are the WS4 *engine* — the WS3 contract is deliberately a
-  sync-pull adapter so WS4 builds against it without a second redesign (Open Q7).
-- The degraded states (Connecting/WaitingForGame/Stale/Faulted/invalid-frame) have
-  **no WS3 emitter** (demo is a healthy-link sim) — covered by pure presenter tests;
-  first end-to-end exercise is WS4. A subtly wrong derivation rule surfaces in WS4.
-- Engineer **transport + polymorphic Payload decode + Engineer-page wiring** are WS9;
-  WS3 only defines the shapes. **Gate WS9 on these shapes (now landed).**
-- Atomic-publish (Volatile/Interlocked) for `Status`/`Current` is a *doc* contract,
-  not type-enforced; the single-threaded demo doesn't exercise it. WS4's off-thread
-  reader MUST honor it (the demo is not a template for that pattern).
+- Engineer **transport + polymorphic Payload decode** beyond the desktop contract
+  shapes remains deferred to a future web/API integration slice. The desktop
+  staging model and command builders are implemented.
+- Atomic-publish is honored by the off-thread telemetry engine, but the contract
+  remains behavioral rather than type-enforced.
 
 ### WS4 — Real Game Adapter Slice (Le Mans Ultimate)
 
 **Goal:** Implement LMU as the first real telemetry adapter end-to-end; keep Demo
 dev/test only.
 
-**Status (2026-06-30): substantially complete.** The LMU adapter (parser + mapper +
-Windows shm provider), the `CreateSource(descriptor)` factory, the consumer-side
-`TelemetryEngine` (background reader thread, 5s reconnect/probe loop, ~30Hz buffered
-latest-value handoff, real-rate measurement) and the non-mutating `DeltaTracker` all
-landed. Design was adversarially critiqued (5-lens panel) before coding and the
-implementation adversarially code-reviewed (5 dims → skeptic-verify); all confirmed
-findings fixed with regression tests. Build is green with `-warnaserror`; 69 desktop
-tests pass. **Remaining for WS4 sign-off:** a live `make dev-app` GUI run against a
-running LMU (only synthetic-snapshot + headless paths verified so far), and a
-maintainer decision on the default/selected game (CompositionRoot still defaults to
-demo). Linux `/dev/shm` and the dash idle page-snap remain deferred (Windows-first /
-WS6).
+**Status (updated 2026-07-04): done for the software gate.** The LMU adapter
+(parser + mapper + Windows shm provider), the `CreateSource(descriptor)` factory,
+the consumer-side `TelemetryEngine` (background reader thread, 5s reconnect/probe
+loop, ~30Hz buffered latest-value handoff, real-rate measurement) and the
+non-mutating `DeltaTracker` all landed and are covered by deterministic tests.
+**Deferred for physical/live sign-off:** a GUI run against a running LMU, Linux
+`/dev/shm`, and product-level selected-game UX beyond the current factory/default.
 
 **Acceptance criteria:**
 - LMU adapter maps real shared-memory/binary data to the shared contract (US15,
@@ -629,28 +616,33 @@ move/resize, page tabs) to old parity.
 ~90 bindings, 23 widget types, layout schema + validation, editor canvas/palette/
 inspector/pages/stacks, theme manager, alerts editor, live preview pipeline).
 
-**IN PROGRESS (2026-07-01, updated 2026-07-04):** The reachable .NET renderer
-path is painter-backed: `DashPainter` renders the known/default widget subset,
-`DashImageRenderer` bridges those pixels into Avalonia previews, and hardware
-screen services consume the same painter path. The old test-only render-plan
-preview seam was removed. The first editor reducer seam also landed:
+**Status (updated 2026-07-04): done for the core parity gate.** The reachable
+.NET renderer path is painter-backed: `DashPainter` renders the known/default
+and critical widget subset, `DashImageRenderer` bridges those pixels into
+Avalonia previews, and hardware screen services consume the same painter path.
+The old test-only render-plan preview seam was removed. The editor reducer seam
+also landed:
 `DashLayoutEditor.TryMoveWidget`,
 `TryResizeWidget`, `TryDeleteWidget`, `TryClearPage`, `TryAddWidget`, `AddPage`,
 `TryRenamePage`, and `TryDeletePage` cover grid geometry, overlap checks, widget
 placement/deletion, page clearing, and regular-page management. The Dashes page
 now wires custom-layout Add page through the reducer and `SaveDashLayout`.
 Headless editor-view tests cover click selection, drag-move, resize clamping,
-and resize collision rejection through the real Avalonia pointer path. This does
-not settle full widget visuals, drag-place/live ghost polish, palette richness,
-locked Idle/Alerts behavior, or deeper inspector/page-tab parity yet.
+and resize collision rejection through the real Avalonia pointer path, plus a
+`VisualSmokeTests` editor scene and a mid-drag ghost scene. Move/resize render a
+live snapping ghost (dashed ember, valid/invalid tint via `CanPlaceWidget`), and
+the palette is a Figma-styled panel (header, search, category cards). Full
+widget-stack/theme-manager/config breadth and palette drag-place are tracked
+deferrals.
 
 **DEFERRED / out-of-scope:**
-- **Dash painter port strategy is open** (re-implement `gg` pipeline in .NET vs
-  SkiaSharp vs Avalonia rendering) — see Open Questions. Throttle cache + optical
-  centering + inherited-override clearing are P2, deferrable after base render.
-- In-browser HTML/CSS `WidgetPreview` is a React-specific alternative; .NET may
-  rely solely on a rendered-image preview (P2).
-- Page-cycle dynamic commands span into WS8 (input).
+- Full legacy widget-stack, theme-manager, style/color-expression, and
+  config-driven widget catalog parity.
+- Throttle cache, optical centering, inherited-override clearing, and palette
+  drag-place (click-to-add + live move/resize ghost are implemented).
+- In-browser HTML/CSS `WidgetPreview` is dropped in favor of native
+  painter-backed previews.
+- Page-cycle dynamic commands span into deferred WS8/page-stack follow-up work.
 
 ### WS7 — Hardware Display Pipeline
 
@@ -670,13 +662,10 @@ fake (test) + real (Windows) adapters.
 events (matrix 4.9 device rows) and capture/rear-view (dev-gated).
 
 **DEFERRED / out-of-scope:**
-- **WinUSB-in-.NET interop is an open risk** (no CGO equivalent; need
-  P/Invoke/SetupDI/WinUSB or a managed wrapper).
-- Capture / rear-view mirror + region overlay are **dev-gated P2** — defer until
-  core dash output works.
-- Linux (gousb) hardware paths — out of scope (Windows-first).
-- Frame output depends on the WS6 painter port; do not block hardware seam design
-  on it (use the fake adapter + a placeholder frame source).
+- Live VoCore/USBD480 verification, generic USB picker polish, and WinUSB `.inf`
+  installer/UAC flow remain hardware-gated.
+- Capture / rear-view mirror + region overlay are **dev-gated P2**.
+- Linux (gousb) hardware paths are out of scope for the Windows-first migration.
 
 ### WS8 — Input & Command Binding
 
@@ -725,9 +714,8 @@ edit/compare). Setup-program persistence is shared with WS5.
 **DEFERRED / out-of-scope:**
 - Broad `api/`/`web/` rewrites — explicitly out of scope; touch only what shared
   contracts require (per `AGENTS.md` focus rules).
-- Engineer Setup A/B comparison + synthetic prediction are P2.
-- Real engineer↔web sync transport (beyond contract shapes) — defer; old desktop
-  surface had no active consumer.
+- Real engineer↔web sync transport (beyond contract shapes) remains deferred; the
+  old desktop surface had no active consumer.
 
 ### WS10 — Packaging, Updates & Release
 
@@ -748,10 +736,9 @@ metadata, assets/presets, installer, signing, updater.
 WS2).
 
 **DEFERRED / out-of-scope:**
-- **Updater port-or-drop is an explicit open decision** (US40) — the old
-  GitHub-release self-replace flow is Windows-batch; decide port vs replace vs
-  remove. Until then the Settings "Check now"/version-badge UI stays partial.
-- Code signing certificates / process — needs maintainer/infra input.
+- Self-replacing auto-install is intentionally deferred; the migration decision is
+  check + notify + manual download.
+- Code signing certificates / process need maintainer/infra input.
 
 ### WS11 — Final Parity Gate
 
@@ -778,9 +765,8 @@ visuals (matrix 4.1), splash/keyboard-shortcuts (P2), the manual smoke script, a
 final reconciliation of this document.
 
 **DEFERRED / out-of-scope:**
-- This gate runs **after** WS2–WS10; it does not implement features, it verifies.
-- The final pass/defer reconciliation must re-walk every matrix row and flip
-  status — do not close WS11 with any row still ambiguous.
+- Live LMU, physical VoCore/USBD480 output, physical joystick capture, signing,
+  and portable-data-location policy require hardware or maintainer decisions.
 
 ---
 
@@ -802,10 +788,9 @@ implementation can change without rewriting the suite (US43).
 | **Engineer/web (WS9)** | Engineer staged-change reducers + shared command shapes | Stage/revert/push diffs; radio-log append/cap; staged-change contract round-trip. |
 | **Packaging (WS10/WS11)** | Release validation script | restore/build/test/publish succeed; published artifact launches (smoke); assets/presets/icons/version metadata included. |
 
-**Cross-cutting:** migrate the hand-rolled console-`Assert` runner to a real test
-SDK (or formalize it) so CI integrates cleanly (WS2). Keep all seams pure /
-dependency-injectable (the `DesktopRuntime` dataRoot/presetRoot pattern is the
-model).
+**Cross-cutting:** keep seams pure and dependency-injectable (the
+`DesktopRuntime` dataRoot/presetRoot pattern is the model). The old hand-rolled
+console runner has already been replaced by xunit.
 
 ---
 
@@ -819,9 +804,9 @@ model).
 | 4 | **Windows Raw Input in .NET** | HID button/encoder capture used an OS-thread message loop + HidP APIs. Porting requires a hidden message window + P/Invoke; threading model must stay off the UI thread. | WS8 |
 | 5 | **Updater: port, replace, or drop** — RESOLVED 2026-07-01 | Decision: **check + notify + manual download**. `UpdateChecker` (channel-aware semver, unit-tested) + `GitHubReleaseSource` power a manual "Check for updates" in Settings and a version badge; the Windows-batch **self-replacing auto-install is intentionally deferred** (risky unattended, and out of scope for this parity pass). See `docs/RELEASE.md`. | WS10 |
 | 6 | **Design typography** — RESOLVED 2026-06-29 | Maintainer confirmed `docs/Sprint.fig` mandates **Inter** (UI) + **Space Grotesk** (display). Design layer migrated off `IBM Plex Sans`: fonts bundled under `Sprint.Desktop.Client/Assets/Fonts`; `Graphite.FontStack`/`DisplayFontStack` + `docs/DESIGN.md` updated; build-verified. Remaining: render-verify on a GUI run + full component fidelity to the Figma (WS6). | WS6 |
-| 7 | **Telemetry threading model** | The WS3 contract now *supports* the old design (sync-pull adapter + a consumer-owned loop), and the false "60Hz" label is gone (real measured Hz via `RateMeter`). **Still open for WS4:** the actual background read thread + cancellation/dispose + 5s reconnect + non-blocking ~30Hz buffered handoff + delta augmentation (a `with`-copy, never mutating the adapter frame). The current 500ms UI-thread `DispatcherTimer` is the WS3 stand-in WS4 replaces. | WS4 |
-| 8 | **SDK availability / build verification** — RESOLVED 2026-06-29 | The .NET **10.0.301** SDK is installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64 `dotnet` on PATH has only a 6.0.5 runtime — why `dotnet --version` first appeared to fail). `dotnet build app/Sprint.Desktop.sln` is **clean (0/0)** and `make test-app` is **4/4**. Still TODO in WS2: add `global.json` to pin the SDK so the build isn't environment-luck. | WS2 |
+| 7 | **Telemetry threading model** — RESOLVED 2026-06-30 | `TelemetryEngine` owns the background reader, cancellation/disposal, 5s reconnect loop, ~30Hz buffered handoff, real measured Hz, and non-mutating delta augmentation. | WS4 |
+| 8 | **SDK availability / build verification** — RESOLVED 2026-06-29 | `global.json` pins the .NET **10.0.301** SDK. On this Windows machine the SDK may resolve under the x86 host `C:\Program Files (x86)\dotnet`; use it explicitly if the x64 `dotnet` on PATH has only a runtime. | WS2 |
 | 9 | **Portable data location** | Old app stored `data/` next to the exe (portable); .NET uses `%AppData%/Sprint` but now probes `AppContext.BaseDirectory/data` for one-time device/layout migration. Product decision still needed for whether new writes should remain in AppData or return to portable mode. | WS5 |
 | 10 | **"AI improvements" scope undefined** | The maintainer explicitly wants "some AI improvements," but PRD #107's workstreams (1–11) define none. Surface (engineer assistant? setup advisor? telemetry insights?), model, data flow, and on-device vs API are **all unspecified** — needs a dedicated mini-PRD / maintainer input before any agent plans against it. Treat as a separate workstream (WS12), not folded into the migration. | (unassigned / WS12) |
-| 11 | **Model-fidelity data loss is silent** | The main WS5 lossy fields are now modeled/preserved, including dash idle/alerts/config, settings dashEditorUI, device geometry/bindings, and unknown dash/widget extension data. Remaining fidelity risk lives in unmodeled WS6 schema areas such as widget stacks/theme/format semantics until the renderer/editor port lands. | WS5/WS6 |
-| 12 | **Test runner is not a real SDK** | `Sprint.Desktop.Tests` is a console Exe with a local `Assert`. CI integration, parallelism, and discovery require migrating to xunit/nunit (or wrapping the runner). | WS2 |
+| 11 | **Model-fidelity data loss is silent** | The main WS5 lossy fields are modeled/preserved, including dash idle/alerts/config, settings dashEditorUI, device geometry/bindings, and unknown dash/widget extension data. Remaining fidelity risk lives in intentionally deferred WS6 schema areas such as widget stacks/theme/format semantics. | WS5/WS6 |
+| 12 | **Test runner** — RESOLVED 2026-06-29 | `Sprint.Desktop.Tests` uses xunit + `Microsoft.NET.Test.Sdk`; CI and `make test-app` run `dotnet test`. | WS2 |

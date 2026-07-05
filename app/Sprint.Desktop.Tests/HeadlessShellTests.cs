@@ -190,7 +190,7 @@ public class HeadlessShellTests
 
                 FindCardButton(window, layout.Name, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                FindButton(window, "<<").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                FindButton(window, "Toggle sidebar").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
                 window.Close();
@@ -225,7 +225,7 @@ public class HeadlessShellTests
                 // editor from its card, then add a page from the editor toolbar.
                 FindCardButton(window, layout.Name, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame(); // realize the swapped-in editor content in the visual tree
-                FindButton(window, "＋ Page").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                FindButton(window, "Add page").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
                 Assert.Equal(initialPageCount + 1, layout.Pages.Count);
                 Assert.Contains(layout.Pages, page => page.Name == "Page");
@@ -247,7 +247,27 @@ public class HeadlessShellTests
     {
         return window.GetVisualDescendants()
             .OfType<Button>()
-            .First(button => string.Equals(button.Content?.ToString(), content, StringComparison.Ordinal));
+            .First(button => ButtonMatches(button, content));
+    }
+
+    // Buttons may be labelled by a string Content, an icon with a ToolTip, or an
+    // icon+label StackPanel (nav items). Match any of those so behaviour tests stay
+    // stable across the Figma icon/lockup restyle.
+    private static bool ButtonMatches(Button button, string content)
+    {
+        if (string.Equals(button.Content?.ToString(), content, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (ToolTip.GetTip(button)?.ToString() is { } tip && string.Equals(tip, content, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return button.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Any(text => string.Equals(text.Text, content, StringComparison.Ordinal));
     }
 
     // Finds a button inside the card whose title matches cardTitle, by walking up
