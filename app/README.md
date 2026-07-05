@@ -11,7 +11,7 @@ Settings / Help shell.
 
 ## Solution & module boundaries
 
-`app/Sprint.Desktop.sln` is a self-contained .NET solution (four projects). The
+`app/Sprint.Desktop.slnx` is a self-contained .NET solution (four projects). The
 project references enforce the seams — respect them:
 
 | Project | Owns | Must NOT contain |
@@ -52,7 +52,7 @@ Sprint.Desktop.Client/
   older runtime and report "no SDK found". Invoke the x86 host explicitly:
 
   ```powershell
-  & 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.sln
+  & 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx
   ```
 
   `make` targets work wherever the correct SDK resolves; CI installs it via
@@ -63,8 +63,8 @@ Sprint.Desktop.Client/
 
 ```powershell
 # Restore / build (the real gate is -warnaserror)
-dotnet restore app/Sprint.Desktop.sln
-make lint-app                      # = dotnet build app/Sprint.Desktop.sln -warnaserror
+dotnet restore app/Sprint.Desktop.slnx
+make lint-app                      # = dotnet build app/Sprint.Desktop.slnx -warnaserror
 
 # Run the shell (demo telemetry by default; a running game drives the LMU source)
 make dev-app                       # = dotnet run --project app/Sprint.Desktop.Client/...

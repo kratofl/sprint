@@ -16,6 +16,26 @@ services:
       timeout: 5s
       retries: 5
 
+  influxdb:
+    image: influxdb:2.7-alpine
+    restart: unless-stopped
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME:-sprint}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:-changeme-influx}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-sprint}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?INFLUXDB_TOKEN must be set in .env}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -25,10 +45,21 @@ services:
       PORT: ${PORT:-8080}
       DATABASE_URL: ${DATABASE_URL:-postgres://sprint:changeme@db:5432/sprint?sslmode=disable}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      INFLUXDB_URL: ${INFLUXDB_URL:-http://influxdb:8086}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:?INFLUXDB_TOKEN must be set in .env}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-sprint}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
     ports:
       - "${PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     depends_on:
       db:
+        condition: service_healthy
+      influxdb:
         condition: service_healthy
 
   web:
@@ -46,3 +77,4 @@ services:
 
 volumes:
   postgres_data:
+  influxdb_data:

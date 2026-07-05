@@ -1,0 +1,8 @@
+# Sample operation so codegen has a document to type. Add real queries/mutations
+# here as the web app grows a GraphQL client.
+query Health {
+  health {
+    status
+    version
+  }
+}

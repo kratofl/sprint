@@ -7,14 +7,17 @@ truth). This file is the always-loaded summary. Design contract: `docs/DESIGN.md
 ## Critical for agents (read first)
 
 - **The desktop app is mid-migration to .NET 10 / Avalonia.** `app/` is now the
-  `Sprint.Desktop.sln` solution (Client / Api / Games / Tests). The old Go/Wails +
-  React desktop has been removed. Track the work via PRD **issue #107** and the
-  parity matrix in `docs/MIGRATION_INVENTORY.md`.
+  `Sprint.Desktop.slnx` solution (Client / Api / Games / Tests / Contracts). The old
+  Go/Wails + React desktop has been removed. Track the work via PRD **issue #107**
+  and the parity matrix in `docs/MIGRATION_INVENTORY.md`.
 - **Windows / PowerShell only.** The `Makefile` shells out to PowerShell. A Bash
   tool exists for POSIX scripts, but commands the user runs are PowerShell.
-- **`app/` (.NET solution) + `packages/` (web UI/tokens/types) + `web/` + `api/`**
-  are the surfaces. Do NOT change `api/` or `web/` unless asked or a shared
-  contract requires it. The desktop app is the active focus.
+- **`app/` (.NET desktop solution) + `api/` (.NET GraphQL server solution) +
+  `packages/` (web UI/tokens/types) + `web/`** are the surfaces. Do NOT change
+  `api/` or `web/` unless asked or a shared contract requires it. The desktop app is
+  the active focus. **The API was migrated Go → .NET 10 (ASP.NET Core +
+  HotChocolate GraphQL); it shares `app/Sprint.Contracts` with the desktop and
+  persists to Postgres (relational) + InfluxDB (telemetry).**
 - **Do not install tools/deps** unless asked.
 - **Design = `docs/DESIGN.md`** (the Graphite flat system: near-black surfaces
   `#070707/#0D0D0D/#131313/#1B1B1B`, ember accent `#FF6A00`, `#4F9CFF`
@@ -29,10 +32,11 @@ truth). This file is the always-loaded summary. Design contract: `docs/DESIGN.md
 
 ## Verify loop (run after edits)
 
-The .NET solution lives at `app/Sprint.Desktop.sln`:
+Two `.slnx` solutions: desktop at `app/Sprint.Desktop.slnx`, API at
+`api/Sprint.Api.slnx` (both migrated from `.sln`):
 
-- **Restore / build:** `dotnet restore app/Sprint.Desktop.sln` →
-  `dotnet build app/Sprint.Desktop.sln` (or `make lint-app` = build with
+- **Restore / build:** `dotnet restore app/Sprint.Desktop.slnx` →
+  `dotnet build app/Sprint.Desktop.slnx` (or `make lint-app` = build with
   `-warnaserror`, the real gate).
 - **Desktop tests:** `make test-app` (= `dotnet test
   app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj`) — **xunit** (migrated in
@@ -40,12 +44,16 @@ The .NET solution lives at `app/Sprint.Desktop.sln`:
 - **Run the app:** `make dev-app` (= `dotnet run --project
   app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`).
 - **Publish:** `make build-app` → `app/build/bin`.
-- **Go API (still used by api/web):** `make test-api`.
+- **API (.NET GraphQL):** `make test-api` (= `dotnet test
+  api/Sprint.Api.Tests/...`), `make lint-api` (build `-warnaserror`), `make dev-api`
+  (hot reload), `make schema` (re-export `web/schema.graphql`). The server needs
+  Postgres via `DATABASE_URL`; InfluxDB is optional locally (telemetry writes no-op
+  when `INFLUXDB_URL` is unset).
 - **SDK gotcha (verified 2026-06-29):** the .NET **10.0.301** SDK is installed,
   but under the **x86** host `C:\Program Files (x86)\dotnet` — the x64 `dotnet` on
   PATH has only a 6.0.5 runtime, so a bare `dotnet build` reports "no SDK found."
   Use the x86 host explicitly, e.g.
-  `& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.sln`.
+  `& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx`.
   Build + `make test-app` are **verified green (0 warnings/0 errors, 4/4 tests)**.
   No `global.json` pins the SDK yet (WS2). If the command sandbox hides the SDK,
   run it unsandboxed in the worktree.

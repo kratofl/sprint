@@ -26,10 +26,10 @@ This keeps the details confidential until a fix is ready.
 ## Scope
 
 This policy covers the Sprint codebase, including:
-- Go API server (`/api`)
-- Go desktop app (`/app`)
+- .NET GraphQL API server (`/api`)
+- .NET / Avalonia desktop app (`/app`)
 - Next.js web app (`/web`)
-- Shared packages (`/pkg`, `/packages`)
+- Shared packages (`/packages`)
 - Docker and deployment configuration
 
 Third-party dependencies are not directly covered, but we monitor them and update as needed.

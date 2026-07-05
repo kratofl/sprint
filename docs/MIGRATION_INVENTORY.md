@@ -39,7 +39,7 @@ so that:
 > **Build verification (updated 2026-07-04):** the .NET **10.0.301** SDK is
 > installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64
 > `dotnet` on PATH carries only a 6.0.5 runtime — which is why `dotnet --version`
-> first appeared to fail). `dotnet build app/Sprint.Desktop.sln -warnaserror`
+> first appeared to fail). `dotnet build app/Sprint.Desktop.slnx -warnaserror`
 > **succeeds clean (0/0)** and `dotnet test` **passes 213/213** (up from 25 —
 > WS6–WS11 added the SkiaSharp dash painter + widgets + editor, RGB565 +
 > screen-driver + publisher, the command/binding/capture model, engineer staging +
@@ -92,7 +92,7 @@ ported — the fixed critical-widget set uses direct renderers (see WS6 §5).
 | Go embedded TTFs + `gg` painter | Dash painter port strategy **open** (see risks) |
 
 The old Vite `frontend/` tree still physically sits in `app/` but is **not** part
-of `Sprint.Desktop.sln`. WS1 owns purging stale Wails / `frontend/dist` / embed
+of `Sprint.Desktop.slnx`. WS1 owns purging stale Wails / `frontend/dist` / embed
 references from docs, comments, `Makefile`, and tooling.
 
 ---
@@ -164,7 +164,7 @@ Design intent that is uncontested regardless of which palette wins:
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `Sprint.Desktop.sln` | implemented | VS2017-format; Debug/Release × Any CPU/x64/x86, but every x64/x86 maps `ActiveCfg` back to Any CPU (no real per-RID build). |
+| `Sprint.Desktop.slnx` | implemented | VS2017-format; Debug/Release × Any CPU/x64/x86, but every x64/x86 maps `ActiveCfg` back to Any CPU (no real per-RID build). |
 | `Sprint.Desktop.Client.csproj` | implemented | net10.0 WinExe, Nullable+ImplicitUsings, Avalonia.Desktop + Themes.Fluent 12.0.5; refs Api+Games; packs Assets/presets/appicon; lock file present. **No RID / PublishSingleFile / Trimming.** |
 | `Sprint.Desktop.Api.csproj` | implemented | net10.0 classlib, no deps, no project refs — pure contract assembly; lock file present. |
 | `Sprint.Games.csproj` | implemented | net10.0 classlib referencing Api only; lock file present. |
@@ -486,7 +486,7 @@ refactor of MainWindow, logging seam (matrix 4.9), CI.
 **DONE (2026-06-29):** `global.json` pins SDK 10.0.301; `app/Directory.Build.props`
 centralizes shared props + version; **explicit composition root** injects
 MainWindow's deps (no hidden wiring); **test project migrated to xunit**
-(`dotnet test`; Makefile + CI updated to `dotnet test app/Sprint.Desktop.sln`);
+(`dotnet test`; Makefile + CI updated to `dotnet test app/Sprint.Desktop.slnx`);
 clean restore/build incl. `-warnaserror` + tests (4/4) verified.
 
 **DONE (2026-06-29, WS3 session):** the **headless Avalonia harness** is in —
@@ -820,7 +820,7 @@ model).
 | 5 | **Updater: port, replace, or drop** — RESOLVED 2026-07-01 | Decision: **check + notify + manual download**. `UpdateChecker` (channel-aware semver, unit-tested) + `GitHubReleaseSource` power a manual "Check for updates" in Settings and a version badge; the Windows-batch **self-replacing auto-install is intentionally deferred** (risky unattended, and out of scope for this parity pass). See `docs/RELEASE.md`. | WS10 |
 | 6 | **Design typography** — RESOLVED 2026-06-29 | Maintainer confirmed `docs/Sprint.fig` mandates **Inter** (UI) + **Space Grotesk** (display). Design layer migrated off `IBM Plex Sans`: fonts bundled under `Sprint.Desktop.Client/Assets/Fonts`; `Graphite.FontStack`/`DisplayFontStack` + `docs/DESIGN.md` updated; build-verified. Remaining: render-verify on a GUI run + full component fidelity to the Figma (WS6). | WS6 |
 | 7 | **Telemetry threading model** | The WS3 contract now *supports* the old design (sync-pull adapter + a consumer-owned loop), and the false "60Hz" label is gone (real measured Hz via `RateMeter`). **Still open for WS4:** the actual background read thread + cancellation/dispose + 5s reconnect + non-blocking ~30Hz buffered handoff + delta augmentation (a `with`-copy, never mutating the adapter frame). The current 500ms UI-thread `DispatcherTimer` is the WS3 stand-in WS4 replaces. | WS4 |
-| 8 | **SDK availability / build verification** — RESOLVED 2026-06-29 | The .NET **10.0.301** SDK is installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64 `dotnet` on PATH has only a 6.0.5 runtime — why `dotnet --version` first appeared to fail). `dotnet build app/Sprint.Desktop.sln` is **clean (0/0)** and `make test-app` is **4/4**. Still TODO in WS2: add `global.json` to pin the SDK so the build isn't environment-luck. | WS2 |
+| 8 | **SDK availability / build verification** — RESOLVED 2026-06-29 | The .NET **10.0.301** SDK is installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64 `dotnet` on PATH has only a 6.0.5 runtime — why `dotnet --version` first appeared to fail). `dotnet build app/Sprint.Desktop.slnx` is **clean (0/0)** and `make test-app` is **4/4**. Still TODO in WS2: add `global.json` to pin the SDK so the build isn't environment-luck. | WS2 |
 | 9 | **Portable data location** | Old app stored `data/` next to the exe (portable); .NET uses `%AppData%/Sprint` but now probes `AppContext.BaseDirectory/data` for one-time device/layout migration. Product decision still needed for whether new writes should remain in AppData or return to portable mode. | WS5 |
 | 10 | **"AI improvements" scope undefined** | The maintainer explicitly wants "some AI improvements," but PRD #107's workstreams (1–11) define none. Surface (engineer assistant? setup advisor? telemetry insights?), model, data flow, and on-device vs API are **all unspecified** — needs a dedicated mini-PRD / maintainer input before any agent plans against it. Treat as a separate workstream (WS12), not folded into the migration. | (unassigned / WS12) |
 | 11 | **Model-fidelity data loss is silent** | The main WS5 lossy fields are now modeled/preserved, including dash idle/alerts/config, settings dashEditorUI, device geometry/bindings, and unknown dash/widget extension data. Remaining fidelity risk lives in unmodeled WS6 schema areas such as widget stacks/theme/format semantics until the renderer/editor port lands. | WS5/WS6 |

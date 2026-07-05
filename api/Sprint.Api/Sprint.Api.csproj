@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Sprint.Api</RootNamespace>
+    <AssemblyName>Sprint.Api</AssemblyName>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.3.0" />
+    <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="16.3.0" />
+    <PackageReference Include="HotChocolate.Subscriptions.InMemory" Version="16.3.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
+    <PackageReference Include="InfluxDB.Client" Version="5.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The shared DTO package: the server and the desktop client speak the same types. -->
+    <ProjectReference Include="..\..\app\Sprint.Contracts\Sprint.Contracts.csproj" />
+  </ItemGroup>
+</Project>
