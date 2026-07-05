@@ -39,7 +39,7 @@ so that:
 > **Build verification (updated 2026-07-04):** the .NET **10.0.301** SDK is
 > installed under the **x86** host `C:\Program Files (x86)\dotnet` (the x64
 > `dotnet` on PATH carries only a 6.0.5 runtime — which is why `dotnet --version`
-> first appeared to fail). `dotnet build app/Sprint.Desktop.sln -warnaserror`
+> first appeared to fail). `dotnet build app/Sprint.Desktop.slnx -warnaserror`
 > **succeeds clean (0/0)** and `dotnet test` **passes 213/213** (up from 25 —
 > WS6–WS11 added the SkiaSharp dash painter + widgets + editor, RGB565 +
 > screen-driver + publisher, the command/binding/capture model, engineer staging +
@@ -92,7 +92,7 @@ ported — the fixed critical-widget set uses direct renderers (see WS6 §5).
 | Go embedded TTFs + `gg` painter | Dash painter port strategy **open** (see risks) |
 
 The old Vite `frontend/` tree still physically sits in `app/` but is **not** part
-of `Sprint.Desktop.sln`. WS1 owns purging stale Wails / `frontend/dist` / embed
+of `Sprint.Desktop.slnx`. WS1 owns purging stale Wails / `frontend/dist` / embed
 references from docs, comments, `Makefile`, and tooling.
 
 ---
@@ -164,7 +164,7 @@ Design intent that is uncontested regardless of which palette wins:
 
 | Item | Status | Detail |
 | --- | --- | --- |
-| `Sprint.Desktop.sln` | implemented | Four-project solution for Client, Api, Games, and Tests. |
+| `Sprint.Desktop.slnx` | implemented | VS2017-format; Debug/Release × Any CPU/x64/x86, but every x64/x86 maps `ActiveCfg` back to Any CPU (no real per-RID build). |
 | `Sprint.Desktop.Client.csproj` | implemented | net10.0 WinExe, Avalonia.Desktop + Themes.Fluent 12.0.5, SkiaSharp dash painter, refs Api+Games, copies Assets/presets/appicon, declares `RuntimeIdentifiers` for win-x64 and linux-x64, and supports self-contained single-file publish. |
 | `Sprint.Desktop.Api.csproj` | implemented | net10.0 classlib, no deps, no project refs — pure contract assembly; lock file present. |
 | `Sprint.Games.csproj` | implemented | net10.0 classlib referencing Api only; lock file present. |
@@ -486,7 +486,7 @@ refactor of MainWindow, logging seam (matrix 4.9), CI.
 **DONE (2026-06-29):** `global.json` pins SDK 10.0.301; `app/Directory.Build.props`
 centralizes shared props + version; **explicit composition root** injects
 MainWindow's deps (no hidden wiring); **test project migrated to xunit**
-(`dotnet test`; Makefile + CI updated to `dotnet test app/Sprint.Desktop.sln`);
+(`dotnet test`; Makefile + CI updated to `dotnet test app/Sprint.Desktop.slnx`);
 clean restore/build incl. `-warnaserror` + tests (4/4) verified.
 
 **DONE (2026-06-29, WS3 session):** the **headless Avalonia harness** is in —

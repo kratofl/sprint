@@ -32,12 +32,12 @@ Sim Game (e.g. LeMansUltimate)
   USB Screen               Race Engineer (LAN)
   (VoCore / USBD480)       direct IP:port
 
-        ↓  HTTP / WebSocket (sync + live stream)
+        ↓  GraphQL (queries/mutations + subscriptions)
 ┌──────────────────────────────────────────────────────┐
-│  Go API Server  (/api)                               │
-│    · REST API  (sessions, setups, layouts, auth)     │
-│    · WebSocket relay  (remote engineer access)       │
-│    · Postgres database                               │
+│  .NET GraphQL API Server  (/api)                     │
+│    · GraphQL API  (sessions, setups, layouts, auth)  │
+│    · GraphQL subscriptions  (remote engineer relay)  │
+│    · Postgres (relational) + InfluxDB (telemetry)    │
 └──────────────────────────────────────────────────────┘
         ↓  serves frontend
 ┌──────────────────────────────────────────────────────┐
@@ -57,11 +57,15 @@ Sim Game (e.g. LeMansUltimate)
 | Path | Language | Description |
 |---|---|---|
 | `/app` | C# / .NET | Avalonia desktop app — driver's rig |
-| `/api` | Go | HTTP/WebSocket API server |
+| `/api` | C# / .NET | ASP.NET Core + HotChocolate GraphQL API server |
 | `/web` | TypeScript | Next.js web frontend |
 | `/packages` | TypeScript | Shared UI components, types + design tokens |
 
-The API is a single Go module (`api`). The desktop app (`app/Sprint.Desktop.sln`) is a separate .NET solution restored/built with the `dotnet` CLI. The web app and shared packages (`web`, `packages/*`) share a pnpm workspace managed by Turborepo.
+The API (`api/Sprint.Api.slnx`) and the desktop app (`app/Sprint.Desktop.slnx`) are
+.NET solutions restored/built with the `dotnet` CLI; they share the
+`app/Sprint.Contracts` DTO package. The web app and shared packages (`web`,
+`packages/*`) share a pnpm workspace managed by Turborepo, and the web app's GraphQL
+types are generated from `web/schema.graphql` via graphql-codegen.
 
 ---
 
@@ -69,8 +73,7 @@ The API is a single Go module (`api`). The desktop app (`app/Sprint.Desktop.sln`
 
 | Tool | Version | Required for |
 |---|---|---|
-| [Go](https://go.dev) | ≥ 1.26 | API server |
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x | Desktop app build |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x | Desktop app + API server build |
 | [Node.js](https://nodejs.org) | ≥ 20 | Web app + shared packages |
 | [pnpm](https://pnpm.io) | ≥ 9 | Package manager |
 | [Docker](https://www.docker.com) | — | Containerised deployment |
@@ -88,8 +91,9 @@ make docker-up
 ```
 
 - Web app → http://localhost:3000
-- API server → http://localhost:8080
+- API server → http://localhost:8080 (GraphQL IDE at `/graphql`)
 - Postgres → localhost:5432
+- InfluxDB → localhost:8086
 
 ### Local development
 
@@ -117,22 +121,24 @@ make dev-app
 make help          # list all targets
 
 Development
-  dev-api          Run the API server locally (go run)
+  dev-api          Run the API server locally (dotnet watch, hot reload)
   dev-web          Run the Next.js web app in dev mode
+  schema           Export the GraphQL schema → web/schema.graphql
 
 Build
-  build-api        Compile API server → bin/sprint-api
+  build-api        Publish the API server → api/build/bin (dotnet publish)
   build-web        Build Next.js production output
   build-app        Publish the Avalonia desktop app → app/build/bin (dotnet publish)
   build            build-api + build-web
 
 Test & lint
   test             Run API + desktop tests
-  test-api         Run API server tests only
+  test-api         Run API server tests (xunit)
   test-app         Run the Avalonia desktop tests (xunit)
-  lint             go vet (api) + pnpm lint
+  lint             Build API solution -warnaserror + pnpm lint
+  lint-api         Build the API solution with warnings as errors
   lint-app         Build the Avalonia solution with warnings as errors (dotnet build -warnaserror)
-  fmt              gofmt + pnpm format
+  fmt              dotnet format (app + api) + pnpm format
 
 Docker
   docker-build     Build all Docker images

@@ -8,9 +8,12 @@ summary. Design contract: `docs/DESIGN.md`. Migration checklist:
 
 - The desktop migration is now a .NET 10 / Avalonia solution under `app/`:
   `Sprint.Desktop.Client`, `Sprint.Desktop.Api`, `Sprint.Games`, and
-  `Sprint.Desktop.Tests`.
+  `Sprint.Desktop.Tests` (the `app/Sprint.Desktop.slnx` solution).
 - The old Go/Wails + React desktop is retired. Do not add Wails setup/build
   instructions back unless this architecture is intentionally restored.
+- The API was migrated Go → .NET 10 (ASP.NET Core + HotChocolate GraphQL,
+  `api/Sprint.Api.slnx`); it shares `app/Sprint.Contracts` with the desktop and
+  persists to Postgres (relational) + InfluxDB (telemetry).
 - Windows / PowerShell are the local defaults. The `Makefile` shells out through
   PowerShell.
 - Prioritize `app/`. Do not change `api/`, `web/`, or shared packages unless a
@@ -18,14 +21,17 @@ summary. Design contract: `docs/DESIGN.md`. Migration checklist:
 - Do not install tools or dependencies unless asked.
 - Design = Graphite from `docs/DESIGN.md`: flat near-black surfaces, ember
   `#FF6A00`, informational `#4F9CFF`, Inter UI text, Space Grotesk display text,
-  and centralized tokens in `Graphite.cs` / component themes.
+  and centralized tokens in `Graphite.cs` / component themes. Saira SemiCondensed
+  is the condensed motorsport face (wordmark, section labels, chips) and the
+  Tabler icon set renders via `Icons.cs` — both bundled, no new dependency.
 
 ## Verify loop
 
-Use the .NET SDK pinned by `global.json`:
+Use the .NET SDK pinned by `global.json`. The desktop and API are now separate
+`.slnx` solutions (`app/Sprint.Desktop.slnx`, `api/Sprint.Api.slnx`):
 
 - Build with warnings as errors:
-  `dotnet build app/Sprint.Desktop.sln -warnaserror`
+  `dotnet build app/Sprint.Desktop.slnx -warnaserror`
 - Desktop tests:
   `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj`
 - Visual smoke after Avalonia shell/layout/Graphite changes:
@@ -34,6 +40,8 @@ Use the .NET SDK pinned by `global.json`:
   `dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`
 - Publish:
   `make build-app` (defaults to `RID=win-x64`, override with `RID=linux-x64`)
+- API (.NET GraphQL): `make test-api`, `make lint-api`, `make dev-api`,
+  `make schema` (re-export `web/schema.graphql`).
 
 If a bare `dotnet` resolves to the x64 runtime-only install, use the x86 SDK:
 `& 'C:\Program Files (x86)\dotnet\dotnet.exe'`.

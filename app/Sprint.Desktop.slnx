@@ -1,0 +1,12 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Sprint.Contracts/Sprint.Contracts.csproj" />
+  <Project Path="Sprint.Desktop.Api/Sprint.Desktop.Api.csproj" />
+  <Project Path="Sprint.Desktop.Client/Sprint.Desktop.Client.csproj" />
+  <Project Path="Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj" />
+  <Project Path="Sprint.Games/Sprint.Games.csproj" />
+</Solution>
