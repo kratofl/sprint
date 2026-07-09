@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Sprint.Desktop.Api.Telemetry;
 
 namespace Sprint.Desktop.Features.Dashes;
 
@@ -38,6 +39,66 @@ public sealed class DashEditorController
 
     /// <summary>Raised after any mutation that changed the layout or selection, so the view can rebuild.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>Raised when the user explicitly asks to push the current design to its assigned screen (US27).</summary>
+    public event EventHandler<DashLayout>? ApplyToScreenRequested;
+
+    /// <summary>The preview state the canvas simulates; <see cref="DashPreviewState.Live"/> uses the live/demo frame (US26).</summary>
+    public DashPreviewState PreviewState { get; private set; } = DashPreviewState.Live;
+
+    /// <summary>The dash's current target screen size (US15/US16), resolved from the layout and normalized for legacy dashes.</summary>
+    public ScreenProfile TargetProfile => ScreenProfileCatalog.Resolve(Layout.ScreenProfileId);
+
+    /// <summary>All wheel-screen sizes a dash can target.</summary>
+    public IReadOnlyList<ScreenProfile> AvailableProfiles => ScreenProfileCatalog.All;
+
+    /// <summary>
+    /// Retarget this dash to another screen size (US17): refits the grid to the new
+    /// aspect and persists. Selecting the current size is a no-op. Returns whether the
+    /// target changed.
+    /// </summary>
+    public bool SetTargetProfile(ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (DashLayoutEditor.TargetsProfile(Layout, profile))
+        {
+            return false;
+        }
+
+        DashLayoutEditor.ApplyScreenProfile(Layout, profile);
+        SelectedWidgetId = null;
+        SelectedStackId = null;
+        ActiveLayerId = null;
+        Persist();
+        return true;
+    }
+
+    /// <summary>Selects the preview state the canvas renders (US26). Returns whether it changed.</summary>
+    public bool SelectPreviewState(DashPreviewState state)
+    {
+        if (PreviewState == state)
+        {
+            return false;
+        }
+
+        PreviewState = state;
+        RaiseChanged();
+        return true;
+    }
+
+    /// <summary>The frame the canvas should render given the live frame and the selected preview state.</summary>
+    public TelemetryFrame ResolveRenderFrame(TelemetryFrame liveFrame)
+    {
+        ArgumentNullException.ThrowIfNull(liveFrame);
+        return DashPreviewFrames.Resolve(PreviewState, liveFrame);
+    }
+
+    /// <summary>
+    /// Signals intent to push the current design to the assigned physical screen (US27).
+    /// The shell handles the actual hardware render/stream; edits never reach the wheel
+    /// until this is invoked.
+    /// </summary>
+    public void RequestApplyToScreen() => ApplyToScreenRequested?.Invoke(this, Layout);
 
     public IReadOnlyList<DashPageTab> PageTabs
     {

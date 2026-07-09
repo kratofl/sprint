@@ -43,7 +43,6 @@ public sealed class DashEditorView : UserControl
     private readonly AppSettings _settings;
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Action _onClose;
-    private readonly Func<Control>? _windowActionsFactory;
     private Canvas _canvas = new();
     private Rectangle? _ghost;
     private StackPanel? _paletteCards;
@@ -108,14 +107,12 @@ public sealed class DashEditorView : UserControl
         DashEditorController controller,
         AppSettings settings,
         Func<TelemetryFrame> frameProvider,
-        Action onClose,
-        Func<Control>? windowActionsFactory = null)
+        Action onClose)
     {
         _controller = controller;
         _settings = settings;
         _frameProvider = frameProvider;
         _onClose = onClose;
-        _windowActionsFactory = windowActionsFactory;
         _controller.Changed += (_, _) => Rebuild();
         // The editor is keyboard-operable: Delete/Backspace removes the selected
         // widget. Focusable so it can receive key events once the canvas is clicked.
@@ -255,8 +252,12 @@ public sealed class DashEditorView : UserControl
         Grid.SetColumn(center, 1);
         bar.Children.Add(center);
 
-        // Right zone: screenshot action controls.
+        // Right zone: target-size selector, Preview-states menu, the Pages/Widgets
+        // panel toggle, and the explicit Apply-to-screen action (PRD #122 editor
+        // toolbar, US15/US26/US27).
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        actions.Children.Add(BuildTargetSizeSelector());
+        actions.Children.Add(BuildPreviewSelector());
         actions.Children.Add(Graphite.Segmented(new[] { "Pages", "Widgets" }, 1, index =>
         {
             if (index == 0)
@@ -266,18 +267,49 @@ public sealed class DashEditorView : UserControl
 
             Rebuild();
         }));
-
-        actions.Children.Add(Graphite.AccentIconButton("check", "Apply", _onClose));
-        if (_windowActionsFactory is not null)
-        {
-            actions.Children.Add(_windowActionsFactory());
-        }
+        actions.Children.Add(Graphite.AccentIconButton("check", "Apply to screen", () => _controller.RequestApplyToScreen()));
 
         Grid.SetColumn(actions, 2);
         bar.Children.Add(actions);
 
         bar.Margin = new Thickness(0, 0, 0, 8);
         return bar;
+    }
+
+    // Target wheel-screen size selector: retargets the dash (change-size / refit) so
+    // the canvas matches the hardware the design will run on (US15/US16/US17).
+    private Control BuildTargetSizeSelector()
+    {
+        var profiles = _controller.AvailableProfiles;
+        var combo = Graphite.ComboBox(profiles.Select(profile => profile.Name), _controller.TargetProfile.Name, 150);
+        ToolTip.SetTip(combo, "Target wheel-screen size");
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = profiles.FirstOrDefault(profile => string.Equals(profile.Name, combo.SelectedItem?.ToString(), StringComparison.Ordinal));
+            if (chosen is not null)
+            {
+                _controller.SetTargetProfile(chosen);
+            }
+        };
+        return combo;
+    }
+
+    // Preview-states menu: overrides the canvas frame with a simulated state so a
+    // dash can be verified in every condition without a live session (US26).
+    private Control BuildPreviewSelector()
+    {
+        var menu = DashPreviewFrames.Menu;
+        var combo = Graphite.ComboBox(menu.Select(item => item.Label), menu.First(item => item.State == _controller.PreviewState).Label, 120);
+        ToolTip.SetTip(combo, "Preview a dash state");
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = menu.FirstOrDefault(item => string.Equals(item.Label, combo.SelectedItem?.ToString(), StringComparison.Ordinal));
+            if (!string.IsNullOrEmpty(chosen.Label))
+            {
+                _controller.SelectPreviewState(chosen.State);
+            }
+        };
+        return combo;
     }
 
     // Editor header title — double-click to rename the whole dash layout.
@@ -799,7 +831,7 @@ public sealed class DashEditorView : UserControl
         _canvasBitmap = DashImageRenderer.RenderReusing(
             _canvasBitmap,
             _controller.Layout,
-            _frameProvider(),
+            _controller.ResolveRenderFrame(_frameProvider()),
             _settings,
             CanvasWidth,
             CanvasHeight,

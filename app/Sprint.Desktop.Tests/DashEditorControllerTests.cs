@@ -75,6 +75,70 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
+    public void SetTargetProfileRefitsGridPersistsAndClearsSelection()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("gear_speed");
+        Assert.NotNull(controller.SelectedWidgetId);
+        saves = 0;
+
+        var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+        Assert.True(controller.SetTargetProfile(portrait));
+
+        Assert.Equal("portrait-480x854", controller.Layout.ScreenProfileId);
+        Assert.Equal(portrait.GridCols, controller.Layout.GridCols);
+        Assert.Equal(portrait.GridRows, controller.Layout.GridRows);
+        Assert.Equal(portrait, controller.TargetProfile);
+        Assert.Null(controller.SelectedWidgetId);
+        Assert.True(DashLayoutValidator.IsValid(controller.Layout));
+        Assert.Equal(1, saves);
+
+        // Re-selecting the same size is a no-op (no extra save).
+        Assert.False(controller.SetTargetProfile(portrait));
+        Assert.Equal(1, saves);
+    }
+
+    [Fact]
+    public void SelectPreviewStateChangesTheFrameUsedForRender()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        var live = new Sprint.Desktop.Api.Telemetry.TelemetryFrame();
+
+        // Live passes the live frame straight through.
+        Assert.Same(live, controller.ResolveRenderFrame(live));
+
+        var changed = 0;
+        controller.Changed += (_, _) => changed++;
+
+        Assert.True(controller.SelectPreviewState(DashPreviewState.Redline));
+        Assert.Equal(DashPreviewState.Redline, controller.PreviewState);
+        Assert.Equal(1, changed);
+
+        var previewed = controller.ResolveRenderFrame(live);
+        Assert.NotSame(live, previewed);
+        Assert.True(previewed.Car.Rpm > previewed.Car.MaxRpm * 0.95f, "Redline preview should sit near the rev limit.");
+
+        // Re-selecting the same state is a no-op.
+        Assert.False(controller.SelectPreviewState(DashPreviewState.Redline));
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public void RequestApplyToScreenRaisesIntentWithTheLayout()
+    {
+        var layout = NewLayout();
+        var controller = new DashEditorController(layout, _ => { });
+
+        DashLayout? applied = null;
+        controller.ApplyToScreenRequested += (_, l) => applied = l;
+
+        controller.RequestApplyToScreen();
+
+        Assert.Same(layout, applied);
+    }
+
+    [Fact]
     public void SetSelectedConfigWithoutSelectionIsNoOp()
     {
         var saves = 0;

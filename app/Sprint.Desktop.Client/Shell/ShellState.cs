@@ -20,14 +20,28 @@ public sealed class ShellState
     public string CurrentTitle => View switch
     {
         AppView.Home => "Home",
-        AppView.Dashes => "Dash Editor",
+        AppView.Dashes => "Dashes",
         AppView.Devices => "Devices",
         AppView.Setups => "Setups",
+        AppView.RaceEngineer => "Race Engineer",
         AppView.Settings => "Settings",
         AppView.Help => "Help",
         AppView.DebugLive => "Live Debug",
         AppView.DebugEngineer => "Engineer Debug",
         AppView.DebugSetup => "Setup Debug",
-        _ => "Dash Editor"
+        _ => "Dashes"
+    };
+
+    /// <summary>The pillar/group each destination belongs to, shown as the breadcrumb parent.</summary>
+    public string CurrentGroup => View switch
+    {
+        AppView.Home => "Overview",
+        AppView.Dashes => "Dashboards",
+        AppView.Devices => "Dashboards",
+        AppView.Setups => "Setups",
+        AppView.RaceEngineer => "Race Engineer",
+        AppView.Settings => "System",
+        AppView.Help => "System",
+        _ => "Sprint"
     };
 }

@@ -34,6 +34,7 @@ public sealed class MainWindow : Window
     private Border? _bodyTray;
     private StackPanel _navRail = new() { Spacing = 8 };
     private TextBlock _breadcrumb = null!;
+    private TextBlock _groupCrumb = null!;
     private TextBlock _signalText = null!;
     private TextBlock _hzText = null!;
     private Border _signalDot = null!;
@@ -90,12 +91,17 @@ public sealed class MainWindow : Window
         Height = 900;
         MinWidth = 1120;
         MinHeight = 720;
-        Background = Brushes.Transparent;
+        Background = Graphite.PanelBrush;
         FontFamily = Graphite.FontStack;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        WindowDecorations = Avalonia.Controls.WindowDecorations.None;
+        // OS-backed frame with a Sprint-drawn titlebar (PRD #122 window chrome):
+        // keep the native window so the OS provides resize borders, snap, and
+        // Windows 11 rounded corners, but extend the client area under the caption
+        // and suppress the system chrome so our own titlebar occupies that region.
+        // This replaces the old decoration-less + transparent window that rendered
+        // bare-black corners.
         ExtendClientAreaToDecorationsHint = true;
-        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
+        ExtendClientAreaTitleBarHeightHint = -1;
 
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "appicon.png");
         if (File.Exists(iconPath))
@@ -106,10 +112,10 @@ public sealed class MainWindow : Window
         _windowFrame.Background = Graphite.PanelBrush;
         _windowFrame.BorderBrush = Graphite.LineBrush;
         _windowFrame.BorderThickness = new Thickness(1);
-        _windowFrame.CornerRadius = new CornerRadius(Graphite.RadiusXl);
         _windowFrame.ClipToBounds = true;
         _windowFrame.Child = _root;
         Content = _windowFrame;
+        ApplyMaximizedChrome();
         BuildShell();
         RenderBody();
 
@@ -124,15 +130,27 @@ public sealed class MainWindow : Window
     private void BuildShell()
     {
         _bodyTray?.Child = null;
-        _root.RowDefinitions = new RowDefinitions("*");
-        _root.ColumnDefinitions = new ColumnDefinitions($"{_shell.SidebarWidth},*");
+        // The shell is one column of two rows: a single Sprint-owned titlebar that
+        // renders on every page (PRD #122), then the sidebar + body tray beneath it.
+        _root.RowDefinitions = new RowDefinitions("Auto,*");
+        _root.ColumnDefinitions = new ColumnDefinitions("*");
         _root.Background = Graphite.PanelBrush;
         _root.Children.Clear();
 
+        var titlebar = BuildTitlebar();
+        Grid.SetRow(titlebar, 0);
+        Grid.SetColumn(titlebar, 0);
+        _root.Children.Add(titlebar);
+
+        var content = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions($"{_shell.SidebarWidth},*"),
+            Background = Graphite.PanelBrush
+        };
+
         var sidebar = BuildSidebar();
-        Grid.SetRow(sidebar, 0);
         Grid.SetColumn(sidebar, 0);
-        _root.Children.Add(sidebar);
+        content.Children.Add(sidebar);
 
         var tray = new Border
         {
@@ -144,14 +162,38 @@ public sealed class MainWindow : Window
             Child = _body
         };
         _bodyTray = tray;
-        Grid.SetRow(tray, 0);
         Grid.SetColumn(tray, 1);
-        _root.Children.Add(tray);
+        content.Children.Add(tray);
+
+        Grid.SetRow(content, 1);
+        Grid.SetColumn(content, 0);
+        _root.Children.Add(content);
+    }
+
+    /// <summary>
+    /// Suppresses the app-drawn rounded corners and hairline border when the window
+    /// is maximized so Sprint sits full-bleed against the screen edges (US6); a
+    /// normal window keeps the OS-provided rounded corners (US5).
+    /// </summary>
+    private void ApplyMaximizedChrome()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        _windowFrame.CornerRadius = new CornerRadius(maximized ? 0 : Graphite.RadiusXl);
+        _windowFrame.BorderThickness = new Thickness(maximized ? 0 : 1);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == WindowStateProperty)
+        {
+            ApplyMaximizedChrome();
+        }
     }
 
     private Control BuildTitlebar()
     {
-        _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.Text3Brush);
+        _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.TextBrush);
         _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
         _hzText = Graphite.TextBlock("", 10, FontWeight.SemiBold, Graphite.Text3Brush);
         _signalDot = new Border
@@ -165,51 +207,47 @@ public sealed class MainWindow : Window
         var grid = new Grid
         {
             Background = Graphite.PanelBrush,
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"),
             Height = Graphite.TitlebarHeight
         };
+        // The whole bar is the OS window-drag surface, minus interactive chrome
+        // (WindowDragPolicy). Double-click maximises / restores like a native app.
         grid.PointerPressed += BeginDrag;
+        grid.DoubleTapped += (_, e) =>
+        {
+            if (WindowDragPolicy.ShouldBeginDrag(e.Source))
+            {
+                ToggleMaximized();
+                e.Handled = true;
+            }
+        };
 
         var logo = new Border
         {
             Margin = new Thickness(Graphite.Space6, 0, Graphite.Space4, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = Brand.LogoMark(20)
+            Child = Brand.LogoMark(18)
         };
         Grid.SetColumn(logo, 0);
         grid.Children.Add(logo);
-
-        var controls = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        controls.Children.Add(ChromeButton("layout-sidebar", () =>
-        {
-            _shell.ToggleSidebar();
-            BuildShell();
-            RenderBody();
-        }, "Toggle sidebar"));
-        controls.Children.Add(ChromeButton("chevron-left", () => Navigate(AppView.Home), "Go to Home"));
-        controls.Children.Add(ChromeButton("chevron-right", () => Navigate(AppView.Settings), "Go to Settings"));
-        Grid.SetColumn(controls, 1);
-        grid.Children.Add(controls);
 
         var crumbWrap = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0)
+            Margin = new Thickness(4, 0, 0, 0)
         };
-        var brandCrumb = Graphite.TextBlock("SPRINT TELEMETRY", 11, FontWeight.Bold, Graphite.Text3Brush);
+        var brandCrumb = Graphite.TextBlock("SPRINT", 11, FontWeight.Bold, Graphite.Text3Brush);
         brandCrumb.FontFamily = Graphite.DisplayFontStack;
         brandCrumb.LetterSpacing = 1;
         crumbWrap.Children.Add(brandCrumb);
         crumbWrap.Children.Add(Graphite.TextBlock("/", 11, FontWeight.Bold, Graphite.Line2Brush));
+        _groupCrumb = Graphite.TextBlock("", 11, FontWeight.SemiBold, Graphite.Text2Brush);
+        crumbWrap.Children.Add(_groupCrumb);
+        crumbWrap.Children.Add(Graphite.TextBlock("/", 11, FontWeight.Bold, Graphite.Line2Brush));
         crumbWrap.Children.Add(_breadcrumb);
-        Grid.SetColumn(crumbWrap, 2);
+        Grid.SetColumn(crumbWrap, 1);
         grid.Children.Add(crumbWrap);
 
         var signal = new Border
@@ -231,7 +269,7 @@ public sealed class MainWindow : Window
                 }
             }
         };
-        Grid.SetColumn(signal, 3);
+        Grid.SetColumn(signal, 2);
         grid.Children.Add(signal);
 
         var hz = new Border
@@ -240,7 +278,7 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Child = _hzText
         };
-        Grid.SetColumn(hz, 4);
+        Grid.SetColumn(hz, 3);
         grid.Children.Add(hz);
 
         var windowButtons = new StackPanel
@@ -253,7 +291,7 @@ public sealed class MainWindow : Window
         windowButtons.Children.Add(ChromeButton("minus", () => WindowState = WindowState.Minimized, "Minimize"));
         windowButtons.Children.Add(ChromeButton("square", ToggleMaximized, "Maximize / restore"));
         windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
-        Grid.SetColumn(windowButtons, 5);
+        Grid.SetColumn(windowButtons, 4);
         grid.Children.Add(windowButtons);
 
         UpdateTitlebar();
@@ -285,9 +323,15 @@ public sealed class MainWindow : Window
             Child = headerContent
         };
 
+        // Functional grouping (PRD #122): Home, then the Dashboards pillar (dash
+        // design + the hardware it targets), then Setups, then the upcoming Race
+        // Engineer pillar. Groups are fixed so the rail never rearranges as pillars
+        // ship (US9/US10).
         _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(12, 2, 10, 0) };
         AddNavGroup(null, (AppView.Home, "Home"));
-        AddNavGroup("Devices", (AppView.Devices, "Devices"), (AppView.Dashes, "Dash Editor"), (AppView.Setups, "Setups"));
+        AddNavGroup("Dashboards", (AppView.Dashes, "Dashes"), (AppView.Devices, "Devices"));
+        AddNavGroup("Setups", (AppView.Setups, "Setups"));
+        AddUpcomingNavGroup("Race Engineer", (AppView.RaceEngineer, "Race Engineer"));
 
         // Settings/Help pin to the bottom of the rail (matches the Figma sidebar).
         var footer = new StackPanel { Spacing = 4, Margin = new Thickness(12, 6, 10, 12) };
@@ -319,7 +363,8 @@ public sealed class MainWindow : Window
         AppView.Home => "home",
         AppView.Dashes => "layout-dashboard",
         AppView.Devices => "device-desktop",
-        AppView.Setups => "settings",
+        AppView.Setups => "adjustments",
+        AppView.RaceEngineer => "route",
         AppView.Settings => "settings",
         AppView.Help => "help-circle",
         AppView.DebugLive => "activity",
@@ -341,6 +386,35 @@ public sealed class MainWindow : Window
         }
     }
 
+    // An upcoming pillar: the destination is navigable (it routes to a placeholder
+    // page) but the rail marks it as not-yet-shipped with a muted "Soon" chip so the
+    // roadmap is visible and the navigation never rearranges as pillars land (US10).
+    private void AddUpcomingNavGroup(string label, (AppView View, string Label) item)
+    {
+        if (!_shell.SidebarCollapsed)
+        {
+            _navRail.Children.Add(Graphite.SectionLabel(label));
+        }
+
+        var button = NavButton(item.View, item.Label);
+        if (_shell.SidebarCollapsed)
+        {
+            _navRail.Children.Add(button);
+            return;
+        }
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(button, 0);
+        row.Children.Add(button);
+        var soon = Graphite.Chip("Soon", Graphite.Text3Brush);
+        soon.IsHitTestVisible = false;
+        soon.HorizontalAlignment = HorizontalAlignment.Right;
+        soon.Margin = new Thickness(0, 0, 6, 0);
+        Grid.SetColumn(soon, 1);
+        row.Children.Add(soon);
+        _navRail.Children.Add(row);
+    }
+
     private Button NavButton(AppView view, string label)
     {
         var active = view == _shell.View;
@@ -354,20 +428,6 @@ public sealed class MainWindow : Window
     private Button ChromeButton(string iconName, Action action, string? tooltip = null)
     {
         return Graphite.ChromeIconButton(iconName, tooltip ?? iconName, action);
-    }
-
-    private Control BuildWindowActions()
-    {
-        var windowButtons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        windowButtons.Children.Add(ChromeButton("minus", () => WindowState = WindowState.Minimized, "Minimize"));
-        windowButtons.Children.Add(ChromeButton("square", ToggleMaximized, "Maximize / restore"));
-        windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
-        return windowButtons;
     }
 
     private void Navigate(AppView view)
@@ -385,9 +445,23 @@ public sealed class MainWindow : Window
 
     private void OpenDashEditor(DashLayout layout)
     {
-        var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
-        _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor, BuildWindowActions);
+        _dashEditor = CreateDashEditor(layout);
         RenderBody();
+    }
+
+    private DashEditorView CreateDashEditor(DashLayout layout)
+    {
+        var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
+        // Explicit Apply-to-screen: persist the current design, then re-sync the
+        // hardware publishers so the assigned physical screen renders it through the
+        // canonical painter → RGB565 → device pipeline (US27/US28). No live mirroring
+        // happens during editing; only this intent reaches the wheel.
+        controller.ApplyToScreenRequested += (_, applied) =>
+        {
+            _runtime.SaveDashLayout(applied);
+            _screens.Sync();
+        };
+        return new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor);
     }
 
     private void CloseDashEditor()
@@ -402,8 +476,7 @@ public sealed class MainWindow : Window
         {
             var layout = _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
                 ?? _runtime.DashLayouts.First();
-            var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
-            _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor, BuildWindowActions);
+            _dashEditor = CreateDashEditor(layout);
         }
 
         return _dashEditor;
@@ -454,6 +527,10 @@ public sealed class MainWindow : Window
         }
 
         _breadcrumb.Text = _shell.CurrentTitle;
+        if (_groupCrumb is not null)
+        {
+            _groupCrumb.Text = _shell.CurrentGroup;
+        }
         _signalText.Text = _statusView.Label;
         _hzText.Text = _statusView.RateText;
         _signalDot.Background = BrushForTone(_statusView.Tone);
@@ -488,6 +565,7 @@ public sealed class MainWindow : Window
             AppView.Dashes => _dashEditor is null ? DashesPage() : DashEditorPage(),
             AppView.Devices => DevicesPage(),
             AppView.Setups => SetupPage(),
+            AppView.RaceEngineer => UpcomingPillarPage(),
             AppView.Settings => SettingsPage(),
             AppView.Help => HelpPage(),
             AppView.DebugLive => LivePage(),
@@ -1271,11 +1349,11 @@ public sealed class MainWindow : Window
                 return true;
             case Key.D2:
             case Key.NumPad2:
-                view = AppView.Devices;
+                view = AppView.Dashes;
                 return true;
             case Key.D3:
             case Key.NumPad3:
-                view = AppView.Dashes;
+                view = AppView.Devices;
                 return true;
             case Key.D4:
             case Key.NumPad4:
@@ -1396,6 +1474,17 @@ public sealed class MainWindow : Window
             // Manual check is best-effort; a network failure must not crash the app.
             status.Text = "Check failed — try again later.";
         }
+    }
+
+    private Control UpcomingPillarPage()
+    {
+        var stack = PageStack();
+        stack.Children.Add(PageHeader(_shell.CurrentTitle, "Upcoming pillar", Graphite.StatusPill("Upcoming", Graphite.BlueBrush)));
+        stack.Children.Add(Graphite.StatePanel(
+            $"{_shell.CurrentTitle} is on the roadmap",
+            "This pillar isn't built yet. It's shown here so the navigation stays stable as Sprint grows — the remote race-engineer link will live in this space.",
+            Graphite.BlueBrush));
+        return Scroll(stack);
     }
 
     private Control HelpPage()
@@ -1686,10 +1775,15 @@ public sealed class MainWindow : Window
         AddGrid(title, Graphite.TextBlock(layout.Name, 15, FontWeight.Bold, Graphite.TextBrush), 0, 0);
         AddGrid(title, Graphite.StatusPill(layout.IsDefault ? "Default" : "Custom", layout.IsDefault ? Graphite.GreenBrush : Graphite.BlueBrush), 0, 1);
         stack.Children.Add(title);
+
+        // The target wheel-screen size the dash is designed for (US13/US29).
+        var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
+        stack.Children.Add(Graphite.Chip($"{profile.Orientation} {profile.ResolutionLabel}", Graphite.BlueBrush));
         stack.Children.Add(DashPreview(layout));
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(ActionButton("Edit", ButtonTone.Primary, () => OpenDashEditor(layout)));
+        actions.Children.Add(DuplicateToSizeSelector(layout));
         if (layout.IsDefault)
         {
             actions.Children.Add(ActionButton("Reset layout", ButtonTone.Neutral, () =>
@@ -1722,6 +1816,24 @@ public sealed class MainWindow : Window
             Padding = new Thickness(14),
             Child = stack
         };
+    }
+
+    // Duplicate-to-size: copies a dash and retargets the copy to a chosen wheel-screen
+    // size, refitting its grid while leaving the original intact (US18).
+    private Control DuplicateToSizeSelector(DashLayout layout)
+    {
+        var combo = Graphite.ComboBox(ScreenProfileCatalog.All.Select(profile => profile.Name), selected: null, minWidth: 150, placeholder: "Duplicate to…");
+        ToolTip.SetTip(combo, "Duplicate this dash to another screen size");
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = ScreenProfileCatalog.All.FirstOrDefault(profile => string.Equals(profile.Name, combo.SelectedItem?.ToString(), StringComparison.Ordinal));
+            if (chosen is not null)
+            {
+                _runtime.DuplicateDashToProfile(layout, chosen);
+                RenderBody();
+            }
+        };
+        return combo;
     }
 
     private Control DashPreview(DashLayout layout)

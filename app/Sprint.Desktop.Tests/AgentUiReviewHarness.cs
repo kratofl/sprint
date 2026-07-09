@@ -73,7 +73,7 @@ internal static class AgentUiReviewHarness
                     Click(window, "Help");
                     frames.Add(Capture(window, artifactRoot, "help-reference", "Help", "REFERENCE", "Telemetry"));
 
-                    Click(window, "Dash Editor");
+                    Click(window, "Dashes");
                     frames.Add(Capture(window, artifactRoot, "dash-editor-list", "Dashes", "Create dash", "Edit"));
 
                     Click(window, "Edit");

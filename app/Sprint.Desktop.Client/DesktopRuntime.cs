@@ -187,9 +187,73 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
         clone.Name = "New Dash";
         clone.IsDefault = false;
+        NormalizeLayoutProfile(clone);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
         return clone;
+    }
+
+    public DashLayout CreateDashLayout(ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
+        var clone = Clone(source);
+        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+        clone.Name = "New Dash";
+        clone.IsDefault = false;
+        DashLayoutEditor.ApplyScreenProfile(clone, profile);
+        DashLayouts.Add(clone);
+        SaveDashLayout(clone);
+        return clone;
+    }
+
+    /// <summary>Retarget an existing dash to a different screen size in place (US17), refitting its grid and persisting.</summary>
+    public void SetDashScreenProfile(DashLayout layout, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(profile);
+        if (DashLayoutEditor.TargetsProfile(layout, profile))
+        {
+            return;
+        }
+
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
+        SaveDashLayout(layout);
+    }
+
+    /// <summary>
+    /// Duplicate a dash and retarget the copy to another screen size (US18): an
+    /// independent, retargeted-and-refit layout with its own id, leaving the source
+    /// untouched.
+    /// </summary>
+    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        var clone = Clone(source);
+        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+        clone.Name = $"{source.Name} · {profile.ResolutionLabel}";
+        clone.IsDefault = false;
+        DashLayoutEditor.ApplyScreenProfile(clone, profile);
+        DashLayouts.Add(clone);
+        SaveDashLayout(clone);
+        return clone;
+    }
+
+    /// <summary>
+    /// Ensures a layout has a valid target screen profile. Legacy layouts without a
+    /// stored profile keep their grid and are tagged with the best-fit catalog profile
+    /// (matched by grid, then aspect), so nothing about their placement changes.
+    /// </summary>
+    private static void NormalizeLayoutProfile(DashLayout layout)
+    {
+        if (ScreenProfileCatalog.Find(layout.ScreenProfileId) is not null)
+        {
+            return;
+        }
+
+        layout.ScreenProfileId = ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
     }
 
     /// <summary>Make <paramref name="layout"/> the sole default, persisting the demoted one too.</summary>
@@ -419,6 +483,13 @@ public sealed class DesktopRuntime : IDesktopRuntime
         if (layouts.Count == 0)
         {
             layouts.Add(LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout());
+        }
+
+        // Tag any layout missing a target screen profile (legacy saves) with the
+        // best-fit catalog profile so the dash↔screen model is always populated.
+        foreach (var layout in layouts)
+        {
+            NormalizeLayoutProfile(layout);
         }
 
         return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);

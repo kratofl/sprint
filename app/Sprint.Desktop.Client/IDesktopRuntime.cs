@@ -30,6 +30,9 @@ public interface IDesktopRuntime
     void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId);
     void RemoveDevice(SavedDevice device);
     DashLayout CreateDashLayout();
+    DashLayout CreateDashLayout(ScreenProfile profile);
+    void SetDashScreenProfile(DashLayout layout, ScreenProfile profile);
+    DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile);
     void SaveDashLayout(DashLayout layout);
     void ResetDashLayout(DashLayout layout);
     void SetDefaultDashLayout(DashLayout layout);

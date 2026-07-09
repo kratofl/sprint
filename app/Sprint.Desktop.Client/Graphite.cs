@@ -422,6 +422,26 @@ internal static class Graphite
         return track;
     }
 
+    // A Graphite-styled dropdown: flat Panel2 fill, hairline border, tokenized text.
+    // Callers attach SelectionChanged. Centralizes the combo chrome the toolbar
+    // size/preview selectors and the dash-card duplicate-to-size picker all share.
+    public static ComboBox ComboBox(IEnumerable<string> items, string? selected, double minWidth, string? placeholder = null)
+    {
+        return new ComboBox
+        {
+            ItemsSource = items.ToArray(),
+            SelectedItem = selected,
+            PlaceholderText = placeholder,
+            Background = Panel2Brush,
+            Foreground = TextBrush,
+            BorderBrush = Line2Brush,
+            MinWidth = minWidth,
+            FontFamily = FontStack,
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+    }
+
     public static Border StatusPill(string text, IBrush? brush = null)
     {
         return new Border

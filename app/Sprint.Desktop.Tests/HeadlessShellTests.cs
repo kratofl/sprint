@@ -77,7 +77,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task ShellUsesScreenshotLayoutWithoutSeparateTitlebar()
+    public async Task ShellRendersSingleTitlebarWithWindowControlsOnEveryPage()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -87,20 +87,38 @@ public class HeadlessShellTests
             await session.Dispatch(() =>
             {
                 var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-                var shell = new ShellState();
-                shell.Navigate(AppView.Dashes);
                 using var telemetry = new RecordingTelemetrySource();
-                var window = new MainWindow(runtime, shell, telemetry);
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
                 window.Show();
 
+                // The shell is one column of two rows: a single Sprint-owned titlebar
+                // above the sidebar + body (PRD #122). The window frame stays an opaque
+                // rounded Border so the OS renders clean rounded corners, not black ones.
                 var frame = Assert.IsType<Border>(window.Content);
                 Assert.Equal(new CornerRadius(Graphite.RadiusXl), frame.CornerRadius);
-                Assert.True(frame.ClipToBounds);
                 var root = Assert.IsType<Grid>(frame.Child);
-                Assert.Single(root.RowDefinitions);
-                Assert.Equal(2, root.ColumnDefinitions.Count);
-                Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(),
-                    text => string.Equals(text.Text, "SPRINT TELEMETRY", StringComparison.Ordinal));
+                Assert.Equal(2, root.RowDefinitions.Count);
+                Assert.Single(root.ColumnDefinitions);
+
+                // The window controls live in that one shared titlebar, so they must be
+                // present on every production page — not only the Dash Editor. Walk each
+                // page and assert min / maximize / close survive the navigation.
+                foreach (var view in new[] { AppView.Home, AppView.Dashes, AppView.Devices, AppView.Setups, AppView.RaceEngineer, AppView.Settings, AppView.Help })
+                {
+                    var nav = FindOptionalButton(window, NavLabel(view));
+                    if (nav is not null)
+                    {
+                        nav.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        window.CaptureRenderedFrame();
+                    }
+
+                    foreach (var tooltip in new[] { "Minimize", "Maximize / restore", "Close" })
+                    {
+                        Assert.Single(
+                            window.GetVisualDescendants().OfType<Button>(),
+                            b => string.Equals(ToolTip.GetTip(b) as string, tooltip, StringComparison.Ordinal));
+                    }
+                }
 
                 window.Close();
             }, CancellationToken.None);
@@ -110,6 +128,18 @@ public class HeadlessShellTests
             Directory.Delete(dataRoot, recursive: true);
         }
     }
+
+    private static string NavLabel(AppView view) => view switch
+    {
+        AppView.Home => "Home",
+        AppView.Dashes => "Dashes",
+        AppView.Devices => "Devices",
+        AppView.Setups => "Setups",
+        AppView.RaceEngineer => "Race Engineer",
+        AppView.Settings => "Settings",
+        AppView.Help => "Help",
+        _ => view.ToString()
+    };
 
     [Fact]
     public async Task WindowActionButtonsUseBorderlessScreenshotTreatment()
@@ -167,9 +197,10 @@ public class HeadlessShellTests
                 window.Show();
 
                 Assert.NotNull(FindOptionalButton(window, "Home"));
+                Assert.NotNull(FindOptionalButton(window, "Dashes"));
                 Assert.NotNull(FindOptionalButton(window, "Devices"));
-                Assert.NotNull(FindOptionalButton(window, "Dash Editor"));
                 Assert.NotNull(FindOptionalButton(window, "Setups"));
+                Assert.NotNull(FindOptionalButton(window, "Race Engineer"));
                 Assert.NotNull(FindOptionalButton(window, "Settings"));
                 Assert.NotNull(FindOptionalButton(window, "Help"));
                 Assert.Null(FindOptionalButton(window, "Live"));
@@ -355,7 +386,7 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, shell, telemetry);
                 window.Show();
 
-                var active = FindButton(window, "Dash Editor");
+                var active = FindButton(window, "Dashes");
                 Assert.Equal(Graphite.Panel3Brush, active.Background);
                 Assert.Equal(Graphite.AccentBrush, active.Foreground);
                 Assert.Equal(new CornerRadius(Graphite.RadiusSm), active.CornerRadius);

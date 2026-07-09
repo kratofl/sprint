@@ -48,6 +48,139 @@ public static class DashLayoutEditor
         return true;
     }
 
+    /// <summary>
+    /// Retargets a layout to a new fixed grid (PRD #122 change-size / duplicate-to-size).
+    /// Widget positions and spans are scaled proportionally from the old grid to the new
+    /// one, clamped into bounds, and greedily kept in order — a widget that would fall out
+    /// of bounds or overlap a kept one is shrunk to 1×1 and, failing that, dropped. This
+    /// guarantees the result is a valid, non-overlapping layout for the new aspect.
+    /// </summary>
+    public static void RefitLayoutToGrid(DashLayout layout, int newCols, int newRows)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        if (newCols <= 0 || newRows <= 0)
+        {
+            return;
+        }
+
+        var oldCols = Math.Max(1, layout.GridCols);
+        var oldRows = Math.Max(1, layout.GridRows);
+        layout.GridCols = newCols;
+        layout.GridRows = newRows;
+
+        if (layout.IdlePage is { } idle)
+        {
+            RefitPage(idle, oldCols, oldRows, newCols, newRows);
+        }
+
+        foreach (var page in layout.Pages)
+        {
+            RefitPage(page, oldCols, oldRows, newCols, newRows);
+        }
+    }
+
+    /// <summary>
+    /// Retargets a layout to a screen profile: tags it with the profile id and refits
+    /// its grid to the profile's fixed grid. The single shared primitive behind the
+    /// runtime's change-size / duplicate-to-size and the editor's target-size selector.
+    /// </summary>
+    public static void ApplyScreenProfile(DashLayout layout, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(profile);
+        layout.ScreenProfileId = profile.Id;
+        RefitLayoutToGrid(layout, profile.GridCols, profile.GridRows);
+    }
+
+    /// <summary>Whether a layout already targets the given profile (same id and grid) — a retarget no-op.</summary>
+    public static bool TargetsProfile(DashLayout layout, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(profile);
+        return string.Equals(layout.ScreenProfileId, profile.Id, StringComparison.OrdinalIgnoreCase) &&
+            layout.GridCols == profile.GridCols && layout.GridRows == profile.GridRows;
+    }
+
+    private static void RefitPage(DashPage page, int oldCols, int oldRows, int newCols, int newRows)
+    {
+        var occupied = new bool[newCols, newRows];
+        var kept = new List<DashWidget>(page.Widgets.Count);
+
+        foreach (var widget in page.Widgets)
+        {
+            var col = ScaleClampOrigin(widget.Col, oldCols, newCols);
+            var row = ScaleClampOrigin(widget.Row, oldRows, newRows);
+            var colSpan = Math.Clamp(ScaleSpan(widget.ColSpan, oldCols, newCols), 1, newCols - col);
+            var rowSpan = Math.Clamp(ScaleSpan(widget.RowSpan, oldRows, newRows), 1, newRows - row);
+
+            if (!Occupies(occupied, col, row, colSpan, rowSpan))
+            {
+                Fill(occupied, col, row, colSpan, rowSpan);
+                widget.Col = col;
+                widget.Row = row;
+                widget.ColSpan = colSpan;
+                widget.RowSpan = rowSpan;
+                kept.Add(widget);
+            }
+            else if (!Occupies(occupied, col, row, 1, 1))
+            {
+                Fill(occupied, col, row, 1, 1);
+                widget.Col = col;
+                widget.Row = row;
+                widget.ColSpan = 1;
+                widget.RowSpan = 1;
+                kept.Add(widget);
+            }
+        }
+
+        page.Widgets = kept;
+
+        // Widget stacks are self-contained regions (not validity-checked against the page
+        // grid), so scale + clamp their geometry for visual continuity without dropping any.
+        foreach (var stack in page.WidgetStacks)
+        {
+            var col = ScaleClampOrigin(stack.Col, oldCols, newCols);
+            var row = ScaleClampOrigin(stack.Row, oldRows, newRows);
+            stack.Col = col;
+            stack.Row = row;
+            stack.ColSpan = Math.Clamp(ScaleSpan(stack.ColSpan, oldCols, newCols), 1, newCols - col);
+            stack.RowSpan = Math.Clamp(ScaleSpan(stack.RowSpan, oldRows, newRows), 1, newRows - row);
+        }
+    }
+
+    private static int ScaleClampOrigin(int value, int oldMax, int newMax) =>
+        Math.Clamp((int)Math.Round((double)value * newMax / oldMax), 0, newMax - 1);
+
+    private static int ScaleSpan(int span, int oldMax, int newMax) =>
+        Math.Max(1, (int)Math.Round((double)span * newMax / oldMax));
+
+    private static bool Occupies(bool[,] grid, int col, int row, int colSpan, int rowSpan)
+    {
+        for (var c = col; c < col + colSpan; c++)
+        {
+            for (var r = row; r < row + rowSpan; r++)
+            {
+                if (grid[c, r])
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static void Fill(bool[,] grid, int col, int row, int colSpan, int rowSpan)
+    {
+        for (var c = col; c < col + colSpan; c++)
+        {
+            for (var r = row; r < row + rowSpan; r++)
+            {
+                grid[c, r] = true;
+            }
+        }
+    }
+
     public static bool TryAddWidget(DashLayout layout, string pageId, string type, out DashWidget? widget)
     {
         ArgumentNullException.ThrowIfNull(layout);

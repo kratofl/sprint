@@ -14,6 +14,15 @@ public sealed class DashLayout
     [JsonPropertyName("default")]
     public bool IsDefault { get; set; }
 
+    /// <summary>
+    /// The target wheel-screen size this dash is designed for (PRD #122). Additive
+    /// and backward-compatible: blank/missing on legacy layouts normalizes to the
+    /// default profile via <see cref="ScreenProfileCatalog.Resolve"/>. Drives the
+    /// editor canvas aspect and the fixed grid below.
+    /// </summary>
+    [JsonPropertyName("screenProfile")]
+    public string? ScreenProfileId { get; set; }
+
     [JsonPropertyName("gridCols")]
     public int GridCols { get; set; } = 20;
 

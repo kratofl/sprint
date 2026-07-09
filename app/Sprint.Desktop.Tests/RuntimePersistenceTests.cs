@@ -656,6 +656,125 @@ public sealed class RuntimePersistenceTests
         }
     }
 
+    [Fact]
+    public void DashLayoutsNormalizeToATargetScreenProfileOnLoad()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.DashLayouts.Single(item => item.Id == "default");
+
+            // Legacy preset has no stored profile, so it is tagged with the best-fit
+            // catalog profile (its 20×12 grid maps to landscape 800×480) without any
+            // change to its grid or widget placement.
+            Assert.False(string.IsNullOrWhiteSpace(layout.ScreenProfileId));
+            var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
+            Assert.Equal("landscape-800x480", profile.Id);
+            Assert.Equal(20, layout.GridCols);
+            Assert.Equal(12, layout.GridRows);
+            Assert.True(DashLayoutValidator.IsValid(layout));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ChangingDashTargetSizeRefitsGridAndPersistsAcrossReload()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.CreateDashLayout();
+            var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+
+            runtime.SetDashScreenProfile(layout, portrait);
+
+            Assert.Equal("portrait-480x854", layout.ScreenProfileId);
+            Assert.Equal(portrait.GridCols, layout.GridCols);
+            Assert.Equal(portrait.GridRows, layout.GridRows);
+            Assert.True(DashLayoutValidator.IsValid(layout), "Refit layout must stay valid.");
+
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var persisted = reloaded.DashLayouts.Single(item => item.Id == layout.Id);
+            Assert.Equal("portrait-480x854", persisted.ScreenProfileId);
+            Assert.Equal(portrait.GridCols, persisted.GridCols);
+            Assert.Equal(portrait.GridRows, persisted.GridRows);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DuplicateDashToProfileProducesIndependentRetargetedCopy()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var source = runtime.DashLayouts.Single(item => item.Id == "default");
+            var sourceProfile = source.ScreenProfileId;
+            var square = ScreenProfileCatalog.Resolve("square-800x800");
+
+            var copy = runtime.DuplicateDashToProfile(source, square);
+
+            Assert.NotEqual(source.Id, copy.Id);
+            Assert.False(copy.IsDefault);
+            Assert.Equal("square-800x800", copy.ScreenProfileId);
+            Assert.Equal(square.GridCols, copy.GridCols);
+            Assert.Equal(square.GridRows, copy.GridRows);
+            Assert.True(DashLayoutValidator.IsValid(copy));
+
+            // The source is untouched by the retarget.
+            Assert.Equal(sourceProfile, source.ScreenProfileId);
+            Assert.Equal(20, source.GridCols);
+
+            // The copy is independent: renaming a page on it does not touch the source.
+            copy.Pages[0].Name = "Retargeted page";
+            Assert.NotEqual("Retargeted page", source.Pages[0].Name);
+
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var persisted = reloaded.DashLayouts.Single(item => item.Id == copy.Id);
+            Assert.Equal("square-800x800", persisted.ScreenProfileId);
+            Assert.Equal(square.GridCols, persisted.GridCols);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CreateDashLayoutWithProfileTargetsThatSize()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var wide = ScreenProfileCatalog.Resolve("landscape-1024x600");
+
+            var created = runtime.CreateDashLayout(wide);
+
+            Assert.Equal("landscape-1024x600", created.ScreenProfileId);
+            Assert.Equal(wide.GridCols, created.GridCols);
+            Assert.Equal(wide.GridRows, created.GridRows);
+            Assert.True(DashLayoutValidator.IsValid(created));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     private static (int Width, int Height) ReadPngSize(string path)
     {
         var bytes = File.ReadAllBytes(path);

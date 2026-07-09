@@ -6,6 +6,7 @@ public enum AppView
     Dashes,
     Devices,
     Setups,
+    RaceEngineer,
     Settings,
     Help,
     DebugLive,
