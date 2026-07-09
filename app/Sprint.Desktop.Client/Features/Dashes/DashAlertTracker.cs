@@ -33,6 +33,7 @@ public sealed class DashAlertTracker
         ArgumentNullException.ThrowIfNull(palette);
 
         var now = _clock();
+        var config = layout.AlertConfig ?? new DashAlertConfig();
         if (_prev is not null)
         {
             // Last configured alert that fired this frame wins (matches the Go painter loop).
@@ -41,18 +42,19 @@ public sealed class DashAlertTracker
                 var candidate = alert.Type switch
                 {
                     "tc_change" when frame.Electronics.TractionControl != _prev.Electronics.TractionControl
-                        => new DashAlertBanner($"TC1  {frame.Electronics.TractionControl}", palette.Accent),
+                        => CreateBanner($"TC1  {frame.Electronics.TractionControl}", palette.Accent, config, palette),
                     "abs_change" when frame.Electronics.Abs != _prev.Electronics.Abs
-                        => new DashAlertBanner($"ABS  {frame.Electronics.Abs}", palette.Warning),
+                        => CreateBanner($"ABS  {frame.Electronics.Abs}", palette.Warning, config, palette),
                     "enginemap_change" when frame.Electronics.MotorMap != _prev.Electronics.MotorMap
-                        => new DashAlertBanner($"MAP  {frame.Electronics.MotorMap}", palette.Primary),
+                        => CreateBanner($"MAP  {frame.Electronics.MotorMap}", palette.Primary, config, palette),
                     _ => (DashAlertBanner?)null,
                 };
 
                 if (candidate is not null)
                 {
                     _active = candidate;
-                    _expiresAt = now.AddSeconds(_durationSeconds);
+                    var duration = Math.Clamp(config.DurationSeconds <= 0 ? _durationSeconds : config.DurationSeconds, 0.5, 5.0);
+                    _expiresAt = now.AddSeconds(duration);
                 }
             }
         }
@@ -73,4 +75,19 @@ public sealed class DashAlertTracker
         _prev = null;
         _active = null;
     }
+
+    private static DashAlertBanner CreateBanner(string text, SkiaSharp.SKColor fallback, DashAlertConfig config, DashPalette palette) =>
+        new(text, ResolveColor(config.ColorToken, fallback, palette), config.DisplayMode, config.InvertColors);
+
+    private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette) =>
+        token?.Trim().ToLowerInvariant() switch
+        {
+            "blue" => palette.Accent,
+            "ember" or "primary" => palette.Primary,
+            "green" => palette.Success,
+            "yellow" => palette.Warning,
+            "red" => palette.Danger,
+            "white" => palette.Foreground,
+            _ => fallback,
+        };
 }

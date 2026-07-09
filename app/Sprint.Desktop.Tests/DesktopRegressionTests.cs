@@ -28,12 +28,13 @@ public class DesktopRegressionTests
     public void ShellStateOwnsNavigationAndSidebarWidth()
     {
         var shell = new ShellState();
-        Assert.Equal(AppView.Live, shell.View);
-        Assert.Equal(220, shell.SidebarWidth);
+        Assert.Equal(AppView.Home, shell.View);
+        Assert.Equal("Home", shell.CurrentTitle);
+        Assert.Equal(164, shell.SidebarWidth);
 
         shell.ToggleSidebar();
         Assert.True(shell.SidebarCollapsed, "Sidebar should collapse after toggle.");
-        Assert.Equal(62, shell.SidebarWidth);
+        Assert.Equal(44, shell.SidebarWidth);
 
         shell.Navigate(AppView.Devices);
         Assert.Equal(AppView.Devices, shell.View);

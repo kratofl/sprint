@@ -18,20 +18,24 @@ public interface IDesktopRuntime
     ObservableCollection<CatalogDevice> Catalog { get; }
     ObservableCollection<SavedDevice> Devices { get; }
     ObservableCollection<DashLayout> DashLayouts { get; }
+    ReadOnlyObservableCollection<SetupProgram> SetupTemplates { get; }
     ObservableCollection<SetupProgram> SetupPrograms { get; }
     ObservableCollection<EngineerControl> EngineerControls { get; }
     ObservableCollection<RadioLogEntry> RadioLog { get; }
 
     void SaveSettings();
     void SaveControls();
+    void SaveDevices();
     SavedDevice AddDevice(CatalogDevice catalog);
     void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId);
     void RemoveDevice(SavedDevice device);
     DashLayout CreateDashLayout();
     void SaveDashLayout(DashLayout layout);
+    void ResetDashLayout(DashLayout layout);
     void SetDefaultDashLayout(DashLayout layout);
     void DeleteDashLayout(DashLayout layout);
     string GetDashThumbnailPath(DashLayout layout);
+    SetupProgram DuplicateSetup(SetupProgram source);
     void SaveSetupPrograms();
     void PushEngineerChanges();
     void RevertEngineerChanges();

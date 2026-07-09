@@ -2,7 +2,7 @@ namespace Sprint.Desktop.Shell;
 
 public sealed class ShellState
 {
-    public AppView View { get; private set; } = AppView.Live;
+    public AppView View { get; private set; } = AppView.Home;
     public bool SidebarCollapsed { get; private set; }
 
     public int SidebarWidth => SidebarCollapsed ? Graphite.SidebarCollapsedWidth : Graphite.SidebarExpandedWidth;
@@ -19,13 +19,15 @@ public sealed class ShellState
 
     public string CurrentTitle => View switch
     {
-        AppView.Live => "Live",
-        AppView.Engineer => "Engineer",
-        AppView.Setup => "Setup",
-        AppView.Dashes => "Dashes",
+        AppView.Home => "Home",
+        AppView.Dashes => "Dash Editor",
         AppView.Devices => "Devices",
+        AppView.Setups => "Setups",
         AppView.Settings => "Settings",
         AppView.Help => "Help",
-        _ => "Live"
+        AppView.DebugLive => "Live Debug",
+        AppView.DebugEngineer => "Engineer Debug",
+        AppView.DebugSetup => "Setup Debug",
+        _ => "Dash Editor"
     };
 }

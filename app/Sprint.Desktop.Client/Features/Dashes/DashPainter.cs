@@ -22,7 +22,8 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public sealed class DashPainter : IDisposable
 {
-    private readonly DashPalette _palette;
+    private readonly DashPalette _basePalette;
+    private DashPalette _palette; // active palette for the widget being drawn (base, or a per-widget style override)
     private readonly SKBitmap _bitmap;
     private readonly SKCanvas _canvas;
     private bool _disposed;
@@ -45,7 +46,8 @@ public sealed class DashPainter : IDisposable
 
         Width = width;
         Height = height;
-        _palette = palette ?? DashPalette.Default;
+        _basePalette = palette ?? DashPalette.Default;
+        _palette = _basePalette;
         _bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         _canvas = new SKCanvas(_bitmap);
     }
@@ -85,6 +87,11 @@ public sealed class DashPainter : IDisposable
                 }
 
                 DrawWidget(widget, rect, frame, settings);
+            }
+
+            foreach (var stack in page.WidgetStacks)
+            {
+                DrawWidgetStack(stack, cols, rows, frame, settings);
             }
         }
 
@@ -182,38 +189,136 @@ public sealed class DashPainter : IDisposable
     private void DrawWidget(DashWidget widget, SKRect rect, TelemetryFrame frame, AppSettings settings)
     {
         // Header/text/flag widgets are borderless per their Go meta (Label.Hidden + no panel border rules);
-        // everything else gets the auto panel outline.
-        var borderless = widget.Type is "header";
-        if (!borderless)
+        // everything else gets the auto panel outline. A per-widget style Border override wins over the default.
+        var defaultBorder = widget.Type is not "header";
+        if (widget.Style?.Border ?? defaultBorder)
         {
             DrawPanel(rect);
         }
 
-        switch (widget.Type)
+        // Apply per-widget colour overrides for the duration of this widget only,
+        // then restore the base palette so styling never leaks to the next widget.
+        _palette = StyledPalette(widget.Style);
+        try
         {
-            case "header": DrawHeader(rect, frame); break;
-            case "rpm_bar": DrawRpmBar(rect, frame); break;
-            case "gear_speed": DrawGearSpeed(rect, frame); break;
-            case "input_trace": DrawInputTrace(rect, frame); break;
-            case "sector": DrawSector(rect, frame); break;
-            case "lap_time": DrawLapTime(rect, frame); break;
-            case "delta": DrawDelta(rect, frame); break;
-            case "fuel": DrawFuel(rect, frame); break;
-            case "tyre_temp": DrawTyreTemp(rect, frame); break;
-            case "flag": DrawFlag(rect, frame); break;
-            case "tc": DrawTc(rect, frame); break;
-            case "text": DrawText(widget, rect, frame, settings); break;
-            default: DrawUnknown(widget, rect); break;
+            switch (widget.Type)
+            {
+                case "header": DrawHeader(rect, frame); break;
+                case "rpm_bar": DrawRpmBar(rect, frame); break;
+                case "gear_speed": DrawGearSpeed(rect, frame); break;
+                case "input_trace": DrawInputTrace(rect, frame); break;
+                case "sector": DrawSector(rect, frame); break;
+                case "lap_time": DrawLapTime(rect, frame); break;
+                case "delta": DrawDelta(rect, frame); break;
+                case "fuel": DrawFuel(rect, frame); break;
+                case "tyre_temp": DrawTyreTemp(rect, frame); break;
+                case "flag": DrawFlag(rect, frame); break;
+                case "tc": DrawTc(rect, frame); break;
+                case "abs": DrawElectronicsValue(rect, "ABS", frame.Electronics.Abs, frame.Electronics.AbsMax); break;
+                case "engine_map": DrawElectronicsValue(rect, "MAP", frame.Electronics.MotorMap, frame.Electronics.MotorMapMax); break;
+                case "brake_bias": DrawSimpleValue(rect, "BRAKE BIAS", $"{frame.Car.BrakeBiasRear:0.0}%"); break;
+                case "fuel_target": DrawSimpleValue(rect, "FUEL TARGET", $"{frame.Car.FuelPerLapLiters:0.00} L/lap"); break;
+                case "text": DrawText(widget, rect, frame, settings); break;
+                default: DrawUnknown(widget, rect); break;
+            }
         }
+        finally
+        {
+            _palette = _basePalette;
+        }
+    }
+
+    // The base palette with any per-widget text/label colour overrides applied.
+    private DashPalette StyledPalette(DashWidgetStyle? style)
+    {
+        if (style is null || (string.IsNullOrEmpty(style.TextColor) && string.IsNullOrEmpty(style.LabelColor)))
+        {
+            return _basePalette;
+        }
+
+        // Text colour recolours the large values (Foreground); label colour recolours
+        // the small caption text (Muted). Unset tokens inherit the base palette.
+        return _basePalette with
+        {
+            Foreground = _basePalette.StyleColor(style.TextColor) ?? _basePalette.Foreground,
+            Muted = _basePalette.StyleColor(style.LabelColor) ?? _basePalette.Muted,
+        };
+    }
+
+    // Renders a widget stack's active (default) layer inside the stack's grid
+    // rectangle: the layer's widgets are laid out in the stack's local sub-grid
+    // (ColSpan×RowSpan cells) mapped into that rectangle.
+    private void DrawWidgetStack(DashWidgetStack stack, int cols, int rows, TelemetryFrame frame, AppSettings settings)
+    {
+        var rect = GridRect(cols, rows, new DashWidget
+        {
+            Col = stack.Col,
+            Row = stack.Row,
+            ColSpan = Math.Max(1, stack.ColSpan),
+            RowSpan = Math.Max(1, stack.RowSpan),
+        });
+        if (rect.Width < 1 || rect.Height < 1)
+        {
+            return;
+        }
+
+        var layer = SelectLayer(stack);
+        if (layer is null)
+        {
+            return;
+        }
+
+        var subCols = Math.Max(1, stack.ColSpan);
+        var subRows = Math.Max(1, stack.RowSpan);
+        foreach (var widget in layer.Widgets)
+        {
+            var wr = SubRect(rect, subCols, subRows, widget);
+            if (wr.Width >= 1 && wr.Height >= 1)
+            {
+                DrawWidget(widget, wr, frame, settings);
+            }
+        }
+    }
+
+    private static DashWidgetStackLayer? SelectLayer(DashWidgetStack stack)
+    {
+        if (!string.IsNullOrWhiteSpace(stack.DefaultLayerId))
+        {
+            var match = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, stack.DefaultLayerId, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return stack.Layers.FirstOrDefault();
+    }
+
+    // Maps a widget positioned in a cols×rows sub-grid into pixels inside <paramref name="rect"/>.
+    private static SKRect SubRect(SKRect rect, int cols, int rows, DashWidget widget)
+    {
+        var cw = rect.Width / cols;
+        var ch = rect.Height / rows;
+        var left = rect.Left + widget.Col * cw;
+        var top = rect.Top + widget.Row * ch;
+        var right = rect.Left + Math.Min(cols, widget.Col + widget.ColSpan) * cw;
+        var bottom = rect.Top + Math.Min(rows, widget.Row + widget.RowSpan) * ch;
+        return new SKRect(left, top, right, bottom);
     }
 
     // ---- Element primitives ----
 
     private void DrawPanel(SKRect rect)
     {
-        using var border = new SKPaint { Color = _palette.Border, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
         var inset = new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f);
-        _canvas.DrawRoundRect(inset, 4, 4, border);
+        var radius = Math.Max(6f, Math.Min(10f, Math.Min(rect.Width, rect.Height) * 0.08f));
+        using (var fill = new SKPaint { Color = _palette.Surface, IsAntialias = true, Style = SKPaintStyle.Fill })
+        {
+            _canvas.DrawRoundRect(inset, radius, radius, fill);
+        }
+
+        using var border = new SKPaint { Color = _palette.Border, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
+        _canvas.DrawRoundRect(inset, radius, radius, border);
     }
 
     private void DrawHBar(float x, float y, float w, float h, double pct, SKColor color, bool centered)
@@ -520,6 +625,18 @@ public sealed class DashPainter : IDisposable
         DrawTextLine(frame.Electronics.TractionControl.ToString(), r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.5f, DashFonts.Value, color, Align.Center, r.Width * 0.9f);
     }
 
+    private void DrawElectronicsValue(SKRect r, string label, byte value, byte max)
+    {
+        var suffix = max > 0 ? $" / {max}" : string.Empty;
+        DrawSimpleValue(r, label, $"{value}{suffix}");
+    }
+
+    private void DrawSimpleValue(SKRect r, string label, string value)
+    {
+        DrawTextLine(label, r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.8f);
+        DrawTextLine(value, r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.42f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.92f);
+    }
+
     private void DrawText(DashWidget widget, SKRect r, TelemetryFrame frame, AppSettings settings)
     {
         var content = ConfigString(widget, "content");
@@ -570,19 +687,38 @@ public sealed class DashPainter : IDisposable
 
     private void DrawAlertOverlay(DashAlertBanner banner)
     {
-        using (var backdrop = new SKPaint { Color = new SKColor(0, 0, 0, 235) })
+        var fill = banner.InvertColors ? banner.Color : new SKColor(0, 0, 0, 235);
+        var textColor = banner.InvertColors ? _palette.Background : banner.Color;
+
+        using (var backdrop = new SKPaint { Color = fill })
         {
-            _canvas.DrawRect(0, 0, Width, Height, backdrop);
+            if (string.Equals(banner.DisplayMode, "center", StringComparison.OrdinalIgnoreCase))
+            {
+                var panelW = Width * 0.72f;
+                var panelH = Height * 0.36f;
+                _canvas.DrawRoundRect(
+                    (Width - panelW) / 2f,
+                    (Height - panelH) / 2f,
+                    panelW,
+                    panelH,
+                    Math.Max(12, panelH * 0.08f),
+                    Math.Max(12, panelH * 0.08f),
+                    backdrop);
+            }
+            else
+            {
+                _canvas.DrawRect(0, 0, Width, Height, backdrop);
+            }
         }
 
         var barH = Math.Max(6, Height * 0.02f);
-        using (var bar = new SKPaint { Color = banner.Color })
+        using (var bar = new SKPaint { Color = banner.InvertColors ? _palette.Background : banner.Color })
         {
             _canvas.DrawRect(0, 0, Width, barH, bar);
             _canvas.DrawRect(0, Height - barH, Width, barH, bar);
         }
 
-        DrawTextLine(banner.Text, Width / 2f, Height / 2f, Height * 0.24f, DashFonts.Value, banner.Color, Align.Center, Width * 0.9f);
+        DrawTextLine(banner.Text, Width / 2f, Height / 2f, Height * 0.24f, DashFonts.Value, textColor, Align.Center, Width * 0.9f);
     }
 
     private (string Text, SKColor Color) FlagInfo(TelemetryFrame frame)
@@ -618,5 +754,5 @@ public sealed class DashPainter : IDisposable
     }
 }
 
-/// <summary>A transient full-screen dash alert (parameter change), produced by <see cref="DashAlertTracker"/>.</summary>
-public readonly record struct DashAlertBanner(string Text, SKColor Color);
+/// <summary>A transient dash alert (parameter change), produced by <see cref="DashAlertTracker"/>.</summary>
+public readonly record struct DashAlertBanner(string Text, SKColor Color, string DisplayMode = "full", bool InvertColors = false);

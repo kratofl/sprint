@@ -28,6 +28,7 @@ public sealed class MainWindow : Window
     private readonly TelemetryEngine _engine;
     private readonly DeviceScreenService _screens;
     private readonly Grid _root = new();
+    private readonly Border _windowFrame = new();
     private readonly DispatcherTimer _timer;
     private ContentControl _body = new();
     private Border? _bodyTray;
@@ -44,6 +45,9 @@ public sealed class MainWindow : Window
     private DashEditorView? _dashEditor;
     private readonly CommandBus _commands = new();
     private InputCaptureState _capture = InputCaptureState.Idle;
+    private string? _captureDeviceId;
+    private string? _selectedDeviceId;
+    private bool _showDeviceCatalog;
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
     {
@@ -55,7 +59,9 @@ public sealed class MainWindow : Window
         // the first paint reflects the real link state (Connect never throws for
         // recoverable failures — it reflects them in Status).
         _engine = new TelemetryEngine(telemetrySource);
-        _selectedSetup = _runtime.SetupPrograms.First();
+        _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
+            ?? _runtime.SetupTemplates.FirstOrDefault()
+            ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
 
         _engine.Start();
         var snapshot = _engine.Snapshot;
@@ -84,11 +90,12 @@ public sealed class MainWindow : Window
         Height = 900;
         MinWidth = 1120;
         MinHeight = 720;
-        Background = Graphite.BgBrush;
+        Background = Brushes.Transparent;
         FontFamily = Graphite.FontStack;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         WindowDecorations = Avalonia.Controls.WindowDecorations.None;
         ExtendClientAreaToDecorationsHint = true;
+        TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
 
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "appicon.png");
         if (File.Exists(iconPath))
@@ -96,7 +103,13 @@ public sealed class MainWindow : Window
             Icon = new WindowIcon(iconPath);
         }
 
-        Content = _root;
+        _windowFrame.Background = Graphite.PanelBrush;
+        _windowFrame.BorderBrush = Graphite.LineBrush;
+        _windowFrame.BorderThickness = new Thickness(1);
+        _windowFrame.CornerRadius = new CornerRadius(Graphite.RadiusXl);
+        _windowFrame.ClipToBounds = true;
+        _windowFrame.Child = _root;
+        Content = _windowFrame;
         BuildShell();
         RenderBody();
 
@@ -111,32 +124,27 @@ public sealed class MainWindow : Window
     private void BuildShell()
     {
         _bodyTray?.Child = null;
-        _root.RowDefinitions = new RowDefinitions($"{Graphite.TitlebarHeight},*");
+        _root.RowDefinitions = new RowDefinitions("*");
         _root.ColumnDefinitions = new ColumnDefinitions($"{_shell.SidebarWidth},*");
         _root.Background = Graphite.PanelBrush;
         _root.Children.Clear();
 
-        var titlebar = BuildTitlebar();
-        Grid.SetRow(titlebar, 0);
-        Grid.SetColumnSpan(titlebar, 2);
-        _root.Children.Add(titlebar);
-
         var sidebar = BuildSidebar();
-        Grid.SetRow(sidebar, 1);
+        Grid.SetRow(sidebar, 0);
         Grid.SetColumn(sidebar, 0);
         _root.Children.Add(sidebar);
 
         var tray = new Border
         {
             Background = Graphite.BgBrush,
-            BorderBrush = Graphite.Line2Brush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(12),
-            Margin = new Thickness(0, 0, 10, 10),
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            Margin = new Thickness(0),
             Child = _body
         };
         _bodyTray = tray;
-        Grid.SetRow(tray, 1);
+        Grid.SetRow(tray, 0);
         Grid.SetColumn(tray, 1);
         _root.Children.Add(tray);
     }
@@ -183,7 +191,7 @@ public sealed class MainWindow : Window
             BuildShell();
             RenderBody();
         }, "Toggle sidebar"));
-        controls.Children.Add(ChromeButton("chevron-left", () => Navigate(AppView.Live), "Go to Live"));
+        controls.Children.Add(ChromeButton("chevron-left", () => Navigate(AppView.Home), "Go to Home"));
         controls.Children.Add(ChromeButton("chevron-right", () => Navigate(AppView.Settings), "Go to Settings"));
         Grid.SetColumn(controls, 1);
         grid.Children.Add(controls);
@@ -256,20 +264,33 @@ public sealed class MainWindow : Window
     {
         var collapsed = _shell.SidebarCollapsed;
 
-        var brand = collapsed ? Brand.LogoMark(28) : Brand.Wordmark(30);
+        var brand = collapsed ? Brand.LogoMark(22) : Brand.Wordmark(22);
         brand.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
+        var headerContent = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(brand, 0);
+        headerContent.Children.Add(brand);
+
+        var toggle = ChromeButton("layout-sidebar", () =>
+        {
+            _shell.ToggleSidebar();
+            BuildShell();
+            RenderBody();
+        }, "Toggle sidebar");
+        Grid.SetColumn(toggle, 1);
+        headerContent.Children.Add(toggle);
+
         var header = new Border
         {
-            Padding = new Thickness(collapsed ? 10 : 14, 14, 14, 14),
-            Child = brand
+            Padding = new Thickness(collapsed ? 10 : 14, 12, 10, 10),
+            Child = headerContent
         };
 
-        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(10, 2) };
-        AddNavGroup(null, (AppView.Live, "Live"), (AppView.Engineer, "Engineer"), (AppView.Setup, "Setup"));
-        AddNavGroup("Dash Studio", (AppView.Dashes, "Dashes"), (AppView.Devices, "Devices"));
+        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(12, 2, 10, 0) };
+        AddNavGroup(null, (AppView.Home, "Home"));
+        AddNavGroup("Devices", (AppView.Devices, "Devices"), (AppView.Dashes, "Dash Editor"), (AppView.Setups, "Setups"));
 
         // Settings/Help pin to the bottom of the rail (matches the Figma sidebar).
-        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(10, 6, 10, 12) };
+        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(12, 6, 10, 12) };
         footer.Children.Add(NavButton(AppView.Settings, "Settings"));
         footer.Children.Add(NavButton(AppView.Help, "Help"));
 
@@ -295,13 +316,15 @@ public sealed class MainWindow : Window
 
     private static string NavIconName(AppView view) => view switch
     {
-        AppView.Live => "activity",
-        AppView.Engineer => "tool",
-        AppView.Setup => "adjustments",
+        AppView.Home => "home",
         AppView.Dashes => "layout-dashboard",
         AppView.Devices => "device-desktop",
+        AppView.Setups => "settings",
         AppView.Settings => "settings",
         AppView.Help => "help-circle",
+        AppView.DebugLive => "activity",
+        AppView.DebugEngineer => "tool",
+        AppView.DebugSetup => "adjustments",
         _ => "square"
     };
 
@@ -322,77 +345,39 @@ public sealed class MainWindow : Window
     {
         var active = view == _shell.View;
         var collapsed = _shell.SidebarCollapsed;
-        var tint = active ? Graphite.AccentBrush : Graphite.Text2Brush;
-        var icon = Icons.Create(NavIconName(view), 16, tint);
-
-        Control content;
-        if (collapsed)
-        {
-            content = icon;
-        }
-        else
-        {
-            var row = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 10,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            row.Children.Add(icon);
-            row.Children.Add(new TextBlock
-            {
-                Text = label,
-                FontFamily = Graphite.FontStackMedium,
-                FontSize = 13,
-                Foreground = tint,
-                VerticalAlignment = VerticalAlignment.Center
-            });
-            content = row;
-        }
-
-        var button = new Button
-        {
-            Content = content,
-            // Figma NavigationItem: selected = filled #1A1A1A pill + hairline + ember
-            // content; default = panel fill, muted content (docs/FIGMA_COMPONENTS.md).
-            Background = active ? Graphite.Panel3Brush : Graphite.PanelBrush,
-            Foreground = tint,
-            BorderBrush = active ? Graphite.LineBrush : Graphite.PanelBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusMd),
-            Padding = new Thickness(collapsed ? 0 : 10, 8),
-            MinHeight = 32,
-            Margin = new Thickness(0),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
-            VerticalContentAlignment = VerticalAlignment.Center
-        };
+        var button = Graphite.NavigationItem(NavIconName(view), label, active, collapsed);
         button.Click += (_, _) => Navigate(view);
-        if (collapsed)
-        {
-            ToolTip.SetTip(button, label); // full label as accessible name when collapsed to an icon
-        }
 
         return button;
     }
 
     private Button ChromeButton(string iconName, Action action, string? tooltip = null)
     {
-        var button = Graphite.Button(string.Empty, ButtonTone.Ghost);
-        button.Content = Icons.Create(iconName, 16, Graphite.Text2Brush);
-        button.Width = 30;
-        button.MinHeight = 30;
-        button.Padding = new Thickness(0);
-        button.HorizontalContentAlignment = HorizontalAlignment.Center;
-        button.VerticalContentAlignment = VerticalAlignment.Center;
-        button.Click += (_, _) => action();
-        ToolTip.SetTip(button, tooltip ?? iconName); // accessible name for icon-only chrome
-        return button;
+        return Graphite.ChromeIconButton(iconName, tooltip ?? iconName, action);
+    }
+
+    private Control BuildWindowActions()
+    {
+        var windowButtons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        windowButtons.Children.Add(ChromeButton("minus", () => WindowState = WindowState.Minimized, "Minimize"));
+        windowButtons.Children.Add(ChromeButton("square", ToggleMaximized, "Maximize / restore"));
+        windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
+        return windowButtons;
     }
 
     private void Navigate(AppView view)
     {
         _dashEditor = null;
+        if (view == AppView.Devices)
+        {
+            _selectedDeviceId = null;
+        }
+
         _shell.Navigate(view);
         BuildShell();
         RenderBody();
@@ -401,14 +386,27 @@ public sealed class MainWindow : Window
     private void OpenDashEditor(DashLayout layout)
     {
         var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
-        _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor);
+        _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor, BuildWindowActions);
         RenderBody();
     }
 
     private void CloseDashEditor()
     {
         _dashEditor = null;
-        RenderBody();
+        Navigate(AppView.Dashes);
+    }
+
+    private Control DashEditorPage()
+    {
+        if (_dashEditor is null)
+        {
+            var layout = _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
+                ?? _runtime.DashLayouts.First();
+            var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
+            _dashEditor = new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor, BuildWindowActions);
+        }
+
+        return _dashEditor;
     }
 
     private void BeginDrag(object? sender, PointerPressedEventArgs e)
@@ -417,6 +415,7 @@ public sealed class MainWindow : Window
         if (point.Properties.IsLeftButtonPressed && WindowDragPolicy.ShouldBeginDrag(e.Source))
         {
             BeginMoveDrag(e);
+            e.Handled = true;
         }
     }
 
@@ -441,7 +440,7 @@ public sealed class MainWindow : Window
         _surfaceState = health.Surface;
 
         UpdateTitlebar();
-        if (_shell.View == AppView.Live)
+        if (_shell.View == AppView.DebugLive)
         {
             RenderBody();
         }
@@ -449,6 +448,11 @@ public sealed class MainWindow : Window
 
     private void UpdateTitlebar()
     {
+        if (_breadcrumb is null || _signalText is null || _hzText is null || _signalDot is null)
+        {
+            return;
+        }
+
         _breadcrumb.Text = _shell.CurrentTitle;
         _signalText.Text = _statusView.Label;
         _hzText.Text = _statusView.RateText;
@@ -480,14 +484,104 @@ public sealed class MainWindow : Window
         UpdateTitlebar();
         _body.Content = _shell.View switch
         {
-            AppView.Live => LivePage(),
-            AppView.Engineer => EngineerPage(),
-            AppView.Setup => SetupPage(),
-            AppView.Dashes => _dashEditor as Control ?? DashesPage(),
+            AppView.Home => HomePage(),
+            AppView.Dashes => _dashEditor is null ? DashesPage() : DashEditorPage(),
             AppView.Devices => DevicesPage(),
+            AppView.Setups => SetupPage(),
             AppView.Settings => SettingsPage(),
             AppView.Help => HelpPage(),
-            _ => LivePage()
+            AppView.DebugLive => LivePage(),
+            AppView.DebugEngineer => EngineerPage(),
+            AppView.DebugSetup => SetupPage(),
+            _ => DashesPage()
+        };
+    }
+
+    private Control HomePage()
+    {
+        var stack = PageStack();
+        stack.Children.Add(PageHeader("Home", "Runtime overview", Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
+
+        if (_surfaceState is { } surface)
+        {
+            var view = SurfaceStatePresenter.Describe(surface);
+            stack.Children.Add(Graphite.StatePanel(view.Title, view.Detail, BrushForTone(view.Tone)));
+        }
+
+        var overview = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,*")
+        };
+        AddGrid(overview, RuntimeSummaryCard("Telemetry", _statusView.Label, _statusView.RateText), 0, 0);
+        AddGrid(overview, RuntimeSummaryCard("Devices", $"{_runtime.Devices.Count} saved", $"{_runtime.Devices.Count(device => !device.Disabled)} enabled"), 0, 1);
+        AddGrid(overview, RuntimeSummaryCard("Setups", $"{_runtime.SetupPrograms.Count} user", $"{_runtime.SetupTemplates.Count} templates"), 0, 2);
+        stack.Children.Add(overview);
+
+        var assignmentPanel = new StackPanel { Spacing = 8 };
+        assignmentPanel.Children.Add(Graphite.SectionLabel("Dash assignments"));
+        if (_runtime.Devices.Count == 0)
+        {
+            assignmentPanel.Children.Add(Graphite.StatePanel("No saved devices", "Add a device before assigning a dash to hardware.", Graphite.Text3Brush));
+        }
+        else
+        {
+            foreach (var device in _runtime.Devices)
+            {
+                assignmentPanel.Children.Add(DashAssignmentRow(device));
+            }
+        }
+        stack.Children.Add(Graphite.Card(assignmentPanel));
+
+        var setupPanel = new StackPanel { Spacing = 8 };
+        setupPanel.Children.Add(Graphite.SectionLabel("Active setup context"));
+        if (_runtime.SetupPrograms.Count == 0)
+        {
+            setupPanel.Children.Add(Graphite.StatePanel("No user setup selected", "Duplicate a shipped setup template before editing setup values.", Graphite.Text3Brush));
+        }
+        else
+        {
+            setupPanel.Children.Add(Graphite.TextBlock(_selectedSetup.Name, 15, FontWeight.Bold, Graphite.TextBrush));
+            setupPanel.Children.Add(Graphite.TextBlock("User-owned setup values are saved locally.", 12, FontWeight.Normal, Graphite.Text3Brush));
+        }
+        stack.Children.Add(Graphite.Card(setupPanel));
+
+        return Scroll(stack);
+    }
+
+    private Control RuntimeSummaryCard(string label, string value, string caption)
+    {
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(Graphite.SectionLabel(label));
+        stack.Children.Add(Graphite.TextBlock(value, 22, FontWeight.Bold, Graphite.TextBrush));
+        stack.Children.Add(Graphite.TextBlock(caption, 11, FontWeight.Normal, Graphite.Text3Brush));
+        return Graphite.Card(stack);
+    }
+
+    private Control DashAssignmentRow(SavedDevice device)
+    {
+        var dash = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId)
+            ?? _runtime.DashLayouts.FirstOrDefault();
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var text = new StackPanel { Spacing = 2 };
+        text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.SemiBold, Graphite.TextBrush));
+        text.Children.Add(Graphite.TextBlock(device.Disabled ? "Disabled" : DeviceStatusText(device), 11, FontWeight.Normal, Graphite.Text3Brush));
+        AddGrid(row, text, 0, 0);
+        AddGrid(row, Graphite.StatusPill(dash?.Name ?? "No dash", device.Disabled ? Graphite.Text3Brush : Graphite.BlueBrush), 0, 1);
+        return row;
+    }
+
+    private string DeviceStatusText(SavedDevice device)
+    {
+        var status = _screens.StatusFor(device.Id);
+        return status?.State switch
+        {
+            ScreenConnectionState.Connected => "Connected",
+            ScreenConnectionState.Connecting => "Connecting",
+            ScreenConnectionState.PermissionDenied => "Driver needed",
+            ScreenConnectionState.DeviceBusy => "Busy",
+            ScreenConnectionState.Unsupported => "Unsupported",
+            ScreenConnectionState.Faulted => "Fault",
+            _ => "Offline"
         };
     }
 
@@ -596,8 +690,10 @@ public sealed class MainWindow : Window
     private Control SetupPage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Setup", "Setup programs and A/B comparison cues",
-            Graphite.StatusPill(_selectedSetup.Name, Graphite.BlueBrush)));
+        EnsureSelectedSetup();
+        var selectedIsTemplate = IsSetupTemplate(_selectedSetup);
+        stack.Children.Add(PageHeader("Setups", "Templates, user setup copies, and A/B comparison cues",
+            Graphite.StatusPill(selectedIsTemplate ? "Template" : "User setup", selectedIsTemplate ? Graphite.Text3Brush : Graphite.BlueBrush)));
 
         var grid = new Grid
         {
@@ -606,8 +702,8 @@ public sealed class MainWindow : Window
         };
 
         var programs = new StackPanel { Spacing = 8 };
-        programs.Children.Add(Graphite.SectionLabel("Programs"));
-        foreach (var program in _runtime.SetupPrograms)
+        programs.Children.Add(Graphite.SectionLabel("Setup templates"));
+        foreach (var program in _runtime.SetupTemplates)
         {
             var button = Graphite.Button(program.Name, program == _selectedSetup ? ButtonTone.Primary : ButtonTone.Ghost);
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
@@ -618,27 +714,43 @@ public sealed class MainWindow : Window
             };
             programs.Children.Add(button);
         }
-        var programActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        programActions.Children.Add(ActionButton("Duplicate", ButtonTone.Neutral, () =>
+
+        programs.Children.Add(Graphite.SectionLabel("User setups"));
+        if (_runtime.SetupPrograms.Count == 0)
         {
-            var copy = new SetupProgram
+            programs.Children.Add(Graphite.TextBlock("Duplicate a template before editing.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        }
+        else
+        {
+            foreach (var program in _runtime.SetupPrograms)
             {
-                Id = $"setup-{DateTimeOffset.UtcNow:HHmmss}",
-                Name = $"{_selectedSetup.Name} copy",
-                Values = new Dictionary<string, double>(_selectedSetup.Values, StringComparer.OrdinalIgnoreCase)
-            };
-            _runtime.SetupPrograms.Add(copy);
+                var button = Graphite.Button(program.Name, program == _selectedSetup ? ButtonTone.Primary : ButtonTone.Ghost);
+                button.HorizontalContentAlignment = HorizontalAlignment.Left;
+                button.Click += (_, _) =>
+                {
+                    _selectedSetup = program;
+                    RenderBody();
+                };
+                programs.Children.Add(button);
+            }
+        }
+
+        var programActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        programActions.Children.Add(ActionButton(selectedIsTemplate ? "Duplicate template" : "Duplicate setup", ButtonTone.Neutral, () =>
+        {
+            var copy = _runtime.DuplicateSetup(_selectedSetup);
             _selectedSetup = copy;
-            _runtime.SaveSetupPrograms();
             RenderBody();
         }));
-        if (_runtime.SetupPrograms.Count > 1)
+        if (!selectedIsTemplate && _runtime.SetupPrograms.Count > 0)
         {
             programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
             {
                 var removed = _selectedSetup;
                 _runtime.SetupPrograms.Remove(removed);
-                _selectedSetup = _runtime.SetupPrograms.First();
+                _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
+                    ?? _runtime.SetupTemplates.FirstOrDefault()
+                    ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
                 _runtime.SaveSetupPrograms();
                 RenderBody();
             }));
@@ -664,12 +776,22 @@ public sealed class MainWindow : Window
                     DesktopRuntime.FormatSetupValue(parameter, value),
                     () =>
                     {
+                        if (selectedIsTemplate)
+                        {
+                            return;
+                        }
+
                         _selectedSetup.Values[parameter.Key] = Math.Max(parameter.Min, value - parameter.Step);
                         _runtime.SaveSetupPrograms();
                         RenderBody();
                     },
                     () =>
                     {
+                        if (selectedIsTemplate)
+                        {
+                            return;
+                        }
+
                         _selectedSetup.Values[parameter.Key] = Math.Min(parameter.Max, value + parameter.Step);
                         _runtime.SaveSetupPrograms();
                         RenderBody();
@@ -681,6 +803,23 @@ public sealed class MainWindow : Window
 
         stack.Children.Add(grid);
         return Scroll(stack);
+    }
+
+    private void EnsureSelectedSetup()
+    {
+        if (_runtime.SetupPrograms.Contains(_selectedSetup) || _runtime.SetupTemplates.Contains(_selectedSetup))
+        {
+            return;
+        }
+
+        _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
+            ?? _runtime.SetupTemplates.FirstOrDefault()
+            ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
+    }
+
+    private bool IsSetupTemplate(SetupProgram setup)
+    {
+        return setup.IsTemplate || _runtime.SetupTemplates.Contains(setup);
     }
 
     private Control DashesPage()
@@ -723,7 +862,10 @@ public sealed class MainWindow : Window
         var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
         panel.Children.Add(Graphite.SectionLabel("A/B Compare"));
 
-        var others = _runtime.SetupPrograms.Where(program => program != _selectedSetup).ToArray();
+        var others = _runtime.SetupPrograms
+            .Concat(_runtime.SetupTemplates)
+            .Where(program => program != _selectedSetup)
+            .ToArray();
         if (others.Length == 0)
         {
             panel.Children.Add(Graphite.TextBlock("Add another program to compare.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
@@ -737,8 +879,8 @@ public sealed class MainWindow : Window
 
         var combo = new ComboBox
         {
-            ItemsSource = others.Select(program => program.Name).ToArray(),
-            SelectedItem = _setupCompareBaseline.Name,
+            ItemsSource = others,
+            SelectedItem = _setupCompareBaseline,
             Background = Graphite.Panel2Brush,
             Foreground = Graphite.TextBrush,
             BorderBrush = Graphite.Line2Brush,
@@ -746,7 +888,7 @@ public sealed class MainWindow : Window
         };
         combo.SelectionChanged += (_, _) =>
         {
-            _setupCompareBaseline = others.FirstOrDefault(program => program.Name == combo.SelectedItem?.ToString()) ?? others[0];
+            _setupCompareBaseline = combo.SelectedItem as SetupProgram ?? others[0];
             RenderBody();
         };
         panel.Children.Add(combo);
@@ -765,74 +907,264 @@ public sealed class MainWindow : Window
         stack.Children.Add(PageHeader("Devices", "Screens, wheels, bindings, and dash assignments",
             Graphite.StatusPill($"{_runtime.Devices.Count} saved", _runtime.Devices.Count > 0 ? Graphite.GreenBrush : Graphite.Text3Brush)));
 
-        var grid = new Grid
+        var selected = _runtime.Devices.FirstOrDefault(device => device.Id == _selectedDeviceId);
+        if (selected is not null)
         {
-            ColumnDefinitions = new ColumnDefinitions("300,*"),
-            RowDefinitions = new RowDefinitions("Auto")
-        };
-
-        var catalog = new StackPanel { Spacing = 8 };
-        catalog.Children.Add(Graphite.SectionLabel("Catalog"));
-        foreach (var entry in _runtime.Catalog)
-        {
-            var button = Graphite.Button(entry.Name, ButtonTone.Neutral);
-            button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            button.Click += (_, _) =>
-            {
-                _runtime.AddDevice(entry);
-                _screens.Sync();
-                RenderBody();
-            };
-            catalog.Children.Add(button);
-            catalog.Children.Add(Graphite.TextBlock(entry.Description, 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+            stack.Children.Add(DeviceDetailPage(selected));
+            return Scroll(stack);
         }
-        AddGrid(grid, Graphite.Card(catalog), 0, 0);
 
-        var saved = new StackPanel { Spacing = 10 };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Left };
+        actions.Children.Add(ActionButton(_showDeviceCatalog ? "Cancel add" : "Add device", _showDeviceCatalog ? ButtonTone.Ghost : ButtonTone.Primary, () =>
+        {
+            _showDeviceCatalog = !_showDeviceCatalog;
+            RenderBody();
+        }));
+        stack.Children.Add(actions);
+
+        if (_showDeviceCatalog)
+        {
+            stack.Children.Add(DeviceCatalogPopup());
+        }
+
+        var saved = new StackPanel { Spacing = 12 };
         saved.Children.Add(Graphite.SectionLabel("Saved Devices"));
         if (_runtime.Devices.Count == 0)
         {
             var empty = SurfaceStatePresenter.Describe(SurfaceState.Empty);
-            saved.Children.Add(Graphite.StatePanel("No saved devices", "Add a screen or wheel from the catalog on the left.", BrushForTone(empty.Tone)));
+            saved.Children.Add(Graphite.StatePanel("No saved devices", "Use Add device to choose a preconfigured wheel or generic screen.", BrushForTone(empty.Tone)));
         }
-        foreach (var device in _runtime.Devices)
+        else
         {
-            saved.Children.Add(DeviceCard(device));
-        }
-        AddGrid(grid, saved, 0, 1);
+            var cards = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var device in _runtime.Devices)
+            {
+                cards.Children.Add(DeviceSummaryCard(device));
+            }
 
-        stack.Children.Add(grid);
-        stack.Children.Add(BindingsCard());
+            saved.Children.Add(cards);
+        }
+
+        stack.Children.Add(saved);
         return Scroll(stack);
     }
 
-    private Control BindingsCard()
+    private Control DeviceSummaryCard(SavedDevice device)
+    {
+        var content = new StackPanel { Spacing = 9 };
+        content.Children.Add(DeviceThumbnail(device, 210, 92));
+        content.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap));
+        content.Children.Add(Graphite.TextBlock($"{device.Driver} / {device.Serial}", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+
+        var button = Graphite.Button(device.Name, ButtonTone.Ghost);
+        button.Content = content;
+        button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        button.VerticalContentAlignment = VerticalAlignment.Stretch;
+        button.Padding = new Thickness(0);
+        button.Click += (_, _) =>
+        {
+            _selectedDeviceId = device.Id;
+            _showDeviceCatalog = false;
+            RenderBody();
+        };
+
+        return new Border
+        {
+            Tag = $"device-card:{device.Id}",
+            Width = 246,
+            MinHeight = 178,
+            Margin = new Thickness(0, 0, 12, 12),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            Padding = new Thickness(10),
+            Child = button
+        };
+    }
+
+    private Control DeviceThumbnail(SavedDevice device, double width, double height)
+    {
+        var isWheel = device.Name.Contains("Omega", StringComparison.OrdinalIgnoreCase)
+            || device.Type.Contains("wheel", StringComparison.OrdinalIgnoreCase);
+        var icon = isWheel ? "gauge" : "device-desktop";
+        return new Border
+        {
+            Tag = $"device-thumb:{device.Id}",
+            Width = width,
+            Height = height,
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Child = new Grid
+            {
+                Children =
+                {
+                    Icons.Create(icon, 34, Graphite.AccentBrush),
+                }
+            }
+        };
+    }
+
+    private Control DeviceCatalogPopup()
+    {
+        var panel = new StackPanel { Spacing = 12 };
+        panel.Children.Add(Graphite.SectionLabel("Add device"));
+
+        foreach (var group in _runtime.Catalog.GroupBy(entry => IsGenericDevice(entry) ? "Generic" : "Preconfigured wheels"))
+        {
+            panel.Children.Add(Graphite.SectionLabel(group.Key));
+            var wrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var entry in group)
+            {
+                var item = new StackPanel { Spacing = 5, Width = 245, Margin = new Thickness(0, 0, 10, 10) };
+                var button = Graphite.Button(entry.Name, ButtonTone.Neutral);
+                button.HorizontalContentAlignment = HorizontalAlignment.Left;
+                button.Click += (_, _) =>
+                {
+                    var saved = _runtime.AddDevice(entry);
+                    _selectedDeviceId = saved.Id;
+                    _showDeviceCatalog = false;
+                    _screens.Sync();
+                    RenderBody();
+                };
+                item.Children.Add(button);
+                item.Children.Add(Graphite.TextBlock(entry.Description, 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+                wrap.Children.Add(item);
+            }
+
+            panel.Children.Add(wrap);
+        }
+
+        return Graphite.Card(panel);
+    }
+
+    private static bool IsGenericDevice(CatalogDevice entry) => entry.Vid == 0 && entry.Pid == 0;
+
+    private Control DeviceEmptyDetail()
+    {
+        return Graphite.StatePanel("No device selected", "Add or select a saved device to edit its screen, name, and command bindings.", Graphite.Text3Brush);
+    }
+
+    private Control DeviceDetailPage(SavedDevice device)
+    {
+        var stack = new StackPanel { Spacing = 12 };
+        stack.Children.Add(ActionButton("Back to devices", ButtonTone.Ghost, () =>
+        {
+            _selectedDeviceId = null;
+            RenderBody();
+        }));
+        stack.Children.Add(DeviceDetail(device));
+        return stack;
+    }
+
+    private Control DeviceDetail(SavedDevice device)
+    {
+        var stack = new StackPanel { Spacing = 12 };
+        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(title, EditableDeviceName(device), 0, 0);
+        AddGrid(title, DeviceStatusPill(device), 0, 1);
+        stack.Children.Add(title);
+        stack.Children.Add(Graphite.TextBlock(
+            $"{device.Driver} / {device.Width}x{device.Height} / rot {device.Rotation} / offset {device.OffsetX},{device.OffsetY} / margin {device.Margin}",
+            12, FontWeight.Normal, Graphite.Text2Brush));
+
+        if (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase))
+        {
+            stack.Children.Add(DeviceScreenControls(device));
+        }
+
+        var deviceActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        deviceActions.Children.Add(ActionButton(device.Disabled ? "Enable" : "Disable", ButtonTone.Ghost, () =>
+        {
+            device.Disabled = !device.Disabled;
+            _runtime.SaveDevices();
+            _screens.Sync();
+            RenderBody();
+        }));
+        deviceActions.Children.Add(ActionButton("Remove", ButtonTone.Danger, () =>
+        {
+            CancelDeviceCapture(device.Id);
+            _runtime.RemoveDevice(device);
+            _selectedDeviceId = null;
+            _screens.Sync();
+            RenderBody();
+        }));
+        stack.Children.Add(deviceActions);
+        stack.Children.Add(DeviceBindingsCard(device));
+        return Graphite.Card(stack);
+    }
+
+    private Control EditableDeviceName(SavedDevice device)
+    {
+        var box = new TextBox
+        {
+            Text = device.Name,
+            FontFamily = Graphite.FontStack,
+            FontSize = 15,
+            FontWeight = FontWeight.Bold,
+            Foreground = Graphite.TextBrush,
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            MinHeight = 32,
+            Padding = new Thickness(10, 6),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var lastCommittedText = device.Name;
+        void Commit()
+        {
+            var nextName = box.Text ?? device.Name;
+            if (string.Equals(nextName, lastCommittedText, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _runtime.UpdateDevice(device, nextName, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+            lastCommittedText = nextName;
+            _screens.Sync();
+        }
+
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                Commit();
+            }
+        };
+        box.LostFocus += (_, _) => Commit();
+        return box;
+    }
+
+    private Control DeviceBindingsCard(SavedDevice device)
     {
         var panel = new StackPanel { Spacing = 8 };
-        panel.Children.Add(Graphite.SectionLabel("Command Bindings"));
+        panel.Children.Add(Graphite.SectionLabel("Device bindings"));
         panel.Children.Add(Graphite.TextBlock(
-            "Bind wheel buttons or keyboard keys to Sprint commands. Click Listen, then press a key (physical wheel-button capture uses Windows Raw Input — deferred).",
+            "Bind this device's buttons or keyboard keys to Sprint commands. Click Listen, then press a key.",
             11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
 
         foreach (var meta in _commands.Catalog())
         {
-            var bound = _runtime.Controls.Bindings.FirstOrDefault(binding => binding.Command == meta.Id);
-            var capturing = _capture.IsListening && _capture.Command == meta.Id;
+            var bound = device.Bindings.FirstOrDefault(binding => binding.Command == meta.Id);
+            var capturing = _capture.IsListening && _capture.Command == meta.Id && _captureDeviceId == device.Id;
 
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 2) };
             var text = new StackPanel { Spacing = 2 };
             text.Children.Add(Graphite.TextBlock(meta.Label, 13, FontWeight.SemiBold, Graphite.TextBrush));
             text.Children.Add(Graphite.TextBlock(
-                capturing ? "Press a key…  (Esc to cancel)" : bound?.Input ?? "Unbound",
+                capturing ? "Press a key... (Esc to cancel)" : bound?.Input ?? "Unbound",
                 11, FontWeight.Normal, capturing ? Graphite.AccentBrush : Graphite.Text3Brush));
             Grid.SetColumn(text, 0);
             row.Children.Add(text);
 
             var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-            controls.Children.Add(ActionButton(capturing ? "Cancel" : "Listen", capturing ? ButtonTone.Neutral : ButtonTone.Ghost, () => ToggleListen(meta.Id)));
+            controls.Children.Add(ActionButton(capturing ? "Cancel" : "Listen", capturing ? ButtonTone.Neutral : ButtonTone.Ghost, () => ToggleDeviceListen(device.Id, meta.Id)));
             if (bound is not null)
             {
-                controls.Children.Add(ActionButton("Clear", ButtonTone.Ghost, () => ClearBinding(meta.Id)));
+                controls.Children.Add(ActionButton("Clear", ButtonTone.Ghost, () => ClearDeviceBinding(device, meta.Id)));
             }
 
             Grid.SetColumn(controls, 1);
@@ -840,22 +1172,33 @@ public sealed class MainWindow : Window
             panel.Children.Add(row);
         }
 
-        return Graphite.Card(panel);
+        return panel;
     }
 
-    private void ToggleListen(string commandId)
+    private void ToggleDeviceListen(string deviceId, string commandId)
     {
-        _capture = _capture.IsListening && _capture.Command == commandId
+        var isSameTarget = _capture.IsListening && _capture.Command == commandId && _captureDeviceId == deviceId;
+        _capture = isSameTarget
             ? InputCaptureReducer.Cancel(_capture)
             : InputCaptureReducer.Start(commandId, DateTimeOffset.UtcNow);
+        _captureDeviceId = _capture.IsListening ? deviceId : null;
         RenderBody();
     }
 
-    private void ClearBinding(string commandId)
+    private void ClearDeviceBinding(SavedDevice device, string commandId)
     {
-        _runtime.Controls.Bindings.RemoveAll(binding => binding.Command == commandId);
-        _runtime.SaveControls();
+        device.Bindings.RemoveAll(binding => binding.Command == commandId);
+        _runtime.SaveDevices();
         RenderBody();
+    }
+
+    private void CancelDeviceCapture(string deviceId)
+    {
+        if (_capture.IsListening && string.Equals(_captureDeviceId, deviceId, StringComparison.Ordinal))
+        {
+            _capture = InputCaptureReducer.Cancel(_capture);
+            _captureDeviceId = null;
+        }
     }
 
     private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
@@ -866,10 +1209,11 @@ public sealed class MainWindow : Window
             return;
         }
 
-        // Alt+1..7 jumps between the seven views (keyboard navigation, WS11 a11y).
-        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt) && TryViewDigit(e.Key, out var index))
+        // Alt+1..6 follows the production sidebar order. Debug views are not exposed
+        // through normal keyboard navigation.
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Alt) && TryProductionShortcutView(e.Key, out var view))
         {
-            Navigate((AppView)index);
+            Navigate(view);
             e.Handled = true;
         }
     }
@@ -879,6 +1223,16 @@ public sealed class MainWindow : Window
         if (e.Key == Key.Escape)
         {
             _capture = InputCaptureReducer.Cancel(_capture);
+            _captureDeviceId = null;
+            RenderBody();
+            e.Handled = true;
+            return;
+        }
+
+        if (_captureDeviceId is not null && !_runtime.Devices.Any(device => device.Id == _captureDeviceId))
+        {
+            _capture = InputCaptureReducer.Cancel(_capture);
+            _captureDeviceId = null;
             RenderBody();
             e.Handled = true;
             return;
@@ -887,31 +1241,58 @@ public sealed class MainWindow : Window
         _capture = InputCaptureReducer.Capture(_capture, $"key:{e.Key}");
         if (InputCaptureReducer.ToBinding(_capture) is { } binding)
         {
-            // One binding per command and per input token (avoid duplicates).
-            _runtime.Controls.Bindings.RemoveAll(existing => existing.Command == binding.Command || existing.Input == binding.Input);
-            _runtime.Controls.Bindings.Add(binding);
-            _runtime.SaveControls();
+            if (_captureDeviceId is not null && _runtime.Devices.FirstOrDefault(device => device.Id == _captureDeviceId) is { } device)
+            {
+                device.Bindings.RemoveAll(existing => existing.Command == binding.Command || existing.Input == binding.Input);
+                device.Bindings.Add(new DeviceBinding { Command = binding.Command, Input = binding.Input });
+                _runtime.SaveDevices();
+            }
+            else
+            {
+                _runtime.Controls.Bindings.RemoveAll(existing => existing.Command == binding.Command || existing.Input == binding.Input);
+                _runtime.Controls.Bindings.Add(binding);
+                _runtime.SaveControls();
+            }
         }
 
         _capture = InputCaptureState.Idle;
+        _captureDeviceId = null;
         RenderBody();
         e.Handled = true;
     }
 
-    private static bool TryViewDigit(Key key, out int index)
+    private static bool TryProductionShortcutView(Key key, out AppView view)
     {
-        index = key switch
+        switch (key)
         {
-            Key.D1 or Key.NumPad1 => 0,
-            Key.D2 or Key.NumPad2 => 1,
-            Key.D3 or Key.NumPad3 => 2,
-            Key.D4 or Key.NumPad4 => 3,
-            Key.D5 or Key.NumPad5 => 4,
-            Key.D6 or Key.NumPad6 => 5,
-            Key.D7 or Key.NumPad7 => 6,
-            _ => -1,
-        };
-        return index >= 0;
+            case Key.D1:
+            case Key.NumPad1:
+                view = AppView.Home;
+                return true;
+            case Key.D2:
+            case Key.NumPad2:
+                view = AppView.Devices;
+                return true;
+            case Key.D3:
+            case Key.NumPad3:
+                view = AppView.Dashes;
+                return true;
+            case Key.D4:
+            case Key.NumPad4:
+                view = AppView.Setups;
+                return true;
+            case Key.D5:
+            case Key.NumPad5:
+                view = AppView.Settings;
+                return true;
+            case Key.D6:
+            case Key.NumPad6:
+                view = AppView.Help;
+                return true;
+            default:
+                view = default;
+                return false;
+        }
     }
 
     private Control SettingsPage()
@@ -946,16 +1327,41 @@ public sealed class MainWindow : Window
             MinWidth = 180
         };
 
+        // Global defaults applied to newly created dashes (see NewDashDefaults).
+        var speedUnit = new ComboBox
+        {
+            ItemsSource = new[] { "km/h", "mph" },
+            SelectedItem = _runtime.Settings.NewDashDefaults.SpeedUnit,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180
+        };
+        var tempUnit = new ComboBox
+        {
+            ItemsSource = new[] { "c", "f" },
+            SelectedItem = _runtime.Settings.NewDashDefaults.TempUnit,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180
+        };
+
         var form = new StackPanel { Spacing = 12, MaxWidth = 620 };
         form.Children.Add(Graphite.SectionLabel("Profile"));
         form.Children.Add(FormRow("Driver name", driverName));
         form.Children.Add(FormRow("Driver number", driverNumber));
+        form.Children.Add(Graphite.SectionLabel("Dash defaults"));
+        form.Children.Add(FormRow("Speed unit", speedUnit));
+        form.Children.Add(FormRow("Temperature unit", tempUnit));
         form.Children.Add(Graphite.SectionLabel("Release"));
         form.Children.Add(FormRow("Update channel", channel));
         form.Children.Add(ActionButton("Save settings", ButtonTone.Primary, () =>
         {
             _runtime.Settings.DriverName = driverName.Text?.Trim() is { Length: > 0 } name ? name : "Your Name";
             _runtime.Settings.DriverNumber = driverNumber.Text?.Trim() is { Length: > 0 } number ? number : "22";
+            _runtime.Settings.NewDashDefaults.SpeedUnit = speedUnit.SelectedItem?.ToString() ?? "km/h";
+            _runtime.Settings.NewDashDefaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
             _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
             _runtime.SaveSettings();
             RenderBody();
@@ -997,6 +1403,7 @@ public sealed class MainWindow : Window
         var stack = PageStack();
         stack.Children.Add(PageHeader("Help", "Reference cards and desktop shortcuts", Graphite.StatusPill("Avalonia", Graphite.BlueBrush)));
 
+        stack.Children.Add(Graphite.SectionLabel("Reference"));
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
         AddGrid(grid, ReferenceCard("Telemetry", "Live data runs in the desktop process; the shell status pill shows the active link state and the measured update rate."), 0, 0);
         AddGrid(grid, ReferenceCard("Dash Studio", "Dash layouts are persisted as JSON and copied from the default preset on creation."), 0, 1);
@@ -1015,6 +1422,7 @@ public sealed class MainWindow : Window
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
             Margin = new Thickness(0, 0, 0, 4)
         };
+        grid.PointerPressed += BeginDrag;
         var text = new StackPanel { Spacing = 3 };
         text.Children.Add(Graphite.TextBlock(heading, 22, FontWeight.Bold, Graphite.TextBrush));
         text.Children.Add(Graphite.TextBlock(caption, 12, FontWeight.Normal, Graphite.Text3Brush));
@@ -1029,8 +1437,8 @@ public sealed class MainWindow : Window
     {
         return new StackPanel
         {
-            Spacing = 14,
-            Margin = new Thickness(22)
+            Spacing = 10,
+            Margin = new Thickness(10)
         };
     }
 
@@ -1282,6 +1690,14 @@ public sealed class MainWindow : Window
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(ActionButton("Edit", ButtonTone.Primary, () => OpenDashEditor(layout)));
+        if (layout.IsDefault)
+        {
+            actions.Children.Add(ActionButton("Reset layout", ButtonTone.Neutral, () =>
+            {
+                _runtime.ResetDashLayout(layout);
+                RenderBody();
+            }));
+        }
         if (!layout.IsDefault)
         {
             actions.Children.Add(ActionButton("Set default", ButtonTone.Neutral, () =>
@@ -1297,7 +1713,15 @@ public sealed class MainWindow : Window
         }
 
         stack.Children.Add(actions);
-        return Graphite.Card(stack);
+        return new Border
+        {
+            Background = Graphite.PanelBrush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Padding = new Thickness(14),
+            Child = stack
+        };
     }
 
     private Control DashPreview(DashLayout layout)
@@ -1312,7 +1736,8 @@ public sealed class MainWindow : Window
             _engine.Snapshot.Frame,
             _runtime.Settings,
             width,
-            height);
+            height,
+            palette: DashPalette.FromTheme(layout.Theme));
 
         return new Border
         {
@@ -1328,39 +1753,6 @@ public sealed class MainWindow : Window
                 Stretch = Stretch.Fill
             }
         };
-    }
-
-    private Control DeviceCard(SavedDevice device)
-    {
-        var stack = new StackPanel { Spacing = 8 };
-        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(title, Graphite.TextBlock(device.Name, 15, FontWeight.Bold, Graphite.TextBrush), 0, 0);
-        AddGrid(title, DeviceStatusPill(device), 0, 1);
-        stack.Children.Add(title);
-        stack.Children.Add(Graphite.TextBlock(
-            $"{device.Driver} · {device.Width}×{device.Height} · rot {device.Rotation}° · offset {device.OffsetX},{device.OffsetY} · margin {device.Margin}",
-            12, FontWeight.Normal, Graphite.Text2Brush));
-
-        if (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase))
-        {
-            stack.Children.Add(DeviceScreenControls(device));
-        }
-
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        actions.Children.Add(ActionButton(device.Disabled ? "Enable" : "Disable", ButtonTone.Ghost, () =>
-        {
-            device.Disabled = !device.Disabled;
-            _screens.Sync();
-            RenderBody();
-        }));
-        actions.Children.Add(ActionButton("Remove", ButtonTone.Danger, () =>
-        {
-            _runtime.RemoveDevice(device);
-            _screens.Sync();
-            RenderBody();
-        }));
-        stack.Children.Add(actions);
-        return Graphite.Card(stack);
     }
 
     private Border DeviceStatusPill(SavedDevice device)

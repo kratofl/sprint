@@ -10,15 +10,17 @@ clear interaction cues.
 
 Canonical design direction:
 
-1. `docs/FIGMA_COMPONENTS.md` - extracted component and token contract from
-   `docs/Sprint.fig`; this is the source of truth for exact values.
-2. `docs/DESIGN.md` - implementation contract for agents and contributors.
+1. `docs/design/figma/whole_application.png`, `docs/design/figma/sidebar.png`,
+   and `docs/design/figma/components/*.png` - screenshot source of truth for
+   whole-app surfaces, component shape, state, and density.
+2. `docs/FIGMA_COMPONENTS.md` - extracted component and token contract from
+   `docs/Sprint.fig`.
 3. `packages/tokens` - runtime token implementation.
 4. `packages/ui` - reusable React component implementation.
 5. `app` - current native Avalonia desktop composition and runtime behavior.
 
-When this document and `docs/FIGMA_COMPONENTS.md` disagree on token values,
-component dimensions, or component states, use `docs/FIGMA_COMPONENTS.md`.
+When this document, `docs/FIGMA_COMPONENTS.md`, and existing code disagree with
+the screenshots, use the screenshots.
 
 Do not revive previous non-Graphite design directions. Graphite replaces them.
 
@@ -99,8 +101,7 @@ Rules:
   counters.
 - Display / brand font: `Space Grotesk` (wordmark, large headings), via
   `Graphite.DisplayFontStack`.
-- Typography matches the maintainer's Figma (`docs/Sprint.fig`). (Earlier drafts
-  used `IBM Plex Sans`; that has been retired in favor of the Figma identity.)
+- Typography matches the maintainer's Figma (`docs/Sprint.fig`).
 - Use `font-variant-numeric: tabular-nums` globally.
 - Base UI size: `13px`.
 - Page titles: `22px / 700`.
@@ -112,12 +113,16 @@ Rules:
 ### Shape, Spacing, Motion
 
 - Radius scale: xs `4px`, sm `6px`, md `8px`, lg `10px`, xl `14px`, pill `999px`.
-- Buttons, inputs, navigation items, and segmented items use `8px`; cards and
-  alerts use `10px`; shell panels and toolbars use `14px`.
+- Inputs and standard buttons use the screenshot component radius; navigation
+  items use the compact raised-pill treatment from `navigation_item.png`;
+  segmented controls use a pill container with an ember-filled selected item;
+  tab views use a dark capsule with a neutral selected pill.
 - Borders are 1px hairlines. Dashed `1.5px --line2` marks drop targets and add
   affordances.
 - Tiles pad `14px 16px`; page grids use `12px-14px` gaps.
 - Transitions are functional and fast: `120ms-160ms`.
+- Hover changes cursor and applies a 10% brightness lift only. Do not add hover
+  glows, outlines, scale, fill swaps, or layout movement.
 - Live dots may pulse. Data values update instantly.
 
 ## Shell
@@ -130,11 +135,17 @@ The desktop shell is fixed and shared:
 - Body tray inset from the shell by `10px`, framed by `--line2`, filled with
   `--bg`, and rounded by `calc(var(--r) + 2px)`.
 
-Navigation model:
+Production navigation model:
 
-- Telemetry: Live, Engineer, Setup.
-- Dash Studio: Dashes, Devices.
+- Home.
+- Devices.
+- Dash Editor.
+- Setups.
 - Footer: Settings, Help.
+
+Production desktop navigation is Home, Devices, Dash Editor, Setups, Settings,
+and Help. Live Debug, Engineer Debug, and Setup Debug are debug-only surfaces and
+must not appear in normal production navigation.
 
 Primary navigation belongs in the sidebar. Local view switching belongs inside
 the page via tabs or segmented controls. Actions belong in buttons.
@@ -159,25 +170,29 @@ Component rules:
   obvious.
 - Use icons for compact tools when a familiar symbol exists.
 - Use text buttons for clear commands and destructive actions.
-- Use segmented controls only for local state/view changes inside one context.
-- Use tabs for closely related categories, not global navigation.
+- Use segmented controls only for local state/view changes inside one context;
+  selected segmented items are ember-filled.
+- Use tab views for closely related categories, not global navigation; selected
+  tab-view items are neutral filled pills.
 - Use modals only for blocking creation/confirmation flows.
 
 ## Page Layouts
 
-All current desktop pages use Graphite:
+Production desktop pages use Graphite:
 
-- Live: telemetry grid, track map, timing/delta, speed/gear/pedals, tyres,
-  sectors, vitals.
-- Engineer: car setting controls, quick messages, race/radio log, comparison
-  cues.
-- Setup: setup program list, grouped field editor, A/B comparison table.
-- Dashes: card grid with live mini previews, edit/duplicate/delete actions, and
-  a dashed create card.
-- Editor: layout canvas, widget palette, inspector, alerts, and settings views.
-- Devices: 240px picker plus binding detail panel and add-device modal.
+- Home: compact entry into dash and device workflows.
+- Dash Editor: layout canvas, compact widget palette, properties panel, alerts,
+  and settings views.
+- Devices: picker plus binding/detail panel and add-device modal.
 - Settings: global defaults only.
 - Help: reference cards and shortcuts.
+
+Development/debug pages may expose live telemetry, engineer, or setup tooling,
+but they are not part of the production navigation model.
+
+Desktop pages must render persisted or current runtime state. Empty states are
+allowed when the runtime has no data. Mock rows, sample devices, sample setups,
+and demo-only metrics are not allowed in production pages.
 
 Keep layouts dense but scannable. Each screen must expose the next useful action
 without adding explanatory marketing text.

@@ -278,7 +278,311 @@ public static class DashLayoutEditor
         }
 
         page.Widgets.Clear();
+        page.WidgetStacks.Clear();
         return true;
+    }
+
+    // ── Widget stacks (multi-function regions) ────────────────────────────────
+
+    public const int DefaultStackColSpan = 6;
+    public const int DefaultStackRowSpan = 4;
+
+    public static DashWidgetStack? FindStack(DashPage page, string stackId)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        return page.WidgetStacks.FirstOrDefault(stack => string.Equals(stack.Id, stackId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Adds a stack (with one empty layer) at the first free region of the page.</summary>
+    public static bool TryAddWidgetStack(DashLayout layout, string pageId, out DashWidgetStack? stack)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        stack = null;
+
+        var page = FindPage(layout, pageId);
+        if (page is null || !DashLayoutValidator.IsValid(layout))
+        {
+            return false;
+        }
+
+        var colSpan = Math.Min(DefaultStackColSpan, layout.GridCols);
+        var rowSpan = Math.Min(DefaultStackRowSpan, layout.GridRows);
+        for (var row = 0; row <= layout.GridRows - rowSpan; row++)
+        {
+            for (var col = 0; col <= layout.GridCols - colSpan; col++)
+            {
+                if (RegionOccupied(page, col, row, colSpan, rowSpan))
+                {
+                    continue;
+                }
+
+                var layerId = "layer-1";
+                stack = new DashWidgetStack
+                {
+                    Id = NextStackId(page, "stack"),
+                    Name = NextStackName(page),
+                    Col = col,
+                    Row = row,
+                    ColSpan = colSpan,
+                    RowSpan = rowSpan,
+                    DefaultLayerId = layerId,
+                    Layers = [new DashWidgetStackLayer { Id = layerId, Name = "Layer 1" }],
+                };
+                page.WidgetStacks.Add(stack);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool TryDeleteStack(DashPage page, string stackId)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+        var stack = FindStack(page, stackId);
+        if (stack is null)
+        {
+            return false;
+        }
+
+        page.WidgetStacks.Remove(stack);
+        return true;
+    }
+
+    public static bool TryRenameStack(DashPage page, string stackId, string name)
+    {
+        var stack = FindStack(page, stackId);
+        if (stack is null || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        stack.Name = name.Trim();
+        return true;
+    }
+
+    public static bool TryMoveStack(DashLayout layout, string pageId, string stackId, int col, int row)
+    {
+        var page = FindPage(layout, pageId);
+        var stack = page is null ? null : FindStack(page, stackId);
+        if (stack is null)
+        {
+            return false;
+        }
+
+        stack.Col = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - stack.ColSpan));
+        stack.Row = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - stack.RowSpan));
+        return true;
+    }
+
+    public static bool TryResizeStack(DashLayout layout, string pageId, string stackId, int colSpan, int rowSpan)
+    {
+        var page = FindPage(layout, pageId);
+        var stack = page is null ? null : FindStack(page, stackId);
+        if (stack is null)
+        {
+            return false;
+        }
+
+        stack.ColSpan = Math.Clamp(colSpan, 1, Math.Max(1, layout.GridCols - stack.Col));
+        stack.RowSpan = Math.Clamp(rowSpan, 1, Math.Max(1, layout.GridRows - stack.Row));
+        return true;
+    }
+
+    public static bool TryAddStackLayer(DashWidgetStack stack, out DashWidgetStackLayer? layer)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        var id = NextLayerId(stack);
+        layer = new DashWidgetStackLayer { Id = id, Name = NextLayerName(stack) };
+        stack.Layers.Add(layer);
+        stack.DefaultLayerId ??= id;
+        return true;
+    }
+
+    public static bool TrySetDefaultStackLayer(DashWidgetStack stack, string layerId)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        if (stack.Layers.All(l => !string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        stack.DefaultLayerId = layerId;
+        return true;
+    }
+
+    public static bool TryRenameStackLayer(DashWidgetStack stack, string layerId, string name)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
+        if (layer is null || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        layer.Name = name.Trim();
+        return true;
+    }
+
+    public static bool TryDeleteStackLayer(DashWidgetStack stack, string layerId)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        if (stack.Layers.Count <= 1)
+        {
+            return false;
+        }
+
+        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
+        if (layer is null)
+        {
+            return false;
+        }
+
+        stack.Layers.Remove(layer);
+        if (string.Equals(stack.DefaultLayerId, layerId, StringComparison.OrdinalIgnoreCase))
+        {
+            stack.DefaultLayerId = stack.Layers.FirstOrDefault()?.Id;
+        }
+
+        return true;
+    }
+
+    /// <summary>Adds a widget to a stack layer at the first free cell of the stack's local sub-grid.</summary>
+    public static bool TryAddWidgetToStackLayer(DashWidgetStack stack, string layerId, string type, out DashWidget? widget)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        widget = null;
+
+        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
+        if (layer is null || !DashWidgetCatalog.IsKnown(type))
+        {
+            return false;
+        }
+
+        var colSpan = Math.Min(DefaultWidgetColSpan, stack.ColSpan);
+        var rowSpan = Math.Min(DefaultWidgetRowSpan, stack.RowSpan);
+        for (var row = 0; row <= stack.RowSpan - rowSpan; row++)
+        {
+            for (var col = 0; col <= stack.ColSpan - colSpan; col++)
+            {
+                if (LayerOccupied(layer, col, row, colSpan, rowSpan))
+                {
+                    continue;
+                }
+
+                widget = new DashWidget
+                {
+                    Id = NextLayerWidgetId(layer, Slug(type.Replace('_', '-'))),
+                    Type = type,
+                    Col = col,
+                    Row = row,
+                    ColSpan = colSpan,
+                    RowSpan = rowSpan,
+                };
+                layer.Widgets.Add(widget);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static bool TryDeleteStackLayerWidget(DashWidgetStack stack, string layerId, string widgetId)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
+        var widget = layer?.Widgets.FirstOrDefault(w => string.Equals(w.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        if (layer is null || widget is null)
+        {
+            return false;
+        }
+
+        layer.Widgets.Remove(widget);
+        return true;
+    }
+
+    private static bool RegionOccupied(DashPage page, int col, int row, int colSpan, int rowSpan)
+    {
+        foreach (var widget in page.Widgets)
+        {
+            if (Intersects(col, row, colSpan, rowSpan, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan))
+            {
+                return true;
+            }
+        }
+
+        foreach (var stack in page.WidgetStacks)
+        {
+            if (Intersects(col, row, colSpan, rowSpan, stack.Col, stack.Row, stack.ColSpan, stack.RowSpan))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LayerOccupied(DashWidgetStackLayer layer, int col, int row, int colSpan, int rowSpan)
+    {
+        foreach (var widget in layer.Widgets)
+        {
+            if (Intersects(col, row, colSpan, rowSpan, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NextStackId(DashPage page, string baseId)
+    {
+        if (page.WidgetStacks.All(s => !string.Equals(s.Id, baseId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return baseId;
+        }
+
+        for (var index = 2; ; index++)
+        {
+            var candidate = $"{baseId}-{index}";
+            if (page.WidgetStacks.All(s => !string.Equals(s.Id, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static string NextStackName(DashPage page) => $"Widget Stack {page.WidgetStacks.Count + 1}";
+
+    private static string NextLayerId(DashWidgetStack stack)
+    {
+        for (var index = 1; ; index++)
+        {
+            var candidate = $"layer-{index}";
+            if (stack.Layers.All(l => !string.Equals(l.Id, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private static string NextLayerName(DashWidgetStack stack) => $"Layer {stack.Layers.Count + 1}";
+
+    private static string NextLayerWidgetId(DashWidgetStackLayer layer, string baseId)
+    {
+        if (layer.Widgets.All(w => !string.Equals(w.Id, baseId, StringComparison.OrdinalIgnoreCase)))
+        {
+            return baseId;
+        }
+
+        for (var index = 2; ; index++)
+        {
+            var candidate = $"{baseId}-{index}";
+            if (layer.Widgets.All(w => !string.Equals(w.Id, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return candidate;
+            }
+        }
     }
 
     public static DashPage? FindPage(DashLayout layout, string pageId)

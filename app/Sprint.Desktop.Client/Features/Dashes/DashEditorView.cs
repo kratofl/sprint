@@ -6,6 +6,7 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Runtime;
 
@@ -21,47 +22,36 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public sealed class DashEditorView : UserControl
 {
-    private const int CanvasWidth = 700;
-    private const int PaletteWidth = 240;
-    private const int InspectorWidth = 240;
+    private const int CanvasWidth = 560;
+    private const int PaletteWidth = 181;
+    private const int PaletteCollapsedWidth = 44;
+    private const int InspectorWidth = 220;
 
-    // Palette layout mirrors docs/FIGMA_COMPONENTS.md "Editor Page": category
-    // sections of 107x46 widget cards. Icons are two-letter monograms because the
-    // Figma Tabler/Remix icon fonts are not bundled yet (see Known Deltas).
+    // Palette live-preview thumbnail dimensions. A widget is painted alone in a
+    // 1x1 grid at this size, so the card shows the real on-wheel rendering.
+    private const int PreviewWidth = 200;
+    private const int PreviewHeight = 40;
+
     private static readonly (string Category, string[] Types)[] PaletteGroups =
     {
-        ("Driving", ["gear_speed", "rpm_bar", "input_trace", "tc"]),
-        ("Timing", ["lap_time", "delta", "sector", "fuel"]),
+        ("Driving", ["gear_speed", "rpm_bar", "input_trace", "tc", "abs", "engine_map", "brake_bias"]),
+        ("Timing", ["lap_time", "delta", "sector", "fuel", "fuel_target"]),
         ("Status", ["header", "flag", "text", "tyre_temp"]),
     };
-
-    private static readonly IReadOnlyDictionary<string, string> Glyphs =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["gear_speed"] = "GR",
-            ["rpm_bar"] = "RP",
-            ["input_trace"] = "IN",
-            ["tc"] = "TC",
-            ["lap_time"] = "LP",
-            ["delta"] = "DL",
-            ["sector"] = "SC",
-            ["fuel"] = "FU",
-            ["header"] = "HD",
-            ["flag"] = "FL",
-            ["text"] = "TX",
-            ["tyre_temp"] = "TY",
-        };
 
     private readonly DashEditorController _controller;
     private readonly AppSettings _settings;
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Action _onClose;
+    private readonly Func<Control>? _windowActionsFactory;
     private Canvas _canvas = new();
     private Rectangle? _ghost;
     private StackPanel? _paletteCards;
     private string _search = string.Empty;
     private bool _renamingTitle;
     private string? _renamingPageId;
+    private bool _renamingStackName;
+    private string? _renamingLayerId;
     private string? _confirmDeleteId;
 
     private string? _dragWidgetId;
@@ -75,9 +65,25 @@ public sealed class DashEditorView : UserControl
     private int _startRowSpan;
     private string? _placingType; // palette widget being dragged onto the grid
     private string? _validationMessage;
-    private bool _showGrid = true;
+    private bool _showGrid;
     private double _zoom = 1.0;
-    private bool _showAlerts; // right panel shows the alerts editor instead of widget properties
+    private EditorPanel _panel = EditorPanel.Inspector; // which surface the right column shows
+    private bool _paletteCollapsed; // left rail collapsed to a narrow strip
+
+    // Painter-rendered palette thumbnails, cached per widget type. Previews reflect
+    // the frame captured on first render (illustrative, not a live 30Hz feed), so a
+    // keystroke in search or a rebuild does not re-run SkiaSharp per card.
+    private readonly Dictionary<string, WriteableBitmap> _previewCache = new(StringComparer.OrdinalIgnoreCase);
+
+    // Reusable render targets for the two per-rebuild surfaces (canvas + alert preview).
+    // Rebuild fires on every edit, so we render into these in place (via DashImageRenderer
+    // .Copy) instead of allocating a fresh WriteableBitmap per keystroke — that repeated
+    // allocation was the native-resource leak. We deliberately do NOT dispose these on
+    // detach: Avalonia's deferred renderer can paint one more frame from the outgoing tree
+    // after OnDetachedFromVisualTree, and disposing here throws ObjectDisposedException
+    // mid-render. Reuse keeps the live set to two bitmaps; the finalizer reclaims them.
+    private WriteableBitmap? _canvasBitmap;
+    private WriteableBitmap? _alertPreviewBitmap;
 
     private static readonly double[] ZoomLevels = { 0.5, 0.75, 1.0, 1.25, 1.5 };
 
@@ -91,16 +97,25 @@ public sealed class DashEditorView : UserControl
 
     private bool IsIdleActive => ReferenceEquals(_controller.ActivePage, _controller.Layout.IdlePage);
 
+    private enum EditorPanel
+    {
+        Inspector,
+        Alerts,
+        Theme,
+    }
+
     public DashEditorView(
         DashEditorController controller,
         AppSettings settings,
         Func<TelemetryFrame> frameProvider,
-        Action onClose)
+        Action onClose,
+        Func<Control>? windowActionsFactory = null)
     {
         _controller = controller;
         _settings = settings;
         _frameProvider = frameProvider;
         _onClose = onClose;
+        _windowActionsFactory = windowActionsFactory;
         _controller.Changed += (_, _) => Rebuild();
         // The editor is keyboard-operable: Delete/Backspace removes the selected
         // widget. Focusable so it can receive key events once the canvas is clicked.
@@ -156,19 +171,32 @@ public sealed class DashEditorView : UserControl
 
     private void Rebuild()
     {
+        var paletteColumn = _paletteCollapsed ? PaletteCollapsedWidth : PaletteWidth;
         var root = new Grid
         {
             RowDefinitions = new RowDefinitions("Auto,*"),
-            ColumnDefinitions = new ColumnDefinitions($"{PaletteWidth},*,{InspectorWidth}"),
-            Margin = new Thickness(16)
+            ColumnDefinitions = _panel == EditorPanel.Inspector
+                ? new ColumnDefinitions($"{paletteColumn},*,{InspectorWidth}")
+                : new ColumnDefinitions("*"),
+            Margin = new Thickness(10, 8, 10, 10)
         };
 
         var toolbar = BuildToolbar();
         Grid.SetRow(toolbar, 0);
-        Grid.SetColumnSpan(toolbar, 3);
+        Grid.SetColumnSpan(toolbar, _panel == EditorPanel.Inspector ? 3 : 1);
         root.Children.Add(toolbar);
 
-        var palette = BuildPalette();
+        if (_panel != EditorPanel.Inspector)
+        {
+            var tabSurface = _panel == EditorPanel.Alerts ? BuildAlertsPanel() : BuildThemePanel();
+            Grid.SetRow(tabSurface, 1);
+            Grid.SetColumn(tabSurface, 0);
+            root.Children.Add(tabSurface);
+            Content = root;
+            return;
+        }
+
+        var palette = _paletteCollapsed ? BuildCollapsedPalette() : BuildPalette();
         Grid.SetRow(palette, 1);
         Grid.SetColumn(palette, 0);
         palette.Margin = new Thickness(0, 0, 12, 0);
@@ -179,7 +207,7 @@ public sealed class DashEditorView : UserControl
         Grid.SetColumn(canvasHost, 1);
         root.Children.Add(canvasHost);
 
-        var inspector = _showAlerts ? BuildAlertsPanel() : BuildInspector();
+        var inspector = BuildInspector();
         Grid.SetRow(inspector, 1);
         Grid.SetColumn(inspector, 2);
         inspector.Margin = new Thickness(12, 0, 0, 0);
@@ -195,74 +223,61 @@ public sealed class DashEditorView : UserControl
         var bar = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            Height = 24,
             VerticalAlignment = VerticalAlignment.Center
         };
 
         // Left zone: back icon-button + document title.
         var left = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-        var back = Graphite.Button("‹", ButtonTone.Neutral);
-        back.Width = 28;
-        back.MinHeight = 28;
-        back.Padding = new Thickness(0);
-        back.FontSize = 16;
-        ToolTip.SetTip(back, "Back to dashes");
-        back.Click += (_, _) => _onClose();
+        var back = Graphite.ChromeIconButton("chevron-left", "Back to dashes", _onClose);
         left.Children.Add(back);
         left.Children.Add(BuildEditableTitle());
-        left.Children.Add(BuildViewControls());
         Grid.SetColumn(left, 0);
         bar.Children.Add(left);
 
-        // Center zone: segmented page tabs + add-page button.
+        // Center zone: screenshot Tab View for the editor surface.
         var center = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        center.Children.Add(BuildPageTabs());
-        var addPage = Graphite.Button("＋", ButtonTone.Neutral);
-        addPage.Width = 28;
-        addPage.MinHeight = 28;
-        addPage.Padding = new Thickness(0);
-        ToolTip.SetTip(addPage, "Add page");
-        addPage.Click += (_, _) => _controller.AddPage();
-        center.Children.Add(addPage);
+        center.Children.Add(Graphite.TabView(new[] { "Layout", "Alerts", "Settings" }, _panel switch
+        {
+            EditorPanel.Alerts => 1,
+            EditorPanel.Theme => 2,
+            _ => 0,
+        }, index =>
+        {
+            _panel = index switch
+            {
+                1 => EditorPanel.Alerts,
+                2 => EditorPanel.Theme,
+                _ => EditorPanel.Inspector,
+            };
+            Rebuild();
+        }));
         Grid.SetColumn(center, 1);
         bar.Children.Add(center);
 
-        // Right zone: page actions.
+        // Right zone: screenshot action controls.
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        var alerts = Graphite.Button("Alerts", _showAlerts ? ButtonTone.Primary : ButtonTone.Neutral);
-        ToolTip.SetTip(alerts, "Configure change alerts");
-        alerts.Click += (_, _) => { _showAlerts = !_showAlerts; Rebuild(); };
-        actions.Children.Add(alerts);
-
-        var clear = Graphite.Button("Clear page", ButtonTone.Neutral);
-        clear.Click += (_, _) => _controller.ClearActivePage();
-        actions.Children.Add(clear);
-
-        var activeTab = _controller.PageTabs.FirstOrDefault(t => string.Equals(t.Id, _controller.ActivePageId, StringComparison.OrdinalIgnoreCase));
-        if (activeTab is { IsIdle: false })
+        actions.Children.Add(Graphite.Segmented(new[] { "Pages", "Widgets" }, 1, index =>
         {
-            var delete = Graphite.Button("Delete page", ButtonTone.Danger);
-            delete.IsEnabled = _controller.Layout.Pages.Count > 1;
-            delete.Click += (_, _) => _controller.DeletePage(activeTab.Id);
-            actions.Children.Add(delete);
+            if (index == 0)
+            {
+                _panel = EditorPanel.Inspector;
+            }
+
+            Rebuild();
+        }));
+
+        actions.Children.Add(Graphite.AccentIconButton("check", "Apply", _onClose));
+        if (_windowActionsFactory is not null)
+        {
+            actions.Children.Add(_windowActionsFactory());
         }
 
-        var done = Graphite.Button("Done", ButtonTone.Primary);
-        done.Click += (_, _) => _onClose();
-        actions.Children.Add(done);
         Grid.SetColumn(actions, 2);
         bar.Children.Add(actions);
 
-        return new Border
-        {
-            Background = Graphite.PanelBrush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusXl),
-            Padding = new Thickness(8, 4),
-            MinHeight = 41,
-            Margin = new Thickness(0, 0, 0, 12),
-            Child = bar
-        };
+        bar.Margin = new Thickness(0, 0, 0, 8);
+        return bar;
     }
 
     // Editor header title — double-click to rename the whole dash layout.
@@ -460,9 +475,21 @@ public sealed class DashEditorView : UserControl
     {
         var stack = new StackPanel { Spacing = 10 };
 
-        var header = new StackPanel { Spacing = 2 };
-        header.Children.Add(Graphite.TextBlock("WIDGETS", 12, FontWeight.SemiBold, Graphite.Text2Brush));
-        header.Children.Add(Graphite.TextBlock("Click a widget to add it to the grid", 10, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var headerText = new StackPanel { Spacing = 2 };
+        headerText.Children.Add(Graphite.TextBlock("WIDGETS", 12, FontWeight.SemiBold, Graphite.Text2Brush));
+        headerText.Children.Add(Graphite.TextBlock("Drag onto the grid to place", 10, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        Grid.SetColumn(headerText, 0);
+        header.Children.Add(headerText);
+        var collapse = Graphite.Button(string.Empty, ButtonTone.Ghost);
+        collapse.Content = Icons.Create("chevron-left", 14, Graphite.Text3Brush);
+        collapse.Width = 24;
+        collapse.MinHeight = 24;
+        collapse.Padding = new Thickness(0);
+        ToolTip.SetTip(collapse, "Collapse widget panel");
+        collapse.Click += (_, _) => { _paletteCollapsed = true; Rebuild(); };
+        Grid.SetColumn(collapse, 1);
+        header.Children.Add(collapse);
         stack.Children.Add(header);
 
         var search = new TextBox
@@ -489,6 +516,11 @@ public sealed class DashEditorView : UserControl
         _paletteCards = new StackPanel { Spacing = 10 };
         stack.Children.Add(_paletteCards);
         RefreshPaletteCards();
+
+        var addStack = Graphite.Button("+  Widget stack", ButtonTone.Neutral);
+        addStack.HorizontalAlignment = HorizontalAlignment.Stretch;
+        addStack.Click += (_, _) => _controller.AddWidgetStack();
+        stack.Children.Add(addStack);
 
         var scroller = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 
@@ -532,13 +564,13 @@ public sealed class DashEditorView : UserControl
             }
 
             _paletteCards.Children.Add(Graphite.SectionLabel(category));
-            var grid = new WrapPanel { Orientation = Orientation.Horizontal };
+            var list = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var def in matches)
             {
-                grid.Children.Add(PaletteCard(def));
+                list.Children.Add(PaletteCard(def));
             }
 
-            _paletteCards.Children.Add(grid);
+            _paletteCards.Children.Add(list);
         }
 
         if (_paletteCards.Children.Count == 0)
@@ -549,45 +581,29 @@ public sealed class DashEditorView : UserControl
 
     private Control PaletteCard(DashWidgetDefinition def)
     {
-        var iconTile = new Border
-        {
-            Width = 22,
-            Height = 22,
-            Background = Graphite.Panel2Brush,
-            BorderBrush = Graphite.Line2Brush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusSm),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = Glyph(def.Type),
-                FontFamily = Graphite.FontStack,
-                FontSize = 9,
-                FontWeight = FontWeight.Bold,
-                Foreground = Graphite.AccentBrush,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
+        var icon = Icons.Create(WidgetIcon(def.Type), 13, Graphite.AccentBrush);
 
-        var title = Graphite.TextBlock(def.Name, 11, FontWeight.SemiBold, Graphite.Text2Brush, TextWrapping.Wrap);
-        title.VerticalAlignment = VerticalAlignment.Center;
+        var title = Graphite.TextBlock(def.Name, 9, FontWeight.SemiBold, Graphite.Text2Brush);
+        title.TextTrimming = TextTrimming.CharacterEllipsis;
+        title.MaxWidth = 46;
 
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
-        content.Children.Add(iconTile);
+        var content = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(icon);
         content.Children.Add(title);
 
         var card = new Border
         {
-            Width = 104,
-            Height = 46,
             Background = Graphite.Panel3Brush,
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(Graphite.RadiusLg),
-            Padding = new Thickness(8),
-            Margin = new Thickness(0, 0, 6, 6),
+            Padding = new Thickness(7),
+            Width = 62,
+            Height = 35,
+            Margin = new Thickness(0, 0, 5, 6),
+            HorizontalAlignment = HorizontalAlignment.Left,
             Cursor = new Cursor(StandardCursorType.Hand),
+            Tag = $"palette:{def.Type}",
             Child = content
         };
         ToolTip.SetTip(card, $"Drag onto the grid, or click to place {def.Name}");
@@ -602,6 +618,26 @@ public sealed class DashEditorView : UserControl
         card.PointerReleased += OnPlaceReleased;
         return card;
     }
+
+    private static string WidgetIcon(string type) => type switch
+    {
+        "gear_speed" => "gauge",
+        "rpm_bar" => "bolt",
+        "input_trace" => "activity",
+        "tc" => "adjustments",
+        "abs" => "circle-check",
+        "engine_map" => "settings",
+        "brake_bias" => "adjustments",
+        "lap_time" => "clock",
+        "delta" => "activity",
+        "sector" => "route",
+        "fuel" or "fuel_target" => "droplet",
+        "header" => "layout-dashboard",
+        "flag" => "flag",
+        "text" => "letter-case",
+        "tyre_temp" => "temperature",
+        _ => "layout-dashboard",
+    };
 
     // ── Palette drag-to-place ─────────────────────────────────────────────────
 
@@ -663,15 +699,81 @@ public sealed class DashEditorView : UserControl
 
     private bool OverCanvas(Point pos) => pos.X >= 0 && pos.Y >= 0 && pos.X <= CanvasWidth && pos.Y <= CanvasHeight;
 
-    private static string Glyph(string type)
+    // Paints a single widget alone in a 1x1 grid so the palette card shows the real
+    // on-wheel rendering. Cached per type (see _previewCache) — the current frame is
+    // sampled once, keeping search/rebuild cheap.
+    private WriteableBitmap WidgetPreview(string type)
     {
-        if (Glyphs.TryGetValue(type, out var glyph))
+        if (_previewCache.TryGetValue(type, out var cached))
         {
-            return glyph;
+            return cached;
         }
 
-        var cleaned = new string(type.Where(char.IsLetterOrDigit).ToArray());
-        return (cleaned.Length >= 2 ? cleaned[..2] : cleaned).ToUpperInvariant();
+        var layout = new DashLayout
+        {
+            Id = "palette-preview",
+            Name = "preview",
+            GridCols = 1,
+            GridRows = 1,
+            Pages =
+            {
+                new DashPage
+                {
+                    Id = "preview",
+                    Name = "preview",
+                    Widgets = { new DashWidget { Id = $"preview-{type}", Type = type, Col = 0, Row = 0, ColSpan = 1, RowSpan = 1 } },
+                },
+            },
+        };
+
+        var bitmap = DashImageRenderer.Render(layout, _frameProvider(), _settings, PreviewWidth, PreviewHeight, pageId: "preview", palette: DashPalette.FromTheme(_controller.Layout.Theme));
+        _previewCache[type] = bitmap;
+        return bitmap;
+    }
+
+    // ── Collapsed palette ─────────────────────────────────────────────────────
+
+    // The narrow strip shown when the widget rail is collapsed: an expand button and
+    // a rotated section label, giving the canvas more room while keeping the affordance.
+    private Control BuildCollapsedPalette()
+    {
+        var expand = Graphite.Button(string.Empty, ButtonTone.Ghost);
+        expand.Content = Icons.Create("chevron-right", 16, Graphite.Text2Brush);
+        expand.Width = 28;
+        expand.MinHeight = 28;
+        expand.Padding = new Thickness(0);
+        ToolTip.SetTip(expand, "Show widget panel");
+        expand.Click += (_, _) => { _paletteCollapsed = false; Rebuild(); };
+
+        var label = new TextBlock
+        {
+            Text = "WIDGETS",
+            FontFamily = Graphite.CondensedFontStack,
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = Graphite.Text3Brush,
+        };
+        var rotated = new LayoutTransformControl
+        {
+            LayoutTransform = new RotateTransform(-90),
+            Child = label,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+
+        var column = new StackPanel { Spacing = 14, HorizontalAlignment = HorizontalAlignment.Center };
+        column.Children.Add(expand);
+        column.Children.Add(Icons.Create("layout-sidebar", 18, Graphite.Text3Brush));
+        column.Children.Add(rotated);
+
+        return new Border
+        {
+            Background = Graphite.PanelBrush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            Padding = new Thickness(6, 10),
+            Child = column,
+        };
     }
 
     // ── Canvas ──────────────────────────────────────────────────────────────
@@ -694,17 +796,17 @@ public sealed class DashEditorView : UserControl
         var page = _controller.ActivePage;
         var isIdle = page is not null && ReferenceEquals(page, _controller.Layout.IdlePage);
 
-        var bitmap = DashImageRenderer.Render(
+        _canvasBitmap = DashImageRenderer.RenderReusing(
+            _canvasBitmap,
             _controller.Layout,
             _frameProvider(),
             _settings,
             CanvasWidth,
             CanvasHeight,
             pageId: isIdle ? null : _controller.ActivePageId,
-            idle: isIdle);
-
-        var background = new Image { Width = CanvasWidth, Height = CanvasHeight, Source = bitmap, Stretch = Stretch.Fill };
-        _canvas.Children.Add(background);
+            idle: isIdle,
+            palette: DashPalette.FromTheme(_controller.Layout.Theme));
+        _canvas.Children.Add(new Image { Width = CanvasWidth, Height = CanvasHeight, Source = _canvasBitmap, Stretch = Stretch.Fill });
 
         if (_showGrid)
         {
@@ -717,13 +819,18 @@ public sealed class DashEditorView : UserControl
             {
                 _canvas.Children.Add(BuildWidgetOverlay(widget));
             }
+
+            foreach (var widgetStack in page.WidgetStacks)
+            {
+                _canvas.Children.Add(BuildStackOverlay(widgetStack));
+            }
         }
 
         var stage = new Border
         {
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
+            CornerRadius = new CornerRadius(10),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Top,
             Child = _canvas
@@ -746,7 +853,7 @@ public sealed class DashEditorView : UserControl
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = new Border { Padding = new Thickness(0, 4, 0, 0), Child = staged }
+            Content = new Border { Padding = new Thickness(0), Child = staged }
         };
 
         if (_validationMessage is null)
@@ -773,34 +880,34 @@ public sealed class DashEditorView : UserControl
         return dock;
     }
 
-    // Editor grid lines as a single hit-transparent geometry (toggled by _showGrid).
     private Control BuildGridOverlay()
     {
-        var geometry = new StreamGeometry();
-        using (var ctx = geometry.Open())
+        var dots = new Canvas
         {
-            for (var c = 0; c <= Cols; c++)
-            {
-                ctx.BeginFigure(new Point(c * CellW, 0), isFilled: false);
-                ctx.LineTo(new Point(c * CellW, CanvasHeight));
-                ctx.EndFigure(isClosed: false);
-            }
+            Width = CanvasWidth,
+            Height = CanvasHeight,
+            IsHitTestVisible = false
+        };
 
-            for (var r = 0; r <= Rows; r++)
+        const double spacing = 26;
+        for (var x = spacing; x < CanvasWidth; x += spacing)
+        {
+            for (var y = spacing; y < CanvasHeight; y += spacing)
             {
-                ctx.BeginFigure(new Point(0, r * CellH), isFilled: false);
-                ctx.LineTo(new Point(CanvasWidth, r * CellH));
-                ctx.EndFigure(isClosed: false);
+                var dot = new Ellipse
+                {
+                    Width = 3,
+                    Height = 3,
+                    Fill = new SolidColorBrush(Graphite.Line2, 0.42),
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(dot, x - 1.5);
+                Canvas.SetTop(dot, y - 1.5);
+                dots.Children.Add(dot);
             }
         }
 
-        return new Avalonia.Controls.Shapes.Path
-        {
-            Data = geometry,
-            Stroke = new SolidColorBrush(Graphite.Line, 0.5),
-            StrokeThickness = 1,
-            IsHitTestVisible = false
-        };
+        return dots;
     }
 
     private Control BuildWidgetOverlay(DashWidget widget)
@@ -810,9 +917,10 @@ public sealed class DashEditorView : UserControl
         {
             Width = Math.Max(1, widget.ColSpan * CellW),
             Height = Math.Max(1, widget.RowSpan * CellH),
-            Background = selected ? new SolidColorBrush(Graphite.Accent, 0.14) : Brushes.Transparent,
-            BorderBrush = selected ? Graphite.AccentBrush : Graphite.Line2Brush,
+            Background = selected ? new SolidColorBrush(Graphite.Accent, 0.14) : new SolidColorBrush(Graphite.Panel3, 0.34),
+            BorderBrush = selected ? Graphite.AccentBrush : new SolidColorBrush(Graphite.Line2, 0.72),
             BorderThickness = new Thickness(selected ? 2 : 1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
             Cursor = new Cursor(StandardCursorType.SizeAll),
             Tag = widget.Id
         };
@@ -823,6 +931,19 @@ public sealed class DashEditorView : UserControl
         overlay.PointerMoved += OnPointerMoved;
         overlay.PointerReleased += OnPointerReleased;
 
+        var label = DashWidgetCatalog.IsKnown(widget.Type) ? DashWidgetCatalog.Get(widget.Type).Name : widget.Type;
+        var content = new Grid();
+        content.Children.Add(new Border
+        {
+            Background = selected ? Graphite.AccentBrush : Graphite.Panel3Brush,
+            CornerRadius = new CornerRadius(Graphite.RadiusXs),
+            Padding = new Thickness(5, 1),
+            Margin = new Thickness(3),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = Graphite.TextBlock(label, 9, FontWeight.SemiBold, selected ? Graphite.Panel2Brush : Graphite.Text2Brush, TextWrapping.NoWrap),
+        });
+
         if (selected)
         {
             var handles = new Grid();
@@ -831,9 +952,10 @@ public sealed class DashEditorView : UserControl
                 handles.Children.Add(ResizeHandle(widget, hx, hy));
             }
 
-            overlay.Child = handles;
+            content.Children.Add(handles);
         }
 
+        overlay.Child = content;
         return overlay;
     }
 
@@ -1054,19 +1176,74 @@ public sealed class DashEditorView : UserControl
         }
     }
 
+    // Selection + label overlay for a widget stack region. Stacks render their
+    // content into the background bitmap; this overlay adds click-to-select and a
+    // corner tag. Blue (informational/advanced) distinguishes it from ember widgets.
+    private Control BuildStackOverlay(DashWidgetStack widgetStack)
+    {
+        var selected = string.Equals(widgetStack.Id, _controller.SelectedStackId, StringComparison.OrdinalIgnoreCase);
+        var overlay = new Border
+        {
+            Width = Math.Max(1, widgetStack.ColSpan * CellW),
+            Height = Math.Max(1, widgetStack.RowSpan * CellH),
+            Background = selected ? new SolidColorBrush(Graphite.Blue, 0.10) : Brushes.Transparent,
+            BorderBrush = selected ? Graphite.BlueBrush : Graphite.Line2Brush,
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        Canvas.SetLeft(overlay, widgetStack.Col * CellW);
+        Canvas.SetTop(overlay, widgetStack.Row * CellH);
+
+        var activeLayerName = widgetStack.Layers.FirstOrDefault(l => string.Equals(l.Id, widgetStack.DefaultLayerId, StringComparison.OrdinalIgnoreCase))?.Name
+            ?? widgetStack.Layers.FirstOrDefault()?.Name ?? string.Empty;
+        overlay.Child = new Border
+        {
+            Background = selected ? Graphite.BlueBrush : Graphite.Panel3Brush,
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            Padding = new Thickness(6, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(3),
+            Child = new TextBlock
+            {
+                Text = widgetStack.Layers.Count > 1 ? $"⊞ {widgetStack.Name} · {activeLayerName}" : $"⊞ {widgetStack.Name}",
+                FontFamily = Graphite.FontStack,
+                FontSize = 10,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = selected ? Graphite.Panel2Brush : Graphite.Text2Brush,
+            },
+        };
+
+        overlay.PointerPressed += (_, e) =>
+        {
+            Focus();
+            _controller.SelectStack(widgetStack.Id);
+            e.Handled = true;
+        };
+        return overlay;
+    }
+
     // ── Inspector ─────────────────────────────────────────────────────────────
 
     private Control BuildInspector()
     {
+        // A selected stack takes over the inspector with its own layer editor.
+        if (_controller.SelectedStack is { } selectedStack)
+        {
+            return BuildStackInspector(selectedStack);
+        }
+
         var stack = new StackPanel { Spacing = 10 };
         stack.Children.Add(Graphite.SectionLabel("Properties"));
 
         var widget = _controller.SelectedWidget;
         if (widget is null)
         {
-            stack.Children.Add(Graphite.TextBlock("Select a widget on the canvas to edit its position and size, or add one from the palette.",
-                12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
-            return Graphite.Card(stack);
+            stack.Children.Add(Graphite.TextBlock("Select a widget on the canvas to edit its position, configuration, and style.",
+                11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+            stack.Children.Add(Graphite.TextBlock("Drag a widget from the palette to place another block.",
+                11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+            return EditorPanelSurface(stack);
         }
 
         var definition = DashWidgetCatalog.IsKnown(widget.Type) ? DashWidgetCatalog.Get(widget.Type).Name : widget.Type;
@@ -1086,6 +1263,23 @@ public sealed class DashEditorView : UserControl
             () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan - 1),
             () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan + 1)));
 
+        // Per-widget configuration (type-specific fields, e.g. text content/binding).
+        var config = DashWidgetCatalog.IsKnown(widget.Type) ? DashWidgetCatalog.Get(widget.Type).Config : [];
+        if (config.Count > 0)
+        {
+            stack.Children.Add(Divider());
+            stack.Children.Add(Graphite.SectionLabel("Configuration"));
+            foreach (var field in config)
+            {
+                stack.Children.Add(ConfigField(field));
+            }
+        }
+
+        // Per-widget style overrides (colours + border).
+        stack.Children.Add(Divider());
+        stack.Children.Add(BuildStyleSection());
+
+        stack.Children.Add(Divider());
         var confirming = _confirmDeleteId is not null && string.Equals(_confirmDeleteId, widget.Id, StringComparison.OrdinalIgnoreCase);
         var delete = Graphite.Button(confirming ? "Click again to confirm" : "Delete widget", ButtonTone.Danger);
         delete.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -1104,7 +1298,464 @@ public sealed class DashEditorView : UserControl
         };
         stack.Children.Add(delete);
 
-        return Graphite.Card(stack);
+        // The inspector can outgrow the column once config + style are shown; scroll it.
+        return EditorPanelSurface(new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+    }
+
+    private static Border EditorPanelSurface(Control child)
+    {
+        return new Border
+        {
+            Background = Graphite.PanelBrush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            Padding = new Thickness(10),
+            Child = child,
+        };
+    }
+
+    private static Control Divider() => new Border
+    {
+        Height = 1,
+        Background = Graphite.LineBrush,
+        Margin = new Thickness(0, 2),
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+    };
+
+    // ── Widget-stack inspector ────────────────────────────────────────────────
+
+    private Control BuildStackInspector(DashWidgetStack widgetStack)
+    {
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(Graphite.SectionLabel("Widget stack"));
+        content.Children.Add(StackNameRow(widgetStack));
+
+        content.Children.Add(StepperRow("Column", widgetStack.Col,
+            () => _controller.MoveStack(widgetStack.Col - 1, widgetStack.Row),
+            () => _controller.MoveStack(widgetStack.Col + 1, widgetStack.Row)));
+        content.Children.Add(StepperRow("Row", widgetStack.Row,
+            () => _controller.MoveStack(widgetStack.Col, widgetStack.Row - 1),
+            () => _controller.MoveStack(widgetStack.Col, widgetStack.Row + 1)));
+        content.Children.Add(StepperRow("Width", widgetStack.ColSpan,
+            () => _controller.ResizeStack(widgetStack.ColSpan - 1, widgetStack.RowSpan),
+            () => _controller.ResizeStack(widgetStack.ColSpan + 1, widgetStack.RowSpan)));
+        content.Children.Add(StepperRow("Height", widgetStack.RowSpan,
+            () => _controller.ResizeStack(widgetStack.ColSpan, widgetStack.RowSpan - 1),
+            () => _controller.ResizeStack(widgetStack.ColSpan, widgetStack.RowSpan + 1)));
+
+        content.Children.Add(Divider());
+        content.Children.Add(Graphite.SectionLabel("Layers"));
+        content.Children.Add(Graphite.TextBlock("★ marks the layer shown on the wheel. Click a layer to edit its widgets.",
+            11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        foreach (var layer in widgetStack.Layers)
+        {
+            content.Children.Add(LayerRow(widgetStack, layer));
+        }
+
+        var addLayer = Graphite.Button("＋  Add layer", ButtonTone.Neutral);
+        addLayer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        addLayer.Click += (_, _) => _controller.AddStackLayer();
+        content.Children.Add(addLayer);
+
+        content.Children.Add(Divider());
+        var activeLayer = _controller.ActiveLayer;
+        content.Children.Add(Graphite.TextBlock(
+            activeLayer is null ? "No layer selected" : $"Widgets in “{activeLayer.Name}”",
+            11, FontWeight.SemiBold, Graphite.Text2Brush, TextWrapping.Wrap));
+        if (activeLayer is not null)
+        {
+            content.Children.Add(AddToLayerRow());
+            foreach (var widget in activeLayer.Widgets)
+            {
+                content.Children.Add(LayerWidgetRow(widget));
+            }
+
+            if (activeLayer.Widgets.Count == 0)
+            {
+                content.Children.Add(Graphite.TextBlock("Empty layer — add a widget above.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+            }
+        }
+
+        content.Children.Add(Divider());
+        var delete = Graphite.Button("Delete stack", ButtonTone.Danger);
+        delete.HorizontalAlignment = HorizontalAlignment.Stretch;
+        delete.Click += (_, _) => _controller.DeleteSelectedStack();
+        content.Children.Add(delete);
+
+        return EditorPanelSurface(new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+    }
+
+    private Control StackNameRow(DashWidgetStack widgetStack)
+    {
+        if (_renamingStackName)
+        {
+            return InlineRenameBox(widgetStack.Name, 200,
+                committed =>
+                {
+                    _renamingStackName = false;
+                    if (!_controller.RenameStack(committed))
+                    {
+                        Rebuild();
+                    }
+                },
+                () => { _renamingStackName = false; Rebuild(); });
+        }
+
+        var text = Graphite.TextBlock(widgetStack.Name, 15, FontWeight.Bold, Graphite.TextBrush);
+        var wrap = new Border { Child = text, Cursor = new Cursor(StandardCursorType.Hand), Padding = new Thickness(2, 0) };
+        ToolTip.SetTip(wrap, "Double-click to rename");
+        wrap.DoubleTapped += (_, _) => { _renamingStackName = true; Rebuild(); };
+        return wrap;
+    }
+
+    private Control LayerRow(DashWidgetStack widgetStack, DashWidgetStackLayer layer)
+    {
+        var isActive = string.Equals(layer.Id, _controller.ActiveLayer?.Id, StringComparison.OrdinalIgnoreCase);
+        var isDefault = string.Equals(layer.Id, widgetStack.DefaultLayerId, StringComparison.OrdinalIgnoreCase);
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto") };
+
+        var defaultToggle = Graphite.Button(isDefault ? "★" : "☆", ButtonTone.Ghost);
+        defaultToggle.Width = 26;
+        defaultToggle.MinHeight = 26;
+        defaultToggle.Padding = new Thickness(0);
+        defaultToggle.Foreground = isDefault ? Graphite.AccentBrush : Graphite.Text3Brush;
+        ToolTip.SetTip(defaultToggle, isDefault ? "Default layer (shown on the wheel)" : "Set as default layer");
+        defaultToggle.Click += (_, _) => _controller.SetDefaultStackLayer(layer.Id);
+        Grid.SetColumn(defaultToggle, 0);
+        grid.Children.Add(defaultToggle);
+
+        Control nameControl;
+        if (string.Equals(_renamingLayerId, layer.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            nameControl = InlineRenameBox(layer.Name, 120,
+                committed =>
+                {
+                    _renamingLayerId = null;
+                    if (!_controller.RenameStackLayer(layer.Id, committed))
+                    {
+                        Rebuild();
+                    }
+                },
+                () => { _renamingLayerId = null; Rebuild(); });
+        }
+        else
+        {
+            var label = Graphite.TextBlock(layer.Name, 13, isActive ? FontWeight.SemiBold : FontWeight.Normal, isActive ? Graphite.BlueBrush : Graphite.Text2Brush);
+            label.VerticalAlignment = VerticalAlignment.Center;
+            var wrap = new Border { Child = label, Cursor = new Cursor(StandardCursorType.Hand), Padding = new Thickness(6, 2), Background = Brushes.Transparent };
+            ToolTip.SetTip(wrap, "Click to edit this layer, double-click to rename");
+            wrap.PointerPressed += (_, _) => _controller.SelectStackLayer(layer.Id);
+            wrap.DoubleTapped += (_, _) => { _renamingLayerId = layer.Id; Rebuild(); };
+            nameControl = wrap;
+        }
+
+        Grid.SetColumn(nameControl, 1);
+        grid.Children.Add(nameControl);
+
+        var count = Graphite.TextBlock(layer.Widgets.Count.ToString(), 11, FontWeight.Normal, Graphite.Text3Brush);
+        count.VerticalAlignment = VerticalAlignment.Center;
+        count.Margin = new Thickness(6, 0);
+        Grid.SetColumn(count, 2);
+        grid.Children.Add(count);
+
+        var delete = Graphite.Button("✕", ButtonTone.Ghost);
+        delete.Width = 26;
+        delete.MinHeight = 26;
+        delete.Padding = new Thickness(0);
+        delete.IsEnabled = widgetStack.Layers.Count > 1;
+        ToolTip.SetTip(delete, "Delete layer");
+        delete.Click += (_, _) => _controller.DeleteStackLayer(layer.Id);
+        Grid.SetColumn(delete, 3);
+        grid.Children.Add(delete);
+
+        return new Border
+        {
+            Padding = new Thickness(4, 2),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            Background = isActive ? Graphite.Panel2Brush : Brushes.Transparent,
+            Child = grid,
+        };
+    }
+
+    private Control AddToLayerRow()
+    {
+        var combo = new ComboBox { FontFamily = Graphite.FontStack, FontSize = 13, MinHeight = 32, HorizontalAlignment = HorizontalAlignment.Stretch };
+        foreach (var definition in DashWidgetCatalog.All.OrderBy(d => d.Name, StringComparer.Ordinal))
+        {
+            combo.Items.Add(new ComboBoxItem { Content = definition.Name, Tag = definition.Type });
+        }
+
+        combo.SelectedIndex = 0;
+
+        var add = Graphite.Button("Add", ButtonTone.Primary);
+        add.Click += (_, _) =>
+        {
+            if (combo.SelectedItem is ComboBoxItem { Tag: string type } && !_controller.AddWidgetToActiveLayer(type))
+            {
+                FlashValidation("No room in this layer for that widget.");
+            }
+        };
+
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        Grid.SetColumn(combo, 0);
+        grid.Children.Add(combo);
+        add.Margin = new Thickness(6, 0, 0, 0);
+        Grid.SetColumn(add, 1);
+        grid.Children.Add(add);
+        return grid;
+    }
+
+    private Control LayerWidgetRow(DashWidget widget)
+    {
+        var name = DashWidgetCatalog.IsKnown(widget.Type) ? DashWidgetCatalog.Get(widget.Type).Name : widget.Type;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var label = Graphite.TextBlock(name, 12, FontWeight.Normal, Graphite.Text2Brush);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(label, 0);
+        grid.Children.Add(label);
+
+        var delete = Graphite.Button("✕", ButtonTone.Ghost);
+        delete.Width = 26;
+        delete.MinHeight = 26;
+        delete.Padding = new Thickness(0);
+        delete.Click += (_, _) => _controller.DeleteLayerWidget(widget.Id);
+        Grid.SetColumn(delete, 1);
+        grid.Children.Add(delete);
+        return new Border { Padding = new Thickness(4, 1), Child = grid };
+    }
+
+    // ── Per-widget config fields ──────────────────────────────────────────────
+
+    private Control ConfigField(DashConfigDef field)
+    {
+        var current = _controller.GetSelectedConfig(field.Key);
+        var input = field.Kind == DashConfigKind.Select ? ConfigSelect(field, current) : ConfigText(field, current);
+
+        var col = new StackPanel { Spacing = 4 };
+        col.Children.Add(Graphite.TextBlock(field.Label, 11, FontWeight.Normal, Graphite.Text2Brush));
+        col.Children.Add(input);
+        return col;
+    }
+
+    private Control ConfigText(DashConfigDef field, string current)
+    {
+        var box = new TextBox
+        {
+            Text = current,
+            FontFamily = Graphite.FontStack,
+            FontSize = 13,
+            MinHeight = 32,
+            Padding = new Thickness(10, 6),
+        };
+
+        // Commit on Enter/blur rather than per keystroke, so persistence + rebuild
+        // don't fire (and drop focus) mid-typing.
+        var committed = false;
+        void Commit()
+        {
+            if (committed)
+            {
+                return;
+            }
+
+            committed = true;
+            _controller.SetSelectedConfig(field.Key, box.Text ?? string.Empty);
+        }
+
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                Commit();
+            }
+        };
+        box.LostFocus += (_, _) => Commit();
+        return box;
+    }
+
+    private Control ConfigSelect(DashConfigDef field, string current)
+    {
+        var combo = new ComboBox
+        {
+            FontFamily = Graphite.FontStack,
+            FontSize = 13,
+            MinHeight = 32,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var selectedIndex = 0;
+        for (var i = 0; i < field.Options.Count; i++)
+        {
+            var option = field.Options[i];
+            combo.Items.Add(new ComboBoxItem { Content = option.Label, Tag = option.Value });
+            if (string.Equals(option.Value, current, StringComparison.Ordinal))
+            {
+                selectedIndex = i;
+            }
+        }
+
+        combo.SelectedIndex = selectedIndex;
+        // Subscribe after setting the index so the initial selection doesn't persist on every rebuild.
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedItem is ComboBoxItem { Tag: string value })
+            {
+                _controller.SetSelectedConfig(field.Key, value);
+            }
+        };
+        return combo;
+    }
+
+    // ── Per-widget style ──────────────────────────────────────────────────────
+
+    private Control BuildStyleSection()
+    {
+        var style = _controller.SelectedStyle;
+        var stack = new StackPanel { Spacing = 10 };
+        stack.Children.Add(Graphite.SectionLabel("Style"));
+        stack.Children.Add(ColorRow("Text color", style.TextColor, token => _controller.SetSelectedTextColor(token)));
+        stack.Children.Add(ColorRow("Label color", style.LabelColor, token => _controller.SetSelectedLabelColor(token)));
+
+        var borderCol = new StackPanel { Spacing = 4 };
+        borderCol.Children.Add(Graphite.TextBlock("Border", 11, FontWeight.Normal, Graphite.Text2Brush));
+        var selectedBorder = style.Border is null ? 0 : style.Border.Value ? 1 : 2;
+        borderCol.Children.Add(Graphite.Segmented(["Default", "On", "Off"], selectedBorder,
+            index => _controller.SetSelectedBorder(index switch { 1 => true, 2 => false, _ => null })));
+        stack.Children.Add(borderCol);
+        return stack;
+    }
+
+    private Control ColorRow(string label, string? current, Action<string?> onPick)
+    {
+        var col = new StackPanel { Spacing = 4 };
+        col.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Normal, Graphite.Text2Brush));
+
+        var swatches = new WrapPanel { Orientation = Orientation.Horizontal };
+        swatches.Children.Add(Swatch("Default", null, current is null, onPick));
+        foreach (var token in DashPalette.StyleColorTokens)
+        {
+            swatches.Children.Add(Swatch(token, token, string.Equals(token, current, StringComparison.OrdinalIgnoreCase), onPick));
+        }
+
+        col.Children.Add(swatches);
+        return col;
+    }
+
+    private static Control Swatch(string tooltip, string? token, bool selected, Action<string?> onPick)
+    {
+        var border = new Border
+        {
+            Width = 22,
+            Height = 22,
+            Background = token is null ? Graphite.Panel2Brush : TokenBrush(token),
+            BorderBrush = selected ? Graphite.AccentBrush : Graphite.Line2Brush,
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            Margin = new Thickness(0, 0, 6, 6),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+
+        if (token is null)
+        {
+            border.Child = new TextBlock
+            {
+                Text = "–",
+                FontFamily = Graphite.FontStack,
+                FontSize = 12,
+                Foreground = Graphite.Text3Brush,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+        }
+
+        ToolTip.SetTip(border, char.ToUpperInvariant(tooltip[0]) + tooltip[1..]);
+        border.PointerPressed += (_, _) => onPick(token);
+        return border;
+    }
+
+    private static IBrush TokenBrush(string? token) => token?.ToLowerInvariant() switch
+    {
+        "ember" => Graphite.AccentBrush,
+        "blue" => Graphite.BlueBrush,
+        "green" => Graphite.GreenBrush,
+        "yellow" => Graphite.YellowBrush,
+        "red" => Graphite.RedBrush,
+        "white" => Graphite.TextBrush,
+        "muted" => Graphite.Text3Brush,
+        _ => Graphite.Panel2Brush,
+    };
+
+    private static string TokenHex(string token) => token.ToLowerInvariant() switch
+    {
+        "ember" => "#FF6A00",
+        "blue" => "#1F7FE6",
+        "green" => "#16B566",
+        "yellow" => "#E0A30C",
+        "red" => "#F02744",
+        "white" => "#F6F6F6",
+        "muted" => "#7A7A7A",
+        _ => "#FF6A00",
+    };
+
+    // ── Theme manager ─────────────────────────────────────────────────────────
+
+    private Control BuildThemePanel()
+    {
+        var theme = _controller.SelectedTheme;
+        var stack = new StackPanel { Spacing = 12 };
+        stack.Children.Add(Graphite.SectionLabel("Theme presets"));
+        stack.Children.Add(Graphite.TextBlock(
+            "Recolour the whole layout. Applies to the on-wheel render, previews, and thumbnails.",
+            12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+
+        var activePreset = DashThemePresets.MatchName(_controller.Layout.Theme);
+        var presets = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var preset in DashThemePresets.All)
+        {
+            var button = Graphite.Button(preset.Name, string.Equals(preset.Name, activePreset, StringComparison.Ordinal) ? ButtonTone.Primary : ButtonTone.Neutral);
+            button.Margin = new Thickness(0, 0, 6, 6);
+            button.Click += (_, _) => _controller.ApplyThemePreset(preset.Theme);
+            presets.Children.Add(button);
+        }
+
+        var presetCol = new StackPanel { Spacing = 4 };
+        presetCol.Children.Add(Graphite.TextBlock("Preset", 11, FontWeight.Normal, Graphite.Text2Brush));
+        presetCol.Children.Add(presets);
+        stack.Children.Add(presetCol);
+
+        stack.Children.Add(Divider());
+        stack.Children.Add(ThemeColorRow("Primary", theme.Primary, hex => _controller.SetThemePrimary(hex)));
+        stack.Children.Add(ThemeColorRow("Accent", theme.Accent, hex => _controller.SetThemeAccent(hex)));
+
+        stack.Children.Add(Divider());
+        var reset = Graphite.Button("Reset to default", ButtonTone.Neutral);
+        reset.HorizontalAlignment = HorizontalAlignment.Stretch;
+        reset.Click += (_, _) => _controller.ResetTheme();
+        stack.Children.Add(reset);
+
+        return EditorPanelSurface(new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+    }
+
+    // A colour row whose swatches store the picked Graphite token's hex on the theme
+    // (Default clears the override). Reuses the shared Swatch visual from the inspector.
+    private Control ThemeColorRow(string label, string? currentHex, Action<string?> setHex)
+    {
+        var col = new StackPanel { Spacing = 4 };
+        col.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Normal, Graphite.Text2Brush));
+
+        var swatches = new WrapPanel { Orientation = Orientation.Horizontal };
+        swatches.Children.Add(Swatch("Default", null, string.IsNullOrEmpty(currentHex), _ => setHex(null)));
+        foreach (var token in DashPalette.StyleColorTokens)
+        {
+            var hex = TokenHex(token);
+            var selected = string.Equals(currentHex, hex, StringComparison.OrdinalIgnoreCase);
+            swatches.Children.Add(Swatch(token, token, selected, _ => setHex(hex)));
+        }
+
+        col.Children.Add(swatches);
+        return col;
     }
 
     // ── Alerts editor ─────────────────────────────────────────────────────────
@@ -1112,10 +1763,45 @@ public sealed class DashEditorView : UserControl
     private Control BuildAlertsPanel()
     {
         var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(Graphite.SectionLabel("Alerts"));
+        var config = _controller.AlertConfig;
+        stack.Children.Add(Graphite.SectionLabel("Alert behavior"));
         stack.Children.Add(Graphite.TextBlock(
-            "Flash a banner on the dash when a control setting changes mid-session.",
+            "Flash an overlay on the dash when a control setting changes mid-session.",
             12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        stack.Children.Add(AlertBehaviorPreview(config));
+
+        stack.Children.Add(Graphite.TextBlock("Display mode", 11, FontWeight.Normal, Graphite.Text2Brush));
+        stack.Children.Add(Graphite.Segmented(["Full", "Center"], string.Equals(config.DisplayMode, "center", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
+            index => _controller.SetAlertDisplayMode(index == 1 ? "center" : "full")));
+
+        stack.Children.Add(DurationRow(config.DurationSeconds,
+            () => _controller.SetAlertDuration(config.DurationSeconds - 0.1),
+            () => _controller.SetAlertDuration(config.DurationSeconds + 0.1)));
+
+        var invert = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var invertText = Graphite.TextBlock("Invert colors", 12, FontWeight.SemiBold, Graphite.Text2Brush);
+        invertText.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(invertText, 0);
+        invert.Children.Add(invertText);
+        var invertToggle = Graphite.Toggle(config.InvertColors, _controller.SetAlertInvertColors);
+        Grid.SetColumn(invertToggle, 1);
+        invert.Children.Add(invertToggle);
+        stack.Children.Add(invert);
+
+        stack.Children.Add(Graphite.TextBlock("Overlay color", 11, FontWeight.Normal, Graphite.Text2Brush));
+        var colors = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var token in new[] { "auto", "blue", "ember", "green", "yellow", "red", "white" })
+        {
+            var selected = string.Equals(config.ColorToken, token, StringComparison.OrdinalIgnoreCase);
+            var button = Graphite.Button(token == "auto" ? "Auto" : token, selected ? ButtonTone.Primary : ButtonTone.Neutral);
+            button.Margin = new Thickness(0, 0, 6, 6);
+            button.Click += (_, _) => _controller.SetAlertColorToken(token);
+            colors.Children.Add(button);
+        }
+
+        stack.Children.Add(colors);
+        stack.Children.Add(Divider());
+        stack.Children.Add(Graphite.SectionLabel("Alert types"));
 
         foreach (var (type, label) in AlertTypes)
         {
@@ -1132,7 +1818,79 @@ public sealed class DashEditorView : UserControl
             stack.Children.Add(row);
         }
 
-        return Graphite.Card(stack);
+        return EditorPanelSurface(stack);
+    }
+
+    private Control AlertBehaviorPreview(DashAlertConfig config)
+    {
+        const int width = 196;
+        const int height = 118;
+        var palette = DashPalette.FromTheme(_controller.Layout.Theme);
+        var color = config.ColorToken.ToLowerInvariant() switch
+        {
+            "blue" => palette.Accent,
+            "ember" or "primary" => palette.Primary,
+            "green" => palette.Success,
+            "yellow" => palette.Warning,
+            "red" => palette.Danger,
+            "white" => palette.Foreground,
+            _ => palette.Accent,
+        };
+        var banner = new DashAlertBanner("TC 6 -> 7", color, config.DisplayMode, config.InvertColors);
+        _alertPreviewBitmap = DashImageRenderer.RenderReusing(
+            _alertPreviewBitmap,
+            _controller.Layout,
+            _frameProvider(),
+            _settings,
+            width,
+            height,
+            pageId: _controller.ActivePageId,
+            banner: banner,
+            palette: palette);
+        var bitmap = _alertPreviewBitmap;
+
+        return new Border
+        {
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            ClipToBounds = true,
+            Child = new Image
+            {
+                Width = width,
+                Height = height,
+                Source = bitmap,
+                Stretch = Stretch.Fill,
+            },
+        };
+    }
+
+    private static Control DurationRow(double value, Action decrement, Action increment)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var text = Graphite.TextBlock("Duration", 12, FontWeight.SemiBold, Graphite.Text2Brush);
+        text.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(text, 0);
+        grid.Children.Add(text);
+
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right };
+        controls.Children.Add(Stepper("-", decrement));
+        var valueBox = new Border
+        {
+            MinWidth = 48,
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 4),
+            Child = Graphite.TextBlock($"{Math.Clamp(value, 0.5, 5.0):0.0}s", 12, FontWeight.Bold, Graphite.TextBrush)
+        };
+        controls.Children.Add(valueBox);
+        controls.Children.Add(Stepper("+", increment));
+        Grid.SetColumn(controls, 1);
+        grid.Children.Add(controls);
+        return grid;
     }
 
     private static Control StepperRow(string label, int value, Action decrement, Action increment)

@@ -23,14 +23,17 @@ public sealed class RuntimePersistenceTests
             Assert.NotNull(runtime.Settings);
             Assert.NotEmpty(runtime.Catalog);
             Assert.NotEmpty(runtime.DashLayouts);
-            Assert.NotEmpty(runtime.SetupPrograms);
+            Assert.NotEmpty(runtime.SetupTemplates);
+            Assert.Empty(runtime.SetupPrograms);
 
-            var setup = runtime.SetupPrograms.Single(program => program.Id == "setup-baseline");
+            var setup = runtime.DuplicateSetup(runtime.SetupTemplates.Single(program => program.Id == "setup-baseline"));
             setup.Values["fuelLoad"] = 54;
             runtime.SaveSetupPrograms();
 
             var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            Assert.Equal(54, reloaded.SetupPrograms.Single(program => program.Id == "setup-baseline").Values["fuelLoad"]);
+            Assert.NotEmpty(reloaded.SetupTemplates);
+            Assert.Equal(54, reloaded.SetupPrograms.Single(program => program.Id == setup.Id).Values["fuelLoad"]);
+            Assert.DoesNotContain(reloaded.SetupTemplates, program => program.Id == setup.Id);
         }
         finally
         {
@@ -240,21 +243,155 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void SetupProgramsPersistAcrossRuntimeReload()
+    public void SetupTemplatesAreReadOnlyAndUserDuplicatesPersistAcrossRuntimeReload()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var baseline = runtime.SetupPrograms.Single(program => program.Id == "setup-baseline");
-            baseline.Values["fuelLoad"] = 55;
+            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+
+            Assert.True(baseline.IsTemplate);
+            Assert.Empty(runtime.SetupPrograms);
+
+            var copy = runtime.DuplicateSetup(baseline);
+            Assert.False(copy.IsTemplate);
+            Assert.NotEqual(baseline.Id, copy.Id);
+            Assert.Equal(baseline.Values["fuelLoad"], copy.Values["fuelLoad"]);
+
+            copy.Values["fuelLoad"] = 55;
 
             runtime.SaveSetupPrograms();
 
             var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.SetupPrograms.Single(program => program.Id == "setup-baseline");
+            var persisted = reloaded.SetupPrograms.Single(program => program.Id == copy.Id);
             Assert.Equal(55, persisted.Values["fuelLoad"]);
+            Assert.True(reloaded.SetupTemplates.Single(program => program.Id == "setup-baseline").IsTemplate);
+            Assert.Equal(baseline.Values["fuelLoad"], reloaded.SetupTemplates.Single(program => program.Id == "setup-baseline").Values["fuelLoad"]);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DuplicateSetupCreatesUniqueNamesForRepeatedTemplateCopies()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+
+            var firstCopy = runtime.DuplicateSetup(baseline);
+            var secondCopy = runtime.DuplicateSetup(baseline);
+
+            Assert.NotEqual(firstCopy.Name, secondCopy.Name);
+            Assert.Equal(2, runtime.SetupPrograms.Select(program => program.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MutatingPublicTemplateObjectDoesNotContaminateDuplicateCopies()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+            var shippedFuelLoad = baseline.Values["fuelLoad"];
+
+            baseline.Values["fuelLoad"] = 1;
+            baseline.Name = "Mutated template";
+            baseline.Id = "mutated-template-id";
+
+            var copy = runtime.DuplicateSetup(baseline);
+
+            Assert.Equal(shippedFuelLoad, copy.Values["fuelLoad"]);
+            Assert.Equal("Baseline | Race copy", copy.Name);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DuplicateSetupUsesSelectedUserSetupWhenUserIdCollidesWithTemplateId()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dataRoot, "setup-programs.json"),
+                """
+                [
+                  {
+                    "id": "setup-baseline",
+                    "name": "User Collision",
+                    "values": { "fuelLoad": 12 }
+                  }
+                ]
+                """);
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var userSetup = runtime.SetupPrograms.Single(program => program.Id == "setup-baseline");
+
+            var copy = runtime.DuplicateSetup(userSetup);
+
+            Assert.Equal("User Collision copy", copy.Name);
+            Assert.Equal(12, copy.Values["fuelLoad"]);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LoadedSetupProgramsSkipBlankIdsAndRepairNullValues()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dataRoot, "setup-programs.json"),
+                """
+                [
+                  {
+                    "id": "",
+                    "name": "Blank",
+                    "values": { "fuelLoad": 99 }
+                  },
+                  {
+                    "id": "valid-user-setup",
+                    "name": "",
+                    "values": null
+                  }
+                ]
+                """);
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var setup = runtime.SetupPrograms.Single();
+
+            Assert.Equal("valid-user-setup", setup.Id);
+            Assert.Equal("valid-user-setup", setup.Name);
+            Assert.Empty(setup.Values);
+
+            var copy = runtime.DuplicateSetup(setup);
+
+            Assert.Equal("valid-user-setup copy", copy.Name);
+            Assert.Empty(copy.Values);
         }
         finally
         {
@@ -280,7 +417,8 @@ public sealed class RuntimePersistenceTests
 
             Assert.NotNull(runtime.Settings);
             Assert.Empty(runtime.Devices);
-            Assert.NotEmpty(runtime.SetupPrograms);
+            Assert.NotEmpty(runtime.SetupTemplates);
+            Assert.Empty(runtime.SetupPrograms);
             Assert.Empty(runtime.Controls.Bindings);
             Assert.Equal("{ definitely not json", File.ReadAllText(path));
         }
@@ -365,7 +503,8 @@ public sealed class RuntimePersistenceTests
                           "row": 1,
                           "colSpan": 4,
                           "rowSpan": 4,
-                          "style": { "border": false }
+                          "style": { "border": false },
+                          "legacyWidgetField": 7
                         }
                       ]
                     }
@@ -373,7 +512,10 @@ public sealed class RuntimePersistenceTests
                   "alerts": [{ "id": "alert-tc", "type": "tc_change" }],
                   "alertConfig": {
                     "displayMode": "full",
-                    "enabledTypes": ["tc_change"]
+                    "enabledTypes": ["tc_change"],
+                    "durationSeconds": 2.5,
+                    "invertColors": true,
+                    "colorToken": "blue"
                   }
                 }
                 """);
@@ -390,10 +532,17 @@ public sealed class RuntimePersistenceTests
             var layout = runtime.DashLayouts.Single(layout => layout.Id == "legacy-main");
             Assert.Equal("Legacy Main", layout.Name);
             Assert.Single(layout.Alerts);
-            Assert.NotNull(layout.ExtensionData);
-            Assert.True(layout.ExtensionData.ContainsKey("alertConfig"));
+            Assert.NotNull(layout.AlertConfig);
+            Assert.Equal("full", layout.AlertConfig!.DisplayMode);
+            Assert.Equal(2.5, layout.AlertConfig.DurationSeconds);
+            Assert.True(layout.AlertConfig.InvertColors);
+            Assert.Equal("blue", layout.AlertConfig.ColorToken);
+            // "style" is now a first-class property: it deserializes into Style (not ExtensionData).
+            Assert.NotNull(layout.Pages[0].Widgets[0].Style);
+            Assert.False(layout.Pages[0].Widgets[0].Style!.Border);
+            // Genuinely-unknown widget fields still round-trip through the extension-data catch-all.
             Assert.NotNull(layout.Pages[0].Widgets[0].ExtensionData);
-            Assert.True(layout.Pages[0].Widgets[0].ExtensionData!.ContainsKey("style"));
+            Assert.True(layout.Pages[0].Widgets[0].ExtensionData!.ContainsKey("legacyWidgetField"));
 
             var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
             Assert.Single(reloaded.Devices);

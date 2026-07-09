@@ -31,12 +31,19 @@ internal sealed class SprintComponentTheme : Styles
         // Figma control radius (buttons/inputs/combos = 8; cards/panels set their own).
         Resources["ControlCornerRadius"] = new CornerRadius(Graphite.RadiusMd);
 
+        // Button surfaces. Pointer-over is the same component state brightened by
+        // 10%, not a distinct fill/border treatment.
+        Set("ButtonBackground", Graphite.Panel2Brush);
+        Set("ButtonBackgroundPointerOver", Graphite.Panel2HoverBrush);
+        Set("ButtonBorderBrush", Graphite.LineBrush);
+        Set("ButtonBorderBrushPointerOver", Graphite.LineBrush);
+
         // TextBox (input) surfaces + interaction states — see docs/FIGMA_COMPONENTS.md.
         Set("TextControlBackground", Graphite.Panel2Brush);
-        Set("TextControlBackgroundPointerOver", Graphite.Panel2Brush);
+        Set("TextControlBackgroundPointerOver", Graphite.Panel2HoverBrush);
         Set("TextControlBackgroundFocused", Graphite.PanelBrush);
         Set("TextControlBackgroundDisabled", Graphite.PanelBrush);
-        Set("TextControlBorderBrush", Graphite.LineBrush);
+        Set("TextControlBorderBrush", Graphite.Line2Brush);
         Set("TextControlBorderBrushPointerOver", Graphite.Line2Brush);
         Set("TextControlBorderBrushFocused", Graphite.AccentBrush);
         Set("TextControlBorderBrushDisabled", Graphite.LineBrush);
@@ -49,7 +56,7 @@ internal sealed class SprintComponentTheme : Styles
 
         // ComboBox surfaces.
         Set("ComboBoxBackground", Graphite.Panel2Brush);
-        Set("ComboBoxBackgroundPointerOver", Graphite.Panel3Brush);
+        Set("ComboBoxBackgroundPointerOver", Graphite.Panel2HoverBrush);
         Set("ComboBoxBackgroundFocused", Graphite.PanelBrush);
         Set("ComboBoxBackgroundDisabled", Graphite.PanelBrush);
         Set("ComboBoxBorderBrush", Graphite.LineBrush);

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Sprint.Desktop.Features.Dashes;
 
 /// <summary>A page entry shown as an editor tab. The Idle page is locked (present, not deletable/renamable via the regular-page ops).</summary>
@@ -27,6 +29,12 @@ public sealed class DashEditorController
     public string ActivePageId { get; private set; }
 
     public string? SelectedWidgetId { get; private set; }
+
+    /// <summary>The selected widget stack (region), mutually exclusive with <see cref="SelectedWidgetId"/>.</summary>
+    public string? SelectedStackId { get; private set; }
+
+    /// <summary>The layer being edited within the selected stack (falls back to its default/first layer).</summary>
+    public string? ActiveLayerId { get; private set; }
 
     /// <summary>Raised after any mutation that changed the layout or selection, so the view can rebuild.</summary>
     public event EventHandler? Changed;
@@ -65,18 +73,22 @@ public sealed class DashEditorController
 
         ActivePageId = pageId;
         SelectedWidgetId = null;
+        SelectedStackId = null;
+        ActiveLayerId = null;
         RaiseChanged();
         return true;
     }
 
     public void SelectWidget(string? widgetId)
     {
-        if (string.Equals(widgetId, SelectedWidgetId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(widgetId, SelectedWidgetId, StringComparison.OrdinalIgnoreCase) && SelectedStackId is null)
         {
             return;
         }
 
         SelectedWidgetId = widgetId;
+        SelectedStackId = null; // widget and stack selection are mutually exclusive
+        ActiveLayerId = null;
         RaiseChanged();
     }
 
@@ -131,6 +143,74 @@ public sealed class DashEditorController
     public bool ResizeSelectedTo(int col, int row, int colSpan, int rowSpan) =>
         WithSelected(id => DashLayoutEditor.TrySetWidgetGeometry(Layout, ActivePageId, id, col, row, colSpan, rowSpan));
 
+    /// <summary>Reads a string config value on the selected widget (inspector fields).</summary>
+    public string GetSelectedConfig(string key)
+    {
+        if (SelectedWidget?.Config is { } config &&
+            config.TryGetValue(key, out var element) &&
+            element.ValueKind == JsonValueKind.String)
+        {
+            return element.GetString() ?? string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>Sets (or clears, when empty) a string config value on the selected widget.</summary>
+    public bool SetSelectedConfig(string key, string? value)
+    {
+        if (SelectedWidget is not { } widget || string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        widget.Config ??= new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (string.IsNullOrEmpty(value))
+        {
+            widget.Config.Remove(key);
+        }
+        else
+        {
+            widget.Config[key] = JsonSerializer.SerializeToElement(value);
+        }
+
+        if (widget.Config.Count == 0)
+        {
+            widget.Config = null;
+        }
+
+        Persist();
+        return true;
+    }
+
+    /// <summary>The selected widget's style (never null once accessed for display; empty = all defaults).</summary>
+    public DashWidgetStyle SelectedStyle => SelectedWidget?.Style ?? new DashWidgetStyle();
+
+    /// <summary>Override the selected widget's main value colour (Graphite token, or null to inherit).</summary>
+    public bool SetSelectedTextColor(string? token) => PatchStyle(style => style.TextColor = Blank(token));
+
+    /// <summary>Override the selected widget's label/caption colour (Graphite token, or null to inherit).</summary>
+    public bool SetSelectedLabelColor(string? token) => PatchStyle(style => style.LabelColor = Blank(token));
+
+    /// <summary>Tri-state override of the selected widget's outline (null = default, true = on, false = off).</summary>
+    public bool SetSelectedBorder(bool? show) => PatchStyle(style => style.Border = show);
+
+    private bool PatchStyle(Action<DashWidgetStyle> patch)
+    {
+        if (SelectedWidget is not { } widget)
+        {
+            return false;
+        }
+
+        var style = widget.Style ?? new DashWidgetStyle();
+        patch(style);
+        widget.Style = style.IsEmpty ? null : style;
+        Persist();
+        return true;
+    }
+
+    private static string? Blank(string? token) => string.IsNullOrWhiteSpace(token) ? null : token;
+
     public bool DeleteSelected()
     {
         if (SelectedWidgetId is not { } id || !DashLayoutEditor.TryDeleteWidget(Layout, ActivePageId, id))
@@ -151,6 +231,8 @@ public sealed class DashEditorController
         }
 
         SelectedWidgetId = null;
+        SelectedStackId = null;
+        ActiveLayerId = null;
         Persist();
         return true;
     }
@@ -193,6 +275,8 @@ public sealed class DashEditorController
     public bool IsAlertEnabled(string type) =>
         Layout.Alerts.Any(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
 
+    public DashAlertConfig AlertConfig => Layout.AlertConfig ?? new DashAlertConfig();
+
     /// <summary>Enable/disable a change-alert type (adds/removes the layout alert entry).</summary>
     public void SetAlert(string type, bool enabled)
     {
@@ -211,7 +295,229 @@ public sealed class DashEditorController
             Layout.Alerts.RemoveAll(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
         }
 
+        SyncAlertEnabledTypes();
         Persist();
+    }
+
+    public void SetAlertDisplayMode(string mode) => PatchAlertConfig(config =>
+    {
+        config.DisplayMode = string.Equals(mode, "center", StringComparison.OrdinalIgnoreCase) ? "center" : "full";
+    });
+
+    public void SetAlertDuration(double seconds) => PatchAlertConfig(config =>
+    {
+        config.DurationSeconds = Math.Clamp(Math.Round(seconds, 1), 0.5, 5.0);
+    });
+
+    public void SetAlertInvertColors(bool invert) => PatchAlertConfig(config =>
+    {
+        config.InvertColors = invert;
+    });
+
+    public void SetAlertColorToken(string token) => PatchAlertConfig(config =>
+    {
+        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
+        config.ColorToken = normalized is "auto" or "blue" or "ember" or "green" or "yellow" or "red" or "white"
+            ? normalized
+            : "auto";
+    });
+
+    private void PatchAlertConfig(Action<DashAlertConfig> patch)
+    {
+        var config = Layout.AlertConfig?.Clone() ?? new DashAlertConfig();
+        patch(config);
+        config.EnabledTypes = Layout.Alerts.Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        Layout.AlertConfig = config.IsDefault ? null : config;
+        Persist();
+    }
+
+    private void SyncAlertEnabledTypes()
+    {
+        if (Layout.AlertConfig is null)
+        {
+            return;
+        }
+
+        Layout.AlertConfig.EnabledTypes = Layout.Alerts.Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (Layout.AlertConfig.IsDefault)
+        {
+            Layout.AlertConfig = null;
+        }
+    }
+
+    // ── Theme (layout-level palette) ──────────────────────────────────────────
+
+    /// <summary>The layout theme (never null for display; empty = all Graphite defaults).</summary>
+    public DashTheme SelectedTheme => Layout.Theme ?? new DashTheme();
+
+    /// <summary>Applies a named preset's overrides to the layout (empty preset clears the theme).</summary>
+    public void ApplyThemePreset(DashTheme preset)
+    {
+        ArgumentNullException.ThrowIfNull(preset);
+        Layout.Theme = preset.IsEmpty ? null : preset.Clone();
+        Persist();
+    }
+
+    /// <summary>Overrides the theme's primary colour with a hex value, or clears it when blank.</summary>
+    public void SetThemePrimary(string? hex) => PatchTheme(theme => theme.Primary = Blank(hex));
+
+    /// <summary>Overrides the theme's accent colour with a hex value, or clears it when blank.</summary>
+    public void SetThemeAccent(string? hex) => PatchTheme(theme => theme.Accent = Blank(hex));
+
+    /// <summary>Clears all layout theme overrides (back to the Graphite default).</summary>
+    public void ResetTheme()
+    {
+        if (Layout.Theme is null)
+        {
+            return;
+        }
+
+        Layout.Theme = null;
+        Persist();
+    }
+
+    private void PatchTheme(Action<DashTheme> patch)
+    {
+        var theme = Layout.Theme ?? new DashTheme();
+        patch(theme);
+        Layout.Theme = theme.IsEmpty ? null : theme;
+        Persist();
+    }
+
+    // ── Widget stacks ─────────────────────────────────────────────────────────
+
+    public DashWidgetStack? SelectedStack =>
+        SelectedStackId is null ? null : ActivePage is { } page ? DashLayoutEditor.FindStack(page, SelectedStackId) : null;
+
+    /// <summary>The layer currently targeted for editing in the selected stack.</summary>
+    public DashWidgetStackLayer? ActiveLayer
+    {
+        get
+        {
+            if (SelectedStack is not { } stack)
+            {
+                return null;
+            }
+
+            var id = ActiveLayerId ?? stack.DefaultLayerId;
+            return stack.Layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase))
+                ?? stack.Layers.FirstOrDefault();
+        }
+    }
+
+    public void SelectStack(string? stackId)
+    {
+        SelectedStackId = stackId;
+        SelectedWidgetId = null;
+        ActiveLayerId = stackId is null ? null : SelectedStack?.DefaultLayerId ?? SelectedStack?.Layers.FirstOrDefault()?.Id;
+        RaiseChanged();
+    }
+
+    public bool AddWidgetStack()
+    {
+        if (!DashLayoutEditor.TryAddWidgetStack(Layout, ActivePageId, out var stack) || stack is null)
+        {
+            return false;
+        }
+
+        SelectedWidgetId = null;
+        SelectedStackId = stack.Id;
+        ActiveLayerId = stack.DefaultLayerId;
+        Persist();
+        return true;
+    }
+
+    public bool DeleteSelectedStack()
+    {
+        if (SelectedStackId is not { } id || ActivePage is not { } page || !DashLayoutEditor.TryDeleteStack(page, id))
+        {
+            return false;
+        }
+
+        SelectedStackId = null;
+        ActiveLayerId = null;
+        Persist();
+        return true;
+    }
+
+    public bool RenameStack(string name) => WithStack(stack => DashLayoutEditor.TryRenameStack(ActivePage!, stack.Id, name));
+
+    public bool MoveStack(int col, int row) => WithStack(stack => DashLayoutEditor.TryMoveStack(Layout, ActivePageId, stack.Id, col, row));
+
+    public bool ResizeStack(int colSpan, int rowSpan) => WithStack(stack => DashLayoutEditor.TryResizeStack(Layout, ActivePageId, stack.Id, colSpan, rowSpan));
+
+    public bool AddStackLayer()
+    {
+        return WithStack(stack =>
+        {
+            if (!DashLayoutEditor.TryAddStackLayer(stack, out var layer) || layer is null)
+            {
+                return false;
+            }
+
+            ActiveLayerId = layer.Id;
+            return true;
+        });
+    }
+
+    public void SelectStackLayer(string layerId)
+    {
+        if (SelectedStack?.Layers.Any(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase)) == true)
+        {
+            ActiveLayerId = layerId;
+            RaiseChanged();
+        }
+    }
+
+    public bool SetDefaultStackLayer(string layerId) => WithStack(stack => DashLayoutEditor.TrySetDefaultStackLayer(stack, layerId));
+
+    public bool RenameStackLayer(string layerId, string name) => WithStack(stack => DashLayoutEditor.TryRenameStackLayer(stack, layerId, name));
+
+    public bool DeleteStackLayer(string layerId)
+    {
+        return WithStack(stack =>
+        {
+            if (!DashLayoutEditor.TryDeleteStackLayer(stack, layerId))
+            {
+                return false;
+            }
+
+            if (string.Equals(ActiveLayerId, layerId, StringComparison.OrdinalIgnoreCase))
+            {
+                ActiveLayerId = stack.DefaultLayerId ?? stack.Layers.FirstOrDefault()?.Id;
+            }
+
+            return true;
+        });
+    }
+
+    public bool AddWidgetToActiveLayer(string type)
+    {
+        return WithStack(stack =>
+        {
+            var layerId = ActiveLayer?.Id;
+            return layerId is not null && DashLayoutEditor.TryAddWidgetToStackLayer(stack, layerId, type, out _);
+        });
+    }
+
+    public bool DeleteLayerWidget(string widgetId)
+    {
+        return WithStack(stack =>
+        {
+            var layerId = ActiveLayer?.Id;
+            return layerId is not null && DashLayoutEditor.TryDeleteStackLayerWidget(stack, layerId, widgetId);
+        });
+    }
+
+    private bool WithStack(Func<DashWidgetStack, bool> op)
+    {
+        if (SelectedStack is not { } stack || !op(stack))
+        {
+            return false;
+        }
+
+        Persist();
+        return true;
     }
 
     public bool DeletePage(string pageId)
@@ -225,6 +531,8 @@ public sealed class DashEditorController
         {
             ActivePageId = Layout.Pages.FirstOrDefault()?.Id ?? Layout.IdlePage?.Id ?? "";
             SelectedWidgetId = null;
+            SelectedStackId = null;
+            ActiveLayerId = null;
         }
 
         Persist();

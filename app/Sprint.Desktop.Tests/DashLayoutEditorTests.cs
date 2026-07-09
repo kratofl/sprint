@@ -226,6 +226,63 @@ public sealed class DashLayoutEditorTests
         Assert.Single(layout.Pages[0].Widgets);
     }
 
+    [Fact]
+    public void AddWidgetStackPlacesRegionWithOneDefaultLayer()
+    {
+        var layout = LayoutWithWidgets();
+
+        Assert.True(DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack));
+        Assert.NotNull(stack);
+        Assert.Single(layout.Pages[0].WidgetStacks);
+        var layer = Assert.Single(stack!.Layers);
+        Assert.Equal(layer.Id, stack.DefaultLayerId);
+        Assert.True(stack.ColSpan is > 0 and <= 20 && stack.RowSpan is > 0 and <= 12);
+    }
+
+    [Fact]
+    public void AddWidgetStackAvoidsExistingContent()
+    {
+        // Fill the top-left region so the stack must land elsewhere without overlapping.
+        var layout = LayoutWithWidgets(
+            new DashWidget { Id = "big", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 6, RowSpan = 4 });
+
+        Assert.True(DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack));
+        var overlapsWidget =
+            stack!.Col < 6 && stack.Col + stack.ColSpan > 0 &&
+            stack.Row < 4 && stack.Row + stack.RowSpan > 0;
+        Assert.False(overlapsWidget, "Stack should not be placed over the existing widget.");
+    }
+
+    [Fact]
+    public void AddWidgetToStackLayerStaysInsideSubGrid()
+    {
+        var layout = LayoutWithWidgets();
+        DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack);
+
+        Assert.True(DashLayoutEditor.TryAddWidgetToStackLayer(stack!, stack!.DefaultLayerId!, "gear_speed", out var widget));
+        Assert.NotNull(widget);
+        Assert.True(widget!.Col + widget.ColSpan <= stack.ColSpan);
+        Assert.True(widget.Row + widget.RowSpan <= stack.RowSpan);
+        Assert.Single(stack.Layers[0].Widgets);
+    }
+
+    [Fact]
+    public void DeleteStackLayerKeepsOneAndReassignsDefault()
+    {
+        var layout = LayoutWithWidgets();
+        DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack);
+        DashLayoutEditor.TryAddStackLayer(stack!, out var second);
+        Assert.True(DashLayoutEditor.TrySetDefaultStackLayer(stack!, second!.Id));
+
+        // Deleting the default layer reassigns the default to a surviving layer.
+        Assert.True(DashLayoutEditor.TryDeleteStackLayer(stack!, second.Id));
+        Assert.Single(stack!.Layers);
+        Assert.Equal(stack.Layers[0].Id, stack.DefaultLayerId);
+
+        // The last remaining layer cannot be deleted.
+        Assert.False(DashLayoutEditor.TryDeleteStackLayer(stack, stack.Layers[0].Id));
+    }
+
     private static DashLayout LayoutWithWidgets(params DashWidget[] widgets)
     {
         return new DashLayout

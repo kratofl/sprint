@@ -56,6 +56,128 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
+    public void SetSelectedConfigStoresAndClearsStringValues()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("text");
+        saves = 0;
+
+        Assert.True(controller.SetSelectedConfig("content", "P1"));
+        Assert.Equal("P1", controller.GetSelectedConfig("content"));
+        Assert.Equal(1, saves);
+
+        // Empty value clears the key; clearing the last key drops the config dictionary.
+        Assert.True(controller.SetSelectedConfig("content", ""));
+        Assert.Equal(string.Empty, controller.GetSelectedConfig("content"));
+        Assert.Null(controller.SelectedWidget!.Config);
+        Assert.Equal(2, saves);
+    }
+
+    [Fact]
+    public void SetSelectedConfigWithoutSelectionIsNoOp()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        Assert.False(controller.SetSelectedConfig("content", "x"));
+        Assert.Equal(0, saves);
+    }
+
+    [Fact]
+    public void StyleOverridesSetAndCollapseToNullWhenEmptied()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("gear_speed");
+        var widget = controller.SelectedWidget!;
+        saves = 0;
+
+        Assert.True(controller.SetSelectedTextColor("red"));
+        Assert.True(controller.SetSelectedBorder(false));
+        Assert.Equal("red", widget.Style!.TextColor);
+        Assert.False(widget.Style!.Border);
+        Assert.Equal(2, saves);
+
+        // Clearing every override collapses the style back to null (no empty object persisted).
+        Assert.True(controller.SetSelectedTextColor(null));
+        Assert.True(controller.SetSelectedBorder(null));
+        Assert.Null(widget.Style);
+    }
+
+    [Fact]
+    public void ThemePresetAppliesAndResetClears()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        var ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
+        controller.ApplyThemePreset(ice);
+        Assert.Equal("#1F7FE6", controller.Layout.Theme!.Primary);
+        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout.Theme));
+
+        controller.SetThemeAccent("#FF6A00");
+        Assert.Equal("#FF6A00", controller.Layout.Theme!.Accent);
+
+        controller.ResetTheme();
+        Assert.Null(controller.Layout.Theme);
+
+        // The empty "Graphite" preset clears the theme rather than persisting an empty object.
+        controller.ApplyThemePreset(DashThemePresets.All.First(preset => preset.Name == "Graphite").Theme);
+        Assert.Null(controller.Layout.Theme);
+    }
+
+    [Fact]
+    public void SuzukiThemePresetUsesPurplePrimary()
+    {
+        var suzuki = DashThemePresets.All.FirstOrDefault(preset => preset.Name == "Suzuki");
+
+        Assert.NotNull(suzuki);
+        Assert.Equal("#7C3AED", suzuki!.Theme.Primary);
+        Assert.Equal("#B15CFF", suzuki.Theme.Accent);
+    }
+
+    [Fact]
+    public void AddWidgetStackSelectsItAndClearsWidgetSelection()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        controller.AddWidget("fuel");
+        Assert.NotNull(controller.SelectedWidgetId);
+
+        Assert.True(controller.AddWidgetStack());
+        Assert.NotNull(controller.SelectedStackId);
+        Assert.Null(controller.SelectedWidgetId);       // mutually exclusive
+        Assert.NotNull(controller.ActiveLayer);          // active layer defaults to the stack's layer
+
+        // Selecting a widget clears the stack selection.
+        controller.SelectWidget(controller.ActivePage!.Widgets[0].Id);
+        Assert.Null(controller.SelectedStackId);
+    }
+
+    [Fact]
+    public void StackLayerEditingAddsWidgetsAndSwitchesActiveLayer()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        Assert.True(controller.AddWidgetStack());
+        var stack = controller.SelectedStack!;
+
+        Assert.True(controller.AddWidgetToActiveLayer("gear_speed"));
+        Assert.Single(controller.ActiveLayer!.Widgets);
+
+        // A new layer becomes the active edit target; widgets land there.
+        Assert.True(controller.AddStackLayer());
+        Assert.Equal(2, stack.Layers.Count);
+        Assert.Equal(stack.Layers[1].Id, controller.ActiveLayer!.Id);
+        Assert.True(controller.AddWidgetToActiveLayer("fuel"));
+        Assert.DoesNotContain(stack.Layers[0].Widgets, w => w.Type == "fuel"); // went to layer 2, not layer 1
+        Assert.Single(stack.Layers[1].Widgets);
+
+        Assert.True(controller.DeleteSelectedStack());
+        Assert.Null(controller.SelectedStackId);
+        Assert.Empty(controller.ActivePage!.WidgetStacks);
+    }
+
+    [Fact]
     public void MoveOntoAnotherWidgetIsRejected()
     {
         var controller = new DashEditorController(NewLayout(), _ => { });
