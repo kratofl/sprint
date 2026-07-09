@@ -181,9 +181,10 @@ public sealed class VisualSmokeTests
                     (int)Math.Round(canvas.Bounds.Height));
 
                 Assert.True(canvasRect.X is >= 350 and <= 390, $"Expected editor canvas x near Figma reference with the restored inspector, saw {canvasRect.X}.");
-                // The shared shell titlebar (32px) now sits above the body, so the canvas
-                // y reference shifts down by roughly the titlebar height (PRD #122).
-                Assert.True(canvasRect.Y is >= 66 and <= 96, $"Expected editor canvas y near Figma reference below the shell titlebar, saw {canvasRect.Y}.");
+                // The shared shell titlebar (32px) sits above the body, and the editor's
+                // page bar (idle + pages + add/delete, US31) now sits above the canvas, so
+                // the canvas y reference shifts down by the titlebar + page-bar height.
+                Assert.True(canvasRect.Y is >= 104 and <= 136, $"Expected editor canvas y below the shell titlebar and page bar, saw {canvasRect.Y}.");
                 Assert.True(canvasRect.Width is >= 560 and <= 590, $"Expected editor canvas width near Figma reference, saw {canvasRect.Width}.");
                 Assert.True(canvasRect.Height is >= 330 and <= 360, $"Expected editor canvas height near Figma reference, saw {canvasRect.Height}.");
 

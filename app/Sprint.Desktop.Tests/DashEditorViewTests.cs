@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
@@ -165,6 +166,43 @@ public sealed class DashEditorViewTests
                 var expected = (double)portrait.Height / portrait.Width;
                 var actual = canvas.Height / canvas.Width;
                 Assert.True(Math.Abs(actual - expected) < 0.01, $"canvas aspect {actual:F3} should match profile {expected:F3}");
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PageBarAddsANewPageFromTheEditor()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window { Width = 1200, Height = 800, Content = view };
+                window.Show();
+
+                var before = controller.PageTabs.Count;
+
+                // US31: the "Add page" control in the page bar creates a page. Found by
+                // tooltip so it's unambiguous vs the canvas zoom "+" button.
+                var addButton = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(b => string.Equals(ToolTip.GetTip(b) as string, "Add page", StringComparison.Ordinal));
+                addButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.Equal(before + 1, controller.PageTabs.Count);
 
                 window.Close();
             }, CancellationToken.None);

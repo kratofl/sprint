@@ -655,10 +655,13 @@ public class HeadlessShellTests
                 FindButton(window, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
-                Assert.Null(FindOptionalButton(window, "Add page"));
+                // The genuinely-retired legacy toolbar sprawl stays gone (autosave replaced
+                // "Save"; "Clear page" was a toolbar action). Page management now lives in
+                // the dedicated page bar (US31), which offers "Add page" — a first-class
+                // control, not legacy toolbar clutter.
                 Assert.Null(FindOptionalButton(window, "Clear page"));
-                Assert.Null(FindOptionalButton(window, "Delete page"));
                 Assert.Null(FindOptionalButton(window, "Save"));
+                Assert.NotNull(FindOptionalButton(window, "Add page"));
 
                 window.Close();
             }, CancellationToken.None);

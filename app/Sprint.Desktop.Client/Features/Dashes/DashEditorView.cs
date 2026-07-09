@@ -203,10 +203,22 @@ public sealed class DashEditorView : UserControl
         palette.Margin = new Thickness(0, 0, 12, 0);
         root.Children.Add(palette);
 
+        // Center column: the page bar (idle + pages + add/delete, US31) above the live
+        // real-size canvas.
+        var center = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        var pageBar = BuildPageTabs();
+        pageBar.HorizontalAlignment = HorizontalAlignment.Center;
+        pageBar.Margin = new Thickness(0, 0, 0, 8);
+        Grid.SetRow(pageBar, 0);
+        center.Children.Add(pageBar);
+
         var canvasHost = BuildCanvas();
         Grid.SetRow(canvasHost, 1);
-        Grid.SetColumn(canvasHost, 1);
-        root.Children.Add(canvasHost);
+        center.Children.Add(canvasHost);
+
+        Grid.SetRow(center, 1);
+        Grid.SetColumn(center, 1);
+        root.Children.Add(center);
 
         var inspector = BuildInspector();
         Grid.SetRow(inspector, 1);
@@ -477,7 +489,21 @@ public sealed class DashEditorView : UserControl
             }
 
             group.Children.Add(item);
+
+            // Delete the active regular page (US31); never the idle page or the last
+            // remaining regular page (the controller enforces the latter too).
+            if (active && !tab.IsIdle && _controller.PageTabs.Count(t => !t.IsIdle) > 1)
+            {
+                var delete = SegmentedItem("×", false, () => _controller.DeletePage(tab.Id));
+                ToolTip.SetTip(delete, "Delete page");
+                group.Children.Add(delete);
+            }
         }
+
+        // Add a new page (US31 multiple pages).
+        var addPage = SegmentedItem("+", false, () => _controller.AddPage());
+        ToolTip.SetTip(addPage, "Add page");
+        group.Children.Add(addPage);
 
         return new Border
         {
