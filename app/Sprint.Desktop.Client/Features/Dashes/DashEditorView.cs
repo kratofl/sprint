@@ -158,9 +158,12 @@ public sealed class DashEditorView : UserControl
 
     private int Rows => Math.Max(1, _controller.Layout.GridRows);
 
-    // Clamp to >=1 so an extreme (validator-approved) aspect ratio can't round the
-    // height to 0 and make the DashPainter constructor throw when the editor opens.
-    private int CanvasHeight => Math.Max(1, (int)Math.Round((double)CanvasWidth * Rows / Cols));
+    // The canvas takes the target screen's TRUE pixel aspect (US16), not the grid's
+    // cols/rows ratio, so what the user designs is pixel-faithful to the wheel — the
+    // same DashPainter renders the editor bitmap and the hardware frame at this shape.
+    // Clamp to >=1 so an extreme (validator-approved) aspect can't round the height to
+    // 0 and make the DashPainter constructor throw when the editor opens.
+    private int CanvasHeight => Math.Max(1, (int)Math.Round(CanvasWidth / _controller.TargetProfile.AspectRatio));
 
     private double CellW => (double)CanvasWidth / Cols;
 
