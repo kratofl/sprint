@@ -139,6 +139,39 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
+    public void ApplyToScreenIsBlockedWhenNoScreenIsAssigned()
+    {
+        var layout = NewLayout();
+        // A resolver that reports the honest "no screen assigned" state (US34).
+        var controller = new DashEditorController(layout, _ => { }, () => DashApplyAvailability.None);
+
+        var raised = 0;
+        controller.ApplyToScreenRequested += (_, _) => raised++;
+
+        controller.RequestApplyToScreen();
+
+        Assert.False(controller.ApplyAvailability.CanApply);
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void ApplyToScreenSurfacesTheResolvedTargetSummary()
+    {
+        var layout = NewLayout();
+        var target = new DashApplyAvailability(true, "Apply to Omega Wheel");
+        var controller = new DashEditorController(layout, _ => { }, () => target);
+
+        DashLayout? applied = null;
+        controller.ApplyToScreenRequested += (_, l) => applied = l;
+
+        controller.RequestApplyToScreen();
+
+        Assert.True(controller.ApplyAvailability.CanApply);
+        Assert.Equal("Apply to Omega Wheel", controller.ApplyAvailability.Summary);
+        Assert.Same(layout, applied);
+    }
+
+    [Fact]
     public void SetSelectedConfigWithoutSelectionIsNoOp()
     {
         var saves = 0;

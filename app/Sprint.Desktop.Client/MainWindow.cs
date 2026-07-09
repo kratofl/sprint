@@ -451,7 +451,7 @@ public sealed class MainWindow : Window
 
     private DashEditorView CreateDashEditor(DashLayout layout)
     {
-        var controller = new DashEditorController(layout, _runtime.SaveDashLayout);
+        var controller = new DashEditorController(layout, _runtime.SaveDashLayout, () => ResolveApplyAvailability(layout.Id));
         // Explicit Apply-to-screen: persist the current design, then re-sync the
         // hardware publishers so the assigned physical screen renders it through the
         // canonical painter → RGB565 → device pipeline (US27/US28). No live mirroring
@@ -462,6 +462,23 @@ public sealed class MainWindow : Window
             _screens.Sync();
         };
         return new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor);
+    }
+
+    /// <summary>
+    /// The honest Apply-to-screen state for a dash: available only when at least one enabled
+    /// screen device targets it, with a summary naming the target screens (US27/US34). The
+    /// summary drives the editor button's tooltip and disabled state.
+    /// </summary>
+    private DashApplyAvailability ResolveApplyAvailability(string dashId)
+    {
+        var screens = DashDeviceAssignments.EnabledScreensFor(_runtime.Devices, dashId);
+        if (screens.Count == 0)
+        {
+            return DashApplyAvailability.None;
+        }
+
+        var names = string.Join(", ", screens.Select(screen => screen.Name));
+        return new DashApplyAvailability(true, $"Apply to {names}");
     }
 
     private void CloseDashEditor()
@@ -575,10 +592,14 @@ public sealed class MainWindow : Window
         };
     }
 
+    // Home is a runtime-driven launchpad (US11/US12): the live session, the user's
+    // dashes with direct entry into the editor, and the connected wheel screens with
+    // their assigned dash. No sample data — everything is read from the runtime.
     private Control HomePage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Home", "Runtime overview", Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
+        stack.Children.Add(PageHeader("Home", "Your dashes, screens, and live session at a glance",
+            Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
 
         if (_surfaceState is { } surface)
         {
@@ -586,44 +607,145 @@ public sealed class MainWindow : Window
             stack.Children.Add(Graphite.StatePanel(view.Title, view.Detail, BrushForTone(view.Tone)));
         }
 
+        var screens = _runtime.Devices.Where(IsScreenDevice).ToList();
+        var connected = screens.Count(device => !device.Disabled && _screens.StatusFor(device.Id)?.IsConnected == true);
+
         var overview = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,*")
         };
         AddGrid(overview, RuntimeSummaryCard("Telemetry", _statusView.Label, _statusView.RateText), 0, 0);
-        AddGrid(overview, RuntimeSummaryCard("Devices", $"{_runtime.Devices.Count} saved", $"{_runtime.Devices.Count(device => !device.Disabled)} enabled"), 0, 1);
-        AddGrid(overview, RuntimeSummaryCard("Setups", $"{_runtime.SetupPrograms.Count} user", $"{_runtime.SetupTemplates.Count} templates"), 0, 2);
+        AddGrid(overview, RuntimeSummaryCard("Dashes", $"{_runtime.DashLayouts.Count}", _runtime.DashLayouts.Count == 1 ? "design saved" : "designs saved"), 0, 1);
+        AddGrid(overview, RuntimeSummaryCard("Screens", $"{connected}/{screens.Count}", "connected"), 0, 2);
         stack.Children.Add(overview);
 
-        var assignmentPanel = new StackPanel { Spacing = 8 };
-        assignmentPanel.Children.Add(Graphite.SectionLabel("Dash assignments"));
-        if (_runtime.Devices.Count == 0)
-        {
-            assignmentPanel.Children.Add(Graphite.StatePanel("No saved devices", "Add a device before assigning a dash to hardware.", Graphite.Text3Brush));
-        }
-        else
-        {
-            foreach (var device in _runtime.Devices)
-            {
-                assignmentPanel.Children.Add(DashAssignmentRow(device));
-            }
-        }
-        stack.Children.Add(Graphite.Card(assignmentPanel));
-
-        var setupPanel = new StackPanel { Spacing = 8 };
-        setupPanel.Children.Add(Graphite.SectionLabel("Active setup context"));
-        if (_runtime.SetupPrograms.Count == 0)
-        {
-            setupPanel.Children.Add(Graphite.StatePanel("No user setup selected", "Duplicate a shipped setup template before editing setup values.", Graphite.Text3Brush));
-        }
-        else
-        {
-            setupPanel.Children.Add(Graphite.TextBlock(_selectedSetup.Name, 15, FontWeight.Bold, Graphite.TextBrush));
-            setupPanel.Children.Add(Graphite.TextBlock("User-owned setup values are saved locally.", 12, FontWeight.Normal, Graphite.Text3Brush));
-        }
-        stack.Children.Add(Graphite.Card(setupPanel));
+        stack.Children.Add(LaunchpadDashes());
+        stack.Children.Add(LaunchpadScreens(screens));
 
         return Scroll(stack);
+    }
+
+    // "Your dashes": every saved design as an openable card, plus a direct route into
+    // the Dashboards pillar (US11).
+    private Control LaunchpadDashes()
+    {
+        var panel = new StackPanel { Spacing = 10 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(header, Graphite.SectionLabel("Your dashes"), 0, 0);
+        AddGrid(header, ActionButton("Manage dashes", ButtonTone.Ghost, () => Navigate(AppView.Dashes)), 0, 1);
+        panel.Children.Add(header);
+
+        if (_runtime.DashLayouts.Count == 0)
+        {
+            panel.Children.Add(Graphite.StatePanel("No dashes yet", "Create your first dash to start designing for a wheel screen.", Graphite.Text3Brush));
+        }
+        else
+        {
+            var wrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var layout in _runtime.DashLayouts)
+            {
+                wrap.Children.Add(LaunchpadDashCard(layout));
+            }
+
+            panel.Children.Add(wrap);
+        }
+
+        return Graphite.Card(panel);
+    }
+
+    private Control LaunchpadDashCard(DashLayout layout)
+    {
+        var content = new StackPanel { Spacing = 8 };
+        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(title, Graphite.TextBlock(layout.Name, 14, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap), 0, 0);
+        AddGrid(title, Graphite.StatusPill(layout.IsDefault ? "Default" : "Custom", layout.IsDefault ? Graphite.GreenBrush : Graphite.BlueBrush), 0, 1);
+        content.Children.Add(title);
+
+        // The target wheel-screen size the dash is designed for (US15/US16).
+        var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
+        content.Children.Add(Graphite.Chip($"{profile.Orientation} {profile.ResolutionLabel}", Graphite.BlueBrush));
+
+        // Honest "which screen will show this" (US29) — reuses the shared assignment rule.
+        var assigned = DashDeviceAssignments.EnabledScreensFor(_runtime.Devices, layout.Id);
+        var assignedText = assigned.Count == 0 ? "Not on a screen" : $"On {string.Join(", ", assigned.Select(screen => screen.Name))}";
+        content.Children.Add(Graphite.TextBlock(assignedText, 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+
+        content.Children.Add(ActionButton("Open", ButtonTone.Primary, () => OpenDashFromHome(layout)));
+
+        return new Border
+        {
+            Tag = $"home-dash-card:{layout.Id}",
+            Width = 256,
+            Margin = new Thickness(0, 0, 12, 12),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            Padding = new Thickness(12),
+            Child = content
+        };
+    }
+
+    // "Connected screens": each saved wheel screen with model/resolution/status and the
+    // dash currently assigned to it (US11/US29/US33), routing into the Devices pillar.
+    private Control LaunchpadScreens(IReadOnlyList<SavedDevice> screens)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(header, Graphite.SectionLabel("Connected screens"), 0, 0);
+        AddGrid(header, ActionButton("Manage devices", ButtonTone.Ghost, () => Navigate(AppView.Devices)), 0, 1);
+        panel.Children.Add(header);
+
+        if (screens.Count == 0)
+        {
+            panel.Children.Add(Graphite.StatePanel("No screens added", "Add your wheel screen in Devices to assign a dash to it.", Graphite.Text3Brush));
+        }
+        else
+        {
+            foreach (var device in screens)
+            {
+                panel.Children.Add(LaunchpadScreenRow(device));
+            }
+        }
+
+        return Graphite.Card(panel);
+    }
+
+    private Control LaunchpadScreenRow(SavedDevice device)
+    {
+        var dash = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId);
+        var text = new StackPanel { Spacing = 2 };
+        text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.SemiBold, Graphite.TextBrush));
+        text.Children.Add(Graphite.TextBlock($"{device.Width} × {device.Height} · {dash?.Name ?? "No dash assigned"}", 11, FontWeight.Normal, Graphite.Text3Brush));
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(row, text, 0, 0);
+        AddGrid(row, DeviceStatusPill(device), 0, 1);
+
+        var button = Graphite.Button(device.Name, ButtonTone.Ghost);
+        button.Content = row;
+        button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        button.Padding = new Thickness(10, 8);
+        button.Tag = $"home-screen-row:{device.Id}";
+        button.Click += (_, _) => OpenDeviceDetail(device);
+        return button;
+    }
+
+    private void OpenDashFromHome(DashLayout layout)
+    {
+        // Land on the Dashboards pillar with the editor already open on this dash.
+        _shell.Navigate(AppView.Dashes);
+        BuildShell();
+        OpenDashEditor(layout);
+    }
+
+    private void OpenDeviceDetail(SavedDevice device)
+    {
+        _shell.Navigate(AppView.Devices);
+        _selectedDeviceId = device.Id;
+        _showDeviceCatalog = false;
+        BuildShell();
+        RenderBody();
     }
 
     private Control RuntimeSummaryCard(string label, string value, string caption)
@@ -633,34 +755,6 @@ public sealed class MainWindow : Window
         stack.Children.Add(Graphite.TextBlock(value, 22, FontWeight.Bold, Graphite.TextBrush));
         stack.Children.Add(Graphite.TextBlock(caption, 11, FontWeight.Normal, Graphite.Text3Brush));
         return Graphite.Card(stack);
-    }
-
-    private Control DashAssignmentRow(SavedDevice device)
-    {
-        var dash = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId)
-            ?? _runtime.DashLayouts.FirstOrDefault();
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var text = new StackPanel { Spacing = 2 };
-        text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.SemiBold, Graphite.TextBrush));
-        text.Children.Add(Graphite.TextBlock(device.Disabled ? "Disabled" : DeviceStatusText(device), 11, FontWeight.Normal, Graphite.Text3Brush));
-        AddGrid(row, text, 0, 0);
-        AddGrid(row, Graphite.StatusPill(dash?.Name ?? "No dash", device.Disabled ? Graphite.Text3Brush : Graphite.BlueBrush), 0, 1);
-        return row;
-    }
-
-    private string DeviceStatusText(SavedDevice device)
-    {
-        var status = _screens.StatusFor(device.Id);
-        return status?.State switch
-        {
-            ScreenConnectionState.Connected => "Connected",
-            ScreenConnectionState.Connecting => "Connecting",
-            ScreenConnectionState.PermissionDenied => "Driver needed",
-            ScreenConnectionState.DeviceBusy => "Busy",
-            ScreenConnectionState.Unsupported => "Unsupported",
-            ScreenConnectionState.Faulted => "Fault",
-            _ => "Offline"
-        };
     }
 
     private Control LivePage()
@@ -912,10 +1006,20 @@ public sealed class MainWindow : Window
             Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right
         };
+        // Pick the target wheel-screen size at creation so a new dash is designed at the
+        // exact shape it will run on from the first widget (US15).
+        var createSize = Graphite.ComboBox(
+            ScreenProfileCatalog.All.Select(profile => profile.Name),
+            ScreenProfileCatalog.Default.Name,
+            180);
+        ToolTip.SetTip(createSize, "Target wheel-screen size for the new dash");
+        actions.Children.Add(createSize);
         actions.Children.Add(ActionButton("Create dash", ButtonTone.Primary, () =>
         {
-            _runtime.CreateDashLayout();
-            RenderBody();
+            var profile = ScreenProfileCatalog.All.FirstOrDefault(p => string.Equals(p.Name, createSize.SelectedItem?.ToString(), StringComparison.Ordinal))
+                ?? ScreenProfileCatalog.Default;
+            var created = _runtime.CreateDashLayout(profile);
+            OpenDashEditor(created);
         }));
         stack.Children.Add(actions);
 
@@ -1031,8 +1135,22 @@ public sealed class MainWindow : Window
     {
         var content = new StackPanel { Spacing = 9 };
         content.Children.Add(DeviceThumbnail(device, 210, 92));
-        content.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap));
+
+        // Name + live status pill on one row so hardware state is scannable from the
+        // library grid, not only inside the detail page (US33/US34).
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(heading, Graphite.TextBlock(device.Name, 13, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap), 0, 0);
+        AddGrid(heading, DeviceStatusPill(device), 0, 1);
+        content.Children.Add(heading);
+
         content.Children.Add(Graphite.TextBlock($"{device.Driver} / {device.Serial}", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+
+        // Model / resolution line so the user can confirm the exact screen shape before
+        // assigning a dash (US33). Screens surface WxH; other device types omit it.
+        if (IsScreenDevice(device))
+        {
+            content.Children.Add(Graphite.TextBlock($"{device.Width} × {device.Height}", 11, FontWeight.SemiBold, Graphite.Text2Brush));
+        }
 
         var button = Graphite.Button(device.Name, ButtonTone.Ghost);
         button.Content = content;
@@ -1119,6 +1237,9 @@ public sealed class MainWindow : Window
     }
 
     private static bool IsGenericDevice(CatalogDevice entry) => entry.Vid == 0 && entry.Pid == 0;
+
+    private static bool IsScreenDevice(SavedDevice device) =>
+        string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase) && device.Width > 0 && device.Height > 0;
 
     private Control DeviceEmptyDetail()
     {

@@ -7,6 +7,23 @@ namespace Sprint.Desktop.Features.Dashes;
 public sealed record DashPageTab(string Id, string Name, bool IsIdle);
 
 /// <summary>
+/// Whether the current dash can be pushed to a physical screen, and an honest
+/// one-line reason for the editor's Apply button (US27/US34). The shell resolves
+/// this from the saved-device assignments; the controller only surfaces it so the
+/// view can enable/disable and label the action without knowing about devices.
+/// </summary>
+public sealed record DashApplyAvailability(bool CanApply, string Summary)
+{
+    /// <summary>Optimistic default when no device context is supplied (e.g. unit tests / previews).</summary>
+    public static DashApplyAvailability Available { get; } =
+        new(true, "Apply this design to its assigned screen");
+
+    /// <summary>Honest blocked state when no enabled screen targets this dash (US34).</summary>
+    public static DashApplyAvailability None { get; } =
+        new(false, "No screen assigned — assign this dash to a device on the Devices page");
+}
+
+/// <summary>
 /// The interaction/presenter seam for the dash editor (matrix 4.5 editor rows,
 /// WS6). It owns the mutable editor state — active page + selected widget — and
 /// orchestrates the pure <see cref="DashLayoutEditor"/> reducers, persisting via
@@ -17,11 +34,16 @@ public sealed record DashPageTab(string Id, string Name, bool IsIdle);
 public sealed class DashEditorController
 {
     private readonly Action<DashLayout> _save;
+    private readonly Func<DashApplyAvailability> _applyAvailability;
 
-    public DashEditorController(DashLayout layout, Action<DashLayout> save)
+    public DashEditorController(DashLayout layout, Action<DashLayout> save, Func<DashApplyAvailability>? applyAvailability = null)
     {
         Layout = layout ?? throw new ArgumentNullException(nameof(layout));
         _save = save ?? throw new ArgumentNullException(nameof(save));
+        // No resolver → optimistically available (backward-compatible with callers/tests
+        // that build the controller without device context). The shell injects a resolver
+        // that reflects the real dash↔screen assignment so Apply is honest (US34).
+        _applyAvailability = applyAvailability ?? (() => DashApplyAvailability.Available);
         ActivePageId = layout.Pages.FirstOrDefault()?.Id ?? layout.IdlePage?.Id ?? "";
     }
 
@@ -93,12 +115,24 @@ public sealed class DashEditorController
         return DashPreviewFrames.Resolve(PreviewState, liveFrame);
     }
 
+    /// <summary>Whether Apply-to-screen is currently offered, plus the honest reason shown on the button (US34).</summary>
+    public DashApplyAvailability ApplyAvailability => _applyAvailability();
+
     /// <summary>
     /// Signals intent to push the current design to the assigned physical screen (US27).
     /// The shell handles the actual hardware render/stream; edits never reach the wheel
-    /// until this is invoked.
+    /// until this is invoked. No-op when no screen is assigned, so the action can never
+    /// pretend to reach hardware that isn't there (US34).
     /// </summary>
-    public void RequestApplyToScreen() => ApplyToScreenRequested?.Invoke(this, Layout);
+    public void RequestApplyToScreen()
+    {
+        if (!ApplyAvailability.CanApply)
+        {
+            return;
+        }
+
+        ApplyToScreenRequested?.Invoke(this, Layout);
+    }
 
     public IReadOnlyList<DashPageTab> PageTabs
     {

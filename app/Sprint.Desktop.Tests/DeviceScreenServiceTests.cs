@@ -28,6 +28,36 @@ public sealed class DeviceScreenServiceTests
     }
 
     [Fact]
+    public void EnabledScreensForReturnsOnlyEnabledAssignedScreens()
+    {
+        var assigned = ScreenDevice("assigned");
+        assigned.DashId = "dash-1";
+        var disabled = ScreenDevice("disabled", disabled: true);
+        disabled.DashId = "dash-1";
+        var otherDash = ScreenDevice("other-dash");
+        otherDash.DashId = "dash-2";
+        var wheel = ScreenDevice("wheel");
+        wheel.Type = "wheel";
+        wheel.DashId = "dash-1";
+
+        var devices = new[] { assigned, disabled, otherDash, wheel };
+
+        var result = DashDeviceAssignments.EnabledScreensFor(devices, "dash-1");
+
+        Assert.Equal(new[] { "assigned" }, result.Select(device => device.Id));
+    }
+
+    [Fact]
+    public void EnabledScreensForIsEmptyWhenDashIdIsBlank()
+    {
+        var device = ScreenDevice("screen");
+        device.DashId = "dash-1";
+
+        Assert.Empty(DashDeviceAssignments.EnabledScreensFor(new[] { device }, null));
+        Assert.Empty(DashDeviceAssignments.EnabledScreensFor(new[] { device }, ""));
+    }
+
+    [Fact]
     public void SyncStartsPublishersOnlyForEnabledScreenDevices()
     {
         var dataRoot = TestEnv.NewTempDataRoot();

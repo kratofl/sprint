@@ -40,6 +40,23 @@ internal static class AgentUiReviewHarness
                     runtime.AddDevice(runtime.Catalog[0]);
                 }
 
+                // A known screen device, assigned to the default dash, so the review frames
+                // exercise the size-aware surfaces: the Devices card resolution (US33) and an
+                // enabled Apply-to-screen in the editor toolbar (US34).
+                runtime.Devices.Add(new Sprint.Desktop.Features.Devices.SavedDevice
+                {
+                    Id = "review-screen",
+                    Name = "Review Screen",
+                    Type = "screen",
+                    Driver = "vocore",
+                    Serial = "REV1",
+                    Width = 800,
+                    Height = 480,
+                    DashId = runtime.DashLayouts.FirstOrDefault(dash => dash.IsDefault)?.Id
+                        ?? runtime.DashLayouts.FirstOrDefault()?.Id
+                        ?? "default",
+                });
+
                 using var telemetry = new RecordingTelemetrySource();
                 var window = new MainWindow(runtime, new ShellState(), telemetry)
                 {
@@ -50,10 +67,10 @@ internal static class AgentUiReviewHarness
                 window.Show();
                 try
                 {
-                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "TELEMETRY", "DEVICES", "DASH ASSIGNMENTS"));
+                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "TELEMETRY", "DASHES", "SCREENS", "YOUR DASHES", "CONNECTED SCREENS", "Review Screen"));
 
                     Click(window, "Devices");
-                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved Devices", "Add device", runtime.Devices[0].Name));
+                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved Devices", "Add device", runtime.Devices[0].Name, "Review Screen", "800 × 480"));
 
                     Click(window, runtime.Devices[0].Name);
                     frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "DEVICE BINDINGS", runtime.Devices[0].Name));

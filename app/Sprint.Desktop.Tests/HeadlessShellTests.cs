@@ -267,18 +267,32 @@ public class HeadlessShellTests
             await session.Dispatch(() =>
             {
                 var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-                runtime.AddDevice(runtime.Catalog[0]);
+                runtime.Devices.Add(new Sprint.Desktop.Features.Devices.SavedDevice
+                {
+                    Id = "scr-1",
+                    Name = "Home Screen",
+                    Type = "screen",
+                    Driver = "vocore",
+                    Width = 800,
+                    Height = 480,
+                    DashId = runtime.DashLayouts[0].Id,
+                });
                 using var telemetry = new RecordingTelemetrySource();
                 var window = new MainWindow(runtime, new ShellState(), telemetry);
                 window.Show();
 
                 window.CaptureRenderedFrame();
 
+                // Launchpad quick-stat tiles + the two runtime-driven sections (US11/US12).
                 Assert.NotNull(FindOptionalText(window, "TELEMETRY"));
-                Assert.NotNull(FindOptionalText(window, "DEVICES"));
-                Assert.NotNull(FindOptionalText(window, "DASH ASSIGNMENTS"));
-                Assert.NotNull(FindOptionalText(window, runtime.Devices[0].Name));
-                Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name.ToUpperInvariant()));
+                Assert.NotNull(FindOptionalText(window, "DASHES"));
+                Assert.NotNull(FindOptionalText(window, "SCREENS"));
+                Assert.NotNull(FindOptionalText(window, "YOUR DASHES"));
+                Assert.NotNull(FindOptionalText(window, "CONNECTED SCREENS"));
+                // Real data, no sample rows: the dash card title, the screen, its resolution.
+                Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name));
+                Assert.NotNull(FindOptionalText(window, "Home Screen"));
+                Assert.NotNull(FindOptionalText(window, "800 × 480 · " + runtime.DashLayouts[0].Name));
                 Assert.Null(FindOptionalText(window, "Dash Editor Ready"));
 
                 window.Close();
@@ -289,6 +303,182 @@ public class HeadlessShellTests
             Directory.Delete(dataRoot, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task HomeLaunchpadOpensADashDirectlyInTheEditor()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var shell = new ShellState();
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                // From Home, "Open" on a dash card lands directly in the editor on the
+                // Dashboards pillar (US11 direct entry).
+                FindButton(window, "Open").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.Equal(AppView.Dashes, shell.View);
+                Assert.Single(window.GetVisualDescendants().OfType<DashEditorView>());
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDashOpensTheEditorOnANewDash()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var shell = new ShellState();
+                shell.Navigate(AppView.Dashes);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                var before = runtime.DashLayouts.Count;
+                FindButton(window, "Create dash").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                // US14/US15: a new dash is created at the picked size and opened for design.
+                Assert.Equal(before + 1, runtime.DashLayouts.Count);
+                Assert.Single(window.GetVisualDescendants().OfType<DashEditorView>());
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DevicesPageShowsScreenResolutionForEachSavedScreen()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                runtime.Devices.Add(new Sprint.Desktop.Features.Devices.SavedDevice
+                {
+                    Id = "scr-1",
+                    Name = "Test Screen",
+                    Type = "screen",
+                    Driver = "vocore",
+                    Serial = "SN1",
+                    Width = 800,
+                    Height = 480,
+                    DashId = "default",
+                });
+
+                var shell = new ShellState();
+                shell.Navigate(AppView.Devices);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+                window.CaptureRenderedFrame();
+
+                // US33: the Devices library card must surface the exact screen shape
+                // (resolution) so a dash can be targeted at real hardware with confidence.
+                Assert.NotNull(FindOptionalText(window, "Test Screen"));
+                Assert.NotNull(FindOptionalText(window, "800 × 480"));
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DashEditorApplyButtonReflectsScreenAssignment()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+                // No device assigned → Apply-to-screen is an honest no-op: disabled (US34).
+                var shell = new ShellState();
+                shell.Navigate(AppView.Dashes);
+                using (var telemetry = new RecordingTelemetrySource())
+                {
+                    var window = new MainWindow(runtime, shell, telemetry);
+                    window.Show();
+                    FindButton(window, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    window.CaptureRenderedFrame();
+
+                    Assert.False(ApplyToScreenButton(window).IsEnabled);
+                    window.Close();
+                }
+
+                // Assign a screen to the first dash (what the first card's Edit opens) →
+                // Apply becomes available.
+                var firstDash = runtime.DashLayouts[0];
+                runtime.Devices.Add(new Sprint.Desktop.Features.Devices.SavedDevice
+                {
+                    Id = "scr-1",
+                    Name = "Assigned Wheel",
+                    Type = "screen",
+                    Driver = "vocore",
+                    Width = 800,
+                    Height = 480,
+                    DashId = firstDash.Id,
+                });
+
+                var shell2 = new ShellState();
+                shell2.Navigate(AppView.Dashes);
+                using (var telemetry2 = new RecordingTelemetrySource())
+                {
+                    var window2 = new MainWindow(runtime, shell2, telemetry2);
+                    window2.Show();
+                    FindButton(window2, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    window2.CaptureRenderedFrame();
+
+                    Assert.True(ApplyToScreenButton(window2).IsEnabled);
+                    window2.Close();
+                }
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static Button ApplyToScreenButton(MainWindow window) =>
+        window.GetVisualDescendants()
+            .OfType<Button>()
+            .Single(button => string.Equals(button.Tag as string, "apply-to-screen", StringComparison.Ordinal));
 
     [Fact]
     public async Task SetupsPageShowsReadOnlyTemplatesAndDuplicatesBeforeEditing()

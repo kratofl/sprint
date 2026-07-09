@@ -267,7 +267,14 @@ public sealed class DashEditorView : UserControl
 
             Rebuild();
         }));
-        actions.Children.Add(Graphite.AccentIconButton("check", "Apply to screen", () => _controller.RequestApplyToScreen()));
+        // Apply-to-screen is honest about hardware: enabled only when a screen is assigned
+        // to this dash, dimmed and self-explaining via tooltip otherwise (US34).
+        var apply = _controller.ApplyAvailability;
+        var applyButton = Graphite.AccentIconButton("check", apply.Summary, () => _controller.RequestApplyToScreen());
+        applyButton.Tag = "apply-to-screen";
+        applyButton.IsEnabled = apply.CanApply;
+        applyButton.Opacity = apply.CanApply ? 1.0 : 0.4;
+        actions.Children.Add(applyButton);
 
         Grid.SetColumn(actions, 2);
         bar.Children.Add(actions);
