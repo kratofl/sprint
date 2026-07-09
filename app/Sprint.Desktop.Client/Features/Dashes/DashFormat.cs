@@ -65,6 +65,28 @@ public static class DashFormat
 
     public static string Int(double value) => ((long)value).ToString(Inv);
 
+    /// <summary>Time gap in seconds → <c>0.000</c>, or <c>--</c> when there is no car (non-positive/NaN).</summary>
+    public static string Gap(double seconds)
+    {
+        if (seconds <= 0 || double.IsNaN(seconds) || double.IsInfinity(seconds))
+        {
+            return "--";
+        }
+
+        return seconds.ToString("0.000", Inv);
+    }
+
+    /// <summary>Tyre pressure in kPa → one decimal place, or <c>--</c> when not reported.</summary>
+    public static string Pressure(double kPa)
+    {
+        if (kPa <= 0 || double.IsNaN(kPa) || double.IsInfinity(kPa))
+        {
+            return "--";
+        }
+
+        return kPa.ToString("0.0", Inv);
+    }
+
     public static string Fuel(double liters) => liters.ToString("0.0", Inv);
 
     public static string FuelPerLap(double liters) => liters.ToString("0.00", Inv);

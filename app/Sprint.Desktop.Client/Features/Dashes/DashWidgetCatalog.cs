@@ -65,7 +65,14 @@ public static class DashWidgetCatalog
             ["abs"] = Definition("abs", "ABS", idleCapable: false, "electronics.abs"),
             ["engine_map"] = Definition("engine_map", "Engine Map", idleCapable: false, "electronics.motorMap"),
             ["brake_bias"] = Definition("brake_bias", "Brake Bias", idleCapable: false, "car.brakeBiasRear"),
-            ["fuel_target"] = Definition("fuel_target", "Fuel Target", idleCapable: false, "car.fuelPerLapLiters")
+            ["fuel_target"] = Definition("fuel_target", "Fuel Target", idleCapable: false, "car.fuelPerLapLiters"),
+            // Race-context and hybrid readouts real dashboards expose (US30). Each binds to
+            // the unified TelemetryFrame and degrades to "--" when its channel is absent.
+            ["position"] = Definition("position", "Position", idleCapable: false, "race.position", "race.totalPositions"),
+            ["gaps"] = Definition("gaps", "Gaps", idleCapable: false, "race.gapAhead", "race.gapBehind"),
+            ["predictive_lap"] = Definition("predictive_lap", "Predictive Lap", idleCapable: false, "lap.target", "lap.best"),
+            ["tyre_pressure"] = Definition("tyre_pressure", "Tyre Pressure", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
+            ["ers"] = Definition("ers", "ERS / Hybrid", idleCapable: false, "energy.virtual", "energy.deploy")
         };
 
     public static IReadOnlyCollection<DashWidgetDefinition> All => Definitions.Values.ToArray();

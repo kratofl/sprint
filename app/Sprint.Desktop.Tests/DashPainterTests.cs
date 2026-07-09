@@ -30,6 +30,21 @@ public sealed class DashPainterTests
     public void FormatsSignedDelta(double seconds, string expected) =>
         Assert.Equal(expected, DashFormat.Delta(seconds));
 
+    [Theory]
+    [InlineData(0, "--")]
+    [InlineData(-1, "--")]
+    [InlineData(1.234, "1.234")]
+    [InlineData(0.5, "0.500")]
+    public void FormatsRaceGap(double seconds, string expected) =>
+        Assert.Equal(expected, DashFormat.Gap(seconds));
+
+    [Theory]
+    [InlineData(0, "--")]
+    [InlineData(-5, "--")]
+    [InlineData(165.4, "165.4")]
+    public void FormatsTyrePressure(double kPa, string expected) =>
+        Assert.Equal(expected, DashFormat.Pressure(kPa));
+
     [Fact]
     public void DefaultDashPaletteUsesFigmaGraphiteAndStatusTokens()
     {

@@ -218,6 +218,11 @@ public sealed class DashPainter : IDisposable
                 case "engine_map": DrawElectronicsValue(rect, "MAP", frame.Electronics.MotorMap, frame.Electronics.MotorMapMax); break;
                 case "brake_bias": DrawSimpleValue(rect, "BRAKE BIAS", $"{frame.Car.BrakeBiasRear:0.0}%"); break;
                 case "fuel_target": DrawSimpleValue(rect, "FUEL TARGET", $"{frame.Car.FuelPerLapLiters:0.00} L/lap"); break;
+                case "position": DrawPosition(rect, frame); break;
+                case "gaps": DrawGaps(rect, frame); break;
+                case "predictive_lap": DrawSimpleValue(rect, "PREDICTED", DashFormat.Lap(frame.Lap.TargetLapTime)); break;
+                case "tyre_pressure": DrawTyrePressure(rect, frame); break;
+                case "ers": DrawErs(rect, frame); break;
                 case "text": DrawText(widget, rect, frame, settings); break;
                 default: DrawUnknown(widget, rect); break;
             }
@@ -609,6 +614,66 @@ public sealed class DashPainter : IDisposable
             DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.4f, cellH * 0.26f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f);
             DrawTextLine(tire is null ? "--" : $"{DashFormat.Temp(temp)}°", cx + cellW - 8, cy + cellH * 0.5f, cellH * 0.42f, DashFonts.Value, _palette.TyreColor(temp), Align.End, cellW * 0.7f);
         }
+    }
+
+    private void DrawPosition(SKRect r, TelemetryFrame frame)
+    {
+        var value = frame.Race.TotalPositions > 0
+            ? $"P{frame.Race.Position} / {frame.Race.TotalPositions}"
+            : frame.Race.Position > 0 ? $"P{frame.Race.Position}" : "P--";
+        DrawSimpleValue(r, "POSITION", value);
+    }
+
+    private void DrawGaps(SKRect r, TelemetryFrame frame)
+    {
+        DrawTextLine("GAPS", r.Left + 8, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+
+        var ahead = DashFormat.Gap(frame.Race.GapAhead);
+        var behind = DashFormat.Gap(frame.Race.GapBehind);
+        DrawTextLine("AHEAD", r.Left + 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.45f);
+        DrawTextLine(ahead == "--" ? "--" : $"-{ahead}", r.Left + 10, r.Top + r.Height * 0.78f, r.Height * 0.2f, DashFonts.Value, _palette.Foreground, Align.Start, r.Width * 0.45f);
+        DrawTextLine("BEHIND", r.Right - 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.45f);
+        DrawTextLine(behind == "--" ? "--" : $"+{behind}", r.Right - 10, r.Top + r.Height * 0.78f, r.Height * 0.2f, DashFonts.Value, _palette.Foreground, Align.End, r.Width * 0.45f);
+    }
+
+    private void DrawTyrePressure(SKRect r, TelemetryFrame frame)
+    {
+        DrawTextLine("TYRE PRESSURE", r.Left + 10, r.Top + r.Height * 0.12f, r.Height * 0.1f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        var corners = new (string Label, TirePosition Pos)[]
+        {
+            ("FL", TirePosition.FrontLeft),
+            ("FR", TirePosition.FrontRight),
+            ("RL", TirePosition.RearLeft),
+            ("RR", TirePosition.RearRight),
+        };
+        var cellW = r.Width / 2f;
+        var cellH = (r.Height - r.Height * 0.18f) / 2f;
+        var gridTop = r.Top + r.Height * 0.18f;
+        for (var i = 0; i < corners.Length; i++)
+        {
+            var col = i % 2;
+            var row = i / 2;
+            var cx = r.Left + col * cellW;
+            var cy = gridTop + row * cellH;
+            var tire = frame.Tires.FirstOrDefault(t => t.Position == corners[i].Pos);
+            DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.4f, cellH * 0.26f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f);
+            DrawTextLine(tire is null ? "--" : DashFormat.Pressure(tire.PressureKPa), cx + cellW - 8, cy + cellH * 0.5f, cellH * 0.42f, DashFonts.Value, _palette.Foreground, Align.End, cellW * 0.7f);
+        }
+    }
+
+    private void DrawErs(SKRect r, TelemetryFrame frame)
+    {
+        // VirtualEnergy is the remaining hybrid/energy budget; tolerate 0..1 or 0..100 sources.
+        var energyPct = frame.Energy.VirtualEnergy;
+        if (energyPct > 0f && energyPct <= 1.0f)
+        {
+            energyPct *= 100f;
+        }
+
+        DrawTextLine("ERS ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
+        DrawTextLine(energyPct > 0 ? $"{energyPct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Accent, Align.Start, r.Width * 0.6f);
+        var deploy = frame.Energy.DeployPower;
+        DrawTextLine(deploy > 0 ? $"{DashFormat.Int(deploy)} kW" : "-- kW", r.Right - 8, r.Top + r.Height * 0.62f, r.Height * 0.2f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.4f);
     }
 
     private void DrawFlag(SKRect r, TelemetryFrame frame)

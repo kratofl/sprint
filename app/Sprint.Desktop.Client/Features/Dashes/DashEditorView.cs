@@ -34,9 +34,10 @@ public sealed class DashEditorView : UserControl
 
     private static readonly (string Category, string[] Types)[] PaletteGroups =
     {
-        ("Driving", ["gear_speed", "rpm_bar", "input_trace", "tc", "abs", "engine_map", "brake_bias"]),
-        ("Timing", ["lap_time", "delta", "sector", "fuel", "fuel_target"]),
-        ("Status", ["header", "flag", "text", "tyre_temp"]),
+        ("Driving", ["gear_speed", "rpm_bar", "input_trace", "tc", "abs", "engine_map", "brake_bias", "ers"]),
+        ("Timing", ["lap_time", "delta", "predictive_lap", "sector", "fuel", "fuel_target"]),
+        ("Race", ["position", "gaps"]),
+        ("Status", ["header", "flag", "text", "tyre_temp", "tyre_pressure"]),
     };
 
     private readonly DashEditorController _controller;
