@@ -4,6 +4,7 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -67,28 +68,48 @@ internal static class AgentUiReviewHarness
                 window.Show();
                 try
                 {
-                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "TELEMETRY", "DASHES", "SCREENS", "YOUR DASHES", "CONNECTED SCREENS", "Review Screen"));
+                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
 
                     Click(window, "Devices");
-                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved Devices", "Add device", runtime.Devices[0].Name, "Review Screen", "800 × 480"));
+                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved devices", "Add device", runtime.Devices[0].Name, "Review Screen"));
 
                     Click(window, runtime.Devices[0].Name);
-                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "DEVICE BINDINGS", runtime.Devices[0].Name));
+                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Add device", "Device bindings", runtime.Devices[0].Name));
 
                     Click(window, "Setups");
-                    frames.Add(Capture(window, artifactRoot, "setups-templates-readonly", "Setups", "SETUP TEMPLATES", "USER SETUPS", "Duplicate template"));
+                    frames.Add(Capture(window, artifactRoot, "setups-templates-readonly", "Setups", "Setup templates", "User setups", "Duplicate template"));
 
                     Click(window, "Duplicate template");
                     frames.Add(Capture(window, artifactRoot, "setups-duplicated-user-copy", "Setups", "Delete", runtime.SetupPrograms[0].Name));
+
+                    Click(window, "Delete");
+                    frames.Add(Capture(window, artifactRoot, "confirm-dialog", "Delete setup?", "Cancel", "Delete setup"));
+                    Click(window, "Cancel");
 
                     // Capture Settings and Help before opening the dash editor: the editor
                     // toolbar has its own "Settings" tab that would otherwise shadow the
                     // sidebar navigation button of the same label.
                     Click(window, "Settings");
-                    frames.Add(Capture(window, artifactRoot, "settings-global-defaults", "Settings", "PROFILE", "DASH DEFAULTS"));
+                    frames.Add(Capture(window, artifactRoot, "settings-global-defaults", "Settings", "Profile", "Dash defaults"));
 
                     Click(window, "Help");
-                    frames.Add(Capture(window, artifactRoot, "help-reference", "Help", "REFERENCE", "Telemetry"));
+                    frames.Add(Capture(window, artifactRoot, "help-reference", "Help", "Getting started", "Telemetry status", "Keyboard shortcuts"));
+
+                    window.RaiseEvent(new KeyEventArgs
+                    {
+                        RoutedEvent = InputElement.KeyDownEvent,
+                        Source = window,
+                        Key = Key.K,
+                        KeyModifiers = KeyModifiers.Control,
+                    });
+                    frames.Add(Capture(window, artifactRoot, "command-palette", "Go to Home", "Create dash", "Add device"));
+                    window.GetVisualDescendants().OfType<TextBox>()
+                        .Single(box => string.Equals(box.Tag?.ToString(), "command-palette-search", StringComparison.Ordinal))
+                        .RaiseEvent(new KeyEventArgs
+                        {
+                            RoutedEvent = InputElement.KeyDownEvent,
+                            Key = Key.Escape,
+                        });
 
                     Click(window, "Dashes");
                     frames.Add(Capture(window, artifactRoot, "dash-editor-list", "Dashes", "Create dash", "Edit"));

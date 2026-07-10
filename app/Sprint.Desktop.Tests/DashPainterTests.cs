@@ -46,16 +46,16 @@ public sealed class DashPainterTests
         Assert.Equal(expected, DashFormat.Pressure(kPa));
 
     [Fact]
-    public void DefaultDashPaletteUsesFigmaGraphiteAndStatusTokens()
+    public void DefaultDashPaletteUsesCalmPrecisionGraphiteAndStatusTokens()
     {
         var palette = DashPalette.Default;
 
-        AssertColor("#0A0A0A", palette.Background);
-        AssertColor("#1A1A1A", palette.Surface);
-        AssertColor("#2E2E2E", palette.Border);
-        AssertColor("#F6F6F6", palette.Foreground);
-        AssertColor("#7A7A7A", palette.Secondary);
-        AssertColor("#5A5A5A", palette.Muted);
+        AssertColor("#0B0B0D", palette.Background);
+        AssertColor("#1B1B1E", palette.Surface);
+        AssertColor("#12FFFFFF", palette.Border);
+        AssertColor("#F5F5F7", palette.Foreground);
+        AssertColor("#A1A1AA", palette.Secondary);
+        AssertColor("#6F6F78", palette.Muted);
         AssertColor("#FF6A00", palette.Primary);
         AssertColor("#1F7FE6", palette.Accent);
         AssertColor("#16B566", palette.Success);
@@ -243,7 +243,7 @@ public sealed class DashPainterTests
 
         Assert.True(Brightness(borderedEdge) > Brightness(borderlessEdge) + 15,
             $"Expected the outline to disappear when Border=off; bordered={borderedEdge}, borderless={borderlessEdge}.");
-        Assert.True(Brightness(borderlessEdge) < 12, $"Expected a clean black edge with no outline, saw {borderlessEdge}.");
+        Assert.True(Brightness(borderlessEdge) < 14, $"Expected a clean near-black edge with no outline, saw {borderlessEdge}.");
     }
 
     private static int CountRedDominant(SKBitmap bitmap)

@@ -16,8 +16,8 @@ internal static class SprintThemeResourceKeys
 /// <summary>
 /// App-wide Graphite control theming. Rather than a full ControlTheme per widget,
 /// this overrides the Fluent resource brushes/metrics that the stock templates bind
-/// to (via DynamicResource), so every TextBox/ComboBox/Button picks up the Figma
-/// surfaces, ember focus, and 8px control radius at once. A base font style pins
+/// to (via DynamicResource), so every TextBox/ComboBox/Button picks up the Graphite
+/// surfaces, ember focus, and compact control radius at once. A base font style pins
 /// Inter on all templated controls so inputs stop falling back to the OS face.
 /// </summary>
 internal sealed class SprintComponentTheme : Styles
@@ -28,7 +28,7 @@ internal sealed class SprintComponentTheme : Styles
         Resources[SprintThemeResourceKeys.ButtonMinHeight] = 25d;
         Resources[SprintThemeResourceKeys.ButtonPadding] = new Thickness(14, 6);
 
-        // Figma control radius (buttons/inputs/combos = 8; cards/panels set their own).
+        // Calm Precision control radius; content objects and overlays set their own.
         Resources["ControlCornerRadius"] = new CornerRadius(Graphite.RadiusMd);
 
         // Button surfaces. Pointer-over is the same component state brightened by

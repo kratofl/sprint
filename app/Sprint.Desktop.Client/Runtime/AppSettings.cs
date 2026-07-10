@@ -4,6 +4,9 @@ namespace Sprint.Desktop.Runtime;
 
 public sealed class AppSettings
 {
+    [JsonPropertyName("sidebarCollapsed")]
+    public bool SidebarCollapsed { get; set; }
+
     [JsonPropertyName("updateChannel")]
     public string UpdateChannel { get; set; } = "stable";
 

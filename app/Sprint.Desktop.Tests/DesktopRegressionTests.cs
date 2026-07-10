@@ -30,11 +30,11 @@ public class DesktopRegressionTests
         var shell = new ShellState();
         Assert.Equal(AppView.Home, shell.View);
         Assert.Equal("Home", shell.CurrentTitle);
-        Assert.Equal(164, shell.SidebarWidth);
+        Assert.Equal(184, shell.SidebarWidth);
 
         shell.ToggleSidebar();
         Assert.True(shell.SidebarCollapsed, "Sidebar should collapse after toggle.");
-        Assert.Equal(44, shell.SidebarWidth);
+        Assert.Equal(52, shell.SidebarWidth);
 
         shell.Navigate(AppView.Devices);
         Assert.Equal(AppView.Devices, shell.View);

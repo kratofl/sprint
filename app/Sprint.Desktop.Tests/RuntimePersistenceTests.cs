@@ -150,6 +150,28 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void SettingsPersistTheUsersSidebarPreference()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            Assert.False(runtime.Settings.SidebarCollapsed);
+
+            runtime.Settings.SidebarCollapsed = true;
+            runtime.SaveSettings();
+
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            Assert.True(reloaded.Settings.SidebarCollapsed);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SaveSettingsPublishesRenderProfile()
     {
         var dataRoot = TestEnv.NewTempDataRoot();

@@ -17,7 +17,7 @@ internal static class CompositionRoot
     public static MainWindow CreateMainWindow()
     {
         var runtime = new DesktopRuntime();
-        var shell = new ShellState();
+        var shell = new ShellState(runtime.Settings.SidebarCollapsed);
         var telemetry = CreateTelemetrySource();
         return new MainWindow(runtime, shell, telemetry);
     }

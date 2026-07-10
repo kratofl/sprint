@@ -30,15 +30,15 @@ internal static class Graphite
 {
     public const string PointerOverBackgroundResourceKey = "Sprint.Graphite.PointerOverBackground";
 
-    public static readonly Color Bg = Color.Parse("#0A0A0A");
-    public static readonly Color Panel = Color.Parse("#0F0F0F");
-    public static readonly Color Panel2 = Color.Parse("#141414");
-    public static readonly Color Panel3 = Color.Parse("#1A1A1A");
-    public static readonly Color Line = Color.Parse("#2E2E2E");
-    public static readonly Color Line2 = Color.Parse("#424242");
-    public static readonly Color Text = Color.Parse("#F6F6F6");
-    public static readonly Color Text2 = Color.Parse("#7A7A7A");
-    public static readonly Color Text3 = Color.Parse("#5A5A5A");
+    public static readonly Color Bg = Color.Parse("#0B0B0D");
+    public static readonly Color Panel = Color.Parse("#101012");
+    public static readonly Color Panel2 = Color.Parse("#141416");
+    public static readonly Color Panel3 = Color.Parse("#1B1B1E");
+    public static readonly Color Line = Color.Parse("#12FFFFFF");
+    public static readonly Color Line2 = Color.Parse("#1FFFFFFF");
+    public static readonly Color Text = Color.Parse("#F5F5F7");
+    public static readonly Color Text2 = Color.Parse("#A1A1AA");
+    public static readonly Color Text3 = Color.Parse("#6F6F78");
     public static readonly Color Accent = Color.Parse("#FF6A00");
     public static readonly Color Green = Color.Parse("#16B566");
     public static readonly Color GreenBg = Color.Parse("#05281A");
@@ -53,15 +53,15 @@ internal static class Graphite
     public static readonly Color AccentBg = Color.Parse("#421A02");
     public static readonly Color AccentBorder = Color.Parse("#BF4D00");
     public static readonly Color IconNeutral = Color.Parse("#A0A0A0"); // Neutral/300 — muted status icon
-    public static readonly Color Panel2Hover = Brighten(Panel2, 0.10);
-    public static readonly Color Panel3Hover = Brighten(Panel3, 0.10);
+    public static readonly Color Panel2Hover = Color.Parse("#232327");
+    public static readonly Color Panel3Hover = Color.Parse("#232327");
     public static readonly Color AccentHover = Brighten(Accent, 0.10);
 
     public const int RadiusXs = 4;
-    public const int RadiusSm = 6;
-    public const int RadiusMd = 8;
+    public const int RadiusSm = 7;
+    public const int RadiusMd = 7;
     public const int RadiusLg = 10;
-    public const int RadiusXl = 14;
+    public const int RadiusXl = 12;
     public const int RadiusPill = 999;
 
     public const int Space1 = 2;
@@ -76,9 +76,9 @@ internal static class Graphite
     public const int Space10 = 22;
     public const int Space12 = 36;
 
-    public const int TitlebarHeight = 32;
-    public const int SidebarExpandedWidth = 164;
-    public const int SidebarCollapsedWidth = 44;
+    public const int ToolbarHeight = 44;
+    public const int SidebarExpandedWidth = 184;
+    public const int SidebarCollapsedWidth = 52;
 
     public static readonly IBrush BgBrush = Brush(Bg);
     public static readonly IBrush PanelBrush = Brush(Panel);
@@ -107,17 +107,14 @@ internal static class Graphite
     public static readonly IBrush Panel3HoverBrush = Brush(Panel3Hover);
     public static readonly IBrush AccentHoverBrush = Brush(AccentHover);
 
-    // Figma typography, bundled under Assets/Fonts (see docs/FIGMA_COMPONENTS.md).
-    // Inter is the UI/body face (Regular + Bold resolve by weight within "#Inter";
-    // Medium/SemiBold ship as split families so they are referenced explicitly).
-    // Saira SemiCondensed is the condensed motorsport face used for the wordmark,
-    // section labels, segmented/tab items, chips, and numeric counters.
-    // Space Grotesk is the display/brand glyph face.
+    // Inter is the single UI face. Brand artwork retains its own lettering, while
+    // app chrome, labels, controls, and frequently-updating numbers share one calm
+    // typographic voice.
     public const string FontStack = "avares://Sprint.Desktop.Client/Assets/Fonts#Inter";
     public const string FontStackMedium = "avares://Sprint.Desktop.Client/Assets/Fonts#Inter Medium";
     public const string FontStackSemiBold = "avares://Sprint.Desktop.Client/Assets/Fonts#Inter SemiBold";
-    public const string CondensedFontStack = "avares://Sprint.Desktop.Client/Assets/Fonts#Saira SemiCondensed";
-    public const string DisplayFontStack = "avares://Sprint.Desktop.Client/Assets/Fonts#Space Grotesk";
+    public const string CondensedFontStack = FontStack;
+    public const string DisplayFontStack = FontStack;
 
     public static IBrush Brush(Color color) => new ImmutableSolidColorBrush(color);
 
@@ -131,9 +128,9 @@ internal static class Graphite
     {
         return new Border
         {
-            Background = PanelBrush,
-            BorderBrush = LineBrush,
-            BorderThickness = new Thickness(1),
+            Background = Panel2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(10),
             Padding = padding ?? new Thickness(14),
             Child = child
@@ -162,12 +159,11 @@ internal static class Graphite
     {
         return new TextBlock
         {
-            Text = text.ToUpperInvariant(),
-            FontFamily = CondensedFontStack,
-            FontSize = 11,
-            FontWeight = FontWeight.SemiBold,
-            LetterSpacing = 1.5,
-            Foreground = Text2Brush
+            Text = text,
+            FontFamily = FontStackMedium,
+            FontSize = 14,
+            FontWeight = FontWeight.Medium,
+            Foreground = TextBrush
         };
     }
 
@@ -201,12 +197,12 @@ internal static class Graphite
             Foreground = foreground,
             BorderBrush = border,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(RadiusPill),
+            CornerRadius = new CornerRadius(RadiusMd),
             FontFamily = FontStack,
             FontSize = 13,
-            FontWeight = FontWeight.Bold,
-            Padding = new Thickness(14, 6),
-            MinHeight = 25,
+            FontWeight = FontWeight.Medium,
+            Padding = new Thickness(12, 6),
+            MinHeight = 30,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
@@ -224,9 +220,9 @@ internal static class Graphite
             Foreground = Text2Brush,
             BorderBrush = LineBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(RadiusPill),
-            Width = 21,
-            MinHeight = 21,
+            CornerRadius = new CornerRadius(RadiusMd),
+            Width = 28,
+            MinHeight = 28,
             Padding = new Thickness(0),
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -251,9 +247,9 @@ internal static class Graphite
             Foreground = Text3Brush,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(RadiusPill),
-            Width = 21,
-            MinHeight = 21,
+            CornerRadius = new CornerRadius(RadiusMd),
+            Width = 28,
+            MinHeight = 28,
             Padding = new Thickness(0),
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -278,9 +274,9 @@ internal static class Graphite
             Foreground = Panel2Brush,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(RadiusPill),
-            Width = 24,
-            MinHeight = 24,
+            CornerRadius = new CornerRadius(RadiusMd),
+            Width = 30,
+            MinHeight = 30,
             Padding = new Thickness(0),
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -298,21 +294,28 @@ internal static class Graphite
 
     public static Button NavigationItem(string iconName, string label, bool active, bool collapsed)
     {
-        var tint = active ? AccentBrush : Text2Brush;
+        var tint = active ? TextBrush : Text2Brush;
         var row = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = collapsed ? 0 : 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        row.Children.Add(Icons.Create(iconName, 13, tint));
+        row.Children.Add(new Border
+        {
+            Width = 2,
+            Height = 18,
+            CornerRadius = new CornerRadius(RadiusPill),
+            Background = active ? AccentBrush : Brushes.Transparent,
+        });
+        row.Children.Add(Icons.Create(iconName, 14, tint));
         if (!collapsed)
         {
             row.Children.Add(new TextBlock
             {
                 Text = label,
                 FontFamily = FontStackMedium,
-                FontSize = 11,
+                FontSize = 13,
                 Foreground = tint,
                 VerticalAlignment = VerticalAlignment.Center,
             });
@@ -326,8 +329,8 @@ internal static class Graphite
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(RadiusSm),
-            Padding = new Thickness(collapsed ? 0 : 10, 0),
-            MinHeight = 25,
+            Padding = new Thickness(collapsed ? 0 : 8, 0),
+            MinHeight = 36,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
             VerticalContentAlignment = VerticalAlignment.Center,
@@ -374,9 +377,9 @@ internal static class Graphite
 
         return new Border
         {
-            Background = PanelBrush,
-            BorderBrush = LineBrush,
-            BorderThickness = new Thickness(1),
+            Background = Panel2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(10),
             Padding = new Thickness(28),
             MinHeight = 160,
@@ -456,11 +459,10 @@ internal static class Graphite
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
-                Text = text.ToUpperInvariant(),
-                FontFamily = CondensedFontStack,
+                Text = text,
+                FontFamily = FontStackMedium,
                 FontSize = 11,
-                FontWeight = FontWeight.SemiBold,
-                LetterSpacing = 0.5,
+                FontWeight = FontWeight.Medium,
                 Foreground = brush ?? Text2Brush
             }
         };
@@ -482,11 +484,10 @@ internal static class Graphite
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
-                Text = text.ToUpperInvariant(),
-                FontFamily = CondensedFontStack,
+                Text = text,
+                FontFamily = FontStackMedium,
                 FontSize = 12,
-                FontWeight = FontWeight.Bold,
-                LetterSpacing = 0.5,
+                FontWeight = FontWeight.Medium,
                 Foreground = brush
             }
         };
@@ -594,14 +595,14 @@ internal static class Graphite
             {
                 Content = items[i],
                 Background = isSelected ? Panel3Brush : Brushes.Transparent,
-                Foreground = TextBrush,
+                Foreground = isSelected ? TextBrush : Text2Brush,
                 BorderBrush = Brushes.Transparent,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(RadiusPill),
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(RadiusMd),
                 FontFamily = FontStack,
                 FontSize = 14,
-                FontWeight = isSelected ? FontWeight.Bold : FontWeight.SemiBold,
-                Padding = new Thickness(18, 6),
+                FontWeight = isSelected ? FontWeight.Medium : FontWeight.Normal,
+                Padding = new Thickness(14, 6),
                 MinHeight = 30,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 VerticalContentAlignment = VerticalAlignment.Center,
@@ -617,7 +618,7 @@ internal static class Graphite
             Background = Panel2Brush,
             BorderBrush = LineBrush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(RadiusPill),
+            CornerRadius = new CornerRadius(RadiusMd),
             Padding = new Thickness(2),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
@@ -625,8 +626,8 @@ internal static class Graphite
         };
     }
 
-    // Figma Segmented control: a squared button group (radius 8 items in a radius-8
-    // container) with an ember-outlined selected item. Contrast the pill Tab View.
+    // Compact desktop segmented control. Selection uses tonal elevation; orange is
+    // reserved for primary action and focus rather than every local view switch.
     public static Control Segmented(IReadOnlyList<string> items, int selected, Action<int> onSelect)
     {
         var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
@@ -637,22 +638,21 @@ internal static class Graphite
             var button = new Button
             {
                 Content = items[i],
-                Background = isSelected ? AccentBrush : Brushes.Transparent,
-                Foreground = isSelected ? Panel2Brush : TextBrush,
+                Background = isSelected ? Panel3Brush : Brushes.Transparent,
+                Foreground = isSelected ? TextBrush : Text2Brush,
                 BorderBrush = Brushes.Transparent,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(RadiusPill),
-                FontFamily = CondensedFontStack,
+                BorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(RadiusMd),
+                FontFamily = FontStackMedium,
                 FontSize = 13,
-                FontWeight = FontWeight.Bold,
-                LetterSpacing = 0.5,
+                FontWeight = isSelected ? FontWeight.Medium : FontWeight.Normal,
                 Padding = new Thickness(14, 4),
-                MinHeight = 25,
+                MinHeight = 30,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 VerticalContentAlignment = VerticalAlignment.Center,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
             };
-            AttachPointerBrightness(button, button.Background, isSelected ? AccentHoverBrush : Brushes.Transparent);
+            AttachPointerBrightness(button, button.Background, isSelected ? Panel3HoverBrush : Panel2HoverBrush);
             button.Click += (_, _) => onSelect(index);
             group.Children.Add(button);
         }
@@ -661,8 +661,8 @@ internal static class Graphite
         {
             Background = Panel2Brush,
             BorderBrush = Brushes.Transparent,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(RadiusPill),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(RadiusMd),
             Padding = new Thickness(2),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
@@ -682,7 +682,7 @@ internal static class Graphite
             return Panel3HoverBrush;
         }
 
-        return AccentBgBrush;
+        return Panel2HoverBrush;
     }
 
     private static void AttachPointerBrightness(Button button, IBrush normal, IBrush hover)
@@ -692,6 +692,15 @@ internal static class Graphite
             new BrushTransition { Property = Avalonia.Controls.Button.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(120) },
             new DoubleTransition { Property = Avalonia.Controls.Button.OpacityProperty, Duration = TimeSpan.FromMilliseconds(90) },
         };
+        // Avalonia's Fluent button template resolves these dynamic resources while
+        // pointer-over/pressed. Per-control values prevent the global neutral hover
+        // brush from replacing an orange primary button with gray.
+        button.Resources["ButtonBackgroundPointerOver"] = hover;
+        button.Resources["ButtonBackgroundPressed"] = hover;
+        button.Resources["ButtonBorderBrushPointerOver"] = button.BorderBrush;
+        button.Resources["ButtonBorderBrushPressed"] = button.BorderBrush;
+        button.Resources["ButtonForegroundPointerOver"] = button.Foreground;
+        button.Resources["ButtonForegroundPressed"] = button.Foreground;
         button.Resources[PointerOverBackgroundResourceKey] = hover;
         button.PointerEntered += (_, _) => button.Background = hover;
         button.PointerPressed += (_, e) =>

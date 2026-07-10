@@ -23,9 +23,9 @@ namespace Sprint.Desktop.Features.Dashes;
 public sealed class DashEditorView : UserControl
 {
     private const int CanvasWidth = 560;
-    private const int PaletteWidth = 181;
+    private const int PaletteWidth = 204;
     private const int PaletteCollapsedWidth = 44;
-    private const int InspectorWidth = 220;
+    private const int InspectorWidth = 260;
 
     // Palette live-preview thumbnail dimensions. A widget is painted alone in a
     // 1x1 grid at this size, so the card shows the real on-wheel rendering.
@@ -179,7 +179,7 @@ public sealed class DashEditorView : UserControl
             ColumnDefinitions = _panel == EditorPanel.Inspector
                 ? new ColumnDefinitions($"{paletteColumn},*,{InspectorWidth}")
                 : new ColumnDefinitions("*"),
-            Margin = new Thickness(10, 8, 10, 10)
+            Margin = new Thickness(0, 8, 8, 8)
         };
 
         var toolbar = BuildToolbar();
@@ -200,7 +200,7 @@ public sealed class DashEditorView : UserControl
         var palette = _paletteCollapsed ? BuildCollapsedPalette() : BuildPalette();
         Grid.SetRow(palette, 1);
         Grid.SetColumn(palette, 0);
-        palette.Margin = new Thickness(0, 0, 12, 0);
+        palette.Margin = new Thickness(0, 0, 8, 0);
         root.Children.Add(palette);
 
         // Center column: the page bar (idle + pages + add/delete, US31) above the live
@@ -223,7 +223,7 @@ public sealed class DashEditorView : UserControl
         var inspector = BuildInspector();
         Grid.SetRow(inspector, 1);
         Grid.SetColumn(inspector, 2);
-        inspector.Margin = new Thickness(12, 0, 0, 0);
+        inspector.Margin = new Thickness(8, 0, 0, 0);
         root.Children.Add(inspector);
 
         Content = root;
@@ -236,7 +236,7 @@ public sealed class DashEditorView : UserControl
         var bar = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-            Height = 24,
+            MinHeight = 36,
             VerticalAlignment = VerticalAlignment.Center
         };
 
@@ -295,7 +295,7 @@ public sealed class DashEditorView : UserControl
         Grid.SetColumn(actions, 2);
         bar.Children.Add(actions);
 
-        bar.Margin = new Thickness(0, 0, 0, 8);
+        bar.Margin = new Thickness(8, 0, 0, 8);
         return bar;
     }
 
@@ -522,9 +522,9 @@ public sealed class DashEditorView : UserControl
         {
             Content = label,
             Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
-            Foreground = selected ? Graphite.AccentBrush : Graphite.Text2Brush,
-            BorderBrush = selected ? Graphite.AccentBrush : Brushes.Transparent,
-            BorderThickness = new Thickness(1),
+            Foreground = selected ? Graphite.TextBrush : Graphite.Text2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(Graphite.RadiusMd),
             FontFamily = Graphite.FontStack,
             FontSize = 13,
@@ -546,7 +546,7 @@ public sealed class DashEditorView : UserControl
 
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var headerText = new StackPanel { Spacing = 2 };
-        headerText.Children.Add(Graphite.TextBlock("WIDGETS", 12, FontWeight.SemiBold, Graphite.Text2Brush));
+        headerText.Children.Add(Graphite.TextBlock("Widgets", 14, FontWeight.Medium, Graphite.TextBrush));
         headerText.Children.Add(Graphite.TextBlock("Drag onto the grid to place", 10, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
         Grid.SetColumn(headerText, 0);
         header.Children.Add(headerText);
@@ -570,7 +570,7 @@ public sealed class DashEditorView : UserControl
             Background = Graphite.Panel2Brush,
             Foreground = Graphite.TextBrush,
             BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(0, 0, 0, 1),
             CornerRadius = new CornerRadius(Graphite.RadiusMd),
             Padding = new Thickness(10, 8),
             MinHeight = 32
@@ -595,10 +595,10 @@ public sealed class DashEditorView : UserControl
 
         return new Border
         {
-            Background = Graphite.PanelBrush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
             Padding = new Thickness(10),
             Child = scroller
         };
@@ -633,7 +633,7 @@ public sealed class DashEditorView : UserControl
             }
 
             _paletteCards.Children.Add(Graphite.SectionLabel(category));
-            var list = new WrapPanel { Orientation = Orientation.Horizontal };
+            var list = new StackPanel { Spacing = 2 };
             foreach (var def in matches)
             {
                 list.Children.Add(PaletteCard(def));
@@ -652,25 +652,22 @@ public sealed class DashEditorView : UserControl
     {
         var icon = Icons.Create(WidgetIcon(def.Type), 13, Graphite.AccentBrush);
 
-        var title = Graphite.TextBlock(def.Name, 9, FontWeight.SemiBold, Graphite.Text2Brush);
+        var title = Graphite.TextBlock(def.Name, 12, FontWeight.Normal, Graphite.Text2Brush);
         title.TextTrimming = TextTrimming.CharacterEllipsis;
-        title.MaxWidth = 46;
 
-        var content = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 9, VerticalAlignment = VerticalAlignment.Center };
         content.Children.Add(icon);
         content.Children.Add(title);
 
         var card = new Border
         {
-            Background = Graphite.Panel3Brush,
-            BorderBrush = Graphite.Line2Brush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusLg),
-            Padding = new Thickness(7),
-            Width = 62,
-            Height = 35,
-            Margin = new Thickness(0, 0, 5, 6),
-            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Padding = new Thickness(8, 6),
+            MinHeight = 32,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Cursor = new Cursor(StandardCursorType.Hand),
             Tag = $"palette:{def.Type}",
             Child = content
@@ -1375,11 +1372,11 @@ public sealed class DashEditorView : UserControl
     {
         return new Border
         {
-            Background = Graphite.PanelBrush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusXl),
-            Padding = new Thickness(10),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            Padding = new Thickness(12),
             Child = child,
         };
     }

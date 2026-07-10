@@ -20,8 +20,8 @@ namespace Sprint.Desktop.Tests;
 
 public sealed class VisualSmokeTests
 {
-    private const int FigmaWholeAppWidth = 1159;
-    private const int FigmaWholeAppHeight = 661;
+    private const int CompactWholeAppWidth = 1159;
+    private const int CompactWholeAppHeight = 661;
 
     public static IEnumerable<object[]> PrimaryViews()
     {
@@ -30,6 +30,7 @@ public sealed class VisualSmokeTests
             AppView.Home,
             AppView.Dashes,
             AppView.Devices,
+            AppView.Setups,
             AppView.Settings,
             AppView.Help
         })
@@ -127,7 +128,7 @@ public sealed class VisualSmokeTests
     }
 
     [Fact]
-    public async Task Whole_application_visual_contract_matches_figma_screenshot_geometry()
+    public async Task Whole_application_visual_contract_keeps_the_editor_canvas_dominant()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(VisualSmokeTests).Assembly);
 
@@ -142,8 +143,8 @@ public sealed class VisualSmokeTests
                 using var telemetry = new RecordingTelemetrySource();
                 var window = new MainWindow(runtime, shell, telemetry)
                 {
-                    Width = FigmaWholeAppWidth,
-                    Height = FigmaWholeAppHeight,
+                    Width = CompactWholeAppWidth,
+                    Height = CompactWholeAppHeight,
                 };
 
                 window.Show();
@@ -154,15 +155,13 @@ public sealed class VisualSmokeTests
                 window.CaptureRenderedFrame();
 
                 var frameRoot = Assert.IsType<Border>(window.Content);
-                Assert.Equal(new CornerRadius(Graphite.RadiusXl), frameRoot.CornerRadius);
+                Assert.Equal(new CornerRadius(0), frameRoot.CornerRadius);
                 var root = Assert.IsType<Grid>(frameRoot.Child);
-                // The shell is now a single titlebar row above a sidebar+body content
-                // row (PRD #122), so the root grid is two rows / one column and the
-                // sidebar's 164px column lives in the nested content grid.
+                // The unified toolbar sits above one integrated sidebar/content row.
                 Assert.Equal(2, root.RowDefinitions.Count);
                 Assert.Single(root.ColumnDefinitions);
                 var contentGrid = root.Children.OfType<Grid>().Single(g => g.ColumnDefinitions.Count == 2);
-                Assert.Equal(164, contentGrid.ColumnDefinitions[0].Width.Value);
+                Assert.Equal(Graphite.SidebarCollapsedWidth, contentGrid.ColumnDefinitions[0].Width.Value);
 
                 var editor = Assert.Single(window.GetVisualDescendants().OfType<DashEditorView>());
                 var canvas = Assert.Single(editor.GetVisualDescendants().OfType<Canvas>(), candidate =>
@@ -180,13 +179,11 @@ public sealed class VisualSmokeTests
                     (int)Math.Round(canvas.Bounds.Width),
                     (int)Math.Round(canvas.Bounds.Height));
 
-                Assert.True(canvasRect.X is >= 350 and <= 390, $"Expected editor canvas x near Figma reference with the restored inspector, saw {canvasRect.X}.");
-                // The shared shell titlebar (32px) sits above the body, and the editor's
-                // page bar (idle + pages + add/delete, US31) now sits above the canvas, so
-                // the canvas y reference shifts down by the titlebar + page-bar height.
-                Assert.True(canvasRect.Y is >= 104 and <= 136, $"Expected editor canvas y below the shell titlebar and page bar, saw {canvasRect.Y}.");
-                Assert.True(canvasRect.Width is >= 560 and <= 590, $"Expected editor canvas width near Figma reference, saw {canvasRect.Width}.");
-                Assert.True(canvasRect.Height is >= 330 and <= 360, $"Expected editor canvas height near Figma reference, saw {canvasRect.Height}.");
+                Assert.True(canvasRect.X >= Graphite.SidebarCollapsedWidth + 180, $"Expected the canvas beyond the compact shell and wider palette, saw x={canvasRect.X}.");
+                Assert.True(canvasRect.X + canvasRect.Width <= CompactWholeAppWidth, $"Expected the canvas to remain inside the compact window, saw right={canvasRect.X + canvasRect.Width}.");
+                Assert.True(canvasRect.Y >= Graphite.ToolbarHeight + 48, $"Expected the canvas below the unified toolbar and page controls, saw y={canvasRect.Y}.");
+                Assert.True(canvasRect.Width is >= 560 and <= 590, $"Expected a precise 560px-class editing canvas, saw {canvasRect.Width}.");
+                Assert.True(canvasRect.Height is >= 330 and <= 360, $"Expected the configured target aspect ratio, saw {canvasRect.Height}.");
 
                 var canvasBrightRatio = pixels.BrightRatio(canvasRect.Deflate(20), threshold: 55);
                 Assert.True(canvasBrightRatio is > 0.025 and < 0.18, $"Expected existing dash widgets to be visible on the editor grid without reverting to a rendered preview bitmap; bright ratio was {canvasBrightRatio:P2}.");
@@ -403,13 +400,13 @@ public sealed class VisualSmokeTests
                 var rpmCard = view.GetVisualDescendants()
                     .OfType<Border>()
                     .First(border => string.Equals(border.Tag?.ToString(), "palette:rpm_bar", StringComparison.Ordinal));
-                Assert.True(gearCard.Bounds.Width <= 76 && gearCard.Bounds.Height <= 42, $"Expected compact palette cards, saw {gearCard.Bounds.Width}x{gearCard.Bounds.Height}.");
+                Assert.True(gearCard.Bounds.Width >= 120 && gearCard.Bounds.Height <= 40, $"Expected compact full-width palette rows, saw {gearCard.Bounds.Width}x{gearCard.Bounds.Height}.");
                 var gearPoint = gearCard.TranslatePoint(new Point(0, 0), view);
                 var rpmPoint = rpmCard.TranslatePoint(new Point(0, 0), view);
                 Assert.NotNull(gearPoint);
                 Assert.NotNull(rpmPoint);
-                Assert.True(Math.Abs(gearPoint.Value.Y - rpmPoint.Value.Y) <= 2, "Expected first driving widgets to share a compact palette row.");
-                Assert.True(rpmPoint.Value.X > gearPoint.Value.X, "Expected the palette to lay widget cards out in columns, not a single vertical list.");
+                Assert.True(rpmPoint.Value.Y > gearPoint.Value.Y, "Expected widgets to form a calm vertical palette list.");
+                Assert.True(Math.Abs(rpmPoint.Value.X - gearPoint.Value.X) <= 2, "Expected palette rows to share one aligned leading edge.");
                 Assert.Contains(gearCard.GetVisualDescendants().OfType<Viewbox>(), _ => true);
                 Assert.DoesNotContain(gearCard.GetVisualDescendants().OfType<TextBlock>(), text => string.Equals(text.Text, "◔", StringComparison.Ordinal));
                 window.CaptureRenderedFrame();
@@ -444,7 +441,7 @@ public sealed class VisualSmokeTests
                 window.Show();
 
                 var root = Assert.IsType<Grid>(view.Content);
-                Assert.True(root.ColumnDefinitions[2].Width.Value >= 220, $"Expected a usable inspector column, saw {root.ColumnDefinitions[2].Width.Value}.");
+                Assert.True(root.ColumnDefinitions[2].Width.Value >= 250, $"Expected a comfortably spaced inspector column, saw {root.ColumnDefinitions[2].Width.Value}.");
 
                 var overlay = view.GetVisualDescendants()
                     .OfType<Border>()

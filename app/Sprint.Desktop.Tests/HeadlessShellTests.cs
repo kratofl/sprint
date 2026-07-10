@@ -77,7 +77,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task ShellRendersSingleTitlebarWithWindowControlsOnEveryPage()
+    public async Task ShellRendersOneIntegratedToolbarBelowNativeWindowChrome()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -91,19 +91,15 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, new ShellState(), telemetry);
                 window.Show();
 
-                // The shell is one column of two rows: a single Sprint-owned titlebar
-                // above the sidebar + body (PRD #122). The window frame stays an opaque
-                // rounded Border so the OS renders clean rounded corners, not black ones.
+                // Native window decorations own the caption. Sprint renders one toolbar
+                // and one sidebar/content row below it without a second set of controls.
                 var frame = Assert.IsType<Border>(window.Content);
-                Assert.Equal(new CornerRadius(Graphite.RadiusXl), frame.CornerRadius);
+                Assert.Equal(new CornerRadius(0), frame.CornerRadius);
                 var root = Assert.IsType<Grid>(frame.Child);
                 Assert.Equal(2, root.RowDefinitions.Count);
                 Assert.Single(root.ColumnDefinitions);
 
-                // The window controls live in that one shared titlebar, so they must be
-                // present on every production page — not only the Dash Editor. Walk each
-                // page and assert min / maximize / close survive the navigation.
-                foreach (var view in new[] { AppView.Home, AppView.Dashes, AppView.Devices, AppView.Setups, AppView.RaceEngineer, AppView.Settings, AppView.Help })
+                foreach (var view in new[] { AppView.Home, AppView.Dashes, AppView.Devices, AppView.Setups, AppView.Settings, AppView.Help })
                 {
                     var nav = FindOptionalButton(window, NavLabel(view));
                     if (nav is not null)
@@ -112,12 +108,9 @@ public class HeadlessShellTests
                         window.CaptureRenderedFrame();
                     }
 
-                    foreach (var tooltip in new[] { "Minimize", "Maximize / restore", "Close" })
-                    {
-                        Assert.Single(
-                            window.GetVisualDescendants().OfType<Button>(),
-                            b => string.Equals(ToolTip.GetTip(b) as string, tooltip, StringComparison.Ordinal));
-                    }
+                    Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
+                        button => new[] { "Minimize", "Maximize / restore", "Close" }
+                            .Contains(ToolTip.GetTip(button) as string, StringComparer.Ordinal));
                 }
 
                 window.Close();
@@ -142,7 +135,7 @@ public class HeadlessShellTests
     };
 
     [Fact]
-    public async Task WindowActionButtonsUseBorderlessScreenshotTreatment()
+    public async Task WindowUsesNativeCaptionControls()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -158,17 +151,11 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, shell, telemetry);
                 window.Show();
 
-                FindButton(window, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                window.CaptureRenderedFrame();
-
-                foreach (var tooltip in new[] { "Minimize", "Maximize / restore", "Close" })
-                {
-                    var button = window.GetVisualDescendants()
-                        .OfType<Button>()
-                        .Single(candidate => string.Equals(ToolTip.GetTip(candidate) as string, tooltip, StringComparison.Ordinal));
-                    Assert.Equal(new Thickness(0), button.BorderThickness);
-                    Assert.Equal(Brushes.Transparent, button.Background);
-                }
+                Assert.Equal(Avalonia.Controls.WindowDecorations.Full, window.WindowDecorations);
+                Assert.False(window.ExtendClientAreaToDecorationsHint);
+                Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
+                    button => new[] { "Minimize", "Maximize / restore", "Close" }
+                        .Contains(ToolTip.GetTip(button) as string, StringComparer.Ordinal));
 
                 window.Close();
             }, CancellationToken.None);
@@ -180,7 +167,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task ProductionSidebarContainsOnlyScreenshotNavigation()
+    public async Task ProductionSidebarContainsOnlyAvailableProductAreas()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -200,7 +187,7 @@ public class HeadlessShellTests
                 Assert.NotNull(FindOptionalButton(window, "Dashes"));
                 Assert.NotNull(FindOptionalButton(window, "Devices"));
                 Assert.NotNull(FindOptionalButton(window, "Setups"));
-                Assert.NotNull(FindOptionalButton(window, "Race Engineer"));
+                Assert.Null(FindOptionalButton(window, "Race Engineer"));
                 Assert.NotNull(FindOptionalButton(window, "Settings"));
                 Assert.NotNull(FindOptionalButton(window, "Help"));
                 Assert.Null(FindOptionalButton(window, "Live"));
@@ -257,6 +244,126 @@ public class HeadlessShellTests
     }
 
     [Fact]
+    public async Task ControlKOpensAndEscapeClosesTheCommandPalette()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                window.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Source = window,
+                    Key = Key.K,
+                    KeyModifiers = KeyModifiers.Control,
+                });
+                window.CaptureRenderedFrame();
+
+                var search = Assert.Single(window.GetVisualDescendants().OfType<TextBox>(), box =>
+                    string.Equals(box.Tag?.ToString(), "command-palette-search", StringComparison.Ordinal));
+                Assert.NotNull(FindOptionalButton(window, "Go to Dashes"));
+
+                search.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Source = search,
+                    Key = Key.Escape,
+                });
+                window.CaptureRenderedFrame();
+                Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(), box =>
+                    string.Equals(box.Tag?.ToString(), "command-palette-search", StringComparison.Ordinal));
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SettingsSaveTextWhenTheUserCommitsTheField()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var shell = new ShellState();
+                shell.Navigate(AppView.Settings);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                var driverName = window.GetVisualDescendants().OfType<TextBox>()
+                    .Single(box => string.Equals(box.PlaceholderText, "Driver name", StringComparison.Ordinal));
+                driverName.Text = "Calm Driver";
+                driverName.RaiseEvent(new KeyEventArgs
+                {
+                    RoutedEvent = InputElement.KeyDownEvent,
+                    Source = driverName,
+                    Key = Key.Enter,
+                });
+
+                var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                Assert.Equal("Calm Driver", reloaded.Settings.DriverName);
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DestructiveSetupDeletionRequiresExplicitConfirmation()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                runtime.DuplicateSetup(runtime.SetupTemplates[0]);
+                var shell = new ShellState();
+                shell.Navigate(AppView.Setups);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                FindButton(window, "Delete").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Single(runtime.SetupPrograms);
+                Assert.NotNull(FindOptionalText(window, "Delete setup?"));
+
+                FindButton(window, "Delete setup").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Empty(runtime.SetupPrograms);
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HomePageShowsRuntimeOverviewFromCurrentState()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
@@ -283,12 +390,10 @@ public class HeadlessShellTests
 
                 window.CaptureRenderedFrame();
 
-                // Launchpad quick-stat tiles + the two runtime-driven sections (US11/US12).
-                Assert.NotNull(FindOptionalText(window, "TELEMETRY"));
-                Assert.NotNull(FindOptionalText(window, "DASHES"));
-                Assert.NotNull(FindOptionalText(window, "SCREENS"));
-                Assert.NotNull(FindOptionalText(window, "YOUR DASHES"));
-                Assert.NotNull(FindOptionalText(window, "CONNECTED SCREENS"));
+                // One operational session band followed by runtime-driven object rows.
+                Assert.NotNull(FindOptionalText(window, "Your dashes"));
+                Assert.NotNull(FindOptionalText(window, "Connected screens"));
+                Assert.NotNull(FindOptionalButton(window, "Review devices"));
                 // Real data, no sample rows: the dash card title, the screen, its resolution.
                 Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name));
                 Assert.NotNull(FindOptionalText(window, "Home Screen"));
@@ -404,7 +509,7 @@ public class HeadlessShellTests
                 // US33: the Devices library card must surface the exact screen shape
                 // (resolution) so a dash can be targeted at real hardware with confidence.
                 Assert.NotNull(FindOptionalText(window, "Test Screen"));
-                Assert.NotNull(FindOptionalText(window, "800 × 480"));
+                Assert.NotNull(FindOptionalText(window, "vocore · 800 × 480"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -498,8 +603,8 @@ public class HeadlessShellTests
                 window.Show();
 
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "SETUP TEMPLATES"));
-                Assert.NotNull(FindOptionalText(window, "USER SETUPS"));
+                Assert.NotNull(FindOptionalText(window, "Setup templates"));
+                Assert.NotNull(FindOptionalText(window, "User setups"));
                 Assert.NotNull(FindOptionalButton(window, "Duplicate template"));
                 Assert.Null(FindOptionalButton(window, "Delete"));
 
@@ -560,7 +665,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task SidebarNavigationItemsUseFigmaSelectedTreatment()
+    public async Task SidebarNavigationItemsUseCalmSelectedTreatment()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -578,9 +683,9 @@ public class HeadlessShellTests
 
                 var active = FindButton(window, "Dashes");
                 Assert.Equal(Graphite.Panel3Brush, active.Background);
-                Assert.Equal(Graphite.AccentBrush, active.Foreground);
+                Assert.Equal(Graphite.TextBrush, active.Foreground);
                 Assert.Equal(new CornerRadius(Graphite.RadiusSm), active.CornerRadius);
-                Assert.Equal(25, active.MinHeight);
+                Assert.Equal(36, active.MinHeight);
                 Assert.Equal(new Thickness(0), active.BorderThickness);
 
                 var inactive = FindButton(window, "Devices");
@@ -740,7 +845,7 @@ public class HeadlessShellTests
                 window.CaptureRenderedFrame();
                 Assert.Contains(window.GetVisualDescendants().OfType<TextBox>(),
                     box => string.Equals(box.Text, "BavarianSimTec Omega PRO V2", StringComparison.Ordinal));
-                Assert.NotNull(FindOptionalText(window, "DEVICE BINDINGS"));
+                Assert.NotNull(FindOptionalText(window, "Device bindings"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -752,7 +857,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task DevicesPageShowsSavedDevicesAsThumbnailGridAndDrillsIntoDeviceView()
+    public async Task DevicesPageShowsAStableListAndDetailSplitView()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -773,15 +878,14 @@ public class HeadlessShellTests
 
                 window.CaptureRenderedFrame();
                 Assert.NotNull(FindOptionalButton(window, "Add device"));
-                Assert.Null(FindOptionalText(window, "DEVICE BINDINGS"));
+                Assert.Null(FindOptionalText(window, "Device bindings"));
                 Assert.True(window.GetVisualDescendants().OfType<Border>().Count(border => border.Tag?.ToString()?.StartsWith("device-card:", StringComparison.Ordinal) == true) >= 3);
-                Assert.True(window.GetVisualDescendants().OfType<Border>().Count(border => border.Tag?.ToString()?.StartsWith("device-thumb:", StringComparison.Ordinal) == true) >= 3);
 
                 FindButton(window, runtime.Devices[0].Name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalButton(window, "Back to devices"));
-                Assert.Null(FindOptionalButton(window, "Add device"));
-                Assert.NotNull(FindOptionalText(window, "DEVICE BINDINGS"));
+                Assert.Null(FindOptionalButton(window, "Back to devices"));
+                Assert.NotNull(FindOptionalButton(window, "Add device"));
+                Assert.NotNull(FindOptionalText(window, "Device bindings"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -817,6 +921,9 @@ public class HeadlessShellTests
                 Assert.NotNull(FindOptionalText(window, "Press a key... (Esc to cancel)"));
 
                 FindButton(window, "Remove").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Single(runtime.Devices);
+                FindButton(window, "Remove device").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
                 Assert.Empty(runtime.Devices);
                 Assert.Null(FindOptionalText(window, "Press a key... (Esc to cancel)"));
@@ -931,10 +1038,10 @@ public class HeadlessShellTests
                 window.Show();
 
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "PROFILE"));
-                Assert.NotNull(FindOptionalText(window, "DASH DEFAULTS"));
-                Assert.Null(FindOptionalText(window, "DEVICE BINDINGS"));
-                Assert.Null(FindOptionalText(window, "SETUP TEMPLATES"));
+                Assert.NotNull(FindOptionalText(window, "Profile"));
+                Assert.NotNull(FindOptionalText(window, "Dash defaults"));
+                Assert.Null(FindOptionalText(window, "Device bindings"));
+                Assert.Null(FindOptionalText(window, "Setup templates"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -963,8 +1070,8 @@ public class HeadlessShellTests
                 window.Show();
 
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "REFERENCE"));
-                Assert.NotNull(FindOptionalText(window, "Telemetry"));
+                Assert.NotNull(FindOptionalText(window, "Getting started"));
+                Assert.NotNull(FindOptionalText(window, "Telemetry status"));
                 Assert.Null(FindOptionalText(window, "Welcome to Sprint"));
 
                 window.Close();

@@ -44,7 +44,16 @@ public sealed class MainWindow : Window
     private SetupProgram _selectedSetup;
     private SetupProgram? _setupCompareBaseline;
     private DashEditorView? _dashEditor;
+    private bool _restoreSidebarAfterEditor;
     private readonly CommandBus _commands = new();
+    private readonly ShellCommandRegistry _shellCommands;
+    private Border? _commandOverlay;
+    private Border? _confirmOverlay;
+    private TextBox? _commandSearch;
+    private StackPanel? _commandResults;
+    private IReadOnlyList<ShellCommand> _visibleCommands = [];
+    private int _commandSelection;
+    private Control? _focusBeforePalette;
     private InputCaptureState _capture = InputCaptureState.Idle;
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
@@ -84,6 +93,7 @@ public sealed class MainWindow : Window
         _commands.Handle(SprintCommands.DashPageNext, _ => { });
         _commands.Handle(SprintCommands.DashPagePrev, _ => { });
         _commands.Handle(SprintCommands.DashTargetSet, _ => { });
+        _shellCommands = CreateShellCommands();
         KeyDown += OnGlobalKeyDown;
 
         Title = "Sprint";
@@ -92,16 +102,18 @@ public sealed class MainWindow : Window
         MinWidth = 1120;
         MinHeight = 720;
         Background = Graphite.PanelBrush;
+        TransparencyBackgroundFallback = Graphite.PanelBrush;
+        TransparencyLevelHint = OperatingSystem.IsWindows()
+            ? [WindowTransparencyLevel.Mica, WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.None]
+            : [WindowTransparencyLevel.None];
         FontFamily = Graphite.FontStack;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        // OS-backed frame with a Sprint-drawn titlebar (PRD #122 window chrome):
-        // keep the native window so the OS provides resize borders, snap, and
-        // Windows 11 rounded corners, but extend the client area under the caption
-        // and suppress the system chrome so our own titlebar occupies that region.
-        // This replaces the old decoration-less + transparent window that rendered
-        // bare-black corners.
-        ExtendClientAreaToDecorationsHint = true;
-        ExtendClientAreaTitleBarHeightHint = -1;
+        // Keep the operating system caption and buttons. The app toolbar starts
+        // below native chrome so Windows owns drag, snap, minimise, maximise, close,
+        // high-contrast, and DPI behaviour without client-area overlap.
+        this.WindowDecorations = Avalonia.Controls.WindowDecorations.Full;
+        ExtendClientAreaToDecorationsHint = false;
+        ExtendClientAreaTitleBarHeightHint = 0;
 
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "appicon.png");
         if (File.Exists(iconPath))
@@ -110,8 +122,8 @@ public sealed class MainWindow : Window
         }
 
         _windowFrame.Background = Graphite.PanelBrush;
-        _windowFrame.BorderBrush = Graphite.LineBrush;
-        _windowFrame.BorderThickness = new Thickness(1);
+        _windowFrame.BorderBrush = Brushes.Transparent;
+        _windowFrame.BorderThickness = new Thickness(0);
         _windowFrame.ClipToBounds = true;
         _windowFrame.Child = _root;
         Content = _windowFrame;
@@ -130,17 +142,17 @@ public sealed class MainWindow : Window
     private void BuildShell()
     {
         _bodyTray?.Child = null;
-        // The shell is one column of two rows: a single Sprint-owned titlebar that
-        // renders on every page (PRD #122), then the sidebar + body tray beneath it.
+        // The shell is one column of two rows: a single Sprint-owned product toolbar
+        // beneath native window chrome, then the sidebar + body tray.
         _root.RowDefinitions = new RowDefinitions("Auto,*");
         _root.ColumnDefinitions = new ColumnDefinitions("*");
         _root.Background = Graphite.PanelBrush;
         _root.Children.Clear();
 
-        var titlebar = BuildTitlebar();
-        Grid.SetRow(titlebar, 0);
-        Grid.SetColumn(titlebar, 0);
-        _root.Children.Add(titlebar);
+        var toolbar = BuildToolbar();
+        Grid.SetRow(toolbar, 0);
+        Grid.SetColumn(toolbar, 0);
+        _root.Children.Add(toolbar);
 
         var content = new Grid
         {
@@ -177,9 +189,8 @@ public sealed class MainWindow : Window
     /// </summary>
     private void ApplyMaximizedChrome()
     {
-        var maximized = WindowState == WindowState.Maximized;
-        _windowFrame.CornerRadius = new CornerRadius(maximized ? 0 : Graphite.RadiusXl);
-        _windowFrame.BorderThickness = new Thickness(maximized ? 0 : 1);
+        _windowFrame.CornerRadius = new CornerRadius(0);
+        _windowFrame.BorderThickness = new Thickness(0);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -191,15 +202,16 @@ public sealed class MainWindow : Window
         }
     }
 
-    private Control BuildTitlebar()
+    private Control BuildToolbar()
     {
-        _breadcrumb = Graphite.TextBlock("", 11, FontWeight.Bold, Graphite.TextBrush);
-        _signalText = Graphite.TextBlock("", 10, FontWeight.Bold, Graphite.Text2Brush);
-        _hzText = Graphite.TextBlock("", 10, FontWeight.SemiBold, Graphite.Text3Brush);
+        _breadcrumb = Graphite.TextBlock("", 13, FontWeight.Medium, Graphite.TextBrush);
+        _groupCrumb = Graphite.TextBlock("", 12, FontWeight.Normal, Graphite.Text3Brush);
+        _signalText = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.Text2Brush);
+        _hzText = Graphite.TextBlock("", 11, FontWeight.Normal, Graphite.Text3Brush);
         _signalDot = new Border
         {
-            Width = 7,
-            Height = 7,
+            Width = 6,
+            Height = 6,
             CornerRadius = new CornerRadius(999),
             Background = Graphite.Text3Brush
         };
@@ -207,56 +219,51 @@ public sealed class MainWindow : Window
         var grid = new Grid
         {
             Background = Graphite.PanelBrush,
-            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"),
-            Height = Graphite.TitlebarHeight
-        };
-        // The whole bar is the OS window-drag surface, minus interactive chrome
-        // (WindowDragPolicy). Double-click maximises / restores like a native app.
-        grid.PointerPressed += BeginDrag;
-        grid.DoubleTapped += (_, e) =>
-        {
-            if (WindowDragPolicy.ShouldBeginDrag(e.Source))
-            {
-                ToggleMaximized();
-                e.Handled = true;
-            }
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto,Auto"),
+            Height = Graphite.ToolbarHeight
         };
 
         var logo = new Border
         {
-            Margin = new Thickness(Graphite.Space6, 0, Graphite.Space4, 0),
+            Width = Graphite.SidebarCollapsedWidth,
             VerticalAlignment = VerticalAlignment.Center,
             Child = Brand.LogoMark(18)
         };
         Grid.SetColumn(logo, 0);
         grid.Children.Add(logo);
 
-        var crumbWrap = new StackPanel
+        var sidebarToggle = ChromeButton("layout-sidebar", ToggleSidebar, "Toggle sidebar");
+        sidebarToggle.Margin = new Thickness(2, 0, 10, 0);
+        Grid.SetColumn(sidebarToggle, 1);
+        grid.Children.Add(sidebarToggle);
+
+        var location = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(4, 0, 0, 0)
+            Margin = new Thickness(0, 0, 12, 0)
         };
-        var brandCrumb = Graphite.TextBlock("SPRINT", 11, FontWeight.Bold, Graphite.Text3Brush);
-        brandCrumb.FontFamily = Graphite.DisplayFontStack;
-        brandCrumb.LetterSpacing = 1;
-        crumbWrap.Children.Add(brandCrumb);
-        crumbWrap.Children.Add(Graphite.TextBlock("/", 11, FontWeight.Bold, Graphite.Line2Brush));
-        _groupCrumb = Graphite.TextBlock("", 11, FontWeight.SemiBold, Graphite.Text2Brush);
-        crumbWrap.Children.Add(_groupCrumb);
-        crumbWrap.Children.Add(Graphite.TextBlock("/", 11, FontWeight.Bold, Graphite.Line2Brush));
-        crumbWrap.Children.Add(_breadcrumb);
-        Grid.SetColumn(crumbWrap, 1);
-        grid.Children.Add(crumbWrap);
+        location.Children.Add(_breadcrumb);
+        location.Children.Add(_groupCrumb);
+        Grid.SetColumn(location, 2);
+        grid.Children.Add(location);
+
+        var commandButton = Graphite.Button("Search commands   Ctrl+K", ButtonTone.Ghost);
+        commandButton.Tag = "command-palette-trigger";
+        commandButton.FontSize = 11;
+        commandButton.Foreground = Graphite.Text3Brush;
+        commandButton.Click += (_, _) => OpenCommandPalette();
+        Grid.SetColumn(commandButton, 3);
+        grid.Children.Add(commandButton);
 
         var signal = new Border
         {
-            Background = Graphite.Panel2Brush,
-            BorderBrush = Graphite.Line2Brush,
-            BorderThickness = new Thickness(1),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(10, 4),
+            Padding = new Thickness(12, 4),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new StackPanel
             {
@@ -269,7 +276,8 @@ public sealed class MainWindow : Window
                 }
             }
         };
-        Grid.SetColumn(signal, 2);
+        ToolTip.SetTip(signal, "Telemetry connection state");
+        Grid.SetColumn(signal, 4);
         grid.Children.Add(signal);
 
         var hz = new Border
@@ -278,21 +286,8 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Child = _hzText
         };
-        Grid.SetColumn(hz, 3);
+        Grid.SetColumn(hz, 5);
         grid.Children.Add(hz);
-
-        var windowButtons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0)
-        };
-        windowButtons.Children.Add(ChromeButton("minus", () => WindowState = WindowState.Minimized, "Minimize"));
-        windowButtons.Children.Add(ChromeButton("square", ToggleMaximized, "Maximize / restore"));
-        windowButtons.Children.Add(ChromeButton("x", Close, "Close"));
-        Grid.SetColumn(windowButtons, 4);
-        grid.Children.Add(windowButtons);
 
         UpdateTitlebar();
         return grid;
@@ -302,46 +297,20 @@ public sealed class MainWindow : Window
     {
         var collapsed = _shell.SidebarCollapsed;
 
-        var brand = collapsed ? Brand.LogoMark(22) : Brand.Wordmark(22);
-        brand.HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left;
-        var headerContent = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        Grid.SetColumn(brand, 0);
-        headerContent.Children.Add(brand);
-
-        var toggle = ChromeButton("layout-sidebar", () =>
-        {
-            _shell.ToggleSidebar();
-            BuildShell();
-            RenderBody();
-        }, "Toggle sidebar");
-        Grid.SetColumn(toggle, 1);
-        headerContent.Children.Add(toggle);
-
-        var header = new Border
-        {
-            Padding = new Thickness(collapsed ? 10 : 14, 12, 10, 10),
-            Child = headerContent
-        };
-
-        // Functional grouping (PRD #122): Home, then the Dashboards pillar (dash
-        // design + the hardware it targets), then Setups, then the upcoming Race
-        // Engineer pillar. Groups are fixed so the rail never rearranges as pillars
-        // ship (US9/US10).
-        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(12, 2, 10, 0) };
-        AddNavGroup(null, (AppView.Home, "Home"));
-        AddNavGroup("Dashboards", (AppView.Dashes, "Dashes"), (AppView.Devices, "Devices"));
-        AddNavGroup("Setups", (AppView.Setups, "Setups"));
-        AddUpcomingNavGroup("Race Engineer", (AppView.RaceEngineer, "Race Engineer"));
+        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(8, 12, 8, 0) };
+        AddNavGroup(null,
+            (AppView.Home, "Home"),
+            (AppView.Dashes, "Dashes"),
+            (AppView.Devices, "Devices"),
+            (AppView.Setups, "Setups"));
 
         // Settings/Help pin to the bottom of the rail (matches the Figma sidebar).
-        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(12, 6, 10, 12) };
+        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(8, 6, 8, 12) };
         footer.Children.Add(NavButton(AppView.Settings, "Settings"));
         footer.Children.Add(NavButton(AppView.Help, "Help"));
 
         var dock = new DockPanel { LastChildFill = true };
-        DockPanel.SetDock(header, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
-        dock.Children.Add(header);
         dock.Children.Add(footer);
         dock.Children.Add(new ScrollViewer
         {
@@ -353,7 +322,7 @@ public sealed class MainWindow : Window
         {
             Background = Graphite.PanelBrush,
             BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(0, 0, 1, 0),
+            BorderThickness = new Thickness(0),
             Child = dock
         };
     }
@@ -432,6 +401,14 @@ public sealed class MainWindow : Window
 
     private void Navigate(AppView view)
     {
+        CloseCommandPalette();
+        CloseConfirmDialog();
+        if (_dashEditor is not null && _restoreSidebarAfterEditor && _shell.SidebarCollapsed)
+        {
+            _shell.ToggleSidebar();
+            _restoreSidebarAfterEditor = false;
+        }
+
         _dashEditor = null;
         if (view == AppView.Devices)
         {
@@ -443,8 +420,54 @@ public sealed class MainWindow : Window
         RenderBody();
     }
 
+    private ShellCommandRegistry CreateShellCommands()
+    {
+        return new ShellCommandRegistry(
+        [
+            new("nav.home", "Go to Home", "overview session", "Alt+1", () => Navigate(AppView.Home)),
+            new("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+2", () => Navigate(AppView.Dashes)),
+            new("nav.devices", "Go to Devices", "screens wheels bindings", "Alt+3", () => Navigate(AppView.Devices)),
+            new("nav.setups", "Go to Setups", "car setup compare", "Alt+4", () => Navigate(AppView.Setups)),
+            new("nav.settings", "Go to Settings", "preferences profile updates", "Alt+5", () => Navigate(AppView.Settings)),
+            new("nav.help", "Open Help", "reference shortcuts", "Alt+6", () => Navigate(AppView.Help)),
+            new("dash.create", "Create dash", "new layout dashboard", null, () =>
+            {
+                _shell.Navigate(AppView.Dashes);
+                BuildShell();
+                OpenDashEditor(_runtime.CreateDashLayout(ScreenProfileCatalog.Default));
+            }),
+            new("device.add", "Add device", "screen wheel catalog", null, () =>
+            {
+                _shell.Navigate(AppView.Devices);
+                _selectedDeviceId = null;
+                _showDeviceCatalog = true;
+                BuildShell();
+                RenderBody();
+            }),
+            new("shell.sidebar", "Toggle sidebar", "collapse expand navigation", null, ToggleSidebar),
+            new("updates.check", "Check for updates", "release version", null, () => Navigate(AppView.Settings)),
+            new("help.shortcuts", "Open keyboard shortcuts", "keys commands", null, () => Navigate(AppView.Help)),
+        ]);
+    }
+
+    private void ToggleSidebar()
+    {
+        _shell.ToggleSidebar();
+        _runtime.Settings.SidebarCollapsed = _shell.SidebarCollapsed;
+        _runtime.SaveSettings();
+        BuildShell();
+        RenderBody();
+    }
+
     private void OpenDashEditor(DashLayout layout)
     {
+        if (Bounds.Width > 0 && Bounds.Width < 1240 && !_shell.SidebarCollapsed)
+        {
+            _shell.ToggleSidebar();
+            _restoreSidebarAfterEditor = true;
+            BuildShell();
+        }
+
         _dashEditor = CreateDashEditor(layout);
         RenderBody();
     }
@@ -484,6 +507,12 @@ public sealed class MainWindow : Window
     private void CloseDashEditor()
     {
         _dashEditor = null;
+        if (_restoreSidebarAfterEditor && _shell.SidebarCollapsed)
+        {
+            _shell.ToggleSidebar();
+        }
+
+        _restoreSidebarAfterEditor = false;
         Navigate(AppView.Dashes);
     }
 
@@ -546,7 +575,7 @@ public sealed class MainWindow : Window
         _breadcrumb.Text = _shell.CurrentTitle;
         if (_groupCrumb is not null)
         {
-            _groupCrumb.Text = _shell.CurrentGroup;
+            _groupCrumb.Text = $"· {_shell.CurrentGroup}";
         }
         _signalText.Text = _statusView.Label;
         _hzText.Text = _statusView.RateText;
@@ -598,26 +627,43 @@ public sealed class MainWindow : Window
     private Control HomePage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Home", "Your dashes, screens, and live session at a glance",
+        stack.Children.Add(PageHeader("Home", "Session, dashes, and connected hardware",
             Graphite.StatusPill(_statusView.Label, BrushForTone(_statusView.Tone))));
-
-        if (_surfaceState is { } surface)
-        {
-            var view = SurfaceStatePresenter.Describe(surface);
-            stack.Children.Add(Graphite.StatePanel(view.Title, view.Detail, BrushForTone(view.Tone)));
-        }
 
         var screens = _runtime.Devices.Where(IsScreenDevice).ToList();
         var connected = screens.Count(device => !device.Disabled && _screens.StatusFor(device.Id)?.IsConnected == true);
 
-        var overview = new Grid
+        var sessionText = new StackPanel { Spacing = 3 };
+        sessionText.Children.Add(Graphite.TextBlock(_statusView.Label, 15, FontWeight.Medium, Graphite.TextBrush));
+        sessionText.Children.Add(Graphite.TextBlock(
+            $"{_statusView.RateText} · {connected} of {screens.Count} screens connected",
+            12, FontWeight.Normal, Graphite.Text3Brush));
+        if (_surfaceState is { } surface)
         {
-            ColumnDefinitions = new ColumnDefinitions("*,*,*")
+            var detail = SurfaceStatePresenter.Describe(surface);
+            sessionText.Children.Add(Graphite.TextBlock(detail.Detail, 12, FontWeight.Normal, Graphite.Text2Brush, TextWrapping.Wrap));
+        }
+
+        var session = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var sessionDot = new Border
+        {
+            Width = 9,
+            Height = 9,
+            Margin = new Thickness(0, 4, 12, 0),
+            CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            Background = BrushForTone(_statusView.Tone),
+            VerticalAlignment = VerticalAlignment.Top,
         };
-        AddGrid(overview, RuntimeSummaryCard("Telemetry", _statusView.Label, _statusView.RateText), 0, 0);
-        AddGrid(overview, RuntimeSummaryCard("Dashes", $"{_runtime.DashLayouts.Count}", _runtime.DashLayouts.Count == 1 ? "design saved" : "designs saved"), 0, 1);
-        AddGrid(overview, RuntimeSummaryCard("Screens", $"{connected}/{screens.Count}", "connected"), 0, 2);
-        stack.Children.Add(overview);
+        AddGrid(session, sessionDot, 0, 0);
+        AddGrid(session, sessionText, 0, 1);
+        AddGrid(session, ActionButton("Review devices", ButtonTone.Ghost, () => Navigate(AppView.Devices)), 0, 2);
+        stack.Children.Add(new Border
+        {
+            Background = Graphite.Panel2Brush,
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Padding = new Thickness(16, 14),
+            Child = session,
+        });
 
         stack.Children.Add(LaunchpadDashes());
         stack.Children.Add(LaunchpadScreens(screens));
@@ -641,48 +687,43 @@ public sealed class MainWindow : Window
         }
         else
         {
-            var wrap = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var layout in _runtime.DashLayouts)
             {
-                wrap.Children.Add(LaunchpadDashCard(layout));
+                panel.Children.Add(LaunchpadDashCard(layout));
             }
-
-            panel.Children.Add(wrap);
         }
 
-        return Graphite.Card(panel);
+        return panel;
     }
 
     private Control LaunchpadDashCard(DashLayout layout)
     {
-        var content = new StackPanel { Spacing = 8 };
-        var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(title, Graphite.TextBlock(layout.Name, 14, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap), 0, 0);
-        AddGrid(title, Graphite.StatusPill(layout.IsDefault ? "Default" : "Custom", layout.IsDefault ? Graphite.GreenBrush : Graphite.BlueBrush), 0, 1);
-        content.Children.Add(title);
-
-        // The target wheel-screen size the dash is designed for (US15/US16).
         var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
-        content.Children.Add(Graphite.Chip($"{profile.Orientation} {profile.ResolutionLabel}", Graphite.BlueBrush));
-
-        // Honest "which screen will show this" (US29) — reuses the shared assignment rule.
         var assigned = DashDeviceAssignments.EnabledScreensFor(_runtime.Devices, layout.Id);
         var assignedText = assigned.Count == 0 ? "Not on a screen" : $"On {string.Join(", ", assigned.Select(screen => screen.Name))}";
-        content.Children.Add(Graphite.TextBlock(assignedText, 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
 
-        content.Children.Add(ActionButton("Open", ButtonTone.Primary, () => OpenDashFromHome(layout)));
+        var text = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Graphite.TextBlock(layout.Name, 14, FontWeight.Medium, Graphite.TextBrush));
+        text.Children.Add(Graphite.TextBlock($"{profile.Orientation} {profile.ResolutionLabel} · {assignedText}", 12, FontWeight.Normal, Graphite.Text3Brush));
+        if (layout.IsDefault)
+        {
+            text.Children.Add(Graphite.TextBlock("Default dash", 11, FontWeight.Medium, Graphite.GreenBrush));
+        }
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        AddGrid(row, DashPreview(layout, 112, 67), 0, 0);
+        text.Margin = new Thickness(14, 0);
+        AddGrid(row, text, 0, 1);
+        AddGrid(row, ActionButton("Open", ButtonTone.Ghost, () => OpenDashFromHome(layout)), 0, 2);
 
         return new Border
         {
             Tag = $"home-dash-card:{layout.Id}",
-            Width = 256,
-            Margin = new Thickness(0, 0, 12, 12),
+            MinHeight = 88,
             Background = Graphite.Panel2Brush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusXl),
-            Padding = new Thickness(12),
-            Child = content
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Padding = new Thickness(10),
+            Child = row
         };
     }
 
@@ -708,7 +749,7 @@ public sealed class MainWindow : Window
             }
         }
 
-        return Graphite.Card(panel);
+        return panel;
     }
 
     private Control LaunchpadScreenRow(SavedDevice device)
@@ -726,6 +767,7 @@ public sealed class MainWindow : Window
         button.Content = row;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         button.Padding = new Thickness(10, 8);
+        button.MinHeight = 52;
         button.Tag = $"home-screen-row:{device.Id}";
         button.Click += (_, _) => OpenDeviceDetail(device);
         return button;
@@ -877,7 +919,9 @@ public sealed class MainWindow : Window
         programs.Children.Add(Graphite.SectionLabel("Setup templates"));
         foreach (var program in _runtime.SetupTemplates)
         {
-            var button = Graphite.Button(program.Name, program == _selectedSetup ? ButtonTone.Primary : ButtonTone.Ghost);
+            var button = Graphite.Button(program.Name, ButtonTone.Ghost);
+            button.Background = program == _selectedSetup ? Graphite.Panel3Brush : Brushes.Transparent;
+            button.Foreground = program == _selectedSetup ? Graphite.TextBrush : Graphite.Text2Brush;
             button.HorizontalContentAlignment = HorizontalAlignment.Left;
             button.Click += (_, _) =>
             {
@@ -896,7 +940,9 @@ public sealed class MainWindow : Window
         {
             foreach (var program in _runtime.SetupPrograms)
             {
-                var button = Graphite.Button(program.Name, program == _selectedSetup ? ButtonTone.Primary : ButtonTone.Ghost);
+                var button = Graphite.Button(program.Name, ButtonTone.Ghost);
+                button.Background = program == _selectedSetup ? Graphite.Panel3Brush : Brushes.Transparent;
+                button.Foreground = program == _selectedSetup ? Graphite.TextBrush : Graphite.Text2Brush;
                 button.HorizontalContentAlignment = HorizontalAlignment.Left;
                 button.Click += (_, _) =>
                 {
@@ -916,16 +962,20 @@ public sealed class MainWindow : Window
         }));
         if (!selectedIsTemplate && _runtime.SetupPrograms.Count > 0)
         {
-            programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
-            {
-                var removed = _selectedSetup;
-                _runtime.SetupPrograms.Remove(removed);
-                _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
-                    ?? _runtime.SetupTemplates.FirstOrDefault()
-                    ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
-                _runtime.SaveSetupPrograms();
-                RenderBody();
-            }));
+            programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () => ShowConfirmDialog(
+                "Delete setup?",
+                $"{_selectedSetup.Name} will be removed permanently.",
+                "Delete setup",
+                () =>
+                {
+                    var removed = _selectedSetup;
+                    _runtime.SetupPrograms.Remove(removed);
+                    _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
+                        ?? _runtime.SetupTemplates.FirstOrDefault()
+                        ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
+                    _runtime.SaveSetupPrograms();
+                    RenderBody();
+                })));
         }
 
         programs.Children.Add(programActions);
@@ -936,7 +986,7 @@ public sealed class MainWindow : Window
         foreach (var group in DesktopRuntime.SetupParameters.GroupBy(parameter => parameter.Group))
         {
             var groupStack = new StackPanel { Spacing = 8 };
-            groupStack.Children.Add(Graphite.SectionLabel(group.Key));
+                groupStack.Children.Add(Graphite.SectionLabel(group.Key));
             foreach (var parameter in group)
             {
                 var value = _selectedSetup.Values.TryGetValue(parameter.Key, out var current)
@@ -969,7 +1019,13 @@ public sealed class MainWindow : Window
                         RenderBody();
                     }));
             }
-            editor.Children.Add(Graphite.Card(groupStack, new Thickness(12)));
+            editor.Children.Add(new Border
+            {
+                BorderBrush = Graphite.LineBrush,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(0, 6, 0, 18),
+                Child = groupStack,
+            });
         }
         AddGrid(grid, editor, 0, 1);
 
@@ -1023,19 +1079,13 @@ public sealed class MainWindow : Window
         }));
         stack.Children.Add(actions);
 
-        var grid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,*,*")
-        };
-        var index = 0;
+        var library = new StackPanel { Spacing = 8 };
         foreach (var layout in _runtime.DashLayouts)
         {
-            var card = DashLayoutCard(layout);
-            AddGrid(grid, card, index / 3, index % 3);
-            index += 1;
+            library.Children.Add(DashLayoutCard(layout));
         }
 
-        stack.Children.Add(grid);
+        stack.Children.Add(library);
         return Scroll(stack);
     }
 
@@ -1089,13 +1139,6 @@ public sealed class MainWindow : Window
         stack.Children.Add(PageHeader("Devices", "Screens, wheels, bindings, and dash assignments",
             Graphite.StatusPill($"{_runtime.Devices.Count} saved", _runtime.Devices.Count > 0 ? Graphite.GreenBrush : Graphite.Text3Brush)));
 
-        var selected = _runtime.Devices.FirstOrDefault(device => device.Id == _selectedDeviceId);
-        if (selected is not null)
-        {
-            stack.Children.Add(DeviceDetailPage(selected));
-            return Scroll(stack);
-        }
-
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Left };
         actions.Children.Add(ActionButton(_showDeviceCatalog ? "Cancel add" : "Add device", _showDeviceCatalog ? ButtonTone.Ghost : ButtonTone.Primary, () =>
         {
@@ -1104,59 +1147,60 @@ public sealed class MainWindow : Window
         }));
         stack.Children.Add(actions);
 
-        if (_showDeviceCatalog)
-        {
-            stack.Children.Add(DeviceCatalogPopup());
-        }
-
-        var saved = new StackPanel { Spacing = 12 };
-        saved.Children.Add(Graphite.SectionLabel("Saved Devices"));
+        var split = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*") };
+        var saved = new StackPanel { Spacing = 6 };
+        saved.Children.Add(Graphite.SectionLabel("Saved devices"));
         if (_runtime.Devices.Count == 0)
         {
-            var empty = SurfaceStatePresenter.Describe(SurfaceState.Empty);
-            saved.Children.Add(Graphite.StatePanel("No saved devices", "Use Add device to choose a preconfigured wheel or generic screen.", BrushForTone(empty.Tone)));
+            saved.Children.Add(Graphite.TextBlock("No devices yet. Add a wheel or screen to begin.", 12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
         }
         else
         {
-            var cards = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var device in _runtime.Devices)
             {
-                cards.Children.Add(DeviceSummaryCard(device));
+                saved.Children.Add(DeviceSummaryCard(device));
             }
-
-            saved.Children.Add(cards);
         }
 
-        stack.Children.Add(saved);
+        AddGrid(split, new Border
+        {
+            Background = Graphite.Panel2Brush,
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Padding = new Thickness(10),
+            Child = saved,
+        }, 0, 0);
+
+        var selected = _runtime.Devices.FirstOrDefault(device => device.Id == _selectedDeviceId);
+        Control detail = _showDeviceCatalog
+            ? DeviceCatalogPopup()
+            : selected is null
+                ? DeviceEmptyDetail()
+                : DeviceDetail(selected);
+        var detailWrap = new Border { Margin = new Thickness(20, 0, 0, 0), Child = detail };
+        AddGrid(split, detailWrap, 0, 1);
+        stack.Children.Add(split);
         return Scroll(stack);
     }
 
     private Control DeviceSummaryCard(SavedDevice device)
     {
-        var content = new StackPanel { Spacing = 9 };
-        content.Children.Add(DeviceThumbnail(device, 210, 92));
-
-        // Name + live status pill on one row so hardware state is scannable from the
-        // library grid, not only inside the detail page (US33/US34).
-        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(heading, Graphite.TextBlock(device.Name, 13, FontWeight.Bold, Graphite.TextBrush, TextWrapping.Wrap), 0, 0);
-        AddGrid(heading, DeviceStatusPill(device), 0, 1);
-        content.Children.Add(heading);
-
-        content.Children.Add(Graphite.TextBlock($"{device.Driver} / {device.Serial}", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
-
-        // Model / resolution line so the user can confirm the exact screen shape before
-        // assigning a dash (US33). Screens surface WxH; other device types omit it.
-        if (IsScreenDevice(device))
-        {
-            content.Children.Add(Graphite.TextBlock($"{device.Width} × {device.Height}", 11, FontWeight.SemiBold, Graphite.Text2Brush));
-        }
+        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.Medium, Graphite.TextBrush, TextWrapping.Wrap));
+        text.Children.Add(Graphite.TextBlock(
+            IsScreenDevice(device) ? $"{device.Driver} · {device.Width} × {device.Height}" : device.Driver,
+            11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        var content = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(content, text, 0, 0);
+        AddGrid(content, DeviceStatusPill(device), 0, 1);
 
         var button = Graphite.Button(device.Name, ButtonTone.Ghost);
         button.Content = content;
         button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         button.VerticalContentAlignment = VerticalAlignment.Stretch;
-        button.Padding = new Thickness(0);
+        button.Padding = new Thickness(10, 8);
+        button.Background = string.Equals(_selectedDeviceId, device.Id, StringComparison.Ordinal)
+            ? Graphite.Panel3Brush
+            : Brushes.Transparent;
         button.Click += (_, _) =>
         {
             _selectedDeviceId = device.Id;
@@ -1167,14 +1211,9 @@ public sealed class MainWindow : Window
         return new Border
         {
             Tag = $"device-card:{device.Id}",
-            Width = 246,
-            MinHeight = 178,
-            Margin = new Thickness(0, 0, 12, 12),
-            Background = Graphite.Panel2Brush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusXl),
-            Padding = new Thickness(10),
+            MinHeight = 54,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             Child = button
         };
     }
@@ -1243,19 +1282,25 @@ public sealed class MainWindow : Window
 
     private Control DeviceEmptyDetail()
     {
-        return Graphite.StatePanel("No device selected", "Add or select a saved device to edit its screen, name, and command bindings.", Graphite.Text3Brush);
+        var text = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var title = Graphite.TextBlock("No device selected", 15, FontWeight.Medium, Graphite.TextBrush);
+        title.HorizontalAlignment = HorizontalAlignment.Center;
+        text.Children.Add(title);
+        var detail = Graphite.TextBlock("Add or select a saved device to edit its screen, name, and command bindings.", 12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap);
+        detail.MaxWidth = 420;
+        detail.TextAlignment = TextAlignment.Center;
+        text.Children.Add(detail);
+        return new Grid { MinHeight = 220, Children = { text } };
     }
 
     private Control DeviceDetailPage(SavedDevice device)
     {
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(ActionButton("Back to devices", ButtonTone.Ghost, () =>
-        {
-            _selectedDeviceId = null;
-            RenderBody();
-        }));
-        stack.Children.Add(DeviceDetail(device));
-        return stack;
+        return DeviceDetail(device);
     }
 
     private Control DeviceDetail(SavedDevice device)
@@ -1282,17 +1327,21 @@ public sealed class MainWindow : Window
             _screens.Sync();
             RenderBody();
         }));
-        deviceActions.Children.Add(ActionButton("Remove", ButtonTone.Danger, () =>
-        {
-            CancelDeviceCapture(device.Id);
-            _runtime.RemoveDevice(device);
-            _selectedDeviceId = null;
-            _screens.Sync();
-            RenderBody();
-        }));
+        deviceActions.Children.Add(ActionButton("Remove", ButtonTone.Danger, () => ShowConfirmDialog(
+            "Remove device?",
+            $"{device.Name} and its command bindings will be removed.",
+            "Remove device",
+            () =>
+            {
+                CancelDeviceCapture(device.Id);
+                _runtime.RemoveDevice(device);
+                _selectedDeviceId = null;
+                _screens.Sync();
+                RenderBody();
+            })));
         stack.Children.Add(deviceActions);
         stack.Children.Add(DeviceBindingsCard(device));
-        return Graphite.Card(stack);
+        return stack;
     }
 
     private Control EditableDeviceName(SavedDevice device)
@@ -1400,8 +1449,246 @@ public sealed class MainWindow : Window
         }
     }
 
+    private void ShowConfirmDialog(string title, string message, string confirmLabel, Action confirm)
+    {
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(Graphite.TextBlock(title, 17, FontWeight.Medium, Graphite.TextBrush));
+        content.Children.Add(Graphite.TextBlock(message, 12, FontWeight.Normal, Graphite.Text2Brush, TextWrapping.Wrap));
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+        actions.Children.Add(ActionButton("Cancel", ButtonTone.Ghost, CloseConfirmDialog));
+        actions.Children.Add(ActionButton(confirmLabel, ButtonTone.Danger, () =>
+        {
+            CloseConfirmDialog();
+            confirm();
+        }));
+        content.Children.Add(actions);
+
+        var panel = new Border
+        {
+            Width = 420,
+            Padding = new Thickness(20),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = content,
+        };
+        panel.PointerPressed += (_, e) => e.Handled = true;
+
+        _confirmOverlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(160, 0, 0, 0)),
+            Child = panel,
+            Tag = "confirm-dialog-overlay",
+        };
+        _confirmOverlay.PointerPressed += (_, _) => CloseConfirmDialog();
+        Grid.SetRowSpan(_confirmOverlay, 2);
+        _root.Children.Add(_confirmOverlay);
+    }
+
+    private void CloseConfirmDialog()
+    {
+        if (_confirmOverlay is null)
+        {
+            return;
+        }
+
+        _root.Children.Remove(_confirmOverlay);
+        _confirmOverlay = null;
+    }
+
+    private void OpenCommandPalette()
+    {
+        if (_commandOverlay is not null)
+        {
+            _commandSearch?.Focus();
+            return;
+        }
+
+        _focusBeforePalette = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
+        _commandSelection = 0;
+        _commandResults = new StackPanel { Spacing = 2 };
+        _commandSearch = new TextBox
+        {
+            PlaceholderText = "Search commands",
+            FontSize = 14,
+            MinHeight = 38,
+            Padding = new Thickness(12, 8),
+            Tag = "command-palette-search",
+        };
+        _commandSearch.TextChanged += (_, _) =>
+        {
+            _commandSelection = 0;
+            RefreshCommandResults();
+        };
+        _commandSearch.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseCommandPalette();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Down)
+            {
+                MoveCommandSelection(1);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Up)
+            {
+                MoveCommandSelection(-1);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && _visibleCommands.Count > 0)
+            {
+                ExecuteShellCommand(_visibleCommands[_commandSelection]);
+                e.Handled = true;
+            }
+        };
+
+        var content = new StackPanel { Spacing = 8 };
+        content.Children.Add(_commandSearch);
+        content.Children.Add(new ScrollViewer
+        {
+            MaxHeight = 320,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = _commandResults,
+        });
+
+        var panel = new Border
+        {
+            Width = 520,
+            MaxHeight = 430,
+            Margin = new Thickness(0, 68, 0, 0),
+            Padding = new Thickness(10),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Child = content,
+        };
+        panel.PointerPressed += (_, e) => e.Handled = true;
+
+        _commandOverlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(150, 0, 0, 0)),
+            Child = panel,
+            Tag = "command-palette-overlay",
+        };
+        _commandOverlay.PointerPressed += (_, _) => CloseCommandPalette();
+        Grid.SetRowSpan(_commandOverlay, 2);
+        _root.Children.Add(_commandOverlay);
+        RefreshCommandResults();
+        Dispatcher.UIThread.Post(() => _commandSearch?.Focus());
+    }
+
+    private void RefreshCommandResults()
+    {
+        if (_commandResults is null)
+        {
+            return;
+        }
+
+        _visibleCommands = _shellCommands.Search(_commandSearch?.Text);
+        _commandSelection = Math.Clamp(_commandSelection, 0, Math.Max(0, _visibleCommands.Count - 1));
+        _commandResults.Children.Clear();
+
+        if (_visibleCommands.Count == 0)
+        {
+            _commandResults.Children.Add(new Border
+            {
+                Padding = new Thickness(12, 18),
+                Child = Graphite.TextBlock("No matching commands", 12, FontWeight.Normal, Graphite.Text3Brush),
+            });
+            return;
+        }
+
+        for (var index = 0; index < _visibleCommands.Count; index++)
+        {
+            var command = _visibleCommands[index];
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            AddGrid(row, Graphite.TextBlock(command.Title, 13, index == _commandSelection ? FontWeight.Medium : FontWeight.Normal), 0, 0);
+            if (!string.IsNullOrWhiteSpace(command.Shortcut))
+            {
+                AddGrid(row, Graphite.TextBlock(command.Shortcut!, 11, FontWeight.Normal, Graphite.Text3Brush), 0, 1);
+            }
+
+            var button = Graphite.Button(command.Title, ButtonTone.Ghost);
+            button.Content = row;
+            button.Tag = $"shell-command:{command.Id}";
+            button.Background = index == _commandSelection ? Graphite.Panel3Brush : Brushes.Transparent;
+            button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            button.Click += (_, _) => ExecuteShellCommand(command);
+            _commandResults.Children.Add(button);
+        }
+    }
+
+    private void MoveCommandSelection(int delta)
+    {
+        if (_visibleCommands.Count == 0)
+        {
+            return;
+        }
+
+        _commandSelection = (_commandSelection + delta + _visibleCommands.Count) % _visibleCommands.Count;
+        RefreshCommandResults();
+    }
+
+    private void ExecuteShellCommand(ShellCommand command)
+    {
+        CloseCommandPalette(restoreFocus: false);
+        _shellCommands.Execute(command.Id);
+    }
+
+    private void CloseCommandPalette(bool restoreFocus = true)
+    {
+        if (_commandOverlay is null)
+        {
+            return;
+        }
+
+        _root.Children.Remove(_commandOverlay);
+        _commandOverlay = null;
+        _commandSearch = null;
+        _commandResults = null;
+        _visibleCommands = [];
+        if (restoreFocus)
+        {
+            _focusBeforePalette?.Focus();
+        }
+
+        _focusBeforePalette = null;
+    }
+
     private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _confirmOverlay is not null)
+        {
+            CloseConfirmDialog();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.K && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
         if (_capture.IsListening)
         {
             HandleCaptureKey(e);
@@ -1497,8 +1784,9 @@ public sealed class MainWindow : Window
     private Control SettingsPage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Settings", "Global desktop defaults",
-            Graphite.StatusPill(_runtime.Settings.UpdateChannel, Graphite.BlueBrush)));
+        var saveStatus = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.GreenBrush);
+        saveStatus.VerticalAlignment = VerticalAlignment.Center;
+        stack.Children.Add(PageHeader("Settings", "Global desktop defaults", saveStatus));
 
         var driverName = new TextBox
         {
@@ -1546,6 +1834,62 @@ public sealed class MainWindow : Window
             MinWidth = 180
         };
 
+        void MarkSaved()
+        {
+            _runtime.SaveSettings();
+            saveStatus.Text = "Saved";
+        }
+
+        void CommitTextSettings()
+        {
+            var name = driverName.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                name = "Your Name";
+                driverName.Text = name;
+            }
+
+            var number = driverNumber.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(number))
+            {
+                number = "22";
+                driverNumber.Text = number;
+            }
+
+            _runtime.Settings.DriverName = name;
+            _runtime.Settings.DriverNumber = number;
+            MarkSaved();
+        }
+
+        void CommitOnEnter(TextBox box, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                CommitTextSettings();
+                e.Handled = true;
+            }
+        }
+
+        driverName.LostFocus += (_, _) => CommitTextSettings();
+        driverNumber.LostFocus += (_, _) => CommitTextSettings();
+        driverName.KeyDown += (_, e) => CommitOnEnter(driverName, e);
+        driverNumber.KeyDown += (_, e) => CommitOnEnter(driverNumber, e);
+        speedUnit.SelectionChanged += (_, _) =>
+        {
+            _runtime.Settings.NewDashDefaults.SpeedUnit = speedUnit.SelectedItem?.ToString() ?? "km/h";
+            MarkSaved();
+        };
+        tempUnit.SelectionChanged += (_, _) =>
+        {
+            _runtime.Settings.NewDashDefaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
+            MarkSaved();
+        };
+        channel.SelectionChanged += (_, _) =>
+        {
+            _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
+            MarkSaved();
+        };
+
         var form = new StackPanel { Spacing = 12, MaxWidth = 620 };
         form.Children.Add(Graphite.SectionLabel("Profile"));
         form.Children.Add(FormRow("Driver name", driverName));
@@ -1555,17 +1899,6 @@ public sealed class MainWindow : Window
         form.Children.Add(FormRow("Temperature unit", tempUnit));
         form.Children.Add(Graphite.SectionLabel("Release"));
         form.Children.Add(FormRow("Update channel", channel));
-        form.Children.Add(ActionButton("Save settings", ButtonTone.Primary, () =>
-        {
-            _runtime.Settings.DriverName = driverName.Text?.Trim() is { Length: > 0 } name ? name : "Your Name";
-            _runtime.Settings.DriverNumber = driverNumber.Text?.Trim() is { Length: > 0 } number ? number : "22";
-            _runtime.Settings.NewDashDefaults.SpeedUnit = speedUnit.SelectedItem?.ToString() ?? "km/h";
-            _runtime.Settings.NewDashDefaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
-            _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
-            _runtime.SaveSettings();
-            RenderBody();
-        }));
-
         form.Children.Add(Graphite.SectionLabel("About"));
         form.Children.Add(FormRow("Version", Graphite.Chip(
             $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)));
@@ -1575,7 +1908,8 @@ public sealed class MainWindow : Window
         checkRow.Children.Add(updateStatus);
         form.Children.Add(FormRow("Updates", checkRow));
 
-        stack.Children.Add(Graphite.Card(form));
+        form.HorizontalAlignment = HorizontalAlignment.Left;
+        stack.Children.Add(form);
         return Scroll(stack);
     }
 
@@ -1611,17 +1945,43 @@ public sealed class MainWindow : Window
     private Control HelpPage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Help", "Reference cards and desktop shortcuts", Graphite.StatusPill("Avalonia", Graphite.BlueBrush)));
+        stack.Children.Add(PageHeader("Help", "Reference and keyboard shortcuts", Graphite.TextBlock("Ctrl+K", 11, FontWeight.Medium, Graphite.Text3Brush)));
 
-        stack.Children.Add(Graphite.SectionLabel("Reference"));
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*") };
-        AddGrid(grid, ReferenceCard("Telemetry", "Live data runs in the desktop process; the shell status pill shows the active link state and the measured update rate."), 0, 0);
-        AddGrid(grid, ReferenceCard("Dash Studio", "Dash layouts are persisted as JSON and copied from the default preset on creation."), 0, 1);
-        AddGrid(grid, ReferenceCard("Devices", "Device catalog presets remain with the desktop client for portable builds."), 0, 2);
-        AddGrid(grid, ReferenceCard("Window", "The custom titlebar owns drag, minimise, maximise, and close controls."), 1, 0);
-        AddGrid(grid, ReferenceCard("Settings", "Profile and release-channel settings save to the Sprint app-data folder."), 1, 1);
-        AddGrid(grid, ReferenceCard("Graphite", "The shell follows the figma branch's flat Graphite color, border, and density rules."), 1, 2);
-        stack.Children.Add(grid);
+        var search = new TextBox
+        {
+            PlaceholderText = "Search help",
+            MaxWidth = 460,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        stack.Children.Add(search);
+
+        var topics = new StackPanel { Spacing = 2, MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
+        var entries = new (string Title, string Body)[]
+        {
+            ("Getting started", "Start on Home to review telemetry health, open a dash, or inspect a connected screen."),
+            ("Dash editing", "Open Dashes, choose a layout, then drag widgets from the palette. Changes save automatically; Apply to screen is explicit."),
+            ("Devices and bindings", "Add a wheel or display in Devices. Select it to assign a dash, tune its screen, or listen for command bindings."),
+            ("Telemetry status", "The toolbar reports the active telemetry link and measured update rate. Green is healthy; yellow or red requires attention."),
+            ("Settings and updates", "Profile and dash defaults save when committed. Update checks remain a deliberate manual action."),
+            ("Keyboard shortcuts", "Ctrl+K opens command search. Alt+1 through Alt+6 navigate Home, Dashes, Devices, Setups, Settings, and Help. Escape closes transient surfaces."),
+        };
+        foreach (var entry in entries)
+        {
+            var row = ReferenceCard(entry.Title, entry.Body);
+            row.Tag = $"{entry.Title} {entry.Body}";
+            topics.Children.Add(row);
+        }
+
+        search.TextChanged += (_, _) =>
+        {
+            var query = search.Text?.Trim();
+            foreach (var child in topics.Children)
+            {
+                child.IsVisible = string.IsNullOrEmpty(query)
+                    || (child.Tag?.ToString()?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+        };
+        stack.Children.Add(topics);
         return Scroll(stack);
     }
 
@@ -1630,16 +1990,16 @@ public sealed class MainWindow : Window
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            MinHeight = 32,
             Margin = new Thickness(0, 0, 0, 4)
         };
-        grid.PointerPressed += BeginDrag;
-        var text = new StackPanel { Spacing = 3 };
-        text.Children.Add(Graphite.TextBlock(heading, 22, FontWeight.Bold, Graphite.TextBrush));
-        text.Children.Add(Graphite.TextBlock(caption, 12, FontWeight.Normal, Graphite.Text3Brush));
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
+        var context = Graphite.TextBlock(caption, 12, FontWeight.Normal, Graphite.Text3Brush);
+        context.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(context, 0);
+        grid.Children.Add(context);
         Grid.SetColumn(status, 1);
         grid.Children.Add(status);
+        ToolTip.SetTip(grid, heading);
         return grid;
     }
 
@@ -1647,8 +2007,8 @@ public sealed class MainWindow : Window
     {
         return new StackPanel
         {
-            Spacing = 10,
-            Margin = new Thickness(10)
+            Spacing = 20,
+            Margin = new Thickness(24, 20, 24, 32)
         };
     }
 
@@ -1804,11 +2164,11 @@ public sealed class MainWindow : Window
         grid.Children.Add(controls);
         return new Border
         {
-            Background = Graphite.Panel2Brush,
+            Background = Brushes.Transparent,
             BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(10),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            CornerRadius = new CornerRadius(0),
+            Padding = new Thickness(10, 12),
             Child = grid
         };
     }
@@ -1891,27 +2251,31 @@ public sealed class MainWindow : Window
 
     private Control DashLayoutCard(DashLayout layout)
     {
-        var stack = new StackPanel { Spacing = 10 };
+        var details = new StackPanel { Spacing = 7, VerticalAlignment = VerticalAlignment.Center };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(title, Graphite.TextBlock(layout.Name, 15, FontWeight.Bold, Graphite.TextBrush), 0, 0);
+        AddGrid(title, Graphite.TextBlock(layout.Name, 16, FontWeight.Medium, Graphite.TextBrush), 0, 0);
         AddGrid(title, Graphite.StatusPill(layout.IsDefault ? "Default" : "Custom", layout.IsDefault ? Graphite.GreenBrush : Graphite.BlueBrush), 0, 1);
-        stack.Children.Add(title);
+        details.Children.Add(title);
 
-        // The target wheel-screen size the dash is designed for (US13/US29).
         var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
-        stack.Children.Add(Graphite.Chip($"{profile.Orientation} {profile.ResolutionLabel}", Graphite.BlueBrush));
-        stack.Children.Add(DashPreview(layout));
+        var assigned = DashDeviceAssignments.EnabledScreensFor(_runtime.Devices, layout.Id);
+        var assignment = assigned.Count == 0 ? "Not assigned to a screen" : $"Assigned to {string.Join(", ", assigned.Select(screen => screen.Name))}";
+        details.Children.Add(Graphite.TextBlock($"{profile.Orientation} {profile.ResolutionLabel} · {assignment}", 12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         actions.Children.Add(ActionButton("Edit", ButtonTone.Primary, () => OpenDashEditor(layout)));
         actions.Children.Add(DuplicateToSizeSelector(layout));
         if (layout.IsDefault)
         {
-            actions.Children.Add(ActionButton("Reset layout", ButtonTone.Neutral, () =>
-            {
-                _runtime.ResetDashLayout(layout);
-                RenderBody();
-            }));
+            actions.Children.Add(ActionButton("Reset layout", ButtonTone.Neutral, () => ShowConfirmDialog(
+                "Reset dash layout?",
+                $"{layout.Name} will return to the bundled default arrangement.",
+                "Reset layout",
+                () =>
+                {
+                    _runtime.ResetDashLayout(layout);
+                    RenderBody();
+                })));
         }
         if (!layout.IsDefault)
         {
@@ -1920,22 +2284,31 @@ public sealed class MainWindow : Window
                 _runtime.SetDefaultDashLayout(layout);
                 RenderBody();
             }));
-            actions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () =>
-            {
-                _runtime.DeleteDashLayout(layout);
-                RenderBody();
-            }));
+            actions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () => ShowConfirmDialog(
+                "Delete dash?",
+                $"{layout.Name} and its saved thumbnail will be removed permanently.",
+                "Delete dash",
+                () =>
+                {
+                    _runtime.DeleteDashLayout(layout);
+                    RenderBody();
+                })));
         }
 
-        stack.Children.Add(actions);
+        details.Children.Add(actions);
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        AddGrid(row, DashPreview(layout, 220, 132), 0, 0);
+        details.Margin = new Thickness(18, 0, 0, 0);
+        AddGrid(row, details, 0, 1);
         return new Border
         {
-            Background = Graphite.PanelBrush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(Graphite.RadiusLg),
-            Padding = new Thickness(14),
-            Child = stack
+            Padding = new Thickness(12),
+            Child = row
         };
     }
 
@@ -1957,11 +2330,8 @@ public sealed class MainWindow : Window
         return combo;
     }
 
-    private Control DashPreview(DashLayout layout)
+    private Control DashPreview(DashLayout layout, int width = 300, int height = 180)
     {
-        const int width = 300;
-        const int height = 180;
-
         // Real on-wheel pixels via the SkiaSharp painter — the same output the
         // hardware screen and saved thumbnail use, not a labelled-box mock.
         var bitmap = DashImageRenderer.Render(
@@ -2077,10 +2447,16 @@ public sealed class MainWindow : Window
 
     private static Control ReferenceCard(string title, string body)
     {
-        var stack = new StackPanel { Spacing = 8 };
-        stack.Children.Add(Graphite.TextBlock(title, 15, FontWeight.Bold, Graphite.TextBrush));
+        var stack = new StackPanel { Spacing = 5 };
+        stack.Children.Add(Graphite.TextBlock(title, 14, FontWeight.Medium, Graphite.TextBrush));
         stack.Children.Add(Graphite.TextBlock(body, 12, FontWeight.Normal, Graphite.Text2Brush, TextWrapping.Wrap));
-        return Graphite.Card(stack);
+        return new Border
+        {
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(4, 14),
+            Child = stack,
+        };
     }
 
     private Button ActionButton(string label, ButtonTone tone, Action action)
