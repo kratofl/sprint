@@ -10,6 +10,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -57,6 +58,41 @@ internal static class AgentUiReviewHarness
                         ?? runtime.DashLayouts.FirstOrDefault()?.Id
                         ?? "default",
                 });
+
+                var defaultDash = runtime.DashLayouts.First(dash => dash.IsDefault);
+                using (var painter = new DashPainter(800, 480, DashPalette.FromTheme(defaultDash.Theme)))
+                {
+                    var imagePath = Path.Combine(artifactRoot, "default-dash-800x480.png");
+                    File.WriteAllBytes(imagePath, painter.RenderPng(
+                        defaultDash,
+                        DashPreviewFrames.For(DashPreviewState.MidLap),
+                        runtime.Settings));
+                    using var bitmap = new Bitmap(imagePath);
+                    var failure = ValidateImage(bitmap);
+                    frames.Add(new AgentUiReviewFrame(
+                        "default-dash-800x480",
+                        imagePath,
+                        ["RPM", "lap timing", "gear and speed", "delta", "sectors", "controls"],
+                        failure is null ? [] : [failure]));
+                }
+
+                var catalogDash = WidgetCatalogDash();
+                Assert.True(DashLayoutValidator.IsValid(catalogDash), "The visual catalog must contain every widget in a valid non-overlapping layout.");
+                using (var painter = new DashPainter(1200, 720))
+                {
+                    var imagePath = Path.Combine(artifactRoot, "widget-catalog-1200x720.png");
+                    File.WriteAllBytes(imagePath, painter.RenderPng(
+                        catalogDash,
+                        DashPreviewFrames.For(DashPreviewState.MidLap),
+                        runtime.Settings));
+                    using var bitmap = new Bitmap(imagePath);
+                    var failure = ValidateImage(bitmap);
+                    frames.Add(new AgentUiReviewFrame(
+                        "widget-catalog-1200x720",
+                        imagePath,
+                        DashWidgetCatalog.All.Select(widget => widget.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+                        failure is null ? [] : [failure]));
+                }
 
                 using var telemetry = new RecordingTelemetrySource();
                 var window = new MainWindow(runtime, new ShellState(), telemetry)
@@ -130,6 +166,31 @@ internal static class AgentUiReviewHarness
 
         var reportPath = WriteReport(artifactRoot, frames);
         return new AgentUiReviewResult(artifactRoot, reportPath, frames);
+    }
+
+    private static DashLayout WidgetCatalogDash()
+    {
+        var widgets = DashWidgetCatalog.All
+            .OrderBy(widget => widget.Name, StringComparer.Ordinal)
+            .Select((widget, index) => new DashWidget
+            {
+                Id = $"catalog-{widget.Type}",
+                Type = widget.Type,
+                Col = index % 4 * 5,
+                Row = index / 4 * 2,
+                ColSpan = 5,
+                RowSpan = 2,
+            })
+            .ToList();
+
+        return new DashLayout
+        {
+            Id = "widget-catalog",
+            Name = "Widget catalog",
+            GridCols = 20,
+            GridRows = (int)Math.Ceiling(widgets.Count / 4d) * 2,
+            Pages = [new DashPage { Id = "catalog", Name = "Catalog", Widgets = widgets }],
+        };
     }
 
     private static AgentUiReviewFrame Capture(MainWindow window, string artifactRoot, string name, params string[] expectedText)

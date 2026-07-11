@@ -229,22 +229,55 @@ public sealed class DashPainterTests
     }
 
     [Fact]
-    public void StyleBorderOverrideRemovesPanelOutline()
+    public void WidgetsAreTransparentByDefaultAndBorderCanBeEnabledExplicitly()
     {
-        var layout = SingleWidgetLayout("tc"); // draws a panel outline by default
+        var layout = SingleWidgetLayout("tc");
         var frame = new TelemetryFrame();
 
+        using var transparent = new DashPainter(200, 200);
+        var transparentEdge = transparent.Render(layout, frame, new AppSettings()).GetPixel(0, 100);
+
+        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = true };
         using var bordered = new DashPainter(200, 200);
         var borderedEdge = bordered.Render(layout, frame, new AppSettings()).GetPixel(0, 100);
 
-        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = false };
-        using var borderless = new DashPainter(200, 200);
-        var borderlessEdge = borderless.Render(layout, frame, new AppSettings()).GetPixel(0, 100);
-
-        Assert.True(Brightness(borderedEdge) > Brightness(borderlessEdge) + 15,
-            $"Expected the outline to disappear when Border=off; bordered={borderedEdge}, borderless={borderlessEdge}.");
-        Assert.True(Brightness(borderlessEdge) < 14, $"Expected a clean near-black edge with no outline, saw {borderlessEdge}.");
+        Assert.True(Brightness(borderedEdge) > Brightness(transparentEdge) + 15,
+            $"Expected an outline only when Border=on; bordered={borderedEdge}, transparent={transparentEdge}.");
+        Assert.True(Brightness(transparentEdge) < 14, $"Expected a clean near-black edge by default, saw {transparentEdge}.");
     }
+
+    [Fact]
+    public void DefaultPresetUsesAUsefulDriverFirstHierarchy()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var page = runtime.DashLayouts.Single(layout => layout.IsDefault).Pages.Single();
+            var widgets = page.Widgets.ToDictionary(widget => widget.Type);
+
+            Assert.True(DashLayoutValidator.IsValid(runtime.DashLayouts.Single(layout => layout.IsDefault)));
+            Assert.Equal(page.Widgets.Count, page.Widgets.Select(widget => widget.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal(
+                new[] { "abs", "brake_bias", "delta", "engine_map", "fuel", "gear_speed", "lap_time", "position", "rpm_bar", "sector", "tc" },
+                widgets.Keys.OrderBy(type => type, StringComparer.Ordinal).ToArray());
+
+            Assert.Equal((0, 0, 20, 1), Position(widgets["rpm_bar"]));
+            Assert.Equal((6, 1, 8, 6), Position(widgets["gear_speed"]));
+            Assert.Equal((0, 1, 6, 8), Position(widgets["lap_time"]));
+            Assert.Equal((14, 1, 6, 8), Position(widgets["sector"]));
+            Assert.Equal((6, 7, 8, 2), Position(widgets["delta"]));
+            Assert.All(["tc", "abs", "engine_map", "brake_bias", "fuel", "position"],
+                type => Assert.True(widgets[type].Row >= 9, $"Expected {type} in the compact control strip."));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static (int Col, int Row, int ColSpan, int RowSpan) Position(DashWidget widget) =>
+        (widget.Col, widget.Row, widget.ColSpan, widget.RowSpan);
 
     private static int CountRedDominant(SKBitmap bitmap)
     {

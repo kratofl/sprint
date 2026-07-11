@@ -81,11 +81,12 @@ internal sealed class SprintComponentTheme : Styles
         var hiddenNativeTitle = new Style(x => x
             .OfType<WindowDrawnDecorations>()
             .Template()
-            .Name("PART_TitleTextPanel"));
-        // IsVisible has a local TemplateBinding in the Fluent template. Opacity has
-        // no local value, so it suppresses only the rendering while Window.Title
-        // remains available to Windows, automation, and accessibility surfaces.
-        hiddenNativeTitle.Setters.Add(new Setter(Visual.OpacityProperty, 0d));
+            .Name("PART_TitleTextPanel")
+            .Child()
+            .OfType<TextBlock>());
+        // Hide only the template's duplicate glyphs. Window.Title remains available
+        // to Windows, automation, and accessibility surfaces.
+        hiddenNativeTitle.Setters.Add(new Setter(TextBlock.ForegroundProperty, Brushes.Transparent));
         Add(hiddenNativeTitle);
 
         var hiddenFullscreen = new Style(x => x

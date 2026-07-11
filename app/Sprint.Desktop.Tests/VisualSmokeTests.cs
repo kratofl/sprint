@@ -20,8 +20,8 @@ namespace Sprint.Desktop.Tests;
 
 public sealed class VisualSmokeTests
 {
-    private const int CompactWholeAppWidth = 1159;
-    private const int CompactWholeAppHeight = 661;
+    private const int CompactWholeAppWidth = 1120;
+    private const int CompactWholeAppHeight = 720;
 
     public static IEnumerable<object[]> PrimaryViews()
     {
@@ -103,7 +103,9 @@ public sealed class VisualSmokeTests
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Layout", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Alerts", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Settings", StringComparison.Ordinal));
-                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button =>
+                    string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal) ||
+                    string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Clear page", StringComparison.Ordinal));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Delete page", StringComparison.Ordinal));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Save", StringComparison.Ordinal));
@@ -165,11 +167,11 @@ public sealed class VisualSmokeTests
 
                 var editor = Assert.Single(window.GetVisualDescendants().OfType<DashEditorView>());
                 var canvas = Assert.Single(editor.GetVisualDescendants().OfType<Canvas>(), candidate =>
-                    candidate.Width >= 560 &&
+                    candidate.Width >= 520 &&
                     candidate.Height >= 300 &&
                     candidate.Background is not null);
 
-                using var frame = SaveFrame(window, "whole-application-contract-1159x661.png");
+                using var frame = SaveFrame(window, "whole-application-contract-1120x720.png");
                 var pixels = CapturePixels(frame);
                 var origin = canvas.TranslatePoint(new Point(0, 0), window);
                 Assert.NotNull(origin);
@@ -182,8 +184,8 @@ public sealed class VisualSmokeTests
                 Assert.True(canvasRect.X >= Graphite.SidebarCollapsedWidth + 180, $"Expected the canvas beyond the compact shell and wider palette, saw x={canvasRect.X}.");
                 Assert.True(canvasRect.X + canvasRect.Width <= CompactWholeAppWidth, $"Expected the canvas to remain inside the compact window, saw right={canvasRect.X + canvasRect.Width}.");
                 Assert.True(canvasRect.Y >= Graphite.ToolbarHeight + 48, $"Expected the canvas below the unified toolbar and page controls, saw y={canvasRect.Y}.");
-                Assert.True(canvasRect.Width is >= 560 and <= 590, $"Expected a precise 560px-class editing canvas, saw {canvasRect.Width}.");
-                Assert.True(canvasRect.Height is >= 330 and <= 360, $"Expected the configured target aspect ratio, saw {canvasRect.Height}.");
+                Assert.True(canvasRect.Width is >= 520 and <= 540, $"Expected the compact 528px-class editing canvas, saw {canvasRect.Width}.");
+                Assert.True(canvasRect.Height is >= 310 and <= 325, $"Expected the configured target aspect ratio, saw {canvasRect.Height}.");
 
                 var canvasBrightRatio = pixels.BrightRatio(canvasRect.Deflate(20), threshold: 55);
                 Assert.True(canvasBrightRatio is > 0.025 and < 0.18, $"Expected existing dash widgets to be visible on the editor grid without reverting to a rendered preview bitmap; bright ratio was {canvasBrightRatio:P2}.");
@@ -376,23 +378,27 @@ public sealed class VisualSmokeTests
                     "RPM Bar",
                     "Input Trace",
                     "Traction Control",
-                    "Lap Time",
-                    "Delta",
-                    "Sectors",
-                    "Fuel",
-                    "Header",
-                    "Flags",
-                    "Text",
-                    "Tyre Temperature",
                 })
                 {
                     AssertText(view, label);
                 }
 
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Border>(), border =>
+                    string.Equals(border.Tag?.ToString(), "palette:fuel", StringComparison.Ordinal));
+                var timingHeader = view.GetVisualDescendants().OfType<Button>()
+                    .First(button => string.Equals(button.Tag?.ToString(), "palette-category:Timing", StringComparison.Ordinal));
+                timingHeader.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                foreach (var label in new[] { "Lap Time", "Delta", "Sectors", "Fuel" })
+                {
+                    AssertText(view, label);
+                }
+                window.CaptureRenderedFrame();
+
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "+  Widget stack", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(ToolTip.GetTip(button) as string, "Collapse widget panel", StringComparison.Ordinal));
-                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal));
-                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button =>
+                    string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal) ||
+                    string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
 
                 var gearCard = view.GetVisualDescendants()
                     .OfType<Border>()
@@ -446,8 +452,8 @@ public sealed class VisualSmokeTests
                 var overlay = view.GetVisualDescendants()
                     .OfType<Border>()
                     .First(border => string.Equals(border.Tag?.ToString(), "gear_speed", StringComparison.Ordinal));
-                Assert.NotEqual(Brushes.Transparent, overlay.Background);
-                Assert.NotEqual(Brushes.Transparent, overlay.BorderBrush);
+                Assert.Equal(Brushes.Transparent, overlay.Background);
+                Assert.Equal(Brushes.Transparent, overlay.BorderBrush);
 
                 AssertText(view, "Properties");
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(), text => string.Equals(text.Text, "Gear", StringComparison.Ordinal));

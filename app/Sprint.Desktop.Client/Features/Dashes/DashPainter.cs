@@ -188,13 +188,14 @@ public sealed class DashPainter : IDisposable
 
     private void DrawWidget(DashWidget widget, SKRect rect, TelemetryFrame frame, AppSettings settings)
     {
-        // Header/text/flag widgets are borderless per their Go meta (Label.Hidden + no panel border rules);
-        // everything else gets the auto panel outline. A per-widget style Border override wins over the default.
-        var defaultBorder = widget.Type is not "header";
-        if (widget.Style?.Border ?? defaultBorder)
+        // Dash widgets live on one continuous instrument surface. A panel is drawn
+        // only when the author explicitly asks for one; the default is transparent.
+        if (widget.Style?.Border == true)
         {
             DrawPanel(rect);
         }
+
+        rect = ContentRect(rect, widget.Type);
 
         // Apply per-widget colour overrides for the duration of this widget only,
         // then restore the base palette so styling never leaks to the next widget.
@@ -317,13 +318,15 @@ public sealed class DashPainter : IDisposable
     {
         var inset = new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f);
         var radius = Math.Max(6f, Math.Min(10f, Math.Min(rect.Width, rect.Height) * 0.08f));
-        using (var fill = new SKPaint { Color = _palette.Surface, IsAntialias = true, Style = SKPaintStyle.Fill })
-        {
-            _canvas.DrawRoundRect(inset, radius, radius, fill);
-        }
-
         using var border = new SKPaint { Color = _palette.Border, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
         _canvas.DrawRoundRect(inset, radius, radius, border);
+    }
+
+    private static SKRect ContentRect(SKRect rect, string type)
+    {
+        var maxInset = type is "rpm_bar" or "header" ? 2f : 6f;
+        var inset = Math.Min(maxInset, Math.Min(rect.Width, rect.Height) * 0.08f);
+        return new SKRect(rect.Left + inset, rect.Top + inset, rect.Right - inset, rect.Bottom - inset);
     }
 
     private void DrawHBar(float x, float y, float w, float h, double pct, SKColor color, bool centered)
@@ -464,19 +467,29 @@ public sealed class DashPainter : IDisposable
 
     private void DrawHeader(SKRect r, TelemetryFrame frame)
     {
-        var pad = r.Height * 0.5f;
         var cy = r.MidY;
         var size = r.Height * 0.42f;
-        DrawTextLine("SPRINT", r.Left + 8, cy, size, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.18f);
 
         var mid = new List<string>();
         if (!string.IsNullOrWhiteSpace(frame.Session.Track)) mid.Add(frame.Session.Track);
         if (!string.IsNullOrWhiteSpace(frame.Session.Car)) mid.Add(frame.Session.Car);
         if (frame.Session.SessionType != SessionType.Unknown) mid.Add(frame.Session.SessionType.ToString().ToUpperInvariant());
         var centerText = mid.Count > 0 ? string.Join("   ", mid) : "NO SESSION";
-        DrawTextLine(centerText, r.Left + r.Width * 0.20f, cy, size, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.55f);
 
         var (flagText, flagColor) = FlagInfo(frame);
+        if (r.Width < r.Height * 5f)
+        {
+            var topY = r.Top + r.Height * 0.32f;
+            var bottomY = r.Top + r.Height * 0.72f;
+            DrawTextLine("SPRINT", r.Left + 4, topY, r.Height * 0.23f, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.42f);
+            DrawTextLine(flagText, r.Right - r.Height * 0.26f, topY, r.Height * 0.22f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.34f);
+            DrawDot(r.Right - r.Height * 0.10f, topY, r.Height * 0.06f, flagColor);
+            DrawTextLine(centerText, r.MidX, bottomY, r.Height * 0.20f, DashFonts.Label, _palette.Secondary, Align.Center, r.Width * 0.92f);
+            return;
+        }
+
+        DrawTextLine("SPRINT", r.Left + 8, cy, size, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.18f);
+        DrawTextLine(centerText, r.Left + r.Width * 0.20f, cy, size, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.55f);
         DrawTextLine(flagText, r.Right - r.Height * 0.9f - 6, cy, r.Height * 0.36f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.2f);
         DrawDot(r.Right - r.Height * 0.4f, cy, r.Height * 0.14f, flagColor);
     }
@@ -484,7 +497,29 @@ public sealed class DashPainter : IDisposable
     private void DrawRpmBar(SKRect r, TelemetryFrame frame)
     {
         var max = Math.Max(1f, frame.Car.MaxRpm);
-        DrawVerticalSegBar(r, frame.Car.Rpm / max);
+        var pct = Math.Clamp(frame.Car.Rpm / max, 0, 1);
+        if (r.Width <= r.Height * 2)
+        {
+            DrawVerticalSegBar(r, pct);
+            return;
+        }
+
+        const int segments = 24;
+        var gap = Math.Max(1f, r.Width * 0.0025f);
+        var segmentWidth = (r.Width - gap * (segments - 1)) / segments;
+        var active = (int)Math.Ceiling(pct * segments);
+        for (var index = 0; index < segments; index++)
+        {
+            var phase = (double)index / (segments - 1);
+            var color = phase > 0.82 ? _palette.RpmRed : phase > 0.62 ? _palette.Warning : _palette.Success;
+            var x = r.Left + index * (segmentWidth + gap);
+            using var paint = new SKPaint
+            {
+                Color = index < active ? color : DashPalette.Dim(color, 0.12),
+                IsAntialias = true,
+            };
+            _canvas.DrawRoundRect(new SKRect(x, r.Top, x + segmentWidth, r.Bottom), 2, 2, paint);
+        }
     }
 
     private void DrawGearSpeed(SKRect r, TelemetryFrame frame)
@@ -530,9 +565,12 @@ public sealed class DashPainter : IDisposable
         {
             var px = r.Left + 8 + (s - 1) * (pipW + 6);
             var active = s == current && frame.Lap.Sector > 0;
-            using var paint = new SKPaint { Color = active ? _palette.Primary : _palette.Surface, IsAntialias = true };
-            _canvas.DrawRoundRect(new SKRect(px, pipY, px + pipW, pipY + pipH), 3, 3, paint);
-            DrawTextLine($"S{s}", px + pipW / 2f, pipY + pipH / 2f, pipH * 0.6f, DashFonts.LabelBold, active ? _palette.Background : _palette.Muted, Align.Center, pipW);
+            DrawTextLine($"S{s}", px + pipW / 2f, pipY + pipH / 2f, pipH * 0.6f, DashFonts.LabelBold, active ? _palette.Primary : _palette.Muted, Align.Center, pipW);
+            if (active)
+            {
+                using var marker = new SKPaint { Color = _palette.Primary, IsAntialias = true };
+                _canvas.DrawRoundRect(new SKRect(px + pipW * 0.2f, pipY + pipH + 3, px + pipW * 0.8f, pipY + pipH + 6), 1.5f, 1.5f, marker);
+            }
         }
 
         DrawTextLine(DashFormat.Lap(frame.Lap.CurrentLapTime), r.Right - 8, r.Bottom - r.Height * 0.16f, r.Height * 0.22f, DashFonts.Value, _palette.Foreground, Align.End, r.Width * 0.6f);
@@ -540,7 +578,10 @@ public sealed class DashPainter : IDisposable
 
     private void DrawLapTime(SKRect r, TelemetryFrame frame)
     {
-        DrawTextLine("LAP TIMES", r.Left + 10, r.Top + r.Height * 0.13f, r.Height * 0.11f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        var titleSize = Math.Min(26f, r.Height * 0.09f);
+        var labelSize = Math.Min(22f, r.Height * 0.085f);
+        var valueSize = Math.Min(32f, r.Height * 0.115f);
+        DrawTextLine("LAP TIMES", r.Left + 10, r.Top + r.Height * 0.12f, titleSize, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
         var rows = new (string Label, string Value, SKColor Color)[]
         {
             ("Current", DashFormat.Lap(frame.Lap.CurrentLapTime), _palette.Foreground),
@@ -550,8 +591,8 @@ public sealed class DashPainter : IDisposable
         for (var i = 0; i < rows.Length; i++)
         {
             var cy = r.Top + r.Height * (0.38f + i * 0.24f);
-            DrawTextLine(rows[i].Label, r.Left + 10, cy, r.Height * 0.15f, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.45f);
-            DrawTextLine(rows[i].Value, r.Right - 10, cy, r.Height * 0.20f, DashFonts.Value, rows[i].Color, Align.End, r.Width * 0.55f);
+            DrawTextLine(rows[i].Label, r.Left + 10, cy, labelSize, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.34f);
+            DrawTextLine(rows[i].Value, r.Right - 10, cy, valueSize, DashFonts.Value, rows[i].Color, Align.End, r.Width * 0.60f);
         }
     }
 
@@ -564,10 +605,10 @@ public sealed class DashPainter : IDisposable
         }
 
         var color = frame.Lap.Delta > 0.0005 ? _palette.Danger : frame.Lap.Delta < -0.0005 ? _palette.Success : _palette.Foreground;
-        DrawTextLine("DELTA", r.Left + 10, r.MidY, r.Height * 0.34f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.25f);
-        DrawTextLine(DashFormat.Delta(frame.Lap.Delta), r.Right - 10, r.MidY, r.Height * 0.55f, DashFonts.Value, color, Align.End, r.Width * 0.45f);
-        var barW = r.Width * 0.34f;
-        DrawDeltaBar(r.MidX - barW / 2f, r.MidY - r.Height * 0.12f, barW, r.Height * 0.24f, frame.Lap.Delta);
+        DrawTextLine("DELTA", r.Left + 10, r.MidY, r.Height * 0.24f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.20f);
+        DrawTextLine(DashFormat.Delta(frame.Lap.Delta), r.Right - 10, r.MidY, r.Height * 0.42f, DashFonts.Value, color, Align.End, r.Width * 0.34f);
+        var barW = r.Width * 0.30f;
+        DrawDeltaBar(r.Left + r.Width * 0.25f, r.MidY - r.Height * 0.10f, barW, r.Height * 0.20f, frame.Lap.Delta);
     }
 
     private void DrawFuel(SKRect r, TelemetryFrame frame)
@@ -581,6 +622,14 @@ public sealed class DashPainter : IDisposable
             var tint = fuel < 2 ? _palette.Danger.WithAlpha(51) : _palette.Warning.WithAlpha(31);
             using var tintPaint = new SKPaint { Color = tint };
             _canvas.DrawRect(r, tintPaint);
+        }
+
+        if (r.Height < 150 && r.Width < 200)
+        {
+            DrawTextLine("FUEL", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.35f);
+            DrawTextLine($"{DashFormat.FuelPerLap(perLap)} L/lap", r.Right - 8, r.Top + r.Height * 0.20f, r.Height * 0.11f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.58f);
+            DrawTextLine($"{DashFormat.Fuel(fuel)} L", r.MidX, r.Top + r.Height * 0.63f, r.Height * 0.34f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.9f);
+            return;
         }
 
         DrawTextLine("FUEL", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
@@ -692,8 +741,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawElectronicsValue(SKRect r, string label, byte value, byte max)
     {
-        var suffix = max > 0 ? $" / {max}" : string.Empty;
-        DrawSimpleValue(r, label, $"{value}{suffix}");
+        DrawSimpleValue(r, label, value.ToString());
     }
 
     private void DrawSimpleValue(SKRect r, string label, string value)

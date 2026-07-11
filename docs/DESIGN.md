@@ -97,8 +97,20 @@ Linux, headless, remote, and unsupported environments use the `#101012` fallback
 - Help is a searchable reference list written in product language.
 
 Edge panes in the dash editor use tone rather than rounded floating frames. The
-widget palette uses compact list rows. The inspector aligns properties and adds
+widget palette uses compact list rows inside disclosure groups, with one group
+expanded by default. The inspector aligns properties and adds
 dividers only between semantic groups. Applying a dash to hardware remains explicit.
+
+Page navigation appears once in the compact strip above the canvas; do not add a
+second Pages/Widgets switch to the toolbar. The toolbar is limited to editor mode,
+target profile, preview state, and Apply.
+
+The rendered wheel dash is one continuous instrument surface. Widgets remain
+transparent, including legacy layouts where `Border` is omitted; `Border: true`
+adds an outline without adding a fill. Fills are reserved for semantic alerts.
+The default 800×480 hierarchy places RPM across the top, gear and speed at the
+visual center, lap timing left, sector state right,
+delta adjacent to the focal value, and a compact control strip below.
 
 ## Components and state
 
