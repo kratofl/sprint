@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -77,7 +78,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task ShellRendersOneIntegratedToolbarBelowNativeWindowChrome()
+    public async Task ShellRendersOneIntegratedToolbarInNativeTitleBarRegion()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -91,8 +92,8 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, new ShellState(), telemetry);
                 window.Show();
 
-                // Native window decorations own the caption. Sprint renders one toolbar
-                // and one sidebar/content row below it without a second set of controls.
+                // Sprint renders one toolbar in the title-bar region and one
+                // sidebar/content row below it without a second header.
                 var frame = Assert.IsType<Border>(window.Content);
                 Assert.Equal(new CornerRadius(0), frame.CornerRadius);
                 var root = Assert.IsType<Grid>(frame.Child);
@@ -135,7 +136,7 @@ public class HeadlessShellTests
     };
 
     [Fact]
-    public async Task WindowUsesNativeCaptionControls()
+    public async Task WindowUsesOneCustomHeaderWithNativeCaptionControls()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -152,7 +153,24 @@ public class HeadlessShellTests
                 window.Show();
 
                 Assert.Equal(Avalonia.Controls.WindowDecorations.Full, window.WindowDecorations);
-                Assert.False(window.ExtendClientAreaToDecorationsHint);
+                Assert.True(window.ExtendClientAreaToDecorationsHint);
+                Assert.Equal(Graphite.ToolbarHeight, window.ExtendClientAreaTitleBarHeightHint);
+
+                var toolbar = window.GetVisualDescendants()
+                    .OfType<Grid>()
+                    .Single(control => Equals(control.Tag, "product-toolbar"));
+                Assert.Equal(
+                    WindowDecorationsElementRole.TitleBar,
+                    WindowDecorationProperties.GetElementRole(toolbar));
+
+                var sidebarToggle = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => Equals(ToolTip.GetTip(button), "Toggle sidebar"));
+                var commandSearch = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => Equals(button.Tag, "command-palette-trigger"));
+                Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(sidebarToggle));
+                Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(commandSearch));
                 Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
                     button => new[] { "Minimize", "Maximize / restore", "Close" }
                         .Contains(ToolTip.GetTip(button) as string, StringComparer.Ordinal));

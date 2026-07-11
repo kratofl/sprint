@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
@@ -32,6 +33,7 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer _timer;
     private ContentControl _body = new();
     private Border? _bodyTray;
+    private ColumnDefinition? _captionInsetColumn;
     private StackPanel _navRail = new() { Spacing = 8 };
     private TextBlock _breadcrumb = null!;
     private TextBlock _groupCrumb = null!;
@@ -108,12 +110,12 @@ public sealed class MainWindow : Window
             : [WindowTransparencyLevel.None];
         FontFamily = Graphite.FontStack;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        // Keep the operating system caption and buttons. The app toolbar starts
-        // below native chrome so Windows owns drag, snap, minimise, maximise, close,
-        // high-contrast, and DPI behaviour without client-area overlap.
+        // Extend Sprint's product toolbar into the title-bar area while retaining
+        // full native decorations. Windows continues to own the caption buttons,
+        // drag/snap, system menu, high-contrast, and DPI behaviour.
         this.WindowDecorations = Avalonia.Controls.WindowDecorations.Full;
-        ExtendClientAreaToDecorationsHint = false;
-        ExtendClientAreaTitleBarHeightHint = 0;
+        ExtendClientAreaToDecorationsHint = true;
+        ExtendClientAreaTitleBarHeightHint = Graphite.ToolbarHeight;
 
         var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "appicon.png");
         if (File.Exists(iconPath))
@@ -130,6 +132,8 @@ public sealed class MainWindow : Window
         ApplyMaximizedChrome();
         BuildShell();
         RenderBody();
+        Opened += (_, _) => Dispatcher.UIThread.Post(UpdateCaptionInset);
+        ScalingChanged += (_, _) => Dispatcher.UIThread.Post(UpdateCaptionInset);
 
         // ~30Hz UI handoff: drain the engine's latest-value buffer. Decoupled frontend
         // emitter — the reader thread fills the buffer at the game's cadence; the UI
@@ -143,7 +147,7 @@ public sealed class MainWindow : Window
     {
         _bodyTray?.Child = null;
         // The shell is one column of two rows: a single Sprint-owned product toolbar
-        // beneath native window chrome, then the sidebar + body tray.
+        // sharing the native title-bar region, then the sidebar + body tray.
         _root.RowDefinitions = new RowDefinitions("Auto,*");
         _root.ColumnDefinitions = new ColumnDefinitions("*");
         _root.Background = Graphite.PanelBrush;
@@ -199,6 +203,15 @@ public sealed class MainWindow : Window
         if (change.Property == WindowStateProperty)
         {
             ApplyMaximizedChrome();
+            Dispatcher.UIThread.Post(UpdateCaptionInset);
+        }
+    }
+
+    private void UpdateCaptionInset()
+    {
+        if (_captionInsetColumn is not null)
+        {
+            _captionInsetColumn.Width = new GridLength(NativeWindowChrome.CaptionButtonInset(this));
         }
     }
 
@@ -216,12 +229,25 @@ public sealed class MainWindow : Window
             Background = Graphite.Text3Brush
         };
 
+        _captionInsetColumn = new ColumnDefinition(
+            new GridLength(NativeWindowChrome.CaptionButtonInset(this)));
         var grid = new Grid
         {
+            Tag = "product-toolbar",
             Background = Graphite.PanelBrush,
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto,Auto,Auto"),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(new GridLength(1, GridUnitType.Star)),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                _captionInsetColumn,
+            },
             Height = Graphite.ToolbarHeight
         };
+        WindowDecorationProperties.SetElementRole(grid, WindowDecorationsElementRole.TitleBar);
 
         var logo = new Border
         {
@@ -234,6 +260,7 @@ public sealed class MainWindow : Window
 
         var sidebarToggle = ChromeButton("layout-sidebar", ToggleSidebar, "Toggle sidebar");
         sidebarToggle.Margin = new Thickness(2, 0, 10, 0);
+        WindowDecorationProperties.SetElementRole(sidebarToggle, WindowDecorationsElementRole.User);
         Grid.SetColumn(sidebarToggle, 1);
         grid.Children.Add(sidebarToggle);
 
@@ -253,6 +280,7 @@ public sealed class MainWindow : Window
         commandButton.Tag = "command-palette-trigger";
         commandButton.FontSize = 11;
         commandButton.Foreground = Graphite.Text3Brush;
+        WindowDecorationProperties.SetElementRole(commandButton, WindowDecorationsElementRole.User);
         commandButton.Click += (_, _) => OpenCommandPalette();
         Grid.SetColumn(commandButton, 3);
         grid.Children.Add(commandButton);
