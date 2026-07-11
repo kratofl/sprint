@@ -188,9 +188,10 @@ public sealed class DashPainter : IDisposable
 
     private void DrawWidget(DashWidget widget, SKRect rect, TelemetryFrame frame, AppSettings settings)
     {
-        // Dash widgets live on one continuous instrument surface. A panel is drawn
-        // only when the author explicitly asks for one; the default is transparent.
-        if (widget.Style?.Border == true)
+        // Wheel telemetry is grouped into compact outlined instruments like a real
+        // motorsport display. The outline never adds a fill: the canvas remains black.
+        // Authors can explicitly suppress or add the frame per widget.
+        if (widget.Style?.Border ?? UsesInstrumentFrame(widget.Type))
         {
             DrawPanel(rect);
         }
@@ -316,11 +317,15 @@ public sealed class DashPainter : IDisposable
 
     private void DrawPanel(SKRect rect)
     {
-        var inset = new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f);
+        var inset = new SKRect(rect.Left + 2.5f, rect.Top + 2.5f, rect.Right - 2.5f, rect.Bottom - 2.5f);
         var radius = Math.Max(6f, Math.Min(10f, Math.Min(rect.Width, rect.Height) * 0.08f));
-        using var border = new SKPaint { Color = _palette.Border, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
+        using var border = new SKPaint { Color = _palette.Border, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f };
         _canvas.DrawRoundRect(inset, radius, radius, border);
     }
+
+    private static bool UsesInstrumentFrame(string type) => type is
+        "gear_speed" or "input_trace" or "sector" or "lap_time" or
+        "fuel" or "tyre_temp" or "tyre_pressure" or "gaps";
 
     private static SKRect ContentRect(SKRect rect, string type)
     {

@@ -13,9 +13,9 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public sealed record DashPalette
 {
-    public SKColor Background { get; init; } = FromGraphite(Graphite.Bg);
+    public SKColor Background { get; init; } = SKColors.Black;
     public SKColor Surface { get; init; } = FromGraphite(Graphite.Panel3);      // bar track / container
-    public SKColor Border { get; init; } = FromGraphite(Graphite.Line);         // panel outline
+    public SKColor Border { get; init; } = FromGraphite(Graphite.Line2);         // wheel-instrument outline
     public SKColor Foreground { get; init; } = FromGraphite(Graphite.Text);     // large values
     public SKColor Secondary { get; init; } = FromGraphite(Graphite.Text2);     // secondary text
     public SKColor Muted { get; init; } = FromGraphite(Graphite.Text3);         // labels

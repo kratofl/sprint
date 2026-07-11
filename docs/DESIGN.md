@@ -105,12 +105,13 @@ Page navigation appears once in the compact strip above the canvas; do not add a
 second Pages/Widgets switch to the toolbar. The toolbar is limited to editor mode,
 target profile, preview state, and Apply.
 
-The rendered wheel dash is one continuous instrument surface. Widgets remain
-transparent, including legacy layouts where `Border` is omitted; `Border: true`
-adds an outline without adding a fill. Fills are reserved for semantic alerts.
-The default 800×480 hierarchy places RPM across the top, gear and speed at the
-visual center, lap timing left, sector state right,
-delta adjacent to the focal value, and a compact control strip below.
+The rendered wheel dash uses a pure black canvas. Complex instruments use compact,
+rounded outlines without a panel fill; simple readouts remain open unless a layout
+groups them into explicit control cells. `Border: false` removes a default outline
+and `Border: true` adds one. Fills are reserved for semantic alerts. The default
+800×480 hierarchy places RPM across the top, a compact control strip directly below
+it, gear and speed at the visual center, lap timing left, sector state right, and
+delta plus live input traces adjacent to the focal value.
 
 ## Components and state
 

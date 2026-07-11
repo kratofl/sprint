@@ -50,9 +50,9 @@ public sealed class DashPainterTests
     {
         var palette = DashPalette.Default;
 
-        AssertColor("#0B0B0D", palette.Background);
+        AssertColor("#000000", palette.Background);
         AssertColor("#1B1B1E", palette.Surface);
-        AssertColor("#12FFFFFF", palette.Border);
+        AssertColor("#1FFFFFFF", palette.Border);
         AssertColor("#F5F5F7", palette.Foreground);
         AssertColor("#A1A1AA", palette.Secondary);
         AssertColor("#6F6F78", palette.Muted);
@@ -229,21 +229,56 @@ public sealed class DashPainterTests
     }
 
     [Fact]
-    public void WidgetsAreTransparentByDefaultAndBorderCanBeEnabledExplicitly()
+    public void InstrumentWidgetsUseAnOutlineWithoutFillingTheBlackCanvas()
     {
-        var layout = SingleWidgetLayout("tc");
+        var layout = SingleWidgetLayout("gear_speed");
         var frame = new TelemetryFrame();
 
-        using var transparent = new DashPainter(200, 200);
-        var transparentEdge = transparent.Render(layout, frame, new AppSettings()).GetPixel(0, 100);
+        using var framed = new DashPainter(200, 200);
+        var framedBitmap = framed.Render(layout, frame, new AppSettings());
+        var framedEdge = framedBitmap.GetPixel(2, 100);
+        var framedInterior = framedBitmap.GetPixel(12, 100);
 
+        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = false };
+        using var unframed = new DashPainter(200, 200);
+        var unframedEdge = unframed.Render(layout, frame, new AppSettings()).GetPixel(2, 100);
+
+        Assert.True(Brightness(framedEdge) > Brightness(unframedEdge) + 20,
+            $"Expected a restrained default instrument outline; framed={framedEdge}, unframed={unframedEdge}.");
+        Assert.True(Brightness(framedInterior) < 5, $"Expected the instrument interior to remain pure black, saw {framedInterior}.");
+    }
+
+    [Theory]
+    [InlineData("rpm_bar")]
+    [InlineData("header")]
+    [InlineData("text")]
+    [InlineData("delta")]
+    [InlineData("tc")]
+    [InlineData("abs")]
+    [InlineData("engine_map")]
+    [InlineData("brake_bias")]
+    [InlineData("fuel_target")]
+    [InlineData("position")]
+    [InlineData("predictive_lap")]
+    [InlineData("ers")]
+    public void ContinuousSurfaceWidgetsRemainUnframedByDefault(string type)
+    {
+        var layout = SingleWidgetLayout(type);
+        using var painter = new DashPainter(200, 200);
+        var edge = painter.Render(layout, new TelemetryFrame(), new AppSettings()).GetPixel(2, 100);
+
+        Assert.True(Brightness(edge) < 5, $"Expected {type} to remain open on the continuous black surface, saw {edge}.");
+    }
+
+    [Fact]
+    public void ExplicitBorderCanFrameAContinuousSurfaceWidget()
+    {
+        var layout = SingleWidgetLayout("text");
         layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = true };
-        using var bordered = new DashPainter(200, 200);
-        var borderedEdge = bordered.Render(layout, frame, new AppSettings()).GetPixel(0, 100);
+        using var painter = new DashPainter(200, 200);
+        var edge = painter.Render(layout, new TelemetryFrame(), new AppSettings()).GetPixel(2, 100);
 
-        Assert.True(Brightness(borderedEdge) > Brightness(transparentEdge) + 15,
-            $"Expected an outline only when Border=on; bordered={borderedEdge}, transparent={transparentEdge}.");
-        Assert.True(Brightness(transparentEdge) < 14, $"Expected a clean near-black edge by default, saw {transparentEdge}.");
+        Assert.True(Brightness(edge) > 20, $"Expected an explicit text-widget outline, saw {edge}.");
     }
 
     [Fact]
@@ -259,16 +294,21 @@ public sealed class DashPainterTests
             Assert.True(DashLayoutValidator.IsValid(runtime.DashLayouts.Single(layout => layout.IsDefault)));
             Assert.Equal(page.Widgets.Count, page.Widgets.Select(widget => widget.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
             Assert.Equal(
-                new[] { "abs", "brake_bias", "delta", "engine_map", "fuel", "gear_speed", "lap_time", "position", "rpm_bar", "sector", "tc" },
+                new[] { "abs", "brake_bias", "delta", "engine_map", "fuel", "gear_speed", "input_trace", "lap_time", "position", "rpm_bar", "sector", "tc" },
                 widgets.Keys.OrderBy(type => type, StringComparer.Ordinal).ToArray());
 
             Assert.Equal((0, 0, 20, 1), Position(widgets["rpm_bar"]));
-            Assert.Equal((6, 1, 8, 6), Position(widgets["gear_speed"]));
-            Assert.Equal((0, 1, 6, 8), Position(widgets["lap_time"]));
-            Assert.Equal((14, 1, 6, 8), Position(widgets["sector"]));
-            Assert.Equal((6, 7, 8, 2), Position(widgets["delta"]));
+            Assert.Equal((6, 3, 8, 7), Position(widgets["gear_speed"]));
+            Assert.Equal((0, 3, 6, 9), Position(widgets["lap_time"]));
+            Assert.Equal((14, 3, 6, 9), Position(widgets["sector"]));
+            Assert.Equal((6, 10, 4, 2), Position(widgets["delta"]));
+            Assert.Equal((10, 10, 4, 2), Position(widgets["input_trace"]));
             Assert.All(["tc", "abs", "engine_map", "brake_bias", "fuel", "position"],
-                type => Assert.True(widgets[type].Row >= 9, $"Expected {type} in the compact control strip."));
+                type =>
+                {
+                    Assert.Equal(1, widgets[type].Row);
+                    Assert.True(widgets[type].Style?.Border, $"Expected the compact {type} control to opt into a bounded cell.");
+                });
         }
         finally
         {

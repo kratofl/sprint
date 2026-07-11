@@ -18,16 +18,17 @@
       "name": "Main",
       "widgets": [
         {"id": "rpm_bar",    "type": "rpm_bar",     "col":  0, "row":  0, "colSpan": 20, "rowSpan":  1},
-        {"id": "lap_time",   "type": "lap_time",    "col":  0, "row":  1, "colSpan":  6, "rowSpan":  8},
-        {"id": "gear_speed", "type": "gear_speed",  "col":  6, "row":  1, "colSpan":  8, "rowSpan":  6},
-        {"id": "delta",      "type": "delta",       "col":  6, "row":  7, "colSpan":  8, "rowSpan":  2},
-        {"id": "sectors",    "type": "sector",      "col": 14, "row":  1, "colSpan":  6, "rowSpan":  8},
-        {"id": "tc",         "type": "tc",          "col":  0, "row":  9, "colSpan":  3, "rowSpan":  3},
-        {"id": "abs",        "type": "abs",         "col":  3, "row":  9, "colSpan":  3, "rowSpan":  3},
-        {"id": "engine_map", "type": "engine_map",  "col":  6, "row":  9, "colSpan":  3, "rowSpan":  3},
-        {"id": "brake_bias", "type": "brake_bias",  "col":  9, "row":  9, "colSpan":  4, "rowSpan":  3},
-        {"id": "fuel",       "type": "fuel",        "col": 13, "row":  9, "colSpan":  4, "rowSpan":  3},
-        {"id": "position",   "type": "position",    "col": 17, "row":  9, "colSpan":  3, "rowSpan":  3}
+        {"id": "tc",         "type": "tc",          "col":  0, "row":  1, "colSpan":  3, "rowSpan":  2, "style": {"border": true}},
+        {"id": "abs",        "type": "abs",         "col":  3, "row":  1, "colSpan":  3, "rowSpan":  2, "style": {"border": true}},
+        {"id": "engine_map", "type": "engine_map",  "col":  6, "row":  1, "colSpan":  3, "rowSpan":  2, "style": {"border": true}},
+        {"id": "brake_bias", "type": "brake_bias",  "col":  9, "row":  1, "colSpan":  4, "rowSpan":  2, "style": {"border": true}},
+        {"id": "fuel",       "type": "fuel",        "col": 13, "row":  1, "colSpan":  4, "rowSpan":  2, "style": {"border": true}},
+        {"id": "position",   "type": "position",    "col": 17, "row":  1, "colSpan":  3, "rowSpan":  2, "style": {"border": true}},
+        {"id": "lap_time",   "type": "lap_time",    "col":  0, "row":  3, "colSpan":  6, "rowSpan":  9},
+        {"id": "gear_speed", "type": "gear_speed",  "col":  6, "row":  3, "colSpan":  8, "rowSpan":  7},
+        {"id": "delta",      "type": "delta",       "col":  6, "row": 10, "colSpan":  4, "rowSpan":  2},
+        {"id": "inputs",     "type": "input_trace", "col": 10, "row": 10, "colSpan":  4, "rowSpan":  2},
+        {"id": "sectors",    "type": "sector",      "col": 14, "row":  3, "colSpan":  6, "rowSpan":  9}
       ]
     }
   ],
