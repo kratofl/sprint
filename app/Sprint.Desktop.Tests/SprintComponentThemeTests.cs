@@ -1,4 +1,5 @@
 using Avalonia.Themes.Fluent;
+using Avalonia.Styling;
 using Sprint.Desktop;
 using Xunit;
 
@@ -40,5 +41,17 @@ public sealed class SprintComponentThemeTests
         Assert.Equal(Graphite.Line2Brush, theme.Resources["TextControlBorderBrush"]);
         Assert.Equal(Graphite.TextBrush, theme.Resources["TextControlForeground"]);
         Assert.Equal(Graphite.AccentBrush, theme.Resources["TextControlBorderBrushFocused"]);
+    }
+
+    [Fact]
+    public void Component_theme_removes_duplicate_title_and_fullscreen_decoration_parts()
+    {
+        var theme = new SprintComponentTheme();
+        var selectors = theme.OfType<Style>().Select(style => style.Selector?.ToString()).ToArray();
+
+        Assert.Equal((double)Graphite.CaptionButtonWidth, theme.Resources["CaptionButtonWidth"]);
+        Assert.Equal((double)Graphite.ToolbarHeight, theme.Resources["CaptionButtonHeight"]);
+        Assert.Contains(selectors, selector => selector?.Contains("PART_TitleTextPanel", StringComparison.Ordinal) == true);
+        Assert.Contains(selectors, selector => selector?.Contains("PART_FullScreenButton", StringComparison.Ordinal) == true);
     }
 }

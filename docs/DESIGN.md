@@ -72,8 +72,9 @@ must not decorate or delay work.
 
 The 44px unified toolbar occupies the native title-bar region and owns the Sprint
 mark, sidebar control, current location, contextual tools, command search,
-telemetry health, and rate. Native operating-system chrome draws the caption
-buttons and owns window movement, snapping, the system menu, and DPI behavior.
+telemetry health, and rate. The duplicate drawn title and fullscreen control are
+suppressed. Exactly three full-height, Avalonia-drawn caption controls with
+system window roles occupy the right edge for minimize, snap/maximize, and close.
 Page titles do not repeat in content.
 
 The sidebar is 184px expanded and 52px collapsed. It contains Home, Dashes,

@@ -33,12 +33,12 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer _timer;
     private ContentControl _body = new();
     private Border? _bodyTray;
-    private ColumnDefinition? _captionInsetColumn;
     private StackPanel _navRail = new() { Spacing = 8 };
     private TextBlock _breadcrumb = null!;
     private TextBlock _groupCrumb = null!;
     private TextBlock _signalText = null!;
     private TextBlock _hzText = null!;
+    private Border _hzIndicator = null!;
     private Border _signalDot = null!;
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
@@ -98,6 +98,8 @@ public sealed class MainWindow : Window
         _shellCommands = CreateShellCommands();
         KeyDown += OnGlobalKeyDown;
 
+        // Retain semantic window identity for task switching and accessibility;
+        // SprintComponentTheme suppresses only its duplicate visual title panel.
         Title = "Sprint";
         Width = 1440;
         Height = 900;
@@ -110,9 +112,9 @@ public sealed class MainWindow : Window
             : [WindowTransparencyLevel.None];
         FontFamily = Graphite.FontStack;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        // Extend Sprint's product toolbar into the title-bar area while retaining
-        // full native decorations. Windows continues to own the caption buttons,
-        // drag/snap, system menu, high-contrast, and DPI behaviour.
+        // Extend Sprint beneath Avalonia's Windows decoration overlay. The app theme
+        // removes the duplicate title and fullscreen part, leaving exactly the three
+        // native-role caption buttons above our single product toolbar.
         this.WindowDecorations = Avalonia.Controls.WindowDecorations.Full;
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaTitleBarHeightHint = Graphite.ToolbarHeight;
@@ -132,8 +134,6 @@ public sealed class MainWindow : Window
         ApplyMaximizedChrome();
         BuildShell();
         RenderBody();
-        Opened += (_, _) => Dispatcher.UIThread.Post(UpdateCaptionInset);
-        ScalingChanged += (_, _) => Dispatcher.UIThread.Post(UpdateCaptionInset);
 
         // ~30Hz UI handoff: drain the engine's latest-value buffer. Decoupled frontend
         // emitter — the reader thread fills the buffer at the game's cadence; the UI
@@ -203,15 +203,6 @@ public sealed class MainWindow : Window
         if (change.Property == WindowStateProperty)
         {
             ApplyMaximizedChrome();
-            Dispatcher.UIThread.Post(UpdateCaptionInset);
-        }
-    }
-
-    private void UpdateCaptionInset()
-    {
-        if (_captionInsetColumn is not null)
-        {
-            _captionInsetColumn.Width = new GridLength(NativeWindowChrome.CaptionButtonInset(this));
         }
     }
 
@@ -229,8 +220,6 @@ public sealed class MainWindow : Window
             Background = Graphite.Text3Brush
         };
 
-        _captionInsetColumn = new ColumnDefinition(
-            new GridLength(NativeWindowChrome.CaptionButtonInset(this)));
         var grid = new Grid
         {
             Tag = "product-toolbar",
@@ -243,7 +232,7 @@ public sealed class MainWindow : Window
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
-                _captionInsetColumn,
+                new ColumnDefinition(new GridLength(Graphite.CaptionButtonsWidth)),
             },
             Height = Graphite.ToolbarHeight
         };
@@ -308,14 +297,15 @@ public sealed class MainWindow : Window
         Grid.SetColumn(signal, 4);
         grid.Children.Add(signal);
 
-        var hz = new Border
+        _hzIndicator = new Border
         {
+            Tag = "telemetry-rate",
             Padding = new Thickness(12, 0),
             VerticalAlignment = VerticalAlignment.Center,
             Child = _hzText
         };
-        Grid.SetColumn(hz, 5);
-        grid.Children.Add(hz);
+        Grid.SetColumn(_hzIndicator, 5);
+        grid.Children.Add(_hzIndicator);
 
         UpdateTitlebar();
         return grid;
@@ -607,6 +597,7 @@ public sealed class MainWindow : Window
         }
         _signalText.Text = _statusView.Label;
         _hzText.Text = _statusView.RateText;
+        _hzIndicator.IsVisible = !string.Equals(_statusView.RateText, "—", StringComparison.Ordinal);
         _signalDot.Background = BrushForTone(_statusView.Tone);
     }
 

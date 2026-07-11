@@ -77,6 +77,12 @@ internal static class Graphite
     public const int Space12 = 36;
 
     public const int ToolbarHeight = 44;
+    public const int CaptionButtonWidth = 46;
+    public const int CaptionButtonCount = 3;
+    public const int CaptionButtonSpacing = 2;
+    public const int CaptionButtonsWidth =
+        (CaptionButtonWidth * CaptionButtonCount) +
+        (CaptionButtonSpacing * (CaptionButtonCount - 1));
     public const int SidebarExpandedWidth = 184;
     public const int SidebarCollapsedWidth = 52;
 

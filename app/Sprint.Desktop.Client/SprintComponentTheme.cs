@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -27,6 +28,8 @@ internal sealed class SprintComponentTheme : Styles
         Resources[SprintThemeResourceKeys.ButtonTheme] = new ControlTheme(typeof(Button));
         Resources[SprintThemeResourceKeys.ButtonMinHeight] = 25d;
         Resources[SprintThemeResourceKeys.ButtonPadding] = new Thickness(14, 6);
+        Resources["CaptionButtonWidth"] = (double)Graphite.CaptionButtonWidth;
+        Resources["CaptionButtonHeight"] = (double)Graphite.ToolbarHeight;
 
         // Calm Precision control radius; content objects and overlays set their own.
         Resources["ControlCornerRadius"] = new CornerRadius(Graphite.RadiusMd);
@@ -71,6 +74,27 @@ internal sealed class SprintComponentTheme : Styles
         baseFont.Setters.Add(new Setter(TemplatedControl.FontFamilyProperty, new FontFamily(Graphite.FontStack)));
         baseFont.Setters.Add(new Setter(TemplatedControl.FontSizeProperty, 13d));
         Add(baseFont);
+
+        // Avalonia 12.0.5's pinned Fluent decoration template normally adds a title,
+        // fullscreen button, 2px button gaps, and a 30px caption row. Sprint already
+        // owns the title-bar content, so retain only three system-role caption buttons.
+        var hiddenNativeTitle = new Style(x => x
+            .OfType<WindowDrawnDecorations>()
+            .Template()
+            .Name("PART_TitleTextPanel"));
+        // IsVisible has a local TemplateBinding in the Fluent template. Opacity has
+        // no local value, so it suppresses only the rendering while Window.Title
+        // remains available to Windows, automation, and accessibility surfaces.
+        hiddenNativeTitle.Setters.Add(new Setter(Visual.OpacityProperty, 0d));
+        Add(hiddenNativeTitle);
+
+        var hiddenFullscreen = new Style(x => x
+            .OfType<WindowDrawnDecorations>()
+            .Template()
+            .Name("PART_FullScreenButton"));
+        hiddenFullscreen.Setters.Add(new Setter(Visual.IsVisibleProperty, false));
+        Add(hiddenFullscreen);
+
     }
 
     private void Set(string key, IBrush brush) => Resources[key] = brush;

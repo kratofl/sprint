@@ -110,8 +110,7 @@ public class HeadlessShellTests
                     }
 
                     Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
-                        button => new[] { "Minimize", "Maximize / restore", "Close" }
-                            .Contains(ToolTip.GetTip(button) as string, StringComparer.Ordinal));
+                        button => button.Tag is string tag && tag.StartsWith("caption:", StringComparison.Ordinal));
                 }
 
                 window.Close();
@@ -153,6 +152,7 @@ public class HeadlessShellTests
                 window.Show();
 
                 Assert.Equal(Avalonia.Controls.WindowDecorations.Full, window.WindowDecorations);
+                Assert.Equal("Sprint", window.Title);
                 Assert.True(window.ExtendClientAreaToDecorationsHint);
                 Assert.Equal(Graphite.ToolbarHeight, window.ExtendClientAreaTitleBarHeightHint);
 
@@ -171,9 +171,15 @@ public class HeadlessShellTests
                     .Single(button => Equals(button.Tag, "command-palette-trigger"));
                 Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(sidebarToggle));
                 Assert.Equal(WindowDecorationsElementRole.User, WindowDecorationProperties.GetElementRole(commandSearch));
+                Assert.Equal(
+                    new GridLength(Graphite.CaptionButtonsWidth),
+                    toolbar.ColumnDefinitions[^1].Width);
                 Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
-                    button => new[] { "Minimize", "Maximize / restore", "Close" }
-                        .Contains(ToolTip.GetTip(button) as string, StringComparer.Ordinal));
+                    button => button.Tag is string tag && tag.StartsWith("caption:", StringComparison.Ordinal));
+                var telemetryRate = window.GetVisualDescendants()
+                    .OfType<Border>()
+                    .Single(border => Equals(border.Tag, "telemetry-rate"));
+                Assert.False(telemetryRate.IsVisible);
 
                 window.Close();
             }, CancellationToken.None);
