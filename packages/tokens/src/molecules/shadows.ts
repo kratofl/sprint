@@ -6,7 +6,7 @@ export const shadows = {
 
   glow:         'none',
   'glow-teal':  'none',
-  window:       '0 4px 2px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.14)', // Layout: 0/4 b2 + 0/8 b16 @ #00000024
+  window:       '0 4px 2px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.14)',
 
   /** @deprecated compatibility alias; cards are flat. */
   card:  'none',

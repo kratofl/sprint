@@ -10,12 +10,9 @@ LICENSE
 Makefile
 turbo.json
 
-# Go
+# Other surfaces the web image doesn't need
 api/
 app/
-pkg/
-go.work
-go.work.sum
 bin/
 
 # Build output

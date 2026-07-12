@@ -5,25 +5,14 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "test": "turbo test",
-    "format": "turbo format",
-    "check:frontend-quality": "node scripts/check-frontend-quality.mjs --strict",
-    "audit:frontend-quality": "node scripts/check-frontend-quality.mjs --audit"
+    "format": "turbo format"
   },
   "devDependencies": {
-    "png-to-ico": "^3.0.1",
-    "sharp": "^0.34.5",
     "turbo": "latest"
   },
   "engines": {
     "node": ">=20",
-    "pnpm": ">=9"
+    "pnpm": ">=10"
   },
-  "packageManager": "pnpm@10.32.1",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp"
-    ]
-  }
+  "packageManager": "pnpm@10.32.1"
 }

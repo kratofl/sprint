@@ -1,91 +1,104 @@
 # CLAUDE.md — Sprint
 
-Full conventions live in @AGENTS.md (read it). Design contract: `docs/DESIGN.md`.
-This file is the always-loaded summary; AGENTS.md is the source of truth for
-everything not listed here.
+Neutral, full conventions live in @AGENTS.md (read it — it is the source of
+truth). This file is the always-loaded summary. Design contract: `docs/DESIGN.md`.
+**Migration parity checklist: `docs/MIGRATION_INVENTORY.md` (read before touching `app/`).**
 
 ## Critical for agents (read first)
 
-- **Windows / PowerShell only.** The `Makefile` shells out to PowerShell. Do NOT
-  use bash-isms, `NUL`, or POSIX-only redirects in commands the user will run.
-- **Do not touch `api/` or `web/`** unless explicitly asked. The active surface is
-  `app/` (Wails desktop) + `packages/`.
+- **The desktop app is mid-migration to .NET 10 / Avalonia.** `app/` is now the
+  `Sprint.Desktop.slnx` solution (Client / Api / Games / Tests / Contracts). The old
+  Go/Wails + React desktop has been removed. Track the work via PRD **issue #107**
+  and the parity matrix in `docs/MIGRATION_INVENTORY.md`.
+- **Windows / PowerShell only.** The `Makefile` shells out to PowerShell. A Bash
+  tool exists for POSIX scripts, but commands the user runs are PowerShell.
+- **`app/` (.NET desktop solution) + `api/` (.NET GraphQL server solution) +
+  `packages/` (web UI/tokens/types) + `web/`** are the surfaces. Do NOT change
+  `api/` or `web/` unless asked or a shared contract requires it. The desktop app is
+  the active focus. **The API was migrated Go → .NET 10 (ASP.NET Core +
+  HotChocolate GraphQL); it shares `app/Sprint.Contracts` with the desktop and
+  persists to Postgres (relational) + InfluxDB (telemetry).**
 - **Do not install tools/deps** unless asked.
-- **Design = `docs/DESIGN.md`** (the Figma flat system). Do NOT hardcode hex; use
-  token names from `packages/tokens`. The old "Graphite / IBM Plex" direction and
-  its values (`#070707`, `#4F9CFF`, `#F5483D`, IBM Plex, radius 10, 40px titlebar)
-  are **RETIRED** — ignore any Graphite/hex still referenced elsewhere.
+- **Design = `docs/DESIGN.md`** (the Graphite flat system: near-black surfaces
+  `#070707/#0D0D0D/#131313/#1B1B1B`, ember accent `#FF6A00`, `#4F9CFF`
+  informational, radius 10, 40px titlebar). **Typography = `Inter` (UI) +
+  `Space Grotesk` (display)** per the maintainer's `docs/Sprint.fig`; both fonts
+  are bundled under `Sprint.Desktop.Client/Assets/Fonts` and exposed via
+  `Graphite.FontStack` / `Graphite.DisplayFontStack`. `Graphite.cs` matches
+  `docs/DESIGN.md` — do NOT reintroduce the old `IBM Plex` framing or a "palette
+  contradiction" (that belonged to the `feat/figma-flat-ui-theme` branch). Keep
+  matching `docs/Sprint.fig` for full component fidelity; do NOT hardcode hex
+  outside `Graphite.cs`.
 
 ## Verify loop (run after edits)
 
-- **Type-check (primary gate, ~5s):** `pnpm --filter @sprint/desktop type-check`
-  Its `pretype-check` hook rebuilds `@sprint/ui` + `@sprint/types` to `dist/`
-  first, so cross-package edits ARE picked up. **Never** trust a bare `tsc` in
-  `app/frontend` — it reads stale `dist`.
-- **Frontend tests (~135, run in ~1s):** `pnpm --filter @sprint/desktop test`
-  (= `node --test "src/**/*.test.ts"`, no build needed; Node 22 strips TS
-  natively). NOTE: most of these are **source-text regex guards**, not render
-  tests — green means "string still present", not "UI works". They false-fail on
-  legitimate class/prop refactors; update the asserted string when you
-  intentionally change markup. Behavioral render tests are `*.test.tsx` (vitest).
-- **Package tests:** `pnpm --filter @sprint/ui test`, `pnpm --filter @sprint/tokens test`.
-- **Lint:** the `@sprint/desktop` lint is currently a no-op (eslint is not wired);
-  `type-check` is the real gate. Do not rely on `make lint` to catch UI issues.
-- **Go / Wails build needs the frontend bundle first** (`//go:embed frontend/dist`):
-  run `pnpm --filter @sprint/desktop build` before `cd app; go test ./...`,
-  `go build`, or `wails build`, or you get an opaque "no matching files" embed error.
+Two `.slnx` solutions: desktop at `app/Sprint.Desktop.slnx`, API at
+`api/Sprint.Api.slnx` (both migrated from `.sln`):
 
-Build-chain order: `@sprint/tokens` / `@sprint/ui` (to `dist/`) → `@sprint/desktop`
-frontend (`tsc -b && vite build`) → Go embed / `wails build`. The pnpm
-dev/build/type-check/test scripts run the dependency build as a pre-hook; use them
-rather than raw `tsc` / `vite`.
+- **Restore / build:** `dotnet restore app/Sprint.Desktop.slnx` →
+  `dotnet build app/Sprint.Desktop.slnx` (or `make lint-app` = build with
+  `-warnaserror`, the real gate).
+- **Desktop tests:** `make test-app` (= `dotnet test
+  app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj`) — **xunit** (migrated in
+  WS2: Microsoft.NET.Test.Sdk + xunit + xunit.runner.visualstudio).
+- **Run the app:** `make dev-app` (= `dotnet run --project
+  app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`).
+- **Publish:** `make build-app` → `app/build/bin`.
+- **API (.NET GraphQL):** `make test-api` (= `dotnet test
+  api/Sprint.Api.Tests/...`), `make lint-api` (build `-warnaserror`), `make dev-api`
+  (hot reload), `make schema` (re-export `web/schema.graphql`). The server needs
+  Postgres via `DATABASE_URL`; InfluxDB is optional locally (telemetry writes no-op
+  when `INFLUXDB_URL` is unset).
+- **SDK gotcha (verified 2026-06-29):** the .NET **10.0.301** SDK is installed,
+  but under the **x86** host `C:\Program Files (x86)\dotnet` — the x64 `dotnet` on
+  PATH has only a 6.0.5 runtime, so a bare `dotnet build` reports "no SDK found."
+  Use the x86 host explicitly, e.g.
+  `& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx`.
+  Build + `make test-app` are **verified green (0 warnings/0 errors, 4/4 tests)**.
+  No `global.json` pins the SDK yet (WS2). If the command sandbox hides the SDK,
+  run it unsandboxed in the worktree.
 
-## Wails gotchas
+## Solution layout & module boundaries
 
-1. **nil slice → JSON null.** Go bindings return empty slices as `null`, even
-   though the generated TS type says `Array`. Coalesce array results with `?? []`
-   before `.map` / `.filter` (see `app/frontend/src/lib/dash/api.ts`).
-2. **Stale `App.js` after regenerate.** When you change a Wails-exported Go method,
-   regenerate bindings (`cd app; wails generate module`), then **restart the Vite
-   dev server** (kill port 5173) — the regenerated
-   `wailsjs/go/main/App.js` is otherwise served stale (blank page + missing-export
-   error).
-3. **No `git stash` / `checkout` / `reset` in parallel edit agents** — concurrent
-   edit-subagents share one working tree.
+- `app/Sprint.Desktop.Api` — shared desktop/game contract (`TelemetryFrame`,
+  `ITelemetrySource`). **No** game paths, shared-memory names, binary layouts, or
+  Avalonia/UI types.
+- `app/Sprint.Games` — the ONLY place that knows game-specific paths/structs/
+  parsers. Adapters implement the `Api` contract. `DemoTelemetrySource` is the
+  dev/test adapter; Le Mans Ultimate is the first real target (currently a
+  **placeholder** — constants only, no reader).
+- `app/Sprint.Desktop.Client` — Avalonia shell, feature pages, dash render/editor,
+  runtime persistence (`DesktopRuntime.cs`), `Graphite.cs` design layer.
+- `app/Sprint.Desktop.Tests` — behavior tests at stable seams.
 
-## Wails type boundary
+## Known state / gotchas (see inventory for the full matrix)
 
-Shapes exist 3×: Go structs → generated `app/frontend/wailsjs/go/models.ts` →
-hand-written `app/frontend/src/lib/dash/types.ts`. The generated `models.ts` is
-**never imported** (intentionally) — do not import from it. `lib/dash/types.ts`
-is the frontend contract and `lib/dash/adapters.ts` is the only place Go JSON is
-mapped in. Changing a Go DTO field requires hand-editing **both** `types.ts` and
-the matching `adaptX` function — **type-check will NOT catch a missed field.**
-Casing: device fields are camelCased by the adapter; color/theme shapes keep Go's
-`R/G/B/A` names.
-
-## File organization (`app/frontend/src`)
-
-- `views/` — top-level pages wired into `App.tsx` nav (Home, Devices, DashEditor,
-  Settings, Help). NOTE: Engineer / Telemetry / Controls views exist but are not
-  currently mounted.
-- `components/<feature>/` — page-specific composites (e.g. `dash-editor/`,
-  `devices/`). Wails/hardware/page-specific behavior lives here.
-- `lib/` — framework-free helpers. `lib/dash` is imported via the barrel
-  **`@/lib/dash` (= `lib/dash.ts`, a file) — do NOT create `lib/dash/index.ts`**
-  (it would shadow the barrel).
-- `packages/ui` — reusable, app-agnostic visual controls (consumed as built
-  `dist`). `packages/tokens` — design tokens. `packages/types` — shared TS types.
-- **State:** local `useState` + per-feature controller hooks (e.g.
-  `useDashEditorController.ts`). No global store; only one Context (shell header).
-  Put pure/branching logic in a sibling `*State.ts` / `*ViewModel.ts` with a
-  co-located `*.test.ts` — keep `.tsx` presentational.
+- `MainWindow.cs` (~986 lines) is a **monolithic** composition root that rebuilds
+  the whole control tree per render — no DI, no MVVM/XAML view separation yet.
+  Prefer presenter/view-model seams; don't grow `MainWindow`.
+- Telemetry is **demo-only**; a single 500ms UI-thread `DispatcherTimer` (UI label
+  says "60Hz" — that's cosmetic, not real). Real adapters need a background reader
+  + cancellation off the UI thread.
+- The shared contract has **no** disconnected/stale/invalid/health state yet — UI
+  fakes a static "SIM DEMO / green dot". This blocks honest failure-state UI.
+- `System.Text.Json` silently drops unknown members, so `DashLayout` / `AppSettings`
+  / `CatalogDevice` **lose preset richness** (idlePage, alerts, per-widget config,
+  device offsets/bindings, `dashEditorUI`) on load → lossy round-trips until the
+  full shapes are modeled.
+- Hardware (VoCore/USBD480/WinUSB/RGB565), input/joystick binding, delta, capture,
+  updater, and the dash painter are **not yet ported** — Windows interop work.
 
 ## Pointers
 
-- @AGENTS.md — full command list, focus rules, conventions.
-- `docs/DESIGN.md` — UI/design contract (canonical; supersedes any Graphite refs).
-- `docs/figma-spec/SPEC.md` — decoded, agent-readable Figma spec.
-- `docs/ARCHITECTURE.md` — backend/runtime architecture decision record.
+- @AGENTS.md — full command list, focus rules, conventions (source of truth).
+- `docs/MIGRATION_INVENTORY.md` — parity matrix (old → .NET status → workstream →
+  priority → acceptance criteria) + per-workstream deferrals + open questions.
+- `docs/DESIGN.md` — Graphite design contract (canonical UI system).
+- `docs/Sprint.fig` — the maintainer's Figma file (visual source of truth for the
+  componentized UI).
+- `docs/SCREEN_PROTOCOLS.md` — WinUSB / VoCore / USBD480 / RGB565 protocol
+  reference (still valid domain knowledge; reimplement in .NET).
+- PRD **issue #107** — `gh issue view 107` (+ `--comments` for the design &
+  architecture addenda).
 - `handoffs/LATEST.md` — local-only recent-session context; read at session start
   if present (gitignored).

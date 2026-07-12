@@ -9,21 +9,21 @@ const appShellSource = readFileSync(new URL('./AppShell.tsx', import.meta.url), 
 const titlebarSource = readFileSync(new URL('./Titlebar.tsx', import.meta.url), 'utf8')
 const bodyTraySource = readFileSync(new URL('./BodyTray.tsx', import.meta.url), 'utf8')
 
-test('nav rail follows the Figma Navigation Item anatomy', () => {
+test('nav rail follows the Dash Studio grouped row scale', () => {
   assert.match(navRailSource, /NavRailSection/)
   assert.match(navRailSource, /w-full/)
-  // Figma Navigation Item: h32, pad 8×10, gap 10, radius pill, Inter Medium 13.
-  assert.match(navRailSource, /h-\[32px\]/)
+  assert.match(navRailSource, /h-\[34px\]/)
   assert.match(navRailSource, /gap-\[10px\]/)
-  assert.match(navRailSource, /px-\[10px\]/)
-  assert.match(navRailSource, /rounded-\[999px\]/)
-  assert.match(navRailSource, /text-\[13px\]/)
-  // Selected: bg Surface/Tile2 + accent text (no left accent bar in Figma).
+  assert.match(navRailSource, /px-\[12px\]/)
+  assert.match(navRailSource, /rounded-\[calc\(var\(--r\)-2px\)\]/)
+  assert.match(navRailSource, /text-\[12px\]/)
+  assert.match(navRailSource, /before:w-\[3px\]/)
   assert.match(navRailSource, /bg-\[var\(--panel3\)\]/)
   assert.match(navRailSource, /text-\[var\(--accent\)\]/)
   assert.match(navRailSource, /type="button"/)
   assert.match(navRailSource, /aria-current=\{isActive \? "page" : undefined\}/)
-  assert.doesNotMatch(navRailSource, /w-\[236px\]|IconChevron|before:w-\[3px\]/)
+  assert.doesNotMatch(navRailSource, /w-\[236px\]|IconChevron/)
+  assert.doesNotMatch(navRailSource, /focus-visible:ring-1|transition-\[width\]/)
 })
 
 test('nav rail supports unlabeled top groups and labeled device groups', () => {
@@ -51,15 +51,11 @@ test('app shell owns the desktop frame, collapsible sidebar, and body slot', () 
   assert.match(appShellSource, /fd tone-graphite/)
   assert.match(appShellSource, /sidebarCollapsed/)
   assert.match(appShellSource, /data-collapsed=\{sidebarCollapsed\}/)
-  // Figma sidebar: 220px expanded; collapsed rail.
-  assert.match(appShellSource, /w-\[72px\]/)
-  assert.match(appShellSource, /w-\[220px\]/)
-  // Figma sidebar is flush to the window with only its inner (right) corners rounded.
-  assert.match(appShellSource, /rounded-r-\[18px\]/)
+  assert.match(appShellSource, /w-\[62px\]/)
+  assert.match(appShellSource, /w-\[208px\]/)
+  assert.match(appShellSource, /titlebar:\s*React\.ReactNode/)
   assert.match(appShellSource, /sidebar:\s*React\.ReactNode/)
   assert.match(appShellSource, /children:\s*React\.ReactNode/)
-  // The single header now lives in the content column, not a full-width titlebar.
-  assert.doesNotMatch(appShellSource, /titlebar:\s*React\.ReactNode/)
   assert.doesNotMatch(appShellSource, /windowAPI|Wails|wailsjs/)
 })
 

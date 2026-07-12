@@ -7,20 +7,53 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 ## Scope
 
 - Stay inside this repository. Do not read, write, execute, or otherwise operate
-  outside the project folder unless the user explicitly asks.
+  outside the project folder unless the user explicitly asks. This includes the
+  user's home directory, global tool caches, shell profiles, credential stores,
+  browser profiles, and system configuration.
 - Do not install tools, CLIs, language servers, or other system-wide software.
-  Do not run `make setup` unless the user explicitly asks for Wails CLI setup.
+  Do not run `make setup` unless the user explicitly asks for full dependency
+  restore.
 - Only install project dependencies through the project's package managers when
-  needed for the apps, such as `pnpm install` or Go module commands.
+  needed for the apps, such as `pnpm install` or `dotnet restore`.
 - Prefer targeted fixes over broad refactors unless the task requires structural
   change.
 - Work with existing user changes. Do not revert unrelated edits or deleted
   files unless the user explicitly requests it.
 
+## Local Machine Safety
+
+- Treat the developer machine as out of scope. Do not inspect user home
+  directories, shell history, SSH keys, cloud credentials, password stores,
+  browser profiles, desktop files, downloads, or other personal/system
+  locations.
+- Do not read or print environment variables wholesale. Only inspect a specific
+  variable when it is directly required for the task.
+- Do not modify global shell profiles, PATH, registry settings, services,
+  scheduled tasks, startup entries, certificate stores, Docker daemon settings,
+  Git global config, npm/pnpm global config, or system package manager state
+  unless the user explicitly asks.
+- Do not run commands that contact production systems, deploy, publish packages,
+  rotate secrets, send emails/messages, charge money, or mutate external
+  services unless the user explicitly asks and the target is confirmed.
+- Do not run destructive filesystem commands outside this repository. Inside the
+  repo, prefer targeted deletes and explain them first unless they are routine
+  generated artifacts.
+- Do not use recursive deletes, force flags, or cleanup commands against
+  computed paths unless the resolved absolute path has been checked and is
+  inside the repo.
+- Do not start background daemons, local servers, watchers, or GUI applications
+  without telling the user what will run and how it will be stopped.
+- Do not download or execute scripts from the internet, including install
+  snippets such as `irm ... | iex`, `curl ... | sh`, or remote PowerShell,
+  unless the user explicitly approves that exact source and purpose.
+- Do not commit, push, create PRs, publish releases, or comment on GitHub unless
+  the user asks or the task explicitly involves GitHub collaboration.
+- If a command needs elevated privileges, network access, system locations, or
+  credentials, ask first and state the concrete reason.
+
 ## Default Focus
 
-- Prioritize work in `app/`, especially the Wails desktop app and its embedded
-  React frontend.
+- Prioritize work in `app/`, especially the Avalonia desktop app.
 - Only change `api/` or `web/` when the user asks, or when a shared contract
   requires corresponding consumer updates.
 - When shared DTOs, shared TypeScript types, shared UI, or shared tokens change,
@@ -28,35 +61,37 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 
 ## Repo Layout
 
-- `app/`: Wails desktop app, Go backend plus embedded React frontend.
-- `app/frontend/`: Vite React app published as `@sprint/desktop`.
-- `app/internal/core/dashboard/`: dashboard manager, layout, painter, widgets,
-  alerts, and embedded fonts for wheel display rendering.
-- `api/`: Go API server and WebSocket relay.
+- `app/`: .NET/Avalonia desktop app and desktop presets.
+- `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
+  Postgres (relational) and InfluxDB (time-series telemetry).
 - `web/`: Next.js frontend.
-- `pkg/`: shared Go packages, including DTOs, game adapters, and shared memory.
 - `packages/types/`: shared TypeScript contracts.
-- `packages/tokens/`: design tokens (Figma flat system; see `docs/DESIGN.md`).
-- `packages/ui/`: reusable token-backed React components.
+- `packages/tokens/`: Graphite design tokens.
+- `packages/ui/`: reusable token-backed React components for web surfaces.
 
 ## Source Of Truth
 
-- `pkg/dto`: shared telemetry and engineer data contracts.
-- `pkg/games`: game adapter interfaces and implementations.
-- `packages/types`: shared TypeScript contracts.
+- `app/Sprint.Desktop.Api`: telemetry + engineer data contracts (`TelemetryFrame`, `ITelemetrySource`).
+- `app/Sprint.Contracts`: shared cloud DTOs (auth/invite/session/setup/layout) used by
+  both the API server and the desktop client; references `Sprint.Desktop.Api`.
+- `app/Sprint.Games`: game adapter implementations against the desktop contract.
+- `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
 - `packages/tokens`: design tokens and theme primitives.
 - `packages/ui`: reusable UI components.
-- `api/internal/store`: API persistence ownership.
-- `app/internal/core`: desktop orchestration and Wails-facing runtime services.
-- `app/internal/hardware`: VoCore, USBD480, RGB565, and WinUSB hardware paths.
+- `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
+  persistence ownership (Postgres relational; InfluxDB time-series).
+- `web/schema.graphql`: committed GraphQL schema; source for web codegen (`make schema`).
+- `app/Sprint.Desktop.Client/DesktopRuntime.cs`: desktop preset loading and local persistence.
 
 ## Platform
 
 - This repo is Windows-first. The `Makefile` runs targets through PowerShell.
-- Desktop hardware paths use WinUSB and only fully work on Windows.
+- Desktop hardware integrations are Windows-first.
 - Use PowerShell syntax for shell examples and local automation in this repo.
-- Do not set `GOCACHE` to a repo-local path such as `.gocache/`. Use the normal
-  user-level Go cache.
+- Do not set NuGet/dotnet caches to repo-local paths. Use the normal user-level caches.
+- If `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and reports no
+  SDKs, use the installed x86 SDK at
+  `C:\Program Files (x86)\dotnet\dotnet.exe` for desktop test/build commands.
 
 ## Commands
 
@@ -64,115 +99,64 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - List targets: `make help`
 - Start API: `make dev-api`
 - Start web: `make dev-web`
-- Start desktop: `cd app; wails dev`
+- Start desktop: `make dev-app` (= `dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`)
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
-- Test API and shared Go: `make test`
+- Test API and desktop: `make test`
 - Test API only: `make test-api`
-- Test shared Go only: `make test-pkg`
-- Type-check desktop frontend: `pnpm --filter @sprint/desktop type-check`
+- Test desktop only: `make test-app`
+- Build desktop solution: `dotnet build app/Sprint.Desktop.slnx`
+- Build API solution: `dotnet build api/Sprint.Api.slnx`
+- Export GraphQL schema: `make schema`
 - Type-check shared UI: `pnpm --filter @sprint/ui type-check`
-- Test desktop frontend: `pnpm --filter @sprint/desktop test`
 - Test shared UI: `pnpm --filter @sprint/ui test`
 - Test tokens: `pnpm --filter @sprint/tokens test`
-- Lint: `make lint` runs `go vet` on api/pkg. The `@sprint/desktop` JS/TS lint is
-  currently a no-op (eslint is not wired); `type-check` is the real frontend gate.
-- Format: `make fmt` formats Go only; JS/TS formatting is not enforced.
+- Lint: `make lint`
+- Format: `make fmt`
 
 Run the smallest relevant checks for your change set. Do not claim checks you
 did not run.
 
-`cd app; go test ./...`, `make lint-app`, and Wails builds require
-`app/frontend/dist` to exist because the Go app embeds the built frontend. Build
-the desktop frontend first with `pnpm --filter @sprint/desktop build` when
-needed.
-
-Run the whole desktop frontend test suite with `pnpm --filter @sprint/desktop
-test` (= `node --test "src/**/*.test.ts"`). These need no build and no
-`@sprint/ui` rebuild. Most `app/frontend/src/**/*.test.ts` files are
-**source-assertion guards**: they `readFileSync` a component and regex its text,
-so a green run means "expected source pattern present", not "the UI renders or
-behaves". They will false-fail on legitimate markup/class/prop refactors — when
-you intentionally change markup, update the asserted string. Behavioral render
-tests are `*.test.tsx` (vitest); add one when you add or change a component's
-behavior.
+`make lint-app` builds the Avalonia desktop project with warnings as errors.
 
 ## Browser And Desktop Checks
 
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
-- Start the dev server with `cd app; wails dev` (or `pnpm --filter
-  @sprint/desktop dev`), then open `http://localhost:5173/`.
-- Caveat: at bare `localhost:5173` there is no `window.go` mock, so every
-  backend-backed screen (telemetry, dashboards, devices, settings) shows
-  empty/error states — `runDesktopCall` rejects when `window.go.main.App` is
-  absent. For visual verification of data-driven screens you need a full
-  `wails dev` run on Windows.
+- Browser-safe desktop checks no longer apply to `app/`; use native Avalonia
+  build/run checks for the desktop app.
+- After visual, layout, Graphite, or Avalonia shell changes in
+  `app/Sprint.Desktop.Client`, run the desktop visual smoke tests before
+  finishing:
+  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter VisualSmokeTests`.
+  If that filter is not implemented yet, run `make test-app` and call out the
+  missing visual harness. Inspect generated PNG artifacts under
+  `app/Sprint.Desktop.Tests/artifacts/visual/` on failures before editing again.
 
 ## Architecture Notes
 
-- The unified telemetry DTO is the spine of the app. Game-specific data is
-  mapped into `pkg/dto` at the edge; downstream desktop, hardware, engineer,
-  sync, API, and web consumers should depend on the shared contract.
-- To add a game adapter, implement `pkg/games.GameAdapter`, map raw data to
-  `pkg/dto`, then register the adapter in `app/internal/core/core.go`.
-- `app/internal/core.Coordinator` wires subsystems together. Keep business logic
-  in focused services instead of growing the coordinator.
-- Wails exported methods live on `App` in `app/app*.go`. Keep bridge methods
-  thin and use generated bindings from the frontend.
-- Desktop event streams should avoid blocking telemetry reads. Prefer buffered
-  latest-value handoff patterns already used by the core runtime.
-
-## Frontend Wails Bridge
-
-- **nil slice → JSON null.** Go bindings serialize empty slices as `null`, even
-  though the generated TS type says `Array`. Always coalesce array results with
-  `?? []` before `.map`/`.filter`. See `app/frontend/src/lib/dash/api.ts`.
-- **Regenerate then restart.** After changing a Wails-exported `App` method, run
-  `cd app; wails generate module`, then restart the Vite dev server (kill port
-  5173). The regenerated `wailsjs/go/main/App.js` is otherwise served stale,
-  giving a blank page and a missing-export error.
-- **Type boundary (3 parallel definitions).** Shapes exist as Go structs → the
-  generated `app/frontend/wailsjs/go/models.ts` → the hand-written
-  `app/frontend/src/lib/dash/types.ts`. The generated `models.ts` is
-  intentionally **never imported** — do not import from it. `types.ts` is the
-  frontend contract; `lib/dash/adapters.ts` is the only place Go JSON is mapped
-  in. A changed Go DTO field requires hand-editing **both** `types.ts` and the
-  matching `adaptX` function — type-check will NOT flag a missed field. Device
-  fields are camelCased by the adapter; color/theme shapes keep Go's `R/G/B/A`.
-
-## Frontend Code Structure
-
-- `app/frontend/src/views/` — page roots wired into `App.tsx` nav (Home, Devices,
-  DashEditor, Settings, Help). Engineer/Telemetry/Controls views exist but are
-  not currently mounted.
-- `app/frontend/src/components/<feature>/` — feature composites (`dash-editor/`,
-  `devices/`, `shell/`).
-- `app/frontend/src/lib/` — framework-free helpers. `lib/dash` is imported via
-  the barrel `@/lib/dash` (= the file `lib/dash.ts`) — do not create
-  `lib/dash/index.ts`, it would shadow the barrel.
-- State is local `useState` plus per-feature controller hooks
-  (`useDashEditorController.ts`); there is no global store and only one Context
-  (shell header). Put pure/branching logic in a sibling `*State.ts` /
-  `*ViewModel.ts` module with a co-located `*.test.ts`, and keep `.tsx` files
-  presentational. Extend this pattern rather than inflating components.
-- For frontend or UX changes, follow `docs/FRONTEND_QUALITY.md` before editing:
-  write a short change contract, preserve existing behavior, reuse shared UI and
-  tokens, and run the frontend quality gate.
+- The unified telemetry contract is the spine of the desktop app. Game-specific
+  data is mapped into `Sprint.Desktop.Api`'s `TelemetryFrame` at the edge;
+  downstream dash render, hardware, engineer, and UI consumers depend on that
+  shared contract. Web surfaces use `packages/types`.
+- For the desktop app, add a game by implementing a telemetry source in
+  `app/Sprint.Games` against the `Sprint.Desktop.Api` contract, then registering
+  it via `app/Sprint.Desktop.Client/DesktopRuntime.cs` or a focused service next
+  to it.
+- Keep desktop business logic in focused C# services instead of growing
+  `app/Sprint.Desktop.Client/MainWindow.cs`.
 
 ## UI Rules
 
-- `docs/DESIGN.md` (the Figma flat system) is the canonical product UI contract.
-  Do not hardcode hex — use token names from `packages/tokens`.
-- The previous "Graphite / IBM Plex" direction and its values (`#070707`,
-  `#4F9CFF`, `#F5483D`, IBM Plex, radius 10, 40px titlebar) are **RETIRED** — see
-  the supersede note at the top of `docs/DESIGN.md`. Do not revive them, and do
-  not revive old glass, glow, gradient, or neumorphic directions.
+- Graphite from `docs/DESIGN.md` is the canonical product UI system.
+- Ember orange `#FF6A00` is the primary action, active, focus, and selection
+  color.
+- Blue `#4F9CFF` is informational, advanced, and comparison.
+- Use the Graphite surface stack and 1px borders for depth. Do not revive old
+  glass, glow, gradient, or neumorphic directions.
 - Reuse tokens from `packages/tokens` instead of inventing theme values.
-- Reuse controls from `packages/ui`; local desktop components are only for
-  Wails, hardware, or page-specific runtime behavior.
-- Desktop pages should compose shared shell and control primitives. If a visual
-  control is reusable, put it in `packages/ui`.
+- Keep the Avalonia desktop shell aligned with the Graphite tokens in
+  `app/Sprint.Desktop.Client/Graphite.cs` and `docs/DESIGN.md`.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
 
@@ -180,11 +164,9 @@ behavior.
 
 - Repository overview and current architecture: `README.md`
 - Design system and UI implementation contract: `docs/DESIGN.md`
-- Decoded, agent-readable Figma spec: `docs/figma-spec/SPEC.md`
-- Backend/runtime architecture decision record: `docs/ARCHITECTURE.md`
 - Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
 - Release notes: `docs/RELEASE.md`
-- Package-local notes: `api/README.md`, `pkg/README.md`, and package
+- Package-local notes: `app/README.md`, `api/README.md`, and package
   `README.md` files when present.
 
 Tool-specific companion files such as `CLAUDE.md` may exist, but this file is

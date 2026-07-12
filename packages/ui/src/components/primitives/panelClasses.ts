@@ -1,11 +1,8 @@
 export const overlayBackdropClassName =
   "fixed inset-0 isolate z-50 bg-black/72 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
 
-// Overlay surface (Dialog/Popover/Sheet/menus): Surface/Panel #141414,
-// 1px Border/Default, radius xl (18). Flat — the elevation shadow token resolves
-// to `none` in this design, so overlays stay borderless-flat like the rest.
 export const overlayPanelClassName =
-  "border border-[var(--border)] bg-[var(--panel)] rounded-xl shadow-none"
+  "border border-[var(--border)] bg-[var(--panel)] rounded-panel shadow-none"
 
 export const overlayTitleClassName =
   "font-inter text-[13px] font-bold text-[var(--text)]"

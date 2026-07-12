@@ -18,19 +18,19 @@
   },
   "dependencies": {
     "@sprint/types": "workspace:*",
-    "@tabler/icons-react": "^3.40.0",
+    "@tabler/icons-react": "^3.44.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.21.0",
-    "radix-ui": "^1.4.3",
+    "lucide-react": "^1.23.0",
+    "radix-ui": "^1.6.1",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^26.1.0",
     "@types/react": "^19.2.16",
     "react": "^19.2.7",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.2"
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "react": "^19.2.7"

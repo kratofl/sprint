@@ -2,10 +2,10 @@ export { Button } from './Button'
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 
 export { IconButton } from './IconButton'
-export type { IconButtonProps, IconButtonTone } from './IconButton'
+export type { IconButtonProps } from './IconButton'
 
-export { Badge, badgeVariants } from './Badge'
-export type { BadgeProps, BadgeVariant, BadgeColor } from './Badge'
+export { Badge } from './Badge'
+export type { BadgeProps, BadgeVariant } from './Badge'
 
 export { Card, CardHeader, CardTitle, CardDescription, CardAction, CardContent, CardFooter } from './Card'
 export type {
@@ -18,15 +18,9 @@ export type {
   CardFooterProps,
 } from './Card'
 
-export { Input, Field } from './input'
-export type { InputProps, FieldProps } from './input'
+export { Input } from './input'
 export { SegmentedControl } from './SegmentedControl'
-export type {
-  SegmentedControlOption,
-  SegmentedControlProps,
-  SegmentedControlTone,
-  SegmentedControlVariant,
-} from './SegmentedControl'
+export type { SegmentedControlOption, SegmentedControlProps } from './SegmentedControl'
 export { Segments } from './Segments'
 export type { SegmentsProps } from './Segments'
 export { Stepper } from './Stepper'

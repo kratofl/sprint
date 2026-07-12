@@ -20,12 +20,6 @@ test('overlay panel class keeps the shared flat chrome', () => {
   assert.match(overlayPanelClassName, /\bshadow-none\b/)
 })
 
-test('overlay panel uses the xl (18) panel/overlay radius role', () => {
-  // Overlays are panel-role surfaces → radius xl (18), not the legacy --r calc.
-  assert.match(overlayPanelClassName, /\brounded-xl\b/)
-  assert.doesNotMatch(overlayPanelClassName, /calc\(var\(--r\)/)
-})
-
 test('popover and sheet content build on the same overlay panel contract', () => {
   assert.match(overlayPopoverContentClassName, /origin-\(--radix-popover-content-transform-origin\)/)
   assert.match(overlayPopoverContentClassName, /bg-\[var\(--panel\)\]/)

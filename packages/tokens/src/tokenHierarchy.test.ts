@@ -26,27 +26,22 @@ test('primitive color groups expose Figma-style 50-950 ramps', () => {
   }
 })
 
-test('primitive tokens expose exact Figma anchors', () => {
+test('primitive tokens expose exact Dash Studio anchors', () => {
   assert.equal(primitive.color.orange[500], '#FF6A00')
   assert.equal(primitive.color.green[500], '#16B566')
   assert.equal(primitive.color.red[500], '#F02744')
   assert.equal(primitive.color.yellow[500], '#E0A30C')
   assert.equal(primitive.color.blue[500], '#1F7FE6')
-  assert.equal(primitive.color.purple[500], '#8F76FF')
-  assert.equal(primitive.color.neutral[50], '#F6F6F6')
+  assert.equal(primitive.color.purple[500], '#A06BFF')
   assert.equal(primitive.color.neutral[900], '#141414')
   assert.equal(primitive.color.neutral[925], '#0F0F0F')
-  assert.equal(primitive.color.neutral[990], '#050505')
-  assert.equal(primitive.radius.xxs, '4px')
-  assert.equal(primitive.radius.xs, '6px')
-  assert.equal(primitive.radius.sm, '8px')
-  assert.equal(primitive.radius.md, '12px')
-  assert.equal(primitive.radius.lg, '16px')
-  assert.equal(primitive.radius.xl, '18px')
-  assert.equal(primitive.radius.pill, '999px')
-  assert.equal(primitive.space[1], '2px')
-  assert.equal(primitive.space[7], '16px')
-  assert.equal(primitive.space[12], '36px')
+  assert.equal(primitive.color.neutral[950], '#0A0A0A')
+  assert.equal(primitive.radius.panel, '14px')
+  assert.equal(primitive.radius.card, '10px')
+  assert.equal(primitive.radius.alert, '10px')
+  assert.equal(primitive.radius.control, '8px')
+  assert.equal(primitive.radius.icon, '6px')
+  assert.equal(primitive.radius.badge, '4px')
 })
 
 test('public token entrypoint exports Dash Studio token layers', () => {
@@ -61,15 +56,15 @@ test('public token entrypoint exports Dash Studio token layers', () => {
 
 test('Graphite token source exposes the canonical product contract', () => {
   assert.deepEqual(publicTokens.graphiteTokens.color, {
-    bg: '#0F0F0F',
-    panel: '#141414',
-    panel2: '#1F1F1F',
-    panel3: '#2E2E2E',
+    bg: '#0A0A0A',
+    panel: '#0F0F0F',
+    panel2: '#141414',
+    panel3: '#1A1A1A',
     line: '#2E2E2E',
     line2: '#424242',
     text: '#F6F6F6',
-    text2: '#A0A0A0',
-    text3: '#7A7A7A',
+    text2: '#7A7A7A',
+    text3: '#5A5A5A',
     accent: '#FF6A00',
   })
 
@@ -78,16 +73,23 @@ test('Graphite token source exposes the canonical product contract', () => {
     red: '#F02744',
     yellow: '#E0A30C',
     blue: '#1F7FE6',
-    purple: '#8F76FF',
+    purple: '#A06BFF',
   })
 
   assert.deepEqual(publicTokens.graphiteTokens.radius, {
-    radius: '18px',
-    r: '18px',
-    panel: '18px',
-    alert: '12px',
-    control: '18px',
-    tile: '12px',
+    radius: '10px',
+    r: '10px',
+    xs: '4px',
+    sm: '6px',
+    md: '8px',
+    lg: '10px',
+    xl: '14px',
+    panel: '14px',
+    card: '10px',
+    alert: '10px',
+    control: '8px',
+    tile: '10px',
+    icon: '6px',
     badge: '4px',
     pill: '999px',
   })
@@ -104,39 +106,31 @@ test('Graphite token source exposes the canonical product contract', () => {
 })
 
 test('global CSS exposes Graphite public variables and aliases', () => {
-  assert.equal(cssVar('--bg'), 'var(--primitive-color-neutral-925)')
-  assert.equal(cssVar('--panel'), 'var(--primitive-color-neutral-900)')
-  assert.equal(cssVar('--panel2'), 'var(--primitive-color-neutral-800)')
-  assert.equal(cssVar('--panel3'), 'var(--primitive-color-neutral-700)')
-  assert.equal(cssVar('--line'), 'var(--primitive-color-neutral-700)')
-  assert.equal(cssVar('--line2'), 'var(--primitive-color-neutral-600)')
-  assert.equal(cssVar('--text'), 'var(--primitive-color-neutral-50)')
-  assert.equal(cssVar('--text2'), 'var(--primitive-color-neutral-300)')
-  assert.equal(cssVar('--text3'), 'var(--primitive-color-neutral-400)')
-  assert.equal(cssVar('--accent'), 'var(--primitive-color-orange-500)')
-  assert.equal(cssVar('--green'), 'var(--primitive-color-green-500)')
-  assert.equal(cssVar('--red'), 'var(--primitive-color-red-500)')
-  assert.equal(cssVar('--yellow'), 'var(--primitive-color-yellow-500)')
-  assert.equal(cssVar('--blue'), 'var(--primitive-color-blue-500)')
-  assert.equal(cssVar('--purple'), 'var(--primitive-color-purple-500)')
+  assert.equal(cssVar('--bg'), '#0A0A0A')
+  assert.equal(cssVar('--panel'), '#0F0F0F')
+  assert.equal(cssVar('--panel2'), '#141414')
+  assert.equal(cssVar('--panel3'), '#1A1A1A')
+  assert.equal(cssVar('--line'), '#2E2E2E')
+  assert.equal(cssVar('--line2'), '#424242')
+  assert.equal(cssVar('--text'), '#F6F6F6')
+  assert.equal(cssVar('--text2'), '#7A7A7A')
+  assert.equal(cssVar('--text3'), '#5A5A5A')
+  assert.equal(cssVar('--accent'), '#FF6A00')
+  assert.equal(cssVar('--green'), '#16B566')
+  assert.equal(cssVar('--red'), '#F02744')
+  assert.equal(cssVar('--yellow'), '#E0A30C')
+  assert.equal(cssVar('--blue'), '#1F7FE6')
+  assert.equal(cssVar('--purple'), '#A06BFF')
 
-  // Resolved primitive anchors match the Figma hex.
-  assert.equal(cssVar('--primitive-color-neutral-925'), '#0F0F0F')
-  assert.equal(cssVar('--primitive-color-neutral-900'), '#141414')
-  assert.equal(cssVar('--primitive-color-orange-500'), '#FF6A00')
-  assert.equal(cssVar('--primitive-color-red-500'), '#F02744')
-  assert.equal(cssVar('--primitive-color-blue-500'), '#1F7FE6')
-
-  assert.equal(cssVar('--radius'), '18px')
+  assert.equal(cssVar('--radius'), '10px')
   assert.equal(cssVar('--r'), 'var(--radius)')
   assert.equal(cssVar('--radius-panel'), 'var(--primitive-radius-panel)')
+  assert.equal(cssVar('--primitive-radius-card'), '10px')
   assert.equal(cssVar('--radius-alert'), 'var(--primitive-radius-alert)')
   assert.equal(cssVar('--radius-control'), 'var(--primitive-radius-control)')
   assert.equal(cssVar('--radius-tile'), 'var(--primitive-radius-tile)')
   assert.equal(cssVar('--radius-badge'), 'var(--primitive-radius-badge)')
   assert.equal(cssVar('--radius-pill'), 'var(--primitive-radius-pill)')
-  assert.equal(cssVar('--primitive-radius-xl'), '18px')
-  assert.equal(cssVar('--primitive-radius-md'), '12px')
 
   assert.equal(cssVar('--motion-duration-instant'), '0ms')
   assert.equal(cssVar('--motion-duration-fast'), '120ms')
@@ -153,19 +147,6 @@ test('global CSS exposes Graphite public variables and aliases', () => {
   assert.equal(cssVar('--ease-in'), 'var(--motion-ease-in)')
 })
 
-test('global CSS exposes the self-hosted Figma font stacks', () => {
-  assert.equal(cssVar('--font-display'), "'Space Grotesk', system-ui, sans-serif")
-  assert.equal(cssVar('--font-wordmark'), "'Space Grotesk', system-ui, sans-serif")
-  assert.equal(cssVar('--font-body'), "'Inter', system-ui, sans-serif")
-  assert.equal(cssVar('--font-ui'), "'Inter', system-ui, sans-serif")
-  assert.equal(cssVar('--font-numeric'), "'Saira', system-ui, sans-serif")
-  assert.equal(cssVar('--font-saira-sc'), "'Saira Semi Condensed', system-ui, sans-serif")
-  assert.equal(cssVar('--font-incidental'), "'Sora', system-ui, sans-serif")
-  assert.match(globalsSource, /font-family:\s*'Inter', system-ui, sans-serif;\s*\n\s*font-size:\s*13px;/)
-  assert.doesNotMatch(globalsSource, /IBM Plex Sans/)
-  assert.doesNotMatch(globalsSource, /fonts\.googleapis\.com/)
-})
-
 test('global CSS stays limited to token variables and token-backed utilities', () => {
   assert.doesNotMatch(globalsSource, /@layer\s+components\b/)
   assert.doesNotMatch(globalsSource, /\.fd\.tone-slate\b/)
@@ -178,65 +159,46 @@ test('global CSS stays limited to token variables and token-backed utilities', (
 test('global component CSS variables align with component token source', () => {
   assert.equal(publicTokens.componentTokens.shell.window.border, '#404040')
   assert.equal(cssVar('--component-shell-window-border'), '#404040')
-  assert.equal(cssVar('--component-shell-titlebar-border'), 'var(--line)')
+  assert.equal(cssVar('--component-shell-titlebar-border'), 'var(--line2)')
   assert.equal(cssVar('--component-shell-command-button-hover-bg'), 'var(--panel3)')
-  assert.equal(cssVar('--component-shell-command-button-pressed-bg'), 'var(--primitive-color-neutral-850)')
-  assert.equal(cssVar('--component-shell-nav-border'), 'var(--line)')
+  assert.equal(cssVar('--component-shell-command-button-pressed-bg'), 'var(--panel)')
+  assert.equal(cssVar('--component-shell-nav-border'), 'var(--line2)')
   assert.equal(cssVar('--component-shell-nav-item-hover-bg'), 'var(--panel3)')
-  assert.equal(cssVar('--component-shell-page-header-bg'), 'var(--panel)')
-  assert.equal(cssVar('--component-shell-page-header-border'), 'var(--line)')
-  assert.equal(cssVar('--component-nav-rail-bg'), 'var(--panel)')
+  assert.equal(cssVar('--component-shell-page-header-bg'), 'var(--panel2)')
+  assert.equal(cssVar('--component-shell-page-header-border'), 'var(--line2)')
+  assert.equal(cssVar('--component-nav-rail-bg'), 'var(--bg)')
 
-  assert.equal(cssVar('--component-dash-editor-well'), 'var(--bg-deep)')
+  assert.equal(cssVar('--component-dash-editor-well'), 'var(--bg)')
+  assert.equal(cssVar('--component-dash-editor-well-top'), 'var(--bg)')
   assert.equal(cssVar('--component-dash-editor-rail'), 'var(--panel)')
   assert.equal(cssVar('--component-dash-editor-rail-head'), 'var(--panel2)')
-  assert.equal(cssVar('--component-dash-editor-inset'), 'var(--bg-deep)')
-  assert.equal(cssVar('--component-dash-editor-seam'), 'var(--bg-deep)')
+  assert.equal(cssVar('--component-dash-editor-inset'), 'var(--bg)')
+  assert.equal(cssVar('--component-dash-editor-seam'), 'var(--bg)')
 
-  assert.equal(publicTokens.componentTokens.shell.titleBar.border, publicTokens.graphiteTokens.color.line)
-  assert.equal(publicTokens.componentTokens.shell.nav.border, publicTokens.graphiteTokens.color.line)
-  assert.equal(publicTokens.componentTokens.shell.pageHeader.bg, publicTokens.graphiteTokens.color.panel)
-  assert.equal(publicTokens.componentTokens.shell.pageHeader.border, publicTokens.graphiteTokens.color.line)
-  assert.equal(publicTokens.componentTokens.nav.railBg, publicTokens.graphiteTokens.color.panel)
-  assert.equal(publicTokens.componentTokens.dashEditor.well, '#050505') // canvas = Surface/Screen
+  assert.equal(publicTokens.componentTokens.shell.titleBar.border, publicTokens.graphiteTokens.color.line2)
+  assert.equal(publicTokens.componentTokens.shell.commandButton.bgHover, publicTokens.graphiteTokens.color.panel3)
+  assert.equal(publicTokens.componentTokens.shell.commandButton.bgPressed, publicTokens.graphiteTokens.color.panel)
+  assert.equal(publicTokens.componentTokens.shell.nav.border, publicTokens.graphiteTokens.color.line2)
+  assert.equal(publicTokens.componentTokens.shell.nav.itemBgHover, publicTokens.graphiteTokens.color.panel3)
+  assert.equal(publicTokens.componentTokens.shell.pageHeader.bg, publicTokens.graphiteTokens.color.panel2)
+  assert.equal(publicTokens.componentTokens.shell.pageHeader.border, publicTokens.graphiteTokens.color.line2)
+  assert.equal(publicTokens.componentTokens.nav.railBg, publicTokens.graphiteTokens.color.bg)
+  assert.equal(publicTokens.componentTokens.dashEditor.well, publicTokens.graphiteTokens.color.bg)
+  assert.equal(publicTokens.componentTokens.dashEditor.wellTop, publicTokens.graphiteTokens.color.bg)
   assert.equal(publicTokens.componentTokens.dashEditor.rail, publicTokens.graphiteTokens.color.panel)
   assert.equal(publicTokens.componentTokens.dashEditor.railHead, publicTokens.graphiteTokens.color.panel2)
+  assert.equal(publicTokens.componentTokens.dashEditor.inset, publicTokens.graphiteTokens.color.bg)
+  assert.equal(publicTokens.componentTokens.dashEditor.seam, publicTokens.graphiteTokens.color.bg)
 })
 
-test('button component tokens match the Figma button recipe', () => {
-  assert.equal(publicTokens.componentTokens.button.primary.bg, '#FF6A00')
-  assert.equal(publicTokens.componentTokens.button.primary.text, '#141414')
-  assert.equal(publicTokens.componentTokens.button.secondary.bg, '#1F1F1F')
-  assert.equal(publicTokens.componentTokens.button.secondary.text, '#F6F6F6')
-  assert.equal(publicTokens.componentTokens.button.destructive.bg, '#1F1F1F')
-  assert.equal(publicTokens.componentTokens.button.destructive.text, '#F02744')
-  assert.equal(publicTokens.componentTokens.button.disabled.bg, '#141414')
-  assert.equal(publicTokens.componentTokens.button.disabled.text, '#7A7A7A')
-  assert.equal(publicTokens.componentTokens.button.radius, '18px')
-  assert.equal(publicTokens.componentTokens.button.paddingX, '16px')
-  assert.equal(publicTokens.componentTokens.button.paddingY, '6px')
-  assert.equal(publicTokens.componentTokens.button.gap, '4px')
+test('global semantic platform CSS variables align with semantic token source', () => {
+  assert.equal(publicTokens.semanticTokens.color.platform.winui.controlHover, publicTokens.graphiteTokens.color.panel3)
+  assert.equal(publicTokens.semanticTokens.color.platform.winui.controlPressed, publicTokens.graphiteTokens.color.panel)
+  assert.equal(cssVar('--semantic-color-platform-winui-control-hover'), 'var(--panel3)')
+  assert.equal(cssVar('--semantic-color-platform-winui-control-pressed'), 'var(--panel)')
 })
 
-test('badge component tokens use the family {500 icon / 700 border / 950 bg} trios', () => {
-  assert.equal(publicTokens.componentTokens.badge.danger.text, '#F02744')
-  assert.equal(publicTokens.componentTokens.badge.danger.border, '#A4172C')
-  assert.equal(publicTokens.componentTokens.badge.danger.bg, '#3A0A10')
-  assert.equal(publicTokens.componentTokens.badge.success.text, '#16B566')
-  assert.equal(publicTokens.componentTokens.badge.success.border, '#0E7445')
-  assert.equal(publicTokens.componentTokens.badge.success.bg, '#05281A')
-  assert.equal(publicTokens.componentTokens.badge.neutral.text, '#A0A0A0')
-  assert.equal(publicTokens.componentTokens.badge.neutral.border, '#2E2E2E')
-  assert.equal(publicTokens.componentTokens.badge.neutral.bg, '#141414')
-})
-
-test('toast component tokens map to Surface/Tile + Text Default/Muted', () => {
-  assert.equal(publicTokens.componentTokens.toast.bg, '#1F1F1F')
-  assert.equal(publicTokens.componentTokens.toast.title, '#F6F6F6')
-  assert.equal(publicTokens.componentTokens.toast.message, '#A0A0A0')
-})
-
-test('compatibility gradient exports are flat Figma fills', () => {
+test('compatibility gradient exports are flat Graphite fills', () => {
   const compatibilityFills = [
     publicTokens.gradientAccent,
     publicTokens.gradientAccentSubtle,
@@ -251,43 +213,46 @@ test('compatibility gradient exports are flat Figma fills', () => {
   }
 
   assert.equal(publicTokens.gradientAccent, publicTokens.graphiteTokens.color.accent)
-  assert.equal(publicTokens.gradientAccentSubtle, '#FF6A001A')
+  assert.equal(publicTokens.gradientAccentSubtle, 'rgba(255,106,0,.13)')
   assert.equal(publicTokens.gradientTeal, publicTokens.graphiteTokens.color.panel)
   assert.equal(publicTokens.gradientTealSubtle, publicTokens.graphiteTokens.color.panel2)
   assert.equal(button.defaultBackground, publicTokens.gradientAccent)
   assert.equal(button.secondaryBackground, publicTokens.gradientTeal)
 })
 
-test('secondary compatibility aliases map to the Figma blue info channel', () => {
+test('secondary compatibility aliases map to the Dash Studio blue info channel', () => {
   const colors = tokensConfig.theme?.extend?.colors as Record<string, unknown>
   assert.deepEqual(colors.secondary, { DEFAULT: 'var(--blue)', foreground: '#ffffff' })
   assert.match(globalsSource, /--secondary:\s*var\(--blue\);/)
   assert.match(globalsSource, /--secondary-dark:\s*var\(--blue-ring\);/)
+  assert.match(globalsSource, /--secondary-muted:\s*var\(--blue-soft\);/)
   assert.match(globalsSource, /--secondary-surface:\s*var\(--blue-tint\);/)
 })
 
-test('component tokens match Figma nav, action, and input parity', () => {
+test('component tokens match Dash Studio nav, action, and input parity', () => {
   const colors = tokensConfig.theme?.extend?.colors as Record<string, any>
 
-  assert.equal(publicTokens.component.shell.nav.itemBgActive, '#2E2E2E')
-  assert.equal(publicTokens.component.nav.itemBgActive, '#2E2E2E')
-  assert.equal(colors.component.shell.nav.itemBgActive, '#2E2E2E')
-  assert.equal(colors.component.nav.active, '#2E2E2E')
-  assert.match(globalsSource, /--component-shell-nav-item-active-bg:\s*var\(--panel3\);/)
+  assert.equal(publicTokens.component.shell.nav.itemBgActive, '#1A1A1A')
+  assert.equal(publicTokens.component.nav.itemBgActive, '#1A1A1A')
+  assert.equal(colors.component.shell.nav.itemBgActive, '#1A1A1A')
+  assert.equal(colors.component.nav.active, '#1A1A1A')
+  assert.match(globalsSource, /--component-shell-nav-item-active-bg:\s*var\(--panel-3\);/)
 
-  assert.equal(publicTokens.semantic.color.action.primaryMuted, '#FF6A001A')
-  assert.match(globalsSource, /--semantic-color-action-primary-muted:\s*#FF6A001A;/)
-  assert.match(globalsSource, /--orange-tint:\s*#FF6A001A;/)
+  assert.equal(publicTokens.semantic.color.action.primaryMuted, 'rgba(255,106,0,.13)')
+  assert.match(globalsSource, /--semantic-color-action-primary-muted:\s*rgba\(255,\s*106,\s*0,\s*\.13\);/)
+  assert.match(globalsSource, /--semantic-color-platform-winui-accent-muted:\s*rgba\(255,\s*106,\s*0,\s*\.14\);/)
+  assert.match(globalsSource, /--accent-muted:\s*var\(--orange-soft\);/)
+  assert.match(globalsSource, /--orange-tint:\s*rgba\(255,\s*106,\s*0,\s*\.13\);/)
 
-  assert.equal(publicTokens.component.input.bg, '#1F1F1F')
+  assert.equal(publicTokens.component.input.bg, '#141414')
   assert.equal(publicTokens.component.input.border, '#2E2E2E')
-  assert.equal(publicTokens.component.input.radius, '18px')
+  assert.equal(publicTokens.component.input.radius, '8px')
   assert.equal(publicTokens.component.input.height, '32px')
-  assert.equal(colors.component.input.bg, '#1F1F1F')
+  assert.equal(colors.component.input.bg, '#141414')
   assert.equal(colors.component.input.border, '#2E2E2E')
   assert.match(globalsSource, /--component-input-bg:\s*var\(--panel2\);/)
   assert.match(globalsSource, /--component-input-border:\s*var\(--line\);/)
-  assert.match(globalsSource, /--component-input-radius:\s*var\(--primitive-radius-xl\);/)
+  assert.match(globalsSource, /--component-input-radius:\s*var\(--primitive-radius-control\);/)
   assert.match(globalsSource, /--component-input-height:\s*32px;/)
 })
 
@@ -295,7 +260,8 @@ test('semantic tokens describe product meaning instead of raw palette groups', (
   assert.match(semanticSource, /action:\s*\{[\s\S]*primary:\s*primitiveColor\.orange\[500\]/)
   assert.match(semanticSource, /status:\s*\{[\s\S]*success:\s*primitiveColor\.green\[500\]/)
   assert.match(semanticSource, /danger:\s*primitiveColor\.red\[500\]/)
-  assert.match(semanticSource, /panel:\s*primitiveColor\.neutral\[900\]/)
+  assert.match(semanticSource, /panel:\s*primitiveColor\.neutral\[925\]/)
+  assert.match(semanticSource, /platform:\s*\{[\s\S]*winui:\s*\{[\s\S]*mica:\s*primitiveColor\.neutral\[925\]/)
 })
 
 test('component tokens compose semantic tokens for reusable UI parts', () => {
@@ -303,4 +269,5 @@ test('component tokens compose semantic tokens for reusable UI parts', () => {
   assert.match(componentSource, /card:\s*\{[\s\S]*bg:\s*semanticTokens\.color\.surface\.panel/)
   assert.match(componentSource, /input:\s*\{[\s\S]*borderFocus:\s*semanticTokens\.color\.border\.focus/)
   assert.match(componentSource, /dashEditor:\s*\{[\s\S]*rail:\s*semanticTokens\.color\.surface\.panel/)
+  assert.match(componentSource, /shell:\s*\{[\s\S]*titleBar:\s*\{[\s\S]*bg:\s*semanticTokens\.color\.platform\.winui\.mica/)
 })

@@ -2,17 +2,25 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build-installer icons build \
-        test test-api test-pkg lint fmt \
+.PHONY: help setup dev-app dev-api dev-web build-api build-web build-app build \
+        test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
         clean
 
 SHELL = powershell.exe
 .SHELLFLAGS = -NoProfile -Command
 
-BINARY_DIR := bin
-API_BINARY := $(BINARY_DIR)/sprint-api
 APP_DIR    := app
+APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.slnx
+APP_CLIENT_PROJECT := $(APP_DIR)/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
+APP_TEST_PROJECT := $(APP_DIR)/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj
+API_DIR    := api
+API_SOLUTION := $(API_DIR)/Sprint.Api.slnx
+API_PROJECT := $(API_DIR)/Sprint.Api/Sprint.Api.csproj
+API_TEST_PROJECT := $(API_DIR)/Sprint.Api.Tests/Sprint.Api.Tests.csproj
+
+# Publish runtime identifier. Override for Linux: make build-app RID=linux-x64
+RID ?= win-x64
 
 # Version: read from the most recent git tag (strips leading "v").
 # Override with: make build-app VERSION=1.2.3
@@ -26,67 +34,64 @@ help: ## Show this help message
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
-setup: ## One-time dev setup: install Wails CLI
-	go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+setup: ## Restore project dependencies
+	dotnet restore $(APP_SOLUTION)
+	dotnet restore $(API_SOLUTION)
+	pnpm install
 	Write-Host 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
 
-dev-app: ## Run the Wails desktop app in dev mode
-	Set-Location $(APP_DIR); wails dev
+dev-app: ## Run the Avalonia desktop app in dev mode
+	dotnet watch --project $(APP_CLIENT_PROJECT)
 
-dev-api: ## Run the API server locally (hot-reload with go run)
-	go run ./api
+dev-api: ## Run the API server locally (hot-reload)
+	dotnet watch --project $(API_PROJECT)
 
 dev-web: ## Run the Next.js web app in dev mode
 	pnpm --filter @sprint/web dev
 
+schema: ## Export the GraphQL schema → web/schema.graphql (for web codegen)
+	dotnet run --project $(API_PROJECT) -- export-schema ../../web/schema.graphql
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 
-$(BINARY_DIR):
-	New-Item -ItemType Directory -Force -Path '$(BINARY_DIR)' | Out-Null
-
-build-api: $(BINARY_DIR) ## Build the API server binary → bin/sprint-api
-	go build -trimpath -ldflags "-s -w -X main.Version=$(VERSION)" -o $(API_BINARY) ./api
+build-api: ## Publish the API server → api/build/bin
+	dotnet publish $(API_PROJECT) -c Release -p:InformationalVersion=$(VERSION) -o $(API_DIR)/build/bin
 
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-icons: ## Generate app/build icons from app/frontend/src/assets/sprint_logo_icon.png
-	Set-Location $(APP_DIR); go run ./cmd/genicons
-
-build-app: icons ## Build the Wails desktop app (requires Wails CLI)
-	Set-Location $(APP_DIR); wails build -clean -ldflags "-X main.Version=$(VERSION)"
-	New-Item -ItemType Directory -Force -Path 'app/build/bin/DeviceCatalog' | Out-Null
-	Copy-Item -Path '$(APP_DIR)/presets/devices/*.json' -Destination '$(APP_DIR)/build/bin/DeviceCatalog/' | Out-Null
-	Copy-Item -Path '$(APP_DIR)/presets/dash/default.json' -Destination '$(APP_DIR)/build/bin/DefaultDash.json' | Out-Null
-
-build-installer: build-app ## Build Windows NSIS installer → app/build/bin/Sprint-amd64-installer.exe
-	Set-Location app/build/windows/installer; makensis -DVERSION=$(VERSION) project.nsi
+build-app: ## Publish a lightweight self-contained desktop binary -> app/build/bin (RID=win-x64|linux-x64)
+	dotnet publish $(APP_CLIENT_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DIR)/build/bin
 
 build: build-api build-web ## Build all (API + web)
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
-test: test-api test-pkg ## Run all Go tests
+test: test-api test-app ## Run API and desktop tests
 
-test-api: ## Run API server tests
-	go test ./api/...
+test-api: ## Run API server tests (xunit)
+	dotnet test $(API_TEST_PROJECT)
 
-test-pkg: ## Run shared package tests
-	go test ./pkg/...
+test-app: ## Run Avalonia desktop tests (xunit)
+	dotnet test $(APP_TEST_PROJECT)
 
 # ─── Lint & Format ────────────────────────────────────────────────────────────
 
-lint: ## Run Go vet on api/pkg and pnpm lint
-	go vet ./api/... ./pkg/...
+lint: ## Build the API solution with warnings as errors and run pnpm lint
+	dotnet build $(API_SOLUTION) -warnaserror
 	pnpm lint
 
-lint-app: ## Run Go vet on the Wails app (requires built frontend: make build-web first)
-	Set-Location app; go vet ./...
+lint-app: ## Build the Avalonia desktop app with warnings enabled
+	dotnet build $(APP_SOLUTION) -warnaserror
 
-fmt: ## Format Go code and TS/JS code
-	gofmt -w ./api ./pkg ./app
+lint-api: ## Build the API solution with warnings as errors
+	dotnet build $(API_SOLUTION) -warnaserror
+
+fmt: ## Format C# and TS/JS code
+	dotnet format $(APP_SOLUTION)
+	dotnet format $(API_SOLUTION)
 	pnpm format
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
@@ -106,4 +111,4 @@ docker-logs: ## Tail logs from all running services
 # ─── Clean ────────────────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts
-	Remove-Item -Recurse -Force -ErrorAction SilentlyContinue '$(BINARY_DIR)', 'web/.next', 'app/build/bin', 'app/frontend/dist'
+	Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'web/.next', 'app/build/bin', 'api/build/bin', 'app/Sprint.Desktop.Client/bin', 'app/Sprint.Desktop.Client/obj', 'app/Sprint.Desktop.Api/bin', 'app/Sprint.Desktop.Api/obj', 'app/Sprint.Contracts/bin', 'app/Sprint.Contracts/obj', 'app/Sprint.Games/bin', 'app/Sprint.Games/obj', 'app/Sprint.Desktop.Tests/bin', 'app/Sprint.Desktop.Tests/obj', 'api/Sprint.Api/bin', 'api/Sprint.Api/obj', 'api/Sprint.Api.Tests/bin', 'api/Sprint.Api.Tests/obj'
