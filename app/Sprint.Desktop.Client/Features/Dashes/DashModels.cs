@@ -14,6 +14,9 @@ public sealed class DashLayout
     [JsonPropertyName("default")]
     public bool IsDefault { get; set; }
 
+    [JsonPropertyName("mode")]
+    public string Mode { get; set; } = "basic";
+
     /// <summary>
     /// The target wheel-screen size this dash is designed for (PRD #122). Additive
     /// and backward-compatible: blank/missing on legacy layouts normalizes to the
@@ -257,4 +260,31 @@ public sealed class DashAlert
 
     [JsonPropertyName("type")]
     public string Type { get; set; } = "";
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
+    [JsonPropertyName("col")]
+    public int Col { get; set; } = 6;
+
+    [JsonPropertyName("row")]
+    public int Row { get; set; } = 3;
+
+    [JsonPropertyName("colSpan")]
+    public int ColSpan { get; set; } = 8;
+
+    [JsonPropertyName("rowSpan")]
+    public int RowSpan { get; set; } = 6;
+
+    [JsonPropertyName("colorToken")]
+    public string? ColorToken { get; set; }
+
+    [JsonPropertyName("durationSeconds")]
+    public double? DurationSeconds { get; set; }
+
+    [JsonPropertyName("invertColors")]
+    public bool? InvertColors { get; set; }
+
+    [JsonIgnore]
+    public bool UsesGlobalSettings => ColorToken is null && DurationSeconds is null && InvertColors is null;
 }

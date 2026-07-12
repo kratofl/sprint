@@ -40,7 +40,9 @@ information. They are never decorative. Orange should occupy little visual area.
 
 ### Typography
 
-Inter is the only application face. Brand artwork may retain its lettering.
+Inter is the application face. The rendered wheel instrument uses Saira Semi
+Condensed for telemetry values because its open counters remain legible at small
+screen sizes; labels remain Inter. Brand artwork may retain its lettering.
 Frequently changing values use tabular figures.
 
 | Style | Size / line | Weight |
@@ -101,17 +103,30 @@ widget palette uses compact list rows inside disclosure groups, with one group
 expanded by default. The inspector aligns properties and adds
 dividers only between semantic groups. Applying a dash to hardware remains explicit.
 
-Page navigation appears once in the compact strip above the canvas; do not add a
-second Pages/Widgets switch to the toolbar. The toolbar is limited to editor mode,
-target profile, preview state, and Apply.
+Page navigation and page deletion live in the left editor rail behind a
+Pages/Widgets segmented control. The canvas does not change width when the active
+page changes. The toolbar is limited to Basic/Advanced editor mode, target profile,
+preview state, and Apply. Basic keeps direct manipulation and essential widget
+configuration; Advanced adds exact grid controls, style overrides, widget stacks,
+and other technical authoring tools. The toolbar's right action zone is limited to
+mode, target profile, preview state, and Apply; navigation, the editable document
+name, and surface tabs remain in their established left and center zones.
 
-The rendered wheel dash uses a pure black canvas. Complex instruments use compact,
-rounded outlines without a panel fill; simple readouts remain open unless a layout
-groups them into explicit control cells. `Border: false` removes a default outline
-and `Border: true` adds one. Fills are reserved for semantic alerts. The default
-800×480 hierarchy places RPM across the top, a compact control strip directly below
-it, gear and speed at the visual center, lap timing left, sector state right, and
-delta plus live input traces adjacent to the focal value.
+The Alerts surface uses a canvas with the same aspect and grid as the target screen.
+The dash is visibly subdued while editing so the selected alert remains the focus.
+Each alert has draggable/resizable geometry and renders a quiet title above one
+large new value. Color, duration, and inversion inherit from global defaults and
+may be overridden per alert. Auto color resolves semantically: TC is blue, ABS is
+yellow, and engine map is orange.
+
+The rendered wheel dash uses a near-black `#08080A` canvas. Readouts remain open on
+one continuous instrument surface; outlines are reserved for authored groups rather
+than applied to every value. `Border: false` removes a default outline and
+`Border: true` adds one. Fills are reserved for semantic alerts. The default 800×480
+Driving page places RPM across the top, a compact control strip directly below it,
+gear and speed at the visual center, lap timing left, sector state right, and delta
+plus live input traces adjacent to the focal value. Endurance, Timing, and Vehicle
+pages reorganize secondary data without removing gear or shift state.
 
 ## Components and state
 

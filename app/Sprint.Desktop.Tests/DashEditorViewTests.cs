@@ -177,7 +177,7 @@ public sealed class DashEditorViewTests
     }
 
     [Fact]
-    public async Task PageBarAddsANewPageFromTheEditor()
+    public async Task PagesSidebarAddsANewPageFromTheEditor()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -194,8 +194,12 @@ public sealed class DashEditorViewTests
 
                 var before = controller.PageTabs.Count;
 
-                // US31: the "Add page" control in the page bar creates a page. Found by
-                // tooltip so it's unambiguous vs the canvas zoom "+" button.
+                var pagesButton = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(b => string.Equals(b.Content?.ToString(), "Pages", StringComparison.Ordinal));
+                pagesButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
                 var addButton = window.GetVisualDescendants()
                     .OfType<Button>()
                     .First(b => string.Equals(ToolTip.GetTip(b) as string, "Add page", StringComparison.Ordinal));

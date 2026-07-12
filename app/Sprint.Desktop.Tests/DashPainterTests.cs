@@ -50,7 +50,7 @@ public sealed class DashPainterTests
     {
         var palette = DashPalette.Default;
 
-        AssertColor("#000000", palette.Background);
+        AssertColor("#08080A", palette.Background);
         AssertColor("#1B1B1E", palette.Surface);
         AssertColor("#1FFFFFFF", palette.Border);
         AssertColor("#F5F5F7", palette.Foreground);
@@ -229,7 +229,7 @@ public sealed class DashPainterTests
     }
 
     [Fact]
-    public void InstrumentWidgetsUseAnOutlineWithoutFillingTheBlackCanvas()
+    public void InstrumentWidgetsUseAnOutlineWithoutFillingTheGraphiteCanvas()
     {
         var layout = SingleWidgetLayout("gear_speed");
         var frame = new TelemetryFrame();
@@ -245,7 +245,7 @@ public sealed class DashPainterTests
 
         Assert.True(Brightness(framedEdge) > Brightness(unframedEdge) + 20,
             $"Expected a restrained default instrument outline; framed={framedEdge}, unframed={unframedEdge}.");
-        Assert.True(Brightness(framedInterior) < 5, $"Expected the instrument interior to remain pure black, saw {framedInterior}.");
+        Assert.Equal(DashPalette.Default.Background, framedInterior);
     }
 
     [Theory]
@@ -267,7 +267,7 @@ public sealed class DashPainterTests
         using var painter = new DashPainter(200, 200);
         var edge = painter.Render(layout, new TelemetryFrame(), new AppSettings()).GetPixel(2, 100);
 
-        Assert.True(Brightness(edge) < 5, $"Expected {type} to remain open on the continuous black surface, saw {edge}.");
+        Assert.Equal(DashPalette.Default.Background, edge);
     }
 
     [Fact]
@@ -288,27 +288,29 @@ public sealed class DashPainterTests
         try
         {
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var page = runtime.DashLayouts.Single(layout => layout.IsDefault).Pages.Single();
+            var layout = runtime.DashLayouts.Single(item => item.IsDefault);
+            var page = layout.Pages.Single(item => item.Id == "driving-default");
             var widgets = page.Widgets.ToDictionary(widget => widget.Type);
 
-            Assert.True(DashLayoutValidator.IsValid(runtime.DashLayouts.Single(layout => layout.IsDefault)));
+            Assert.True(DashLayoutValidator.IsValid(layout));
+            Assert.Equal(["Driving", "Endurance", "Timing", "Vehicle"], layout.Pages.Select(item => item.Name).ToArray());
             Assert.Equal(page.Widgets.Count, page.Widgets.Select(widget => widget.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
             Assert.Equal(
                 new[] { "abs", "brake_bias", "delta", "engine_map", "fuel", "gear_speed", "input_trace", "lap_time", "position", "rpm_bar", "sector", "tc" },
                 widgets.Keys.OrderBy(type => type, StringComparer.Ordinal).ToArray());
 
             Assert.Equal((0, 0, 20, 1), Position(widgets["rpm_bar"]));
-            Assert.Equal((6, 3, 8, 7), Position(widgets["gear_speed"]));
-            Assert.Equal((0, 3, 6, 9), Position(widgets["lap_time"]));
-            Assert.Equal((14, 3, 6, 9), Position(widgets["sector"]));
-            Assert.Equal((6, 10, 4, 2), Position(widgets["delta"]));
-            Assert.Equal((10, 10, 4, 2), Position(widgets["input_trace"]));
+            Assert.Equal((5, 3, 10, 9), Position(widgets["gear_speed"]));
+            Assert.Equal((0, 3, 5, 6), Position(widgets["lap_time"]));
+            Assert.Equal((15, 3, 5, 6), Position(widgets["sector"]));
+            Assert.Equal((0, 9, 5, 3), Position(widgets["delta"]));
+            Assert.Equal((15, 9, 5, 3), Position(widgets["input_trace"]));
+            Assert.All(["gear_speed", "lap_time", "sector", "input_trace"],
+                type => Assert.False(widgets[type].Style?.Border ?? true, $"Expected {type} to remain open on the continuous instrument surface."));
             Assert.All(["tc", "abs", "engine_map", "brake_bias", "fuel", "position"],
-                type =>
-                {
-                    Assert.Equal(1, widgets[type].Row);
-                    Assert.True(widgets[type].Style?.Border, $"Expected the compact {type} control to opt into a bounded cell.");
-                });
+                type => Assert.Equal(1, widgets[type].Row));
+
+            Assert.Equal("auto", layout.AlertConfig?.ColorToken);
         }
         finally
         {
@@ -495,7 +497,8 @@ public sealed class DashPainterTests
         var changed = new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 5 } };
         var banner = tracker.Evaluate(layout, changed, palette);
         Assert.NotNull(banner);
-        Assert.Equal("TC1  5", banner!.Value.Text);
+        Assert.Equal("TRACTION CONTROL", banner!.Value.Title);
+        Assert.Equal("5", banner.Value.Value);
 
         // Still active before expiry.
         now = now.AddSeconds(1);
@@ -504,6 +507,41 @@ public sealed class DashPainterTests
         // Past expiry with no further change → cleared.
         now = now.AddSeconds(1);
         Assert.Null(tracker.Evaluate(layout, changed, palette));
+    }
+
+    [Fact]
+    public void AlertOverlayRespectsAuthoredGeometry()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        using var painter = new DashPainter(400, 240);
+        var banner = new DashAlertBanner("ABS", "4", DashPalette.Default.Warning, 10, 0, 10, 6);
+        var bitmap = painter.Render(layout, new TelemetryFrame(), new AppSettings(), banner: banner);
+
+        Assert.Equal(DashPalette.Default.Background, bitmap.GetPixel(20, 20));
+        Assert.NotEqual(DashPalette.Default.Background, bitmap.GetPixel(300, 2));
+    }
+
+    [Fact]
+    public void HardwareFrameSourceTriggersConfiguredAlertFromTelemetryChange()
+    {
+        var layout = new DashLayout
+        {
+            Id = "alert-hardware",
+            GridCols = 20,
+            GridRows = 12,
+            Pages = [new DashPage { Id = "main", Name = "Main" }],
+            Alerts = [new DashAlert { Id = "tc", Type = "tc_change", Col = 5, Row = 3, ColSpan = 10, RowSpan = 6 }],
+        };
+        var config = new ScreenConfig { Width = 200, Height = 120 };
+        using var source = new DashPainterFrameSource(layout, new AppSettings(), config);
+        var baseline = new byte[200 * 120 * 2];
+        var alerted = new byte[baseline.Length];
+
+        source.Render(new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 3 } }, baseline);
+        source.Render(new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 5 } }, alerted);
+
+        Assert.True(baseline.Zip(alerted).Count(pair => pair.First != pair.Second) > 100,
+            "Expected the telemetry change to produce a visible alert in the hardware frame.");
     }
 
     private static DashLayout SingleWidgetLayout(string type) => new()

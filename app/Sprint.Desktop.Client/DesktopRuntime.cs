@@ -187,6 +187,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
         clone.Name = "New Dash";
         clone.IsDefault = false;
+        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
         NormalizeLayoutProfile(clone);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
@@ -201,6 +202,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
         clone.Name = "New Dash";
         clone.IsDefault = false;
+        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
@@ -608,6 +610,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
+        layout.Mode = preset.Mode;
         layout.IdlePage = Clone(preset.IdlePage);
         layout.Pages = Clone(preset.Pages);
         layout.Alerts = Clone(preset.Alerts);
@@ -620,6 +623,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         SaveDashLayout(layout);
     }
+
+    private static string NormalizeDashMode(string? mode) =>
+        string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";
 
     private void GenerateDashThumbnail(DashLayout layout)
     {

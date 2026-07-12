@@ -786,11 +786,12 @@ public class HeadlessShellTests
 
                 // The genuinely-retired legacy toolbar sprawl stays gone (autosave replaced
                 // "Save"; "Clear page" was a toolbar action). Page management now lives in
-                // the dedicated page bar (US31), which offers "Add page" — a first-class
-                // control, not legacy toolbar clutter.
+                // the Pages side rail, which offers Add page without changing canvas width.
                 Assert.Null(FindOptionalButton(window, "Clear page"));
                 Assert.Null(FindOptionalButton(window, "Save"));
-                Assert.NotNull(FindOptionalButton(window, "Add page"));
+                FindButton(window, "Pages").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.NotNull(FindOptionalButton(window, "+  Add page"));
 
                 window.Close();
             }, CancellationToken.None);

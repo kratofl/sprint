@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -16,7 +17,7 @@ namespace Sprint.Desktop.Features.Dashes;
 /// The three-pane dash editor: a compact searchable widget palette with
 /// disclosure groups, a live painter-rendered
 /// canvas with grid drag-move/resize + a snapping ghost preview and selection,
-/// a per-widget inspector, and a toolbar with segmented page tabs. All mutations
+/// a per-widget inspector, a Pages/Widgets sidebar, and focused toolbar. All mutations
 /// flow through <see cref="DashEditorController"/> so behaviour is covered by
 /// controller unit tests; this class is the thin Avalonia view.
 /// </summary>
@@ -49,10 +50,10 @@ public sealed class DashEditorView : UserControl
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Action _onClose;
     private Canvas _canvas = new();
+    private Canvas _alertCanvas = new();
     private Rectangle? _ghost;
     private StackPanel? _paletteCards;
     private string _search = string.Empty;
-    private bool _renamingTitle;
     private string? _renamingPageId;
     private bool _renamingStackName;
     private string? _renamingLayerId;
@@ -74,6 +75,19 @@ public sealed class DashEditorView : UserControl
     private EditorPanel _panel = EditorPanel.Inspector; // which surface the right column shows
     private bool _paletteCollapsed; // left rail collapsed to a narrow strip
     private bool _compactLayout;
+    private SidebarSurface _sidebarSurface = SidebarSurface.Widgets;
+    private string _selectedAlertType = "tc_change";
+    private string? _dragAlertType;
+    private bool _resizingAlert;
+    private Point _alertDragStart;
+    private int _alertStartCol;
+    private int _alertStartRow;
+    private int _alertStartColSpan;
+    private int _alertStartRowSpan;
+    private int _alertPreviewCol;
+    private int _alertPreviewRow;
+    private int _alertPreviewColSpan;
+    private int _alertPreviewRowSpan;
 
     // Painter-rendered palette thumbnails, cached per widget type. Previews reflect
     // the frame captured on first render (illustrative, not a live 30Hz feed), so a
@@ -108,6 +122,12 @@ public sealed class DashEditorView : UserControl
         Inspector,
         Alerts,
         Theme,
+    }
+
+    private enum SidebarSurface
+    {
+        Pages,
+        Widgets,
     }
 
     public DashEditorView(
@@ -227,17 +247,9 @@ public sealed class DashEditorView : UserControl
         palette.Margin = new Thickness(0, 0, 8, 0);
         root.Children.Add(palette);
 
-        // Center column: the page bar (idle + pages + add/delete, US31) above the live
-        // real-size canvas.
-        var center = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        var pageBar = BuildPageTabs();
-        pageBar.HorizontalAlignment = HorizontalAlignment.Center;
-        pageBar.Margin = new Thickness(0, 0, 0, 8);
-        Grid.SetRow(pageBar, 0);
-        center.Children.Add(pageBar);
-
+        var center = new Grid { RowDefinitions = new RowDefinitions("*") };
         var canvasHost = BuildCanvas();
-        Grid.SetRow(canvasHost, 1);
+        Grid.SetRow(canvasHost, 0);
         center.Children.Add(canvasHost);
 
         Grid.SetRow(center, 1);
@@ -296,6 +308,10 @@ public sealed class DashEditorView : UserControl
         // Page navigation already has one dedicated strip above the canvas; do not
         // duplicate it with a second inert Pages/Widgets segmented control.
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var mode = Graphite.Segmented(["Basic", "Advanced"], _controller.IsAdvancedMode ? 1 : 0,
+            index => _controller.SetMode(index == 1 ? "advanced" : "basic"));
+        ToolTip.SetTip(mode, "Basic: direct editing and essential settings. Advanced: exact grid, styles, and widget stacks.");
+        actions.Children.Add(mode);
         actions.Children.Add(BuildTargetSizeSelector());
         actions.Children.Add(BuildPreviewSelector());
         // Apply-to-screen is honest about hardware: enabled only when a screen is assigned
@@ -352,29 +368,35 @@ public sealed class DashEditorView : UserControl
         return combo;
     }
 
-    // Editor header title — double-click to rename the whole dash layout.
+    // The dash name is always presented as an input so editability is self-evident.
     private Control BuildEditableTitle()
     {
-        if (_renamingTitle)
+        var box = new TextBox
         {
-            return InlineRenameBox(_controller.Layout.Name, 180,
-                committed =>
-                {
-                    _renamingTitle = false;
-                    if (!_controller.RenameLayout(committed))
-                    {
-                        Rebuild();
-                    }
-                },
-                () => { _renamingTitle = false; Rebuild(); });
-        }
-
-        var title = Graphite.TextBlock(_controller.Layout.Name, 13, FontWeight.SemiBold, Graphite.TextBrush);
-        title.VerticalAlignment = VerticalAlignment.Center;
-        var wrap = new Border { Child = title, Cursor = new Cursor(StandardCursorType.Hand), Padding = new Thickness(2, 0) };
-        ToolTip.SetTip(wrap, "Double-click to rename");
-        wrap.DoubleTapped += (_, _) => { _renamingTitle = true; Rebuild(); };
-        return wrap;
+            Text = _controller.Layout.Name,
+            Width = 180,
+            MinHeight = 30,
+            Padding = new Thickness(8, 3),
+            FontFamily = Graphite.FontStackMedium,
+            FontSize = 13,
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Tag = "dash-name-editor",
+        };
+        void Commit() => _controller.RenameLayout(box.Text ?? string.Empty);
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                Commit();
+                e.Handled = true;
+            }
+        };
+        box.LostFocus += (_, _) => Commit();
+        ToolTip.SetTip(box, "Dashboard name — editable");
+        return box;
     }
 
     // Shared transient rename field: commits on Enter/blur, cancels on Escape.
@@ -476,85 +498,6 @@ public sealed class DashEditorView : UserControl
         Rebuild();
     }
 
-    private Control BuildPageTabs()
-    {
-        var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-        foreach (var tab in _controller.PageTabs)
-        {
-            if (!tab.IsIdle && string.Equals(tab.Id, _renamingPageId, StringComparison.OrdinalIgnoreCase))
-            {
-                group.Children.Add(InlineRenameBox(tab.Name, 96,
-                    committed =>
-                    {
-                        _renamingPageId = null;
-                        if (!_controller.RenamePage(tab.Id, committed))
-                        {
-                            Rebuild();
-                        }
-                    },
-                    () => { _renamingPageId = null; Rebuild(); }));
-                continue;
-            }
-
-            var active = string.Equals(tab.Id, _controller.ActivePageId, StringComparison.OrdinalIgnoreCase);
-            var label = tab.IsIdle ? $"◐ {tab.Name}" : tab.Name;
-            var item = SegmentedItem(label, active, () => _controller.SelectPage(tab.Id));
-            if (!tab.IsIdle)
-            {
-                ToolTip.SetTip(item, "Double-click to rename");
-                item.DoubleTapped += (_, _) => { _renamingPageId = tab.Id; Rebuild(); };
-            }
-
-            group.Children.Add(item);
-
-            // Delete the active regular page (US31); never the idle page or the last
-            // remaining regular page (the controller enforces the latter too).
-            if (active && !tab.IsIdle && _controller.PageTabs.Count(t => !t.IsIdle) > 1)
-            {
-                var delete = SegmentedItem("×", false, () => _controller.DeletePage(tab.Id));
-                ToolTip.SetTip(delete, "Delete page");
-                group.Children.Add(delete);
-            }
-        }
-
-        // Add a new page (US31 multiple pages).
-        var addPage = SegmentedItem("+", false, () => _controller.AddPage());
-        ToolTip.SetTip(addPage, "Add page");
-        group.Children.Add(addPage);
-
-        return new Border
-        {
-            Background = Graphite.Panel2Brush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusMd),
-            Padding = new Thickness(4),
-            Child = group
-        };
-    }
-
-    private static Button SegmentedItem(string label, bool selected, Action onClick)
-    {
-        var button = new Button
-        {
-            Content = label,
-            Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
-            Foreground = selected ? Graphite.TextBrush : Graphite.Text2Brush,
-            BorderBrush = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(Graphite.RadiusMd),
-            FontFamily = Graphite.FontStack,
-            FontSize = 13,
-            FontWeight = FontWeight.SemiBold,
-            Padding = new Thickness(14, 4),
-            MinHeight = 25,
-            HorizontalContentAlignment = HorizontalAlignment.Center,
-            VerticalContentAlignment = VerticalAlignment.Center
-        };
-        button.Click += (_, _) => onClick();
-        return button;
-    }
-
     // ── Palette ─────────────────────────────────────────────────────────────
 
     private Control BuildPalette()
@@ -563,8 +506,8 @@ public sealed class DashEditorView : UserControl
 
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var headerText = new StackPanel { Spacing = 2 };
-        headerText.Children.Add(Graphite.TextBlock("Widgets", 14, FontWeight.Medium, Graphite.TextBrush));
-        headerText.Children.Add(Graphite.TextBlock("Drag or click to add", 10, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        headerText.Children.Add(Graphite.TextBlock("Dashboard", 14, FontWeight.Medium, Graphite.TextBrush));
+        headerText.Children.Add(Graphite.TextBlock(_sidebarSurface == SidebarSurface.Pages ? "Organize screen pages" : "Drag or click to add", 10, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
         Grid.SetColumn(headerText, 0);
         header.Children.Add(headerText);
         var collapse = Graphite.Button(string.Empty, ButtonTone.Ghost);
@@ -577,6 +520,18 @@ public sealed class DashEditorView : UserControl
         Grid.SetColumn(collapse, 1);
         header.Children.Add(collapse);
         stack.Children.Add(header);
+
+        stack.Children.Add(Graphite.Segmented(["Pages", "Widgets"], _sidebarSurface == SidebarSurface.Pages ? 0 : 1, index =>
+        {
+            _sidebarSurface = index == 0 ? SidebarSurface.Pages : SidebarSurface.Widgets;
+            Rebuild();
+        }));
+
+        if (_sidebarSurface == SidebarSurface.Pages)
+        {
+            stack.Children.Add(BuildPagesSidebar());
+            return PaletteSurface(stack);
+        }
 
         var search = new TextBox
         {
@@ -603,22 +558,93 @@ public sealed class DashEditorView : UserControl
         stack.Children.Add(_paletteCards);
         RefreshPaletteCards();
 
-        var addStack = Graphite.Button("+  Widget stack", ButtonTone.Neutral);
-        addStack.HorizontalAlignment = HorizontalAlignment.Stretch;
-        addStack.Click += (_, _) => _controller.AddWidgetStack();
-        stack.Children.Add(addStack);
+        if (_controller.IsAdvancedMode)
+        {
+            var addStack = Graphite.Button("+  Widget stack", ButtonTone.Neutral);
+            addStack.HorizontalAlignment = HorizontalAlignment.Stretch;
+            addStack.Click += (_, _) => _controller.AddWidgetStack();
+            stack.Children.Add(addStack);
+        }
 
         var scroller = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
 
-        return new Border
+        return PaletteSurface(scroller);
+    }
+
+    private static Border PaletteSurface(Control child) => new()
+    {
+        Background = Graphite.PanelBrush,
+        BorderBrush = Graphite.LineBrush,
+        BorderThickness = new Thickness(0, 0, 1, 0),
+        CornerRadius = new CornerRadius(0),
+        Padding = new Thickness(14, 12),
+        Child = child,
+    };
+
+    private Control BuildPagesSidebar()
+    {
+        var pages = new StackPanel { Spacing = 4 };
+        foreach (var tab in _controller.PageTabs)
         {
-            Background = Graphite.PanelBrush,
-            BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(0, 0, 1, 0),
-            CornerRadius = new CornerRadius(0),
-            Padding = new Thickness(14, 12),
-            Child = scroller
-        };
+            pages.Children.Add(PageSidebarRow(tab));
+        }
+
+        var add = Graphite.Button("+  Add page", ButtonTone.Neutral);
+        add.HorizontalAlignment = HorizontalAlignment.Stretch;
+        add.Margin = new Thickness(0, 6, 0, 0);
+        ToolTip.SetTip(add, "Add page");
+        add.Click += (_, _) => _controller.AddPage();
+        pages.Children.Add(add);
+        return new ScrollViewer { Content = pages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    }
+
+    private Control PageSidebarRow(DashPageTab tab)
+    {
+        var active = string.Equals(tab.Id, _controller.ActivePageId, StringComparison.OrdinalIgnoreCase);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,32") };
+        Control select;
+        if (!tab.IsIdle && string.Equals(_renamingPageId, tab.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            select = InlineRenameBox(tab.Name, 130,
+                committed =>
+                {
+                    _renamingPageId = null;
+                    if (!_controller.RenamePage(tab.Id, committed)) Rebuild();
+                },
+                () => { _renamingPageId = null; Rebuild(); });
+        }
+        else
+        {
+            var selectButton = Graphite.Button(tab.IsIdle ? $"◐  {tab.Name}" : tab.Name, active ? ButtonTone.Neutral : ButtonTone.Ghost);
+            selectButton.HorizontalContentAlignment = HorizontalAlignment.Left;
+            selectButton.Background = active ? Graphite.Panel3Brush : Brushes.Transparent;
+            selectButton.Click += (_, _) => _controller.SelectPage(tab.Id);
+            if (!tab.IsIdle)
+            {
+                ToolTip.SetTip(selectButton, "Double-click to rename page");
+                selectButton.DoubleTapped += (_, _) => { _renamingPageId = tab.Id; Rebuild(); };
+            }
+            select = selectButton;
+        }
+
+        Grid.SetColumn(select, 0);
+        row.Children.Add(select);
+
+        if (!tab.IsIdle && _controller.PageTabs.Count(item => !item.IsIdle) > 1)
+        {
+            var delete = Graphite.Button("×", ButtonTone.Ghost);
+            delete.Width = 28;
+            delete.MinHeight = 28;
+            delete.Padding = new Thickness(0);
+            delete.Tag = $"delete-page:{tab.Id}";
+            AutomationProperties.SetName(delete, $"Delete {tab.Name} page");
+            ToolTip.SetTip(delete, $"Delete {tab.Name}");
+            delete.Click += (_, _) => _controller.DeletePage(tab.Id);
+            Grid.SetColumn(delete, 1);
+            row.Children.Add(delete);
+        }
+
+        return new Border { Background = active ? Graphite.Panel2Brush : Brushes.Transparent, CornerRadius = new CornerRadius(Graphite.RadiusMd), Child = row };
     }
 
     private void RefreshPaletteCards()
@@ -930,7 +956,7 @@ public sealed class DashEditorView : UserControl
             palette: DashPalette.FromTheme(_controller.Layout.Theme));
         _canvas.Children.Add(new Image { Width = CanvasWidth, Height = CanvasHeight, Source = _canvasBitmap, Stretch = Stretch.Fill });
 
-        if (_showGrid)
+        if (_showGrid && _controller.IsAdvancedMode)
         {
             _canvas.Children.Add(BuildGridOverlay());
         }
@@ -942,7 +968,7 @@ public sealed class DashEditorView : UserControl
                 _canvas.Children.Add(BuildWidgetOverlay(widget));
             }
 
-            foreach (var widgetStack in page.WidgetStacks)
+            foreach (var widgetStack in page.WidgetStacks.Where(_ => _controller.IsAdvancedMode))
             {
                 _canvas.Children.Add(BuildStackOverlay(widgetStack));
             }
@@ -1375,20 +1401,23 @@ public sealed class DashEditorView : UserControl
         stack.Children.Add(Graphite.TextBlock(definition, 15, FontWeight.Bold, Graphite.TextBrush));
         stack.Children.Add(Graphite.TextBlock($"id: {widget.Id}", 11, FontWeight.Normal, Graphite.Text3Brush));
 
-        stack.Children.Add(Divider());
-        stack.Children.Add(Graphite.SectionLabel("Layout"));
-        stack.Children.Add(StepperRow("Column", widget.Col,
-            () => _controller.MoveSelected(widget.Col - 1, widget.Row),
-            () => _controller.MoveSelected(widget.Col + 1, widget.Row)));
-        stack.Children.Add(StepperRow("Row", widget.Row,
-            () => _controller.MoveSelected(widget.Col, widget.Row - 1),
-            () => _controller.MoveSelected(widget.Col, widget.Row + 1)));
-        stack.Children.Add(StepperRow("Width", widget.ColSpan,
-            () => _controller.ResizeSelected(widget.ColSpan - 1, widget.RowSpan),
-            () => _controller.ResizeSelected(widget.ColSpan + 1, widget.RowSpan)));
-        stack.Children.Add(StepperRow("Height", widget.RowSpan,
-            () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan - 1),
-            () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan + 1)));
+        if (_controller.IsAdvancedMode)
+        {
+            stack.Children.Add(Divider());
+            stack.Children.Add(Graphite.SectionLabel("Exact layout"));
+            stack.Children.Add(StepperRow("Column", widget.Col,
+                () => _controller.MoveSelected(widget.Col - 1, widget.Row),
+                () => _controller.MoveSelected(widget.Col + 1, widget.Row)));
+            stack.Children.Add(StepperRow("Row", widget.Row,
+                () => _controller.MoveSelected(widget.Col, widget.Row - 1),
+                () => _controller.MoveSelected(widget.Col, widget.Row + 1)));
+            stack.Children.Add(StepperRow("Width", widget.ColSpan,
+                () => _controller.ResizeSelected(widget.ColSpan - 1, widget.RowSpan),
+                () => _controller.ResizeSelected(widget.ColSpan + 1, widget.RowSpan)));
+            stack.Children.Add(StepperRow("Height", widget.RowSpan,
+                () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan - 1),
+                () => _controller.ResizeSelected(widget.ColSpan, widget.RowSpan + 1)));
+        }
 
         // Per-widget configuration (type-specific fields, e.g. text content/binding).
         var config = DashWidgetCatalog.IsKnown(widget.Type) ? DashWidgetCatalog.Get(widget.Type).Config : [];
@@ -1403,8 +1432,11 @@ public sealed class DashEditorView : UserControl
         }
 
         // Per-widget style overrides (colours + border).
-        stack.Children.Add(Divider());
-        stack.Children.Add(BuildStyleSection());
+        if (_controller.IsAdvancedMode)
+        {
+            stack.Children.Add(Divider());
+            stack.Children.Add(BuildStyleSection());
+        }
 
         stack.Children.Add(Divider());
         var confirming = _confirmDeleteId is not null && string.Equals(_confirmDeleteId, widget.Id, StringComparison.OrdinalIgnoreCase);
@@ -1889,109 +1921,378 @@ public sealed class DashEditorView : UserControl
 
     private Control BuildAlertsPanel()
     {
-        var stack = new StackPanel { Spacing = 12 };
-        var config = _controller.AlertConfig;
-        stack.Children.Add(Graphite.SectionLabel("Alert behavior"));
-        stack.Children.Add(Graphite.TextBlock(
-            "Flash an overlay on the dash when a control setting changes mid-session.",
-            12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
-        stack.Children.Add(AlertBehaviorPreview(config));
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,320"), Margin = new Thickness(12, 0, 4, 0) };
 
-        stack.Children.Add(Graphite.TextBlock("Display mode", 11, FontWeight.Normal, Graphite.Text2Brush));
-        stack.Children.Add(Graphite.Segmented(["Full", "Center"], string.Equals(config.DisplayMode, "center", StringComparison.OrdinalIgnoreCase) ? 1 : 0,
-            index => _controller.SetAlertDisplayMode(index == 1 ? "center" : "full")));
+        var canvasColumn = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center };
+        canvasColumn.Children.Add(Graphite.TextBlock("Alert canvas", 14, FontWeight.Medium, Graphite.TextBrush));
+        canvasColumn.Children.Add(Graphite.TextBlock(
+            "Drag the alert to position it. Drag the lower-right handle to resize.",
+            11, FontWeight.Normal, Graphite.Text3Brush));
+        canvasColumn.Children.Add(Graphite.Segmented(AlertTypes.Select(item => item.Label).ToArray(),
+            Math.Max(0, Array.FindIndex(AlertTypes, item => string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase))),
+            index =>
+            {
+                _selectedAlertType = AlertTypes[Math.Clamp(index, 0, AlertTypes.Length - 1)].Type;
+                Rebuild();
+            }));
 
-        stack.Children.Add(DurationRow(config.DurationSeconds,
-            () => _controller.SetAlertDuration(config.DurationSeconds - 0.1),
-            () => _controller.SetAlertDuration(config.DurationSeconds + 0.1)));
-
-        var invert = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var invertText = Graphite.TextBlock("Invert colors", 12, FontWeight.SemiBold, Graphite.Text2Brush);
-        invertText.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(invertText, 0);
-        invert.Children.Add(invertText);
-        var invertToggle = Graphite.Toggle(config.InvertColors, _controller.SetAlertInvertColors);
-        Grid.SetColumn(invertToggle, 1);
-        invert.Children.Add(invertToggle);
-        stack.Children.Add(invert);
-
-        stack.Children.Add(Graphite.TextBlock("Overlay color", 11, FontWeight.Normal, Graphite.Text2Brush));
-        var colors = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var token in new[] { "auto", "blue", "ember", "green", "yellow", "red", "white" })
+        var alert = _controller.GetAlert(_selectedAlertType);
+        if (alert is null)
         {
-            var selected = string.Equals(config.ColorToken, token, StringComparison.OrdinalIgnoreCase);
-            var button = Graphite.Button(token == "auto" ? "Auto" : token, selected ? ButtonTone.Primary : ButtonTone.Neutral);
-            button.Margin = new Thickness(0, 0, 6, 6);
-            button.Click += (_, _) => _controller.SetAlertColorToken(token);
-            colors.Children.Add(button);
+            var enable = Graphite.Button("Enable this alert", ButtonTone.Primary);
+            enable.HorizontalAlignment = HorizontalAlignment.Center;
+            enable.Click += (_, _) => _controller.SetAlert(_selectedAlertType, true);
+            canvasColumn.Children.Add(enable);
+        }
+        else
+        {
+            canvasColumn.Children.Add(BuildAlertCanvas(alert));
         }
 
-        stack.Children.Add(colors);
-        stack.Children.Add(Divider());
-        stack.Children.Add(Graphite.SectionLabel("Alert types"));
+        Grid.SetColumn(canvasColumn, 0);
+        grid.Children.Add(canvasColumn);
 
-        foreach (var (type, label) in AlertTypes)
-        {
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-            var text = Graphite.TextBlock(label, 13, FontWeight.SemiBold, Graphite.Text2Brush);
-            text.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(text, 0);
-            row.Children.Add(text);
-
-            // Toggle callback persists via the controller, which raises Changed → Rebuild.
-            var toggle = Graphite.Toggle(_controller.IsAlertEnabled(type), on => _controller.SetAlert(type, on));
-            Grid.SetColumn(toggle, 1);
-            row.Children.Add(toggle);
-            stack.Children.Add(row);
-        }
-
-        return EditorPanelSurface(stack);
+        var settings = new StackPanel { Spacing = 12 };
+        settings.Children.Add(BuildGlobalAlertSettings());
+        settings.Children.Add(Divider());
+        settings.Children.Add(BuildIndividualAlertSettings(alert));
+        var settingsSurface = EditorPanelSurface(new ScrollViewer { Content = settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        Grid.SetColumn(settingsSurface, 1);
+        grid.Children.Add(settingsSurface);
+        return grid;
     }
 
-    private Control AlertBehaviorPreview(DashAlertConfig config)
+    private Control BuildAlertCanvas(DashAlert alert)
     {
-        const int width = 196;
-        const int height = 118;
         var palette = DashPalette.FromTheme(_controller.Layout.Theme);
-        var color = config.ColorToken.ToLowerInvariant() switch
-        {
-            "blue" => palette.Accent,
-            "ember" or "primary" => palette.Primary,
-            "green" => palette.Success,
-            "yellow" => palette.Warning,
-            "red" => palette.Danger,
-            "white" => palette.Foreground,
-            _ => palette.Accent,
-        };
-        var banner = new DashAlertBanner("TC 6 -> 7", color, config.DisplayMode, config.InvertColors);
         _alertPreviewBitmap = DashImageRenderer.RenderReusing(
             _alertPreviewBitmap,
             _controller.Layout,
-            _frameProvider(),
+            _controller.ResolveRenderFrame(_frameProvider()),
             _settings,
-            width,
-            height,
+            CanvasWidth,
+            CanvasHeight,
             pageId: _controller.ActivePageId,
-            banner: banner,
             palette: palette);
-        var bitmap = _alertPreviewBitmap;
+
+        var canvas = new Canvas
+        {
+            Width = CanvasWidth,
+            Height = CanvasHeight,
+            Background = Graphite.BgBrush,
+            ClipToBounds = true,
+        };
+        _alertCanvas = canvas;
+        canvas.Children.Add(new Image
+        {
+            Width = CanvasWidth,
+            Height = CanvasHeight,
+            Source = _alertPreviewBitmap,
+            Stretch = Stretch.Fill,
+            Opacity = 0.22,
+            IsHitTestVisible = false,
+        });
+        canvas.Children.Add(new Rectangle
+        {
+            Width = CanvasWidth,
+            Height = CanvasHeight,
+            Fill = new SolidColorBrush(Color.FromArgb(72, 0, 0, 0)),
+            IsHitTestVisible = false,
+        });
+
+        var effective = _controller.EffectiveAlertConfig(alert.Type);
+        var (title, value) = AlertSample(alert.Type);
+        var color = AlertTokenBrush(effective.ColorToken, alert.Type);
+        var content = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), Margin = new Thickness(12, 10) };
+        var titleText = Graphite.TextBlock(title, 11, FontWeight.SemiBold, effective.InvertColors ? Graphite.BgBrush : color);
+        titleText.HorizontalAlignment = HorizontalAlignment.Center;
+        Grid.SetRow(titleText, 0);
+        content.Children.Add(titleText);
+        var widgetWidth = alert.ColSpan * CellW;
+        var widgetHeight = alert.RowSpan * CellH;
+        titleText.FontSize = Math.Clamp(Math.Min(widgetHeight * 0.13, widgetWidth / Math.Max(8, title.Length * 0.78)), 9, 24);
+        titleText.MaxWidth = Math.Max(1, widgetWidth - 24);
+        titleText.TextTrimming = TextTrimming.CharacterEllipsis;
+        var valueText = new TextBlock
+        {
+            Text = value,
+            FontFamily = "avares://Sprint.Desktop.Client/Assets/Fonts#Saira SemiCondensed",
+            FontSize = Math.Clamp(Math.Min(widgetHeight * 0.52, widgetWidth * 0.52), 24, 120),
+            FontWeight = FontWeight.Bold,
+            Foreground = effective.InvertColors ? Graphite.BgBrush : Graphite.TextBrush,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetRow(valueText, 1);
+        content.Children.Add(valueText);
+
+        var resizeHandle = new Border
+        {
+            Width = 12,
+            Height = 12,
+            Background = effective.InvertColors ? Graphite.BgBrush : color,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            CornerRadius = new CornerRadius(2),
+            Margin = new Thickness(5),
+        };
+        Grid.SetRowSpan(resizeHandle, 2);
+        content.Children.Add(resizeHandle);
+
+        var widget = new Border
+        {
+            Width = widgetWidth,
+            Height = widgetHeight,
+            Background = effective.InvertColors ? color : new SolidColorBrush(Color.FromArgb(246, 8, 8, 10)),
+            BorderBrush = color,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Cursor = new Cursor(StandardCursorType.SizeAll),
+            Focusable = true,
+            Tag = $"alert-widget:{alert.Type}",
+            Opacity = alert.Enabled ? 1.0 : 0.48,
+            Child = content,
+        };
+        AutomationProperties.SetName(widget, $"{title} alert position and size");
+        ToolTip.SetTip(widget, "Arrow keys move; Shift+arrow keys resize");
+        Canvas.SetLeft(widget, alert.Col * CellW);
+        Canvas.SetTop(widget, alert.Row * CellH);
+        widget.PointerPressed += (_, e) => BeginAlertDrag(widget, alert, e);
+        widget.PointerMoved += (_, e) => ContinueAlertDrag(widget, e);
+        widget.PointerReleased += (_, e) => EndAlertDrag(widget, e);
+        widget.KeyDown += (_, e) => OnAlertWidgetKeyDown(alert, e);
+        widget.GotFocus += (_, _) =>
+        {
+            widget.BorderBrush = Graphite.AccentBrush;
+            widget.BorderThickness = new Thickness(2);
+        };
+        widget.LostFocus += (_, _) =>
+        {
+            widget.BorderBrush = color;
+            widget.BorderThickness = new Thickness(1);
+        };
+        canvas.Children.Add(widget);
 
         return new Border
         {
-            Background = Graphite.Panel2Brush,
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            CornerRadius = new CornerRadius(10),
             ClipToBounds = true,
-            Child = new Image
-            {
-                Width = width,
-                Height = height,
-                Source = bitmap,
-                Stretch = Stretch.Fill,
-            },
+            Child = canvas,
         };
     }
+
+    private void OnAlertWidgetKeyDown(DashAlert alert, KeyEventArgs e)
+    {
+        var dc = e.Key == Key.Left ? -1 : e.Key == Key.Right ? 1 : 0;
+        var dr = e.Key == Key.Up ? -1 : e.Key == Key.Down ? 1 : 0;
+        if (dc == 0 && dr == 0)
+        {
+            return;
+        }
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            _controller.SetAlertGeometry(alert.Type, alert.Col, alert.Row, alert.ColSpan + dc, alert.RowSpan + dr);
+        }
+        else
+        {
+            _controller.SetAlertGeometry(alert.Type, alert.Col + dc, alert.Row + dr, alert.ColSpan, alert.RowSpan);
+        }
+
+        e.Handled = true;
+    }
+
+    private void BeginAlertDrag(Border widget, DashAlert alert, PointerPressedEventArgs e)
+    {
+        var point = e.GetPosition(widget);
+        _dragAlertType = alert.Type;
+        _resizingAlert = point.X >= widget.Width - 24 && point.Y >= widget.Height - 24;
+        _alertDragStart = e.GetPosition(_alertCanvas);
+        _alertStartCol = _alertPreviewCol = alert.Col;
+        _alertStartRow = _alertPreviewRow = alert.Row;
+        _alertStartColSpan = _alertPreviewColSpan = alert.ColSpan;
+        _alertStartRowSpan = _alertPreviewRowSpan = alert.RowSpan;
+        e.Pointer.Capture(widget);
+        e.Handled = true;
+    }
+
+    private void ContinueAlertDrag(Border widget, PointerEventArgs e)
+    {
+        if (_dragAlertType is null)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(_alertCanvas);
+        var dc = (int)Math.Round((point.X - _alertDragStart.X) / CellW);
+        var dr = (int)Math.Round((point.Y - _alertDragStart.Y) / CellH);
+        if (_resizingAlert)
+        {
+            _alertPreviewColSpan = Math.Clamp(_alertStartColSpan + dc, 2, Cols - _alertStartCol);
+            _alertPreviewRowSpan = Math.Clamp(_alertStartRowSpan + dr, 2, Rows - _alertStartRow);
+        }
+        else
+        {
+            _alertPreviewCol = Math.Clamp(_alertStartCol + dc, 0, Cols - _alertStartColSpan);
+            _alertPreviewRow = Math.Clamp(_alertStartRow + dr, 0, Rows - _alertStartRowSpan);
+        }
+
+        widget.Width = _alertPreviewColSpan * CellW;
+        widget.Height = _alertPreviewRowSpan * CellH;
+        Canvas.SetLeft(widget, _alertPreviewCol * CellW);
+        Canvas.SetTop(widget, _alertPreviewRow * CellH);
+        e.Handled = true;
+    }
+
+    private void EndAlertDrag(Border widget, PointerReleasedEventArgs e)
+    {
+        if (_dragAlertType is { } type)
+        {
+            _controller.SetAlertGeometry(type, _alertPreviewCol, _alertPreviewRow, _alertPreviewColSpan, _alertPreviewRowSpan);
+        }
+
+        _dragAlertType = null;
+        _resizingAlert = false;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    private Control BuildGlobalAlertSettings()
+    {
+        var config = _controller.AlertConfig;
+        var stack = new StackPanel { Spacing = 10 };
+        stack.Children.Add(Graphite.SectionLabel("Global defaults"));
+        stack.Children.Add(Graphite.TextBlock("Used by every alert unless it has an individual override.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
+        stack.Children.Add(AlertColorPicker("Color", config.ColorToken, _selectedAlertType, _controller.SetAlertColorToken));
+        stack.Children.Add(DurationRow(config.DurationSeconds,
+            () => _controller.SetAlertDuration(config.DurationSeconds - 0.1),
+            () => _controller.SetAlertDuration(config.DurationSeconds + 0.1)));
+        stack.Children.Add(AlertInvertRow(config.InvertColors, _controller.SetAlertInvertColors));
+        return stack;
+    }
+
+    private Control BuildIndividualAlertSettings(DashAlert? alert)
+    {
+        var stack = new StackPanel { Spacing = 10 };
+        var label = AlertTypes.First(item => string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase)).Label;
+        stack.Children.Add(Graphite.SectionLabel(label));
+        var enabled = _controller.IsAlertEnabled(_selectedAlertType);
+        stack.Children.Add(AlertToggleRow("Enabled", enabled, on => _controller.SetAlert(_selectedAlertType, on)));
+        if (alert is null)
+        {
+            return stack;
+        }
+
+        stack.Children.Add(AlertToggleRow("Use global settings", alert.UsesGlobalSettings,
+            useGlobal => _controller.SetAlertUseGlobal(alert.Type, useGlobal)));
+        var effective = _controller.EffectiveAlertConfig(alert.Type);
+        if (alert.UsesGlobalSettings)
+        {
+            stack.Children.Add(Graphite.TextBlock(
+                $"{AlertColorName(effective.ColorToken, alert.Type)} · {effective.DurationSeconds:0.0}s · {(effective.InvertColors ? "Inverted" : "Normal")}",
+                12, FontWeight.Medium, AlertTokenBrush(effective.ColorToken, alert.Type)));
+            return stack;
+        }
+
+        stack.Children.Add(AlertColorPicker("Color", effective.ColorToken, alert.Type, token => _controller.SetAlertColorToken(alert.Type, token)));
+        stack.Children.Add(DurationRow(effective.DurationSeconds,
+            () => _controller.SetAlertDuration(alert.Type, effective.DurationSeconds - 0.1),
+            () => _controller.SetAlertDuration(alert.Type, effective.DurationSeconds + 0.1)));
+        stack.Children.Add(AlertInvertRow(effective.InvertColors, invert => _controller.SetAlertInvertColors(alert.Type, invert)));
+        return stack;
+    }
+
+    private Control AlertColorPicker(string label, string current, string type, Action<string> onPick)
+    {
+        var stack = new StackPanel { Spacing = 5 };
+        stack.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Normal, Graphite.Text2Brush));
+        var row = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var token in new[] { "auto", "blue", "ember", "green", "yellow", "red", "white" })
+        {
+            var selected = string.Equals(current, token, StringComparison.OrdinalIgnoreCase);
+            var swatch = new Border
+            {
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(0, 0, 7, 4),
+                Background = AlertTokenBrush(token, type),
+                BorderBrush = selected ? Graphite.TextBrush : Graphite.Line2Brush,
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                CornerRadius = new CornerRadius(7),
+                Cursor = new Cursor(StandardCursorType.Hand),
+                Focusable = true,
+                Tag = $"alert-color:{token}",
+            };
+            AutomationProperties.SetName(swatch, $"{AlertColorName(token, type)} alert color");
+            ToolTip.SetTip(swatch, AlertColorName(token, type));
+            swatch.PointerPressed += (_, _) => onPick(token);
+            swatch.KeyDown += (_, e) =>
+            {
+                if (e.Key is Key.Enter or Key.Space)
+                {
+                    onPick(token);
+                    e.Handled = true;
+                }
+            };
+            swatch.GotFocus += (_, _) =>
+            {
+                swatch.BorderBrush = Graphite.AccentBrush;
+                swatch.BorderThickness = new Thickness(2);
+            };
+            swatch.LostFocus += (_, _) =>
+            {
+                swatch.BorderBrush = selected ? Graphite.TextBrush : Graphite.Line2Brush;
+                swatch.BorderThickness = new Thickness(selected ? 2 : 1);
+            };
+            row.Children.Add(swatch);
+        }
+        stack.Children.Add(row);
+        return stack;
+    }
+
+    private static Control AlertInvertRow(bool value, Action<bool> set) => AlertToggleRow("Invert colors", value, set);
+
+    private static Control AlertToggleRow(string label, bool value, Action<bool> set)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var text = Graphite.TextBlock(label, 12, FontWeight.Medium, Graphite.Text2Brush);
+        text.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(text);
+        var toggle = Graphite.Toggle(value, set);
+        Grid.SetColumn(toggle, 1);
+        row.Children.Add(toggle);
+        return row;
+    }
+
+    private static (string Title, string Value) AlertSample(string type) => type switch
+    {
+        "abs_change" => ("ABS", "4"),
+        "enginemap_change" => ("ENGINE MAP", "3"),
+        _ => ("TRACTION CONTROL", "5"),
+    };
+
+    private static IBrush AlertTokenBrush(string token, string type) => token.ToLowerInvariant() switch
+    {
+        "blue" => Graphite.BlueBrush,
+        "ember" or "primary" => Graphite.AccentBrush,
+        "green" => Graphite.GreenBrush,
+        "yellow" => Graphite.YellowBrush,
+        "red" => Graphite.RedBrush,
+        "white" => Graphite.TextBrush,
+        _ => type switch
+        {
+            "abs_change" => Graphite.YellowBrush,
+            "enginemap_change" => Graphite.AccentBrush,
+            _ => Graphite.BlueBrush,
+        },
+    };
+
+    private static string AlertColorName(string token, string type) =>
+        string.Equals(token, "auto", StringComparison.OrdinalIgnoreCase)
+            ? $"Auto · {(type == "abs_change" ? "Yellow" : type == "enginemap_change" ? "Orange" : "Blue")}"
+            : char.ToUpperInvariant(token[0]) + token[1..];
 
     private static Control DurationRow(double value, Action decrement, Action increment)
     {

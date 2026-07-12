@@ -372,4 +372,72 @@ public sealed class DashEditorControllerTests
         Assert.Same(layout.Pages[0], DashLayoutEditor.FindPage(layout, controller.ActivePageId));
         Assert.Null(DashLayoutEditor.FindPage(layout, "missing-page"));
     }
+
+    [Fact]
+    public void DashboardModePersistsAndNormalizes()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        controller.SetMode("advanced");
+        Assert.True(controller.IsAdvancedMode);
+        Assert.Equal("advanced", controller.Layout.Mode);
+
+        controller.SetMode("anything-else");
+        Assert.False(controller.IsAdvancedMode);
+        Assert.Equal("basic", controller.Layout.Mode);
+        Assert.Equal(2, saves);
+    }
+
+    [Fact]
+    public void AlertGeometryAndIndividualOverridesPersistIndependently()
+    {
+        var saves = 0;
+        var layout = NewLayout();
+        layout.AlertConfig = new DashAlertConfig { ColorToken = "ember", DurationSeconds = 1.8, InvertColors = false };
+        var controller = new DashEditorController(layout, _ => saves++);
+        controller.SetAlert("tc_change", true);
+
+        Assert.True(controller.SetAlertGeometry("tc_change", 17, 10, 8, 6));
+        var alert = Assert.IsType<DashAlert>(controller.GetAlert("tc_change"));
+        Assert.Equal((12, 6, 8, 6), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
+
+        controller.SetAlertUseGlobal("tc_change", false);
+        controller.SetAlertColorToken("tc_change", "blue");
+        controller.SetAlertDuration("tc_change", 2.4);
+        controller.SetAlertInvertColors("tc_change", true);
+        var effective = controller.EffectiveAlertConfig("tc_change");
+        Assert.Equal("blue", effective.ColorToken);
+        Assert.Equal(2.4, effective.DurationSeconds);
+        Assert.True(effective.InvertColors);
+
+        controller.SetAlertUseGlobal("tc_change", true);
+        effective = controller.EffectiveAlertConfig("tc_change");
+        Assert.Equal("ember", effective.ColorToken);
+        Assert.Equal(1.8, effective.DurationSeconds);
+        Assert.False(effective.InvertColors);
+        Assert.True(alert.UsesGlobalSettings);
+        Assert.True(saves >= 7);
+    }
+
+    [Fact]
+    public void DisablingAlertPreservesGeometryAndIndividualSettings()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        controller.SetAlert("abs_change", true);
+        controller.SetAlertGeometry("abs_change", 2, 4, 12, 5);
+        controller.SetAlertUseGlobal("abs_change", false);
+        controller.SetAlertColorToken("abs_change", "red");
+        var alert = Assert.IsType<DashAlert>(controller.GetAlert("abs_change"));
+
+        controller.SetAlert("abs_change", false);
+        Assert.False(controller.IsAlertEnabled("abs_change"));
+        Assert.Same(alert, controller.GetAlert("abs_change"));
+        Assert.Equal((2, 4, 12, 5), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
+        Assert.Equal("red", alert.ColorToken);
+
+        controller.SetAlert("abs_change", true);
+        Assert.True(controller.IsAlertEnabled("abs_change"));
+        Assert.Same(alert, controller.GetAlert("abs_change"));
+    }
 }

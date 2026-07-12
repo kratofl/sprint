@@ -49,6 +49,22 @@ public sealed class DashEditorController
 
     public DashLayout Layout { get; }
 
+    public bool IsAdvancedMode => string.Equals(Layout.Mode, "advanced", StringComparison.OrdinalIgnoreCase);
+
+    public void SetMode(string mode)
+    {
+        var normalized = string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";
+        if (string.Equals(Layout.Mode, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Layout.Mode = normalized;
+        SelectedStackId = null;
+        ActiveLayerId = null;
+        Persist();
+    }
+
     public string ActivePageId { get; private set; }
 
     public string? SelectedWidgetId { get; private set; }
@@ -368,26 +384,26 @@ public sealed class DashEditorController
 
     /// <summary>Whether a change-alert of the given type is configured on the layout.</summary>
     public bool IsAlertEnabled(string type) =>
-        Layout.Alerts.Any(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
+        GetAlert(type)?.Enabled == true;
 
     public DashAlertConfig AlertConfig => Layout.AlertConfig ?? new DashAlertConfig();
 
-    /// <summary>Enable/disable a change-alert type (adds/removes the layout alert entry).</summary>
+    /// <summary>Enable/disable a change-alert while preserving its authored geometry and overrides.</summary>
     public void SetAlert(string type, bool enabled)
     {
-        var present = IsAlertEnabled(type);
-        if (present == enabled)
+        var alert = GetAlert(type);
+        if (alert?.Enabled == enabled || (alert is null && !enabled))
         {
             return;
         }
 
-        if (enabled)
+        if (alert is null)
         {
-            Layout.Alerts.Add(new DashAlert { Id = type, Type = type });
+            Layout.Alerts.Add(new DashAlert { Id = type, Type = type, Enabled = true });
         }
         else
         {
-            Layout.Alerts.RemoveAll(a => string.Equals(a.Type, type, StringComparison.OrdinalIgnoreCase));
+            alert.Enabled = enabled;
         }
 
         SyncAlertEnabledTypes();
@@ -411,17 +427,119 @@ public sealed class DashEditorController
 
     public void SetAlertColorToken(string token) => PatchAlertConfig(config =>
     {
+        config.ColorToken = NormalizeAlertColor(token);
+    });
+
+    public DashAlert? GetAlert(string type) =>
+        Layout.Alerts.FirstOrDefault(alert => string.Equals(alert.Type, type, StringComparison.OrdinalIgnoreCase));
+
+    public DashAlertConfig EffectiveAlertConfig(string type)
+    {
+        var result = AlertConfig.Clone();
+        if (GetAlert(type) is { } alert)
+        {
+            result.ColorToken = alert.ColorToken ?? result.ColorToken;
+            result.DurationSeconds = alert.DurationSeconds ?? result.DurationSeconds;
+            result.InvertColors = alert.InvertColors ?? result.InvertColors;
+        }
+
+        return result;
+    }
+
+    public bool SetAlertGeometry(string type, int col, int row, int colSpan, int rowSpan)
+    {
+        if (GetAlert(type) is not { } alert)
+        {
+            return false;
+        }
+
+        colSpan = Math.Clamp(colSpan, 2, Layout.GridCols);
+        rowSpan = Math.Clamp(rowSpan, 2, Layout.GridRows);
+        col = Math.Clamp(col, 0, Layout.GridCols - colSpan);
+        row = Math.Clamp(row, 0, Layout.GridRows - rowSpan);
+        if (alert.Col == col && alert.Row == row && alert.ColSpan == colSpan && alert.RowSpan == rowSpan)
+        {
+            return false;
+        }
+
+        alert.Col = col;
+        alert.Row = row;
+        alert.ColSpan = colSpan;
+        alert.RowSpan = rowSpan;
+        Persist();
+        return true;
+    }
+
+    public void SetAlertUseGlobal(string type, bool useGlobal)
+    {
+        if (GetAlert(type) is not { } alert)
+        {
+            return;
+        }
+
+        if (useGlobal)
+        {
+            alert.ColorToken = null;
+            alert.DurationSeconds = null;
+            alert.InvertColors = null;
+        }
+        else if (alert.UsesGlobalSettings)
+        {
+            var global = AlertConfig;
+            alert.ColorToken = global.ColorToken;
+            alert.DurationSeconds = global.DurationSeconds;
+            alert.InvertColors = global.InvertColors;
+        }
+
+        Persist();
+    }
+
+    public void SetAlertColorToken(string type, string? token)
+    {
+        if (GetAlert(type) is not { } alert)
+        {
+            return;
+        }
+
+        alert.ColorToken = NormalizeAlertColor(token);
+        Persist();
+    }
+
+    public void SetAlertDuration(string type, double seconds)
+    {
+        if (GetAlert(type) is not { } alert)
+        {
+            return;
+        }
+
+        alert.DurationSeconds = Math.Clamp(Math.Round(seconds, 1), 0.5, 5.0);
+        Persist();
+    }
+
+    public void SetAlertInvertColors(string type, bool invert)
+    {
+        if (GetAlert(type) is not { } alert)
+        {
+            return;
+        }
+
+        alert.InvertColors = invert;
+        Persist();
+    }
+
+    private static string NormalizeAlertColor(string? token)
+    {
         var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
-        config.ColorToken = normalized is "auto" or "blue" or "ember" or "green" or "yellow" or "red" or "white"
+        return normalized is "auto" or "blue" or "ember" or "green" or "yellow" or "red" or "white"
             ? normalized
             : "auto";
-    });
+    }
 
     private void PatchAlertConfig(Action<DashAlertConfig> patch)
     {
         var config = Layout.AlertConfig?.Clone() ?? new DashAlertConfig();
         patch(config);
-        config.EnabledTypes = Layout.Alerts.Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        config.EnabledTypes = Layout.Alerts.Where(alert => alert.Enabled).Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         Layout.AlertConfig = config.IsDefault ? null : config;
         Persist();
     }
@@ -433,7 +551,7 @@ public sealed class DashEditorController
             return;
         }
 
-        Layout.AlertConfig.EnabledTypes = Layout.Alerts.Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        Layout.AlertConfig.EnabledTypes = Layout.Alerts.Where(alert => alert.Enabled).Select(alert => alert.Type).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (Layout.AlertConfig.IsDefault)
         {
             Layout.AlertConfig = null;

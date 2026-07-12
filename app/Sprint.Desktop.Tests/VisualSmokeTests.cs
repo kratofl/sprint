@@ -103,10 +103,12 @@ public sealed class VisualSmokeTests
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Layout", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Alerts", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Settings", StringComparison.Ordinal));
-                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button =>
-                    string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal) ||
+                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button =>
+                    string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal));
+                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button =>
                     string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
-                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Clear page", StringComparison.Ordinal));
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button =>
+                    string.Equals(button.Content?.ToString(), "Clear page", StringComparison.Ordinal));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Delete page", StringComparison.Ordinal));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Save", StringComparison.Ordinal));
 
@@ -224,11 +226,12 @@ public sealed class VisualSmokeTests
                 alertsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
-                AssertText(view, "Alert behavior");
+                AssertText(view, "Alert canvas");
+                AssertText(view, "Global defaults");
                 AssertText(view, "Duration");
                 AssertText(view, "Invert colors");
-                AssertText(view, "Overlay color");
-                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Canvas>(), IsEditorCanvas);
+                AssertText(view, "Use global settings");
+                Assert.Contains(view.GetVisualDescendants().OfType<Canvas>(), IsEditorCanvas);
 
                 using var frame = SaveFrame(window, "editor-alerts-1440x900.png");
                 window.Close();
@@ -255,6 +258,7 @@ public sealed class VisualSmokeTests
                 var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
                 var layout = runtime.DashLayouts.First(item => item.IsDefault);
                 var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                controller.SetMode("advanced");
                 var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
                 var window = new Window { Width = 1440, Height = 900, Content = view, Background = Graphite.BgBrush };
                 window.Show();
@@ -368,6 +372,7 @@ public sealed class VisualSmokeTests
                 var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
                 var layout = runtime.DashLayouts.First(item => item.IsDefault);
                 var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                controller.SetMode("advanced");
                 var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
                 var window = new Window { Width = 1440, Height = 900, Content = view, Background = Graphite.BgBrush };
                 window.Show();
@@ -396,9 +401,8 @@ public sealed class VisualSmokeTests
 
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "+  Widget stack", StringComparison.Ordinal));
                 Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(ToolTip.GetTip(button) as string, "Collapse widget panel", StringComparison.Ordinal));
-                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), button =>
-                    string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal) ||
-                    string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
+                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Pages", StringComparison.Ordinal));
+                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button => string.Equals(button.Content?.ToString(), "Widgets", StringComparison.Ordinal));
 
                 var gearCard = view.GetVisualDescendants()
                     .OfType<Border>()
@@ -451,7 +455,7 @@ public sealed class VisualSmokeTests
 
                 var overlay = view.GetVisualDescendants()
                     .OfType<Border>()
-                    .First(border => string.Equals(border.Tag?.ToString(), "gear_speed", StringComparison.Ordinal));
+                    .First(border => string.Equals(border.Tag?.ToString(), "driving-gear", StringComparison.Ordinal));
                 Assert.Equal(Brushes.Transparent, overlay.Background);
                 Assert.Equal(Brushes.Transparent, overlay.BorderBrush);
 

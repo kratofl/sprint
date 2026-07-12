@@ -7,13 +7,13 @@ namespace Sprint.Desktop.Features.Dashes;
 /// The resolved on-wheel colour set for the dash painter. Values mirror the
 /// canonical Graphite tokens in <c>Graphite.cs</c> / <c>docs/FIGMA_COMPONENTS.md</c>
 /// (ember <c>#FF6A00</c> primary, <c>#1F7FE6</c> informational blue) but the
-/// canvas is fixed black per the on-wheel display contract (matrix 4.5). This is
+/// canvas is a near-black graphite surface rather than absolute black. This is
 /// deliberately NOT the retired figma-flat palette (<c>#ff906c</c>/<c>#090907</c>)
 /// that lived on the <c>feat/figma-flat-ui-theme</c> branch.
 /// </summary>
 public sealed record DashPalette
 {
-    public SKColor Background { get; init; } = SKColors.Black;
+    public SKColor Background { get; init; } = new(8, 8, 10);
     public SKColor Surface { get; init; } = FromGraphite(Graphite.Panel3);      // bar track / container
     public SKColor Border { get; init; } = FromGraphite(Graphite.Line2);         // wheel-instrument outline
     public SKColor Foreground { get; init; } = FromGraphite(Graphite.Text);     // large values

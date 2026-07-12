@@ -62,18 +62,38 @@ internal static class AgentUiReviewHarness
                 var defaultDash = runtime.DashLayouts.First(dash => dash.IsDefault);
                 using (var painter = new DashPainter(800, 480, DashPalette.FromTheme(defaultDash.Theme)))
                 {
-                    var imagePath = Path.Combine(artifactRoot, "default-dash-800x480.png");
-                    File.WriteAllBytes(imagePath, painter.RenderPng(
+                    foreach (var page in defaultDash.Pages)
+                    {
+                        var pageSlug = page.Name.ToLowerInvariant();
+                        var imagePath = Path.Combine(artifactRoot, $"default-dash-{pageSlug}-800x480.png");
+                        File.WriteAllBytes(imagePath, painter.RenderPng(
+                            defaultDash,
+                            DashPreviewFrames.For(DashPreviewState.MidLap),
+                            runtime.Settings,
+                            page.Id));
+                        using var bitmap = new Bitmap(imagePath);
+                        var failure = ValidateImage(bitmap);
+                        frames.Add(new AgentUiReviewFrame(
+                            $"default-dash-{pageSlug}-800x480",
+                            imagePath,
+                            [$"{page.Name} page", "gear and shift state remain visible"],
+                            failure is null ? [] : [failure]));
+                    }
+
+                    var alertImagePath = Path.Combine(artifactRoot, "default-dash-adjustment-overlay-800x480.png");
+                    File.WriteAllBytes(alertImagePath, painter.RenderPng(
                         defaultDash,
                         DashPreviewFrames.For(DashPreviewState.MidLap),
-                        runtime.Settings));
-                    using var bitmap = new Bitmap(imagePath);
-                    var failure = ValidateImage(bitmap);
+                        runtime.Settings,
+                        "driving-default",
+                        banner: new DashAlertBanner("TRACTION CONTROL", "5", DashPalette.Default.Accent)));
+                    using var alertBitmap = new Bitmap(alertImagePath);
+                    var alertFailure = ValidateImage(alertBitmap);
                     frames.Add(new AgentUiReviewFrame(
-                        "default-dash-800x480",
-                        imagePath,
-                        ["RPM", "lap timing", "gear and speed", "delta", "sectors", "controls"],
-                        failure is null ? [] : [failure]));
+                        "default-dash-adjustment-overlay-800x480",
+                        alertImagePath,
+                        ["temporary adjustment overlay", "previous and current values"],
+                        alertFailure is null ? [] : [alertFailure]));
                 }
 
                 var catalogDash = WidgetCatalogDash();
@@ -151,7 +171,18 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "dash-editor-list", "Dashes", "Create dash", "Edit"));
 
                     Click(window, "Edit");
-                    frames.Add(Capture(window, artifactRoot, "dash-editor-layout", "Layout", "Alerts", "Settings", "Widgets", "Properties"));
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-layout", "Layout", "Alerts", "Settings", "Pages", "Widgets", "Properties", "Basic", "Advanced"));
+
+                    Click(window, "Pages");
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-pages", "Pages", "Widgets", "+  Add page", "Driving", "Endurance", "Timing", "Vehicle"));
+
+                    Click(window, "Alerts");
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-alerts", "Alert canvas", "Global defaults", "Use global settings", "Duration", "Invert colors"));
+
+                    Click(window, "Layout");
+                    Click(window, "Widgets");
+                    Click(window, "Advanced");
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-advanced", "Advanced", "Pages", "Widgets", "Properties"));
                 }
                 finally
                 {
@@ -208,6 +239,9 @@ internal static class AgentUiReviewHarness
             .Concat(window.GetVisualDescendants()
                 .OfType<TextBox>()
                 .Select(text => text.Text ?? ""))
+            .Concat(window.GetVisualDescendants()
+                .OfType<Button>()
+                .Select(button => button.Content as string ?? ""))
             .Where(text => !string.IsNullOrWhiteSpace(text))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(text => text, StringComparer.OrdinalIgnoreCase)

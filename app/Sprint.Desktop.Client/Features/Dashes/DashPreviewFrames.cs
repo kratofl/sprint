@@ -124,6 +124,11 @@ public static class DashPreviewFrames
             MotorMap = 3,
             MotorMapMax = 8,
         },
+        Energy = new EnergyState
+        {
+            VirtualEnergy = 68,
+            DeployPower = 92,
+        },
         Race = new RaceState { Position = 4, TotalPositions = 20, GapAhead = -1.2f, GapBehind = 0.8f },
         Tires =
         [

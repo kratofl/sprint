@@ -1852,6 +1852,15 @@ public sealed class MainWindow : Window
             BorderBrush = Graphite.Line2Brush,
             MinWidth = 180
         };
+        var dashMode = new ComboBox
+        {
+            ItemsSource = new[] { "Basic", "Advanced" },
+            SelectedItem = string.Equals(_runtime.Settings.NewDashDefaults.Mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "Advanced" : "Basic",
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180
+        };
 
         void MarkSaved()
         {
@@ -1903,6 +1912,11 @@ public sealed class MainWindow : Window
             _runtime.Settings.NewDashDefaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
             MarkSaved();
         };
+        dashMode.SelectionChanged += (_, _) =>
+        {
+            _runtime.Settings.NewDashDefaults.Mode = string.Equals(dashMode.SelectedItem?.ToString(), "Advanced", StringComparison.Ordinal) ? "advanced" : "basic";
+            MarkSaved();
+        };
         channel.SelectionChanged += (_, _) =>
         {
             _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
@@ -1914,6 +1928,7 @@ public sealed class MainWindow : Window
         form.Children.Add(FormRow("Driver name", driverName));
         form.Children.Add(FormRow("Driver number", driverNumber));
         form.Children.Add(Graphite.SectionLabel("Dash defaults"));
+        form.Children.Add(FormRow("Editor mode", dashMode));
         form.Children.Add(FormRow("Speed unit", speedUnit));
         form.Children.Add(FormRow("Temperature unit", tempUnit));
         form.Children.Add(Graphite.SectionLabel("Release"));

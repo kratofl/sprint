@@ -39,21 +39,26 @@ public sealed class DashAlertTracker
             // Last configured alert that fired this frame wins (matches the Go painter loop).
             foreach (var alert in layout.Alerts)
             {
+                if (!alert.Enabled)
+                {
+                    continue;
+                }
+
                 var candidate = alert.Type switch
                 {
                     "tc_change" when frame.Electronics.TractionControl != _prev.Electronics.TractionControl
-                        => CreateBanner($"TC1  {frame.Electronics.TractionControl}", palette.Accent, config, palette),
+                        => CreateBanner("TRACTION CONTROL", frame.Electronics.TractionControl.ToString(), alert, palette.Accent, config, layout, palette),
                     "abs_change" when frame.Electronics.Abs != _prev.Electronics.Abs
-                        => CreateBanner($"ABS  {frame.Electronics.Abs}", palette.Warning, config, palette),
+                        => CreateBanner("ABS", frame.Electronics.Abs.ToString(), alert, palette.Warning, config, layout, palette),
                     "enginemap_change" when frame.Electronics.MotorMap != _prev.Electronics.MotorMap
-                        => CreateBanner($"MAP  {frame.Electronics.MotorMap}", palette.Primary, config, palette),
+                        => CreateBanner("ENGINE MAP", frame.Electronics.MotorMap.ToString(), alert, palette.Primary, config, layout, palette),
                     _ => (DashAlertBanner?)null,
                 };
 
                 if (candidate is not null)
                 {
                     _active = candidate;
-                    var duration = Math.Clamp(config.DurationSeconds <= 0 ? _durationSeconds : config.DurationSeconds, 0.5, 5.0);
+                    var duration = Math.Clamp(alert.DurationSeconds ?? (config.DurationSeconds <= 0 ? _durationSeconds : config.DurationSeconds), 0.5, 5.0);
                     _expiresAt = now.AddSeconds(duration);
                 }
             }
@@ -76,8 +81,25 @@ public sealed class DashAlertTracker
         _active = null;
     }
 
-    private static DashAlertBanner CreateBanner(string text, SkiaSharp.SKColor fallback, DashAlertConfig config, DashPalette palette) =>
-        new(text, ResolveColor(config.ColorToken, fallback, palette), config.DisplayMode, config.InvertColors);
+    private static DashAlertBanner CreateBanner(
+        string title,
+        string value,
+        DashAlert alert,
+        SkiaSharp.SKColor fallback,
+        DashAlertConfig config,
+        DashLayout layout,
+        DashPalette palette) =>
+        new(
+            title,
+            value,
+            ResolveColor(alert.ColorToken ?? config.ColorToken, fallback, palette),
+            alert.Col,
+            alert.Row,
+            alert.ColSpan,
+            alert.RowSpan,
+            layout.GridCols,
+            layout.GridRows,
+            alert.InvertColors ?? config.InvertColors);
 
     private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette) =>
         token?.Trim().ToLowerInvariant() switch
