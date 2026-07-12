@@ -10,14 +10,14 @@ export interface LapTimeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 /**
  * Formats a lap time from seconds into `m:ss.SSS` (or `m:ss` without ms).
- * Always uses Saira tabular numerals so digits don't shift width.
+ * Uses the shared Inter UI face with tabular numerals so digits don't shift width.
  */
 export function LapTime({ seconds, showMs = true, className, ...props }: LapTimeProps) {
   const formatted = React.useMemo(() => formatLapTime(seconds, showMs), [seconds, showMs])
 
   return (
     <span
-      className={cn('font-saira tabular-nums', className)}
+      className={cn('font-sans tabular-nums', className)}
       {...props}
     >
       {formatted}

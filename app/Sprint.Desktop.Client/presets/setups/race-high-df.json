@@ -1,0 +1,21 @@
+{
+  "id": "setup-race-high-df",
+  "name": "Race | High DF",
+  "isTemplate": true,
+  "values": {
+    "splitter": 4,
+    "rearWing": 10,
+    "springF": 125,
+    "springR": 140,
+    "arbF": 3,
+    "arbR": 3,
+    "rideF": 62,
+    "rideR": 72,
+    "pressF": 27.0,
+    "pressR": 26.8,
+    "bias": 55.5,
+    "ducts": 4,
+    "diff": 55,
+    "fuelLoad": 88
+  }
+}

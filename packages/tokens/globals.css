@@ -10,26 +10,26 @@
   --primitive-color-blue-500: #1F7FE6;
   --primitive-color-purple-500: #A06BFF;
   --primitive-color-neutral-990: #050505;
-  --primitive-color-neutral-950: #0A0A0A;
-  --primitive-color-neutral-925: #0F0F0F;
-  --primitive-color-neutral-900: #141414;
-  --primitive-color-neutral-850: #1A1A1A;
-  --primitive-color-neutral-800: #1F1F1F;
-  --primitive-color-neutral-750: #1F1F1F;
-  --primitive-color-neutral-700: #2E2E2E;
-  --primitive-color-neutral-600: #424242;
-  --primitive-color-neutral-500: #5A5A5A;
-  --primitive-color-neutral-400: #7A7A7A;
-  --primitive-color-neutral-300: #A0A0A0;
-  --primitive-color-neutral-50: #F6F6F6;
+  --primitive-color-neutral-950: #0B0B0D;
+  --primitive-color-neutral-925: #101012;
+  --primitive-color-neutral-900: #141416;
+  --primitive-color-neutral-850: #1B1B1E;
+  --primitive-color-neutral-800: #232327;
+  --primitive-color-neutral-750: #232327;
+  --primitive-color-neutral-700: rgba(255, 255, 255, .07);
+  --primitive-color-neutral-600: rgba(255, 255, 255, .12);
+  --primitive-color-neutral-500: #6F6F78;
+  --primitive-color-neutral-400: #A1A1AA;
+  --primitive-color-neutral-300: #B9B9C1;
+  --primitive-color-neutral-50: #F5F5F7;
 
   /* Primitive / Radius + Space */
-  --primitive-radius-panel: 14px;
+  --primitive-radius-panel: 12px;
   --primitive-radius-card: 10px;
   --primitive-radius-alert: 10px;
-  --primitive-radius-control: 8px;
+  --primitive-radius-control: 7px;
   --primitive-radius-tile: 10px;
-  --primitive-radius-icon: 6px;
+  --primitive-radius-icon: 7px;
   --primitive-radius-badge: 4px;
   --primitive-radius-pill: 999px;
   --primitive-motion-duration-instant: 0ms;
@@ -40,28 +40,28 @@
   --primitive-motion-ease-out: cubic-bezier(0, 0, 0.2, 1);
   --primitive-motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --primitive-space-0: 0px;
-  --primitive-space-1: 2px;
-  --primitive-space-2: 4px;
-  --primitive-space-3: 6px;
-  --primitive-space-4: 8px;
-  --primitive-space-5: 10px;
-  --primitive-space-6: 14px;
-  --primitive-space-7: 16px;
-  --primitive-space-8: 18px;
-  --primitive-space-9: 20px;
-  --primitive-space-10: 22px;
-  --primitive-space-12: 36px;
+  --primitive-space-1: 4px;
+  --primitive-space-2: 8px;
+  --primitive-space-3: 12px;
+  --primitive-space-4: 16px;
+  --primitive-space-5: 20px;
+  --primitive-space-6: 24px;
+  --primitive-space-7: 32px;
+  --primitive-space-8: 40px;
+  --primitive-space-9: 48px;
+  --primitive-space-10: 56px;
+  --primitive-space-12: 64px;
 
   /* Dash Studio public variables */
-  --bg: #0A0A0A;
-  --panel: #0F0F0F;
-  --panel2: #141414;
-  --panel3: #1A1A1A;
-  --line: #2E2E2E;
-  --line2: #424242;
-  --text: #F6F6F6;
-  --text2: #7A7A7A;
-  --text3: #5A5A5A;
+  --bg: #0B0B0D;
+  --panel: #101012;
+  --panel2: #141416;
+  --panel3: #1B1B1E;
+  --line: rgba(255, 255, 255, .07);
+  --line2: rgba(255, 255, 255, .12);
+  --text: #F5F5F7;
+  --text2: #A1A1AA;
+  --text3: #6F6F78;
   --accent: #FF6A00;
   --radius: 10px;
   --r: var(--radius);
@@ -84,11 +84,11 @@
   --blue: #1F7FE6;
   --purple: #A06BFF;
 
-  /* Typography stacks. IBM Plex Sans is the single UI family (see
+  /* Typography stacks. Inter is the single UI family (see
      packages/tokens/src/atoms/typography.ts); display/body/ui share it. */
-  --font-display: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  --font-body: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  --font-ui: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  --font-display: Inter, system-ui, sans-serif;
+  --font-body: Inter, system-ui, sans-serif;
+  --font-ui: Inter, system-ui, sans-serif;
 
   /* Compatibility aliases mapped to Dash Studio */
   --bg-deep: var(--bg);
@@ -98,8 +98,8 @@
   --tile-2: var(--panel2);
   --panel-3: var(--panel3);
   --tile-3: var(--panel3);
-  --panel-4: #1F1F1F;
-  --tile-4: #1F1F1F;
+  --panel-4: #232327;
+  --tile-4: #232327;
   --border: var(--line);
   --border-2: var(--line2);
   --win-edge: var(--line2);
@@ -229,7 +229,7 @@ html,
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: Inter, system-ui, sans-serif;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
@@ -240,30 +240,26 @@ body {
 
 .mono,
 .ui-value {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: Inter, system-ui, sans-serif;
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
 
 .ui-label {
   color: var(--text3);
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .18em;
-  text-transform: uppercase;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .ui-control {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .ui-wordmark {
-  font-family: 'IBM Plex Sans', Archivo, system-ui, sans-serif;
+  font-family: Inter, system-ui, sans-serif;
   font-weight: 700;
 }
 

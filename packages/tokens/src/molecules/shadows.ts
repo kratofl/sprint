@@ -10,6 +10,6 @@ export const shadows = {
 
   /** @deprecated compatibility alias; cards are flat. */
   card:  'none',
-  /** @deprecated compatibility alias; use borders for separation. */
-  modal: 'none',
+  /** Broad, low-contrast elevation reserved for overlapping modal surfaces. */
+  modal: '0 24px 70px rgba(0,0,0,.42)',
 } as const

@@ -1,104 +1,91 @@
-# CLAUDE.md — Sprint
+# CLAUDE.md - Sprint
 
-Neutral, full conventions live in @AGENTS.md (read it — it is the source of
-truth). This file is the always-loaded summary. Design contract: `docs/DESIGN.md`.
-**Migration parity checklist: `docs/MIGRATION_INVENTORY.md` (read before touching `app/`).**
+Neutral, full conventions live in @AGENTS.md. This file is the always-loaded
+summary. Design contract: `docs/DESIGN.md`. Migration checklist:
+`docs/MIGRATION_INVENTORY.md`.
 
-## Critical for agents (read first)
+## Critical for agents
 
-- **The desktop app is mid-migration to .NET 10 / Avalonia.** `app/` is now the
-  `Sprint.Desktop.slnx` solution (Client / Api / Games / Tests / Contracts). The old
-  Go/Wails + React desktop has been removed. Track the work via PRD **issue #107**
-  and the parity matrix in `docs/MIGRATION_INVENTORY.md`.
-- **Windows / PowerShell only.** The `Makefile` shells out to PowerShell. A Bash
-  tool exists for POSIX scripts, but commands the user runs are PowerShell.
-- **`app/` (.NET desktop solution) + `api/` (.NET GraphQL server solution) +
-  `packages/` (web UI/tokens/types) + `web/`** are the surfaces. Do NOT change
-  `api/` or `web/` unless asked or a shared contract requires it. The desktop app is
-  the active focus. **The API was migrated Go → .NET 10 (ASP.NET Core +
-  HotChocolate GraphQL); it shares `app/Sprint.Contracts` with the desktop and
-  persists to Postgres (relational) + InfluxDB (telemetry).**
-- **Do not install tools/deps** unless asked.
-- **Design = `docs/DESIGN.md`** (the Graphite flat system: near-black surfaces
-  `#070707/#0D0D0D/#131313/#1B1B1B`, ember accent `#FF6A00`, `#4F9CFF`
-  informational, radius 10, 40px titlebar). **Typography = `Inter` (UI) +
-  `Space Grotesk` (display)** per the maintainer's `docs/Sprint.fig`; both fonts
-  are bundled under `Sprint.Desktop.Client/Assets/Fonts` and exposed via
-  `Graphite.FontStack` / `Graphite.DisplayFontStack`. `Graphite.cs` matches
-  `docs/DESIGN.md` — do NOT reintroduce the old `IBM Plex` framing or a "palette
-  contradiction" (that belonged to the `feat/figma-flat-ui-theme` branch). Keep
-  matching `docs/Sprint.fig` for full component fidelity; do NOT hardcode hex
-  outside `Graphite.cs`.
+- The desktop migration is now a .NET 10 / Avalonia solution under `app/`:
+  `Sprint.Desktop.Client`, `Sprint.Desktop.Api`, `Sprint.Games`, and
+  `Sprint.Desktop.Tests` (the `app/Sprint.Desktop.slnx` solution).
+- The old Go/Wails + React desktop is retired. Do not add Wails setup/build
+  instructions back unless this architecture is intentionally restored.
+- The API was migrated Go → .NET 10 (ASP.NET Core + HotChocolate GraphQL,
+  `api/Sprint.Api.slnx`); it shares `app/Sprint.Contracts` with the desktop and
+  persists to Postgres (relational) + InfluxDB (telemetry).
+- Windows / PowerShell are the local defaults. The `Makefile` shells out through
+  PowerShell.
+- Prioritize `app/`. Do not change `api/`, `web/`, or shared packages unless a
+  shared contract requires the consumer update.
+- Do not install tools or dependencies unless asked.
+- Design = Graphite from `docs/DESIGN.md`: flat near-black surfaces, ember
+  `#FF6A00`, informational `#4F9CFF`, Inter UI text, Space Grotesk display text,
+  and centralized tokens in `Graphite.cs` / component themes. Saira SemiCondensed
+  is the condensed motorsport face (wordmark, section labels, chips) and the
+  Tabler icon set renders via `Icons.cs` — both bundled, no new dependency.
 
-## Verify loop (run after edits)
+## Verify loop
 
-Two `.slnx` solutions: desktop at `app/Sprint.Desktop.slnx`, API at
-`api/Sprint.Api.slnx` (both migrated from `.sln`):
+Use the .NET SDK pinned by `global.json`. The desktop and API are now separate
+`.slnx` solutions (`app/Sprint.Desktop.slnx`, `api/Sprint.Api.slnx`):
 
-- **Restore / build:** `dotnet restore app/Sprint.Desktop.slnx` →
-  `dotnet build app/Sprint.Desktop.slnx` (or `make lint-app` = build with
-  `-warnaserror`, the real gate).
-- **Desktop tests:** `make test-app` (= `dotnet test
-  app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj`) — **xunit** (migrated in
-  WS2: Microsoft.NET.Test.Sdk + xunit + xunit.runner.visualstudio).
-- **Run the app:** `make dev-app` (= `dotnet run --project
-  app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`).
-- **Publish:** `make build-app` → `app/build/bin`.
-- **API (.NET GraphQL):** `make test-api` (= `dotnet test
-  api/Sprint.Api.Tests/...`), `make lint-api` (build `-warnaserror`), `make dev-api`
-  (hot reload), `make schema` (re-export `web/schema.graphql`). The server needs
-  Postgres via `DATABASE_URL`; InfluxDB is optional locally (telemetry writes no-op
-  when `INFLUXDB_URL` is unset).
-- **SDK gotcha (verified 2026-06-29):** the .NET **10.0.301** SDK is installed,
-  but under the **x86** host `C:\Program Files (x86)\dotnet` — the x64 `dotnet` on
-  PATH has only a 6.0.5 runtime, so a bare `dotnet build` reports "no SDK found."
-  Use the x86 host explicitly, e.g.
-  `& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx`.
-  Build + `make test-app` are **verified green (0 warnings/0 errors, 4/4 tests)**.
-  No `global.json` pins the SDK yet (WS2). If the command sandbox hides the SDK,
-  run it unsandboxed in the worktree.
+- Build with warnings as errors:
+  `dotnet build app/Sprint.Desktop.slnx -warnaserror`
+- Desktop tests:
+  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj`
+- Visual smoke after Avalonia shell/layout/Graphite changes:
+  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter VisualSmokeTests`
+- Run locally:
+  `dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`
+- Publish:
+  `make build-app` (defaults to `RID=win-x64`, override with `RID=linux-x64`)
+- API (.NET GraphQL): `make test-api`, `make lint-api`, `make dev-api`,
+  `make schema` (re-export `web/schema.graphql`).
 
-## Solution layout & module boundaries
+If a bare `dotnet` resolves to the x64 runtime-only install, use the x86 SDK:
+`& 'C:\Program Files (x86)\dotnet\dotnet.exe'`.
 
-- `app/Sprint.Desktop.Api` — shared desktop/game contract (`TelemetryFrame`,
-  `ITelemetrySource`). **No** game paths, shared-memory names, binary layouts, or
-  Avalonia/UI types.
-- `app/Sprint.Games` — the ONLY place that knows game-specific paths/structs/
-  parsers. Adapters implement the `Api` contract. `DemoTelemetrySource` is the
-  dev/test adapter; Le Mans Ultimate is the first real target (currently a
-  **placeholder** — constants only, no reader).
-- `app/Sprint.Desktop.Client` — Avalonia shell, feature pages, dash render/editor,
-  runtime persistence (`DesktopRuntime.cs`), `Graphite.cs` design layer.
-- `app/Sprint.Desktop.Tests` — behavior tests at stable seams.
+## Module boundaries
 
-## Known state / gotchas (see inventory for the full matrix)
+- `app/Sprint.Desktop.Api` owns shared desktop/game contracts:
+  `TelemetryFrame`, `ITelemetrySource`, telemetry health/freshness, and engineer
+  command shapes. It must not reference UI or game-specific implementation.
+- `app/Sprint.Games` owns game-specific paths, shared-memory names, binary
+  layouts, parsers, and telemetry adapters. Le Mans Ultimate is implemented
+  through parser, mapper, shared-memory provider, and `ITelemetrySource`.
+- `app/Sprint.Desktop.Client` owns Avalonia UI, runtime composition, persistence,
+  dash render/editor, hardware display pipeline, input binding UI, update checks,
+  and Graphite controls/themes.
+- `app/Sprint.Desktop.Tests` owns behavior tests at stable seams: contracts,
+  runtime persistence, LMU parsing/mapping/source, telemetry engine, dash painter
+  and editor, hardware fakes/RGB565, input binding, updates, shell, and visual
+  smoke.
 
-- `MainWindow.cs` (~986 lines) is a **monolithic** composition root that rebuilds
-  the whole control tree per render — no DI, no MVVM/XAML view separation yet.
-  Prefer presenter/view-model seams; don't grow `MainWindow`.
-- Telemetry is **demo-only**; a single 500ms UI-thread `DispatcherTimer` (UI label
-  says "60Hz" — that's cosmetic, not real). Real adapters need a background reader
-  + cancellation off the UI thread.
-- The shared contract has **no** disconnected/stale/invalid/health state yet — UI
-  fakes a static "SIM DEMO / green dot". This blocks honest failure-state UI.
-- `System.Text.Json` silently drops unknown members, so `DashLayout` / `AppSettings`
-  / `CatalogDevice` **lose preset richness** (idlePage, alerts, per-widget config,
-  device offsets/bindings, `dashEditorUI`) on load → lossy round-trips until the
-  full shapes are modeled.
-- Hardware (VoCore/USBD480/WinUSB/RGB565), input/joystick binding, delta, capture,
-  updater, and the dash painter are **not yet ported** — Windows interop work.
+## Current state
+
+- PRD #107 is implemented to the software parity gate recorded in
+  `docs/MIGRATION_INVENTORY.md`: WS1-WS11 are done, with physical-device,
+  live-game, signing, and product-decision items explicitly deferred.
+- Real LMU telemetry support exists, but live verification still requires a
+  running Le Mans Ultimate instance on a Windows machine.
+- VoCore/USBD480 support has the .NET interfaces, fake-tested screen pipeline,
+  RGB565 conversion, and WinUSB transport/driver classes. Physical USB testing
+  remains hardware-gated.
+- Input binding has the command model, persistence, listen-mode reducer, and
+  keyboard fallback UI. Windows Raw Input physical-button capture remains
+  deferred.
+- The dash path uses `DashPainter`/SkiaSharp for thumbnails, previews, and screen
+  frames. Richer old-editor details such as full widget-stack/theme-manager parity
+  remain documented deferrals.
+- Release packaging publishes self-contained single-file desktop binaries for
+  Windows and Linux. Updates are check-and-notify/manual-download by decision;
+  unattended self-replacement is deferred.
 
 ## Pointers
 
-- @AGENTS.md — full command list, focus rules, conventions (source of truth).
-- `docs/MIGRATION_INVENTORY.md` — parity matrix (old → .NET status → workstream →
-  priority → acceptance criteria) + per-workstream deferrals + open questions.
-- `docs/DESIGN.md` — Graphite design contract (canonical UI system).
-- `docs/Sprint.fig` — the maintainer's Figma file (visual source of truth for the
-  componentized UI).
-- `docs/SCREEN_PROTOCOLS.md` — WinUSB / VoCore / USBD480 / RGB565 protocol
-  reference (still valid domain knowledge; reimplement in .NET).
-- PRD **issue #107** — `gh issue view 107` (+ `--comments` for the design &
-  architecture addenda).
-- `handoffs/LATEST.md` — local-only recent-session context; read at session start
-  if present (gitignored).
+- @AGENTS.md - full command list, focus rules, conventions.
+- `docs/MIGRATION_INVENTORY.md` - PRD #107 parity and deferral record.
+- `docs/DESIGN.md` - Graphite implementation contract.
+- `docs/SCREEN_PROTOCOLS.md` - VoCore / USBD480 / RGB565 protocol reference.
+- `docs/DESKTOP_SMOKE.md` - manual desktop parity smoke script.

@@ -1,0 +1,21 @@
+{
+  "id": "setup-baseline",
+  "name": "Baseline | Race",
+  "isTemplate": true,
+  "values": {
+    "splitter": 3,
+    "rearWing": 7,
+    "springF": 130,
+    "springR": 145,
+    "arbF": 3,
+    "arbR": 4,
+    "rideF": 60,
+    "rideR": 68,
+    "pressF": 27.4,
+    "pressR": 27.1,
+    "bias": 56.5,
+    "ducts": 3,
+    "diff": 60,
+    "fuelLoad": 62
+  }
+}

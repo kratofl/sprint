@@ -33,26 +33,33 @@ public sealed class DashAlertTracker
         ArgumentNullException.ThrowIfNull(palette);
 
         var now = _clock();
+        var config = layout.AlertConfig ?? new DashAlertConfig();
         if (_prev is not null)
         {
             // Last configured alert that fired this frame wins (matches the Go painter loop).
             foreach (var alert in layout.Alerts)
             {
+                if (!alert.Enabled)
+                {
+                    continue;
+                }
+
                 var candidate = alert.Type switch
                 {
                     "tc_change" when frame.Electronics.TractionControl != _prev.Electronics.TractionControl
-                        => new DashAlertBanner($"TC1  {frame.Electronics.TractionControl}", palette.Accent),
+                        => CreateBanner("TRACTION CONTROL", frame.Electronics.TractionControl.ToString(), alert, palette.Accent, config, layout, palette),
                     "abs_change" when frame.Electronics.Abs != _prev.Electronics.Abs
-                        => new DashAlertBanner($"ABS  {frame.Electronics.Abs}", palette.Warning),
+                        => CreateBanner("ABS", frame.Electronics.Abs.ToString(), alert, palette.Warning, config, layout, palette),
                     "enginemap_change" when frame.Electronics.MotorMap != _prev.Electronics.MotorMap
-                        => new DashAlertBanner($"MAP  {frame.Electronics.MotorMap}", palette.Primary),
+                        => CreateBanner("ENGINE MAP", frame.Electronics.MotorMap.ToString(), alert, palette.Primary, config, layout, palette),
                     _ => (DashAlertBanner?)null,
                 };
 
                 if (candidate is not null)
                 {
                     _active = candidate;
-                    _expiresAt = now.AddSeconds(_durationSeconds);
+                    var duration = Math.Clamp(alert.DurationSeconds ?? (config.DurationSeconds <= 0 ? _durationSeconds : config.DurationSeconds), 0.5, 5.0);
+                    _expiresAt = now.AddSeconds(duration);
                 }
             }
         }
@@ -73,4 +80,36 @@ public sealed class DashAlertTracker
         _prev = null;
         _active = null;
     }
+
+    private static DashAlertBanner CreateBanner(
+        string title,
+        string value,
+        DashAlert alert,
+        SkiaSharp.SKColor fallback,
+        DashAlertConfig config,
+        DashLayout layout,
+        DashPalette palette) =>
+        new(
+            title,
+            value,
+            ResolveColor(alert.ColorToken ?? config.ColorToken, fallback, palette),
+            alert.Col,
+            alert.Row,
+            alert.ColSpan,
+            alert.RowSpan,
+            layout.GridCols,
+            layout.GridRows,
+            alert.InvertColors ?? config.InvertColors);
+
+    private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette) =>
+        token?.Trim().ToLowerInvariant() switch
+        {
+            "blue" => palette.Accent,
+            "ember" or "primary" => palette.Primary,
+            "green" => palette.Success,
+            "yellow" => palette.Warning,
+            "red" => palette.Danger,
+            "white" => palette.Foreground,
+            _ => fallback,
+        };
 }

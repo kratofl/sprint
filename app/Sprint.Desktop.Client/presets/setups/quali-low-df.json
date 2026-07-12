@@ -1,0 +1,21 @@
+{
+  "id": "setup-quali-low-df",
+  "name": "Quali | Low DF",
+  "isTemplate": true,
+  "values": {
+    "splitter": 2,
+    "rearWing": 4,
+    "springF": 140,
+    "springR": 155,
+    "arbF": 4,
+    "arbR": 4,
+    "rideF": 56,
+    "rideR": 64,
+    "pressF": 27.8,
+    "pressR": 27.5,
+    "bias": 57.5,
+    "ducts": 2,
+    "diff": 70,
+    "fuelLoad": 18
+  }
+}

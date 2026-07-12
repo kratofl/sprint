@@ -2,11 +2,14 @@ namespace Sprint.Desktop.Shell;
 
 public enum AppView
 {
-    Live,
-    Engineer,
-    Setup,
+    Home,
     Dashes,
     Devices,
+    Setups,
+    RaceEngineer,
     Settings,
-    Help
+    Help,
+    DebugLive,
+    DebugEngineer,
+    DebugSetup
 }

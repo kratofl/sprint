@@ -1,215 +1,147 @@
 # Sprint Graphite Design System
 
-Sprint uses the Graphite product language for every desktop surface and every
-future shared control. The design is a flat, layered, near-black interface for a
-sim-racing telemetry and dashboard application. It is dense, calm, and precise:
-solid fills, hairline borders, tabular numeric data, one warm ember accent, and
-clear interaction cues.
+Graphite is Sprint's canonical product language: the precision and density of a
+professional motorsport instrument expressed with calm, material restraint. The
+application is designed as one coherent object, not assembled from cards.
 
-## Source Of Truth
+This document and the native Avalonia review captures are authoritative. The
+older `docs/Sprint.fig`, `docs/design/figma/`, and extracted component images are
+historical references only.
 
-Canonical design direction:
+## Principles
 
-1. `docs/FIGMA_COMPONENTS.md` - extracted component and token contract from
-   `docs/Sprint.fig`; this is the source of truth for exact values.
-2. `docs/DESIGN.md` - implementation contract for agents and contributors.
-3. `packages/tokens` - runtime token implementation.
-4. `packages/ui` - reusable React component implementation.
-5. `app` - current native Avalonia desktop composition and runtime behavior.
-
-When this document and `docs/FIGMA_COMPONENTS.md` disagree on token values,
-component dimensions, or component states, use `docs/FIGMA_COMPONENTS.md`.
-
-Do not revive previous non-Graphite design directions. Graphite replaces them.
-
-## Ownership
-
-`packages/tokens` owns all visual primitives and semantic aliases:
-
-- color, surfaces, text, status colors, data colors;
-- typography, numeric formatting, spacing, radius, border, and motion;
-- CSS variables consumed by desktop and future web surfaces.
-
-`packages/ui` owns reusable UI:
-
-- shell primitives: app shell, titlebar pieces, nav rail, body tray, status
-  indicators;
-- controls: buttons, icon buttons, inputs, selects, segmented controls, tabs,
-  switches, steppers, tooltips, modals;
-- data layout primitives: tiles, cards, setting rows, page headers, badges,
-  status pills, binding rows, preview frames;
-- editor primitives that are reusable outside one desktop-only screen.
-
-`app` owns native desktop composition and runtime behavior:
-
-- Avalonia shell, page-level state, and window controls;
-- preset loading, local persistence, and desktop orchestration;
-- local controls only when they are genuinely desktop-only or hardware-bound.
-
-No web page may introduce a reusable visual control locally when it belongs in
-`packages/ui`. Native Avalonia controls should stay aligned with the same
-Graphite tokens and interaction contracts.
+- Reduce visible complexity without reducing capability.
+- Use typography, alignment, spacing, and surface tone before adding containers.
+- Keep the interface quiet at rest and expressive only when state needs attention.
+- Use cards only for genuinely self-contained objects.
+- Keep frequent actions close to their content and preserve keyboard workflows.
+- Never add decoration solely to imply technology, speed, or luxury.
 
 ## Foundations
 
 ### Color
 
-Graphite default tokens:
-
-| Token | Value | Role |
+| Role | Value | Use |
 |---|---:|---|
-| `--bg` | `#0A0A0A` | body tray and content backdrop |
-| `--panel` | `#0F0F0F` | titlebar, sidebar, panels, cards |
-| `--panel2` | `#141414` | inset rows, controls, secondary buttons |
-| `--panel3` | `#1A1A1A` | raised and selected state |
-| `--line` | `#2E2E2E` | default hairline |
-| `--line2` | `#424242` | stronger frame and widget-card border |
-| `--text` | `#F6F6F6` | primary text and values |
-| `--text2` | `#7A7A7A` | secondary labels and body |
-| `--text3` | `#5A5A5A` | captions and idle metadata |
-| `--accent` | `#FF6A00` | active, primary, focus, selection |
+| Canvas | `#0B0B0D` | Stable content backdrop |
+| Chrome | `#101012` | Toolbar/sidebar fallback |
+| Content surface | `#141416` | Continuous content objects and panes |
+| Raised/selected | `#1B1B1E` | Selection and real elevation |
+| Hover/pressed | `#232327` | Transient interaction |
+| Subtle edge | `rgba(255,255,255,.07)` | Real internal boundaries |
+| Strong edge | `rgba(255,255,255,.12)` | Popovers and focus-adjacent edges |
+| Primary text | `#F5F5F7` | Titles and important values |
+| Secondary text | `#A1A1AA` | Body and labels |
+| Tertiary text | `#6F6F78` | Metadata and inactive state |
+| Accent | `#FF6A00` | Primary action, active state, focus, progress |
 
-Status colors:
-
-| Token | Value | Role |
-|---|---:|---|
-| `--green` | `#16B566` | connected, good, improving |
-| `--red` | `#F02744` | danger, destructive, slower |
-| `--yellow` | `#E0A30C` | caution |
-| `--blue` | `#1F7FE6` | informational, advanced, comparison |
-| `--purple` | `#A06BFF` | special states and personal best |
-
-Rules:
-
-- Use `#FF6A00` ember as the app accent.
-- On-wheel dashes may define their own `--dash-accent`; it is independent from
-  the app accent.
-- Do not use gradients, glass blur, glow, or neumorphic effects.
-- Depth comes from the surface step `bg -> panel -> panel2 -> panel3` plus a
-  1px border.
-- Shadows are reserved for modals, alert popups, and the canvas stage.
+Green, yellow, red, and blue communicate success, caution, danger, and
+information. They are never decorative. Orange should occupy little visual area.
 
 ### Typography
 
-- UI font: `Inter`, with system fonts as fallback. Bundled in the Avalonia
-  client under `app/Sprint.Desktop.Client/Assets/Fonts` and exposed via
-  `Graphite.FontStack`. Figma requires Regular, Medium, SemiBold, and Bold.
-- Motorsport control fonts: `Saira` and `Saira SemiCondensed` for sidebar
-  section labels, toolbar document titles, segmented controls, chips, and compact
-  counters.
-- Display / brand font: `Space Grotesk` (wordmark, large headings), via
-  `Graphite.DisplayFontStack`.
-- Typography matches the maintainer's Figma (`docs/Sprint.fig`). (Earlier drafts
-  used `IBM Plex Sans`; that has been retired in favor of the Figma identity.)
-- Use `font-variant-numeric: tabular-nums` globally.
-- Base UI size: `13px`.
-- Page titles: `22px / 700`.
-- Section labels: `10px / 700`, uppercase, `0.18em` letter spacing, `--text3`.
-- Sidebar group labels: `8.5px / 700`, uppercase, `0.22em` letter spacing.
-- Large telemetry values use heavier weight and tabular figures, but no viewport
-  font scaling.
+Inter is the application face. The rendered wheel instrument uses Saira Semi
+Condensed for telemetry values because its open counters remain legible at small
+screen sizes; labels remain Inter. Brand artwork may retain its lettering.
+Frequently changing values use tabular figures.
 
-### Shape, Spacing, Motion
+| Style | Size / line | Weight |
+|---|---:|---:|
+| Page title | 24 / 29 | 600 |
+| Section heading | 14 / 20 | 500 |
+| Body/data | 13 / 18 | 400 |
+| Metadata | 12 / 16 | 400 |
+| Compact label | 11 / 14 | 500 |
+| Primary telemetry | 28–36 | 500 |
 
-- Radius scale: xs `4px`, sm `6px`, md `8px`, lg `10px`, xl `14px`, pill `999px`.
-- Buttons, inputs, navigation items, and segmented items use `8px`; cards and
-  alerts use `10px`; shell panels and toolbars use `14px`.
-- Borders are 1px hairlines. Dashed `1.5px --line2` marks drop targets and add
-  affordances.
-- Tiles pad `14px 16px`; page grids use `12px-14px` gaps.
-- Transitions are functional and fast: `120ms-160ms`.
-- Live dots may pulse. Data values update instantly.
+Prefer size, placement, and contrast over heavy weight, uppercase, or tracking.
+
+### Geometry and spacing
+
+- Spacing follows a 4px foundation: 4, 8, 12, 16, 20, 24, 32.
+- Controls use 7px corners; content objects use 10px; overlays use 12px.
+- Pills are reserved for statuses, switches, and intrinsically pill-like selectors.
+- Borders mark actual boundaries, not every row.
+- Shadows are reserved for popovers, dialogs, menus, and overlapping editor layers.
+
+### Motion
+
+Use 120–180ms ease-out transitions for selection, pane reveal, and overlays.
+Telemetry values update instantly. Motion explains origin and destination; it
+must not decorate or delay work.
 
 ## Shell
 
-The desktop shell is fixed and shared:
+The 44px unified toolbar occupies the native title-bar region and owns the Sprint
+mark, sidebar control, current location, contextual tools, command search,
+telemetry health, and rate. The duplicate drawn title and fullscreen control are
+suppressed. Exactly three full-height, Avalonia-drawn caption controls with
+system window roles occupy the right edge for minimize, snap/maximize, and close.
+Page titles do not repeat in content.
 
-- `32px` draggable titlebar with logo, sidebar collapse, history controls,
-  breadcrumb, sim-link pill, tick rate, and native window controls.
-- `220px` sidebar, collapsible to `62px`, with grouped primary navigation.
-- Body tray inset from the shell by `10px`, framed by `--line2`, filled with
-  `--bg`, and rounded by `calc(var(--r) + 2px)`.
+The sidebar is 184px expanded and 52px collapsed. It contains Home, Dashes,
+Devices, Setups, Settings, and Help. Unavailable roadmap areas and debug tools do
+not appear in production navigation. The active item uses a quiet tonal fill,
+primary text, and a narrow orange indicator.
 
-Navigation model:
+Persistent chrome may request the Windows native backdrop. Content stays opaque.
+Linux, headless, remote, and unsupported environments use the `#101012` fallback.
 
-- Telemetry: Live, Engineer, Setup.
-- Dash Studio: Dashes, Devices.
-- Footer: Settings, Help.
+`Ctrl+K` opens command search. `Alt+1` through `Alt+6` follow sidebar order.
 
-Primary navigation belongs in the sidebar. Local view switching belongs inside
-the page via tabs or segmented controls. Actions belong in buttons.
+## Production layouts
 
-## Components
+- Home is an operational session overview followed by quiet dash and screen rows.
+- Dashes is a continuous preview library; the editor canvas remains dominant.
+- Devices is a stable list/detail split view with explicit binding-listen state.
+- Setups is a list/editor split view with read-only templates and immediate user edits.
+- Settings is one continuous preference column and saves values on commit.
+- Help is a searchable reference list written in product language.
 
-Every reusable component must exist in `packages/ui` and be token-backed.
+Edge panes in the dash editor use tone rather than rounded floating frames. The
+widget palette uses compact list rows inside disclosure groups, with one group
+expanded by default. The inspector aligns properties and adds
+dividers only between semantic groups. Applying a dash to hardware remains explicit.
 
-Required component families:
+Page navigation and page deletion live in the left editor rail behind a
+Pages/Widgets segmented control. The canvas does not change width when the active
+page changes. The toolbar is limited to Basic/Advanced editor mode, target profile,
+preview state, and Apply. Basic keeps direct manipulation and essential widget
+configuration; Advanced adds exact grid controls, style overrides, widget stacks,
+and other technical authoring tools. The toolbar's right action zone is limited to
+mode, target profile, preview state, and Apply; navigation, the editable document
+name, and surface tabs remain in their established left and center zones.
 
-- `Button`, `IconButton`, `ToolbarButton`.
-- `Input`, `Select`, `SegmentedControl`, `Tabs`, `Switch`, `Stepper`.
-- `Badge`, `StatusPill`, `KeyChip`, `Tooltip`.
-- `Tile`, `Card`, `SettingsCard`, `SettingsRow`, `PageHeader`.
-- `AppShell`, `Titlebar`, `NavRail`, `BodyTray`.
-- `Modal`, `ConfirmDialog`, `Toast`.
-- `PreviewFrame`, `DashPreviewFrame`, `BindingRow`, `DevicePickerItem`.
+The Alerts surface uses a canvas with the same aspect and grid as the target screen.
+The dash is visibly subdued while editing so the selected alert remains the focus.
+Each alert has draggable/resizable geometry and renders a quiet title above one
+large new value. Color, duration, and inversion inherit from global defaults and
+may be overridden per alert. Auto color resolves semantically: TC is blue, ABS is
+yellow, and engine map is orange.
 
-Component rules:
+The rendered wheel dash uses a near-black `#08080A` canvas. Readouts remain open on
+one continuous instrument surface; outlines are reserved for authored groups rather
+than applied to every value. `Border: false` removes a default outline and
+`Border: true` adds one. Fills are reserved for semantic alerts. The default 800×480
+Driving page places RPM across the top, a compact control strip directly below it,
+gear and speed at the visual center, lap timing left, sector state right, and delta
+plus live input traces adjacent to the focal value. Endurance, Timing, and Vehicle
+pages reorganize secondary data without removing gear or shift state.
 
-- Icon-only controls require an accessible name and tooltip where meaning is not
-  obvious.
-- Use icons for compact tools when a familiar symbol exists.
-- Use text buttons for clear commands and destructive actions.
-- Use segmented controls only for local state/view changes inside one context.
-- Use tabs for closely related categories, not global navigation.
-- Use modals only for blocking creation/confirmation flows.
+## Components and state
 
-## Page Layouts
-
-All current desktop pages use Graphite:
-
-- Live: telemetry grid, track map, timing/delta, speed/gear/pedals, tyres,
-  sectors, vitals.
-- Engineer: car setting controls, quick messages, race/radio log, comparison
-  cues.
-- Setup: setup program list, grouped field editor, A/B comparison table.
-- Dashes: card grid with live mini previews, edit/duplicate/delete actions, and
-  a dashed create card.
-- Editor: layout canvas, widget palette, inspector, alerts, and settings views.
-- Devices: 240px picker plus binding detail panel and add-device modal.
-- Settings: global defaults only.
-- Help: reference cards and shortcuts.
-
-Keep layouts dense but scannable. Each screen must expose the next useful action
-without adding explanatory marketing text.
-
-## Data And Runtime Contracts
-
-No backward compatibility is required for this rebuild.
-
-Use cleaner contracts when the Graphite UI needs them:
-
-- typed C# services own desktop persistence and native runtime orchestration;
-- desktop adapters normalize only unavoidable transport shape differences;
-- shared DTOs live in `Sprint.Desktop.Api` (desktop) or `packages/types` (web)
-  when multiple apps need them.
-
-## Accessibility
-
-The UI must be keyboard-operable and screen-reader navigable:
-
-- visible focus on every keyboard-operable control;
-- focus must not be obscured by sticky bars, modals, or overlays;
-- semantic headings and landmarks for major panes;
-- predictable tab order matching visual order;
-- Enter/Space activates buttons; Escape cancels modal/listen/selection modes;
-- color is never the only signal for status or destructive intent.
+Reusable controls must define rest, hover, pressed, selected, focus, disabled,
+loading/listening, and destructive states. Icon-only controls require an accessible
+name and tooltip. Color is never the sole status signal. Enter/Space activate;
+Escape cancels transient modes; tab order follows visual order.
 
 ## Verification
 
-Before claiming a page is done:
+Review every production journey at 1440×900 and 1120×720 through the native
+Avalonia harness. At a distance the primary content must be obvious; at normal
+distance hierarchy must be calm; close inspection must show precise baselines,
+spacing, icon weight, borders, and corner geometry.
 
-- run the smallest relevant type/test checks;
-- visually inspect the native Avalonia desktop surface;
-- verify focus, hover, selected, disabled, empty, loading, and destructive states;
-- check that Avalonia controls follow the shared Graphite control contract;
-- scan for raw Graphite hex values outside `packages/tokens`.
+Run the smallest functional tests during implementation, then the complete desktop
+suite, `AgentUiReview`, `VisualSmokeTests`, token tests, and shared UI checks. Inspect
+the resulting PNGs before claiming visual completion.

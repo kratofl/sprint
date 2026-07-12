@@ -17,6 +17,8 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private readonly AppSettings _settings;
     private readonly ScreenConfig _config;
     private readonly byte[] _scratch;
+    private readonly DashPalette _palette;
+    private readonly DashAlertTracker _alerts = new();
     private DashLayout _layout;
     private bool _idle;
 
@@ -35,7 +37,8 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         // The painter renders at the logical size that, once rotated, fills the
         // native screen: 90/270 swap the axes.
         var (logicalW, logicalH) = config.Rotation is 90 or 270 ? (Height, Width) : (Width, Height);
-        _painter = new DashPainter(logicalW, logicalH, palette);
+        _palette = palette ?? DashPalette.Default;
+        _painter = new DashPainter(logicalW, logicalH, _palette);
         _scratch = new byte[Width * Height * 2];
     }
 
@@ -43,7 +46,11 @@ public sealed class DashPainterFrameSource : IDashFrameSource
 
     public int Height { get; }
 
-    public void SetLayout(DashLayout layout) => _layout = layout ?? throw new ArgumentNullException(nameof(layout));
+    public void SetLayout(DashLayout layout)
+    {
+        _layout = layout ?? throw new ArgumentNullException(nameof(layout));
+        _alerts.Reset();
+    }
 
     public void SetIdle(bool idle) => _idle = idle;
 
@@ -55,7 +62,8 @@ public sealed class DashPainterFrameSource : IDashFrameSource
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
         }
 
-        var bitmap = _painter.Render(_layout, frame, _settings, idle: _idle);
+        var banner = _idle ? null : _alerts.Evaluate(_layout, frame, _palette);
+        var bitmap = _painter.Render(_layout, frame, _settings, idle: _idle, banner: banner);
         var bgra = bitmap.GetPixelSpan();
 
         if (_config.Margin > 0)

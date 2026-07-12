@@ -15,5 +15,8 @@ public sealed class SetupProgram
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public bool IsTemplate { get; set; }
     public Dictionary<string, double> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public override string ToString() => Name;
 }
