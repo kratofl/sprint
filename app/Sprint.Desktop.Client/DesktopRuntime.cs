@@ -26,6 +26,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly string _layoutsPath;
     private readonly string _presetRoot;
     private readonly string? _legacyDataRoot;
+    private readonly ObservableCollection<SetupProgram> _setupTemplates = [];
+    private readonly Dictionary<string, SetupProgram> _canonicalSetupTemplates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<SetupProgram, SetupProgram> _canonicalSetupTemplateByObject = new(ReferenceEqualityComparer.Instance);
 
     public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null)
     {
@@ -42,6 +45,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _setupProgramsPath = Path.Combine(resolvedDataRoot, "setup-programs.json");
         _layoutsPath = Path.Combine(resolvedDataRoot, "dash-layouts");
         Directory.CreateDirectory(_layoutsPath);
+        SetupTemplates = new ReadOnlyObservableCollection<SetupProgram>(_setupTemplates);
 
         MigrateLegacyDataIfNeeded();
 
@@ -60,6 +64,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
         foreach (var layout in LoadLayouts())
         {
             DashLayouts.Add(layout);
+        }
+
+        foreach (var setup in LoadSetupTemplates())
+        {
+            _setupTemplates.Add(setup);
+            var snapshot = Clone(setup);
+            _canonicalSetupTemplates[setup.Id] = snapshot;
+            _canonicalSetupTemplateByObject[setup] = snapshot;
         }
 
         foreach (var setup in LoadSetupPrograms())
@@ -94,6 +106,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     public ObservableCollection<CatalogDevice> Catalog { get; } = [];
     public ObservableCollection<SavedDevice> Devices { get; } = [];
     public ObservableCollection<DashLayout> DashLayouts { get; } = [];
+    public ReadOnlyObservableCollection<SetupProgram> SetupTemplates { get; }
     public ObservableCollection<SetupProgram> SetupPrograms { get; } = [];
     public ObservableCollection<EngineerControl> EngineerControls { get; } = [];
     public ObservableCollection<RadioLogEntry> RadioLog { get; } = [];
@@ -174,9 +187,96 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
         clone.Name = "New Dash";
         clone.IsDefault = false;
+        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
+        NormalizeLayoutProfile(clone);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
         return clone;
+    }
+
+    public DashLayout CreateDashLayout(ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
+        var clone = Clone(source);
+        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+        clone.Name = "New Dash";
+        clone.IsDefault = false;
+        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
+        DashLayoutEditor.ApplyScreenProfile(clone, profile);
+        DashLayouts.Add(clone);
+        SaveDashLayout(clone);
+        return clone;
+    }
+
+    /// <summary>Retarget an existing dash to a different screen size in place (US17), refitting its grid and persisting.</summary>
+    public void SetDashScreenProfile(DashLayout layout, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(profile);
+        if (DashLayoutEditor.TargetsProfile(layout, profile))
+        {
+            return;
+        }
+
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
+        SaveDashLayout(layout);
+    }
+
+    /// <summary>
+    /// Duplicate a dash and retarget the copy to another screen size (US18): an
+    /// independent, retargeted-and-refit layout with its own id, leaving the source
+    /// untouched.
+    /// </summary>
+    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(profile);
+
+        var clone = Clone(source);
+        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
+        clone.Name = $"{source.Name} · {profile.ResolutionLabel}";
+        clone.IsDefault = false;
+        DashLayoutEditor.ApplyScreenProfile(clone, profile);
+        DashLayouts.Add(clone);
+        SaveDashLayout(clone);
+        return clone;
+    }
+
+    /// <summary>
+    /// Ensures a layout has a valid target screen profile. Legacy layouts without a
+    /// stored profile keep their grid and are tagged with the best-fit catalog profile
+    /// (matched by grid, then aspect), so nothing about their placement changes.
+    /// </summary>
+    private static void NormalizeLayoutProfile(DashLayout layout)
+    {
+        if (ScreenProfileCatalog.Find(layout.ScreenProfileId) is not null)
+        {
+            return;
+        }
+
+        layout.ScreenProfileId = ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
+    }
+
+    /// <summary>Make <paramref name="layout"/> the sole default, persisting the demoted one too.</summary>
+    public void SetDefaultDashLayout(DashLayout layout)
+    {
+        if (layout.IsDefault)
+        {
+            return;
+        }
+
+        foreach (var other in DashLayouts)
+        {
+            if (other.IsDefault && !ReferenceEquals(other, layout))
+            {
+                other.IsDefault = false;
+                SaveDashLayout(other);
+            }
+        }
+
+        layout.IsDefault = true;
+        SaveDashLayout(layout);
     }
 
     public void DeleteDashLayout(DashLayout layout)
@@ -205,9 +305,23 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return Path.Combine(_layoutsPath, $"{layout.Id}.png");
     }
 
+    public SetupProgram DuplicateSetup(SetupProgram source)
+    {
+        var sourceSnapshot = TemplateSnapshotFor(source) ?? source;
+        var copy = Clone(sourceSnapshot);
+        copy.Id = NextSetupId();
+        copy.Name = NextSetupCopyName(sourceSnapshot.Name);
+        copy.IsTemplate = false;
+        copy.Values = new Dictionary<string, double>(sourceSnapshot.Values, StringComparer.OrdinalIgnoreCase);
+
+        SetupPrograms.Add(copy);
+        SaveSetupPrograms();
+        return copy;
+    }
+
     public void SaveSetupPrograms()
     {
-        SaveJson(_setupProgramsPath, SetupPrograms.ToList());
+        SaveJson(_setupProgramsPath, SetupPrograms.Where(program => !program.IsTemplate).ToList());
     }
 
     public void PushEngineerChanges()
@@ -314,9 +428,43 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return LoadJson<ControlsConfig>(_controlsPath) ?? new ControlsConfig();
     }
 
+    private IEnumerable<SetupProgram> LoadSetupTemplates()
+    {
+        var dir = PresetPath("setups");
+        if (Directory.Exists(dir))
+        {
+            foreach (var file in Directory.EnumerateFiles(dir, "*.json").OrderBy(Path.GetFileName))
+            {
+                var entry = LoadJson<SetupProgram>(file);
+                if (NormalizeSetupProgram(entry, isTemplate: true) is { } template)
+                {
+                    yield return template;
+                }
+            }
+        }
+
+        if (_setupTemplates.Count == 0)
+        {
+            foreach (var template in CreateSetupTemplates())
+            {
+                if (NormalizeSetupProgram(template, isTemplate: true) is { } normalized)
+                {
+                    yield return normalized;
+                }
+            }
+        }
+    }
+
     private IEnumerable<SetupProgram> LoadSetupPrograms()
     {
-        return LoadJson<List<SetupProgram>>(_setupProgramsPath) ?? CreateSetupPrograms();
+        var programs = LoadJson<List<SetupProgram>>(_setupProgramsPath) ?? [];
+        foreach (var program in programs)
+        {
+            if (NormalizeSetupProgram(program, isTemplate: false) is { } normalized)
+            {
+                yield return normalized;
+            }
+        }
     }
 
     private IEnumerable<DashLayout> LoadLayouts()
@@ -337,6 +485,13 @@ public sealed class DesktopRuntime : IDesktopRuntime
         if (layouts.Count == 0)
         {
             layouts.Add(LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout());
+        }
+
+        // Tag any layout missing a target screen profile (legacy saves) with the
+        // best-fit catalog profile so the dash↔screen model is always populated.
+        foreach (var layout in layouts)
+        {
+            NormalizeLayoutProfile(layout);
         }
 
         return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);
@@ -430,7 +585,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
     }
 
-    private void SaveDevices()
+    public void SaveDevices()
     {
         SaveJson(_devicesPath, Devices.ToList());
     }
@@ -446,6 +601,32 @@ public sealed class DesktopRuntime : IDesktopRuntime
         GenerateDashThumbnail(layout);
     }
 
+    public void ResetDashLayout(DashLayout layout)
+    {
+        var preset = LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+        var id = layout.Id;
+        var name = layout.Name;
+        var isDefault = layout.IsDefault;
+
+        layout.GridCols = preset.GridCols;
+        layout.GridRows = preset.GridRows;
+        layout.Mode = preset.Mode;
+        layout.IdlePage = Clone(preset.IdlePage);
+        layout.Pages = Clone(preset.Pages);
+        layout.Alerts = Clone(preset.Alerts);
+        layout.AlertConfig = Clone(preset.AlertConfig);
+        layout.Theme = Clone(preset.Theme);
+        layout.ExtensionData = preset.ExtensionData is null ? null : Clone(preset.ExtensionData);
+        layout.Id = id;
+        layout.Name = name;
+        layout.IsDefault = isDefault;
+
+        SaveDashLayout(layout);
+    }
+
+    private static string NormalizeDashMode(string? mode) =>
+        string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";
+
     private void GenerateDashThumbnail(DashLayout layout)
     {
         const int width = 320;
@@ -455,7 +636,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             // Render the real dash (empty frame → deterministic placeholder values)
             // so the thumbnail matches what the wheel display shows, not a box mock.
-            using var painter = new DashPainter(width, height);
+            using var painter = new DashPainter(width, height, DashPalette.FromTheme(layout.Theme));
             var png = painter.RenderPng(layout, new TelemetryFrame(), Settings);
             var path = GetDashThumbnailPath(layout);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -482,6 +663,73 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             RadioLog.RemoveAt(RadioLog.Count - 1);
         }
+    }
+
+    private string NextSetupId()
+    {
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var index = 1;
+        string id;
+        do
+        {
+            id = $"setup-{stamp}-{index:00}";
+            index++;
+        }
+        while (SetupPrograms.Any(program => program.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
+
+        return id;
+    }
+
+    private SetupProgram? TemplateSnapshotFor(SetupProgram source)
+    {
+        if (_canonicalSetupTemplateByObject.TryGetValue(source, out var objectTemplate))
+        {
+            return objectTemplate;
+        }
+
+        if (source.IsTemplate && _canonicalSetupTemplates.TryGetValue(source.Id, out var template))
+        {
+            return template;
+        }
+
+        return null;
+    }
+
+    private static SetupProgram? NormalizeSetupProgram(SetupProgram? program, bool isTemplate)
+    {
+        if (program is null || string.IsNullOrWhiteSpace(program.Id))
+        {
+            return null;
+        }
+
+        program.Id = program.Id.Trim();
+        program.Name = string.IsNullOrWhiteSpace(program.Name) ? program.Id : program.Name.Trim();
+        program.IsTemplate = isTemplate;
+        program.Values = program.Values is null
+            ? new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, double>(program.Values, StringComparer.OrdinalIgnoreCase);
+
+        return program;
+    }
+
+    private string NextSetupCopyName(string sourceName)
+    {
+        var baseName = $"{sourceName} copy";
+        if (SetupPrograms.All(program => !program.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return baseName;
+        }
+
+        var index = 2;
+        string name;
+        do
+        {
+            name = $"{baseName} {index}";
+            index++;
+        }
+        while (SetupPrograms.Any(program => program.Name.Equals(name, StringComparison.OrdinalIgnoreCase)));
+
+        return name;
     }
 
     private static T Clone<T>(T value)
@@ -545,12 +793,13 @@ public sealed class DesktopRuntime : IDesktopRuntime
         };
     }
 
-    private static IEnumerable<SetupProgram> CreateSetupPrograms()
+    private static IEnumerable<SetupProgram> CreateSetupTemplates()
     {
         yield return new SetupProgram
         {
             Id = "setup-baseline",
             Name = "Baseline | Race",
+            IsTemplate = true,
             Values = new Dictionary<string, double>
             {
                 ["splitter"] = 3,
@@ -573,6 +822,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             Id = "setup-quali-low-df",
             Name = "Quali | Low DF",
+            IsTemplate = true,
             Values = new Dictionary<string, double>
             {
                 ["splitter"] = 2,
@@ -595,6 +845,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             Id = "setup-race-high-df",
             Name = "Race | High DF",
+            IsTemplate = true,
             Values = new Dictionary<string, double>
             {
                 ["splitter"] = 4,

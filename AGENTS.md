@@ -125,6 +125,13 @@ did not run.
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
 - Browser-safe desktop checks no longer apply to `app/`; use native Avalonia
   build/run checks for the desktop app.
+- For any desktop UI change, run the agent UI review harness so agents can see
+  the rendered app before claiming completion:
+  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter AgentUiReview`.
+  Inspect the generated screenshots and report under
+  `app/Sprint.Desktop.Tests/artifacts/ui-review/latest/` with the image viewer
+  or browser. Do not claim desktop UI work is complete until the relevant PNGs
+  have been visually inspected.
 - After visual, layout, Graphite, or Avalonia shell changes in
   `app/Sprint.Desktop.Client`, run the desktop visual smoke tests before
   finishing:

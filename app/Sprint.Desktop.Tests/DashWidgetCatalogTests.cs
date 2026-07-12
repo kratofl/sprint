@@ -36,6 +36,20 @@ public sealed class DashWidgetCatalogTests
     }
 
     [Fact]
+    public void CatalogIncludesExpandedRealDashboardWidgets()
+    {
+        // US30: race context + hybrid readouts real dashboards expose.
+        foreach (var type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "ers" })
+        {
+            Assert.True(DashWidgetCatalog.IsKnown(type), $"Expected expanded catalog to include '{type}'.");
+        }
+
+        Assert.Contains("race.gapAhead", DashWidgetCatalog.Get("gaps").Bindings);
+        Assert.Contains("race.gapBehind", DashWidgetCatalog.Get("gaps").Bindings);
+        Assert.Equal("ERS / Hybrid", DashWidgetCatalog.Get("ers").Name);
+    }
+
+    [Fact]
     public void CatalogRejectsUnknownWidgetTypes()
     {
         Assert.False(DashWidgetCatalog.IsKnown("unknown-widget"));

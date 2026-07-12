@@ -1,11 +1,15 @@
-# Sprint.fig Extracted Component Spec
+# Historical Sprint.fig Component Extraction
+
+> This document describes the retired Figma baseline and is retained only for
+> migration context. `docs/DESIGN.md` and the native Avalonia UI review captures
+> are the current product contract. Do not use values below for new work.
 
 Decoded from `docs/Sprint.fig`, pages "Components" and "Layout".
 
-This is the maintainer's visual source of truth. Values below were mechanically
+This was the maintainer's visual source of truth. Values below were mechanically
 extracted from the Figma file's node tree: fills, strokes, radii, autolayout,
 and fonts. Where the current `docs/DESIGN.md` or `Graphite.cs` differ, the
-Figma values are the target.
+Figma values were the target for the retired baseline.
 
 ## Palette
 

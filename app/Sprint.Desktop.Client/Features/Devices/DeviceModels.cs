@@ -75,3 +75,31 @@ public sealed class DeviceBinding
     [JsonPropertyName("command")]
     public string Command { get; set; } = "";
 }
+
+/// <summary>
+/// Pure dash↔screen assignment queries shared by the shell and its tests (PRD #122
+/// US28/US29/US34). Keeps the "which screens will show this dash" rule in one place
+/// so the Apply-to-screen gating and the Devices/Home assignment views agree.
+/// </summary>
+public static class DashDeviceAssignments
+{
+    /// <summary>
+    /// The enabled screen devices whose assigned dash is <paramref name="dashId"/>. These
+    /// are exactly the screens an "Apply to screen" for that dash would drive, so an empty
+    /// result means the action has nothing to push to (US34 honesty gate).
+    /// </summary>
+    public static IReadOnlyList<SavedDevice> EnabledScreensFor(IEnumerable<SavedDevice> devices, string? dashId)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        if (string.IsNullOrEmpty(dashId))
+        {
+            return [];
+        }
+
+        return devices
+            .Where(device => !device.Disabled
+                && string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(device.DashId, dashId, StringComparison.Ordinal))
+            .ToList();
+    }
+}
