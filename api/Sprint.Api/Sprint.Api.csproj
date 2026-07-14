@@ -9,9 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="HotChocolate.AspNetCore" Version="16.3.0" />
+    <PackageReference Include="HotChocolate.AspNetCore" Version="16.5.0" />
     <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="16.3.0" />
-    <PackageReference Include="HotChocolate.Subscriptions.InMemory" Version="16.3.0" />
+    <PackageReference Include="HotChocolate.Subscriptions.InMemory" Version="16.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
