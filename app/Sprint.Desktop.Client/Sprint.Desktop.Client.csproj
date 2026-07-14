@@ -42,7 +42,7 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <!-- Pinned to the exact version Avalonia 12.0.5 already resolves transitively
          (via Avalonia.Skia), so no new native assets or version conflict. The dash
          painter renders off the UI thread to a pixel buffer that feeds both the
