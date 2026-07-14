@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
@@ -26,12 +27,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly string _layoutsPath;
     private readonly string _presetRoot;
     private readonly string? _legacyDataRoot;
+    private readonly ILog _log;
     private readonly ObservableCollection<SetupProgram> _setupTemplates = [];
     private readonly Dictionary<string, SetupProgram> _canonicalSetupTemplates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<SetupProgram, SetupProgram> _canonicalSetupTemplateByObject = new(ReferenceEqualityComparer.Instance);
 
-    public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null)
+    public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null, ILog? log = null)
     {
+        _log = log ?? NullLog.Instance;
+
         var resolvedDataRoot = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint");
@@ -642,10 +646,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, png);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Thumbnail generation is a best-effort side artifact; never fail a
             // layout save because a preview image could not be produced.
+            _log.Warn($"Dash thumbnail generation failed for layout '{layout.Id}'", ex);
         }
     }
 
@@ -738,7 +743,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return JsonSerializer.Deserialize<T>(json, JsonOptions)!;
     }
 
-    private static T? LoadJson<T>(string path)
+    private T? LoadJson<T>(string path)
     {
         if (!File.Exists(path))
         {
@@ -750,8 +755,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             return JsonSerializer.Deserialize<T>(stream, JsonOptions);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            // A corrupt file falls back to defaults rather than crashing, but that
+            // silent reset used to be invisible — record it so it can be diagnosed.
+            _log.Warn($"Ignoring corrupt JSON at {path}; falling back to default", ex);
             return default;
         }
     }
