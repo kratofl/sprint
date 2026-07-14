@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
@@ -134,6 +135,86 @@ public sealed class DashEditorViewTests
             Assert.Equal(4, widget.ColSpan);
             Assert.Equal(2, widget.RowSpan);
         });
+    }
+
+    [Fact]
+    public async Task CanvasTakesTargetProfileTruePixelAspect()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window { Width = 1400, Height = 1200, Content = view };
+                window.Show();
+
+                // Retarget to a tall portrait screen; the canvas must take that screen's
+                // real pixel aspect (854/480), not the 12×20 grid ratio (US16).
+                var portrait = ScreenProfileCatalog.Find("portrait-480x854")!;
+                controller.SetTargetProfile(portrait);
+                window.CaptureRenderedFrame();
+
+                var canvas = window.GetVisualDescendants()
+                    .OfType<Canvas>()
+                    .First(c => !double.IsNaN(c.Width) && c.Width > 100 && !double.IsNaN(c.Height));
+
+                var expected = (double)portrait.Height / portrait.Width;
+                var actual = canvas.Height / canvas.Width;
+                Assert.True(Math.Abs(actual - expected) < 0.01, $"canvas aspect {actual:F3} should match profile {expected:F3}");
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PagesSidebarAddsANewPageFromTheEditor()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var layout = runtime.DashLayouts.First(item => item.IsDefault);
+                var controller = new DashEditorController(layout, runtime.SaveDashLayout);
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window { Width = 1200, Height = 800, Content = view };
+                window.Show();
+
+                var before = controller.PageTabs.Count;
+
+                var pagesButton = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(b => string.Equals(b.Content?.ToString(), "Pages", StringComparison.Ordinal));
+                pagesButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                var addButton = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .First(b => string.Equals(ToolTip.GetTip(b) as string, "Add page", StringComparison.Ordinal));
+                addButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.Equal(before + 1, controller.PageTabs.Count);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
     }
 
     private static async Task RunGestureTest(Action<Window, DashEditorController, DashWidget> gesture)

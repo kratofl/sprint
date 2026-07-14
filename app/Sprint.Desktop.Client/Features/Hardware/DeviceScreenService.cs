@@ -100,7 +100,7 @@ public sealed class DeviceScreenService : IDisposable
         var layout = _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
             ?? _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
             ?? _runtime.DashLayouts.First();
-        var source = new DashPainterFrameSource(layout, _runtime.Settings, config);
+        var source = new DashPainterFrameSource(layout, _runtime.Settings, config, DashPalette.FromTheme(layout.Theme));
 
         return new ScreenPublisher(driver, source, _frameProvider, new ScreenPublisherOptions { TargetFps = config.TargetFps });
     }

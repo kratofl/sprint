@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -16,8 +17,8 @@ internal static class SprintThemeResourceKeys
 /// <summary>
 /// App-wide Graphite control theming. Rather than a full ControlTheme per widget,
 /// this overrides the Fluent resource brushes/metrics that the stock templates bind
-/// to (via DynamicResource), so every TextBox/ComboBox/Button picks up the Figma
-/// surfaces, ember focus, and 8px control radius at once. A base font style pins
+/// to (via DynamicResource), so every TextBox/ComboBox/Button picks up the Graphite
+/// surfaces, ember focus, and compact control radius at once. A base font style pins
 /// Inter on all templated controls so inputs stop falling back to the OS face.
 /// </summary>
 internal sealed class SprintComponentTheme : Styles
@@ -27,16 +28,25 @@ internal sealed class SprintComponentTheme : Styles
         Resources[SprintThemeResourceKeys.ButtonTheme] = new ControlTheme(typeof(Button));
         Resources[SprintThemeResourceKeys.ButtonMinHeight] = 25d;
         Resources[SprintThemeResourceKeys.ButtonPadding] = new Thickness(14, 6);
+        Resources["CaptionButtonWidth"] = (double)Graphite.CaptionButtonWidth;
+        Resources["CaptionButtonHeight"] = (double)Graphite.ToolbarHeight;
 
-        // Figma control radius (buttons/inputs/combos = 8; cards/panels set their own).
+        // Calm Precision control radius; content objects and overlays set their own.
         Resources["ControlCornerRadius"] = new CornerRadius(Graphite.RadiusMd);
+
+        // Button surfaces. Pointer-over is the same component state brightened by
+        // 10%, not a distinct fill/border treatment.
+        Set("ButtonBackground", Graphite.Panel2Brush);
+        Set("ButtonBackgroundPointerOver", Graphite.Panel2HoverBrush);
+        Set("ButtonBorderBrush", Graphite.LineBrush);
+        Set("ButtonBorderBrushPointerOver", Graphite.LineBrush);
 
         // TextBox (input) surfaces + interaction states — see docs/FIGMA_COMPONENTS.md.
         Set("TextControlBackground", Graphite.Panel2Brush);
-        Set("TextControlBackgroundPointerOver", Graphite.Panel2Brush);
+        Set("TextControlBackgroundPointerOver", Graphite.Panel2HoverBrush);
         Set("TextControlBackgroundFocused", Graphite.PanelBrush);
         Set("TextControlBackgroundDisabled", Graphite.PanelBrush);
-        Set("TextControlBorderBrush", Graphite.LineBrush);
+        Set("TextControlBorderBrush", Graphite.Line2Brush);
         Set("TextControlBorderBrushPointerOver", Graphite.Line2Brush);
         Set("TextControlBorderBrushFocused", Graphite.AccentBrush);
         Set("TextControlBorderBrushDisabled", Graphite.LineBrush);
@@ -49,7 +59,7 @@ internal sealed class SprintComponentTheme : Styles
 
         // ComboBox surfaces.
         Set("ComboBoxBackground", Graphite.Panel2Brush);
-        Set("ComboBoxBackgroundPointerOver", Graphite.Panel3Brush);
+        Set("ComboBoxBackgroundPointerOver", Graphite.Panel2HoverBrush);
         Set("ComboBoxBackgroundFocused", Graphite.PanelBrush);
         Set("ComboBoxBackgroundDisabled", Graphite.PanelBrush);
         Set("ComboBoxBorderBrush", Graphite.LineBrush);
@@ -64,6 +74,28 @@ internal sealed class SprintComponentTheme : Styles
         baseFont.Setters.Add(new Setter(TemplatedControl.FontFamilyProperty, new FontFamily(Graphite.FontStack)));
         baseFont.Setters.Add(new Setter(TemplatedControl.FontSizeProperty, 13d));
         Add(baseFont);
+
+        // Avalonia 12.0.5's pinned Fluent decoration template normally adds a title,
+        // fullscreen button, 2px button gaps, and a 30px caption row. Sprint already
+        // owns the title-bar content, so retain only three system-role caption buttons.
+        var hiddenNativeTitle = new Style(x => x
+            .OfType<WindowDrawnDecorations>()
+            .Template()
+            .Name("PART_TitleTextPanel")
+            .Child()
+            .OfType<TextBlock>());
+        // Hide only the template's duplicate glyphs. Window.Title remains available
+        // to Windows, automation, and accessibility surfaces.
+        hiddenNativeTitle.Setters.Add(new Setter(TextBlock.ForegroundProperty, Brushes.Transparent));
+        Add(hiddenNativeTitle);
+
+        var hiddenFullscreen = new Style(x => x
+            .OfType<WindowDrawnDecorations>()
+            .Template()
+            .Name("PART_FullScreenButton"));
+        hiddenFullscreen.Setters.Add(new Setter(Visual.IsVisibleProperty, false));
+        Add(hiddenFullscreen);
+
     }
 
     private void Set(string key, IBrush brush) => Resources[key] = brush;

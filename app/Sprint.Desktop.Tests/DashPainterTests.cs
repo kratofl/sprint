@@ -1,5 +1,9 @@
+using System.Runtime.InteropServices;
+using Avalonia.Headless;
+using Avalonia.Media.Imaging;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using SkiaSharp;
 using Xunit;
@@ -26,17 +30,32 @@ public sealed class DashPainterTests
     public void FormatsSignedDelta(double seconds, string expected) =>
         Assert.Equal(expected, DashFormat.Delta(seconds));
 
+    [Theory]
+    [InlineData(0, "--")]
+    [InlineData(-1, "--")]
+    [InlineData(1.234, "1.234")]
+    [InlineData(0.5, "0.500")]
+    public void FormatsRaceGap(double seconds, string expected) =>
+        Assert.Equal(expected, DashFormat.Gap(seconds));
+
+    [Theory]
+    [InlineData(0, "--")]
+    [InlineData(-5, "--")]
+    [InlineData(165.4, "165.4")]
+    public void FormatsTyrePressure(double kPa, string expected) =>
+        Assert.Equal(expected, DashFormat.Pressure(kPa));
+
     [Fact]
-    public void DefaultDashPaletteUsesFigmaGraphiteAndStatusTokens()
+    public void DefaultDashPaletteUsesCalmPrecisionGraphiteAndStatusTokens()
     {
         var palette = DashPalette.Default;
 
-        AssertColor("#000000", palette.Background);
-        AssertColor("#1A1A1A", palette.Surface);
-        AssertColor("#2E2E2E", palette.Border);
-        AssertColor("#F6F6F6", palette.Foreground);
-        AssertColor("#7A7A7A", palette.Secondary);
-        AssertColor("#5A5A5A", palette.Muted);
+        AssertColor("#08080A", palette.Background);
+        AssertColor("#1B1B1E", palette.Surface);
+        AssertColor("#1FFFFFFF", palette.Border);
+        AssertColor("#F5F5F7", palette.Foreground);
+        AssertColor("#A1A1AA", palette.Secondary);
+        AssertColor("#6F6F78", palette.Muted);
         AssertColor("#FF6A00", palette.Primary);
         AssertColor("#1F7FE6", palette.Accent);
         AssertColor("#16B566", palette.Success);
@@ -158,6 +177,214 @@ public sealed class DashPainterTests
     }
 
     [Fact]
+    public void StyleTextColorRecolorsWidgetValues()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        var frame = new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 50 } };
+
+        using var plain = new DashPainter(200, 200);
+        var defaultReds = CountRedDominant(plain.Render(layout, frame, new AppSettings()));
+
+        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { TextColor = "red" };
+        using var styled = new DashPainter(200, 200);
+        var styledReds = CountRedDominant(styled.Render(layout, frame, new AppSettings()));
+
+        // Default gear/speed values are white; the "red" text-colour override recolours them.
+        Assert.True(styledReds > defaultReds + 50, $"Expected red-recoloured values; default={defaultReds}, styled={styledReds}.");
+    }
+
+    [Fact]
+    public void FromThemeAppliesOverridesAndRedlineTracksDanger()
+    {
+        Assert.Same(DashPalette.Default, DashPalette.FromTheme(null));
+        Assert.Same(DashPalette.Default, DashPalette.FromTheme(new DashTheme()));
+
+        var themed = DashPalette.FromTheme(new DashTheme { Primary = "#16B566", Danger = "#123456" });
+        AssertColor("#16B566", themed.Primary);
+        AssertColor("#123456", themed.Danger);
+        AssertColor("#123456", themed.RpmRed);  // redline follows the danger override
+        AssertColor("#1F7FE6", themed.Accent);   // unset slots inherit the Graphite default
+    }
+
+    [Fact]
+    public void LayoutThemeRecolorsRenderedValues()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        layout.Theme = new DashTheme { Foreground = "#16B566" }; // green values
+        var frame = new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 50 } };
+
+        using var painter = new DashPainter(200, 200, DashPalette.FromTheme(layout.Theme));
+        var bitmap = painter.Render(layout, frame, new AppSettings());
+
+        var greens = 0;
+        foreach (var p in bitmap.Pixels)
+        {
+            if (p.Green > 120 && p.Red < 90 && p.Blue < 110)
+            {
+                greens++;
+            }
+        }
+
+        Assert.True(greens > 50, $"Expected green-themed values, saw {greens} green pixels.");
+    }
+
+    [Fact]
+    public void InstrumentWidgetsUseAnOutlineWithoutFillingTheGraphiteCanvas()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        var frame = new TelemetryFrame();
+
+        using var framed = new DashPainter(200, 200);
+        var framedBitmap = framed.Render(layout, frame, new AppSettings());
+        var framedEdge = framedBitmap.GetPixel(2, 100);
+        var framedInterior = framedBitmap.GetPixel(12, 100);
+
+        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = false };
+        using var unframed = new DashPainter(200, 200);
+        var unframedEdge = unframed.Render(layout, frame, new AppSettings()).GetPixel(2, 100);
+
+        Assert.True(Brightness(framedEdge) > Brightness(unframedEdge) + 20,
+            $"Expected a restrained default instrument outline; framed={framedEdge}, unframed={unframedEdge}.");
+        Assert.Equal(DashPalette.Default.Background, framedInterior);
+    }
+
+    [Theory]
+    [InlineData("rpm_bar")]
+    [InlineData("header")]
+    [InlineData("text")]
+    [InlineData("delta")]
+    [InlineData("tc")]
+    [InlineData("abs")]
+    [InlineData("engine_map")]
+    [InlineData("brake_bias")]
+    [InlineData("fuel_target")]
+    [InlineData("position")]
+    [InlineData("predictive_lap")]
+    [InlineData("ers")]
+    public void ContinuousSurfaceWidgetsRemainUnframedByDefault(string type)
+    {
+        var layout = SingleWidgetLayout(type);
+        using var painter = new DashPainter(200, 200);
+        var edge = painter.Render(layout, new TelemetryFrame(), new AppSettings()).GetPixel(2, 100);
+
+        Assert.Equal(DashPalette.Default.Background, edge);
+    }
+
+    [Fact]
+    public void ExplicitBorderCanFrameAContinuousSurfaceWidget()
+    {
+        var layout = SingleWidgetLayout("text");
+        layout.Pages[0].Widgets[0].Style = new DashWidgetStyle { Border = true };
+        using var painter = new DashPainter(200, 200);
+        var edge = painter.Render(layout, new TelemetryFrame(), new AppSettings()).GetPixel(2, 100);
+
+        Assert.True(Brightness(edge) > 20, $"Expected an explicit text-widget outline, saw {edge}.");
+    }
+
+    [Fact]
+    public void DefaultPresetUsesAUsefulDriverFirstHierarchy()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.DashLayouts.Single(item => item.IsDefault);
+            var page = layout.Pages.Single(item => item.Id == "driving-default");
+            var widgets = page.Widgets.ToDictionary(widget => widget.Type);
+
+            Assert.True(DashLayoutValidator.IsValid(layout));
+            Assert.Equal(["Driving", "Endurance", "Timing", "Vehicle"], layout.Pages.Select(item => item.Name).ToArray());
+            Assert.Equal(page.Widgets.Count, page.Widgets.Select(widget => widget.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal(
+                new[] { "abs", "brake_bias", "delta", "engine_map", "fuel", "gear_speed", "input_trace", "lap_time", "position", "rpm_bar", "sector", "tc" },
+                widgets.Keys.OrderBy(type => type, StringComparer.Ordinal).ToArray());
+
+            Assert.Equal((0, 0, 20, 1), Position(widgets["rpm_bar"]));
+            Assert.Equal((5, 3, 10, 9), Position(widgets["gear_speed"]));
+            Assert.Equal((0, 3, 5, 6), Position(widgets["lap_time"]));
+            Assert.Equal((15, 3, 5, 6), Position(widgets["sector"]));
+            Assert.Equal((0, 9, 5, 3), Position(widgets["delta"]));
+            Assert.Equal((15, 9, 5, 3), Position(widgets["input_trace"]));
+            Assert.All(["gear_speed", "lap_time", "sector", "input_trace"],
+                type => Assert.False(widgets[type].Style?.Border ?? true, $"Expected {type} to remain open on the continuous instrument surface."));
+            Assert.All(["tc", "abs", "engine_map", "brake_bias", "fuel", "position"],
+                type => Assert.Equal(1, widgets[type].Row));
+
+            Assert.Equal("auto", layout.AlertConfig?.ColorToken);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static (int Col, int Row, int ColSpan, int RowSpan) Position(DashWidget widget) =>
+        (widget.Col, widget.Row, widget.ColSpan, widget.RowSpan);
+
+    private static int CountRedDominant(SKBitmap bitmap)
+    {
+        var count = 0;
+        foreach (var p in bitmap.Pixels)
+        {
+            if (p.Red > 120 && p.Green < 80 && p.Blue < 90)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int Brightness(SKColor color) => Math.Max(color.Red, Math.Max(color.Green, color.Blue));
+
+    [Fact]
+    public void WidgetStackRendersDefaultLayerContent()
+    {
+        var layout = new DashLayout
+        {
+            Id = "stacked",
+            GridCols = 20,
+            GridRows = 12,
+            Pages =
+            [
+                new DashPage
+                {
+                    Id = "p",
+                    Name = "P",
+                    WidgetStacks =
+                    [
+                        new DashWidgetStack
+                        {
+                            Id = "stk",
+                            Name = "Stack",
+                            Col = 0,
+                            Row = 0,
+                            ColSpan = 20,
+                            RowSpan = 12,
+                            DefaultLayerId = "l1",
+                            Layers =
+                            [
+                                new DashWidgetStackLayer
+                                {
+                                    Id = "l1",
+                                    Name = "L1",
+                                    Widgets = [new DashWidget { Id = "g", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 20, RowSpan = 12 }],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        using var painter = new DashPainter(200, 200);
+        var bitmap = painter.Render(layout, new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 50 } }, new AppSettings());
+
+        var (visible, _) = Analyze(bitmap);
+        Assert.True(visible > 200 * 200 / 40, $"Expected the stack's default layer to render content, saw {visible} lit pixels.");
+    }
+
+    [Fact]
     public void RedFlagPaintsBottomBanner()
     {
         var layout = SingleWidgetLayout("gear_speed");
@@ -184,6 +411,74 @@ public sealed class DashPainterTests
     }
 
     [Fact]
+    public async Task DashImageRendererAndHardwareFrameSourceUseCanonicalDashPainterOutput()
+    {
+        // DashImageRenderer.Render builds a WriteableBitmap, which needs a live Avalonia
+        // platform — dispatch the body through the headless session so this test is
+        // self-sufficient rather than relying on another test to initialize the platform.
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashPainterTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            await session.Dispatch(() =>
+            {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.DashLayouts.Single(item => item.IsDefault);
+            var frame = new TelemetryFrame
+            {
+                Car = new CarState
+                {
+                    Gear = 4,
+                    SpeedMetersPerSecond = 34.2f,
+                    Rpm = 6400,
+                    MaxRpm = 8000,
+                    FuelLiters = 41.2f,
+                },
+            };
+            var palette = DashPalette.FromTheme(layout.Theme);
+
+            using var painter = new DashPainter(320, 192, palette);
+            var png = painter.RenderPng(layout, frame, runtime.Settings);
+
+            Assert.True(png.Length > 1000);
+            Assert.Equal(137, png[0]);
+            Assert.Equal(80, png[1]);
+            Assert.Equal(78, png[2]);
+            Assert.Equal(71, png[3]);
+
+            using var bitmap = DashImageRenderer.Render(layout, frame, runtime.Settings, 320, 192, palette: palette);
+            Assert.Equal(320, bitmap.PixelSize.Width);
+            Assert.Equal(192, bitmap.PixelSize.Height);
+
+            painter.Render(layout, frame, runtime.Settings);
+
+            // The on-screen editor bitmap must be the canonical painter's pixels,
+            // not a re-styled or re-scaled approximation: byte-for-byte BGRA equality.
+            var expectedBgra = painter.PixelSpanBgra.ToArray();
+            Assert.Equal(expectedBgra, ReadBgra(bitmap));
+
+            var expectedRgb565 = new byte[320 * 192 * 2];
+            Rgb565.FromBgra(painter.PixelSpanBgra, 320, 192, rotation: 0, expectedRgb565);
+
+            using var source = new DashPainterFrameSource(
+                layout,
+                runtime.Settings,
+                new ScreenConfig { Width = 320, Height = 192, Rotation = 0, Margin = 0, OffsetX = 0, OffsetY = 0 },
+                palette);
+            var actualRgb565 = new byte[320 * 192 * 2];
+            source.Render(frame, actualRgb565);
+
+            Assert.Equal(expectedRgb565, actualRgb565);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void AlertTrackerFiresOnTcChangeAndExpires()
     {
         var now = DateTimeOffset.UnixEpoch;
@@ -202,7 +497,8 @@ public sealed class DashPainterTests
         var changed = new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 5 } };
         var banner = tracker.Evaluate(layout, changed, palette);
         Assert.NotNull(banner);
-        Assert.Equal("TC1  5", banner!.Value.Text);
+        Assert.Equal("TRACTION CONTROL", banner!.Value.Title);
+        Assert.Equal("5", banner.Value.Value);
 
         // Still active before expiry.
         now = now.AddSeconds(1);
@@ -211,6 +507,41 @@ public sealed class DashPainterTests
         // Past expiry with no further change → cleared.
         now = now.AddSeconds(1);
         Assert.Null(tracker.Evaluate(layout, changed, palette));
+    }
+
+    [Fact]
+    public void AlertOverlayRespectsAuthoredGeometry()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        using var painter = new DashPainter(400, 240);
+        var banner = new DashAlertBanner("ABS", "4", DashPalette.Default.Warning, 10, 0, 10, 6);
+        var bitmap = painter.Render(layout, new TelemetryFrame(), new AppSettings(), banner: banner);
+
+        Assert.Equal(DashPalette.Default.Background, bitmap.GetPixel(20, 20));
+        Assert.NotEqual(DashPalette.Default.Background, bitmap.GetPixel(300, 2));
+    }
+
+    [Fact]
+    public void HardwareFrameSourceTriggersConfiguredAlertFromTelemetryChange()
+    {
+        var layout = new DashLayout
+        {
+            Id = "alert-hardware",
+            GridCols = 20,
+            GridRows = 12,
+            Pages = [new DashPage { Id = "main", Name = "Main" }],
+            Alerts = [new DashAlert { Id = "tc", Type = "tc_change", Col = 5, Row = 3, ColSpan = 10, RowSpan = 6 }],
+        };
+        var config = new ScreenConfig { Width = 200, Height = 120 };
+        using var source = new DashPainterFrameSource(layout, new AppSettings(), config);
+        var baseline = new byte[200 * 120 * 2];
+        var alerted = new byte[baseline.Length];
+
+        source.Render(new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 3 } }, baseline);
+        source.Render(new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 5 } }, alerted);
+
+        Assert.True(baseline.Zip(alerted).Count(pair => pair.First != pair.Second) > 100,
+            "Expected the telemetry change to produce a visible alert in the hardware frame.");
     }
 
     private static DashLayout SingleWidgetLayout(string type) => new()
@@ -228,6 +559,23 @@ public sealed class DashPainterTests
             },
         ],
     };
+
+    // Reads a WriteableBitmap's BGRA pixels into a tightly-packed buffer,
+    // stripping any row-stride padding so it can be compared to painter output.
+    private static byte[] ReadBgra(WriteableBitmap bitmap)
+    {
+        var width = bitmap.PixelSize.Width;
+        var height = bitmap.PixelSize.Height;
+        var rowBytes = width * 4;
+        var result = new byte[rowBytes * height];
+        using var buffer = bitmap.Lock();
+        for (var y = 0; y < height; y++)
+        {
+            Marshal.Copy(buffer.Address + y * buffer.RowBytes, result, y * rowBytes, rowBytes);
+        }
+
+        return result;
+    }
 
     private static (int Visible, int Buckets) Analyze(SKBitmap bitmap)
     {

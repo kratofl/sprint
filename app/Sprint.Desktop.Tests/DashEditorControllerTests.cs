@@ -56,6 +56,225 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
+    public void SetSelectedConfigStoresAndClearsStringValues()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("text");
+        saves = 0;
+
+        Assert.True(controller.SetSelectedConfig("content", "P1"));
+        Assert.Equal("P1", controller.GetSelectedConfig("content"));
+        Assert.Equal(1, saves);
+
+        // Empty value clears the key; clearing the last key drops the config dictionary.
+        Assert.True(controller.SetSelectedConfig("content", ""));
+        Assert.Equal(string.Empty, controller.GetSelectedConfig("content"));
+        Assert.Null(controller.SelectedWidget!.Config);
+        Assert.Equal(2, saves);
+    }
+
+    [Fact]
+    public void SetTargetProfileRefitsGridPersistsAndClearsSelection()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("gear_speed");
+        Assert.NotNull(controller.SelectedWidgetId);
+        saves = 0;
+
+        var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+        Assert.True(controller.SetTargetProfile(portrait));
+
+        Assert.Equal("portrait-480x854", controller.Layout.ScreenProfileId);
+        Assert.Equal(portrait.GridCols, controller.Layout.GridCols);
+        Assert.Equal(portrait.GridRows, controller.Layout.GridRows);
+        Assert.Equal(portrait, controller.TargetProfile);
+        Assert.Null(controller.SelectedWidgetId);
+        Assert.True(DashLayoutValidator.IsValid(controller.Layout));
+        Assert.Equal(1, saves);
+
+        // Re-selecting the same size is a no-op (no extra save).
+        Assert.False(controller.SetTargetProfile(portrait));
+        Assert.Equal(1, saves);
+    }
+
+    [Fact]
+    public void SelectPreviewStateChangesTheFrameUsedForRender()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        var live = new Sprint.Desktop.Api.Telemetry.TelemetryFrame();
+
+        // Live passes the live frame straight through.
+        Assert.Same(live, controller.ResolveRenderFrame(live));
+
+        var changed = 0;
+        controller.Changed += (_, _) => changed++;
+
+        Assert.True(controller.SelectPreviewState(DashPreviewState.Redline));
+        Assert.Equal(DashPreviewState.Redline, controller.PreviewState);
+        Assert.Equal(1, changed);
+
+        var previewed = controller.ResolveRenderFrame(live);
+        Assert.NotSame(live, previewed);
+        Assert.True(previewed.Car.Rpm > previewed.Car.MaxRpm * 0.95f, "Redline preview should sit near the rev limit.");
+
+        // Re-selecting the same state is a no-op.
+        Assert.False(controller.SelectPreviewState(DashPreviewState.Redline));
+        Assert.Equal(1, changed);
+    }
+
+    [Fact]
+    public void RequestApplyToScreenRaisesIntentWithTheLayout()
+    {
+        var layout = NewLayout();
+        var controller = new DashEditorController(layout, _ => { });
+
+        DashLayout? applied = null;
+        controller.ApplyToScreenRequested += (_, l) => applied = l;
+
+        controller.RequestApplyToScreen();
+
+        Assert.Same(layout, applied);
+    }
+
+    [Fact]
+    public void ApplyToScreenIsBlockedWhenNoScreenIsAssigned()
+    {
+        var layout = NewLayout();
+        // A resolver that reports the honest "no screen assigned" state (US34).
+        var controller = new DashEditorController(layout, _ => { }, () => DashApplyAvailability.None);
+
+        var raised = 0;
+        controller.ApplyToScreenRequested += (_, _) => raised++;
+
+        controller.RequestApplyToScreen();
+
+        Assert.False(controller.ApplyAvailability.CanApply);
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void ApplyToScreenSurfacesTheResolvedTargetSummary()
+    {
+        var layout = NewLayout();
+        var target = new DashApplyAvailability(true, "Apply to Omega Wheel");
+        var controller = new DashEditorController(layout, _ => { }, () => target);
+
+        DashLayout? applied = null;
+        controller.ApplyToScreenRequested += (_, l) => applied = l;
+
+        controller.RequestApplyToScreen();
+
+        Assert.True(controller.ApplyAvailability.CanApply);
+        Assert.Equal("Apply to Omega Wheel", controller.ApplyAvailability.Summary);
+        Assert.Same(layout, applied);
+    }
+
+    [Fact]
+    public void SetSelectedConfigWithoutSelectionIsNoOp()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        Assert.False(controller.SetSelectedConfig("content", "x"));
+        Assert.Equal(0, saves);
+    }
+
+    [Fact]
+    public void StyleOverridesSetAndCollapseToNullWhenEmptied()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("gear_speed");
+        var widget = controller.SelectedWidget!;
+        saves = 0;
+
+        Assert.True(controller.SetSelectedTextColor("red"));
+        Assert.True(controller.SetSelectedBorder(false));
+        Assert.Equal("red", widget.Style!.TextColor);
+        Assert.False(widget.Style!.Border);
+        Assert.Equal(2, saves);
+
+        // Clearing every override collapses the style back to null (no empty object persisted).
+        Assert.True(controller.SetSelectedTextColor(null));
+        Assert.True(controller.SetSelectedBorder(null));
+        Assert.Null(widget.Style);
+    }
+
+    [Fact]
+    public void ThemePresetAppliesAndResetClears()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        var ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
+        controller.ApplyThemePreset(ice);
+        Assert.Equal("#1F7FE6", controller.Layout.Theme!.Primary);
+        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout.Theme));
+
+        controller.SetThemeAccent("#FF6A00");
+        Assert.Equal("#FF6A00", controller.Layout.Theme!.Accent);
+
+        controller.ResetTheme();
+        Assert.Null(controller.Layout.Theme);
+
+        // The empty "Graphite" preset clears the theme rather than persisting an empty object.
+        controller.ApplyThemePreset(DashThemePresets.All.First(preset => preset.Name == "Graphite").Theme);
+        Assert.Null(controller.Layout.Theme);
+    }
+
+    [Fact]
+    public void SuzukiThemePresetUsesPurplePrimary()
+    {
+        var suzuki = DashThemePresets.All.FirstOrDefault(preset => preset.Name == "Suzuki");
+
+        Assert.NotNull(suzuki);
+        Assert.Equal("#7C3AED", suzuki!.Theme.Primary);
+        Assert.Equal("#B15CFF", suzuki.Theme.Accent);
+    }
+
+    [Fact]
+    public void AddWidgetStackSelectsItAndClearsWidgetSelection()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        controller.AddWidget("fuel");
+        Assert.NotNull(controller.SelectedWidgetId);
+
+        Assert.True(controller.AddWidgetStack());
+        Assert.NotNull(controller.SelectedStackId);
+        Assert.Null(controller.SelectedWidgetId);       // mutually exclusive
+        Assert.NotNull(controller.ActiveLayer);          // active layer defaults to the stack's layer
+
+        // Selecting a widget clears the stack selection.
+        controller.SelectWidget(controller.ActivePage!.Widgets[0].Id);
+        Assert.Null(controller.SelectedStackId);
+    }
+
+    [Fact]
+    public void StackLayerEditingAddsWidgetsAndSwitchesActiveLayer()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        Assert.True(controller.AddWidgetStack());
+        var stack = controller.SelectedStack!;
+
+        Assert.True(controller.AddWidgetToActiveLayer("gear_speed"));
+        Assert.Single(controller.ActiveLayer!.Widgets);
+
+        // A new layer becomes the active edit target; widgets land there.
+        Assert.True(controller.AddStackLayer());
+        Assert.Equal(2, stack.Layers.Count);
+        Assert.Equal(stack.Layers[1].Id, controller.ActiveLayer!.Id);
+        Assert.True(controller.AddWidgetToActiveLayer("fuel"));
+        Assert.DoesNotContain(stack.Layers[0].Widgets, w => w.Type == "fuel"); // went to layer 2, not layer 1
+        Assert.Single(stack.Layers[1].Widgets);
+
+        Assert.True(controller.DeleteSelectedStack());
+        Assert.Null(controller.SelectedStackId);
+        Assert.Empty(controller.ActivePage!.WidgetStacks);
+    }
+
+    [Fact]
     public void MoveOntoAnotherWidgetIsRejected()
     {
         var controller = new DashEditorController(NewLayout(), _ => { });
@@ -152,5 +371,73 @@ public sealed class DashEditorControllerTests
 
         Assert.Same(layout.Pages[0], DashLayoutEditor.FindPage(layout, controller.ActivePageId));
         Assert.Null(DashLayoutEditor.FindPage(layout, "missing-page"));
+    }
+
+    [Fact]
+    public void DashboardModePersistsAndNormalizes()
+    {
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ => saves++);
+
+        controller.SetMode("advanced");
+        Assert.True(controller.IsAdvancedMode);
+        Assert.Equal("advanced", controller.Layout.Mode);
+
+        controller.SetMode("anything-else");
+        Assert.False(controller.IsAdvancedMode);
+        Assert.Equal("basic", controller.Layout.Mode);
+        Assert.Equal(2, saves);
+    }
+
+    [Fact]
+    public void AlertGeometryAndIndividualOverridesPersistIndependently()
+    {
+        var saves = 0;
+        var layout = NewLayout();
+        layout.AlertConfig = new DashAlertConfig { ColorToken = "ember", DurationSeconds = 1.8, InvertColors = false };
+        var controller = new DashEditorController(layout, _ => saves++);
+        controller.SetAlert("tc_change", true);
+
+        Assert.True(controller.SetAlertGeometry("tc_change", 17, 10, 8, 6));
+        var alert = Assert.IsType<DashAlert>(controller.GetAlert("tc_change"));
+        Assert.Equal((12, 6, 8, 6), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
+
+        controller.SetAlertUseGlobal("tc_change", false);
+        controller.SetAlertColorToken("tc_change", "blue");
+        controller.SetAlertDuration("tc_change", 2.4);
+        controller.SetAlertInvertColors("tc_change", true);
+        var effective = controller.EffectiveAlertConfig("tc_change");
+        Assert.Equal("blue", effective.ColorToken);
+        Assert.Equal(2.4, effective.DurationSeconds);
+        Assert.True(effective.InvertColors);
+
+        controller.SetAlertUseGlobal("tc_change", true);
+        effective = controller.EffectiveAlertConfig("tc_change");
+        Assert.Equal("ember", effective.ColorToken);
+        Assert.Equal(1.8, effective.DurationSeconds);
+        Assert.False(effective.InvertColors);
+        Assert.True(alert.UsesGlobalSettings);
+        Assert.True(saves >= 7);
+    }
+
+    [Fact]
+    public void DisablingAlertPreservesGeometryAndIndividualSettings()
+    {
+        var controller = new DashEditorController(NewLayout(), _ => { });
+        controller.SetAlert("abs_change", true);
+        controller.SetAlertGeometry("abs_change", 2, 4, 12, 5);
+        controller.SetAlertUseGlobal("abs_change", false);
+        controller.SetAlertColorToken("abs_change", "red");
+        var alert = Assert.IsType<DashAlert>(controller.GetAlert("abs_change"));
+
+        controller.SetAlert("abs_change", false);
+        Assert.False(controller.IsAlertEnabled("abs_change"));
+        Assert.Same(alert, controller.GetAlert("abs_change"));
+        Assert.Equal((2, 4, 12, 5), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
+        Assert.Equal("red", alert.ColorToken);
+
+        controller.SetAlert("abs_change", true);
+        Assert.True(controller.IsAlertEnabled("abs_change"));
+        Assert.Same(alert, controller.GetAlert("abs_change"));
     }
 }

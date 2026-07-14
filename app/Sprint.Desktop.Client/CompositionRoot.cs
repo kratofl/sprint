@@ -21,7 +21,7 @@ internal static class CompositionRoot
         // is installed by Program.Main before any wiring runs, and injected here so
         // feature code (DesktopRuntime) depends on ILog, not the static holder.
         var runtime = new DesktopRuntime(log: AppDiagnostics.Log);
-        var shell = new ShellState();
+        var shell = new ShellState(runtime.Settings.SidebarCollapsed);
         var telemetry = CreateTelemetrySource();
         return new MainWindow(runtime, shell, telemetry);
     }

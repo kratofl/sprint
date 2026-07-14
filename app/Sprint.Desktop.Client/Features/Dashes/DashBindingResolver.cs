@@ -21,6 +21,7 @@ public static class DashBindingResolver
             "car.maxRpm" => (int)Math.Round(context.Frame.Car.MaxRpm),
             "car.fuelLiters" => context.Frame.Car.FuelLiters,
             "car.fuelPerLapLiters" => context.Frame.Car.FuelPerLapLiters,
+            "car.brakeBiasRear" => context.Frame.Car.BrakeBiasRear,
             "inputs.throttle" => context.Frame.Car.Throttle,
             "inputs.brake" => context.Frame.Car.Brake,
             "inputs.clutch" => context.Frame.Car.Clutch,
