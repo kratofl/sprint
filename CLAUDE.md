@@ -89,3 +89,4 @@ If a bare `dotnet` resolves to the x64 runtime-only install, use the x86 SDK:
 - `docs/DESIGN.md` - Graphite implementation contract.
 - `docs/SCREEN_PROTOCOLS.md` - VoCore / USBD480 / RGB565 protocol reference.
 - `docs/DESKTOP_SMOKE.md` - manual desktop parity smoke script.
+- `docs/DIAGNOSTICS.md` - desktop logging + crash reports (`Features/Diagnostics`).
