@@ -41,13 +41,13 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
-    <!-- Pinned to the exact version Avalonia 12.0.5 already resolves transitively
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <!-- Pinned to the exact version Avalonia 12.1.0 already resolves transitively
          (via Avalonia.Skia), so no new native assets or version conflict. The dash
          painter renders off the UI thread to a pixel buffer that feeds both the
          on-screen preview and hardware (WS6/WS7). -->
-    <PackageReference Include="SkiaSharp" Version="4.148.0" />
+    <PackageReference Include="SkiaSharp" Version="4.150.1" />
   </ItemGroup>
 
   <ItemGroup>
