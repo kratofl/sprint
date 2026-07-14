@@ -6,15 +6,9 @@ updates:
     schedule:
       interval: monthly
 
-  # Go modules — API server
-  - package-ecosystem: gomod
+  # NuGet packages — .NET GraphQL API server (migrated from Go)
+  - package-ecosystem: nuget
     directory: /api
-    schedule:
-      interval: monthly
-
-  # Go modules — shared packages
-  - package-ecosystem: gomod
-    directory: /pkg
     schedule:
       interval: monthly
 
