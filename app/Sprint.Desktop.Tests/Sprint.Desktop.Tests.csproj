@@ -25,6 +25,6 @@
          NOTE: the Avalonia.Headless.XUnit integration package targets xunit v3
          and collides with our xunit v2.9.3, so we drive HeadlessUnitTestSession
          directly from Avalonia.Headless inside ordinary [Fact]s instead. -->
-    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
   </ItemGroup>
 </Project>
