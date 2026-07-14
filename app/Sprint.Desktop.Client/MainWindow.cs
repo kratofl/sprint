@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
@@ -985,9 +986,10 @@ public sealed class MainWindow : Window
                 ? $"Update {latest.Version} available"
                 : "Up to date";
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Manual check is best-effort; a network failure must not crash the app.
+            AppDiagnostics.Log.Warn("Update check failed", ex);
             status.Text = "Check failed — try again later.";
         }
     }
