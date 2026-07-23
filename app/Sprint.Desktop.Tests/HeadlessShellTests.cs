@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -924,12 +925,58 @@ public class HeadlessShellTests
                 Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBox>(),
                     box => string.Equals(box.Text, "BavarianSimTec Omega PRO V2", StringComparison.Ordinal));
 
-                FindButton(window, "Add device").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var addDevice = FindButton(window, "Add device");
+                addDevice.Focus();
+                addDevice.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
+                Assert.Contains(
+                    window.GetVisualDescendants().OfType<Border>(),
+                    border => string.Equals(
+                        border.Tag?.ToString(),
+                        "device-catalog-dialog-overlay",
+                        StringComparison.Ordinal));
+                var presetMode = window.GetVisualDescendants().OfType<ToggleButton>()
+                    .Single(button => button.Content?.ToString()?.Contains("Preset", StringComparison.Ordinal) == true);
+                var genericMode = window.GetVisualDescendants().OfType<ToggleButton>()
+                    .Single(button => button.Content?.ToString()?.Contains("Generic", StringComparison.Ordinal) == true);
+                Assert.True(presetMode.IsChecked);
+                Assert.False(genericMode.IsChecked);
+                Assert.Same(
+                    presetMode,
+                    TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement());
                 Assert.NotNull(FindOptionalButton(window, "BavarianSimTec Omega PRO V2"));
 
+                FindButton(window, "Generic").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                genericMode = window.GetVisualDescendants().OfType<ToggleButton>()
+                    .Single(button => button.Content?.ToString()?.Contains("Generic", StringComparison.Ordinal) == true);
+                Assert.True(genericMode.IsChecked);
+                Assert.Contains("✓", genericMode.Content?.ToString());
+                Assert.NotNull(FindOptionalButton(window, "Generic VoCore Screen"));
+                Assert.Null(FindOptionalButton(window, "BavarianSimTec Omega PRO V2"));
+
+                RaiseKeyDown(window, Key.Escape);
+                window.CaptureRenderedFrame();
+                Assert.DoesNotContain(
+                    window.GetVisualDescendants().OfType<Border>(),
+                    border => string.Equals(
+                        border.Tag?.ToString(),
+                        "device-catalog-dialog-overlay",
+                        StringComparison.Ordinal));
+                Assert.Same(
+                    addDevice,
+                    TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement());
+
+                addDevice.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
                 FindButton(window, "BavarianSimTec Omega PRO V2").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
+                Assert.DoesNotContain(
+                    window.GetVisualDescendants().OfType<Border>(),
+                    border => string.Equals(
+                        border.Tag?.ToString(),
+                        "device-catalog-dialog-overlay",
+                        StringComparison.Ordinal));
                 Assert.Contains(window.GetVisualDescendants().OfType<TextBox>(),
                     box => string.Equals(box.Text, "BavarianSimTec Omega PRO V2", StringComparison.Ordinal));
                 Assert.NotNull(FindOptionalText(window, "Device bindings"));

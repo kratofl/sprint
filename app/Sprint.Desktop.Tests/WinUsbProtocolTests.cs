@@ -5,6 +5,23 @@ namespace Sprint.Desktop.Tests;
 
 public sealed class WinUsbProtocolTests
 {
+    [Fact]
+    public void ControlTimeoutReportsOnlyVerifiedOwnershipAndDriverFacts()
+    {
+        var detail = ScreenTransferFailure.DescribeControlTimeout(
+            "control OUT 0xB0",
+            @"\\?\usb#vid_c872&pid_1004#screen",
+            timeoutMs: 2_000);
+
+        Assert.Contains("WinUsb_Initialize succeeded", detail);
+        Assert.Contains("this interface path exclusively", detail);
+        Assert.Contains("wrong USB interface", detail);
+        Assert.Contains("firmware/protocol variant", detail);
+        Assert.Contains("different interface", detail);
+        Assert.DoesNotContain("missing driver", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not a shared-owner", detail, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData(800, 480, 0x00, 0xB8, 0x0B)]
     [InlineData(1024, 600, 0x00, 0xC0, 0x12)]

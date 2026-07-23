@@ -129,6 +129,12 @@ internal static class AgentUiReviewHarness
                     Click(window, "Devices");
                     frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved devices", "Add device", runtime.Devices[0].Name, "Review Screen"));
 
+                    Click(window, "Add device");
+                    frames.Add(Capture(window, artifactRoot, "add-device-preset-dialog", "Add device", "✓ Preset", "Generic", "Hardware presets", "BavarianSimTec Omega PRO V2"));
+                    Click(window, "Generic");
+                    frames.Add(Capture(window, artifactRoot, "add-device-generic-dialog", "Add device", "Preset", "✓ Generic", "Generic screens", "Generic VoCore Screen", "Generic USBD480 NX Screen"));
+                    Click(window, "Close");
+
                     Click(window, runtime.Devices[0].Name);
                     frames.Add(Capture(window, artifactRoot, "devices-detail", "Add device", "Device bindings", runtime.Devices[0].Name));
 

@@ -64,6 +64,19 @@ public readonly record struct ScreenNativeSize(int Width, int Height)
     public bool IsValid => Width > 0 && Height > 0;
 }
 
+internal static class ScreenTransferFailure
+{
+    public static string DescribeControlTimeout(
+        string operation,
+        string devicePath,
+        uint timeoutMs) =>
+        $"{operation} timed out after {timeoutMs} ms. " +
+        "WinUsb_Initialize succeeded, so a compatible driver is present. Sprint opened " +
+        "this interface path exclusively, but the screen did not acknowledge request 0xB0. " +
+        "Possible causes include the wrong USB interface, a firmware/protocol variant, or " +
+        $"another application using a different interface of the same device. path={devicePath}";
+}
+
 public enum ScreenStatusTone
 {
     Neutral,
