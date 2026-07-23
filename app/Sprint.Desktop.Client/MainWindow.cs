@@ -64,6 +64,8 @@ public sealed class MainWindow : Window
     private readonly ShellCommandRegistry _shellCommands;
     private Border? _commandOverlay;
     private Border? _confirmOverlay;
+    private Border? _deviceCatalogOverlay;
+    private Control? _focusBeforeDeviceCatalog;
     private TextBox? _commandSearch;
     private StackPanel? _commandResults;
     private IReadOnlyList<ShellCommand> _visibleCommands = [];
@@ -72,7 +74,6 @@ public sealed class MainWindow : Window
     private InputCaptureState _capture = InputCaptureState.Idle;
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
-    private bool _showDeviceCatalog;
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
     private DispatcherTimer? _setupUndoTimer;
@@ -495,6 +496,7 @@ public sealed class MainWindow : Window
         var previous = _shell.View;
         CloseCommandPalette();
         CloseConfirmDialog();
+        CloseDeviceCatalogDialog();
         if (_dashEditor is not null && _restoreSidebarAfterEditor && _shell.SidebarCollapsed)
         {
             _shell.ToggleSidebar();
@@ -533,9 +535,9 @@ public sealed class MainWindow : Window
             {
                 _shell.Navigate(AppView.Devices);
                 _selectedDeviceId = null;
-                _showDeviceCatalog = true;
                 BuildShell();
                 RenderBody();
+                ShowDeviceCatalogDialog();
             }),
             new("shell.sidebar", "Toggle sidebar", "collapse expand navigation", null, ToggleSidebar),
             new("updates.check", "Check for updates", "release version", null, () => Navigate(AppView.Settings)),
@@ -952,7 +954,7 @@ public sealed class MainWindow : Window
     {
         _shell.Navigate(AppView.Devices);
         _selectedDeviceId = device.Id;
-        _showDeviceCatalog = false;
+        CloseDeviceCatalogDialog();
         BuildShell();
         RenderBody();
     }
@@ -1386,11 +1388,7 @@ public sealed class MainWindow : Window
             Graphite.StatusPill($"{_runtime.Devices.Count} saved", _runtime.Devices.Count > 0 ? Graphite.GreenBrush : Graphite.Text3Brush)));
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Left };
-        actions.Children.Add(ActionButton(_showDeviceCatalog ? "Cancel add" : "Add device", _showDeviceCatalog ? ButtonTone.Ghost : ButtonTone.Primary, () =>
-        {
-            _showDeviceCatalog = !_showDeviceCatalog;
-            RenderBody();
-        }));
+        actions.Children.Add(ActionButton("Add device", ButtonTone.Primary, () => ShowDeviceCatalogDialog()));
         stack.Children.Add(actions);
 
         var split = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*") };
@@ -1417,11 +1415,9 @@ public sealed class MainWindow : Window
         }, 0, 0);
 
         var selected = _runtime.Devices.FirstOrDefault(device => device.Id == _selectedDeviceId);
-        Control detail = _showDeviceCatalog
-            ? DeviceCatalogPopup()
-            : selected is null
-                ? DeviceEmptyDetail()
-                : DeviceDetail(selected);
+        Control detail = selected is null
+            ? DeviceEmptyDetail()
+            : DeviceDetail(selected);
         var detailWrap = new Border { Margin = new Thickness(20, 0, 0, 0), Child = detail };
         AddGrid(split, detailWrap, 0, 1);
         stack.Children.Add(split);
@@ -1453,7 +1449,6 @@ public sealed class MainWindow : Window
         button.Click += (_, _) =>
         {
             _selectedDeviceId = device.Id;
-            _showDeviceCatalog = false;
             RenderBody();
         };
 
@@ -1491,37 +1486,191 @@ public sealed class MainWindow : Window
         };
     }
 
-    private Control DeviceCatalogPopup()
+    private void ShowDeviceCatalogDialog(bool generic = false)
     {
-        var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(Graphite.SectionLabel("Add device"));
+        var focusToRestore = _deviceCatalogOverlay is null
+            ? TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control
+            : _focusBeforeDeviceCatalog;
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+        CloseDeviceCatalogDialog(restoreFocus: false);
+        _focusBeforeDeviceCatalog = focusToRestore;
 
-        foreach (var group in _runtime.Catalog.GroupBy(entry => IsGenericDevice(entry) ? "Generic" : "Preconfigured wheels"))
+        var content = new StackPanel { Spacing = 14 };
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var headingText = new StackPanel { Spacing = 4 };
+        headingText.Children.Add(Graphite.TextBlock("Add device", 19, FontWeight.Bold, Graphite.TextBrush));
+        headingText.Children.Add(Graphite.TextBlock(
+            "Choose a known hardware preset or configure a generic screen.",
+            12,
+            FontWeight.Normal,
+            Graphite.Text2Brush,
+            TextWrapping.Wrap));
+        AddGrid(heading, headingText, 0, 0);
+        AddGrid(heading, ActionButton("Close", ButtonTone.Ghost, () => CloseDeviceCatalogDialog()), 0, 1);
+        content.Children.Add(heading);
+
+        var modes = new StackPanel
         {
-            panel.Children.Add(Graphite.SectionLabel(group.Key));
-            var wrap = new WrapPanel { Orientation = Orientation.Horizontal };
-            foreach (var entry in group)
-            {
-                var item = new StackPanel { Spacing = 5, Width = 245, Margin = new Thickness(0, 0, 10, 10) };
-                var button = Graphite.Button(entry.Name, ButtonTone.Neutral);
-                button.HorizontalContentAlignment = HorizontalAlignment.Left;
-                button.Click += (_, _) =>
-                {
-                    var saved = _runtime.AddDevice(entry);
-                    _selectedDeviceId = saved.Id;
-                    _showDeviceCatalog = false;
-                    _screens.Sync();
-                    RenderBody();
-                };
-                item.Children.Add(button);
-                item.Children.Add(Graphite.TextBlock(entry.Description, 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
-                wrap.Children.Add(item);
-            }
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+        };
+        var presetMode = DeviceCatalogModeButton(
+            "Preset",
+            selected: !generic,
+            () => ShowDeviceCatalogDialog(generic: false));
+        var genericMode = DeviceCatalogModeButton(
+            "Generic",
+            selected: generic,
+            () => ShowDeviceCatalogDialog(generic: true));
+        modes.Children.Add(presetMode);
+        modes.Children.Add(genericMode);
+        content.Children.Add(modes);
 
-            panel.Children.Add(wrap);
+        content.Children.Add(Graphite.SectionLabel(generic ? "Generic screens" : "Hardware presets"));
+        var entries = _runtime.Catalog
+            .Where(entry => IsGenericDevice(entry) == generic)
+            .ToArray();
+        var catalog = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var entry in entries)
+        {
+            var item = new StackPanel
+            {
+                Spacing = 7,
+                Width = 300,
+                MinHeight = 112,
+                Margin = new Thickness(0, 0, 10, 10),
+            };
+            var button = Graphite.Button(entry.Name, ButtonTone.Neutral);
+            button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            button.Click += (_, _) =>
+            {
+                var saved = _runtime.AddDevice(entry);
+                _selectedDeviceId = saved.Id;
+                CloseDeviceCatalogDialog();
+                _screens.Sync();
+                RenderBody();
+            };
+            item.Children.Add(button);
+            item.Children.Add(Graphite.TextBlock(
+                entry.Description,
+                11,
+                FontWeight.Normal,
+                Graphite.Text3Brush,
+                TextWrapping.Wrap));
+            catalog.Children.Add(Graphite.Card(item));
         }
 
-        return Graphite.Card(panel);
+        if (entries.Length == 0)
+        {
+            catalog.Children.Add(Graphite.TextBlock(
+                "No devices are available in this category.",
+                12,
+                FontWeight.Normal,
+                Graphite.Text3Brush));
+        }
+
+        content.Children.Add(new ScrollViewer
+        {
+            MaxHeight = 430,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = catalog,
+        });
+
+        var panel = new Border
+        {
+            Width = 700,
+            MaxHeight = 650,
+            Padding = new Thickness(22),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = 12,
+                Blur = 32,
+                Spread = 0,
+                Color = Color.FromArgb(90, 0, 0, 0),
+            }),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = content,
+            Tag = "device-catalog-dialog",
+        };
+        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+        AutomationProperties.SetName(panel, "Add device dialog");
+        AutomationProperties.SetHelpText(
+            panel,
+            "Choose a hardware preset or a generic screen. Escape closes this dialog.");
+        panel.PointerPressed += (_, e) => e.Handled = true;
+
+        _deviceCatalogOverlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(160, 0, 0, 0)),
+            Child = panel,
+            Tag = "device-catalog-dialog-overlay",
+        };
+        _deviceCatalogOverlay.PointerPressed += (_, _) => CloseDeviceCatalogDialog();
+        Grid.SetRowSpan(_deviceCatalogOverlay, 2);
+        _root.Children.Add(_deviceCatalogOverlay);
+        Dispatcher.UIThread.Post(
+            () => (generic ? genericMode : presetMode).Focus(),
+            DispatcherPriority.Input);
+    }
+
+    private ToggleButton DeviceCatalogModeButton(string label, bool selected, Action select)
+    {
+        var button = new ToggleButton
+        {
+            Content = selected ? $"✓ {label}" : label,
+            IsChecked = selected,
+            Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
+            Foreground = selected ? Graphite.TextBrush : Graphite.Text2Brush,
+            BorderBrush = selected ? Graphite.Line2Brush : Brushes.Transparent,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            FontFamily = Graphite.FontStack,
+            FontSize = 13,
+            FontWeight = selected ? FontWeight.SemiBold : FontWeight.Medium,
+            Padding = new Thickness(12, 6),
+            MinHeight = 30,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        AutomationProperties.SetName(button, $"{label} device category");
+        AutomationProperties.SetHelpText(button, selected ? "Selected" : "Not selected");
+        button.Resources["ToggleButtonBackgroundChecked"] = Graphite.Panel3Brush;
+        button.Resources["ToggleButtonBackgroundCheckedPointerOver"] = Graphite.Panel3HoverBrush;
+        button.Resources["ToggleButtonBackgroundCheckedPressed"] = Graphite.Panel3HoverBrush;
+        button.Resources["ToggleButtonForegroundChecked"] = Graphite.TextBrush;
+        button.Resources["ToggleButtonForegroundCheckedPointerOver"] = Graphite.TextBrush;
+        button.Resources["ToggleButtonForegroundCheckedPressed"] = Graphite.TextBrush;
+        button.Resources["ToggleButtonBorderBrushChecked"] = Graphite.Line2Brush;
+        button.Resources["ToggleButtonBorderBrushCheckedPointerOver"] = Graphite.Line2Brush;
+        button.Resources["ToggleButtonBorderBrushCheckedPressed"] = Graphite.Line2Brush;
+        button.Click += (_, _) => select();
+        return button;
+    }
+
+    private void CloseDeviceCatalogDialog(bool restoreFocus = true)
+    {
+        if (_deviceCatalogOverlay is null)
+        {
+            return;
+        }
+
+        var focusToRestore = _focusBeforeDeviceCatalog;
+        _root.Children.Remove(_deviceCatalogOverlay);
+        _deviceCatalogOverlay = null;
+        _focusBeforeDeviceCatalog = null;
+        if (restoreFocus && focusToRestore is not null)
+        {
+            Dispatcher.UIThread.Post(() => focusToRestore.Focus(), DispatcherPriority.Input);
+        }
     }
 
     private static bool IsGenericDevice(CatalogDevice entry) => entry.Vid == 0 && entry.Pid == 0;
@@ -1705,6 +1854,7 @@ public sealed class MainWindow : Window
     private void ShowConfirmDialog(string title, string message, string confirmLabel, Action confirm)
     {
         CloseCommandPalette(restoreFocus: false);
+        CloseDeviceCatalogDialog();
         CloseConfirmDialog();
 
         var content = new StackPanel { Spacing = 10 };
@@ -1769,6 +1919,7 @@ public sealed class MainWindow : Window
             return;
         }
 
+        CloseDeviceCatalogDialog();
         _focusBeforePalette = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as Control;
         _commandSelection = 0;
         _commandResults = new StackPanel { Spacing = 2 };
@@ -1928,6 +2079,23 @@ public sealed class MainWindow : Window
 
     private void OnGlobalKeyDown(object? sender, KeyEventArgs e)
     {
+        if (_deviceCatalogOverlay is not null)
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseDeviceCatalogDialog();
+                e.Handled = true;
+            }
+            else if (e.Key != Key.Tab)
+            {
+                // The overlay is modal: global commands and background navigation
+                // remain dormant until it closes. Tab is handled by the cycle scope.
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key == Key.Escape && _confirmOverlay is not null)
         {
             CloseConfirmDialog();

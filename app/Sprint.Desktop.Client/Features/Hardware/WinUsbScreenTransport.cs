@@ -26,14 +26,17 @@ internal sealed class WinUsbScreenTransport : IDisposable
     private nint _file;
     private nint _winusb;
 
-    private WinUsbScreenTransport(nint file, nint winusb, ushort matchedPid)
+    private WinUsbScreenTransport(nint file, nint winusb, ushort matchedPid, string devicePath)
     {
         _file = file;
         _winusb = winusb;
         MatchedPid = matchedPid;
+        DevicePath = devicePath;
     }
 
     public ushort MatchedPid { get; }
+
+    public string DevicePath { get; }
 
     /// <summary>Opens the first WinUSB device matching <paramref name="interfaceGuid"/> + VID/PID, or null if unavailable.</summary>
     public static WinUsbScreenTransport? TryOpen(
@@ -64,7 +67,8 @@ internal sealed class WinUsbScreenTransport : IDisposable
             return new WinUsbScreenTransport(
                 h.File,
                 h.Winusb,
-                ReadPid(path) ?? pid);
+                ReadPid(path) ?? pid,
+                path);
         }
 
         failureStatus = ScreenOpenFailureStatus.Describe(stage, nativeError, vid, pid);
@@ -274,9 +278,10 @@ internal sealed class WinUsbScreenTransport : IDisposable
                 if (wait == WaitTimeout)
                 {
                     releaseResources = CancelAndDrain(resources);
-                    LastFailure =
-                        $"{operation} timed out after {ControlTransferTimeoutMs} ms. " +
-                        "Another screen-output process may still own or block the USB interface.";
+                    LastFailure = ScreenTransferFailure.DescribeControlTimeout(
+                        operation,
+                        DevicePath,
+                        ControlTransferTimeoutMs);
                     return false;
                 }
 
