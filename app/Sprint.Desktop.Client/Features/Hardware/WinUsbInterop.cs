@@ -21,8 +21,6 @@ internal static class WinUsbInterop
     private const int DigcfDeviceInterface = 0x10;
     private const uint GenericRead = 0x80000000;
     private const uint GenericWrite = 0x40000000;
-    private const uint FileShareRead = 0x01;
-    private const uint FileShareWrite = 0x02;
     private const uint OpenExisting = 3;
     private const uint FileFlagOverlapped = 0x40000000;
     private static readonly nint InvalidHandle = -1;
@@ -64,6 +62,19 @@ internal static class WinUsbInterop
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool CloseHandle(nint handle);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern nint CreateEvent(
+        nint eventAttributes,
+        bool manualReset,
+        bool initialState,
+        string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint WaitForSingleObject(nint handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool CancelIoEx(nint handle, nint overlapped);
+
     [DllImport("winusb.dll", SetLastError = true)]
     internal static extern bool WinUsb_Initialize(nint deviceHandle, out nint interfaceHandle);
 
@@ -72,6 +83,12 @@ internal static class WinUsbInterop
 
     [DllImport("winusb.dll", SetLastError = true)]
     internal static extern bool WinUsb_WritePipe(nint interfaceHandle, byte pipeId, byte[] buffer, int bufferLength, out int transferred, nint overlapped);
+
+    [DllImport("winusb.dll", SetLastError = true)]
+    internal static extern bool WinUsb_ResetPipe(nint interfaceHandle, byte pipeId);
+
+    [DllImport("winusb.dll", SetLastError = true)]
+    internal static extern bool WinUsb_SetPowerPolicy(nint interfaceHandle, uint policyType, uint valueLength, byte[] value);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct WinUsbSetupPacket
@@ -85,6 +102,23 @@ internal static class WinUsbInterop
 
     [DllImport("winusb.dll", SetLastError = true)]
     internal static extern bool WinUsb_ControlTransfer(nint interfaceHandle, WinUsbSetupPacket setupPacket, byte[]? buffer, int bufferLength, out int transferred, nint overlapped);
+
+    [DllImport("winusb.dll", SetLastError = true)]
+    internal static extern bool WinUsb_GetOverlappedResult(
+        nint interfaceHandle,
+        nint overlapped,
+        out int transferred,
+        bool wait);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeOverlapped
+    {
+        public nint Internal;
+        public nint InternalHigh;
+        public uint Offset;
+        public uint OffsetHigh;
+        public nint EventHandle;
+    }
 
     /// <summary>
     /// Finds the device path for the first interface under <paramref name="interfaceGuid"/>
@@ -100,13 +134,13 @@ internal static class WinUsbInterop
 
         try
         {
-            var vidPid = $"vid_{vid:x4}&pid_{pid:x4}";
+            string? interfaceFallback = null;
             for (var index = 0; ; index++)
             {
                 var data = new SpDeviceInterfaceData { CbSize = Marshal.SizeOf<SpDeviceInterfaceData>() };
                 if (!SetupDiEnumDeviceInterfaces(set, nint.Zero, ref interfaceGuid, index, ref data))
                 {
-                    return null; // ERROR_NO_MORE_ITEMS
+                    return interfaceFallback; // ERROR_NO_MORE_ITEMS
                 }
 
                 SetupDiGetDeviceInterfaceDetail(set, ref data, nint.Zero, 0, out var required, nint.Zero);
@@ -126,10 +160,17 @@ internal static class WinUsbInterop
                     }
 
                     var path = Marshal.PtrToStringUni(detail + 4);
-                    if (path is not null && path.Contains(vidPid, StringComparison.OrdinalIgnoreCase))
+                    if (path is null || !new ScreenUsbIdentity(vid, pid).MatchesDevicePath(path))
+                    {
+                        continue;
+                    }
+
+                    if (!path.Contains("&mi_", StringComparison.OrdinalIgnoreCase))
                     {
                         return path;
                     }
+
+                    interfaceFallback ??= path;
                 }
                 finally
                 {
@@ -144,16 +185,36 @@ internal static class WinUsbInterop
     }
 
     /// <summary>Opens a WinUSB interface handle for the device at <paramref name="devicePath"/>, or null on failure.</summary>
-    internal static (nint File, nint Winusb)? Open(string devicePath)
+    internal static (nint File, nint Winusb)? Open(
+        string devicePath,
+        out ScreenOpenFailureStage failureStage,
+        out int nativeError)
     {
-        var file = CreateFile(devicePath, GenericRead | GenericWrite, FileShareRead | FileShareWrite, nint.Zero, OpenExisting, FileFlagOverlapped, nint.Zero);
+        failureStage = ScreenOpenFailureStage.None;
+        nativeError = 0;
+        var file = CreateFile(
+            devicePath,
+            GenericRead | GenericWrite,
+            // WinUSB does not support two applications driving the same interface.
+            // Denying all sharing makes an
+            // existing SimHub/Ref owner fail fast with ERROR_SHARING_VIOLATION
+            // instead of hanging later in ResetPipe or a frame transfer.
+            0,
+            nint.Zero,
+            OpenExisting,
+            FileFlagOverlapped,
+            nint.Zero);
         if (file == InvalidHandle)
         {
+            failureStage = ScreenOpenFailureStage.CreateFile;
+            nativeError = Marshal.GetLastWin32Error();
             return null;
         }
 
         if (!WinUsb_Initialize(file, out var winusb))
         {
+            failureStage = ScreenOpenFailureStage.WinUsbInitialize;
+            nativeError = Marshal.GetLastWin32Error();
             CloseHandle(file);
             return null;
         }

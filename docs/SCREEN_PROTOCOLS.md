@@ -2,8 +2,8 @@
 
 This is the low-level reference for the USB screen pipeline used by the Sprint
 desktop app. The legacy Go implementation previously lived in
-`app/internal/hardware`; the .NET/Avalonia rebuild should use this document as
-the protocol reference when native hardware transport is reintroduced.
+`app/internal/hardware`; the .NET/Avalonia implementation now lives under
+`app/Sprint.Desktop.Client/Features/Hardware` and uses the same wire protocol.
 Use this document when changing VoCore M-PRO, USBD480 NX, WinUSB, RGB565, or
 screen troubleshooting behavior.
 
@@ -13,22 +13,22 @@ Sprint renders one complete frame, converts it to the screen pixel format, and
 then hands it to a driver-specific USB transport:
 
 ```text
-FrameSource or dashboard.Painter
-  -> image.RGBA
+TelemetryFrame
+  -> DashPainterFrameSource / DashPainter (BGRA)
   -> RGB565 little-endian
   -> optional rotation, margin, and offset
-  -> screenTransport.send([]byte)
+  -> IScreenDriver.TrySendFrame(byte[])
+  -> WinUsbScreenTransport
 ```
 
 Key implementation files:
 
-- `driver.go`: `ScreenDriver` and `ScreenConfig`.
-- `factory.go`: maps `devices.DriverType` to `VoCoreDriver` or
-  `USBD480Driver`.
-- `base_driver.go`: legacy connection retry loop, frame scheduling,
-  double-buffered render/send pipeline, disabled mode, and screen events.
-- `rgb565.go`: RGBA to RGB565 conversion, rotation, margin, and offset.
-- `transport.go`: internal `screenTransport` interface.
+- `ScreenModels.cs`: `IScreenDriver`, configuration, USB identity, and status.
+- `ScreenDriverFactory.cs`: maps driver ids to VoCore or USBD480.
+- `ScreenPublisher.cs`: connection retry and off-UI-thread frame scheduling.
+- `Rgb565.cs`: RGBA to RGB565 conversion, rotation, margin, and offset.
+- `WinUsbScreenTransport.cs`: WinUSB bulk/control transport.
+- `VoCoreProtocol.cs`: M-PRO packet and model encoding.
 
 The coordinator configures a driver with VID, PID, dimensions, rotation, target
 FPS, offsets, margin, and driver type. Each transport reports its actual native
@@ -48,44 +48,47 @@ buffer size is `width * height * 2`.
 ## Shared Runtime
 
 Both screen families use native Windows WinUSB for transport. There is no CGO
-or libusb dependency on Windows. VoCore also has a Linux CGO scan path, but the
-frame transport is implemented for Windows only; unsupported transports run in
-no-op mode.
+or libusb dependency. Physical frame transport is Windows-only; unsupported
+platforms report that state without crashing.
 
-Runtime behavior in `base_driver.go`:
+Runtime behavior in the current desktop client:
 
-- If no VID/PID is configured, the driver runs in no-op mode until shutdown.
-- Startup retries every 300 ms for the first 30 seconds, then every 3 seconds.
-- `ErrDriverNotInstalled` emits `screen:driver_missing` and retries every
-  3 seconds while the user installs the driver.
-- Other open failures emit `screen:error`.
-- Successful open emits `screen:connected`; close emits `screen:disconnected`.
-- `SetDisabled(true)` emits `screen:disabled`, exits the active drive loop, and
-  releases the USB handle so Ref or another app can own the device.
-- `SetDisabled(false)` emits `screen:enabled` and lets the retry loop reconnect.
-- On app shutdown, Sprint sends a black frame before closing the transport.
+- Generic VoCore entries (`0000:0000`) scan vendor `0xC872` with any PID; generic
+  USBD480 entries resolve to `0x16C0:0x08A7`.
+- A driver family that cannot infer a missing vendor identity reports
+  `ConfigurationRequired` instead of incorrectly claiming that a driver is missing.
+- Connection retries run every 3 seconds. A slow native open remains
+  `Connecting`; Sprint only reports `In use` when a native access error proves it.
+- Enumeration, `CreateFile`, `WinUsb_Initialize`, protocol initialization,
+  first-frame output, state changes, and failures are written to the activity log.
+- Two saved entries targeting the same physical USB identity do not start competing
+  publishers. The less-specific duplicate reports `Duplicate target`.
+- Disabling a saved screen stops its publisher and releases the USB handle.
+- Sprint reuses the compatible Windows USB binding already configured for the
+  screen (including a working SimHub setup); it does not require a separate
+  per-use driver installation step.
+- On shutdown VoCore releases its handles so firmware resumes ownership;
+  USBD480 sets brightness to zero before releasing its handles.
 
 The render loop defaults are driver-specific:
 
 | Driver | Default FPS | Transport |
 |---|---:|---|
-| VoCore M-PRO | 30 | `winusbSender` in `vocore_usb.go` |
-| USBD480 NX | 60 | `usbd480Sender` in `usbd480_usb.go` |
+| VoCore M-PRO | 30 | `VoCoreScreenDriver` + `WinUsbScreenTransport` |
+| USBD480 NX | 30 | `Usbd480ScreenDriver` + `WinUsbScreenTransport` |
 
-The loop renders a standby frame immediately after connect, then renders on new
-telemetry frames, forced redraws, or a 1 Hz idle heartbeat. USB send runs in a
-separate goroutine with three pre-allocated RGB565 buffers so slow transfers do
-not block the next render.
+Each screen owns a background publisher and one pre-allocated RGB565 frame
+buffer. It sends the assigned dashboard or an explicitly selected development
+test pattern at the configured target FPS.
 
 ## VoCore M-PRO
 
 VoCore implementation files:
 
-- `vocore_screen.go`: scan result type, VID, and PID dimension table.
-- `vocore_scan_windows.go`: SetupDI enumeration on Windows.
-- `vocore_scan_usb.go`: Linux USB enumeration with CGO/libusb.
-- `vocore_usb.go`: WinUSB transport and protocol.
-- `winusb/vocore.inf`: bundled WinUSB INF for supported PIDs.
+- `VoCoreProtocol.cs`: commands, draw header, and model-dimension table.
+- `WinUsbInterop.cs`: SetupDI enumeration and native WinUSB calls.
+- `WinUsbScreenTransport.cs`: checked control/bulk transfers.
+- `WinUsbScreenDrivers.cs`: VoCore lifecycle and frame sequence.
 
 Supported VoCore VID/PID values:
 
@@ -99,8 +102,12 @@ Supported VoCore VID/PID values:
 | `0xC872` | `0x1006` | 800x800 | M-PRO 3.4 inch square |
 | `0xC872` | `0x100A` | 1024x600 | M-PRO 10 inch |
 
-On open, Sprint prefers the actual model query result over the PID fallback.
-`queryScreenModel()` uses the M-PRO protocol:
+Sprint resolves the native size from the PID table before the first frame. The
+publisher rebuilds its dashboard renderer and RGB565 buffer when that size
+differs from the saved fallback. PID `0x1004` is ambiguous, so its saved
+catalog/config orientation is preserved.
+
+The firmware also defines this model-query protocol:
 
 | Step | Request | Direction | Payload / response |
 |---|---:|---|---|
@@ -108,7 +115,7 @@ On open, Sprint prefers the actual model query result over the PID fallback.
 | Read status | `0xB6` | IN | 1 byte |
 | Read screen data | `0xB7` | IN | 5 bytes, model in bytes 1..4 little-endian |
 
-Model IDs currently mapped in `mproModelDimensions()`:
+Model IDs currently mapped in `VoCoreProtocol.NativeDimensions()`:
 
 | Model ID | Native size | Notes |
 |---:|---:|---|
@@ -118,6 +125,11 @@ Model IDs currently mapped in `mproModelDimensions()`:
 | `0x00000403` | 800x800 | MPRO-3IN4 square |
 | `0x0000000A` | 1024x600 | MPRO-10 |
 | default | 480x800 | Unknown model fallback |
+
+The current startup path intentionally does not issue this query: on at least
+one SimHub-compatible `0x1004` firmware it blocks before wake/frame output. Keep
+the decoder as protocol reference and for a future explicitly timed diagnostic
+probe.
 
 Protocol constants:
 
@@ -132,19 +144,24 @@ Open sequence:
 
 1. Enumerate device path by exact VID/PID under `GUID_DEVINTERFACE_USB_DEVICE`.
 2. Prefer a whole-device path over an `&mi_` per-interface path.
-3. Open with `GENERIC_READ | GENERIC_WRITE` and shared read/write/delete.
+3. Open with `GENERIC_READ | GENERIC_WRITE` and exclusive access so competing
+   screen-output processes are reported instead of silently sharing the device.
 4. Call `WinUsb_Initialize`.
-5. Reset bulk endpoint `0x02`.
-6. Query model and native dimensions; fall back to configured dimensions on
-   query failure.
-7. Wake display with command `00 29 00 00 00 00`.
-8. Restore brightness with command `00 51 02 00 00 00 FF 00`.
-9. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
+5. Resolve native dimensions from the matched PID and saved fallback.
+6. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
-Do not add a separate `0x11` sleep-out command before `0x29`. The current
-driver intentionally uses only the M-PRO quit-sleep command plus brightness
-restore because Ref-style disable sets brightness to zero.
+The current Windows path does not reset endpoint `0x02`, query the model, or
+send separate wake/brightness commands during open. The attached firmware idle
+screen is already awake, and these preliminary transfers can block for the
+driver's full native timeout. Sprint sends the real draw request first, with a
+2-second overlapped-control timeout; failures are surfaced and retried by
+reopening the device.
+
+Firmware variants may define sleep-out or brightness commands, but the current
+VoCore startup and shutdown paths deliberately send neither. Add such commands
+only behind an explicitly timed, firmware-specific diagnostic because an
+unsupported preliminary control transfer can block frame output.
 
 Frame send:
 
@@ -153,18 +170,15 @@ Frame send:
 
 Close sequence:
 
-1. Set brightness to zero with command `00 51 02 00 00 00 00 00`.
-2. Reset endpoint `0x02`.
-3. Free the WinUSB handle and close the device handle.
+1. Free the WinUSB handle and close the device handle.
 
 ## USBD480 NX
 
 USBD480 implementation files:
 
-- `usbd480_screen.go`: scan result type and default dimensions.
-- `usbd480_scan_windows.go`: SetupDI enumeration on Windows.
-- `usbd480_usb.go`: WinUSB transport and protocol.
-- `winusb/usbd480.inf`: bundled WinUSB INF.
+- `WinUsbInterop.cs`: WinUSB-interface enumeration and native calls.
+- `WinUsbScreenTransport.cs`: checked control/bulk transfers and power policy.
+- `WinUsbScreenDrivers.cs`: USBD480 details, brightness, and frame sequence.
 
 Supported USB identity:
 
@@ -193,7 +207,7 @@ Protocol constants:
 Open sequence:
 
 1. Enumerate a matching WinUSB path for `0x16C0:0x08A7`.
-2. Open with `GENERIC_READ | GENERIC_WRITE` and shared read/write/delete.
+2. Open with `GENERIC_READ | GENERIC_WRITE` and exclusive access.
 3. Call `WinUsb_Initialize`.
 4. Disable WinUSB `AUTO_SUSPEND` power policy to wake devices left suspended by
    another app.
@@ -228,14 +242,16 @@ Close sequence:
 | Symptom | Likely cause | What to check |
 |---|---|---|
 | Screen not found | Device unplugged, wrong VID/PID, or wrong driver type | Device Manager, saved device config, catalog entry, scan functions |
-| `screen:driver_missing` | WinUSB is not bound to the device | Use Sprint driver install, Zadig, or Ref's VoCore setup tool |
-| Access denied | Ref or another USB tool owns the device | Disable the other app or use Sprint disabled mode to release ownership |
+| `USB access failed` | The device was found but its current Windows USB binding could not be used | Close SimHub/other screen output, reconnect, and inspect the exact `WinUsb_Initialize` error; no separate per-use install is expected |
+| `In use` / access denied | SimHub, Ref, or another USB tool owns the device | Disable that app's screen output or close it so Sprint can open the handle |
+| `Connecting` takes longer than 3 seconds | Native USB enumeration or initialization has not returned | Inspect the last enumeration/open stage in Development Tools; do not assume another owner until a native access error confirms it |
+| `Duplicate target` | Two saved Sprint entries resolve to the same physical USB identity | Keep the intended wheel/screen entry enabled and disable or remove the duplicate |
 | USBD480 IN works but OUT fails | Opened the raw composite parent instead of WinUSB interface | Use `GUID_DEVINTERFACE_WINUSB` path, not raw USB parent |
-| Wrong dimensions | Fallback dimensions used because model/details query failed | Check model query logs and native size from `transport.nativeSize()` |
-| Black screen after connect | Brightness restore failed or previous app left backlight off | Check VoCore `0x51` or USBD480 `0x81` brightness transfer |
+| Wrong dimensions | Saved `0x1004` orientation is wrong or USBD480 details are invalid | Check the resolved-dimensions log and the `Screen renderer resized` entry |
+| Black screen after connect | Previous app left the backlight off or first frame failed | Check the first-frame transfer log; USBD480 additionally logs request `0x81` |
 | Transfers fail after Ref disable | Device is suspended or still owned | For USBD480, verify `AUTO_SUSPEND` is disabled; for both drivers, close other owners |
-| Distorted or rotated image | Painter size and native rotation mismatch | Check `painterDimsForRotation()` and RGB565 rotation path |
-| Repeated reconnects | USB send error or screen disconnect | Check `screen:error`, WinUSB logs, cable, and endpoint resets |
+| Distorted or rotated image | Painter size and native rotation mismatch | Check `DashPainterFrameSource` logical/native dimensions and the `Rgb565` rotation path |
+| Repeated reconnects | USB send error or screen disconnect | Check screen state-change/transfer logs and the cable |
 
 When debugging protocol changes, verify both the open path and the send path.
 Many devices appear present during enumeration but fail only on the first OUT

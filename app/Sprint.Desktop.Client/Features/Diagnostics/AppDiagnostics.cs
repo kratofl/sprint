@@ -21,8 +21,14 @@ public static class AppDiagnostics
     /// <summary>The active process logger, or a no-op sink before <see cref="Install"/>.</summary>
     public static ILog Log { get; private set; } = NullLog.Instance;
 
+    /// <summary>Bounded live stream consumed by the diagnostics window.</summary>
+    public static LiveLogStore? LiveLog { get; private set; }
+
     /// <summary>The active crash reporter, available once <see cref="Install"/> has run.</summary>
     public static CrashReporter? Crash { get; private set; }
+
+    /// <summary>Resolved diagnostics directories for the current process.</summary>
+    public static DiagnosticsPaths? Paths { get; private set; }
 
     /// <summary>
     /// Creates the logger + crash reporter and hooks CLR/Task global handlers.
@@ -30,7 +36,7 @@ public static class AppDiagnostics
     /// that unhooks the handlers (used by tests; the app leaves them installed for
     /// the whole process lifetime).
     /// </summary>
-    public static IDisposable Install(DiagnosticsPaths? paths = null, LogLevel minimumLevel = LogLevel.Info)
+    public static IDisposable Install(DiagnosticsPaths? paths = null, LogLevel minimumLevel = LogLevel.Debug)
     {
         lock (InstallGate)
         {
@@ -40,11 +46,15 @@ public static class AppDiagnostics
             }
 
             var resolvedPaths = paths ?? DiagnosticsPaths.CreateDefault();
-            var logger = new FileLogger(resolvedPaths, minimumLevel);
+            var fileLogger = new FileLogger(resolvedPaths, minimumLevel);
+            var liveLog = new LiveLogStore();
+            var logger = new CompositeLog(fileLogger, liveLog);
             var crash = new CrashReporter(resolvedPaths, logger, BuildInfo.Version);
 
             Log = logger;
+            LiveLog = liveLog;
             Crash = crash;
+            Paths = resolvedPaths;
 
             _domainHandler = (_, args) =>
             {
@@ -89,6 +99,8 @@ public static class AppDiagnostics
             _domainHandler = null;
             _taskHandler = null;
             Crash = null;
+            LiveLog = null;
+            Paths = null;
             Log = NullLog.Instance;
             _installed = false;
         }

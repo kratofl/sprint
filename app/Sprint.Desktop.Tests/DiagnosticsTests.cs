@@ -127,6 +127,28 @@ public sealed class DiagnosticsTests
     }
 
     [Fact]
+    public void LiveLogStoreRetainsRecentEntriesAndFiltersByLevelAndText()
+    {
+        var clock = FixedTime;
+        var store = new LiveLogStore(capacity: 3, () => clock);
+
+        store.Debug("USB enumeration started");
+        clock = clock.AddMilliseconds(1);
+        store.Info("Screen connected");
+        clock = clock.AddMilliseconds(1);
+        store.Warn("Screen is busy");
+        clock = clock.AddMilliseconds(1);
+        store.Error("Screen frame transfer failed");
+
+        Assert.Equal(3, store.Entries.Count);
+        Assert.DoesNotContain(store.Entries, entry => entry.Message.Contains("enumeration", StringComparison.Ordinal));
+        Assert.Equal(
+            new[] { "Screen is busy", "Screen frame transfer failed" },
+            store.Filter(LogLevel.Warn, "screen").Select(entry => entry.Message));
+        Assert.Single(store.Filter(LogLevel.Error, "transfer"));
+    }
+
+    [Fact]
     public void CrashReporterWritesReportWithContextAndLogsFatal()
     {
         var root = NewRoot();
@@ -163,8 +185,17 @@ public sealed class DiagnosticsTests
         {
             using (AppDiagnostics.Install(new DiagnosticsPaths(root)))
             {
-                Assert.IsType<FileLogger>(AppDiagnostics.Log);
+                Assert.NotSame(NullLog.Instance, AppDiagnostics.Log);
+                Assert.NotNull(AppDiagnostics.LiveLog);
                 Assert.NotNull(AppDiagnostics.Crash);
+                Assert.Equal(root, AppDiagnostics.Paths?.Root);
+
+                AppDiagnostics.Log.Info("visible in diagnostics window");
+                AppDiagnostics.Log.Debug("verbose action detail");
+                Assert.Contains(
+                    AppDiagnostics.LiveLog!.Entries,
+                    entry => entry.Message == "visible in diagnostics window");
+                Assert.Contains("verbose action detail", File.ReadAllText(AppDiagnostics.Paths!.LogFileFor(DateTimeOffset.UtcNow)));
 
                 var path = AppDiagnostics.Crash!.Report("UI", new InvalidOperationException("wired"));
                 Assert.NotNull(path);
@@ -174,7 +205,9 @@ public sealed class DiagnosticsTests
             // After dispose the process is left with the safe no-op sink again so a
             // test never leaves global handlers or a live file logger installed.
             Assert.Same(NullLog.Instance, AppDiagnostics.Log);
+            Assert.Null(AppDiagnostics.LiveLog);
             Assert.Null(AppDiagnostics.Crash);
+            Assert.Null(AppDiagnostics.Paths);
         }
         finally
         {

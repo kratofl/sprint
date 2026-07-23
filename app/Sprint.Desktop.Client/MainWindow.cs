@@ -1,15 +1,21 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+#if DEBUG
+using Sprint.Desktop.Features.Development;
+#endif
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Hardware;
@@ -29,6 +35,9 @@ public sealed class MainWindow : Window
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
     private readonly DeviceScreenService _screens;
+    private readonly ILog _log;
+    private readonly LiveLogStore _liveLog;
+    private readonly DiagnosticsPaths? _diagnosticsPaths;
     private readonly Grid _root = new();
     private readonly Border _windowFrame = new();
     private readonly DispatcherTimer _timer;
@@ -49,6 +58,9 @@ public sealed class MainWindow : Window
     private DashEditorView? _dashEditor;
     private bool _restoreSidebarAfterEditor;
     private readonly CommandBus _commands = new();
+    private readonly Dictionary<string, List<Border>> _deviceStatusPills = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<TextBlock>> _deviceStatusDetails = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _renderedDeviceStatuses = new(StringComparer.OrdinalIgnoreCase);
     private readonly ShellCommandRegistry _shellCommands;
     private Border? _commandOverlay;
     private Border? _confirmOverlay;
@@ -64,11 +76,56 @@ public sealed class MainWindow : Window
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
     private DispatcherTimer? _setupUndoTimer;
+#if DEBUG
+    private DiagnosticsWindow? _diagnosticsWindow;
+    private readonly DevelopmentGameState _developmentGameState;
+
+    internal DiagnosticsWindow? ActiveDiagnosticsWindow => _diagnosticsWindow;
+#endif
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
+        : this(runtime, shell, telemetrySource, null, null, null)
+    {
+    }
+
+    public MainWindow(
+        IDesktopRuntime runtime,
+        ShellState shell,
+        ITelemetrySource telemetrySource,
+        ILog? log,
+        LiveLogStore? liveLog)
+        : this(runtime, shell, telemetrySource, log, liveLog, null)
+    {
+    }
+
+    public MainWindow(
+        IDesktopRuntime runtime,
+        ShellState shell,
+        ITelemetrySource telemetrySource,
+        ILog? log,
+        LiveLogStore? liveLog,
+        Func<string, IScreenDriver>? screenDriverFactory)
+        : this(runtime, shell, telemetrySource, log, liveLog, screenDriverFactory, null)
+    {
+    }
+
+    internal MainWindow(
+        IDesktopRuntime runtime,
+        ShellState shell,
+        ITelemetrySource telemetrySource,
+        ILog? log,
+        LiveLogStore? liveLog,
+        Func<string, IScreenDriver>? screenDriverFactory,
+        DiagnosticsPaths? diagnosticsPaths)
     {
         _runtime = runtime;
         _shell = shell;
+        _liveLog = liveLog ?? new LiveLogStore();
+        _log = log ?? _liveLog;
+        _diagnosticsPaths = diagnosticsPaths;
+#if DEBUG
+        _developmentGameState = new DevelopmentGameState(_log);
+#endif
         // The window owns the WS4 engine wrapping the source: a background reader, a
         // 5s reconnect loop, real-rate measurement and delta augmentation, all draining
         // into a buffer this window samples at ~30Hz. Start() connects synchronously so
@@ -81,14 +138,18 @@ public sealed class MainWindow : Window
 
         _engine.Start();
         var snapshot = _engine.Snapshot;
-        _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
+        _telemetry = LiveTelemetryPresenter.ToSnapshot(CurrentTelemetryFrame());
         var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, DateTimeOffset.UtcNow);
         _statusView = health.Titlebar;
         _surfaceState = health.Surface;
 
         // WS7: keep a hardware publisher running for each enabled screen device,
         // rendering its assigned dash off the UI thread. Feeds live per-device status.
-        _screens = new DeviceScreenService(_runtime, () => _engine.Snapshot.Frame);
+        _screens = new DeviceScreenService(
+            _runtime,
+            CurrentTelemetryFrame,
+            screenDriverFactory,
+            log: _log);
         _screens.Sync();
 
         // WS8: the UI-independent command bus. Handlers are wired here (the shell owns
@@ -138,6 +199,7 @@ public sealed class MainWindow : Window
         ApplyMaximizedChrome();
         BuildShell();
         RenderBody();
+        AddHandler(Button.ClickEvent, OnAnyButtonClick, RoutingStrategies.Bubble, handledEventsToo: true);
 
         // ~30Hz UI handoff: drain the engine's latest-value buffer. Decoupled frontend
         // emitter — the reader thread fills the buffer at the game's cadence; the UI
@@ -430,6 +492,7 @@ public sealed class MainWindow : Window
 
     private void Navigate(AppView view)
     {
+        var previous = _shell.View;
         CloseCommandPalette();
         CloseConfirmDialog();
         if (_dashEditor is not null && _restoreSidebarAfterEditor && _shell.SidebarCollapsed)
@@ -445,6 +508,7 @@ public sealed class MainWindow : Window
         }
 
         _shell.Navigate(view);
+        _log.Info($"UI navigation: from={previous} to={view}.");
         BuildShell();
         RenderBody();
     }
@@ -513,7 +577,7 @@ public sealed class MainWindow : Window
             _runtime.SaveDashLayout(applied);
             _screens.Sync();
         };
-        return new DashEditorView(controller, _runtime.Settings, () => _engine.Snapshot.Frame, CloseDashEditor);
+        return new DashEditorView(controller, _runtime.Settings, CurrentTelemetryFrame, CloseDashEditor);
     }
 
     /// <summary>
@@ -574,6 +638,16 @@ public sealed class MainWindow : Window
             : WindowState.Maximized;
     }
 
+    private TelemetryFrame CurrentTelemetryFrame()
+    {
+        var frame = _engine.Snapshot.Frame;
+#if DEBUG
+        return _developmentGameState.Resolve(frame);
+#else
+        return frame;
+#endif
+    }
+
     private void TickTelemetry()
     {
         var now = DateTimeOffset.UtcNow;
@@ -582,15 +656,70 @@ public sealed class MainWindow : Window
         // The background reader owns acquisition, rate measurement and delta; freshness
         // is applied here against the UI clock inside the status presenter.
         var snapshot = _engine.Snapshot;
-        _telemetry = LiveTelemetryPresenter.ToSnapshot(snapshot.Frame);
+        var displayedFrame = CurrentTelemetryFrame();
+        _telemetry = LiveTelemetryPresenter.ToSnapshot(displayedFrame);
         var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, now);
+#if DEBUG
+        if (_developmentGameState.Enabled)
+        {
+            _statusView = new TelemetryStatusView
+            {
+                Label = "DEV SIMULATION",
+                RateText = "LOCAL",
+                Tone = StatusTone.Warn,
+                Detail = "Global development telemetry override is active.",
+            };
+            _surfaceState = null;
+        }
+        else
+        {
+            _statusView = health.Titlebar;
+            _surfaceState = health.Surface;
+        }
+#else
         _statusView = health.Titlebar;
         _surfaceState = health.Surface;
+#endif
 
         UpdateTitlebar();
+        RefreshScreenStatusIndicators();
         if (_shell.View == AppView.DebugLive)
         {
             RenderBody();
+        }
+    }
+
+    internal void RefreshScreenStatusIndicators()
+    {
+        foreach (var device in _runtime.Devices.Where(DeviceCapabilities.HasScreen))
+        {
+            var view = DeviceStatusView(device);
+            var signature = $"{view.Label}|{view.Detail}";
+            if (_renderedDeviceStatuses.TryGetValue(device.Id, out var previous)
+                && string.Equals(previous, signature, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            _renderedDeviceStatuses[device.Id] = signature;
+            if (_deviceStatusPills.TryGetValue(device.Id, out var pills))
+            {
+                foreach (var pill in pills)
+                {
+                    ApplyDeviceStatusPill(pill, view);
+                }
+            }
+
+            if (_deviceStatusDetails.TryGetValue(device.Id, out var details))
+            {
+                foreach (var detail in details)
+                {
+                    detail.Text = view.Detail;
+                }
+            }
+
+            _log.Debug(
+                $"Screen status UI refreshed: device={device.Id} state={view.Label} view={_shell.View}.");
         }
     }
 
@@ -624,6 +753,11 @@ public sealed class MainWindow : Window
     {
         _timer.Stop();
         _setupUndoTimer?.Stop();
+#if DEBUG
+        _diagnosticsWindow?.Close();
+        _diagnosticsWindow = null;
+#endif
+        _log.Info("Main window closed; stopping screen and telemetry services.");
         // Stop + release all hardware screen publishers before tearing down telemetry.
         _screens.Dispose();
         // Disposing the engine cancels + joins the reader thread, then disposes the
@@ -636,6 +770,8 @@ public sealed class MainWindow : Window
     private void RenderBody()
     {
         UpdateTitlebar();
+        _deviceStatusPills.Clear();
+        _deviceStatusDetails.Clear();
         _body.Content = _shell.View switch
         {
             AppView.Home => HomePage(),
@@ -1301,7 +1437,10 @@ public sealed class MainWindow : Window
             11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
         var content = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         AddGrid(content, text, 0, 0);
-        AddGrid(content, DeviceStatusPill(device), 0, 1);
+        if (IsScreenDevice(device))
+        {
+            AddGrid(content, DeviceStatusPill(device), 0, 1);
+        }
 
         var button = Graphite.Button(device.Name, ButtonTone.Ghost);
         button.Content = content;
@@ -1388,7 +1527,7 @@ public sealed class MainWindow : Window
     private static bool IsGenericDevice(CatalogDevice entry) => entry.Vid == 0 && entry.Pid == 0;
 
     private static bool IsScreenDevice(SavedDevice device) =>
-        string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase) && device.Width > 0 && device.Height > 0;
+        DeviceCapabilities.HasScreen(device);
 
     private Control DeviceEmptyDetail()
     {
@@ -1418,14 +1557,18 @@ public sealed class MainWindow : Window
         var stack = new StackPanel { Spacing = 12 };
         var title = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         AddGrid(title, EditableDeviceName(device), 0, 0);
-        AddGrid(title, DeviceStatusPill(device), 0, 1);
+        if (IsScreenDevice(device))
+        {
+            AddGrid(title, DeviceStatusPill(device), 0, 1);
+        }
+
         stack.Children.Add(title);
         stack.Children.Add(Graphite.TextBlock(
             $"{device.Driver} / {device.Width}x{device.Height} / rot {device.Rotation} / offset {device.OffsetX},{device.OffsetY} / margin {device.Margin}",
             12, FontWeight.Normal, Graphite.Text2Brush));
-
-        if (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase))
+        if (IsScreenDevice(device))
         {
+            stack.Children.Add(DeviceStatusDetail(device));
             stack.Children.Add(DeviceScreenControls(device));
         }
 
@@ -2034,6 +2177,28 @@ public sealed class MainWindow : Window
         form.Children.Add(FormRow("Updates", checkRow));
 
 #if DEBUG
+        form.Children.Add(Graphite.SectionLabel("Development"));
+        var diagnostics = ActionButton("Open development tools", ButtonTone.Neutral, OpenDiagnosticsWindow);
+        ToolTip.SetTip(
+            diagnostics,
+            "Open global game-state simulation, real screen output, and filtered live logs.");
+        form.Children.Add(FormRow(
+            "Development tools",
+            new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    diagnostics,
+                    Graphite.TextBlock(
+                        "Debug builds only. Run simulation, screen output, logging, and future modules in parallel.",
+                        11,
+                        FontWeight.Normal,
+                        Graphite.Text3Brush,
+                        TextWrapping.Wrap),
+                },
+            }));
+
         form.Children.Add(Graphite.SectionLabel("Debug"));
         var resetSettings = ActionButton("Reset settings to defaults", ButtonTone.Neutral, () =>
         {
@@ -2072,6 +2237,53 @@ public sealed class MainWindow : Window
         return Scroll(stack);
     }
 
+#if DEBUG
+    private void OpenDiagnosticsWindow()
+    {
+        if (_diagnosticsWindow is not null)
+        {
+            _diagnosticsWindow.Activate();
+            _log.Debug("Development tools window activation requested.");
+            return;
+        }
+
+        _diagnosticsWindow = new DiagnosticsWindow(
+            _runtime,
+            _screens,
+            _developmentGameState,
+            _liveLog,
+            _log,
+            _diagnosticsPaths);
+        _diagnosticsWindow.Closed += (_, _) => _diagnosticsWindow = null;
+        _diagnosticsWindow.Show(this);
+    }
+#endif
+
+    private void OnAnyButtonClick(object? sender, RoutedEventArgs e)
+    {
+        if (e.Source is not Button button)
+        {
+            return;
+        }
+
+        var label = AutomationProperties.GetName(button);
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            label = button.Content as string;
+        }
+
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            label = button.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Select(text => text.Text)
+                .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+        }
+
+        _log.Debug(
+            $"UI action: control=button label={label ?? "unlabelled"} view={_shell.View}.");
+    }
+
     private async void CheckForUpdates(TextBlock status)
     {
         status.Text = "Checking…";
@@ -2086,7 +2298,7 @@ public sealed class MainWindow : Window
         catch (Exception ex)
         {
             // Manual check is best-effort; a network failure must not crash the app.
-            AppDiagnostics.Log.Warn("Update check failed", ex);
+            _log.Warn("Update check failed", ex);
             status.Text = "Check failed — try again later.";
         }
     }
@@ -2496,7 +2708,7 @@ public sealed class MainWindow : Window
         // hardware screen and saved thumbnail use, not a labelled-box mock.
         var bitmap = DashImageRenderer.Render(
             layout,
-            _engine.Snapshot.Frame,
+            CurrentTelemetryFrame(),
             _runtime.Settings,
             width,
             height,
@@ -2520,22 +2732,66 @@ public sealed class MainWindow : Window
 
     private Border DeviceStatusPill(SavedDevice device)
     {
-        if (device.Disabled)
+        var view = DeviceStatusView(device);
+        _renderedDeviceStatuses[device.Id] = $"{view.Label}|{view.Detail}";
+        var pill = Graphite.StatusPill(view.Label);
+        ApplyDeviceStatusPill(pill, view);
+        if (!_deviceStatusPills.TryGetValue(device.Id, out var pills))
         {
-            return Graphite.StatusPill("Disabled", Graphite.Text3Brush);
+            pills = [];
+            _deviceStatusPills[device.Id] = pills;
         }
 
-        var status = _screens.StatusFor(device.Id);
-        return status?.State switch
+        pills.Add(pill);
+        return pill;
+    }
+
+    private TextBlock DeviceStatusDetail(SavedDevice device)
+    {
+        var detail = Graphite.TextBlock(
+            DeviceStatusView(device).Detail,
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap);
+        if (!_deviceStatusDetails.TryGetValue(device.Id, out var details))
         {
-            ScreenConnectionState.Connected => Graphite.StatusPill("Connected", Graphite.GreenBrush),
-            ScreenConnectionState.Connecting => Graphite.StatusPill("Connecting", Graphite.YellowBrush),
-            ScreenConnectionState.PermissionDenied => Graphite.StatusPill("Driver needed", Graphite.YellowBrush),
-            ScreenConnectionState.DeviceBusy => Graphite.StatusPill("Busy", Graphite.YellowBrush),
-            ScreenConnectionState.Unsupported => Graphite.StatusPill("Unsupported", Graphite.Text3Brush),
-            ScreenConnectionState.Faulted => Graphite.StatusPill("Fault", Graphite.RedBrush),
-            _ => Graphite.StatusPill("Offline", Graphite.Text3Brush),
+            details = [];
+            _deviceStatusDetails[device.Id] = details;
+        }
+
+        details.Add(detail);
+        return detail;
+    }
+
+    private static void ApplyDeviceStatusPill(Border pill, ScreenStatusView view)
+    {
+        var brush = view.Tone switch
+        {
+            ScreenStatusTone.Success => Graphite.GreenBrush,
+            ScreenStatusTone.Info => Graphite.BlueBrush,
+            ScreenStatusTone.Warning => Graphite.ActionMaterialBrush,
+            ScreenStatusTone.Error => Graphite.RedBrush,
+            _ => Graphite.Text3Brush,
         };
+        if (pill.Child is TextBlock text)
+        {
+            text.Text = view.Label;
+            text.Foreground = brush;
+        }
+
+        ToolTip.SetTip(pill, view.Detail);
+    }
+
+    private ScreenStatusView DeviceStatusView(SavedDevice device)
+    {
+        if (device.Disabled)
+        {
+            return new ScreenStatusView("Disabled", "This screen is disabled. Enable it to start output.");
+        }
+
+        return ScreenStatusPresentation.Describe(
+            _screens.StatusFor(device.Id) ?? ScreenStatus.Disconnected("No active screen publisher."));
     }
 
     private Control DeviceScreenControls(SavedDevice device)

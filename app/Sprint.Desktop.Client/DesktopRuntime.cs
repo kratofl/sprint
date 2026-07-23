@@ -103,6 +103,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Lap = 17,
             Status = "DASH"
         });
+
+        _log.Info(
+            $"Desktop runtime ready: devices={Devices.Count} dashes={DashLayouts.Count} " +
+            $"setups={SetupPrograms.Count} catalog={Catalog.Count}.");
     }
 
     public AppSettings Settings { get; }
@@ -122,6 +126,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     public void SaveSettings()
     {
         SaveJson(_settingsPath, Settings);
+        _log.Debug("Settings saved.");
         RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
     }
 
@@ -135,9 +140,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
         Settings.DashEditorUI = defaults.DashEditorUI;
         Settings.NewDashDefaults = defaults.NewDashDefaults;
         SaveSettings();
+        _log.Info("Settings reset to defaults.");
     }
 
-    public void SaveControls() => SaveJson(_controlsPath, Controls);
+    public void SaveControls()
+    {
+        SaveJson(_controlsPath, Controls);
+        _log.Debug("Control bindings saved.");
+    }
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
@@ -178,6 +188,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         Devices.Add(saved);
         SaveDevices();
+        _log.Info(
+            $"Device added: id={saved.Id} driver={saved.Driver} type={saved.Type} " +
+            $"vid=0x{saved.Vid:X4} pid=0x{saved.Pid:X4}.");
         return saved;
     }
 
@@ -190,12 +203,16 @@ public sealed class DesktopRuntime : IDesktopRuntime
         device.Margin = margin;
         device.DashId = string.IsNullOrWhiteSpace(dashId) ? device.DashId : dashId.Trim();
         SaveDevices();
+        _log.Info(
+            $"Device updated: id={device.Id} rotation={device.Rotation} " +
+            $"offset={device.OffsetX},{device.OffsetY} margin={device.Margin} dash={device.DashId}.");
     }
 
     public void RemoveDevice(SavedDevice device)
     {
         Devices.Remove(device);
         SaveDevices();
+        _log.Info($"Device removed: id={device.Id} driver={device.Driver}.");
     }
 
     public DashLayout CreateDashLayout()
@@ -211,6 +228,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         NormalizeLayoutProfile(clone);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
+        _log.Info($"Dash created: id={clone.Id} profile={clone.ScreenProfileId}.");
         return clone;
     }
 
@@ -228,6 +246,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
+        _log.Info($"Dash created: id={clone.Id} profile={profile.Id}.");
         return clone;
     }
 
@@ -243,6 +262,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         DashLayoutEditor.ApplyScreenProfile(layout, profile);
         SaveDashLayout(layout);
+        _log.Info($"Dash screen profile changed: id={layout.Id} profile={profile.Id}.");
     }
 
     /// <summary>
@@ -262,6 +282,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
+        _log.Info($"Dash duplicated: source={source.Id} copy={clone.Id} profile={profile.Id}.");
         return clone;
     }
 
@@ -299,12 +320,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         layout.IsDefault = true;
         SaveDashLayout(layout);
+        _log.Info($"Default dash changed: id={layout.Id}.");
     }
 
     public void DeleteDashLayout(DashLayout layout)
     {
         if (DashLayouts.Count <= 1 || layout.IsDefault)
         {
+            _log.Warn($"Dash delete ignored: id={layout.Id} isDefault={layout.IsDefault} count={DashLayouts.Count}.");
             return;
         }
 
@@ -320,6 +343,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             File.Delete(thumbnailPath);
         }
+
+        _log.Info($"Dash deleted: id={layout.Id}.");
     }
 
     public string GetDashThumbnailPath(DashLayout layout)
@@ -338,12 +363,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
         SetupPrograms.Add(copy);
         SaveSetupPrograms();
+        _log.Info($"Setup duplicated: source={source.Id} copy={copy.Id}.");
         return copy;
     }
 
     public void SaveSetupPrograms()
     {
         SaveJson(_setupProgramsPath, SetupPrograms.Where(program => !program.IsTemplate).ToList());
+        _log.Debug($"Setup programs saved: count={SetupPrograms.Count}.");
     }
 
     public void PushEngineerChanges()
@@ -363,6 +390,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _pendingEngineerChanges = dirty;
         EngineerPushState = ExternalOperationState.Pending;
         PrependRadioLog("Push staged changes", detail, "PENDING");
+        _log.Info($"Engineer changes staged for push: count={dirty.Count}.");
     }
 
     public void AcknowledgeEngineerChanges(bool succeeded)
@@ -386,11 +414,13 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
             EngineerPushState = ExternalOperationState.Confirmed;
             PrependRadioLog("Push confirmed", "The external target acknowledged the staged changes", "CONFIRMED");
+            _log.Info("Engineer changes acknowledged by target.");
         }
         else
         {
             EngineerPushState = ExternalOperationState.Failed;
             PrependRadioLog("Push failed", "Staged changes were retained for retry", "FAILED");
+            _log.Warn("Engineer changes rejected or not acknowledged by target.");
         }
 
         _pendingEngineerChanges = [];
@@ -400,11 +430,13 @@ public sealed class DesktopRuntime : IDesktopRuntime
     {
         EngineerStageService.Revert(EngineerControls);
         PrependRadioLog("Revert", "Staged car control changes cleared", "DASH");
+        _log.Info("Engineer staged changes reverted.");
     }
 
     public void SendQuickMessage(string message)
     {
         PrependRadioLog(message, "Quick message staged to the driver radio", "SENT");
+        _log.Info("Quick radio message staged.");
     }
 
     public static string FormatControlValue(EngineerControl control, double value)
@@ -657,6 +689,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     public void SaveDevices()
     {
         SaveJson(_devicesPath, Devices.ToList());
+        _log.Debug($"Devices saved: count={Devices.Count}.");
     }
 
     public void SaveDashLayout(DashLayout layout)
@@ -670,6 +703,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.Theme?.NormalizeProtectedColors();
         SaveJson(Path.Combine(_layoutsPath, $"{layout.Id}.json"), layout);
         GenerateDashThumbnail(layout);
+        _log.Debug($"Dash saved: id={layout.Id} pages={layout.Pages.Count}.");
     }
 
     public void ResetDashLayout(DashLayout layout)
@@ -694,6 +728,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.IsDefault = isDefault;
 
         SaveDashLayout(layout);
+        _log.Info($"Dash reset to preset content: id={layout.Id}.");
     }
 
     private static void NormalizeLayoutColorSystem(DashLayout layout) =>
@@ -818,13 +853,18 @@ public sealed class DesktopRuntime : IDesktopRuntime
     {
         if (!File.Exists(path))
         {
+            _log.Debug(
+                $"Configuration file not found; defaults will be used: " +
+                $"file={Path.GetFileName(path)} type={typeof(T).Name}.");
             return default;
         }
 
         using var stream = File.OpenRead(path);
         try
         {
-            return JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            var value = JsonSerializer.Deserialize<T>(stream, JsonOptions);
+            _log.Debug($"Configuration loaded: file={Path.GetFileName(path)} type={typeof(T).Name}.");
+            return value;
         }
         catch (JsonException ex)
         {
