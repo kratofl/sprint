@@ -249,6 +249,7 @@ public sealed class DashPainter : IDisposable
         return _basePalette with
         {
             Foreground = _basePalette.StyleColor(style.TextColor) ?? _basePalette.Foreground,
+            Neutral = _basePalette.StyleColor(style.TextColor) ?? _basePalette.Neutral,
             Muted = _basePalette.StyleColor(style.LabelColor) ?? _basePalette.Muted,
         };
     }
@@ -387,12 +388,7 @@ public sealed class DashPainter : IDisposable
         for (var i = 0; i < segments; i++)
         {
             var segPct = (double)i / segments;
-            var baseColor = segPct switch
-            {
-                < 0.6 => _palette.Success,
-                < 0.85 => _palette.Warning,
-                _ => _palette.RpmRed,
-            };
+            var baseColor = RpmStageColor(segPct);
             var color = i < filled ? baseColor : DashPalette.Dim(baseColor, 0.15);
             var sy = top + usableH - (i + 1) * segH;
             using var paint = new SKPaint { Color = color, IsAntialias = true };
@@ -416,7 +412,7 @@ public sealed class DashPainter : IDisposable
             return;
         }
 
-        var color = delta > 0 ? _palette.Danger : _palette.Success;
+        var color = delta > 0 ? _palette.Neutral : _palette.TimingPersonalBest;
         using var fill = new SKPaint { Color = color, IsAntialias = true };
         if (delta > 0)
         {
@@ -517,7 +513,7 @@ public sealed class DashPainter : IDisposable
         for (var index = 0; index < segments; index++)
         {
             var phase = (double)index / (segments - 1);
-            var color = phase >= 0.90 ? _palette.RpmRed : phase >= 0.78 ? _palette.Warning : _palette.Primary;
+            var color = RpmStageColor(phase);
             var x = r.Left + index * (segmentWidth + gap);
             using var paint = new SKPaint
             {
@@ -531,18 +527,29 @@ public sealed class DashPainter : IDisposable
     private void DrawGearSpeed(SKRect r, TelemetryFrame frame)
     {
         var rpmRatio = frame.Car.MaxRpm > 0 ? frame.Car.Rpm / frame.Car.MaxRpm : 0;
-        var gearColor = rpmRatio >= 0.96 ? _palette.Danger : rpmRatio >= 0.88 ? _palette.Primary : _palette.Foreground;
+        var gearColor = rpmRatio >= 0.96
+            ? _palette.RpmShift
+            : rpmRatio >= 0.88
+                ? _palette.RpmNearLimit
+                : _palette.Neutral;
         DrawTextLine(DashFormat.Gear(frame.Car.Gear), r.MidX, r.Top + r.Height * 0.40f, r.Height * 0.60f, DashFonts.ValueRegular, gearColor, Align.Center, r.Width * 0.9f);
-        DrawTextLine(DashFormat.SpeedKph(frame.Car.SpeedMetersPerSecond), r.MidX, r.Top + r.Height * 0.78f, r.Height * 0.19f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.9f);
+        DrawTextLine(DashFormat.SpeedKph(frame.Car.SpeedMetersPerSecond), r.MidX, r.Top + r.Height * 0.78f, r.Height * 0.19f, DashFonts.Value, _palette.Neutral, Align.Center, r.Width * 0.9f);
         DrawTextLine("km/h", r.MidX, r.Top + r.Height * 0.92f, r.Height * 0.09f, DashFonts.Label, _palette.Muted, Align.Center, r.Width * 0.9f);
     }
+
+    private SKColor RpmStageColor(double phase) => phase switch
+    {
+        < 0.78 => _palette.RpmNormal,
+        < 0.93 => _palette.RpmNearLimit,
+        _ => _palette.RpmShift,
+    };
 
     private void DrawInputTrace(SKRect r, TelemetryFrame frame)
     {
         var rows = new (string Label, double Value, SKColor Color, bool Centered)[]
         {
-            ("THR", frame.Car.Throttle, _palette.Success, false),
-            ("BRK", frame.Car.Brake, _palette.Danger, false),
+            ("THR", frame.Car.Throttle, _palette.GoodOnTarget, false),
+            ("BRK", frame.Car.Brake, _palette.Critical, false),
             ("CLU", frame.Car.Clutch, _palette.Secondary, false),
             ("STR", (frame.Car.Steering + 1) / 2.0, _palette.Secondary, true),
         };
@@ -581,7 +588,7 @@ public sealed class DashPainter : IDisposable
             }
         }
 
-        DrawTextLine(DashFormat.Lap(frame.Lap.CurrentLapTime), r.Right - 8, r.Bottom - r.Height * 0.16f, r.Height * 0.22f, DashFonts.Value, _palette.Foreground, Align.End, r.Width * 0.6f);
+        DrawTextLine(DashFormat.Lap(frame.Lap.CurrentLapTime), r.Right - 8, r.Bottom - r.Height * 0.16f, r.Height * 0.22f, DashFonts.Value, _palette.Neutral, Align.End, r.Width * 0.6f);
     }
 
     private void DrawLapTime(SKRect r, TelemetryFrame frame)
@@ -592,9 +599,9 @@ public sealed class DashPainter : IDisposable
         DrawTextLine("LAP TIMES", r.Left + 10, r.Top + r.Height * 0.12f, titleSize, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
         var rows = new (string Label, string Value, SKColor Color)[]
         {
-            ("NOW", DashFormat.Lap(frame.Lap.CurrentLapTime), _palette.Foreground),
-            ("LAST", DashFormat.Lap(frame.Lap.LastLapTime), _palette.Foreground),
-            ("BEST", DashFormat.Lap(frame.Lap.BestLapTime), _palette.Accent),
+            ("NOW", DashFormat.Lap(frame.Lap.CurrentLapTime), _palette.Neutral),
+            ("LAST", DashFormat.Lap(frame.Lap.LastLapTime), _palette.Neutral),
+            ("BEST", DashFormat.Lap(frame.Lap.BestLapTime), _palette.TimingFastestOverall),
         };
         for (var i = 0; i < rows.Length; i++)
         {
@@ -612,7 +619,7 @@ public sealed class DashPainter : IDisposable
             return;
         }
 
-        var color = frame.Lap.Delta > 0.0005 ? _palette.Danger : frame.Lap.Delta < -0.0005 ? _palette.Success : _palette.Foreground;
+        var color = frame.Lap.Delta < -0.0005 ? _palette.TimingPersonalBest : _palette.Neutral;
         DrawTextLine("DELTA", r.Left + 10, r.MidY, r.Height * 0.24f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.20f);
         DrawTextLine(DashFormat.Delta(frame.Lap.Delta), r.Right - 10, r.MidY, r.Height * 0.42f, DashFonts.Value, color, Align.End, r.Width * 0.34f);
         var barW = r.Width * 0.30f;
@@ -627,7 +634,7 @@ public sealed class DashPainter : IDisposable
         // Low-fuel panel tint (Go DefaultPanelRules: <2 danger, <5 warning).
         if (fuel is > 0 and < 5)
         {
-            var tint = fuel < 2 ? _palette.Danger.WithAlpha(51) : _palette.Warning.WithAlpha(31);
+            var tint = fuel < 2 ? _palette.Critical.WithAlpha(51) : _palette.Warning.WithAlpha(31);
             using var tintPaint = new SKPaint { Color = tint };
             _canvas.DrawRect(r, tintPaint);
         }
@@ -728,7 +735,7 @@ public sealed class DashPainter : IDisposable
         }
 
         DrawTextLine("ERS ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
-        DrawTextLine(energyPct > 0 ? $"{energyPct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Accent, Align.Start, r.Width * 0.6f);
+        DrawTextLine(energyPct > 0 ? $"{energyPct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
         var deploy = frame.Energy.DeployPower;
         DrawTextLine(deploy > 0 ? $"{DashFormat.Int(deploy)} kW" : "-- kW", r.Right - 8, r.Top + r.Height * 0.82f, r.Height * 0.18f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.5f);
     }
@@ -743,7 +750,7 @@ public sealed class DashPainter : IDisposable
     private void DrawTc(SKRect r, TelemetryFrame frame)
     {
         DrawTextLine("TC1", r.Left + 6, r.Top + r.Height * 0.2f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.6f);
-        var color = frame.Electronics.TractionControlActive ? _palette.Accent : _palette.Foreground;
+        var color = frame.Electronics.TractionControlActive ? _palette.AssistActive : _palette.Neutral;
         DrawTextLine(frame.Electronics.TractionControl.ToString(), r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.5f, DashFonts.Value, color, Align.Center, r.Width * 0.9f);
     }
 
@@ -788,9 +795,9 @@ public sealed class DashPainter : IDisposable
             return;
         }
 
-        var (color, text) = frame.Flags.Red ? (_palette.Danger, "RED FLAG")
-            : frame.Flags.SafetyCar ? (_palette.Warning, "SAFETY CAR")
-            : (_palette.Warning, "YELLOW FLAG");
+        var (color, text) = frame.Flags.Red ? (DashPalette.Default.Critical, "RED FLAG")
+            : frame.Flags.SafetyCar ? (DashPalette.Default.RaceControlYellow, "SAFETY CAR")
+            : (DashPalette.Default.RaceControlYellow, "YELLOW FLAG");
 
         using (var tint = new SKPaint { Color = color.WithAlpha(25) })
         {
@@ -820,15 +827,16 @@ public sealed class DashPainter : IDisposable
             return;
         }
 
-        var fill = banner.InvertColors ? banner.Color : new SKColor(8, 8, 10, 246);
-        var titleColor = banner.InvertColors ? _palette.Background : banner.Color;
-        var valueColor = banner.InvertColors ? _palette.Background : _palette.Foreground;
+        var inverted = banner.Condition == DashCondition.Critical && banner.InvertColors;
+        var fill = inverted ? banner.Color : new SKColor(8, 8, 10, 246);
+        var titleColor = inverted ? _palette.Background : banner.Color;
+        var valueColor = inverted ? _palette.Background : _palette.Foreground;
         using (var backdrop = new SKPaint { Color = fill, IsAntialias = true })
         {
             var radius = Math.Max(8, Math.Min(panel.Width, panel.Height) * 0.06f);
             _canvas.DrawRoundRect(panel, radius, radius, backdrop);
         }
-        using (var edge = new SKPaint { Color = banner.InvertColors ? _palette.Background : banner.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = Math.Max(1.5f, panel.Height * 0.008f) })
+        using (var edge = new SKPaint { Color = inverted ? _palette.Background : banner.Color, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = Math.Max(1.5f, panel.Height * 0.008f) })
         {
             var radius = Math.Max(8, Math.Min(panel.Width, panel.Height) * 0.06f);
             _canvas.DrawRoundRect(panel, radius, radius, edge);
@@ -842,12 +850,12 @@ public sealed class DashPainter : IDisposable
 
     private (string Text, SKColor Color) FlagInfo(TelemetryFrame frame)
     {
-        if (frame.Flags.Red) return ("RED", _palette.Danger);
-        if (frame.Flags.SafetyCar) return ("SC", _palette.Warning);
-        if (frame.Flags.VirtualSafetyCar) return ("VSC", _palette.Warning);
-        if (frame.Flags.Yellow || frame.Flags.DoubleYellow) return ("YELLOW", _palette.Warning);
-        if (frame.Flags.Checkered) return ("CHK", _palette.Foreground);
-        return ("GREEN", _palette.Success);
+        if (frame.Flags.Red) return ("RED", DashPalette.Default.Critical);
+        if (frame.Flags.SafetyCar) return ("SC", DashPalette.Default.RaceControlYellow);
+        if (frame.Flags.VirtualSafetyCar) return ("VSC", DashPalette.Default.RaceControlYellow);
+        if (frame.Flags.Yellow || frame.Flags.DoubleYellow) return ("YELLOW", DashPalette.Default.RaceControlYellow);
+        if (frame.Flags.Checkered) return ("CHK", DashPalette.Default.Neutral);
+        return ("GREEN", DashPalette.Default.GoodOnTarget);
     }
 
     private static string? ConfigString(DashWidget widget, string key)
@@ -884,4 +892,5 @@ public readonly record struct DashAlertBanner(
     int RowSpan = 6,
     int GridCols = 20,
     int GridRows = 12,
-    bool InvertColors = false);
+    bool InvertColors = false,
+    DashCondition Condition = DashCondition.Neutral);

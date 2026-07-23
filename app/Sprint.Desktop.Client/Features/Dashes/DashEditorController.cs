@@ -49,7 +49,18 @@ public sealed class DashEditorController
 
     public DashLayout Layout { get; }
 
+    public bool HasPersistenceFailure { get; private set; }
+
+    public string? PersistenceMessage { get; private set; }
+
     public bool IsAdvancedMode => string.Equals(Layout.Mode, "advanced", StringComparison.OrdinalIgnoreCase);
+
+    public bool RetryPersistence()
+    {
+        var saved = TrySave();
+        RaiseChanged();
+        return saved;
+    }
 
     public void SetMode(string mode)
     {
@@ -529,9 +540,9 @@ public sealed class DashEditorController
 
     private static string NormalizeAlertColor(string? token)
     {
-        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized is "auto" or "blue" or "ember" or "green" or "yellow" or "red" or "white"
-            ? normalized
+        var canonical = DashThemePresets.CanonicalAlertColorToken(token);
+        return DashThemePresets.FindByAlertColorToken(canonical) is not null || canonical == "yellow"
+            ? canonical
             : "auto";
     }
 
@@ -560,40 +571,12 @@ public sealed class DashEditorController
 
     // ── Theme (layout-level palette) ──────────────────────────────────────────
 
-    /// <summary>The layout theme (never null for display; empty = all Graphite defaults).</summary>
-    public DashTheme SelectedTheme => Layout.Theme ?? new DashTheme();
-
     /// <summary>Applies a named preset's overrides to the layout (empty preset clears the theme).</summary>
     public void ApplyThemePreset(DashTheme preset)
     {
         ArgumentNullException.ThrowIfNull(preset);
         Layout.Theme = preset.IsEmpty ? null : preset.Clone();
-        Persist();
-    }
-
-    /// <summary>Overrides the theme's primary colour with a hex value, or clears it when blank.</summary>
-    public void SetThemePrimary(string? hex) => PatchTheme(theme => theme.Primary = Blank(hex));
-
-    /// <summary>Overrides the theme's accent colour with a hex value, or clears it when blank.</summary>
-    public void SetThemeAccent(string? hex) => PatchTheme(theme => theme.Accent = Blank(hex));
-
-    /// <summary>Clears all layout theme overrides (back to the Graphite default).</summary>
-    public void ResetTheme()
-    {
-        if (Layout.Theme is null)
-        {
-            return;
-        }
-
-        Layout.Theme = null;
-        Persist();
-    }
-
-    private void PatchTheme(Action<DashTheme> patch)
-    {
-        var theme = Layout.Theme ?? new DashTheme();
-        patch(theme);
-        Layout.Theme = theme.IsEmpty ? null : theme;
+        Layout.ColorSystem = preset.IsEmpty ? DashColorSystem.Functional : DashColorSystem.Styled;
         Persist();
     }
 
@@ -765,8 +748,28 @@ public sealed class DashEditorController
 
     private void Persist()
     {
-        _save(Layout);
+        TrySave();
         RaiseChanged();
+    }
+
+    private bool TrySave()
+    {
+        try
+        {
+            _save(Layout);
+            HasPersistenceFailure = false;
+            PersistenceMessage = null;
+            return true;
+        }
+        catch (Exception)
+        {
+            // The layout is already mutated in memory. Keep the edit available
+            // and expose an explicit recovery action instead of rolling it back or
+            // falsely reporting success.
+            HasPersistenceFailure = true;
+            PersistenceMessage = "Changes are retained in the editor. Retry saving.";
+            return false;
+        }
     }
 
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);

@@ -8,20 +8,62 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public static class DashThemePresets
 {
-    public sealed record Preset(string Name, DashTheme Theme);
+    public sealed record Preset(string Name, string AlertColorToken, DashTheme Theme)
+    {
+        public string SwatchColor => Theme.Primary ?? Graphite.TextHex;
+    }
 
     public static IReadOnlyList<Preset> All { get; } =
     [
-        new Preset("Graphite", new DashTheme()), // default — ember primary, blue accent
-        new Preset("Ember", new DashTheme { Primary = "#FF6A00", Accent = "#E0A30C" }),
-        new Preset("Ice", new DashTheme { Primary = "#1F7FE6", Accent = "#16B566" }),
-        new Preset("Viper", new DashTheme { Primary = "#16B566", Accent = "#FF6A00" }),
-        new Preset("Suzuki", new DashTheme { Primary = "#7C3AED", Accent = "#B15CFF" }),
-        new Preset("Crimson", new DashTheme { Primary = "#F02744", Accent = "#E0A30C" }),
-        new Preset("Mono", new DashTheme { Primary = "#F6F6F6", Accent = "#7A7A7A" }),
+        new Preset("Graphite", "auto", new DashTheme()), // default — neutral focal values plus functional racing colors
+        new Preset("Ember", "ember", new DashTheme { Primary = Graphite.AccentHex, Accent = Graphite.YellowHex }),
+        new Preset("Ice", "ice", new DashTheme { Primary = Graphite.BlueHex, Accent = Graphite.GreenHex }),
+        new Preset("Viper", "viper", new DashTheme { Primary = Graphite.GreenHex, Accent = Graphite.AccentHex }),
+        new Preset("Suzuki", "suzuki", new DashTheme
+        {
+            Primary = Graphite.DashThemeSuzukiPrimaryHex,
+            Accent = Graphite.DashThemeSuzukiAccentHex,
+        }),
+        new Preset("Crimson", "crimson", new DashTheme { Primary = Graphite.RedHex, Accent = Graphite.YellowHex }),
+        new Preset("Mono", "mono", new DashTheme
+        {
+            Primary = Graphite.DashThemeMonoPrimaryHex,
+            Accent = Graphite.DashThemeMonoAccentHex,
+        }),
     ];
 
-    /// <summary>The name of the preset whose overrides match <paramref name="theme"/>, or null for a custom/none theme.</summary>
+    public static string CanonicalAlertColorToken(string? token)
+    {
+        var normalized = (token ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "blue" => "ice",
+            "green" => "viper",
+            "purple" => "suzuki",
+            "red" => "crimson",
+            "white" => "mono",
+            "primary" => "ember",
+            _ => normalized,
+        };
+    }
+
+    public static Preset? FindByAlertColorToken(string? token)
+    {
+        var canonical = CanonicalAlertColorToken(token);
+        return All.FirstOrDefault(preset =>
+            string.Equals(preset.AlertColorToken, canonical, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The preset whose output matches the layout's effective color system, or null for a custom Styled theme.</summary>
+    public static string? MatchName(DashLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        return layout.EffectiveColorSystem == DashColorSystem.Functional
+            ? "Graphite"
+            : MatchName(layout.Theme);
+    }
+
+    /// <summary>The name of the preset whose complete override set matches <paramref name="theme"/>, or null for a custom theme.</summary>
     public static string? MatchName(DashTheme? theme)
     {
         var t = theme ?? new DashTheme();
@@ -37,7 +79,23 @@ public static class DashThemePresets
     }
 
     private static bool Same(DashTheme a, DashTheme b) =>
-        a.Primary == b.Primary && a.Accent == b.Accent && a.Foreground == b.Foreground &&
-        a.Surface == b.Surface && a.Border == b.Border && a.Success == b.Success &&
-        a.Warning == b.Warning && a.Danger == b.Danger;
+        SameColor(a.Neutral, b.Neutral) &&
+        SameColor(a.GoodOnTarget, b.GoodOnTarget) &&
+        SameColor(a.ColdLow, b.ColdLow) &&
+        SameColor(a.AssistActive, b.AssistActive) &&
+        SameColor(a.Critical, b.Critical) &&
+        SameColor(a.Fault, b.Fault) &&
+        SameColor(a.TimingFastestOverall, b.TimingFastestOverall) &&
+        SameColor(a.TimingPersonalBest, b.TimingPersonalBest) &&
+        SameColor(a.Primary, b.Primary) &&
+        SameColor(a.Accent, b.Accent) &&
+        SameColor(a.Foreground, b.Foreground) &&
+        SameColor(a.Surface, b.Surface) &&
+        SameColor(a.Border, b.Border) &&
+        SameColor(a.Success, b.Success) &&
+        SameColor(a.Warning, b.Warning) &&
+        SameColor(a.Danger, b.Danger);
+
+    private static bool SameColor(string? a, string? b) =>
+        string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }

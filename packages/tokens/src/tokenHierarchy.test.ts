@@ -36,12 +36,33 @@ test('primitive tokens expose exact Dash Studio anchors', () => {
   assert.equal(primitive.color.neutral[900], '#141416')
   assert.equal(primitive.color.neutral[925], '#101012')
   assert.equal(primitive.color.neutral[950], '#0B0B0D')
-  assert.equal(primitive.radius.panel, '12px')
-  assert.equal(primitive.radius.card, '10px')
-  assert.equal(primitive.radius.alert, '10px')
-  assert.equal(primitive.radius.control, '7px')
-  assert.equal(primitive.radius.icon, '7px')
-  assert.equal(primitive.radius.badge, '4px')
+  assert.equal(primitive.radius.nested, '6px')
+  assert.equal(primitive.radius.control, '8px')
+  assert.equal(primitive.radius.group, '12px')
+  assert.equal(primitive.radius.overlay, '16px')
+  assert.equal(primitive.radius.pill, '999px')
+})
+
+test('semantic foundation exposes shared orange materials and interaction dimensions', () => {
+  assert.deepEqual(publicTokens.semanticTokens.material.orange, {
+    action: '#FF6A00',
+    selection: 'linear-gradient(180deg, #7A3204 0%, #421A02 100%)',
+    telemetry: 'linear-gradient(180deg, #FF9F0A 0%, #FF6A00 100%)',
+  })
+  assert.deepEqual(publicTokens.semanticTokens.icon, {
+    control: '16px',
+    navigation: '20px',
+    emphasis: '24px',
+  })
+  assert.deepEqual(publicTokens.semanticTokens.focus, {
+    color: '#FF6A00',
+    thickness: '2px',
+  })
+  assert.deepEqual(publicTokens.semanticTokens.motion, {
+    feedback: '0ms',
+    contentFade: '100ms',
+    spatial: '160ms',
+  })
 })
 
 test('public token entrypoint exports Dash Studio token layers', () => {
@@ -77,20 +98,23 @@ test('Graphite token source exposes the canonical product contract', () => {
   })
 
   assert.deepEqual(publicTokens.graphiteTokens.radius, {
-    radius: '10px',
-    r: '10px',
-    xs: '4px',
-    sm: '7px',
-    md: '7px',
-    lg: '10px',
-    xl: '12px',
+    radius: '12px',
+    r: '12px',
+    nested: '6px',
+    control: '8px',
+    group: '12px',
+    overlay: '16px',
+    xs: '6px',
+    sm: '8px',
+    md: '8px',
+    lg: '12px',
+    xl: '16px',
     panel: '12px',
-    card: '10px',
-    alert: '10px',
-    control: '7px',
-    tile: '10px',
-    icon: '7px',
-    badge: '4px',
+    card: '12px',
+    alert: '16px',
+    tile: '12px',
+    icon: '6px',
+    badge: '6px',
     pill: '999px',
   })
 
@@ -122,10 +146,10 @@ test('global CSS exposes Graphite public variables and aliases', () => {
   assert.equal(cssVar('--blue'), '#1F7FE6')
   assert.equal(cssVar('--purple'), '#A06BFF')
 
-  assert.equal(cssVar('--radius'), '10px')
+  assert.equal(cssVar('--radius'), 'var(--primitive-radius-group)')
   assert.equal(cssVar('--r'), 'var(--radius)')
   assert.equal(cssVar('--radius-panel'), 'var(--primitive-radius-panel)')
-  assert.equal(cssVar('--primitive-radius-card'), '10px')
+  assert.equal(cssVar('--primitive-radius-card'), 'var(--primitive-radius-group)')
   assert.equal(cssVar('--radius-alert'), 'var(--primitive-radius-alert)')
   assert.equal(cssVar('--radius-control'), 'var(--primitive-radius-control)')
   assert.equal(cssVar('--radius-tile'), 'var(--primitive-radius-tile)')
@@ -180,6 +204,8 @@ test('global component CSS variables align with component token source', () => {
   assert.equal(publicTokens.componentTokens.shell.commandButton.bgPressed, publicTokens.graphiteTokens.color.panel)
   assert.equal(publicTokens.componentTokens.shell.nav.border, publicTokens.graphiteTokens.color.line2)
   assert.equal(publicTokens.componentTokens.shell.nav.itemBgHover, publicTokens.graphiteTokens.color.panel3)
+  assert.equal(publicTokens.componentTokens.shell.nav.itemTextActive, publicTokens.graphiteTokens.color.text)
+  assert.equal(publicTokens.componentTokens.nav.itemTextActive, publicTokens.graphiteTokens.color.text)
   assert.equal(publicTokens.componentTokens.shell.pageHeader.bg, publicTokens.graphiteTokens.color.panel2)
   assert.equal(publicTokens.componentTokens.shell.pageHeader.border, publicTokens.graphiteTokens.color.line2)
   assert.equal(publicTokens.componentTokens.nav.railBg, publicTokens.graphiteTokens.color.bg)
@@ -237,6 +263,7 @@ test('component tokens match Dash Studio nav, action, and input parity', () => {
   assert.equal(colors.component.shell.nav.itemBgActive, '#1B1B1E')
   assert.equal(colors.component.nav.active, '#1B1B1E')
   assert.match(globalsSource, /--component-shell-nav-item-active-bg:\s*var\(--panel-3\);/)
+  assert.match(globalsSource, /--component-shell-nav-item-active-text:\s*var\(--text\);/)
 
   assert.equal(publicTokens.semantic.color.action.primaryMuted, 'rgba(255,106,0,.13)')
   assert.match(globalsSource, /--semantic-color-action-primary-muted:\s*rgba\(255,\s*106,\s*0,\s*\.13\);/)
@@ -246,7 +273,7 @@ test('component tokens match Dash Studio nav, action, and input parity', () => {
 
   assert.equal(publicTokens.component.input.bg, '#141416')
   assert.equal(publicTokens.component.input.border, 'rgba(255,255,255,.07)')
-  assert.equal(publicTokens.component.input.radius, '7px')
+  assert.equal(publicTokens.component.input.radius, '8px')
   assert.equal(publicTokens.component.input.height, '32px')
   assert.equal(colors.component.input.bg, '#141416')
   assert.equal(colors.component.input.border, 'rgba(255,255,255,.07)')

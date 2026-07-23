@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Themes.Fluent;
 using Avalonia.Styling;
 using Sprint.Desktop;
@@ -41,6 +42,17 @@ public sealed class SprintComponentThemeTests
         Assert.Equal(Graphite.Line2Brush, theme.Resources["TextControlBorderBrush"]);
         Assert.Equal(Graphite.TextBrush, theme.Resources["TextControlForeground"]);
         Assert.Equal(Graphite.AccentBrush, theme.Resources["TextControlBorderBrushFocused"]);
+    }
+
+    [Fact]
+    public void Component_theme_exposes_immediate_two_pixel_focus_independent_of_selection()
+    {
+        var theme = new SprintComponentTheme();
+
+        Assert.Equal(Graphite.AccentBrush, theme.Resources["FocusVisualPrimaryBrush"]);
+        Assert.Equal(new Thickness(Graphite.FocusThickness), theme.Resources["FocusVisualPrimaryThickness"]);
+        Assert.Equal(new Thickness(Graphite.FocusThickness), theme.Resources["TextControlBorderThemeThicknessFocused"]);
+        Assert.Equal(new Thickness(Graphite.FocusThickness), theme.Resources["ComboBoxBorderThemeThicknessFocused"]);
     }
 
     [Fact]

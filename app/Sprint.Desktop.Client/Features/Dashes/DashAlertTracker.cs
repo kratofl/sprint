@@ -47,11 +47,11 @@ public sealed class DashAlertTracker
                 var candidate = alert.Type switch
                 {
                     "tc_change" when frame.Electronics.TractionControl != _prev.Electronics.TractionControl
-                        => CreateBanner("TRACTION CONTROL", frame.Electronics.TractionControl.ToString(), alert, palette.Accent, config, layout, palette),
+                        => CreateBanner("TRACTION CONTROL", frame.Electronics.TractionControl.ToString(), alert, palette.AssistActive, DashCondition.AssistActive, config, layout, palette),
                     "abs_change" when frame.Electronics.Abs != _prev.Electronics.Abs
-                        => CreateBanner("ABS", frame.Electronics.Abs.ToString(), alert, palette.Warning, config, layout, palette),
+                        => CreateBanner("ABS", frame.Electronics.Abs.ToString(), alert, palette.Warning, DashCondition.Warning, config, layout, palette),
                     "enginemap_change" when frame.Electronics.MotorMap != _prev.Electronics.MotorMap
-                        => CreateBanner("ENGINE MAP", frame.Electronics.MotorMap.ToString(), alert, palette.Primary, config, layout, palette),
+                        => CreateBanner("ENGINE MAP", frame.Electronics.MotorMap.ToString(), alert, palette.Primary, DashCondition.Neutral, config, layout, palette),
                     _ => (DashAlertBanner?)null,
                 };
 
@@ -86,6 +86,7 @@ public sealed class DashAlertTracker
         string value,
         DashAlert alert,
         SkiaSharp.SKColor fallback,
+        DashCondition condition,
         DashAlertConfig config,
         DashLayout layout,
         DashPalette palette) =>
@@ -99,17 +100,21 @@ public sealed class DashAlertTracker
             alert.RowSpan,
             layout.GridCols,
             layout.GridRows,
-            alert.InvertColors ?? config.InvertColors);
+            DashAttention.AllowsInversion(condition) && (alert.InvertColors ?? config.InvertColors),
+            condition);
 
-    private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette) =>
-        token?.Trim().ToLowerInvariant() switch
+    private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette)
+    {
+        var preset = DashThemePresets.FindByAlertColorToken(token);
+        if (preset is not null && !string.Equals(preset.AlertColorToken, "auto", StringComparison.OrdinalIgnoreCase))
         {
-            "blue" => palette.Accent,
-            "ember" or "primary" => palette.Primary,
-            "green" => palette.Success,
+            return SkiaSharp.SKColor.Parse(preset.SwatchColor);
+        }
+
+        return DashThemePresets.CanonicalAlertColorToken(token) switch
+        {
             "yellow" => palette.Warning,
-            "red" => palette.Danger,
-            "white" => palette.Foreground,
             _ => fallback,
         };
+    }
 }

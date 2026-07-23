@@ -104,19 +104,22 @@ export const primitiveColor = {
 } as const
 
 export const primitiveRadius = {
-  panel: '12px',
-  card: '10px',
-  alert: '10px',
-  control: '7px',
-  tile: '10px',
-  icon: '7px',
-  badge: '4px',
+  nested: '6px',
+  control: '8px',
+  group: '12px',
+  overlay: '16px',
   pill: '999px',
-  xs: '4px',
-  sm: '7px',
-  md: '7px',
-  lg: '10px',
-  xl: '12px',
+  panel: '12px',
+  card: '12px',
+  alert: '16px',
+  tile: '12px',
+  icon: '6px',
+  badge: '6px',
+  xs: '6px',
+  sm: '8px',
+  md: '8px',
+  lg: '12px',
+  xl: '16px',
 } as const
 
 export const primitiveSpace = {
