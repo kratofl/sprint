@@ -31,6 +31,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly ObservableCollection<SetupProgram> _setupTemplates = [];
     private readonly Dictionary<string, SetupProgram> _canonicalSetupTemplates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<SetupProgram, SetupProgram> _canonicalSetupTemplateByObject = new(ReferenceEqualityComparer.Instance);
+    private IReadOnlyList<Sprint.Desktop.Api.Engineer.StagedControlChange> _pendingEngineerChanges = [];
 
     public DesktopRuntime(string? dataRoot = null, string? presetRoot = null, string? legacyDataRoot = null, ILog? log = null)
     {
@@ -114,6 +115,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     public ObservableCollection<SetupProgram> SetupPrograms { get; } = [];
     public ObservableCollection<EngineerControl> EngineerControls { get; } = [];
     public ObservableCollection<RadioLogEntry> RadioLog { get; } = [];
+    public ExternalOperationState EngineerPushState { get; private set; } = ExternalOperationState.Idle;
 
     public event EventHandler<RenderProfile>? RenderProfileChanged;
 
@@ -121,6 +123,18 @@ public sealed class DesktopRuntime : IDesktopRuntime
     {
         SaveJson(_settingsPath, Settings);
         RenderProfileChanged?.Invoke(this, CurrentRenderProfile);
+    }
+
+    public void ResetSettingsToDefaults()
+    {
+        var defaults = LoadDefaultSettings();
+        Settings.SidebarCollapsed = defaults.SidebarCollapsed;
+        Settings.UpdateChannel = defaults.UpdateChannel;
+        Settings.DriverName = defaults.DriverName;
+        Settings.DriverNumber = defaults.DriverNumber;
+        Settings.DashEditorUI = defaults.DashEditorUI;
+        Settings.NewDashDefaults = defaults.NewDashDefaults;
+        SaveSettings();
     }
 
     public void SaveControls() => SaveJson(_controlsPath, Controls);
@@ -192,6 +206,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Name = "New Dash";
         clone.IsDefault = false;
         clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
+        clone.ColorSystem = DashColorSystem.Functional;
+        clone.Theme = null;
         NormalizeLayoutProfile(clone);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
@@ -207,6 +223,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         clone.Name = "New Dash";
         clone.IsDefault = false;
         clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
+        clone.ColorSystem = DashColorSystem.Functional;
+        clone.Theme = null;
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
         DashLayouts.Add(clone);
         SaveDashLayout(clone);
@@ -342,8 +360,40 @@ public sealed class DesktopRuntime : IDesktopRuntime
             .Where(control => dirtyKeys.Contains(control.Key))
             .Select(control => $"{control.Label} {FormatControlValue(control, control.CarValue)} -> {FormatControlValue(control, control.StagedValue)}"));
 
-        EngineerStageService.Push(EngineerControls);
-        PrependRadioLog("Push staged changes", detail, "DASH");
+        _pendingEngineerChanges = dirty;
+        EngineerPushState = ExternalOperationState.Pending;
+        PrependRadioLog("Push staged changes", detail, "PENDING");
+    }
+
+    public void AcknowledgeEngineerChanges(bool succeeded)
+    {
+        if (EngineerPushState != ExternalOperationState.Pending)
+        {
+            return;
+        }
+
+        if (succeeded)
+        {
+            foreach (var change in _pendingEngineerChanges)
+            {
+                var control = EngineerControls.FirstOrDefault(candidate =>
+                    string.Equals(candidate.Key, change.Key, StringComparison.OrdinalIgnoreCase));
+                if (control is not null)
+                {
+                    control.CarValue = change.StagedValue;
+                }
+            }
+
+            EngineerPushState = ExternalOperationState.Confirmed;
+            PrependRadioLog("Push confirmed", "The external target acknowledged the staged changes", "CONFIRMED");
+        }
+        else
+        {
+            EngineerPushState = ExternalOperationState.Failed;
+            PrependRadioLog("Push failed", "Staged changes were retained for retry", "FAILED");
+        }
+
+        _pendingEngineerChanges = [];
     }
 
     public void RevertEngineerChanges()
@@ -391,9 +441,12 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private AppSettings LoadSettings()
     {
-        var fallback = LoadJson<AppSettings>(PresetPath("settings", "default.json")) ?? new AppSettings();
+        var fallback = LoadDefaultSettings();
         return LoadJson<AppSettings>(_settingsPath) ?? fallback;
     }
+
+    private AppSettings LoadDefaultSettings() =>
+        LoadJson<AppSettings>(PresetPath("settings", "default.json")) ?? new AppSettings();
 
     private IEnumerable<CatalogDevice> LoadCatalog()
     {
@@ -481,6 +534,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 var layout = LoadJson<DashLayout>(file);
                 if (layout is not null && DashLayoutValidator.IsValid(layout))
                 {
+                    var migrated = false;
+                    if (layout.ColorSystem is null)
+                    {
+                        NormalizeLayoutColorSystem(layout);
+                        migrated = true;
+                    }
+                    migrated |= layout.Theme?.NormalizeProtectedColors() == true;
+                    if (migrated)
+                    {
+                        SaveJson(file, layout);
+                    }
                     layouts.Add(layout);
                 }
             }
@@ -496,6 +560,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         foreach (var layout in layouts)
         {
             NormalizeLayoutProfile(layout);
+            NormalizeLayoutColorSystem(layout);
         }
 
         return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);
@@ -601,6 +666,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
             throw new InvalidOperationException($"Dash layout '{layout.Id}' is invalid and cannot be saved.");
         }
 
+        NormalizeLayoutColorSystem(layout);
+        layout.Theme?.NormalizeProtectedColors();
         SaveJson(Path.Combine(_layoutsPath, $"{layout.Id}.json"), layout);
         GenerateDashThumbnail(layout);
     }
@@ -615,6 +682,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
         layout.Mode = preset.Mode;
+        layout.ColorSystem = preset.EffectiveColorSystem;
         layout.IdlePage = Clone(preset.IdlePage);
         layout.Pages = Clone(preset.Pages);
         layout.Alerts = Clone(preset.Alerts);
@@ -628,6 +696,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
         SaveDashLayout(layout);
     }
 
+    private static void NormalizeLayoutColorSystem(DashLayout layout) =>
+        layout.ColorSystem ??= layout.EffectiveColorSystem;
+
     private static string NormalizeDashMode(string? mode) =>
         string.Equals(mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "advanced" : "basic";
 
@@ -640,7 +711,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
         {
             // Render the real dash (empty frame → deterministic placeholder values)
             // so the thumbnail matches what the wheel display shows, not a box mock.
-            using var painter = new DashPainter(width, height, DashPalette.FromTheme(layout.Theme));
+            using var painter = new DashPainter(width, height, DashPalette.FromLayout(layout));
             var png = painter.RenderPng(layout, new TelemetryFrame(), Settings);
             var path = GetDashThumbnailPath(layout);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);

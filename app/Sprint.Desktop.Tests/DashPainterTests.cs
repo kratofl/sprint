@@ -46,7 +46,7 @@ public sealed class DashPainterTests
         Assert.Equal(expected, DashFormat.Pressure(kPa));
 
     [Fact]
-    public void DefaultDashPaletteUsesCalmPrecisionGraphiteAndStatusTokens()
+    public void FunctionalDashPaletteUsesRealRacingSemanticsInsteadOfBrandOrange()
     {
         var palette = DashPalette.Default;
 
@@ -56,12 +56,33 @@ public sealed class DashPainterTests
         AssertColor("#F5F5F7", palette.Foreground);
         AssertColor("#A1A1AA", palette.Secondary);
         AssertColor("#6F6F78", palette.Muted);
-        AssertColor("#FF6A00", palette.Primary);
+        AssertColor("#F5F5F7", palette.Primary);
         AssertColor("#1F7FE6", palette.Accent);
         AssertColor("#16B566", palette.Success);
-        AssertColor("#E0A30C", palette.Warning);
+        AssertColor("#FF6A00", palette.Warning);
         AssertColor("#F02744", palette.Danger);
-        AssertColor("#F02744", palette.RpmRed);
+        AssertColor("#E0A30C", palette.RaceControlYellow);
+        AssertColor("#16B566", palette.RpmNormal);
+        AssertColor("#F02744", palette.RpmNearLimit);
+        AssertColor("#1F7FE6", palette.RpmShift);
+    }
+
+    [Fact]
+    public void FunctionalRpmBarRendersGreenRedAndBlueShiftStages()
+    {
+        using var painter = new DashPainter(480, 48);
+        var bitmap = painter.Render(
+            SingleWidgetLayout("rpm_bar"),
+            new TelemetryFrame
+            {
+                Car = new CarState { Rpm = 8850, MaxRpm = 9000 },
+            },
+            new AppSettings());
+
+        Assert.True(CountExact(bitmap, DashPalette.Default.RpmNormal) > 0, "Expected green running RPM stages.");
+        Assert.True(CountExact(bitmap, DashPalette.Default.RpmNearLimit) > 0, "Expected red near-limit RPM stages.");
+        Assert.True(CountExact(bitmap, DashPalette.Default.RpmShift) > 0, "Expected blue shift RPM stages.");
+        Assert.Equal(0, CountExact(bitmap, SKColor.Parse(Graphite.AccentHex)));
     }
 
     [Theory]
@@ -194,16 +215,117 @@ public sealed class DashPainterTests
     }
 
     [Fact]
-    public void FromThemeAppliesOverridesAndRedlineTracksDanger()
+    public void StyledConditionOverridesRemainNamedWhileSafetyStatesStayProtected()
     {
         Assert.Same(DashPalette.Default, DashPalette.FromTheme(null));
         Assert.Same(DashPalette.Default, DashPalette.FromTheme(new DashTheme()));
 
-        var themed = DashPalette.FromTheme(new DashTheme { Primary = "#16B566", Danger = "#123456" });
-        AssertColor("#16B566", themed.Primary);
-        AssertColor("#123456", themed.Danger);
-        AssertColor("#123456", themed.RpmRed);  // redline follows the danger override
-        AssertColor("#1F7FE6", themed.Accent);   // unset slots inherit the Graphite default
+        var themed = DashPalette.FromTheme(new DashTheme
+        {
+            Neutral = "#DADADA",
+            GoodOnTarget = "#10A050",
+            ColdLow = "#2255AA",
+            AssistActive = "#3377CC",
+            Warning = "#B06010",
+            Critical = "#123456",
+            Fault = "#654321",
+            TimingFastestOverall = "#BB66FF",
+            TimingPersonalBest = "#22BB66",
+        }, DashColorSystem.Styled);
+
+        AssertColor("#DADADA", themed.Neutral);
+        AssertColor("#10A050", themed.GoodOnTarget);
+        AssertColor("#2255AA", themed.ColdLow);
+        AssertColor("#3377CC", themed.AssistActive);
+        AssertColor("#B06010", themed.Warning);
+        AssertColor("#F02744", themed.Critical);
+        AssertColor("#F02744", themed.Fault);
+        AssertColor("#BB66FF", themed.TimingFastestOverall);
+        AssertColor("#22BB66", themed.TimingPersonalBest);
+        AssertColor("#F02744", themed.RpmNearLimit);
+    }
+
+    [Fact]
+    public void WheelWidgetsRenderNamedRacingConditionsInsteadOfLegacyGenericAliases()
+    {
+        var neutral = SKColor.Parse("#DCDCDC");
+        var coldLow = SKColor.Parse("#26C6DA");
+        var assistActive = SKColor.Parse("#42A5F5");
+        var fastest = SKColor.Parse("#AB47BC");
+        var personalBest = SKColor.Parse("#66BB6A");
+        var palette = DashPalette.Default with
+        {
+            Foreground = SKColors.Brown,
+            Accent = SKColors.Pink,
+            Success = SKColors.Lime,
+            Danger = SKColors.Maroon,
+            Neutral = neutral,
+            ColdLow = coldLow,
+            AssistActive = assistActive,
+            TimingFastestOverall = fastest,
+            TimingPersonalBest = personalBest,
+        };
+
+        using var tcPainter = new DashPainter(320, 240, palette);
+        var tc = tcPainter.Render(
+            SingleWidgetLayout("tc"),
+            new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 4, TractionControlActive = true } },
+            new AppSettings());
+        Assert.True(CountExact(tc, assistActive) > 0, "Expected active TC to use AssistActive.");
+
+        using var tirePainter = new DashPainter(320, 240, palette);
+        var tires = tirePainter.Render(
+            SingleWidgetLayout("tyre_temp"),
+            new TelemetryFrame
+            {
+                Tires = Enum.GetValues<TirePosition>()
+                    .Select(position => new TireState { Position = position, TempCoreCelsius = 30 })
+                    .ToArray(),
+            },
+            new AppSettings());
+        Assert.True(CountExact(tires, coldLow) > 0, "Expected under-range tyres to use ColdLow.");
+
+        using var timingPainter = new DashPainter(320, 240, palette);
+        var timing = timingPainter.Render(
+            SingleWidgetLayout("lap_time"),
+            new TelemetryFrame { Lap = new LapState { CurrentLapTime = 81, LastLapTime = 82, BestLapTime = 80 } },
+            new AppSettings());
+        Assert.True(CountExact(timing, neutral) > 0, "Expected ordinary timing values to use Neutral.");
+        Assert.True(CountExact(timing, fastest) > 0, "Expected best timing to use fastest-overall purple.");
+
+        using var deltaPainter = new DashPainter(320, 240, palette);
+        var delta = deltaPainter.Render(
+            SingleWidgetLayout("delta"),
+            new TelemetryFrame { Lap = new LapState { TargetLapTime = 80, Delta = -0.2 } },
+            new AppSettings());
+        Assert.True(CountExact(delta, personalBest) > 0, "Expected an improving comparison to use personal-best green.");
+
+        using var energyPainter = new DashPainter(320, 240, palette);
+        var energy = energyPainter.Render(
+            SingleWidgetLayout("ers"),
+            new TelemetryFrame { Energy = new EnergyState { VirtualEnergy = 68, DeployPower = 92 } },
+            new AppSettings());
+        Assert.True(CountExact(energy, neutral) > 0, "Expected ordinary ERS energy to remain Neutral.");
+        Assert.Equal(0, CountExact(energy, SKColors.Pink));
+    }
+
+    [Fact]
+    public void RaceControlRenderingPreservesLiteralSignalColorAcrossStyledPalettes()
+    {
+        var palette = DashPalette.Default with
+        {
+            Warning = SKColors.Magenta,
+            Danger = SKColors.Cyan,
+            Success = SKColors.Blue,
+        };
+        using var painter = new DashPainter(320, 240, palette);
+        var bitmap = painter.Render(
+            SingleWidgetLayout("flag"),
+            new TelemetryFrame { Flags = new RaceFlags { Yellow = true } },
+            new AppSettings());
+
+        Assert.True(CountExact(bitmap, DashPalette.Default.RaceControlYellow) > 0, "Expected literal yellow race-control signal.");
+        Assert.Equal(0, CountExact(bitmap, SKColors.Magenta));
     }
 
     [Fact]
@@ -510,6 +632,68 @@ public sealed class DashPainterTests
     }
 
     [Fact]
+    public void AlertTrackerUsesTheSuzukiThemeColor()
+    {
+        var tracker = new DashAlertTracker();
+        var layout = new DashLayout
+        {
+            Id = "suzuki-alert",
+            AlertConfig = new DashAlertConfig { ColorToken = "suzuki" },
+            Alerts = [new DashAlert { Id = "tc", Type = "tc_change" }],
+        };
+        var icePalette = DashPalette.FromTheme(
+            DashThemePresets.All.Single(preset => preset.Name == "Ice").Theme,
+            DashColorSystem.Styled);
+        tracker.Evaluate(
+            layout,
+            new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 3 } },
+            icePalette);
+
+        var banner = tracker.Evaluate(
+            layout,
+            new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 4 } },
+            icePalette);
+
+        Assert.NotNull(banner);
+        Assert.Equal(SkiaSharp.SKColor.Parse(Graphite.DashThemeSuzukiPrimaryHex), banner.Value.Color);
+    }
+
+    [Fact]
+    public void AdjustmentAlertsRemainStableEvenWhenLegacyConfigurationRequestsInversion()
+    {
+        var tracker = new DashAlertTracker();
+        var layout = new DashLayout
+        {
+            Id = "stable-adjustment",
+            AlertConfig = new DashAlertConfig { InvertColors = true },
+            Alerts = [new DashAlert { Id = "tc", Type = "tc_change" }],
+        };
+        var palette = DashPalette.Default;
+        tracker.Evaluate(layout, new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 3 } }, palette);
+
+        var banner = tracker.Evaluate(
+            layout,
+            new TelemetryFrame { Electronics = new ElectronicsState { TractionControl = 4 } },
+            palette);
+
+        Assert.NotNull(banner);
+        Assert.Equal(DashCondition.AssistActive, banner.Value.Condition);
+        Assert.False(banner.Value.InvertColors);
+    }
+
+    [Fact]
+    public void CriticalInversionIsBoundedToTwoHertzAndStopsWithTheCondition()
+    {
+        Assert.False(DashAttention.IsInverted(DashCondition.Critical, requested: true, TimeSpan.Zero));
+        Assert.False(DashAttention.IsInverted(DashCondition.Critical, requested: true, TimeSpan.FromMilliseconds(249)));
+        Assert.True(DashAttention.IsInverted(DashCondition.Critical, requested: true, TimeSpan.FromMilliseconds(250)));
+        Assert.True(DashAttention.IsInverted(DashCondition.Critical, requested: true, TimeSpan.FromMilliseconds(499)));
+        Assert.False(DashAttention.IsInverted(DashCondition.Critical, requested: true, TimeSpan.FromMilliseconds(500)));
+        Assert.False(DashAttention.IsInverted(DashCondition.Warning, requested: true, TimeSpan.FromMilliseconds(250)));
+        Assert.False(DashAttention.IsInverted(DashCondition.Critical, requested: false, TimeSpan.FromMilliseconds(250)));
+    }
+
+    [Fact]
     public void AlertOverlayRespectsAuthoredGeometry()
     {
         var layout = SingleWidgetLayout("gear_speed");
@@ -599,4 +783,7 @@ public sealed class DashPainterTests
         var expected = SKColor.Parse(expectedHex);
         Assert.Equal(expected, actual);
     }
+
+    private static int CountExact(SKBitmap bitmap, SKColor color) =>
+        bitmap.Pixels.Count(pixel => pixel == color);
 }

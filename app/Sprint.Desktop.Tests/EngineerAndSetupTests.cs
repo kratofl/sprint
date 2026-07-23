@@ -41,6 +41,33 @@ public sealed class EngineerAndSetupTests
     }
 
     [Fact]
+    public void RuntimeEngineerPushRemainsPendingUntilExternalAcknowledgement()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var control = runtime.EngineerControls[0];
+            var original = control.CarValue;
+            control.StagedValue = original + control.Step;
+
+            runtime.PushEngineerChanges();
+
+            Assert.Equal(ExternalOperationState.Pending, runtime.EngineerPushState);
+            Assert.Equal(original, control.CarValue);
+            Assert.Equal(original + control.Step, control.StagedValue);
+
+            runtime.AcknowledgeEngineerChanges(succeeded: true);
+            Assert.Equal(ExternalOperationState.Confirmed, runtime.EngineerPushState);
+            Assert.Equal(original + control.Step, control.CarValue);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SetTargetLapCommandRoundTripsThroughContractJson()
     {
         var command = EngineerStageService.SetTargetLap(82.531, lapNumber: 12, from: "engineer-1", timestampMs: 1000);

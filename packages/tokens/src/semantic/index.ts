@@ -6,6 +6,13 @@ import { primitiveColor, primitiveRadius, primitiveSpace } from '../primitive'
  * These should be the default API for app and shared UI code.
  */
 export const semanticTokens = {
+  material: {
+    orange: {
+      action: '#FF6A00',
+      selection: 'linear-gradient(180deg, #7A3204 0%, #421A02 100%)',
+      telemetry: 'linear-gradient(180deg, #FF9F0A 0%, #FF6A00 100%)',
+    },
+  },
   color: {
     bg: {
       base: primitiveColor.neutral[950],
@@ -80,15 +87,32 @@ export const semanticTokens = {
     },
   },
   radius: {
-    tag: primitiveRadius.badge,
-    icon: primitiveRadius.icon,
-    badge: primitiveRadius.badge,
+    nested: primitiveRadius.nested,
     control: primitiveRadius.control,
-    card: primitiveRadius.card,
-    panel: primitiveRadius.panel,
-    alert: primitiveRadius.alert,
-    tile: primitiveRadius.tile,
+    group: primitiveRadius.group,
+    overlay: primitiveRadius.overlay,
+    tag: primitiveRadius.nested,
+    icon: primitiveRadius.nested,
+    badge: primitiveRadius.nested,
+    card: primitiveRadius.group,
+    panel: primitiveRadius.group,
+    alert: primitiveRadius.overlay,
+    tile: primitiveRadius.group,
     pill: primitiveRadius.pill,
+  },
+  icon: {
+    control: '16px',
+    navigation: '20px',
+    emphasis: '24px',
+  },
+  focus: {
+    color: primitiveColor.orange[500],
+    thickness: '2px',
+  },
+  motion: {
+    feedback: '0ms',
+    contentFade: '100ms',
+    spatial: '160ms',
   },
   space: {
     inline: primitiveSpace[1],

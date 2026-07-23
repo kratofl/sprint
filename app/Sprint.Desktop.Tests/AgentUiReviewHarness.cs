@@ -60,7 +60,7 @@ internal static class AgentUiReviewHarness
                 });
 
                 var defaultDash = runtime.DashLayouts.First(dash => dash.IsDefault);
-                using (var painter = new DashPainter(800, 480, DashPalette.FromTheme(defaultDash.Theme)))
+                using (var painter = new DashPainter(800, 480, DashPalette.FromLayout(defaultDash)))
                 {
                     foreach (var page in defaultDash.Pages)
                     {
@@ -132,15 +132,16 @@ internal static class AgentUiReviewHarness
                     Click(window, runtime.Devices[0].Name);
                     frames.Add(Capture(window, artifactRoot, "devices-detail", "Add device", "Device bindings", runtime.Devices[0].Name));
 
-                    Click(window, "Setups");
+                    OpenCommandPalette(window);
+                    Click(window, "Go to Setups");
                     frames.Add(Capture(window, artifactRoot, "setups-templates-readonly", "Setups", "Setup templates", "User setups", "Duplicate template"));
 
                     Click(window, "Duplicate template");
                     frames.Add(Capture(window, artifactRoot, "setups-duplicated-user-copy", "Setups", "Delete", runtime.SetupPrograms[0].Name));
 
                     Click(window, "Delete");
-                    frames.Add(Capture(window, artifactRoot, "confirm-dialog", "Delete setup?", "Cancel", "Delete setup"));
-                    Click(window, "Cancel");
+                    frames.Add(Capture(window, artifactRoot, "setup-deleted-undo", "Setup deleted", "Undo"));
+                    Click(window, "Undo");
 
                     // Capture Settings and Help before opening the dash editor: the editor
                     // toolbar has its own "Settings" tab that would otherwise shadow the
@@ -151,13 +152,7 @@ internal static class AgentUiReviewHarness
                     Click(window, "Help");
                     frames.Add(Capture(window, artifactRoot, "help-reference", "Help", "Getting started", "Telemetry status", "Keyboard shortcuts"));
 
-                    window.RaiseEvent(new KeyEventArgs
-                    {
-                        RoutedEvent = InputElement.KeyDownEvent,
-                        Source = window,
-                        Key = Key.K,
-                        KeyModifiers = KeyModifiers.Control,
-                    });
+                    OpenCommandPalette(window);
                     frames.Add(Capture(window, artifactRoot, "command-palette", "Go to Home", "Create dash", "Add device"));
                     window.GetVisualDescendants().OfType<TextBox>()
                         .Single(box => string.Equals(box.Tag?.ToString(), "command-palette-search", StringComparison.Ordinal))
@@ -167,7 +162,7 @@ internal static class AgentUiReviewHarness
                             Key = Key.Escape,
                         });
 
-                    Click(window, "Dashes");
+                    Click(window, "Dashboards");
                     frames.Add(Capture(window, artifactRoot, "dash-editor-list", "Dashes", "Create dash", "Edit"));
 
                     Click(window, "Edit");
@@ -177,7 +172,31 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "dash-editor-pages", "Pages", "Widgets", "+  Add page", "Driving", "Endurance", "Timing", "Vehicle"));
 
                     Click(window, "Alerts");
-                    frames.Add(Capture(window, artifactRoot, "dash-editor-alerts", "Alert canvas", "Global defaults", "Use global settings", "Duration", "Invert colors"));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "dash-editor-alerts",
+                        expectedText:
+                        [
+                        "Popups",
+                        "TC",
+                        "ABS",
+                        "ENGINE MAP",
+                        "Alert canvas",
+                        "Global defaults",
+                        .. DashThemePresets.All.Select(preset => preset.Name),
+                        "Use global settings",
+                        "Duration",
+                        "Invert colors",
+                        ]));
+
+                    ClickEditor(window, "Settings");
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1440x900", "Theme presets", "Choose a complete visual direction. Graphite preserves functional racing colors; optical presets apply their representative accent.", "Graphite", "Ice", "Suzuki", "Selected"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1120x720", "Theme presets", "Graphite", "Ice", "Suzuki"));
+                    window.Width = 1440;
+                    window.Height = 900;
 
                     Click(window, "Layout");
                     Click(window, "Widgets");
@@ -187,6 +206,27 @@ internal static class AgentUiReviewHarness
                 finally
                 {
                     window.Close();
+                }
+
+                var staged = runtime.EngineerControls[0];
+                staged.StagedValue = Math.Min(staged.Max, staged.StagedValue + staged.Step);
+                runtime.PushEngineerChanges();
+                var engineerShell = new ShellState();
+                engineerShell.Navigate(AppView.DebugEngineer);
+                using var engineerTelemetry = new RecordingTelemetrySource();
+                var engineerWindow = new MainWindow(runtime, engineerShell, engineerTelemetry)
+                {
+                    Width = 1120,
+                    Height = 720,
+                };
+                engineerWindow.Show();
+                try
+                {
+                    frames.Add(Capture(engineerWindow, artifactRoot, "engineer-pending-1120x720", "Car Controls", "Pending acknowledgement", "Push staged changes", "Staged Changes"));
+                }
+                finally
+                {
+                    engineerWindow.Close();
                 }
             }, CancellationToken.None);
         }
@@ -231,7 +271,7 @@ internal static class AgentUiReviewHarness
         using var capturedFrame = frame!;
 
         var imagePath = Path.Combine(artifactRoot, $"{name}.png");
-        capturedFrame.Save(imagePath);
+        capturedFrame.Save(imagePath, new PngBitmapEncoderOptions());
 
         var visibleText = window.GetVisualDescendants()
             .OfType<TextBlock>()
@@ -316,6 +356,27 @@ internal static class AgentUiReviewHarness
     private static void Click(MainWindow window, string label)
     {
         var button = window.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => ButtonMatches(button, label));
+
+        Assert.NotNull(button);
+        button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void OpenCommandPalette(MainWindow window)
+    {
+        var trigger = window.GetVisualDescendants()
+            .OfType<Button>()
+            .Single(button => string.Equals(button.Tag?.ToString(), "command-palette-trigger", StringComparison.Ordinal));
+        trigger.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void ClickEditor(MainWindow window, string label)
+    {
+        var editor = Assert.Single(window.GetVisualDescendants().OfType<DashEditorView>());
+        var button = editor.GetVisualDescendants()
             .OfType<Button>()
             .FirstOrDefault(button => ButtonMatches(button, label));
 

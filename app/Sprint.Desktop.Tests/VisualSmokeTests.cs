@@ -230,12 +230,46 @@ public sealed class VisualSmokeTests
                 AssertText(view, "Global defaults");
                 AssertText(view, "Duration");
                 AssertText(view, "Invert colors");
+                AssertText(view, "Critical alerts only · preview remains stable.");
                 AssertText(view, "Use global settings");
                 Assert.Contains(view.GetVisualDescendants().OfType<Canvas>(), IsEditorCanvas);
 
                 using var frame = SaveFrame(window, "editor-alerts-1440x900.png");
                 window.Close();
 
+                AssertMeaningfulImage(frame);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Dash_editor_persistence_failure_captures_recovery_state()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(VisualSmokeTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var controller = new DashEditorController(
+                    runtime.DashLayouts.First(item => item.IsDefault),
+                    _ => throw new IOException("disk unavailable"));
+                var view = new DashEditorView(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                var window = new Window { Width = 1440, Height = 900, Content = view, Background = Graphite.BgBrush };
+                window.Show();
+                controller.SetMode("advanced");
+                window.CaptureRenderedFrame();
+
+                AssertText(view, "Changes are retained in the editor. Retry saving.");
+                Assert.Contains(view.GetVisualDescendants().OfType<Button>(), button =>
+                    string.Equals(button.Content?.ToString(), "Retry", StringComparison.Ordinal));
+                using var frame = SaveFrame(window, "editor-persistence-failure-1440x900.png");
+                window.Close();
                 AssertMeaningfulImage(frame);
             }, CancellationToken.None);
         }
@@ -309,6 +343,16 @@ public sealed class VisualSmokeTests
                 window.CaptureRenderedFrame();
 
                 AssertText(view, "Theme presets");
+                AssertText(view, "Graphite");
+                AssertText(view, "Ice");
+                AssertText(view, "Suzuki");
+                AssertText(view, "Selected");
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(), text =>
+                    string.Equals(text.Text, "Color system", StringComparison.Ordinal) ||
+                    string.Equals(text.Text, "Racing conditions", StringComparison.Ordinal) ||
+                    string.Equals(text.Text, "Legacy authored accents", StringComparison.Ordinal));
+                Assert.Equal(DashThemePresets.All.Count, view.GetVisualDescendants().OfType<Button>()
+                    .Count(button => button.Tag?.ToString()?.StartsWith("theme-preset-", StringComparison.Ordinal) == true));
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Canvas>(), IsEditorCanvas);
 
                 using var frame = SaveFrame(window, "editor-theme-1440x900.png");
@@ -613,7 +657,7 @@ public sealed class VisualSmokeTests
         var captured = frame!;
         Assert.True(captured.PixelSize.Width > 0, "Expected captured frame to have a positive width.");
         Assert.True(captured.PixelSize.Height > 0, "Expected captured frame to have a positive height.");
-        captured.Save(path);
+        captured.Save(path, new PngBitmapEncoderOptions());
         Assert.True(File.Exists(path), $"Expected visual artifact at {path}.");
         Assert.True(new FileInfo(path).Length > 0, $"Expected non-empty visual artifact at {path}.");
         return captured;

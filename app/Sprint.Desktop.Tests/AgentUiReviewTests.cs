@@ -16,7 +16,11 @@ public sealed class AgentUiReviewTests
         Assert.Contains(result.Frames, frame => frame.Name == "home-runtime-overview");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail");
         Assert.Contains(result.Frames, frame => frame.Name == "setups-duplicated-user-copy");
+        Assert.Contains(result.Frames, frame => frame.Name == "setup-deleted-undo");
         Assert.Contains(result.Frames, frame => frame.Name == "dash-editor-layout");
+        Assert.Contains(result.Frames, frame => frame.Name == "dash-editor-theme-presets-1440x900");
+        Assert.Contains(result.Frames, frame => frame.Name == "dash-editor-theme-presets-1120x720");
+        Assert.Contains(result.Frames, frame => frame.Name == "engineer-pending-1120x720");
 
         foreach (var frame in result.Frames)
         {

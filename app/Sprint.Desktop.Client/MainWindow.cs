@@ -61,6 +61,9 @@ public sealed class MainWindow : Window
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
     private bool _showDeviceCatalog;
+    private SetupProgram? _deletedSetup;
+    private int _deletedSetupIndex;
+    private DispatcherTimer? _setupUndoTimer;
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
     {
@@ -314,17 +317,24 @@ public sealed class MainWindow : Window
 
     private Control BuildSidebar()
     {
-        var collapsed = _shell.SidebarCollapsed;
-
-        _navRail = new StackPanel { Spacing = 4, Margin = new Thickness(8, 12, 8, 0) };
-        AddNavGroup(null,
-            (AppView.Home, "Home"),
-            (AppView.Dashes, "Dashes"),
+        _navRail = new StackPanel
+        {
+            Tag = "primary-navigation",
+            Spacing = 4,
+            Margin = new Thickness(8, 12, 8, 0)
+        };
+        AddNavGroup(null, (AppView.Home, "Home"));
+        AddNavGroup("Devices",
             (AppView.Devices, "Devices"),
-            (AppView.Setups, "Setups"));
+            (AppView.Dashes, "Dashboards"));
 
         // Settings/Help pin to the bottom of the rail (matches the Figma sidebar).
-        var footer = new StackPanel { Spacing = 4, Margin = new Thickness(8, 6, 8, 12) };
+        var footer = new StackPanel
+        {
+            Tag = "utility-navigation",
+            Spacing = 4,
+            Margin = new Thickness(8, 6, 8, 12)
+        };
         footer.Children.Add(NavButton(AppView.Settings, "Settings"));
         footer.Children.Add(NavButton(AppView.Help, "Help"));
 
@@ -613,6 +623,7 @@ public sealed class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _timer.Stop();
+        _setupUndoTimer?.Stop();
         // Stop + release all hardware screen publishers before tearing down telemetry.
         _screens.Dispose();
         // Disposing the engine cancels + joins the reader thread, then disposes the
@@ -863,8 +874,15 @@ public sealed class MainWindow : Window
     {
         var stack = PageStack();
         var dirty = _runtime.EngineerControls.Count(control => Math.Abs(control.CarValue - control.StagedValue) > 0.001);
+        var (operationLabel, operationBrush) = _runtime.EngineerPushState switch
+        {
+            ExternalOperationState.Pending => ("Pending acknowledgement", Graphite.YellowBrush),
+            ExternalOperationState.Confirmed => ("Confirmed", Graphite.GreenBrush),
+            ExternalOperationState.Failed => ("Push failed", Graphite.RedBrush),
+            _ => (dirty == 0 ? "In sync" : $"{dirty} staged", dirty == 0 ? Graphite.GreenBrush : Graphite.YellowBrush),
+        };
         stack.Children.Add(PageHeader("Engineer", "Race control, staged car controls, radio log",
-            Graphite.StatusPill(dirty == 0 ? "In sync" : $"{dirty} staged", dirty == 0 ? Graphite.GreenBrush : Graphite.YellowBrush)));
+            Graphite.StatusPill(operationLabel, operationBrush)));
 
         var grid = new Grid
         {
@@ -898,16 +916,30 @@ public sealed class MainWindow : Window
             Spacing = 8,
             HorizontalAlignment = HorizontalAlignment.Right
         };
-        actions.Children.Add(ActionButton("Revert", ButtonTone.Ghost, () =>
+        var pending = _runtime.EngineerPushState == ExternalOperationState.Pending;
+        var revert = ActionButton("Revert", ButtonTone.Ghost, () =>
         {
             _runtime.RevertEngineerChanges();
             RenderBody();
-        }));
-        actions.Children.Add(ActionButton("Push staged changes", ButtonTone.Primary, () =>
+        });
+        revert.IsEnabled = dirty > 0 && !pending;
+        if (!revert.IsEnabled)
+        {
+            ToolTip.SetTip(revert, pending ? "Waiting for car acknowledgement." : "No staged changes to revert.");
+        }
+        actions.Children.Add(revert);
+
+        var push = ActionButton("Push staged changes", ButtonTone.Primary, () =>
         {
             _runtime.PushEngineerChanges();
             RenderBody();
-        }));
+        });
+        push.IsEnabled = dirty > 0 && !pending;
+        if (!push.IsEnabled)
+        {
+            ToolTip.SetTip(push, pending ? "Waiting for car acknowledgement." : "Stage a change before pushing.");
+        }
+        actions.Children.Add(push);
         controls.Children.Add(actions);
         AddGrid(grid, Graphite.Card(controls), 0, 0);
 
@@ -928,6 +960,10 @@ public sealed class MainWindow : Window
         var selectedIsTemplate = IsSetupTemplate(_selectedSetup);
         stack.Children.Add(PageHeader("Setups", "Templates, user setup copies, and A/B comparison cues",
             Graphite.StatusPill(selectedIsTemplate ? "Template" : "User setup", selectedIsTemplate ? Graphite.Text3Brush : Graphite.BlueBrush)));
+        if (_deletedSetup is not null)
+        {
+            stack.Children.Add(SetupDeletionUndoPanel(_deletedSetup.Name));
+        }
 
         var grid = new Grid
         {
@@ -982,20 +1018,7 @@ public sealed class MainWindow : Window
         }));
         if (!selectedIsTemplate && _runtime.SetupPrograms.Count > 0)
         {
-            programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, () => ShowConfirmDialog(
-                "Delete setup?",
-                $"{_selectedSetup.Name} will be removed permanently.",
-                "Delete setup",
-                () =>
-                {
-                    var removed = _selectedSetup;
-                    _runtime.SetupPrograms.Remove(removed);
-                    _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
-                        ?? _runtime.SetupTemplates.FirstOrDefault()
-                        ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
-                    _runtime.SaveSetupPrograms();
-                    RenderBody();
-                })));
+            programActions.Children.Add(ActionButton("Delete", ButtonTone.Danger, DeleteSelectedSetup));
         }
 
         programs.Children.Add(programActions);
@@ -1051,6 +1074,73 @@ public sealed class MainWindow : Window
 
         stack.Children.Add(grid);
         return Scroll(stack);
+    }
+
+    private void DeleteSelectedSetup()
+    {
+        if (IsSetupTemplate(_selectedSetup))
+        {
+            return;
+        }
+
+        _setupUndoTimer?.Stop();
+        _deletedSetup = _selectedSetup;
+        _deletedSetupIndex = Math.Max(0, _runtime.SetupPrograms.IndexOf(_selectedSetup));
+        _runtime.SetupPrograms.Remove(_selectedSetup);
+        _selectedSetup = _runtime.SetupPrograms.FirstOrDefault()
+            ?? _runtime.SetupTemplates.FirstOrDefault()
+            ?? new SetupProgram { Id = "setup-empty", Name = "No setup" };
+        _runtime.SaveSetupPrograms();
+
+        _setupUndoTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        _setupUndoTimer.Tick += (_, _) =>
+        {
+            _setupUndoTimer?.Stop();
+            _setupUndoTimer = null;
+            _deletedSetup = null;
+            if (_shell.View is AppView.Setups or AppView.DebugSetup)
+            {
+                RenderBody();
+            }
+        };
+        _setupUndoTimer.Start();
+        RenderBody();
+    }
+
+    private Control SetupDeletionUndoPanel(string name)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
+        var copy = new StackPanel { Spacing = 2 };
+        copy.Children.Add(Graphite.TextBlock("Setup deleted", 13, FontWeight.Medium));
+        copy.Children.Add(Graphite.TextBlock($"{name} can be restored for 8 seconds.", 11, FontWeight.Normal, Graphite.Text2Brush));
+        AddGrid(row, copy, 0, 0);
+        AddGrid(row, ActionButton("Undo", ButtonTone.Neutral, UndoSetupDeletion), 0, 1);
+        return new Border
+        {
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusGroup),
+            Padding = new Thickness(12, 10),
+            Child = row,
+        };
+    }
+
+    private void UndoSetupDeletion()
+    {
+        if (_deletedSetup is null)
+        {
+            return;
+        }
+
+        _setupUndoTimer?.Stop();
+        _setupUndoTimer = null;
+        var restored = _deletedSetup;
+        _runtime.SetupPrograms.Insert(Math.Clamp(_deletedSetupIndex, 0, _runtime.SetupPrograms.Count), restored);
+        _selectedSetup = restored;
+        _deletedSetup = null;
+        _runtime.SaveSetupPrograms();
+        RenderBody();
     }
 
     private void EnsureSelectedSetup()
@@ -1943,6 +2033,40 @@ public sealed class MainWindow : Window
         checkRow.Children.Add(updateStatus);
         form.Children.Add(FormRow("Updates", checkRow));
 
+#if DEBUG
+        form.Children.Add(Graphite.SectionLabel("Debug"));
+        var resetSettings = ActionButton("Reset settings to defaults", ButtonTone.Neutral, () =>
+        {
+            _runtime.ResetSettingsToDefaults();
+            if (_shell.SidebarCollapsed != _runtime.Settings.SidebarCollapsed)
+            {
+                _shell.ToggleSidebar();
+            }
+
+            BuildShell();
+            RenderBody();
+        });
+        ToolTip.SetTip(
+            resetSettings,
+            "Restore app and dash-editor preferences. Dashboards, devices, and setups are not changed.");
+        form.Children.Add(FormRow(
+            "App settings",
+            new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    resetSettings,
+                    Graphite.TextBlock(
+                        "Restores UI and default preferences only. Dashboards, devices, and setups stay intact.",
+                        11,
+                        FontWeight.Normal,
+                        Graphite.Text3Brush,
+                        TextWrapping.Wrap),
+                },
+            }));
+#endif
+
         form.HorizontalAlignment = HorizontalAlignment.Left;
         stack.Children.Add(form);
         return Scroll(stack);
@@ -2376,7 +2500,7 @@ public sealed class MainWindow : Window
             _runtime.Settings,
             width,
             height,
-            palette: DashPalette.FromTheme(layout.Theme));
+            palette: DashPalette.FromLayout(layout));
 
         return new Border
         {

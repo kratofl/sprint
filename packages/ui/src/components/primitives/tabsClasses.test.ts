@@ -22,7 +22,7 @@ test('top tabs variant uses deep chrome and bottom-divider framing', () => {
   assert.match(tabsListVariantClassNames.top, /\bbg-\[var\(--panel-2\)\]/)
   assert.match(tabsListVariantClassNames.top, /\bborder-b\b/)
   assert.match(tabsTriggerBaseClassName, /\bui-control\b/)
-  assert.match(tabsTriggerActiveClassName, /group-data-\[variant=top\]\/tabs-list:data-\[state=active\]:border-\[var\(--orange\)\]/)
+  assert.match(tabsTriggerActiveClassName, /group-data-\[variant=top\]\/tabs-list:data-\[state=active\]:border-\[var\(--accent\)\]/)
 })
 
 test('segmented tab variants expose Figma item metrics and active state', () => {
@@ -34,7 +34,8 @@ test('segmented tab variants expose Figma item metrics and active state', () => 
   assert.match(tabsTriggerBaseClassName, /px-\[14px\]/)
   assert.match(tabsTriggerBaseClassName, /py-\[6px\]/)
   assert.match(tabsTriggerBaseClassName, /font-wordmark/)
-  assert.match(tabsTriggerActiveClassName, /data-\[state=active\]:bg-\[var\(--panel-3\)\]/)
-  assert.match(tabsTriggerActiveClassName, /data-\[state=active\]:border-\[var\(--orange\)\]/)
+  assert.match(tabsTriggerActiveClassName, /data-\[state=active\]:bg-\[var\(--accent\)\]/)
+  assert.match(tabsTriggerActiveClassName, /data-\[state=active\]:text-\[var\(--panel2\)\]/)
+  assert.match(tabsTriggerActiveClassName, /data-\[state=active\]:border-\[var\(--accent\)\]/)
   assert.doesNotMatch(tabsTriggerActiveClassName, /border-border-strong/)
 })

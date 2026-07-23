@@ -88,6 +88,7 @@ test('form controls use Dash Studio inset field chrome', () => {
 })
 
 test('segmented control uses exact Apple Graphite selected contracts', () => {
+  assert.match(segmentedSource, /variant = "neutral"/)
   assert.match(segmentedSource, /min-w-\[96px\]/)
   assert.match(segmentedSource, /px-4/)
   assert.match(segmentedSource, /font-semibold/)

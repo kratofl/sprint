@@ -3,6 +3,24 @@ using System.Text.Json.Serialization;
 
 namespace Sprint.Desktop.Features.Dashes;
 
+[JsonConverter(typeof(DashColorSystemJsonConverter))]
+public enum DashColorSystem
+{
+    Functional,
+    Styled,
+}
+
+public sealed class DashColorSystemJsonConverter : JsonConverter<DashColorSystem>
+{
+    public override DashColorSystem Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        string.Equals(reader.GetString(), "styled", StringComparison.OrdinalIgnoreCase)
+            ? DashColorSystem.Styled
+            : DashColorSystem.Functional;
+
+    public override void Write(Utf8JsonWriter writer, DashColorSystem value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value == DashColorSystem.Styled ? "styled" : "functional");
+}
+
 public sealed class DashLayout
 {
     [JsonPropertyName("id")]
@@ -16,6 +34,13 @@ public sealed class DashLayout
 
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "basic";
+
+    [JsonPropertyName("colorSystem")]
+    public DashColorSystem? ColorSystem { get; set; }
+
+    [JsonIgnore]
+    public DashColorSystem EffectiveColorSystem => ColorSystem ??
+        (Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
 
     /// <summary>
     /// The target wheel-screen size this dash is designed for (PRD #122). Additive
@@ -59,6 +84,30 @@ public sealed class DashLayout
 /// </summary>
 public sealed class DashTheme
 {
+    [JsonPropertyName("neutral")]
+    public string? Neutral { get; set; }
+
+    [JsonPropertyName("goodOnTarget")]
+    public string? GoodOnTarget { get; set; }
+
+    [JsonPropertyName("coldLow")]
+    public string? ColdLow { get; set; }
+
+    [JsonPropertyName("assistActive")]
+    public string? AssistActive { get; set; }
+
+    [JsonPropertyName("critical")]
+    public string? Critical { get; set; }
+
+    [JsonPropertyName("fault")]
+    public string? Fault { get; set; }
+
+    [JsonPropertyName("timingFastestOverall")]
+    public string? TimingFastestOverall { get; set; }
+
+    [JsonPropertyName("timingPersonalBest")]
+    public string? TimingPersonalBest { get; set; }
+
     [JsonPropertyName("primary")]
     public string? Primary { get; set; }
 
@@ -85,6 +134,10 @@ public sealed class DashTheme
 
     [JsonIgnore]
     public bool IsEmpty =>
+        string.IsNullOrEmpty(Neutral) && string.IsNullOrEmpty(GoodOnTarget) &&
+        string.IsNullOrEmpty(ColdLow) && string.IsNullOrEmpty(AssistActive) &&
+        string.IsNullOrEmpty(Critical) && string.IsNullOrEmpty(Fault) &&
+        string.IsNullOrEmpty(TimingFastestOverall) && string.IsNullOrEmpty(TimingPersonalBest) &&
         string.IsNullOrEmpty(Primary) && string.IsNullOrEmpty(Accent) &&
         string.IsNullOrEmpty(Foreground) && string.IsNullOrEmpty(Surface) &&
         string.IsNullOrEmpty(Border) && string.IsNullOrEmpty(Success) &&
@@ -92,6 +145,14 @@ public sealed class DashTheme
 
     public DashTheme Clone() => new()
     {
+        Neutral = Neutral,
+        GoodOnTarget = GoodOnTarget,
+        ColdLow = ColdLow,
+        AssistActive = AssistActive,
+        Critical = Critical,
+        Fault = Fault,
+        TimingFastestOverall = TimingFastestOverall,
+        TimingPersonalBest = TimingPersonalBest,
         Primary = Primary,
         Accent = Accent,
         Foreground = Foreground,
@@ -101,6 +162,24 @@ public sealed class DashTheme
         Warning = Warning,
         Danger = Danger,
     };
+
+    public bool NormalizeProtectedColors()
+    {
+        var changed = false;
+        if (!string.IsNullOrWhiteSpace(Critical) && !string.Equals(Critical, "#F02744", StringComparison.OrdinalIgnoreCase))
+        {
+            Critical = "#F02744";
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Fault) && !string.Equals(Fault, "#F02744", StringComparison.OrdinalIgnoreCase))
+        {
+            Fault = "#F02744";
+            changed = true;
+        }
+
+        return changed;
+    }
 }
 
 public sealed class DashAlertConfig

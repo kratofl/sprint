@@ -1,5 +1,5 @@
 using Avalonia;
-using Avalonia.Animation;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -29,6 +29,17 @@ internal enum GraphiteIntent
 internal static class Graphite
 {
     public const string PointerOverBackgroundResourceKey = "Sprint.Graphite.PointerOverBackground";
+    public const string AccentHex = "#FF6A00";
+    public const string GreenHex = "#16B566";
+    public const string RedHex = "#F02744";
+    public const string YellowHex = "#E0A30C";
+    public const string BlueHex = "#1F7FE6";
+    public const string PurpleHex = "#A06BFF";
+    public const string TextHex = "#F5F5F7";
+    public const string DashThemeSuzukiPrimaryHex = "#7C3AED";
+    public const string DashThemeSuzukiAccentHex = "#B15CFF";
+    public const string DashThemeMonoPrimaryHex = "#F6F6F6";
+    public const string DashThemeMonoAccentHex = "#7A7A7A";
 
     public static readonly Color Bg = Color.Parse("#0B0B0D");
     public static readonly Color Panel = Color.Parse("#101012");
@@ -36,18 +47,19 @@ internal static class Graphite
     public static readonly Color Panel3 = Color.Parse("#1B1B1E");
     public static readonly Color Line = Color.Parse("#12FFFFFF");
     public static readonly Color Line2 = Color.Parse("#1FFFFFFF");
-    public static readonly Color Text = Color.Parse("#F5F5F7");
+    public static readonly Color Text = Color.Parse(TextHex);
     public static readonly Color Text2 = Color.Parse("#A1A1AA");
     public static readonly Color Text3 = Color.Parse("#6F6F78");
-    public static readonly Color Accent = Color.Parse("#FF6A00");
-    public static readonly Color Green = Color.Parse("#16B566");
+    public static readonly Color Accent = Color.Parse(AccentHex);
+    public static readonly Color Green = Color.Parse(GreenHex);
     public static readonly Color GreenBg = Color.Parse("#05281A");
     public static readonly Color GreenBorder = Color.Parse("#0E7445");
-    public static readonly Color Red = Color.Parse("#F02744");
+    public static readonly Color Red = Color.Parse(RedHex);
     public static readonly Color RedBg = Color.Parse("#3A0A10");
     public static readonly Color RedBorder = Color.Parse("#851727");
-    public static readonly Color Yellow = Color.Parse("#E0A30C");
-    public static readonly Color Blue = Color.Parse("#1F7FE6");
+    public static readonly Color Yellow = Color.Parse(YellowHex);
+    public static readonly Color Blue = Color.Parse(BlueHex);
+    public static readonly Color Purple = Color.Parse(PurpleHex);
     public static readonly Color BlueBg = Color.Parse("#091D38");
     public static readonly Color BlueBorder = Color.Parse("#114F99");
     public static readonly Color AccentBg = Color.Parse("#421A02");
@@ -57,12 +69,38 @@ internal static class Graphite
     public static readonly Color Panel3Hover = Color.Parse("#232327");
     public static readonly Color AccentHover = Brighten(Accent, 0.10);
 
-    public const int RadiusXs = 4;
-    public const int RadiusSm = 7;
-    public const int RadiusMd = 7;
-    public const int RadiusLg = 10;
-    public const int RadiusXl = 12;
+    // Primary orange is intentionally flat. Gradient brushes remain dispatcher-owned
+    // for the quieter selection and telemetry materials below.
+    public static IBrush ActionMaterialBrush => AccentBrush;
+    public static IBrush SelectionMaterialBrush => Material(
+        ("#7A3204", 0d),
+        ("#421A02", 1d));
+    public static IBrush TelemetryMaterialBrush => Material(
+        ("#FF9F0A", 0d),
+        ("#FF6A00", 1d));
+
+    public const int RadiusNested = 6;
+    public const int RadiusControl = 8;
+    public const int RadiusGroup = 12;
+    public const int RadiusOverlay = 16;
     public const int RadiusPill = 999;
+
+    // Compatibility aliases keep existing components coherent while call sites
+    // migrate from size-based names to the semantic radius roles above.
+    public const int RadiusXs = RadiusNested;
+    public const int RadiusSm = RadiusControl;
+    public const int RadiusMd = RadiusControl;
+    public const int RadiusLg = RadiusGroup;
+    public const int RadiusXl = RadiusOverlay;
+
+    public const int IconSizeControl = 16;
+    public const int IconSizeNavigation = 20;
+    public const int IconSizeEmphasis = 24;
+    public const int FocusThickness = 2;
+
+    public static readonly TimeSpan FeedbackDuration = TimeSpan.Zero;
+    public static readonly TimeSpan ContentFadeDuration = TimeSpan.FromMilliseconds(100);
+    public static readonly TimeSpan SpatialDuration = TimeSpan.FromMilliseconds(160);
 
     public const int Space1 = 2;
     public const int Space2 = 4;
@@ -124,6 +162,21 @@ internal static class Graphite
 
     public static IBrush Brush(Color color) => new ImmutableSolidColorBrush(color);
 
+    private static IBrush Material(params (string Color, double Offset)[] stops)
+    {
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+        };
+        foreach (var (color, offset) in stops)
+        {
+            brush.GradientStops.Add(new GradientStop(Color.Parse(color), offset));
+        }
+
+        return brush;
+    }
+
     private static Color Brighten(Color color, double amount)
     {
         byte Channel(byte value) => (byte)Math.Clamp(Math.Round(value + ((255 - value) * amount)), 0, 255);
@@ -137,7 +190,7 @@ internal static class Graphite
             Background = Panel2Brush,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(RadiusGroup),
             Padding = padding ?? new Thickness(14),
             Child = child
         };
@@ -177,7 +230,7 @@ internal static class Graphite
     {
         var background = tone switch
         {
-            ButtonTone.Primary => AccentBrush,
+            ButtonTone.Primary => ActionMaterialBrush,
             ButtonTone.Ghost => Brushes.Transparent,
             ButtonTone.Danger => RedBgBrush,
             _ => Panel2Brush
@@ -213,7 +266,7 @@ internal static class Graphite
             VerticalContentAlignment = VerticalAlignment.Center,
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
         };
-        AttachPointerBrightness(button, background, HoverBrushFor(background));
+        AttachPointerBrightness(button, background, tone == ButtonTone.Primary ? background : HoverBrushFor(background));
         return button;
     }
 
@@ -221,7 +274,7 @@ internal static class Graphite
     {
         var button = new Button
         {
-            Content = Icons.Create(iconName, 13, Text2Brush),
+            Content = Icons.Create(iconName, IconSizeControl, Text2Brush),
             Background = Panel2Brush,
             Foreground = Text2Brush,
             BorderBrush = LineBrush,
@@ -235,6 +288,7 @@ internal static class Graphite
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
         };
         ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
         if (action is not null)
         {
             button.Click += (_, _) => action();
@@ -248,7 +302,7 @@ internal static class Graphite
     {
         var button = new Button
         {
-            Content = Icons.Create(iconName, 12, Text3Brush),
+            Content = Icons.Create(iconName, IconSizeControl, Text3Brush),
             Background = Brushes.Transparent,
             Foreground = Text3Brush,
             BorderBrush = Brushes.Transparent,
@@ -262,6 +316,7 @@ internal static class Graphite
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
         };
         ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
         if (action is not null)
         {
             button.Click += (_, _) => action();
@@ -273,10 +328,11 @@ internal static class Graphite
 
     public static Button AccentIconButton(string iconName, string tooltip, Action? action = null)
     {
+        var background = ActionMaterialBrush;
         var button = new Button
         {
-            Content = Icons.Create(iconName, 13, Panel2Brush),
-            Background = AccentBrush,
+            Content = Icons.Create(iconName, IconSizeControl, Panel2Brush),
+            Background = background,
             Foreground = Panel2Brush,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
@@ -289,12 +345,13 @@ internal static class Graphite
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
         };
         ToolTip.SetTip(button, tooltip);
+        AutomationProperties.SetName(button, tooltip);
         if (action is not null)
         {
             button.Click += (_, _) => action();
         }
 
-        AttachPointerBrightness(button, AccentBrush, AccentHoverBrush);
+        AttachPointerBrightness(button, background, background);
         return button;
     }
 
@@ -314,7 +371,7 @@ internal static class Graphite
             CornerRadius = new CornerRadius(RadiusPill),
             Background = active ? AccentBrush : Brushes.Transparent,
         });
-        row.Children.Add(Icons.Create(iconName, 14, tint));
+        row.Children.Add(Icons.Create(iconName, IconSizeNavigation, tint));
         if (!collapsed)
         {
             row.Children.Add(new TextBlock
@@ -343,6 +400,7 @@ internal static class Graphite
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
         };
         ToolTip.SetTip(button, label);
+        AutomationProperties.SetName(button, label);
         return button;
     }
 
@@ -386,7 +444,7 @@ internal static class Graphite
             Background = Panel2Brush,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = new CornerRadius(RadiusGroup),
             Padding = new Thickness(28),
             MinHeight = 160,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -600,8 +658,8 @@ internal static class Graphite
             var button = new Button
             {
                 Content = items[i],
-                Background = isSelected ? Panel3Brush : Brushes.Transparent,
-                Foreground = isSelected ? TextBrush : Text2Brush,
+                Background = isSelected ? ActionMaterialBrush : Brushes.Transparent,
+                Foreground = isSelected ? Panel2Brush : Text2Brush,
                 BorderBrush = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 CornerRadius = new CornerRadius(RadiusMd),
@@ -614,7 +672,7 @@ internal static class Graphite
                 VerticalContentAlignment = VerticalAlignment.Center,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
             };
-            AttachPointerBrightness(button, button.Background, isSelected ? Panel3HoverBrush : Brushes.Transparent);
+            AttachPointerBrightness(button, button.Background, isSelected ? button.Background : Brushes.Transparent);
             button.Click += (_, _) => onSelect(index);
             group.Children.Add(button);
         }
@@ -632,11 +690,21 @@ internal static class Graphite
         };
     }
 
-    // Compact desktop segmented control. Selection uses tonal elevation; orange is
-    // reserved for primary action and focus rather than every local view switch.
-    public static Control Segmented(IReadOnlyList<string> items, int selected, Action<int> onSelect)
+    // Compact desktop segmented control. Selection is neutral so adjacent choices
+    // read as one control rather than competing with primary actions.
+    public static Control Segmented(
+        IReadOnlyList<string> items,
+        int selected,
+        Action<int> onSelect,
+        bool stretch = false)
     {
-        var group = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        var group = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions(string.Join(",", Enumerable.Repeat(stretch ? "*" : "Auto", items.Count))),
+            ColumnSpacing = 2,
+            HorizontalAlignment = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         for (var i = 0; i < items.Count; i++)
         {
             var isSelected = i == selected;
@@ -657,9 +725,11 @@ internal static class Graphite
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 VerticalContentAlignment = VerticalAlignment.Center,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+                HorizontalAlignment = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
             };
-            AttachPointerBrightness(button, button.Background, isSelected ? Panel3HoverBrush : Panel2HoverBrush);
+            AttachPointerBrightness(button, button.Background, isSelected ? button.Background : Panel2HoverBrush);
             button.Click += (_, _) => onSelect(index);
+            Grid.SetColumn(button, i);
             group.Children.Add(button);
         }
 
@@ -670,7 +740,7 @@ internal static class Graphite
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(RadiusMd),
             Padding = new Thickness(2),
-            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalAlignment = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             Child = group,
         };
@@ -678,11 +748,6 @@ internal static class Graphite
 
     private static IBrush HoverBrushFor(IBrush background)
     {
-        if (Equals(background, AccentBrush))
-        {
-            return AccentHoverBrush;
-        }
-
         if (Equals(background, Panel3Brush))
         {
             return Panel3HoverBrush;
@@ -693,11 +758,6 @@ internal static class Graphite
 
     private static void AttachPointerBrightness(Button button, IBrush normal, IBrush hover)
     {
-        button.Transitions = new Transitions
-        {
-            new BrushTransition { Property = Avalonia.Controls.Button.BackgroundProperty, Duration = TimeSpan.FromMilliseconds(120) },
-            new DoubleTransition { Property = Avalonia.Controls.Button.OpacityProperty, Duration = TimeSpan.FromMilliseconds(90) },
-        };
         // Avalonia's Fluent button template resolves these dynamic resources while
         // pointer-over/pressed. Per-control values prevent the global neutral hover
         // brush from replacing an orange primary button with gray.

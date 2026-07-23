@@ -22,8 +22,10 @@ public interface IDesktopRuntime
     ObservableCollection<SetupProgram> SetupPrograms { get; }
     ObservableCollection<EngineerControl> EngineerControls { get; }
     ObservableCollection<RadioLogEntry> RadioLog { get; }
+    ExternalOperationState EngineerPushState { get; }
 
     void SaveSettings();
+    void ResetSettingsToDefaults();
     void SaveControls();
     void SaveDevices();
     SavedDevice AddDevice(CatalogDevice catalog);
@@ -41,6 +43,7 @@ public interface IDesktopRuntime
     SetupProgram DuplicateSetup(SetupProgram source);
     void SaveSetupPrograms();
     void PushEngineerChanges();
+    void AcknowledgeEngineerChanges(bool succeeded);
     void RevertEngineerChanges();
     void SendQuickMessage(string message);
 }

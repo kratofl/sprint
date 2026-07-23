@@ -32,7 +32,7 @@ export const componentTokens = {
       itemBgHover: semanticTokens.color.platform.winui.controlHover,
       itemBgActive: semanticTokens.color.surface.inset,
       itemText: semanticTokens.color.platform.winui.textTertiary,
-      itemTextActive: semanticTokens.color.platform.winui.accent,
+      itemTextActive: semanticTokens.color.platform.winui.textPrimary,
       itemIndicator: semanticTokens.color.platform.winui.accent,
       border: semanticTokens.color.platform.winui.strokeSubtle,
       radius: semanticTokens.radius.control,
@@ -112,7 +112,7 @@ export const componentTokens = {
   nav: {
     railBg: semanticTokens.color.bg.deep,
     itemBgActive: semanticTokens.color.surface.inset,
-    itemTextActive: semanticTokens.color.action.primary,
+    itemTextActive: semanticTokens.color.text.primary,
     itemTextIdle: semanticTokens.color.text.muted,
     itemBorderActive: semanticTokens.color.action.primaryBorder,
     radius: semanticTokens.radius.control,

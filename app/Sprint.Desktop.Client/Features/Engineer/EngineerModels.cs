@@ -1,5 +1,13 @@
 namespace Sprint.Desktop.Features.Engineer;
 
+public enum ExternalOperationState
+{
+    Idle,
+    Pending,
+    Confirmed,
+    Failed,
+}
+
 public sealed class EngineerControl
 {
     public string Key { get; init; } = "";

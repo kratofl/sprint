@@ -34,6 +34,14 @@ internal sealed class SprintComponentTheme : Styles
         // Calm Precision control radius; content objects and overlays set their own.
         Resources["ControlCornerRadius"] = new CornerRadius(Graphite.RadiusMd);
 
+        // Keyboard focus is a functional mark, independent from selection. The
+        // Fluent templates consume these shared resources for focus visuals and
+        // focused input borders.
+        Resources["FocusVisualPrimaryBrush"] = Graphite.AccentBrush;
+        Resources["FocusVisualPrimaryThickness"] = new Thickness(Graphite.FocusThickness);
+        Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(Graphite.FocusThickness);
+        Resources["ComboBoxBorderThemeThicknessFocused"] = new Thickness(Graphite.FocusThickness);
+
         // Button surfaces. Pointer-over is the same component state brightened by
         // 10%, not a distinct fill/border treatment.
         Set("ButtonBackground", Graphite.Panel2Brush);

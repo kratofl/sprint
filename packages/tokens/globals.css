@@ -24,13 +24,16 @@
   --primitive-color-neutral-50: #F5F5F7;
 
   /* Primitive / Radius + Space */
-  --primitive-radius-panel: 12px;
-  --primitive-radius-card: 10px;
-  --primitive-radius-alert: 10px;
-  --primitive-radius-control: 7px;
-  --primitive-radius-tile: 10px;
-  --primitive-radius-icon: 7px;
-  --primitive-radius-badge: 4px;
+  --primitive-radius-nested: 6px;
+  --primitive-radius-control: 8px;
+  --primitive-radius-group: 12px;
+  --primitive-radius-overlay: 16px;
+  --primitive-radius-panel: var(--primitive-radius-group);
+  --primitive-radius-card: var(--primitive-radius-group);
+  --primitive-radius-alert: var(--primitive-radius-overlay);
+  --primitive-radius-tile: var(--primitive-radius-group);
+  --primitive-radius-icon: var(--primitive-radius-nested);
+  --primitive-radius-badge: var(--primitive-radius-nested);
   --primitive-radius-pill: 999px;
   --primitive-motion-duration-instant: 0ms;
   --primitive-motion-duration-fast: 120ms;
@@ -63,9 +66,12 @@
   --text2: #A1A1AA;
   --text3: #6F6F78;
   --accent: #FF6A00;
-  --radius: 10px;
+  --radius: var(--primitive-radius-group);
   --r: var(--radius);
   --radius-panel: var(--primitive-radius-panel);
+  --radius-nested: var(--primitive-radius-nested);
+  --radius-group: var(--primitive-radius-group);
+  --radius-overlay: var(--primitive-radius-overlay);
   --radius-alert: var(--primitive-radius-alert);
   --radius-control: var(--primitive-radius-control);
   --radius-tile: var(--primitive-radius-tile);
@@ -83,6 +89,17 @@
   --yellow: #E0A30C;
   --blue: #1F7FE6;
   --purple: #A06BFF;
+  --material-action: #FF6A00;
+  --material-selection: linear-gradient(180deg, #7A3204 0%, #421A02 100%);
+  --material-telemetry: linear-gradient(180deg, #FF9F0A 0%, #FF6A00 100%);
+  --icon-size-control: 16px;
+  --icon-size-navigation: 20px;
+  --icon-size-emphasis: 24px;
+  --focus-ring-color: var(--accent);
+  --focus-ring-thickness: 2px;
+  --motion-feedback: 0ms;
+  --motion-content-fade: 100ms;
+  --motion-spatial: 160ms;
 
   /* Typography stacks. Inter is the single UI family (see
      packages/tokens/src/atoms/typography.ts); display/body/ui share it. */
@@ -205,7 +222,7 @@
   --component-shell-nav-border: var(--line2);
   --component-shell-nav-item-hover-bg: var(--panel3);
   --component-shell-nav-item-active-bg: var(--panel-3);
-  --component-shell-nav-item-active-text: var(--accent);
+  --component-shell-nav-item-active-text: var(--text);
   --component-shell-nav-item-indicator: var(--accent);
   --component-shell-page-header-bg: var(--panel2);
   --component-shell-page-header-border: var(--line2);

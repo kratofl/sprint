@@ -21,7 +21,7 @@ function SegmentedControl({
   value,
   options,
   onChange,
-  variant = "accent",
+  variant = "neutral",
   className,
   ...props
 }: SegmentedControlProps) {
