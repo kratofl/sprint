@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/sprint_logo_icon.png" alt="Sprint" width="120" />
+  <img src="docs/sprint-ico.svg" alt="Sprint" width="120" />
   <h1>Sprint</h1>
   <p>Sim racing telemetry system — live data on your wheel, your engineer on voice, your setup in the cloud.</p>
 </div>

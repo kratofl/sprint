@@ -160,7 +160,9 @@ did not run.
   color.
 - Blue `#4F9CFF` is informational, advanced, and comparison.
 - Use the Graphite surface stack and 1px borders for depth. Do not revive old
-  glass, glow, gradient, or neumorphic directions.
+  glass, glow, neutral/decorative gradient, or neumorphic directions. Primary
+  orange is flat; only the restrained selection and telemetry gradients
+  explicitly defined in `docs/DESIGN.md` are permitted.
 - Reuse tokens from `packages/tokens` instead of inventing theme values.
 - Keep the Avalonia desktop shell aligned with the Graphite tokens in
   `app/Sprint.Desktop.Client/Graphite.cs` and `docs/DESIGN.md`.

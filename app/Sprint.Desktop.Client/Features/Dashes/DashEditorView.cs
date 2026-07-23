@@ -4,6 +4,7 @@ using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -36,6 +37,10 @@ public sealed class DashEditorView : UserControl
     // 1x1 grid at this size, so the card shows the real on-wheel rendering.
     private const int PreviewWidth = 200;
     private const int PreviewHeight = 40;
+    private const int ThemePreviewWidth = 240;
+    private const int ThemePreviewHeight = 144;
+    private const int AlertListWidth = 184;
+    private const int CompactAlertListWidth = 152;
 
     private static readonly (string Category, string[] Types)[] PaletteGroups =
     {
@@ -110,9 +115,9 @@ public sealed class DashEditorView : UserControl
     // Change-alert types the tracker understands (DashAlertTracker), with UI labels.
     private static readonly (string Type, string Label)[] AlertTypes =
     {
-        ("tc_change", "Traction control"),
+        ("tc_change", "TC"),
         ("abs_change", "ABS"),
-        ("enginemap_change", "Engine map"),
+        ("enginemap_change", "ENGINE MAP"),
     };
 
     private bool IsIdleActive => ReferenceEquals(_controller.ActivePage, _controller.Layout.IdlePage);
@@ -226,7 +231,7 @@ public sealed class DashEditorView : UserControl
             Margin = new Thickness(0, 8, 8, 8)
         };
 
-        var toolbar = BuildToolbar();
+        var toolbar = BuildToolbarArea();
         Grid.SetRow(toolbar, 0);
         Grid.SetColumnSpan(toolbar, _panel == EditorPanel.Inspector ? 3 : 1);
         root.Children.Add(toolbar);
@@ -267,11 +272,43 @@ public sealed class DashEditorView : UserControl
 
     // ── Toolbar ───────────────────────────────────────────────────────────────
 
+    private Control BuildToolbarArea()
+    {
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(BuildToolbar());
+        if (_controller.HasPersistenceFailure)
+        {
+            var recovery = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 10 };
+            recovery.Children.Add(Graphite.TextBlock(
+                _controller.PersistenceMessage ?? "Changes are retained in the editor. Retry saving.",
+                11,
+                FontWeight.Medium,
+                Graphite.RedBrush));
+            var retry = Graphite.Button("Retry", ButtonTone.Neutral);
+            retry.Click += (_, _) => _controller.RetryPersistence();
+            Grid.SetColumn(retry, 1);
+            recovery.Children.Add(retry);
+            stack.Children.Add(new Border
+            {
+                Background = Graphite.RedBgBrush,
+                BorderBrush = Graphite.RedBorderBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusControl),
+                Padding = new Thickness(10, 7),
+                Child = recovery,
+            });
+        }
+
+        return stack;
+    }
+
     private Control BuildToolbar()
     {
         var bar = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            RowDefinitions = new RowDefinitions(_compactLayout ? "Auto,Auto" : "Auto"),
+            RowSpacing = _compactLayout ? 6 : 0,
             MinHeight = 36,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -285,7 +322,14 @@ public sealed class DashEditorView : UserControl
         bar.Children.Add(left);
 
         // Center zone: screenshot Tab View for the editor surface.
-        var center = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var center = new StackPanel
+        {
+            Tag = "editor-panel-tabs",
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         center.Children.Add(Graphite.TabView(new[] { "Layout", "Alerts", "Settings" }, _panel switch
         {
             EditorPanel.Alerts => 1,
@@ -301,13 +345,26 @@ public sealed class DashEditorView : UserControl
             };
             Rebuild();
         }));
-        Grid.SetColumn(center, 1);
+        Grid.SetColumn(center, _compactLayout ? 0 : 1);
+        if (_compactLayout)
+        {
+            Grid.SetRow(center, 1);
+            Grid.SetColumnSpan(center, 3);
+        }
+
         bar.Children.Add(center);
 
         // Right zone: target size, preview state, and the explicit hardware action.
         // Page navigation already has one dedicated strip above the canvas; do not
         // duplicate it with a second inert Pages/Widgets segmented control.
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var actions = new StackPanel
+        {
+            Tag = "editor-toolbar-actions",
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         var mode = Graphite.Segmented(["Basic", "Advanced"], _controller.IsAdvancedMode ? 1 : 0,
             index => _controller.SetMode(index == 1 ? "advanced" : "basic"));
         ToolTip.SetTip(mode, "Basic: direct editing and essential settings. Advanced: exact grid, styles, and widget stacks.");
@@ -376,9 +433,10 @@ public sealed class DashEditorView : UserControl
             Text = _controller.Layout.Name,
             Width = 180,
             MinHeight = 30,
-            Padding = new Thickness(8, 3),
+            Padding = new Thickness(8, 0),
             FontFamily = Graphite.FontStackMedium,
             FontSize = 13,
+            VerticalContentAlignment = VerticalAlignment.Center,
             Background = Graphite.Panel2Brush,
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
@@ -521,11 +579,13 @@ public sealed class DashEditorView : UserControl
         header.Children.Add(collapse);
         stack.Children.Add(header);
 
-        stack.Children.Add(Graphite.Segmented(["Pages", "Widgets"], _sidebarSurface == SidebarSurface.Pages ? 0 : 1, index =>
+        var surfaceSwitcher = Graphite.Segmented(["Pages", "Widgets"], _sidebarSurface == SidebarSurface.Pages ? 0 : 1, index =>
         {
             _sidebarSurface = index == 0 ? SidebarSurface.Pages : SidebarSurface.Widgets;
             Rebuild();
-        }));
+        }, stretch: true);
+        surfaceSwitcher.Tag = "palette-surface-switcher";
+        stack.Children.Add(surfaceSwitcher);
 
         if (_sidebarSurface == SidebarSurface.Pages)
         {
@@ -874,7 +934,7 @@ public sealed class DashEditorView : UserControl
             },
         };
 
-        var bitmap = DashImageRenderer.Render(layout, _frameProvider(), _settings, PreviewWidth, PreviewHeight, pageId: "preview", palette: DashPalette.FromTheme(_controller.Layout.Theme));
+        var bitmap = DashImageRenderer.Render(layout, _frameProvider(), _settings, PreviewWidth, PreviewHeight, pageId: "preview", palette: DashPalette.FromLayout(_controller.Layout));
         _previewCache[type] = bitmap;
         return bitmap;
     }
@@ -953,7 +1013,7 @@ public sealed class DashEditorView : UserControl
             CanvasHeight,
             pageId: isIdle ? null : _controller.ActivePageId,
             idle: isIdle,
-            palette: DashPalette.FromTheme(_controller.Layout.Theme));
+            palette: DashPalette.FromLayout(_controller.Layout));
         _canvas.Children.Add(new Image { Width = CanvasWidth, Height = CanvasHeight, Source = _canvasBitmap, Stretch = Stretch.Fill });
 
         if (_showGrid && _controller.IsAdvancedMode)
@@ -1846,110 +1906,156 @@ public sealed class DashEditorView : UserControl
         _ => Graphite.Panel2Brush,
     };
 
-    private static string TokenHex(string token) => token.ToLowerInvariant() switch
-    {
-        "ember" => "#FF6A00",
-        "blue" => "#1F7FE6",
-        "green" => "#16B566",
-        "yellow" => "#E0A30C",
-        "red" => "#F02744",
-        "white" => "#F6F6F6",
-        "muted" => "#7A7A7A",
-        _ => "#FF6A00",
-    };
-
     // ── Theme manager ─────────────────────────────────────────────────────────
 
     private Control BuildThemePanel()
     {
-        var theme = _controller.SelectedTheme;
-        var stack = new StackPanel { Spacing = 12 };
+        var stack = new StackPanel { Spacing = 8 };
         stack.Children.Add(Graphite.SectionLabel("Theme presets"));
         stack.Children.Add(Graphite.TextBlock(
-            "Recolour the whole layout. Applies to the on-wheel render, previews, and thumbnails.",
+            "Choose a complete visual direction. Graphite preserves functional racing colors; optical presets apply their representative accent.",
             12, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap));
 
-        var activePreset = DashThemePresets.MatchName(_controller.Layout.Theme);
-        var presets = new WrapPanel { Orientation = Orientation.Horizontal };
+        var activePreset = DashThemePresets.MatchName(_controller.Layout);
+        var presets = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            ItemWidth = 260,
+            ItemHeight = 206,
+        };
+        var frame = DashPreviewFrames.For(DashPreviewState.Redline);
         foreach (var preset in DashThemePresets.All)
         {
-            var button = Graphite.Button(preset.Name, string.Equals(preset.Name, activePreset, StringComparison.Ordinal) ? ButtonTone.Primary : ButtonTone.Neutral);
-            button.Margin = new Thickness(0, 0, 6, 6);
-            button.Click += (_, _) => _controller.ApplyThemePreset(preset.Theme);
-            presets.Children.Add(button);
+            presets.Children.Add(ThemePresetCard(
+                preset,
+                frame,
+                string.Equals(preset.Name, activePreset, StringComparison.Ordinal)));
         }
 
-        var presetCol = new StackPanel { Spacing = 4 };
-        presetCol.Children.Add(Graphite.TextBlock("Preset", 11, FontWeight.Normal, Graphite.Text2Brush));
-        presetCol.Children.Add(presets);
-        stack.Children.Add(presetCol);
-
-        stack.Children.Add(Divider());
-        stack.Children.Add(ThemeColorRow("Primary", theme.Primary, hex => _controller.SetThemePrimary(hex)));
-        stack.Children.Add(ThemeColorRow("Accent", theme.Accent, hex => _controller.SetThemeAccent(hex)));
-
-        stack.Children.Add(Divider());
-        var reset = Graphite.Button("Reset to default", ButtonTone.Neutral);
-        reset.HorizontalAlignment = HorizontalAlignment.Stretch;
-        reset.Click += (_, _) => _controller.ResetTheme();
-        stack.Children.Add(reset);
+        stack.Children.Add(presets);
 
         return EditorPanelSurface(new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
     }
 
-    // A colour row whose swatches store the picked Graphite token's hex on the theme
-    // (Default clears the override). Reuses the shared Swatch visual from the inspector.
-    private Control ThemeColorRow(string label, string? currentHex, Action<string?> setHex)
+    private Control ThemePresetCard(DashThemePresets.Preset preset, TelemetryFrame frame, bool selected)
     {
-        var col = new StackPanel { Spacing = 4 };
-        col.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Normal, Graphite.Text2Brush));
+        var colorSystem = preset.Theme.IsEmpty ? DashColorSystem.Functional : DashColorSystem.Styled;
+        var preview = DashImageRenderer.Render(
+            _controller.Layout,
+            frame,
+            _settings,
+            ThemePreviewWidth,
+            ThemePreviewHeight,
+            _controller.ActivePageId,
+            palette: DashPalette.FromTheme(preset.Theme, colorSystem));
 
-        var swatches = new WrapPanel { Orientation = Orientation.Horizontal };
-        swatches.Children.Add(Swatch("Default", null, string.IsNullOrEmpty(currentHex), _ => setHex(null)));
-        foreach (var token in DashPalette.StyleColorTokens)
+        var swatch = new Border
         {
-            var hex = TokenHex(token);
-            var selected = string.Equals(currentHex, hex, StringComparison.OrdinalIgnoreCase);
-            swatches.Children.Add(Swatch(token, token, selected, _ => setHex(hex)));
+            Tag = "theme-primary-swatch",
+            Width = 12,
+            Height = 12,
+            CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            Background = new SolidColorBrush(Color.Parse(preset.SwatchColor)),
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var label = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        label.Children.Add(swatch);
+        label.Children.Add(Graphite.TextBlock(preset.Name, 13, FontWeight.Medium, Graphite.TextBrush));
+        if (selected)
+        {
+            label.Children.Add(Graphite.TextBlock("Selected", 11, FontWeight.Normal, Graphite.AccentBrush));
         }
 
-        col.Children.Add(swatches);
-        return col;
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new Border
+        {
+            Width = ThemePreviewWidth,
+            Height = ThemePreviewHeight,
+            Background = Graphite.BgBrush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            ClipToBounds = true,
+            Child = new Image
+            {
+                Source = preview,
+                Stretch = Stretch.Fill,
+                Width = ThemePreviewWidth,
+                Height = ThemePreviewHeight,
+            },
+        });
+        content.Children.Add(label);
+
+        var button = new Button
+        {
+            Tag = $"theme-preset-{preset.Name.ToLowerInvariant()}",
+            Content = content,
+            Width = 252,
+            Height = 198,
+            Padding = new Thickness(6),
+            Margin = new Thickness(0, 0, 8, 8),
+            Background = selected ? Graphite.Panel3Brush : Graphite.Panel2Brush,
+            BorderBrush = selected ? Graphite.AccentBrush : Graphite.LineBrush,
+            BorderThickness = new Thickness(selected ? 2 : 1),
+            CornerRadius = new CornerRadius(Graphite.RadiusGroup),
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            VerticalContentAlignment = VerticalAlignment.Top,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        AutomationProperties.SetName(button, $"{preset.Name} theme, representative color {preset.SwatchColor}");
+        button.Click += (_, _) => _controller.ApplyThemePreset(preset.Theme);
+        return button;
     }
 
     // ── Alerts editor ─────────────────────────────────────────────────────────
 
     private Control BuildAlertsPanel()
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,320"), Margin = new Thickness(12, 0, 4, 0) };
+        var alertListWidth = _compactLayout ? CompactAlertListWidth : AlertListWidth;
+        var settingsWidth = _compactLayout ? CompactInspectorWidth : 320;
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions($"{alertListWidth},*,{settingsWidth}"),
+            ColumnSpacing = 12,
+            Margin = new Thickness(0, 0, 4, 0),
+        };
+
+        var alertList = BuildAlertPopupList();
+        Grid.SetColumn(alertList, 0);
+        grid.Children.Add(alertList);
 
         var canvasColumn = new StackPanel { Spacing = 12, HorizontalAlignment = HorizontalAlignment.Center };
         canvasColumn.Children.Add(Graphite.TextBlock("Alert canvas", 14, FontWeight.Medium, Graphite.TextBrush));
         canvasColumn.Children.Add(Graphite.TextBlock(
             "Drag the alert to position it. Drag the lower-right handle to resize.",
             11, FontWeight.Normal, Graphite.Text3Brush));
-        canvasColumn.Children.Add(Graphite.Segmented(AlertTypes.Select(item => item.Label).ToArray(),
-            Math.Max(0, Array.FindIndex(AlertTypes, item => string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase))),
-            index =>
-            {
-                _selectedAlertType = AlertTypes[Math.Clamp(index, 0, AlertTypes.Length - 1)].Type;
-                Rebuild();
-            }));
 
         var alert = _controller.GetAlert(_selectedAlertType);
         if (alert is null)
         {
-            var enable = Graphite.Button("Enable this alert", ButtonTone.Primary);
-            enable.HorizontalAlignment = HorizontalAlignment.Center;
-            enable.Click += (_, _) => _controller.SetAlert(_selectedAlertType, true);
-            canvasColumn.Children.Add(enable);
+            canvasColumn.Children.Add(AlertDisabledMessage());
         }
         else
         {
-            canvasColumn.Children.Add(BuildAlertCanvas(alert));
+            canvasColumn.Children.Add(new Viewbox
+            {
+                MaxWidth = CanvasWidth,
+                Stretch = Stretch.Uniform,
+                StretchDirection = StretchDirection.DownOnly,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Child = BuildAlertCanvas(alert),
+            });
         }
 
-        Grid.SetColumn(canvasColumn, 0);
+        Grid.SetColumn(canvasColumn, 1);
         grid.Children.Add(canvasColumn);
 
         var settings = new StackPanel { Spacing = 12 };
@@ -1957,14 +2063,175 @@ public sealed class DashEditorView : UserControl
         settings.Children.Add(Divider());
         settings.Children.Add(BuildIndividualAlertSettings(alert));
         var settingsSurface = EditorPanelSurface(new ScrollViewer { Content = settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        Grid.SetColumn(settingsSurface, 1);
+        Grid.SetColumn(settingsSurface, 2);
         grid.Children.Add(settingsSurface);
         return grid;
     }
 
+    private Control BuildAlertPopupList()
+    {
+        var surface = new StackPanel { Spacing = 10 };
+        surface.Children.Add(Graphite.SectionLabel("Popups"));
+        surface.Children.Add(Graphite.TextBlock(
+            "Select a popup to edit. Use its switch to show or hide it.",
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap));
+
+        var list = new StackPanel
+        {
+            Tag = "alert-popup-list",
+            Spacing = 6,
+        };
+        foreach (var item in AlertTypes)
+        {
+            var selected = string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase);
+            var enabled = _controller.IsAlertEnabled(item.Type);
+            var row = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                ColumnSpacing = 8,
+            };
+            var selectorContent = Graphite.TextBlock(
+                item.Label,
+                12,
+                selected ? FontWeight.Bold : FontWeight.Medium,
+                selected ? Graphite.TextBrush : Graphite.Text2Brush);
+            selectorContent.VerticalAlignment = VerticalAlignment.Center;
+            selectorContent.Margin = new Thickness(10, 8);
+            var selectorSurface = new Grid
+            {
+                Background = Brushes.Transparent,
+            };
+            selectorSurface.Children.Add(selectorContent);
+            var selector = new Button
+            {
+                Tag = $"alert-selector:{item.Type}",
+                Template = new FuncControlTemplate<Button>((_, _) => selectorSurface),
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                MinHeight = 40,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+            AutomationProperties.SetName(selector, $"{(selected ? "Selected, " : "")}edit {item.Label} popup");
+            selector.Click += (_, _) =>
+            {
+                _selectedAlertType = item.Type;
+                Rebuild();
+            };
+            Grid.SetColumnSpan(selector, 2);
+            row.Children.Add(selector);
+
+            var toggle = AlertPopupToggle(enabled, on => _controller.SetAlert(item.Type, on));
+            toggle.Tag = $"alert-toggle:{item.Type}";
+            toggle.HorizontalAlignment = HorizontalAlignment.Right;
+            toggle.Margin = new Thickness(0, 0, 10, 0);
+            AutomationProperties.SetName(toggle, $"{(enabled ? "Disable" : "Enable")} {item.Label} popup");
+            Grid.SetColumn(toggle, 1);
+            row.Children.Add(toggle);
+
+            var rowContainer = new Border
+            {
+                Tag = $"alert-row:{item.Type}",
+                Background = selected ? Graphite.Panel3Brush : Graphite.Panel2Brush,
+                BorderBrush = Graphite.LineBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusControl),
+                Padding = new Thickness(0),
+                Child = row,
+            };
+            selector.GotFocus += (_, _) =>
+            {
+                rowContainer.BorderBrush = Graphite.AccentBrush;
+                rowContainer.BorderThickness = new Thickness(Graphite.FocusThickness);
+            };
+            selector.LostFocus += (_, _) =>
+            {
+                rowContainer.BorderBrush = Graphite.LineBrush;
+                rowContainer.BorderThickness = new Thickness(1);
+            };
+            list.Children.Add(rowContainer);
+        }
+
+        surface.Children.Add(list);
+        return new Border
+        {
+            Background = Graphite.PanelBrush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(0, 0, 1, 0),
+            Padding = new Thickness(12),
+            Child = surface,
+        };
+    }
+
+    private static ToggleButton AlertPopupToggle(bool enabled, Action<bool> set)
+    {
+        var knob = new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            Background = Graphite.TextBrush,
+            HorizontalAlignment = enabled ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(3, 0),
+        };
+        var track = new Border
+        {
+            Width = 44,
+            Height = 24,
+            Background = enabled ? Graphite.GreenBrush : Graphite.Panel2Brush,
+            BorderBrush = enabled ? Graphite.GreenBrush : Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            Child = knob,
+        };
+        var toggle = new ToggleButton
+        {
+            IsChecked = enabled,
+            Template = new FuncControlTemplate<ToggleButton>((_, _) => track),
+            Width = 44,
+            MinWidth = 44,
+            Height = 24,
+            MinHeight = 24,
+            Padding = new Thickness(0),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        toggle.Click += (_, _) => set(toggle.IsChecked == true);
+        toggle.GotFocus += (_, _) =>
+        {
+            track.BorderBrush = Graphite.AccentBrush;
+            track.BorderThickness = new Thickness(2);
+        };
+        toggle.LostFocus += (_, _) =>
+        {
+            track.BorderBrush = enabled ? Graphite.GreenBrush : Graphite.LineBrush;
+            track.BorderThickness = new Thickness(1);
+        };
+        return toggle;
+    }
+
+    private static TextBlock AlertDisabledMessage() => Graphite.TextBlock(
+        "Enable this popup from the list to configure it.",
+        11,
+        FontWeight.Normal,
+        Graphite.Text3Brush,
+        TextWrapping.Wrap);
+
     private Control BuildAlertCanvas(DashAlert alert)
     {
-        var palette = DashPalette.FromTheme(_controller.Layout.Theme);
+        var palette = DashPalette.FromLayout(_controller.Layout);
         _alertPreviewBitmap = DashImageRenderer.RenderReusing(
             _alertPreviewBitmap,
             _controller.Layout,
@@ -2178,10 +2445,9 @@ public sealed class DashEditorView : UserControl
         var stack = new StackPanel { Spacing = 10 };
         var label = AlertTypes.First(item => string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase)).Label;
         stack.Children.Add(Graphite.SectionLabel(label));
-        var enabled = _controller.IsAlertEnabled(_selectedAlertType);
-        stack.Children.Add(AlertToggleRow("Enabled", enabled, on => _controller.SetAlert(_selectedAlertType, on)));
         if (alert is null)
         {
+            stack.Children.Add(AlertDisabledMessage());
             return stack;
         }
 
@@ -2191,7 +2457,7 @@ public sealed class DashEditorView : UserControl
         if (alert.UsesGlobalSettings)
         {
             stack.Children.Add(Graphite.TextBlock(
-                $"{AlertColorName(effective.ColorToken, alert.Type)} · {effective.DurationSeconds:0.0}s · {(effective.InvertColors ? "Inverted" : "Normal")}",
+                $"{AlertColorName(effective.ColorToken)} · {effective.DurationSeconds:0.0}s · {(effective.InvertColors ? "Inverted" : "Normal")}",
                 12, FontWeight.Medium, AlertTokenBrush(effective.ColorToken, alert.Type)));
             return stack;
         }
@@ -2208,59 +2474,131 @@ public sealed class DashEditorView : UserControl
     {
         var stack = new StackPanel { Spacing = 5 };
         stack.Children.Add(Graphite.TextBlock(label, 11, FontWeight.Normal, Graphite.Text2Brush));
-        var row = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var token in new[] { "auto", "blue", "ember", "green", "yellow", "red", "white" })
+        var currentToken = DashThemePresets.CanonicalAlertColorToken(current);
+        if (DashThemePresets.FindByAlertColorToken(currentToken) is null && !string.IsNullOrWhiteSpace(currentToken))
         {
-            var selected = string.Equals(current, token, StringComparison.OrdinalIgnoreCase);
-            var swatch = new Border
+            var legacyContent = new StackPanel
             {
-                Width = 28,
-                Height = 28,
-                Margin = new Thickness(0, 0, 7, 4),
-                Background = AlertTokenBrush(token, type),
-                BorderBrush = selected ? Graphite.TextBrush : Graphite.Line2Brush,
-                BorderThickness = new Thickness(selected ? 2 : 1),
-                CornerRadius = new CornerRadius(7),
-                Cursor = new Cursor(StandardCursorType.Hand),
-                Focusable = true,
-                Tag = $"alert-color:{token}",
+                Orientation = Orientation.Horizontal,
+                Spacing = 7,
+                VerticalAlignment = VerticalAlignment.Center,
             };
-            AutomationProperties.SetName(swatch, $"{AlertColorName(token, type)} alert color");
-            ToolTip.SetTip(swatch, AlertColorName(token, type));
-            swatch.PointerPressed += (_, _) => onPick(token);
-            swatch.KeyDown += (_, e) =>
+            legacyContent.Children.Add(new Border
             {
-                if (e.Key is Key.Enter or Key.Space)
-                {
-                    onPick(token);
-                    e.Handled = true;
-                }
-            };
-            swatch.GotFocus += (_, _) =>
+                Width = 14,
+                Height = 14,
+                Background = AlertTokenBrush(currentToken, type),
+                BorderBrush = Graphite.Line2Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            });
+            legacyContent.Children.Add(Graphite.TextBlock(
+                $"Legacy color · {char.ToUpperInvariant(currentToken[0]) + currentToken[1..]}",
+                11,
+                FontWeight.Medium,
+                Graphite.Text2Brush));
+            var legacy = new Border
             {
-                swatch.BorderBrush = Graphite.AccentBrush;
-                swatch.BorderThickness = new Thickness(2);
+                Tag = "alert-color-legacy",
+                Background = Graphite.Panel2Brush,
+                BorderBrush = Graphite.LineBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusControl),
+                Padding = new Thickness(8, 7),
+                Margin = new Thickness(0, 0, 0, 1),
+                Child = legacyContent,
             };
-            swatch.LostFocus += (_, _) =>
-            {
-                swatch.BorderBrush = selected ? Graphite.TextBrush : Graphite.Line2Brush;
-                swatch.BorderThickness = new Thickness(selected ? 2 : 1);
-            };
-            row.Children.Add(swatch);
+            AutomationProperties.SetName(legacy, $"Legacy {currentToken} alert color");
+            stack.Children.Add(legacy);
         }
-        stack.Children.Add(row);
+
+        var themes = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var preset in DashThemePresets.All)
+        {
+            var token = preset.AlertColorToken;
+            var selected = string.Equals(currentToken, token, StringComparison.OrdinalIgnoreCase);
+            var content = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                ColumnSpacing = 7,
+            };
+            var indicator = new Border
+            {
+                Tag = $"alert-color-indicator:{preset.Name.ToLowerInvariant()}",
+                Width = 14,
+                Height = 14,
+                Background = AlertThemeIndicatorBrush(preset, type),
+                BorderBrush = Graphite.Line2Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusPill),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            content.Children.Add(indicator);
+            var nameText = Graphite.TextBlock(preset.Name, 11, FontWeight.Medium, Graphite.Text2Brush);
+            nameText.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(nameText, 1);
+            content.Children.Add(nameText);
+            if (selected)
+            {
+                var check = Icons.Create("check", 12, Graphite.TextBrush);
+                Grid.SetColumn(check, 2);
+                content.Children.Add(check);
+            }
+
+            var button = new Button
+            {
+                Tag = $"alert-color:{preset.Name.ToLowerInvariant()}",
+                Content = content,
+                Width = 132,
+                MinHeight = 34,
+                Margin = new Thickness(0, 0, 6, 6),
+                Padding = new Thickness(8, 5),
+                Background = selected ? Graphite.Panel3Brush : Graphite.Panel2Brush,
+                BorderBrush = selected ? Graphite.AccentBrush : Graphite.LineBrush,
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                CornerRadius = new CornerRadius(Graphite.RadiusControl),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+            AutomationProperties.SetName(button, $"{preset.Name} alert color{(selected ? ", selected" : string.Empty)}");
+            button.Click += (_, _) => onPick(token);
+            themes.Children.Add(button);
+        }
+        stack.Children.Add(themes);
         return stack;
     }
 
-    private static Control AlertInvertRow(bool value, Action<bool> set) => AlertToggleRow("Invert colors", value, set);
+    private IBrush AlertThemeIndicatorBrush(DashThemePresets.Preset preset, string type)
+    {
+        if (!string.Equals(preset.AlertColorToken, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SolidColorBrush(Color.Parse(preset.SwatchColor));
+        }
 
-    private static Control AlertToggleRow(string label, bool value, Action<bool> set)
+        return AlertTokenBrush("auto", type);
+    }
+
+    private static Control AlertInvertRow(bool value, Action<bool> set)
+    {
+        var stack = new StackPanel { Spacing = 3 };
+        stack.Children.Add(AlertToggleRow("Invert colors", value: false, set, enabled: false));
+        stack.Children.Add(Graphite.TextBlock(
+            "Critical alerts only · preview remains stable.",
+            10,
+            FontWeight.Normal,
+            Graphite.Text3Brush));
+        ToolTip.SetTip(stack, "Parameter-change alerts are not Critical and cannot invert.");
+        return stack;
+    }
+
+    private static Control AlertToggleRow(string label, bool value, Action<bool> set, bool enabled = true)
     {
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var text = Graphite.TextBlock(label, 12, FontWeight.Medium, Graphite.Text2Brush);
         text.VerticalAlignment = VerticalAlignment.Center;
         row.Children.Add(text);
-        var toggle = Graphite.Toggle(value, set);
+        var toggle = Graphite.Toggle(value, set, enabled);
         Grid.SetColumn(toggle, 1);
         row.Children.Add(toggle);
         return row;
@@ -2273,26 +2611,47 @@ public sealed class DashEditorView : UserControl
         _ => ("TRACTION CONTROL", "5"),
     };
 
-    private static IBrush AlertTokenBrush(string token, string type) => token.ToLowerInvariant() switch
+    private IBrush AlertTokenBrush(string token, string type)
     {
-        "blue" => Graphite.BlueBrush,
-        "ember" or "primary" => Graphite.AccentBrush,
-        "green" => Graphite.GreenBrush,
-        "yellow" => Graphite.YellowBrush,
-        "red" => Graphite.RedBrush,
-        "white" => Graphite.TextBrush,
-        _ => type switch
+        var preset = DashThemePresets.FindByAlertColorToken(token);
+        if (preset is not null && !string.Equals(preset.AlertColorToken, "auto", StringComparison.OrdinalIgnoreCase))
         {
-            "abs_change" => Graphite.YellowBrush,
-            "enginemap_change" => Graphite.AccentBrush,
-            _ => Graphite.BlueBrush,
-        },
-    };
+            return new SolidColorBrush(Color.Parse(preset.SwatchColor));
+        }
 
-    private static string AlertColorName(string token, string type) =>
-        string.Equals(token, "auto", StringComparison.OrdinalIgnoreCase)
-            ? $"Auto · {(type == "abs_change" ? "Yellow" : type == "enginemap_change" ? "Orange" : "Blue")}"
-            : char.ToUpperInvariant(token[0]) + token[1..];
+        return token.ToLowerInvariant() switch
+        {
+            "yellow" => AlertWarningBrush(),
+            _ => AlertFallbackBrush(type),
+        };
+    }
+
+    private IBrush AlertWarningBrush()
+    {
+        var color = DashPalette.FromLayout(_controller.Layout).Warning;
+        return AlertSkiaBrush(color);
+    }
+
+    private IBrush AlertFallbackBrush(string type)
+    {
+        var palette = DashPalette.FromLayout(_controller.Layout);
+        var color = type switch
+        {
+            "abs_change" => palette.Warning,
+            "enginemap_change" => palette.Primary,
+            _ => palette.AssistActive,
+        };
+        return AlertSkiaBrush(color);
+    }
+
+    private static IBrush AlertSkiaBrush(SkiaSharp.SKColor color)
+    {
+        return new SolidColorBrush(Color.FromArgb(color.Alpha, color.Red, color.Green, color.Blue));
+    }
+
+    private static string AlertColorName(string token) =>
+        DashThemePresets.FindByAlertColorToken(token)?.Name
+        ?? char.ToUpperInvariant(token[0]) + token[1..];
 
     private static Control DurationRow(double value, Action decrement, Action increment)
     {

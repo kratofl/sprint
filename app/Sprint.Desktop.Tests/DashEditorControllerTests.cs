@@ -211,17 +211,25 @@ public sealed class DashEditorControllerTests
         var ice = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme;
         controller.ApplyThemePreset(ice);
         Assert.Equal("#1F7FE6", controller.Layout.Theme!.Primary);
-        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout.Theme));
-
-        controller.SetThemeAccent("#FF6A00");
-        Assert.Equal("#FF6A00", controller.Layout.Theme!.Accent);
-
-        controller.ResetTheme();
-        Assert.Null(controller.Layout.Theme);
+        Assert.Equal("Ice", DashThemePresets.MatchName(controller.Layout));
 
         // The empty "Graphite" preset clears the theme rather than persisting an empty object.
         controller.ApplyThemePreset(DashThemePresets.All.First(preset => preset.Name == "Graphite").Theme);
         Assert.Null(controller.Layout.Theme);
+    }
+
+    [Fact]
+    public void ThemePresetMatchingUsesTheRenderedColorSystemAndEveryPersistedCondition()
+    {
+        var customStyled = NewLayout();
+        customStyled.ColorSystem = DashColorSystem.Styled;
+        customStyled.Theme = new DashTheme { ColdLow = "#123456" };
+        Assert.Null(DashThemePresets.MatchName(customStyled));
+
+        var functionalWithIgnoredOpticalTheme = NewLayout();
+        functionalWithIgnoredOpticalTheme.ColorSystem = DashColorSystem.Functional;
+        functionalWithIgnoredOpticalTheme.Theme = DashThemePresets.All.First(preset => preset.Name == "Ice").Theme.Clone();
+        Assert.Equal("Graphite", DashThemePresets.MatchName(functionalWithIgnoredOpticalTheme));
     }
 
     [Fact]
@@ -390,6 +398,34 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
+    public void FailedOptimisticPersistenceRetainsTheEditAndSupportsRetryWithoutSuccessNoise()
+    {
+        var fail = true;
+        var saves = 0;
+        var controller = new DashEditorController(NewLayout(), _ =>
+        {
+            saves++;
+            if (fail)
+            {
+                throw new IOException("disk unavailable");
+            }
+        });
+
+        controller.SetMode("advanced");
+
+        Assert.True(controller.IsAdvancedMode);
+        Assert.True(controller.HasPersistenceFailure);
+        Assert.Equal("Changes are retained in the editor. Retry saving.", controller.PersistenceMessage);
+        Assert.Equal(1, saves);
+
+        fail = false;
+        Assert.True(controller.RetryPersistence());
+        Assert.False(controller.HasPersistenceFailure);
+        Assert.Null(controller.PersistenceMessage);
+        Assert.Equal(2, saves);
+    }
+
+    [Fact]
     public void AlertGeometryAndIndividualOverridesPersistIndependently()
     {
         var saves = 0;
@@ -407,7 +443,7 @@ public sealed class DashEditorControllerTests
         controller.SetAlertDuration("tc_change", 2.4);
         controller.SetAlertInvertColors("tc_change", true);
         var effective = controller.EffectiveAlertConfig("tc_change");
-        Assert.Equal("blue", effective.ColorToken);
+        Assert.Equal("ice", effective.ColorToken);
         Assert.Equal(2.4, effective.DurationSeconds);
         Assert.True(effective.InvertColors);
 
@@ -434,7 +470,7 @@ public sealed class DashEditorControllerTests
         Assert.False(controller.IsAlertEnabled("abs_change"));
         Assert.Same(alert, controller.GetAlert("abs_change"));
         Assert.Equal((2, 4, 12, 5), (alert.Col, alert.Row, alert.ColSpan, alert.RowSpan));
-        Assert.Equal("red", alert.ColorToken);
+        Assert.Equal("crimson", alert.ColorToken);
 
         controller.SetAlert("abs_change", true);
         Assert.True(controller.IsAlertEnabled("abs_change"));

@@ -172,6 +172,45 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void ResetSettingsToDefaultsRestoresAndPersistsTheBundledPreferences()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            runtime.Settings.SidebarCollapsed = true;
+            runtime.Settings.DriverName = "Changed Driver";
+            runtime.Settings.DriverNumber = "99";
+            runtime.Settings.UpdateChannel = "alpha";
+            runtime.Settings.DashEditorUI.Palette.Open = false;
+            runtime.Settings.DashEditorUI.Inspector.Pinned = false;
+            runtime.Settings.NewDashDefaults.Mode = "advanced";
+            runtime.SaveSettings();
+
+            runtime.ResetSettingsToDefaults();
+
+            Assert.False(runtime.Settings.SidebarCollapsed);
+            Assert.Equal("Your Name", runtime.Settings.DriverName);
+            Assert.Equal("22", runtime.Settings.DriverNumber);
+            Assert.Equal("stable", runtime.Settings.UpdateChannel);
+            Assert.True(runtime.Settings.DashEditorUI.Palette.Open);
+            Assert.True(runtime.Settings.DashEditorUI.Inspector.Pinned);
+            Assert.Equal("basic", runtime.Settings.NewDashDefaults.Mode);
+
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            Assert.False(reloaded.Settings.SidebarCollapsed);
+            Assert.Equal("Your Name", reloaded.Settings.DriverName);
+            Assert.True(reloaded.Settings.DashEditorUI.Palette.Open);
+            Assert.Equal("basic", reloaded.Settings.NewDashDefaults.Mode);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SaveSettingsPublishesRenderProfile()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -790,6 +829,92 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(wide.GridCols, created.GridCols);
             Assert.Equal(wide.GridRows, created.GridRows);
             Assert.True(DashLayoutValidator.IsValid(created));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void NewDashboardsDefaultToFunctionalColorSystemAndPersistItExplicitly()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            var created = runtime.CreateDashLayout();
+
+            Assert.Equal(DashColorSystem.Functional, created.ColorSystem);
+            Assert.Equal(DashColorSystem.Functional, created.EffectiveColorSystem);
+            Assert.Null(created.Theme);
+            var json = File.ReadAllText(Path.Combine(dataRoot, "dash-layouts", $"{created.Id}.json"));
+            Assert.Contains("\"colorSystem\": \"functional\"", json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LegacyDashboardColorSystemsMigrateWithoutChangingAuthoredThemeValues()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var layouts = Path.Combine(dataRoot, "dash-layouts");
+            Directory.CreateDirectory(layouts);
+            File.WriteAllText(Path.Combine(layouts, "plain.json"),
+                """
+                { "id": "plain", "name": "Plain", "gridCols": 20, "gridRows": 12, "pages": [] }
+                """);
+            File.WriteAllText(Path.Combine(layouts, "authored.json"),
+                """
+                {
+                  "id": "authored", "name": "Authored", "gridCols": 20, "gridRows": 12, "pages": [],
+                  "theme": { "primary": "#123456", "accent": "#654321" }
+                }
+                """);
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            var plain = runtime.DashLayouts.Single(layout => layout.Id == "plain");
+            var authored = runtime.DashLayouts.Single(layout => layout.Id == "authored");
+            Assert.Equal(DashColorSystem.Functional, plain.ColorSystem);
+            Assert.Equal(DashColorSystem.Styled, authored.ColorSystem);
+            Assert.Equal("#123456", authored.Theme!.Primary);
+            Assert.Equal("#654321", authored.Theme.Accent);
+            Assert.Contains("\"colorSystem\": \"functional\"", File.ReadAllText(Path.Combine(layouts, "plain.json")), StringComparison.Ordinal);
+            Assert.Contains("\"colorSystem\": \"styled\"", File.ReadAllText(Path.Combine(layouts, "authored.json")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SavingStyledDashboardCoercesProtectedConditionColors()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.DashLayouts.First();
+            layout.ColorSystem = DashColorSystem.Styled;
+            layout.Theme = new DashTheme { Critical = "#123456", Fault = "#654321", Warning = "#AABBCC" };
+
+            runtime.SaveDashLayout(layout);
+
+            Assert.Equal("#F02744", layout.Theme.Critical);
+            Assert.Equal("#F02744", layout.Theme.Fault);
+            Assert.Equal("#AABBCC", layout.Theme.Warning);
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot)
+                .DashLayouts.Single(candidate => candidate.Id == layout.Id);
+            Assert.Equal("#F02744", reloaded.Theme!.Critical);
+            Assert.Equal("#F02744", reloaded.Theme.Fault);
         }
         finally
         {
