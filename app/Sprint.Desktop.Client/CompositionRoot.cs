@@ -23,7 +23,14 @@ internal static class CompositionRoot
         var runtime = new DesktopRuntime(log: AppDiagnostics.Log);
         var shell = new ShellState(runtime.Settings.SidebarCollapsed);
         var telemetry = CreateTelemetrySource();
-        return new MainWindow(runtime, shell, telemetry);
+        return new MainWindow(
+            runtime,
+            shell,
+            telemetry,
+            AppDiagnostics.Log,
+            AppDiagnostics.LiveLog,
+            screenDriverFactory: null,
+            diagnosticsPaths: AppDiagnostics.Paths);
     }
 
     internal static ITelemetrySource CreateTelemetrySource()
