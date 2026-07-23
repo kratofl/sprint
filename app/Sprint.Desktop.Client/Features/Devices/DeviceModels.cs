@@ -76,6 +76,20 @@ public sealed class DeviceBinding
     public string Command { get; set; } = "";
 }
 
+public static class DeviceCapabilities
+{
+    /// <summary>
+    /// A device can publish pixels either because it is a standalone screen or
+    /// because a wheel exposes a known integrated screen transport.
+    /// </summary>
+    public static bool HasScreen(SavedDevice device) =>
+        device.Width > 0
+        && device.Height > 0
+        && (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(device.Driver, "vocore", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(device.Driver, "usbd480", StringComparison.OrdinalIgnoreCase));
+}
+
 /// <summary>
 /// Pure dash↔screen assignment queries shared by the shell and its tests (PRD #122
 /// US28/US29/US34). Keeps the "which screens will show this dash" rule in one place
@@ -98,7 +112,7 @@ public static class DashDeviceAssignments
 
         return devices
             .Where(device => !device.Disabled
-                && string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
+                && DeviceCapabilities.HasScreen(device)
                 && string.Equals(device.DashId, dashId, StringComparison.Ordinal))
             .ToList();
     }

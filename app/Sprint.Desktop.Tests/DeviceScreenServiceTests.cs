@@ -1,5 +1,6 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using Xunit;
@@ -44,7 +45,7 @@ public sealed class DeviceScreenServiceTests
 
         var result = DashDeviceAssignments.EnabledScreensFor(devices, "dash-1");
 
-        Assert.Equal(new[] { "assigned" }, result.Select(device => device.Id));
+        Assert.Equal(new[] { "assigned", "wheel" }, result.Select(device => device.Id));
     }
 
     [Fact]
@@ -72,6 +73,120 @@ public sealed class DeviceScreenServiceTests
 
             Assert.Contains("screen-a", service.ActiveDeviceIds);
             Assert.DoesNotContain("screen-b", service.ActiveDeviceIds);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SyncStartsPublisherForWheelWithIntegratedVoCoreScreen()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var wheel = ScreenDevice("integrated-wheel");
+            wheel.Type = "wheel";
+            runtime.Devices.Add(wheel);
+
+            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => new FakeScreenDriver());
+            service.Sync();
+
+            Assert.Contains("integrated-wheel", service.ActiveDeviceIds);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SyncDoesNotLetTwoSavedEntriesCompeteForTheSamePhysicalUsbScreen()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var integrated = ScreenDevice("integrated-wheel");
+            integrated.Type = "wheel";
+            integrated.Vid = 0xC872;
+            integrated.Pid = 0x1004;
+            var generic = ScreenDevice("generic-vocore");
+            generic.Vid = 0;
+            generic.Pid = 0;
+            runtime.Devices.Add(generic);
+            runtime.Devices.Add(integrated);
+
+            using var service = new DeviceScreenService(
+                runtime,
+                () => new TelemetryFrame(),
+                _ => new FakeScreenDriver());
+            service.Sync();
+
+            Assert.Contains("integrated-wheel", service.ActiveDeviceIds);
+            Assert.DoesNotContain("generic-vocore", service.ActiveDeviceIds);
+            Assert.Equal(
+                ScreenConnectionState.DeviceConflict,
+                service.StatusFor("generic-vocore")?.State);
+            Assert.Contains(
+                "integrated-wheel",
+                service.StatusFor("generic-vocore")?.Detail,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DiagnosticsCanSelectATestPatternForAnActiveScreen()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            runtime.Devices.Add(ScreenDevice("screen-a"));
+
+            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => new FakeScreenDriver());
+            service.Sync();
+
+            Assert.True(service.SetTestPattern("screen-a", ScreenTestPattern.ColorBars));
+            Assert.Equal(ScreenTestPattern.ColorBars, service.TestPatternFor("screen-a"));
+            Assert.False(service.SetTestPattern("missing", ScreenTestPattern.Red));
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ScreenLifecycleAndTestActionsAreWrittenToDiagnostics()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            runtime.Devices.Add(ScreenDevice("screen-a"));
+            var log = new LiveLogStore();
+
+            using var service = new DeviceScreenService(
+                runtime,
+                () => new TelemetryFrame(),
+                _ => new FakeScreenDriver(),
+                log);
+            service.Sync();
+            service.SetTestPattern("screen-a", ScreenTestPattern.Blue);
+
+            Assert.Contains(log.Entries, entry =>
+                entry.Message.Contains("screen-a", StringComparison.Ordinal)
+                && entry.Message.Contains("publisher", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(log.Entries, entry =>
+                entry.Message.Contains("screen-a", StringComparison.Ordinal)
+                && entry.Message.Contains("Blue", StringComparison.Ordinal));
         }
         finally
         {

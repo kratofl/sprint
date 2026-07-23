@@ -147,7 +147,50 @@ internal static class AgentUiReviewHarness
                     // toolbar has its own "Settings" tab that would otherwise shadow the
                     // sidebar navigation button of the same label.
                     Click(window, "Settings");
-                    frames.Add(Capture(window, artifactRoot, "settings-global-defaults", "Settings", "Profile", "Dash defaults"));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "settings-global-defaults",
+                        "Settings",
+                        "Profile",
+                        "Dash defaults"
+#if DEBUG
+                        , "Development",
+                        "Open development tools"
+#endif
+                    ));
+
+#if DEBUG
+                    Click(window, "Open development tools");
+                    var diagnosticsWindow = Assert.IsType<DiagnosticsWindow>(window.ActiveDiagnosticsWindow);
+                    diagnosticsWindow.Width = 1500;
+                    diagnosticsWindow.Height = 860;
+                    using (diagnosticsWindow.CaptureRenderedFrame())
+                    {
+                    }
+                    var racing = diagnosticsWindow.GetVisualDescendants()
+                        .OfType<Button>()
+                        .Single(button => string.Equals(button.Content?.ToString(), "Racing", StringComparison.Ordinal));
+                    racing.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var colorBars = diagnosticsWindow.GetVisualDescendants()
+                        .OfType<Button>()
+                        .Last(button => string.Equals(button.Content?.ToString(), "Color bars", StringComparison.Ordinal));
+                    colorBars.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    frames.Add(Capture(
+                        diagnosticsWindow,
+                        artifactRoot,
+                        "development-tools-simulation-screens-log",
+                        "Game state simulation",
+                        "Screen output",
+                        "Live logging",
+                        "Simulation enabled",
+                        "Review Screen",
+                        "Color bars",
+                        "Dashboard",
+                        "Minimum level",
+                        "Search"));
+                    diagnosticsWindow.Close();
+#endif
 
                     Click(window, "Help");
                     frames.Add(Capture(window, artifactRoot, "help-reference", "Help", "Getting started", "Telemetry status", "Keyboard shortcuts"));
@@ -264,7 +307,7 @@ internal static class AgentUiReviewHarness
         };
     }
 
-    private static AgentUiReviewFrame Capture(MainWindow window, string artifactRoot, string name, params string[] expectedText)
+    private static AgentUiReviewFrame Capture(Window window, string artifactRoot, string name, params string[] expectedText)
     {
         var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);

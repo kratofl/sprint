@@ -15,6 +15,12 @@ public sealed class FakeScreenDriver : IScreenDriver
 
     public ScreenStatus Status => _status;
 
+    public ScreenNativeSize? NativeSize =>
+        NativeSizeOverride
+        ?? (LastConfig is { } config ? new ScreenNativeSize(config.Width, config.Height) : null);
+
+    public ScreenNativeSize? NativeSizeOverride { get; set; }
+
     public ScreenConfig? LastConfig { get; private set; }
 
     public int ConnectAttempts { get; private set; }
@@ -37,7 +43,7 @@ public sealed class FakeScreenDriver : IScreenDriver
         return _status.IsConnected;
     }
 
-    public bool TrySendFrame(ReadOnlySpan<byte> rgb565)
+    public bool TrySendFrame(byte[] rgb565)
     {
         if (!_status.IsConnected)
         {

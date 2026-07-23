@@ -22,9 +22,11 @@ touched by the suite.
 
 ## What gets recorded
 
-- **Activity log** — timestamped, leveled lines
+- **Activity log** — timestamped, leveled lines (including `DEBUG` in the desktop
+  process)
   (`2026-07-13T09:41:02.123Z [INFO ] message`). Startup/shutdown, corrupt-config
-  fallbacks, failed update checks, and any warning/error with its exception.
+  fallbacks, UI actions, persistence, screen enumeration/connect/send activity,
+  failed update checks, and any warning/error with its exception.
 - **Crash report** — written when an exception escapes the UI loop, the CLR
   (`AppDomain.UnhandledException`), or an unobserved `Task`. Contains app version,
   OS/arch/.NET build, the crash source, and the full exception dump. This is the
@@ -42,6 +44,30 @@ touched by the suite.
   (`DesktopRuntime` receives `AppDiagnostics.Log` from `CompositionRoot`), not on
   the static holder. `NullLog.Instance` is the safe default for tests and any
   caller that does not care about logs.
+
+## Development tools
+
+Debug builds expose **Settings → Development → Open development tools**. The
+separate window intentionally hosts independent modules side by side so they can
+run at the same time:
+
+- a global game-state override with presets and editable telemetry/conditions;
+- real screen output, including per-screen and all-screen test patterns;
+- the filtered live log.
+
+When simulation is enabled, every dashboard consumer—including physical screens
+set to `Dashboard`—uses the same simulated frame. A per-screen color pattern can
+remain active at the same time, and future test modules can be added without
+turning the tool into a screen-specific simulator.
+
+`DevelopmentToolModuleHost` is the small composition seam for this workspace:
+each module contributes a view while the host handles simultaneous column layout.
+The simulation and screen panes have local scrolling, and the window supports the
+desktop shell's canonical `1120×720` minimum.
+
+The window, settings entry, and simulator are wrapped in `#if DEBUG`. They are
+not compiled into Release/production builds. Durable file logging and crash
+reports remain available in production.
 
 ## Extending it
 

@@ -34,7 +34,7 @@ before cutting a release (see `docs/RELEASE.md`).
 ## 4. Devices (hardware)
 - [ ] Add a screen from the catalog → a saved-device card with a status pill.
 - [ ] Rotate / X / Y offset / dash-assignment controls persist across relaunch.
-- [ ] With no physical screen, status reads "Driver needed"/"Offline" (never a crash).
+- [ ] With no physical screen, status explains the actual state ("Setup needed", "Not found", "In use", "Duplicate target", or "USB access failed") and exposes technical detail (never a crash or generic driver-install demand).
 
 ## 5. Bindings & Engineer & Setup
 - [ ] Devices → Command Bindings: Listen, press a key, the binding shows + persists;
