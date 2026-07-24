@@ -21,6 +21,7 @@ public sealed class DeviceScreenService : IDisposable
     private readonly Func<string, IScreenDriver> _driverFactory;
     private readonly ILog _log;
     private readonly Dictionary<string, ScreenPublisher> _publishers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _publisherLayoutIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ScreenStatus> _inactiveStatuses = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
@@ -110,21 +111,41 @@ public sealed class DeviceScreenService : IDisposable
             _log.Info($"Screen publisher stopping: device={id}.");
             _publishers[id].Dispose();
             _publishers.Remove(id);
+            _publisherLayoutIds.Remove(id);
         }
 
         foreach (var (id, device) in desired)
         {
-            if (!_publishers.ContainsKey(id))
+            // A running publisher keeps rendering the layout captured at start,
+            // so a dash reassignment needs a restart to take effect.
+            if (_publishers.TryGetValue(id, out var running))
             {
-                _log.Info(
-                    $"Screen publisher starting: device={id} driver={device.Driver} " +
-                    $"vid=0x{device.Vid:X4} pid=0x{device.Pid:X4} size={device.Width}x{device.Height}.");
-                var publisher = CreatePublisher(device);
-                publisher.Start();
-                _publishers[id] = publisher;
+                var assigned = ResolveLayout(device).Id;
+                if (_publisherLayoutIds.TryGetValue(id, out var active)
+                    && string.Equals(active, assigned, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _log.Info($"Screen publisher restarting for dash change: device={id} dash={assigned}.");
+                running.Dispose();
+                _publishers.Remove(id);
+                _publisherLayoutIds.Remove(id);
             }
+
+            _log.Info(
+                $"Screen publisher starting: device={id} driver={device.Driver} " +
+                $"vid=0x{device.Vid:X4} pid=0x{device.Pid:X4} size={device.Width}x{device.Height}.");
+            var publisher = CreatePublisher(device);
+            publisher.Start();
+            _publishers[id] = publisher;
         }
     }
+
+    private DashLayout ResolveLayout(SavedDevice device) =>
+        _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
+            ?? _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
+            ?? _runtime.DashLayouts.First();
 
     private ScreenPublisher CreatePublisher(SavedDevice device)
     {
@@ -144,9 +165,8 @@ public sealed class DeviceScreenService : IDisposable
         var driver = _driverFactory(device.Driver);
         driver.Configure(config);
 
-        var layout = _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-            ?? _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
-            ?? _runtime.DashLayouts.First();
+        var layout = ResolveLayout(device);
+        _publisherLayoutIds[device.Id] = layout.Id;
         IDashFrameSource CreateSource(int width, int height) =>
             new DashPainterFrameSource(
                 layout,
@@ -180,6 +200,7 @@ public sealed class DeviceScreenService : IDisposable
         }
 
         _publishers.Clear();
+        _publisherLayoutIds.Clear();
         _inactiveStatuses.Clear();
     }
 

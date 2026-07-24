@@ -22,7 +22,7 @@ namespace Sprint.Desktop.Features.Dashes;
 /// </summary>
 public sealed class DashPainter : IDisposable
 {
-    private readonly DashPalette _basePalette;
+    private DashPalette _basePalette;
     private DashPalette _palette; // active palette for the widget being drawn (base, or a per-widget style override)
     private readonly SKBitmap _bitmap;
     private readonly SKCanvas _canvas;
@@ -50,6 +50,13 @@ public sealed class DashPainter : IDisposable
         _palette = _basePalette;
         _bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         _canvas = new SKCanvas(_bitmap);
+    }
+
+    /// <summary>Swaps the base palette so a live theme change reaches long-lived painters (takes effect on the next <see cref="Render"/>).</summary>
+    public void SetPalette(DashPalette palette)
+    {
+        _basePalette = palette ?? DashPalette.Default;
+        _palette = _basePalette;
     }
 
     /// <summary>

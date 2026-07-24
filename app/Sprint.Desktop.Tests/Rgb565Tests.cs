@@ -126,6 +126,47 @@ public sealed class Rgb565Tests
         Assert.NotEqual(0, buf[(1 * w + 1) * 2]); // interior retains content
     }
 
+    [Fact]
+    public void ToBgraDecodesFullScaleRedToOpaque()
+    {
+        // 0xF800 LE = full red in 565.
+        var src = new byte[] { 0x00, 0xF8 };
+        var dst = new byte[4];
+        Rgb565.ToBgra(src, 1, 1, dst);
+
+        Assert.Equal(0x00, dst[0]); // B
+        Assert.Equal(0x00, dst[1]); // G
+        Assert.Equal(0xFF, dst[2]); // R replicated to full scale
+        Assert.Equal(0xFF, dst[3]); // A opaque
+    }
+
+    [Fact]
+    public void FromBgraThenToBgraRoundTripsWithinQuantization()
+    {
+        // Encode a spread of colours to 565 and back; each channel must land within
+        // one 565 step of the original (5-bit R/B ≈ 8, 6-bit G ≈ 4).
+        var colors = new byte[][]
+        {
+            new byte[] { 0, 0, 0, 255 },
+            new byte[] { 255, 255, 255, 255 },
+            new byte[] { 12, 200, 90, 255 },
+            new byte[] { 255, 106, 0, 255 }, // ember #FF6A00 in BGRA order below
+        };
+
+        foreach (var bgra in colors)
+        {
+            var rgb565 = new byte[2];
+            Rgb565.FromBgra(bgra, 1, 1, 0, rgb565);
+            var decoded = new byte[4];
+            Rgb565.ToBgra(rgb565, 1, 1, decoded);
+
+            Assert.True(Math.Abs(decoded[0] - bgra[0]) <= 8, $"B off by {Math.Abs(decoded[0] - bgra[0])}");
+            Assert.True(Math.Abs(decoded[1] - bgra[1]) <= 4, $"G off by {Math.Abs(decoded[1] - bgra[1])}");
+            Assert.True(Math.Abs(decoded[2] - bgra[2]) <= 8, $"R off by {Math.Abs(decoded[2] - bgra[2])}");
+            Assert.Equal(0xFF, decoded[3]);
+        }
+    }
+
     private static int ScaleSourceColumn(int sourceX, int sourceW, int destW) =>
         (sourceX * 2 + 1) * destW / (sourceW * 2);
 

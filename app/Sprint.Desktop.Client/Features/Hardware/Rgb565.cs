@@ -78,6 +78,43 @@ public static class Rgb565
         }
     }
 
+    /// <summary>
+    /// Decodes an RGB565 LE buffer back to BGRA8888 (SkiaSharp memory order
+    /// [B, G, R, A], opaque alpha) for on-screen display. The inverse of
+    /// <see cref="FromBgra"/> without rotation — the source is already the native,
+    /// rotated/inset/offset panel buffer, so this only expands each 16-bit pixel to
+    /// 32-bit. Lets the Devices preview show the exact pixels the hardware receives.
+    /// <paramref name="dst"/> must be width*height*4 bytes.
+    /// </summary>
+    public static void ToBgra(ReadOnlySpan<byte> src, int width, int height, Span<byte> dst)
+    {
+        var pixels = checked(width * height);
+        if (src.Length < pixels * 2)
+        {
+            throw new ArgumentException($"Source buffer too small: need {pixels * 2}, got {src.Length}.", nameof(src));
+        }
+
+        if (dst.Length < pixels * 4)
+        {
+            throw new ArgumentException("Destination buffer too small for BGRA output.", nameof(dst));
+        }
+
+        for (var p = 0; p < pixels; p++)
+        {
+            var px = (ushort)(src[p * 2] | (src[p * 2 + 1] << 8));
+            var r5 = (px >> 11) & 0x1f;
+            var g6 = (px >> 5) & 0x3f;
+            var b5 = px & 0x1f;
+            // Expand to 8-bit by replicating the high bits into the low bits so
+            // full-scale 565 maps to full-scale 888 (0x1f -> 0xff, 0x3f -> 0xff).
+            var j = p * 4;
+            dst[j] = (byte)((b5 << 3) | (b5 >> 2));
+            dst[j + 1] = (byte)((g6 << 2) | (g6 >> 4));
+            dst[j + 2] = (byte)((r5 << 3) | (r5 >> 2));
+            dst[j + 3] = 0xff;
+        }
+    }
+
     private static void Write(ReadOnlySpan<byte> bgra, int j, Span<byte> dst, ref int i)
     {
         // SkiaSharp Bgra8888 memory order: [B, G, R, A].
