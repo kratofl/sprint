@@ -31,7 +31,11 @@ public sealed record DevelopmentGameValues
     public bool RedFlag { get; init; }
     public bool CheckeredFlag { get; init; }
     public bool TractionControlActive { get; init; }
-    public bool AbsActive { get; init; }
+
+    /// <summary>Assist settings (levels), independent from the activity flags so a level change — and only a level change — fires the dash change alerts. (The telemetry contract has no ABS-activity flag, so the simulator offers none.)</summary>
+    public int TractionControl { get; init; } = 4;
+    public int Abs { get; init; } = 3;
+    public int MotorMap { get; init; } = 3;
 }
 
 /// <summary>
@@ -234,11 +238,11 @@ public sealed class DevelopmentGameState
         Electronics = new ElectronicsState
         {
             TractionControlActive = values.TractionControlActive,
-            TractionControl = 4,
+            TractionControl = (byte)Math.Clamp(values.TractionControl, 0, 12),
             TractionControlMax = 12,
-            Abs = (byte)(values.AbsActive ? 5 : 3),
+            Abs = (byte)Math.Clamp(values.Abs, 0, 12),
             AbsMax = 12,
-            MotorMap = 3,
+            MotorMap = (byte)Math.Clamp(values.MotorMap, 0, 8),
             MotorMapMax = 8,
             DrsActive = values.SpeedKph > 180,
         },

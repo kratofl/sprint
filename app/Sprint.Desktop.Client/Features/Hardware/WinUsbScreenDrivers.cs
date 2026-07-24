@@ -211,19 +211,87 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
 
     protected override void Initialize(WinUsbScreenTransport transport, ScreenConfig config)
     {
-        var native = VoCoreProtocol.NativeDimensionsForPid(
-            transport.MatchedPid,
-            config.Width,
-            config.Height);
+        // Clear any stale bulk state a previous owner left mid-frame (Go parity).
+        if (!transport.ResetPipe(VoCoreProtocol.BulkEndpoint))
+        {
+            Log.Warn($"VoCore bulk pipe reset failed (non-fatal): {transport.LastFailure}");
+        }
+
+        var native = ResolveNativeSize(transport, config);
         SetNativeSize(native.Width, native.Height);
         Log.Info(
-            $"VoCore dimensions resolved without blocking firmware query: " +
-            $"pid=0x{transport.MatchedPid:X4} native={native.Width}x{native.Height} " +
-            $"configured={config.Width}x{config.Height}.");
+            $"VoCore dimensions resolved: pid=0x{transport.MatchedPid:X4} " +
+            $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
-        Log.Debug(
-            "VoCore initialization complete; firmware idle is already awake, " +
-            "so the first USB command is the actual draw request.");
+        // Panel-on + backlight restore, mirroring the mpro DRM driver's enable
+        // path (cmd_quit_sleep, cmd_set_brightness=0xFF). Another screen app's
+        // "disable" can leave the backlight at 0, in which case frames transfer
+        // fine but land on a dark panel. Non-fatal: a wedged firmware NAKs every
+        // vendor request, so the draw command surfaces the fault either way.
+        if (!transport.ControlOut(
+                VoCoreProtocol.RequestTypeOut,
+                VoCoreProtocol.VendorRequest,
+                value: 0,
+                index: 0,
+                VoCoreProtocol.WakeCommand))
+        {
+            Log.Warn($"VoCore wake command failed (non-fatal): {transport.LastFailure}");
+        }
+        else if (!transport.ControlOut(
+                VoCoreProtocol.RequestTypeOut,
+                VoCoreProtocol.VendorRequest,
+                value: 0,
+                index: 0,
+                VoCoreProtocol.BrightnessFullCommand))
+        {
+            Log.Warn($"VoCore brightness restore failed (non-fatal): {transport.LastFailure}");
+        }
+        else
+        {
+            Log.Debug("VoCore initialization complete: wake (0x29) and full brightness (0x51) acknowledged.");
+        }
+    }
+
+    /// <summary>
+    /// Resolves the panel's native pixel dimensions. PID 0x1004 is shared by
+    /// portrait-native 4" and landscape-native 6.8" panels, so only the firmware
+    /// model id can distinguish them — sending 800px rows to a 480px-wide panel
+    /// interleaves three sheared copies of the frame. A successful model query
+    /// therefore overrides the saved orientation; on failure the PID table and
+    /// saved configuration stay authoritative.
+    /// </summary>
+    private ScreenNativeSize ResolveNativeSize(WinUsbScreenTransport transport, ScreenConfig config)
+    {
+        var data = new byte[5];
+        if (transport.ControlOut(
+                VoCoreProtocol.RequestTypeOut,
+                VoCoreProtocol.ModelCommandRequest,
+                value: 0,
+                index: 0,
+                VoCoreProtocol.ModelCommand)
+            && transport.ControlIn(
+                VoCoreProtocol.RequestTypeIn,
+                VoCoreProtocol.ModelStatusRequest,
+                new byte[1],
+                out _)
+            && transport.ControlIn(
+                VoCoreProtocol.RequestTypeIn,
+                VoCoreProtocol.ModelDataRequest,
+                data,
+                out var transferred)
+            && transferred >= data.Length)
+        {
+            var model = VoCoreProtocol.ParseModelResponse(data);
+            var (width, height) = VoCoreProtocol.NativeDimensions(model);
+            Log.Info($"VoCore screen model detected: model=0x{model:X8} native={width}x{height}.");
+            return new ScreenNativeSize(width, height);
+        }
+
+        // Firmware without a working model query: clear a possible control-pipe
+        // stall the unsupported request left behind, then fall back (Go parity).
+        Log.Warn($"VoCore model query failed; using PID/config dimensions. {transport.LastFailure}");
+        transport.ResetPipe(0x00);
+        return VoCoreProtocol.NativeDimensionsForPid(transport.MatchedPid, config.Width, config.Height);
     }
 
     protected override bool WriteFrame(WinUsbScreenTransport transport, byte[] rgb565)

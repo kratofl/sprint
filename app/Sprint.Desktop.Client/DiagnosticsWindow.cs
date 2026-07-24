@@ -48,10 +48,12 @@ public sealed class DiagnosticsWindow : Window
     private readonly NumericUpDown _fuel;
     private readonly NumericUpDown _lap;
     private readonly NumericUpDown _delta;
+    private readonly NumericUpDown _tcLevel;
+    private readonly NumericUpDown _absLevel;
+    private readonly NumericUpDown _motorMap;
     private readonly CheckBox _yellow;
     private readonly CheckBox _red;
     private readonly CheckBox _tractionControl;
-    private readonly CheckBox _abs;
     private readonly Border _simulationStatus;
     private readonly Button _simulationToggle;
     private bool _updatingSimulationControls;
@@ -117,10 +119,12 @@ public sealed class DiagnosticsWindow : Window
         _fuel = Number(values.FuelLiters, 0, 200, 1);
         _lap = Number(values.CurrentLap, 0, 999, 1);
         _delta = Number(values.DeltaSeconds, -60, 60, 0.05m, "0.00");
+        _tcLevel = Number(values.TractionControl, 0, 12, 1);
+        _absLevel = Number(values.Abs, 0, 12, 1);
+        _motorMap = Number(values.MotorMap, 0, 8, 1);
         _yellow = Toggle("Yellow flag", values.YellowFlag);
         _red = Toggle("Red flag", values.RedFlag);
         _tractionControl = Toggle("TC active", values.TractionControlActive);
-        _abs = Toggle("ABS active", values.AbsActive);
         _simulationStatus = Graphite.StatusPill("", Graphite.ActionMaterialBrush);
         _simulationToggle = Graphite.Button("", ButtonTone.Neutral);
         _simulationToggle.Click += (_, _) => _gameState.SetEnabled(!_gameState.Enabled);
@@ -297,11 +301,14 @@ public sealed class DiagnosticsWindow : Window
         _simulationPanel.Children.Add(SimulationField("Fuel", _fuel, "L"));
         _simulationPanel.Children.Add(SimulationField("Lap", _lap));
         _simulationPanel.Children.Add(SimulationField("Delta", _delta, "s"));
+        _simulationPanel.Children.Add(Graphite.SectionLabel("Electronics"));
+        _simulationPanel.Children.Add(SimulationField("TC level", _tcLevel));
+        _simulationPanel.Children.Add(SimulationField("ABS level", _absLevel));
+        _simulationPanel.Children.Add(SimulationField("Engine map", _motorMap));
         _simulationPanel.Children.Add(Graphite.SectionLabel("Conditions"));
         _simulationPanel.Children.Add(_yellow);
         _simulationPanel.Children.Add(_red);
         _simulationPanel.Children.Add(_tractionControl);
-        _simulationPanel.Children.Add(_abs);
         UpdateSimulationStateControls();
     }
 
@@ -324,10 +331,12 @@ public sealed class DiagnosticsWindow : Window
         _fuel.ValueChanged += (_, _) => UpdateSimulationFromInputs();
         _lap.ValueChanged += (_, _) => UpdateSimulationFromInputs();
         _delta.ValueChanged += (_, _) => UpdateSimulationFromInputs();
+        _tcLevel.ValueChanged += (_, _) => UpdateSimulationFromInputs();
+        _absLevel.ValueChanged += (_, _) => UpdateSimulationFromInputs();
+        _motorMap.ValueChanged += (_, _) => UpdateSimulationFromInputs();
         _yellow.IsCheckedChanged += (_, _) => UpdateSimulationFromInputs();
         _red.IsCheckedChanged += (_, _) => UpdateSimulationFromInputs();
         _tractionControl.IsCheckedChanged += (_, _) => UpdateSimulationFromInputs();
-        _abs.IsCheckedChanged += (_, _) => UpdateSimulationFromInputs();
     }
 
     private void UpdateSimulationFromInputs()
@@ -345,10 +354,12 @@ public sealed class DiagnosticsWindow : Window
             FuelLiters = (double)(_fuel.Value ?? 0),
             CurrentLap = (int)(_lap.Value ?? 0),
             DeltaSeconds = (double)(_delta.Value ?? 0),
+            TractionControl = (int)(_tcLevel.Value ?? 0),
+            Abs = (int)(_absLevel.Value ?? 0),
+            MotorMap = (int)(_motorMap.Value ?? 0),
             YellowFlag = _yellow.IsChecked == true,
             RedFlag = _red.IsChecked == true,
             TractionControlActive = _tractionControl.IsChecked == true,
-            AbsActive = _abs.IsChecked == true,
         };
         _gameState.Update(values);
     }
@@ -365,10 +376,12 @@ public sealed class DiagnosticsWindow : Window
             _fuel.Value = (decimal)values.FuelLiters;
             _lap.Value = values.CurrentLap;
             _delta.Value = (decimal)values.DeltaSeconds;
+            _tcLevel.Value = values.TractionControl;
+            _absLevel.Value = values.Abs;
+            _motorMap.Value = values.MotorMap;
             _yellow.IsChecked = values.YellowFlag;
             _red.IsChecked = values.RedFlag;
             _tractionControl.IsChecked = values.TractionControlActive;
-            _abs.IsChecked = values.AbsActive;
         }
         finally
         {

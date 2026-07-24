@@ -215,7 +215,9 @@ public class HeadlessShellTests
                 Assert.Collection(
                     primary.Children,
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Home")),
-                    child => Assert.Equal("Devices", Assert.IsType<TextBlock>(child).Text),
+                    child => Assert.Contains(
+                        Assert.IsType<StackPanel>(child).Children.OfType<TextBlock>(),
+                        text => string.Equals(text.Text, "WORKSPACE", StringComparison.Ordinal)),
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Devices")),
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Dashboards")));
 
@@ -935,23 +937,14 @@ public class HeadlessShellTests
                         border.Tag?.ToString(),
                         "device-catalog-dialog-overlay",
                         StringComparison.Ordinal));
-                var presetMode = window.GetVisualDescendants().OfType<ToggleButton>()
-                    .Single(button => button.Content?.ToString()?.Contains("Preset", StringComparison.Ordinal) == true);
-                var genericMode = window.GetVisualDescendants().OfType<ToggleButton>()
-                    .Single(button => button.Content?.ToString()?.Contains("Generic", StringComparison.Ordinal) == true);
-                Assert.True(presetMode.IsChecked);
-                Assert.False(genericMode.IsChecked);
-                Assert.Same(
-                    presetMode,
-                    TopLevel.GetTopLevel(window)?.FocusManager?.GetFocusedElement());
+                // The Preset/Generic switch is a Graphite segmented control; Preset is
+                // the default category, so its hardware presets are listed.
+                Assert.NotNull(FindOptionalButton(window, "Preset"));
+                Assert.NotNull(FindOptionalButton(window, "Generic"));
                 Assert.NotNull(FindOptionalButton(window, "BavarianSimTec Omega PRO V2"));
 
                 FindButton(window, "Generic").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                genericMode = window.GetVisualDescendants().OfType<ToggleButton>()
-                    .Single(button => button.Content?.ToString()?.Contains("Generic", StringComparison.Ordinal) == true);
-                Assert.True(genericMode.IsChecked);
-                Assert.Contains("✓", genericMode.Content?.ToString());
                 Assert.NotNull(FindOptionalButton(window, "Generic VoCore Screen"));
                 Assert.Null(FindOptionalButton(window, "BavarianSimTec Omega PRO V2"));
 
@@ -977,9 +970,11 @@ public class HeadlessShellTests
                         border.Tag?.ToString(),
                         "device-catalog-dialog-overlay",
                         StringComparison.Ordinal));
+                // Adding a device opens its full-page detail with the editable name.
                 Assert.Contains(window.GetVisualDescendants().OfType<TextBox>(),
                     box => string.Equals(box.Text, "BavarianSimTec Omega PRO V2", StringComparison.Ordinal));
-                Assert.NotNull(FindOptionalText(window, "Device bindings"));
+                Assert.NotNull(FindOptionalButton(window, "Back to devices"));
+                Assert.NotNull(FindOptionalText(window, "Command bindings"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -991,7 +986,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task DevicesPageShowsAStableListAndDetailSplitView()
+    public async Task DevicesPageShowsGalleryOverviewThatDrillsIntoFullPageDetail()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -1010,16 +1005,29 @@ public class HeadlessShellTests
                 var window = new MainWindow(runtime, shell, telemetry);
                 window.Show();
 
+                // Overview: gallery cards, an Add-device action and a Gallery/List
+                // toggle; no detail-only bindings section and no Back button yet.
                 window.CaptureRenderedFrame();
                 Assert.NotNull(FindOptionalButton(window, "Add device"));
-                Assert.Null(FindOptionalText(window, "Device bindings"));
-                Assert.True(window.GetVisualDescendants().OfType<Border>().Count(border => border.Tag?.ToString()?.StartsWith("device-card:", StringComparison.Ordinal) == true) >= 3);
+                Assert.NotNull(FindOptionalButton(window, "Gallery"));
+                Assert.NotNull(FindOptionalButton(window, "List"));
+                Assert.Null(FindOptionalText(window, "Command bindings"));
+                Assert.Null(FindOptionalButton(window, "Back to devices"));
+                Assert.True(window.GetVisualDescendants().OfType<Button>().Count(button => button.Tag?.ToString()?.StartsWith("device-card:", StringComparison.Ordinal) == true) >= 3);
 
+                // Drilling into a card opens the shared full-page detail: Back button
+                // present, overview actions gone, bindings section shown.
                 FindButton(window, runtime.Devices[0].Name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.Null(FindOptionalButton(window, "Back to devices"));
+                Assert.NotNull(FindOptionalButton(window, "Back to devices"));
+                Assert.Null(FindOptionalButton(window, "Add device"));
+                Assert.NotNull(FindOptionalText(window, "Command bindings"));
+
+                // Back returns to the overview.
+                FindButton(window, "Back to devices").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
                 Assert.NotNull(FindOptionalButton(window, "Add device"));
-                Assert.NotNull(FindOptionalText(window, "Device bindings"));
+                Assert.Null(FindOptionalButton(window, "Back to devices"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -1050,9 +1058,11 @@ public class HeadlessShellTests
 
                 FindButton(window, runtime.Devices[0].Name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
+                FindButton(window, "Add binding").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
                 FindButton(window, "Listen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "Press a key... (Esc to cancel)"));
+                Assert.NotNull(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
 
                 FindButton(window, "Remove").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
@@ -1060,7 +1070,7 @@ public class HeadlessShellTests
                 FindButton(window, "Remove device").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
                 Assert.Empty(runtime.Devices);
-                Assert.Null(FindOptionalText(window, "Press a key... (Esc to cancel)"));
+                Assert.Null(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
 
                 RaiseKeyDown(window, Key.A);
                 window.CaptureRenderedFrame();
@@ -1095,9 +1105,11 @@ public class HeadlessShellTests
 
                 FindButton(window, runtime.Devices[0].Name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
+                FindButton(window, "Add binding").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
                 FindButton(window, "Listen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "Press a key... (Esc to cancel)"));
+                Assert.NotNull(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
 
                 runtime.Devices.Clear();
                 RaiseKeyDown(window, Key.B);
