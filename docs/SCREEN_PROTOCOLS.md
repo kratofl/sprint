@@ -102,12 +102,16 @@ Supported VoCore VID/PID values:
 | `0xC872` | `0x1006` | 800x800 | M-PRO 3.4 inch square |
 | `0xC872` | `0x100A` | 1024x600 | M-PRO 10 inch |
 
-Sprint resolves the native size from the PID table before the first frame. The
-publisher rebuilds its dashboard renderer and RGB565 buffer when that size
-differs from the saved fallback. PID `0x1004` is ambiguous, so its saved
-catalog/config orientation is preserved.
+Sprint resolves the native size before the first frame: it queries the firmware
+model id (below) and maps it through `VoCoreProtocol.NativeDimensions()`; when
+the query fails it falls back to the PID table and saved orientation. The
+publisher rebuilds its dashboard renderer and RGB565 buffer when the resolved
+size differs from the saved configuration. This matters because PID `0x1004` is
+ambiguous — portrait-native 4" and landscape-native 6.8" panels share it, and
+sending 800px rows to a 480px-wide panel interleaves three sheared copies of
+the frame (the "tripled image with vertical stripes" symptom).
 
-The firmware also defines this model-query protocol:
+The model-query protocol:
 
 | Step | Request | Direction | Payload / response |
 |---|---:|---|---|
@@ -126,10 +130,13 @@ Model IDs currently mapped in `VoCoreProtocol.NativeDimensions()`:
 | `0x0000000A` | 1024x600 | MPRO-10 |
 | default | 480x800 | Unknown model fallback |
 
-The current startup path intentionally does not issue this query: on at least
-one SimHub-compatible `0x1004` firmware it blocks before wake/frame output. Keep
-the decoder as protocol reference and for a future explicitly timed diagnostic
-probe.
+The query runs with the same 2-second overlapped-control timeout as every other
+transfer and is non-fatal: on failure Sprint resets the control pipe and keeps
+the PID/config dimensions. (An earlier note claimed the query blocks on a
+SimHub-compatible `0x1004` firmware — that observation was made while the
+firmware was in the wedged state described below, which blocks every vendor
+transfer equally, so it does not indict the query itself. The official mpro DRM
+driver issues the same query unconditionally at probe.)
 
 Protocol constants:
 
@@ -147,21 +154,31 @@ Open sequence:
 3. Open with `GENERIC_READ | GENERIC_WRITE` and exclusive access so competing
    screen-output processes are reported instead of silently sharing the device.
 4. Call `WinUsb_Initialize`.
-5. Resolve native dimensions from the matched PID and saved fallback.
-6. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
+5. Reset bulk pipe `0x02` to clear stale state a previous owner left mid-frame
+   (non-fatal).
+6. Resolve native dimensions: model query `0xB5`/`0xB6`/`0xB7`; on failure fall
+   back to the matched PID and saved orientation.
+7. Send quit-sleep `00 29 00 00 00 00` and full brightness
+   `00 51 02 00 00 00 FF 00` via request `0xB0` (both non-fatal on failure).
+   This mirrors the mpro DRM driver's enable path; another screen app's
+   "disable" can leave the backlight at 0, in which case frames transfer
+   fine but land on a dark panel.
+8. Build draw command `00 2C <size24le> 00`, where `0x2C` is Memory
    Write and `size = width * height * 2`.
 
-The current Windows path does not reset endpoint `0x02`, query the model, or
-send separate wake/brightness commands during open. The attached firmware idle
-screen is already awake, and these preliminary transfers can block for the
-driver's full native timeout. Sprint sends the real draw request first, with a
-2-second overlapped-control timeout; failures are surfaced and retried by
-reopening the device.
+Control transfers use a 2-second overlapped timeout; failures are surfaced and
+retried by reopening the device.
 
-Firmware variants may define sleep-out or brightness commands, but the current
-VoCore startup and shutdown paths deliberately send neither. Add such commands
-only behind an explicitly timed, firmware-specific diagnostic because an
-unsupported preliminary control transfer can block frame output.
+Hardware-verified 2026-07-23 (BavarianSimTec Omega PRO V2, `0xC872:0x1004`,
+`bcdDevice 0x01A0`): the firmware can enter a wedged state in which enumeration,
+`CreateFile`, `WinUsb_Initialize`, and standard control requests (for example
+`GET_DESCRIPTOR`) all succeed, but every vendor control request — `0xB0`
+draw/wake/brightness and `0xB5`/`0xB6`/`0xB7` model query alike, IN and OUT —
+is NAKed until the transfer times out. No command variant unwedges it; only
+power-cycling (replugging) the screen recovers. This is why a reorder of open
+commands cannot avoid the timeout: when wedged, the first vendor transfer of
+any kind fails, and the retry loop keeps reporting `Connection failed` until
+the device is power-cycled.
 
 Frame send:
 
@@ -248,7 +265,9 @@ Close sequence:
 | `Duplicate target` | Two saved Sprint entries resolve to the same physical USB identity | Keep the intended wheel/screen entry enabled and disable or remove the duplicate |
 | USBD480 IN works but OUT fails | Opened the raw composite parent instead of WinUSB interface | Use `GUID_DEVINTERFACE_WINUSB` path, not raw USB parent |
 | Wrong dimensions | Saved `0x1004` orientation is wrong or USBD480 details are invalid | Check the resolved-dimensions log and the `Screen renderer resized` entry |
-| Black screen after connect | Previous app left the backlight off or first frame failed | Check the first-frame transfer log; USBD480 additionally logs request `0x81` |
+| Image repeated ~3× with vertical stripes | Landscape rows sent to a portrait-native panel (stride mismatch) | Check the `VoCore screen model detected` log; if the model query failed, fix the saved width/height to the panel's portrait-native size and use rotation |
+| Black screen after connect | Previous app left the backlight off or first frame failed | Check the first-frame transfer log and the VoCore wake/brightness warnings; USBD480 additionally logs request `0x81` |
+| Every vendor control transfer times out, standard requests work | VoCore firmware is wedged (seen on `0x1004`, `bcdDevice 0x01A0`) | Power-cycle (replug) the screen; no host-side command recovers it |
 | Transfers fail after Ref disable | Device is suspended or still owned | For USBD480, verify `AUTO_SUSPEND` is disabled; for both drivers, close other owners |
 | Distorted or rotated image | Painter size and native rotation mismatch | Check `DashPainterFrameSource` logical/native dimensions and the `Rgb565` rotation path |
 | Repeated reconnects | USB send error or screen disconnect | Check screen state-change/transfer logs and the cable |

@@ -17,7 +17,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private readonly AppSettings _settings;
     private readonly ScreenConfig _config;
     private readonly byte[] _scratch;
-    private readonly DashPalette _palette;
+    private DashPalette _palette;
     private readonly DashAlertTracker _alerts = new();
     private DashLayout _layout;
     private bool _idle;
@@ -60,6 +60,17 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         if (rgb565.Length < Width * Height * 2)
         {
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
+        }
+
+        // The layout instance is shared with the editor and mutated in place, so
+        // widget edits arrive automatically — but the palette is resolved state.
+        // Re-resolve it each frame (record equality, cheap) so a live theme
+        // change recolors the hardware screen without a publisher restart.
+        var palette = DashPalette.FromLayout(_layout);
+        if (palette != _palette)
+        {
+            _palette = palette;
+            _painter.SetPalette(palette);
         }
 
         var banner = _idle ? null : _alerts.Evaluate(_layout, frame, _palette);

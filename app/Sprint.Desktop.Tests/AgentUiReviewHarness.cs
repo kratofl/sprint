@@ -127,16 +127,16 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
 
                     Click(window, "Devices");
-                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Saved devices", "Add device", runtime.Devices[0].Name, "Review Screen"));
+                    frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Add device", "Gallery", "List", runtime.Devices[0].Name, "Review Screen"));
 
                     Click(window, "Add device");
-                    frames.Add(Capture(window, artifactRoot, "add-device-preset-dialog", "Add device", "✓ Preset", "Generic", "Hardware presets", "BavarianSimTec Omega PRO V2"));
+                    frames.Add(Capture(window, artifactRoot, "add-device-preset-dialog", "Add device", "Preset", "Generic", "Hardware presets", "BavarianSimTec Omega PRO V2"));
                     Click(window, "Generic");
-                    frames.Add(Capture(window, artifactRoot, "add-device-generic-dialog", "Add device", "Preset", "✓ Generic", "Generic screens", "Generic VoCore Screen", "Generic USBD480 NX Screen"));
+                    frames.Add(Capture(window, artifactRoot, "add-device-generic-dialog", "Add device", "Preset", "Generic", "Generic screens", "Generic VoCore Screen", "Generic USBD480 NX Screen"));
                     Click(window, "Close");
 
                     Click(window, runtime.Devices[0].Name);
-                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Add device", "Device bindings", runtime.Devices[0].Name));
+                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "Command bindings", "Screen alignment", runtime.Devices[0].Name));
 
                     OpenCommandPalette(window);
                     Click(window, "Go to Setups");

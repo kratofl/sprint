@@ -21,6 +21,20 @@ public sealed class AppSettings
 
     [JsonPropertyName("newDashDefaults")]
     public NewDashDefaults NewDashDefaults { get; set; } = new();
+
+    [JsonPropertyName("devicesUI")]
+    public DevicesUiSettings DevicesUI { get; set; } = new();
+}
+
+public sealed class DevicesUiSettings
+{
+    /// <summary>How the Devices overview lists saved devices: "gallery" (default) or "list".</summary>
+    [JsonPropertyName("viewMode")]
+    public string ViewMode { get; set; } = "gallery";
+
+    /// <summary>Whether the device detail preview subscribes to live telemetry frames (animates) or shows a single frozen frame.</summary>
+    [JsonPropertyName("livePreview")]
+    public bool LivePreview { get; set; } = true;
 }
 
 public sealed class NewDashDefaults
