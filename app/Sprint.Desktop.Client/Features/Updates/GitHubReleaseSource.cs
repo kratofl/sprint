@@ -6,13 +6,17 @@ namespace Sprint.Desktop.Features.Updates;
 /// <summary>
 /// Fetches published releases from the GitHub Releases API and maps them to
 /// <see cref="ReleaseInfo"/> for <see cref="UpdateChecker"/> (matrix 4.9 US40).
-/// This is the only networked part of the updater; it runs only on an explicit
-/// user "Check for updates" action and degrades gracefully (returns an empty list
-/// on any failure) so a check never crashes the app. Auto-downloading + the
-/// self-replacing install remain deferred (see docs/RELEASE.md).
+/// This is the only networked part of the updater; it runs on an explicit user
+/// "Check for updates" action and on the best-effort startup notice, and degrades
+/// gracefully (returns an empty list on any failure) so a check never crashes the
+/// app. Release assets are carried through so <see cref="ReleaseAssetSelector"/> can
+/// pick the platform archive for the one-click install (see docs/RELEASE.md).
 /// </summary>
 public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
 {
+    /// <summary>The GitHub <c>owner/repo</c> the desktop app publishes releases to.</summary>
+    public const string DefaultRepo = "kratofl/sprint";
+
     private readonly HttpClient _http = httpClient ?? CreateClient();
 
     public async Task<IReadOnlyList<ReleaseInfo>> FetchAsync(string ownerRepo, CancellationToken ct = default)
@@ -30,8 +34,15 @@ public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
                 .Where(release => !release.Draft && !string.IsNullOrWhiteSpace(release.TagName))
                 .Select(release => new ReleaseInfo(
                     release.TagName!,
-                    release.Prerelease ? "beta" : "stable",
-                    release.HtmlUrl ?? ""))
+                    release.Prerelease ? "pre-release" : "stable",
+                    release.HtmlUrl ?? "")
+                {
+                    Assets = (release.Assets ?? [])
+                        .Where(asset => !string.IsNullOrWhiteSpace(asset.Name)
+                            && !string.IsNullOrWhiteSpace(asset.DownloadUrl))
+                        .Select(asset => new ReleaseAsset(asset.Name!, asset.DownloadUrl!))
+                        .ToArray(),
+                })
                 .ToArray();
         }
         catch (Exception)
@@ -63,5 +74,17 @@ public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
 
         [JsonPropertyName("prerelease")]
         public bool Prerelease { get; init; }
+
+        [JsonPropertyName("assets")]
+        public GitHubAsset[]? Assets { get; init; }
+    }
+
+    private sealed record GitHubAsset
+    {
+        [JsonPropertyName("name")]
+        public string? Name { get; init; }
+
+        [JsonPropertyName("browser_download_url")]
+        public string? DownloadUrl { get; init; }
     }
 }

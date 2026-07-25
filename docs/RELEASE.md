@@ -140,27 +140,47 @@ produces both; the .NET API server ships as a container (see `api/Dockerfile` /
 
 ---
 
-## In-app version reporting & updates (WS10)
+## In-app version reporting & updates (WS10, issue #28)
 
-The desktop client reports its own version and offers a manual update check:
+The desktop client reports its own version and installs updates in one click:
 
 - **Version metadata** — `Directory.Build.props` carries `Version` (and
   Product/Company); `make build-app` / the release workflow stamp the tag via
   `-p:InformationalVersion=<ver>`. `Runtime/BuildInfo.Version` reads that back
   (stripping any `+<sha>` suffix), shown as a badge on the **Settings → About**
   card next to the active update channel.
+- **Channels — two, not three:** `stable` and `pre-release`
+  (`AppSettings.Channels`). `stable` sees stable releases only; `pre-release`
+  sees stable + pre-release. Legacy persisted `beta`/`alpha` settings normalize
+  to `pre-release` on load (`AppSettings.NormalizeChannel`, applied in
+  `DesktopRuntime.LoadSettings`). Selecting `pre-release` in Settings requires
+  confirming a "may contain bugs" warning; cancelling reverts to `stable`.
 - **Update check** — `Features/Updates/UpdateChecker` is a pure, channel-aware
-  semver check: it picks the newest release visible on the user's channel
-  (`stable` sees stable; `beta` sees stable+beta; `alpha` sees all) and reports
-  whether it is newer than the running build. `GitHubReleaseSource` fetches the
-  repo's releases on an explicit **Check for updates** click and degrades to "no
-  releases" on any network failure (never crashes).
-- **Updater decision (resolves Open Question #5):** the client **checks and
-  notifies**; downloading + installing an update is **manual** (the user opens
-  the GitHub Release). The old Windows-batch **self-replacing auto-install is
-  intentionally deferred** — it is risky to run unattended and is out of scope
-  for the current parity pass. Revisit if unattended updates become a
-  requirement.
+  semver check: it picks the newest release visible on the user's channel and
+  reports whether it is newer than the running build. `GitHubReleaseSource`
+  fetches the repo's releases (`GitHubReleaseSource.DefaultRepo`), carries each
+  release's assets, and degrades to "no releases" on any network failure (never
+  crashes). It runs on an explicit **Check for updates** click and once at
+  startup.
+- **Startup notice** — an in-app Graphite toast (bottom-right, ~8s, "Open
+  Settings" action). Best-effort and silent when up to date or offline; it runs
+  only under a classic desktop lifetime, so headless/test hosts never fetch.
+- **One-click install (Windows)** — `ReleaseAssetSelector` picks the platform
+  archive (`win-x64` → `*windows-amd64.zip`, `linux-x64` → `*linux-amd64.tar.gz`),
+  `UpdateInstaller.DownloadAsync` streams it to
+  `%TEMP%\Sprint\updates\<version>\` with progress and extracts it to a staging
+  dir, then `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
+  for the app's PID to exit, robocopies staging over the install dir, relaunches,
+  and deletes itself. The app confirms first, then shuts down so the swap can run.
+- **Linux and fallbacks** — self-replace is Windows-only
+  (`UpdateInstaller.SupportsSelfReplace`). Elsewhere — and on any download,
+  extract, or swap failure — Sprint reveals the downloaded archive in the file
+  manager and keeps running on the working build. Nothing is ever left
+  half-installed by the app itself.
+- **Decision record (resolves Open Question #5):** the earlier
+  "check-and-notify only, self-replace deferred" decision is **superseded** by
+  issue #28. Unattended/background auto-install (no user click) remains out of
+  scope: every install is user-initiated and confirmed.
 
 ## Publish target
 

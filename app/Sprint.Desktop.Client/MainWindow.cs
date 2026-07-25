@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -33,6 +34,8 @@ namespace Sprint.Desktop;
 
 public sealed class MainWindow : Window
 {
+    private const double ToastLifetimeSeconds = 8;
+
     private readonly IDesktopRuntime _runtime;
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
@@ -66,7 +69,12 @@ public sealed class MainWindow : Window
     private readonly ShellCommandRegistry _shellCommands;
     private Border? _commandOverlay;
     private Border? _confirmOverlay;
+    private Action? _pendingConfirmCancel;
     private Border? _deviceCatalogOverlay;
+    // Transient notification stack (bottom-right). Re-attached on demand because
+    // BuildShell clears _root; the timers are tracked so window close stops them.
+    private StackPanel? _toastHost;
+    private readonly List<DispatcherTimer> _toastTimers = [];
     private Control? _focusBeforeDeviceCatalog;
     private TextBox? _commandSearch;
     private StackPanel? _commandResults;
@@ -263,6 +271,13 @@ public sealed class MainWindow : Window
         Grid.SetRow(content, 1);
         Grid.SetColumn(content, 0);
         _root.Children.Add(content);
+
+        // Live toasts outlive a shell rebuild: clearing _root detached the host, so put
+        // it back while it still holds notifications instead of dropping them on navigation.
+        if (_toastHost is { } toastHost && toastHost.Children.Count > 0)
+        {
+            EnsureToastHost();
+        }
     }
 
     /// <summary>
@@ -809,6 +824,12 @@ public sealed class MainWindow : Window
     {
         _timer.Stop();
         _setupUndoTimer?.Stop();
+        foreach (var toastTimer in _toastTimers)
+        {
+            toastTimer.Stop();
+        }
+
+        _toastTimers.Clear();
         DisposeDevicePreview();
 #if DEBUG
         _diagnosticsWindow?.Close();
@@ -2466,7 +2487,13 @@ public sealed class MainWindow : Window
         }
     }
 
-    private void ShowConfirmDialog(string title, string message, string confirmLabel, Action confirm)
+    private void ShowConfirmDialog(
+        string title,
+        string message,
+        string confirmLabel,
+        Action confirm,
+        ButtonTone confirmTone = ButtonTone.Danger,
+        Action? cancel = null)
     {
         CloseCommandPalette(restoreFocus: false);
         CloseDeviceCatalogDialog();
@@ -2482,9 +2509,13 @@ public sealed class MainWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 8, 0, 0),
         };
+        // Dismissing the dialog by scrim/Escape counts as cancel; the cancel callback
+        // is stored so any dismissal path runs it exactly once (confirm clears it first).
+        _pendingConfirmCancel = cancel;
         actions.Children.Add(ActionButton("Cancel", ButtonTone.Ghost, CloseConfirmDialog));
-        actions.Children.Add(ActionButton(confirmLabel, ButtonTone.Danger, () =>
+        actions.Children.Add(ActionButton(confirmLabel, confirmTone, () =>
         {
+            _pendingConfirmCancel = null;
             CloseConfirmDialog();
             confirm();
         }));
@@ -2524,6 +2555,83 @@ public sealed class MainWindow : Window
 
         _root.Children.Remove(_confirmOverlay);
         _confirmOverlay = null;
+
+        var cancel = _pendingConfirmCancel;
+        _pendingConfirmCancel = null;
+        cancel?.Invoke();
+    }
+
+    /// <summary>
+    /// Shows a transient Graphite toast bottom-right with an optional action button.
+    /// Toasts auto-dismiss after <see cref="ToastLifetimeSeconds"/> seconds and can be
+    /// closed manually; the action dismisses the toast before running. Internal so the
+    /// headless tests can drive the notification stack without a live update feed.
+    /// </summary>
+    internal void ShowToast(
+        GraphiteIntent intent,
+        string title,
+        string message,
+        string icon,
+        (string Label, Action OnClick)? action = null)
+    {
+        var host = EnsureToastHost();
+
+        Border card = null!;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(ToastLifetimeSeconds) };
+        void Dismiss()
+        {
+            timer.Stop();
+            _toastTimers.Remove(timer);
+            host.Children.Remove(card);
+        }
+
+        var trailing = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(12, 0, 0, 0),
+        };
+        if (action is { } toastAction)
+        {
+            trailing.Children.Add(ActionButton(toastAction.Label, ButtonTone.Primary, () =>
+            {
+                Dismiss();
+                toastAction.OnClick();
+            }));
+        }
+
+        trailing.Children.Add(ChromeButton("x", Dismiss, "Dismiss notification"));
+
+        card = (Border)Graphite.Toast(intent, title, message, icon, trailing);
+        card.MaxWidth = 460;
+        card.Tag = "toast";
+        host.Children.Add(card);
+
+        timer.Tick += (_, _) => Dismiss();
+        _toastTimers.Add(timer);
+        timer.Start();
+        _log.Info($"Toast shown: intent={intent} title={title}.");
+    }
+
+    private StackPanel EnsureToastHost()
+    {
+        _toastHost ??= new StackPanel
+        {
+            Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 20, 20),
+            Tag = "toast-host",
+        };
+
+        // BuildShell clears _root on navigation/rebuild; re-attach above the shell.
+        if (!_root.Children.Contains(_toastHost))
+        {
+            Grid.SetRowSpan(_toastHost, 2);
+            _root.Children.Add(_toastHost);
+        }
+
+        return _toastHost;
     }
 
     private void OpenCommandPalette()
@@ -2842,8 +2950,8 @@ public sealed class MainWindow : Window
         };
         var channel = new ComboBox
         {
-            ItemsSource = new[] { "stable", "beta", "alpha" },
-            SelectedItem = _runtime.Settings.UpdateChannel,
+            ItemsSource = AppSettings.Channels,
+            SelectedItem = AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel),
             Background = Graphite.Panel2Brush,
             Foreground = Graphite.TextBrush,
             BorderBrush = Graphite.Line2Brush,
@@ -2934,9 +3042,41 @@ public sealed class MainWindow : Window
             _runtime.Settings.NewDashDefaults.Mode = string.Equals(dashMode.SelectedItem?.ToString(), "Advanced", StringComparison.Ordinal) ? "advanced" : "basic";
             MarkSaved();
         };
+        // Reverting the combo from the warning dialog raises SelectionChanged again;
+        // the guard keeps that programmatic revert from reopening the dialog.
+        var revertingChannel = false;
         channel.SelectionChanged += (_, _) =>
         {
-            _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
+            if (revertingChannel)
+            {
+                return;
+            }
+
+            var selected = AppSettings.NormalizeChannel(channel.SelectedItem?.ToString());
+            if (selected == "pre-release" && AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel) != "pre-release")
+            {
+                ShowConfirmDialog(
+                    "Switch to pre-release?",
+                    "Pre-release builds ship early and may contain bugs, unfinished features, and breaking changes. "
+                        + "Only use this channel if you want to test new Sprint versions. You can switch back to stable at any time.",
+                    "Use pre-release",
+                    () =>
+                    {
+                        _runtime.Settings.UpdateChannel = selected;
+                        MarkSaved();
+                        RenderBody();
+                    },
+                    confirmTone: ButtonTone.Primary,
+                    cancel: () =>
+                    {
+                        revertingChannel = true;
+                        channel.SelectedItem = "stable";
+                        revertingChannel = false;
+                    });
+                return;
+            }
+
+            _runtime.Settings.UpdateChannel = selected;
             MarkSaved();
         };
 
@@ -2953,9 +3093,57 @@ public sealed class MainWindow : Window
         form.Children.Add(Graphite.SectionLabel("About"));
         form.Children.Add(FormRow("Version", Graphite.Chip(
             $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)));
-        var updateStatus = Graphite.TextBlock("Manual check — auto-install is deferred.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap);
+        var updateStatus = Graphite.TextBlock(
+            $"Sprint installs updates from the {AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)} channel.",
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap);
+        // The install button stays hidden until a check finds a newer release on the
+        // active channel; the found release is what the button then installs.
+        var installButton = Graphite.Button("Update", ButtonTone.Primary);
+        installButton.IsVisible = false;
+        var checkButton = Graphite.Button("Check for updates", ButtonTone.Ghost);
+        ReleaseInfo? foundUpdate = null;
+
+        async void RunUpdateCheck()
+        {
+            checkButton.IsEnabled = false;
+            installButton.IsVisible = false;
+            updateStatus.Text = "Checking…";
+            var result = await FetchUpdateAsync();
+            checkButton.IsEnabled = true;
+
+            if (result is null)
+            {
+                updateStatus.Text = "Check failed — try again later.";
+                return;
+            }
+
+            if (result is { UpdateAvailable: true, Latest: { } latest })
+            {
+                foundUpdate = latest;
+                updateStatus.Text = $"Sprint {DisplayVersion(latest.Version)} is available.";
+                installButton.Content = $"Update to {DisplayVersion(latest.Version)}";
+                installButton.IsVisible = true;
+                return;
+            }
+
+            updateStatus.Text = $"Up to date (v{BuildInfo.Version}).";
+        }
+
+        checkButton.Click += (_, _) => RunUpdateCheck();
+        installButton.Click += (_, _) =>
+        {
+            if (foundUpdate is { } release)
+            {
+                ConfirmAndInstallUpdate(release, updateStatus, installButton);
+            }
+        };
+
         var checkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-        checkRow.Children.Add(ActionButton("Check for updates", ButtonTone.Ghost, () => CheckForUpdates(updateStatus)));
+        checkRow.Children.Add(checkButton);
+        checkRow.Children.Add(installButton);
         checkRow.Children.Add(updateStatus);
         form.Children.Add(FormRow("Updates", checkRow));
 
@@ -3067,23 +3255,126 @@ public sealed class MainWindow : Window
             $"UI action: control=button label={label ?? "unlabelled"} view={_shell.View}.");
     }
 
-    private async void CheckForUpdates(TextBlock status)
+    private static string DisplayVersion(string version) =>
+        version.StartsWith('v') || version.StartsWith('V') ? version : $"v{version}";
+
+    /// <summary>
+    /// Channel-aware update check shared by the Settings button and the startup notice.
+    /// Best-effort: returns <c>null</c> when the release feed cannot be read, so a
+    /// network failure never surfaces as a crash.
+    /// </summary>
+    private async Task<UpdateCheckResult?> FetchUpdateAsync()
     {
-        status.Text = "Checking…";
         try
         {
-            var releases = await new GitHubReleaseSource().FetchAsync("kratofl/sprint");
-            var result = UpdateChecker.Check(BuildInfo.Version, _runtime.Settings.UpdateChannel, releases);
-            status.Text = result is { UpdateAvailable: true, Latest: { } latest }
-                ? $"Update {latest.Version} available"
-                : "Up to date";
+            var releases = await new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo);
+            return UpdateChecker.Check(BuildInfo.Version, _runtime.Settings.UpdateChannel, releases);
         }
         catch (Exception ex)
         {
-            // Manual check is best-effort; a network failure must not crash the app.
             _log.Warn("Update check failed", ex);
-            status.Text = "Check failed — try again later.";
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Confirms the one-click update, then downloads the platform archive and hands it
+    /// to the self-replace helper. Windows swaps the install and relaunches; every other
+    /// platform (and every failure) falls back to revealing the download so the user can
+    /// install manually — the running app is never left broken.
+    /// </summary>
+    private void ConfirmAndInstallUpdate(ReleaseInfo release, TextBlock status, Button installButton)
+    {
+        var asset = ReleaseAssetSelector.Select(release.Assets, UpdateInstaller.CurrentRid);
+        if (asset is null)
+        {
+            status.Text = "No download for this platform — get it from the GitHub release page.";
+            return;
+        }
+
+        var restarts = UpdateInstaller.SupportsSelfReplace;
+        ShowConfirmDialog(
+            $"Install Sprint {DisplayVersion(release.Version)}?",
+            restarts
+                ? "Sprint downloads the update, closes, replaces itself, and restarts. Unsaved work in other windows is not affected."
+                : "Sprint downloads the update and opens the containing folder. Automatic install is Windows-only, so finish the install manually.",
+            restarts ? "Download and install" : "Download",
+            () => InstallUpdate(release, asset, status, installButton),
+            confirmTone: ButtonTone.Primary);
+    }
+
+    private async void InstallUpdate(ReleaseInfo release, ReleaseAsset asset, TextBlock status, Button installButton)
+    {
+        installButton.IsEnabled = false;
+        var progress = new Progress<double>(fraction =>
+            status.Text = $"Downloading… {fraction * 100:0}%");
+
+        try
+        {
+            _log.Info($"Update install started: version={release.Version} asset={asset.Name}.");
+            var staged = await new UpdateInstaller().DownloadAsync(release.Version, asset, progress);
+
+            if (UpdateInstaller.SupportsSelfReplace)
+            {
+                status.Text = "Installing — Sprint will restart.";
+                UpdateInstaller.LaunchWindowsSelfReplace(staged.StagingDir);
+                _log.Info("Self-replace helper launched; shutting down for the swap.");
+                RequestShutdown();
+                return;
+            }
+
+            status.Text = "Downloaded — finish the install from the opened folder.";
+            UpdateInstaller.RevealInFolder(staged.ArchivePath);
+            installButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            // Never brick the running app: report, re-enable, and leave the user on the
+            // working build (the manual GitHub download stays available).
+            _log.Warn("Update install failed", ex);
+            status.Text = "Update failed — download it from the GitHub release page instead.";
+            installButton.IsEnabled = true;
+        }
+    }
+
+    private void RequestShutdown()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+            return;
+        }
+
+        Close();
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+
+        // Only a real desktop session gets the startup notice: it is also the lifetime
+        // that can restart for an install, and it keeps headless/test hosts off the network.
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)
+        {
+            _ = NotifyIfUpdateAvailableAsync();
+        }
+    }
+
+    private async Task NotifyIfUpdateAvailableAsync()
+    {
+        var result = await FetchUpdateAsync();
+        if (result is not { UpdateAvailable: true, Latest: { } latest })
+        {
+            // Silent when up to date or unreachable — startup must never nag.
+            return;
+        }
+
+        ShowToast(
+            GraphiteIntent.Info,
+            $"Sprint {DisplayVersion(latest.Version)} is available",
+            $"You are on v{BuildInfo.Version} ({AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)}). Install it from Settings.",
+            "info-circle",
+            ("Open Settings", () => Navigate(AppView.Settings)));
     }
 
     private Control UpcomingPillarPage()

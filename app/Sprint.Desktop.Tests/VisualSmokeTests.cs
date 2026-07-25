@@ -624,6 +624,22 @@ public sealed class VisualSmokeTests
         var toasts = new StackPanel { Spacing = 10 };
         toasts.Children.Add(Graphite.Toast(GraphiteIntent.Success, "Connected", "Le Mans Ultimate telemetry is live.", "circle-check"));
         toasts.Children.Add(Graphite.Toast(GraphiteIntent.Danger, "Device error", "USBD480 screen was disconnected.", "alert-circle"));
+        // Live toast shape: action + dismiss controls pinned to the card's right edge
+        // (what the startup update notice renders).
+        var toastActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(12, 0, 0, 0),
+        };
+        toastActions.Children.Add(Graphite.Button("Open Settings", ButtonTone.Primary));
+        toastActions.Children.Add(Graphite.ChromeIconButton("x", "Dismiss notification", () => { }));
+        toasts.Children.Add(Graphite.Toast(
+            GraphiteIntent.Info,
+            "Sprint v0.4.0 is available",
+            "You are on v0.3.0 (stable). Install it from Settings.",
+            "info-circle",
+            toastActions));
         page.Children.Add(toasts);
 
         page.Children.Add(Graphite.SectionLabel("Tab view / Segmented"));

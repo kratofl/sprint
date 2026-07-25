@@ -604,8 +604,26 @@ internal static class Graphite
 
     // Figma Toast: a raised neutral card with a circular Indicator, bold title, and
     // muted message. Transient notification surface (stacked bottom-right at runtime).
-    public static Control Toast(GraphiteIntent intent, string title, string message, string icon)
+    // A live toast can carry trailing controls (an action button, a dismiss button);
+    // they sit inside the card after the message so the whole notification stays one
+    // surface. Static/preview usage passes no trailing content.
+    public static Control Toast(GraphiteIntent intent, string title, string message, string icon, Control? trailing = null)
     {
+        var row = MessageRow(Indicator(intent, icon, 38), title, message);
+        Control content = row;
+        if (trailing is not null)
+        {
+            // Message takes the free width, trailing controls pin to the card's right edge.
+            trailing.VerticalAlignment = VerticalAlignment.Center;
+            trailing.HorizontalAlignment = HorizontalAlignment.Right;
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(row, 0);
+            Grid.SetColumn(trailing, 1);
+            grid.Children.Add(row);
+            grid.Children.Add(trailing);
+            content = grid;
+        }
+
         return new Border
         {
             Background = Panel3Brush,
@@ -614,11 +632,11 @@ internal static class Graphite
             CornerRadius = new CornerRadius(RadiusLg),
             Padding = new Thickness(14, 12),
             MinWidth = 300,
-            Child = MessageRow(Indicator(intent, icon, 38), title, message),
+            Child = content,
         };
     }
 
-    private static Control MessageRow(Control leading, string title, string message)
+    private static StackPanel MessageRow(Control leading, string title, string message)
     {
         leading.VerticalAlignment = VerticalAlignment.Center;
 

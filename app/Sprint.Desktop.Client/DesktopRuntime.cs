@@ -474,7 +474,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private AppSettings LoadSettings()
     {
         var fallback = LoadDefaultSettings();
-        return LoadJson<AppSettings>(_settingsPath) ?? fallback;
+        var settings = LoadJson<AppSettings>(_settingsPath) ?? fallback;
+        // Fold legacy three-channel values (beta/alpha) into the two-channel model.
+        settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
+        return settings;
     }
 
     private AppSettings LoadDefaultSettings() =>

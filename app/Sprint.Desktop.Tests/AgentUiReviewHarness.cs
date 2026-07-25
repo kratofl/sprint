@@ -11,6 +11,7 @@ using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -165,6 +166,28 @@ internal static class AgentUiReviewHarness
                         "Open development tools"
 #endif
                     ));
+
+                    // Pre-release channel warning (issue #28): selecting the channel must
+                    // ask for confirmation first, and cancelling must put the combo back
+                    // on stable without persisting the switch.
+                    var channelCombo = window.GetVisualDescendants()
+                        .OfType<ComboBox>()
+                        .Single(combo => ReferenceEquals(combo.ItemsSource, AppSettings.Channels));
+                    channelCombo.SelectedItem = "pre-release";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "settings-pre-release-warning",
+                        "Switch to pre-release?",
+                        "Use pre-release",
+                        "Cancel"));
+                    Click(window, "Cancel");
+                    Assert.Equal("stable", channelCombo.SelectedItem);
+                    Assert.Equal("stable", runtime.Settings.UpdateChannel);
 
 #if DEBUG
                     Click(window, "Open development tools");
