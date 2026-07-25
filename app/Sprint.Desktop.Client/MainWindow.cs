@@ -766,6 +766,15 @@ public sealed class MainWindow : Window
 
     internal void RefreshScreenStatusIndicators()
     {
+        // A panel that reports its real size (USBD480 NX) or a generic entry added with
+        // a placeholder resolution updates the saved device once it connects; rebuild so
+        // the resolution chip and the detail preview show the real panel.
+        if (_screens.AdoptDetectedResolutions())
+        {
+            RenderBody();
+            return;
+        }
+
         foreach (var device in _runtime.Devices.Where(DeviceCapabilities.HasScreen))
         {
             var view = DeviceStatusView(device);

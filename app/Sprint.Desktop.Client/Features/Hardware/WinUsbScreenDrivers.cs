@@ -327,14 +327,6 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
 [SupportedOSPlatform("windows")]
 internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
 {
-    private const byte BulkEndpoint = 0x02;
-    private const byte ReqTypeOut = 0x40;
-    private const byte ReqSetAddress = 0xC0;
-    private const byte ReqSetFrameStartAddress = 0xC4;
-    private const byte ReqBrightness = 0x81;
-    private const byte ReqTypeIn = 0xC0;
-    private const byte ReqGetDetails = 0x80;
-
     public override string Name => "USBD480 Screen";
 
     public Usbd480ScreenDriver(ILog? log = null)
@@ -351,34 +343,47 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
         Require(transport.DisableAutoSuspend(), transport, "USBD480 wake");
 
         Log.Debug("USBD480 initialization: querying device details with request 0x80.");
-        var details = new byte[64];
-        if (transport.ControlIn(ReqTypeIn, ReqGetDetails, details, out var transferred)
-            && transferred >= 24)
+        var details = new byte[Usbd480Protocol.DetailsBlockSize];
+        Usbd480Details? reported = null;
+        if (transport.ControlIn(Usbd480Protocol.RequestTypeIn, Usbd480Protocol.RequestGetDetails, details, out var transferred))
         {
-            var width = details[20] | details[21] << 8;
-            var height = details[22] | details[23] << 8;
-            SetNativeSize(width, height);
-            var nameLength = Array.IndexOf(details, (byte)0, 0, 20);
-            if (nameLength < 0)
+            if (Usbd480Protocol.TryParseDetails(details.AsSpan(0, transferred), out var parsed))
             {
-                nameLength = 20;
+                reported = parsed;
             }
-
-            var name = System.Text.Encoding.ASCII.GetString(details, 0, nameLength);
-            Log.Info(
-                $"USBD480 identified: name={name} native={width}x{height} " +
-                $"configured={config.Width}x{config.Height}.");
+            else if (!string.IsNullOrWhiteSpace(parsed.Name))
+            {
+                // The panel named itself but its size fields were unusable; the name
+                // alone can still identify a known model.
+                reported = parsed;
+                Log.Warn(
+                    $"USBD480 reported an unusable size for '{parsed.Name}'; " +
+                    "falling back to the known model size or the configured dimensions.");
+            }
+            else
+            {
+                Log.Warn($"USBD480 details block was unreadable ({transferred} bytes); using configured dimensions.");
+            }
         }
         else
         {
-            Log.Warn(
-                $"USBD480 details query failed; using configured dimensions " +
-                $"{config.Width}x{config.Height}. {transport.LastFailure}");
+            Log.Warn($"USBD480 details query failed; using configured dimensions. {transport.LastFailure}");
         }
+
+        var native = Usbd480Protocol.ResolveNativeSize(reported, config.Width, config.Height);
+        SetNativeSize(native.Width, native.Height);
+        Log.Info(
+            $"USBD480 identified: name={(string.IsNullOrWhiteSpace(reported?.Name) ? "unknown" : reported!.Name)} " +
+            $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
         Log.Debug("USBD480 initialization: restoring brightness with request 0x81.");
         Require(
-            transport.ControlOut(ReqTypeOut, ReqBrightness, value: 255, index: 0, data: null),
+            transport.ControlOut(
+                Usbd480Protocol.RequestTypeOut,
+                Usbd480Protocol.RequestSetBrightness,
+                value: Usbd480Protocol.FullBrightness,
+                index: 0,
+                data: null),
             transport,
             "USBD480 brightness restore");
     }
@@ -386,11 +391,11 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
     protected override bool WriteFrame(WinUsbScreenTransport transport, byte[] rgb565)
     {
         // Set framebuffer write address to 0, then bulk-write the RGB565 frame.
-        return transport.ControlOut(ReqTypeOut, ReqSetAddress, value: 0, index: 0, data: null)
-            && transport.BulkWrite(BulkEndpoint, rgb565)
+        return transport.ControlOut(Usbd480Protocol.RequestTypeOut, Usbd480Protocol.RequestSetAddress, value: 0, index: 0, data: null)
+            && transport.BulkWrite(Usbd480Protocol.BulkEndpoint, rgb565)
             && transport.ControlOut(
-                ReqTypeOut,
-                ReqSetFrameStartAddress,
+                Usbd480Protocol.RequestTypeOut,
+                Usbd480Protocol.RequestSetFrameStartAddress,
                 value: 0,
                 index: 0,
                 data: null);
@@ -398,6 +403,11 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
 
     protected override void Shutdown(WinUsbScreenTransport transport)
     {
-        transport.ControlOut(ReqTypeOut, ReqBrightness, value: 0, index: 0, data: null);
+        transport.ControlOut(
+            Usbd480Protocol.RequestTypeOut,
+            Usbd480Protocol.RequestSetBrightness,
+            value: 0,
+            index: 0,
+            data: null);
     }
 }

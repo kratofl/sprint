@@ -6,6 +6,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
@@ -158,8 +159,11 @@ public sealed class DesktopRuntime : IDesktopRuntime
         var hasScreenTransport = isUsbd
             || catalog.Driver.Contains("vocore", StringComparison.OrdinalIgnoreCase)
             || string.Equals(catalog.Type, "screen", StringComparison.OrdinalIgnoreCase);
-        var width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? isUsbd ? 480 : 800 : 0;
-        var height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? isUsbd ? 272 : 480 : 0;
+        // USBD480 NX's documented fallback size lives with its protocol, so the stand-in
+        // matches what the driver falls back to when the panel does not answer.
+        var fallback = isUsbd ? Usbd480Protocol.DefaultNativeSize : new ScreenNativeSize(800, 480);
+        var width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? fallback.Width : 0;
+        var height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? fallback.Height : 0;
         // Find the lowest index whose composite id is not already in use, so ids
         // stay unique even after devices are removed (a plain count+1 can collide
         // with a survivor and then crash reconciliation on a duplicate key).
