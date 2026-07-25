@@ -232,6 +232,23 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
     }
 
+    /// <summary>
+    /// Sets the screen refresh rate (issue #75). Applies to the hardware publisher and
+    /// the live preview alike, so the caller must re-sync the screen service.
+    /// </summary>
+    public void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz)
+    {
+        var normalized = DeviceRefreshRates.Normalize(refreshHz);
+        if (device.RefreshHz == normalized)
+        {
+            return;
+        }
+
+        device.RefreshHz = normalized;
+        SaveDevices();
+        _log.Info($"Device refresh rate changed: id={device.Id} hz={normalized}.");
+    }
+
     public void RemoveDevice(SavedDevice device)
     {
         Devices.Remove(device);
@@ -542,6 +559,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             // Devices saved before purposes existed (and any unknown value) resolve to
             // dash, so an older devices.json keeps driving its screens.
             device.Purpose = DevicePurposes.Normalize(device.Purpose);
+            device.RefreshHz = DeviceRefreshRates.Normalize(device.RefreshHz);
         }
 
         return devices;

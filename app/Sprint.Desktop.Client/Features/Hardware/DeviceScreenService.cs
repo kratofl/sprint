@@ -160,6 +160,7 @@ public sealed class DeviceScreenService : IDisposable
             OffsetY = device.OffsetY,
             Margin = device.Margin,
             Driver = device.Driver,
+            TargetFps = DeviceRefreshRates.Normalize(device.RefreshHz),
         };
 
         var driver = _driverFactory(device.Driver);

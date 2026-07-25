@@ -91,6 +91,7 @@ public sealed class MainWindow : Window
     // the body rebuilds or the window closes (see DisposeDevicePreview).
     private DashPreviewState _devicePreviewState = DashPreviewState.Live;
     private DashPainter? _devicePreviewPainter;
+    private DateTimeOffset? _lastDevicePreviewFrame;
     private DashLayout? _devicePreviewLayout;
     private WriteableBitmap? _devicePreviewBitmap;
     private Image? _devicePreviewImage;
@@ -745,11 +746,14 @@ public sealed class MainWindow : Window
         UpdateTitlebar();
         RefreshScreenStatusIndicators();
         // Animate the device detail mirror in place (no body rebuild) while the user
-        // is watching the live preview of the assigned dash.
+        // is watching the live preview of the assigned dash. The shell ticks at ~30Hz;
+        // the preview is paced to the device's own refresh rate so what the user tunes
+        // against matches what the panel receives (issue #75).
         if (_shell.View == AppView.Devices
             && _devicePreviewPainter is not null
             && _devicePreviewState == DashPreviewState.Live
-            && _runtime.Settings.DevicesUI.LivePreview)
+            && _runtime.Settings.DevicesUI.LivePreview
+            && DevicePreviewFrameDue(now))
         {
             RenderDevicePreviewFrame();
         }
@@ -2194,6 +2198,7 @@ public sealed class MainWindow : Window
 
         var right = new StackPanel { Spacing = 8 };
         right.Children.Add(Graphite.SectionLabel("Screen alignment"));
+        right.Children.Add(AlignmentRow("Refresh", RefreshRateControl(device)));
         right.Children.Add(AlignmentRow("Rotation", RotationControl(device)));
         right.Children.Add(AlignmentRow("Offset X", StepperControl(device.OffsetX, "px", value => SetDeviceOffset(device, value, device.OffsetY), 0, 2000)));
         right.Children.Add(AlignmentRow("Offset Y", StepperControl(device.OffsetY, "px", value => SetDeviceOffset(device, device.OffsetX, value), 0, 2000)));
@@ -2352,6 +2357,28 @@ public sealed class MainWindow : Window
             chosen => SetDeviceRotation(device, chosen * 90));
     }
 
+    // One rate for the panel and its live preview (issue #75).
+    private Control RefreshRateControl(SavedDevice device)
+    {
+        var current = DeviceRefreshRates.Normalize(device.RefreshHz);
+        var combo = Graphite.ComboBox(DeviceRefreshRates.Labels, DeviceRefreshRates.Label(current), 120);
+        combo.Tag = "device-refresh";
+        ToolTip.SetTip(combo, "Frames per second sent to the panel, and the rate this preview animates at.");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (DeviceRefreshRates.ForLabel(combo.SelectedItem?.ToString()) is not { } chosen
+                || chosen == DeviceRefreshRates.Normalize(device.RefreshHz))
+            {
+                return;
+            }
+
+            _runtime.UpdateDeviceRefreshHz(device, chosen);
+            _screens.Sync();
+            RenderBody();
+        };
+        return combo;
+    }
+
     private Control StepperControl(int value, string suffix, Action<int> setter, int min, int max)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -2421,6 +2448,24 @@ public sealed class MainWindow : Window
             AlphaFormat.Premul);
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
         RenderDevicePreviewFrame();
+    }
+
+    /// <summary>
+    /// Rate limiter for the live preview: true when the selected device's frame interval
+    /// has elapsed. Returns true on the first call so the preview never waits to appear.
+    /// </summary>
+    private bool DevicePreviewFrameDue(DateTimeOffset now)
+    {
+        var device = _runtime.Devices.FirstOrDefault(item =>
+            string.Equals(item.Id, _selectedDeviceId, StringComparison.OrdinalIgnoreCase));
+        var interval = DeviceRefreshRates.Interval(device?.RefreshHz ?? DeviceRefreshRates.Default);
+        if (_lastDevicePreviewFrame is { } last && now - last < interval)
+        {
+            return false;
+        }
+
+        _lastDevicePreviewFrame = now;
+        return true;
     }
 
     // Renders the assigned dash upright at the panel's native size and blits it into

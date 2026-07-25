@@ -366,6 +366,58 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(12, frame.Tires[0].WearPercent, precision: 1);
         Assert.Equal("Medium", frame.Tires[0].Compound);
         Assert.Equal("Soft", frame.Tires[2].Compound);
+        // Surface is the tread average (90/92/94 °C) and must be populated: consumers
+        // that read it were previously getting 0 and falling back to the carcass value.
+        Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);
+        Assert.Equal(87, frame.Tires[0].TempCoreCelsius, precision: 1);
+    }
+
+    [Fact]
+    public void Lmu_mapper_reports_absent_tyre_temperatures_as_zero_not_minus_273()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+
+        // Out of the car (or on a build that does not fill a channel) LMU reports 0 K.
+        // Converting that blindly yields -273 °C, which reads as a real, very cold tyre.
+        var frame = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with
+            {
+                Wheels = [new LmuWheel(), new LmuWheel(), new LmuWheel(), new LmuWheel()],
+            },
+        });
+
+        var tire = frame.Tires[0];
+        Assert.Equal(0, tire.TempInnerCelsius);
+        Assert.Equal(0, tire.TempMiddleCelsius);
+        Assert.Equal(0, tire.TempOuterCelsius);
+        Assert.Equal(0, tire.TempSurfaceCelsius);
+        Assert.Equal(0, tire.TempCoreCelsius);
+    }
+
+    [Fact]
+    public void Lmu_mapper_averages_only_the_tread_sensors_that_report()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+
+        var frame = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with
+            {
+                // Middle sensor absent: the average must not be dragged toward zero.
+                Wheels =
+                [
+                    new LmuWheel { TempInnerKelvin = 363.15, TempOuterKelvin = 373.15 },
+                    new LmuWheel(),
+                    new LmuWheel(),
+                    new LmuWheel(),
+                ],
+            },
+        });
+
+        Assert.Equal(95, frame.Tires[0].TempSurfaceCelsius, precision: 1);
     }
 
     [Fact]

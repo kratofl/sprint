@@ -67,6 +67,12 @@ public sealed class SavedDevice
     /// <summary>What this device's screen is used for (issue #53); see <see cref="DevicePurposes"/>.</summary>
     public string Purpose { get; set; } = DevicePurposes.Dash;
 
+    /// <summary>
+    /// Frames per second published to this screen, and the rate its live preview
+    /// animates at (issue #75). See <see cref="DeviceRefreshRates"/>.
+    /// </summary>
+    public int RefreshHz { get; set; } = DeviceRefreshRates.Default;
+
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
 }

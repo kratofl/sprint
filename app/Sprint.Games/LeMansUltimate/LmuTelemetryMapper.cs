@@ -383,17 +383,49 @@ internal sealed class LmuTelemetryMapper
 
     private static TireState MapTire(TirePosition position, LmuWheel wheel, string compound)
     {
+        var inner = TemperatureCelsius(wheel.TempInnerKelvin);
+        var middle = TemperatureCelsius(wheel.TempMiddleKelvin);
+        var outer = TemperatureCelsius(wheel.TempOuterKelvin);
+
         return new TireState
         {
             Position = position,
-            TempInnerCelsius = KelvinToCelsius(wheel.TempInnerKelvin),
-            TempMiddleCelsius = KelvinToCelsius(wheel.TempMiddleKelvin),
-            TempOuterCelsius = KelvinToCelsius(wheel.TempOuterKelvin),
-            TempCoreCelsius = KelvinToCelsius(wheel.CarcassTempKelvin),
+            TempInnerCelsius = inner,
+            TempMiddleCelsius = middle,
+            TempOuterCelsius = outer,
+            // The tread average across the three sensors is the temperature a driver
+            // reads in-game. Without it, consumers fell back to the carcass reading,
+            // which is a different (much cooler, slower) quantity.
+            TempSurfaceCelsius = SurfaceAverage(inner, middle, outer),
+            TempCoreCelsius = TemperatureCelsius(wheel.CarcassTempKelvin),
             PressureKPa = ToF32(wheel.PressureKPa),
             WearPercent = ToF32(wheel.WearFraction * 100),
             Compound = compound
         };
+    }
+
+    /// <summary>
+    /// Kelvin → Celsius for a channel that reports 0 K when it has no reading (out of
+    /// the car, or a field this build does not fill). A plain conversion would turn
+    /// "no data" into a plausible-looking -273 °C, so absent readings stay 0.
+    /// </summary>
+    private static float TemperatureCelsius(double kelvin) =>
+        kelvin <= 0 || !double.IsFinite(kelvin) ? 0 : KelvinToCelsius(kelvin);
+
+    private static float SurfaceAverage(float inner, float middle, float outer)
+    {
+        var sum = 0f;
+        var count = 0;
+        foreach (var reading in new[] { inner, middle, outer })
+        {
+            if (reading > 0)
+            {
+                sum += reading;
+                count++;
+            }
+        }
+
+        return count == 0 ? 0 : sum / count;
     }
 
     private static SessionType MapSessionType(int session)
