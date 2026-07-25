@@ -151,8 +151,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
-        var width = catalog.Width > 0 ? catalog.Width : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 480 : 800;
-        var height = catalog.Height > 0 ? catalog.Height : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 272 : 480;
+        // Only a screen transport gets a stand-in resolution (hardware detection then
+        // corrects it). A screenless device — e.g. a custom wheel with buttons only —
+        // must stay at 0×0, or DeviceCapabilities would treat it as a screen.
+        var isUsbd = catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase);
+        var hasScreenTransport = isUsbd
+            || catalog.Driver.Contains("vocore", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(catalog.Type, "screen", StringComparison.OrdinalIgnoreCase);
+        var width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? isUsbd ? 480 : 800 : 0;
+        var height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? isUsbd ? 272 : 480 : 0;
         // Find the lowest index whose composite id is not already in use, so ids
         // stay unique even after devices are removed (a plain count+1 can collide
         // with a survivor and then crash reconciliation on a duplicate key).
@@ -206,6 +213,23 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _log.Info(
             $"Device updated: id={device.Id} rotation={device.Rotation} " +
             $"offset={device.OffsetX},{device.OffsetY} margin={device.Margin} dash={device.DashId}.");
+    }
+
+    /// <summary>
+    /// Sets what a device's screen is used for (issue #53). Only the dash purpose
+    /// receives dash frames, so the caller must re-sync the screen service afterwards.
+    /// </summary>
+    public void UpdateDevicePurpose(SavedDevice device, string purpose)
+    {
+        var normalized = DevicePurposes.Normalize(purpose);
+        if (string.Equals(device.Purpose, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        device.Purpose = normalized;
+        SaveDevices();
+        _log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
     }
 
     public void RemoveDevice(SavedDevice device)
@@ -512,7 +536,15 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SavedDevice> LoadDevices()
     {
-        return LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
+        var devices = LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
+        foreach (var device in devices)
+        {
+            // Devices saved before purposes existed (and any unknown value) resolve to
+            // dash, so an older devices.json keeps driving its screens.
+            device.Purpose = DevicePurposes.Normalize(device.Purpose);
+        }
+
+        return devices;
     }
 
     private ControlsConfig LoadControls()

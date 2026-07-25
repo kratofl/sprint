@@ -77,7 +77,7 @@ public sealed class DeviceScreenService : IDisposable
         var candidates = new Dictionary<string, SavedDevice>(StringComparer.OrdinalIgnoreCase);
         foreach (var device in _runtime.Devices)
         {
-            if (DeviceCapabilities.HasScreen(device) && !device.Disabled)
+            if (DeviceCapabilities.DrivesDash(device) && !device.Disabled)
             {
                 candidates[device.Id] = device;
             }

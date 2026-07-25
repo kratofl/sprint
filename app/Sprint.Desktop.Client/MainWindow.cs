@@ -1629,7 +1629,9 @@ public sealed class MainWindow : Window
     // pipeline), a buttons-only device shows an icon + its bound-button count.
     private Control DeviceCardVisual(SavedDevice device, double width, double height)
     {
-        if (IsScreenDevice(device)
+        // A dash mirror is only truthful for a dash-purpose screen; anything else is
+        // idle, so the card falls through to the icon tile with its purpose label.
+        if (DeviceCapabilities.DrivesDash(device)
             && RenderDeviceMirrorBitmap(device, DashPreviewFrames.For(DashPreviewState.MidLap)) is { } bitmap)
         {
             return DeviceMirrorDisplay(device, new Image { Source = bitmap }, width, height);
@@ -1638,7 +1640,11 @@ public sealed class MainWindow : Window
         var icon = DeviceIcon(device);
         var inner = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         inner.Children.Add(new Grid { Children = { Icons.Create(icon, 30, Graphite.AccentBrush) }, HorizontalAlignment = HorizontalAlignment.Center });
-        if (!IsScreenDevice(device))
+        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            inner.Children.Add(Graphite.TextBlock(purpose.Label, 11, FontWeight.Medium, Graphite.Text3Brush));
+        }
+        else if (!IsScreenDevice(device))
         {
             var count = device.Bindings.Count;
             inner.Children.Add(Graphite.TextBlock(count == 1 ? "1 button bound" : $"{count} buttons bound", 11, FontWeight.Medium, Graphite.Text3Brush));
@@ -1793,7 +1799,9 @@ public sealed class MainWindow : Window
         var headingText = new StackPanel { Spacing = 4 };
         headingText.Children.Add(Graphite.TextBlock("Add device", 19, FontWeight.Bold, Graphite.TextBrush));
         headingText.Children.Add(Graphite.TextBlock(
-            "Choose a known hardware preset or configure a generic screen.",
+            generic
+                ? "Pick a generic screen Sprint should auto-detect, or build your own wheel."
+                : "Choose a known hardware preset, or switch to Generic to build your own.",
             12,
             FontWeight.Normal,
             Graphite.Text2Brush,
@@ -1828,11 +1836,17 @@ public sealed class MainWindow : Window
 
         content.Children.Add(new ScrollViewer
         {
-            MaxHeight = 430,
+            // The generic tab shares its height with the custom-wheel form below it.
+            MaxHeight = generic ? 200 : 430,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = catalog,
         });
+
+        if (generic)
+        {
+            content.Children.Add(CustomWheelForm());
+        }
 
         var panel = new Border
         {
@@ -1875,6 +1889,110 @@ public sealed class MainWindow : Window
         Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
     }
 
+    // "Build your own wheel" (issue #49): the shipped presets cannot cover every rim,
+    // so the generic tab also lets the user declare one — name, optional integrated
+    // screen, its transport and resolution. Validation lives in the pure
+    // CustomWheelBuilder; this method only collects the fields and reports the error.
+    private Control CustomWheelForm()
+    {
+        const string autoResolution = "Auto-detect";
+
+        var form = new StackPanel { Spacing = 8 };
+        form.Children.Add(Graphite.SectionLabel("Custom wheel"));
+
+        var name = new TextBox
+        {
+            PlaceholderText = "e.g. My GT rim",
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            FontSize = 12,
+            MinWidth = 260,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Tag = "custom-wheel-name",
+        };
+
+        var driver = Graphite.ComboBox(
+            CustomWheelBuilder.ScreenDrivers.Select(CustomWheelBuilder.DriverLabel),
+            CustomWheelBuilder.DriverLabel(CustomWheelBuilder.ScreenDrivers[0]),
+            180);
+        driver.Tag = "custom-wheel-driver";
+
+        var resolutions = new List<string> { autoResolution };
+        resolutions.AddRange(ScreenProfileCatalog.All.Select(profile => $"{profile.Width} × {profile.Height}"));
+        var resolution = Graphite.ComboBox(resolutions, autoResolution, 180);
+        resolution.Tag = "custom-wheel-resolution";
+        ToolTip.SetTip(resolution, "Auto-detect keeps the driver default until the connected panel reports its size.");
+
+        var error = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.RedBrush, TextWrapping.Wrap);
+        error.IsVisible = false;
+
+        var screenFields = new StackPanel { Spacing = 8 };
+        screenFields.Children.Add(FormRow("Screen type", driver));
+        screenFields.Children.Add(FormRow("Resolution", resolution));
+
+        // Screen yes/no as a segmented choice: it carries the Graphite selection colour
+        // by construction, unlike a stock CheckBox. Rebuilt on each pick because the
+        // control bakes its selected state when it is built.
+        var hasScreen = true;
+        var screenChoice = new ContentControl { Tag = "custom-wheel-screen-choice" };
+        void RenderScreenChoice() => screenChoice.Content = Graphite.Segmented(
+            ["With screen", "No screen"],
+            hasScreen ? 0 : 1,
+            index =>
+            {
+                hasScreen = index == 0;
+                screenFields.IsVisible = hasScreen;
+                RenderScreenChoice();
+            });
+
+        RenderScreenChoice();
+
+        var add = Graphite.Button("Add wheel", ButtonTone.Primary);
+        add.HorizontalAlignment = HorizontalAlignment.Left;
+        add.Click += (_, _) =>
+        {
+            var (width, height) = ParseResolution(resolution.SelectedItem?.ToString(), autoResolution);
+            var request = new CustomWheelRequest(
+                name.Text,
+                hasScreen,
+                CustomWheelBuilder.DriverForLabel(driver.SelectedItem?.ToString()),
+                width,
+                height);
+
+            if (!CustomWheelBuilder.TryBuild(request, out var entry, out var failure))
+            {
+                error.Text = failure;
+                error.IsVisible = true;
+                return;
+            }
+
+            AddCatalogDevice(entry);
+        };
+
+        form.Children.Add(FormRow("Name", name));
+        form.Children.Add(FormRow("Screen", screenChoice));
+        form.Children.Add(screenFields);
+        form.Children.Add(error);
+        form.Children.Add(add);
+        return form;
+    }
+
+    private static (int Width, int Height) ParseResolution(string? label, string autoLabel)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.Equals(label, autoLabel, StringComparison.Ordinal))
+        {
+            return (0, 0);
+        }
+
+        var parts = label.Split('×', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2
+            && int.TryParse(parts[0], out var width)
+            && int.TryParse(parts[1], out var height)
+                ? (width, height)
+                : (0, 0);
+    }
+
     // A catalog entry rendered as a visual card: type icon, name, resolution chip,
     // and description. Clicking adds the device and opens its detail.
     private Control DeviceCatalogCard(CatalogDevice entry)
@@ -1908,15 +2026,19 @@ public sealed class MainWindow : Window
         card.Width = 300;
         card.MinHeight = 118;
         card.Margin = new Thickness(0, 0, 10, 10);
-        return WrapClickable(card, $"catalog-entry:{entry.Id}", entry.Name, () =>
-        {
-            var saved = _runtime.AddDevice(entry);
-            _selectedDeviceId = saved.Id;
-            _deviceBindingPickerOpen = false;
-            CloseDeviceCatalogDialog();
-            _screens.Sync();
-            RenderBody();
-        });
+        return WrapClickable(card, $"catalog-entry:{entry.Id}", entry.Name, () => AddCatalogDevice(entry));
+    }
+
+    // Shared tail of both add paths (preset/generic card and the custom-wheel form):
+    // save the device, close the dialog, and land on its detail page.
+    private void AddCatalogDevice(CatalogDevice entry)
+    {
+        var saved = _runtime.AddDevice(entry);
+        _selectedDeviceId = saved.Id;
+        _deviceBindingPickerOpen = false;
+        CloseDeviceCatalogDialog();
+        _screens.Sync();
+        RenderBody();
     }
 
     private void CloseDeviceCatalogDialog(bool restoreFocus = true)
@@ -1985,8 +2107,20 @@ public sealed class MainWindow : Window
 
         var metaRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var chips = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        chips.Children.Add(SpecChip(device.Driver));
+        // A custom wheel without a screen has no transport to name.
+        if (!string.IsNullOrWhiteSpace(device.Driver))
+        {
+            chips.Children.Add(SpecChip(device.Driver));
+        }
+
         chips.Children.Add(SpecChip(IsScreenDevice(device) ? $"{device.Width} × {device.Height}" : "Controller"));
+        // Only a non-default purpose earns a chip; every screen being tagged "Dash"
+        // would be noise.
+        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            chips.Children.Add(SpecChip(purpose.Label));
+        }
+
         AddGrid(metaRow, chips, 0, 0);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -2028,9 +2162,27 @@ public sealed class MainWindow : Window
     // preview so tuning is never blind.
     private Control DeviceScreenSection(SavedDevice device)
     {
+        var purpose = DevicePurposes.Resolve(device.Purpose);
+        if (!purpose.Available)
+        {
+            // Honest dead end: the screen is labelled for output Sprint cannot produce
+            // yet, so it stays idle instead of quietly showing a dash. No dash
+            // assignment, no preview, and no alignment controls for output that isn't
+            // running.
+            var idle = new StackPanel { Spacing = 12 };
+            idle.Children.Add(DevicePurposeField(device));
+            idle.Children.Add(Graphite.StatePanel(
+                $"{purpose.Label} is not built yet",
+                $"{purpose.Description} Sprint keeps this screen idle until that output exists — "
+                    + "switch the purpose back to Dash to drive it with a dash layout.",
+                Graphite.BlueBrush));
+            return idle;
+        }
+
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 24 };
 
         var left = new StackPanel { Spacing = 10 };
+        left.Children.Add(DevicePurposeField(device));
         left.Children.Add(DashAssignmentField(device));
         left.Children.Add(DeviceScreenPreview(device));
         if (_devicePreviewPainter is not null)
@@ -2068,6 +2220,33 @@ public sealed class MainWindow : Window
         Grid.SetColumn(control, 1);
         grid.Children.Add(control);
         return new Border { Padding = new Thickness(0, 4), Child = grid };
+    }
+
+    // What this screen is used for (issue #53). Changing it re-syncs the screen service,
+    // because only the dash purpose is allowed to publish frames.
+    private Control DevicePurposeField(SavedDevice device)
+    {
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(Graphite.SectionLabel("Purpose"));
+
+        var current = DevicePurposes.Resolve(device.Purpose);
+        var combo = Graphite.ComboBox(DevicePurposes.Labels, current.Label, 220);
+        combo.Tag = "device-purpose";
+        ToolTip.SetTip(combo, current.Description);
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = DevicePurposes.FindByLabel(combo.SelectedItem?.ToString());
+            if (chosen is null || string.Equals(chosen.Id, DevicePurposes.Normalize(device.Purpose), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _runtime.UpdateDevicePurpose(device, chosen.Id);
+            _screens.Sync();
+            RenderBody();
+        };
+        panel.Children.Add(combo);
+        return panel;
     }
 
     private Control DashAssignmentField(SavedDevice device)
@@ -3862,6 +4041,15 @@ public sealed class MainWindow : Window
         if (device.Disabled)
         {
             return new ScreenStatusView("Disabled", "This screen is disabled. Enable it to start output.");
+        }
+
+        // A screen labelled for an unbuilt purpose has no publisher by design; report
+        // that instead of the generic "no publisher" disconnect, which reads as a fault.
+        if (DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            return new ScreenStatusView(
+                "Idle",
+                $"Set to {purpose.Label}, which Sprint cannot render yet — nothing is being sent to this screen.");
         }
 
         return ScreenStatusPresentation.Describe(
