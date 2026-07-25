@@ -427,13 +427,28 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(3.0f, thirdLap.Car.FuelPerLapLiters);
     }
 
+    [Fact]
+    public void Lmu_mapper_tracks_rolling_virtual_energy_per_lap_from_completed_laps()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+
+        var firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, virtualEnergy: 80f));
+        var secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, virtualEnergy: 76.5f));
+        var thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, virtualEnergy: 72.5f));
+
+        Assert.Equal(0, firstLap.Energy.VirtualEnergyPerLap);
+        Assert.Equal(3.5f, secondLap.Energy.VirtualEnergyPerLap, precision: 3);
+        Assert.Equal(3.75f, thirdLap.Energy.VirtualEnergyPerLap, precision: 3);
+    }
+
     private static LmuParsedFrame CreateInCarParsedFrame(
         int lapNumber,
         double elapsedTime = 200.5,
         double lapStartElapsedTime = 188.0,
         double sessionTime = 200.0,
         double scoringLapTime = 12.25,
-        double fuelLiters = 42.5)
+        double fuelLiters = 42.5,
+        float virtualEnergy = 0f)
     {
         return new LmuParsedFrame
         {
@@ -454,7 +469,8 @@ public sealed class LeMansUltimateTelemetryTests
                 LapNumber = lapNumber,
                 ElapsedTime = elapsedTime,
                 LapStartElapsedTime = lapStartElapsedTime,
-                FuelLiters = fuelLiters
+                FuelLiters = fuelLiters,
+                VirtualEnergy = virtualEnergy
             },
             Scoring = new LmuVehicleScoring
             {

@@ -45,6 +45,18 @@ public static class DashWidgetCatalog
         ]),
     ];
 
+    // The virtual_energy widget reads config["mode"] in DashPainter.DrawVirtualEnergy
+    // to switch between an endurance budget readout, a bare percentage, and a power view.
+    private static readonly IReadOnlyList<DashConfigDef> VirtualEnergyConfig =
+    [
+        new DashConfigDef("mode", "Display", DashConfigKind.Select, Default: "budget", Options:
+        [
+            new DashConfigOption("budget", "Budget (%, per lap, laps left)"),
+            new DashConfigOption("percent", "Percentage only"),
+            new DashConfigOption("power", "Percentage + power (kW)"),
+        ]),
+    ];
+
     // IdleCapable marks widgets meaningful on the idle (parked/pre-session) page.
     // Live-timing/telemetry widgets are hidden from the idle palette.
     private static readonly IReadOnlyDictionary<string, DashWidgetDefinition> Definitions =
@@ -72,7 +84,9 @@ public static class DashWidgetCatalog
             ["gaps"] = Definition("gaps", "Gaps", idleCapable: false, "race.gapAhead", "race.gapBehind"),
             ["predictive_lap"] = Definition("predictive_lap", "Predictive Lap", idleCapable: false, "lap.target", "lap.best"),
             ["tyre_pressure"] = Definition("tyre_pressure", "Tyre Pressure", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
-            ["ers"] = Definition("ers", "ERS / Hybrid", idleCapable: false, "energy.virtual", "energy.deploy")
+            // LMU virtual-energy budget (replaces the former "ers" widget; legacy layouts
+            // are migrated to this type on load). Configurable via VirtualEnergyConfig.
+            ["virtual_energy"] = Definition("virtual_energy", "Virtual Energy", idleCapable: false, VirtualEnergyConfig, "energy.virtual", "energy.perLap", "energy.deploy")
         };
 
     public static IReadOnlyCollection<DashWidgetDefinition> All => Definitions.Values.ToArray();

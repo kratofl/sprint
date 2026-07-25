@@ -232,7 +232,7 @@ public sealed class DashPainter : IDisposable
                 case "gaps": DrawGaps(rect, frame); break;
                 case "predictive_lap": DrawSimpleValue(rect, "PREDICTED", DashFormat.Lap(frame.Lap.TargetLapTime)); break;
                 case "tyre_pressure": DrawTyrePressure(rect, frame); break;
-                case "ers": DrawErs(rect, frame); break;
+                case "virtual_energy" or "ers": DrawVirtualEnergy(widget, rect, frame); break;
                 case "text": DrawText(widget, rect, frame, settings); break;
                 default: DrawUnknown(widget, rect); break;
             }
@@ -732,19 +732,80 @@ public sealed class DashPainter : IDisposable
         }
     }
 
-    private void DrawErs(SKRect r, TelemetryFrame frame)
+    // LMU virtual-energy budget. The "mode" config picks the readout; all three tolerate
+    // 0..1 or 0..100 source scales by normalising off the current level and applying the
+    // same factor to the per-lap delta so "laps remaining" stays scale-independent.
+    private void DrawVirtualEnergy(DashWidget widget, SKRect r, TelemetryFrame frame)
     {
-        // VirtualEnergy is the remaining hybrid/energy budget; tolerate 0..1 or 0..100 sources.
-        var energyPct = frame.Energy.VirtualEnergy;
-        if (energyPct > 0f && energyPct <= 1.0f)
+        var raw = frame.Energy.VirtualEnergy;
+        var scale = raw is > 0f and <= 1.0f ? 100f : 1f;
+        var pct = raw * scale;
+        var mode = ConfigString(widget, "mode") switch
         {
-            energyPct *= 100f;
+            "percent" => "percent",
+            "power" => "power",
+            _ => "budget",
+        };
+
+        // Low-energy tint mirrors the fuel widget's danger/warning thresholds.
+        if (pct is > 0 and < 15)
+        {
+            var tint = pct < 5 ? _palette.Critical.WithAlpha(51) : _palette.Warning.WithAlpha(31);
+            using var tintPaint = new SKPaint { Color = tint };
+            _canvas.DrawRect(r, tintPaint);
         }
 
-        DrawTextLine("ERS ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
-        DrawTextLine(energyPct > 0 ? $"{energyPct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
+        switch (mode)
+        {
+            case "percent":
+                DrawVirtualEnergyPercent(r, pct);
+                break;
+            case "power":
+                DrawVirtualEnergyPower(r, pct, frame);
+                break;
+            default:
+                DrawVirtualEnergyBudget(r, pct, frame.Energy.VirtualEnergyPerLap * scale, raw, frame.Energy.VirtualEnergyPerLap);
+                break;
+        }
+    }
+
+    private void DrawVirtualEnergyPercent(SKRect r, float pct)
+    {
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.18f, r.Height * 0.13f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
+        DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.4f, DashFonts.Value, _palette.Neutral, Align.Center, r.Width * 0.9f);
+        var barColor = pct < 5 ? _palette.Critical : pct < 15 ? _palette.Warning : _palette.Neutral;
+        DrawHBar(r.Left + r.Width * 0.08f, r.Bottom - r.Height * 0.16f, r.Width * 0.84f, r.Height * 0.08f, pct / 100.0, barColor, centered: false);
+    }
+
+    private void DrawVirtualEnergyPower(SKRect r, float pct, TelemetryFrame frame)
+    {
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
+        DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
         var deploy = frame.Energy.DeployPower;
-        DrawTextLine(deploy > 0 ? $"{DashFormat.Int(deploy)} kW" : "-- kW", r.Right - 8, r.Top + r.Height * 0.82f, r.Height * 0.18f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.5f);
+        DrawTextLine(deploy > 0 ? $"DEP {DashFormat.Int(deploy)} kW" : "DEP -- kW", r.Right - 8, r.Top + r.Height * 0.42f, r.Height * 0.15f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.55f);
+        var regen = frame.Energy.RegenPower;
+        DrawTextLine(regen > 0 ? $"REGEN {DashFormat.Int(regen)} kW" : "REGEN -- kW", r.Right - 8, r.Top + r.Height * 0.82f, r.Height * 0.15f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.6f);
+    }
+
+    // Endurance budget view: remaining %, per-lap burn, and estimated laps left. rawLevel
+    // and rawPerLap are the un-normalised source values whose ratio is the laps estimate.
+    private void DrawVirtualEnergyBudget(SKRect r, float pct, float perLapPct, float rawLevel, float rawPerLap)
+    {
+        var laps = rawPerLap > 0.0001f ? $"~{DashFormat.Int(rawLevel / rawPerLap)} laps" : "~-- laps";
+        var perLapText = perLapPct > 0.0001f ? $"{perLapPct:0.0} %/lap" : "-- %/lap";
+
+        if (r.Height < 150 && r.Width < 200)
+        {
+            DrawTextLine("V-ENERGY", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.4f);
+            DrawTextLine(perLapText, r.Right - 8, r.Top + r.Height * 0.20f, r.Height * 0.11f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.55f);
+            DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.MidX, r.Top + r.Height * 0.63f, r.Height * 0.34f, DashFonts.Value, _palette.Neutral, Align.Center, r.Width * 0.9f);
+            return;
+        }
+
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.Left + 10, r.Top + r.Height * 0.52f, r.Height * 0.34f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
+        DrawTextLine(perLapText, r.Right - 10, r.Top + r.Height * 0.30f, r.Height * 0.18f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.55f);
+        DrawTextLine(laps, r.Right - 10, r.Top + r.Height * 0.78f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.End, r.Width * 0.55f);
     }
 
     private void DrawFlag(SKRect r, TelemetryFrame frame)

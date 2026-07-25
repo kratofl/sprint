@@ -599,9 +599,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
             foreach (var file in Directory.EnumerateFiles(_layoutsPath, "*.json"))
             {
                 var layout = LoadJson<DashLayout>(file);
-                if (layout is not null && DashLayoutValidator.IsValid(layout))
+                if (layout is null)
                 {
-                    var migrated = false;
+                    continue;
+                }
+
+                // Rewrite renamed widget types before validation, which would otherwise
+                // reject the whole layout for an unknown (legacy) type.
+                var typesMigrated = DashWidgetTypeMigration.Apply(layout);
+                if (DashLayoutValidator.IsValid(layout))
+                {
+                    var migrated = typesMigrated;
                     if (layout.ColorSystem is null)
                     {
                         NormalizeLayoutColorSystem(layout);

@@ -39,14 +39,14 @@ public sealed class DashWidgetCatalogTests
     public void CatalogIncludesExpandedRealDashboardWidgets()
     {
         // US30: race context + hybrid readouts real dashboards expose.
-        foreach (var type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "ers" })
+        foreach (var type in new[] { "position", "gaps", "predictive_lap", "tyre_pressure", "virtual_energy" })
         {
             Assert.True(DashWidgetCatalog.IsKnown(type), $"Expected expanded catalog to include '{type}'.");
         }
 
         Assert.Contains("race.gapAhead", DashWidgetCatalog.Get("gaps").Bindings);
         Assert.Contains("race.gapBehind", DashWidgetCatalog.Get("gaps").Bindings);
-        Assert.Equal("ERS / Hybrid", DashWidgetCatalog.Get("ers").Name);
+        Assert.Equal("Virtual Energy", DashWidgetCatalog.Get("virtual_energy").Name);
     }
 
     [Fact]

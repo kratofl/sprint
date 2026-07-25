@@ -12,6 +12,7 @@ internal sealed class LmuTelemetryMapper
 
     private readonly Func<DateTimeOffset> _clock;
     private readonly Queue<float> _completedLapFuelDeltas = new();
+    private readonly Queue<float> _completedLapEnergyDeltas = new();
 
     private bool _lapTimeValid;
     private int _lapTimeSession;
@@ -21,6 +22,9 @@ internal sealed class LmuTelemetryMapper
 
     private int? _fuelLap;
     private float? _fuelAtLapStart;
+
+    private int? _energyLap;
+    private float? _energyAtLapStart;
 
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
     {
@@ -37,6 +41,9 @@ internal sealed class LmuTelemetryMapper
         _fuelLap = null;
         _fuelAtLapStart = null;
         _completedLapFuelDeltas.Clear();
+        _energyLap = null;
+        _energyAtLapStart = null;
+        _completedLapEnergyDeltas.Clear();
     }
 
     public TelemetryFrame Map(LmuParsedFrame parsed)
@@ -59,6 +66,7 @@ internal sealed class LmuTelemetryMapper
             telemetry.LapNumber,
             parsed.ScoringInfo);
         var fuel = ToF32(telemetry.FuelLiters);
+        var virtualEnergy = Sanitize(telemetry.VirtualEnergy);
 
         return new TelemetryFrame
         {
@@ -129,7 +137,8 @@ internal sealed class LmuTelemetryMapper
             },
             Energy = new EnergyState
             {
-                VirtualEnergy = Sanitize(telemetry.VirtualEnergy),
+                VirtualEnergy = virtualEnergy,
+                VirtualEnergyPerLap = VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
                 StateOfCharge = Sanitize(telemetry.StateOfCharge),
                 RegenPower = Sanitize(telemetry.RegenPower)
             },
@@ -304,6 +313,56 @@ internal sealed class LmuTelemetryMapper
         }
 
         return _completedLapFuelDeltas.Sum() / _completedLapFuelDeltas.Count;
+    }
+
+    // Rolling virtual-energy burn per completed lap, mirroring FuelPerLap: track the
+    // reading at each lap start and average the drop over the last FuelDeltaWindow laps.
+    // Units follow the source channel (LMU reports virtual energy as a percentage), so
+    // downstream "laps remaining" cancels units cleanly against the current level.
+    private float VirtualEnergyPerLap(int lapNumber, float energy)
+    {
+        if (energy <= 0)
+        {
+            return AverageEnergyDelta();
+        }
+
+        if (_energyLap is null)
+        {
+            _energyLap = lapNumber;
+            _energyAtLapStart = energy;
+            return AverageEnergyDelta();
+        }
+
+        if (lapNumber != _energyLap)
+        {
+            if (lapNumber > _energyLap && _energyAtLapStart is { } startEnergy)
+            {
+                var delta = startEnergy - energy;
+                if (delta > 0)
+                {
+                    _completedLapEnergyDeltas.Enqueue(delta);
+                    while (_completedLapEnergyDeltas.Count > FuelDeltaWindow)
+                    {
+                        _completedLapEnergyDeltas.Dequeue();
+                    }
+                }
+            }
+
+            _energyLap = lapNumber;
+            _energyAtLapStart = energy;
+        }
+
+        return AverageEnergyDelta();
+    }
+
+    private float AverageEnergyDelta()
+    {
+        if (_completedLapEnergyDeltas.Count == 0)
+        {
+            return 0;
+        }
+
+        return _completedLapEnergyDeltas.Sum() / _completedLapEnergyDeltas.Count;
     }
 
     private static IReadOnlyList<TireState> MapTires(IReadOnlyList<LmuWheel> wheels, string frontCompound, string rearCompound)
