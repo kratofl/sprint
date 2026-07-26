@@ -32,6 +32,18 @@ public sealed class UpdateScriptTests
     }
 
     [Fact]
+    public void CreatesUpdateLogDirectoryBeforeStartingRobocopy()
+    {
+        var batch = Build();
+        var createLogDirectory = batch.IndexOf(
+            "if not exist \"%TEMP%\\Sprint\" mkdir \"%TEMP%\\Sprint\"",
+            StringComparison.Ordinal);
+        var firstRobocopy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
+
+        Assert.True(createLogDirectory >= 0 && firstRobocopy > createLogDirectory);
+    }
+
+    [Fact]
     public void RelaunchesTheExeAndSelfDeletes()
     {
         var batch = Build();

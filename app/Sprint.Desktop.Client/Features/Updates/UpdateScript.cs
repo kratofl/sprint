@@ -45,6 +45,7 @@ public static class UpdateScript
         // Antivirus/image scanning can retain the closed executable's file lock for
         // several seconds after tasklist stops reporting the process. Keep retrying
         // transient copy failures long enough for that post-exit lock to clear.
+        Line("if not exist \"%TEMP%\\Sprint\" mkdir \"%TEMP%\\Sprint\"");
         Line("set \"UPDATE_LOG=%TEMP%\\Sprint\\apply-update-%PID%.log\"");
         // Copy support files first and the primary executable last. If support-file
         // copying fails, the old executable is still intact and safe to relaunch.
