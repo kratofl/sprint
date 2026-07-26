@@ -72,12 +72,16 @@ public sealed class UpdateScriptTests
             supportCopy,
             StringComparison.Ordinal);
         var executableCopy = batch.IndexOf(
-            $"\"{Exe}\" /R:30",
+            $"copy /Y \"{Staging}\\{Exe}\" \"{Install}\\{Exe}\"",
             supportGuard,
             StringComparison.Ordinal);
-        var executableGuard = batch.IndexOf(
-            "if errorlevel 8 goto updatefailed",
+        var executableVerification = batch.IndexOf(
+            $"fc /B \"{Staging}\\{Exe}\" \"{Install}\\{Exe}\"",
             executableCopy,
+            StringComparison.Ordinal);
+        var executableGuard = batch.IndexOf(
+            "if %EXE_COPY_ATTEMPTS% GEQ 30 goto updatefailed",
+            executableVerification,
             StringComparison.Ordinal);
         var successRelaunch = batch.IndexOf(
             $"start \"\" \"{Install}\\{Exe}\"",
@@ -88,7 +92,8 @@ public sealed class UpdateScriptTests
             supportCopy >= 0
             && supportGuard > supportCopy
             && executableCopy > supportGuard
-            && executableGuard > executableCopy
+            && executableVerification > executableCopy
+            && executableGuard > executableVerification
             && successRelaunch > executableGuard);
     }
 

@@ -50,8 +50,16 @@ public static class UpdateScript
         // copying fails, the old executable is still intact and safe to relaunch.
         Line($"robocopy \"{stagingDir}\" \"{installDir}\" /E /XF \"{exeName}\" /R:30 /W:1 /IS /LOG:\"%UPDATE_LOG%\"");
         Line("if errorlevel 8 goto updatefailed");
-        Line($"robocopy \"{stagingDir}\" \"{installDir}\" \"{exeName}\" /R:30 /W:1 /IS /LOG+:\"%UPDATE_LOG%\"");
-        Line("if errorlevel 8 goto updatefailed");
+        Line("set /a EXE_COPY_ATTEMPTS=0");
+        Line(":copyexe");
+        Line($"copy /Y \"{stagingDir}\\{exeName}\" \"{installDir}\\{exeName}\" >>\"%UPDATE_LOG%\" 2>&1");
+        Line($"fc /B \"{stagingDir}\\{exeName}\" \"{installDir}\\{exeName}\" >nul 2>&1");
+        Line("if not errorlevel 1 goto updatecopied");
+        Line("set /a EXE_COPY_ATTEMPTS+=1");
+        Line("if %EXE_COPY_ATTEMPTS% GEQ 30 goto updatefailed");
+        Line("timeout /t 1 /nobreak >nul");
+        Line("goto copyexe");
+        Line(":updatecopied");
         // A non-elevated helper can relaunch directly. An elevated helper signals
         // the separate watcher that was started by the current user process, so the
         // updated app does not inherit an administrator token.
