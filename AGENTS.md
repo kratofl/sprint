@@ -43,6 +43,13 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
   inside the repo.
 - Do not start background daemons, local servers, watchers, or GUI applications
   without telling the user what will run and how it will be stopped.
+- Clean up every process started by an agent before finishing or after a failed,
+  timed-out, or interrupted command. This includes child and orphaned `dotnet`,
+  `testhost`, Node, browser, shell/helper, local server, watcher, and GUI
+  processes. Verify that no task-owned hosts remain; only stop processes that
+  can be tied to this repository and the current task, never unrelated user
+  processes. If the user explicitly asked to leave a process running, name it
+  and provide the exact stop command in the handoff.
 - Do not download or execute scripts from the internet, including install
   snippets such as `irm ... | iex`, `curl ... | sh`, or remote PowerShell,
   unless the user explicitly approves that exact source and purpose.

@@ -164,6 +164,10 @@ Graphite uses direct state feedback rather than transition on every property.
   the change.
 - Position and size changes use `120–167ms` ease-out only when continuity helps
   explain pane reveal, sidebar collapse, reordering, or overlay origin.
+- Transient toasts enter and exit with a `160ms` ease-out translation/fade. Their
+  bottom progress bar drains linearly across the full `12s` visible lifetime.
+- Compact toasts constrain and wrap their message column before the trailing action;
+  notification copy must never render beneath or collide with action controls.
 - Motion remains interruptible and never bounces, springs, glows, or overshoots.
 - Reduced-motion mode removes spatial transitions while preserving immediate state
   feedback.

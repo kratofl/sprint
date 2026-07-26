@@ -1,0 +1,139 @@
+using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Hardware;
+using Xunit;
+
+namespace Sprint.Desktop.Tests;
+
+/// <summary>
+/// Device purposes (issue #53): the catalog, the normalization that keeps older
+/// devices.json files driving their screens, and the output rule — only a dash-purpose
+/// screen receives dash frames, so a screen labelled for an unbuilt purpose goes idle
+/// instead of silently showing a dash.
+/// </summary>
+public sealed class DevicePurposeTests
+{
+    private static SavedDevice ScreenDevice(string id, string purpose = DevicePurposes.Dash) => new()
+    {
+        Id = id,
+        Name = id,
+        Type = "screen",
+        Driver = "vocore",
+        Width = 480,
+        Height = 800,
+        DashId = "dash-1",
+        Purpose = purpose,
+    };
+
+    [Fact]
+    public void CatalogCoversTheRequestedPurposesAndOnlyDashIsBuilt()
+    {
+        Assert.Equal(
+            new[] { "dash", "rear-view-mirror", "flags", "lap-times" },
+            DevicePurposes.All.Select(purpose => purpose.Id));
+
+        Assert.Equal(new[] { "Dash" }, DevicePurposes.All.Where(p => p.Available).Select(p => p.Label));
+        Assert.Equal(DevicePurposes.All.Select(p => p.Label), DevicePurposes.Labels);
+        Assert.All(DevicePurposes.All, purpose => Assert.False(string.IsNullOrWhiteSpace(purpose.Description)));
+    }
+
+    [Theory]
+    [InlineData(null, "dash")]
+    [InlineData("", "dash")]
+    [InlineData("   ", "dash")]
+    [InlineData("nonsense", "dash")]
+    [InlineData("DASH", "dash")]
+    [InlineData(" Flags ", "flags")]
+    [InlineData("rear-view-mirror", "rear-view-mirror")]
+    public void NormalizeFallsBackToDashForBlankOrUnknownValues(string? stored, string expected) =>
+        Assert.Equal(expected, DevicePurposes.Normalize(stored));
+
+    [Fact]
+    public void LookupByLabelBacksTheDropdownSelection()
+    {
+        Assert.Equal("lap-times", DevicePurposes.FindByLabel("Lap times")!.Id);
+        Assert.Equal("dash", DevicePurposes.FindByLabel("dash")!.Id);
+        Assert.Null(DevicePurposes.FindByLabel("Telemetry graph"));
+        Assert.Null(DevicePurposes.FindByLabel(null));
+    }
+
+    [Fact]
+    public void OnlyDashPurposeDrivesDashOutput()
+    {
+        Assert.True(DeviceCapabilities.DrivesDash(ScreenDevice("dash-screen")));
+        Assert.False(DeviceCapabilities.DrivesDash(ScreenDevice("mirror", DevicePurposes.RearViewMirror)));
+
+        // A non-dash purpose does not stop the device from being a screen; it only
+        // stops dash frames, so the detail page still shows screen controls.
+        Assert.True(DeviceCapabilities.HasScreen(ScreenDevice("mirror", DevicePurposes.RearViewMirror)));
+    }
+
+    [Fact]
+    public void AssignedScreenQueryIgnoresNonDashPurposes()
+    {
+        var dash = ScreenDevice("dash-screen");
+        var flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
+
+        var result = DashDeviceAssignments.EnabledScreensFor(new[] { dash, flags }, "dash-1");
+
+        Assert.Equal(new[] { "dash-screen" }, result.Select(device => device.Id));
+    }
+
+    [Fact]
+    public void SyncStopsPublishingToAScreenSwitchedAwayFromDash()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var device = ScreenDevice("wheel-screen");
+            runtime.Devices.Add(device);
+
+            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => new FakeScreenDriver());
+            service.Sync();
+            Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+
+            runtime.UpdateDevicePurpose(device, DevicePurposes.Flags);
+            service.Sync();
+            Assert.DoesNotContain("wheel-screen", service.ActiveDeviceIds);
+
+            // Switching back resumes output.
+            runtime.UpdateDevicePurpose(device, DevicePurposes.Dash);
+            service.Sync();
+            Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PurposeSurvivesAReloadAndLegacyDevicesLoadAsDash()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var mirror = ScreenDevice("mirror");
+            var legacy = ScreenDevice("legacy");
+            legacy.Purpose = "";
+            runtime.Devices.Add(mirror);
+            runtime.Devices.Add(legacy);
+            runtime.UpdateDevicePurpose(mirror, DevicePurposes.RearViewMirror);
+
+            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+
+            Assert.Equal(
+                DevicePurposes.RearViewMirror,
+                reloaded.Devices.Single(device => device.Id == "mirror").Purpose);
+            Assert.Equal(
+                DevicePurposes.Dash,
+                reloaded.Devices.Single(device => device.Id == "legacy").Purpose);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+}

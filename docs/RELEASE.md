@@ -140,27 +140,60 @@ produces both; the .NET API server ships as a container (see `api/Dockerfile` /
 
 ---
 
-## In-app version reporting & updates (WS10)
+## In-app version reporting & updates (WS10, issue #28)
 
-The desktop client reports its own version and offers a manual update check:
+The desktop client reports its own version and installs updates in one click:
 
 - **Version metadata** — `Directory.Build.props` carries `Version` (and
   Product/Company); `make build-app` / the release workflow stamp the tag via
   `-p:InformationalVersion=<ver>`. `Runtime/BuildInfo.Version` reads that back
   (stripping any `+<sha>` suffix), shown as a badge on the **Settings → About**
   card next to the active update channel.
+- **Channels — two, not three:** `stable` and `pre-release`
+  (`AppSettings.Channels`). `stable` sees stable releases only; `pre-release`
+  sees stable + pre-release. Legacy persisted `beta`/`alpha` settings normalize
+  to `pre-release` on load (`AppSettings.NormalizeChannel`, applied in
+  `DesktopRuntime.LoadSettings`). Selecting `pre-release` in Settings requires
+  confirming a "may contain bugs" warning; cancelling reverts to `stable`.
 - **Update check** — `Features/Updates/UpdateChecker` is a pure, channel-aware
-  semver check: it picks the newest release visible on the user's channel
-  (`stable` sees stable; `beta` sees stable+beta; `alpha` sees all) and reports
-  whether it is newer than the running build. `GitHubReleaseSource` fetches the
-  repo's releases on an explicit **Check for updates** click and degrades to "no
-  releases" on any network failure (never crashes).
-- **Updater decision (resolves Open Question #5):** the client **checks and
-  notifies**; downloading + installing an update is **manual** (the user opens
-  the GitHub Release). The old Windows-batch **self-replacing auto-install is
-  intentionally deferred** — it is risky to run unattended and is out of scope
-  for the current parity pass. Revisit if unattended updates become a
-  requirement.
+  semver check: it picks the newest release visible on the user's channel and
+  reports whether it is newer than the running build. `GitHubReleaseSource`
+  fetches the repo's releases (`GitHubReleaseSource.DefaultRepo`), carries each
+  release's assets, and degrades to "no releases" on any network failure (never
+  crashes). It runs once at startup and caches the successful result for the
+  running session, so opening Settings immediately shows the known state without
+  another request or click. **Check again** explicitly refreshes the feed; changing
+  channels creates a new channel-specific check.
+- **Startup notice** — an in-app Graphite toast (bottom-right, 12s, "Open
+  Settings" action) with restrained enter/exit motion and a bottom lifetime bar.
+  Best-effort and silent when up to date or offline; it runs only under a classic
+  desktop lifetime, so headless/test hosts never fetch.
+- **One-click install (Windows)** — `ReleaseAssetSelector` picks the platform
+  archive (`win-x64` → `*windows-amd64.zip`, `linux-x64` → `*linux-amd64.tar.gz`),
+  `UpdateInstaller.DownloadAsync` streams it to
+  `%TEMP%\Sprint\updates\<version>\` with progress and extracts every attempt to
+  a fresh staging dir (so a stale lock cannot block retry), then
+  `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
+  for the app's PID to exit, robocopies staging over the install dir with a
+  retry window for post-exit executable locks, and copies the primary executable
+  only after the support files succeed. When the install directory is protected
+  (for example `%ProgramFiles%\Sprint`), Sprint launches the helper with Windows
+  elevation before shutting down; declining the UAC prompt leaves the current app
+  running. A separate watcher launched by the original user process waits for the
+  privileged copy result and reopens Sprint without inheriting administrator
+  privileges. The app then shuts down, swaps, relaunches, and deletes the helpers.
+  A persistent post-exit copy failure
+  preserves `%TEMP%\Sprint\apply-update-<pid>.log`, reveals the staged executable
+  for manual recovery, and relaunches the still-working old executable.
+- **Linux and fallbacks** — self-replace is Windows-only
+  (`UpdateInstaller.SupportsSelfReplace`). Linux reveals the downloaded archive
+  for manual installation. Download, extraction, helper launch, and declined
+  elevation are reported while the current Windows build remains running;
+  post-exit copy failures follow the logged recovery path above.
+- **Decision record (resolves Open Question #5):** the earlier
+  "check-and-notify only, self-replace deferred" decision is **superseded** by
+  issue #28. Unattended/background auto-install (no user click) remains out of
+  scope: every install is user-initiated and confirmed.
 
 ## Publish target
 

@@ -39,7 +39,7 @@
         {"id": "endurance-rpm",       "type": "rpm_bar",       "col":  0, "row":  0, "colSpan": 20, "rowSpan": 1},
         {"id": "endurance-gear",      "type": "gear_speed",    "col":  0, "row":  1, "colSpan":  7, "rowSpan": 7, "style": {"border": false}},
         {"id": "endurance-fuel",      "type": "fuel",          "col":  7, "row":  1, "colSpan":  7, "rowSpan": 5, "style": {"border": false}},
-        {"id": "endurance-ers",       "type": "ers",           "col": 14, "row":  1, "colSpan":  6, "rowSpan": 5},
+        {"id": "endurance-ers",       "type": "virtual_energy", "col": 14, "row":  1, "colSpan":  6, "rowSpan": 5, "config": {"mode": "budget"}},
         {"id": "endurance-temps",     "type": "tyre_temp",     "col":  7, "row":  6, "colSpan":  7, "rowSpan": 6, "style": {"border": false}},
         {"id": "endurance-pressures", "type": "tyre_pressure", "col": 14, "row":  6, "colSpan":  6, "rowSpan": 6, "style": {"border": false}},
         {"id": "endurance-position",  "type": "position",      "col":  0, "row":  8, "colSpan":  3, "rowSpan": 2},
@@ -77,7 +77,7 @@
         {"id": "vehicle-map",       "type": "engine_map",    "col": 12, "row": 7, "colSpan":  3, "rowSpan": 2},
         {"id": "vehicle-fuel",      "type": "fuel",          "col": 15, "row": 7, "colSpan":  5, "rowSpan": 2, "style": {"border": false}},
         {"id": "vehicle-inputs",    "type": "input_trace",   "col":  6, "row": 9, "colSpan":  7, "rowSpan": 3, "style": {"border": false}},
-        {"id": "vehicle-ers",       "type": "ers",           "col": 13, "row": 9, "colSpan":  7, "rowSpan": 3},
+        {"id": "vehicle-ers",       "type": "virtual_energy", "col": 13, "row": 9, "colSpan":  7, "rowSpan": 3, "config": {"mode": "power"}},
         {"id": "vehicle-fuel-target","type": "fuel_target",   "col":  0, "row":10, "colSpan":  6, "rowSpan": 2}
       ]
     }

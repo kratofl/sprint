@@ -63,6 +63,16 @@ public sealed class SavedDevice
     public int OffsetY { get; set; }
     public int Margin { get; set; }
     public string DashId { get; set; } = "default";
+
+    /// <summary>What this device's screen is used for (issue #53); see <see cref="DevicePurposes"/>.</summary>
+    public string Purpose { get; set; } = DevicePurposes.Dash;
+
+    /// <summary>
+    /// Frames per second published to this screen, and the rate its live preview
+    /// animates at (issue #75). See <see cref="DeviceRefreshRates"/>.
+    /// </summary>
+    public int RefreshHz { get; set; } = DeviceRefreshRates.Default;
+
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
 }
@@ -88,6 +98,14 @@ public static class DeviceCapabilities
         && (string.Equals(device.Type, "screen", StringComparison.OrdinalIgnoreCase)
             || string.Equals(device.Driver, "vocore", StringComparison.OrdinalIgnoreCase)
             || string.Equals(device.Driver, "usbd480", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// A device receives dash frames only when it has a screen and that screen is set
+    /// to the dash purpose (issue #53). Screens labelled for an unbuilt purpose stay
+    /// idle rather than showing a dash the user did not ask for.
+    /// </summary>
+    public static bool DrivesDash(SavedDevice device) =>
+        HasScreen(device) && DevicePurposes.IsDash(device.Purpose);
 }
 
 /// <summary>
@@ -112,7 +130,7 @@ public static class DashDeviceAssignments
 
         return devices
             .Where(device => !device.Disabled
-                && DeviceCapabilities.HasScreen(device)
+                && DeviceCapabilities.DrivesDash(device)
                 && string.Equals(device.DashId, dashId, StringComparison.Ordinal))
             .ToList();
     }

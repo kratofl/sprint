@@ -302,10 +302,10 @@ public sealed class DashPainterTests
 
         using var energyPainter = new DashPainter(320, 240, palette);
         var energy = energyPainter.Render(
-            SingleWidgetLayout("ers"),
+            SingleWidgetLayout("virtual_energy"),
             new TelemetryFrame { Energy = new EnergyState { VirtualEnergy = 68, DeployPower = 92 } },
             new AppSettings());
-        Assert.True(CountExact(energy, neutral) > 0, "Expected ordinary ERS energy to remain Neutral.");
+        Assert.True(CountExact(energy, neutral) > 0, "Expected ordinary virtual-energy value to remain Neutral.");
         Assert.Equal(0, CountExact(energy, SKColors.Pink));
     }
 
@@ -382,7 +382,7 @@ public sealed class DashPainterTests
     [InlineData("fuel_target")]
     [InlineData("position")]
     [InlineData("predictive_lap")]
-    [InlineData("ers")]
+    [InlineData("virtual_energy")]
     public void ContinuousSurfaceWidgetsRemainUnframedByDefault(string type)
     {
         var layout = SingleWidgetLayout(type);

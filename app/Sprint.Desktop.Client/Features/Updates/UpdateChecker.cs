@@ -2,8 +2,15 @@ using System.Globalization;
 
 namespace Sprint.Desktop.Features.Updates;
 
+/// <summary>A downloadable artifact attached to a release (platform archive).</summary>
+public sealed record ReleaseAsset(string Name, string DownloadUrl);
+
 /// <summary>A published release candidate (from GitHub releases or a test feed).</summary>
-public sealed record ReleaseInfo(string Version, string Channel, string Url);
+public sealed record ReleaseInfo(string Version, string Channel, string Url)
+{
+    /// <summary>Downloadable assets on the release (platform archives); empty when unknown.</summary>
+    public IReadOnlyList<ReleaseAsset> Assets { get; init; } = [];
+}
 
 /// <summary>The result of a channel-aware update check.</summary>
 public sealed record UpdateCheckResult(bool UpdateAvailable, ReleaseInfo? Latest, string CurrentVersion);
@@ -16,8 +23,9 @@ public sealed record UpdateCheckResult(bool UpdateAvailable, ReleaseInfo? Latest
 /// Network fetching is separate (<see cref="GitHubReleaseSource"/>) so this stays
 /// unit-testable with synthetic release data.
 ///
-/// <para>Channel visibility: <c>stable</c> sees stable only; <c>beta</c> sees
-/// stable+beta; <c>alpha</c> sees everything.</para>
+/// <para>Channel visibility: <c>stable</c> sees stable only; <c>pre-release</c>
+/// sees stable + pre-release. Legacy <c>beta</c>/<c>alpha</c> strings are treated
+/// as pre-release for backward compatibility with older releases and settings.</para>
 /// </summary>
 public static class UpdateChecker
 {
@@ -46,8 +54,8 @@ public static class UpdateChecker
 
     private static int ChannelRank(string? channel) => channel?.Trim().ToLowerInvariant() switch
     {
-        "alpha" => 2,
-        "beta" => 1,
+        // pre-release (and the legacy beta/alpha aliases) sees prereleases; stable does not.
+        "pre-release" or "prerelease" or "beta" or "alpha" => 1,
         _ => 0,
     };
 
