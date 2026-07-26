@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using Sprint.Desktop.Features.Updates;
 using Xunit;
 
@@ -38,9 +40,126 @@ public sealed class UpdateScriptTests
     }
 
     [Fact]
+    public void SurfacesAPersistentCopyFailureBeforeRelaunchingTheOldBuild()
+    {
+        var batch = Build();
+        var copy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
+        var failureGuard = batch.IndexOf("if errorlevel 8 goto updatefailed", StringComparison.Ordinal);
+        var failureLabel = batch.IndexOf(":updatefailed", StringComparison.Ordinal);
+        var reveal = batch.IndexOf("start \"\" explorer.exe", failureLabel, StringComparison.Ordinal);
+        var relaunch = batch.IndexOf(
+            $"start \"\" \"{Install}\\{Exe}\"",
+            failureLabel,
+            StringComparison.Ordinal);
+
+        Assert.True(
+            copy >= 0
+            && failureGuard > copy
+            && failureLabel > failureGuard
+            && reveal > failureLabel
+            && relaunch > reveal);
+        Assert.Contains("apply-update-%PID%.log", batch);
+        Assert.Contains($"start \"\" explorer.exe /select,\"{Staging}\\{Exe}\"", batch);
+    }
+
+    [Fact]
+    public void CopiesThePrimaryExecutableLast()
+    {
+        var batch = Build();
+        var supportCopy = batch.IndexOf($"/XF \"{Exe}\"", StringComparison.Ordinal);
+        var supportGuard = batch.IndexOf(
+            "if errorlevel 8 goto updatefailed",
+            supportCopy,
+            StringComparison.Ordinal);
+        var executableCopy = batch.IndexOf(
+            $"\"{Exe}\" /R:30",
+            supportGuard,
+            StringComparison.Ordinal);
+        var executableGuard = batch.IndexOf(
+            "if errorlevel 8 goto updatefailed",
+            executableCopy,
+            StringComparison.Ordinal);
+        var successRelaunch = batch.IndexOf(
+            $"start \"\" \"{Install}\\{Exe}\"",
+            executableGuard,
+            StringComparison.Ordinal);
+
+        Assert.True(
+            supportCopy >= 0
+            && supportGuard > supportCopy
+            && executableCopy > supportGuard
+            && executableGuard > executableCopy
+            && successRelaunch > executableGuard);
+    }
+
+    [Fact]
     public void UsesCrlfLineEndings()
     {
         Assert.Contains("\r\n", Build());
+    }
+
+    [Fact]
+    public async Task RetriesTheCopyUntilAPostExitExecutableLockIsReleased()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), $"sprint-update-script-{Guid.NewGuid():N}");
+        var staging = Path.Combine(root, "staged");
+        var install = Path.Combine(root, "installed");
+        var exe = "Sprint.Test.exe";
+        var stagedExe = Path.Combine(staging, exe);
+        var installedExe = Path.Combine(install, exe);
+        var batchPath = Path.Combine(root, "apply-update.bat");
+
+        Directory.CreateDirectory(staging);
+        Directory.CreateDirectory(install);
+        // Both fixtures are real, short-lived Windows console executables so the
+        // generated `start` command cannot leave a shell host behind. Their distinct
+        // bytes make the installed-file assertion independent of robocopy's output.
+        File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), stagedExe);
+        File.Copy(Path.Combine(Environment.SystemDirectory, "where.exe"), installedExe);
+
+        FileStream? executableLock = null;
+        Process? helper = null;
+        try
+        {
+            File.WriteAllText(
+                batchPath,
+                UpdateScript.BuildWindowsBatch(
+                    int.MaxValue,
+                    staging,
+                    install,
+                    exe));
+
+            executableLock = new FileStream(
+                installedExe,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read);
+            helper = StartHelper(batchPath);
+
+            // The original helper exhausted /R:3 /W:2 in roughly six seconds and
+            // relaunched the old build. Real executable/image scanners can retain the
+            // closed process's file lock for longer than that.
+            await Task.Delay(TimeSpan.FromSeconds(8));
+            executableLock.Dispose();
+
+            await helper.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.Equal(
+                await File.ReadAllBytesAsync(stagedExe),
+                await File.ReadAllBytesAsync(installedExe));
+        }
+        finally
+        {
+            executableLock?.Dispose();
+            await StopProcessTreeAsync(helper);
+            await StopProcessesFromPathAsync(installedExe);
+            await DeleteDirectoryEventuallyAsync(root);
+        }
     }
 
     [Theory]
@@ -50,5 +169,109 @@ public sealed class UpdateScriptTests
     public void RejectsBlankArguments(string staging, string install, string exe)
     {
         Assert.ThrowsAny<System.ArgumentException>(() => UpdateScript.BuildWindowsBatch(Pid, staging, install, exe));
+    }
+
+    private static Process StartHelper(string batchPath) =>
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/d /c \"{batchPath}\"",
+            CreateNoWindow = true,
+            UseShellExecute = false,
+        })!;
+
+    private static async Task StopProcessTreeAsync(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The helper exited between HasExited and Kill.
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    private static async Task StopProcessesFromPathAsync(string executablePath)
+    {
+        var processName = Path.GetFileNameWithoutExtension(executablePath);
+        foreach (var process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (!string.Equals(
+                        process.MainModule?.FileName,
+                        executablePath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync();
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+            {
+                // The short-lived fixture exited while it was being inspected.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        Assert.DoesNotContain(
+            Process.GetProcessesByName(processName),
+            process =>
+            {
+                using (process)
+                {
+                    try
+                    {
+                        return string.Equals(
+                            process.MainModule?.FileName,
+                            executablePath,
+                            StringComparison.OrdinalIgnoreCase);
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+                    {
+                        return false;
+                    }
+                }
+            });
+    }
+
+    private static async Task DeleteDirectoryEventuallyAsync(string path)
+    {
+        for (var attempt = 0; attempt < 50 && Directory.Exists(path); attempt++)
+        {
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                await Task.Delay(100);
+            }
+        }
+
+        Assert.False(Directory.Exists(path), $"Expected test cleanup to remove '{path}'.");
     }
 }

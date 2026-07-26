@@ -75,6 +75,11 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
             ?? throw new InvalidOperationException("Cannot resolve the install directory.");
         var exeName = Path.GetFileName(processPath);
 
+        // Fail while the current build is still running when an archive was placed in
+        // a protected install location (for example Program Files). The UI can then
+        // report the manual fallback instead of exiting into a guaranteed copy failure.
+        EnsureInstallDirectoryWritable(installDir);
+
         var pid = Environment.ProcessId;
         var batch = UpdateScript.BuildWindowsBatch(pid, stagingDir, installDir, exeName);
         var batchPath = Path.Combine(Path.GetTempPath(), "Sprint", $"apply-update-{pid}.bat");
@@ -87,6 +92,29 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
         });
+    }
+
+    internal static void EnsureInstallDirectoryWritable(string installDir)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
+        var probePath = Path.Combine(installDir, $".sprint-update-access-{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            using var _ = new FileStream(
+                probePath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1,
+                FileOptions.DeleteOnClose);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException(
+                $"Sprint cannot replace files in the install directory '{installDir}'.",
+                ex);
+        }
     }
 
     /// <summary>Opens the folder holding a staged/downloaded update (Linux + fallback path).</summary>

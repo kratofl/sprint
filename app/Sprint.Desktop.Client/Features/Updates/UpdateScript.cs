@@ -37,10 +37,27 @@ public static class UpdateScript
         Line("  timeout /t 1 /nobreak >nul");
         Line("  goto waitloop");
         Line(")");
-        // Copy the staged build over the install directory (retry on transient locks).
-        Line($"robocopy \"{stagingDir}\" \"{installDir}\" /E /R:3 /W:2 >nul");
-        // Relaunch the updated app, then remove this helper.
+        // Antivirus/image scanning can retain the closed executable's file lock for
+        // several seconds after tasklist stops reporting the process. Keep retrying
+        // transient copy failures long enough for that post-exit lock to clear.
+        Line("set \"UPDATE_LOG=%TEMP%\\Sprint\\apply-update-%PID%.log\"");
+        // Copy support files first and the primary executable last. If support-file
+        // copying fails, the old executable is still intact and safe to relaunch.
+        Line($"robocopy \"{stagingDir}\" \"{installDir}\" /E /XF \"{exeName}\" /R:30 /W:1 /LOG:\"%UPDATE_LOG%\"");
+        Line("if errorlevel 8 goto updatefailed");
+        Line($"robocopy \"{stagingDir}\" \"{installDir}\" \"{exeName}\" /R:30 /W:1 /LOG+:\"%UPDATE_LOG%\"");
+        Line("if errorlevel 8 goto updatefailed");
+        // Relaunch the updated app and discard the success log.
         Line($"start \"\" \"{installDir}\\{exeName}\"");
+        Line("del \"%UPDATE_LOG%\" >nul 2>&1");
+        Line("goto cleanup");
+        // A permanent permissions/copy failure must be visible. Preserve robocopy's
+        // diagnostic log, reveal the staged executable for manual recovery, and only
+        // then relaunch the still-working old build.
+        Line(":updatefailed");
+        Line($"start \"\" explorer.exe /select,\"{stagingDir}\\{exeName}\"");
+        Line($"start \"\" \"{installDir}\\{exeName}\"");
+        Line(":cleanup");
         Line("del \"%~f0\"");
 
         return sb.ToString();

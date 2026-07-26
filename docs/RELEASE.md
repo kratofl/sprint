@@ -170,13 +170,18 @@ The desktop client reports its own version and installs updates in one click:
   `UpdateInstaller.DownloadAsync` streams it to
   `%TEMP%\Sprint\updates\<version>\` with progress and extracts it to a staging
   dir, then `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
-  for the app's PID to exit, robocopies staging over the install dir, relaunches,
-  and deletes itself. The app confirms first, then shuts down so the swap can run.
+  for the app's PID to exit, robocopies staging over the install dir with a
+  retry window for post-exit executable locks, and copies the primary executable
+  only after the support files succeed. A write preflight rejects protected
+  install directories before shutdown. Otherwise the app confirms, shuts down,
+  swaps, relaunches, and deletes the helper. A persistent post-exit copy failure
+  preserves `%TEMP%\Sprint\apply-update-<pid>.log`, reveals the staged executable
+  for manual recovery, and relaunches the still-working old executable.
 - **Linux and fallbacks** — self-replace is Windows-only
-  (`UpdateInstaller.SupportsSelfReplace`). Elsewhere — and on any download,
-  extract, or swap failure — Sprint reveals the downloaded archive in the file
-  manager and keeps running on the working build. Nothing is ever left
-  half-installed by the app itself.
+  (`UpdateInstaller.SupportsSelfReplace`). Linux reveals the downloaded archive
+  for manual installation. Download, extraction, launch, and install-directory
+  preflight failures are reported while the current Windows build remains
+  running; post-exit copy failures follow the logged recovery path above.
 - **Decision record (resolves Open Question #5):** the earlier
   "check-and-notify only, self-replace deferred" decision is **superseded** by
   issue #28. Unattended/background auto-install (no user click) remains out of
