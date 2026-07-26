@@ -256,6 +256,7 @@ public sealed class DevelopmentGameState
         Energy = new EnergyState
         {
             VirtualEnergy = 64,
+            VirtualEnergyPerLap = 3.2f,
             StateOfCharge = 0.71f,
             RegenPower = 12,
             DeployPower = 83,

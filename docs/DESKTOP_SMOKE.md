@@ -34,6 +34,12 @@ before cutting a release (see `docs/RELEASE.md`).
 ## 4. Devices (hardware)
 - [ ] Add a screen from the catalog → a saved-device card with a status pill.
 - [ ] Rotate / X / Y offset / dash-assignment controls persist across relaunch.
+- [ ] Add device → Generic → Custom wheel: a name plus "With screen"/"No screen"
+      creates the wheel and opens its detail; an empty name is rejected inline. A
+      screenless wheel has no resolution chip and no screen section (issue #49).
+- [ ] Device detail → Purpose: switching a screen away from Dash replaces the dash
+      controls with a "not built yet" panel, the pill reads "Idle", output stops, and
+      switching back to Dash resumes it — all surviving relaunch (issue #53).
 - [ ] With no physical screen, status explains the actual state ("Setup needed", "Not found", "In use", "Duplicate target", or "USB access failed") and exposes technical detail (never a crash or generic driver-install demand).
 
 ## 5. Bindings & Engineer & Setup

@@ -49,6 +49,47 @@ public sealed class DeviceScreenService : IDisposable
     public ScreenTestPattern? TestPatternFor(string deviceId) =>
         _publishers.TryGetValue(deviceId, out var publisher) ? publisher.TestPattern : null;
 
+    /// <summary>
+    /// Writes panel sizes learned at connect time back onto the saved devices. A
+    /// USBD480 NX reports its real dimensions, and a generic entry is added with a
+    /// placeholder resolution — without this the publisher rendered at the correct
+    /// native size while the saved device (and therefore the resolution chip, the
+    /// detail preview, and any dash sizing) kept the stale guess. Returns true when
+    /// something changed, so the caller can refresh the view.
+    /// </summary>
+    public bool AdoptDetectedResolutions()
+    {
+        var changed = false;
+        foreach (var (deviceId, publisher) in _publishers)
+        {
+            if (publisher.DetectedNativeSize is not { IsValid: true } detected)
+            {
+                continue;
+            }
+
+            var device = _runtime.Devices.FirstOrDefault(item =>
+                string.Equals(item.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+            if (device is null || (device.Width == detected.Width && device.Height == detected.Height))
+            {
+                continue;
+            }
+
+            _log.Info(
+                $"Screen resolution adopted from hardware: device={deviceId} " +
+                $"saved={device.Width}x{device.Height} detected={detected.Width}x{detected.Height}.");
+            device.Width = detected.Width;
+            device.Height = detected.Height;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _runtime.SaveDevices();
+        }
+
+        return changed;
+    }
+
     public bool SetTestPattern(string deviceId, ScreenTestPattern pattern)
     {
         if (!_publishers.TryGetValue(deviceId, out var publisher))
@@ -77,7 +118,7 @@ public sealed class DeviceScreenService : IDisposable
         var candidates = new Dictionary<string, SavedDevice>(StringComparer.OrdinalIgnoreCase);
         foreach (var device in _runtime.Devices)
         {
-            if (DeviceCapabilities.HasScreen(device) && !device.Disabled)
+            if (DeviceCapabilities.DrivesDash(device) && !device.Disabled)
             {
                 candidates[device.Id] = device;
             }
@@ -160,6 +201,7 @@ public sealed class DeviceScreenService : IDisposable
             OffsetY = device.OffsetY,
             Margin = device.Margin,
             Driver = device.Driver,
+            TargetFps = DeviceRefreshRates.Normalize(device.RefreshHz),
         };
 
         var driver = _driverFactory(device.Driver);

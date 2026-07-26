@@ -10,6 +10,21 @@ public sealed class AppSettings
     [JsonPropertyName("updateChannel")]
     public string UpdateChannel { get; set; } = "stable";
 
+    /// <summary>The two supported release channels, in ascending pre-release visibility.</summary>
+    public static readonly string[] Channels = ["stable", "pre-release"];
+
+    /// <summary>
+    /// Maps a persisted or user-supplied channel string to the canonical two-channel
+    /// model. Legacy <c>beta</c>/<c>alpha</c> (and any non-stable value) collapse to
+    /// <c>pre-release</c>; everything else is <c>stable</c>.
+    /// </summary>
+    public static string NormalizeChannel(string? channel) =>
+        channel?.Trim().ToLowerInvariant() switch
+        {
+            "pre-release" or "prerelease" or "beta" or "alpha" => "pre-release",
+            _ => "stable",
+        };
+
     [JsonPropertyName("driverName")]
     public string DriverName { get; set; } = "Your Name";
 

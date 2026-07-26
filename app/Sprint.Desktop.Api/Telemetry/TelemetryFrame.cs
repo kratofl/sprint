@@ -126,6 +126,7 @@ public sealed record RaceState
 public sealed record EnergyState
 {
     public float VirtualEnergy { get; init; }
+    public float VirtualEnergyPerLap { get; init; }
     public float StateOfCharge { get; init; }
     public float RegenPower { get; init; }
     public float DeployPower { get; init; }

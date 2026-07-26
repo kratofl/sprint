@@ -366,6 +366,58 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(12, frame.Tires[0].WearPercent, precision: 1);
         Assert.Equal("Medium", frame.Tires[0].Compound);
         Assert.Equal("Soft", frame.Tires[2].Compound);
+        // Surface is the tread average (90/92/94 °C) and must be populated: consumers
+        // that read it were previously getting 0 and falling back to the carcass value.
+        Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);
+        Assert.Equal(87, frame.Tires[0].TempCoreCelsius, precision: 1);
+    }
+
+    [Fact]
+    public void Lmu_mapper_reports_absent_tyre_temperatures_as_zero_not_minus_273()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+
+        // Out of the car (or on a build that does not fill a channel) LMU reports 0 K.
+        // Converting that blindly yields -273 °C, which reads as a real, very cold tyre.
+        var frame = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with
+            {
+                Wheels = [new LmuWheel(), new LmuWheel(), new LmuWheel(), new LmuWheel()],
+            },
+        });
+
+        var tire = frame.Tires[0];
+        Assert.Equal(0, tire.TempInnerCelsius);
+        Assert.Equal(0, tire.TempMiddleCelsius);
+        Assert.Equal(0, tire.TempOuterCelsius);
+        Assert.Equal(0, tire.TempSurfaceCelsius);
+        Assert.Equal(0, tire.TempCoreCelsius);
+    }
+
+    [Fact]
+    public void Lmu_mapper_averages_only_the_tread_sensors_that_report()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+        var parsed = CreateInCarParsedFrame(lapNumber: 7);
+
+        var frame = mapper.Map(parsed with
+        {
+            Telemetry = parsed.Telemetry! with
+            {
+                // Middle sensor absent: the average must not be dragged toward zero.
+                Wheels =
+                [
+                    new LmuWheel { TempInnerKelvin = 363.15, TempOuterKelvin = 373.15 },
+                    new LmuWheel(),
+                    new LmuWheel(),
+                    new LmuWheel(),
+                ],
+            },
+        });
+
+        Assert.Equal(95, frame.Tires[0].TempSurfaceCelsius, precision: 1);
     }
 
     [Fact]
@@ -427,13 +479,28 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(3.0f, thirdLap.Car.FuelPerLapLiters);
     }
 
+    [Fact]
+    public void Lmu_mapper_tracks_rolling_virtual_energy_per_lap_from_completed_laps()
+    {
+        var mapper = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 30, 12, 0, 0, TimeSpan.Zero));
+
+        var firstLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 1, virtualEnergy: 80f));
+        var secondLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 2, virtualEnergy: 76.5f));
+        var thirdLap = mapper.Map(CreateInCarParsedFrame(lapNumber: 3, virtualEnergy: 72.5f));
+
+        Assert.Equal(0, firstLap.Energy.VirtualEnergyPerLap);
+        Assert.Equal(3.5f, secondLap.Energy.VirtualEnergyPerLap, precision: 3);
+        Assert.Equal(3.75f, thirdLap.Energy.VirtualEnergyPerLap, precision: 3);
+    }
+
     private static LmuParsedFrame CreateInCarParsedFrame(
         int lapNumber,
         double elapsedTime = 200.5,
         double lapStartElapsedTime = 188.0,
         double sessionTime = 200.0,
         double scoringLapTime = 12.25,
-        double fuelLiters = 42.5)
+        double fuelLiters = 42.5,
+        float virtualEnergy = 0f)
     {
         return new LmuParsedFrame
         {
@@ -454,7 +521,8 @@ public sealed class LeMansUltimateTelemetryTests
                 LapNumber = lapNumber,
                 ElapsedTime = elapsedTime,
                 LapStartElapsedTime = lapStartElapsedTime,
-                FuelLiters = fuelLiters
+                FuelLiters = fuelLiters,
+                VirtualEnergy = virtualEnergy
             },
             Scoring = new LmuVehicleScoring
             {

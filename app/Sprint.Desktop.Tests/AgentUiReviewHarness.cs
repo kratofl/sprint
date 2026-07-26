@@ -11,6 +11,7 @@ using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -132,11 +133,51 @@ internal static class AgentUiReviewHarness
                     Click(window, "Add device");
                     frames.Add(Capture(window, artifactRoot, "add-device-preset-dialog", "Add device", "Preset", "Generic", "Hardware presets", "BavarianSimTec Omega PRO V2"));
                     Click(window, "Generic");
-                    frames.Add(Capture(window, artifactRoot, "add-device-generic-dialog", "Add device", "Preset", "Generic", "Generic screens", "Generic VoCore Screen", "Generic USBD480 NX Screen"));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "add-device-generic-dialog",
+                        "Add device",
+                        "Preset",
+                        "Generic",
+                        "Generic screens",
+                        "Generic VoCore Screen",
+                        "Generic USBD480 NX Screen",
+                        // Custom wheel builder (issue #49).
+                        "Custom wheel",
+                        "Name",
+                        "Screen type",
+                        "Resolution",
+                        "Add wheel"));
                     Click(window, "Close");
 
                     Click(window, runtime.Devices[0].Name);
-                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "Command bindings", "Screen alignment", runtime.Devices[0].Name));
+                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "Command bindings", "Screen alignment", "Purpose", runtime.Devices[0].Name));
+
+                    // Device purpose (issue #53): a screen labelled for output Sprint
+                    // cannot render yet loses its dash controls and says so.
+                    var purposeCombo = window.GetVisualDescendants()
+                        .OfType<ComboBox>()
+                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
+                    purposeCombo.SelectedItem = "Rear view mirror";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-purpose-idle",
+                        "Purpose",
+                        "Rear view mirror is not built yet",
+                        "Idle"));
+                    var backToDash = window.GetVisualDescendants()
+                        .OfType<ComboBox>()
+                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
+                    backToDash.SelectedItem = "Dash";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
 
                     OpenCommandPalette(window);
                     Click(window, "Go to Setups");
@@ -165,6 +206,28 @@ internal static class AgentUiReviewHarness
                         "Open development tools"
 #endif
                     ));
+
+                    // Pre-release channel warning (issue #28): selecting the channel must
+                    // ask for confirmation first, and cancelling must put the combo back
+                    // on stable without persisting the switch.
+                    var channelCombo = window.GetVisualDescendants()
+                        .OfType<ComboBox>()
+                        .Single(combo => ReferenceEquals(combo.ItemsSource, AppSettings.Channels));
+                    channelCombo.SelectedItem = "pre-release";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "settings-pre-release-warning",
+                        "Switch to pre-release?",
+                        "Use pre-release",
+                        "Cancel"));
+                    Click(window, "Cancel");
+                    Assert.Equal("stable", channelCombo.SelectedItem);
+                    Assert.Equal("stable", runtime.Settings.UpdateChannel);
 
 #if DEBUG
                     Click(window, "Open development tools");

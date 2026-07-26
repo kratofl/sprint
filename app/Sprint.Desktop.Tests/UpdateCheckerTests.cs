@@ -10,8 +10,8 @@ public sealed class UpdateCheckerTests
     [
         new ReleaseInfo("v0.1.0", "stable", "u/0.1.0"),
         new ReleaseInfo("v0.2.0", "stable", "u/0.2.0"),
-        new ReleaseInfo("v0.3.0-beta.1", "beta", "u/0.3.0b1"),
-        new ReleaseInfo("v0.4.0-alpha.1", "alpha", "u/0.4.0a1"),
+        new ReleaseInfo("v0.3.0-beta.1", "pre-release", "u/0.3.0b1"),
+        new ReleaseInfo("v0.4.0-alpha.1", "pre-release", "u/0.4.0a1"),
     ];
 
     [Theory]
@@ -32,17 +32,19 @@ public sealed class UpdateCheckerTests
     }
 
     [Fact]
-    public void BetaChannelSeesBetaButNotAlpha()
+    public void PreReleaseChannelSeesPreReleases()
     {
-        var result = UpdateChecker.Check("0.1.0", "beta", Feed);
+        var result = UpdateChecker.Check("0.1.0", "pre-release", Feed);
         Assert.True(result.UpdateAvailable);
-        Assert.Equal("v0.3.0-beta.1", result.Latest!.Version);
+        Assert.Equal("v0.4.0-alpha.1", result.Latest!.Version);
     }
 
-    [Fact]
-    public void AlphaChannelSeesEverything()
+    [Theory]
+    [InlineData("beta")]
+    [InlineData("alpha")]
+    public void LegacyChannelAliasesBehaveLikePreRelease(string legacyChannel)
     {
-        var result = UpdateChecker.Check("0.1.0", "alpha", Feed);
+        var result = UpdateChecker.Check("0.1.0", legacyChannel, Feed);
         Assert.True(result.UpdateAvailable);
         Assert.Equal("v0.4.0-alpha.1", result.Latest!.Version);
     }
@@ -50,7 +52,7 @@ public sealed class UpdateCheckerTests
     [Fact]
     public void NoUpdateWhenCurrentIsNewest()
     {
-        var result = UpdateChecker.Check("9.9.9", "alpha", Feed);
+        var result = UpdateChecker.Check("9.9.9", "pre-release", Feed);
         Assert.False(result.UpdateAvailable);
         Assert.Null(result.Latest);
     }

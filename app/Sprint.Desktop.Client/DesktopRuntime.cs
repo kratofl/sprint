@@ -6,6 +6,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
@@ -151,8 +152,18 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public SavedDevice AddDevice(CatalogDevice catalog)
     {
-        var width = catalog.Width > 0 ? catalog.Width : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 480 : 800;
-        var height = catalog.Height > 0 ? catalog.Height : catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase) ? 272 : 480;
+        // Only a screen transport gets a stand-in resolution (hardware detection then
+        // corrects it). A screenless device — e.g. a custom wheel with buttons only —
+        // must stay at 0×0, or DeviceCapabilities would treat it as a screen.
+        var isUsbd = catalog.Driver.Contains("usbd", StringComparison.OrdinalIgnoreCase);
+        var hasScreenTransport = isUsbd
+            || catalog.Driver.Contains("vocore", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(catalog.Type, "screen", StringComparison.OrdinalIgnoreCase);
+        // USBD480 NX's documented fallback size lives with its protocol, so the stand-in
+        // matches what the driver falls back to when the panel does not answer.
+        var fallback = isUsbd ? Usbd480Protocol.DefaultNativeSize : new ScreenNativeSize(800, 480);
+        var width = catalog.Width > 0 ? catalog.Width : hasScreenTransport ? fallback.Width : 0;
+        var height = catalog.Height > 0 ? catalog.Height : hasScreenTransport ? fallback.Height : 0;
         // Find the lowest index whose composite id is not already in use, so ids
         // stay unique even after devices are removed (a plain count+1 can collide
         // with a survivor and then crash reconciliation on a duplicate key).
@@ -206,6 +217,40 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _log.Info(
             $"Device updated: id={device.Id} rotation={device.Rotation} " +
             $"offset={device.OffsetX},{device.OffsetY} margin={device.Margin} dash={device.DashId}.");
+    }
+
+    /// <summary>
+    /// Sets what a device's screen is used for (issue #53). Only the dash purpose
+    /// receives dash frames, so the caller must re-sync the screen service afterwards.
+    /// </summary>
+    public void UpdateDevicePurpose(SavedDevice device, string purpose)
+    {
+        var normalized = DevicePurposes.Normalize(purpose);
+        if (string.Equals(device.Purpose, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        device.Purpose = normalized;
+        SaveDevices();
+        _log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
+    }
+
+    /// <summary>
+    /// Sets the screen refresh rate (issue #75). Applies to the hardware publisher and
+    /// the live preview alike, so the caller must re-sync the screen service.
+    /// </summary>
+    public void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz)
+    {
+        var normalized = DeviceRefreshRates.Normalize(refreshHz);
+        if (device.RefreshHz == normalized)
+        {
+            return;
+        }
+
+        device.RefreshHz = normalized;
+        SaveDevices();
+        _log.Info($"Device refresh rate changed: id={device.Id} hz={normalized}.");
     }
 
     public void RemoveDevice(SavedDevice device)
@@ -474,7 +519,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private AppSettings LoadSettings()
     {
         var fallback = LoadDefaultSettings();
-        return LoadJson<AppSettings>(_settingsPath) ?? fallback;
+        var settings = LoadJson<AppSettings>(_settingsPath) ?? fallback;
+        // Fold legacy three-channel values (beta/alpha) into the two-channel model.
+        settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
+        return settings;
     }
 
     private AppSettings LoadDefaultSettings() =>
@@ -509,7 +557,16 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     private IEnumerable<SavedDevice> LoadDevices()
     {
-        return LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
+        var devices = LoadJson<List<SavedDevice>>(_devicesPath) ?? [];
+        foreach (var device in devices)
+        {
+            // Devices saved before purposes existed (and any unknown value) resolve to
+            // dash, so an older devices.json keeps driving its screens.
+            device.Purpose = DevicePurposes.Normalize(device.Purpose);
+            device.RefreshHz = DeviceRefreshRates.Normalize(device.RefreshHz);
+        }
+
+        return devices;
     }
 
     private ControlsConfig LoadControls()
@@ -564,9 +621,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
             foreach (var file in Directory.EnumerateFiles(_layoutsPath, "*.json"))
             {
                 var layout = LoadJson<DashLayout>(file);
-                if (layout is not null && DashLayoutValidator.IsValid(layout))
+                if (layout is null)
                 {
-                    var migrated = false;
+                    continue;
+                }
+
+                // Rewrite renamed widget types before validation, which would otherwise
+                // reject the whole layout for an unknown (legacy) type.
+                var typesMigrated = DashWidgetTypeMigration.Apply(layout);
+                if (DashLayoutValidator.IsValid(layout))
+                {
+                    var migrated = typesMigrated;
                     if (layout.ColorSystem is null)
                     {
                         NormalizeLayoutColorSystem(layout);

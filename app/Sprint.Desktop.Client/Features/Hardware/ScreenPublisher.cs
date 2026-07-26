@@ -105,6 +105,13 @@ public sealed class ScreenPublisher : IDisposable
     /// <summary>The last unexpected render/transport error, if any (defense-in-depth beyond driver status).</summary>
     public string? LastError => _lastError;
 
+    /// <summary>
+    /// The panel size the driver learned after connecting, which can differ from the
+    /// saved configuration (USBD480 reports its real dimensions, and a generic entry
+    /// starts with a placeholder). Null until a driver reports one.
+    /// </summary>
+    public ScreenNativeSize? DetectedNativeSize => _driver.NativeSize;
+
     public ScreenTestPattern TestPattern =>
         (ScreenTestPattern)Volatile.Read(ref _testPattern);
 

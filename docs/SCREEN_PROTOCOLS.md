@@ -196,12 +196,27 @@ USBD480 implementation files:
 - `WinUsbInterop.cs`: WinUSB-interface enumeration and native calls.
 - `WinUsbScreenTransport.cs`: checked control/bulk transfers and power policy.
 - `WinUsbScreenDrivers.cs`: USBD480 details, brightness, and frame sequence.
+- `Usbd480Protocol.cs`: request constants, details-block decoding, known-model
+  sizes, and native-size resolution. Pure and unit-tested, so everything except
+  the native transfers is verifiable without the panel.
 
 Supported USB identity:
 
 | VID | PID | Fallback native size |
 |---|---|---:|
 | `0x16C0` | `0x08A7` | 800x480 |
+
+Known panel sizes, used only when the device names itself but its size fields are
+unusable:
+
+| Reported name contains | Native size |
+|---|---:|
+| `NX43` | 480x272 |
+| `NX50` | 800x480 |
+
+`Usbd480Protocol.DefaultNativeSize` is the single source for the 800x480
+stand-in: the driver falls back to it, and a generic USBD480 entry is saved with
+it until the real panel reports in.
 
 USBD480 NX is treated as a WinUSB interface device. Sprint enumerates only
 `GUID_DEVINTERFACE_WINUSB` so it does not accidentally open the raw USB
@@ -229,16 +244,29 @@ Open sequence:
 4. Disable WinUSB `AUTO_SUSPEND` power policy to wake devices left suspended by
    another app.
 5. Query actual dimensions and device name with `GET_DEVICE_DETAILS`.
-6. Validate native dimensions.
+6. Resolve the native size, in order of trust: the size the panel reported, a
+   known model matched on the reported name, the configured size, then the
+   documented default. An unrenderable answer (zero, oversized, or a frame past
+   the 24-bit address space) is discarded rather than driving a bogus framebuffer.
 7. Restore full brightness with `SET_BRIGHTNESS`, `wValue = 255`.
 
-`GET_DEVICE_DETAILS` returns 64 bytes:
+`GET_DEVICE_DETAILS` returns 64 bytes; at least 24 must arrive to read the size:
 
 | Byte range | Meaning |
 |---|---|
-| `0..19` | Null-terminated ASCII device name |
+| `0..19` | Null-terminated ASCII device name (no terminator = full 20 bytes) |
 | `20..21` | Width, little-endian `uint16` |
 | `22..23` | Height, little-endian `uint16` |
+
+## Detected size adoption
+
+A panel's real size can differ from what the saved device holds: USBD480 reports
+its own dimensions, and generic entries (including custom wheels added with
+"Auto-detect") start from a stand-in. The publisher always renders at the size the
+driver reports, and `DeviceScreenService.AdoptDetectedResolutions` writes that size
+back onto the saved device and persists it. Without that step the panel rendered
+correctly while the Devices UI, the detail preview, and dash sizing kept the stale
+guess. Invalid detected sizes are ignored, and adoption is idempotent.
 
 Frame send:
 

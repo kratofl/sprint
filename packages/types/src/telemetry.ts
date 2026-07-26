@@ -107,6 +107,7 @@ export interface RaceState {
 
 export interface EnergyState {
   virtualEnergy: number  // kJ remaining
+  virtualEnergyPerLap: number // rolling virtual-energy consumption per completed lap
   soc: number            // state of charge fraction (0–1)
   regenPower: number     // current regen power in kW
   deployPower: number    // current deploy power in kW

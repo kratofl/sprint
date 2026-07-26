@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
@@ -24,6 +26,7 @@ using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Notifications;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
@@ -66,7 +69,13 @@ public sealed class MainWindow : Window
     private readonly ShellCommandRegistry _shellCommands;
     private Border? _commandOverlay;
     private Border? _confirmOverlay;
+    private Action? _pendingConfirmCancel;
     private Border? _deviceCatalogOverlay;
+    // Transient notification stack (bottom-right). Re-attached on demand because
+    // BuildShell clears _root; the timers are tracked so window close stops them.
+    private StackPanel? _toastHost;
+    private readonly List<DispatcherTimer> _toastTimers = [];
+    private readonly UpdateCheckSession _updateChecks;
     private Control? _focusBeforeDeviceCatalog;
     private TextBox? _commandSearch;
     private StackPanel? _commandResults;
@@ -83,6 +92,7 @@ public sealed class MainWindow : Window
     // the body rebuilds or the window closes (see DisposeDevicePreview).
     private DashPreviewState _devicePreviewState = DashPreviewState.Live;
     private DashPainter? _devicePreviewPainter;
+    private DateTimeOffset? _lastDevicePreviewFrame;
     private DashLayout? _devicePreviewLayout;
     private WriteableBitmap? _devicePreviewBitmap;
     private Image? _devicePreviewImage;
@@ -135,6 +145,8 @@ public sealed class MainWindow : Window
         _shell = shell;
         _liveLog = liveLog ?? new LiveLogStore();
         _log = log ?? _liveLog;
+        _updateChecks = new UpdateCheckSession(ct =>
+            new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
         _diagnosticsPaths = diagnosticsPaths;
 #if DEBUG
         _developmentGameState = new DevelopmentGameState(_log);
@@ -263,6 +275,13 @@ public sealed class MainWindow : Window
         Grid.SetRow(content, 1);
         Grid.SetColumn(content, 0);
         _root.Children.Add(content);
+
+        // Live toasts outlive a shell rebuild: clearing _root detached the host, so put
+        // it back while it still holds notifications instead of dropping them on navigation.
+        if (_toastHost is { } toastHost && toastHost.Children.Count > 0)
+        {
+            EnsureToastHost();
+        }
     }
 
     /// <summary>
@@ -730,11 +749,14 @@ public sealed class MainWindow : Window
         UpdateTitlebar();
         RefreshScreenStatusIndicators();
         // Animate the device detail mirror in place (no body rebuild) while the user
-        // is watching the live preview of the assigned dash.
+        // is watching the live preview of the assigned dash. The shell ticks at ~30Hz;
+        // the preview is paced to the device's own refresh rate so what the user tunes
+        // against matches what the panel receives (issue #75).
         if (_shell.View == AppView.Devices
             && _devicePreviewPainter is not null
             && _devicePreviewState == DashPreviewState.Live
-            && _runtime.Settings.DevicesUI.LivePreview)
+            && _runtime.Settings.DevicesUI.LivePreview
+            && DevicePreviewFrameDue(now))
         {
             RenderDevicePreviewFrame();
         }
@@ -747,6 +769,15 @@ public sealed class MainWindow : Window
 
     internal void RefreshScreenStatusIndicators()
     {
+        // A panel that reports its real size (USBD480 NX) or a generic entry added with
+        // a placeholder resolution updates the saved device once it connects; rebuild so
+        // the resolution chip and the detail preview show the real panel.
+        if (_screens.AdoptDetectedResolutions())
+        {
+            RenderBody();
+            return;
+        }
+
         foreach (var device in _runtime.Devices.Where(DeviceCapabilities.HasScreen))
         {
             var view = DeviceStatusView(device);
@@ -809,6 +840,12 @@ public sealed class MainWindow : Window
     {
         _timer.Stop();
         _setupUndoTimer?.Stop();
+        foreach (var toastTimer in _toastTimers)
+        {
+            toastTimer.Stop();
+        }
+
+        _toastTimers.Clear();
         DisposeDevicePreview();
 #if DEBUG
         _diagnosticsWindow?.Close();
@@ -1608,7 +1645,9 @@ public sealed class MainWindow : Window
     // pipeline), a buttons-only device shows an icon + its bound-button count.
     private Control DeviceCardVisual(SavedDevice device, double width, double height)
     {
-        if (IsScreenDevice(device)
+        // A dash mirror is only truthful for a dash-purpose screen; anything else is
+        // idle, so the card falls through to the icon tile with its purpose label.
+        if (DeviceCapabilities.DrivesDash(device)
             && RenderDeviceMirrorBitmap(device, DashPreviewFrames.For(DashPreviewState.MidLap)) is { } bitmap)
         {
             return DeviceMirrorDisplay(device, new Image { Source = bitmap }, width, height);
@@ -1617,7 +1656,11 @@ public sealed class MainWindow : Window
         var icon = DeviceIcon(device);
         var inner = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         inner.Children.Add(new Grid { Children = { Icons.Create(icon, 30, Graphite.AccentBrush) }, HorizontalAlignment = HorizontalAlignment.Center });
-        if (!IsScreenDevice(device))
+        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            inner.Children.Add(Graphite.TextBlock(purpose.Label, 11, FontWeight.Medium, Graphite.Text3Brush));
+        }
+        else if (!IsScreenDevice(device))
         {
             var count = device.Bindings.Count;
             inner.Children.Add(Graphite.TextBlock(count == 1 ? "1 button bound" : $"{count} buttons bound", 11, FontWeight.Medium, Graphite.Text3Brush));
@@ -1772,7 +1815,9 @@ public sealed class MainWindow : Window
         var headingText = new StackPanel { Spacing = 4 };
         headingText.Children.Add(Graphite.TextBlock("Add device", 19, FontWeight.Bold, Graphite.TextBrush));
         headingText.Children.Add(Graphite.TextBlock(
-            "Choose a known hardware preset or configure a generic screen.",
+            generic
+                ? "Pick a generic screen Sprint should auto-detect, or build your own wheel."
+                : "Choose a known hardware preset, or switch to Generic to build your own.",
             12,
             FontWeight.Normal,
             Graphite.Text2Brush,
@@ -1807,11 +1852,17 @@ public sealed class MainWindow : Window
 
         content.Children.Add(new ScrollViewer
         {
-            MaxHeight = 430,
+            // The generic tab shares its height with the custom-wheel form below it.
+            MaxHeight = generic ? 200 : 430,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = catalog,
         });
+
+        if (generic)
+        {
+            content.Children.Add(CustomWheelForm());
+        }
 
         var panel = new Border
         {
@@ -1854,6 +1905,110 @@ public sealed class MainWindow : Window
         Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
     }
 
+    // "Build your own wheel" (issue #49): the shipped presets cannot cover every rim,
+    // so the generic tab also lets the user declare one — name, optional integrated
+    // screen, its transport and resolution. Validation lives in the pure
+    // CustomWheelBuilder; this method only collects the fields and reports the error.
+    private Control CustomWheelForm()
+    {
+        const string autoResolution = "Auto-detect";
+
+        var form = new StackPanel { Spacing = 8 };
+        form.Children.Add(Graphite.SectionLabel("Custom wheel"));
+
+        var name = new TextBox
+        {
+            PlaceholderText = "e.g. My GT rim",
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            FontSize = 12,
+            MinWidth = 260,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Tag = "custom-wheel-name",
+        };
+
+        var driver = Graphite.ComboBox(
+            CustomWheelBuilder.ScreenDrivers.Select(CustomWheelBuilder.DriverLabel),
+            CustomWheelBuilder.DriverLabel(CustomWheelBuilder.ScreenDrivers[0]),
+            180);
+        driver.Tag = "custom-wheel-driver";
+
+        var resolutions = new List<string> { autoResolution };
+        resolutions.AddRange(ScreenProfileCatalog.All.Select(profile => $"{profile.Width} × {profile.Height}"));
+        var resolution = Graphite.ComboBox(resolutions, autoResolution, 180);
+        resolution.Tag = "custom-wheel-resolution";
+        ToolTip.SetTip(resolution, "Auto-detect keeps the driver default until the connected panel reports its size.");
+
+        var error = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.RedBrush, TextWrapping.Wrap);
+        error.IsVisible = false;
+
+        var screenFields = new StackPanel { Spacing = 8 };
+        screenFields.Children.Add(FormRow("Screen type", driver));
+        screenFields.Children.Add(FormRow("Resolution", resolution));
+
+        // Screen yes/no as a segmented choice: it carries the Graphite selection colour
+        // by construction, unlike a stock CheckBox. Rebuilt on each pick because the
+        // control bakes its selected state when it is built.
+        var hasScreen = true;
+        var screenChoice = new ContentControl { Tag = "custom-wheel-screen-choice" };
+        void RenderScreenChoice() => screenChoice.Content = Graphite.Segmented(
+            ["With screen", "No screen"],
+            hasScreen ? 0 : 1,
+            index =>
+            {
+                hasScreen = index == 0;
+                screenFields.IsVisible = hasScreen;
+                RenderScreenChoice();
+            });
+
+        RenderScreenChoice();
+
+        var add = Graphite.Button("Add wheel", ButtonTone.Primary);
+        add.HorizontalAlignment = HorizontalAlignment.Left;
+        add.Click += (_, _) =>
+        {
+            var (width, height) = ParseResolution(resolution.SelectedItem?.ToString(), autoResolution);
+            var request = new CustomWheelRequest(
+                name.Text,
+                hasScreen,
+                CustomWheelBuilder.DriverForLabel(driver.SelectedItem?.ToString()),
+                width,
+                height);
+
+            if (!CustomWheelBuilder.TryBuild(request, out var entry, out var failure))
+            {
+                error.Text = failure;
+                error.IsVisible = true;
+                return;
+            }
+
+            AddCatalogDevice(entry);
+        };
+
+        form.Children.Add(FormRow("Name", name));
+        form.Children.Add(FormRow("Screen", screenChoice));
+        form.Children.Add(screenFields);
+        form.Children.Add(error);
+        form.Children.Add(add);
+        return form;
+    }
+
+    private static (int Width, int Height) ParseResolution(string? label, string autoLabel)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.Equals(label, autoLabel, StringComparison.Ordinal))
+        {
+            return (0, 0);
+        }
+
+        var parts = label.Split('×', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2
+            && int.TryParse(parts[0], out var width)
+            && int.TryParse(parts[1], out var height)
+                ? (width, height)
+                : (0, 0);
+    }
+
     // A catalog entry rendered as a visual card: type icon, name, resolution chip,
     // and description. Clicking adds the device and opens its detail.
     private Control DeviceCatalogCard(CatalogDevice entry)
@@ -1887,15 +2042,19 @@ public sealed class MainWindow : Window
         card.Width = 300;
         card.MinHeight = 118;
         card.Margin = new Thickness(0, 0, 10, 10);
-        return WrapClickable(card, $"catalog-entry:{entry.Id}", entry.Name, () =>
-        {
-            var saved = _runtime.AddDevice(entry);
-            _selectedDeviceId = saved.Id;
-            _deviceBindingPickerOpen = false;
-            CloseDeviceCatalogDialog();
-            _screens.Sync();
-            RenderBody();
-        });
+        return WrapClickable(card, $"catalog-entry:{entry.Id}", entry.Name, () => AddCatalogDevice(entry));
+    }
+
+    // Shared tail of both add paths (preset/generic card and the custom-wheel form):
+    // save the device, close the dialog, and land on its detail page.
+    private void AddCatalogDevice(CatalogDevice entry)
+    {
+        var saved = _runtime.AddDevice(entry);
+        _selectedDeviceId = saved.Id;
+        _deviceBindingPickerOpen = false;
+        CloseDeviceCatalogDialog();
+        _screens.Sync();
+        RenderBody();
     }
 
     private void CloseDeviceCatalogDialog(bool restoreFocus = true)
@@ -1964,8 +2123,20 @@ public sealed class MainWindow : Window
 
         var metaRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var chips = new WrapPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        chips.Children.Add(SpecChip(device.Driver));
+        // A custom wheel without a screen has no transport to name.
+        if (!string.IsNullOrWhiteSpace(device.Driver))
+        {
+            chips.Children.Add(SpecChip(device.Driver));
+        }
+
         chips.Children.Add(SpecChip(IsScreenDevice(device) ? $"{device.Width} × {device.Height}" : "Controller"));
+        // Only a non-default purpose earns a chip; every screen being tagged "Dash"
+        // would be noise.
+        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            chips.Children.Add(SpecChip(purpose.Label));
+        }
+
         AddGrid(metaRow, chips, 0, 0);
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -2007,9 +2178,27 @@ public sealed class MainWindow : Window
     // preview so tuning is never blind.
     private Control DeviceScreenSection(SavedDevice device)
     {
+        var purpose = DevicePurposes.Resolve(device.Purpose);
+        if (!purpose.Available)
+        {
+            // Honest dead end: the screen is labelled for output Sprint cannot produce
+            // yet, so it stays idle instead of quietly showing a dash. No dash
+            // assignment, no preview, and no alignment controls for output that isn't
+            // running.
+            var idle = new StackPanel { Spacing = 12 };
+            idle.Children.Add(DevicePurposeField(device));
+            idle.Children.Add(Graphite.StatePanel(
+                $"{purpose.Label} is not built yet",
+                $"{purpose.Description} Sprint keeps this screen idle until that output exists — "
+                    + "switch the purpose back to Dash to drive it with a dash layout.",
+                Graphite.BlueBrush));
+            return idle;
+        }
+
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 24 };
 
         var left = new StackPanel { Spacing = 10 };
+        left.Children.Add(DevicePurposeField(device));
         left.Children.Add(DashAssignmentField(device));
         left.Children.Add(DeviceScreenPreview(device));
         if (_devicePreviewPainter is not null)
@@ -2021,6 +2210,7 @@ public sealed class MainWindow : Window
 
         var right = new StackPanel { Spacing = 8 };
         right.Children.Add(Graphite.SectionLabel("Screen alignment"));
+        right.Children.Add(AlignmentRow("Refresh", RefreshRateControl(device)));
         right.Children.Add(AlignmentRow("Rotation", RotationControl(device)));
         right.Children.Add(AlignmentRow("Offset X", StepperControl(device.OffsetX, "px", value => SetDeviceOffset(device, value, device.OffsetY), 0, 2000)));
         right.Children.Add(AlignmentRow("Offset Y", StepperControl(device.OffsetY, "px", value => SetDeviceOffset(device, device.OffsetX, value), 0, 2000)));
@@ -2047,6 +2237,33 @@ public sealed class MainWindow : Window
         Grid.SetColumn(control, 1);
         grid.Children.Add(control);
         return new Border { Padding = new Thickness(0, 4), Child = grid };
+    }
+
+    // What this screen is used for (issue #53). Changing it re-syncs the screen service,
+    // because only the dash purpose is allowed to publish frames.
+    private Control DevicePurposeField(SavedDevice device)
+    {
+        var panel = new StackPanel { Spacing = 6 };
+        panel.Children.Add(Graphite.SectionLabel("Purpose"));
+
+        var current = DevicePurposes.Resolve(device.Purpose);
+        var combo = Graphite.ComboBox(DevicePurposes.Labels, current.Label, 220);
+        combo.Tag = "device-purpose";
+        ToolTip.SetTip(combo, current.Description);
+        combo.SelectionChanged += (_, _) =>
+        {
+            var chosen = DevicePurposes.FindByLabel(combo.SelectedItem?.ToString());
+            if (chosen is null || string.Equals(chosen.Id, DevicePurposes.Normalize(device.Purpose), StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _runtime.UpdateDevicePurpose(device, chosen.Id);
+            _screens.Sync();
+            RenderBody();
+        };
+        panel.Children.Add(combo);
+        return panel;
     }
 
     private Control DashAssignmentField(SavedDevice device)
@@ -2152,6 +2369,28 @@ public sealed class MainWindow : Window
             chosen => SetDeviceRotation(device, chosen * 90));
     }
 
+    // One rate for the panel and its live preview (issue #75).
+    private Control RefreshRateControl(SavedDevice device)
+    {
+        var current = DeviceRefreshRates.Normalize(device.RefreshHz);
+        var combo = Graphite.ComboBox(DeviceRefreshRates.Labels, DeviceRefreshRates.Label(current), 120);
+        combo.Tag = "device-refresh";
+        ToolTip.SetTip(combo, "Frames per second sent to the panel, and the rate this preview animates at.");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (DeviceRefreshRates.ForLabel(combo.SelectedItem?.ToString()) is not { } chosen
+                || chosen == DeviceRefreshRates.Normalize(device.RefreshHz))
+            {
+                return;
+            }
+
+            _runtime.UpdateDeviceRefreshHz(device, chosen);
+            _screens.Sync();
+            RenderBody();
+        };
+        return combo;
+    }
+
     private Control StepperControl(int value, string suffix, Action<int> setter, int min, int max)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
@@ -2221,6 +2460,24 @@ public sealed class MainWindow : Window
             AlphaFormat.Premul);
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
         RenderDevicePreviewFrame();
+    }
+
+    /// <summary>
+    /// Rate limiter for the live preview: true when the selected device's frame interval
+    /// has elapsed. Returns true on the first call so the preview never waits to appear.
+    /// </summary>
+    private bool DevicePreviewFrameDue(DateTimeOffset now)
+    {
+        var device = _runtime.Devices.FirstOrDefault(item =>
+            string.Equals(item.Id, _selectedDeviceId, StringComparison.OrdinalIgnoreCase));
+        var interval = DeviceRefreshRates.Interval(device?.RefreshHz ?? DeviceRefreshRates.Default);
+        if (_lastDevicePreviewFrame is { } last && now - last < interval)
+        {
+            return false;
+        }
+
+        _lastDevicePreviewFrame = now;
+        return true;
     }
 
     // Renders the assigned dash upright at the panel's native size and blits it into
@@ -2466,7 +2723,13 @@ public sealed class MainWindow : Window
         }
     }
 
-    private void ShowConfirmDialog(string title, string message, string confirmLabel, Action confirm)
+    private void ShowConfirmDialog(
+        string title,
+        string message,
+        string confirmLabel,
+        Action confirm,
+        ButtonTone confirmTone = ButtonTone.Danger,
+        Action? cancel = null)
     {
         CloseCommandPalette(restoreFocus: false);
         CloseDeviceCatalogDialog();
@@ -2482,9 +2745,13 @@ public sealed class MainWindow : Window
             HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 8, 0, 0),
         };
+        // Dismissing the dialog by scrim/Escape counts as cancel; the cancel callback
+        // is stored so any dismissal path runs it exactly once (confirm clears it first).
+        _pendingConfirmCancel = cancel;
         actions.Children.Add(ActionButton("Cancel", ButtonTone.Ghost, CloseConfirmDialog));
-        actions.Children.Add(ActionButton(confirmLabel, ButtonTone.Danger, () =>
+        actions.Children.Add(ActionButton(confirmLabel, confirmTone, () =>
         {
+            _pendingConfirmCancel = null;
             CloseConfirmDialog();
             confirm();
         }));
@@ -2524,6 +2791,123 @@ public sealed class MainWindow : Window
 
         _root.Children.Remove(_confirmOverlay);
         _confirmOverlay = null;
+
+        var cancel = _pendingConfirmCancel;
+        _pendingConfirmCancel = null;
+        cancel?.Invoke();
+    }
+
+    /// <summary>
+    /// Shows a transient Graphite toast bottom-right with an optional action button.
+    /// Toasts auto-dismiss after <see cref="ToastTimeline.Lifetime"/> and can be
+    /// closed manually; the action dismisses the toast before running. Internal so the
+    /// headless tests can drive the notification stack without a live update feed.
+    /// </summary>
+    internal void ShowToast(
+        GraphiteIntent intent,
+        string title,
+        string message,
+        string icon,
+        (string Label, Action OnClick)? action = null)
+    {
+        var host = EnsureToastHost();
+
+        Border card = null!;
+        var lifetimeProgress = Graphite.ToastLifetimeProgress(intent);
+        var translate = new TranslateTransform();
+        var spatialMotion = SystemAnimationPreferences.ClientAreaAnimationsEnabled;
+        var clock = Stopwatch.StartNew();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        var removed = false;
+
+        void Remove()
+        {
+            if (removed)
+            {
+                return;
+            }
+
+            removed = true;
+            clock.Stop();
+            timer.Stop();
+            _toastTimers.Remove(timer);
+            host.Children.Remove(card);
+        }
+
+        void Dismiss()
+        {
+            Remove();
+        }
+
+        void Apply(ToastAnimationFrame frame)
+        {
+            card.Opacity = frame.Opacity;
+            translate.X = frame.TranslateX;
+            Graphite.SetToastLifetimeProgress(lifetimeProgress, frame.ProgressPercent);
+            if (frame.Complete)
+            {
+                Remove();
+            }
+        }
+
+        var trailing = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(12, 0, 0, 0),
+        };
+        if (action is { } toastAction)
+        {
+            trailing.Children.Add(ActionButton(toastAction.Label, ButtonTone.Primary, () =>
+            {
+                Dismiss();
+                toastAction.OnClick();
+            }));
+        }
+
+        trailing.Children.Add(ChromeButton("x", Dismiss, "Dismiss notification"));
+
+        card = (Border)Graphite.Toast(
+            intent,
+            title,
+            message,
+            icon,
+            trailing,
+            lifetimeProgress);
+        card.MaxWidth = 460;
+        card.Tag = "toast";
+        card.RenderTransform = translate;
+        Apply(ToastTimeline.Sample(TimeSpan.Zero, spatialMotion));
+        host.Children.Add(card);
+
+        timer.Tick += (_, _) =>
+        {
+            Apply(ToastTimeline.Sample(clock.Elapsed, spatialMotion));
+        };
+        _toastTimers.Add(timer);
+        timer.Start();
+        _log.Info($"Toast shown: intent={intent} title={title}.");
+    }
+
+    private StackPanel EnsureToastHost()
+    {
+        _toastHost ??= new StackPanel
+        {
+            Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 20, 20),
+            Tag = "toast-host",
+        };
+
+        // BuildShell clears _root on navigation/rebuild; re-attach above the shell.
+        if (!_root.Children.Contains(_toastHost))
+        {
+            Grid.SetRowSpan(_toastHost, 2);
+            _root.Children.Add(_toastHost);
+        }
+
+        return _toastHost;
     }
 
     private void OpenCommandPalette()
@@ -2842,8 +3226,8 @@ public sealed class MainWindow : Window
         };
         var channel = new ComboBox
         {
-            ItemsSource = new[] { "stable", "beta", "alpha" },
-            SelectedItem = _runtime.Settings.UpdateChannel,
+            ItemsSource = AppSettings.Channels,
+            SelectedItem = AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel),
             Background = Graphite.Panel2Brush,
             Foreground = Graphite.TextBrush,
             BorderBrush = Graphite.Line2Brush,
@@ -2934,10 +3318,43 @@ public sealed class MainWindow : Window
             _runtime.Settings.NewDashDefaults.Mode = string.Equals(dashMode.SelectedItem?.ToString(), "Advanced", StringComparison.Ordinal) ? "advanced" : "basic";
             MarkSaved();
         };
+        // Reverting the combo from the warning dialog raises SelectionChanged again;
+        // the guard keeps that programmatic revert from reopening the dialog.
+        var revertingChannel = false;
         channel.SelectionChanged += (_, _) =>
         {
-            _runtime.Settings.UpdateChannel = channel.SelectedItem?.ToString() ?? "stable";
+            if (revertingChannel)
+            {
+                return;
+            }
+
+            var selected = AppSettings.NormalizeChannel(channel.SelectedItem?.ToString());
+            if (selected == "pre-release" && AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel) != "pre-release")
+            {
+                ShowConfirmDialog(
+                    "Switch to pre-release?",
+                    "Pre-release builds ship early and may contain bugs, unfinished features, and breaking changes. "
+                        + "Only use this channel if you want to test new Sprint versions. You can switch back to stable at any time.",
+                    "Use pre-release",
+                    () =>
+                    {
+                        _runtime.Settings.UpdateChannel = selected;
+                        MarkSaved();
+                        RenderBody();
+                    },
+                    confirmTone: ButtonTone.Primary,
+                    cancel: () =>
+                    {
+                        revertingChannel = true;
+                        channel.SelectedItem = "stable";
+                        revertingChannel = false;
+                    });
+                return;
+            }
+
+            _runtime.Settings.UpdateChannel = selected;
             MarkSaved();
+            RenderBody();
         };
 
         var form = new StackPanel { Spacing = 12, MaxWidth = 620 };
@@ -2953,11 +3370,65 @@ public sealed class MainWindow : Window
         form.Children.Add(Graphite.SectionLabel("About"));
         form.Children.Add(FormRow("Version", Graphite.Chip(
             $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)));
-        var updateStatus = Graphite.TextBlock("Manual check — auto-install is deferred.", 11, FontWeight.Normal, Graphite.Text3Brush, TextWrapping.Wrap);
+        var updateStatus = Graphite.TextBlock(
+            $"Sprint installs updates from the {AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)} channel.",
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap);
+        // The install button stays hidden until a check finds a newer release on the
+        // active channel; the found release is what the button then installs.
+        var installButton = Graphite.Button("Update", ButtonTone.Primary);
+        installButton.IsVisible = false;
+        var checkButton = Graphite.Button("Check for updates", ButtonTone.Ghost);
+        ReleaseInfo? foundUpdate = null;
+
+        async void RunUpdateCheck(bool forceRefresh)
+        {
+            checkButton.IsEnabled = false;
+            installButton.IsVisible = false;
+            updateStatus.Text = "Checking…";
+            var result = await FetchUpdateAsync(forceRefresh);
+            checkButton.IsEnabled = true;
+
+            if (result is null)
+            {
+                updateStatus.Text = "Check failed — try again later.";
+                return;
+            }
+
+            if (result is { UpdateAvailable: true, Latest: { } latest })
+            {
+                foundUpdate = latest;
+                updateStatus.Text = $"Sprint {DisplayVersion(latest.Version)} is available.";
+                installButton.Content = $"Update to {DisplayVersion(latest.Version)}";
+                installButton.IsVisible = true;
+                checkButton.Content = "Check again";
+                return;
+            }
+
+            updateStatus.Text = $"Up to date (v{BuildInfo.Version}).";
+            checkButton.Content = "Check again";
+        }
+
+        checkButton.Click += (_, _) => RunUpdateCheck(forceRefresh: true);
+        installButton.Click += (_, _) =>
+        {
+            if (foundUpdate is { } release)
+            {
+                ConfirmAndInstallUpdate(release, updateStatus, installButton);
+            }
+        };
+
         var checkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-        checkRow.Children.Add(ActionButton("Check for updates", ButtonTone.Ghost, () => CheckForUpdates(updateStatus)));
+        checkRow.Children.Add(checkButton);
+        checkRow.Children.Add(installButton);
         checkRow.Children.Add(updateStatus);
         form.Children.Add(FormRow("Updates", checkRow));
+        if (_updateChecks.HasCheck(BuildInfo.Version, _runtime.Settings.UpdateChannel))
+        {
+            RunUpdateCheck(forceRefresh: false);
+        }
 
 #if DEBUG
         form.Children.Add(Graphite.SectionLabel("Development"));
@@ -3067,23 +3538,128 @@ public sealed class MainWindow : Window
             $"UI action: control=button label={label ?? "unlabelled"} view={_shell.View}.");
     }
 
-    private async void CheckForUpdates(TextBlock status)
+    private static string DisplayVersion(string version) =>
+        version.StartsWith('v') || version.StartsWith('V') ? version : $"v{version}";
+
+    /// <summary>
+    /// Channel-aware update check shared by the Settings button and the startup notice.
+    /// Best-effort: returns <c>null</c> when the release feed cannot be read, so a
+    /// network failure never surfaces as a crash.
+    /// </summary>
+    private async Task<UpdateCheckResult?> FetchUpdateAsync(bool forceRefresh = false)
     {
-        status.Text = "Checking…";
         try
         {
-            var releases = await new GitHubReleaseSource().FetchAsync("kratofl/sprint");
-            var result = UpdateChecker.Check(BuildInfo.Version, _runtime.Settings.UpdateChannel, releases);
-            status.Text = result is { UpdateAvailable: true, Latest: { } latest }
-                ? $"Update {latest.Version} available"
-                : "Up to date";
+            return await _updateChecks.CheckAsync(
+                BuildInfo.Version,
+                _runtime.Settings.UpdateChannel,
+                forceRefresh);
         }
         catch (Exception ex)
         {
-            // Manual check is best-effort; a network failure must not crash the app.
             _log.Warn("Update check failed", ex);
-            status.Text = "Check failed — try again later.";
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Confirms the one-click update, then downloads the platform archive and hands it
+    /// to the self-replace helper. Windows swaps the install and relaunches; every other
+    /// platform (and every failure) falls back to revealing the download so the user can
+    /// install manually — the running app is never left broken.
+    /// </summary>
+    private void ConfirmAndInstallUpdate(ReleaseInfo release, TextBlock status, Button installButton)
+    {
+        var asset = ReleaseAssetSelector.Select(release.Assets, UpdateInstaller.CurrentRid);
+        if (asset is null)
+        {
+            status.Text = "No download for this platform — get it from the GitHub release page.";
+            return;
+        }
+
+        var restarts = UpdateInstaller.SupportsSelfReplace;
+        ShowConfirmDialog(
+            $"Install Sprint {DisplayVersion(release.Version)}?",
+            restarts
+                ? "Sprint downloads the update, closes, replaces itself, and restarts. Unsaved work in other windows is not affected."
+                : "Sprint downloads the update and opens the containing folder. Automatic install is Windows-only, so finish the install manually.",
+            restarts ? "Download and install" : "Download",
+            () => InstallUpdate(release, asset, status, installButton),
+            confirmTone: ButtonTone.Primary);
+    }
+
+    private async void InstallUpdate(ReleaseInfo release, ReleaseAsset asset, TextBlock status, Button installButton)
+    {
+        installButton.IsEnabled = false;
+        var progress = new Progress<double>(fraction =>
+            status.Text = $"Downloading… {fraction * 100:0}%");
+
+        try
+        {
+            _log.Info($"Update install started: version={release.Version} asset={asset.Name}.");
+            var staged = await new UpdateInstaller().DownloadAsync(release.Version, asset, progress);
+
+            if (UpdateInstaller.SupportsSelfReplace)
+            {
+                status.Text = "Installing — Sprint will restart.";
+                UpdateInstaller.LaunchWindowsSelfReplace(staged.StagingDir);
+                _log.Info("Self-replace helper launched; shutting down for the swap.");
+                RequestShutdown();
+                return;
+            }
+
+            status.Text = "Downloaded — finish the install from the opened folder.";
+            UpdateInstaller.RevealInFolder(staged.ArchivePath);
+            installButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            // Never brick the running app: report, re-enable, and leave the user on the
+            // working build (the manual GitHub download stays available).
+            _log.Warn("Update install failed", ex);
+            status.Text = UpdateInstaller.DescribeFailure(ex);
+            installButton.IsEnabled = true;
+        }
+    }
+
+    private void RequestShutdown()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+            return;
+        }
+
+        Close();
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+
+        // Only a real desktop session gets the startup notice: it is also the lifetime
+        // that can restart for an install, and it keeps headless/test hosts off the network.
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)
+        {
+            _ = NotifyIfUpdateAvailableAsync();
+        }
+    }
+
+    private async Task NotifyIfUpdateAvailableAsync()
+    {
+        var result = await FetchUpdateAsync();
+        if (result is not { UpdateAvailable: true, Latest: { } latest })
+        {
+            // Silent when up to date or unreachable — startup must never nag.
+            return;
+        }
+
+        ShowToast(
+            GraphiteIntent.Info,
+            $"Sprint {DisplayVersion(latest.Version)} is available",
+            $"You are on v{BuildInfo.Version} ({AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)}). Install it from Settings.",
+            "info-circle",
+            ("Open Settings", () => Navigate(AppView.Settings)));
     }
 
     private Control UpcomingPillarPage()
@@ -3571,6 +4147,15 @@ public sealed class MainWindow : Window
         if (device.Disabled)
         {
             return new ScreenStatusView("Disabled", "This screen is disabled. Enable it to start output.");
+        }
+
+        // A screen labelled for an unbuilt purpose has no publisher by design; report
+        // that instead of the generic "no publisher" disconnect, which reads as a fault.
+        if (DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        {
+            return new ScreenStatusView(
+                "Idle",
+                $"Set to {purpose.Label}, which Sprint cannot render yet — nothing is being sent to this screen.");
         }
 
         return ScreenStatusPresentation.Describe(
