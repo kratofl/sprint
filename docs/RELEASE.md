@@ -160,28 +160,36 @@ The desktop client reports its own version and installs updates in one click:
   reports whether it is newer than the running build. `GitHubReleaseSource`
   fetches the repo's releases (`GitHubReleaseSource.DefaultRepo`), carries each
   release's assets, and degrades to "no releases" on any network failure (never
-  crashes). It runs on an explicit **Check for updates** click and once at
-  startup.
-- **Startup notice** — an in-app Graphite toast (bottom-right, ~8s, "Open
-  Settings" action). Best-effort and silent when up to date or offline; it runs
-  only under a classic desktop lifetime, so headless/test hosts never fetch.
+  crashes). It runs once at startup and caches the successful result for the
+  running session, so opening Settings immediately shows the known state without
+  another request or click. **Check again** explicitly refreshes the feed; changing
+  channels creates a new channel-specific check.
+- **Startup notice** — an in-app Graphite toast (bottom-right, 12s, "Open
+  Settings" action) with restrained enter/exit motion and a bottom lifetime bar.
+  Best-effort and silent when up to date or offline; it runs only under a classic
+  desktop lifetime, so headless/test hosts never fetch.
 - **One-click install (Windows)** — `ReleaseAssetSelector` picks the platform
   archive (`win-x64` → `*windows-amd64.zip`, `linux-x64` → `*linux-amd64.tar.gz`),
   `UpdateInstaller.DownloadAsync` streams it to
-  `%TEMP%\Sprint\updates\<version>\` with progress and extracts it to a staging
-  dir, then `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
+  `%TEMP%\Sprint\updates\<version>\` with progress and extracts every attempt to
+  a fresh staging dir (so a stale lock cannot block retry), then
+  `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
   for the app's PID to exit, robocopies staging over the install dir with a
   retry window for post-exit executable locks, and copies the primary executable
-  only after the support files succeed. A write preflight rejects protected
-  install directories before shutdown. Otherwise the app confirms, shuts down,
-  swaps, relaunches, and deletes the helper. A persistent post-exit copy failure
+  only after the support files succeed. When the install directory is protected
+  (for example `%ProgramFiles%\Sprint`), Sprint launches the helper with Windows
+  elevation before shutting down; declining the UAC prompt leaves the current app
+  running. A separate watcher launched by the original user process waits for the
+  privileged copy result and reopens Sprint without inheriting administrator
+  privileges. The app then shuts down, swaps, relaunches, and deletes the helpers.
+  A persistent post-exit copy failure
   preserves `%TEMP%\Sprint\apply-update-<pid>.log`, reveals the staged executable
   for manual recovery, and relaunches the still-working old executable.
 - **Linux and fallbacks** — self-replace is Windows-only
   (`UpdateInstaller.SupportsSelfReplace`). Linux reveals the downloaded archive
-  for manual installation. Download, extraction, launch, and install-directory
-  preflight failures are reported while the current Windows build remains
-  running; post-exit copy failures follow the logged recovery path above.
+  for manual installation. Download, extraction, helper launch, and declined
+  elevation are reported while the current Windows build remains running;
+  post-exit copy failures follow the logged recovery path above.
 - **Decision record (resolves Open Question #5):** the earlier
   "check-and-notify only, self-replace deferred" decision is **superseded** by
   issue #28. Unattended/background auto-install (no user click) remains out of

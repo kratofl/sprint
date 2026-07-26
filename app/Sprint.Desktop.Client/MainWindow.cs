@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -25,6 +26,7 @@ using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Notifications;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Shell;
@@ -34,8 +36,6 @@ namespace Sprint.Desktop;
 
 public sealed class MainWindow : Window
 {
-    private const double ToastLifetimeSeconds = 8;
-
     private readonly IDesktopRuntime _runtime;
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
@@ -75,6 +75,7 @@ public sealed class MainWindow : Window
     // BuildShell clears _root; the timers are tracked so window close stops them.
     private StackPanel? _toastHost;
     private readonly List<DispatcherTimer> _toastTimers = [];
+    private readonly UpdateCheckSession _updateChecks;
     private Control? _focusBeforeDeviceCatalog;
     private TextBox? _commandSearch;
     private StackPanel? _commandResults;
@@ -144,6 +145,8 @@ public sealed class MainWindow : Window
         _shell = shell;
         _liveLog = liveLog ?? new LiveLogStore();
         _log = log ?? _liveLog;
+        _updateChecks = new UpdateCheckSession(ct =>
+            new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
         _diagnosticsPaths = diagnosticsPaths;
 #if DEBUG
         _developmentGameState = new DevelopmentGameState(_log);
@@ -2796,7 +2799,7 @@ public sealed class MainWindow : Window
 
     /// <summary>
     /// Shows a transient Graphite toast bottom-right with an optional action button.
-    /// Toasts auto-dismiss after <see cref="ToastLifetimeSeconds"/> seconds and can be
+    /// Toasts auto-dismiss after <see cref="ToastTimeline.Lifetime"/> and can be
     /// closed manually; the action dismisses the toast before running. Internal so the
     /// headless tests can drive the notification stack without a live update feed.
     /// </summary>
@@ -2810,12 +2813,41 @@ public sealed class MainWindow : Window
         var host = EnsureToastHost();
 
         Border card = null!;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(ToastLifetimeSeconds) };
-        void Dismiss()
+        var lifetimeProgress = Graphite.ToastLifetimeProgress(intent);
+        var translate = new TranslateTransform();
+        var spatialMotion = SystemAnimationPreferences.ClientAreaAnimationsEnabled;
+        var clock = Stopwatch.StartNew();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        var removed = false;
+
+        void Remove()
         {
+            if (removed)
+            {
+                return;
+            }
+
+            removed = true;
+            clock.Stop();
             timer.Stop();
             _toastTimers.Remove(timer);
             host.Children.Remove(card);
+        }
+
+        void Dismiss()
+        {
+            Remove();
+        }
+
+        void Apply(ToastAnimationFrame frame)
+        {
+            card.Opacity = frame.Opacity;
+            translate.X = frame.TranslateX;
+            Graphite.SetToastLifetimeProgress(lifetimeProgress, frame.ProgressPercent);
+            if (frame.Complete)
+            {
+                Remove();
+            }
         }
 
         var trailing = new StackPanel
@@ -2835,12 +2867,23 @@ public sealed class MainWindow : Window
 
         trailing.Children.Add(ChromeButton("x", Dismiss, "Dismiss notification"));
 
-        card = (Border)Graphite.Toast(intent, title, message, icon, trailing);
+        card = (Border)Graphite.Toast(
+            intent,
+            title,
+            message,
+            icon,
+            trailing,
+            lifetimeProgress);
         card.MaxWidth = 460;
         card.Tag = "toast";
+        card.RenderTransform = translate;
+        Apply(ToastTimeline.Sample(TimeSpan.Zero, spatialMotion));
         host.Children.Add(card);
 
-        timer.Tick += (_, _) => Dismiss();
+        timer.Tick += (_, _) =>
+        {
+            Apply(ToastTimeline.Sample(clock.Elapsed, spatialMotion));
+        };
         _toastTimers.Add(timer);
         timer.Start();
         _log.Info($"Toast shown: intent={intent} title={title}.");
@@ -3311,6 +3354,7 @@ public sealed class MainWindow : Window
 
             _runtime.Settings.UpdateChannel = selected;
             MarkSaved();
+            RenderBody();
         };
 
         var form = new StackPanel { Spacing = 12, MaxWidth = 620 };
@@ -3339,12 +3383,12 @@ public sealed class MainWindow : Window
         var checkButton = Graphite.Button("Check for updates", ButtonTone.Ghost);
         ReleaseInfo? foundUpdate = null;
 
-        async void RunUpdateCheck()
+        async void RunUpdateCheck(bool forceRefresh)
         {
             checkButton.IsEnabled = false;
             installButton.IsVisible = false;
             updateStatus.Text = "Checking…";
-            var result = await FetchUpdateAsync();
+            var result = await FetchUpdateAsync(forceRefresh);
             checkButton.IsEnabled = true;
 
             if (result is null)
@@ -3359,13 +3403,15 @@ public sealed class MainWindow : Window
                 updateStatus.Text = $"Sprint {DisplayVersion(latest.Version)} is available.";
                 installButton.Content = $"Update to {DisplayVersion(latest.Version)}";
                 installButton.IsVisible = true;
+                checkButton.Content = "Check again";
                 return;
             }
 
             updateStatus.Text = $"Up to date (v{BuildInfo.Version}).";
+            checkButton.Content = "Check again";
         }
 
-        checkButton.Click += (_, _) => RunUpdateCheck();
+        checkButton.Click += (_, _) => RunUpdateCheck(forceRefresh: true);
         installButton.Click += (_, _) =>
         {
             if (foundUpdate is { } release)
@@ -3379,6 +3425,10 @@ public sealed class MainWindow : Window
         checkRow.Children.Add(installButton);
         checkRow.Children.Add(updateStatus);
         form.Children.Add(FormRow("Updates", checkRow));
+        if (_updateChecks.HasCheck(BuildInfo.Version, _runtime.Settings.UpdateChannel))
+        {
+            RunUpdateCheck(forceRefresh: false);
+        }
 
 #if DEBUG
         form.Children.Add(Graphite.SectionLabel("Development"));
@@ -3496,12 +3546,14 @@ public sealed class MainWindow : Window
     /// Best-effort: returns <c>null</c> when the release feed cannot be read, so a
     /// network failure never surfaces as a crash.
     /// </summary>
-    private async Task<UpdateCheckResult?> FetchUpdateAsync()
+    private async Task<UpdateCheckResult?> FetchUpdateAsync(bool forceRefresh = false)
     {
         try
         {
-            var releases = await new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo);
-            return UpdateChecker.Check(BuildInfo.Version, _runtime.Settings.UpdateChannel, releases);
+            return await _updateChecks.CheckAsync(
+                BuildInfo.Version,
+                _runtime.Settings.UpdateChannel,
+                forceRefresh);
         }
         catch (Exception ex)
         {
@@ -3565,7 +3617,7 @@ public sealed class MainWindow : Window
             // Never brick the running app: report, re-enable, and leave the user on the
             // working build (the manual GitHub download stays available).
             _log.Warn("Update install failed", ex);
-            status.Text = "Update failed — download it from the GitHub release page instead.";
+            status.Text = UpdateInstaller.DescribeFailure(ex);
             installButton.IsEnabled = true;
         }
     }

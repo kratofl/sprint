@@ -18,7 +18,12 @@ public static class UpdateScript
     /// contents of <paramref name="stagingDir"/> once process <paramref name="pid"/> exits,
     /// then relaunches <paramref name="exeName"/> from the install directory.
     /// </summary>
-    public static string BuildWindowsBatch(int pid, string stagingDir, string installDir, string exeName)
+    public static string BuildWindowsBatch(
+        int pid,
+        string stagingDir,
+        string installDir,
+        string exeName,
+        string? completionPath = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
@@ -47,8 +52,18 @@ public static class UpdateScript
         Line("if errorlevel 8 goto updatefailed");
         Line($"robocopy \"{stagingDir}\" \"{installDir}\" \"{exeName}\" /R:30 /W:1 /LOG+:\"%UPDATE_LOG%\"");
         Line("if errorlevel 8 goto updatefailed");
-        // Relaunch the updated app and discard the success log.
-        Line($"start \"\" \"{installDir}\\{exeName}\"");
+        // A non-elevated helper can relaunch directly. An elevated helper signals
+        // the separate watcher that was started by the current user process, so the
+        // updated app does not inherit an administrator token.
+        if (completionPath is null)
+        {
+            Line($"start \"\" \"{installDir}\\{exeName}\"");
+        }
+        else
+        {
+            Line($"echo success>\"{completionPath}\"");
+        }
+
         Line("del \"%UPDATE_LOG%\" >nul 2>&1");
         Line("goto cleanup");
         // A permanent permissions/copy failure must be visible. Preserve robocopy's
@@ -56,8 +71,48 @@ public static class UpdateScript
         // then relaunch the still-working old build.
         Line(":updatefailed");
         Line($"start \"\" explorer.exe /select,\"{stagingDir}\\{exeName}\"");
-        Line($"start \"\" \"{installDir}\\{exeName}\"");
+        if (completionPath is null)
+        {
+            Line($"start \"\" \"{installDir}\\{exeName}\"");
+        }
+        else
+        {
+            Line($"echo failure>\"{completionPath}\"");
+        }
+
         Line(":cleanup");
+        Line("del \"%~f0\"");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generates the non-elevated watcher used when the copy helper needs UAC. It
+    /// waits for either success or failure to be signalled, relaunches Sprint with
+    /// the original user's token, then removes the signal and itself.
+    /// </summary>
+    public static string BuildWindowsRelaunchBatch(
+        string completionPath,
+        string installDir,
+        string exeName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(completionPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
+        ArgumentException.ThrowIfNullOrWhiteSpace(exeName);
+
+        var sb = new StringBuilder();
+        void Line(string text) => sb.Append(text).Append("\r\n");
+
+        Line("@echo off");
+        Line("setlocal");
+        Line($"set \"RESULT={completionPath}\"");
+        Line(":waitloop");
+        Line("if exist \"%RESULT%\" goto relaunch");
+        Line("timeout /t 1 /nobreak >nul");
+        Line("goto waitloop");
+        Line(":relaunch");
+        Line($"start \"\" \"{installDir}\\{exeName}\"");
+        Line("del \"%RESULT%\" >nul 2>&1");
         Line("del \"%~f0\"");
 
         return sb.ToString();

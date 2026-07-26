@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
@@ -16,6 +17,48 @@ namespace Sprint.Desktop.Tests;
 /// </summary>
 public sealed class ToastHostTests
 {
+    [Fact]
+    public async Task ToastShowsLifetimeProgressAndHasMotionTransform()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(ToastHostTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                window.ShowToast(GraphiteIntent.Info, "Update available", "Sprint v9.9.9 is ready.", "info-circle");
+                window.CaptureRenderedFrame();
+
+                var card = Assert.IsType<Border>(Assert.Single(ToastHost(window).Children));
+                var progress = Assert.Single(
+                    card.GetVisualDescendants().OfType<Border>(),
+                    candidate => string.Equals(
+                        candidate.Tag?.ToString(),
+                        "toast-lifetime-progress",
+                        StringComparison.Ordinal));
+
+                Assert.Equal(3, progress.Height);
+                var progressFill = Assert.IsType<Border>(progress.Child);
+                var progressScale = Assert.IsType<Avalonia.Media.ScaleTransform>(
+                    progressFill.RenderTransform);
+                Assert.InRange(progressScale.ScaleX, 0.85, 1);
+                Assert.IsType<Avalonia.Media.TranslateTransform>(card.RenderTransform);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task ToastSurvivesNavigationRunsItsActionAndDismisses()
     {
@@ -56,6 +99,63 @@ public sealed class ToastHostTests
 
                 Click(window, "Dismiss notification");
                 Assert.Empty(ToastHost(window).Children);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CompactUpdateToastKeepsMessageClearOfAction()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(ToastHostTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry)
+                {
+                    Width = 550,
+                    Height = 320,
+                };
+                window.Show();
+
+                const string message =
+                    "You are on v0.0.1 (pre-release). Install it from Settings.";
+                window.ShowToast(
+                    GraphiteIntent.Info,
+                    "Sprint v0.1.2-alpha.5 is available",
+                    message,
+                    "info-circle",
+                    ("Open Settings", () => { }));
+                window.CaptureRenderedFrame();
+
+                var toast = Assert.IsType<Border>(Assert.Single(ToastHost(window).Children));
+                var action = toast.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => string.Equals(button.Content?.ToString(), "Open Settings", StringComparison.Ordinal));
+                var messageText = toast.GetVisualDescendants()
+                    .OfType<TextBlock>()
+                    .Single(text => string.Equals(text.Text, message, StringComparison.Ordinal));
+
+                var messageRight = messageText.TranslatePoint(
+                    new Avalonia.Point(messageText.Bounds.Width, 0),
+                    toast);
+                var actionLeft = action.TranslatePoint(new Avalonia.Point(0, 0), toast);
+
+                Assert.NotNull(messageRight);
+                Assert.NotNull(actionLeft);
+                Assert.True(
+                    messageRight.Value.X + 12 <= actionLeft.Value.X,
+                    $"Message right edge {messageRight.Value.X:0.##} overlaps action left edge {actionLeft.Value.X:0.##}.");
 
                 window.Close();
             }, CancellationToken.None);

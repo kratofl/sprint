@@ -607,7 +607,13 @@ internal static class Graphite
     // A live toast can carry trailing controls (an action button, a dismiss button);
     // they sit inside the card after the message so the whole notification stays one
     // surface. Static/preview usage passes no trailing content.
-    public static Control Toast(GraphiteIntent intent, string title, string message, string icon, Control? trailing = null)
+    public static Control Toast(
+        GraphiteIntent intent,
+        string title,
+        string message,
+        string icon,
+        Control? trailing = null,
+        Control? lifetimeProgress = null)
     {
         var row = MessageRow(Indicator(intent, icon, 38), title, message);
         Control content = row;
@@ -624,27 +630,87 @@ internal static class Graphite
             content = grid;
         }
 
+        var body = new Border
+        {
+            Padding = new Thickness(14, 12),
+            Child = content,
+        };
+        lifetimeProgress ??= ToastLifetimeProgress(intent);
+        var layout = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        Grid.SetRow(body, 0);
+        Grid.SetRow(lifetimeProgress, 1);
+        layout.Children.Add(body);
+        layout.Children.Add(lifetimeProgress);
+
         return new Border
         {
             Background = Panel3Brush,
             BorderBrush = LineBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(RadiusLg),
-            Padding = new Thickness(14, 12),
+            ClipToBounds = true,
             MinWidth = 300,
-            Child = content,
+            Child = layout,
         };
     }
 
-    private static StackPanel MessageRow(Control leading, string title, string message)
+    public static Border ToastLifetimeProgress(GraphiteIntent intent)
+    {
+        var (progressBrush, _, _) = IntentTint(intent);
+        var fill = new Border
+        {
+            Background = progressBrush,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RenderTransformOrigin = new RelativePoint(0, 0.5, RelativeUnit.Relative),
+            RenderTransform = new ScaleTransform(1, 1),
+            Tag = "toast-lifetime-progress-fill",
+        };
+        return new Border
+        {
+            Height = 3,
+            Background = LineBrush,
+            ClipToBounds = true,
+            IsHitTestVisible = false,
+            Child = fill,
+            Tag = "toast-lifetime-progress",
+        };
+    }
+
+    public static void SetToastLifetimeProgress(Border progress, double percent)
+    {
+        if (progress.Child is not Border { RenderTransform: ScaleTransform scale })
+        {
+            throw new ArgumentException(
+                "The supplied control is not a Graphite toast lifetime indicator.",
+                nameof(progress));
+        }
+
+        scale.ScaleX = Math.Clamp(percent / 100, 0, 1);
+    }
+
+    private static Grid MessageRow(Control leading, string title, string message)
     {
         leading.VerticalAlignment = VerticalAlignment.Center;
 
-        var text = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+        var text = new StackPanel
+        {
+            Spacing = 1,
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         text.Children.Add(TextBlock(title, 13, FontWeight.Bold, TextBrush));
         text.Children.Add(TextBlock(message, 11, FontWeight.Normal, Text2Brush, TextWrapping.Wrap));
 
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
+        // A grid constrains the text to the available column. A horizontal
+        // StackPanel measures its children at infinite width, which lets long toast
+        // copy run underneath compact trailing action controls.
+        var row = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(leading, 0);
+        Grid.SetColumn(text, 1);
         row.Children.Add(leading);
         row.Children.Add(text);
         return row;

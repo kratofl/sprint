@@ -93,6 +93,37 @@ public sealed class UpdateScriptTests
     }
 
     [Fact]
+    public void ElevatedApplySignalsWatcherInsteadOfRelaunchingSprint()
+    {
+        const string completion = @"C:\Temp\Sprint\apply-update-4321.done";
+
+        var batch = UpdateScript.BuildWindowsBatch(
+            Pid,
+            Staging,
+            Install,
+            Exe,
+            completion);
+
+        Assert.DoesNotContain($"start \"\" \"{Install}\\{Exe}\"", batch);
+        Assert.Contains($"echo success>\"{completion}\"", batch);
+        Assert.Contains($"echo failure>\"{completion}\"", batch);
+    }
+
+    [Fact]
+    public void RelaunchWatcherWaitsForApplyThenStartsSprintAsItsOwnChild()
+    {
+        const string completion = @"C:\Temp\Sprint\apply-update-4321.done";
+
+        var batch = UpdateScript.BuildWindowsRelaunchBatch(completion, Install, Exe);
+
+        Assert.Contains($"set \"RESULT={completion}\"", batch);
+        Assert.Contains("if exist \"%RESULT%\" goto relaunch", batch);
+        Assert.Contains($"start \"\" \"{Install}\\{Exe}\"", batch);
+        Assert.Contains("del \"%RESULT%\"", batch);
+        Assert.Contains("del \"%~f0\"", batch);
+    }
+
+    [Fact]
     public void UsesCrlfLineEndings()
     {
         Assert.Contains("\r\n", Build());

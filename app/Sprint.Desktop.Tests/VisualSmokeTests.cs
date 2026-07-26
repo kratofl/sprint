@@ -634,12 +634,18 @@ public sealed class VisualSmokeTests
         };
         toastActions.Children.Add(Graphite.Button("Open Settings", ButtonTone.Primary));
         toastActions.Children.Add(Graphite.ChromeIconButton("x", "Dismiss notification", () => { }));
-        toasts.Children.Add(Graphite.Toast(
+        var toastLifetime = Graphite.ToastLifetimeProgress(GraphiteIntent.Info);
+        Graphite.SetToastLifetimeProgress(toastLifetime, 62);
+        var compactUpdateToast = Graphite.Toast(
             GraphiteIntent.Info,
-            "Sprint v0.4.0 is available",
-            "You are on v0.3.0 (stable). Install it from Settings.",
+            "Sprint v0.1.2-alpha.5 is available",
+            "You are on v0.0.1 (pre-release). Install it from Settings.",
             "info-circle",
-            toastActions));
+            toastActions,
+            toastLifetime);
+        compactUpdateToast.MaxWidth = 460;
+        compactUpdateToast.HorizontalAlignment = HorizontalAlignment.Right;
+        toasts.Children.Add(compactUpdateToast);
         page.Children.Add(toasts);
 
         page.Children.Add(Graphite.SectionLabel("Tab view / Segmented"));
