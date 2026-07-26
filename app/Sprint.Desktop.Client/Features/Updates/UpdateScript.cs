@@ -48,9 +48,9 @@ public static class UpdateScript
         Line("set \"UPDATE_LOG=%TEMP%\\Sprint\\apply-update-%PID%.log\"");
         // Copy support files first and the primary executable last. If support-file
         // copying fails, the old executable is still intact and safe to relaunch.
-        Line($"robocopy \"{stagingDir}\" \"{installDir}\" /E /XF \"{exeName}\" /R:30 /W:1 /LOG:\"%UPDATE_LOG%\"");
+        Line($"robocopy \"{stagingDir}\" \"{installDir}\" /E /XF \"{exeName}\" /R:30 /W:1 /IS /LOG:\"%UPDATE_LOG%\"");
         Line("if errorlevel 8 goto updatefailed");
-        Line($"robocopy \"{stagingDir}\" \"{installDir}\" \"{exeName}\" /R:30 /W:1 /LOG+:\"%UPDATE_LOG%\"");
+        Line($"robocopy \"{stagingDir}\" \"{installDir}\" \"{exeName}\" /R:30 /W:1 /IS /LOG+:\"%UPDATE_LOG%\"");
         Line("if errorlevel 8 goto updatefailed");
         // A non-elevated helper can relaunch directly. An elevated helper signals
         // the separate watcher that was started by the current user process, so the

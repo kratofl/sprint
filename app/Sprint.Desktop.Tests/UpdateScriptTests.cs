@@ -144,14 +144,19 @@ public sealed class UpdateScriptTests
         var stagedExe = Path.Combine(staging, exe);
         var installedExe = Path.Combine(install, exe);
         var batchPath = Path.Combine(root, "apply-update.bat");
+        var completionPath = Path.Combine(root, "apply-update.done");
 
         Directory.CreateDirectory(staging);
         Directory.CreateDirectory(install);
-        // Both fixtures are real, short-lived Windows console executables so the
-        // generated `start` command cannot leave a shell host behind. Their distinct
-        // bytes make the installed-file assertion independent of robocopy's output.
-        File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), stagedExe);
-        File.Copy(Path.Combine(Environment.SystemDirectory, "where.exe"), installedExe);
+        // Identical size + timestamp reproduces the metadata case where robocopy
+        // otherwise classifies different content as "same" and skips replacement.
+        // A completion marker suppresses relaunch, so deterministic byte fixtures
+        // exercise copy/retry semantics without starting another process.
+        await File.WriteAllBytesAsync(stagedExe, Enumerable.Repeat((byte)0xA5, 4096).ToArray());
+        await File.WriteAllBytesAsync(installedExe, Enumerable.Repeat((byte)0x5A, 4096).ToArray());
+        var sharedTimestamp = DateTime.UtcNow.AddMinutes(-5);
+        File.SetLastWriteTimeUtc(stagedExe, sharedTimestamp);
+        File.SetLastWriteTimeUtc(installedExe, sharedTimestamp);
 
         FileStream? executableLock = null;
         Process? helper = null;
@@ -163,7 +168,8 @@ public sealed class UpdateScriptTests
                     int.MaxValue,
                     staging,
                     install,
-                    exe));
+                    exe,
+                    completionPath));
 
             executableLock = new FileStream(
                 installedExe,
