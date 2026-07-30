@@ -98,6 +98,11 @@ public sealed class MainWindow : Window
     private DashLayout? _devicePreviewLayout;
     private WriteableBitmap? _devicePreviewBitmap;
     private Image? _devicePreviewImage;
+    private byte[]? _devicePreviewPixels;
+    private RearViewPreviewSession? _rearViewPreviewSession;
+    private TextBlock? _rearViewPreviewFps;
+    private TextBlock? _rearViewPreviewFrameTime;
+    private long _rearViewPreviewVersion;
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
     private DispatcherTimer? _setupUndoTimer;
@@ -754,11 +759,15 @@ public sealed class MainWindow : Window
         // is watching the live preview of the assigned dash. The shell ticks at ~30Hz;
         // the preview is paced to the device's own refresh rate so what the user tunes
         // against matches what the panel receives (issue #75).
-        if (_shell.View == AppView.Devices
-            && _devicePreviewPainter is not null
-            && _devicePreviewState == DashPreviewState.Live
-            && _runtime.Settings.DevicesUI.LivePreview
-            && DevicePreviewFrameDue(now))
+        if (_shell.View == AppView.Devices && _rearViewPreviewSession is not null)
+        {
+            RenderRearViewPreviewFrame();
+        }
+        else if (_shell.View == AppView.Devices
+                 && _devicePreviewPainter is not null
+                 && _devicePreviewState == DashPreviewState.Live
+                 && _runtime.Settings.DevicesUI.LivePreview
+                 && DevicePreviewFrameDue(now))
         {
             RenderDevicePreviewFrame();
         }
@@ -2217,6 +2226,11 @@ public sealed class MainWindow : Window
         left.Children.Add(DevicePurposeField(device));
         if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
         {
+            if (device.CaptureRegion is { IsValid: true })
+            {
+                left.Children.Add(RearViewCapturePreview(device));
+            }
+
             left.Children.Add(CaptureAreaField(device));
         }
         else
@@ -2291,6 +2305,59 @@ public sealed class MainWindow : Window
             "Change area",
             ButtonTone.Neutral,
             () => ShowCaptureRegionSelector(device)));
+        return panel;
+    }
+
+    private Control RearViewCapturePreview(SavedDevice device)
+    {
+        if (device.CaptureRegion is not { IsValid: true } region)
+        {
+            throw new InvalidOperationException("A rear-view preview requires a selected capture area.");
+        }
+
+        DisposeDevicePreview();
+        var transform = DeviceTransform(device);
+        _devicePreviewPixels = new byte[checked(transform.LogicalWidth * transform.LogicalHeight * 4)];
+        _devicePreviewBitmap = new WriteableBitmap(
+            new PixelSize(transform.LogicalWidth, transform.LogicalHeight),
+            new Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul);
+        _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
+        _rearViewPreviewFps = Graphite.TextBlock(
+            "—",
+            11,
+            FontWeight.Medium,
+            Graphite.Text2Brush);
+        _rearViewPreviewFps.Tag = "rear-view-preview-fps";
+        _rearViewPreviewFrameTime = Graphite.TextBlock(
+            "—",
+            11,
+            FontWeight.Medium,
+            Graphite.Text2Brush);
+        _rearViewPreviewFrameTime.Tag = "rear-view-preview-frame-time";
+        _rearViewPreviewSession = new RearViewPreviewSession(
+            region,
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            new WindowsDesktopRegionCapturer(),
+            targetFps: Math.Min(15, DeviceRefreshRates.Normalize(device.RefreshHz)));
+        _rearViewPreviewSession.Start();
+
+        var panel = new StackPanel { Spacing = 8, Width = 388 };
+        panel.Children.Add(Graphite.SectionLabel("Live capture preview"));
+        panel.Children.Add(DeviceMirrorDisplay(device, _devicePreviewImage, 380, 240));
+        var stats = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        stats.Children.Add(Graphite.TextBlock("FPS", 11, FontWeight.Medium, Graphite.Text3Brush));
+        stats.Children.Add(_rearViewPreviewFps);
+        stats.Children.Add(Graphite.TextBlock("Frame time", 11, FontWeight.Medium, Graphite.Text3Brush));
+        stats.Children.Add(_rearViewPreviewFrameTime);
+        panel.Children.Add(stats);
         return panel;
     }
 
@@ -2590,6 +2657,7 @@ public sealed class MainWindow : Window
             new Vector(96, 96),
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
+        _devicePreviewPixels = new byte[checked(transform.LogicalWidth * transform.LogicalHeight * 4)];
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
         RenderDevicePreviewFrame();
     }
@@ -2624,17 +2692,57 @@ public sealed class MainWindow : Window
 
         var frame = DashPreviewFrames.Resolve(_devicePreviewState, CurrentTelemetryFrame());
         _devicePreviewPainter.Render(_devicePreviewLayout, frame, _runtime.Settings);
-        DashImageRenderer.Copy(_devicePreviewPainter, _devicePreviewBitmap);
+        DashImageRenderer.Copy(_devicePreviewPainter, _devicePreviewBitmap, _devicePreviewPixels!);
         _devicePreviewImage?.InvalidateVisual();
+    }
+
+    private void RenderRearViewPreviewFrame()
+    {
+        if (_rearViewPreviewSession is null
+            || _devicePreviewBitmap is null
+            || _devicePreviewPixels is null)
+        {
+            return;
+        }
+
+        if (!_rearViewPreviewSession.TryCopyLatest(
+                _devicePreviewPixels,
+                ref _rearViewPreviewVersion,
+                out var statistics))
+        {
+            return;
+        }
+
+        DashImageRenderer.CopyBgra(
+            _devicePreviewPixels,
+            _rearViewPreviewSession.Width,
+            _rearViewPreviewSession.Height,
+            _devicePreviewBitmap);
+        _devicePreviewImage?.InvalidateVisual();
+        if (_rearViewPreviewFps is not null)
+        {
+            _rearViewPreviewFps.Text = $"{statistics.FramesPerSecond:0.0}";
+        }
+
+        if (_rearViewPreviewFrameTime is not null)
+        {
+            _rearViewPreviewFrameTime.Text = $"{statistics.FrameTime.TotalMilliseconds:0.0} ms";
+        }
     }
 
     private void DisposeDevicePreview()
     {
+        _rearViewPreviewSession?.Dispose();
+        _rearViewPreviewSession = null;
+        _rearViewPreviewFps = null;
+        _rearViewPreviewFrameTime = null;
+        _rearViewPreviewVersion = 0;
         _devicePreviewPainter?.Dispose();
         _devicePreviewPainter = null;
         _devicePreviewLayout = null;
         _devicePreviewImage = null;
         _devicePreviewBitmap = null;
+        _devicePreviewPixels = null;
     }
 
     // One-shot upright render of the assigned dash for a gallery/list card; returns

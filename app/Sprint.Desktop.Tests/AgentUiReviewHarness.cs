@@ -288,9 +288,26 @@ internal static class AgentUiReviewHarness
                         window,
                         artifactRoot,
                         "devices-detail-rear-view-configured",
+                        "Live capture preview",
+                        "FPS",
+                        "Frame time",
                         "Capture area",
                         "Change area",
                         "Screen alignment"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-configured-1120x720",
+                        "Live capture preview",
+                        "FPS",
+                        "Frame time",
+                        "Capture area",
+                        "Change area",
+                        "Screen alignment"));
+                    window.Width = 1440;
+                    window.Height = 900;
 
                     var backToDash = TaggedComboBox(window, "device-purpose");
                     backToDash.SelectedItem = "Dashboard";

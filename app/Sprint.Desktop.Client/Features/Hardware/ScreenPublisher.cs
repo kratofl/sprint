@@ -25,6 +25,7 @@ public sealed record ScreenPublisherOptions
 internal enum ScreenStepOutcome
 {
     SentFrame,
+    UnchangedFrame,
     NotSent,
     Reconnecting,
 }
@@ -47,6 +48,8 @@ public sealed class ScreenPublisher : IDisposable
     private readonly ScreenPublisherOptions _options;
     private readonly CancellationTokenSource _cts = new();
     private byte[] _buffer;
+    private byte[] _lastSentBuffer;
+    private bool _hasSentFrame;
     private readonly ILog _log;
     private readonly string _deviceId;
 
@@ -76,6 +79,7 @@ public sealed class ScreenPublisher : IDisposable
         _log = log ?? NullLog.Instance;
         _deviceId = string.IsNullOrWhiteSpace(deviceId) ? driver.Name : deviceId;
         _buffer = new byte[source.Width * source.Height * 2];
+        _lastSentBuffer = new byte[_buffer.Length];
     }
 
     /// <summary>The driver's current link status (source of truth for the Devices UI).</summary>
@@ -241,9 +245,16 @@ public sealed class ScreenPublisher : IDisposable
             ScreenTestPatternRenderer.Fill(pattern, _buffer, _source.Width, _source.Height);
         }
 
+        _lastError = null;
+        if (_hasSentFrame && _buffer.AsSpan().SequenceEqual(_lastSentBuffer))
+        {
+            return ScreenStepOutcome.UnchangedFrame;
+        }
+
         if (_driver.TrySendFrame(_buffer))
         {
-            _lastError = null;
+            _buffer.CopyTo(_lastSentBuffer, 0);
+            _hasSentFrame = true;
             if (!_loggedFirstFrame)
             {
                 _loggedFirstFrame = true;
@@ -287,6 +298,8 @@ public sealed class ScreenPublisher : IDisposable
         var previous = _source;
         _source = replacement;
         _buffer = new byte[size.Width * size.Height * 2];
+        _lastSentBuffer = new byte[_buffer.Length];
+        _hasSentFrame = false;
         previous.Dispose();
         _log.Info(
             $"Screen renderer resized to native device dimensions: " +

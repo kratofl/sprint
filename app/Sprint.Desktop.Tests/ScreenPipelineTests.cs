@@ -134,7 +134,22 @@ public sealed class ScreenPipelineTests
         // Already connected → subsequent steps just send.
         publisher.Step();
         Assert.Equal(1, driver.ConnectAttempts);
-        Assert.Equal(2, driver.FramesSent);
+        Assert.Equal(1, driver.FramesSent);
+    }
+
+    [Fact]
+    public void PublisherSkipsAnUnchangedFrameWithoutDisconnectingThePanel()
+    {
+        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using var publisher = new ScreenPublisher(
+            driver,
+            new ConstantFrameSource(16, 16),
+            () => new TelemetryFrame());
+
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
+        Assert.Equal(ScreenStepOutcome.UnchangedFrame, publisher.Step());
+        Assert.Equal(1, driver.FramesSent);
+        Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
     }
 
     [Fact]

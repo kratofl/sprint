@@ -218,6 +218,9 @@ public sealed class DeviceCatalogUiTests
                 Assert.True(configured.CaptureRegion!.IsValid);
                 Assert.True(configured.CaptureRegion.X < 0);
                 Assert.Null(window.ActiveCaptureRegionWindow);
+                Assert.NotNull(FindText(window, "Live capture preview"));
+                Assert.NotNull(FindText(window, "FPS"));
+                Assert.NotNull(FindText(window, "Frame time"));
                 Assert.NotNull(FindText(window, "Change area"));
 
                 window.Close();

@@ -2,6 +2,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -104,10 +105,165 @@ public sealed class DevicePurposeTests
         Assert.True(DashLayoutValidator.IsValid(flags));
         Assert.Equal("purpose-lap-times", lapTimer!.Id);
         Assert.Equal(
-            new[] { "delta", "lap_time", "sector" },
+            new[] { "racelogic_lap_timer" },
             lapTimer.Pages.Single().Widgets.Select(widget => widget.Type));
         Assert.True(DashLayoutValidator.IsValid(lapTimer));
         Assert.Null(mirror);
+    }
+
+    [Theory]
+    [InlineData(800, 480, 800, 200)]
+    [InlineData(480, 800, 480, 120)]
+    public void LapTimerKeepsACompactFourToOneInformationBandCenteredOnThePanel(
+        int width,
+        int height,
+        int expectedWidth,
+        int expectedHeight)
+    {
+        var area = DashPainter.RaceLogicPanelBounds(width, height);
+
+        Assert.Equal(expectedWidth, area.Width);
+        Assert.Equal(expectedHeight, area.Height);
+        Assert.Equal((width - expectedWidth) / 2, area.X);
+        Assert.Equal((height - expectedHeight) / 2, area.Y);
+    }
+
+    [Fact]
+    public void LapTimerLeavesEveryPixelOutsideTheInformationBandTrueBlack()
+    {
+        var device = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
+        device.Width = 800;
+        device.Height = 480;
+        var layout = DevicePurposeLayouts.Resolve(device, [])!;
+        using var painter = new DashPainter(800, 480);
+
+        painter.Render(
+            layout,
+            new TelemetryFrame
+            {
+                Car = new CarState { SpeedMetersPerSecond = 24 },
+                Lap = new LapState
+                {
+                    CurrentLap = 2,
+                    TargetLapTime = 82.5,
+                    Delta = -0.08,
+                },
+            },
+            new AppSettings());
+
+        var pixels = painter.PixelSpanBgra;
+        var band = DashPainter.RaceLogicPanelBounds(800, 480);
+        for (var y = 0; y < 480; y++)
+        {
+            if (y >= band.Y && y < band.Y + band.Height)
+            {
+                continue;
+            }
+
+            for (var x = 0; x < 800; x++)
+            {
+                var offset = (y * 800 + x) * 4;
+                Assert.Equal(0, pixels[offset]);
+                Assert.Equal(0, pixels[offset + 1]);
+                Assert.Equal(0, pixels[offset + 2]);
+            }
+        }
+    }
+
+    [Fact]
+    public void LapTimerBuildsAReferenceThenShowsPredictiveDelta()
+    {
+        var presenter = new RaceLogicLapTimerPresenter();
+
+        var rolling = presenter.Present(
+            new TelemetryFrame
+            {
+                Lap = new LapState { CurrentLap = 1, CurrentLapTime = 42.345 },
+            },
+            timestamp: 100);
+        var predictive = presenter.Present(
+            new TelemetryFrame
+            {
+                Lap = new LapState
+                {
+                    CurrentLap = 1,
+                    CurrentLapTime = 43,
+                    TargetLapTime = 82.5,
+                    Delta = -0.08,
+                },
+            },
+            timestamp: 200);
+
+        Assert.Equal(RaceLogicLapTimerMode.Rolling, rolling.Mode);
+        Assert.Equal("BUILDING REFERENCE", rolling.Status);
+        Assert.Equal(RaceLogicLapTimerMode.Predictive, predictive.Mode);
+        Assert.Equal("-0.08", predictive.Primary);
+        Assert.True(predictive.ShowDeltaBar);
+    }
+
+    [Fact]
+    public void LapTimerFreezesTheCompletedLapAtTheLapBoundary()
+    {
+        var presenter = new RaceLogicLapTimerPresenter();
+        presenter.Present(
+            new TelemetryFrame
+            {
+                Lap = new LapState { CurrentLap = 3, TargetLapTime = 82.5 },
+            },
+            timestamp: 100);
+
+        var result = presenter.Present(
+            new TelemetryFrame
+            {
+                Lap = new LapState
+                {
+                    CurrentLap = 4,
+                    CurrentLapTime = 0.2,
+                    LastLapTime = 82.1,
+                    TargetLapTime = 82.5,
+                },
+            },
+            timestamp: 200);
+
+        Assert.Equal(RaceLogicLapTimerMode.LapResult, result.Mode);
+        Assert.Equal("1:22.100", result.Primary);
+        Assert.Equal("-0.40 TO REFERENCE", result.Status);
+    }
+
+    [Fact]
+    public void LapTimerRenderKeepsManagedAllocationBelowOneKilobytePerFrame()
+    {
+        var device = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
+        device.Width = 800;
+        device.Height = 480;
+        var layout = DevicePurposeLayouts.Resolve(device, [])!;
+        var frame = new TelemetryFrame
+        {
+            Car = new CarState { SpeedMetersPerSecond = 40 },
+            Lap = new LapState
+            {
+                CurrentLap = 4,
+                CurrentLapTime = 41.2,
+                BestLapTime = 82.1,
+                TargetLapTime = 82.5,
+                Delta = -0.08,
+            },
+        };
+        using var painter = new DashPainter(800, 480);
+        var settings = new AppSettings();
+        painter.Render(layout, frame, settings);
+
+        const int frames = 100;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < frames; index++)
+        {
+            painter.Render(layout, frame, settings);
+        }
+
+        var bytesPerFrame = (GC.GetAllocatedBytesForCurrentThread() - before) / frames;
+        Assert.True(
+            bytesPerFrame < 1024,
+            $"Expected the reusable Skia path to allocate <1 KiB/frame; measured {bytesPerFrame} bytes/frame.");
     }
 
     [Fact]
