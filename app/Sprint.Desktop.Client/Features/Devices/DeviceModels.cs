@@ -100,9 +100,16 @@ public static class DeviceCapabilities
             || string.Equals(device.Driver, "usbd480", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// A device receives dash frames only when it has a screen and that screen is set
-    /// to the dash purpose (issue #53). Screens labelled for an unbuilt purpose stay
-    /// idle rather than showing a dash the user did not ask for.
+    /// A device receives output when it has a screen and its selected purpose has an
+    /// implemented output source. Unsupported purposes stay idle rather than showing
+    /// unrelated dashboard content.
+    /// </summary>
+    public static bool DrivesScreenOutput(SavedDevice device) =>
+        HasScreen(device) && DevicePurposes.Resolve(device.Purpose).Available;
+
+    /// <summary>
+    /// True only for screens assigned to one of the user's editable dashboards. Built-in
+    /// flag and lap-timer displays publish pixels but are not dashboard assignments.
     /// </summary>
     public static bool DrivesDash(SavedDevice device) =>
         HasScreen(device) && DevicePurposes.IsDash(device.Purpose);

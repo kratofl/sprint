@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Xunit;
@@ -6,10 +7,9 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// Device purposes (issue #53): the catalog, the normalization that keeps older
-/// devices.json files driving their screens, and the output rule — only a dash-purpose
-/// screen receives dash frames, so a screen labelled for an unbuilt purpose goes idle
-/// instead of silently showing a dash.
+/// Device purposes (issue #53): task-oriented catalog copy, legacy normalization,
+/// built-in focused layouts, dashboard assignment boundaries, output routing, and
+/// persistence.
 /// </summary>
 public sealed class DevicePurposeTests
 {
@@ -26,13 +26,18 @@ public sealed class DevicePurposeTests
     };
 
     [Fact]
-    public void CatalogCoversTheRequestedPurposesAndOnlyDashIsBuilt()
+    public void CatalogCoversTheRequestedPurposesAndNamesThemAsScreenTasks()
     {
         Assert.Equal(
             new[] { "dash", "rear-view-mirror", "flags", "lap-times" },
             DevicePurposes.All.Select(purpose => purpose.Id));
 
-        Assert.Equal(new[] { "Dash" }, DevicePurposes.All.Where(p => p.Available).Select(p => p.Label));
+        Assert.Equal(
+            new[] { "Dashboard", "Flag display", "Lap timer" },
+            DevicePurposes.All.Where(p => p.Available).Select(p => p.Label));
+        Assert.Equal(
+            new[] { "Dashboard", "Rear-view mirror", "Flag display", "Lap timer" },
+            DevicePurposes.Labels);
         Assert.Equal(DevicePurposes.All.Select(p => p.Label), DevicePurposes.Labels);
         Assert.All(DevicePurposes.All, purpose => Assert.False(string.IsNullOrWhiteSpace(purpose.Description)));
     }
@@ -51,21 +56,68 @@ public sealed class DevicePurposeTests
     [Fact]
     public void LookupByLabelBacksTheDropdownSelection()
     {
-        Assert.Equal("lap-times", DevicePurposes.FindByLabel("Lap times")!.Id);
-        Assert.Equal("dash", DevicePurposes.FindByLabel("dash")!.Id);
+        Assert.Equal("lap-times", DevicePurposes.FindByLabel("Lap timer")!.Id);
+        Assert.Equal("dash", DevicePurposes.FindByLabel("dashboard")!.Id);
         Assert.Null(DevicePurposes.FindByLabel("Telemetry graph"));
         Assert.Null(DevicePurposes.FindByLabel(null));
     }
 
     [Fact]
-    public void OnlyDashPurposeDrivesDashOutput()
+    public void PurposeLayoutsUseTheAssignedDashboardAndProvideValidZeroConfigurationDisplays()
     {
-        Assert.True(DeviceCapabilities.DrivesDash(ScreenDevice("dash-screen")));
-        Assert.False(DeviceCapabilities.DrivesDash(ScreenDevice("mirror", DevicePurposes.RearViewMirror)));
+        var assigned = new DashLayout
+        {
+            Id = "assigned",
+            Name = "Assigned dashboard",
+            IsDefault = true,
+            Pages = [new DashPage { Id = "assigned-page", Name = "Driving" }],
+        };
+        var dashboards = new[] { assigned };
 
-        // A non-dash purpose does not stop the device from being a screen; it only
-        // stops dash frames, so the detail page still shows screen controls.
-        Assert.True(DeviceCapabilities.HasScreen(ScreenDevice("mirror", DevicePurposes.RearViewMirror)));
+        var dashboard = DevicePurposeLayouts.Resolve(ScreenDevice("dash-screen"), dashboards);
+        var flags = DevicePurposeLayouts.Resolve(
+            ScreenDevice("flag-screen", DevicePurposes.Flags),
+            dashboards);
+        var lapTimer = DevicePurposeLayouts.Resolve(
+            ScreenDevice("lap-screen", DevicePurposes.LapTimes),
+            dashboards);
+        var mirror = DevicePurposeLayouts.Resolve(
+            ScreenDevice("mirror-screen", DevicePurposes.RearViewMirror),
+            dashboards);
+
+        Assert.Same(assigned, dashboard);
+        Assert.Equal("purpose-flags", flags!.Id);
+        Assert.Equal(new[] { "flag" }, flags.Pages.Single().Widgets.Select(widget => widget.Type));
+        Assert.True(DashLayoutValidator.IsValid(flags));
+        Assert.Equal("purpose-lap-times", lapTimer!.Id);
+        Assert.Equal(
+            new[] { "delta", "lap_time", "sector" },
+            lapTimer.Pages.Single().Widgets.Select(widget => widget.Type));
+        Assert.True(DashLayoutValidator.IsValid(lapTimer));
+        Assert.Null(mirror);
+    }
+
+    [Fact]
+    public void SupportedPurposesDriveScreenOutputButOnlyDashboardCountsAsADashAssignment()
+    {
+        var dashboard = ScreenDevice("dash-screen");
+        var flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
+        var lapTimer = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
+        var mirror = ScreenDevice("mirror", DevicePurposes.RearViewMirror);
+
+        Assert.True(DeviceCapabilities.DrivesScreenOutput(dashboard));
+        Assert.True(DeviceCapabilities.DrivesScreenOutput(flags));
+        Assert.True(DeviceCapabilities.DrivesScreenOutput(lapTimer));
+        Assert.False(DeviceCapabilities.DrivesScreenOutput(mirror));
+
+        Assert.True(DeviceCapabilities.DrivesDash(dashboard));
+        Assert.False(DeviceCapabilities.DrivesDash(flags));
+        Assert.False(DeviceCapabilities.DrivesDash(lapTimer));
+        Assert.False(DeviceCapabilities.DrivesDash(mirror));
+
+        // An unsupported purpose does not stop the device from being a screen; the
+        // detail page remains available to change its purpose or alignment.
+        Assert.True(DeviceCapabilities.HasScreen(mirror));
     }
 
     [Fact]
@@ -80,7 +132,7 @@ public sealed class DevicePurposeTests
     }
 
     [Fact]
-    public void SyncStopsPublishingToAScreenSwitchedAwayFromDash()
+    public void SyncPublishesSupportedPurposesAndStopsForPendingRearViewVideo()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
         try
@@ -95,9 +147,17 @@ public sealed class DevicePurposeTests
 
             runtime.UpdateDevicePurpose(device, DevicePurposes.Flags);
             service.Sync();
+            Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+
+            runtime.UpdateDevicePurpose(device, DevicePurposes.LapTimes);
+            service.Sync();
+            Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+
+            runtime.UpdateDevicePurpose(device, DevicePurposes.RearViewMirror);
+            service.Sync();
             Assert.DoesNotContain("wheel-screen", service.ActiveDeviceIds);
 
-            // Switching back resumes output.
+            // Switching back to a supported purpose resumes output.
             runtime.UpdateDevicePurpose(device, DevicePurposes.Dash);
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);

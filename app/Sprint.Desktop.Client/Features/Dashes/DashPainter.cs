@@ -871,8 +871,33 @@ public sealed class DashPainter : IDisposable
     private void DrawFlag(SKRect r, TelemetryFrame frame)
     {
         var (text, color) = FlagInfo(frame);
-        DrawDot(r.Left + r.Width * 0.12f, r.MidY, r.Height * 0.18f, color);
-        DrawTextLine(text, r.Left + r.Width * 0.62f, r.MidY, r.Height * 0.32f, DashFonts.ValueRegular, color, Align.Center, r.Width * 0.6f);
+        if (r.Width < r.Height * 0.9f)
+        {
+            var radius = Math.Min(r.Width * 0.18f, r.Height * 0.12f);
+            DrawDot(r.MidX, r.Top + r.Height * 0.31f, radius, color);
+            DrawTextLine(
+                text,
+                r.MidX,
+                r.Top + r.Height * 0.68f,
+                Math.Min(r.Height * 0.18f, r.Width * 0.20f),
+                DashFonts.ValueRegular,
+                color,
+                Align.Center,
+                r.Width * 0.88f);
+            return;
+        }
+
+        var horizontalRadius = Math.Min(r.Height * 0.18f, r.Width * 0.09f);
+        DrawDot(r.Left + r.Width * 0.12f, r.MidY, horizontalRadius, color);
+        DrawTextLine(
+            text,
+            r.Left + r.Width * 0.62f,
+            r.MidY,
+            Math.Min(r.Height * 0.32f, r.Width * 0.12f),
+            DashFonts.ValueRegular,
+            color,
+            Align.Center,
+            r.Width * 0.6f);
     }
 
     private void DrawTc(SKRect r, TelemetryFrame frame)

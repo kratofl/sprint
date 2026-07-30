@@ -329,6 +329,28 @@ public sealed class DashPainterTests
     }
 
     [Fact]
+    public void PortraitFlagDisplayKeepsTheSignalInsideTheCanvas()
+    {
+        using var painter = new DashPainter(480, 800);
+        var bitmap = painter.Render(
+            SingleWidgetLayout("flag"),
+            new TelemetryFrame(),
+            new AppSettings());
+        var green = DashPalette.Default.Success;
+
+        Assert.All(Enumerable.Range(0, bitmap.Height), y =>
+        {
+            Assert.NotEqual(green, bitmap.GetPixel(0, y));
+            Assert.NotEqual(green, bitmap.GetPixel(bitmap.Width - 1, y));
+        });
+        Assert.All(Enumerable.Range(0, bitmap.Width), x =>
+        {
+            Assert.NotEqual(green, bitmap.GetPixel(x, 0));
+            Assert.NotEqual(green, bitmap.GetPixel(x, bitmap.Height - 1));
+        });
+    }
+
+    [Fact]
     public void LayoutThemeRecolorsRenderedValues()
     {
         var layout = SingleWidgetLayout("gear_speed");

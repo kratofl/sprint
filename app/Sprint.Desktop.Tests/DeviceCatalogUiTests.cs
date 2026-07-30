@@ -73,7 +73,7 @@ public sealed class DeviceCatalogUiTests
     }
 
     [Fact]
-    public async Task ChangingPurposeReplacesDashControlsWithAnIdleState()
+    public async Task PurposeChoiceShowsOnlyTheControlsAndStatusRelevantToThatScreenTask()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DeviceCatalogUiTests).Assembly);
 
@@ -102,20 +102,31 @@ public sealed class DeviceCatalogUiTests
                 Render(window);
                 Click(window, "Wheel screen");
 
-                // Dash purpose: the dash assignment and alignment controls are present.
+                // Dashboard purpose: the editable dash assignment and alignment controls are present.
+                Assert.NotNull(FindText(window, "This screen is used for"));
+                Assert.NotNull(FindText(window, "Show a customizable racing dashboard."));
                 Assert.NotNull(FindText(window, "Screen alignment"));
+                Assert.NotNull(FindTagged<ComboBox>(window, "device-dash"));
 
                 var purpose = Field<ComboBox>(window, "device-purpose");
-                purpose.SelectedItem = "Rear view mirror";
+                purpose.SelectedItem = "Flag display";
                 Render(window);
 
                 Assert.Equal(
-                    DevicePurposes.RearViewMirror,
+                    DevicePurposes.Flags,
                     runtime.Devices.Single(device => device.Id == "wheel-screen").Purpose);
+                Assert.NotNull(FindText(window, "Show the active marshalling flag at maximum glanceability."));
+                Assert.NotNull(FindText(window, "Screen alignment"));
+                Assert.Null(FindTagged<ComboBox>(window, "device-dash"));
+                Assert.Null(FindText(window, "Flag display is not built yet"));
 
-                // The screen is idle now: no alignment controls, and the page says why.
+                var mirrorPurpose = Field<ComboBox>(window, "device-purpose");
+                mirrorPurpose.SelectedItem = "Rear-view mirror";
+                Render(window);
+
+                // Rear-view capture is pending: no output controls, and the page says why.
                 Assert.Null(FindText(window, "Screen alignment"));
-                Assert.NotNull(FindText(window, "Rear view mirror is not built yet"));
+                Assert.NotNull(FindText(window, "Rear-view mirror is not supported yet"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -147,6 +158,12 @@ public sealed class DeviceCatalogUiTests
         window.GetVisualDescendants()
             .OfType<TextBlock>()
             .FirstOrDefault(block => string.Equals(block.Text, text, StringComparison.Ordinal));
+
+    private static T? FindTagged<T>(MainWindow window, string tag)
+        where T : Control =>
+        window.GetVisualDescendants()
+            .OfType<T>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Tag?.ToString(), tag, StringComparison.Ordinal));
 
     private static void Click(MainWindow window, string label)
     {

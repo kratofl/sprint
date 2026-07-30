@@ -220,8 +220,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     /// <summary>
-    /// Sets what a device's screen is used for (issue #53). Only the dash purpose
-    /// receives dash frames, so the caller must re-sync the screen service afterwards.
+    /// Sets what a device's screen is used for (issue #53). The caller re-syncs the
+    /// screen service so it can switch between assigned, built-in, and pending output.
     /// </summary>
     public void UpdateDevicePurpose(SavedDevice device, string purpose)
     {

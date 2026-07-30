@@ -118,7 +118,7 @@ public sealed class DeviceScreenService : IDisposable
         var candidates = new Dictionary<string, SavedDevice>(StringComparer.OrdinalIgnoreCase);
         foreach (var device in _runtime.Devices)
         {
-            if (DeviceCapabilities.DrivesDash(device) && !device.Disabled)
+            if (DeviceCapabilities.DrivesScreenOutput(device) && !device.Disabled)
             {
                 candidates[device.Id] = device;
             }
@@ -157,8 +157,9 @@ public sealed class DeviceScreenService : IDisposable
 
         foreach (var (id, device) in desired)
         {
-            // A running publisher keeps rendering the layout captured at start,
-            // so a dash reassignment needs a restart to take effect.
+            // A running publisher keeps rendering the layout captured at start, so
+            // changing either the dashboard assignment or the screen purpose needs a
+            // restart to take effect.
             if (_publishers.TryGetValue(id, out var running))
             {
                 var assigned = ResolveLayout(device).Id;
@@ -168,7 +169,7 @@ public sealed class DeviceScreenService : IDisposable
                     continue;
                 }
 
-                _log.Info($"Screen publisher restarting for dash change: device={id} dash={assigned}.");
+                _log.Info($"Screen publisher restarting for output change: device={id} layout={assigned}.");
                 running.Dispose();
                 _publishers.Remove(id);
                 _publisherLayoutIds.Remove(id);
@@ -184,9 +185,9 @@ public sealed class DeviceScreenService : IDisposable
     }
 
     private DashLayout ResolveLayout(SavedDevice device) =>
-        _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-            ?? _runtime.DashLayouts.FirstOrDefault(item => item.IsDefault)
-            ?? _runtime.DashLayouts.First();
+        DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts)
+        ?? throw new InvalidOperationException(
+            $"Device purpose '{device.Purpose}' does not provide a telemetry-backed screen layout.");
 
     private ScreenPublisher CreatePublisher(SavedDevice device)
     {

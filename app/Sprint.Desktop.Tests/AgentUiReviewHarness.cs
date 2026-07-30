@@ -152,14 +152,40 @@ internal static class AgentUiReviewHarness
                     Click(window, "Close");
 
                     Click(window, runtime.Devices[0].Name);
-                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "Command bindings", "Screen alignment", "Purpose", runtime.Devices[0].Name));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail",
+                        "Back to devices",
+                        "Command bindings",
+                        "Screen alignment",
+                        "This screen is used for",
+                        "Show a customizable racing dashboard.",
+                        runtime.Devices[0].Name));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-1120x720",
+                        "This screen is used for",
+                        "Dashboard",
+                        "Screen alignment"));
+                    window.Width = 1440;
+                    window.Height = 900;
 
-                    // Device purpose (issue #53): a screen labelled for output Sprint
-                    // cannot render yet loses its dash controls and says so.
-                    var purposeCombo = window.GetVisualDescendants()
+                    // Device purposes (issue #53): supported focused displays render
+                    // immediately without a dashboard selector; rear-view video remains
+                    // an honest pending state until issue #41 supplies a capture source.
+                    var purposeCombo = TaggedComboBox(window, "device-purpose");
+                    purposeCombo.SelectedItem = "Flag display";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    var flagPreview = window.GetVisualDescendants()
                         .OfType<ComboBox>()
-                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
-                    purposeCombo.SelectedItem = "Rear view mirror";
+                        .Single(combo => string.Equals(combo.SelectedItem?.ToString(), "Live / demo", StringComparison.Ordinal));
+                    flagPreview.SelectedItem = "Yellow flag";
                     using (window.CaptureRenderedFrame())
                     {
                     }
@@ -167,14 +193,84 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "devices-detail-purpose-idle",
-                        "Purpose",
-                        "Rear view mirror is not built yet",
-                        "Idle"));
-                    var backToDash = window.GetVisualDescendants()
+                        "devices-detail-flag-display",
+                        "This screen is used for",
+                        "Flag display",
+                        "Show the active marshalling flag at maximum glanceability.",
+                        "Screen alignment",
+                        "Yellow flag"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-flag-display-1120x720",
+                        "This screen is used for",
+                        "Flag display",
+                        "Screen alignment",
+                        "Yellow flag"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    var lapTimerPurpose = TaggedComboBox(window, "device-purpose");
+                    lapTimerPurpose.SelectedItem = "Lap timer";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    var lapPreview = window.GetVisualDescendants()
                         .OfType<ComboBox>()
-                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
-                    backToDash.SelectedItem = "Dash";
+                        .Single(combo => string.Equals(combo.SelectedItem?.ToString(), "Yellow flag", StringComparison.Ordinal));
+                    lapPreview.SelectedItem = "Mid-lap";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-lap-timer",
+                        "This screen is used for",
+                        "Lap timer",
+                        "Show current, last, and best lap times with a live delta.",
+                        "Screen alignment",
+                        "Mid-lap"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-lap-timer-1120x720",
+                        "This screen is used for",
+                        "Lap timer",
+                        "Screen alignment",
+                        "Mid-lap"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    var mirrorPurpose = TaggedComboBox(window, "device-purpose");
+                    mirrorPurpose.SelectedItem = "Rear-view mirror";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-pending",
+                        "This screen is used for",
+                        "Rear-view mirror is not supported yet",
+                        "Idle"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-pending-1120x720",
+                        "This screen is used for",
+                        "Rear-view mirror is not supported yet",
+                        "Idle"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    var backToDash = TaggedComboBox(window, "device-purpose");
+                    backToDash.SelectedItem = "Dashboard";
                     using (window.CaptureRenderedFrame())
                     {
                     }
@@ -475,6 +571,11 @@ internal static class AgentUiReviewHarness
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         using var frame = window.CaptureRenderedFrame();
     }
+
+    private static ComboBox TaggedComboBox(MainWindow window, string tag) =>
+        window.GetVisualDescendants()
+            .OfType<ComboBox>()
+            .Single(combo => string.Equals(combo.Tag?.ToString(), tag, StringComparison.Ordinal));
 
     private static void OpenCommandPalette(MainWindow window)
     {

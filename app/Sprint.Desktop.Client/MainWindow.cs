@@ -1647,7 +1647,7 @@ public sealed class MainWindow : Window
     {
         // A dash mirror is only truthful for a dash-purpose screen; anything else is
         // idle, so the card falls through to the icon tile with its purpose label.
-        if (DeviceCapabilities.DrivesDash(device)
+        if (DeviceCapabilities.DrivesScreenOutput(device)
             && RenderDeviceMirrorBitmap(device, DashPreviewFrames.For(DashPreviewState.MidLap)) is { } bitmap)
         {
             return DeviceMirrorDisplay(device, new Image { Source = bitmap }, width, height);
@@ -2130,11 +2130,11 @@ public sealed class MainWindow : Window
         }
 
         chips.Children.Add(SpecChip(IsScreenDevice(device) ? $"{device.Width} × {device.Height}" : "Controller"));
-        // Only a non-default purpose earns a chip; every screen being tagged "Dash"
-        // would be noise.
-        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        // Only a non-default purpose earns a chip; every screen being tagged
+        // "Dashboard" would be noise.
+        if (IsScreenDevice(device) && !DevicePurposes.IsDash(device.Purpose))
         {
-            chips.Children.Add(SpecChip(purpose.Label));
+            chips.Children.Add(SpecChip(DevicePurposes.Resolve(device.Purpose).Label));
         }
 
         AddGrid(metaRow, chips, 0, 0);
@@ -2181,16 +2181,14 @@ public sealed class MainWindow : Window
         var purpose = DevicePurposes.Resolve(device.Purpose);
         if (!purpose.Available)
         {
-            // Honest dead end: the screen is labelled for output Sprint cannot produce
-            // yet, so it stays idle instead of quietly showing a dash. No dash
-            // assignment, no preview, and no alignment controls for output that isn't
-            // running.
+            // Honest pending state: the screen is labelled for output Sprint cannot
+            // produce yet, so it stays idle instead of quietly showing a dashboard.
             var idle = new StackPanel { Spacing = 12 };
             idle.Children.Add(DevicePurposeField(device));
             idle.Children.Add(Graphite.StatePanel(
-                $"{purpose.Label} is not built yet",
-                $"{purpose.Description} Sprint keeps this screen idle until that output exists — "
-                    + "switch the purpose back to Dash to drive it with a dash layout.",
+                $"{purpose.Label} is not supported yet",
+                $"{purpose.Description} Sprint cannot capture game video yet, so this screen stays idle. "
+                    + "Choose another purpose to start output now.",
                 Graphite.BlueBrush));
             return idle;
         }
@@ -2199,7 +2197,11 @@ public sealed class MainWindow : Window
 
         var left = new StackPanel { Spacing = 10 };
         left.Children.Add(DevicePurposeField(device));
-        left.Children.Add(DashAssignmentField(device));
+        if (DevicePurposes.IsDash(device.Purpose))
+        {
+            left.Children.Add(DashAssignmentField(device));
+        }
+
         left.Children.Add(DeviceScreenPreview(device));
         if (_devicePreviewPainter is not null)
         {
@@ -2239,12 +2241,12 @@ public sealed class MainWindow : Window
         return new Border { Padding = new Thickness(0, 4), Child = grid };
     }
 
-    // What this screen is used for (issue #53). Changing it re-syncs the screen service,
-    // because only the dash purpose is allowed to publish frames.
+    // What this screen is used for (issue #53). The sentence-like heading keeps the
+    // choice in user language; the helper text says what selecting it will do.
     private Control DevicePurposeField(SavedDevice device)
     {
         var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(Graphite.SectionLabel("Purpose"));
+        panel.Children.Add(Graphite.SectionLabel("This screen is used for"));
 
         var current = DevicePurposes.Resolve(device.Purpose);
         var combo = Graphite.ComboBox(DevicePurposes.Labels, current.Label, 220);
@@ -2263,6 +2265,12 @@ public sealed class MainWindow : Window
             RenderBody();
         };
         panel.Children.Add(combo);
+        panel.Children.Add(Graphite.TextBlock(
+            current.Description,
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap));
         return panel;
     }
 
@@ -2282,6 +2290,7 @@ public sealed class MainWindow : Window
             current?.Name ?? _runtime.DashLayouts.FirstOrDefault()?.Name,
             220,
             "No dash assigned");
+        combo.Tag = "device-dash";
         combo.SelectionChanged += (_, _) =>
         {
             var chosen = _runtime.DashLayouts.FirstOrDefault(layout => layout.Name == combo.SelectedItem?.ToString());
@@ -2312,7 +2321,7 @@ public sealed class MainWindow : Window
                 BorderBrush = Graphite.Line2Brush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(Graphite.RadiusMd),
-                Child = new Grid { Children = { Graphite.TextBlock("No dash to preview", 12, FontWeight.Normal, Graphite.Text3Brush) } },
+                Child = new Grid { Children = { Graphite.TextBlock("No output to preview", 12, FontWeight.Normal, Graphite.Text3Brush) } },
             };
         }
 
@@ -2444,9 +2453,7 @@ public sealed class MainWindow : Window
     }
 
     private DashLayout? ResolveDeviceLayout(SavedDevice device) =>
-        _runtime.DashLayouts.FirstOrDefault(layout => string.Equals(layout.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-        ?? _runtime.DashLayouts.FirstOrDefault(layout => layout.IsDefault)
-        ?? _runtime.DashLayouts.FirstOrDefault();
+        DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts);
 
     private void BuildDevicePreview(SavedDevice device, DashLayout layout)
     {
