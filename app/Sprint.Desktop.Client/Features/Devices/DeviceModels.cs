@@ -4,6 +4,8 @@ namespace Sprint.Desktop.Features.Devices;
 
 public sealed class CatalogDevice
 {
+    private DeviceOrientation _orientation;
+
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
 
@@ -29,7 +31,18 @@ public sealed class CatalogDevice
     public int Height { get; set; }
 
     [JsonPropertyName("rotation")]
-    public int Rotation { get; set; }
+    public int Rotation
+    {
+        get => (int)_orientation;
+        set => _orientation = DeviceOrientations.Resolve(value);
+    }
+
+    [JsonIgnore]
+    public DeviceOrientation Orientation
+    {
+        get => _orientation;
+        set => _orientation = value;
+    }
 
     [JsonPropertyName("offset_x")]
     public int OffsetX { get; set; }
@@ -49,6 +62,8 @@ public sealed class CatalogDevice
 
 public sealed class SavedDevice
 {
+    private DeviceOrientation _orientation;
+
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Driver { get; set; } = "";
@@ -58,7 +73,18 @@ public sealed class SavedDevice
     public string Serial { get; set; } = "";
     public int Width { get; set; }
     public int Height { get; set; }
-    public int Rotation { get; set; }
+    public int Rotation
+    {
+        get => (int)_orientation;
+        set => _orientation = DeviceOrientations.Resolve(value);
+    }
+
+    [JsonIgnore]
+    public DeviceOrientation Orientation
+    {
+        get => _orientation;
+        set => _orientation = value;
+    }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
     public int Margin { get; set; }

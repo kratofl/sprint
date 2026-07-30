@@ -1,5 +1,6 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.Hardware;
@@ -16,6 +17,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private readonly DashPainter _painter;
     private readonly AppSettings _settings;
     private readonly ScreenConfig _config;
+    private readonly PixelRotation _pixelRotation;
     private readonly byte[] _scratch;
     private DashPalette _palette;
     private readonly DashAlertTracker _alerts = new();
@@ -34,11 +36,13 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         Width = config.Width;
         Height = config.Height;
 
-        // The painter renders at the logical size that, once rotated, fills the
-        // native screen: 90/270 swap the axes.
-        var (logicalW, logicalH) = config.Rotation is 90 or 270 ? (Height, Width) : (Width, Height);
+        var transform = DeviceOrientations.Transform(
+            Width,
+            Height,
+            config.Orientation);
+        _pixelRotation = transform.PixelRotation;
         _palette = palette ?? DashPalette.Default;
-        _painter = new DashPainter(logicalW, logicalH, _palette);
+        _painter = new DashPainter(transform.LogicalWidth, transform.LogicalHeight, _palette);
         _scratch = new byte[Width * Height * 2];
     }
 
@@ -79,15 +83,15 @@ public sealed class DashPainterFrameSource : IDashFrameSource
 
         if (_config.Margin > 0)
         {
-            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, _config.Rotation, _scratch);
+            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, (int)_pixelRotation, _scratch);
             Rgb565.ApplyMargin(_scratch, rgb565, Width, Height, _config.Margin);
         }
         else
         {
-            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, _config.Rotation, rgb565);
+            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, (int)_pixelRotation, rgb565);
         }
 
-        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, _config.Rotation);
+        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, (int)_pixelRotation);
     }
 
     public void Dispose() => _painter.Dispose();

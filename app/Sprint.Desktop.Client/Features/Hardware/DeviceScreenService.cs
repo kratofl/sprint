@@ -226,7 +226,7 @@ public sealed class DeviceScreenService : IDisposable
             Pid = device.Pid,
             Width = device.Width,
             Height = device.Height,
-            Rotation = device.Rotation,
+            Orientation = device.Orientation,
             OffsetX = device.OffsetX,
             OffsetY = device.OffsetY,
             Margin = device.Margin,

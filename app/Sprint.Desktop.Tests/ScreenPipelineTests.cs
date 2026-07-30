@@ -1,5 +1,6 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
@@ -247,7 +248,7 @@ public sealed class ScreenPipelineTests
         {
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var layout = runtime.DashLayouts.First(item => item.IsDefault);
-            var config = new ScreenConfig { Width = 200, Height = 120, Rotation = 0 };
+            var config = new ScreenConfig { Width = 200, Height = 120, Orientation = DeviceOrientation.Portrait };
 
             using var source = new DashPainterFrameSource(layout, runtime.Settings, config);
             Assert.Equal(200, source.Width);
@@ -267,6 +268,62 @@ public sealed class ScreenPipelineTests
     }
 
     [Fact]
+    public void DashboardFramesUseTheSameOrientationContractForEveryDriverDimensionOrder()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var layout = runtime.DashLayouts.First(item => item.IsDefault);
+            var frame = new TelemetryFrame();
+            var cases = new[]
+            {
+                (NativeWidth: 120, NativeHeight: 200, Orientation: DeviceOrientation.Portrait, LogicalWidth: 120, LogicalHeight: 200, PixelRotation: 0),
+                (NativeWidth: 120, NativeHeight: 200, Orientation: DeviceOrientation.Landscape, LogicalWidth: 200, LogicalHeight: 120, PixelRotation: 90),
+                (NativeWidth: 120, NativeHeight: 200, Orientation: DeviceOrientation.PortraitInverted, LogicalWidth: 120, LogicalHeight: 200, PixelRotation: 180),
+                (NativeWidth: 120, NativeHeight: 200, Orientation: DeviceOrientation.LandscapeInverted, LogicalWidth: 200, LogicalHeight: 120, PixelRotation: 270),
+                (NativeWidth: 200, NativeHeight: 120, Orientation: DeviceOrientation.Portrait, LogicalWidth: 120, LogicalHeight: 200, PixelRotation: 90),
+                (NativeWidth: 200, NativeHeight: 120, Orientation: DeviceOrientation.Landscape, LogicalWidth: 200, LogicalHeight: 120, PixelRotation: 0),
+                (NativeWidth: 200, NativeHeight: 120, Orientation: DeviceOrientation.PortraitInverted, LogicalWidth: 120, LogicalHeight: 200, PixelRotation: 270),
+                (NativeWidth: 200, NativeHeight: 120, Orientation: DeviceOrientation.LandscapeInverted, LogicalWidth: 200, LogicalHeight: 120, PixelRotation: 180),
+            };
+
+            foreach (var testCase in cases)
+            {
+                var config = new ScreenConfig
+                {
+                    Width = testCase.NativeWidth,
+                    Height = testCase.NativeHeight,
+                    Orientation = testCase.Orientation,
+                };
+                var palette = DashPalette.FromLayout(layout);
+                using var expectedPainter = new DashPainter(
+                    testCase.LogicalWidth,
+                    testCase.LogicalHeight,
+                    palette);
+                var expectedBitmap = expectedPainter.Render(layout, frame, runtime.Settings);
+                var expected = new byte[config.Width * config.Height * 2];
+                Rgb565.FromBgra(
+                    expectedBitmap.GetPixelSpan(),
+                    testCase.LogicalWidth,
+                    testCase.LogicalHeight,
+                    testCase.PixelRotation,
+                    expected);
+
+                using var source = new DashPainterFrameSource(layout, runtime.Settings, config, palette);
+                var actual = new byte[config.Width * config.Height * 2];
+                source.Render(frame, actual);
+
+                Assert.Equal(expected, actual);
+            }
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DashPainterFrameSourceSwapsAxesUnderQuarterTurn()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -274,7 +331,7 @@ public sealed class ScreenPipelineTests
         {
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var layout = runtime.DashLayouts.First(item => item.IsDefault);
-            var config = new ScreenConfig { Width = 200, Height = 120, Rotation = 90 };
+            var config = new ScreenConfig { Width = 200, Height = 120, Orientation = DeviceOrientation.Landscape };
 
             using var source = new DashPainterFrameSource(layout, runtime.Settings, config);
             var buffer = new byte[source.Width * source.Height * 2];

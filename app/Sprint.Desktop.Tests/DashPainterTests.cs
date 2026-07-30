@@ -3,6 +3,7 @@ using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using SkiaSharp;
@@ -608,7 +609,7 @@ public sealed class DashPainterTests
             using var source = new DashPainterFrameSource(
                 layout,
                 runtime.Settings,
-                new ScreenConfig { Width = 320, Height = 192, Rotation = 0, Margin = 0, OffsetX = 0, OffsetY = 0 },
+                new ScreenConfig { Width = 320, Height = 192, Orientation = DeviceOrientation.Landscape, Margin = 0, OffsetX = 0, OffsetY = 0 },
                 palette);
             var actualRgb565 = new byte[320 * 192 * 2];
             source.Render(frame, actualRgb565);

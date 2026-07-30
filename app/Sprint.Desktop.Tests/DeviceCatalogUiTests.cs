@@ -118,6 +118,7 @@ public sealed class DeviceCatalogUiTests
                 Assert.Equal(
                     90,
                     runtime.Devices.Single(device => device.Id == "wheel-screen").Rotation);
+                AssertLandscapePreview(window);
 
                 var purpose = Field<ComboBox>(window, "device-purpose");
                 purpose.SelectedItem = "Flag display";
@@ -130,6 +131,17 @@ public sealed class DeviceCatalogUiTests
                 Assert.NotNull(FindText(window, "Screen alignment"));
                 Assert.Null(FindTagged<ComboBox>(window, "device-dash"));
                 Assert.Null(FindText(window, "Flag display is not built yet"));
+                AssertLandscapePreview(window);
+
+                var lapTimerPurpose = Field<ComboBox>(window, "device-purpose");
+                lapTimerPurpose.SelectedItem = "Lap timer";
+                Render(window);
+
+                Assert.Equal(
+                    DevicePurposes.LapTimes,
+                    runtime.Devices.Single(device => device.Id == "wheel-screen").Purpose);
+                Assert.NotNull(FindText(window, "Show current, last, and best lap times with a live delta."));
+                AssertLandscapePreview(window);
 
                 var mirrorPurpose = Field<ComboBox>(window, "device-purpose");
                 mirrorPurpose.SelectedItem = "Rear-view mirror";
@@ -232,6 +244,14 @@ public sealed class DeviceCatalogUiTests
 
         Assert.NotNull(control);
         return control!;
+    }
+
+    private static void AssertLandscapePreview(MainWindow window)
+    {
+        var preview = window.GetVisualDescendants()
+            .OfType<Image>()
+            .Single(image => image.Source is Avalonia.Media.Imaging.WriteableBitmap);
+        Assert.True(preview.Width > preview.Height, $"Landscape preview was {preview.Width}×{preview.Height}.");
     }
 
     private static TextBlock? FindText(MainWindow window, string text) =>

@@ -1026,7 +1026,7 @@ public sealed class MainWindow : Window
         var dash = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId);
         var text = new StackPanel { Spacing = 2 };
         text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.SemiBold, Graphite.TextBrush));
-        text.Children.Add(Graphite.TextBlock($"{device.Width} × {device.Height} · {dash?.Name ?? "No dash assigned"}", 11, FontWeight.Normal, Graphite.Text3Brush));
+        text.Children.Add(Graphite.TextBlock($"{DeviceResolution(device)} · {dash?.Name ?? "No dash assigned"}", 11, FontWeight.Normal, Graphite.Text3Brush));
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         AddGrid(row, text, 0, 0);
@@ -1693,17 +1693,34 @@ public sealed class MainWindow : Window
         };
     }
 
-    // The preview frame is the physical panel itself — always the device's native
-    // pixel grid, never reshaped by rotation. The mirror buffer already has the
-    // dash rotated onto that grid, so it is shown as-is: rotation spins the dash
-    // within a fixed frame ("Horizontal" sits it upright, "Vertical" turns it).
+    // Device previews show the logical orientation selected by the user. Native
+    // width/height ordering stays an output-driver concern and must not reshape
+    // Portrait/Landscape differently between preview and hardware.
     private static Control DeviceMirrorDisplay(SavedDevice device, Image image, double maxWidth, double maxHeight)
     {
-        var scale = Math.Min(maxWidth / device.Width, maxHeight / device.Height);
-        image.Width = device.Width * scale;
-        image.Height = device.Height * scale;
+        var transform = DeviceTransform(device);
+        var scale = Math.Min(
+            maxWidth / transform.LogicalWidth,
+            maxHeight / transform.LogicalHeight);
+        image.Width = transform.LogicalWidth * scale;
+        image.Height = transform.LogicalHeight * scale;
         image.Stretch = Stretch.Fill;
-        return ScreenBezel(image, device.Width * scale + 8, device.Height * scale + 8);
+        return ScreenBezel(
+            image,
+            transform.LogicalWidth * scale + 8,
+            transform.LogicalHeight * scale + 8);
+    }
+
+    private static DeviceOrientationTransform DeviceTransform(SavedDevice device) =>
+        DeviceOrientations.Transform(
+            device.Width,
+            device.Height,
+            device.Orientation);
+
+    private static string DeviceResolution(SavedDevice device)
+    {
+        var transform = DeviceTransform(device);
+        return $"{transform.LogicalWidth} × {transform.LogicalHeight}";
     }
 
     // A dark rounded "panel bezel" that frames the rendered dash mirror.
@@ -1810,7 +1827,7 @@ public sealed class MainWindow : Window
     }
 
     private static string DeviceSubtitle(SavedDevice device) =>
-        IsScreenDevice(device) ? $"{device.Driver} · {device.Width} × {device.Height}" : $"{device.Driver} · controller";
+        IsScreenDevice(device) ? $"{device.Driver} · {DeviceResolution(device)}" : $"{device.Driver} · controller";
 
     private static string DeviceIcon(SavedDevice device) =>
         IsScreenDevice(device) ? "device-desktop" : "gauge";
@@ -2144,7 +2161,7 @@ public sealed class MainWindow : Window
             chips.Children.Add(SpecChip(device.Driver));
         }
 
-        chips.Children.Add(SpecChip(IsScreenDevice(device) ? $"{device.Width} × {device.Height}" : "Controller"));
+        chips.Children.Add(SpecChip(IsScreenDevice(device) ? DeviceResolution(device) : "Controller"));
         // Only a non-default purpose earns a chip; every screen being tagged
         // "Dashboard" would be noise.
         if (IsScreenDevice(device) && !DevicePurposes.IsDash(device.Purpose))
@@ -2369,7 +2386,7 @@ public sealed class MainWindow : Window
             var chosen = _runtime.DashLayouts.FirstOrDefault(layout => layout.Name == combo.SelectedItem?.ToString());
             if (chosen is not null && chosen.Id != device.DashId)
             {
-                _runtime.UpdateDevice(device, device.Name, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, chosen.Id);
+                _runtime.UpdateDevice(device, device.Name, device.Orientation, device.OffsetX, device.OffsetY, device.Margin, chosen.Id);
                 _screens.Sync();
                 RenderBody();
             }
@@ -2446,18 +2463,21 @@ public sealed class MainWindow : Window
     {
         var combo = Graphite.ComboBox(
             DeviceOrientations.Labels,
-            DeviceOrientations.Label(device.Rotation),
+            DeviceOrientations.Label(device.Orientation),
             220);
         combo.Tag = "device-orientation";
         ToolTip.SetTip(
             combo,
-            "Portrait = 0°, Landscape = 90°, Portrait inverted = 180°, Landscape inverted = 270°.");
+            string.Join(
+                ", ",
+                DeviceOrientations.All.Select(option =>
+                    $"{option.Label} = {(int)option.Orientation}°")) + ".");
         combo.SelectionChanged += (_, _) =>
         {
-            if (DeviceOrientations.RotationForLabel(combo.SelectedItem?.ToString()) is { } rotation
-                && rotation != device.Rotation)
+            if (DeviceOrientations.OrientationForLabel(combo.SelectedItem?.ToString()) is { } orientation
+                && orientation != device.Orientation)
             {
-                SetDeviceRotation(device, rotation);
+                SetDeviceRotation(device, orientation);
             }
         };
         return combo;
@@ -2498,17 +2518,25 @@ public sealed class MainWindow : Window
         return row;
     }
 
-    private void SetDeviceRotation(SavedDevice device, int rotation)
+    private void SetDeviceRotation(SavedDevice device, DeviceOrientation orientation)
     {
-        if (device.Rotation == rotation)
+        var previousOrientation = device.Orientation;
+        if (previousOrientation == orientation)
         {
             return;
         }
 
         var reorientedCapture = device.CaptureRegion is { IsValid: true } region
-            ? CaptureSelectionGeometry.ReorientRegion(region, device.Rotation, rotation)
+            ? CaptureSelectionGeometry.ReorientRegion(region, previousOrientation, orientation)
             : null;
-        _runtime.UpdateDevice(device, device.Name, rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+        _runtime.UpdateDevice(
+            device,
+            device.Name,
+            orientation,
+            device.OffsetX,
+            device.OffsetY,
+            device.Margin,
+            device.DashId);
         if (reorientedCapture is not null && !Equals(device.CaptureRegion, reorientedCapture))
         {
             _runtime.UpdateDeviceCaptureRegion(device, reorientedCapture);
@@ -2527,7 +2555,7 @@ public sealed class MainWindow : Window
             return;
         }
 
-        _runtime.UpdateDevice(device, device.Name, device.Rotation, x, y, device.Margin, device.DashId);
+        _runtime.UpdateDevice(device, device.Name, device.Orientation, x, y, device.Margin, device.DashId);
         _screens.Sync();
         RenderBody();
     }
@@ -2540,7 +2568,7 @@ public sealed class MainWindow : Window
             return;
         }
 
-        _runtime.UpdateDevice(device, device.Name, device.Rotation, device.OffsetX, device.OffsetY, margin, device.DashId);
+        _runtime.UpdateDevice(device, device.Name, device.Orientation, device.OffsetX, device.OffsetY, margin, device.DashId);
         _screens.Sync();
         RenderBody();
     }
@@ -2551,10 +2579,14 @@ public sealed class MainWindow : Window
     private void BuildDevicePreview(SavedDevice device, DashLayout layout)
     {
         DisposeDevicePreview();
+        var transform = DeviceTransform(device);
         _devicePreviewLayout = layout;
-        _devicePreviewPainter = new DashPainter(device.Width, device.Height, DashPalette.FromLayout(layout));
+        _devicePreviewPainter = new DashPainter(
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            DashPalette.FromLayout(layout));
         _devicePreviewBitmap = new WriteableBitmap(
-            new PixelSize(device.Width, device.Height),
+            new PixelSize(transform.LogicalWidth, transform.LogicalHeight),
             new Vector(96, 96),
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
@@ -2620,12 +2652,13 @@ public sealed class MainWindow : Window
             return null;
         }
 
+        var transform = DeviceTransform(device);
         return DashImageRenderer.Render(
             layout,
             frame,
             _runtime.Settings,
-            device.Width,
-            device.Height,
+            transform.LogicalWidth,
+            transform.LogicalHeight,
             palette: DashPalette.FromLayout(layout));
     }
 
@@ -2654,7 +2687,7 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            _runtime.UpdateDevice(device, nextName, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+            _runtime.UpdateDevice(device, nextName, device.Orientation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
             lastCommittedText = nextName;
             _screens.Sync();
         }

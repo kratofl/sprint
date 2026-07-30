@@ -189,7 +189,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Serial = serial,
             Width = width,
             Height = height,
-            Rotation = catalog.Rotation,
+            Orientation = catalog.Orientation,
             OffsetX = catalog.OffsetX,
             OffsetY = catalog.OffsetY,
             Margin = catalog.Margin,
@@ -205,10 +205,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return saved;
     }
 
-    public void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId)
+    public void UpdateDevice(
+        SavedDevice device,
+        string name,
+        DeviceOrientation orientation,
+        int offsetX,
+        int offsetY,
+        int margin,
+        string dashId)
     {
         device.Name = string.IsNullOrWhiteSpace(name) ? device.Name : name.Trim();
-        device.Rotation = rotation;
+        device.Orientation = orientation;
         device.OffsetX = offsetX;
         device.OffsetY = offsetY;
         device.Margin = margin;

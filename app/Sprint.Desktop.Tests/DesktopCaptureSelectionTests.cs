@@ -65,6 +65,54 @@ public sealed class DesktopCaptureSelectionTests
         public void Dispose() => Disposed = true;
     }
 
+    private sealed class PatternCapturer : IDesktopRegionCapturer
+    {
+        public int Width { get; private set; }
+        public int Height { get; private set; }
+        public byte[] LastFrame { get; private set; } = [];
+
+        public bool TryCapture(
+            ScreenCaptureRegion region,
+            int destinationWidth,
+            int destinationHeight,
+            byte[] bgra)
+        {
+            Width = destinationWidth;
+            Height = destinationHeight;
+            for (var y = 0; y < destinationHeight; y++)
+            {
+                for (var x = 0; x < destinationWidth; x++)
+                {
+                    var offset = (y * destinationWidth + x) * 4;
+                    bgra[offset] = (byte)(x * 7);
+                    bgra[offset + 1] = (byte)(y * 11);
+                    bgra[offset + 2] = (byte)(x + y);
+                    bgra[offset + 3] = 0xff;
+                }
+            }
+
+            LastFrame = bgra.ToArray();
+            return true;
+        }
+    }
+
+    [Theory]
+    [InlineData(DeviceOrientation.Portrait, 0, "Portrait", false)]
+    [InlineData(DeviceOrientation.Landscape, 90, "Landscape", true)]
+    [InlineData(DeviceOrientation.PortraitInverted, 180, "Portrait inverted", false)]
+    [InlineData(DeviceOrientation.LandscapeInverted, 270, "Landscape inverted", true)]
+    public void DeviceOrientationEnumIsTheSingleDegreeAndShapeContract(
+        DeviceOrientation orientation,
+        int rotation,
+        string label,
+        bool isLandscape)
+    {
+        Assert.Equal(rotation, (int)orientation);
+        Assert.Equal(label, DeviceOrientations.Label(orientation));
+        Assert.Equal(isLandscape, DeviceOrientations.IsLandscape(orientation));
+        Assert.Equal(orientation, DeviceOrientations.Resolve(rotation));
+    }
+
     [Theory]
     [InlineData(0, "Portrait")]
     [InlineData(90, "Landscape")]
@@ -73,7 +121,7 @@ public sealed class DesktopCaptureSelectionTests
     public void DeviceOrientationUsesNamesInsteadOfRawDegreeLabels(int rotation, string expectedLabel)
     {
         Assert.Equal(expectedLabel, DeviceOrientations.Label(rotation));
-        Assert.Equal(rotation, DeviceOrientations.RotationForLabel(expectedLabel));
+        Assert.Equal(rotation, (int)DeviceOrientations.OrientationForLabel(expectedLabel)!.Value);
     }
 
     [Theory]
@@ -164,8 +212,8 @@ public sealed class DesktopCaptureSelectionTests
 
         var reoriented = CaptureSelectionGeometry.ReorientRegion(
             region,
-            previousRotation,
-            nextRotation);
+            DeviceOrientations.Resolve(previousRotation),
+            DeviceOrientations.Resolve(nextRotation));
 
         Assert.Equal(new ScreenCaptureRegion(25, 50, expectedWidth, expectedHeight), reoriented);
     }
@@ -224,7 +272,7 @@ public sealed class DesktopCaptureSelectionTests
         {
             Width = 2,
             Height = 4,
-            Rotation = 90,
+            Orientation = DeviceOrientation.Landscape,
         };
         using var source = new DesktopCaptureFrameSource(region, config, capturer);
         var destination = new byte[config.Width * config.Height * 2];
@@ -247,7 +295,7 @@ public sealed class DesktopCaptureSelectionTests
         {
             Width = 800,
             Height = 480,
-            Rotation = 90,
+            Orientation = DeviceOrientation.Landscape,
         };
         using var source = new DesktopCaptureFrameSource(
             new ScreenCaptureRegion(0, 0, 1600, 960),
@@ -258,6 +306,51 @@ public sealed class DesktopCaptureSelectionTests
 
         Assert.Equal(800, capturer.Width);
         Assert.Equal(480, capturer.Height);
+    }
+
+    [Fact]
+    public void RearViewFramesUseTheSameOrientationContractForEveryDriverDimensionOrder()
+    {
+        var cases = new[]
+        {
+            (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.Portrait, LogicalWidth: 3, LogicalHeight: 5, PixelRotation: 0),
+            (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.Landscape, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 90),
+            (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.PortraitInverted, LogicalWidth: 3, LogicalHeight: 5, PixelRotation: 180),
+            (NativeWidth: 3, NativeHeight: 5, Orientation: DeviceOrientation.LandscapeInverted, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 270),
+            (NativeWidth: 5, NativeHeight: 3, Orientation: DeviceOrientation.Portrait, LogicalWidth: 3, LogicalHeight: 5, PixelRotation: 90),
+            (NativeWidth: 5, NativeHeight: 3, Orientation: DeviceOrientation.Landscape, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 0),
+            (NativeWidth: 5, NativeHeight: 3, Orientation: DeviceOrientation.PortraitInverted, LogicalWidth: 3, LogicalHeight: 5, PixelRotation: 270),
+            (NativeWidth: 5, NativeHeight: 3, Orientation: DeviceOrientation.LandscapeInverted, LogicalWidth: 5, LogicalHeight: 3, PixelRotation: 180),
+        };
+
+        foreach (var testCase in cases)
+        {
+            var capturer = new PatternCapturer();
+            var config = new ScreenConfig
+            {
+                Width = testCase.NativeWidth,
+                Height = testCase.NativeHeight,
+                Orientation = testCase.Orientation,
+            };
+            using var source = new DesktopCaptureFrameSource(
+                new ScreenCaptureRegion(0, 0, 50, 30),
+                config,
+                capturer);
+            var actual = new byte[config.Width * config.Height * 2];
+
+            source.Render(new TelemetryFrame(), actual);
+
+            Assert.Equal(testCase.LogicalWidth, capturer.Width);
+            Assert.Equal(testCase.LogicalHeight, capturer.Height);
+            var expected = new byte[actual.Length];
+            Rgb565.FromBgra(
+                capturer.LastFrame,
+                testCase.LogicalWidth,
+                testCase.LogicalHeight,
+                testCase.PixelRotation,
+                expected);
+            Assert.Equal(expected, actual);
+        }
     }
 
     [Fact]

@@ -447,7 +447,7 @@ public class HeadlessShellTests
                 // Real data, no sample rows: the dash card title, the screen, its resolution.
                 Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name));
                 Assert.NotNull(FindOptionalText(window, "Home Screen"));
-                Assert.NotNull(FindOptionalText(window, "800 × 480 · " + runtime.DashLayouts[0].Name));
+                Assert.NotNull(FindOptionalText(window, "480 × 800 · " + runtime.DashLayouts[0].Name));
                 Assert.Null(FindOptionalText(window, "Dash Editor Ready"));
 
                 window.Close();
@@ -527,7 +527,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task DevicesPageShowsScreenResolutionForEachSavedScreen()
+    public async Task DevicesPageShowsOrientedScreenResolutionForEachSavedScreen()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -556,10 +556,10 @@ public class HeadlessShellTests
                 window.Show();
                 window.CaptureRenderedFrame();
 
-                // US33: the Devices library card must surface the exact screen shape
-                // (resolution) so a dash can be targeted at real hardware with confidence.
+                // The Devices library surfaces the selected logical orientation,
+                // independently of the native dimension order reported by the driver.
                 Assert.NotNull(FindOptionalText(window, "Test Screen"));
-                Assert.NotNull(FindOptionalText(window, "vocore · 800 × 480"));
+                Assert.NotNull(FindOptionalText(window, "vocore · 480 × 800"));
 
                 window.Close();
             }, CancellationToken.None);

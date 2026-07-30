@@ -155,8 +155,10 @@ public sealed class DevicePurposeTests
         {
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var device = ScreenDevice("wheel-screen");
+            device.Orientation = DeviceOrientation.LandscapeInverted;
             runtime.Devices.Add(device);
             var driversCreated = 0;
+            var drivers = new List<FakeScreenDriver>();
 
             using var service = new DeviceScreenService(
                 runtime,
@@ -164,19 +166,24 @@ public sealed class DevicePurposeTests
                 _ =>
                 {
                     driversCreated++;
-                    return new FakeScreenDriver();
+                    var driver = new FakeScreenDriver();
+                    drivers.Add(driver);
+                    return driver;
                 },
                 desktopCapturer: new SolidCapturer());
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
 
             runtime.UpdateDevicePurpose(device, DevicePurposes.Flags);
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
 
             runtime.UpdateDevicePurpose(device, DevicePurposes.LapTimes);
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
 
             runtime.UpdateDevicePurpose(device, DevicePurposes.RearViewMirror);
             service.Sync();
@@ -185,6 +192,7 @@ public sealed class DevicePurposeTests
             runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(200, 100, 800, 480));
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
             var capturePublisherCount = driversCreated;
 
             runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(240, 120, 800, 480));
@@ -195,6 +203,7 @@ public sealed class DevicePurposeTests
             runtime.UpdateDevicePurpose(device, DevicePurposes.Dash);
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
         }
         finally
         {

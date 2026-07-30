@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Devices;
 
 namespace Sprint.Desktop.Features.Hardware;
 
@@ -13,8 +14,8 @@ public sealed record ScreenConfig
 
     public int Height { get; init; } = 480;
 
-    /// <summary>0/90/180/270 — applied when converting to the native buffer.</summary>
-    public int Rotation { get; init; }
+    /// <summary>Semantic orientation applied when converting to the native buffer.</summary>
+    public DeviceOrientation Orientation { get; init; } = DeviceOrientation.Portrait;
 
     public int TargetFps { get; init; } = 30;
 
