@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Sprint.Desktop.Api.Telemetry;
@@ -96,6 +97,74 @@ public sealed class DashPainterTests
     [Fact]
     public void FormatsSpeedToKph() =>
         Assert.Equal("100", DashFormat.SpeedKph(27.7778));
+
+    [Fact]
+    public void DynamicValuesKeepAStableRenderedTextSize()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        using var painter = new DashPainter(32, 160);
+
+        var oneDigit = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 2.5f } },
+            new AppSettings());
+        var oneDigitHeight = ExactColorInkHeight(oneDigit, DashPalette.Default.Neutral, 80, 145);
+
+        var threeDigits = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 277.5f } },
+            new AppSettings());
+        var threeDigitHeight = ExactColorInkHeight(threeDigits, DashPalette.Default.Neutral, 80, 145);
+
+        Assert.True(oneDigitHeight > 0);
+        Assert.Equal(oneDigitHeight, threeDigitHeight);
+    }
+
+    [Fact]
+    public void DynamicLabelValuesKeepAStableRenderedTextSize()
+    {
+        var layout = SingleWidgetLayout("fuel");
+        using var painter = new DashPainter(80, 100);
+
+        var shortValue = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { FuelLiters = 40, FuelPerLapLiters = 0.9f } },
+            new AppSettings());
+        var shortValueHeight = ExactColorInkHeight(shortValue, DashPalette.Default.Secondary, 0, 40);
+
+        var longValue = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { FuelLiters = 40, FuelPerLapLiters = 99.9f } },
+            new AppSettings());
+        var longValueHeight = ExactColorInkHeight(longValue, DashPalette.Default.Secondary, 0, 40);
+
+        Assert.True(shortValueHeight > 0);
+        Assert.Equal(shortValueHeight, longValueHeight);
+    }
+
+    [Fact]
+    public void StaticLabelsFitWithinNarrowWidgets()
+    {
+        var layout = SingleWidgetLayout("virtual_energy");
+        layout.Pages[0].Widgets[0].Config = new Dictionary<string, JsonElement>
+        {
+            ["mode"] = JsonSerializer.SerializeToElement("percent"),
+        };
+        var frame = new TelemetryFrame { Energy = new EnergyState { VirtualEnergy = 68 } };
+
+        using var widePainter = new DashPainter(200, 100);
+        var wide = widePainter.Render(layout, frame, new AppSettings());
+        var wideLabelHeight = NonBackgroundInkHeight(wide, DashPalette.Default.Background, 0, 22);
+
+        using var narrowPainter = new DashPainter(40, 100);
+        var narrow = narrowPainter.Render(layout, frame, new AppSettings());
+        var narrowLabelHeight = NonBackgroundInkHeight(narrow, DashPalette.Default.Background, 0, 22);
+
+        Assert.True(narrowLabelHeight > 0);
+        Assert.True(
+            narrowLabelHeight < wideLabelHeight,
+            $"Expected narrow static label to fit smaller than the wide label; narrow={narrowLabelHeight}, wide={wideLabelHeight}.");
+    }
 
     [Fact]
     public void DefaultPresetRendersVariedContent()
@@ -810,4 +879,46 @@ public sealed class DashPainterTests
 
     private static int CountExact(SKBitmap bitmap, SKColor color) =>
         bitmap.Pixels.Count(pixel => pixel == color);
+
+    private static int ExactColorInkHeight(SKBitmap bitmap, SKColor color, int minY, int maxY)
+    {
+        var first = int.MaxValue;
+        var last = int.MinValue;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y) != color)
+                {
+                    continue;
+                }
+
+                first = Math.Min(first, y);
+                last = Math.Max(last, y);
+            }
+        }
+
+        return first == int.MaxValue ? 0 : last - first + 1;
+    }
+
+    private static int NonBackgroundInkHeight(SKBitmap bitmap, SKColor background, int minY, int maxY)
+    {
+        var first = int.MaxValue;
+        var last = int.MinValue;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y) == background)
+                {
+                    continue;
+                }
+
+                first = Math.Min(first, y);
+                last = Math.Max(last, y);
+            }
+        }
+
+        return first == int.MaxValue ? 0 : last - first + 1;
+    }
 }

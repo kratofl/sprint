@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Sprint.Desktop.Features.Devices;
 
 namespace Sprint.Desktop.Features.Input;
 
@@ -44,5 +45,47 @@ public static class BindingResolver
         }
 
         return null;
+    }
+}
+
+internal sealed record ResolvedHardwareBinding(string Command, string? DeviceId);
+
+/// <summary>
+/// Resolves Raw Input using the retired detector's wildcard device semantics.
+/// A wheel's screen transport and its controls commonly expose different USB
+/// identities, so bindings stored on a saved device cannot be scoped to the
+/// screen VID/PID. Device bindings still carry their owning device id as the
+/// command payload; global controls are the fallback.
+/// </summary>
+internal static class HardwareBindingResolver
+{
+    public static ResolvedHardwareBinding? Resolve(
+        HardwareInputEvent input,
+        IEnumerable<SavedDevice> devices,
+        IEnumerable<InputBinding> globalBindings)
+    {
+        foreach (var device in devices.Where(device => !device.Disabled))
+        {
+            if (ResolveDevice(input.Input, device) is { } resolved)
+            {
+                return resolved;
+            }
+        }
+
+        return BindingResolver.Resolve(input.Input, globalBindings) is { } command
+            ? new ResolvedHardwareBinding(command, null)
+            : null;
+    }
+
+    private static ResolvedHardwareBinding? ResolveDevice(string input, SavedDevice device)
+    {
+        var command = device.Bindings
+            .FirstOrDefault(binding => string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase))
+            ?.Command;
+        return string.IsNullOrWhiteSpace(command)
+            ? null
+            : new ResolvedHardwareBinding(
+                command,
+                DeviceCapabilities.HasScreen(device) ? device.Id : null);
     }
 }

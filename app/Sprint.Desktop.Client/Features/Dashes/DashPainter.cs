@@ -493,8 +493,27 @@ public sealed class DashPainter : IDisposable
         End,
     }
 
-    /// <summary>Draws text centred vertically on <paramref name="cy"/>, aligned to <paramref name="anchorX"/>, auto-shrinking to fit <paramref name="maxWidth"/>.</summary>
-    private void DrawTextLine(string text, float anchorX, float cy, float size, SKTypeface typeface, SKColor color, Align align, float maxWidth)
+    private enum TextSizing
+    {
+        Stable,
+        Fit,
+    }
+
+    /// <summary>
+    /// Draws text centred vertically on <paramref name="cy"/>. Dynamic text keeps
+    /// its authored size by default and clips overflow so changing content never
+    /// pulses. Static labels may explicitly opt into fitting.
+    /// </summary>
+    private void DrawTextLine(
+        string text,
+        float anchorX,
+        float cy,
+        float size,
+        SKTypeface typeface,
+        SKColor color,
+        Align align,
+        float maxWidth,
+        TextSizing sizing = TextSizing.Stable)
     {
         if (string.IsNullOrEmpty(text) || size <= 0)
         {
@@ -504,10 +523,13 @@ public sealed class DashPainter : IDisposable
         _font.Typeface = typeface;
         _font.Size = size;
 
-        var width = _font.MeasureText(text);
-        if (maxWidth > 0 && width > maxWidth)
+        if (sizing == TextSizing.Fit && maxWidth > 0)
         {
-            _font.Size = Math.Max(1f, size * maxWidth / width);
+            var width = _font.MeasureText(text);
+            if (width > maxWidth)
+            {
+                _font.Size = Math.Max(1f, size * maxWidth / width);
+            }
         }
 
         var metrics = _font.Metrics;
@@ -518,7 +540,31 @@ public sealed class DashPainter : IDisposable
             Align.End => SKTextAlign.Right,
             _ => SKTextAlign.Left,
         };
-        _canvas.DrawText(text, anchorX, baseline, skAlign, _font, Paint(color));
+
+        var saved = 0;
+        if (maxWidth > 0)
+        {
+            saved = _canvas.Save();
+            var left = align switch
+            {
+                Align.Center => anchorX - maxWidth / 2f,
+                Align.End => anchorX - maxWidth,
+                _ => anchorX,
+            };
+            _canvas.ClipRect(new SKRect(left, 0, left + maxWidth, Height));
+        }
+
+        try
+        {
+            _canvas.DrawText(text, anchorX, baseline, skAlign, _font, Paint(color));
+        }
+        finally
+        {
+            if (saved > 0)
+            {
+                _canvas.RestoreToCount(saved);
+            }
+        }
     }
 
     private SKPaint Paint(
@@ -551,16 +597,16 @@ public sealed class DashPainter : IDisposable
         {
             var topY = r.Top + r.Height * 0.32f;
             var bottomY = r.Top + r.Height * 0.72f;
-            DrawTextLine("SPRINT", r.Left + 4, topY, r.Height * 0.23f, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.42f);
-            DrawTextLine(flagText, r.Right - r.Height * 0.26f, topY, r.Height * 0.22f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.34f);
+            DrawTextLine("SPRINT", r.Left + 4, topY, r.Height * 0.23f, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.42f, TextSizing.Fit);
+            DrawTextLine(flagText, r.Right - r.Height * 0.26f, topY, r.Height * 0.22f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.34f, TextSizing.Fit);
             DrawDot(r.Right - r.Height * 0.10f, topY, r.Height * 0.06f, flagColor);
             DrawTextLine(centerText, r.MidX, bottomY, r.Height * 0.20f, DashFonts.Label, _palette.Secondary, Align.Center, r.Width * 0.92f);
             return;
         }
 
-        DrawTextLine("SPRINT", r.Left + 8, cy, size, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.18f);
+        DrawTextLine("SPRINT", r.Left + 8, cy, size, DashFonts.LabelBold, _palette.Muted, Align.Start, r.Width * 0.18f, TextSizing.Fit);
         DrawTextLine(centerText, r.Left + r.Width * 0.20f, cy, size, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.55f);
-        DrawTextLine(flagText, r.Right - r.Height * 0.9f - 6, cy, r.Height * 0.36f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.2f);
+        DrawTextLine(flagText, r.Right - r.Height * 0.9f - 6, cy, r.Height * 0.36f, DashFonts.LabelBold, flagColor, Align.End, r.Width * 0.2f, TextSizing.Fit);
         DrawDot(r.Right - r.Height * 0.4f, cy, r.Height * 0.14f, flagColor);
     }
 
@@ -602,7 +648,7 @@ public sealed class DashPainter : IDisposable
         var (anchorX, align) = HorizontalAnchor(widget, r);
         DrawTextLine(DashFormat.Gear(frame.Car.Gear), anchorX, r.Top + r.Height * 0.40f, r.Height * 0.60f, DashFonts.ValueRegular, gearColor, align, r.Width * 0.9f);
         DrawTextLine(DashFormat.SpeedKph(frame.Car.SpeedMetersPerSecond), anchorX, r.Top + r.Height * 0.78f, r.Height * 0.19f, DashFonts.Value, _palette.Neutral, align, r.Width * 0.9f);
-        DrawTextLine("km/h", anchorX, r.Top + r.Height * 0.92f, r.Height * 0.09f, DashFonts.Label, _palette.Muted, align, r.Width * 0.9f);
+        DrawTextLine("km/h", anchorX, r.Top + r.Height * 0.92f, r.Height * 0.09f, DashFonts.Label, _palette.Muted, align, r.Width * 0.9f, TextSizing.Fit);
     }
 
     /// <summary>
@@ -641,7 +687,7 @@ public sealed class DashPainter : IDisposable
         {
             var cyFrac = 0.16f + i * 0.24f;
             var cy = r.Top + cyFrac * r.Height;
-            DrawTextLine(rows[i].Label, r.Left + r.Width * (barXFrac - 0.02f), cy, r.Height * 0.11f, DashFonts.Label, _palette.Muted, Align.End, r.Width * barXFrac);
+            DrawTextLine(rows[i].Label, r.Left + r.Width * (barXFrac - 0.02f), cy, r.Height * 0.11f, DashFonts.Label, _palette.Muted, Align.End, r.Width * barXFrac, TextSizing.Fit);
             var barX = r.Left + barXFrac * r.Width;
             var barW = barWFrac * r.Width;
             var barH = barHFrac * r.Height;
@@ -652,7 +698,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawSector(SKRect r, TelemetryFrame frame)
     {
-        DrawTextLine("SECTORS", r.Left + 8, r.Top + r.Height * 0.18f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.6f);
+        DrawTextLine("SECTORS", r.Left + 8, r.Top + r.Height * 0.18f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.6f, TextSizing.Fit);
 
         var current = Math.Clamp(frame.Lap.Sector, 1, 3);
         var pipW = r.Width / 3.2f;
@@ -662,7 +708,7 @@ public sealed class DashPainter : IDisposable
         {
             var px = r.Left + 8 + (s - 1) * (pipW + 6);
             var active = s == current && frame.Lap.Sector > 0;
-            DrawTextLine($"S{s}", px + pipW / 2f, pipY + pipH / 2f, pipH * 0.6f, DashFonts.LabelBold, active ? _palette.Primary : _palette.Muted, Align.Center, pipW);
+            DrawTextLine($"S{s}", px + pipW / 2f, pipY + pipH / 2f, pipH * 0.6f, DashFonts.LabelBold, active ? _palette.Primary : _palette.Muted, Align.Center, pipW, TextSizing.Fit);
             if (active)
             {
                 _canvas.DrawRoundRect(
@@ -681,7 +727,7 @@ public sealed class DashPainter : IDisposable
         var titleSize = Math.Min(26f, r.Height * 0.09f);
         var labelSize = Math.Min(22f, r.Height * 0.085f);
         var valueSize = Math.Min(32f, r.Height * 0.115f);
-        DrawTextLine("LAP TIMES", r.Left + 10, r.Top + r.Height * 0.12f, titleSize, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine("LAP TIMES", r.Left + 10, r.Top + r.Height * 0.12f, titleSize, DashFonts.Label, _palette.Muted, Align.Start, r.Width, TextSizing.Fit);
         var rows = new (string Label, string Value, SKColor Color)[]
         {
             ("NOW", DashFormat.Lap(frame.Lap.CurrentLapTime), _palette.Neutral),
@@ -691,7 +737,7 @@ public sealed class DashPainter : IDisposable
         for (var i = 0; i < rows.Length; i++)
         {
             var cy = r.Top + r.Height * (0.38f + i * 0.24f);
-            DrawTextLine(rows[i].Label, r.Left + 10, cy, labelSize, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.34f);
+            DrawTextLine(rows[i].Label, r.Left + 10, cy, labelSize, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.34f, TextSizing.Fit);
             DrawTextLine(rows[i].Value, r.Right - 10, cy, valueSize, DashFonts.Value, rows[i].Color, Align.End, r.Width * 0.60f);
         }
     }
@@ -700,12 +746,12 @@ public sealed class DashPainter : IDisposable
     {
         if (frame.Lap.TargetLapTime <= 0)
         {
-            DrawTextLine("NO TARGET", r.MidX, r.MidY, r.Height * 0.4f, DashFonts.Label, _palette.Muted, Align.Center, r.Width * 0.9f);
+            DrawTextLine("NO TARGET", r.MidX, r.MidY, r.Height * 0.4f, DashFonts.Label, _palette.Muted, Align.Center, r.Width * 0.9f, TextSizing.Fit);
             return;
         }
 
         var color = frame.Lap.Delta < -0.0005 ? _palette.TimingPersonalBest : _palette.Neutral;
-        DrawTextLine("DELTA", r.Left + 10, r.MidY, r.Height * 0.24f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.20f);
+        DrawTextLine("DELTA", r.Left + 10, r.MidY, r.Height * 0.24f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.20f, TextSizing.Fit);
         DrawTextLine(DashFormat.Delta(frame.Lap.Delta), r.Right - 10, r.MidY, r.Height * 0.42f, DashFonts.Value, color, Align.End, r.Width * 0.34f);
         var barW = r.Width * 0.30f;
         DrawDeltaBar(r.Left + r.Width * 0.25f, r.MidY - r.Height * 0.10f, barW, r.Height * 0.20f, frame.Lap.Delta);
@@ -782,7 +828,8 @@ public sealed class DashPainter : IDisposable
             DashFonts.Label,
             _palette.Muted,
             Align.End,
-            content.Width * 0.20f);
+            content.Width * 0.20f,
+            TextSizing.Fit);
 
         var footerY = content.Top + content.Height * 0.82f;
         DrawTextLine(
@@ -828,13 +875,13 @@ public sealed class DashPainter : IDisposable
 
         if (r.Height < 150 && r.Width < 200)
         {
-            DrawTextLine("FUEL", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.35f);
+            DrawTextLine("FUEL", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.35f, TextSizing.Fit);
             DrawTextLine($"{DashFormat.FuelPerLap(perLap)} L/lap", r.Right - 8, r.Top + r.Height * 0.20f, r.Height * 0.11f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.58f);
             DrawTextLine($"{DashFormat.Fuel(fuel)} L", r.MidX, r.Top + r.Height * 0.63f, r.Height * 0.34f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.9f);
             return;
         }
 
-        DrawTextLine("FUEL", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine("FUEL", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width, TextSizing.Fit);
         DrawTextLine($"{DashFormat.Fuel(fuel)} L", r.Left + 10, r.Top + r.Height * 0.52f, r.Height * 0.34f, DashFonts.Value, _palette.Foreground, Align.Start, r.Width * 0.6f);
         DrawTextLine($"{DashFormat.FuelPerLap(perLap)} L/lap", r.Right - 10, r.Top + r.Height * 0.30f, r.Height * 0.18f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.55f);
         var laps = perLap > 0.01 ? $"~{DashFormat.Int(fuel / perLap)} laps" : "~-- laps";
@@ -855,7 +902,8 @@ public sealed class DashPainter : IDisposable
             DashFonts.Label,
             _palette.Muted,
             Align.Start,
-            r.Width);
+            r.Width,
+            TextSizing.Fit);
         var corners = new (string Label, TirePosition Pos)[]
         {
             ("FL", TirePosition.FrontLeft),
@@ -877,7 +925,7 @@ public sealed class DashPainter : IDisposable
             // 0 means "no reading" for every temperature channel, so show it as absent
             // instead of a plausible-looking 0°.
             var text = temp > 0 ? $"{DashFormat.Temp(temp)}°" : "--";
-            DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.4f, cellH * 0.26f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f);
+            DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.4f, cellH * 0.26f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f, TextSizing.Fit);
             DrawTextLine(text, cx + cellW - 8, cy + cellH * 0.5f, cellH * 0.42f, DashFonts.Value, _palette.TyreColor(temp), Align.End, cellW * 0.7f);
         }
     }
@@ -922,19 +970,19 @@ public sealed class DashPainter : IDisposable
 
     private void DrawGaps(SKRect r, TelemetryFrame frame)
     {
-        DrawTextLine("GAPS", r.Left + 8, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine("GAPS", r.Left + 8, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width, TextSizing.Fit);
 
         var ahead = DashFormat.Gap(frame.Race.GapAhead);
         var behind = DashFormat.Gap(frame.Race.GapBehind);
-        DrawTextLine("AHEAD", r.Left + 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.45f);
+        DrawTextLine("AHEAD", r.Left + 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.Start, r.Width * 0.45f, TextSizing.Fit);
         DrawTextLine(ahead == "--" ? "--" : $"-{ahead}", r.Left + 10, r.Top + r.Height * 0.78f, r.Height * 0.2f, DashFonts.Value, _palette.Foreground, Align.Start, r.Width * 0.45f);
-        DrawTextLine("BEHIND", r.Right - 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.45f);
+        DrawTextLine("BEHIND", r.Right - 10, r.Top + r.Height * 0.5f, r.Height * 0.13f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.45f, TextSizing.Fit);
         DrawTextLine(behind == "--" ? "--" : $"+{behind}", r.Right - 10, r.Top + r.Height * 0.78f, r.Height * 0.2f, DashFonts.Value, _palette.Foreground, Align.End, r.Width * 0.45f);
     }
 
     private void DrawTyrePressure(SKRect r, TelemetryFrame frame)
     {
-        DrawTextLine("TYRE PRESSURE", r.Left + 10, r.Top + r.Height * 0.12f, r.Height * 0.1f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine("TYRE PRESSURE", r.Left + 10, r.Top + r.Height * 0.12f, r.Height * 0.1f, DashFonts.Label, _palette.Muted, Align.Start, r.Width, TextSizing.Fit);
         var corners = new (string Label, TirePosition Pos)[]
         {
             ("FL", TirePosition.FrontLeft),
@@ -952,7 +1000,7 @@ public sealed class DashPainter : IDisposable
             var cx = r.Left + col * cellW;
             var cy = gridTop + row * cellH;
             var tire = frame.Tires.FirstOrDefault(t => t.Position == corners[i].Pos);
-            DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.28f, cellH * 0.20f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f);
+            DrawTextLine(corners[i].Label, cx + 8, cy + cellH * 0.28f, cellH * 0.20f, DashFonts.Label, _palette.Muted, Align.Start, cellW * 0.4f, TextSizing.Fit);
             DrawTextLine(tire is null ? "--" : DashFormat.Pressure(tire.PressureKPa), cx + cellW - 8, cy + cellH * 0.66f, cellH * 0.34f, DashFonts.Value, _palette.Foreground, Align.End, cellW * 0.82f);
         }
     }
@@ -995,7 +1043,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawVirtualEnergyPercent(SKRect r, float pct)
     {
-        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.18f, r.Height * 0.13f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.18f, r.Height * 0.13f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f, TextSizing.Fit);
         DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.4f, DashFonts.Value, _palette.Neutral, Align.Center, r.Width * 0.9f);
         var barColor = pct < 5 ? _palette.Critical : pct < 15 ? _palette.Warning : _palette.Neutral;
         DrawHBar(r.Left + r.Width * 0.08f, r.Bottom - r.Height * 0.16f, r.Width * 0.84f, r.Height * 0.08f, pct / 100.0, barColor, centered: false);
@@ -1003,7 +1051,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawVirtualEnergyPower(SKRect r, float pct, TelemetryFrame frame)
     {
-        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f);
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.9f, TextSizing.Fit);
         DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.Left + 8, r.Top + r.Height * 0.62f, r.Height * 0.38f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
         var deploy = frame.Energy.DeployPower;
         DrawTextLine(deploy > 0 ? $"DEP {DashFormat.Int(deploy)} kW" : "DEP -- kW", r.Right - 8, r.Top + r.Height * 0.42f, r.Height * 0.15f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.55f);
@@ -1020,13 +1068,13 @@ public sealed class DashPainter : IDisposable
 
         if (r.Height < 150 && r.Width < 200)
         {
-            DrawTextLine("V-ENERGY", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.4f);
+            DrawTextLine("V-ENERGY", r.Left + 8, r.Top + r.Height * 0.20f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.4f, TextSizing.Fit);
             DrawTextLine(perLapText, r.Right - 8, r.Top + r.Height * 0.20f, r.Height * 0.11f, DashFonts.Label, _palette.Secondary, Align.End, r.Width * 0.55f);
             DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.MidX, r.Top + r.Height * 0.63f, r.Height * 0.34f, DashFonts.Value, _palette.Neutral, Align.Center, r.Width * 0.9f);
             return;
         }
 
-        DrawTextLine("VIRTUAL ENERGY", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width);
+        DrawTextLine("VIRTUAL ENERGY", r.Left + 10, r.Top + r.Height * 0.16f, r.Height * 0.12f, DashFonts.Label, _palette.Muted, Align.Start, r.Width, TextSizing.Fit);
         DrawTextLine(pct > 0 ? $"{pct:0}%" : "--", r.Left + 10, r.Top + r.Height * 0.52f, r.Height * 0.34f, DashFonts.Value, _palette.Neutral, Align.Start, r.Width * 0.6f);
         DrawTextLine(perLapText, r.Right - 10, r.Top + r.Height * 0.30f, r.Height * 0.18f, DashFonts.Value, _palette.Secondary, Align.End, r.Width * 0.55f);
         DrawTextLine(laps, r.Right - 10, r.Top + r.Height * 0.78f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.End, r.Width * 0.55f);
@@ -1047,7 +1095,8 @@ public sealed class DashPainter : IDisposable
                 DashFonts.ValueRegular,
                 color,
                 Align.Center,
-                r.Width * 0.88f);
+                r.Width * 0.88f,
+                TextSizing.Fit);
             return;
         }
 
@@ -1061,12 +1110,13 @@ public sealed class DashPainter : IDisposable
             DashFonts.ValueRegular,
             color,
             Align.Center,
-            r.Width * 0.6f);
+            r.Width * 0.6f,
+            TextSizing.Fit);
     }
 
     private void DrawTc(SKRect r, TelemetryFrame frame)
     {
-        DrawTextLine("TC1", r.Left + 6, r.Top + r.Height * 0.2f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.6f);
+        DrawTextLine("TC1", r.Left + 6, r.Top + r.Height * 0.2f, r.Height * 0.16f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.6f, TextSizing.Fit);
         var color = frame.Electronics.TractionControlActive ? _palette.AssistActive : _palette.Neutral;
         DrawTextLine(frame.Electronics.TractionControl.ToString(), r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.5f, DashFonts.Value, color, Align.Center, r.Width * 0.9f);
     }
@@ -1078,7 +1128,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawSimpleValue(SKRect r, string label, string value)
     {
-        DrawTextLine(label, r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.8f);
+        DrawTextLine(label, r.Left + 8, r.Top + r.Height * 0.2f, r.Height * 0.14f, DashFonts.Label, _palette.Muted, Align.Start, r.Width * 0.8f, TextSizing.Fit);
         DrawTextLine(value, r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.42f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.92f);
     }
 
@@ -1100,7 +1150,7 @@ public sealed class DashPainter : IDisposable
 
     private void DrawUnknown(DashWidget widget, SKRect r)
     {
-        DrawTextLine(widget.Type.ToUpperInvariant(), r.MidX, r.MidY, r.Height * 0.2f, DashFonts.Label, _palette.Muted, Align.Center, r.Width * 0.9f);
+        DrawTextLine(widget.Type.ToUpperInvariant(), r.MidX, r.MidY, r.Height * 0.2f, DashFonts.Label, _palette.Muted, Align.Center, r.Width * 0.9f, TextSizing.Fit);
     }
 
     // ---- Overlays ----
@@ -1121,7 +1171,7 @@ public sealed class DashPainter : IDisposable
         var barH = Math.Max(20, Height * 0.06f);
         _canvas.DrawRect(0, Height - barH, Width, barH, Paint(color));
 
-        DrawTextLine(text, Width / 2f, Height - barH / 2f, barH * 0.6f, DashFonts.LabelBold, _palette.Background, Align.Center, Width);
+        DrawTextLine(text, Width / 2f, Height - barH / 2f, barH * 0.6f, DashFonts.LabelBold, _palette.Background, Align.Center, Width, TextSizing.Fit);
     }
 
     private void DrawAlertOverlay(DashAlertBanner banner)
@@ -1155,7 +1205,7 @@ public sealed class DashPainter : IDisposable
 
         var titleY = panel.Top + panel.Height * 0.25f;
         var valueY = panel.Top + panel.Height * 0.64f;
-        DrawTextLine(banner.Title, panel.MidX, titleY, panel.Height * 0.13f, DashFonts.LabelBold, titleColor, Align.Center, panel.Width * 0.86f);
+        DrawTextLine(banner.Title, panel.MidX, titleY, panel.Height * 0.13f, DashFonts.LabelBold, titleColor, Align.Center, panel.Width * 0.86f, TextSizing.Fit);
         DrawTextLine(banner.Value, panel.MidX, valueY, panel.Height * 0.52f, DashFonts.Value, valueColor, Align.Center, panel.Width * 0.84f);
     }
 

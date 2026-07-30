@@ -40,6 +40,7 @@ public sealed class MainWindow : Window
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
     private readonly DeviceScreenService _screens;
+    private readonly IHardwareInputSource _hardwareInput;
     private readonly ILog _log;
     private readonly LiveLogStore _liveLog;
     private readonly DiagnosticsPaths? _diagnosticsPaths;
@@ -88,6 +89,8 @@ public sealed class MainWindow : Window
     private bool _deviceBindingPickerOpen;
     private CaptureRegionWindow? _captureRegionWindow;
     internal CaptureRegionWindow? ActiveCaptureRegionWindow => _captureRegionWindow;
+
+    internal string? ActiveDashPageFor(string deviceId) => _screens.ActiveDashPageFor(deviceId);
     // Device detail live preview: a persistent painter renders the assigned dash
     // upright at the panel's native size into an in-place WriteableBitmap, animated
     // from the shell's ~30Hz tick without rebuilding the body. Torn down whenever
@@ -121,6 +124,15 @@ public sealed class MainWindow : Window
     {
     }
 
+    internal MainWindow(
+        IDesktopRuntime runtime,
+        ShellState shell,
+        ITelemetrySource telemetrySource,
+        IHardwareInputSource hardwareInput)
+        : this(runtime, shell, telemetrySource, null, null, null, null, hardwareInput)
+    {
+    }
+
     public MainWindow(
         IDesktopRuntime runtime,
         ShellState shell,
@@ -149,7 +161,8 @@ public sealed class MainWindow : Window
         ILog? log,
         LiveLogStore? liveLog,
         Func<string, IScreenDriver>? screenDriverFactory,
-        DiagnosticsPaths? diagnosticsPaths)
+        DiagnosticsPaths? diagnosticsPaths,
+        IHardwareInputSource? hardwareInput = null)
     {
         _runtime = runtime;
         _shell = shell;
@@ -158,6 +171,7 @@ public sealed class MainWindow : Window
         _updateChecks = new UpdateCheckSession(ct =>
             new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
         _diagnosticsPaths = diagnosticsPaths;
+        _hardwareInput = hardwareInput ?? NullHardwareInputSource.Instance;
 #if DEBUG
         _developmentGameState = new DevelopmentGameState(_log);
 #endif
@@ -188,13 +202,12 @@ public sealed class MainWindow : Window
         _screens.Sync();
 
         // WS8: the UI-independent command bus. Handlers are wired here (the shell owns
-        // the effects); input devices / the bindings UI dispatch by id. The on-wheel
-        // page-cycle effect on live hardware pages is a follow-up, so page commands
-        // dispatch cleanly today without a visible screen effect yet.
+        // the effects); input devices / the bindings UI dispatch by id.
         SprintCommands.RegisterDefaults(_commands);
-        _commands.Handle(SprintCommands.DashPageNext, _ => { });
-        _commands.Handle(SprintCommands.DashPagePrev, _ => { });
-        _commands.Handle(SprintCommands.DashTargetSet, _ => { });
+        _commands.Handle(SprintCommands.DashPageNext, payload => CycleDashPage(payload, 1));
+        _commands.Handle(SprintCommands.DashPagePrev, payload => CycleDashPage(payload, -1));
+        _commands.Handle(SprintCommands.DashTargetSet, _ => _engine.RequestManualReference());
+        _hardwareInput.InputPressed += OnHardwareInputPressed;
         _shellCommands = CreateShellCommands();
         KeyDown += OnGlobalKeyDown;
 
@@ -872,7 +885,9 @@ public sealed class MainWindow : Window
         _diagnosticsWindow?.Close();
         _diagnosticsWindow = null;
 #endif
-        _log.Info("Main window closed; stopping screen and telemetry services.");
+        _log.Info("Main window closed; stopping input, screen, and telemetry services.");
+        _hardwareInput.InputPressed -= OnHardwareInputPressed;
+        _hardwareInput.Dispose();
         // Stop + release all hardware screen publishers before tearing down telemetry.
         _screens.Dispose();
         // Disposing the engine cancels + joins the reader thread, then disposes the
@@ -3001,7 +3016,18 @@ public sealed class MainWindow : Window
         var panel = new StackPanel { Spacing = 6 };
         panel.Children.Add(Graphite.TextBlock($"Listening for {CommandLabel(_capture.Command ?? "")}", 13, FontWeight.SemiBold, Graphite.AccentBrush));
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(row, Graphite.TextBlock("Press a key on this device... (Esc to cancel)", 11, FontWeight.Normal, Graphite.Text2Brush), 0, 0);
+        var prompt = _hardwareInput.IsAvailable
+            ? "Press a wheel button, encoder, or keyboard key. Esc cancels."
+            : "Wheel input is unavailable. Press a keyboard key, or Esc to cancel.";
+        AddGrid(
+            row,
+            Graphite.TextBlock(
+                prompt,
+                11,
+                FontWeight.Normal,
+                _hardwareInput.IsAvailable ? Graphite.Text2Brush : Graphite.YellowBrush),
+            0,
+            0);
         AddGrid(row, ActionButton("Cancel", ButtonTone.Neutral, () => ToggleDeviceListen(device.Id, _capture.Command ?? "")), 0, 1);
         panel.Children.Add(row);
         return new Border
@@ -3474,6 +3500,12 @@ public sealed class MainWindow : Window
         {
             Navigate(view);
             e.Handled = true;
+            return;
+        }
+
+        if (DispatchBoundInput(new HardwareInputEvent(0, 0, $"key:{e.Key}")))
+        {
+            e.Handled = true;
         }
     }
 
@@ -3488,16 +3520,61 @@ public sealed class MainWindow : Window
             return;
         }
 
+        CompleteInputCapture($"key:{e.Key}");
+        e.Handled = true;
+    }
+
+    private void OnHardwareInputPressed(object? sender, HardwareInputEvent input)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => HandleHardwareInput(input));
+            return;
+        }
+
+        HandleHardwareInput(input);
+    }
+
+    private void HandleHardwareInput(HardwareInputEvent input)
+    {
+        if (_capture.IsListening)
+        {
+            CompleteInputCapture(input.Input);
+            return;
+        }
+
+        DispatchBoundInput(input);
+    }
+
+    private bool DispatchBoundInput(HardwareInputEvent input) =>
+        HardwareBindingResolver.Resolve(input, _runtime.Devices, _runtime.Controls.Bindings) is { } binding
+        && _commands.Dispatch(binding.Command, binding.DeviceId);
+
+    private void CycleDashPage(object? payload, int offset)
+    {
+        if (payload is string deviceId && !string.IsNullOrWhiteSpace(deviceId))
+        {
+            _screens.CycleDashPage(deviceId, offset);
+            return;
+        }
+
+        foreach (var activeDeviceId in _screens.ActiveDeviceIds)
+        {
+            _screens.CycleDashPage(activeDeviceId, offset);
+        }
+    }
+
+    private void CompleteInputCapture(string input)
+    {
         if (_captureDeviceId is not null && !_runtime.Devices.Any(device => device.Id == _captureDeviceId))
         {
             _capture = InputCaptureReducer.Cancel(_capture);
             _captureDeviceId = null;
             RenderBody();
-            e.Handled = true;
             return;
         }
 
-        _capture = InputCaptureReducer.Capture(_capture, $"key:{e.Key}");
+        _capture = InputCaptureReducer.Capture(_capture, input);
         if (InputCaptureReducer.ToBinding(_capture) is { } binding)
         {
             if (_captureDeviceId is not null && _runtime.Devices.FirstOrDefault(device => device.Id == _captureDeviceId) is { } device)
@@ -3517,7 +3594,6 @@ public sealed class MainWindow : Window
         _capture = InputCaptureState.Idle;
         _captureDeviceId = null;
         RenderBody();
-        e.Handled = true;
     }
 
     private static bool TryProductionShortcutView(Key key, out AppView view)

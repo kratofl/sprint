@@ -164,6 +164,18 @@ internal static class AgentUiReviewHarness
                         "Screen performance",
                         "Screen output FPS",
                         runtime.Devices[0].Name));
+                    Click(window, "Add binding");
+                    Click(window, "Listen");
+                    ScrollToEnd(window);
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-binding-listening",
+                        "Command bindings",
+                        "Listening for Next dash page",
+                        "Wheel input is unavailable. Press a keyboard key, or Esc to cancel.",
+                        "Cancel"));
+                    Click(window, "Cancel");
                     window.Width = 1120;
                     window.Height = 720;
                     frames.Add(Capture(
@@ -660,6 +672,16 @@ internal static class AgentUiReviewHarness
     private static void Click(MainWindow window, string label)
     {
         Click((Window)window, label);
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void ScrollToEnd(Window window)
+    {
+        var scroller = window.GetVisualDescendants()
+            .OfType<ScrollViewer>()
+            .OrderByDescending(candidate => candidate.Bounds.Width * candidate.Bounds.Height)
+            .First();
+        scroller.Offset = new Vector(scroller.Offset.X, scroller.Extent.Height);
         using var frame = window.CaptureRenderedFrame();
     }
 

@@ -169,6 +169,47 @@ public sealed class TelemetryEngineTests
     }
 
     [Fact]
+    public void Manual_reference_request_is_applied_on_the_reader_thread()
+    {
+        var script = new List<TelemetryFrame>();
+        for (var i = 1; i <= 20; i++)
+        {
+            var position = (double)i / 21;
+            script.Add(LapFrame(position, position * 100, lap: 1));
+        }
+
+        script.Add(LapFrame(0.001, 0, lap: 2, lastLap: 100));
+        for (var i = 1; i <= 20; i++)
+        {
+            var position = (double)i / 21;
+            script.Add(LapFrame(position, position * 90, lap: 2));
+        }
+
+        script.Add(LapFrame(0.001, 0, lap: 3, lastLap: 90));
+
+        var source = new ScriptedTelemetrySource
+        {
+            ReadFrame = n => n <= script.Count ? script[n - 1] : null,
+        };
+        using var engine = new TelemetryEngine(source);
+        engine.Step(T0);
+        for (var index = 0; index < 21; index++)
+        {
+            engine.Step(T0.AddMilliseconds(20 * (index + 1)));
+        }
+
+        Assert.Equal(100, engine.Snapshot.Frame.Lap.TargetLapTime, precision: 3);
+        engine.RequestManualReference();
+
+        for (var index = 21; index < script.Count; index++)
+        {
+            engine.Step(T0.AddMilliseconds(20 * (index + 1)));
+        }
+
+        Assert.Equal(100, engine.Snapshot.Frame.Lap.TargetLapTime, precision: 3);
+    }
+
+    [Fact]
     public void Start_is_idempotent_and_dispose_is_safe_in_every_order()
     {
         // Dispose before Start: nothing to join, must not throw, source still released.

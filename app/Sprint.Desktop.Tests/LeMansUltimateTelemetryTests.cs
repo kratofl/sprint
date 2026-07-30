@@ -105,6 +105,34 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_exposes_driver_inputs_instead_of_filtered_vehicle_controls()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteBool(buffer, LmuBinary.ScoringStart + 114, true);
+        buffer[LmuBinary.PlayerIndexOffset] = 0;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        var telemetry = LmuBinary.TelemetryInfoBase;
+        WriteDouble(buffer, telemetry + 388, 0.9);
+        WriteDouble(buffer, telemetry + 396, 0.4);
+        WriteDouble(buffer, telemetry + 404, -0.3);
+        WriteDouble(buffer, telemetry + 412, 0.2);
+        WriteDouble(buffer, telemetry + 420, 0.55);
+        WriteDouble(buffer, telemetry + 428, 0.15);
+        WriteDouble(buffer, telemetry + 436, -0.1);
+        WriteDouble(buffer, telemetry + 444, 0.05);
+
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(0.9f, frame.Car.Throttle);
+        Assert.Equal(0.4f, frame.Car.Brake);
+        Assert.Equal(-0.3f, frame.Car.Steering);
+        Assert.Equal(0.2f, frame.Car.Clutch);
+    }
+
+    [Fact]
     public void Lmu_source_dispose_is_terminal()
     {
         using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
@@ -173,6 +201,10 @@ public sealed class LeMansUltimateTelemetryTests
         WriteDouble(buffer, telemetry + 200, 6.0);
         WriteInt32(buffer, telemetry + 352, 5);
         WriteDouble(buffer, telemetry + 356, 6500.0);
+        WriteDouble(buffer, telemetry + 388, 0.9);
+        WriteDouble(buffer, telemetry + 396, 0.4);
+        WriteDouble(buffer, telemetry + 404, -0.3);
+        WriteDouble(buffer, telemetry + 412, 0.2);
         WriteDouble(buffer, telemetry + 524, 42.5);
         WriteDouble(buffer, telemetry + 532, 8000.0);
         WriteInt32(buffer, telemetry + 600, 1);
@@ -229,6 +261,10 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(4.0, parsed.Telemetry.LocalVelocity.X);
         Assert.Equal(5, parsed.Telemetry.Gear);
         Assert.Equal(6500.0, parsed.Telemetry.EngineRpm);
+        Assert.Equal(0.9, parsed.Telemetry.UnfilteredThrottle);
+        Assert.Equal(0.4, parsed.Telemetry.UnfilteredBrake);
+        Assert.Equal(-0.3, parsed.Telemetry.UnfilteredSteering);
+        Assert.Equal(0.2, parsed.Telemetry.UnfilteredClutch);
         Assert.Equal(42.5, parsed.Telemetry.FuelLiters);
         Assert.Equal(4, parsed.Scoring!.Place);
         Assert.Equal(7004.0, parsed.Scoring.LapDistance);
@@ -298,6 +334,10 @@ public sealed class LeMansUltimateTelemetryTests
                 Gear = 5,
                 EngineRpm = 6500,
                 EngineMaxRpm = 8000,
+                UnfilteredThrottle = 0.9,
+                UnfilteredBrake = 0.4,
+                UnfilteredClutch = 0.2,
+                UnfilteredSteering = -0.3,
                 FilteredThrottle = 0.75,
                 FilteredBrake = 0.25,
                 FilteredClutch = 0.1,
@@ -352,6 +392,10 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(5.0f, frame.Car.SpeedMetersPerSecond);
         Assert.Equal(5, frame.Car.Gear);
         Assert.Equal(6500, frame.Car.Rpm);
+        Assert.Equal(0.9f, frame.Car.Throttle);
+        Assert.Equal(0.4f, frame.Car.Brake);
+        Assert.Equal(0.2f, frame.Car.Clutch);
+        Assert.Equal(-0.3f, frame.Car.Steering);
         Assert.Equal(42.5f, frame.Car.FuelLiters);
         Assert.Equal(7, frame.Lap.CurrentLap);
         Assert.Equal(12.5, frame.Lap.CurrentLapTime);

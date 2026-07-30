@@ -9,6 +9,56 @@ using SkiaSharp;
 namespace Sprint.Desktop.Features.Hardware;
 
 /// <summary>
+/// Thread-safe page selection shared by a device's current and replacement frame
+/// sources. The UI command thread advances it while the screen publisher reads it.
+/// </summary>
+internal sealed class DashPageSelection
+{
+    private readonly object _gate = new();
+    private string? _pageId;
+
+    public string? PageId
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _pageId;
+            }
+        }
+    }
+
+    public string? Move(DashLayout layout, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        lock (_gate)
+        {
+            if (layout.Pages.Count == 0)
+            {
+                _pageId = layout.IdlePage?.Id;
+                return _pageId;
+            }
+
+            var index = layout.Pages.FindIndex(page =>
+                string.Equals(page.Id, _pageId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                index = 0;
+            }
+
+            index = (index + offset) % layout.Pages.Count;
+            if (index < 0)
+            {
+                index += layout.Pages.Count;
+            }
+
+            _pageId = layout.Pages[index].Id;
+            return _pageId;
+        }
+    }
+}
+
+/// <summary>
 /// Bridges the WS6 <see cref="DashPainter"/> onto the WS7 hardware pipeline: it
 /// renders the active dash layout for a frame, converts the BGRA output to the
 /// screen's native RGB565 (rotation → margin → offset), and yields a buffer the
@@ -25,6 +75,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private GCHandle _directPixelsHandle;
     private readonly SKSurface? _directSurface;
     private readonly SKMatrix _directOutputTransform;
+    private readonly DashPageSelection? _pageSelection;
     private DashPalette _palette;
     private readonly DashAlertTracker _alerts = new();
     private DashLayout _layout;
@@ -40,7 +91,8 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         AppSettings settings,
         ScreenConfig config,
         DashPalette? palette,
-        bool preferDirectRgb565)
+        bool preferDirectRgb565,
+        DashPageSelection? pageSelection = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(settings);
@@ -49,6 +101,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         _layout = layout;
         _settings = settings;
         _config = config;
+        _pageSelection = pageSelection;
         Width = config.Width;
         Height = config.Height;
 
@@ -148,6 +201,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
                 _layout,
                 frame,
                 _settings,
+                pageId: _pageSelection?.PageId,
                 idle: _idle,
                 banner: banner,
                 outputTransform: _directOutputTransform);
@@ -161,6 +215,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
                 _layout,
                 frame,
                 _settings,
+                pageId: _pageSelection?.PageId,
                 idle: _idle,
                 banner: banner);
             var bgra = bitmap.GetPixelSpan();

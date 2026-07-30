@@ -29,6 +29,8 @@ public sealed class DeviceScreenService : IDisposable
     private readonly Dictionary<string, ScreenStatus> _inactiveStatuses = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, LatestBgraFrameExchange> _rearViewFrames =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DashPageSelection> _dashPages =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public DeviceScreenService(
@@ -66,6 +68,31 @@ public sealed class DeviceScreenService : IDisposable
 
     public ScreenTestPattern? TestPatternFor(string deviceId) =>
         _publishers.TryGetValue(deviceId, out var publisher) ? publisher.TestPattern : null;
+
+    public string? ActiveDashPageFor(string deviceId) =>
+        _dashPages.TryGetValue(deviceId, out var selection) ? selection.PageId : null;
+
+    public string? CycleDashPage(string deviceId, int offset)
+    {
+        if (_disposed || offset == 0)
+        {
+            return ActiveDashPageFor(deviceId);
+        }
+
+        var device = _runtime.Devices.FirstOrDefault(item =>
+            string.Equals(item.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+        if (device is null
+            || DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
+        {
+            return null;
+        }
+
+        var layout = ResolveLayout(device);
+        var selection = _dashPages.GetOrAdd(device.Id, _ => new DashPageSelection());
+        var pageId = selection.Move(layout, offset);
+        _log.Debug($"Dash page changed: device={device.Id} page={pageId ?? "<none>"}.");
+        return pageId;
+    }
 
     /// <summary>
     /// Creates the low-rate device-detail preview. A fresh hardware capture is
@@ -207,6 +234,7 @@ public sealed class DeviceScreenService : IDisposable
             _publishers.Remove(id);
             _publisherOutputKeys.Remove(id);
             _rearViewFrames.TryRemove(id, out _);
+            _dashPages.TryRemove(id, out _);
         }
 
         foreach (var (id, device) in desired)
@@ -297,6 +325,7 @@ public sealed class DeviceScreenService : IDisposable
             var sizedConfig = config with { Width = width, Height = height };
             if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
             {
+                _dashPages.TryRemove(device.Id, out _);
                 var transform = DeviceOrientations.Transform(
                     width,
                     height,
@@ -322,11 +351,14 @@ public sealed class DeviceScreenService : IDisposable
             }
 
             _rearViewFrames.TryRemove(device.Id, out _);
+            var pageSelection = _dashPages.GetOrAdd(device.Id, _ => new DashPageSelection());
             return new DashPainterFrameSource(
                 layout!,
                 _runtime.Settings,
                 sizedConfig,
-                DashPalette.FromLayout(layout!));
+                DashPalette.FromLayout(layout!),
+                preferDirectRgb565: true,
+                pageSelection: pageSelection);
         }
 
         var source = CreateSource(config.Width, config.Height);
@@ -359,6 +391,7 @@ public sealed class DeviceScreenService : IDisposable
         _publisherOutputKeys.Clear();
         _inactiveStatuses.Clear();
         _rearViewFrames.Clear();
+        _dashPages.Clear();
         if (_ownsDesktopCapturer && _desktopCapturer is IDisposable disposableCapturer)
         {
             disposableCapturer.Dispose();
