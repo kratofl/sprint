@@ -51,6 +51,12 @@ public sealed class DeviceScreenService : IDisposable
             ? publisher.Status
             : _inactiveStatuses.GetValueOrDefault(deviceId);
 
+    /// <summary>Actual render/capture and transport measurements for an active screen.</summary>
+    public ScreenPerformanceSnapshot? PerformanceFor(string deviceId) =>
+        _publishers.TryGetValue(deviceId, out var publisher)
+            ? publisher.Performance
+            : null;
+
     public ScreenTestPattern? TestPatternFor(string deviceId) =>
         _publishers.TryGetValue(deviceId, out var publisher) ? publisher.TestPattern : null;
 

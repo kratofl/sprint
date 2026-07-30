@@ -52,6 +52,7 @@ public sealed class ScreenPublisher : IDisposable
     private bool _hasSentFrame;
     private readonly ILog _log;
     private readonly string _deviceId;
+    private readonly ScreenPerformanceTracker _performance = new();
 
     private Thread? _thread;
     private int _started;
@@ -117,6 +118,12 @@ public sealed class ScreenPublisher : IDisposable
 
     /// <summary>The last unexpected render/transport error, if any (defense-in-depth beyond driver status).</summary>
     public string? LastError => _lastError;
+
+    /// <summary>
+    /// Latest measurements from the real render/capture → transport pipeline.
+    /// The immutable snapshot is safe for the UI thread to read.
+    /// </summary>
+    public ScreenPerformanceSnapshot Performance => _performance.Snapshot;
 
     /// <summary>
     /// The panel size the driver learned after connecting, which can differ from the
@@ -235,6 +242,7 @@ public sealed class ScreenPublisher : IDisposable
     private ScreenStepOutcome SendCurrentFrame()
     {
         EnsureNativeFrameSize();
+        var frameStarted = Stopwatch.GetTimestamp();
         var pattern = TestPattern;
         if (pattern == ScreenTestPattern.Dashboard)
         {
@@ -245,9 +253,11 @@ public sealed class ScreenPublisher : IDisposable
             ScreenTestPatternRenderer.Fill(pattern, _buffer, _source.Width, _source.Height);
         }
 
+        _performance.RecordRendered(frameStarted, Stopwatch.GetTimestamp());
         _lastError = null;
         if (_hasSentFrame && _buffer.AsSpan().SequenceEqual(_lastSentBuffer))
         {
+            _performance.RecordSkipped();
             return ScreenStepOutcome.UnchangedFrame;
         }
 
@@ -255,6 +265,7 @@ public sealed class ScreenPublisher : IDisposable
         {
             _buffer.CopyTo(_lastSentBuffer, 0);
             _hasSentFrame = true;
+            _performance.RecordSent();
             if (!_loggedFirstFrame)
             {
                 _loggedFirstFrame = true;

@@ -150,6 +150,31 @@ public sealed class ScreenPipelineTests
         Assert.Equal(ScreenStepOutcome.UnchangedFrame, publisher.Step());
         Assert.Equal(1, driver.FramesSent);
         Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
+        Assert.Equal(2, publisher.Performance.FramesRendered);
+        Assert.Equal(1, publisher.Performance.FramesSent);
+        Assert.Equal(1, publisher.Performance.FramesSkipped);
+    }
+
+    [Fact]
+    public void PublisherReportsActualScreenRenderFpsAndFrameTime()
+    {
+        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        using var publisher = new ScreenPublisher(
+            driver,
+            new ConstantFrameSource(16, 16),
+            () => new TelemetryFrame());
+
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
+        Thread.Sleep(20);
+        Assert.Equal(ScreenStepOutcome.UnchangedFrame, publisher.Step());
+
+        var performance = publisher.Performance;
+        Assert.True(performance.HasSamples);
+        Assert.Equal(2, performance.FramesRendered);
+        Assert.Equal(1, performance.FramesSent);
+        Assert.Equal(1, performance.FramesSkipped);
+        Assert.True(performance.FramesPerSecond > 0);
+        Assert.True(performance.FrameTime >= TimeSpan.Zero);
     }
 
     [Fact]

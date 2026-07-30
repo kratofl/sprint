@@ -289,8 +289,9 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "devices-detail-rear-view-configured",
                         "Live capture preview",
-                        "FPS",
-                        "Frame time",
+                        "Screen render FPS",
+                        "Render time",
+                        "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
                         "Capture area",
                         "Change area",
                         "Screen alignment"));
@@ -301,8 +302,9 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "devices-detail-rear-view-configured-1120x720",
                         "Live capture preview",
-                        "FPS",
-                        "Frame time",
+                        "Screen render FPS",
+                        "Render time",
+                        "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
                         "Capture area",
                         "Change area",
                         "Screen alignment"));

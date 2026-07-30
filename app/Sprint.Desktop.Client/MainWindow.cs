@@ -100,8 +100,8 @@ public sealed class MainWindow : Window
     private Image? _devicePreviewImage;
     private byte[]? _devicePreviewPixels;
     private RearViewPreviewSession? _rearViewPreviewSession;
-    private TextBlock? _rearViewPreviewFps;
-    private TextBlock? _rearViewPreviewFrameTime;
+    private TextBlock? _rearViewScreenFps;
+    private TextBlock? _rearViewScreenFrameTime;
     private long _rearViewPreviewVersion;
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
@@ -2324,18 +2324,26 @@ public sealed class MainWindow : Window
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
-        _rearViewPreviewFps = Graphite.TextBlock(
+        _rearViewScreenFps = Graphite.TextBlock(
             "—",
             11,
             FontWeight.Medium,
             Graphite.Text2Brush);
-        _rearViewPreviewFps.Tag = "rear-view-preview-fps";
-        _rearViewPreviewFrameTime = Graphite.TextBlock(
+        _rearViewScreenFps.Tag = "rear-view-screen-fps";
+        _rearViewScreenFps.FontFeatures =
+            new FontFeatureCollection { FontFeature.Parse("tnum") };
+        _rearViewScreenFps.MinWidth = 32;
+        _rearViewScreenFps.TextAlignment = TextAlignment.Right;
+        _rearViewScreenFrameTime = Graphite.TextBlock(
             "—",
             11,
             FontWeight.Medium,
             Graphite.Text2Brush);
-        _rearViewPreviewFrameTime.Tag = "rear-view-preview-frame-time";
+        _rearViewScreenFrameTime.Tag = "rear-view-screen-frame-time";
+        _rearViewScreenFrameTime.FontFeatures =
+            new FontFeatureCollection { FontFeature.Parse("tnum") };
+        _rearViewScreenFrameTime.MinWidth = 52;
+        _rearViewScreenFrameTime.TextAlignment = TextAlignment.Right;
         _rearViewPreviewSession = new RearViewPreviewSession(
             region,
             transform.LogicalWidth,
@@ -2353,11 +2361,21 @@ public sealed class MainWindow : Window
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        stats.Children.Add(Graphite.TextBlock("FPS", 11, FontWeight.Medium, Graphite.Text3Brush));
-        stats.Children.Add(_rearViewPreviewFps);
-        stats.Children.Add(Graphite.TextBlock("Frame time", 11, FontWeight.Medium, Graphite.Text3Brush));
-        stats.Children.Add(_rearViewPreviewFrameTime);
+        var fpsLabel = Graphite.TextBlock("Screen render FPS", 11, FontWeight.Medium, Graphite.Text3Brush);
+        ToolTip.SetTip(fpsLabel, "Frames completed by the physical screen's real renderer.");
+        stats.Children.Add(fpsLabel);
+        stats.Children.Add(_rearViewScreenFps);
+        var frameTimeLabel = Graphite.TextBlock("Render time", 11, FontWeight.Medium, Graphite.Text3Brush);
+        ToolTip.SetTip(frameTimeLabel, "Desktop capture and RGB conversion/orientation for the physical screen.");
+        stats.Children.Add(frameTimeLabel);
+        stats.Children.Add(_rearViewScreenFrameTime);
         panel.Children.Add(stats);
+        panel.Children.Add(Graphite.TextBlock(
+            "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
+            10,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap));
         return panel;
     }
 
@@ -2698,6 +2716,7 @@ public sealed class MainWindow : Window
 
     private void RenderRearViewPreviewFrame()
     {
+        UpdateRearViewScreenPerformance();
         if (_rearViewPreviewSession is null
             || _devicePreviewBitmap is null
             || _devicePreviewPixels is null)
@@ -2708,7 +2727,7 @@ public sealed class MainWindow : Window
         if (!_rearViewPreviewSession.TryCopyLatest(
                 _devicePreviewPixels,
                 ref _rearViewPreviewVersion,
-                out var statistics))
+                out _))
         {
             return;
         }
@@ -2719,23 +2738,38 @@ public sealed class MainWindow : Window
             _rearViewPreviewSession.Height,
             _devicePreviewBitmap);
         _devicePreviewImage?.InvalidateVisual();
-        if (_rearViewPreviewFps is not null)
+    }
+
+    private void UpdateRearViewScreenPerformance()
+    {
+        if (_rearViewScreenFps is null || _rearViewScreenFrameTime is null)
         {
-            _rearViewPreviewFps.Text = $"{statistics.FramesPerSecond:0.0}";
+            return;
         }
 
-        if (_rearViewPreviewFrameTime is not null)
+        if (_selectedDeviceId is not { } deviceId)
         {
-            _rearViewPreviewFrameTime.Text = $"{statistics.FrameTime.TotalMilliseconds:0.0} ms";
+            _rearViewScreenFps.Text = "—";
+            _rearViewScreenFrameTime.Text = "—";
+            return;
         }
+
+        var performance = _screens.PerformanceFor(deviceId);
+        var connected = _screens.StatusFor(deviceId)?.IsConnected == true;
+        _rearViewScreenFps.Text = connected && performance is { FramesRendered: >= 2 }
+            ? $"{performance.FramesPerSecond:0.0}"
+            : "—";
+        _rearViewScreenFrameTime.Text = connected && performance is { HasSamples: true }
+            ? $"{performance.FrameTime.TotalMilliseconds:0.0} ms"
+            : "—";
     }
 
     private void DisposeDevicePreview()
     {
         _rearViewPreviewSession?.Dispose();
         _rearViewPreviewSession = null;
-        _rearViewPreviewFps = null;
-        _rearViewPreviewFrameTime = null;
+        _rearViewScreenFps = null;
+        _rearViewScreenFrameTime = null;
         _rearViewPreviewVersion = 0;
         _devicePreviewPainter?.Dispose();
         _devicePreviewPainter = null;

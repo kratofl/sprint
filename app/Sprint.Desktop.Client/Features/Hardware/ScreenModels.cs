@@ -65,6 +65,24 @@ public readonly record struct ScreenNativeSize(int Width, int Height)
     public bool IsValid => Width > 0 && Height > 0;
 }
 
+/// <summary>
+/// Measurements from the physical screen's real frame source. Frame time spans
+/// desktop capture or dash painting plus RGB conversion/orientation; FPS counts
+/// completed renders independently of preview refresh and USB duplicate suppression.
+/// </summary>
+public sealed record ScreenPerformanceSnapshot(
+    double FramesPerSecond,
+    TimeSpan FrameTime,
+    long FramesRendered,
+    long FramesSent,
+    long FramesSkipped)
+{
+    public static ScreenPerformanceSnapshot Empty { get; } =
+        new(0, TimeSpan.Zero, 0, 0, 0);
+
+    public bool HasSamples => FramesRendered > 0;
+}
+
 internal static class ScreenTransferFailure
 {
     public static string DescribeControlTimeout(

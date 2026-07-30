@@ -219,8 +219,11 @@ public sealed class DeviceCatalogUiTests
                 Assert.True(configured.CaptureRegion.X < 0);
                 Assert.Null(window.ActiveCaptureRegionWindow);
                 Assert.NotNull(FindText(window, "Live capture preview"));
-                Assert.NotNull(FindText(window, "FPS"));
-                Assert.NotNull(FindText(window, "Frame time"));
+                Assert.NotNull(FindText(window, "Screen render FPS"));
+                Assert.NotNull(FindText(window, "Render time"));
+                Assert.NotNull(FindText(
+                    window,
+                    "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer."));
                 Assert.NotNull(FindText(window, "Change area"));
 
                 window.Close();
