@@ -1,9 +1,12 @@
+using System.Diagnostics;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Sprint.Desktop.Tests;
 
-public sealed class Rgb565Tests
+public sealed class Rgb565Tests(ITestOutputHelper output)
 {
     [Fact]
     public void FromBgraEncodesRedPixelLittleEndian()
@@ -165,6 +168,192 @@ public sealed class Rgb565Tests
             Assert.True(Math.Abs(decoded[2] - bgra[2]) <= 8, $"R off by {Math.Abs(decoded[2] - bgra[2])}");
             Assert.Equal(0xFF, decoded[3]);
         }
+    }
+
+    [Fact]
+    public void FusedCompositionIsByteEquivalentToTheLegacyPipeline()
+    {
+        var nativeSizes = new[] { (Width: 5, Height: 3), (Width: 3, Height: 5) };
+        var transforms = new[]
+        {
+            (Margin: 0, OffsetX: 0, OffsetY: 0),
+            (Margin: 1, OffsetX: 1, OffsetY: 1),
+            (Margin: 1, OffsetX: 2, OffsetY: 0),
+            (Margin: 1, OffsetX: 0, OffsetY: 2),
+            (Margin: 3, OffsetX: 0, OffsetY: 0),
+            (Margin: 0, OffsetX: 99, OffsetY: 99),
+            (Margin: -1, OffsetX: -2, OffsetY: -3),
+        };
+
+        foreach (var native in nativeSizes)
+        {
+            foreach (var orientation in Enum.GetValues<DeviceOrientation>())
+            {
+                var orientationTransform = DeviceOrientations.Transform(
+                    native.Width,
+                    native.Height,
+                    orientation);
+                var bgra = Pattern(
+                    orientationTransform.LogicalWidth,
+                    orientationTransform.LogicalHeight);
+
+                foreach (var transform in transforms)
+                {
+                    var expected = LegacyCompose(
+                        bgra,
+                        native.Width,
+                        native.Height,
+                        orientationTransform,
+                        transform.Margin,
+                        transform.OffsetX,
+                        transform.OffsetY);
+                    var actual = new byte[expected.Length];
+
+                    Rgb565.ComposeFromBgra(
+                        bgra,
+                        native.Width,
+                        native.Height,
+                        orientationTransform,
+                        transform.Margin,
+                        transform.OffsetX,
+                        transform.OffsetY,
+                        actual);
+
+                    Assert.Equal(expected, actual);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void FusedCompositionIsAllocationFreeAndReportsRepresentativeDiagnostics()
+    {
+        foreach (var size in new[]
+                 {
+                     (Width: 320, Height: 240, Iterations: 20),
+                     (Width: 480, Height: 272, Iterations: 20),
+                     (Width: 800, Height: 480, Iterations: 10),
+                 })
+        {
+            var transform = DeviceOrientations.Transform(
+                size.Width,
+                size.Height,
+                DeviceOrientation.Landscape);
+            var bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
+            var converted = new byte[size.Width * size.Height * 2];
+            var legacy = new byte[converted.Length];
+            var fused = new byte[converted.Length];
+
+            void Legacy()
+            {
+                Rgb565.FromBgra(
+                    bgra,
+                    transform.LogicalWidth,
+                    transform.LogicalHeight,
+                    (int)transform.PixelRotation,
+                    converted);
+                Rgb565.ApplyMargin(converted, legacy, size.Width, size.Height, margin: 5);
+                Rgb565.ApplyOffset(
+                    legacy,
+                    size.Width,
+                    size.Height,
+                    offsetX: 2,
+                    offsetY: 2,
+                    (int)transform.PixelRotation);
+            }
+
+            void Fused() =>
+                Rgb565.ComposeFromBgra(
+                    bgra,
+                    size.Width,
+                    size.Height,
+                    transform,
+                    margin: 5,
+                    offsetX: 2,
+                    offsetY: 2,
+                    fused);
+
+            Legacy();
+            Fused();
+            Assert.Equal(legacy, fused);
+
+            var legacyMeasurement = Measure(Legacy, size.Iterations);
+            var fusedMeasurement = Measure(Fused, size.Iterations);
+
+            Assert.Equal(0, fusedMeasurement.AllocatedBytes);
+            output.WriteLine(
+                $"{size.Width}x{size.Height}: legacy={legacyMeasurement.Elapsed.TotalMilliseconds / size.Iterations:0.000} ms/frame, " +
+                $"fused={fusedMeasurement.Elapsed.TotalMilliseconds / size.Iterations:0.000} ms/frame, " +
+                $"fused-alloc={fusedMeasurement.AllocatedBytes} B");
+        }
+    }
+
+    private static (TimeSpan Elapsed, long AllocatedBytes) Measure(Action action, int iterations)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var iteration = 0; iteration < iterations; iteration++)
+        {
+            action();
+        }
+
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        stopwatch.Stop();
+        return (stopwatch.Elapsed, allocatedBytes);
+    }
+
+    private static byte[] LegacyCompose(
+        byte[] bgra,
+        int nativeWidth,
+        int nativeHeight,
+        DeviceOrientationTransform transform,
+        int margin,
+        int offsetX,
+        int offsetY)
+    {
+        var converted = new byte[nativeWidth * nativeHeight * 2];
+        var destination = new byte[converted.Length];
+        Rgb565.FromBgra(
+            bgra,
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            (int)transform.PixelRotation,
+            converted);
+        if (margin > 0)
+        {
+            Rgb565.ApplyMargin(converted, destination, nativeWidth, nativeHeight, margin);
+        }
+        else
+        {
+            converted.CopyTo(destination, 0);
+        }
+
+        Rgb565.ApplyOffset(
+            destination,
+            nativeWidth,
+            nativeHeight,
+            offsetX,
+            offsetY,
+            (int)transform.PixelRotation);
+        return destination;
+    }
+
+    private static byte[] Pattern(int width, int height)
+    {
+        var bgra = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var offset = (y * width + x) * 4;
+                bgra[offset] = (byte)(x * 31 + y * 7);
+                bgra[offset + 1] = (byte)(x * 13 + y * 29);
+                bgra[offset + 2] = (byte)(x * 47 + y * 11);
+                bgra[offset + 3] = 0xff;
+            }
+        }
+
+        return bgra;
     }
 
     private static int ScaleSourceColumn(int sourceX, int sourceW, int destW) =>

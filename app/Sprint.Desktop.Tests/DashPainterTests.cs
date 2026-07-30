@@ -610,7 +610,8 @@ public sealed class DashPainterTests
                 layout,
                 runtime.Settings,
                 new ScreenConfig { Width = 320, Height = 192, Orientation = DeviceOrientation.Landscape, Margin = 0, OffsetX = 0, OffsetY = 0 },
-                palette);
+                palette,
+                preferDirectRgb565: false);
             var actualRgb565 = new byte[320 * 192 * 2];
             source.Render(frame, actualRgb565);
 

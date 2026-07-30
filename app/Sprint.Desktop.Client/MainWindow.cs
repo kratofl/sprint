@@ -100,8 +100,11 @@ public sealed class MainWindow : Window
     private Image? _devicePreviewImage;
     private byte[]? _devicePreviewPixels;
     private RearViewPreviewSession? _rearViewPreviewSession;
-    private TextBlock? _rearViewScreenFps;
-    private TextBlock? _rearViewScreenFrameTime;
+    private TextBlock? _screenPerformanceFps;
+    private TextBlock? _screenPerformanceSourceTime;
+    private TextBlock? _screenPerformancePixelTime;
+    private TextBlock? _screenPerformanceUsbTime;
+    private TextBlock? _screenPerformanceTotalTime;
     private long _rearViewPreviewVersion;
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
@@ -759,6 +762,11 @@ public sealed class MainWindow : Window
         // is watching the live preview of the assigned dash. The shell ticks at ~30Hz;
         // the preview is paced to the device's own refresh rate so what the user tunes
         // against matches what the panel receives (issue #75).
+        if (_shell.View == AppView.Devices)
+        {
+            UpdateScreenPerformance();
+        }
+
         if (_shell.View == AppView.Devices && _rearViewPreviewSession is not null)
         {
             RenderRearViewPreviewFrame();
@@ -2231,6 +2239,7 @@ public sealed class MainWindow : Window
                 left.Children.Add(RearViewCapturePreview(device));
             }
 
+            left.Children.Add(ScreenPerformanceMetrics());
             left.Children.Add(CaptureAreaField(device));
         }
         else
@@ -2245,6 +2254,8 @@ public sealed class MainWindow : Window
             {
                 left.Children.Add(PreviewControlsRow());
             }
+
+            left.Children.Add(ScreenPerformanceMetrics());
         }
 
         AddGrid(grid, left, 0, 0);
@@ -2324,52 +2335,17 @@ public sealed class MainWindow : Window
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
-        _rearViewScreenFps = Graphite.TextBlock(
-            "—",
-            11,
-            FontWeight.Medium,
-            Graphite.Text2Brush);
-        _rearViewScreenFps.Tag = "rear-view-screen-fps";
-        _rearViewScreenFps.FontFeatures =
-            new FontFeatureCollection { FontFeature.Parse("tnum") };
-        _rearViewScreenFps.MinWidth = 32;
-        _rearViewScreenFps.TextAlignment = TextAlignment.Right;
-        _rearViewScreenFrameTime = Graphite.TextBlock(
-            "—",
-            11,
-            FontWeight.Medium,
-            Graphite.Text2Brush);
-        _rearViewScreenFrameTime.Tag = "rear-view-screen-frame-time";
-        _rearViewScreenFrameTime.FontFeatures =
-            new FontFeatureCollection { FontFeature.Parse("tnum") };
-        _rearViewScreenFrameTime.MinWidth = 52;
-        _rearViewScreenFrameTime.TextAlignment = TextAlignment.Right;
-        _rearViewPreviewSession = new RearViewPreviewSession(
+        _rearViewPreviewSession = _screens.CreateRearViewPreviewSession(
+            device.Id,
             region,
             transform.LogicalWidth,
             transform.LogicalHeight,
-            new WindowsDesktopRegionCapturer(),
             targetFps: Math.Min(15, DeviceRefreshRates.Normalize(device.RefreshHz)));
         _rearViewPreviewSession.Start();
 
         var panel = new StackPanel { Spacing = 8, Width = 388 };
         panel.Children.Add(Graphite.SectionLabel("Live capture preview"));
         panel.Children.Add(DeviceMirrorDisplay(device, _devicePreviewImage, 380, 240));
-        var stats = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var fpsLabel = Graphite.TextBlock("Screen render FPS", 11, FontWeight.Medium, Graphite.Text3Brush);
-        ToolTip.SetTip(fpsLabel, "Frames completed by the physical screen's real renderer.");
-        stats.Children.Add(fpsLabel);
-        stats.Children.Add(_rearViewScreenFps);
-        var frameTimeLabel = Graphite.TextBlock("Render time", 11, FontWeight.Medium, Graphite.Text3Brush);
-        ToolTip.SetTip(frameTimeLabel, "Desktop capture and RGB conversion/orientation for the physical screen.");
-        stats.Children.Add(frameTimeLabel);
-        stats.Children.Add(_rearViewScreenFrameTime);
-        panel.Children.Add(stats);
         panel.Children.Add(Graphite.TextBlock(
             "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
             10,
@@ -2377,6 +2353,94 @@ public sealed class MainWindow : Window
             Graphite.Text3Brush,
             TextWrapping.Wrap));
         return panel;
+    }
+
+    private Control ScreenPerformanceMetrics()
+    {
+        _screenPerformanceFps = ScreenMetricValue("screen-performance-fps", minimumWidth: 32);
+        _screenPerformanceSourceTime = ScreenMetricValue("screen-performance-source-time");
+        _screenPerformancePixelTime = ScreenMetricValue("screen-performance-pixel-time");
+        _screenPerformanceUsbTime = ScreenMetricValue("screen-performance-usb-time");
+        _screenPerformanceTotalTime = ScreenMetricValue("screen-performance-total-time");
+
+        var metrics = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnSpacing = 10,
+            RowSpacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AddScreenMetric(metrics, ScreenMetric(
+            "Screen output FPS",
+            "Frames successfully delivered to the physical screen over USB.",
+            _screenPerformanceFps), row: 0, column: 0);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Source",
+            "Desktop capture or dash painting for the physical screen.",
+            _screenPerformanceSourceTime), row: 0, column: 1);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Pixel transform",
+            "RGB565 conversion, orientation, margin, offset, or native-buffer copy.",
+            _screenPerformancePixelTime), row: 1, column: 0);
+        AddScreenMetric(metrics, ScreenMetric(
+            "USB transfer",
+            "Time spent delivering the completed native frame to the screen.",
+            _screenPerformanceUsbTime), row: 1, column: 1);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Total",
+            "Source, pixel transform, and USB time for the last delivered frame.",
+            _screenPerformanceTotalTime), row: 2, column: 0);
+        return new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                Graphite.SectionLabel("Screen performance"),
+                metrics,
+            },
+        };
+    }
+
+    private static TextBlock ScreenMetricValue(string tag, double minimumWidth = 52)
+    {
+        var value = Graphite.TextBlock(
+            "—",
+            11,
+            FontWeight.Medium,
+            Graphite.Text2Brush);
+        value.Tag = tag;
+        value.FontFeatures =
+            new FontFeatureCollection { FontFeature.Parse("tnum") };
+        value.MinWidth = minimumWidth;
+        value.TextAlignment = TextAlignment.Right;
+        return value;
+    }
+
+    private static Control ScreenMetric(string label, string tooltip, TextBlock value)
+    {
+        var metric = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var labelText = Graphite.TextBlock(
+            label,
+            11,
+            FontWeight.Medium,
+            Graphite.Text3Brush);
+        ToolTip.SetTip(labelText, tooltip);
+        metric.Children.Add(labelText);
+        metric.Children.Add(value);
+        return metric;
+    }
+
+    private static void AddScreenMetric(Grid metrics, Control metric, int row, int column)
+    {
+        Grid.SetRow(metric, row);
+        Grid.SetColumn(metric, column);
+        metrics.Children.Add(metric);
     }
 
     private void ShowCaptureRegionSelector(SavedDevice device)
@@ -2716,7 +2780,6 @@ public sealed class MainWindow : Window
 
     private void RenderRearViewPreviewFrame()
     {
-        UpdateRearViewScreenPerformance();
         if (_rearViewPreviewSession is null
             || _devicePreviewBitmap is null
             || _devicePreviewPixels is null)
@@ -2740,36 +2803,51 @@ public sealed class MainWindow : Window
         _devicePreviewImage?.InvalidateVisual();
     }
 
-    private void UpdateRearViewScreenPerformance()
+    private void UpdateScreenPerformance()
     {
-        if (_rearViewScreenFps is null || _rearViewScreenFrameTime is null)
+        if (_screenPerformanceFps is null
+            || _screenPerformanceSourceTime is null
+            || _screenPerformancePixelTime is null
+            || _screenPerformanceUsbTime is null
+            || _screenPerformanceTotalTime is null)
         {
             return;
         }
 
         if (_selectedDeviceId is not { } deviceId)
         {
-            _rearViewScreenFps.Text = "—";
-            _rearViewScreenFrameTime.Text = "—";
+            _screenPerformanceFps.Text = "—";
+            _screenPerformanceSourceTime.Text = "—";
+            _screenPerformancePixelTime.Text = "—";
+            _screenPerformanceUsbTime.Text = "—";
+            _screenPerformanceTotalTime.Text = "—";
             return;
         }
 
         var performance = _screens.PerformanceFor(deviceId);
         var connected = _screens.StatusFor(deviceId)?.IsConnected == true;
-        _rearViewScreenFps.Text = connected && performance is { FramesRendered: >= 2 }
+        var hasSamples = connected && performance is { HasSamples: true };
+        _screenPerformanceFps.Text = connected && performance is { FramesSent: >= 2 }
             ? $"{performance.FramesPerSecond:0.0}"
             : "—";
-        _rearViewScreenFrameTime.Text = connected && performance is { HasSamples: true }
-            ? $"{performance.FrameTime.TotalMilliseconds:0.0} ms"
-            : "—";
+        _screenPerformanceSourceTime.Text = MetricTime(performance?.SourceTime, hasSamples);
+        _screenPerformancePixelTime.Text = MetricTime(performance?.PixelTransformTime, hasSamples);
+        _screenPerformanceUsbTime.Text = MetricTime(performance?.UsbTransferTime, hasSamples);
+        _screenPerformanceTotalTime.Text = MetricTime(performance?.TotalFrameTime, hasSamples);
+
+        static string MetricTime(TimeSpan? time, bool connected) =>
+            connected && time is { } value ? $"{value.TotalMilliseconds:0.0} ms" : "—";
     }
 
     private void DisposeDevicePreview()
     {
         _rearViewPreviewSession?.Dispose();
         _rearViewPreviewSession = null;
-        _rearViewScreenFps = null;
-        _rearViewScreenFrameTime = null;
+        _screenPerformanceFps = null;
+        _screenPerformanceSourceTime = null;
+        _screenPerformancePixelTime = null;
+        _screenPerformanceUsbTime = null;
+        _screenPerformanceTotalTime = null;
         _rearViewPreviewVersion = 0;
         _devicePreviewPainter?.Dispose();
         _devicePreviewPainter = null;

@@ -10,6 +10,7 @@ public sealed class RearViewPreviewSessionTests
     private sealed class IncrementingCapturer : IDesktopRegionCapturer
     {
         private int _frames;
+        public int Frames => Volatile.Read(ref _frames);
 
         public bool TryCapture(
             ScreenCaptureRegion region,
@@ -21,6 +22,37 @@ public sealed class RearViewPreviewSessionTests
             bgra.AsSpan().Fill(value);
             return true;
         }
+    }
+
+    [Fact]
+    public void SessionUsesFreshHardwareFrameWithoutCapturingTheDesktopAgain()
+    {
+        var sharedFrames = new LatestBgraFrameExchange(16, 9);
+        sharedFrames.ProducerBuffer.AsSpan().Fill(0xA5);
+        sharedFrames.Publish();
+        var fallbackCapturer = new IncrementingCapturer();
+        using var session = new RearViewPreviewSession(
+            new ScreenCaptureRegion(0, 0, 160, 90),
+            16,
+            9,
+            fallbackCapturer,
+            targetFps: 30,
+            sharedFrames: sharedFrames,
+            sharedFrameMaxAge: TimeSpan.FromSeconds(1));
+        session.Start();
+
+        var destination = new byte[16 * 9 * 4];
+        var timeout = Stopwatch.StartNew();
+        long version = 0;
+        while (timeout.Elapsed < TimeSpan.FromSeconds(2)
+               && !session.TryCopyLatest(destination, ref version, out _))
+        {
+            Thread.Sleep(10);
+        }
+
+        Assert.True(version > 0);
+        Assert.All(destination, value => Assert.Equal(0xA5, value));
+        Assert.Equal(0, fallbackCapturer.Frames);
     }
 
     [Fact]

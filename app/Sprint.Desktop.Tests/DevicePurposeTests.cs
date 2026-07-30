@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
@@ -23,6 +24,23 @@ public sealed class DevicePurposeTests
             byte[] bgra)
         {
             Array.Fill(bgra, (byte)0xff);
+            return true;
+        }
+    }
+
+    private sealed class CountingCapturer(byte value) : IDesktopRegionCapturer
+    {
+        private int _frames;
+        public int Frames => Volatile.Read(ref _frames);
+
+        public bool TryCapture(
+            ScreenCaptureRegion region,
+            int destinationWidth,
+            int destinationHeight,
+            byte[] bgra)
+        {
+            Interlocked.Increment(ref _frames);
+            Array.Fill(bgra, value);
             return true;
         }
     }
@@ -360,6 +378,61 @@ public sealed class DevicePurposeTests
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
             Assert.Equal(DeviceOrientation.LandscapeInverted, drivers[^1].LastConfig!.Orientation);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ActiveRearViewPublisherFeedsTheDetailPreviewWithoutASecondCapture()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var device = ScreenDevice("mirror", DevicePurposes.RearViewMirror);
+            device.Width = 80;
+            device.Height = 48;
+            device.Orientation = DeviceOrientation.Landscape;
+            device.CaptureRegion = new ScreenCaptureRegion(0, 0, 800, 480);
+            runtime.Devices.Add(device);
+            var hardwareCapturer = new CountingCapturer(0xA5);
+            var fallbackCapturer = new CountingCapturer(0x5A);
+
+            using var service = new DeviceScreenService(
+                runtime,
+                () => new TelemetryFrame(),
+                _ => new FakeScreenDriver(),
+                desktopCapturer: hardwareCapturer,
+                previewCapturerFactory: () => fallbackCapturer);
+            service.Sync();
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => hardwareCapturer.Frames > 0,
+                    TimeSpan.FromSeconds(2)));
+
+            var transform = DeviceOrientations.Transform(
+                device.Width,
+                device.Height,
+                device.Orientation);
+            using var preview = service.CreateRearViewPreviewSession(
+                device.Id,
+                device.CaptureRegion,
+                transform.LogicalWidth,
+                transform.LogicalHeight,
+                targetFps: 15);
+            preview.Start();
+
+            var destination = new byte[transform.LogicalWidth * transform.LogicalHeight * 4];
+            long version = 0;
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => preview.TryCopyLatest(destination, ref version, out _),
+                    TimeSpan.FromSeconds(2)));
+            Assert.All(destination, value => Assert.Equal(0xA5, value));
+            Assert.Equal(0, fallbackCapturer.Frames);
         }
         finally
         {

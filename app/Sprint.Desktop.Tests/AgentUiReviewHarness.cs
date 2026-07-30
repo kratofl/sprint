@@ -161,6 +161,8 @@ internal static class AgentUiReviewHarness
                         "Screen alignment",
                         "This screen is used for",
                         "Show a customizable racing dashboard.",
+                        "Screen performance",
+                        "Screen output FPS",
                         runtime.Devices[0].Name));
                     window.Width = 1120;
                     window.Height = 720;
@@ -170,6 +172,7 @@ internal static class AgentUiReviewHarness
                         "devices-detail-1120x720",
                         "This screen is used for",
                         "Dashboard",
+                        "Screen performance",
                         "Screen alignment"));
                     window.Width = 1440;
                     window.Height = 900;
@@ -197,6 +200,8 @@ internal static class AgentUiReviewHarness
                         "This screen is used for",
                         "Flag display",
                         "Show the active marshalling flag at maximum glanceability.",
+                        "Screen performance",
+                        "Screen output FPS",
                         "Screen alignment",
                         "Yellow flag"));
                     window.Width = 1120;
@@ -207,6 +212,7 @@ internal static class AgentUiReviewHarness
                         "devices-detail-flag-display-1120x720",
                         "This screen is used for",
                         "Flag display",
+                        "Screen performance",
                         "Screen alignment",
                         "Yellow flag"));
                     window.Width = 1440;
@@ -231,6 +237,8 @@ internal static class AgentUiReviewHarness
                         "This screen is used for",
                         "Lap timer",
                         "Show current, last, and best lap times with a live delta.",
+                        "Screen performance",
+                        "Screen output FPS",
                         "Screen alignment",
                         "Mid-lap"));
                     window.Width = 1120;
@@ -241,6 +249,7 @@ internal static class AgentUiReviewHarness
                         "devices-detail-lap-timer-1120x720",
                         "This screen is used for",
                         "Lap timer",
+                        "Screen performance",
                         "Screen alignment",
                         "Mid-lap"));
                     window.Width = 1440;
@@ -259,6 +268,7 @@ internal static class AgentUiReviewHarness
                         "Capture area",
                         "Setup needed",
                         "Select area",
+                        "Screen performance",
                         "Screen alignment"));
                     window.Width = 1120;
                     window.Height = 720;
@@ -270,6 +280,7 @@ internal static class AgentUiReviewHarness
                         "Capture area",
                         "Setup needed",
                         "Select area",
+                        "Screen performance",
                         "Screen alignment"));
                     window.Width = 1440;
                     window.Height = 900;
@@ -289,8 +300,12 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "devices-detail-rear-view-configured",
                         "Live capture preview",
-                        "Screen render FPS",
-                        "Render time",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Source",
+                        "Pixel transform",
+                        "USB transfer",
+                        "Total",
                         "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
                         "Capture area",
                         "Change area",
@@ -302,8 +317,12 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "devices-detail-rear-view-configured-1120x720",
                         "Live capture preview",
-                        "Screen render FPS",
-                        "Render time",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Source",
+                        "Pixel transform",
+                        "USB transfer",
+                        "Total",
                         "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
                         "Capture area",
                         "Change area",

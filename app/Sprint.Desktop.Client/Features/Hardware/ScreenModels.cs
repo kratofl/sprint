@@ -66,21 +66,45 @@ public readonly record struct ScreenNativeSize(int Width, int Height)
 }
 
 /// <summary>
-/// Measurements from the physical screen's real frame source. Frame time spans
-/// desktop capture or dash painting plus RGB conversion/orientation; FPS counts
-/// completed renders independently of preview refresh and USB duplicate suppression.
+/// Timing returned by a physical-screen frame source for one completed render.
+/// Source work is dash painting or desktop capture; pixel transform is the
+/// BGRA-to-native RGB565 composition.
+/// </summary>
+public readonly record struct ScreenFrameTiming(
+    TimeSpan SourceTime,
+    TimeSpan PixelTransformTime)
+{
+    public TimeSpan FrameTime => SourceTime + PixelTransformTime;
+}
+
+/// <summary>
+/// Measurements from the physical screen's real frame pipeline. FPS counts
+/// frames successfully delivered over USB, independently of preview refresh.
 /// </summary>
 public sealed record ScreenPerformanceSnapshot(
     double FramesPerSecond,
+    TimeSpan SourceTime,
+    TimeSpan PixelTransformTime,
     TimeSpan FrameTime,
+    TimeSpan UsbTransferTime,
+    TimeSpan TotalFrameTime,
     long FramesRendered,
     long FramesSent,
     long FramesSkipped)
 {
     public static ScreenPerformanceSnapshot Empty { get; } =
-        new(0, TimeSpan.Zero, 0, 0, 0);
+        new(
+            0,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            TimeSpan.Zero,
+            0,
+            0,
+            0);
 
-    public bool HasSamples => FramesRendered > 0;
+    public bool HasSamples => FramesSent > 0;
 }
 
 internal static class ScreenTransferFailure
@@ -279,6 +303,9 @@ public interface IDashFrameSource : IDisposable
     /// <summary>Native screen height in pixels (post-rotation).</summary>
     int Height { get; }
 
-    /// <summary>Renders <paramref name="frame"/> into <paramref name="rgb565"/> (must be Width*Height*2 bytes).</summary>
-    void Render(TelemetryFrame frame, Span<byte> rgb565);
+    /// <summary>
+    /// Renders <paramref name="frame"/> into <paramref name="rgb565"/> (must be
+    /// Width*Height*2 bytes) and reports the source and pixel-transform stages.
+    /// </summary>
+    ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565);
 }

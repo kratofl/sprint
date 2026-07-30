@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Devices;
 
@@ -28,14 +29,36 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
     private readonly IDesktopRegionCapturer _capturer;
     private readonly int _logicalWidth;
     private readonly int _logicalHeight;
-    private readonly PixelRotation _pixelRotation;
-    private readonly byte[] _bgra;
-    private readonly byte[] _scratch;
+    private readonly DeviceOrientationTransform _transform;
+    private readonly LatestBgraFrameExchange? _sharedFrames;
+    private readonly byte[]? _bgra;
+    private readonly bool _preferNativeRgb565;
+    private BgraToRgb565SurfaceComposer? _firstComposer;
+    private BgraToRgb565SurfaceComposer? _secondComposer;
 
     public DesktopCaptureFrameSource(
         ScreenCaptureRegion region,
         ScreenConfig config,
         IDesktopRegionCapturer capturer)
+        : this(region, config, capturer, sharedFrames: null, preferNativeRgb565: true)
+    {
+    }
+
+    internal DesktopCaptureFrameSource(
+        ScreenCaptureRegion region,
+        ScreenConfig config,
+        IDesktopRegionCapturer capturer,
+        LatestBgraFrameExchange? sharedFrames)
+        : this(region, config, capturer, sharedFrames, preferNativeRgb565: true)
+    {
+    }
+
+    internal DesktopCaptureFrameSource(
+        ScreenCaptureRegion region,
+        ScreenConfig config,
+        IDesktopRegionCapturer capturer,
+        LatestBgraFrameExchange? sharedFrames,
+        bool preferNativeRgb565)
     {
         ArgumentNullException.ThrowIfNull(region);
         ArgumentNullException.ThrowIfNull(config);
@@ -50,22 +73,34 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
         _capturer = capturer;
         Width = config.Width;
         Height = config.Height;
-        var transform = DeviceOrientations.Transform(
+        _transform = DeviceOrientations.Transform(
             Width,
             Height,
             config.Orientation);
-        _logicalWidth = transform.LogicalWidth;
-        _logicalHeight = transform.LogicalHeight;
-        _pixelRotation = transform.PixelRotation;
-        _bgra = new byte[checked(_logicalWidth * _logicalHeight * 4)];
-        _scratch = new byte[checked(Width * Height * 2)];
+        _logicalWidth = _transform.LogicalWidth;
+        _logicalHeight = _transform.LogicalHeight;
+        if (sharedFrames is not null
+            && (sharedFrames.Width != _logicalWidth || sharedFrames.Height != _logicalHeight))
+        {
+            throw new ArgumentException(
+                "Shared capture dimensions must match the frame source's logical size.",
+                nameof(sharedFrames));
+        }
+
+        _sharedFrames = sharedFrames;
+        _preferNativeRgb565 = preferNativeRgb565
+            && Width - config.Margin * 2 > 0
+            && Height - config.Margin * 2 > 0;
+        _bgra = sharedFrames is null
+            ? new byte[checked(_logicalWidth * _logicalHeight * 4)]
+            : null;
     }
 
     public int Width { get; }
 
     public int Height { get; }
 
-    public void Render(TelemetryFrame frame, Span<byte> rgb565)
+    public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (rgb565.Length < Width * Height * 2)
@@ -73,25 +108,76 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
         }
 
-        if (!_capturer.TryCapture(_region, _logicalWidth, _logicalHeight, _bgra))
+        var sourceStarted = Stopwatch.GetTimestamp();
+        var bgra = _sharedFrames?.ProducerBuffer ?? _bgra!;
+        if (!_capturer.TryCapture(_region, _logicalWidth, _logicalHeight, bgra))
         {
             throw new InvalidOperationException("Windows could not capture the selected desktop area.");
         }
 
-        if (_config.Margin > 0)
+        var sourceCompleted = Stopwatch.GetTimestamp();
+        _sharedFrames?.Publish();
+        var transformStarted = sourceCompleted;
+        if (_preferNativeRgb565)
         {
-            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, (int)_pixelRotation, _scratch);
-            Rgb565.ApplyMargin(_scratch, rgb565, Width, Height, _config.Margin);
+            ComposerFor(bgra).Compose(rgb565);
         }
         else
         {
-            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, (int)_pixelRotation, rgb565);
+            Rgb565.ComposeFromBgra(
+                bgra,
+                Width,
+                Height,
+                _transform,
+                _config.Margin,
+                _config.OffsetX,
+                _config.OffsetY,
+                rgb565);
         }
-
-        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, (int)_pixelRotation);
+        var transformCompleted = Stopwatch.GetTimestamp();
+        return new ScreenFrameTiming(
+            Stopwatch.GetElapsedTime(sourceStarted, sourceCompleted),
+            Stopwatch.GetElapsedTime(transformStarted, transformCompleted));
     }
 
     public void Dispose()
     {
+        _secondComposer?.Dispose();
+        _firstComposer?.Dispose();
     }
+
+    private BgraToRgb565SurfaceComposer ComposerFor(byte[] sourcePixels)
+    {
+        if (_firstComposer is null)
+        {
+            return _firstComposer = CreateComposer(sourcePixels);
+        }
+
+        if (_firstComposer.Owns(sourcePixels))
+        {
+            return _firstComposer;
+        }
+
+        if (_secondComposer is null)
+        {
+            return _secondComposer = CreateComposer(sourcePixels);
+        }
+
+        if (_secondComposer.Owns(sourcePixels))
+        {
+            return _secondComposer;
+        }
+
+        throw new InvalidOperationException("Desktop capture rotated through more than two producer buffers.");
+    }
+
+    private BgraToRgb565SurfaceComposer CreateComposer(byte[] sourcePixels) =>
+        new(
+            sourcePixels,
+            Width,
+            Height,
+            _transform,
+            _config.Margin,
+            _config.OffsetX,
+            _config.OffsetY);
 }

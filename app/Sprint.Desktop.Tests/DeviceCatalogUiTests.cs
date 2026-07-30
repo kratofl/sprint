@@ -110,6 +110,7 @@ public sealed class DeviceCatalogUiTests
                 Assert.NotNull(FindText(window, "Show a customizable racing dashboard."));
                 Assert.NotNull(FindText(window, "Screen alignment"));
                 Assert.NotNull(FindTagged<ComboBox>(window, "device-dash"));
+                AssertScreenAnalytics(window);
 
                 var orientation = Field<ComboBox>(window, "device-orientation");
                 Assert.Equal("Portrait", orientation.SelectedItem);
@@ -132,6 +133,7 @@ public sealed class DeviceCatalogUiTests
                 Assert.Null(FindTagged<ComboBox>(window, "device-dash"));
                 Assert.Null(FindText(window, "Flag display is not built yet"));
                 AssertLandscapePreview(window);
+                AssertScreenAnalytics(window);
 
                 var lapTimerPurpose = Field<ComboBox>(window, "device-purpose");
                 lapTimerPurpose.SelectedItem = "Lap timer";
@@ -142,6 +144,7 @@ public sealed class DeviceCatalogUiTests
                     runtime.Devices.Single(device => device.Id == "wheel-screen").Purpose);
                 Assert.NotNull(FindText(window, "Show current, last, and best lap times with a live delta."));
                 AssertLandscapePreview(window);
+                AssertScreenAnalytics(window);
 
                 var mirrorPurpose = Field<ComboBox>(window, "device-purpose");
                 mirrorPurpose.SelectedItem = "Rear-view mirror";
@@ -153,6 +156,7 @@ public sealed class DeviceCatalogUiTests
                 Assert.NotNull(FindText(window, "Screen alignment"));
                 Assert.NotNull(FindText(window, "Setup needed"));
                 Assert.Null(FindTagged<ComboBox>(window, "device-dash"));
+                AssertScreenAnalytics(window);
 
                 Click(window, "Select area");
                 var selector = Assert.IsType<CaptureRegionWindow>(window.ActiveCaptureRegionWindow);
@@ -219,8 +223,11 @@ public sealed class DeviceCatalogUiTests
                 Assert.True(configured.CaptureRegion.X < 0);
                 Assert.Null(window.ActiveCaptureRegionWindow);
                 Assert.NotNull(FindText(window, "Live capture preview"));
-                Assert.NotNull(FindText(window, "Screen render FPS"));
-                Assert.NotNull(FindText(window, "Render time"));
+                Assert.NotNull(FindText(window, "Screen output FPS"));
+                Assert.NotNull(FindText(window, "Source"));
+                Assert.NotNull(FindText(window, "Pixel transform"));
+                Assert.NotNull(FindText(window, "USB transfer"));
+                Assert.NotNull(FindText(window, "Total"));
                 Assert.NotNull(FindText(
                     window,
                     "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer."));
@@ -239,6 +246,16 @@ public sealed class DeviceCatalogUiTests
     {
         Click(window, "Add device");
         Click(window, "Generic");
+    }
+
+    private static void AssertScreenAnalytics(MainWindow window)
+    {
+        Assert.NotNull(FindText(window, "Screen performance"));
+        Assert.NotNull(FindText(window, "Screen output FPS"));
+        Assert.NotNull(FindText(window, "Source"));
+        Assert.NotNull(FindText(window, "Pixel transform"));
+        Assert.NotNull(FindText(window, "USB transfer"));
+        Assert.NotNull(FindText(window, "Total"));
     }
 
     private static T Field<T>(MainWindow window, string tag)

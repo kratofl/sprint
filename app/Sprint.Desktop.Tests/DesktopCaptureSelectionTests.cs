@@ -96,6 +96,30 @@ public sealed class DesktopCaptureSelectionTests
         }
     }
 
+    private sealed class ChangingCapturer : IDesktopRegionCapturer
+    {
+        private byte _red = 0x20;
+
+        public bool TryCapture(
+            ScreenCaptureRegion region,
+            int destinationWidth,
+            int destinationHeight,
+            byte[] bgra)
+        {
+            _red += 0x20;
+            for (var pixel = 0; pixel < destinationWidth * destinationHeight; pixel++)
+            {
+                var offset = pixel * 4;
+                bgra[offset] = 0;
+                bgra[offset + 1] = 0;
+                bgra[offset + 2] = _red;
+                bgra[offset + 3] = 0xff;
+            }
+
+            return true;
+        }
+    }
+
     [Theory]
     [InlineData(DeviceOrientation.Portrait, 0, "Portrait", false)]
     [InlineData(DeviceOrientation.Landscape, 90, "Landscape", true)]
@@ -288,6 +312,88 @@ public sealed class DesktopCaptureSelectionTests
     }
 
     [Fact]
+    public void FrameSourceReportsCaptureAndPixelTransformAsSeparateStages()
+    {
+        var capturer = new RecordingCapturer();
+        var config = new ScreenConfig
+        {
+            Width = 8,
+            Height = 4,
+            Orientation = DeviceOrientation.Landscape,
+        };
+        using var source = new DesktopCaptureFrameSource(
+            new ScreenCaptureRegion(0, 0, 1600, 800),
+            config,
+            capturer);
+
+        var timing = source.Render(
+            new TelemetryFrame(),
+            new byte[config.Width * config.Height * 2]);
+
+        Assert.True(timing.SourceTime >= TimeSpan.Zero);
+        Assert.True(timing.PixelTransformTime >= TimeSpan.Zero);
+        Assert.Equal(timing.SourceTime + timing.PixelTransformTime, timing.FrameTime);
+    }
+
+    [Fact]
+    public void FrameSourceDoesNotAllocatePerCapturedFrame()
+    {
+        var capturer = new RecordingCapturer();
+        var config = new ScreenConfig
+        {
+            Width = 320,
+            Height = 240,
+            Orientation = DeviceOrientation.Landscape,
+        };
+        using var source = new DesktopCaptureFrameSource(
+            new ScreenCaptureRegion(0, 0, 1600, 900),
+            config,
+            capturer);
+        var destination = new byte[config.Width * config.Height * 2];
+        var frame = new TelemetryFrame();
+        source.Render(frame, destination);
+
+        const int frames = 20;
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < frames; index++)
+        {
+            source.Render(frame, destination);
+        }
+
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert.Equal(0, allocatedBytes);
+    }
+
+    [Fact]
+    public void FrameSourcePublishesItsLatestLogicalCaptureForPreviewReuse()
+    {
+        var capturer = new PatternCapturer();
+        var config = new ScreenConfig
+        {
+            Width = 8,
+            Height = 4,
+            Orientation = DeviceOrientation.Landscape,
+        };
+        var exchange = new LatestBgraFrameExchange(8, 4);
+        using var source = new DesktopCaptureFrameSource(
+            new ScreenCaptureRegion(0, 0, 1600, 800),
+            config,
+            capturer,
+            exchange);
+
+        source.Render(
+            new TelemetryFrame(),
+            new byte[config.Width * config.Height * 2]);
+
+        var shared = new byte[8 * 4 * 4];
+        long version = 0;
+        Assert.Equal(
+            LatestFrameReadResult.Copied,
+            exchange.TryCopyLatest(shared, ref version, TimeSpan.FromSeconds(1)));
+        Assert.Equal(capturer.LastFrame, shared);
+    }
+
+    [Fact]
     public void LandscapeCaptureSourceStaysLandscapeWhenDriverReportsLandscapeDimensions()
     {
         var capturer = new RecordingCapturer();
@@ -331,26 +437,126 @@ public sealed class DesktopCaptureSelectionTests
                 Width = testCase.NativeWidth,
                 Height = testCase.NativeHeight,
                 Orientation = testCase.Orientation,
+                Margin = 1,
+                OffsetX = 1,
+                OffsetY = 1,
             };
             using var source = new DesktopCaptureFrameSource(
                 new ScreenCaptureRegion(0, 0, 50, 30),
                 config,
-                capturer);
+                capturer,
+                sharedFrames: null,
+                preferNativeRgb565: false);
             var actual = new byte[config.Width * config.Height * 2];
 
             source.Render(new TelemetryFrame(), actual);
 
             Assert.Equal(testCase.LogicalWidth, capturer.Width);
             Assert.Equal(testCase.LogicalHeight, capturer.Height);
-            var expected = new byte[actual.Length];
+            var converted = new byte[actual.Length];
             Rgb565.FromBgra(
                 capturer.LastFrame,
                 testCase.LogicalWidth,
                 testCase.LogicalHeight,
                 testCase.PixelRotation,
-                expected);
+                converted);
+            var expected = new byte[actual.Length];
+            Rgb565.ApplyMargin(
+                converted,
+                expected,
+                testCase.NativeWidth,
+                testCase.NativeHeight,
+                config.Margin);
+            Rgb565.ApplyOffset(
+                expected,
+                testCase.NativeWidth,
+                testCase.NativeHeight,
+                config.OffsetX,
+                config.OffsetY,
+                testCase.PixelRotation);
             Assert.Equal(expected, actual);
         }
+    }
+
+    [Fact]
+    public void NativeRearViewCompositionStaysCloseToTheFusedReferenceForEveryOrientation()
+    {
+        var cases = new[]
+        {
+            (Width: 120, Height: 200, Orientation: DeviceOrientation.Portrait),
+            (Width: 120, Height: 200, Orientation: DeviceOrientation.Landscape),
+            (Width: 120, Height: 200, Orientation: DeviceOrientation.PortraitInverted),
+            (Width: 120, Height: 200, Orientation: DeviceOrientation.LandscapeInverted),
+            (Width: 200, Height: 120, Orientation: DeviceOrientation.Portrait),
+            (Width: 200, Height: 120, Orientation: DeviceOrientation.Landscape),
+            (Width: 200, Height: 120, Orientation: DeviceOrientation.PortraitInverted),
+            (Width: 200, Height: 120, Orientation: DeviceOrientation.LandscapeInverted),
+        };
+
+        foreach (var testCase in cases)
+        {
+            var config = new ScreenConfig
+            {
+                Width = testCase.Width,
+                Height = testCase.Height,
+                Orientation = testCase.Orientation,
+                Margin = 3,
+                OffsetX = 2,
+                OffsetY = 1,
+            };
+            using var native = new DesktopCaptureFrameSource(
+                new ScreenCaptureRegion(0, 0, 800, 480),
+                config,
+                new PatternCapturer(),
+                sharedFrames: null,
+                preferNativeRgb565: true);
+            using var fallback = new DesktopCaptureFrameSource(
+                new ScreenCaptureRegion(0, 0, 800, 480),
+                config,
+                new PatternCapturer(),
+                sharedFrames: null,
+                preferNativeRgb565: false);
+            var nativePixels = new byte[config.Width * config.Height * 2];
+            var fallbackPixels = new byte[nativePixels.Length];
+
+            native.Render(new TelemetryFrame(), nativePixels);
+            fallback.Render(new TelemetryFrame(), fallbackPixels);
+
+            var error = RgbError(
+                nativePixels,
+                fallbackPixels,
+                config.Width,
+                config.Height,
+                tileSize: 32);
+            Assert.True(
+                error.Mean < 16,
+                $"Whole-frame mean RGB error was {error.Mean:0.00}; expected < 16.");
+            Assert.True(
+                error.MaximumTile < 48,
+                $"Localized 32px-tile RGB error was {error.MaximumTile:0.00}; expected < 48.");
+        }
+    }
+
+    [Fact]
+    public void NativeRearViewCompositionReadsEachNewCapturedFrame()
+    {
+        var config = new ScreenConfig
+        {
+            Width = 80,
+            Height = 48,
+            Orientation = DeviceOrientation.Landscape,
+        };
+        using var source = new DesktopCaptureFrameSource(
+            new ScreenCaptureRegion(0, 0, 800, 480),
+            config,
+            new ChangingCapturer());
+        var first = new byte[config.Width * config.Height * 2];
+        var second = new byte[first.Length];
+
+        source.Render(new TelemetryFrame(), first);
+        source.Render(new TelemetryFrame(), second);
+
+        Assert.NotEqual(first, second);
     }
 
     [Fact]
@@ -374,6 +580,45 @@ public sealed class DesktopCaptureSelectionTests
 
         capturer.Dispose();
         Assert.True(factory.Surfaces[1].Disposed);
+    }
+
+    private static (double Mean, double MaximumTile) RgbError(
+        byte[] left,
+        byte[] right,
+        int width,
+        int height,
+        int tileSize)
+    {
+        var leftBgra = new byte[width * height * 4];
+        var rightBgra = new byte[leftBgra.Length];
+        Rgb565.ToBgra(left, width, height, leftBgra);
+        Rgb565.ToBgra(right, width, height, rightBgra);
+        long total = 0;
+        var maximumTile = 0d;
+        for (var tileY = 0; tileY < height; tileY += tileSize)
+        {
+            for (var tileX = 0; tileX < width; tileX += tileSize)
+            {
+                long tileTotal = 0;
+                var tileSamples = 0;
+                for (var y = tileY; y < Math.Min(height, tileY + tileSize); y++)
+                {
+                    for (var x = tileX; x < Math.Min(width, tileX + tileSize); x++)
+                    {
+                        var offset = (y * width + x) * 4;
+                        tileTotal += Math.Abs(leftBgra[offset] - rightBgra[offset]);
+                        tileTotal += Math.Abs(leftBgra[offset + 1] - rightBgra[offset + 1]);
+                        tileTotal += Math.Abs(leftBgra[offset + 2] - rightBgra[offset + 2]);
+                        tileSamples += 3;
+                    }
+                }
+
+                total += tileTotal;
+                maximumTile = Math.Max(maximumTile, tileTotal / (double)tileSamples);
+            }
+        }
+
+        return (total / (double)(width * height * 3), maximumTile);
     }
 
     private static SavedDevice ScreenDevice(int rotation) => new()

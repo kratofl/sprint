@@ -25,7 +25,7 @@ public sealed class DashPainter : IDisposable
     private DashPalette _basePalette;
     private DashPalette _palette; // active palette for the widget being drawn (base, or a per-widget style override)
     private readonly SKBitmap _bitmap;
-    private readonly SKCanvas _canvas;
+    private SKCanvas _canvas;
     private readonly SKPaint _paint = new() { IsAntialias = true };
     private readonly SKFont _font = new(DashFonts.Value, 12);
     private readonly RaceLogicLapTimerPresenter _raceLogicLapTimer = new();
@@ -80,7 +80,60 @@ public sealed class DashPainter : IDisposable
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(settings);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        RenderCore(layout, frame, settings, pageId, idle, banner);
+        return _bitmap;
+    }
 
+    /// <summary>
+    /// Renders through the same painter into a caller-owned raster surface. Screen
+    /// output uses this to keep its persistent RGB565 surface and transforms local
+    /// to the hardware frame-source module.
+    /// </summary>
+    internal void RenderToSurface(
+        SKSurface surface,
+        DashLayout layout,
+        TelemetryFrame frame,
+        AppSettings settings,
+        string? pageId = null,
+        bool idle = false,
+        DashAlertBanner? banner = null,
+        SKMatrix? outputTransform = null)
+    {
+        ArgumentNullException.ThrowIfNull(surface);
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(settings);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var bitmapCanvas = _canvas;
+        _canvas = surface.Canvas;
+        var saved = _canvas.Save();
+        try
+        {
+            _canvas.Clear(SKColors.Black);
+            if (outputTransform is { } transform)
+            {
+                _canvas.SetMatrix(transform);
+            }
+
+            _canvas.ClipRect(new SKRect(0, 0, Width, Height));
+            RenderCore(layout, frame, settings, pageId, idle, banner);
+        }
+        finally
+        {
+            _canvas.RestoreToCount(saved);
+            _canvas = bitmapCanvas;
+        }
+    }
+
+    private void RenderCore(
+        DashLayout layout,
+        TelemetryFrame frame,
+        AppSettings settings,
+        string? pageId,
+        bool idle,
+        DashAlertBanner? banner)
+    {
         var focusedLapTimer = string.Equals(layout.Id, "purpose-lap-times", StringComparison.Ordinal);
         _canvas.Clear(focusedLapTimer ? SKColors.Black : _palette.Background);
 
@@ -119,7 +172,6 @@ public sealed class DashPainter : IDisposable
         }
 
         _canvas.Flush();
-        return _bitmap;
     }
 
     /// <summary>Renders and encodes to PNG bytes (thumbnails / file output).</summary>

@@ -17,12 +17,15 @@ internal sealed class RearViewPreviewSession : IDisposable
     private readonly object _sync = new();
     private readonly ScreenCaptureRegion _region;
     private readonly IDesktopRegionCapturer _capturer;
+    private readonly LatestBgraFrameExchange? _sharedFrames;
+    private readonly TimeSpan _sharedFrameMaxAge;
     private readonly TimeSpan _frameInterval;
     private readonly CancellationTokenSource _cts = new();
     private byte[] _working;
     private byte[] _published;
     private Thread? _thread;
     private long _version;
+    private long _sharedVersion;
     private int _started;
     private int _disposed;
     private RearViewPreviewStatistics _statistics;
@@ -32,7 +35,9 @@ internal sealed class RearViewPreviewSession : IDisposable
         int width,
         int height,
         IDesktopRegionCapturer capturer,
-        int targetFps = 15)
+        int targetFps = 15,
+        LatestBgraFrameExchange? sharedFrames = null,
+        TimeSpan? sharedFrameMaxAge = null)
     {
         ArgumentNullException.ThrowIfNull(region);
         ArgumentNullException.ThrowIfNull(capturer);
@@ -53,6 +58,21 @@ internal sealed class RearViewPreviewSession : IDisposable
 
         _region = region;
         _capturer = capturer;
+        if (sharedFrames is not null
+            && (sharedFrames.Width != width || sharedFrames.Height != height))
+        {
+            throw new ArgumentException(
+                "Shared capture dimensions must match the preview.",
+                nameof(sharedFrames));
+        }
+
+        _sharedFrames = sharedFrames;
+        _sharedFrameMaxAge = sharedFrameMaxAge ?? TimeSpan.FromMilliseconds(500);
+        if (_sharedFrameMaxAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sharedFrameMaxAge));
+        }
+
         Width = width;
         Height = height;
         _working = new byte[checked(width * height * 4)];
@@ -123,7 +143,16 @@ internal sealed class RearViewPreviewSession : IDisposable
         while (!token.IsCancellationRequested)
         {
             var started = Stopwatch.GetTimestamp();
-            var captured = _capturer.TryCapture(_region, Width, Height, _working);
+            var sharedResult = _sharedFrames?.TryCopyLatest(
+                _working,
+                ref _sharedVersion,
+                _sharedFrameMaxAge) ?? LatestFrameReadResult.Unavailable;
+            var captured = sharedResult == LatestFrameReadResult.Copied;
+            if (sharedResult == LatestFrameReadResult.Unavailable)
+            {
+                captured = _capturer.TryCapture(_region, Width, Height, _working);
+            }
+
             var completed = Stopwatch.GetTimestamp();
             if (captured)
             {

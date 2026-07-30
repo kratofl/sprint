@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
@@ -20,11 +21,14 @@ public sealed class DeviceScreenService : IDisposable
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Func<string, IScreenDriver> _driverFactory;
     private readonly IDesktopRegionCapturer _desktopCapturer;
+    private readonly Func<IDesktopRegionCapturer> _previewCapturerFactory;
     private readonly bool _ownsDesktopCapturer;
     private readonly ILog _log;
     private readonly Dictionary<string, ScreenPublisher> _publishers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _publisherOutputKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ScreenStatus> _inactiveStatuses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, LatestBgraFrameExchange> _rearViewFrames =
+        new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public DeviceScreenService(
@@ -32,7 +36,8 @@ public sealed class DeviceScreenService : IDisposable
         Func<TelemetryFrame> frameProvider,
         Func<string, IScreenDriver>? driverFactory = null,
         ILog? log = null,
-        IDesktopRegionCapturer? desktopCapturer = null)
+        IDesktopRegionCapturer? desktopCapturer = null,
+        Func<IDesktopRegionCapturer>? previewCapturerFactory = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
@@ -40,6 +45,8 @@ public sealed class DeviceScreenService : IDisposable
         _driverFactory = driverFactory ?? (driver => ScreenDriverFactory.Create(driver, _log));
         _ownsDesktopCapturer = desktopCapturer is null;
         _desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
+        _previewCapturerFactory =
+            previewCapturerFactory ?? (() => new WindowsDesktopRegionCapturer());
     }
 
     /// <summary>Device ids with an active publisher (for the UI / tests).</summary>
@@ -59,6 +66,41 @@ public sealed class DeviceScreenService : IDisposable
 
     public ScreenTestPattern? TestPatternFor(string deviceId) =>
         _publishers.TryGetValue(deviceId, out var publisher) ? publisher.TestPattern : null;
+
+    /// <summary>
+    /// Creates the low-rate device-detail preview. A fresh hardware capture is
+    /// reused when the active rear-view publisher has one; otherwise the session
+    /// owns a fallback capturer so disconnected screens still preview honestly.
+    /// </summary>
+    internal RearViewPreviewSession CreateRearViewPreviewSession(
+        string deviceId,
+        ScreenCaptureRegion region,
+        int width,
+        int height,
+        int targetFps)
+    {
+        _rearViewFrames.TryGetValue(deviceId, out var sharedFrames);
+        if (sharedFrames is not null
+            && (sharedFrames.Width != width || sharedFrames.Height != height))
+        {
+            sharedFrames = null;
+        }
+
+        var device = _runtime.Devices.FirstOrDefault(item =>
+            string.Equals(item.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+        var hardwareInterval = DeviceRefreshRates.Interval(
+            device?.RefreshHz ?? DeviceRefreshRates.Default);
+        var sharedFrameMaxAge = TimeSpan.FromMilliseconds(
+            Math.Max(250, hardwareInterval.TotalMilliseconds * 3));
+        return new RearViewPreviewSession(
+            region,
+            width,
+            height,
+            _previewCapturerFactory(),
+            targetFps,
+            sharedFrames,
+            sharedFrameMaxAge);
+    }
 
     /// <summary>
     /// Writes panel sizes learned at connect time back onto the saved devices. A
@@ -164,6 +206,7 @@ public sealed class DeviceScreenService : IDisposable
             _publishers[id].Dispose();
             _publishers.Remove(id);
             _publisherOutputKeys.Remove(id);
+            _rearViewFrames.TryRemove(id, out _);
         }
 
         foreach (var (id, device) in desired)
@@ -184,6 +227,7 @@ public sealed class DeviceScreenService : IDisposable
                 running.Dispose();
                 _publishers.Remove(id);
                 _publisherOutputKeys.Remove(id);
+                _rearViewFrames.TryRemove(id, out _);
             }
 
             _log.Info(
@@ -253,13 +297,31 @@ public sealed class DeviceScreenService : IDisposable
             var sizedConfig = config with { Width = width, Height = height };
             if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
             {
+                var transform = DeviceOrientations.Transform(
+                    width,
+                    height,
+                    sizedConfig.Orientation);
+                var sharedFrames = _rearViewFrames.AddOrUpdate(
+                    device.Id,
+                    _ => new LatestBgraFrameExchange(
+                        transform.LogicalWidth,
+                        transform.LogicalHeight),
+                    (_, current) =>
+                        current.Width == transform.LogicalWidth
+                        && current.Height == transform.LogicalHeight
+                            ? current
+                            : new LatestBgraFrameExchange(
+                                transform.LogicalWidth,
+                                transform.LogicalHeight));
                 return new DesktopCaptureFrameSource(
                     device.CaptureRegion
                     ?? throw new InvalidOperationException("Rear-view mirror capture area is not configured."),
                     sizedConfig,
-                    _desktopCapturer);
+                    _desktopCapturer,
+                    sharedFrames);
             }
 
+            _rearViewFrames.TryRemove(device.Id, out _);
             return new DashPainterFrameSource(
                 layout!,
                 _runtime.Settings,
@@ -296,6 +358,7 @@ public sealed class DeviceScreenService : IDisposable
         _publishers.Clear();
         _publisherOutputKeys.Clear();
         _inactiveStatuses.Clear();
+        _rearViewFrames.Clear();
         if (_ownsDesktopCapturer && _desktopCapturer is IDisposable disposableCapturer)
         {
             disposableCapturer.Dispose();
