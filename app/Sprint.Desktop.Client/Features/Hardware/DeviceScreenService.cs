@@ -20,6 +20,7 @@ public sealed class DeviceScreenService : IDisposable
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Func<string, IScreenDriver> _driverFactory;
     private readonly IDesktopRegionCapturer _desktopCapturer;
+    private readonly bool _ownsDesktopCapturer;
     private readonly ILog _log;
     private readonly Dictionary<string, ScreenPublisher> _publishers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _publisherOutputKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -37,6 +38,7 @@ public sealed class DeviceScreenService : IDisposable
         _frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
         _log = log ?? NullLog.Instance;
         _driverFactory = driverFactory ?? (driver => ScreenDriverFactory.Create(driver, _log));
+        _ownsDesktopCapturer = desktopCapturer is null;
         _desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
     }
 
@@ -288,6 +290,10 @@ public sealed class DeviceScreenService : IDisposable
         _publishers.Clear();
         _publisherOutputKeys.Clear();
         _inactiveStatuses.Clear();
+        if (_ownsDesktopCapturer && _desktopCapturer is IDisposable disposableCapturer)
+        {
+            disposableCapturer.Dispose();
+        }
     }
 
     private static bool TargetsSamePhysicalScreen(SavedDevice left, SavedDevice right)

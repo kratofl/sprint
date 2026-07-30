@@ -35,6 +35,47 @@ public sealed class DesktopCaptureSelectionTests
         }
     }
 
+    private sealed class RecordingSurfaceFactory : IDesktopCaptureSurfaceFactory
+    {
+        public List<RecordingSurface> Surfaces { get; } = [];
+        public bool IsSupported => true;
+
+        public IDesktopCaptureSurface? Create(int width, int height)
+        {
+            var surface = new RecordingSurface(width, height);
+            Surfaces.Add(surface);
+            return surface;
+        }
+    }
+
+    private sealed class RecordingSurface(int width, int height) : IDesktopCaptureSurface
+    {
+        public int Width => width;
+        public int Height => height;
+        public int Captures { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public bool TryCapture(ScreenCaptureRegion region, byte[] bgra)
+        {
+            Captures++;
+            Array.Fill(bgra, (byte)0x7f);
+            return true;
+        }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Theory]
+    [InlineData(0, "Portrait")]
+    [InlineData(90, "Landscape")]
+    [InlineData(180, "Portrait inverted")]
+    [InlineData(270, "Landscape inverted")]
+    public void DeviceOrientationUsesNamesInsteadOfRawDegreeLabels(int rotation, string expectedLabel)
+    {
+        Assert.Equal(expectedLabel, DeviceOrientations.Label(rotation));
+        Assert.Equal(rotation, DeviceOrientations.RotationForLabel(expectedLabel));
+    }
+
     [Theory]
     [InlineData(0, 480, 800, 0.6)]
     [InlineData(90, 800, 480, 1.6666666667)]
@@ -53,6 +94,41 @@ public sealed class DesktopCaptureSelectionTests
         Assert.Equal(expectedWidth, size.Width);
         Assert.Equal(expectedHeight, size.Height);
         Assert.Equal(expectedAspect, CaptureSelectionGeometry.AspectRatio(device), precision: 8);
+    }
+
+    [Theory]
+    [InlineData(800, 480, 0, 480, 800)]
+    [InlineData(800, 480, 90, 800, 480)]
+    [InlineData(480, 800, 180, 480, 800)]
+    [InlineData(480, 800, 270, 800, 480)]
+    public void SelectorOrientationDoesNotDependOnTheDriversDimensionOrder(
+        int driverWidth,
+        int driverHeight,
+        int rotation,
+        int expectedWidth,
+        int expectedHeight)
+    {
+        var device = ScreenDevice(rotation);
+        device.Width = driverWidth;
+        device.Height = driverHeight;
+
+        Assert.Equal(
+            new CaptureSelectionSize(expectedWidth, expectedHeight),
+            CaptureSelectionGeometry.EffectiveSize(device));
+    }
+
+    [Fact]
+    public void ExistingPortraitSelectionIsNormalizedWhenOrientationBecomesLandscape()
+    {
+        var portrait = new ScreenCaptureRegion(100, 200, 480, 800);
+
+        var landscape = CaptureSelectionGeometry.NormalizeRegionAspect(
+            portrait,
+            800d / 480d);
+
+        Assert.Equal(800d / 480d, landscape.Width / (double)landscape.Height, precision: 8);
+        Assert.Equal(portrait.X + portrait.Width / 2, landscape.X + landscape.Width / 2);
+        Assert.Equal(portrait.Y + portrait.Height / 2, landscape.Y + landscape.Height / 2);
     }
 
     [Fact]
@@ -161,6 +237,50 @@ public sealed class DesktopCaptureSelectionTests
         Assert.Equal(
             Enumerable.Repeat(new byte[] { 0x00, 0xf8 }, 8).SelectMany(bytes => bytes),
             destination);
+    }
+
+    [Fact]
+    public void LandscapeCaptureSourceStaysLandscapeWhenDriverReportsLandscapeDimensions()
+    {
+        var capturer = new RecordingCapturer();
+        var config = new ScreenConfig
+        {
+            Width = 800,
+            Height = 480,
+            Rotation = 90,
+        };
+        using var source = new DesktopCaptureFrameSource(
+            new ScreenCaptureRegion(0, 0, 1600, 960),
+            config,
+            capturer);
+
+        source.Render(new TelemetryFrame(), new byte[config.Width * config.Height * 2]);
+
+        Assert.Equal(800, capturer.Width);
+        Assert.Equal(480, capturer.Height);
+    }
+
+    [Fact]
+    public void WindowsCapturerReusesItsNativeSurfaceUntilTheOutputSizeChanges()
+    {
+        var factory = new RecordingSurfaceFactory();
+        var capturer = new WindowsDesktopRegionCapturer(factory);
+        var region = new ScreenCaptureRegion(0, 0, 1600, 960);
+
+        Assert.True(capturer.TryCapture(region, 800, 480, new byte[800 * 480 * 4]));
+        Assert.True(capturer.TryCapture(region, 800, 480, new byte[800 * 480 * 4]));
+
+        var first = Assert.Single(factory.Surfaces);
+        Assert.Equal(2, first.Captures);
+        Assert.False(first.Disposed);
+
+        Assert.True(capturer.TryCapture(region, 480, 800, new byte[480 * 800 * 4]));
+        Assert.Equal(2, factory.Surfaces.Count);
+        Assert.True(first.Disposed);
+        Assert.Equal(1, factory.Surfaces[1].Captures);
+
+        capturer.Dispose();
+        Assert.True(factory.Surfaces[1].Disposed);
     }
 
     private static SavedDevice ScreenDevice(int rotation) => new()

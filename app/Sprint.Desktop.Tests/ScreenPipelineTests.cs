@@ -17,6 +17,22 @@ public sealed class ScreenPipelineTests
         public void Dispose() { }
     }
 
+    [Theory]
+    [InlineData(33, 8, 25)]
+    [InlineData(33, 33, 0)]
+    [InlineData(33, 48, 0)]
+    public void PublisherPacingSubtractsFrameWorkFromTheTargetInterval(
+        int targetMilliseconds,
+        int workMilliseconds,
+        int expectedDelayMilliseconds)
+    {
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(expectedDelayMilliseconds),
+            ScreenPublisher.RemainingFrameDelay(
+                TimeSpan.FromMilliseconds(targetMilliseconds),
+                TimeSpan.FromMilliseconds(workMilliseconds)));
+    }
+
     private sealed class ThrowingFrameSource : IDashFrameSource
     {
         public int Width => 8;

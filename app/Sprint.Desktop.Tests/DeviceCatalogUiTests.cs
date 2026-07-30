@@ -111,6 +111,14 @@ public sealed class DeviceCatalogUiTests
                 Assert.NotNull(FindText(window, "Screen alignment"));
                 Assert.NotNull(FindTagged<ComboBox>(window, "device-dash"));
 
+                var orientation = Field<ComboBox>(window, "device-orientation");
+                Assert.Equal("Portrait", orientation.SelectedItem);
+                orientation.SelectedItem = "Landscape";
+                Render(window);
+                Assert.Equal(
+                    90,
+                    runtime.Devices.Single(device => device.Id == "wheel-screen").Rotation);
+
                 var purpose = Field<ComboBox>(window, "device-purpose");
                 purpose.SelectedItem = "Flag display";
                 Render(window);
@@ -139,6 +147,25 @@ public sealed class DeviceCatalogUiTests
                 Assert.Equal(WindowDecorations.None, selector.WindowDecorations);
                 Assert.Equal(Brushes.Transparent, selector.Background);
                 Assert.Contains(WindowTransparencyLevel.Transparent, selector.TransparencyLevelHint);
+                var dragSurface = selector.GetVisualDescendants()
+                    .OfType<Border>()
+                    .Single(control => string.Equals(
+                        control.Tag?.ToString(),
+                        "capture-drag-surface",
+                        StringComparison.Ordinal));
+                Assert.NotEqual(Brushes.Transparent, dragSurface.Background);
+                Assert.True(WindowDragPolicy.ShouldBeginDrag(dragSurface));
+                Assert.False(WindowDragPolicy.ShouldBeginDrag(selector.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Single(button => string.Equals(
+                        button.Content?.ToString(),
+                        "Use this area",
+                        StringComparison.Ordinal))));
+                Assert.Equal(8, selector.GetVisualDescendants()
+                    .OfType<Avalonia.Controls.Shapes.Ellipse>()
+                    .Count(handle => handle.Tag?.ToString()?.StartsWith(
+                        "capture-resize-handle:",
+                        StringComparison.Ordinal) == true));
                 Assert.Equal(
                     CaptureSelectionGeometry.AspectRatio(runtime.Devices.Single(device => device.Id == "wheel-screen")),
                     selector.SelectionAspectRatio,

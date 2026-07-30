@@ -28,6 +28,7 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
     private readonly IDesktopRegionCapturer _capturer;
     private readonly int _logicalWidth;
     private readonly int _logicalHeight;
+    private readonly int _pixelRotation;
     private readonly byte[] _bgra;
     private readonly byte[] _scratch;
 
@@ -49,9 +50,10 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
         _capturer = capturer;
         Width = config.Width;
         Height = config.Height;
-        (_logicalWidth, _logicalHeight) = config.Rotation is 90 or 270
-            ? (Height, Width)
-            : (Width, Height);
+        var transform = CaptureSelectionGeometry.FrameTransform(Width, Height, config.Rotation);
+        _logicalWidth = transform.LogicalWidth;
+        _logicalHeight = transform.LogicalHeight;
+        _pixelRotation = transform.PixelRotation;
         _bgra = new byte[checked(_logicalWidth * _logicalHeight * 4)];
         _scratch = new byte[checked(Width * Height * 2)];
     }
@@ -75,15 +77,15 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
 
         if (_config.Margin > 0)
         {
-            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, _config.Rotation, _scratch);
+            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, _pixelRotation, _scratch);
             Rgb565.ApplyMargin(_scratch, rgb565, Width, Height, _config.Margin);
         }
         else
         {
-            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, _config.Rotation, rgb565);
+            Rgb565.FromBgra(_bgra, _logicalWidth, _logicalHeight, _pixelRotation, rgb565);
         }
 
-        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, _config.Rotation);
+        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, _pixelRotation);
     }
 
     public void Dispose()

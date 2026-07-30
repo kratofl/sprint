@@ -180,18 +180,24 @@ public sealed class ScreenPublisher : IDisposable
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _options.TargetFps));
         while (!token.IsCancellationRequested)
         {
+            var stepStarted = Stopwatch.GetTimestamp();
             var outcome = Step();
             if (token.IsCancellationRequested)
             {
                 break;
             }
 
-            var wait = outcome == ScreenStepOutcome.Reconnecting ? _options.ReconnectInterval : frameInterval;
+            var wait = outcome == ScreenStepOutcome.Reconnecting
+                ? _options.ReconnectInterval
+                : RemainingFrameDelay(frameInterval, Stopwatch.GetElapsedTime(stepStarted));
             token.WaitHandle.WaitOne(wait);
         }
 
         try { _driver.Disconnect(); } catch { /* best effort */ }
     }
+
+    internal static TimeSpan RemainingFrameDelay(TimeSpan frameInterval, TimeSpan workElapsed) =>
+        workElapsed >= frameInterval ? TimeSpan.Zero : frameInterval - workElapsed;
 
     /// <summary>One publish iteration. Internal + never-throw so tests can drive connect/send/retry deterministically.</summary>
     internal ScreenStepOutcome Step()

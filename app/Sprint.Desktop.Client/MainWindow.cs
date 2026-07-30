@@ -1267,7 +1267,7 @@ public sealed class MainWindow : Window
         foreach (var group in DesktopRuntime.SetupParameters.GroupBy(parameter => parameter.Group))
         {
             var groupStack = new StackPanel { Spacing = 8 };
-                groupStack.Children.Add(Graphite.SectionLabel(group.Key));
+            groupStack.Children.Add(Graphite.SectionLabel(group.Key));
             foreach (var parameter in group)
             {
                 var value = _selectedSetup.Values.TryGetValue(parameter.Key, out var current)
@@ -2444,13 +2444,23 @@ public sealed class MainWindow : Window
 
     private Control RotationControl(SavedDevice device)
     {
-        var index = device.Rotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
-        var control = Graphite.Segmented(
-            ["0°", "90°", "180°", "270°"],
-            index,
-            chosen => SetDeviceRotation(device, chosen * 90));
-        ToolTip.SetTip(control, "Rotate the output clockwise: 0°/180° are vertical; 90°/270° are horizontal.");
-        return control;
+        var combo = Graphite.ComboBox(
+            DeviceOrientations.Labels,
+            DeviceOrientations.Label(device.Rotation),
+            220);
+        combo.Tag = "device-orientation";
+        ToolTip.SetTip(
+            combo,
+            "Portrait = 0°, Landscape = 90°, Portrait inverted = 180°, Landscape inverted = 270°.");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (DeviceOrientations.RotationForLabel(combo.SelectedItem?.ToString()) is { } rotation
+                && rotation != device.Rotation)
+            {
+                SetDeviceRotation(device, rotation);
+            }
+        };
+        return combo;
     }
 
     // One rate for the panel and its live preview (issue #75).

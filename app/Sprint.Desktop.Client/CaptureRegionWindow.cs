@@ -5,7 +5,9 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Controls.Shapes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Shell;
 
 namespace Sprint.Desktop;
 
@@ -107,12 +109,25 @@ public sealed class CaptureRegionWindow : Window
 
     private Control BuildContent()
     {
-        var root = new Grid();
+        var root = new Grid
+        {
+            Cursor = new Cursor(StandardCursorType.SizeAll),
+        };
+        root.PointerPressed += (_, args) =>
+        {
+            if (args.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+                && WindowDragPolicy.ShouldBeginDrag(args.Source))
+            {
+                BeginMoveDrag(args);
+                args.Handled = true;
+            }
+        };
         root.Children.Add(new Border
         {
+            Tag = "capture-drag-surface",
             BorderBrush = Graphite.AccentBrush,
             BorderThickness = new Thickness(3),
-            Background = Brushes.Transparent,
+            Background = Graphite.CaptureSelectionFillBrush,
         });
 
         var toolbar = new Border
@@ -144,13 +159,6 @@ public sealed class CaptureRegionWindow : Window
             10,
             FontWeight.Normal,
             Graphite.Text3Brush));
-        dragSurface.PointerPressed += (_, args) =>
-        {
-            if (args.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            {
-                BeginMoveDrag(args);
-            }
-        };
         Grid.SetColumn(dragSurface, 0);
         toolbarGrid.Children.Add(dragSurface);
 
@@ -199,6 +207,18 @@ public sealed class CaptureRegionWindow : Window
             Height = height ?? double.NaN,
             Background = Brushes.Transparent,
             Cursor = new Cursor(cursor),
+            Child = new Ellipse
+            {
+                Tag = $"capture-resize-handle:{edge}",
+                Width = 12,
+                Height = 12,
+                Fill = Graphite.AccentBrush,
+                Stroke = Graphite.PanelBrush,
+                StrokeThickness = 2,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+            },
         };
         handle.PointerPressed += (_, args) =>
         {
@@ -301,6 +321,7 @@ public sealed class CaptureRegionWindow : Window
 
     private void RestorePhysicalRegion(ScreenCaptureRegion region)
     {
+        region = CaptureSelectionGeometry.NormalizeRegionAspect(region, _aspectRatio);
         var requestedBounds = new PixelRect(region.X, region.Y, region.Width, region.Height);
         var targetScreen = Screens.All
             .Select(screen => new

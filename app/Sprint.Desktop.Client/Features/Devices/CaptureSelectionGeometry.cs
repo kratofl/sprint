@@ -1,6 +1,7 @@
 namespace Sprint.Desktop.Features.Devices;
 
 public readonly record struct CaptureSelectionSize(double Width, double Height);
+public readonly record struct CaptureFrameTransform(int LogicalWidth, int LogicalHeight, int PixelRotation);
 
 /// <summary>
 /// Pure geometry shared by the transparent selector and tests. Avalonia reports
@@ -12,10 +13,7 @@ public static class CaptureSelectionGeometry
     public static CaptureSelectionSize EffectiveSize(SavedDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        var rotation = NormalizeRotation(device.Rotation);
-        return rotation is 90 or 270
-            ? new CaptureSelectionSize(device.Height, device.Width)
-            : new CaptureSelectionSize(device.Width, device.Height);
+        return OrientedSize(device.Width, device.Height, DeviceOrientations.Resolve(device.Rotation));
     }
 
     public static double AspectRatio(SavedDevice device)
@@ -27,6 +25,24 @@ public static class CaptureSelectionGeometry
         }
 
         return size.Width / size.Height;
+    }
+
+    public static CaptureFrameTransform FrameTransform(int nativeWidth, int nativeHeight, int rotation)
+    {
+        if (nativeWidth <= 0 || nativeHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nativeWidth), "A capture device needs a positive screen size.");
+        }
+
+        var orientation = DeviceOrientations.Resolve(rotation);
+        var logicalSize = OrientedSize(nativeWidth, nativeHeight, orientation);
+        var nativeIsLandscape = nativeWidth >= nativeHeight;
+        var baseRotation = nativeIsLandscape == orientation.IsLandscape ? 0 : 90;
+        var inverted = orientation.Rotation is 180 or 270;
+        return new CaptureFrameTransform(
+            (int)logicalSize.Width,
+            (int)logicalSize.Height,
+            inverted ? (baseRotation + 180) % 360 : baseRotation);
     }
 
     public static CaptureSelectionSize ConstrainResize(
@@ -87,6 +103,36 @@ public static class CaptureSelectionGeometry
             : region with { Width = region.Height, Height = region.Width };
     }
 
+    public static ScreenCaptureRegion NormalizeRegionAspect(
+        ScreenCaptureRegion region,
+        double aspectRatio)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        if (!region.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(region));
+        }
+
+        if (!double.IsFinite(aspectRatio) || aspectRatio <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(aspectRatio));
+        }
+
+        var centerX = region.X + region.Width / 2d;
+        var centerY = region.Y + region.Height / 2d;
+        var area = (double)region.Width * region.Height;
+        var width = Math.Sqrt(area * aspectRatio);
+        var height = width / aspectRatio;
+        var normalizedWidth = Math.Max(1, (int)Math.Round(width));
+        var normalizedHeight = Math.Max(1, (int)Math.Round(height));
+
+        return new ScreenCaptureRegion(
+            (int)Math.Round(centerX - normalizedWidth / 2d),
+            (int)Math.Round(centerY - normalizedHeight / 2d),
+            normalizedWidth,
+            normalizedHeight);
+    }
+
     public static ScreenCaptureRegion RecoverToVisibleBounds(
         ScreenCaptureRegion region,
         ScreenCaptureRegion visibleBounds,
@@ -125,5 +171,17 @@ public static class CaptureSelectionGeometry
     {
         var normalized = rotation % 360;
         return normalized < 0 ? normalized + 360 : normalized;
+    }
+
+    private static CaptureSelectionSize OrientedSize(
+        int width,
+        int height,
+        DeviceOrientation orientation)
+    {
+        var shortEdge = Math.Min(width, height);
+        var longEdge = Math.Max(width, height);
+        return orientation.IsLandscape
+            ? new CaptureSelectionSize(longEdge, shortEdge)
+            : new CaptureSelectionSize(shortEdge, longEdge);
     }
 }

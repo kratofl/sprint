@@ -3,17 +3,39 @@ using Sprint.Desktop.Features.Devices;
 
 namespace Sprint.Desktop.Features.Hardware;
 
-/// <summary>
-/// Windows GDI desktop capture. A top-down 32-bit DIB avoids row flipping and
-/// StretchBlt scales directly to the device's logical frame size.
-/// </summary>
-public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer
+internal interface IDesktopCaptureSurfaceFactory
 {
-    private const uint SrcCopy = 0x00CC0020;
-    private const uint CaptureBlt = 0x40000000;
-    private const uint DibRgbColors = 0;
-    private const uint BiRgb = 0;
-    private const int ColorOnColor = 3;
+    bool IsSupported { get; }
+    IDesktopCaptureSurface? Create(int width, int height);
+}
+
+internal interface IDesktopCaptureSurface : IDisposable
+{
+    int Width { get; }
+    int Height { get; }
+    bool TryCapture(ScreenCaptureRegion region, byte[] bgra);
+}
+
+/// <summary>
+/// Windows GDI desktop capture. The expensive compatible DC and top-down DIB are
+/// retained across frames and rebuilt only when the destination size changes.
+/// </summary>
+public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer, IDisposable
+{
+    private readonly object _sync = new();
+    private readonly IDesktopCaptureSurfaceFactory _surfaceFactory;
+    private IDesktopCaptureSurface? _surface;
+    private bool _disposed;
+
+    public WindowsDesktopRegionCapturer()
+        : this(new GdiDesktopCaptureSurfaceFactory())
+    {
+    }
+
+    internal WindowsDesktopRegionCapturer(IDesktopCaptureSurfaceFactory surfaceFactory)
+    {
+        _surfaceFactory = surfaceFactory ?? throw new ArgumentNullException(nameof(surfaceFactory));
+    }
 
     public bool TryCapture(
         ScreenCaptureRegion region,
@@ -23,11 +45,118 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer
     {
         ArgumentNullException.ThrowIfNull(region);
         ArgumentNullException.ThrowIfNull(bgra);
-        if (!OperatingSystem.IsWindows()
+        if (!_surfaceFactory.IsSupported
             || !region.IsValid
             || destinationWidth <= 0
             || destinationHeight <= 0
             || bgra.Length < checked(destinationWidth * destinationHeight * 4))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            if (_surface is null
+                || _surface.Width != destinationWidth
+                || _surface.Height != destinationHeight)
+            {
+                _surface?.Dispose();
+                _surface = _surfaceFactory.Create(destinationWidth, destinationHeight);
+            }
+
+            return _surface?.TryCapture(region, bgra) == true;
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _surface?.Dispose();
+            _surface = null;
+        }
+    }
+}
+
+internal sealed class GdiDesktopCaptureSurfaceFactory : IDesktopCaptureSurfaceFactory
+{
+    public bool IsSupported => OperatingSystem.IsWindows();
+
+    public IDesktopCaptureSurface? Create(int width, int height) =>
+        GdiDesktopCaptureSurface.TryCreate(width, height);
+}
+
+internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
+{
+    private const uint SrcCopy = 0x00CC0020;
+    private const uint CaptureBlt = 0x40000000;
+    private const uint DibRgbColors = 0;
+    private const uint BiRgb = 0;
+    private const int ColorOnColor = 3;
+
+    private readonly IntPtr _memoryDc;
+    private readonly IntPtr _bitmap;
+    private readonly IntPtr _previousBitmap;
+    private readonly IntPtr _pixels;
+    private int _disposed;
+
+    private GdiDesktopCaptureSurface(
+        int width,
+        int height,
+        IntPtr memoryDc,
+        IntPtr bitmap,
+        IntPtr previousBitmap,
+        IntPtr pixels)
+    {
+        Width = width;
+        Height = height;
+        _memoryDc = memoryDc;
+        _bitmap = bitmap;
+        _previousBitmap = previousBitmap;
+        _pixels = pixels;
+    }
+
+    public int Width { get; }
+    public int Height { get; }
+
+    public static GdiDesktopCaptureSurface? TryCreate(int width, int height)
+    {
+        var screenDc = GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var resources = new PendingSurfaceResources();
+            if (!resources.TryInitialize(screenDc, width, height))
+            {
+                return null;
+            }
+
+            return resources.Transfer(width, height);
+        }
+        finally
+        {
+            _ = ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    public bool TryCapture(ScreenCaptureRegion region, byte[] bgra)
+    {
+        if (Volatile.Read(ref _disposed) == 1)
         {
             return false;
         }
@@ -38,55 +167,14 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer
             return false;
         }
 
-        var memoryDc = IntPtr.Zero;
-        var bitmap = IntPtr.Zero;
-        var previousBitmap = IntPtr.Zero;
         try
         {
-            memoryDc = CreateCompatibleDC(screenDc);
-            if (memoryDc == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            var bitmapInfo = new BitmapInfo
-            {
-                Header = new BitmapInfoHeader
-                {
-                    Size = (uint)Marshal.SizeOf<BitmapInfoHeader>(),
-                    Width = destinationWidth,
-                    Height = -destinationHeight,
-                    Planes = 1,
-                    BitCount = 32,
-                    Compression = BiRgb,
-                },
-            };
-            bitmap = CreateDIBSection(
-                memoryDc,
-                ref bitmapInfo,
-                DibRgbColors,
-                out var pixels,
-                IntPtr.Zero,
-                0);
-            if (bitmap == IntPtr.Zero || pixels == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            previousBitmap = SelectObject(memoryDc, bitmap);
-            if (previousBitmap == IntPtr.Zero || previousBitmap == new IntPtr(-1))
-            {
-                previousBitmap = IntPtr.Zero;
-                return false;
-            }
-
-            _ = SetStretchBltMode(memoryDc, ColorOnColor);
             if (!StretchBlt(
-                    memoryDc,
+                    _memoryDc,
                     0,
                     0,
-                    destinationWidth,
-                    destinationHeight,
+                    Width,
+                    Height,
                     screenDc,
                     region.X,
                     region.Y,
@@ -97,29 +185,118 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer
                 return false;
             }
 
-            Marshal.Copy(pixels, bgra, 0, destinationWidth * destinationHeight * 4);
+            Marshal.Copy(_pixels, bgra, 0, Width * Height * 4);
             return true;
         }
         finally
         {
-            if (previousBitmap != IntPtr.Zero && memoryDc != IntPtr.Zero)
-            {
-                _ = SelectObject(memoryDc, previousBitmap);
-            }
-
-            if (bitmap != IntPtr.Zero)
-            {
-                _ = DeleteObject(bitmap);
-            }
-
-            if (memoryDc != IntPtr.Zero)
-            {
-                _ = DeleteDC(memoryDc);
-            }
-
             _ = ReleaseDC(IntPtr.Zero, screenDc);
         }
     }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
+        _ = SelectObject(_memoryDc, _previousBitmap);
+        _ = DeleteObject(_bitmap);
+        _ = DeleteDC(_memoryDc);
+    }
+
+    private sealed class PendingSurfaceResources : IDisposable
+    {
+        private bool _transferred;
+
+        public IntPtr MemoryDc { get; private set; }
+        public IntPtr Bitmap { get; private set; }
+        public IntPtr PreviousBitmap { get; private set; }
+        public IntPtr Pixels { get; private set; }
+
+        public bool TryInitialize(IntPtr screenDc, int width, int height)
+        {
+            MemoryDc = CreateCompatibleDC(screenDc);
+            if (MemoryDc == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            var bitmapInfo = CreateBitmapInfo(width, height);
+            Bitmap = CreateDIBSection(
+                MemoryDc,
+                ref bitmapInfo,
+                DibRgbColors,
+                out var pixels,
+                IntPtr.Zero,
+                0);
+            Pixels = pixels;
+            if (Bitmap == IntPtr.Zero || Pixels == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            PreviousBitmap = SelectObject(MemoryDc, Bitmap);
+            if (PreviousBitmap == IntPtr.Zero || PreviousBitmap == new IntPtr(-1))
+            {
+                PreviousBitmap = IntPtr.Zero;
+                return false;
+            }
+
+            _ = SetStretchBltMode(MemoryDc, ColorOnColor);
+            return true;
+        }
+
+        public GdiDesktopCaptureSurface Transfer(int width, int height)
+        {
+            _transferred = true;
+            return new GdiDesktopCaptureSurface(
+                width,
+                height,
+                MemoryDc,
+                Bitmap,
+                PreviousBitmap,
+                Pixels);
+        }
+
+        public void Dispose()
+        {
+            if (_transferred)
+            {
+                return;
+            }
+
+            if (PreviousBitmap != IntPtr.Zero && MemoryDc != IntPtr.Zero)
+            {
+                _ = SelectObject(MemoryDc, PreviousBitmap);
+            }
+
+            if (Bitmap != IntPtr.Zero)
+            {
+                _ = DeleteObject(Bitmap);
+            }
+
+            if (MemoryDc != IntPtr.Zero)
+            {
+                _ = DeleteDC(MemoryDc);
+            }
+        }
+    }
+
+    private static BitmapInfo CreateBitmapInfo(int width, int height) =>
+        new()
+        {
+            Header = new BitmapInfoHeader
+            {
+                Size = (uint)Marshal.SizeOf<BitmapInfoHeader>(),
+                Width = width,
+                Height = -height,
+                Planes = 1,
+                BitCount = 32,
+                Compression = BiRgb,
+            },
+        };
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BitmapInfoHeader
