@@ -9,8 +9,8 @@ namespace Sprint.Desktop.Features.Hardware;
 /// Coordinates hardware screen output for the shell (matrix 4.6 US31/US32): keeps
 /// a <see cref="ScreenPublisher"/> running for every enabled screen device,
 /// reconciled against the saved-device list on <see cref="Sync"/>. Each publisher
-/// pairs a driver (from <see cref="ScreenDriverFactory"/>) with a
-/// <see cref="DashPainterFrameSource"/> rendering the device's assigned dash. The
+/// pairs a driver (from <see cref="ScreenDriverFactory"/>) with the frame source
+/// selected by the device purpose: a dash painter or a desktop capture. The
 /// driver factory is injectable so tests drive the whole path with a
 /// <see cref="FakeScreenDriver"/>. Per-device link status feeds the Devices UI.
 /// </summary>
@@ -19,9 +19,10 @@ public sealed class DeviceScreenService : IDisposable
     private readonly IDesktopRuntime _runtime;
     private readonly Func<TelemetryFrame> _frameProvider;
     private readonly Func<string, IScreenDriver> _driverFactory;
+    private readonly IDesktopRegionCapturer _desktopCapturer;
     private readonly ILog _log;
     private readonly Dictionary<string, ScreenPublisher> _publishers = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _publisherLayoutIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _publisherOutputKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ScreenStatus> _inactiveStatuses = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
@@ -29,12 +30,14 @@ public sealed class DeviceScreenService : IDisposable
         IDesktopRuntime runtime,
         Func<TelemetryFrame> frameProvider,
         Func<string, IScreenDriver>? driverFactory = null,
-        ILog? log = null)
+        ILog? log = null,
+        IDesktopRegionCapturer? desktopCapturer = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
         _log = log ?? NullLog.Instance;
         _driverFactory = driverFactory ?? (driver => ScreenDriverFactory.Create(driver, _log));
+        _desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
     }
 
     /// <summary>Device ids with an active publisher (for the UI / tests).</summary>
@@ -152,7 +155,7 @@ public sealed class DeviceScreenService : IDisposable
             _log.Info($"Screen publisher stopping: device={id}.");
             _publishers[id].Dispose();
             _publishers.Remove(id);
-            _publisherLayoutIds.Remove(id);
+            _publisherOutputKeys.Remove(id);
         }
 
         foreach (var (id, device) in desired)
@@ -162,17 +165,17 @@ public sealed class DeviceScreenService : IDisposable
             // restart to take effect.
             if (_publishers.TryGetValue(id, out var running))
             {
-                var assigned = ResolveLayout(device).Id;
-                if (_publisherLayoutIds.TryGetValue(id, out var active)
+                var assigned = ResolveOutputKey(device);
+                if (_publisherOutputKeys.TryGetValue(id, out var active)
                     && string.Equals(active, assigned, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                _log.Info($"Screen publisher restarting for output change: device={id} layout={assigned}.");
+                _log.Info($"Screen publisher restarting for output change: device={id} output={assigned}.");
                 running.Dispose();
                 _publishers.Remove(id);
-                _publisherLayoutIds.Remove(id);
+                _publisherOutputKeys.Remove(id);
             }
 
             _log.Info(
@@ -188,6 +191,30 @@ public sealed class DeviceScreenService : IDisposable
         DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts)
         ?? throw new InvalidOperationException(
             $"Device purpose '{device.Purpose}' does not provide a telemetry-backed screen layout.");
+
+    private string ResolveOutputKey(SavedDevice device)
+    {
+        var purpose = DevicePurposes.Resolve(device.Purpose);
+        var source = purpose.Output switch
+        {
+            DevicePurposeOutputKind.DesktopCaptureRegion when device.CaptureRegion is { IsValid: true } region =>
+                $"capture:{region.X}:{region.Y}:{region.Width}:{region.Height}",
+            DevicePurposeOutputKind.DesktopCaptureRegion => "capture:unconfigured",
+            _ => $"layout:{ResolveLayout(device).Id}",
+        };
+
+        return string.Join(
+            ':',
+            purpose.Id,
+            source,
+            device.Width,
+            device.Height,
+            device.Rotation,
+            device.OffsetX,
+            device.OffsetY,
+            device.Margin,
+            DeviceRefreshRates.Normalize(device.RefreshHz));
+    }
 
     private ScreenPublisher CreatePublisher(SavedDevice device)
     {
@@ -208,14 +235,30 @@ public sealed class DeviceScreenService : IDisposable
         var driver = _driverFactory(device.Driver);
         driver.Configure(config);
 
-        var layout = ResolveLayout(device);
-        _publisherLayoutIds[device.Id] = layout.Id;
-        IDashFrameSource CreateSource(int width, int height) =>
-            new DashPainterFrameSource(
-                layout,
+        var purpose = DevicePurposes.Resolve(device.Purpose);
+        var layout = purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion
+            ? null
+            : ResolveLayout(device);
+        _publisherOutputKeys[device.Id] = ResolveOutputKey(device);
+        IDashFrameSource CreateSource(int width, int height)
+        {
+            var sizedConfig = config with { Width = width, Height = height };
+            if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
+            {
+                return new DesktopCaptureFrameSource(
+                    device.CaptureRegion
+                    ?? throw new InvalidOperationException("Rear-view mirror capture area is not configured."),
+                    sizedConfig,
+                    _desktopCapturer);
+            }
+
+            return new DashPainterFrameSource(
+                layout!,
                 _runtime.Settings,
-                config with { Width = width, Height = height },
-                DashPalette.FromLayout(layout));
+                sizedConfig,
+                DashPalette.FromLayout(layout!));
+        }
+
         var source = CreateSource(config.Width, config.Height);
 
         return new ScreenPublisher(
@@ -243,7 +286,7 @@ public sealed class DeviceScreenService : IDisposable
         }
 
         _publishers.Clear();
-        _publisherLayoutIds.Clear();
+        _publisherOutputKeys.Clear();
         _inactiveStatuses.Clear();
     }
 

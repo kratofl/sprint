@@ -174,9 +174,9 @@ internal static class AgentUiReviewHarness
                     window.Width = 1440;
                     window.Height = 900;
 
-                    // Device purposes (issue #53): supported focused displays render
-                    // immediately without a dashboard selector; rear-view video remains
-                    // an honest pending state until issue #41 supplies a capture source.
+                    // Device purposes (issues #53/#41): focused displays render
+                    // immediately without a dashboard selector; rear-view stays in an
+                    // honest setup state until its transparent selector is confirmed.
                     var purposeCombo = TaggedComboBox(window, "device-purpose");
                     purposeCombo.SelectedItem = "Flag display";
                     using (window.CaptureRenderedFrame())
@@ -254,21 +254,44 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "devices-detail-rear-view-pending",
+                        "devices-detail-rear-view-setup",
                         "This screen is used for",
-                        "Rear-view mirror is not supported yet",
-                        "Idle"));
+                        "Capture area",
+                        "Setup needed",
+                        "Select area",
+                        "Screen alignment"));
                     window.Width = 1120;
                     window.Height = 720;
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "devices-detail-rear-view-pending-1120x720",
+                        "devices-detail-rear-view-setup-1120x720",
                         "This screen is used for",
-                        "Rear-view mirror is not supported yet",
-                        "Idle"));
+                        "Capture area",
+                        "Setup needed",
+                        "Select area",
+                        "Screen alignment"));
                     window.Width = 1440;
                     window.Height = 900;
+
+                    Click(window, "Select area");
+                    var captureSelector = Assert.IsType<CaptureRegionWindow>(window.ActiveCaptureRegionWindow);
+                    frames.Add(CaptureTransparentSelector(
+                        captureSelector,
+                        artifactRoot,
+                        "rear-view-capture-selector",
+                        "Move and resize to frame the rear view",
+                        "Cancel",
+                        "Use this area"));
+                    Click(captureSelector, "Use this area");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-configured",
+                        "Capture area",
+                        "Change area",
+                        "Screen alignment"));
+
                     var backToDash = TaggedComboBox(window, "device-purpose");
                     backToDash.SelectedItem = "Dashboard";
                     using (window.CaptureRenderedFrame())
@@ -513,6 +536,41 @@ internal static class AgentUiReviewHarness
         return new AgentUiReviewFrame(name, imagePath, visibleText, failures);
     }
 
+    private static AgentUiReviewFrame CaptureTransparentSelector(
+        Window window,
+        string artifactRoot,
+        string name,
+        params string[] expectedText)
+    {
+        var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        using var capturedFrame = frame!;
+        var imagePath = Path.Combine(artifactRoot, $"{name}.png");
+        capturedFrame.Save(imagePath, new PngBitmapEncoderOptions());
+
+        var visibleText = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Select(text => text.Text ?? "")
+            .Concat(window.GetVisualDescendants()
+                .OfType<Button>()
+                .Select(button => button.Content as string ?? ""))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(text => text, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var failures = expectedText
+            .Where(expected => !visibleText.Any(candidate =>
+                string.Equals(candidate, expected, StringComparison.OrdinalIgnoreCase)))
+            .Select(expected => $"Missing visible text: {expected}")
+            .ToList();
+        if (capturedFrame.PixelSize.Width <= 0 || capturedFrame.PixelSize.Height <= 0)
+        {
+            failures.Add("Captured selector frame has invalid dimensions.");
+        }
+
+        return new AgentUiReviewFrame(name, imagePath, visibleText, failures);
+    }
+
     private static string? ValidateImage(Bitmap frame)
     {
         var pixelSize = frame.PixelSize;
@@ -563,13 +621,18 @@ internal static class AgentUiReviewHarness
 
     private static void Click(MainWindow window, string label)
     {
+        Click((Window)window, label);
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void Click(Window window, string label)
+    {
         var button = window.GetVisualDescendants()
             .OfType<Button>()
             .FirstOrDefault(button => ButtonMatches(button, label));
 
         Assert.NotNull(button);
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        using var frame = window.CaptureRenderedFrame();
     }
 
     private static ComboBox TaggedComboBox(MainWindow window, string tag) =>

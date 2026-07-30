@@ -221,7 +221,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     /// <summary>
     /// Sets what a device's screen is used for (issue #53). The caller re-syncs the
-    /// screen service so it can switch between assigned, built-in, and pending output.
+    /// screen service so it can switch between assigned, built-in, and capture output.
     /// </summary>
     public void UpdateDevicePurpose(SavedDevice device, string purpose)
     {
@@ -234,6 +234,27 @@ public sealed class DesktopRuntime : IDesktopRuntime
         device.Purpose = normalized;
         SaveDevices();
         _log.Info($"Device purpose changed: id={device.Id} purpose={normalized}.");
+    }
+
+    public void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(region);
+        if (!region.IsValid)
+        {
+            throw new ArgumentOutOfRangeException(nameof(region), "A capture region needs a positive size.");
+        }
+
+        if (Equals(device.CaptureRegion, region))
+        {
+            return;
+        }
+
+        device.CaptureRegion = region;
+        SaveDevices();
+        _log.Info(
+            $"Device capture region changed: id={device.Id} " +
+            $"region={region.X},{region.Y},{region.Width}x{region.Height}.");
     }
 
     /// <summary>

@@ -64,6 +64,12 @@ public sealed class SavedDevice
     public int Margin { get; set; }
     public string DashId { get; set; } = "default";
 
+    /// <summary>
+    /// Physical desktop pixels captured for a rear-view mirror. Coordinates may be
+    /// negative when the selected monitor is left of or above the primary monitor.
+    /// </summary>
+    public ScreenCaptureRegion? CaptureRegion { get; set; }
+
     /// <summary>What this device's screen is used for (issue #53); see <see cref="DevicePurposes"/>.</summary>
     public string Purpose { get; set; } = DevicePurposes.Dash;
 
@@ -75,6 +81,11 @@ public sealed class SavedDevice
 
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
+}
+
+public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)
+{
+    public bool IsValid => Width > 0 && Height > 0;
 }
 
 public sealed class DeviceBinding
@@ -105,7 +116,11 @@ public static class DeviceCapabilities
     /// unrelated dashboard content.
     /// </summary>
     public static bool DrivesScreenOutput(SavedDevice device) =>
-        HasScreen(device) && DevicePurposes.Resolve(device.Purpose).Available;
+        HasScreen(device)
+        && DevicePurposes.Resolve(device.Purpose) is var purpose
+        && purpose.Available
+        && (purpose.Output is not DevicePurposeOutputKind.DesktopCaptureRegion
+            || device.CaptureRegion is { IsValid: true });
 
     /// <summary>
     /// True only for screens assigned to one of the user's editable dashboards. Built-in

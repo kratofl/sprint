@@ -25,6 +25,25 @@ public sealed class ScreenPipelineTests
         public void Dispose() { }
     }
 
+    private sealed class RecoveringFrameSource : IDashFrameSource
+    {
+        public int Width => 8;
+        public int Height => 8;
+        public bool Failing { get; set; } = true;
+
+        public void Render(TelemetryFrame frame, Span<byte> rgb565)
+        {
+            if (Failing)
+            {
+                throw new InvalidOperationException("capture unavailable");
+            }
+
+            rgb565.Fill(0x1f);
+        }
+
+        public void Dispose() { }
+    }
+
     [Theory]
     [InlineData(ScreenConnectionState.ConfigurationRequired, "Setup needed", "VID/PID")]
     [InlineData(ScreenConnectionState.Disconnected, "Not found", "USB connection")]
@@ -184,6 +203,24 @@ public sealed class ScreenPipelineTests
 
         Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
         Assert.Equal("boom", publisher.LastError);
+        Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
+        Assert.Contains("boom", publisher.Status.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublisherClearsFrameSourceFailureAfterAFrameRecovers()
+    {
+        var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };
+        var source = new RecoveringFrameSource();
+        using var publisher = new ScreenPublisher(driver, source, () => new TelemetryFrame());
+
+        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        Assert.Equal(ScreenConnectionState.Faulted, publisher.Status.State);
+
+        source.Failing = false;
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
+        Assert.Null(publisher.LastError);
+        Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
     }
 
     [Fact]

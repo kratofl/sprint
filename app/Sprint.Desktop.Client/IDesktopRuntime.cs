@@ -31,6 +31,7 @@ public interface IDesktopRuntime
     SavedDevice AddDevice(CatalogDevice catalog);
     void UpdateDevice(SavedDevice device, string name, int rotation, int offsetX, int offsetY, int margin, string dashId);
     void UpdateDevicePurpose(SavedDevice device, string purpose);
+    void UpdateDeviceCaptureRegion(SavedDevice device, ScreenCaptureRegion region);
     void UpdateDeviceRefreshHz(SavedDevice device, int refreshHz);
     void RemoveDevice(SavedDevice device);
     DashLayout CreateDashLayout();

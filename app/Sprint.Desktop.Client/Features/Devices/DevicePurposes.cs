@@ -5,13 +5,12 @@ public enum DevicePurposeOutputKind
     DashboardLayout,
     BuiltInFlagLayout,
     BuiltInLapTimerLayout,
-    PendingRearViewVideo,
+    DesktopCaptureRegion,
 }
 
 /// <summary>
 /// One task a device screen can perform. Availability is derived from its output kind
-/// so the catalog cannot claim a pending source is ready. Pending purposes remain
-/// selectable so intent is persisted and the UI can explain what is needed next.
+/// so a future catalog entry cannot claim support until it has a concrete source.
 /// </summary>
 public sealed record DevicePurpose(
     string Id,
@@ -19,12 +18,16 @@ public sealed record DevicePurpose(
     string Description,
     DevicePurposeOutputKind Output)
 {
-    public bool Available => Output is not DevicePurposeOutputKind.PendingRearViewVideo;
+    public bool Available => Output is
+        DevicePurposeOutputKind.DashboardLayout
+        or DevicePurposeOutputKind.BuiltInFlagLayout
+        or DevicePurposeOutputKind.BuiltInLapTimerLayout
+        or DevicePurposeOutputKind.DesktopCaptureRegion;
 }
 
 /// <summary>
 /// The device-purpose catalog (issue #53). A purpose decides what output a screen
-/// gets: a user dashboard, a built-in focused display, or a future video source. Pure
+/// gets: a user dashboard, a built-in focused display, or a desktop capture source. Pure
 /// and IO-free — persistence normalizes through <see cref="Normalize"/> so an unknown
 /// or missing value resolves to the dashboard default rather than silently killing
 /// output.
@@ -46,8 +49,8 @@ public static class DevicePurposes
         new(
             RearViewMirror,
             "Rear-view mirror",
-            "Show live rear-view video from the game on this screen.",
-            DevicePurposeOutputKind.PendingRearViewVideo),
+            "Mirror a selected area of your desktop on this screen.",
+            DevicePurposeOutputKind.DesktopCaptureRegion),
         new(
             Flags,
             "Flag display",

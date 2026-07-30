@@ -68,7 +68,7 @@ CI without a physical device or a running game.
 | WS4 | LMU adapter | **Done (sw)** | Parser/mapper/engine/delta green over synthetic frames; **live-game run deferred**. |
 | WS5 | Persistence | **Done** | settings/devices/layouts/setup/controls round-trip; portable-vs-AppData is a product call. |
 | WS6 | Dash render + editor | **Done (core)** | SkiaSharp `DashPainter` renders the default preset + 12 critical widgets + flag/alert overlays; three-pane editor (palette/canvas drag-move-resize/inspector/page-tabs) on the `DashLayoutEditor` reducers; real preview + thumbnails. **Deferred:** full 23-widget catalog + ~90-binding resolver, widget stacks, theme manager, per-widget style/config inspector, in-editor grid resize of the layout itself. |
-| WS7 | Hardware display | **Done (fake-verified)** | RGB565 (ported + tested), `IScreenDriver`/fake adapter, `DashPainterFrameSource`, off-thread `ScreenPublisher`, `DeviceScreenService` coordinator, device UI (status/rotate/offset/dash-assign), WinUSB VoCore/USBD480 drivers + factory. **Deferred (hardware-gated, Open Q#3):** live USB verification, generic→scan device picker, WinUSB `.inf` installer, capture/rear-view (P2). |
+| WS7 | Hardware display | **Done (fake-verified)** | RGB565 (ported + tested), `IScreenDriver`/fake adapter, dashboard + desktop-capture frame sources, off-thread `ScreenPublisher`, `DeviceScreenService` coordinator, purpose-driven device UI, transparent aspect-locked capture selector, Windows GDI rear-view capture, and WinUSB VoCore/USBD480 drivers + factory. **Deferred (hardware-gated, Open Q#3):** live USB verification, generic→scan device picker, and WinUSB `.inf` installer. |
 | WS8 | Input & binding | **Done (core)** | `CommandBus`, `controls.json` persistence, `BindingResolver`, `InputCaptureReducer`, keyboard-fallback bindings UI. **Deferred (Open Q#4):** Windows Raw Input physical-button capture, per-device binding-routing UI, page-cycle→on-hardware page effect. |
 | WS9 | Engineer/web | **Done (core)** | `EngineerStageService` (staged diff via the shared `StagedControlChange` contract, push/revert, command builders), setup A/B compare + delete. **Deferred:** real engineer↔web transport beyond the contract shapes. |
 | WS10 | Packaging/release | **Done** | Intentional win-x64 publish (verified), version+channel reporting (`BuildInfo` + Settings badge), channel-aware `UpdateChecker` + manual check. **Decision (Open Q#5):** check + notify + manual download; self-replacing auto-install deferred. |
@@ -76,8 +76,8 @@ CI without a physical device or a running game.
 
 **Cross-cutting deferrals** (require a device, a running game, or a maintainer call —
 never silently "done"): live LMU telemetry, real VoCore/USBD480 output, physical
-joystick capture, portable-data-location decision, code signing, and the P2
-capture/rear-view + theme-manager surfaces. The dash painter DSL (ColorExpr /
+joystick capture, portable-data-location decision, code signing, and the
+theme-manager surfaces. The dash painter DSL (ColorExpr /
 Condition / widget stacks / per-widget update-rate cache) was intentionally not
 ported — the fixed critical-widget set uses direct renderers (see WS6 §5).
 
@@ -413,10 +413,10 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Signing + version metadata | (none) | Deferred (signing) | WS10 | P2 | WS10/signing | Version metadata is implemented; code signing needs maintainer certificates/infra. |
 | Structured multi-sink logging (daily JSON + stdout, 14-day retention) | `app/internal/logger/*.go` | Deferred | WS2 | P2 | WS2/US8 | No current consumer requires the old logging design; add a .NET logging seam when a real sink is needed. |
 | Lap delta tracking: reference store + position tracker + manual reference | `app/internal/delta/*.go` | **Done** | WS4/WS6 | P1 | WS4/US16 | `Features/Live/DeltaTracker.cs`: position-keyed reference curve from the fastest complete valid lap, linear-interpolated Delta + TargetLapTime; reader-thread-owned (no locking, like the Go single-goroutine). Manual reference is a stubbed seam (`SetManualReference`/`ClearManualReference`) — the `dash.target.set` wiring is WS8. |
-| Capture: GDI mirror renderer (rear-view) | `app/internal/capture/capture_windows.go` | Deferred | WS7 | P2 | WS7/US30 | Dev-gated rear-view capture remains out of the core migration. |
+| Capture: GDI mirror renderer (rear-view) | `app/internal/capture/capture_windows.go` | **Done (software-verified)** | WS7 | P2 | WS7/US30 | `WindowsDesktopRegionCapturer` uses a top-down 32-bit GDI DIB + `StretchBlt`; `DesktopCaptureFrameSource` feeds the existing rotation/margin/offset RGB565 pipeline. Production GDI capture is exercised on Windows; physical USB display verification remains hardware-gated. |
 | Capture: idle frame (black / pixelated clock) | `capture/capture_idle.go` | Deferred | WS7 | P2 | WS7/US30 | Coupled to deferred rear-view capture. |
-| Capture: region-selection overlay (native GDI drag/resize) | `capture/overlay_windows.go`; React rear-view selector | Deferred | WS7 | P2 | WS7/US30 | Coupled to deferred rear-view capture. |
-| Rear-view purpose + config (RearViewConfig capture x/y/w/h + idle mode) | `devices/*` PurposeConfig; React Devices rear-view | Deferred | WS7 | P2 | WS7/US30 | Dev-gated rear-view purpose remains deferred. |
+| Capture: region-selection overlay (native GDI drag/resize) | `capture/overlay_windows.go`; React rear-view selector | **Done** | WS7 | P2 | WS7/US30 | Avalonia `CaptureRegionWindow` is transparent, borderless, movable, resizable, and locks to the device's effective orientation. Confirmation closes the overlay before persisting/starting capture. |
+| Rear-view purpose + config (RearViewConfig capture x/y/w/h + idle mode) | `devices/*` PurposeConfig; React Devices rear-view | **Done (core)** | WS7 | P2 | WS7/US30 | Per-device physical desktop coordinates persist (including negative multi-monitor positions); Devices provides Select/Change area and an honest Setup-needed state. Idle-frame modes remain deferred. |
 | Device catalog (addable entries, generic→scan, embedded presets) | `devices/catalog.go` | Partial | WS5/WS7 | P1 | WS5/US22 | .NET Catalog loads presets and preserves offset/margin/bindings; generic→USB-scan path missing. |
 | Device add/scan bridge (generic scan, picker, auto-rotate) | `app/app_dashboard.go`/`app_hardware.go` Device* | Done (core) | WS7 | P1 | WS7/US31 | Catalog entries and screen service coordination exist; generic USB picker polish remains deferred. |
 | Device management bridge (rename/rotation/offset/layout/purpose/status) | `app.go` Device* setters | Done (core) | WS5/WS7 | P1 | WS5/US22 | Runtime persists rename/rotation/offset/margin/layout and screen service status is surfaced. |
@@ -664,8 +664,10 @@ events (matrix 4.9 device rows) and capture/rear-view (dev-gated).
 **DEFERRED / out-of-scope:**
 - Live VoCore/USBD480 verification, generic USB picker polish, and WinUSB `.inf`
   installer/UAC flow remain hardware-gated.
-- Capture / rear-view mirror + region overlay are **dev-gated P2**.
-- Linux (gousb) hardware paths are out of scope for the Windows-first migration.
+- Rear-view idle frames (black/pixel clock) remain P2; live desktop capture and
+  its in-app region selector are implemented.
+- Linux (gousb and desktop capture) hardware paths are out of scope for the
+  Windows-first migration.
 
 ### WS8 — Input & Command Binding
 

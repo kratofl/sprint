@@ -86,6 +86,8 @@ public sealed class MainWindow : Window
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
     private bool _deviceBindingPickerOpen;
+    private CaptureRegionWindow? _captureRegionWindow;
+    internal CaptureRegionWindow? ActiveCaptureRegionWindow => _captureRegionWindow;
     // Device detail live preview: a persistent painter renders the assigned dash
     // upright at the panel's native size into an in-place WriteableBitmap, animated
     // from the shell's ~30Hz tick without rebuilding the body. Torn down whenever
@@ -847,6 +849,8 @@ public sealed class MainWindow : Window
 
         _toastTimers.Clear();
         DisposeDevicePreview();
+        _captureRegionWindow?.Close();
+        _captureRegionWindow = null;
 #if DEBUG
         _diagnosticsWindow?.Close();
         _diagnosticsWindow = null;
@@ -1645,8 +1649,9 @@ public sealed class MainWindow : Window
     // pipeline), a buttons-only device shows an icon + its bound-button count.
     private Control DeviceCardVisual(SavedDevice device, double width, double height)
     {
-        // A dash mirror is only truthful for a dash-purpose screen; anything else is
-        // idle, so the card falls through to the icon tile with its purpose label.
+        // Telemetry-backed purposes can show a truthful one-shot preview. Desktop
+        // capture stays off the UI thread, so its gallery card uses a labelled icon
+        // instead of taking an extra synchronous screenshot.
         if (DeviceCapabilities.DrivesScreenOutput(device)
             && RenderDeviceMirrorBitmap(device, DashPreviewFrames.For(DashPreviewState.MidLap)) is { } bitmap)
         {
@@ -1656,9 +1661,19 @@ public sealed class MainWindow : Window
         var icon = DeviceIcon(device);
         var inner = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         inner.Children.Add(new Grid { Children = { Icons.Create(icon, 30, Graphite.AccentBrush) }, HorizontalAlignment = HorizontalAlignment.Center });
-        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        if (IsScreenDevice(device)
+            && DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
         {
-            inner.Children.Add(Graphite.TextBlock(purpose.Label, 11, FontWeight.Medium, Graphite.Text3Brush));
+            inner.Children.Add(Graphite.TextBlock(
+                "Rear-view mirror",
+                11,
+                FontWeight.Medium,
+                Graphite.Text2Brush));
+            inner.Children.Add(Graphite.TextBlock(
+                device.CaptureRegion is { IsValid: true } ? "Capture area selected" : "Select an area to start",
+                10,
+                FontWeight.Normal,
+                Graphite.Text3Brush));
         }
         else if (!IsScreenDevice(device))
         {
@@ -2179,33 +2194,26 @@ public sealed class MainWindow : Window
     private Control DeviceScreenSection(SavedDevice device)
     {
         var purpose = DevicePurposes.Resolve(device.Purpose);
-        if (!purpose.Available)
-        {
-            // Honest pending state: the screen is labelled for output Sprint cannot
-            // produce yet, so it stays idle instead of quietly showing a dashboard.
-            var idle = new StackPanel { Spacing = 12 };
-            idle.Children.Add(DevicePurposeField(device));
-            idle.Children.Add(Graphite.StatePanel(
-                $"{purpose.Label} is not supported yet",
-                $"{purpose.Description} Sprint cannot capture game video yet, so this screen stays idle. "
-                    + "Choose another purpose to start output now.",
-                Graphite.BlueBrush));
-            return idle;
-        }
-
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 24 };
 
         var left = new StackPanel { Spacing = 10 };
         left.Children.Add(DevicePurposeField(device));
-        if (DevicePurposes.IsDash(device.Purpose))
+        if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
         {
-            left.Children.Add(DashAssignmentField(device));
+            left.Children.Add(CaptureAreaField(device));
         }
-
-        left.Children.Add(DeviceScreenPreview(device));
-        if (_devicePreviewPainter is not null)
+        else
         {
-            left.Children.Add(PreviewControlsRow());
+            if (DevicePurposes.IsDash(device.Purpose))
+            {
+                left.Children.Add(DashAssignmentField(device));
+            }
+
+            left.Children.Add(DeviceScreenPreview(device));
+            if (_devicePreviewPainter is not null)
+            {
+                left.Children.Add(PreviewControlsRow());
+            }
         }
 
         AddGrid(grid, left, 0, 0);
@@ -2223,6 +2231,71 @@ public sealed class MainWindow : Window
         AddGrid(grid, right, 0, 1);
 
         return grid;
+    }
+
+    private Control CaptureAreaField(SavedDevice device)
+    {
+        var panel = new StackPanel { Spacing = 8, Width = 388 };
+        panel.Children.Add(Graphite.SectionLabel("Capture area"));
+        if (device.CaptureRegion is not { IsValid: true } region)
+        {
+            panel.Children.Add(Graphite.StatePanel(
+                "Setup needed",
+                "Select the desktop area that contains the in-game rear view. Sprint will keep the device's aspect ratio while you frame it.",
+                Graphite.ActionMaterialBrush));
+            panel.Children.Add(ActionButton(
+                "Select area",
+                ButtonTone.Primary,
+                () => ShowCaptureRegionSelector(device)));
+            return panel;
+        }
+
+        var details = new StackPanel { Spacing = 4 };
+        details.Children.Add(Graphite.TextBlock(
+            $"{region.Width} × {region.Height} px",
+            14,
+            FontWeight.SemiBold,
+            Graphite.TextBrush));
+        details.Children.Add(Graphite.TextBlock(
+            $"Desktop position {region.X}, {region.Y}",
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush));
+        panel.Children.Add(new Border
+        {
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Padding = new Thickness(12),
+            Child = details,
+        });
+        panel.Children.Add(ActionButton(
+            "Change area",
+            ButtonTone.Neutral,
+            () => ShowCaptureRegionSelector(device)));
+        return panel;
+    }
+
+    private void ShowCaptureRegionSelector(SavedDevice device)
+    {
+        _captureRegionWindow?.Close();
+        var selector = new CaptureRegionWindow(device);
+        _captureRegionWindow = selector;
+        selector.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_captureRegionWindow, selector))
+            {
+                _captureRegionWindow = null;
+            }
+        };
+        selector.SelectionConfirmed += (_, region) =>
+        {
+            _runtime.UpdateDeviceCaptureRegion(device, region);
+            _screens.Sync();
+            RenderBody();
+        };
+        selector.Show(this);
     }
 
     // A label/control row where every label shares one left column so the controls
@@ -2372,10 +2445,12 @@ public sealed class MainWindow : Window
     private Control RotationControl(SavedDevice device)
     {
         var index = device.Rotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
-        return Graphite.Segmented(
-            ["Vertical", "Horizontal", "Vertical Inverted", "Horizontal Inverted"],
+        var control = Graphite.Segmented(
+            ["0°", "90°", "180°", "270°"],
             index,
             chosen => SetDeviceRotation(device, chosen * 90));
+        ToolTip.SetTip(control, "Rotate the output clockwise: 0°/180° are vertical; 90°/270° are horizontal.");
+        return control;
     }
 
     // One rate for the panel and its live preview (issue #75).
@@ -2420,7 +2495,15 @@ public sealed class MainWindow : Window
             return;
         }
 
+        var reorientedCapture = device.CaptureRegion is { IsValid: true } region
+            ? CaptureSelectionGeometry.ReorientRegion(region, device.Rotation, rotation)
+            : null;
         _runtime.UpdateDevice(device, device.Name, rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+        if (reorientedCapture is not null && !Equals(device.CaptureRegion, reorientedCapture))
+        {
+            _runtime.UpdateDeviceCaptureRegion(device, reorientedCapture);
+        }
+
         _screens.Sync();
         RenderBody();
     }
@@ -4156,13 +4239,13 @@ public sealed class MainWindow : Window
             return new ScreenStatusView("Disabled", "This screen is disabled. Enable it to start output.");
         }
 
-        // A screen labelled for an unbuilt purpose has no publisher by design; report
-        // that instead of the generic "no publisher" disconnect, which reads as a fault.
-        if (DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        if (DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion
+            && device.CaptureRegion is not { IsValid: true })
         {
             return new ScreenStatusView(
-                "Idle",
-                $"Set to {purpose.Label}, which Sprint cannot render yet — nothing is being sent to this screen.");
+                "Setup needed",
+                "Select the desktop area to mirror before Sprint starts output.",
+                ScreenStatusTone.Warning);
         }
 
         return ScreenStatusPresentation.Describe(

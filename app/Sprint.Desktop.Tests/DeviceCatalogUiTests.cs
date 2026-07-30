@@ -1,6 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Devices;
@@ -124,9 +127,59 @@ public sealed class DeviceCatalogUiTests
                 mirrorPurpose.SelectedItem = "Rear-view mirror";
                 Render(window);
 
-                // Rear-view capture is pending: no output controls, and the page says why.
-                Assert.Null(FindText(window, "Screen alignment"));
-                Assert.NotNull(FindText(window, "Rear-view mirror is not supported yet"));
+                // Rear-view is a zero-dashboard capture task. It keeps relevant panel
+                // alignment but asks for a desktop area before starting output.
+                Assert.NotNull(FindText(window, "Capture area"));
+                Assert.NotNull(FindText(window, "Screen alignment"));
+                Assert.NotNull(FindText(window, "Setup needed"));
+                Assert.Null(FindTagged<ComboBox>(window, "device-dash"));
+
+                Click(window, "Select area");
+                var selector = Assert.IsType<CaptureRegionWindow>(window.ActiveCaptureRegionWindow);
+                Assert.Equal(WindowDecorations.None, selector.WindowDecorations);
+                Assert.Equal(Brushes.Transparent, selector.Background);
+                Assert.Contains(WindowTransparencyLevel.Transparent, selector.TransparencyLevelHint);
+                Assert.Equal(
+                    CaptureSelectionGeometry.AspectRatio(runtime.Devices.Single(device => device.Id == "wheel-screen")),
+                    selector.SelectionAspectRatio,
+                    precision: 8);
+
+                var beforeMove = selector.Position;
+                RaiseKey(selector, Key.Right);
+                Assert.True(selector.Position.X > beforeMove.X);
+                var beforeResize = selector.SelectedRegion;
+                RaiseKey(selector, Key.Right, KeyModifiers.Shift);
+                Render(selector);
+                var afterResize = selector.SelectedRegion;
+                Assert.True(afterResize.Width > beforeResize.Width);
+                Assert.Equal(
+                    selector.SelectionAspectRatio,
+                    afterResize.Width / (double)afterResize.Height,
+                    precision: 2);
+
+                RaiseKey(selector, Key.Escape);
+                Assert.Null(window.ActiveCaptureRegionWindow);
+                Assert.Null(runtime.Devices.Single(device => device.Id == "wheel-screen").CaptureRegion);
+
+                Click(window, "Select area");
+                selector = Assert.IsType<CaptureRegionWindow>(window.ActiveCaptureRegionWindow);
+                selector.Position = new PixelPoint(-640, 80);
+                selector.Width = 600;
+                selector.Height = 600;
+                Render(selector);
+                Assert.Equal(
+                    selector.SelectionAspectRatio,
+                    selector.SelectedRegion.Width / (double)selector.SelectedRegion.Height,
+                    precision: 2);
+                RaiseKey(selector, Key.Enter);
+                Render(window);
+
+                var configured = runtime.Devices.Single(device => device.Id == "wheel-screen");
+                Assert.NotNull(configured.CaptureRegion);
+                Assert.True(configured.CaptureRegion!.IsValid);
+                Assert.True(configured.CaptureRegion.X < 0);
+                Assert.Null(window.ActiveCaptureRegionWindow);
+                Assert.NotNull(FindText(window, "Change area"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -167,6 +220,12 @@ public sealed class DeviceCatalogUiTests
 
     private static void Click(MainWindow window, string label)
     {
+        Click((Window)window, label);
+        Render(window);
+    }
+
+    private static void Click(Window window, string label)
+    {
         var button = window.GetVisualDescendants()
             .OfType<Button>()
             .FirstOrDefault(candidate =>
@@ -178,7 +237,6 @@ public sealed class DeviceCatalogUiTests
 
         Assert.NotNull(button);
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Render(window);
     }
 
     // Realizes the visual tree after an interaction so descendant lookups see the
@@ -186,5 +244,21 @@ public sealed class DeviceCatalogUiTests
     private static void Render(MainWindow window)
     {
         using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void Render(Window window)
+    {
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void RaiseKey(Window window, Key key, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        window.RaiseEvent(new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Source = window,
+            Key = key,
+            KeyModifiers = modifiers,
+        });
     }
 }

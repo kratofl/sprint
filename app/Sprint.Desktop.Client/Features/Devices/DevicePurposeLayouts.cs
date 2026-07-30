@@ -99,7 +99,7 @@ public static class DevicePurposeLayouts
             DevicePurposeOutputKind.DashboardLayout => ResolveDashboard(device, dashboards),
             DevicePurposeOutputKind.BuiltInFlagLayout => FlagDisplay,
             DevicePurposeOutputKind.BuiltInLapTimerLayout => LapTimer,
-            DevicePurposeOutputKind.PendingRearViewVideo => null,
+            DevicePurposeOutputKind.DesktopCaptureRegion => null,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(device),
                 device.Purpose,

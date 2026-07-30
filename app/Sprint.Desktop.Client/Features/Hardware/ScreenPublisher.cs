@@ -83,6 +83,15 @@ public sealed class ScreenPublisher : IDisposable
     {
         get
         {
+            if (_lastError is { } sourceError)
+            {
+                return new ScreenStatus
+                {
+                    State = ScreenConnectionState.Faulted,
+                    Detail = $"Frame source failed: {sourceError}",
+                };
+            }
+
             var status = _driver.Status;
             var started = Volatile.Read(ref _connectAttemptStarted);
             if (status.State == ScreenConnectionState.Connecting
@@ -228,6 +237,7 @@ public sealed class ScreenPublisher : IDisposable
 
         if (_driver.TrySendFrame(_buffer))
         {
+            _lastError = null;
             if (!_loggedFirstFrame)
             {
                 _loggedFirstFrame = true;

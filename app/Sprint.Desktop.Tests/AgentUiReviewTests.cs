@@ -20,8 +20,10 @@ public sealed class AgentUiReviewTests
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-flag-display-1120x720");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-lap-timer");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-lap-timer-1120x720");
-        Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-rear-view-pending");
-        Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-rear-view-pending-1120x720");
+        Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-rear-view-setup");
+        Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-rear-view-setup-1120x720");
+        Assert.Contains(result.Frames, frame => frame.Name == "rear-view-capture-selector");
+        Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-rear-view-configured");
         Assert.Contains(result.Frames, frame => frame.Name == "setups-duplicated-user-copy");
         Assert.Contains(result.Frames, frame => frame.Name == "setup-deleted-undo");
         Assert.Contains(result.Frames, frame => frame.Name == "dash-editor-layout");

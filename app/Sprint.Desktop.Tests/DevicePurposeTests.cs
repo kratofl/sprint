@@ -13,6 +13,19 @@ namespace Sprint.Desktop.Tests;
 /// </summary>
 public sealed class DevicePurposeTests
 {
+    private sealed class SolidCapturer : IDesktopRegionCapturer
+    {
+        public bool TryCapture(
+            ScreenCaptureRegion region,
+            int destinationWidth,
+            int destinationHeight,
+            byte[] bgra)
+        {
+            Array.Fill(bgra, (byte)0xff);
+            return true;
+        }
+    }
+
     private static SavedDevice ScreenDevice(string id, string purpose = DevicePurposes.Dash) => new()
     {
         Id = id,
@@ -33,7 +46,7 @@ public sealed class DevicePurposeTests
             DevicePurposes.All.Select(purpose => purpose.Id));
 
         Assert.Equal(
-            new[] { "Dashboard", "Flag display", "Lap timer" },
+            new[] { "Dashboard", "Rear-view mirror", "Flag display", "Lap timer" },
             DevicePurposes.All.Where(p => p.Available).Select(p => p.Label));
         Assert.Equal(
             new[] { "Dashboard", "Rear-view mirror", "Flag display", "Lap timer" },
@@ -104,11 +117,14 @@ public sealed class DevicePurposeTests
         var flags = ScreenDevice("flag-screen", DevicePurposes.Flags);
         var lapTimer = ScreenDevice("lap-screen", DevicePurposes.LapTimes);
         var mirror = ScreenDevice("mirror", DevicePurposes.RearViewMirror);
+        var configuredMirror = ScreenDevice("configured-mirror", DevicePurposes.RearViewMirror);
+        configuredMirror.CaptureRegion = new ScreenCaptureRegion(-1600, 0, 1600, 960);
 
         Assert.True(DeviceCapabilities.DrivesScreenOutput(dashboard));
         Assert.True(DeviceCapabilities.DrivesScreenOutput(flags));
         Assert.True(DeviceCapabilities.DrivesScreenOutput(lapTimer));
         Assert.False(DeviceCapabilities.DrivesScreenOutput(mirror));
+        Assert.True(DeviceCapabilities.DrivesScreenOutput(configuredMirror));
 
         Assert.True(DeviceCapabilities.DrivesDash(dashboard));
         Assert.False(DeviceCapabilities.DrivesDash(flags));
@@ -132,7 +148,7 @@ public sealed class DevicePurposeTests
     }
 
     [Fact]
-    public void SyncPublishesSupportedPurposesAndStopsForPendingRearViewVideo()
+    public void SyncStartsRearViewOnlyAfterItsCaptureAreaIsConfigured()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
         try
@@ -140,8 +156,17 @@ public sealed class DevicePurposeTests
             var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var device = ScreenDevice("wheel-screen");
             runtime.Devices.Add(device);
+            var driversCreated = 0;
 
-            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => new FakeScreenDriver());
+            using var service = new DeviceScreenService(
+                runtime,
+                () => new TelemetryFrame(),
+                _ =>
+                {
+                    driversCreated++;
+                    return new FakeScreenDriver();
+                },
+                desktopCapturer: new SolidCapturer());
             service.Sync();
             Assert.Contains("wheel-screen", service.ActiveDeviceIds);
 
@@ -156,6 +181,15 @@ public sealed class DevicePurposeTests
             runtime.UpdateDevicePurpose(device, DevicePurposes.RearViewMirror);
             service.Sync();
             Assert.DoesNotContain("wheel-screen", service.ActiveDeviceIds);
+
+            runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(200, 100, 800, 480));
+            service.Sync();
+            Assert.Contains("wheel-screen", service.ActiveDeviceIds);
+            var capturePublisherCount = driversCreated;
+
+            runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(240, 120, 800, 480));
+            service.Sync();
+            Assert.Equal(capturePublisherCount + 1, driversCreated);
 
             // Switching back to a supported purpose resumes output.
             runtime.UpdateDevicePurpose(device, DevicePurposes.Dash);
