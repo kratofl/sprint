@@ -28,6 +28,7 @@ public sealed class DashPainter : IDisposable
     private SKCanvas _canvas;
     private readonly SKPaint _paint = new() { IsAntialias = true };
     private readonly SKFont _font = new(DashFonts.Value, 12);
+    private readonly DashTextBlobCache _textBlobs = new();
     private readonly RaceLogicLapTimerPresenter _raceLogicLapTimer = new();
     private bool _disposed;
 
@@ -172,6 +173,7 @@ public sealed class DashPainter : IDisposable
         }
 
         _canvas.Flush();
+        _textBlobs.EndFrame();
     }
 
     /// <summary>Renders and encodes to PNG bytes (thumbnails / file output).</summary>
@@ -534,11 +536,22 @@ public sealed class DashPainter : IDisposable
 
         var metrics = _font.Metrics;
         var baseline = cy - (metrics.Ascent + metrics.Descent) / 2f;
-        var skAlign = align switch
+
+        // Drawn through a cached blob rather than SKCanvas.DrawText(string, …),
+        // which re-shapes and allocates on every call. Alignment is applied here
+        // because a blob is always laid out from its own origin.
+        var paint = Paint(color);
+        var blob = _textBlobs.Get(text, _font);
+        if (blob is null)
         {
-            Align.Center => SKTextAlign.Center,
-            Align.End => SKTextAlign.Right,
-            _ => SKTextAlign.Left,
+            return;
+        }
+
+        var textX = align switch
+        {
+            Align.Center => anchorX - _font.MeasureText(text, paint) / 2f,
+            Align.End => anchorX - _font.MeasureText(text, paint),
+            _ => anchorX,
         };
 
         var saved = 0;
@@ -556,7 +569,7 @@ public sealed class DashPainter : IDisposable
 
         try
         {
-            _canvas.DrawText(text, anchorX, baseline, skAlign, _font, Paint(color));
+            _canvas.DrawText(blob, textX, baseline, paint);
         }
         finally
         {
@@ -1237,6 +1250,7 @@ public sealed class DashPainter : IDisposable
         }
 
         _disposed = true;
+        _textBlobs.Dispose();
         _font.Dispose();
         _paint.Dispose();
         _canvas.Dispose();

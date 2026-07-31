@@ -922,3 +922,65 @@ public sealed class DashPainterTests
         return first == int.MaxValue ? 0 : last - first + 1;
     }
 }
+
+/// <summary>
+/// The blob cache is what keeps a redraw of unchanged text off the allocator.
+/// These cover the two behaviours the painter-level allocation guard cannot see:
+/// that a hit really reuses the shaped run, and that text a frame stopped drawing
+/// is released instead of accumulating for the length of a session.
+/// </summary>
+public sealed class DashTextBlobCacheTests
+{
+    [Fact]
+    public void ReusesTheShapedRunForUnchangedTextAcrossFrames()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        var first = cache.Get("1:22.100", font);
+        cache.EndFrame();
+        var second = cache.Get("1:22.100", font);
+        cache.EndFrame();
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+        Assert.Equal(1, cache.Count);
+    }
+
+    [Fact]
+    public void ShapesSeparatelyPerTypefaceAndSize()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        var atTwentyFour = cache.Get("LAP 4", font);
+        font.Size = 12;
+        var atTwelve = cache.Get("LAP 4", font);
+
+        Assert.NotSame(atTwentyFour, atTwelve);
+        Assert.Equal(2, cache.Count);
+    }
+
+    [Fact]
+    public void ReleasesTextAFrameStoppedDrawing()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        // A ticking value: every frame draws a different string next to a label
+        // that never changes.
+        cache.Get("SPEED", font);
+        cache.Get("120", font);
+        cache.EndFrame();
+        cache.Get("SPEED", font);
+        cache.Get("121", font);
+        cache.EndFrame();
+
+        // The stale "120" is gone; the steady label survived, so it is still free
+        // to redraw.
+        Assert.Equal(2, cache.Count);
+        var steady = cache.Get("SPEED", font);
+        cache.EndFrame();
+        Assert.Same(steady, cache.Get("SPEED", font));
+    }
+}
