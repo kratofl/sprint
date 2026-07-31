@@ -46,6 +46,10 @@ export const figmaTokens = {
         raised: { $type: 'color', $value: semanticTokens.color.surface.raised },
         inset: { $type: 'color', $value: semanticTokens.color.surface.inset },
         overlay: { $type: 'color', $value: semanticTokens.color.surface.overlay },
+        captureSelection: {
+          $type: 'color',
+          $value: semanticTokens.color.surface.captureSelection,
+        },
       },
       text: {
         primary: { $type: 'color', $value: semanticTokens.color.text.primary },

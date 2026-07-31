@@ -87,6 +87,7 @@ test('Graphite token source exposes the canonical product contract', () => {
     text2: '#A1A1AA',
     text3: '#6F6F78',
     accent: '#FF6A00',
+    captureSelection: 'rgba(16,16,18,.20)',
   })
 
   assert.deepEqual(publicTokens.graphiteTokens.status, {
@@ -140,6 +141,7 @@ test('global CSS exposes Graphite public variables and aliases', () => {
   assert.equal(cssVar('--text2'), '#A1A1AA')
   assert.equal(cssVar('--text3'), '#6F6F78')
   assert.equal(cssVar('--accent'), '#FF6A00')
+  assert.equal(cssVar('--capture-selection-fill'), 'rgba(16, 16, 18, .20)')
   assert.equal(cssVar('--green'), '#16B566')
   assert.equal(cssVar('--red'), '#F02744')
   assert.equal(cssVar('--yellow'), '#E0A30C')

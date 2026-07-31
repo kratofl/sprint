@@ -10,7 +10,9 @@ using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Shell;
 using Xunit;
@@ -447,7 +449,7 @@ public class HeadlessShellTests
                 // Real data, no sample rows: the dash card title, the screen, its resolution.
                 Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name));
                 Assert.NotNull(FindOptionalText(window, "Home Screen"));
-                Assert.NotNull(FindOptionalText(window, "800 × 480 · " + runtime.DashLayouts[0].Name));
+                Assert.NotNull(FindOptionalText(window, "480 × 800 · " + runtime.DashLayouts[0].Name));
                 Assert.Null(FindOptionalText(window, "Dash Editor Ready"));
 
                 window.Close();
@@ -527,7 +529,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task DevicesPageShowsScreenResolutionForEachSavedScreen()
+    public async Task DevicesPageShowsOrientedScreenResolutionForEachSavedScreen()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -556,10 +558,10 @@ public class HeadlessShellTests
                 window.Show();
                 window.CaptureRenderedFrame();
 
-                // US33: the Devices library card must surface the exact screen shape
-                // (resolution) so a dash can be targeted at real hardware with confidence.
+                // The Devices library surfaces the selected logical orientation,
+                // independently of the native dimension order reported by the driver.
                 Assert.NotNull(FindOptionalText(window, "Test Screen"));
-                Assert.NotNull(FindOptionalText(window, "vocore · 800 × 480"));
+                Assert.NotNull(FindOptionalText(window, "vocore · 480 × 800"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -1062,7 +1064,7 @@ public class HeadlessShellTests
                 window.CaptureRenderedFrame();
                 FindButton(window, "Listen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
+                Assert.NotNull(FindOptionalText(window, "Wheel input is unavailable. Press a keyboard key, or Esc to cancel."));
 
                 FindButton(window, "Remove").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
@@ -1070,7 +1072,7 @@ public class HeadlessShellTests
                 FindButton(window, "Remove device").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
                 Assert.Empty(runtime.Devices);
-                Assert.Null(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
+                Assert.Null(FindOptionalText(window, "Wheel input is unavailable. Press a keyboard key, or Esc to cancel."));
 
                 RaiseKeyDown(window, Key.A);
                 window.CaptureRenderedFrame();
@@ -1109,13 +1111,123 @@ public class HeadlessShellTests
                 window.CaptureRenderedFrame();
                 FindButton(window, "Listen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-                Assert.NotNull(FindOptionalText(window, "Press a key on this device... (Esc to cancel)"));
+                Assert.NotNull(FindOptionalText(window, "Wheel input is unavailable. Press a keyboard key, or Esc to cancel."));
 
                 runtime.Devices.Clear();
                 RaiseKeyDown(window, Key.B);
                 window.CaptureRenderedFrame();
                 Assert.Empty(runtime.Controls.Bindings);
 
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DevicesListenCapturesSteeringWheelButton()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                runtime.AddDevice(runtime.Catalog[0]);
+                var device = runtime.Devices[0];
+                var layout = DevicePurposeLayouts.Resolve(device, runtime.DashLayouts);
+                Assert.NotNull(layout);
+                if (layout!.Pages.Count < 2)
+                {
+                    layout.Pages.Add(new DashPage { Id = "wheel-selected", Name = "Wheel selected" });
+                }
+
+                var expectedNextPage = layout.Pages[1].Id;
+                var shell = new ShellState();
+                shell.Navigate(AppView.Devices);
+                using var telemetry = new RecordingTelemetrySource();
+                var hardwareInput = new FakeHardwareInputSource();
+                var window = new MainWindow(runtime, shell, telemetry, hardwareInput);
+                window.Show();
+
+                FindButton(window, device.Name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindButton(window, "Add binding").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindButton(window, "Listen").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                // The wheel controls may be a separate HID interface from the
+                // integrated screen transport represented by the saved device.
+                hardwareInput.Emit(0x3412, 0x7856, "button:68");
+                window.CaptureRenderedFrame();
+
+                var binding = Assert.Single(device.Bindings);
+                Assert.Equal("button:68", binding.Input);
+                Assert.Equal(SprintCommands.DashPageNext, binding.Command);
+                Assert.NotNull(FindOptionalText(window, "button:68"));
+
+                hardwareInput.Emit(0x3412, 0x7856, "button:68");
+                Assert.Equal(expectedNextPage, window.ActiveDashPageFor(device.Id));
+
+                window.Close();
+                Assert.True(hardwareInput.Disposed);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WheelWithoutScreenBroadcastsPageCommandToActiveDashScreens()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                runtime.AddDevice(runtime.Catalog[0]);
+                var screen = runtime.Devices[0];
+                var layout = DevicePurposeLayouts.Resolve(screen, runtime.DashLayouts);
+                Assert.NotNull(layout);
+                Assert.True(layout!.Pages.Count >= 2);
+                var expectedNextPage = layout.Pages[1].Id;
+
+                runtime.Devices.Add(new SavedDevice
+                {
+                    Id = "controls-only-wheel",
+                    Name = "Controls-only wheel",
+                    Type = "wheel",
+                    Width = 0,
+                    Height = 0,
+                    Bindings =
+                    [
+                        new DeviceBinding
+                        {
+                            Input = "button:12",
+                            Command = SprintCommands.DashPageNext,
+                        },
+                    ],
+                });
+
+                using var telemetry = new RecordingTelemetrySource();
+                var hardwareInput = new FakeHardwareInputSource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry, hardwareInput);
+                window.Show();
+
+                hardwareInput.Emit(0x3412, 0x7856, "button:12");
+
+                Assert.Equal(expectedNextPage, window.ActiveDashPageFor(screen.Id));
                 window.Close();
             }, CancellationToken.None);
         }
@@ -1294,6 +1406,20 @@ public class HeadlessShellTests
         return button.GetVisualDescendants()
             .OfType<TextBlock>()
             .Any(text => string.Equals(text.Text, content, StringComparison.Ordinal));
+    }
+
+    private sealed class FakeHardwareInputSource : IHardwareInputSource
+    {
+        public event EventHandler<HardwareInputEvent>? InputPressed;
+
+        public bool Disposed { get; private set; }
+
+        public bool IsAvailable => true;
+
+        public void Emit(ushort vid, ushort pid, string input) =>
+            InputPressed?.Invoke(this, new HardwareInputEvent(vid, pid, input));
+
+        public void Dispose() => Disposed = true;
     }
 
     // Finds a button inside the card whose title matches cardTitle, by walking up

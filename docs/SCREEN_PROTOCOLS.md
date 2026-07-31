@@ -9,14 +9,20 @@ screen troubleshooting behavior.
 
 ## Shared Pipeline
 
-Sprint renders one complete frame, converts it to the screen pixel format, and
-then hands it to a driver-specific USB transport:
+Sprint renders one complete frame in the screen's native pixel format, then
+hands it to a driver-specific USB transport. Dashboard painting writes RGB565
+directly; rear-view capture wraps BGRA capture buffers in reusable Skia objects
+and composes them into RGB565:
 
 ```text
 TelemetryFrame
-  -> DashPainterFrameSource / DashPainter (BGRA)
-  -> RGB565 little-endian
-  -> optional rotation, margin, and offset
+  -> DashPainterFrameSource / DashPainter (direct RGB565)
+Desktop capture (BGRA)
+  -> BgraToRgb565SurfaceComposer (RGB565)
+Both paths
+  -> rotation, margin, and offset during composition
+  -> duplicate-frame suppression
+  -> double-buffered render / USB transfer overlap
   -> IScreenDriver.TrySendFrame(byte[])
   -> WinUsbScreenTransport
 ```
@@ -25,8 +31,13 @@ Key implementation files:
 
 - `ScreenModels.cs`: `IScreenDriver`, configuration, USB identity, and status.
 - `ScreenDriverFactory.cs`: maps driver ids to VoCore or USBD480.
-- `ScreenPublisher.cs`: connection retry and off-UI-thread frame scheduling.
-- `Rgb565.cs`: RGBA to RGB565 conversion, rotation, margin, and offset.
+- `ScreenPublisher.cs`: connection retry, duplicate suppression, performance
+  metrics, and off-UI-thread frame scheduling.
+- `ScreenTransferWorker.cs`: blocking USB transfer ownership while the publisher
+  prepares the next native frame.
+- `BgraToRgb565SurfaceComposer.cs`: reusable native rear-view conversion,
+  rotation, margin, and offset.
+- `Rgb565.cs`: managed BGRA-to-RGB565 fallback and pixel helpers.
 - `WinUsbScreenTransport.cs`: WinUSB bulk/control transport.
 - `VoCoreProtocol.cs`: M-PRO packet and model encoding.
 
@@ -77,9 +88,13 @@ The render loop defaults are driver-specific:
 | VoCore M-PRO | 30 | `VoCoreScreenDriver` + `WinUsbScreenTransport` |
 | USBD480 NX | 30 | `Usbd480ScreenDriver` + `WinUsbScreenTransport` |
 
-Each screen owns a background publisher and one pre-allocated RGB565 frame
-buffer. It sends the assigned dashboard or an explicitly selected development
-test pattern at the configured target FPS.
+Each screen owns a background publisher, two pre-allocated RGB565 frame buffers,
+and one transfer worker. While USB sends one buffer, the publisher prepares the
+next buffer. Unchanged frames are not retransmitted. The configured target FPS
+is therefore a cap on physical output, not a promise to resend identical
+content. Source, pixel-transform, USB, total delivered-frame timing, and recent
+successful-output FPS are exposed in every screen-purpose detail view and
+written to the activity log every five seconds while output is active.
 
 ## VoCore M-PRO
 

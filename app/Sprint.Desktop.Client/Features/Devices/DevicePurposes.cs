@@ -1,19 +1,36 @@
 namespace Sprint.Desktop.Features.Devices;
 
+public enum DevicePurposeOutputKind
+{
+    DashboardLayout,
+    BuiltInFlagLayout,
+    BuiltInLapTimerLayout,
+    DesktopCaptureRegion,
+}
+
 /// <summary>
-/// One thing a device's screen can be used for. <see cref="Available"/> marks the
-/// purposes Sprint can actually render today; the rest are declared so a user can
-/// label a screen ahead of the feature landing, and so the UI can say plainly that
-/// nothing is being sent yet.
+/// One task a device screen can perform. Availability is derived from its output kind
+/// so a future catalog entry cannot claim support until it has a concrete source.
 /// </summary>
-public sealed record DevicePurpose(string Id, string Label, string Description, bool Available);
+public sealed record DevicePurpose(
+    string Id,
+    string Label,
+    string Description,
+    DevicePurposeOutputKind Output)
+{
+    public bool Available => Output is
+        DevicePurposeOutputKind.DashboardLayout
+        or DevicePurposeOutputKind.BuiltInFlagLayout
+        or DevicePurposeOutputKind.BuiltInLapTimerLayout
+        or DevicePurposeOutputKind.DesktopCaptureRegion;
+}
 
 /// <summary>
 /// The device-purpose catalog (issue #53). A purpose decides what output a screen
-/// gets: only <see cref="Dash"/> drives a dash layout, so a screen set to any other
-/// purpose is deliberately left idle until that output exists. Pure and IO-free —
-/// persistence normalizes through <see cref="Normalize"/> so an unknown or missing
-/// value always resolves to the dash default rather than silently killing output.
+/// gets: a user dashboard, a built-in focused display, or a desktop capture source. Pure
+/// and IO-free — persistence normalizes through <see cref="Normalize"/> so an unknown
+/// or missing value resolves to the dashboard default rather than silently killing
+/// output.
 /// </summary>
 public static class DevicePurposes
 {
@@ -24,14 +41,26 @@ public static class DevicePurposes
 
     public static IReadOnlyList<DevicePurpose> All { get; } =
     [
-        new(Dash, "Dash", "Render an assigned dash layout on this screen.", true),
+        new(
+            Dash,
+            "Dashboard",
+            "Show a customizable racing dashboard.",
+            DevicePurposeOutputKind.DashboardLayout),
         new(
             RearViewMirror,
-            "Rear view mirror",
-            "Show the car's rear view on this screen (tracked in issue #41).",
-            false),
-        new(Flags, "Flags", "Show marshalling flags and session state.", false),
-        new(LapTimes, "Lap times", "Show a Racelogic-style lap time and delta readout.", false),
+            "Rear-view mirror",
+            "Mirror a selected area of your desktop on this screen.",
+            DevicePurposeOutputKind.DesktopCaptureRegion),
+        new(
+            Flags,
+            "Flag display",
+            "Show the active marshalling flag at maximum glanceability.",
+            DevicePurposeOutputKind.BuiltInFlagLayout),
+        new(
+            LapTimes,
+            "Lap timer",
+            "Show current, last, and best lap times with a live delta.",
+            DevicePurposeOutputKind.BuiltInLapTimerLayout),
     ];
 
     /// <summary>The labels in catalog order, for a purpose dropdown.</summary>

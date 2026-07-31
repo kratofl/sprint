@@ -47,9 +47,17 @@ public sealed record CarState
     public int Gear { get; init; }
     public float Rpm { get; init; }
     public float MaxRpm { get; init; }
+
+    /// <summary>Driver throttle position before traction control or other vehicle-side filtering.</summary>
     public float Throttle { get; init; }
+
+    /// <summary>Driver brake position before ABS or other vehicle-side filtering.</summary>
     public float Brake { get; init; }
+
+    /// <summary>Driver clutch position before vehicle-side filtering.</summary>
     public float Clutch { get; init; }
+
+    /// <summary>Driver steering position before steering assists or vehicle-side filtering.</summary>
     public float Steering { get; init; }
     public float FuelLiters { get; init; }
     public float FuelPerLapLiters { get; init; }

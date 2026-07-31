@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Runtime;
 using Xunit;
 
@@ -286,7 +287,7 @@ public sealed class RuntimePersistenceTests
             Assert.Contains("c872-1004", first.Id);
             Assert.Contains("c872-1004", second.Id);
 
-            runtime.UpdateDevice(first, name: "Main Wheel", rotation: 180, offsetX: 12, offsetY: 8, margin: 3, dashId: "legacy-main");
+            runtime.UpdateDevice(first, name: "Main Wheel", orientation: DeviceOrientation.PortraitInverted, offsetX: 12, offsetY: 8, margin: 3, dashId: "legacy-main");
 
             var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var persisted = reloaded.Devices.Single(device => device.Id == first.Id);
@@ -296,6 +297,48 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(8, persisted.OffsetY);
             Assert.Equal(3, persisted.Margin);
             Assert.Equal("legacy-main", persisted.DashId);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnsupportedPersistedRotationIsNormalizedAtTheSerializationBoundary()
+    {
+        var dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dataRoot, "devices.json"),
+                """
+                [
+                  {
+                    "Id": "invalid-orientation",
+                    "Name": "Invalid orientation",
+                    "Driver": "vocore",
+                    "Type": "screen",
+                    "Width": 800,
+                    "Height": 480,
+                    "Rotation": 45
+                  }
+                ]
+                """);
+
+            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            var device = Assert.Single(runtime.Devices);
+
+            Assert.Equal(DeviceOrientation.Portrait, device.Orientation);
+            Assert.Equal(0, device.Rotation);
+
+            runtime.SaveDevices();
+            using var persisted = JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(dataRoot, "devices.json")));
+            Assert.Equal(
+                0,
+                persisted.RootElement[0].GetProperty(nameof(SavedDevice.Rotation)).GetInt32());
         }
         finally
         {

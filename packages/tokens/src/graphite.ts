@@ -1,5 +1,6 @@
 import { primitiveColor, primitiveRadius } from './primitive'
 import { duration, easing } from './atoms/motion'
+import { semanticTokens } from './semantic'
 
 /**
  * Canonical Graphite product tokens.
@@ -19,6 +20,7 @@ export const graphiteTokens = {
     text2: primitiveColor.neutral[400],
     text3: primitiveColor.neutral[500],
     accent: primitiveColor.orange[500],
+    captureSelection: semanticTokens.color.surface.captureSelection,
   },
   status: {
     green: primitiveColor.green[500],

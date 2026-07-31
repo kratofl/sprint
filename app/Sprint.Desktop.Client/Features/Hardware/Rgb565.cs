@@ -1,3 +1,7 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Sprint.Desktop.Features.Devices;
+
 namespace Sprint.Desktop.Features.Hardware;
 
 /// <summary>
@@ -10,6 +14,163 @@ namespace Sprint.Desktop.Features.Hardware;
 /// </summary>
 public static class Rgb565
 {
+    /// <summary>
+    /// Converts logical BGRA8888 pixels directly into the native RGB565 panel
+    /// buffer while applying rotation, margin, and screen-space offsets in one
+    /// allocation-free destination pass.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static void ComposeFromBgra(
+        ReadOnlySpan<byte> bgra,
+        int nativeWidth,
+        int nativeHeight,
+        DeviceOrientationTransform transform,
+        int margin,
+        int offsetX,
+        int offsetY,
+        Span<byte> destination)
+    {
+        if (nativeWidth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nativeWidth));
+        }
+
+        if (nativeHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(nativeHeight));
+        }
+
+        if (transform.LogicalWidth <= 0 || transform.LogicalHeight <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(transform),
+                "Orientation transform needs positive logical dimensions.");
+        }
+
+        var sourceBytes = checked(transform.LogicalWidth * transform.LogicalHeight * 4);
+        if (bgra.Length < sourceBytes)
+        {
+            throw new ArgumentException(
+                $"Source buffer too small: need {sourceBytes}, got {bgra.Length}.",
+                nameof(bgra));
+        }
+
+        var destinationBytes = checked(nativeWidth * nativeHeight * 2);
+        if (destination.Length < destinationBytes)
+        {
+            throw new ArgumentException(
+                "Destination buffer too small for RGB565 output.",
+                nameof(destination));
+        }
+
+        var outputSize = OutputSize(
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            (int)transform.PixelRotation);
+        if (outputSize != (nativeWidth, nativeHeight))
+        {
+            throw new ArgumentException(
+                $"Orientation transform produces {outputSize.Width}x{outputSize.Height}, " +
+                $"not the requested native size {nativeWidth}x{nativeHeight}.",
+                nameof(transform));
+        }
+
+        offsetX = Math.Max(0, offsetX);
+        offsetY = Math.Max(0, offsetY);
+        ResolveNativeOffsets(
+            transform.PixelRotation,
+            offsetX,
+            offsetY,
+            out var fromLeft,
+            out var fromRight,
+            out var fromTop,
+            out var fromBottom);
+
+        margin = Math.Max(0, margin);
+        var innerWidth = nativeWidth - margin * 2;
+        var innerHeight = nativeHeight - margin * 2;
+        if (innerWidth <= 0 || innerHeight <= 0)
+        {
+            destination[..destinationBytes].Clear();
+            return;
+        }
+
+        var shiftX = fromLeft - fromRight;
+        var shiftY = fromTop - fromBottom;
+        var pixels = destination[..destinationBytes];
+        if (margin > 0 || shiftX != 0 || shiftY != 0)
+        {
+            pixels.Clear();
+        }
+
+        ResolveSourceMapping(
+            transform,
+            out var sourceBase,
+            out var sourceXStep,
+            out var sourceYStep);
+        ref var source = ref MemoryMarshal.GetReference(bgra);
+        ref var destinationStart = ref MemoryMarshal.GetReference(pixels);
+        for (var composedY = margin; composedY < margin + innerHeight; composedY++)
+        {
+            var destinationY = composedY + shiftY;
+            if ((uint)destinationY >= (uint)nativeHeight)
+            {
+                continue;
+            }
+
+            for (var composedX = margin; composedX < margin + innerWidth; composedX++)
+            {
+                var destinationX = composedX + shiftX;
+                if ((uint)destinationX >= (uint)nativeWidth)
+                {
+                    continue;
+                }
+
+                ushort pixel;
+                if (margin == 0)
+                {
+                    pixel = ReadRotatedPixel(
+                        ref source,
+                        sourceBase,
+                        sourceXStep,
+                        sourceYStep,
+                        composedX,
+                        composedY);
+                }
+                else
+                {
+                    var innerX = composedX - margin;
+                    var innerY = composedY - margin;
+                    var sourceX0 = innerX * nativeWidth / innerWidth;
+                    var sourceX1 = Math.Min(
+                        nativeWidth,
+                        Math.Max(
+                            sourceX0 + 1,
+                            ((innerX + 1) * nativeWidth + innerWidth - 1) / innerWidth));
+                    var sourceY0 = innerY * nativeHeight / innerHeight;
+                    var sourceY1 = Math.Min(
+                        nativeHeight,
+                        Math.Max(
+                            sourceY0 + 1,
+                            ((innerY + 1) * nativeHeight + innerHeight - 1) / innerHeight));
+                    pixel = MostVisibleBgra(
+                        ref source,
+                        sourceBase,
+                        sourceXStep,
+                        sourceYStep,
+                        sourceX0,
+                        sourceX1,
+                        sourceY0,
+                        sourceY1);
+                }
+
+                var destinationIndex = (destinationY * nativeWidth + destinationX) * 2;
+                Unsafe.Add(ref destinationStart, destinationIndex) = (byte)pixel;
+                Unsafe.Add(ref destinationStart, destinationIndex + 1) = (byte)(pixel >> 8);
+            }
+        }
+    }
+
     /// <summary>Output (width, height) after a rotation of <paramref name="rotation"/> degrees (90/270 swap axes).</summary>
     public static (int Width, int Height) OutputSize(int width, int height, int rotation) =>
         Sanitize(rotation) is 90 or 270 ? (height, width) : (width, height);
@@ -125,6 +286,128 @@ public static class Rgb565
         dst[i] = (byte)px;
         dst[i + 1] = (byte)(px >> 8);
         i += 2;
+    }
+
+    private static ushort MostVisibleBgra(
+        ref byte bgra,
+        int sourceBase,
+        int sourceXStep,
+        int sourceYStep,
+        int sourceX0,
+        int sourceX1,
+        int sourceY0,
+        int sourceY1)
+    {
+        var best = ReadRotatedPixel(
+            ref bgra,
+            sourceBase,
+            sourceXStep,
+            sourceYStep,
+            sourceX0,
+            sourceY0);
+        var bestScore = Visibility(best);
+        for (var sourceY = sourceY0; sourceY < sourceY1; sourceY++)
+        {
+            for (var sourceX = sourceX0; sourceX < sourceX1; sourceX++)
+            {
+                var candidate = ReadRotatedPixel(
+                    ref bgra,
+                    sourceBase,
+                    sourceXStep,
+                    sourceYStep,
+                    sourceX,
+                    sourceY);
+                var score = Visibility(candidate);
+                if (score > bestScore)
+                {
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ushort ReadRotatedPixel(
+        ref byte bgra,
+        int sourceBase,
+        int sourceXStep,
+        int sourceYStep,
+        int nativeX,
+        int nativeY)
+    {
+        var sourceIndex = sourceBase + nativeX * sourceXStep + nativeY * sourceYStep;
+        var blue = (ushort)(Unsafe.Add(ref bgra, sourceIndex) >> 3);
+        var green = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 1) >> 2);
+        var red = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 2) >> 3);
+        return (ushort)((red << 11) | (green << 5) | blue);
+    }
+
+    private static void ResolveSourceMapping(
+        DeviceOrientationTransform transform,
+        out int sourceBase,
+        out int sourceXStep,
+        out int sourceYStep)
+    {
+        switch (transform.PixelRotation)
+        {
+            case PixelRotation.Clockwise90:
+                sourceBase = (transform.LogicalHeight - 1) * transform.LogicalWidth * 4;
+                sourceXStep = -transform.LogicalWidth * 4;
+                sourceYStep = 4;
+                break;
+            case PixelRotation.Clockwise180:
+                sourceBase = (transform.LogicalWidth * transform.LogicalHeight - 1) * 4;
+                sourceXStep = -4;
+                sourceYStep = -transform.LogicalWidth * 4;
+                break;
+            case PixelRotation.Clockwise270:
+                sourceBase = (transform.LogicalWidth - 1) * 4;
+                sourceXStep = transform.LogicalWidth * 4;
+                sourceYStep = -4;
+                break;
+            default:
+                sourceBase = 0;
+                sourceXStep = 4;
+                sourceYStep = transform.LogicalWidth * 4;
+                break;
+        }
+    }
+
+    private static void ResolveNativeOffsets(
+        PixelRotation rotation,
+        int offsetX,
+        int offsetY,
+        out int fromLeft,
+        out int fromRight,
+        out int fromTop,
+        out int fromBottom)
+    {
+        fromLeft = 0;
+        fromRight = 0;
+        fromTop = 0;
+        fromBottom = 0;
+        switch (rotation)
+        {
+            case PixelRotation.Clockwise90:
+                fromTop = offsetX;
+                fromRight = offsetY;
+                break;
+            case PixelRotation.Clockwise180:
+                fromRight = offsetX;
+                fromBottom = offsetY;
+                break;
+            case PixelRotation.Clockwise270:
+                fromBottom = offsetX;
+                fromLeft = offsetY;
+                break;
+            default:
+                fromLeft = offsetX;
+                fromTop = offsetY;
+                break;
+        }
     }
 
     /// <summary>
@@ -267,6 +550,12 @@ public static class Rgb565
     private static int Visibility(byte lo, byte hi)
     {
         var px = (ushort)(lo | (hi << 8));
+        return Visibility(px);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int Visibility(ushort px)
+    {
         var r = (px >> 11) & 0x1f;
         var g = (px >> 5) & 0x3f;
         var b = px & 0x1f;

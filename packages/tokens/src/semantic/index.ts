@@ -25,6 +25,7 @@ export const semanticTokens = {
       inset: primitiveColor.neutral[850],
       tile4: primitiveColor.neutral[800],
       overlay: primitiveColor.neutral[950],
+      captureSelection: 'rgba(16,16,18,.20)',
     },
     text: {
       primary: primitiveColor.neutral[50],
