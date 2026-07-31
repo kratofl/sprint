@@ -4,6 +4,8 @@ namespace Sprint.Desktop.Features.Devices;
 
 public sealed class CatalogDevice
 {
+    private DeviceOrientation _orientation;
+
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
 
@@ -29,7 +31,18 @@ public sealed class CatalogDevice
     public int Height { get; set; }
 
     [JsonPropertyName("rotation")]
-    public int Rotation { get; set; }
+    public int Rotation
+    {
+        get => (int)_orientation;
+        set => _orientation = DeviceOrientations.Resolve(value);
+    }
+
+    [JsonIgnore]
+    public DeviceOrientation Orientation
+    {
+        get => _orientation;
+        set => _orientation = value;
+    }
 
     [JsonPropertyName("offset_x")]
     public int OffsetX { get; set; }
@@ -49,6 +62,8 @@ public sealed class CatalogDevice
 
 public sealed class SavedDevice
 {
+    private DeviceOrientation _orientation;
+
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Driver { get; set; } = "";
@@ -58,11 +73,28 @@ public sealed class SavedDevice
     public string Serial { get; set; } = "";
     public int Width { get; set; }
     public int Height { get; set; }
-    public int Rotation { get; set; }
+    public int Rotation
+    {
+        get => (int)_orientation;
+        set => _orientation = DeviceOrientations.Resolve(value);
+    }
+
+    [JsonIgnore]
+    public DeviceOrientation Orientation
+    {
+        get => _orientation;
+        set => _orientation = value;
+    }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
     public int Margin { get; set; }
     public string DashId { get; set; } = "default";
+
+    /// <summary>
+    /// Physical desktop pixels captured for a rear-view mirror. Coordinates may be
+    /// negative when the selected monitor is left of or above the primary monitor.
+    /// </summary>
+    public ScreenCaptureRegion? CaptureRegion { get; set; }
 
     /// <summary>What this device's screen is used for (issue #53); see <see cref="DevicePurposes"/>.</summary>
     public string Purpose { get; set; } = DevicePurposes.Dash;
@@ -75,6 +107,11 @@ public sealed class SavedDevice
 
     public List<DeviceBinding> Bindings { get; set; } = [];
     public bool Disabled { get; set; }
+}
+
+public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)
+{
+    public bool IsValid => Width > 0 && Height > 0;
 }
 
 public sealed class DeviceBinding
@@ -100,9 +137,20 @@ public static class DeviceCapabilities
             || string.Equals(device.Driver, "usbd480", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// A device receives dash frames only when it has a screen and that screen is set
-    /// to the dash purpose (issue #53). Screens labelled for an unbuilt purpose stay
-    /// idle rather than showing a dash the user did not ask for.
+    /// A device receives output when it has a screen and its selected purpose has an
+    /// implemented output source. Unsupported purposes stay idle rather than showing
+    /// unrelated dashboard content.
+    /// </summary>
+    public static bool DrivesScreenOutput(SavedDevice device) =>
+        HasScreen(device)
+        && DevicePurposes.Resolve(device.Purpose) is var purpose
+        && purpose.Available
+        && (purpose.Output is not DevicePurposeOutputKind.DesktopCaptureRegion
+            || device.CaptureRegion is { IsValid: true });
+
+    /// <summary>
+    /// True only for screens assigned to one of the user's editable dashboards. Built-in
+    /// flag and lap-timer displays publish pixels but are not dashboard assignments.
     /// </summary>
     public static bool DrivesDash(SavedDevice device) =>
         HasScreen(device) && DevicePurposes.IsDash(device.Purpose);

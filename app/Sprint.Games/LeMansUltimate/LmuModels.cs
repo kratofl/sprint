@@ -23,6 +23,10 @@ internal sealed record LmuVehicleTelemetry
     public int Gear { get; init; }
     public double EngineRpm { get; init; }
     public double EngineMaxRpm { get; init; }
+    public double UnfilteredThrottle { get; init; }
+    public double UnfilteredBrake { get; init; }
+    public double UnfilteredSteering { get; init; }
+    public double UnfilteredClutch { get; init; }
     public double FilteredThrottle { get; init; }
     public double FilteredBrake { get; init; }
     public double FilteredSteering { get; init; }

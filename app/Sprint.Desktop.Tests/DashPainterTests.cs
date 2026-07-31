@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Runtime;
 using SkiaSharp;
@@ -95,6 +97,74 @@ public sealed class DashPainterTests
     [Fact]
     public void FormatsSpeedToKph() =>
         Assert.Equal("100", DashFormat.SpeedKph(27.7778));
+
+    [Fact]
+    public void DynamicValuesKeepAStableRenderedTextSize()
+    {
+        var layout = SingleWidgetLayout("gear_speed");
+        using var painter = new DashPainter(32, 160);
+
+        var oneDigit = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 2.5f } },
+            new AppSettings());
+        var oneDigitHeight = ExactColorInkHeight(oneDigit, DashPalette.Default.Neutral, 80, 145);
+
+        var threeDigits = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { Gear = 4, SpeedMetersPerSecond = 277.5f } },
+            new AppSettings());
+        var threeDigitHeight = ExactColorInkHeight(threeDigits, DashPalette.Default.Neutral, 80, 145);
+
+        Assert.True(oneDigitHeight > 0);
+        Assert.Equal(oneDigitHeight, threeDigitHeight);
+    }
+
+    [Fact]
+    public void DynamicLabelValuesKeepAStableRenderedTextSize()
+    {
+        var layout = SingleWidgetLayout("fuel");
+        using var painter = new DashPainter(80, 100);
+
+        var shortValue = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { FuelLiters = 40, FuelPerLapLiters = 0.9f } },
+            new AppSettings());
+        var shortValueHeight = ExactColorInkHeight(shortValue, DashPalette.Default.Secondary, 0, 40);
+
+        var longValue = painter.Render(
+            layout,
+            new TelemetryFrame { Car = new CarState { FuelLiters = 40, FuelPerLapLiters = 99.9f } },
+            new AppSettings());
+        var longValueHeight = ExactColorInkHeight(longValue, DashPalette.Default.Secondary, 0, 40);
+
+        Assert.True(shortValueHeight > 0);
+        Assert.Equal(shortValueHeight, longValueHeight);
+    }
+
+    [Fact]
+    public void StaticLabelsFitWithinNarrowWidgets()
+    {
+        var layout = SingleWidgetLayout("virtual_energy");
+        layout.Pages[0].Widgets[0].Config = new Dictionary<string, JsonElement>
+        {
+            ["mode"] = JsonSerializer.SerializeToElement("percent"),
+        };
+        var frame = new TelemetryFrame { Energy = new EnergyState { VirtualEnergy = 68 } };
+
+        using var widePainter = new DashPainter(200, 100);
+        var wide = widePainter.Render(layout, frame, new AppSettings());
+        var wideLabelHeight = NonBackgroundInkHeight(wide, DashPalette.Default.Background, 0, 22);
+
+        using var narrowPainter = new DashPainter(40, 100);
+        var narrow = narrowPainter.Render(layout, frame, new AppSettings());
+        var narrowLabelHeight = NonBackgroundInkHeight(narrow, DashPalette.Default.Background, 0, 22);
+
+        Assert.True(narrowLabelHeight > 0);
+        Assert.True(
+            narrowLabelHeight < wideLabelHeight,
+            $"Expected narrow static label to fit smaller than the wide label; narrow={narrowLabelHeight}, wide={wideLabelHeight}.");
+    }
 
     [Fact]
     public void DefaultPresetRendersVariedContent()
@@ -326,6 +396,28 @@ public sealed class DashPainterTests
 
         Assert.True(CountExact(bitmap, DashPalette.Default.RaceControlYellow) > 0, "Expected literal yellow race-control signal.");
         Assert.Equal(0, CountExact(bitmap, SKColors.Magenta));
+    }
+
+    [Fact]
+    public void PortraitFlagDisplayKeepsTheSignalInsideTheCanvas()
+    {
+        using var painter = new DashPainter(480, 800);
+        var bitmap = painter.Render(
+            SingleWidgetLayout("flag"),
+            new TelemetryFrame(),
+            new AppSettings());
+        var green = DashPalette.Default.Success;
+
+        Assert.All(Enumerable.Range(0, bitmap.Height), y =>
+        {
+            Assert.NotEqual(green, bitmap.GetPixel(0, y));
+            Assert.NotEqual(green, bitmap.GetPixel(bitmap.Width - 1, y));
+        });
+        Assert.All(Enumerable.Range(0, bitmap.Width), x =>
+        {
+            Assert.NotEqual(green, bitmap.GetPixel(x, 0));
+            Assert.NotEqual(green, bitmap.GetPixel(x, bitmap.Height - 1));
+        });
     }
 
     [Fact]
@@ -586,8 +678,9 @@ public sealed class DashPainterTests
             using var source = new DashPainterFrameSource(
                 layout,
                 runtime.Settings,
-                new ScreenConfig { Width = 320, Height = 192, Rotation = 0, Margin = 0, OffsetX = 0, OffsetY = 0 },
-                palette);
+                new ScreenConfig { Width = 320, Height = 192, Orientation = DeviceOrientation.Landscape, Margin = 0, OffsetX = 0, OffsetY = 0 },
+                palette,
+                preferDirectRgb565: false);
             var actualRgb565 = new byte[320 * 192 * 2];
             source.Render(frame, actualRgb565);
 
@@ -786,4 +879,108 @@ public sealed class DashPainterTests
 
     private static int CountExact(SKBitmap bitmap, SKColor color) =>
         bitmap.Pixels.Count(pixel => pixel == color);
+
+    private static int ExactColorInkHeight(SKBitmap bitmap, SKColor color, int minY, int maxY)
+    {
+        var first = int.MaxValue;
+        var last = int.MinValue;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y) != color)
+                {
+                    continue;
+                }
+
+                first = Math.Min(first, y);
+                last = Math.Max(last, y);
+            }
+        }
+
+        return first == int.MaxValue ? 0 : last - first + 1;
+    }
+
+    private static int NonBackgroundInkHeight(SKBitmap bitmap, SKColor background, int minY, int maxY)
+    {
+        var first = int.MaxValue;
+        var last = int.MinValue;
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                if (bitmap.GetPixel(x, y) == background)
+                {
+                    continue;
+                }
+
+                first = Math.Min(first, y);
+                last = Math.Max(last, y);
+            }
+        }
+
+        return first == int.MaxValue ? 0 : last - first + 1;
+    }
+}
+
+/// <summary>
+/// The blob cache is what keeps a redraw of unchanged text off the allocator.
+/// These cover the two behaviours the painter-level allocation guard cannot see:
+/// that a hit really reuses the shaped run, and that text a frame stopped drawing
+/// is released instead of accumulating for the length of a session.
+/// </summary>
+public sealed class DashTextBlobCacheTests
+{
+    [Fact]
+    public void ReusesTheShapedRunForUnchangedTextAcrossFrames()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        var first = cache.Get("1:22.100", font);
+        cache.EndFrame();
+        var second = cache.Get("1:22.100", font);
+        cache.EndFrame();
+
+        Assert.NotNull(first);
+        Assert.Same(first, second);
+        Assert.Equal(1, cache.Count);
+    }
+
+    [Fact]
+    public void ShapesSeparatelyPerTypefaceAndSize()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        var atTwentyFour = cache.Get("LAP 4", font);
+        font.Size = 12;
+        var atTwelve = cache.Get("LAP 4", font);
+
+        Assert.NotSame(atTwentyFour, atTwelve);
+        Assert.Equal(2, cache.Count);
+    }
+
+    [Fact]
+    public void ReleasesTextAFrameStoppedDrawing()
+    {
+        using var cache = new DashTextBlobCache();
+        using var font = new SKFont(SKTypeface.Default, 24);
+
+        // A ticking value: every frame draws a different string next to a label
+        // that never changes.
+        cache.Get("SPEED", font);
+        cache.Get("120", font);
+        cache.EndFrame();
+        cache.Get("SPEED", font);
+        cache.Get("121", font);
+        cache.EndFrame();
+
+        // The stale "120" is gone; the steady label survived, so it is still free
+        // to redraw.
+        Assert.Equal(2, cache.Count);
+        var steady = cache.Get("SPEED", font);
+        cache.EndFrame();
+        Assert.Same(steady, cache.Get("SPEED", font));
+    }
 }

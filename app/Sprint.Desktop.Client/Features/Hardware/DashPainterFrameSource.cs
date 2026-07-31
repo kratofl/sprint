@@ -1,8 +1,62 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Runtime;
+using SkiaSharp;
 
 namespace Sprint.Desktop.Features.Hardware;
+
+/// <summary>
+/// Thread-safe page selection shared by a device's current and replacement frame
+/// sources. The UI command thread advances it while the screen publisher reads it.
+/// </summary>
+internal sealed class DashPageSelection
+{
+    private readonly object _gate = new();
+    private string? _pageId;
+
+    public string? PageId
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _pageId;
+            }
+        }
+    }
+
+    public string? Move(DashLayout layout, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        lock (_gate)
+        {
+            if (layout.Pages.Count == 0)
+            {
+                _pageId = layout.IdlePage?.Id;
+                return _pageId;
+            }
+
+            var index = layout.Pages.FindIndex(page =>
+                string.Equals(page.Id, _pageId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                index = 0;
+            }
+
+            index = (index + offset) % layout.Pages.Count;
+            if (index < 0)
+            {
+                index += layout.Pages.Count;
+            }
+
+            _pageId = layout.Pages[index].Id;
+            return _pageId;
+        }
+    }
+}
 
 /// <summary>
 /// Bridges the WS6 <see cref="DashPainter"/> onto the WS7 hardware pipeline: it
@@ -16,13 +70,29 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private readonly DashPainter _painter;
     private readonly AppSettings _settings;
     private readonly ScreenConfig _config;
-    private readonly byte[] _scratch;
+    private readonly DeviceOrientationTransform _transform;
+    private readonly byte[]? _directPixels;
+    private GCHandle _directPixelsHandle;
+    private readonly SKSurface? _directSurface;
+    private readonly SKMatrix _directOutputTransform;
+    private readonly DashPageSelection? _pageSelection;
     private DashPalette _palette;
     private readonly DashAlertTracker _alerts = new();
     private DashLayout _layout;
     private bool _idle;
 
     public DashPainterFrameSource(DashLayout layout, AppSettings settings, ScreenConfig config, DashPalette? palette = null)
+        : this(layout, settings, config, palette, preferDirectRgb565: true)
+    {
+    }
+
+    internal DashPainterFrameSource(
+        DashLayout layout,
+        AppSettings settings,
+        ScreenConfig config,
+        DashPalette? palette,
+        bool preferDirectRgb565,
+        DashPageSelection? pageSelection = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(settings);
@@ -31,15 +101,62 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         _layout = layout;
         _settings = settings;
         _config = config;
+        _pageSelection = pageSelection;
         Width = config.Width;
         Height = config.Height;
 
-        // The painter renders at the logical size that, once rotated, fills the
-        // native screen: 90/270 swap the axes.
-        var (logicalW, logicalH) = config.Rotation is 90 or 270 ? (Height, Width) : (Width, Height);
+        _transform = DeviceOrientations.Transform(
+            Width,
+            Height,
+            config.Orientation);
         _palette = palette ?? DashPalette.Default;
-        _painter = new DashPainter(logicalW, logicalH, _palette);
-        _scratch = new byte[Width * Height * 2];
+        _painter = new DashPainter(
+            _transform.LogicalWidth,
+            _transform.LogicalHeight,
+            _palette);
+        _directOutputTransform = ScreenCanvasTransform.Create(
+            Width,
+            Height,
+            _transform,
+            _config.Margin,
+            _config.OffsetX,
+            _config.OffsetY);
+        // Direct RGB565 was adopted only after the opt-in rendering diagnostic
+        // demonstrated a large speedup with bounded whole-frame and localized
+        // visual error across representative panel sizes. Keep the fallback
+        // constructor seam so that decision remains reproducible.
+        if (preferDirectRgb565
+            && Width - _config.Margin * 2 > 0
+            && Height - _config.Margin * 2 > 0)
+        {
+            var pixels = new byte[checked(Width * Height * 2)];
+            _directPixelsHandle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+            try
+            {
+                _directSurface = SKSurface.Create(
+                    new SKImageInfo(
+                        Width,
+                        Height,
+                        SKColorType.Rgb565,
+                        SKAlphaType.Opaque),
+                    _directPixelsHandle.AddrOfPinnedObject(),
+                    Width * 2);
+            }
+            catch
+            {
+                _directPixelsHandle.Free();
+                throw;
+            }
+
+            if (_directSurface is null)
+            {
+                _directPixelsHandle.Free();
+            }
+            else
+            {
+                _directPixels = pixels;
+            }
+        }
     }
 
     public int Width { get; }
@@ -54,7 +171,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
 
     public void SetIdle(bool idle) => _idle = idle;
 
-    public void Render(TelemetryFrame frame, Span<byte> rgb565)
+    public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (rgb565.Length < Width * Height * 2)
@@ -62,6 +179,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
         }
 
+        var sourceStarted = Stopwatch.GetTimestamp();
         // The layout instance is shared with the editor and mutated in place, so
         // widget edits arrive automatically — but the palette is resolved state.
         // Re-resolve it each frame (record equality, cheap) so a live theme
@@ -74,21 +192,60 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         }
 
         var banner = _idle ? null : _alerts.Evaluate(_layout, frame, _palette);
-        var bitmap = _painter.Render(_layout, frame, _settings, idle: _idle, banner: banner);
-        var bgra = bitmap.GetPixelSpan();
-
-        if (_config.Margin > 0)
+        long sourceCompleted;
+        long transformStarted;
+        if (_directSurface is not null && _directPixels is not null)
         {
-            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, _config.Rotation, _scratch);
-            Rgb565.ApplyMargin(_scratch, rgb565, Width, Height, _config.Margin);
+            _painter.RenderToSurface(
+                _directSurface,
+                _layout,
+                frame,
+                _settings,
+                pageId: _pageSelection?.PageId,
+                idle: _idle,
+                banner: banner,
+                outputTransform: _directOutputTransform);
+            sourceCompleted = Stopwatch.GetTimestamp();
+            transformStarted = sourceCompleted;
+            _directPixels.AsSpan().CopyTo(rgb565);
         }
         else
         {
-            Rgb565.FromBgra(bgra, _painter.Width, _painter.Height, _config.Rotation, rgb565);
+            var bitmap = _painter.Render(
+                _layout,
+                frame,
+                _settings,
+                pageId: _pageSelection?.PageId,
+                idle: _idle,
+                banner: banner);
+            var bgra = bitmap.GetPixelSpan();
+            sourceCompleted = Stopwatch.GetTimestamp();
+            transformStarted = sourceCompleted;
+            Rgb565.ComposeFromBgra(
+                bgra,
+                Width,
+                Height,
+                _transform,
+                _config.Margin,
+                _config.OffsetX,
+                _config.OffsetY,
+                rgb565);
         }
 
-        Rgb565.ApplyOffset(rgb565, Width, Height, _config.OffsetX, _config.OffsetY, _config.Rotation);
+        var transformCompleted = Stopwatch.GetTimestamp();
+        return new ScreenFrameTiming(
+            Stopwatch.GetElapsedTime(sourceStarted, sourceCompleted),
+            Stopwatch.GetElapsedTime(transformStarted, transformCompleted));
     }
 
-    public void Dispose() => _painter.Dispose();
+    public void Dispose()
+    {
+        _directSurface?.Dispose();
+        if (_directPixelsHandle.IsAllocated)
+        {
+            _directPixelsHandle.Free();
+        }
+
+        _painter.Dispose();
+    }
 }

@@ -152,14 +152,55 @@ internal static class AgentUiReviewHarness
                     Click(window, "Close");
 
                     Click(window, runtime.Devices[0].Name);
-                    frames.Add(Capture(window, artifactRoot, "devices-detail", "Back to devices", "Command bindings", "Screen alignment", "Purpose", runtime.Devices[0].Name));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail",
+                        "Back to devices",
+                        "Command bindings",
+                        "Screen alignment",
+                        "This screen is used for",
+                        "Show a customizable racing dashboard.",
+                        "Screen performance",
+                        "Screen output FPS",
+                        runtime.Devices[0].Name));
+                    Click(window, "Add binding");
+                    Click(window, "Listen");
+                    ScrollToEnd(window);
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-binding-listening",
+                        "Command bindings",
+                        "Listening for Next dash page",
+                        "Wheel input is unavailable. Press a keyboard key, or Esc to cancel.",
+                        "Cancel"));
+                    Click(window, "Cancel");
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-1120x720",
+                        "This screen is used for",
+                        "Dashboard",
+                        "Screen performance",
+                        "Screen alignment"));
+                    window.Width = 1440;
+                    window.Height = 900;
 
-                    // Device purpose (issue #53): a screen labelled for output Sprint
-                    // cannot render yet loses its dash controls and says so.
-                    var purposeCombo = window.GetVisualDescendants()
+                    // Device purposes (issues #53/#41): focused displays render
+                    // immediately without a dashboard selector; rear-view stays in an
+                    // honest setup state until its transparent selector is confirmed.
+                    var purposeCombo = TaggedComboBox(window, "device-purpose");
+                    purposeCombo.SelectedItem = "Flag display";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    var flagPreview = window.GetVisualDescendants()
                         .OfType<ComboBox>()
-                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
-                    purposeCombo.SelectedItem = "Rear view mirror";
+                        .Single(combo => string.Equals(combo.SelectedItem?.ToString(), "Live / demo", StringComparison.Ordinal));
+                    flagPreview.SelectedItem = "Yellow flag";
                     using (window.CaptureRenderedFrame())
                     {
                     }
@@ -167,14 +208,142 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "devices-detail-purpose-idle",
-                        "Purpose",
-                        "Rear view mirror is not built yet",
-                        "Idle"));
-                    var backToDash = window.GetVisualDescendants()
+                        "devices-detail-flag-display",
+                        "This screen is used for",
+                        "Flag display",
+                        "Show the active marshalling flag at maximum glanceability.",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Screen alignment",
+                        "Yellow flag"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-flag-display-1120x720",
+                        "This screen is used for",
+                        "Flag display",
+                        "Screen performance",
+                        "Screen alignment",
+                        "Yellow flag"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    var lapTimerPurpose = TaggedComboBox(window, "device-purpose");
+                    lapTimerPurpose.SelectedItem = "Lap timer";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    var lapPreview = window.GetVisualDescendants()
                         .OfType<ComboBox>()
-                        .Single(combo => string.Equals(combo.Tag?.ToString(), "device-purpose", StringComparison.Ordinal));
-                    backToDash.SelectedItem = "Dash";
+                        .Single(combo => string.Equals(combo.SelectedItem?.ToString(), "Yellow flag", StringComparison.Ordinal));
+                    lapPreview.SelectedItem = "Mid-lap";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-lap-timer",
+                        "This screen is used for",
+                        "Lap timer",
+                        "Show current, last, and best lap times with a live delta.",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Screen alignment",
+                        "Mid-lap"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-lap-timer-1120x720",
+                        "This screen is used for",
+                        "Lap timer",
+                        "Screen performance",
+                        "Screen alignment",
+                        "Mid-lap"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    var mirrorPurpose = TaggedComboBox(window, "device-purpose");
+                    mirrorPurpose.SelectedItem = "Rear-view mirror";
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-setup",
+                        "This screen is used for",
+                        "Capture area",
+                        "Setup needed",
+                        "Select area",
+                        "Screen performance",
+                        "Screen alignment"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-setup-1120x720",
+                        "This screen is used for",
+                        "Capture area",
+                        "Setup needed",
+                        "Select area",
+                        "Screen performance",
+                        "Screen alignment"));
+                    window.Width = 1440;
+                    window.Height = 900;
+
+                    Click(window, "Select area");
+                    var captureSelector = Assert.IsType<CaptureRegionWindow>(window.ActiveCaptureRegionWindow);
+                    frames.Add(CaptureTransparentSelector(
+                        captureSelector,
+                        artifactRoot,
+                        "rear-view-capture-selector",
+                        "Move and resize to frame the rear view",
+                        "Cancel",
+                        "Use this area"));
+                    Click(captureSelector, "Use this area");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-configured",
+                        "Live capture preview",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Source",
+                        "Pixel transform",
+                        "USB transfer",
+                        "Total",
+                        "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
+                        "Capture area",
+                        "Change area",
+                        "Screen alignment"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "devices-detail-rear-view-configured-1120x720",
+                        "Live capture preview",
+                        "Screen performance",
+                        "Screen output FPS",
+                        "Source",
+                        "Pixel transform",
+                        "USB transfer",
+                        "Total",
+                        "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
+                        "Capture area",
+                        "Change area",
+                        "Screen alignment"));
+                    window.Width = 1440;
+                    window.Height = 900;
+
+                    var backToDash = TaggedComboBox(window, "device-purpose");
+                    backToDash.SelectedItem = "Dashboard";
                     using (window.CaptureRenderedFrame())
                     {
                     }
@@ -417,6 +586,41 @@ internal static class AgentUiReviewHarness
         return new AgentUiReviewFrame(name, imagePath, visibleText, failures);
     }
 
+    private static AgentUiReviewFrame CaptureTransparentSelector(
+        Window window,
+        string artifactRoot,
+        string name,
+        params string[] expectedText)
+    {
+        var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        using var capturedFrame = frame!;
+        var imagePath = Path.Combine(artifactRoot, $"{name}.png");
+        capturedFrame.Save(imagePath, new PngBitmapEncoderOptions());
+
+        var visibleText = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Select(text => text.Text ?? "")
+            .Concat(window.GetVisualDescendants()
+                .OfType<Button>()
+                .Select(button => button.Content as string ?? ""))
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(text => text, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var failures = expectedText
+            .Where(expected => !visibleText.Any(candidate =>
+                string.Equals(candidate, expected, StringComparison.OrdinalIgnoreCase)))
+            .Select(expected => $"Missing visible text: {expected}")
+            .ToList();
+        if (capturedFrame.PixelSize.Width <= 0 || capturedFrame.PixelSize.Height <= 0)
+        {
+            failures.Add("Captured selector frame has invalid dimensions.");
+        }
+
+        return new AgentUiReviewFrame(name, imagePath, visibleText, failures);
+    }
+
     private static string? ValidateImage(Bitmap frame)
     {
         var pixelSize = frame.PixelSize;
@@ -467,14 +671,34 @@ internal static class AgentUiReviewHarness
 
     private static void Click(MainWindow window, string label)
     {
+        Click((Window)window, label);
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void ScrollToEnd(Window window)
+    {
+        var scroller = window.GetVisualDescendants()
+            .OfType<ScrollViewer>()
+            .OrderByDescending(candidate => candidate.Bounds.Width * candidate.Bounds.Height)
+            .First();
+        scroller.Offset = new Vector(scroller.Offset.X, scroller.Extent.Height);
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static void Click(Window window, string label)
+    {
         var button = window.GetVisualDescendants()
             .OfType<Button>()
             .FirstOrDefault(button => ButtonMatches(button, label));
 
         Assert.NotNull(button);
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        using var frame = window.CaptureRenderedFrame();
     }
+
+    private static ComboBox TaggedComboBox(MainWindow window, string tag) =>
+        window.GetVisualDescendants()
+            .OfType<ComboBox>()
+            .Single(combo => string.Equals(combo.Tag?.ToString(), tag, StringComparison.Ordinal));
 
     private static void OpenCommandPalette(MainWindow window)
     {

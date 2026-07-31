@@ -1,4 +1,6 @@
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Diagnostics;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -54,6 +56,65 @@ public sealed class InputBindingTests
         Assert.Equal("dash.page.next", BindingResolver.Resolve("button:5", device, global));
         Assert.Equal("dash.page.prev", BindingResolver.Resolve("button:5", [], global));
         Assert.Null(BindingResolver.Resolve("button:9", device, global));
+    }
+
+    [Fact]
+    public void HardwareBindingResolverUsesDeviceBindingAcrossSeparateHidIdentity()
+    {
+        var wheel = new SavedDevice
+        {
+            Id = "omega",
+            Vid = 0xc872,
+            Pid = 0x1004,
+            Type = "wheel",
+            Driver = "vocore",
+            Width = 480,
+            Height = 800,
+            Bindings = [new DeviceBinding { Input = "button:68", Command = "device.command" }],
+        };
+        var global = new[] { new InputBinding { Input = "button:68", Command = "global.command" } };
+
+        var resolved = HardwareBindingResolver.Resolve(
+            new HardwareInputEvent(0x3412, 0x7856, "button:68"),
+            [wheel],
+            global);
+
+        Assert.Equal(new ResolvedHardwareBinding("device.command", "omega"), resolved);
+    }
+
+    [Fact]
+    public void RawInputButtonTrackerSupportsHighUsagesAndRisingEdges()
+    {
+        var tracker = new ButtonEdgeTracker();
+
+        Assert.Equal([68, 129], tracker.Update([68, 129]));
+        Assert.Empty(tracker.Update([68, 129]));
+        Assert.Empty(tracker.Update([]));
+        Assert.Equal([68], tracker.Update([68]));
+    }
+
+    [Theory]
+    [InlineData(0x01u, 8, 1)]
+    [InlineData(0xffu, 8, -1)]
+    [InlineData(0xfeu, 8, -2)]
+    public void RawInputEncoderValuesAreSignExtended(uint raw, ushort bits, int expected)
+    {
+        Assert.Equal(expected, WindowsRawInputSource.SignExtend(raw, bits));
+    }
+
+    [Fact]
+    public void WindowsRawInputSourceStartsAndStopsMessageLoop()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var source = new WindowsRawInputSource(NullLog.Instance);
+        Assert.True(source.IsRunning);
+
+        source.Dispose();
+        Assert.False(source.IsRunning);
     }
 
     [Fact]

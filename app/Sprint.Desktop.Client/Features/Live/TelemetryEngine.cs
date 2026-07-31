@@ -62,6 +62,7 @@ public sealed class TelemetryEngine : IDisposable
     private Thread? _thread;
     private int _started;
     private int _disposed;
+    private int _manualReferenceRequested;
     private EngineSnapshot _snapshot;
     private TelemetryConnectionState _prevState = TelemetryConnectionState.Disconnected;
 
@@ -86,6 +87,13 @@ public sealed class TelemetryEngine : IDisposable
 
     /// <summary>The latest consistent snapshot. Never null; safe to read from any thread.</summary>
     public EngineSnapshot Snapshot => Volatile.Read(ref _snapshot);
+
+    /// <summary>
+    /// Requests that the reader thread pin the currently adopted delta reference.
+    /// Safe to call from UI/input threads; the tracker itself remains single-owner.
+    /// </summary>
+    public void RequestManualReference() =>
+        Interlocked.Exchange(ref _manualReferenceRequested, 1);
 
     /// <summary>
     /// Connect synchronously (so the first paint reflects the real link state) and
@@ -202,6 +210,11 @@ public sealed class TelemetryEngine : IDisposable
 
     private StepOutcome StepCore(DateTimeOffset now)
     {
+        if (Interlocked.Exchange(ref _manualReferenceRequested, 0) != 0)
+        {
+            _delta.SetManualReference();
+        }
+
         var status = _source.Status;
         var state = status.State;
 

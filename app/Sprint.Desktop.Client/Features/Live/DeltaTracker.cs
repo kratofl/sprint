@@ -170,7 +170,8 @@ public sealed class DeltaTracker
 
     /// <summary>
     /// Pin the current reference lap as a manual target and stop auto-replacing it with
-    /// faster laps. Reader-thread-only seam for WS8's <c>dash.target.set</c>; unwired today.
+    /// faster laps. Reader-thread-only effect requested through
+    /// <see cref="TelemetryEngine.RequestManualReference"/>.
     /// No-op until a reference has actually been adopted — pinning "nothing" would
     /// otherwise permanently disable auto-adoption.
     /// </summary>

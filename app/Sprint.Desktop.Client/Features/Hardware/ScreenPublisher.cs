@@ -25,6 +25,7 @@ public sealed record ScreenPublisherOptions
 internal enum ScreenStepOutcome
 {
     SentFrame,
+    UnchangedFrame,
     NotSent,
     Reconnecting,
 }
@@ -40,6 +41,13 @@ internal enum ScreenStepOutcome
 /// </summary>
 public sealed class ScreenPublisher : IDisposable
 {
+    private static readonly TimeSpan PerformanceLogInterval = TimeSpan.FromSeconds(5);
+
+    private readonly record struct RenderedFrame(
+        byte[] Buffer,
+        long StartedAt,
+        ScreenFrameTiming Timing);
+
     private readonly IScreenDriver _driver;
     private IDashFrameSource _source;
     private readonly Func<int, int, IDashFrameSource>? _sourceFactory;
@@ -47,8 +55,11 @@ public sealed class ScreenPublisher : IDisposable
     private readonly ScreenPublisherOptions _options;
     private readonly CancellationTokenSource _cts = new();
     private byte[] _buffer;
+    private byte[] _lastSentBuffer;
+    private bool _hasSentFrame;
     private readonly ILog _log;
     private readonly string _deviceId;
+    private readonly ScreenPerformanceTracker _performance = new();
 
     private Thread? _thread;
     private int _started;
@@ -58,6 +69,7 @@ public sealed class ScreenPublisher : IDisposable
     private ScreenConnectionState? _lastLoggedState;
     private bool _loggedFirstFrame;
     private long _connectAttemptStarted;
+    private long _lastPerformanceLog;
 
     public ScreenPublisher(
         IScreenDriver driver,
@@ -76,6 +88,7 @@ public sealed class ScreenPublisher : IDisposable
         _log = log ?? NullLog.Instance;
         _deviceId = string.IsNullOrWhiteSpace(deviceId) ? driver.Name : deviceId;
         _buffer = new byte[source.Width * source.Height * 2];
+        _lastSentBuffer = new byte[_buffer.Length];
     }
 
     /// <summary>The driver's current link status (source of truth for the Devices UI).</summary>
@@ -83,6 +96,15 @@ public sealed class ScreenPublisher : IDisposable
     {
         get
         {
+            if (_lastError is { } sourceError)
+            {
+                return new ScreenStatus
+                {
+                    State = ScreenConnectionState.Faulted,
+                    Detail = $"Frame source failed: {sourceError}",
+                };
+            }
+
             var status = _driver.Status;
             var started = Volatile.Read(ref _connectAttemptStarted);
             if (status.State == ScreenConnectionState.Connecting
@@ -104,6 +126,12 @@ public sealed class ScreenPublisher : IDisposable
 
     /// <summary>The last unexpected render/transport error, if any (defense-in-depth beyond driver status).</summary>
     public string? LastError => _lastError;
+
+    /// <summary>
+    /// Latest measurements from the real render/capture → transport pipeline.
+    /// The immutable snapshot is safe for the UI thread to read.
+    /// </summary>
+    public ScreenPerformanceSnapshot Performance => _performance.Snapshot;
 
     /// <summary>
     /// The panel size the driver learned after connecting, which can differ from the
@@ -169,38 +197,140 @@ public sealed class ScreenPublisher : IDisposable
     {
         var token = _cts.Token;
         var frameInterval = TimeSpan.FromMilliseconds(1000.0 / Math.Max(1, _options.TargetFps));
-        while (!token.IsCancellationRequested)
+        using var transfers = new ScreenTransferWorker(_driver);
+        byte[]? alternateBuffer = null;
+        try
         {
-            var outcome = Step();
-            if (token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
-                break;
+                try
+                {
+                    if (!_driver.Status.IsConnected && !TryConnect())
+                    {
+                        token.WaitHandle.WaitOne(_options.ReconnectInterval);
+                        continue;
+                    }
+
+                    EnsureNativeFrameSize();
+                    if (alternateBuffer is null || alternateBuffer.Length != _buffer.Length)
+                    {
+                        alternateBuffer = new byte[_buffer.Length];
+                    }
+
+                    PublishConnectedFrames(
+                        transfers,
+                        alternateBuffer,
+                        frameInterval,
+                        token);
+                }
+                catch (Exception ex)
+                {
+                    _lastError = ex.Message;
+                    _log.Error($"Screen publisher failed: device={_deviceId}.", ex);
+                    token.WaitHandle.WaitOne(_options.ReconnectInterval);
+                }
+            }
+        }
+        finally
+        {
+            try { _driver.Disconnect(); } catch { /* best effort */ }
+        }
+    }
+
+    private void PublishConnectedFrames(
+        ScreenTransferWorker transfers,
+        byte[] alternateBuffer,
+        TimeSpan frameInterval,
+        CancellationToken token)
+    {
+        RenderedFrame? pending = null;
+        try
+        {
+            var rendered = RenderCurrentFrame(_buffer);
+            if (IsDuplicate(rendered.Buffer))
+            {
+                RecordSkipped(rendered);
+                WaitForNextFrame(frameInterval, rendered.StartedAt, token);
+                return;
             }
 
-            var wait = outcome == ScreenStepOutcome.Reconnecting ? _options.ReconnectInterval : frameInterval;
-            token.WaitHandle.WaitOne(wait);
-        }
+            transfers.Start(rendered.Buffer);
+            pending = rendered;
+            var renderBuffer = alternateBuffer;
+            while (!token.IsCancellationRequested)
+            {
+                var next = RenderCurrentFrame(renderBuffer);
+                var transfer = transfers.Complete();
+                var completed = pending.Value;
+                pending = null;
+                if (!RecordTransfer(completed, transfer))
+                {
+                    return;
+                }
 
-        try { _driver.Disconnect(); } catch { /* best effort */ }
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (IsDuplicate(next.Buffer))
+                {
+                    RecordSkipped(next);
+                    WaitForNextFrame(frameInterval, transfer.StartedAt, token);
+                    return;
+                }
+
+                WaitForNextFrame(frameInterval, transfer.StartedAt, token);
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                transfers.Start(next.Buffer);
+                pending = next;
+                renderBuffer = ReferenceEquals(renderBuffer, _buffer)
+                    ? alternateBuffer
+                    : _buffer;
+            }
+        }
+        finally
+        {
+            if (transfers.IsInFlight && pending is { } inFlight)
+            {
+                CompletePendingTransfer(transfers, inFlight);
+            }
+        }
     }
+
+    private void CompletePendingTransfer(
+        ScreenTransferWorker transfers,
+        RenderedFrame pending)
+    {
+        try
+        {
+            var transfer = transfers.Complete();
+            _ = RecordTransfer(pending, transfer);
+        }
+        catch (Exception ex)
+        {
+            _lastError = ex.Message;
+            _log.Error(
+                $"Screen publisher failed while completing an in-flight transfer: device={_deviceId}.",
+                ex);
+        }
+    }
+
+    internal static TimeSpan RemainingFrameDelay(TimeSpan frameInterval, TimeSpan workElapsed) =>
+        workElapsed >= frameInterval ? TimeSpan.Zero : frameInterval - workElapsed;
 
     /// <summary>One publish iteration. Internal + never-throw so tests can drive connect/send/retry deterministically.</summary>
     internal ScreenStepOutcome Step()
     {
         try
         {
-            if (!_driver.Status.IsConnected)
+            if (!_driver.Status.IsConnected && !TryConnect())
             {
-                _log.Debug($"Screen connect attempt: device={_deviceId} driver={_driver.Name}.");
-                Volatile.Write(ref _connectAttemptStarted, Stopwatch.GetTimestamp());
-                var connected = _driver.Connect();
-                if (connected || _driver.Status.State != ScreenConnectionState.Connecting)
-                {
-                    Volatile.Write(ref _connectAttemptStarted, 0);
-                }
-
-                LogStatusIfChanged();
-                return connected ? SendCurrentFrame() : ScreenStepOutcome.Reconnecting;
+                return ScreenStepOutcome.Reconnecting;
             }
 
             return SendCurrentFrame();
@@ -216,30 +346,166 @@ public sealed class ScreenPublisher : IDisposable
     private ScreenStepOutcome SendCurrentFrame()
     {
         EnsureNativeFrameSize();
-        var pattern = TestPattern;
-        if (pattern == ScreenTestPattern.Dashboard)
+        var rendered = RenderCurrentFrame(_buffer);
+        if (IsDuplicate(rendered.Buffer))
         {
-            _source.Render(_frameProvider(), _buffer);
-        }
-        else
-        {
-            ScreenTestPatternRenderer.Fill(pattern, _buffer, _source.Width, _source.Height);
+            RecordSkipped(rendered);
+            return ScreenStepOutcome.UnchangedFrame;
         }
 
-        if (_driver.TrySendFrame(_buffer))
-        {
-            if (!_loggedFirstFrame)
-            {
-                _loggedFirstFrame = true;
-                _log.Info($"Screen first frame sent: device={_deviceId} bytes={_buffer.Length} pattern={pattern}.");
-            }
+        var transferStarted = Stopwatch.GetTimestamp();
+        var transfer = new ScreenTransferResult(
+            _driver.TrySendFrame(rendered.Buffer),
+            transferStarted,
+            Stopwatch.GetTimestamp());
+        return RecordTransfer(rendered, transfer)
+            ? ScreenStepOutcome.SentFrame
+            : ScreenStepOutcome.Reconnecting;
+    }
 
-            return ScreenStepOutcome.SentFrame;
+    private bool TryConnect()
+    {
+        _log.Debug($"Screen connect attempt: device={_deviceId} driver={_driver.Name}.");
+        Volatile.Write(ref _connectAttemptStarted, Stopwatch.GetTimestamp());
+        var connected = _driver.Connect();
+        if (connected || _driver.Status.State != ScreenConnectionState.Connecting)
+        {
+            Volatile.Write(ref _connectAttemptStarted, 0);
         }
 
         LogStatusIfChanged();
-        _log.Warn($"Screen frame was not sent: device={_deviceId} pattern={pattern}.");
-        return ScreenStepOutcome.Reconnecting;
+        return connected;
+    }
+
+    private RenderedFrame RenderCurrentFrame(byte[] buffer)
+    {
+        var frameStarted = Stopwatch.GetTimestamp();
+        var pattern = TestPattern;
+        ScreenFrameTiming renderTiming;
+        if (pattern == ScreenTestPattern.Dashboard)
+        {
+            renderTiming = _source.Render(_frameProvider(), buffer);
+        }
+        else
+        {
+            ScreenTestPatternRenderer.Fill(pattern, buffer, _source.Width, _source.Height);
+            renderTiming = new ScreenFrameTiming(
+                Stopwatch.GetElapsedTime(frameStarted),
+                TimeSpan.Zero);
+        }
+
+        _lastError = null;
+        return new RenderedFrame(
+            buffer,
+            frameStarted,
+            renderTiming);
+    }
+
+    private bool IsDuplicate(byte[] buffer) =>
+        _hasSentFrame && buffer.AsSpan().SequenceEqual(_lastSentBuffer);
+
+    private void RecordSkipped(RenderedFrame rendered)
+    {
+        var completedAt = Stopwatch.GetTimestamp();
+        _performance.RecordFrame(
+            completedAt,
+            rendered.Timing,
+            TimeSpan.Zero,
+            Stopwatch.GetElapsedTime(rendered.StartedAt, completedAt),
+            ScreenFrameDisposition.Skipped);
+        LogPerformanceIfDue(completedAt);
+    }
+
+    private bool RecordTransfer(RenderedFrame rendered, ScreenTransferResult transfer)
+    {
+        if (transfer.Error is { } error)
+        {
+            throw new InvalidOperationException("The screen transfer worker failed.", error);
+        }
+
+        if (transfer.Succeeded)
+        {
+            rendered.Buffer.CopyTo(_lastSentBuffer, 0);
+            _hasSentFrame = true;
+            _performance.RecordFrame(
+                transfer.CompletedAt,
+                rendered.Timing,
+                transfer.Elapsed,
+                rendered.Timing.FrameTime + transfer.Elapsed,
+                ScreenFrameDisposition.Sent);
+            LogPerformanceIfDue(transfer.CompletedAt);
+            if (!_loggedFirstFrame)
+            {
+                _loggedFirstFrame = true;
+                _log.Info(
+                    $"Screen first frame sent: device={_deviceId} " +
+                    $"bytes={rendered.Buffer.Length} pattern={TestPattern}.");
+            }
+
+            return true;
+        }
+
+        _performance.RecordFrame(
+            transfer.CompletedAt,
+            rendered.Timing,
+            transfer.Elapsed,
+            rendered.Timing.FrameTime + transfer.Elapsed,
+            ScreenFrameDisposition.Rendered);
+        LogPerformanceIfDue(transfer.CompletedAt);
+        LogStatusIfChanged();
+        _log.Warn($"Screen frame was not sent: device={_deviceId} pattern={TestPattern}.");
+        return false;
+    }
+
+    private void LogPerformanceIfDue(long completedAt)
+    {
+        if (_lastPerformanceLog == 0)
+        {
+            _lastPerformanceLog = completedAt;
+            return;
+        }
+
+        if (Stopwatch.GetElapsedTime(_lastPerformanceLog, completedAt) < PerformanceLogInterval)
+        {
+            return;
+        }
+
+        _lastPerformanceLog = completedAt;
+        var performance = _performance.Snapshot;
+        _log.Debug(
+            $"Screen performance: device={_deviceId} " +
+            $"fps={performance.FramesPerSecond:0.0} " +
+            $"sourceMs={performance.SourceTime.TotalMilliseconds:0.0} " +
+            $"pixelMs={performance.PixelTransformTime.TotalMilliseconds:0.0} " +
+            $"usbMs={performance.UsbTransferTime.TotalMilliseconds:0.0} " +
+            $"totalMs={performance.TotalFrameTime.TotalMilliseconds:0.0} " +
+            $"rendered={performance.FramesRendered} sent={performance.FramesSent} " +
+            $"skipped={performance.FramesSkipped}.");
+    }
+
+    private static void WaitForNextFrame(
+        TimeSpan frameInterval,
+        long previousTransferStartedAt,
+        CancellationToken token)
+    {
+        var wait = RemainingFrameDelay(
+            frameInterval,
+            Stopwatch.GetElapsedTime(previousTransferStartedAt));
+        if (wait > TimeSpan.FromMilliseconds(5))
+        {
+            token.WaitHandle.WaitOne(wait);
+            return;
+        }
+
+        // WaitHandle rounds very short waits up to the Windows timer quantum,
+        // which turned a ~3 ms remainder into ~10 ms and capped a 30 Hz VoCore
+        // panel near 25 FPS. A bounded spin is cheaper than losing that cadence;
+        // USB already consumes almost the entire frame interval.
+        while (!token.IsCancellationRequested
+               && Stopwatch.GetElapsedTime(previousTransferStartedAt) < frameInterval)
+        {
+            Thread.SpinWait(64);
+        }
     }
 
     private void EnsureNativeFrameSize()
@@ -271,6 +537,8 @@ public sealed class ScreenPublisher : IDisposable
         var previous = _source;
         _source = replacement;
         _buffer = new byte[size.Width * size.Height * 2];
+        _lastSentBuffer = new byte[_buffer.Length];
+        _hasSentFrame = false;
         previous.Dispose();
         _log.Info(
             $"Screen renderer resized to native device dimensions: " +

@@ -40,6 +40,7 @@ public sealed class MainWindow : Window
     private readonly ShellState _shell;
     private readonly TelemetryEngine _engine;
     private readonly DeviceScreenService _screens;
+    private readonly IHardwareInputSource _hardwareInput;
     private readonly ILog _log;
     private readonly LiveLogStore _liveLog;
     private readonly DiagnosticsPaths? _diagnosticsPaths;
@@ -86,6 +87,10 @@ public sealed class MainWindow : Window
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
     private bool _deviceBindingPickerOpen;
+    private CaptureRegionWindow? _captureRegionWindow;
+    internal CaptureRegionWindow? ActiveCaptureRegionWindow => _captureRegionWindow;
+
+    internal string? ActiveDashPageFor(string deviceId) => _screens.ActiveDashPageFor(deviceId);
     // Device detail live preview: a persistent painter renders the assigned dash
     // upright at the panel's native size into an in-place WriteableBitmap, animated
     // from the shell's ~30Hz tick without rebuilding the body. Torn down whenever
@@ -96,6 +101,14 @@ public sealed class MainWindow : Window
     private DashLayout? _devicePreviewLayout;
     private WriteableBitmap? _devicePreviewBitmap;
     private Image? _devicePreviewImage;
+    private byte[]? _devicePreviewPixels;
+    private RearViewPreviewSession? _rearViewPreviewSession;
+    private TextBlock? _screenPerformanceFps;
+    private TextBlock? _screenPerformanceSourceTime;
+    private TextBlock? _screenPerformancePixelTime;
+    private TextBlock? _screenPerformanceUsbTime;
+    private TextBlock? _screenPerformanceTotalTime;
+    private long _rearViewPreviewVersion;
     private SetupProgram? _deletedSetup;
     private int _deletedSetupIndex;
     private DispatcherTimer? _setupUndoTimer;
@@ -108,6 +121,15 @@ public sealed class MainWindow : Window
 
     public MainWindow(IDesktopRuntime runtime, ShellState shell, ITelemetrySource telemetrySource)
         : this(runtime, shell, telemetrySource, null, null, null)
+    {
+    }
+
+    internal MainWindow(
+        IDesktopRuntime runtime,
+        ShellState shell,
+        ITelemetrySource telemetrySource,
+        IHardwareInputSource hardwareInput)
+        : this(runtime, shell, telemetrySource, null, null, null, null, hardwareInput)
     {
     }
 
@@ -139,7 +161,8 @@ public sealed class MainWindow : Window
         ILog? log,
         LiveLogStore? liveLog,
         Func<string, IScreenDriver>? screenDriverFactory,
-        DiagnosticsPaths? diagnosticsPaths)
+        DiagnosticsPaths? diagnosticsPaths,
+        IHardwareInputSource? hardwareInput = null)
     {
         _runtime = runtime;
         _shell = shell;
@@ -148,6 +171,7 @@ public sealed class MainWindow : Window
         _updateChecks = new UpdateCheckSession(ct =>
             new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
         _diagnosticsPaths = diagnosticsPaths;
+        _hardwareInput = hardwareInput ?? NullHardwareInputSource.Instance;
 #if DEBUG
         _developmentGameState = new DevelopmentGameState(_log);
 #endif
@@ -178,13 +202,12 @@ public sealed class MainWindow : Window
         _screens.Sync();
 
         // WS8: the UI-independent command bus. Handlers are wired here (the shell owns
-        // the effects); input devices / the bindings UI dispatch by id. The on-wheel
-        // page-cycle effect on live hardware pages is a follow-up, so page commands
-        // dispatch cleanly today without a visible screen effect yet.
+        // the effects); input devices / the bindings UI dispatch by id.
         SprintCommands.RegisterDefaults(_commands);
-        _commands.Handle(SprintCommands.DashPageNext, _ => { });
-        _commands.Handle(SprintCommands.DashPagePrev, _ => { });
-        _commands.Handle(SprintCommands.DashTargetSet, _ => { });
+        _commands.Handle(SprintCommands.DashPageNext, payload => CycleDashPage(payload, 1));
+        _commands.Handle(SprintCommands.DashPagePrev, payload => CycleDashPage(payload, -1));
+        _commands.Handle(SprintCommands.DashTargetSet, _ => _engine.RequestManualReference());
+        _hardwareInput.InputPressed += OnHardwareInputPressed;
         _shellCommands = CreateShellCommands();
         KeyDown += OnGlobalKeyDown;
 
@@ -752,11 +775,20 @@ public sealed class MainWindow : Window
         // is watching the live preview of the assigned dash. The shell ticks at ~30Hz;
         // the preview is paced to the device's own refresh rate so what the user tunes
         // against matches what the panel receives (issue #75).
-        if (_shell.View == AppView.Devices
-            && _devicePreviewPainter is not null
-            && _devicePreviewState == DashPreviewState.Live
-            && _runtime.Settings.DevicesUI.LivePreview
-            && DevicePreviewFrameDue(now))
+        if (_shell.View == AppView.Devices)
+        {
+            UpdateScreenPerformance();
+        }
+
+        if (_shell.View == AppView.Devices && _rearViewPreviewSession is not null)
+        {
+            RenderRearViewPreviewFrame();
+        }
+        else if (_shell.View == AppView.Devices
+                 && _devicePreviewPainter is not null
+                 && _devicePreviewState == DashPreviewState.Live
+                 && _runtime.Settings.DevicesUI.LivePreview
+                 && DevicePreviewFrameDue(now))
         {
             RenderDevicePreviewFrame();
         }
@@ -847,11 +879,15 @@ public sealed class MainWindow : Window
 
         _toastTimers.Clear();
         DisposeDevicePreview();
+        _captureRegionWindow?.Close();
+        _captureRegionWindow = null;
 #if DEBUG
         _diagnosticsWindow?.Close();
         _diagnosticsWindow = null;
 #endif
-        _log.Info("Main window closed; stopping screen and telemetry services.");
+        _log.Info("Main window closed; stopping input, screen, and telemetry services.");
+        _hardwareInput.InputPressed -= OnHardwareInputPressed;
+        _hardwareInput.Dispose();
         // Stop + release all hardware screen publishers before tearing down telemetry.
         _screens.Dispose();
         // Disposing the engine cancels + joins the reader thread, then disposes the
@@ -1022,7 +1058,7 @@ public sealed class MainWindow : Window
         var dash = _runtime.DashLayouts.FirstOrDefault(layout => layout.Id == device.DashId);
         var text = new StackPanel { Spacing = 2 };
         text.Children.Add(Graphite.TextBlock(device.Name, 13, FontWeight.SemiBold, Graphite.TextBrush));
-        text.Children.Add(Graphite.TextBlock($"{device.Width} × {device.Height} · {dash?.Name ?? "No dash assigned"}", 11, FontWeight.Normal, Graphite.Text3Brush));
+        text.Children.Add(Graphite.TextBlock($"{DeviceResolution(device)} · {dash?.Name ?? "No dash assigned"}", 11, FontWeight.Normal, Graphite.Text3Brush));
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         AddGrid(row, text, 0, 0);
@@ -1263,7 +1299,7 @@ public sealed class MainWindow : Window
         foreach (var group in DesktopRuntime.SetupParameters.GroupBy(parameter => parameter.Group))
         {
             var groupStack = new StackPanel { Spacing = 8 };
-                groupStack.Children.Add(Graphite.SectionLabel(group.Key));
+            groupStack.Children.Add(Graphite.SectionLabel(group.Key));
             foreach (var parameter in group)
             {
                 var value = _selectedSetup.Values.TryGetValue(parameter.Key, out var current)
@@ -1645,9 +1681,10 @@ public sealed class MainWindow : Window
     // pipeline), a buttons-only device shows an icon + its bound-button count.
     private Control DeviceCardVisual(SavedDevice device, double width, double height)
     {
-        // A dash mirror is only truthful for a dash-purpose screen; anything else is
-        // idle, so the card falls through to the icon tile with its purpose label.
-        if (DeviceCapabilities.DrivesDash(device)
+        // Telemetry-backed purposes can show a truthful one-shot preview. Desktop
+        // capture stays off the UI thread, so its gallery card uses a labelled icon
+        // instead of taking an extra synchronous screenshot.
+        if (DeviceCapabilities.DrivesScreenOutput(device)
             && RenderDeviceMirrorBitmap(device, DashPreviewFrames.For(DashPreviewState.MidLap)) is { } bitmap)
         {
             return DeviceMirrorDisplay(device, new Image { Source = bitmap }, width, height);
@@ -1656,9 +1693,19 @@ public sealed class MainWindow : Window
         var icon = DeviceIcon(device);
         var inner = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         inner.Children.Add(new Grid { Children = { Icons.Create(icon, 30, Graphite.AccentBrush) }, HorizontalAlignment = HorizontalAlignment.Center });
-        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        if (IsScreenDevice(device)
+            && DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion)
         {
-            inner.Children.Add(Graphite.TextBlock(purpose.Label, 11, FontWeight.Medium, Graphite.Text3Brush));
+            inner.Children.Add(Graphite.TextBlock(
+                "Rear-view mirror",
+                11,
+                FontWeight.Medium,
+                Graphite.Text2Brush));
+            inner.Children.Add(Graphite.TextBlock(
+                device.CaptureRegion is { IsValid: true } ? "Capture area selected" : "Select an area to start",
+                10,
+                FontWeight.Normal,
+                Graphite.Text3Brush));
         }
         else if (!IsScreenDevice(device))
         {
@@ -1678,17 +1725,34 @@ public sealed class MainWindow : Window
         };
     }
 
-    // The preview frame is the physical panel itself — always the device's native
-    // pixel grid, never reshaped by rotation. The mirror buffer already has the
-    // dash rotated onto that grid, so it is shown as-is: rotation spins the dash
-    // within a fixed frame ("Horizontal" sits it upright, "Vertical" turns it).
+    // Device previews show the logical orientation selected by the user. Native
+    // width/height ordering stays an output-driver concern and must not reshape
+    // Portrait/Landscape differently between preview and hardware.
     private static Control DeviceMirrorDisplay(SavedDevice device, Image image, double maxWidth, double maxHeight)
     {
-        var scale = Math.Min(maxWidth / device.Width, maxHeight / device.Height);
-        image.Width = device.Width * scale;
-        image.Height = device.Height * scale;
+        var transform = DeviceTransform(device);
+        var scale = Math.Min(
+            maxWidth / transform.LogicalWidth,
+            maxHeight / transform.LogicalHeight);
+        image.Width = transform.LogicalWidth * scale;
+        image.Height = transform.LogicalHeight * scale;
         image.Stretch = Stretch.Fill;
-        return ScreenBezel(image, device.Width * scale + 8, device.Height * scale + 8);
+        return ScreenBezel(
+            image,
+            transform.LogicalWidth * scale + 8,
+            transform.LogicalHeight * scale + 8);
+    }
+
+    private static DeviceOrientationTransform DeviceTransform(SavedDevice device) =>
+        DeviceOrientations.Transform(
+            device.Width,
+            device.Height,
+            device.Orientation);
+
+    private static string DeviceResolution(SavedDevice device)
+    {
+        var transform = DeviceTransform(device);
+        return $"{transform.LogicalWidth} × {transform.LogicalHeight}";
     }
 
     // A dark rounded "panel bezel" that frames the rendered dash mirror.
@@ -1795,7 +1859,7 @@ public sealed class MainWindow : Window
     }
 
     private static string DeviceSubtitle(SavedDevice device) =>
-        IsScreenDevice(device) ? $"{device.Driver} · {device.Width} × {device.Height}" : $"{device.Driver} · controller";
+        IsScreenDevice(device) ? $"{device.Driver} · {DeviceResolution(device)}" : $"{device.Driver} · controller";
 
     private static string DeviceIcon(SavedDevice device) =>
         IsScreenDevice(device) ? "device-desktop" : "gauge";
@@ -2129,12 +2193,12 @@ public sealed class MainWindow : Window
             chips.Children.Add(SpecChip(device.Driver));
         }
 
-        chips.Children.Add(SpecChip(IsScreenDevice(device) ? $"{device.Width} × {device.Height}" : "Controller"));
-        // Only a non-default purpose earns a chip; every screen being tagged "Dash"
-        // would be noise.
-        if (IsScreenDevice(device) && DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        chips.Children.Add(SpecChip(IsScreenDevice(device) ? DeviceResolution(device) : "Controller"));
+        // Only a non-default purpose earns a chip; every screen being tagged
+        // "Dashboard" would be noise.
+        if (IsScreenDevice(device) && !DevicePurposes.IsDash(device.Purpose))
         {
-            chips.Children.Add(SpecChip(purpose.Label));
+            chips.Children.Add(SpecChip(DevicePurposes.Resolve(device.Purpose).Label));
         }
 
         AddGrid(metaRow, chips, 0, 0);
@@ -2179,31 +2243,34 @@ public sealed class MainWindow : Window
     private Control DeviceScreenSection(SavedDevice device)
     {
         var purpose = DevicePurposes.Resolve(device.Purpose);
-        if (!purpose.Available)
-        {
-            // Honest dead end: the screen is labelled for output Sprint cannot produce
-            // yet, so it stays idle instead of quietly showing a dash. No dash
-            // assignment, no preview, and no alignment controls for output that isn't
-            // running.
-            var idle = new StackPanel { Spacing = 12 };
-            idle.Children.Add(DevicePurposeField(device));
-            idle.Children.Add(Graphite.StatePanel(
-                $"{purpose.Label} is not built yet",
-                $"{purpose.Description} Sprint keeps this screen idle until that output exists — "
-                    + "switch the purpose back to Dash to drive it with a dash layout.",
-                Graphite.BlueBrush));
-            return idle;
-        }
-
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 24 };
 
         var left = new StackPanel { Spacing = 10 };
         left.Children.Add(DevicePurposeField(device));
-        left.Children.Add(DashAssignmentField(device));
-        left.Children.Add(DeviceScreenPreview(device));
-        if (_devicePreviewPainter is not null)
+        if (purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion)
         {
-            left.Children.Add(PreviewControlsRow());
+            if (device.CaptureRegion is { IsValid: true })
+            {
+                left.Children.Add(RearViewCapturePreview(device));
+            }
+
+            left.Children.Add(ScreenPerformanceMetrics());
+            left.Children.Add(CaptureAreaField(device));
+        }
+        else
+        {
+            if (DevicePurposes.IsDash(device.Purpose))
+            {
+                left.Children.Add(DashAssignmentField(device));
+            }
+
+            left.Children.Add(DeviceScreenPreview(device));
+            if (_devicePreviewPainter is not null)
+            {
+                left.Children.Add(PreviewControlsRow());
+            }
+
+            left.Children.Add(ScreenPerformanceMetrics());
         }
 
         AddGrid(grid, left, 0, 0);
@@ -2223,6 +2290,195 @@ public sealed class MainWindow : Window
         return grid;
     }
 
+    private Control CaptureAreaField(SavedDevice device)
+    {
+        var panel = new StackPanel { Spacing = 8, Width = 388 };
+        panel.Children.Add(Graphite.SectionLabel("Capture area"));
+        if (device.CaptureRegion is not { IsValid: true } region)
+        {
+            panel.Children.Add(Graphite.StatePanel(
+                "Setup needed",
+                "Select the desktop area that contains the in-game rear view. Sprint will keep the device's aspect ratio while you frame it.",
+                Graphite.ActionMaterialBrush));
+            panel.Children.Add(ActionButton(
+                "Select area",
+                ButtonTone.Primary,
+                () => ShowCaptureRegionSelector(device)));
+            return panel;
+        }
+
+        var details = new StackPanel { Spacing = 4 };
+        details.Children.Add(Graphite.TextBlock(
+            $"{region.Width} × {region.Height} px",
+            14,
+            FontWeight.SemiBold,
+            Graphite.TextBrush));
+        details.Children.Add(Graphite.TextBlock(
+            $"Desktop position {region.X}, {region.Y}",
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush));
+        panel.Children.Add(new Border
+        {
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Padding = new Thickness(12),
+            Child = details,
+        });
+        panel.Children.Add(ActionButton(
+            "Change area",
+            ButtonTone.Neutral,
+            () => ShowCaptureRegionSelector(device)));
+        return panel;
+    }
+
+    private Control RearViewCapturePreview(SavedDevice device)
+    {
+        if (device.CaptureRegion is not { IsValid: true } region)
+        {
+            throw new InvalidOperationException("A rear-view preview requires a selected capture area.");
+        }
+
+        DisposeDevicePreview();
+        var transform = DeviceTransform(device);
+        _devicePreviewPixels = new byte[checked(transform.LogicalWidth * transform.LogicalHeight * 4)];
+        _devicePreviewBitmap = new WriteableBitmap(
+            new PixelSize(transform.LogicalWidth, transform.LogicalHeight),
+            new Vector(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Premul);
+        _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
+        _rearViewPreviewSession = _screens.CreateRearViewPreviewSession(
+            device.Id,
+            region,
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            targetFps: Math.Min(15, DeviceRefreshRates.Normalize(device.RefreshHz)));
+        _rearViewPreviewSession.Start();
+
+        var panel = new StackPanel { Spacing = 8, Width = 388 };
+        panel.Children.Add(Graphite.SectionLabel("Live capture preview"));
+        panel.Children.Add(DeviceMirrorDisplay(device, _devicePreviewImage, 380, 240));
+        panel.Children.Add(Graphite.TextBlock(
+            "Preview is independently limited to at most 15 FPS to reduce system load. Statistics report the actual screen renderer.",
+            10,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap));
+        return panel;
+    }
+
+    private Control ScreenPerformanceMetrics()
+    {
+        _screenPerformanceFps = ScreenMetricValue("screen-performance-fps", minimumWidth: 32);
+        _screenPerformanceSourceTime = ScreenMetricValue("screen-performance-source-time");
+        _screenPerformancePixelTime = ScreenMetricValue("screen-performance-pixel-time");
+        _screenPerformanceUsbTime = ScreenMetricValue("screen-performance-usb-time");
+        _screenPerformanceTotalTime = ScreenMetricValue("screen-performance-total-time");
+
+        var metrics = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            ColumnSpacing = 10,
+            RowSpacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AddScreenMetric(metrics, ScreenMetric(
+            "Screen output FPS",
+            "Frames successfully delivered to the physical screen over USB.",
+            _screenPerformanceFps), row: 0, column: 0);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Source",
+            "Desktop capture or dash painting for the physical screen.",
+            _screenPerformanceSourceTime), row: 0, column: 1);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Pixel transform",
+            "RGB565 conversion, orientation, margin, offset, or native-buffer copy.",
+            _screenPerformancePixelTime), row: 1, column: 0);
+        AddScreenMetric(metrics, ScreenMetric(
+            "USB transfer",
+            "Time spent delivering the completed native frame to the screen.",
+            _screenPerformanceUsbTime), row: 1, column: 1);
+        AddScreenMetric(metrics, ScreenMetric(
+            "Total",
+            "Source, pixel transform, and USB time for the last delivered frame.",
+            _screenPerformanceTotalTime), row: 2, column: 0);
+        return new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                Graphite.SectionLabel("Screen performance"),
+                metrics,
+            },
+        };
+    }
+
+    private static TextBlock ScreenMetricValue(string tag, double minimumWidth = 52)
+    {
+        var value = Graphite.TextBlock(
+            "—",
+            11,
+            FontWeight.Medium,
+            Graphite.Text2Brush);
+        value.Tag = tag;
+        value.FontFeatures =
+            new FontFeatureCollection { FontFeature.Parse("tnum") };
+        value.MinWidth = minimumWidth;
+        value.TextAlignment = TextAlignment.Right;
+        return value;
+    }
+
+    private static Control ScreenMetric(string label, string tooltip, TextBlock value)
+    {
+        var metric = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var labelText = Graphite.TextBlock(
+            label,
+            11,
+            FontWeight.Medium,
+            Graphite.Text3Brush);
+        ToolTip.SetTip(labelText, tooltip);
+        metric.Children.Add(labelText);
+        metric.Children.Add(value);
+        return metric;
+    }
+
+    private static void AddScreenMetric(Grid metrics, Control metric, int row, int column)
+    {
+        Grid.SetRow(metric, row);
+        Grid.SetColumn(metric, column);
+        metrics.Children.Add(metric);
+    }
+
+    private void ShowCaptureRegionSelector(SavedDevice device)
+    {
+        _captureRegionWindow?.Close();
+        var selector = new CaptureRegionWindow(device);
+        _captureRegionWindow = selector;
+        selector.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_captureRegionWindow, selector))
+            {
+                _captureRegionWindow = null;
+            }
+        };
+        selector.SelectionConfirmed += (_, region) =>
+        {
+            _runtime.UpdateDeviceCaptureRegion(device, region);
+            _screens.Sync();
+            RenderBody();
+        };
+        selector.Show(this);
+    }
+
     // A label/control row where every label shares one left column so the controls
     // line up in a single column beneath the section heading.
     private static Control AlignmentRow(string label, Control control)
@@ -2239,12 +2495,12 @@ public sealed class MainWindow : Window
         return new Border { Padding = new Thickness(0, 4), Child = grid };
     }
 
-    // What this screen is used for (issue #53). Changing it re-syncs the screen service,
-    // because only the dash purpose is allowed to publish frames.
+    // What this screen is used for (issue #53). The sentence-like heading keeps the
+    // choice in user language; the helper text says what selecting it will do.
     private Control DevicePurposeField(SavedDevice device)
     {
         var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(Graphite.SectionLabel("Purpose"));
+        panel.Children.Add(Graphite.SectionLabel("This screen is used for"));
 
         var current = DevicePurposes.Resolve(device.Purpose);
         var combo = Graphite.ComboBox(DevicePurposes.Labels, current.Label, 220);
@@ -2263,6 +2519,12 @@ public sealed class MainWindow : Window
             RenderBody();
         };
         panel.Children.Add(combo);
+        panel.Children.Add(Graphite.TextBlock(
+            current.Description,
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.Wrap));
         return panel;
     }
 
@@ -2282,12 +2544,13 @@ public sealed class MainWindow : Window
             current?.Name ?? _runtime.DashLayouts.FirstOrDefault()?.Name,
             220,
             "No dash assigned");
+        combo.Tag = "device-dash";
         combo.SelectionChanged += (_, _) =>
         {
             var chosen = _runtime.DashLayouts.FirstOrDefault(layout => layout.Name == combo.SelectedItem?.ToString());
             if (chosen is not null && chosen.Id != device.DashId)
             {
-                _runtime.UpdateDevice(device, device.Name, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, chosen.Id);
+                _runtime.UpdateDevice(device, device.Name, device.Orientation, device.OffsetX, device.OffsetY, device.Margin, chosen.Id);
                 _screens.Sync();
                 RenderBody();
             }
@@ -2312,7 +2575,7 @@ public sealed class MainWindow : Window
                 BorderBrush = Graphite.Line2Brush,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(Graphite.RadiusMd),
-                Child = new Grid { Children = { Graphite.TextBlock("No dash to preview", 12, FontWeight.Normal, Graphite.Text3Brush) } },
+                Child = new Grid { Children = { Graphite.TextBlock("No output to preview", 12, FontWeight.Normal, Graphite.Text3Brush) } },
             };
         }
 
@@ -2362,11 +2625,26 @@ public sealed class MainWindow : Window
 
     private Control RotationControl(SavedDevice device)
     {
-        var index = device.Rotation switch { 90 => 1, 180 => 2, 270 => 3, _ => 0 };
-        return Graphite.Segmented(
-            ["Vertical", "Horizontal", "Vertical Inverted", "Horizontal Inverted"],
-            index,
-            chosen => SetDeviceRotation(device, chosen * 90));
+        var combo = Graphite.ComboBox(
+            DeviceOrientations.Labels,
+            DeviceOrientations.Label(device.Orientation),
+            220);
+        combo.Tag = "device-orientation";
+        ToolTip.SetTip(
+            combo,
+            string.Join(
+                ", ",
+                DeviceOrientations.All.Select(option =>
+                    $"{option.Label} = {(int)option.Orientation}°")) + ".");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (DeviceOrientations.OrientationForLabel(combo.SelectedItem?.ToString()) is { } orientation
+                && orientation != device.Orientation)
+            {
+                SetDeviceRotation(device, orientation);
+            }
+        };
+        return combo;
     }
 
     // One rate for the panel and its live preview (issue #75).
@@ -2404,14 +2682,30 @@ public sealed class MainWindow : Window
         return row;
     }
 
-    private void SetDeviceRotation(SavedDevice device, int rotation)
+    private void SetDeviceRotation(SavedDevice device, DeviceOrientation orientation)
     {
-        if (device.Rotation == rotation)
+        var previousOrientation = device.Orientation;
+        if (previousOrientation == orientation)
         {
             return;
         }
 
-        _runtime.UpdateDevice(device, device.Name, rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+        var reorientedCapture = device.CaptureRegion is { IsValid: true } region
+            ? CaptureSelectionGeometry.ReorientRegion(region, previousOrientation, orientation)
+            : null;
+        _runtime.UpdateDevice(
+            device,
+            device.Name,
+            orientation,
+            device.OffsetX,
+            device.OffsetY,
+            device.Margin,
+            device.DashId);
+        if (reorientedCapture is not null && !Equals(device.CaptureRegion, reorientedCapture))
+        {
+            _runtime.UpdateDeviceCaptureRegion(device, reorientedCapture);
+        }
+
         _screens.Sync();
         RenderBody();
     }
@@ -2425,7 +2719,7 @@ public sealed class MainWindow : Window
             return;
         }
 
-        _runtime.UpdateDevice(device, device.Name, device.Rotation, x, y, device.Margin, device.DashId);
+        _runtime.UpdateDevice(device, device.Name, device.Orientation, x, y, device.Margin, device.DashId);
         _screens.Sync();
         RenderBody();
     }
@@ -2438,26 +2732,29 @@ public sealed class MainWindow : Window
             return;
         }
 
-        _runtime.UpdateDevice(device, device.Name, device.Rotation, device.OffsetX, device.OffsetY, margin, device.DashId);
+        _runtime.UpdateDevice(device, device.Name, device.Orientation, device.OffsetX, device.OffsetY, margin, device.DashId);
         _screens.Sync();
         RenderBody();
     }
 
     private DashLayout? ResolveDeviceLayout(SavedDevice device) =>
-        _runtime.DashLayouts.FirstOrDefault(layout => string.Equals(layout.Id, device.DashId, StringComparison.OrdinalIgnoreCase))
-        ?? _runtime.DashLayouts.FirstOrDefault(layout => layout.IsDefault)
-        ?? _runtime.DashLayouts.FirstOrDefault();
+        DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts);
 
     private void BuildDevicePreview(SavedDevice device, DashLayout layout)
     {
         DisposeDevicePreview();
+        var transform = DeviceTransform(device);
         _devicePreviewLayout = layout;
-        _devicePreviewPainter = new DashPainter(device.Width, device.Height, DashPalette.FromLayout(layout));
+        _devicePreviewPainter = new DashPainter(
+            transform.LogicalWidth,
+            transform.LogicalHeight,
+            DashPalette.FromLayout(layout));
         _devicePreviewBitmap = new WriteableBitmap(
-            new PixelSize(device.Width, device.Height),
+            new PixelSize(transform.LogicalWidth, transform.LogicalHeight),
             new Vector(96, 96),
             PixelFormat.Bgra8888,
             AlphaFormat.Premul);
+        _devicePreviewPixels = new byte[checked(transform.LogicalWidth * transform.LogicalHeight * 4)];
         _devicePreviewImage = new Image { Source = _devicePreviewBitmap, Stretch = Stretch.Fill };
         RenderDevicePreviewFrame();
     }
@@ -2492,17 +2789,87 @@ public sealed class MainWindow : Window
 
         var frame = DashPreviewFrames.Resolve(_devicePreviewState, CurrentTelemetryFrame());
         _devicePreviewPainter.Render(_devicePreviewLayout, frame, _runtime.Settings);
-        DashImageRenderer.Copy(_devicePreviewPainter, _devicePreviewBitmap);
+        DashImageRenderer.Copy(_devicePreviewPainter, _devicePreviewBitmap, _devicePreviewPixels!);
         _devicePreviewImage?.InvalidateVisual();
+    }
+
+    private void RenderRearViewPreviewFrame()
+    {
+        if (_rearViewPreviewSession is null
+            || _devicePreviewBitmap is null
+            || _devicePreviewPixels is null)
+        {
+            return;
+        }
+
+        if (!_rearViewPreviewSession.TryCopyLatest(
+                _devicePreviewPixels,
+                ref _rearViewPreviewVersion,
+                out _))
+        {
+            return;
+        }
+
+        DashImageRenderer.CopyBgra(
+            _devicePreviewPixels,
+            _rearViewPreviewSession.Width,
+            _rearViewPreviewSession.Height,
+            _devicePreviewBitmap);
+        _devicePreviewImage?.InvalidateVisual();
+    }
+
+    private void UpdateScreenPerformance()
+    {
+        if (_screenPerformanceFps is null
+            || _screenPerformanceSourceTime is null
+            || _screenPerformancePixelTime is null
+            || _screenPerformanceUsbTime is null
+            || _screenPerformanceTotalTime is null)
+        {
+            return;
+        }
+
+        if (_selectedDeviceId is not { } deviceId)
+        {
+            _screenPerformanceFps.Text = "—";
+            _screenPerformanceSourceTime.Text = "—";
+            _screenPerformancePixelTime.Text = "—";
+            _screenPerformanceUsbTime.Text = "—";
+            _screenPerformanceTotalTime.Text = "—";
+            return;
+        }
+
+        var performance = _screens.PerformanceFor(deviceId);
+        var connected = _screens.StatusFor(deviceId)?.IsConnected == true;
+        var hasSamples = connected && performance is { HasSamples: true };
+        _screenPerformanceFps.Text = connected && performance is { FramesSent: >= 2 }
+            ? $"{performance.FramesPerSecond:0.0}"
+            : "—";
+        _screenPerformanceSourceTime.Text = MetricTime(performance?.SourceTime, hasSamples);
+        _screenPerformancePixelTime.Text = MetricTime(performance?.PixelTransformTime, hasSamples);
+        _screenPerformanceUsbTime.Text = MetricTime(performance?.UsbTransferTime, hasSamples);
+        _screenPerformanceTotalTime.Text = MetricTime(performance?.TotalFrameTime, hasSamples);
+
+        static string MetricTime(TimeSpan? time, bool connected) =>
+            connected && time is { } value ? $"{value.TotalMilliseconds:0.0} ms" : "—";
     }
 
     private void DisposeDevicePreview()
     {
+        _rearViewPreviewSession?.Dispose();
+        _rearViewPreviewSession = null;
+        _screenPerformanceFps = null;
+        _screenPerformanceSourceTime = null;
+        _screenPerformancePixelTime = null;
+        _screenPerformanceUsbTime = null;
+        _screenPerformanceTotalTime = null;
+        _rearViewPreviewVersion = 0;
         _devicePreviewPainter?.Dispose();
         _devicePreviewPainter = null;
         _devicePreviewLayout = null;
         _devicePreviewImage = null;
         _devicePreviewBitmap = null;
+        _devicePreviewPixels = null;
     }
 
     // One-shot upright render of the assigned dash for a gallery/list card; returns
@@ -2520,12 +2887,13 @@ public sealed class MainWindow : Window
             return null;
         }
 
+        var transform = DeviceTransform(device);
         return DashImageRenderer.Render(
             layout,
             frame,
             _runtime.Settings,
-            device.Width,
-            device.Height,
+            transform.LogicalWidth,
+            transform.LogicalHeight,
             palette: DashPalette.FromLayout(layout));
     }
 
@@ -2554,7 +2922,7 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            _runtime.UpdateDevice(device, nextName, device.Rotation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
+            _runtime.UpdateDevice(device, nextName, device.Orientation, device.OffsetX, device.OffsetY, device.Margin, device.DashId);
             lastCommittedText = nextName;
             _screens.Sync();
         }
@@ -2648,7 +3016,18 @@ public sealed class MainWindow : Window
         var panel = new StackPanel { Spacing = 6 };
         panel.Children.Add(Graphite.TextBlock($"Listening for {CommandLabel(_capture.Command ?? "")}", 13, FontWeight.SemiBold, Graphite.AccentBrush));
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(row, Graphite.TextBlock("Press a key on this device... (Esc to cancel)", 11, FontWeight.Normal, Graphite.Text2Brush), 0, 0);
+        var prompt = _hardwareInput.IsAvailable
+            ? "Press a wheel button, encoder, or keyboard key. Esc cancels."
+            : "Wheel input is unavailable. Press a keyboard key, or Esc to cancel.";
+        AddGrid(
+            row,
+            Graphite.TextBlock(
+                prompt,
+                11,
+                FontWeight.Normal,
+                _hardwareInput.IsAvailable ? Graphite.Text2Brush : Graphite.YellowBrush),
+            0,
+            0);
         AddGrid(row, ActionButton("Cancel", ButtonTone.Neutral, () => ToggleDeviceListen(device.Id, _capture.Command ?? "")), 0, 1);
         panel.Children.Add(row);
         return new Border
@@ -3121,6 +3500,12 @@ public sealed class MainWindow : Window
         {
             Navigate(view);
             e.Handled = true;
+            return;
+        }
+
+        if (DispatchBoundInput(new HardwareInputEvent(0, 0, $"key:{e.Key}")))
+        {
+            e.Handled = true;
         }
     }
 
@@ -3135,16 +3520,61 @@ public sealed class MainWindow : Window
             return;
         }
 
+        CompleteInputCapture($"key:{e.Key}");
+        e.Handled = true;
+    }
+
+    private void OnHardwareInputPressed(object? sender, HardwareInputEvent input)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => HandleHardwareInput(input));
+            return;
+        }
+
+        HandleHardwareInput(input);
+    }
+
+    private void HandleHardwareInput(HardwareInputEvent input)
+    {
+        if (_capture.IsListening)
+        {
+            CompleteInputCapture(input.Input);
+            return;
+        }
+
+        DispatchBoundInput(input);
+    }
+
+    private bool DispatchBoundInput(HardwareInputEvent input) =>
+        HardwareBindingResolver.Resolve(input, _runtime.Devices, _runtime.Controls.Bindings) is { } binding
+        && _commands.Dispatch(binding.Command, binding.DeviceId);
+
+    private void CycleDashPage(object? payload, int offset)
+    {
+        if (payload is string deviceId && !string.IsNullOrWhiteSpace(deviceId))
+        {
+            _screens.CycleDashPage(deviceId, offset);
+            return;
+        }
+
+        foreach (var activeDeviceId in _screens.ActiveDeviceIds)
+        {
+            _screens.CycleDashPage(activeDeviceId, offset);
+        }
+    }
+
+    private void CompleteInputCapture(string input)
+    {
         if (_captureDeviceId is not null && !_runtime.Devices.Any(device => device.Id == _captureDeviceId))
         {
             _capture = InputCaptureReducer.Cancel(_capture);
             _captureDeviceId = null;
             RenderBody();
-            e.Handled = true;
             return;
         }
 
-        _capture = InputCaptureReducer.Capture(_capture, $"key:{e.Key}");
+        _capture = InputCaptureReducer.Capture(_capture, input);
         if (InputCaptureReducer.ToBinding(_capture) is { } binding)
         {
             if (_captureDeviceId is not null && _runtime.Devices.FirstOrDefault(device => device.Id == _captureDeviceId) is { } device)
@@ -3164,7 +3594,6 @@ public sealed class MainWindow : Window
         _capture = InputCaptureState.Idle;
         _captureDeviceId = null;
         RenderBody();
-        e.Handled = true;
     }
 
     private static bool TryProductionShortcutView(Key key, out AppView view)
@@ -4149,13 +4578,13 @@ public sealed class MainWindow : Window
             return new ScreenStatusView("Disabled", "This screen is disabled. Enable it to start output.");
         }
 
-        // A screen labelled for an unbuilt purpose has no publisher by design; report
-        // that instead of the generic "no publisher" disconnect, which reads as a fault.
-        if (DevicePurposes.Resolve(device.Purpose) is { Available: false } purpose)
+        if (DevicePurposes.Resolve(device.Purpose).Output is DevicePurposeOutputKind.DesktopCaptureRegion
+            && device.CaptureRegion is not { IsValid: true })
         {
             return new ScreenStatusView(
-                "Idle",
-                $"Set to {purpose.Label}, which Sprint cannot render yet — nothing is being sent to this screen.");
+                "Setup needed",
+                "Select the desktop area to mirror before Sprint starts output.",
+                ScreenStatusTone.Warning);
         }
 
         return ScreenStatusPresentation.Describe(

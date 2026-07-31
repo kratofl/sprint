@@ -68,6 +68,9 @@ internal static class Graphite
     public static readonly Color Panel2Hover = Color.Parse("#232327");
     public static readonly Color Panel3Hover = Color.Parse("#232327");
     public static readonly Color AccentHover = Brighten(Accent, 0.10);
+    public static readonly Color OverlayChrome = Color.Parse("#E6101012");
+    // Mirrors semanticTokens.color.surface.captureSelection from packages/tokens.
+    public static readonly Color CaptureSelectionFill = Color.Parse("#33101012");
 
     // Primary orange is intentionally flat. Gradient brushes remain dispatcher-owned
     // for the quieter selection and telemetry materials below.
@@ -150,6 +153,8 @@ internal static class Graphite
     public static readonly IBrush Panel2HoverBrush = Brush(Panel2Hover);
     public static readonly IBrush Panel3HoverBrush = Brush(Panel3Hover);
     public static readonly IBrush AccentHoverBrush = Brush(AccentHover);
+    public static readonly IBrush OverlayChromeBrush = Brush(OverlayChrome);
+    public static readonly IBrush CaptureSelectionFillBrush = Brush(CaptureSelectionFill);
 
     // Inter is the single UI face. Brand artwork retains its own lettering, while
     // app chrome, labels, controls, and frequently-updating numbers share one calm

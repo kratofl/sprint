@@ -108,6 +108,16 @@ public static class DashWidgetCatalog
             ["position"] = Definition("position", "Position", idleCapable: false, "race.position", "race.totalPositions"),
             ["gaps"] = Definition("gaps", "Gaps", idleCapable: false, "race.gapAhead", "race.gapBehind"),
             ["predictive_lap"] = Definition("predictive_lap", "Predictive Lap", idleCapable: false, "lap.target", "lap.best"),
+            ["racelogic_lap_timer"] = Definition(
+                "racelogic_lap_timer",
+                "RaceLogic Lap Timer",
+                idleCapable: false,
+                "lap.current",
+                "lap.last",
+                "lap.best",
+                "lap.target",
+                "lap.delta",
+                "car.speed"),
             ["tyre_pressure"] = Definition("tyre_pressure", "Tyre Pressure", idleCapable: true, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
             // LMU virtual-energy budget (replaces the former "ers" widget; legacy layouts
             // are migrated to this type on load). Configurable via VirtualEnergyConfig.

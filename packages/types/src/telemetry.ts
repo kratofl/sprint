@@ -18,10 +18,10 @@ export interface CarState {
   gear: number
   rpm: number
   maxRPM: number
-  throttle: number
-  brake: number
-  clutch: number
-  steering: number
+  throttle: number // driver position before traction-control filtering
+  brake: number // driver position before ABS filtering
+  clutch: number // driver position before vehicle-side filtering
+  steering: number // driver position before steering-assist filtering
   fuel: number
   fuelPerLap: number
   positionX: number

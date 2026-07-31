@@ -163,6 +163,7 @@
   --bg-elevated: var(--panel2);
   --bg-overlay: var(--bg);
   --bg-overlay-panel: var(--panel);
+  --capture-selection-fill: rgba(16, 16, 18, .20);
   --outline: var(--line);
   --outline-strong: var(--line2);
   --on-surface: var(--text);
@@ -175,6 +176,7 @@
   --semantic-color-surface-raised: var(--panel2);
   --semantic-color-surface-inset: var(--panel3);
   --semantic-color-surface-tile-4: var(--panel-4);
+  --semantic-color-surface-capture-selection: var(--capture-selection-fill);
   --semantic-color-text-primary: var(--text);
   --semantic-color-text-muted: var(--text2);
   --semantic-color-text-disabled: var(--text3);

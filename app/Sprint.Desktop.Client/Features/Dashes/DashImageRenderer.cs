@@ -74,6 +74,19 @@ public static class DashImageRenderer
     {
         ArgumentNullException.ThrowIfNull(painter);
         ArgumentNullException.ThrowIfNull(target);
+        var pixels = new byte[checked(painter.Width * painter.Height * 4)];
+        Copy(painter, target, pixels);
+    }
+
+    /// <summary>
+    /// Copies through a caller-owned staging buffer. Long-lived previews reuse this
+    /// buffer and therefore perform no managed allocation per frame.
+    /// </summary>
+    public static void Copy(DashPainter painter, WriteableBitmap target, byte[] stagingBuffer)
+    {
+        ArgumentNullException.ThrowIfNull(painter);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(stagingBuffer);
 
         // The copy is a raw pixel-buffer blit; a size mismatch would silently
         // corrupt rows (or overrun) instead of scaling. Fail loud and early.
@@ -84,16 +97,37 @@ public static class DashImageRenderer
                 nameof(target));
         }
 
-        var pixels = painter.PixelSpanBgra.ToArray();
-        var srcRowBytes = painter.Width * 4;
+        painter.PixelSpanBgra.CopyTo(stagingBuffer);
+        CopyBgra(stagingBuffer, painter.Width, painter.Height, target);
+    }
+
+    /// <summary>Blits caller-owned BGRA8888 pixels into an existing Avalonia bitmap.</summary>
+    public static void CopyBgra(byte[] pixels, int width, int height, WriteableBitmap target)
+    {
+        ArgumentNullException.ThrowIfNull(pixels);
+        ArgumentNullException.ThrowIfNull(target);
+        var required = checked(width * height * 4);
+        if (pixels.Length < required)
+        {
+            throw new ArgumentException($"Pixel buffer needs {required} bytes.", nameof(pixels));
+        }
+
+        if (target.PixelSize.Width != width || target.PixelSize.Height != height)
+        {
+            throw new ArgumentException(
+                $"Bitmap size {target.PixelSize.Width}x{target.PixelSize.Height} does not match pixels {width}x{height}.",
+                nameof(target));
+        }
+
+        var srcRowBytes = width * 4;
         using var buffer = target.Lock();
         if (buffer.RowBytes == srcRowBytes)
         {
-            Marshal.Copy(pixels, 0, buffer.Address, pixels.Length);
+            Marshal.Copy(pixels, 0, buffer.Address, required);
             return;
         }
 
-        for (var y = 0; y < painter.Height; y++)
+        for (var y = 0; y < height; y++)
         {
             Marshal.Copy(pixels, y * srcRowBytes, buffer.Address + y * buffer.RowBytes, srcRowBytes);
         }
