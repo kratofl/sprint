@@ -171,6 +171,8 @@ public sealed class DevicePurposeTests
 
         var pixels = painter.PixelSpanBgra;
         var band = DashPainter.RaceLogicPanelBounds(800, 480);
+        var lit = 0;
+        var firstLit = (X: -1, Y: -1);
         for (var y = 0; y < 480; y++)
         {
             if (y >= band.Y && y < band.Y + band.Height)
@@ -181,11 +183,23 @@ public sealed class DevicePurposeTests
             for (var x = 0; x < 800; x++)
             {
                 var offset = (y * 800 + x) * 4;
-                Assert.Equal(0, pixels[offset]);
-                Assert.Equal(0, pixels[offset + 1]);
-                Assert.Equal(0, pixels[offset + 2]);
+                if (pixels[offset] == 0 && pixels[offset + 1] == 0 && pixels[offset + 2] == 0)
+                {
+                    continue;
+                }
+
+                lit++;
+                if (firstLit.X < 0)
+                {
+                    firstLit = (x, y);
+                }
             }
         }
+
+        Assert.True(
+            lit == 0,
+            $"Expected black outside the {band.Width}x{band.Height} band at ({band.X},{band.Y}); "
+                + $"{lit} pixels were lit, first at ({firstLit.X},{firstLit.Y}).");
     }
 
     [Fact]

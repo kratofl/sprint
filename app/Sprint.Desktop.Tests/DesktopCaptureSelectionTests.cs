@@ -132,20 +132,13 @@ public sealed class DesktopCaptureSelectionTests
         bool isLandscape)
     {
         Assert.Equal(rotation, (int)orientation);
-        Assert.Equal(label, DeviceOrientations.Label(orientation));
         Assert.Equal(isLandscape, DeviceOrientations.IsLandscape(orientation));
         Assert.Equal(orientation, DeviceOrientations.Resolve(rotation));
-    }
 
-    [Theory]
-    [InlineData(0, "Portrait")]
-    [InlineData(90, "Landscape")]
-    [InlineData(180, "Portrait inverted")]
-    [InlineData(270, "Landscape inverted")]
-    public void DeviceOrientationUsesNamesInsteadOfRawDegreeLabels(int rotation, string expectedLabel)
-    {
-        Assert.Equal(expectedLabel, DeviceOrientations.Label(rotation));
-        Assert.Equal(rotation, (int)DeviceOrientations.OrientationForLabel(expectedLabel)!.Value);
+        // Degrees are an implementation detail; every surface names the orientation.
+        Assert.Equal(label, DeviceOrientations.Label(orientation));
+        Assert.Equal(label, DeviceOrientations.Label(rotation));
+        Assert.Equal(orientation, DeviceOrientations.OrientationForLabel(label));
     }
 
     [Theory]
@@ -540,18 +533,12 @@ public sealed class DesktopCaptureSelectionTests
             native.Render(new TelemetryFrame(), nativePixels);
             fallback.Render(new TelemetryFrame(), fallbackPixels);
 
-            var error = RgbError(
-                nativePixels,
+            Rgb565Similarity.AssertLooksTheSame(
                 fallbackPixels,
+                nativePixels,
                 config.Width,
                 config.Height,
-                tileSize: 32);
-            Assert.True(
-                error.Mean < 16,
-                $"Whole-frame mean RGB error was {error.Mean:0.00}; expected < 16.");
-            Assert.True(
-                error.MaximumTile < 48,
-                $"Localized 32px-tile RGB error was {error.MaximumTile:0.00}; expected < 48.");
+                $"native rear-view composition at {config.Width}x{config.Height} {config.Orientation}");
         }
     }
 
@@ -598,45 +585,6 @@ public sealed class DesktopCaptureSelectionTests
 
         capturer.Dispose();
         Assert.True(factory.Surfaces[1].Disposed);
-    }
-
-    private static (double Mean, double MaximumTile) RgbError(
-        byte[] left,
-        byte[] right,
-        int width,
-        int height,
-        int tileSize)
-    {
-        var leftBgra = new byte[width * height * 4];
-        var rightBgra = new byte[leftBgra.Length];
-        Rgb565.ToBgra(left, width, height, leftBgra);
-        Rgb565.ToBgra(right, width, height, rightBgra);
-        long total = 0;
-        var maximumTile = 0d;
-        for (var tileY = 0; tileY < height; tileY += tileSize)
-        {
-            for (var tileX = 0; tileX < width; tileX += tileSize)
-            {
-                long tileTotal = 0;
-                var tileSamples = 0;
-                for (var y = tileY; y < Math.Min(height, tileY + tileSize); y++)
-                {
-                    for (var x = tileX; x < Math.Min(width, tileX + tileSize); x++)
-                    {
-                        var offset = (y * width + x) * 4;
-                        tileTotal += Math.Abs(leftBgra[offset] - rightBgra[offset]);
-                        tileTotal += Math.Abs(leftBgra[offset + 1] - rightBgra[offset + 1]);
-                        tileTotal += Math.Abs(leftBgra[offset + 2] - rightBgra[offset + 2]);
-                        tileSamples += 3;
-                    }
-                }
-
-                total += tileTotal;
-                maximumTile = Math.Max(maximumTile, tileTotal / (double)tileSamples);
-            }
-        }
-
-        return (total / (double)(width * height * 3), maximumTile);
     }
 
     private static SavedDevice ScreenDevice(int rotation) => new()

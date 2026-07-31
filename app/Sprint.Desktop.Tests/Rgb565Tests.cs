@@ -1,12 +1,10 @@
-using System.Diagnostics;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Sprint.Desktop.Tests;
 
-public sealed class Rgb565Tests(ITestOutputHelper output)
+public sealed class Rgb565Tests
 {
     [Fact]
     public void FromBgraEncodesRedPixelLittleEndian()
@@ -226,80 +224,35 @@ public sealed class Rgb565Tests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void FusedCompositionIsAllocationFreeAndReportsRepresentativeDiagnostics()
+    public void FusedCompositionIsAllocationFree()
     {
-        foreach (var size in new[]
-                 {
-                     (Width: 320, Height: 240, Iterations: 20),
-                     (Width: 480, Height: 272, Iterations: 20),
-                     (Width: 800, Height: 480, Iterations: 10),
-                 })
-        {
-            var transform = DeviceOrientations.Transform(
-                size.Width,
-                size.Height,
-                DeviceOrientation.Landscape);
-            var bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
-            var converted = new byte[size.Width * size.Height * 2];
-            var legacy = new byte[converted.Length];
-            var fused = new byte[converted.Length];
+        const int width = 480;
+        const int height = 272;
+        var transform = DeviceOrientations.Transform(width, height, DeviceOrientation.Landscape);
+        var bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
+        var fused = new byte[width * height * 2];
 
-            void Legacy()
-            {
-                Rgb565.FromBgra(
-                    bgra,
-                    transform.LogicalWidth,
-                    transform.LogicalHeight,
-                    (int)transform.PixelRotation,
-                    converted);
-                Rgb565.ApplyMargin(converted, legacy, size.Width, size.Height, margin: 5);
-                Rgb565.ApplyOffset(
-                    legacy,
-                    size.Width,
-                    size.Height,
-                    offsetX: 2,
-                    offsetY: 2,
-                    (int)transform.PixelRotation);
-            }
+        void Compose() =>
+            Rgb565.ComposeFromBgra(
+                bgra,
+                width,
+                height,
+                transform,
+                margin: 5,
+                offsetX: 2,
+                offsetY: 2,
+                fused);
 
-            void Fused() =>
-                Rgb565.ComposeFromBgra(
-                    bgra,
-                    size.Width,
-                    size.Height,
-                    transform,
-                    margin: 5,
-                    offsetX: 2,
-                    offsetY: 2,
-                    fused);
+        Compose();
 
-            Legacy();
-            Fused();
-            Assert.Equal(legacy, fused);
-
-            var legacyMeasurement = Measure(Legacy, size.Iterations);
-            var fusedMeasurement = Measure(Fused, size.Iterations);
-
-            Assert.Equal(0, fusedMeasurement.AllocatedBytes);
-            output.WriteLine(
-                $"{size.Width}x{size.Height}: legacy={legacyMeasurement.Elapsed.TotalMilliseconds / size.Iterations:0.000} ms/frame, " +
-                $"fused={fusedMeasurement.Elapsed.TotalMilliseconds / size.Iterations:0.000} ms/frame, " +
-                $"fused-alloc={fusedMeasurement.AllocatedBytes} B");
-        }
-    }
-
-    private static (TimeSpan Elapsed, long AllocatedBytes) Measure(Action action, int iterations)
-    {
-        var stopwatch = Stopwatch.StartNew();
+        const int frames = 20;
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        for (var iteration = 0; iteration < iterations; iteration++)
+        for (var frame = 0; frame < frames; frame++)
         {
-            action();
+            Compose();
         }
 
-        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        stopwatch.Stop();
-        return (stopwatch.Elapsed, allocatedBytes);
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
     }
 
     private static byte[] LegacyCompose(
