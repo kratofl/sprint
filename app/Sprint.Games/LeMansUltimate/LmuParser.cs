@@ -85,6 +85,9 @@ internal static class LmuParser
             NumVehicles = LmuBinary.ReadInt32(bytes, 104),
             GamePhase = LmuBinary.ReadByte(bytes, 108),
             SessionTimeRemaining = LmuBinary.ReadSingle(bytes, 340),
+            AveragePathWetness = LmuBinary.ReadDouble(bytes, 332),
+            IsFixedSetup = LmuBinary.ReadBool(bytes, 348),
+            TrackGripLevel = LmuBinary.ReadByte(bytes, 349),
             // mInRealtime sits at 115, after mStartLight@113 and mNumRedLights@114.
             InRealtime = LmuBinary.ReadBool(bytes, 115)
         };

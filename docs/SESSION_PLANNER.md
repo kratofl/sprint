@@ -29,12 +29,60 @@ Location: `app/Sprint.Desktop.Client/Features/SessionPlanning`.
 Tests: `app/Sprint.Desktop.Tests/SessionPlannerTests.cs` (store round-trip, corrupt-
 file isolation, lifecycle, single-slot enforcement, ingestion, crash reconcile).
 
+## Lap-history corpus (#179) — implemented
+
+The corpus every fuel and lap-time estimate rests on. Deliberately **separate from plan
+history**: plans stay a short list the user made on purpose, while this grows to hundreds
+of sessions. Two writers (the recorder, and later the results importer), one reader.
+
+- **Model** (`LapHistoryModels.cs`) — `LapHistorySession` → `LapHistoryRecord`, with
+  `LapHistoryContext`, `LapHistoryConditions` and `LapHistoryTire`.
+  - **Context key is `game` + `trackCourse` + `carModel`.** Track length is stored beside
+    it as a cross-check; **car class is metadata and not part of the key**, so a future
+    "same class" fallback stays possible. Both writers must map onto exactly these three
+    fields or one real context splits into two buckets that never join.
+  - `HistorySessionKind` (`Practice`, `Qualifying`, `Race`, `Warmup`, `TestDay`,
+    `Unknown`) is an **on-disk format**, deliberately not the telemetry contract's
+    `SessionType`: typing stored history with a live contract would let a future rename
+    change how years of history deserialise.
+  - Every qualifier is nullable. Imports can never supply conditions or fuel, so
+    filtering on them now would discard imported laps — record generously, filter later.
+- **Store boundary** (`ILapHistoryStore`) — local impl `LocalLapHistoryStore`, one JSON
+  file per session under `%AppData%/Sprint/lap-history/`, so a corrupt file costs one
+  session rather than the whole corpus.
+- **Recorder** (`LapHistoryRecorder`) — **always on**. It records completed laps for every
+  session type, practice included, **whether or not a plan is armed**, and never consults
+  `SessionPlannerService`. Wired into `MainWindow.IngestTelemetryFrame`.
+  - Per lap: validity, lap time, sector durations, fuel used/remaining, virtual energy
+    used/remaining, per-corner wear/compound/temperature, and nullable program tags
+    (written once practice programs exist).
+  - Usage is measured between two crossings, so the first recorded lap has no usage and a
+    refuelling stop yields `null` rather than a negative number.
+  - Persistence is handed to a dispatcher (thread pool by default), so a slow or locked
+    disk cannot stall the telemetry read that delivered the frame; a store failure is
+    logged and dropped rather than propagated.
+
+Contract additions this rests on (#177 and this issue): `SessionInfo.CarClass`,
+`TrackLengthMeters`, `TotalSessionTime`, `SessionTimeRemaining`,
+`LapState.LastLapSectorsSeconds`, and `TelemetryFrame.Conditions`. All mirrored in
+`packages/types`. Fuel and tyre multipliers stay null from Le Mans Ultimate: they live in
+`PhysicsOptionsV01`, which the shared-memory layout does not publish.
+
+Tests: `app/Sprint.Desktop.Tests/LapHistoryTests.cs`, plus
+`HeadlessShellTests.TheRunningAppRecordsCompletedLapsWithNoPlanArmed` for the end-to-end
+always-on path.
+
 ## What builds on this next
 
 - **#103 global settings** — planner defaults (reserve `+1 lap`, fuel-history source,
   auto-detect mode, capture rate, retention). Feeds `CreatePlanRequest` defaults.
-- **#50 fuel calculator** — consumes `LapSummary` history + plan race length/reserve
-  to estimate required liters per stint. Fill in `LapSummary.FuelUsedLiters`.
+- **#50 fuel calculator** — consumes the **lap-history corpus** (not `LapSummary`) plus
+  plan race length/reserve to estimate required liters per stint.
+- **#181 reference curve** — a position→time curve per recorded lap, written by the same
+  recorder; imported laps have none and degrade to a scalar target.
+- **#182/#185 results import** — the corpus's second writer, mapping `TrackCourse` and
+  `CarType` onto the same context key.
+- **#184 corpus statistics** — median of real driven laps with sample size.
 - **#100 planner page + lifecycle UI** — a new primary sidebar page over
   `SessionPlannerService`; Start-now vs Arm-auto-start; Q/R segmented control.
 - **#102 online detection** — draft-suggestion vs auto-create-and-arm; populate

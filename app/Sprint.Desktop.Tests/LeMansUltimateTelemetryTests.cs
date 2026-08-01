@@ -144,6 +144,89 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_reports_the_track_length_and_treats_a_missing_one_as_unknown()
+    {
+        var withLength = EmptyLmuBuffer();
+        WriteDouble(withLength, LmuBinary.ScoringStart + 88, 7004.0);
+        using var known = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(withLength));
+        known.Connect();
+
+        using var unknown = new LeMansUltimateTelemetrySource(
+            new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));
+        unknown.Connect();
+
+        Assert.True(known.TryRead(out var knownFrame));
+        Assert.Equal(7004.0, knownFrame.Session.TrackLengthMeters);
+        Assert.True(unknown.TryRead(out var unknownFrame));
+        Assert.Null(unknownFrame.Session.TrackLengthMeters);
+    }
+
+    [Fact]
+    public void Lmu_mapper_splits_the_last_lap_into_per_sector_durations()
+    {
+        var mapper = new LmuTelemetryMapper();
+        // The sim reports cumulative sector marks: S1, then S1+S2. The third sector is
+        // whatever the lap time has left.
+        var parsed = CreateInCarParsedFrame(lapNumber: 4) with
+        {
+            Scoring = new LmuVehicleScoring
+            {
+                LapDistance = 3502.0,
+                CountLapFlag = 2,
+                LastSector1 = 30.5,
+                LastSector2 = 75.25,
+                LastLapTime = 131.0,
+            },
+        };
+
+        var frame = mapper.Map(parsed);
+
+        Assert.Equal([30.5, 44.75, 55.75], frame.Lap.LastLapSectorsSeconds);
+    }
+
+    [Fact]
+    public void Lmu_mapper_reports_no_sectors_when_the_marks_are_not_yet_credible()
+    {
+        var mapper = new LmuTelemetryMapper();
+        var parsed = CreateInCarParsedFrame(lapNumber: 1) with
+        {
+            Scoring = new LmuVehicleScoring
+            {
+                LapDistance = 3502.0,
+                CountLapFlag = 2,
+                // Out lap: no sector marks and no completed lap time yet.
+                LastSector1 = 0,
+                LastSector2 = 0,
+                LastLapTime = 0,
+            },
+        };
+
+        Assert.Empty(mapper.Map(parsed).Lap.LastLapSectorsSeconds);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_the_conditions_a_session_is_run_under()
+    {
+        var buffer = EmptyLmuBuffer();
+        // mAvgPathWetness @332, mIsFixedSetup @348, mTrackGripLevel @349 — the same
+        // pack(4) walk that lands ScoringInfoV01 on its documented 548-byte size.
+        WriteDouble(buffer, LmuBinary.ScoringStart + 332, 0.35);
+        WriteBool(buffer, LmuBinary.ScoringStart + 348, true);
+        buffer[LmuBinary.ScoringStart + 349] = 92;
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(0.35, frame.Conditions.PathWetness!.Value, precision: 3);
+        Assert.True(frame.Conditions.FixedSetup);
+        Assert.Equal(92, frame.Conditions.TrackGripLevel);
+        // Fuel and tyre multipliers live in PhysicsOptionsV01, which the shared-memory
+        // layout does not publish. The corpus field exists and stays honest about that.
+        Assert.Null(frame.Conditions.FuelMultiplier);
+        Assert.Null(frame.Conditions.TireMultiplier);
+    }
+
+    [Fact]
     public void Lmu_parser_reads_in_realtime_rather_than_the_start_light_count()
     {
         var buffer = EmptyLmuBuffer();

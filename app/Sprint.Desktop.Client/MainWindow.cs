@@ -75,6 +75,7 @@ public sealed class MainWindow : Window
     private Border? _deviceCatalogOverlay;
     private readonly SessionPlannerService _planner;
     private readonly SessionPlannerController _plannerController;
+    private readonly LapHistoryRecorder _lapHistory;
     private NewPlanDraft? _newPlanDraft;
     private Border? _newPlanOverlay;
     private DateTimeOffset? _lastPlannerRender;
@@ -175,7 +176,8 @@ public sealed class MainWindow : Window
         Func<string, IScreenDriver>? screenDriverFactory,
         DiagnosticsPaths? diagnosticsPaths,
         IHardwareInputSource? hardwareInput = null,
-        SessionPlannerService? planner = null)
+        SessionPlannerService? planner = null,
+        LapHistoryRecorder? lapHistory = null)
     {
         _runtime = runtime;
         _shell = shell;
@@ -190,6 +192,12 @@ public sealed class MainWindow : Window
         _planner = planner ?? new SessionPlannerService(
             new LocalSessionPlanStore(System.IO.Path.Combine(_runtime.DataRoot, "session-plans"), _log),
             _log);
+        // Always on, and deliberately independent of the planner: laps are recorded whether
+        // or not a plan is armed, because the corpus every later estimate rests on can only
+        // be built while the driver is actually driving.
+        _lapHistory = lapHistory ?? new LapHistoryRecorder(
+            new LocalLapHistoryStore(System.IO.Path.Combine(_runtime.DataRoot, "lap-history"), _log),
+            log: _log);
         _plannerController = new SessionPlannerController(
             _planner,
             NoFuelHistorySource.Instance,
@@ -851,8 +859,7 @@ public sealed class MainWindow : Window
         // is applied here against the UI clock inside the status presenter.
         var snapshot = _engine.Snapshot;
         var displayedFrame = CurrentTelemetryFrame();
-        CaptureLastSeenContext(displayedFrame);
-        _planner.Ingest(displayedFrame);
+        IngestTelemetryFrame(displayedFrame);
         _telemetry = LiveTelemetryPresenter.ToSnapshot(displayedFrame);
         var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, now);
 #if DEBUG
@@ -915,6 +922,18 @@ public sealed class MainWindow : Window
             _lastPlannerRender = now;
             RenderBody();
         }
+    }
+
+    /// <summary>
+    /// Everything a newly arrived frame feeds: prefill context, the active plan, and the
+    /// always-on lap-history recorder. Internal so the frame path can be driven directly in
+    /// tests instead of only through the render timer.
+    /// </summary>
+    internal void IngestTelemetryFrame(TelemetryFrame frame)
+    {
+        CaptureLastSeenContext(frame);
+        _planner.Ingest(frame);
+        _lapHistory.Ingest(frame);
     }
 
     // Remember the game/car/track telemetry last reported so a new plan can be prefilled
@@ -1014,6 +1033,8 @@ public sealed class MainWindow : Window
         _diagnosticsWindow = null;
 #endif
         _log.Info("Main window closed; stopping input, screen, and telemetry services.");
+        // Stamp the open history session as finished so it is not left looking live.
+        _lapHistory.Close();
         _hardwareInput.InputPressed -= OnHardwareInputPressed;
         _hardwareInput.Dispose();
         // Stop + release all hardware screen publishers before tearing down telemetry.

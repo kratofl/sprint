@@ -77,6 +77,7 @@ internal sealed class LmuTelemetryMapper
                 Track = parsed.ScoringInfo.TrackName,
                 Car = telemetry.VehicleName,
                 CarClass = scoring.VehicleClass,
+                TrackLengthMeters = PlausibleTrackLength(parsed.ScoringInfo.LapDistance),
                 SessionType = MapSessionType(parsed.ScoringInfo.Session),
                 SessionTime = ToF64(parsed.ScoringInfo.CurrentElapsedTime),
                 TotalSessionTime = PlausibleSessionLength(parsed.ScoringInfo.EndElapsedTime),
@@ -110,6 +111,7 @@ internal sealed class LmuTelemetryMapper
                 LastLapTime = ToF64(scoring.LastLapTime),
                 BestLapTime = ToF64(scoring.BestLapTime),
                 Sector = (telemetry.CurrentSectorRaw & 0x7FFFFFFF) + 1,
+                LastLapSectorsSeconds = SectorDurations(scoring),
                 IsValid = scoring.CountLapFlag == 2,
                 TrackPosition = TrackPosition(scoring.LapDistance, parsed.ScoringInfo.LapDistance)
             },
@@ -150,7 +152,8 @@ internal sealed class LmuTelemetryMapper
                 Incidents = scoring.Penalties,
                 TrackLimitSteps = telemetry.TrackLimitSteps,
                 PitStops = scoring.PitStops
-            }
+            },
+            Conditions = MapConditions(parsed.ScoringInfo)
         };
     }
 
@@ -167,15 +170,33 @@ internal sealed class LmuTelemetryMapper
                 // lookup work before the cockpit exists.
                 Car = playerVehicle?.VehicleName ?? "",
                 CarClass = playerVehicle?.VehicleClass ?? "",
+                TrackLengthMeters = PlausibleTrackLength(scoringInfo.LapDistance),
                 SessionType = MapSessionType(scoringInfo.Session),
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
                 TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
                 SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
                 MaxLaps = scoringInfo.MaxLaps,
                 InCar = false
-            }
+            },
+            Conditions = MapConditions(scoringInfo)
         };
     }
+
+    /// <summary>
+    /// The conditions the sim publishes. Fuel and tyre multipliers are deliberately absent:
+    /// they live in PhysicsOptionsV01, which the shared-memory layout does not expose, so
+    /// claiming a value would be inventing one.
+    /// </summary>
+    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo) => new()
+    {
+        PathWetness = Fraction(scoringInfo.AveragePathWetness),
+        TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
+        FixedSetup = scoringInfo.IsFixedSetup,
+    };
+
+    /// <summary>A 0–1 reading, or null when it is not a usable fraction.</summary>
+    private static double? Fraction(double value) =>
+        double.IsFinite(value) && value is >= 0 and <= 1 ? value : null;
 
     private double MonotonicCurrentLapTime(
         double scoringRaw,
@@ -499,6 +520,34 @@ internal sealed class LmuTelemetryMapper
 
         var remaining = scoringInfo.SessionTimeRemaining;
         return float.IsFinite(remaining) && remaining >= 0 && remaining <= total ? remaining : null;
+    }
+
+    /// <summary>
+    /// Track length, reported only when the game has actually loaded a course. Zero is what
+    /// the field holds on the main menu, and a zero length would look like a real
+    /// cross-check value to anything comparing layouts.
+    /// </summary>
+    private static double? PlausibleTrackLength(double value) =>
+        double.IsFinite(value) && value > 0 ? value : null;
+
+    /// <summary>
+    /// Turns the sim's cumulative sector marks into per-sector durations: mLastSector1 is
+    /// the S1 time, mLastSector2 is S1+S2, and the final sector is the remainder of the lap.
+    /// Returns empty unless all three marks increase in order, so an out lap or a partially
+    /// filled record yields nothing rather than negative sectors.
+    /// </summary>
+    private static IReadOnlyList<double> SectorDurations(LmuVehicleScoring scoring)
+    {
+        var firstMark = ToF64(scoring.LastSector1);
+        var secondMark = ToF64(scoring.LastSector2);
+        var lapTime = ToF64(scoring.LastLapTime);
+
+        if (firstMark <= 0 || secondMark <= firstMark || lapTime <= secondMark)
+        {
+            return [];
+        }
+
+        return [firstMark, secondMark - firstMark, lapTime - secondMark];
     }
 
     private static double ClampNonNegative(double value) => value < 0 ? 0 : value;

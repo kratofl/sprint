@@ -14,6 +14,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Shell;
@@ -47,6 +48,68 @@ internal static class HeadlessTestApp
 /// </summary>
 public class HeadlessShellTests
 {
+    [Fact]
+    public async Task TheRunningAppRecordsCompletedLapsWithNoPlanArmed()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        var telemetry = new RecordingTelemetrySource();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                // No plan is created and none is armed: the corpus still has to grow.
+                window.IngestTelemetryFrame(PracticeFrame(lap: 1));
+                window.IngestTelemetryFrame(PracticeFrame(lap: 2, lastLapTime: 131.25));
+                window.Close();
+
+                // The recorder writes off the frame thread on purpose, so wait for the file
+                // rather than racing it.
+                var store = new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history"));
+                var deadline = DateTime.UtcNow.AddSeconds(10);
+                IReadOnlyList<LapHistorySession> recorded = [];
+                while (recorded.Count == 0 && DateTime.UtcNow < deadline)
+                {
+                    recorded = store.LoadAll();
+                    if (recorded.Count == 0)
+                    {
+                        Thread.Sleep(25);
+                    }
+                }
+
+                var recordedSession = Assert.Single(recorded);
+                Assert.Equal(HistorySessionKind.Practice, recordedSession.Kind);
+                Assert.Equal("Spa-Francorchamps", recordedSession.Context.TrackCourse);
+                var lap = Assert.Single(recordedSession.Laps);
+                Assert.Equal(1, lap.LapNumber);
+                Assert.Equal(131.25, lap.LapTimeSeconds);
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            telemetry.Dispose();
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static TelemetryFrame PracticeFrame(int lap, double lastLapTime = 0) => new()
+    {
+        Session = new SessionInfo
+        {
+            Game = "Le Mans Ultimate",
+            Track = "Spa-Francorchamps",
+            Car = "Porsche 963",
+            SessionType = SessionType.Practice,
+            InCar = true,
+        },
+        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = true },
+    };
+
     [Fact]
     public async Task ShellWindowConnectsOnLoadAndDisposesSourceOnClose()
     {

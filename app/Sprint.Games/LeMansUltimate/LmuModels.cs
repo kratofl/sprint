@@ -97,6 +97,15 @@ internal sealed record LmuScoringInfo
     public int NumVehicles { get; init; }
     public byte GamePhase { get; init; }
     public bool InRealtime { get; init; }
+
+    /// <summary>mAvgPathWetness: average wetness on the main path, 0–1.</summary>
+    public double AveragePathWetness { get; init; }
+
+    /// <summary>mIsFixedSetup: whether the session forces a fixed setup.</summary>
+    public bool IsFixedSetup { get; init; }
+
+    /// <summary>mTrackGripLevel: the sim's own grip grade.</summary>
+    public byte TrackGripLevel { get; init; }
 }
 
 internal sealed record LmuParsedFrame
