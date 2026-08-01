@@ -14,6 +14,8 @@ public sealed record CreatePlanRequest
     public RaceLengthFormat RaceLengthFormat { get; init; } = RaceLengthFormat.Unknown;
     public double RaceLengthValue { get; init; }
     public int FuelReserveLaps { get; init; } = 1;
+    public double? AvgLapTimeSeconds { get; init; }
+    public double? FuelPerLapLiters { get; init; }
     public string Notes { get; init; } = "";
     public IReadOnlyList<string> SetupReferences { get; init; } = [];
 }
@@ -28,6 +30,7 @@ public sealed record CreatePlanRequest
 public sealed class SessionPlannerService
 {
     private const string RaceFormatMismatchWarning = "race-format-mismatch";
+    private const double AutoStartHoldSeconds = 1.0;
 
     private readonly ISessionPlanStore _store;
     private readonly ILog _log;
@@ -37,6 +40,8 @@ public sealed class SessionPlannerService
 
     private string? _activePlanId;
     private int _lastSeenLap;
+    private SessionType _autoStartCandidate = SessionType.Unknown;
+    private DateTimeOffset? _autoStartSince;
 
     public SessionPlannerService(
         ISessionPlanStore store,
@@ -83,6 +88,8 @@ public sealed class SessionPlannerService
             RaceLengthFormat = request.RaceLengthFormat,
             RaceLengthValue = request.RaceLengthValue,
             FuelReserveLaps = Math.Max(0, request.FuelReserveLaps),
+            AvgLapTimeSeconds = request.AvgLapTimeSeconds,
+            FuelPerLapLiters = request.FuelPerLapLiters,
             Notes = request.Notes,
             SetupReferences = [.. request.SetupReferences],
             CreatedAt = _clock(),
@@ -137,6 +144,52 @@ public sealed class SessionPlannerService
         plan.Status = PlanStatus.Armed;
         _store.Save(plan);
         _log.Info($"Armed session plan '{plan.Id}'");
+    }
+
+    /// <summary>
+    /// Backs out of an arm: releases the active slot and returns the plan to
+    /// <see cref="PlanStatus.Draft"/>. Draft rather than Abandoned, because nothing was
+    /// recorded — a mis-click must not permanently retire an untouched plan, and history
+    /// must not list sessions that never happened. A no-op unless the plan is armed.
+    /// </summary>
+    public void Disarm(string planId)
+    {
+        var plan = Require(planId);
+        if (plan.Status != PlanStatus.Armed)
+        {
+            return;
+        }
+
+        plan.Status = PlanStatus.Draft;
+        _store.Save(plan);
+        if (_activePlanId == plan.Id)
+        {
+            ClearActiveSlot();
+        }
+
+        _log.Info($"Disarmed session plan '{plan.Id}'");
+    }
+
+    /// <summary>
+    /// Frees the single active slot whatever state holds it — disarming an armed plan,
+    /// stopping a tracking one. Used by the UI's explicit takeover, so activating a
+    /// different plan never has to trigger the double-claim exception.
+    /// </summary>
+    public void ReleaseActiveSlot()
+    {
+        var plan = ActivePlan;
+        if (plan is null)
+        {
+            return;
+        }
+
+        if (plan.Status == PlanStatus.Armed)
+        {
+            Disarm(plan.Id);
+            return;
+        }
+
+        StopTracking(plan.Id);
     }
 
     /// <summary>
@@ -206,7 +259,20 @@ public sealed class SessionPlannerService
     {
         ArgumentNullException.ThrowIfNull(frame);
         var plan = ActivePlan;
-        if (plan is null || plan.Status != PlanStatus.Tracking)
+        if (plan is null)
+        {
+            return;
+        }
+
+        // An armed plan is waiting for the sim to reach its segment. Auto-start opens the
+        // segment; the frame after this one begins ingesting into it.
+        if (plan.Status == PlanStatus.Armed)
+        {
+            TryAutoStart(plan, frame);
+            return;
+        }
+
+        if (plan.Status != PlanStatus.Tracking)
         {
             return;
         }
@@ -225,6 +291,49 @@ public sealed class SessionPlannerService
         {
             _store.Save(plan);
         }
+    }
+
+    // #102 owns the full online-detection ruleset. This is the minimum #100 needs: the
+    // reported session type must hold continuously for AutoStartHoldSeconds before a
+    // segment opens, so one spurious frame cannot start a session. Confidence stays
+    // Medium — High is reserved for #102's corroborated detection.
+    private bool TryAutoStart(SessionPlan plan, TelemetryFrame frame)
+    {
+        var reported = frame.Session.SessionType;
+        var kind = reported switch
+        {
+            SessionType.Qualify when plan.QualifyingIncluded => SegmentKind.Qualifying,
+            SessionType.Race => SegmentKind.Race,
+            _ => (SegmentKind?)null,
+        };
+
+        if (kind is null)
+        {
+            _autoStartCandidate = SessionType.Unknown;
+            _autoStartSince = null;
+            return false;
+        }
+
+        var now = _clock();
+        if (_autoStartCandidate != reported || _autoStartSince is null)
+        {
+            _autoStartCandidate = reported;
+            _autoStartSince = now;
+            return false;
+        }
+
+        if ((now - _autoStartSince.Value).TotalSeconds < AutoStartHoldSeconds)
+        {
+            return false;
+        }
+
+        var segment = StartTracking(plan.Id, kind.Value, SegmentSource.Detected);
+        segment.SourceConfidence = DetectionConfidence.Medium;
+        _autoStartCandidate = SessionType.Unknown;
+        _autoStartSince = null;
+        _store.Save(plan);
+        _log.Info($"Auto-started {kind.Value} for session plan '{plan.Id}' from detected {reported}");
+        return true;
     }
 
     private bool RecordLiveContext(PlanSegment segment, TelemetryFrame frame)
@@ -338,6 +447,8 @@ public sealed class SessionPlannerService
     {
         _activePlanId = null;
         _lastSeenLap = 0;
+        _autoStartCandidate = SessionType.Unknown;
+        _autoStartSince = null;
         _store.SaveActivePlanId(null);
     }
 

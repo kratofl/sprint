@@ -360,7 +360,66 @@ internal static class Graphite
         return button;
     }
 
-    public static Button NavigationItem(string iconName, string label, bool active, bool collapsed)
+    /// <summary>
+    /// A compact ember-tinted pill button for a standing, actionable notice in the
+    /// chrome (soft accent fill + 1px accent border, flat per the Graphite contract).
+    /// The label lives in a named child so callers can retarget the text in place.
+    /// </summary>
+    public static Button AccentPillButton(string iconName, string text, Action? action = null)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontFamily = FontStackMedium,
+            FontSize = 11,
+            FontWeight = FontWeight.Medium,
+            Foreground = AccentBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var button = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children = { Icons.Create(iconName, 13, AccentBrush), label },
+            },
+            Background = AccentBgBrush,
+            Foreground = AccentBrush,
+            BorderBrush = AccentBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(RadiusPill),
+            Padding = new Thickness(10, 3),
+            MinHeight = 24,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+        };
+        if (action is not null)
+        {
+            button.Click += (_, _) => action();
+        }
+
+        AttachPointerBrightness(button, AccentBgBrush, AccentBgBrush);
+        return button;
+    }
+
+    /// <summary>The retargetable label inside an <see cref="AccentPillButton"/>.</summary>
+    public static TextBlock AccentPillLabel(Button pill) =>
+        ((StackPanel)pill.Content!).Children.OfType<TextBlock>().Single();
+
+    public static Button NavigationItem(string iconName, string label, bool active, bool collapsed) =>
+        NavigationItem(iconName, label, active, collapsed, badge: false);
+
+    /// <summary>
+    /// A sidebar navigation item. <paramref name="badge"/> marks the destination as
+    /// carrying an unseen, actionable item (currently an available update) with a small
+    /// ember dot that stays visible in the collapsed rail.
+    /// </summary>
+    public static Button NavigationItem(string iconName, string label, bool active, bool collapsed, bool badge)
     {
         var tint = active ? TextBrush : Text2Brush;
         var row = new StackPanel
@@ -386,6 +445,22 @@ internal static class Graphite
                 FontSize = 13,
                 Foreground = tint,
                 VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
+        if (badge)
+        {
+            row.Children.Add(new Border
+            {
+                Tag = "nav-badge",
+                Width = 6,
+                Height = 6,
+                CornerRadius = new CornerRadius(RadiusPill),
+                Background = AccentBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                // Collapsed rail has no label to sit beside, so the dot rides the icon's
+                // top-right corner instead of widening the item.
+                Margin = collapsed ? new Thickness(1, -8, 0, 0) : new Thickness(2, 0, 0, 0),
             });
         }
 

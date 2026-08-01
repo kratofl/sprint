@@ -12,6 +12,7 @@ using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Runtime;
+using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -126,6 +127,61 @@ internal static class AgentUiReviewHarness
                 try
                 {
                     frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
+
+                    // The standing update hint: toolbar pill + Settings rail badge, shown
+                    // without touching the network, then cleared so later frames are clean.
+                    window.ApplyUpdateAvailability(new ReleaseInfo("9.9.9", "stable", "https://example.test/9.9.9"));
+                    frames.Add(Capture(window, artifactRoot, "home-update-available", "Home", "Update v9.9.9"));
+                    window.ApplyUpdateAvailability(null);
+
+                    // Session Planner (#100): the empty state and the creation modal.
+                    Click(window, "Session Planner");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-empty",
+                        "No session plans yet",
+                        "New Session Plan"));
+
+                    Click(window, "New Session Plan");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-new-plan-dialog",
+                        "New Session Plan",
+                        "Context",
+                        "Sessions",
+                        "Include",
+                        "Skip",
+                        "Time",
+                        "Laps",
+                        "Create"));
+
+                    // Submitting with no race length must state the problem and keep the modal
+                    // open; the message lives on the draft so it survives the modal rebuild.
+                    Click(window, "Create");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-new-plan-invalid",
+                        "New Session Plan",
+                        "Race length must be a number.",
+                        "Create"));
+
+                    // Fill the two required fields and commit, so the populated page — the
+                    // segmented control, the plan card, plan history — is reviewable too.
+                    TaggedPlaceholderTextBox(window, "Spa – Hypercar").Text = "Spa 6h";
+                    TaggedPlaceholderTextBox(window, "60").Text = "60";
+                    Click(window, "Create");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-plan-created",
+                        "Spa 6h",
+                        "Qualifying",
+                        "Race",
+                        "Arm auto-start",
+                        "Plan history"));
 
                     Click(window, "Devices");
                     frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Add device", "Gallery", "List", runtime.Devices[0].Name, "Review Screen"));
@@ -694,6 +750,13 @@ internal static class AgentUiReviewHarness
         Assert.NotNull(button);
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     }
+
+    // Modal fields are identified by their placeholder: the Session Planner modal is built
+    // from a shared helper, so a placeholder is the only per-field handle in the tree.
+    private static TextBox TaggedPlaceholderTextBox(MainWindow window, string placeholder) =>
+        window.GetVisualDescendants()
+            .OfType<TextBox>()
+            .Single(box => string.Equals(box.PlaceholderText, placeholder, StringComparison.Ordinal));
 
     private static ComboBox TaggedComboBox(MainWindow window, string tag) =>
         window.GetVisualDescendants()

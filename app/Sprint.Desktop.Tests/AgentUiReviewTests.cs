@@ -14,6 +14,10 @@ public sealed class AgentUiReviewTests
         Assert.True(File.Exists(result.ReportPath), $"Expected report at {result.ReportPath}.");
         Assert.Contains("Sprint agent UI review", File.ReadAllText(result.ReportPath));
         Assert.Contains(result.Frames, frame => frame.Name == "home-runtime-overview");
+        Assert.Contains(result.Frames, frame => frame.Name == "session-planner-empty");
+        Assert.Contains(result.Frames, frame => frame.Name == "session-planner-new-plan-dialog");
+        Assert.Contains(result.Frames, frame => frame.Name == "session-planner-new-plan-invalid");
+        Assert.Contains(result.Frames, frame => frame.Name == "session-planner-plan-created");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-1120x720");
         Assert.Contains(result.Frames, frame => frame.Name == "devices-detail-flag-display");

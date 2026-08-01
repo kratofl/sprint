@@ -100,6 +100,16 @@ public sealed class SessionPlan
     [JsonPropertyName("fuelReserveLaps")]
     public int FuelReserveLaps { get; set; } = 1;
 
+    /// <summary>Manual average lap time in seconds, supplied when no fuel history exists
+    /// for this context. Null once #50 can derive it from history.</summary>
+    [JsonPropertyName("avgLapTimeSeconds")]
+    public double? AvgLapTimeSeconds { get; set; }
+
+    /// <summary>Manual expected fuel use per lap in litres, supplied when no fuel history
+    /// exists for this context. Null once #50 can derive it from history.</summary>
+    [JsonPropertyName("fuelPerLapLiters")]
+    public double? FuelPerLapLiters { get; set; }
+
     /// <summary>References to selected setups (opaque ids), if any.</summary>
     [JsonPropertyName("setupReferences")]
     public List<string> SetupReferences { get; set; } = [];

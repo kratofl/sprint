@@ -13,6 +13,12 @@ public interface IDesktopRuntime
     event EventHandler<RenderProfile>? RenderProfileChanged;
 
     AppSettings Settings { get; }
+
+    /// <summary>The resolved local data directory this runtime persists into. Feature
+    /// stores root themselves here so tests that pass a temp root never touch the
+    /// user's AppData.</summary>
+    string DataRoot { get; }
+
     ControlsConfig Controls { get; }
     RenderProfile CurrentRenderProfile { get; }
     ObservableCollection<CatalogDevice> Catalog { get; }

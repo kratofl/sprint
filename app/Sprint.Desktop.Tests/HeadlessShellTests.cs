@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
@@ -14,6 +15,7 @@ using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.Setup;
+using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Shell;
 using Xunit;
 
@@ -104,7 +106,7 @@ public class HeadlessShellTests
                 Assert.Equal(2, root.RowDefinitions.Count);
                 Assert.Single(root.ColumnDefinitions);
 
-                foreach (var view in new[] { AppView.Home, AppView.Dashes, AppView.Devices, AppView.Setups, AppView.Settings, AppView.Help })
+                foreach (var view in new[] { AppView.Home, AppView.SessionPlanner, AppView.Dashes, AppView.Devices, AppView.Setups, AppView.Settings, AppView.Help })
                 {
                     var nav = FindOptionalButton(window, NavLabel(view));
                     if (nav is not null)
@@ -126,9 +128,59 @@ public class HeadlessShellTests
         }
     }
 
+    [Fact]
+    public async Task Session_planner_page_shows_its_empty_state_and_opens_the_create_dialog()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var shell = new ShellState();
+                shell.Navigate(AppView.SessionPlanner);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+                window.CaptureRenderedFrame();
+
+                Assert.Contains(
+                    window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => text.Text == "No session plans yet");
+
+                var create = FindOptionalButton(window, "New Session Plan");
+                Assert.NotNull(create);
+                create!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.Contains(
+                    window.GetVisualDescendants().OfType<Border>(),
+                    border => border.Tag as string == "new-plan-dialog");
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SessionPlannerHasItsOwnTitleAndRaceWeekendGroup()
+    {
+        var shell = new ShellState();
+        shell.Navigate(AppView.SessionPlanner);
+
+        Assert.Equal("Session Planner", shell.CurrentTitle);
+        Assert.Equal("Race Weekend", shell.CurrentGroup);
+    }
+
     private static string NavLabel(AppView view) => view switch
     {
         AppView.Home => "Home",
+        AppView.SessionPlanner => "Session Planner",
         AppView.Dashes => "Dashes",
         AppView.Devices => "Devices",
         AppView.Setups => "Setups",
@@ -195,6 +247,72 @@ public class HeadlessShellTests
     }
 
     [Fact]
+    public async Task UpdateHintStaysVisibleAcrossViewsUntilTheBuildIsCurrent()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var shell = new ShellState();
+                shell.Navigate(AppView.Home);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, shell, telemetry);
+                window.Show();
+
+                // No check has found anything yet: the chrome shows no update noise.
+                Assert.False(UpdatePill(window).IsVisible);
+                Assert.False(SettingsNavHasBadge(window));
+
+                window.ApplyUpdateAvailability(new ReleaseInfo("9.9.9", "stable", "https://example.test/9.9.9"));
+                Assert.True(UpdatePill(window).IsVisible);
+                Assert.Equal("Update v9.9.9", Graphite.AccentPillLabel(UpdatePill(window)).Text);
+                Assert.True(SettingsNavHasBadge(window));
+
+                // The hint is shell-level, so it survives navigation to another view.
+                FindButton(window, "Dashboards").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.True(UpdatePill(window).IsVisible);
+                Assert.Equal("Update v9.9.9", Graphite.AccentPillLabel(UpdatePill(window)).Text);
+                Assert.True(SettingsNavHasBadge(window));
+
+                // A later check proving the build is current clears both hints.
+                window.ApplyUpdateAvailability(null);
+                Assert.False(UpdatePill(window).IsVisible);
+                Assert.False(SettingsNavHasBadge(window));
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static Button UpdatePill(MainWindow window) =>
+        window.GetVisualDescendants()
+            .OfType<Button>()
+            .Single(button => Equals(button.Tag, "update-available"));
+
+    private static bool SettingsNavHasBadge(MainWindow window)
+    {
+        var settings = window.GetVisualDescendants()
+            .OfType<StackPanel>()
+            .Single(panel => Equals(panel.Tag, "utility-navigation"))
+            .Children
+            .OfType<Button>()
+            .Single(button => ButtonMatches(button, "Settings"));
+        // Logical tree, not visual: a rail rebuilt after an update check has not had a
+        // layout pass yet, so its content template may not be applied.
+        return settings.GetLogicalDescendants()
+            .OfType<Border>()
+            .Any(border => Equals(border.Tag, "nav-badge"));
+    }
+
+    [Fact]
     public async Task ProductionSidebarUsesRequestedPrimaryAndUtilityGroups()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
@@ -217,6 +335,10 @@ public class HeadlessShellTests
                 Assert.Collection(
                     primary.Children,
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Home")),
+                    child => Assert.Contains(
+                        Assert.IsType<StackPanel>(child).Children.OfType<TextBlock>(),
+                        text => string.Equals(text.Text, "RACE WEEKEND", StringComparison.Ordinal)),
+                    child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Session Planner")),
                     child => Assert.Contains(
                         Assert.IsType<StackPanel>(child).Children.OfType<TextBlock>(),
                         text => string.Equals(text.Text, "WORKSPACE", StringComparison.Ordinal)),
@@ -248,7 +370,10 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task AltSevenDoesNotNavigateToDebugLive()
+    // Production navigation now covers Alt+1..7 (Home, Session Planner, Dashes, Devices,
+    // Setups, Settings, Help), so the first unmapped accelerator is Alt+8. Debug views stay
+    // off the keyboard.
+    public async Task AltEightDoesNotNavigateToDebugLive()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -268,7 +393,7 @@ public class HeadlessShellTests
                 {
                     RoutedEvent = InputElement.KeyDownEvent,
                     Source = window,
-                    Key = Key.D7,
+                    Key = Key.D8,
                     KeyModifiers = KeyModifiers.Alt
                 });
                 window.CaptureRenderedFrame();

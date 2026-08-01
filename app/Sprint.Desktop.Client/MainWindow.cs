@@ -24,6 +24,7 @@ using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.Notifications;
@@ -72,11 +73,22 @@ public sealed class MainWindow : Window
     private Border? _confirmOverlay;
     private Action? _pendingConfirmCancel;
     private Border? _deviceCatalogOverlay;
+    private readonly SessionPlannerService _planner;
+    private readonly SessionPlannerController _plannerController;
+    private NewPlanDraft? _newPlanDraft;
+    private Border? _newPlanOverlay;
+    private DateTimeOffset? _lastPlannerRender;
     // Transient notification stack (bottom-right). Re-attached on demand because
     // BuildShell clears _root; the timers are tracked so window close stops them.
     private StackPanel? _toastHost;
     private readonly List<DispatcherTimer> _toastTimers = [];
     private readonly UpdateCheckSession _updateChecks;
+    // The standing update hint: once a check finds a newer release the release is kept
+    // for the session so the toolbar pill and the Settings nav badge stay visible on
+    // every view (the startup toast is transient and easy to miss).
+    private ReleaseInfo? _availableUpdate;
+    private Button? _updateIndicator;
+    private StackPanel? _navFooter;
     private Control? _focusBeforeDeviceCatalog;
     private TextBox? _commandSearch;
     private StackPanel? _commandResults;
@@ -162,7 +174,8 @@ public sealed class MainWindow : Window
         LiveLogStore? liveLog,
         Func<string, IScreenDriver>? screenDriverFactory,
         DiagnosticsPaths? diagnosticsPaths,
-        IHardwareInputSource? hardwareInput = null)
+        IHardwareInputSource? hardwareInput = null,
+        SessionPlannerService? planner = null)
     {
         _runtime = runtime;
         _shell = shell;
@@ -172,6 +185,25 @@ public sealed class MainWindow : Window
             new GitHubReleaseSource().FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
         _diagnosticsPaths = diagnosticsPaths;
         _hardwareInput = hardwareInput ?? NullHardwareInputSource.Instance;
+        // Rooted at the runtime's data directory so headless tests that pass a temp root
+        // never read or write the user's real session plans.
+        _planner = planner ?? new SessionPlannerService(
+            new LocalSessionPlanStore(System.IO.Path.Combine(_runtime.DataRoot, "session-plans"), _log),
+            _log);
+        _plannerController = new SessionPlannerController(
+            _planner,
+            NoFuelHistorySource.Instance,
+            () => new PlanContext(
+                _runtime.Settings.LastSeenContext.Game,
+                _runtime.Settings.LastSeenContext.Car,
+                _runtime.Settings.LastSeenContext.Track));
+        _plannerController.Changed += (_, _) =>
+        {
+            if (_shell.View == AppView.SessionPlanner)
+            {
+                RenderBody();
+            }
+        };
 #if DEBUG
         _developmentGameState = new DevelopmentGameState(_log);
 #endif
@@ -353,6 +385,7 @@ public sealed class MainWindow : Window
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(new GridLength(Graphite.CaptionButtonsWidth)),
             },
             Height = Graphite.ToolbarHeight
@@ -386,13 +419,25 @@ public sealed class MainWindow : Window
         Grid.SetColumn(location, 2);
         grid.Children.Add(location);
 
+        // Always-visible update hint: sits in the toolbar (shared with the title bar) so
+        // it is present on every view, not just Settings. Hidden while up to date.
+        _updateIndicator = Graphite.AccentPillButton(
+            "download",
+            "Update available",
+            () => Navigate(AppView.Settings));
+        _updateIndicator.Tag = "update-available";
+        _updateIndicator.Margin = new Thickness(0, 0, 6, 0);
+        WindowDecorationProperties.SetElementRole(_updateIndicator, WindowDecorationsElementRole.User);
+        Grid.SetColumn(_updateIndicator, 3);
+        grid.Children.Add(_updateIndicator);
+
         var commandButton = Graphite.Button("Search commands   Ctrl+K", ButtonTone.Ghost);
         commandButton.Tag = "command-palette-trigger";
         commandButton.FontSize = 11;
         commandButton.Foreground = Graphite.Text3Brush;
         WindowDecorationProperties.SetElementRole(commandButton, WindowDecorationsElementRole.User);
         commandButton.Click += (_, _) => OpenCommandPalette();
-        Grid.SetColumn(commandButton, 3);
+        Grid.SetColumn(commandButton, 4);
         grid.Children.Add(commandButton);
 
         var signal = new Border
@@ -415,7 +460,7 @@ public sealed class MainWindow : Window
             }
         };
         ToolTip.SetTip(signal, "Telemetry connection state");
-        Grid.SetColumn(signal, 4);
+        Grid.SetColumn(signal, 5);
         grid.Children.Add(signal);
 
         _hzIndicator = new Border
@@ -425,9 +470,10 @@ public sealed class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             Child = _hzText
         };
-        Grid.SetColumn(_hzIndicator, 5);
+        Grid.SetColumn(_hzIndicator, 6);
         grid.Children.Add(_hzIndicator);
 
+        RenderUpdateIndicator();
         UpdateTitlebar();
         return grid;
     }
@@ -441,6 +487,8 @@ public sealed class MainWindow : Window
             Margin = new Thickness(8, 12, 8, 0)
         };
         AddNavGroup(null, null, (AppView.Home, "Home"));
+        AddNavGroup("Race Weekend", "flag",
+            (AppView.SessionPlanner, "Session Planner"));
         AddNavGroup("Workspace", "layout-dashboard",
             (AppView.Devices, "Devices"),
             (AppView.Dashes, "Dashboards"));
@@ -452,8 +500,8 @@ public sealed class MainWindow : Window
             Spacing = 4,
             Margin = new Thickness(8, 6, 8, 12)
         };
-        footer.Children.Add(NavButton(AppView.Settings, "Settings"));
-        footer.Children.Add(NavButton(AppView.Help, "Help"));
+        _navFooter = footer;
+        RenderUtilityNav();
 
         var dock = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(footer, Dock.Bottom);
@@ -476,6 +524,7 @@ public sealed class MainWindow : Window
     private static string NavIconName(AppView view) => view switch
     {
         AppView.Home => "home",
+        AppView.SessionPlanner => "flag",
         AppView.Dashes => "layout-dashboard",
         AppView.Devices => "device-desktop",
         AppView.Setups => "adjustments",
@@ -565,10 +614,64 @@ public sealed class MainWindow : Window
     {
         var active = view == _shell.View;
         var collapsed = _shell.SidebarCollapsed;
-        var button = Graphite.NavigationItem(NavIconName(view), label, active, collapsed);
+        // Settings owns the update flow, so it carries the badge that mirrors the
+        // toolbar pill — the hint survives a collapsed rail and a hidden toolbar label.
+        var badge = view == AppView.Settings && _availableUpdate is not null;
+        var button = Graphite.NavigationItem(NavIconName(view), label, active, collapsed, badge);
         button.Click += (_, _) => Navigate(view);
 
         return button;
+    }
+
+    private void RenderUtilityNav()
+    {
+        if (_navFooter is not { } footer)
+        {
+            return;
+        }
+
+        footer.Children.Clear();
+        footer.Children.Add(NavButton(AppView.Settings, "Settings"));
+        footer.Children.Add(NavButton(AppView.Help, "Help"));
+    }
+
+    private void RenderUpdateIndicator()
+    {
+        if (_updateIndicator is not { } pill)
+        {
+            return;
+        }
+
+        if (_availableUpdate is not { } release)
+        {
+            pill.IsVisible = false;
+            return;
+        }
+
+        var version = DisplayVersion(release.Version);
+        Graphite.AccentPillLabel(pill).Text = $"Update {version}";
+        ToolTip.SetTip(pill, $"Sprint {version} is available — open Settings to install it.");
+        AutomationProperties.SetName(pill, $"Sprint {version} is available");
+        pill.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Records the outcome of an update check so the persistent hints reflect it.
+    /// Internal so headless tests can drive the indicator without a live release feed;
+    /// pass <c>null</c> when a check proves the build is current.
+    /// </summary>
+    internal void ApplyUpdateAvailability(ReleaseInfo? release)
+    {
+        if (_availableUpdate?.Version == release?.Version)
+        {
+            return;
+        }
+
+        _availableUpdate = release;
+        RenderUpdateIndicator();
+        // Only the utility rail is rebuilt: a full BuildShell would discard whatever the
+        // user is doing (an in-flight Settings check, scroll position, an open dialog).
+        RenderUtilityNav();
     }
 
     private Button ChromeButton(string iconName, Action action, string? tooltip = null)
@@ -582,6 +685,8 @@ public sealed class MainWindow : Window
         CloseCommandPalette();
         CloseConfirmDialog();
         CloseDeviceCatalogDialog();
+        _newPlanDraft = null;
+        CloseNewPlanDialog();
         if (_dashEditor is not null && _restoreSidebarAfterEditor && _shell.SidebarCollapsed)
         {
             _shell.ToggleSidebar();
@@ -606,11 +711,12 @@ public sealed class MainWindow : Window
         return new ShellCommandRegistry(
         [
             new("nav.home", "Go to Home", "overview session", "Alt+1", () => Navigate(AppView.Home)),
-            new("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+2", () => Navigate(AppView.Dashes)),
-            new("nav.devices", "Go to Devices", "screens wheels bindings", "Alt+3", () => Navigate(AppView.Devices)),
-            new("nav.setups", "Go to Setups", "car setup compare", "Alt+4", () => Navigate(AppView.Setups)),
-            new("nav.settings", "Go to Settings", "preferences profile updates", "Alt+5", () => Navigate(AppView.Settings)),
-            new("nav.help", "Open Help", "reference shortcuts", "Alt+6", () => Navigate(AppView.Help)),
+            new("nav.planner", "Go to Session Planner", "session plan race weekend qualifying", "Alt+2", () => Navigate(AppView.SessionPlanner)),
+            new("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+3", () => Navigate(AppView.Dashes)),
+            new("nav.devices", "Go to Devices", "screens wheels bindings", "Alt+4", () => Navigate(AppView.Devices)),
+            new("nav.setups", "Go to Setups", "car setup compare", "Alt+5", () => Navigate(AppView.Setups)),
+            new("nav.settings", "Go to Settings", "preferences profile updates", "Alt+6", () => Navigate(AppView.Settings)),
+            new("nav.help", "Open Help", "reference shortcuts", "Alt+7", () => Navigate(AppView.Help)),
             new("dash.create", "Create dash", "new layout dashboard", null, () =>
             {
                 _shell.Navigate(AppView.Dashes);
@@ -745,6 +851,8 @@ public sealed class MainWindow : Window
         // is applied here against the UI clock inside the status presenter.
         var snapshot = _engine.Snapshot;
         var displayedFrame = CurrentTelemetryFrame();
+        CaptureLastSeenContext(displayedFrame);
+        _planner.Ingest(displayedFrame);
         _telemetry = LiveTelemetryPresenter.ToSnapshot(displayedFrame);
         var health = TelemetryStatusPresenter.Present(snapshot.Status, snapshot.Hz, now);
 #if DEBUG
@@ -796,6 +904,49 @@ public sealed class MainWindow : Window
         if (_shell.View == AppView.DebugLive)
         {
             RenderBody();
+        }
+
+        // A tracking plan accumulates laps and live session type between renders. Repaint at
+        // 1Hz rather than the 30Hz tick, which would rebuild the page tree 30 times a second.
+        if (_shell.View == AppView.SessionPlanner
+            && _planner.ActivePlan?.Status == PlanStatus.Tracking
+            && (_lastPlannerRender is null || (now - _lastPlannerRender.Value).TotalSeconds >= 1))
+        {
+            _lastPlannerRender = now;
+            RenderBody();
+        }
+    }
+
+    // Remember the game/car/track telemetry last reported so a new plan can be prefilled
+    // before the user is in a car. Each field is only overwritten by a non-empty value, so a
+    // frame that reports a game but no car cannot erase a known car. Saves only on a change.
+    private void CaptureLastSeenContext(TelemetryFrame frame)
+    {
+        var session = frame.Session;
+        var context = _runtime.Settings.LastSeenContext;
+        var changed = false;
+
+        if (!string.IsNullOrWhiteSpace(session.Game) && context.Game != session.Game)
+        {
+            context.Game = session.Game;
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.Car) && context.Car != session.Car)
+        {
+            context.Car = session.Car;
+            changed = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(session.Track) && context.Track != session.Track)
+        {
+            context.Track = session.Track;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            _runtime.SaveSettings();
         }
     }
 
@@ -909,6 +1060,7 @@ public sealed class MainWindow : Window
         _body.Content = _shell.View switch
         {
             AppView.Home => HomePage(),
+            AppView.SessionPlanner => SessionPlannerPage(),
             AppView.Dashes => _dashEditor is null ? DashesPage() : DashEditorPage(),
             AppView.Devices => DevicesPage(),
             AppView.Setups => SetupPage(),
@@ -920,6 +1072,23 @@ public sealed class MainWindow : Window
             AppView.DebugSetup => SetupPage(),
             _ => DashesPage()
         };
+    }
+
+    // The Session Planner page (#100). MainWindow only owns the overlay and the confirm
+    // dialog; state and lifecycle live in SessionPlannerController.
+    private Control SessionPlannerPage()
+    {
+        var view = new SessionPlannerView(
+            _plannerController,
+            new SessionPlannerViewCallbacks(
+                ShowNewPlanDialog,
+                (title, message, confirmLabel, confirm) => ShowConfirmDialog(
+                    title,
+                    message,
+                    confirmLabel,
+                    confirm,
+                    ButtonTone.Primary)));
+        return view.Build();
     }
 
     // Home is a runtime-driven launchpad (US11/US12): the live session, the user's
@@ -1967,6 +2136,94 @@ public sealed class MainWindow : Window
         Grid.SetRowSpan(_deviceCatalogOverlay, 2);
         _root.Children.Add(_deviceCatalogOverlay);
         Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
+    }
+
+    private void ShowNewPlanDialog()
+    {
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+        CloseDeviceCatalogDialog(restoreFocus: false);
+
+        if (_newPlanDraft is null)
+        {
+            var prefill = _plannerController.Prefill();
+            _newPlanDraft = new NewPlanDraft
+            {
+                Game = prefill.Game,
+                Car = prefill.Car,
+                Track = prefill.Track,
+            };
+        }
+
+        CloseNewPlanDialog();
+
+        var dialog = new NewPlanDialog(
+            _newPlanDraft,
+            _plannerController.HasFuelHistory(new PlanContext(
+                _newPlanDraft.Game,
+                _newPlanDraft.Car,
+                _newPlanDraft.Track)),
+            request =>
+            {
+                _newPlanDraft = null;
+                CloseNewPlanDialog();
+                _plannerController.CreatePlan(request);
+            },
+            () =>
+            {
+                _newPlanDraft = null;
+                CloseNewPlanDialog();
+            },
+            // Segmented and disclosure changes rebuild the modal in place; the draft object
+            // is retained so typed values survive the rebuild.
+            ShowNewPlanDialog);
+
+        var panel = new Border
+        {
+            Width = 520,
+            // Matches the device-catalog modal: fits inside the 1120x720 minimum window with
+            // room to spare, and the dialog scrolls its fields rather than growing past it.
+            MaxHeight = 650,
+            Padding = new Thickness(22),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            // The dialog owns its own scroll region so its commit row stays pinned.
+            Child = dialog.Build(),
+            Tag = "new-plan-dialog",
+        };
+        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+        AutomationProperties.SetName(panel, "New session plan dialog");
+        panel.PointerPressed += (_, e) => e.Handled = true;
+
+        _newPlanOverlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(160, 0, 0, 0)),
+            Child = panel,
+            Tag = "new-plan-dialog-overlay",
+        };
+        _newPlanOverlay.PointerPressed += (_, _) =>
+        {
+            _newPlanDraft = null;
+            CloseNewPlanDialog();
+        };
+        Grid.SetRowSpan(_newPlanOverlay, 2);
+        _root.Children.Add(_newPlanOverlay);
+        Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
+    }
+
+    private void CloseNewPlanDialog()
+    {
+        if (_newPlanOverlay is null)
+        {
+            return;
+        }
+
+        _root.Children.Remove(_newPlanOverlay);
+        _newPlanOverlay = null;
     }
 
     // "Build your own wheel" (issue #49): the shipped presets cannot cover every rim,
@@ -3494,7 +3751,7 @@ public sealed class MainWindow : Window
             return;
         }
 
-        // Alt+1..6 follows the production sidebar order. Debug views are not exposed
+        // Alt+1..7 follows the production sidebar order. Debug views are not exposed
         // through normal keyboard navigation.
         if (e.KeyModifiers.HasFlag(KeyModifiers.Alt) && TryProductionShortcutView(e.Key, out var view))
         {
@@ -3606,22 +3863,26 @@ public sealed class MainWindow : Window
                 return true;
             case Key.D2:
             case Key.NumPad2:
-                view = AppView.Dashes;
+                view = AppView.SessionPlanner;
                 return true;
             case Key.D3:
             case Key.NumPad3:
-                view = AppView.Devices;
+                view = AppView.Dashes;
                 return true;
             case Key.D4:
             case Key.NumPad4:
-                view = AppView.Setups;
+                view = AppView.Devices;
                 return true;
             case Key.D5:
             case Key.NumPad5:
-                view = AppView.Settings;
+                view = AppView.Setups;
                 return true;
             case Key.D6:
             case Key.NumPad6:
+                view = AppView.Settings;
+                return true;
+            case Key.D7:
+            case Key.NumPad7:
                 view = AppView.Help;
                 return true;
             default:
@@ -3833,11 +4094,15 @@ public sealed class MainWindow : Window
                 installButton.Content = $"Update to {DisplayVersion(latest.Version)}";
                 installButton.IsVisible = true;
                 checkButton.Content = "Check again";
+                ApplyUpdateAvailability(latest);
                 return;
             }
 
             updateStatus.Text = $"Up to date (v{BuildInfo.Version}).";
             checkButton.Content = "Check again";
+            // A successful check on a current build clears the standing hint (for example
+            // after a channel switch back to stable).
+            ApplyUpdateAvailability(null);
         }
 
         checkButton.Click += (_, _) => RunUpdateCheck(forceRefresh: true);
@@ -4083,6 +4348,9 @@ public sealed class MainWindow : Window
             return;
         }
 
+        // The transient toast announces it once; the toolbar pill and Settings badge
+        // keep the hint on screen until the update is installed.
+        ApplyUpdateAvailability(latest);
         ShowToast(
             GraphiteIntent.Info,
             $"Sprint {DisplayVersion(latest.Version)} is available",
@@ -4123,7 +4391,7 @@ public sealed class MainWindow : Window
             ("Devices and bindings", "Add a wheel or display in Devices. Select it to assign a dash, tune its screen, or listen for command bindings."),
             ("Telemetry status", "The toolbar reports the active telemetry link and measured update rate. Green is healthy; yellow or red requires attention."),
             ("Settings and updates", "Profile and dash defaults save when committed. Update checks remain a deliberate manual action."),
-            ("Keyboard shortcuts", "Ctrl+K opens command search. Alt+1 through Alt+6 navigate Home, Dashes, Devices, Setups, Settings, and Help. Escape closes transient surfaces."),
+            ("Keyboard shortcuts", "Ctrl+K opens command search. Alt+1 through Alt+7 navigate Home, Session Planner, Dashes, Devices, Setups, Settings, and Help. Escape closes transient surfaces."),
         };
         foreach (var entry in entries)
         {

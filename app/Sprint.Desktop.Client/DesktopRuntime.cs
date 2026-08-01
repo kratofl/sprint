@@ -26,6 +26,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     private readonly string _controlsPath;
     private readonly string _setupProgramsPath;
     private readonly string _layoutsPath;
+    private readonly string _dataRoot;
     private readonly string _presetRoot;
     private readonly string? _legacyDataRoot;
     private readonly ILog _log;
@@ -42,6 +43,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint");
         Directory.CreateDirectory(resolvedDataRoot);
+        _dataRoot = resolvedDataRoot;
 
         _presetRoot = presetRoot ?? Path.Combine(AppContext.BaseDirectory, "presets");
         _legacyDataRoot = legacyDataRoot ?? Path.Combine(AppContext.BaseDirectory, "data");
@@ -111,6 +113,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
     }
 
     public AppSettings Settings { get; }
+    public string DataRoot => _dataRoot;
     public ControlsConfig Controls { get; }
     public RenderProfile CurrentRenderProfile => new(Settings.DriverName, Settings.DriverNumber);
     public ObservableCollection<CatalogDevice> Catalog { get; } = [];

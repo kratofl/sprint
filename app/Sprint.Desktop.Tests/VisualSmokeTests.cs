@@ -28,6 +28,7 @@ public sealed class VisualSmokeTests
         foreach (var view in new[]
         {
             AppView.Home,
+            AppView.SessionPlanner,
             AppView.Dashes,
             AppView.Devices,
             AppView.Setups,

@@ -965,6 +965,66 @@ public sealed class RuntimePersistenceTests
         }
     }
 
+    [Fact]
+    public void RuntimeExposesTheResolvedDataRoot()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal(root, runtime.DataRoot);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LastSeenContextRoundTripsThroughSettings()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            runtime.Settings.LastSeenContext.Game = "Le Mans Ultimate";
+            runtime.Settings.LastSeenContext.Car = "Porsche 963";
+            runtime.Settings.LastSeenContext.Track = "Spa-Francorchamps";
+            runtime.SaveSettings();
+
+            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal("Le Mans Ultimate", reloaded.Settings.LastSeenContext.Game);
+            Assert.Equal("Porsche 963", reloaded.Settings.LastSeenContext.Car);
+            Assert.Equal("Spa-Francorchamps", reloaded.Settings.LastSeenContext.Track);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LastSeenContextDefaultsToEmptyForOldSettingsFiles()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            // A settings file written before this feature existed has no lastSeenContext.
+            File.WriteAllText(Path.Combine(root, "settings.json"), """{"driverName":"Ada"}""");
+
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal("Ada", runtime.Settings.DriverName);
+            Assert.Equal("", runtime.Settings.LastSeenContext.Game);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static (int Width, int Height) ReadPngSize(string path)
     {
         var bytes = File.ReadAllBytes(path);

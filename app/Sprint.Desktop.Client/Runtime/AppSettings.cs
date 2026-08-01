@@ -39,6 +39,24 @@ public sealed class AppSettings
 
     [JsonPropertyName("devicesUI")]
     public DevicesUiSettings DevicesUI { get; set; } = new();
+
+    /// <summary>The most recent non-empty game/car/track telemetry reported. The Session
+    /// Planner prefills new plans from this, because a plan is created before entering a
+    /// car — when the live frame has nothing to offer.</summary>
+    [JsonPropertyName("lastSeenContext")]
+    public LastSeenContext LastSeenContext { get; set; } = new();
+}
+
+public sealed class LastSeenContext
+{
+    [JsonPropertyName("game")]
+    public string Game { get; set; } = "";
+
+    [JsonPropertyName("car")]
+    public string Car { get; set; } = "";
+
+    [JsonPropertyName("track")]
+    public string Track { get; set; } = "";
 }
 
 public sealed class DevicesUiSettings
