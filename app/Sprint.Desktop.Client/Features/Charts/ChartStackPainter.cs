@@ -240,7 +240,12 @@ public sealed class ChartStackPainter : IDisposable
             return;
         }
 
-        using var path = new SKPath();
+        // SKPathBuilder rather than mutating an SKPath: the mutating members are obsolete in
+        // SkiaSharp 4, and the builder has no LastPoint, so the step corner is tracked here.
+        using var builder = new SKPathBuilder();
+        var firstX = layout.PixelAt(series.Samples[0].X);
+        var lastX = firstX;
+        var lastY = 0f;
         for (var i = 0; i < series.Samples.Count; i++)
         {
             var (sampleX, sampleY) = series.Samples[i];
@@ -248,25 +253,33 @@ public sealed class ChartStackPainter : IDisposable
             var y = ChartStackLayout.ValuePixel(plot, sampleY, scale);
             if (i == 0)
             {
-                path.MoveTo(x, y);
-                continue;
+                builder.MoveTo(x, y);
             }
-
-            if (series.Interpolation == ChartInterpolation.Stepped)
+            else
             {
-                // A discrete figure held its value up to here; it did not slope towards it.
-                path.LineTo(x, path.LastPoint.Y);
+                if (series.Interpolation == ChartInterpolation.Stepped)
+                {
+                    // A discrete figure held its value up to here; it did not slope towards it.
+                    builder.LineTo(x, lastY);
+                }
+
+                builder.LineTo(x, y);
             }
 
-            path.LineTo(x, y);
+            lastX = x;
+            lastY = y;
         }
+
+        using var path = builder.Detach();
 
         if (series.FillArea)
         {
-            using var area = new SKPath(path);
-            area.LineTo(path.LastPoint.X, plot.Bottom);
-            area.LineTo(layout.PixelAt(series.Samples[0].X), plot.Bottom);
-            area.Close();
+            using var areaBuilder = new SKPathBuilder();
+            areaBuilder.AddPath(path, SKPathAddMode.Append);
+            areaBuilder.LineTo(lastX, plot.Bottom);
+            areaBuilder.LineTo(firstX, plot.Bottom);
+            areaBuilder.Close();
+            using var area = areaBuilder.Detach();
             _canvas.DrawPath(area, Paint(ChartPalette.Area(color)));
         }
 

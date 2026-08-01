@@ -55,7 +55,7 @@ public sealed class CachingLapHistoryStoreTests
     }
 
     [Fact]
-    public void ConcurrentReadsAndWritesNeverObserveATornCorpus()
+    public async Task ConcurrentReadsAndWritesNeverObserveATornCorpus()
     {
         var inner = new CountingLapHistoryStore();
         var store = new CachingLapHistoryStore(inner);
@@ -80,7 +80,7 @@ public sealed class CachingLapHistoryStoreTests
             }
         });
 
-        Assert.True(Task.WaitAll([writer, reader], TimeSpan.FromSeconds(30)));
+        await Task.WhenAll(writer, reader).WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(200, store.LoadAll().Count);
     }
 
