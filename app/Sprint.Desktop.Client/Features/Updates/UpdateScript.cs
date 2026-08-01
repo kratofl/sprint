@@ -14,16 +14,33 @@ namespace Sprint.Desktop.Features.Updates;
 public static class UpdateScript
 {
     /// <summary>
+    /// A one-second pause that does not depend on console input. <c>timeout</c> fails
+    /// immediately ("input redirection is not supported") whenever the helper runs
+    /// without an interactive console, which would silently turn every retry loop below
+    /// into a busy spin that exhausts its attempts in milliseconds. <c>ping</c> to
+    /// loopback is the console-independent fallback.
+    /// </summary>
+    private const string WaitOneSecond =
+        "timeout /t 1 /nobreak >nul 2>nul || ping -n 2 127.0.0.1 >nul";
+
+    /// <summary>
     /// Generates the helper-batch text that replaces <paramref name="installDir"/> with the
     /// contents of <paramref name="stagingDir"/> once process <paramref name="pid"/> exits,
     /// then relaunches <paramref name="exeName"/> from the install directory.
     /// </summary>
+    /// <param name="revealStagingOnFailure">
+    /// Whether a permanent copy failure opens the staging folder in Explorer. Always on in
+    /// the product — the user needs the files to recover by hand. Tests that execute the
+    /// generated batch for real turn it off, so a failure branch does not open a window on
+    /// the developer's desktop on every run.
+    /// </param>
     public static string BuildWindowsBatch(
         int pid,
         string stagingDir,
         string installDir,
         string exeName,
-        string? completionPath = null)
+        string? completionPath = null,
+        bool revealStagingOnFailure = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
@@ -39,7 +56,7 @@ public static class UpdateScript
         Line(":waitloop");
         Line("tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul");
         Line("if not errorlevel 1 (");
-        Line("  timeout /t 1 /nobreak >nul");
+        Line($"  {WaitOneSecond}");
         Line("  goto waitloop");
         Line(")");
         // Antivirus/image scanning can retain the closed executable's file lock for
@@ -58,7 +75,7 @@ public static class UpdateScript
         Line("if not errorlevel 1 goto updatecopied");
         Line("set /a EXE_COPY_ATTEMPTS+=1");
         Line("if %EXE_COPY_ATTEMPTS% GEQ 30 goto updatefailed");
-        Line("timeout /t 1 /nobreak >nul");
+        Line(WaitOneSecond);
         Line("goto copyexe");
         Line(":updatecopied");
         // A non-elevated helper can relaunch directly. An elevated helper signals
@@ -79,7 +96,11 @@ public static class UpdateScript
         // diagnostic log, reveal the staged executable for manual recovery, and only
         // then relaunch the still-working old build.
         Line(":updatefailed");
-        Line($"start \"\" explorer.exe /select,\"{stagingDir}\\{exeName}\"");
+        if (revealStagingOnFailure)
+        {
+            Line($"start \"\" explorer.exe /select,\"{stagingDir}\\{exeName}\"");
+        }
+
         if (completionPath is null)
         {
             Line($"start \"\" \"{installDir}\\{exeName}\"");
@@ -117,7 +138,7 @@ public static class UpdateScript
         Line($"set \"RESULT={completionPath}\"");
         Line(":waitloop");
         Line("if exist \"%RESULT%\" goto relaunch");
-        Line("timeout /t 1 /nobreak >nul");
+        Line(WaitOneSecond);
         Line("goto waitloop");
         Line(":relaunch");
         Line($"start \"\" \"{installDir}\\{exeName}\"");

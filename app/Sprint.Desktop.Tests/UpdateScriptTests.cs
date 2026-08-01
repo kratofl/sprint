@@ -75,6 +75,30 @@ public sealed class UpdateScriptTests
     }
 
     [Fact]
+    public void TheStagingRevealCanBeSuppressedWithoutChangingTheRestOfTheScript()
+    {
+        var withReveal = Build();
+        var withoutReveal = UpdateScript.BuildWindowsBatch(
+            Pid,
+            Staging,
+            Install,
+            Exe,
+            revealStagingOnFailure: false);
+
+        Assert.Contains("explorer.exe", withReveal);
+        Assert.DoesNotContain("explorer.exe", withoutReveal);
+        // Everything else — including the failure branch and its relaunch — is unchanged.
+        Assert.Contains(":updatefailed", withoutReveal);
+        Assert.Contains($"start \"\" \"{Install}\\{Exe}\"", withoutReveal);
+        Assert.Equal(
+            withReveal.Replace(
+                $"start \"\" explorer.exe /select,\"{Staging}\\{Exe}\"\r\n",
+                "",
+                StringComparison.Ordinal),
+            withoutReveal);
+    }
+
+    [Fact]
     public void CopiesThePrimaryExecutableLast()
     {
         var batch = Build();
@@ -186,7 +210,11 @@ public sealed class UpdateScriptTests
                     staging,
                     install,
                     exe,
-                    completionPath));
+                    completionPath,
+                    // This test runs the generated batch for real. Its failure branch would
+                    // otherwise open an Explorer window on the developer's desktop on every
+                    // run; the reveal line itself is asserted from the script text instead.
+                    revealStagingOnFailure: false));
 
             executableLock = new FileStream(
                 installedExe,
