@@ -2146,12 +2146,10 @@ public sealed class MainWindow : Window
         if (_newPlanDraft is null)
         {
             var prefill = _plannerController.Prefill();
-            _newPlanDraft = new NewPlanDraft
-            {
-                Game = prefill.Game,
-                Car = prefill.Car,
-                Track = prefill.Track,
-            };
+            _newPlanDraft = NewPlanDraft.FromDefaults(_runtime.Settings.SessionPlanner);
+            _newPlanDraft.Game = prefill.Game;
+            _newPlanDraft.Car = prefill.Car;
+            _newPlanDraft.Track = prefill.Track;
         }
 
         CloseNewPlanDialog();
@@ -2192,7 +2190,7 @@ public sealed class MainWindow : Window
         CloseDeviceCatalogDialog(restoreFocus: false);
 
         var detection = _plannerController.Detect(CurrentTelemetryFrame().Session);
-        _newPlanDraft ??= new NewPlanDraft();
+        _newPlanDraft ??= NewPlanDraft.FromDefaults(_runtime.Settings.SessionPlanner);
 
         CloseNewPlanDialog();
 
@@ -3929,6 +3927,13 @@ public sealed class MainWindow : Window
         }
     }
 
+    // Session Planner setting labels (#103). Named so the option text and the enum it maps
+    // to cannot drift apart between the combo box and its handler.
+    private const string HistoryAllLaps = "All valid laps for this car and track";
+    private const string HistoryMatchingType = "Only laps from the same session type";
+    private const string AutoDetectDraft = "Suggest a draft plan to confirm";
+    private const string AutoDetectArm = "Create and arm automatically";
+
     private Control SettingsPage()
     {
         var stack = PageStack();
@@ -4085,10 +4090,134 @@ public sealed class MainWindow : Window
             RenderBody();
         };
 
+        // Session Planner defaults (#103). These seed new plans; anything a plan stores
+        // itself stays overridable per plan.
+        var planner = _runtime.Settings.SessionPlanner;
+        // Units belong in the option text: a bare "1" next to "Fuel reserve" does not say
+        // whether it means laps, litres or minutes.
+        var reserveOptions = new[] { "No reserve", "+1 lap", "+2 laps", "+3 laps" };
+        var reserveLaps = new ComboBox
+        {
+            ItemsSource = reserveOptions,
+            SelectedItem = reserveOptions[Math.Clamp(planner.FuelReserveLaps, 0, reserveOptions.Length - 1)],
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180,
+        };
+        var historySource = new ComboBox
+        {
+            ItemsSource = new[] { HistoryAllLaps, HistoryMatchingType },
+            SelectedItem = planner.FuelHistorySource == FuelHistorySource.MatchingSessionType
+                ? HistoryMatchingType
+                : HistoryAllLaps,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 260,
+        };
+        var autoDetect = new ComboBox
+        {
+            ItemsSource = new[] { AutoDetectDraft, AutoDetectArm },
+            SelectedItem = planner.AutoDetect == AutoDetectMode.CreateAndArm
+                ? AutoDetectArm
+                : AutoDetectDraft,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 260,
+        };
+        var captureRate = new ComboBox
+        {
+            ItemsSource = SessionPlannerSettings.TraceCaptureRates.Select(rate => $"{rate} Hz").ToArray(),
+            SelectedItem = $"{planner.TraceCaptureHz} Hz",
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180,
+        };
+        var retentionOptions = new[] { 30, 90, 180, 365 };
+        var retentionDays = new ComboBox
+        {
+            ItemsSource = retentionOptions.Select(days => $"{days} days").ToArray(),
+            SelectedItem = $"{planner.TraceRetentionDays} days",
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            MinWidth = 180,
+        };
+        // Segmented rather than a checkbox: the codebase has no checkbox control, and On/Off
+        // is exactly the "closely related state" the design contract scopes segmented to.
+        var warnFormat = Graphite.Segmented(
+            ["On", "Off"],
+            planner.WarnOnRaceFormatMismatch ? 0 : 1,
+            index =>
+            {
+                planner.WarnOnRaceFormatMismatch = index == 0;
+                MarkSaved();
+            });
+        var warnSegment = Graphite.Segmented(
+            ["On", "Off"],
+            planner.WarnOnDetectedSegmentChange ? 0 : 1,
+            index =>
+            {
+                planner.WarnOnDetectedSegmentChange = index == 0;
+                MarkSaved();
+            });
+
+        reserveLaps.SelectionChanged += (_, _) =>
+        {
+            var index = Array.IndexOf(reserveOptions, reserveLaps.SelectedItem as string);
+            if (index >= 0)
+            {
+                planner.FuelReserveLaps = index;
+                MarkSaved();
+            }
+        };
+        historySource.SelectionChanged += (_, _) =>
+        {
+            planner.FuelHistorySource = Equals(historySource.SelectedItem, HistoryMatchingType)
+                ? FuelHistorySource.MatchingSessionType
+                : FuelHistorySource.AllValidLaps;
+            MarkSaved();
+        };
+        autoDetect.SelectionChanged += (_, _) =>
+        {
+            planner.AutoDetect = Equals(autoDetect.SelectedItem, AutoDetectArm)
+                ? AutoDetectMode.CreateAndArm
+                : AutoDetectMode.DraftSuggestion;
+            MarkSaved();
+        };
+        captureRate.SelectionChanged += (_, _) =>
+        {
+            if (captureRate.SelectedItem is string label
+                && int.TryParse(label.Replace(" Hz", "", StringComparison.Ordinal), out var hz))
+            {
+                planner.TraceCaptureHz = hz;
+                MarkSaved();
+            }
+        };
+        retentionDays.SelectionChanged += (_, _) =>
+        {
+            if (retentionDays.SelectedItem is string label
+                && int.TryParse(label.Replace(" days", "", StringComparison.Ordinal), out var days))
+            {
+                planner.TraceRetentionDays = days;
+                MarkSaved();
+            }
+        };
         var form = new StackPanel { Spacing = 12, MaxWidth = 620 };
         form.Children.Add(Graphite.SectionLabel("Profile"));
         form.Children.Add(FormRow("Driver name", driverName));
         form.Children.Add(FormRow("Driver number", driverNumber));
+        form.Children.Add(Graphite.SectionLabel("Session Planner"));
+        form.Children.Add(FormRow("Fuel reserve", reserveLaps));
+        form.Children.Add(FormRow("Fuel history", historySource));
+        form.Children.Add(FormRow("Online detection", autoDetect));
+        form.Children.Add(FormRow("Trace capture", captureRate));
+        form.Children.Add(FormRow("Keep traces for", retentionDays));
+        form.Children.Add(FormRow("Race format warning", warnFormat));
+        form.Children.Add(FormRow("Segment change warning", warnSegment));
         form.Children.Add(Graphite.SectionLabel("Dash defaults"));
         form.Children.Add(FormRow("Editor mode", dashMode));
         form.Children.Add(FormRow("Speed unit", speedUnit));

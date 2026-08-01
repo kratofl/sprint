@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.SessionPlanning;
 
@@ -28,6 +29,19 @@ public sealed class NewPlanDraft
     /// dialog because the modal is torn down and rebuilt on every segmented/disclosure change
     /// — an error held by the dialog would vanish before the user could read it.</summary>
     public string Error { get; set; } = "";
+
+    /// <summary>
+    /// A draft seeded from the global Session Planner defaults (#103). The defaults seed the
+    /// fields; they do not lock them, so every value stays overridable per plan.
+    /// </summary>
+    public static NewPlanDraft FromDefaults(SessionPlannerSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return new NewPlanDraft
+        {
+            FuelReserveText = settings.FuelReserveLaps.ToString(CultureInfo.InvariantCulture),
+        };
+    }
 
     /// <summary>Whether the fuel disclosure is open. Null until the dialog resolves it from
     /// fuel-history availability; retained here so it survives a rebuild.</summary>

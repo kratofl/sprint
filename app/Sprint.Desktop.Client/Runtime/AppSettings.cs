@@ -45,6 +45,88 @@ public sealed class AppSettings
     /// car — when the live frame has nothing to offer.</summary>
     [JsonPropertyName("lastSeenContext")]
     public LastSeenContext LastSeenContext { get; set; } = new();
+
+    /// <summary>Session Planner defaults and behaviour (#103). Desktop-local for this phase.</summary>
+    [JsonPropertyName("sessionPlanner")]
+    public SessionPlannerSettings SessionPlanner { get; set; } = new();
+}
+
+/// <summary>
+/// Which laps a fuel/lap-time estimate is allowed to draw on.
+/// <para>
+/// Written as a name, not an ordinal: this is an on-disk setting, and a numeric value would
+/// silently change meaning if the members were ever reordered.
+/// </para>
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<FuelHistorySource>))]
+public enum FuelHistorySource
+{
+    /// <summary>
+    /// Every valid lap for the matching game/car/track. The default: this corpus is what
+    /// makes an estimate possible at all, and narrowing it by session type throws away most
+    /// of it — practice is where most laps are driven.
+    /// </summary>
+    AllValidLaps,
+
+    /// <summary>Only laps from the same session type as the segment being planned.</summary>
+    MatchingSessionType,
+}
+
+/// <summary>What Sprint does when it detects a session the driver has no plan for. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AutoDetectMode>))]
+public enum AutoDetectMode
+{
+    /// <summary>
+    /// Offer a draft the driver confirms. The default, because a detected plan that armed
+    /// itself would start tracking against numbers nobody agreed to.
+    /// </summary>
+    DraftSuggestion,
+
+    /// <summary>Create the plan and arm it without asking, for drivers who want that.</summary>
+    CreateAndArm,
+}
+
+/// <summary>
+/// Global Session Planner settings (#103). These are defaults for new plans — anything a
+/// plan stores itself can still be overridden per plan.
+/// </summary>
+public sealed class SessionPlannerSettings
+{
+    /// <summary>60 Hz is the default trace rate; higher rates are offered for sources and disks that keep up.</summary>
+    public const int DefaultTraceCaptureHz = 60;
+
+    /// <summary>The offered capture rates, ascending.</summary>
+    public static readonly int[] TraceCaptureRates = [30, 60, 120, 240];
+
+    /// <summary>Default fuel reserve on top of the estimate, in whole laps.</summary>
+    [JsonPropertyName("fuelReserveLaps")]
+    public int FuelReserveLaps { get; set; } = 1;
+
+    [JsonPropertyName("fuelHistorySource")]
+    public FuelHistorySource FuelHistorySource { get; set; } = FuelHistorySource.AllValidLaps;
+
+    [JsonPropertyName("autoDetect")]
+    public AutoDetectMode AutoDetect { get; set; } = AutoDetectMode.DraftSuggestion;
+
+    /// <summary>Detailed trace capture rate. Consumed by trace capture (#101), which is not built yet.</summary>
+    [JsonPropertyName("traceCaptureHz")]
+    public int TraceCaptureHz { get; set; } = DefaultTraceCaptureHz;
+
+    /// <summary>How long traces are kept. Bounds local disk use rather than growing forever.</summary>
+    [JsonPropertyName("traceRetentionDays")]
+    public int TraceRetentionDays { get; set; } = 90;
+
+    /// <summary>A hard ceiling on trace storage, so a long stint cannot fill the disk.</summary>
+    [JsonPropertyName("traceMaxTotalMegabytes")]
+    public int TraceMaxTotalMegabytes { get; set; } = 4096;
+
+    /// <summary>Warn when live telemetry disagrees with the planned race-length format.</summary>
+    [JsonPropertyName("warnOnRaceFormatMismatch")]
+    public bool WarnOnRaceFormatMismatch { get; set; } = true;
+
+    /// <summary>Warn when the detected qualifying/race segment changes mid-plan.</summary>
+    [JsonPropertyName("warnOnDetectedSegmentChange")]
+    public bool WarnOnDetectedSegmentChange { get; set; } = true;
 }
 
 public sealed class LastSeenContext

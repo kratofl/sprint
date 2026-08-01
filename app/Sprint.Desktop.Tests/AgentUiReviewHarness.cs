@@ -447,6 +447,17 @@ internal static class AgentUiReviewHarness
                         "settings-global-defaults",
                         "Settings",
                         "Profile",
+                        // Session Planner defaults (#103).
+                        "Session Planner",
+                        "Fuel reserve",
+                        // Units live in the option text, so a bare number never appears.
+                        "+1 lap",
+                        "90 days",
+                        "Fuel history",
+                        "Online detection",
+                        "Trace capture",
+                        "Keep traces for",
+                        "Race format warning",
                         "Dash defaults"
 #if DEBUG
                         , "Development",

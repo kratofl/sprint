@@ -29,6 +29,27 @@ Location: `app/Sprint.Desktop.Client/Features/SessionPlanning`.
 Tests: `app/Sprint.Desktop.Tests/SessionPlannerTests.cs` (store round-trip, corrupt-
 file isolation, lifecycle, single-slot enforcement, ingestion, crash reconcile).
 
+## Global settings (#103) — implemented
+
+`AppSettings.SessionPlanner` (`SessionPlannerSettings`) holds the planner's global defaults,
+rendered as a `Session Planner` section on the Settings page. Defaults seed new plans; they
+never lock them — every value a plan stores stays overridable per plan, and
+`NewPlanDraft.FromDefaults` is the seam that applies them.
+
+| Setting | Default | Consumed by |
+| --- | --- | --- |
+| `FuelReserveLaps` | `1` (+1 lap) | plan creation, today |
+| `FuelHistorySource` | `AllValidLaps` | #50 fuel calculator |
+| `AutoDetect` | `DraftSuggestion` | #102 online detection |
+| `TraceCaptureHz` | `60` (30/60/120/240 offered) | #101 trace capture |
+| `TraceRetentionDays` / `TraceMaxTotalMegabytes` | `90` / `4096` | #101 trace capture |
+| `WarnOnRaceFormatMismatch` / `WarnOnDetectedSegmentChange` | on | planner warnings |
+
+`FuelHistorySource` and `AutoDetectMode` are persisted **by name**
+(`JsonStringEnumConverter`), because these are on-disk settings and an ordinal would
+silently change meaning if the members were ever reordered. Settings whose consumer is not
+built yet are marked above rather than hidden: the issue asks for the defaults to exist now.
+
 ## Plan creation: Quick and Planned (#178, #183) — implemented
 
 Two entry points in the page header, not a mode switch inside the sheet: `Quick plan`

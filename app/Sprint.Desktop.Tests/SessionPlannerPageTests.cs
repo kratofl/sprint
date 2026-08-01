@@ -586,6 +586,29 @@ public sealed class SessionPlannerPageTests
     }
 
     [Fact]
+    public void ANewDraftInheritsTheGlobalPlannerDefaultsAndCanStillBeOverriddenPerPlan()
+    {
+        var draft = NewPlanDraft.FromDefaults(new SessionPlannerSettings { FuelReserveLaps = 3 });
+        draft.RaceLengthText = "60";
+
+        Assert.Equal("3", draft.FuelReserveText);
+        Assert.True(draft.TryBuild(out var inherited, out _));
+        Assert.Equal(3, inherited!.FuelReserveLaps);
+
+        // Per-plan override: the global default seeds the field, it does not lock it.
+        draft.FuelReserveText = "0";
+        Assert.True(draft.TryBuild(out var overridden, out _));
+        Assert.Equal(0, overridden!.FuelReserveLaps);
+    }
+
+    [Fact]
+    public void ADraftBuiltWithNoSettingsStillDefaultsToOneReserveLap()
+    {
+        // The documented default, so the plain constructor keeps behaving as before.
+        Assert.Equal("1", new NewPlanDraft().FuelReserveText);
+    }
+
+    [Fact]
     public void PrefillResolvesTheCarWhileTheDriverIsStillInTheLobby()
     {
         var remembered = new LastSeenContext();

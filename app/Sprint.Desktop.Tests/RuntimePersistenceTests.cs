@@ -982,6 +982,84 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void SessionPlannerSettingsCarryTheDefaultsTheSpecRequires()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var planner = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+            // #103: every default is stated in the issue, so they are asserted as literals.
+            Assert.Equal(1, planner.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.AllValidLaps, planner.FuelHistorySource);
+            Assert.Equal(AutoDetectMode.DraftSuggestion, planner.AutoDetect);
+            Assert.Equal(60, planner.TraceCaptureHz);
+            Assert.True(planner.WarnOnRaceFormatMismatch);
+            Assert.True(planner.WarnOnDetectedSegmentChange);
+            Assert.True(planner.TraceRetentionDays > 0, "retention must bound local disk use");
+            Assert.True(planner.TraceMaxTotalMegabytes > 0, "a storage ceiling must exist");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SessionPlannerSettingsRoundTripAndOldFilesKeepTheDefaults()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
+            runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
+            runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
+            runtime.Settings.SessionPlanner.TraceCaptureHz = 120;
+            runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
+            runtime.SaveSettings();
+
+            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+            Assert.Equal(2, reloaded.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
+            Assert.Equal(AutoDetectMode.CreateAndArm, reloaded.AutoDetect);
+            Assert.Equal(120, reloaded.TraceCaptureHz);
+            Assert.False(reloaded.WarnOnRaceFormatMismatch);
+
+            // A settings file written before this section existed keeps the documented defaults.
+            var older = TestEnv.NewTempDataRoot();
+            try
+            {
+                File.WriteAllText(Path.Combine(older, "settings.json"), """{"driverName":"Ada"}""");
+                var upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+                Assert.Equal(1, upgraded.FuelReserveLaps);
+                Assert.Equal(AutoDetectMode.DraftSuggestion, upgraded.AutoDetect);
+            }
+            finally
+            {
+                Directory.Delete(older, recursive: true);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void HigherTraceCaptureRatesAreOfferedAndSixtyIsTheDefault()
+    {
+        // The issue asks for 60 Hz by default "with higher options available", so the option
+        // list has to actually contain some.
+        Assert.Equal(60, SessionPlannerSettings.DefaultTraceCaptureHz);
+        Assert.Contains(60, SessionPlannerSettings.TraceCaptureRates);
+        Assert.Contains(SessionPlannerSettings.TraceCaptureRates, rate => rate > 60);
+        Assert.Equal(SessionPlannerSettings.TraceCaptureRates.OrderBy(rate => rate), SessionPlannerSettings.TraceCaptureRates);
+    }
+
+    [Fact]
     public void LastSeenContextRoundTripsThroughSettings()
     {
         var root = TestEnv.NewTempDataRoot();
