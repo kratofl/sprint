@@ -107,8 +107,27 @@ and `LapHistoryImportService` maps `ImportedSession` → `LapHistorySession` wit
   degrade honestly to scalar targets. Tyres carry compound only. Untimed laps are dropped
   rather than written as a zero that would poison every median; top speed *is* carried.
 
-The startup scan, the path+size+last-write ledger, the decline list and the import prompt are
-**#185** — nothing calls the import service from production code yet.
+### Startup scan, prompt and decline ledger (#185)
+
+- **`ResultsImportLedger`** records path + size + last-write for entries the driver has
+  imported *or* declined — the three things an importer states **without parsing**, which is
+  what lets a launch with nothing new open no files at all. Declining is recorded separately
+  from importing: both silence the prompt, but only one means "the corpus has this".
+- **`ResultsImportScanner.Scan`** lists the archive, drops everything the ledger has answered
+  for, and only then parses what is left to build the per-kind breakdown. `Scan(…,
+  includeDeclined: true)` backs the manual entry points, so "Not now" silences a prompt rather
+  than deciding those laps are unwanted forever.
+- **The prompt shows the breakdown** (`Practice 9, Qualifying 3, Race 2`) rather than a blind
+  yes/no, and nothing is written until it is answered — a silent first run would put hundreds
+  of sessions behind every fuel and lap-time figure with no consent and no traceable origin.
+- **Two permanent manual entry points**: `Import results…` in the planner header and in the
+  Settings → Session Planner section. Both are hidden-by-capability: a game whose provider
+  returns `null` for `Results` has no importer, and the action says so rather than failing.
+- Scanning and importing run off the UI thread; the import writes through the same
+  `CachingLapHistoryStore` the recorder uses, so the planner page sees new sessions at once.
+- **A moved or restored results folder** costs exactly one re-parse pass and creates zero
+  duplicates — the ledger cannot recognise the new ids, and the importer's natural key is what
+  stops the pass writing a second copy. No hashing anywhere.
 
 ## Global settings (#103) — implemented
 

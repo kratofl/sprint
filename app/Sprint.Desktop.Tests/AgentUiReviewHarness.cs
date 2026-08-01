@@ -145,7 +145,10 @@ internal static class AgentUiReviewHarness
                         "session-planner-empty",
                         "No session plans yet",
                         "Quick plan",
-                        "New plan…"));
+                        "New plan…",
+                        // #185's permanent manual entry point, always available even after
+                        // the startup offer has been declined.
+                        "Import results…"));
 
                     // Quick plan (#183): detected context read-only, inputs only for the gaps.
                     // Nothing is detected in the harness, so this is the widest form it shows.
@@ -210,6 +213,31 @@ internal static class AgentUiReviewHarness
                         // manual fallback rather than an empty scope list.
                         "Qualifying lap-time target",
                         PlanTargetChoices.NoHistoryMessage));
+
+                    // #185's startup offer. Driven directly because the real path is gated on a
+                    // desktop lifetime and on the sim having archived sessions on this machine.
+                    window.PromptForArchivedSessions(
+                        new ReviewResultsImporter(),
+                        new ResultsImportProposal(
+                            [new Sprint.Desktop.Api.Games.ResultsArchiveEntry("race.xml", 2048, DateTimeOffset.UnixEpoch)],
+                            new Dictionary<HistorySessionKind, int>
+                            {
+                                [HistorySessionKind.Practice] = 9,
+                                [HistorySessionKind.Qualifying] = 3,
+                                [HistorySessionKind.Race] = 2,
+                            }));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-import-prompt",
+                        "Import sessions the game already recorded?",
+                        // The per-kind breakdown is the point of the prompt — a blind yes/no is
+                        // what it replaces — so the whole sentence is pinned, not just a word.
+                        "Sprint found Practice 9, Qualifying 3, Race 2 in the Le Mans Ultimate results folder. "
+                            + "Importing them gives fuel and lap-time estimates something to work from straight away. "
+                            + "Nothing is imported until you say so.",
+                        "Import"));
+                    Click(window, "Cancel");
 
                     // #186 with a corpus behind it. Rendered on its own window because the
                     // shell's page reads the real lap-history store, which is empty here.
@@ -472,6 +500,9 @@ internal static class AgentUiReviewHarness
                         "Trace capture",
                         "Keep traces for",
                         "Race format warning",
+                        // #185's second manual entry point.
+                        "Archived sessions",
+                        "Import results…",
                         "Dash defaults"
 #if DEBUG
                         , "Development",
@@ -648,6 +679,18 @@ internal static class AgentUiReviewHarness
         };
     }
 
+    // Stands in for a game's results archive so the import prompt can be reviewed without one
+    // on this machine. Nothing reads it: the prompt only shows the counts it was handed.
+    private sealed class ReviewResultsImporter : Sprint.Desktop.Api.Games.IResultsImporter
+    {
+        public string SourceDescription => "the Le Mans Ultimate results folder";
+
+        public IReadOnlyList<Sprint.Desktop.Api.Games.ResultsArchiveEntry> ListEntries() => [];
+
+        public Sprint.Desktop.Api.Games.ImportedSession? Read(
+            Sprint.Desktop.Api.Games.ResultsArchiveEntry entry) => null;
+    }
+
     // The chart stack (#187) over a track-position domain: three charts, one axis, one shared
     // crosshair. Rendered through the real Avalonia control so the review sees what a page
     // would embed — the stack has no host in app code because placement is still open.
@@ -731,7 +774,7 @@ internal static class AgentUiReviewHarness
             new ReviewLapHistoryStore());
         var view = new SessionPlannerView(
             controller,
-            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }));
+            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }));
 
         var window = new Window
         {

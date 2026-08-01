@@ -239,9 +239,10 @@ public sealed class LapHistoryImportService
     /// <summary>
     /// The archive's session vocabulary onto the corpus's own on-disk one. Both enums list the
     /// same kinds today; they are separate types because one is a capability contract and the
-    /// other is a storage format, and this is the single place they meet.
+    /// other is a storage format, and this is the single place they meet — the startup scan
+    /// (#185) builds its per-kind breakdown through here rather than mapping a second time.
     /// </summary>
-    private static HistorySessionKind MapKind(ImportedSessionKind kind) => kind switch
+    internal static HistorySessionKind MapKind(ImportedSessionKind kind) => kind switch
     {
         ImportedSessionKind.Practice => HistorySessionKind.Practice,
         ImportedSessionKind.Qualifying => HistorySessionKind.Qualifying,

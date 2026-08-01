@@ -124,7 +124,7 @@ public class SessionPlannerViewTests
             // The header carries a "Quick plan" button, so assert against the plan card only.
             var card = new SessionPlannerView(
                     controller,
-                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }))
+                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }))
                 .Build()
                 .GetLogicalDescendants()
                 .OfType<Border>()
