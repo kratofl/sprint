@@ -153,6 +153,137 @@ public sealed class LapHistoryTire
 }
 
 /// <summary>
+/// How a lap was driven, not just how long it took: elapsed lap time resampled at a fixed
+/// fraction of the track, from the start of the lap to the finish line. This is what lets a
+/// lap chosen as a target drive a position-accurate delta rather than a single number.
+/// <para>
+/// Only the times are stored — the position of index <c>i</c> is <c>i * PositionStep</c>.
+/// Storing the positions as well would double the size of the corpus's largest field to
+/// record numbers that are already known by construction.
+/// </para>
+/// <para>
+/// Deliberately says nothing about where it came from. The always-on recorder produces it
+/// today and detailed trace capture (#101) may supersede that source later; a consumer that
+/// branched on the producer would have to be rewritten when it does.
+/// </para>
+/// </summary>
+public sealed class LapReferenceCurve
+{
+    /// <summary>The sampling interval as a fraction of a lap — ~0.5 % of the track.</summary>
+    public const double PositionStepDefault = 0.005;
+
+    // Milliseconds are the resolution the sims report and the resolution any delta is shown
+    // at; further digits would grow every history file on disk with noise.
+    private const int TimeDecimals = 3;
+
+    // The completeness guards the live delta path already applies (Features/Live/DeltaTracker).
+    // A trace that does not span roughly the whole lap describes a join-mid-session lap, an
+    // out lap or an aborted one, and a curve resampled from it reads as a lap nobody drove.
+    private const double CompleteStartMax = 0.2;
+    private const double CompleteEndMin = 0.8;
+    private const int CompleteMinSamples = 8;
+
+    // One guard the delta path does not need. Its own trace is only ever compared live, while
+    // this one is stored and re-read as "how the lap was driven", so a hole in the middle
+    // matters: a lap seen at the line and again from half distance passes the two end guards,
+    // and interpolating across the hole would draw a straight line through corners nobody saw.
+    // Ten output intervals is seconds of unobserved driving, not a stutter.
+    private const double CompleteMaxGap = PositionStepDefault * 10;
+
+    // Degenerate-interval guard for the interpolation divisor.
+    private const double PositionEpsilon = 1e-6;
+
+    [JsonPropertyName("positionStep")]
+    public double PositionStep { get; set; } = PositionStepDefault;
+
+    /// <summary>
+    /// Elapsed lap time in seconds at each sampled position, index <c>i</c> being track
+    /// position <c>i * PositionStep</c>. The last entry is the lap's own time, at the line.
+    /// </summary>
+    [JsonPropertyName("timesSeconds")]
+    public List<double> TimesSeconds { get; set; } = [];
+
+    /// <summary>
+    /// Resamples one lap's raw position→time samples onto the fixed interval, or returns
+    /// null when they do not span enough of the lap to describe it honestly — a partial or
+    /// aborted lap must yield no curve rather than a misleading one.
+    /// </summary>
+    /// <param name="samples">
+    /// The lap's observed samples, strictly ascending in position.
+    /// </param>
+    /// <param name="lapTimeSeconds">The lap's completed time, the only time known to be true at the line.</param>
+    public static LapReferenceCurve? FromSamples(
+        IReadOnlyList<(double Position, double Time)> samples,
+        double lapTimeSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+
+        // The recorder only files laps the game gave a completed time for, but this factory is
+        // the seam a future trace source writes through too, and past the last sample the lap
+        // total is the only time it can state — an absent one would be stated as zero.
+        if (lapTimeSeconds <= 0
+            || samples.Count < CompleteMinSamples
+            || samples[0].Position > CompleteStartMax
+            || samples[^1].Position < CompleteEndMin
+            || HasGap(samples))
+        {
+            return null;
+        }
+
+        var count = (int)Math.Round(1.0 / PositionStepDefault) + 1;
+        var times = new List<double>(count);
+        var index = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var position = i * PositionStepDefault;
+            if (position <= samples[0].Position)
+            {
+                // Before the first sample nothing was observed; holding the first reading is
+                // what the live delta reference does at the same edge.
+                times.Add(Round(samples[0].Time));
+                continue;
+            }
+
+            if (position >= samples[^1].Position)
+            {
+                times.Add(Round(lapTimeSeconds));
+                continue;
+            }
+
+            // Both series ascend, so the bracketing sample only ever moves forward.
+            while (samples[index + 1].Position <= position)
+            {
+                index++;
+            }
+
+            var (startPosition, startTime) = samples[index];
+            var (endPosition, endTime) = samples[index + 1];
+            var span = endPosition - startPosition;
+            times.Add(Round(span <= PositionEpsilon
+                ? startTime
+                : startTime + ((endTime - startTime) * ((position - startPosition) / span))));
+        }
+
+        return new LapReferenceCurve { PositionStep = PositionStepDefault, TimesSeconds = times };
+    }
+
+    private static bool HasGap(IReadOnlyList<(double Position, double Time)> samples)
+    {
+        for (var i = 1; i < samples.Count; i++)
+        {
+            if (samples[i].Position - samples[i - 1].Position > CompleteMaxGap)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static double Round(double seconds) => Math.Round(seconds, TimeDecimals);
+}
+
+/// <summary>
 /// One completed lap. Times and validity are always present so a reader can exclude
 /// invalid laps; everything else is null when the source could not supply it.
 /// </summary>
@@ -189,6 +320,22 @@ public sealed class LapHistoryRecord
 
     [JsonPropertyName("tires")]
     public List<LapHistoryTire> Tires { get; set; } = [];
+
+    /// <summary>
+    /// How the lap was driven, when a position trace was available. Null otherwise: an
+    /// imported lap has none and never will, so it degrades to a scalar target.
+    /// </summary>
+    [JsonPropertyName("referenceCurve")]
+    public LapReferenceCurve? ReferenceCurve { get; set; }
+
+    /// <summary>
+    /// Whether this lap can honestly drive a position-accurate delta. A reader has to be
+    /// able to tell the two tiers apart, and a curve that came back off disk truncated is no
+    /// more usable than no curve at all.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasReferenceCurve =>
+        ReferenceCurve is { PositionStep: > 0, TimesSeconds.Count: > 1 };
 
     /// <summary>Practice-program tag. Written once practice programs exist; null until then.</summary>
     [JsonPropertyName("programType")]

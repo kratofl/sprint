@@ -23,8 +23,17 @@ public sealed class LapHistoryRecorder
     private readonly Action<Action> _dispatch;
     private readonly ILog _log;
 
+    // Strictly-forward guard for the trace, so it stays a function of position.
+    private const double PositionEpsilon = 1e-6;
+
+    // The in-progress lap's position→time trace (#181). Held in memory and resampled once,
+    // at the crossing, so a lap's shape costs one list append per frame and nothing on the
+    // disk path mid-lap.
+    private readonly List<(double Position, double Time)> _samples = [];
+
     private LapHistorySession? _session;
     private int _lastSeenLap;
+    private int _sampledLap;
     private double? _fuelAtLastCrossing;
     private double? _energyAtLastCrossing;
 
@@ -74,12 +83,23 @@ public sealed class LapHistoryRecorder
         // reading that matters is the one in force as laps are being filed.
         _session.Conditions = MapConditions(frame.Conditions);
 
-        if (CompletedLap(frame) is not { } lap)
+        var completed = CompletedLap(frame);
+        if (completed is not null)
+        {
+            // The finished lap is resampled before this frame is sampled: at the line the
+            // position has already wrapped and the lap timer has reseeded, so this frame's
+            // sample belongs to the lap that is starting, not the one that just ended.
+            completed.ReferenceCurve = LapReferenceCurve.FromSamples(_samples, completed.LapTimeSeconds);
+        }
+
+        Sample(frame);
+
+        if (completed is null)
         {
             return;
         }
 
-        _session.Laps.Add(lap);
+        _session.Laps.Add(completed);
         Persist(_session);
     }
 
@@ -95,6 +115,8 @@ public sealed class LapHistoryRecorder
         finished.EndedAt = _clock();
         _session = null;
         _lastSeenLap = 0;
+        _sampledLap = 0;
+        _samples.Clear();
 
         // A session with no completed laps carries nothing a reader could use.
         if (finished.Laps.Count > 0)
@@ -212,6 +234,45 @@ public sealed class LapHistoryRecorder
         _fuelAtLastCrossing = fuel;
         _energyAtLastCrossing = energy;
         return record;
+    }
+
+    /// <summary>
+    /// Accumulates the in-progress lap's position→time trace, which the crossing resamples
+    /// into the lap's reference curve.
+    /// </summary>
+    private void Sample(TelemetryFrame frame)
+    {
+        // Out of the car the driver is in the monitor or the box. Splicing the stints either
+        // side of that onto one trace would describe a lap nobody drove, so the trace starts
+        // over and the completeness guard decides whether what is left still spans the lap.
+        if (!frame.Session.InCar)
+        {
+            _samples.Clear();
+            return;
+        }
+
+        // Any lap change starts a new trace, including one whose predecessor was never filed
+        // (no completed time): the position wrap would otherwise leave the whole next lap
+        // behind the previous trace's high-water mark and silently unsampled.
+        if (frame.Lap.CurrentLap != _sampledLap)
+        {
+            _samples.Clear();
+            _sampledLap = frame.Lap.CurrentLap;
+        }
+
+        // A non-finite reading compares false against everything, so keeping it would make
+        // every real sample after it look like backwards progress. Unlike the live delta, this
+        // trace is written down, and nothing reading it back could tell it was never real.
+        if (!float.IsFinite(frame.Lap.TrackPosition))
+        {
+            return;
+        }
+
+        var position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
+        if (_samples.Count == 0 || position > _samples[^1].Position + PositionEpsilon)
+        {
+            _samples.Add((position, Math.Max(frame.Lap.CurrentLapTime, 0)));
+        }
     }
 
     /// <summary>A channel the game did not fill reads as zero; that is unknown, not empty.</summary>

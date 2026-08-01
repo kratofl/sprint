@@ -114,7 +114,35 @@ of sessions. Two writers (the recorder, and later the results importer), one rea
     disk cannot stall the telemetry read that delivered the frame; a store failure is
     logged and dropped rather than propagated.
 
-Contract additions this rests on (#177 and this issue): `SessionInfo.CarClass`,
+### Per-lap reference curve (#181)
+
+Each lap the recorder writes carries a `LapReferenceCurve`: elapsed lap time resampled onto
+a fixed interval of 0.5 % of the track (201 points), so a lap chosen as a target can drive a
+position-accurate delta instead of a single number.
+
+- **Only the times are stored.** The position of index `i` is `i * PositionStep`, so the
+  corpus's largest field is not doubled to record numbers already known by construction.
+  Times are rounded to milliseconds — the resolution the sims report and the only resolution
+  a delta is shown at. Measured cost: **~3.2 KB of curve per lap** (~3.8 KB for the whole lap
+  record), with a test asserting a 4 KB/lap ceiling so a format change cannot quietly balloon it.
+- **`LapHistoryRecord.HasReferenceCurve` is the tier check.** Imported laps have no curve and
+  never will, so a reader can tell a delta-capable lap from a scalar-only one; a curve read
+  back empty or truncated reports the scalar tier rather than a false capability.
+- **A partial lap yields no curve at all**, never a misleading one. `FromSamples` returns null
+  unless the samples clear the live delta path's guards verbatim (≥ 8 samples, first ≤ 0.2,
+  last ≥ 0.8) **plus** a stored-curve-only guard: no interior gap over 5 % of the lap. The
+  delta path can tolerate a hole because its trace is only compared live and self-heals next
+  lap; this one is written down and re-read as "how the lap was driven", so interpolating a
+  straight line through corners nobody saw would be a lie on a driver's screen.
+- Invalid laps still get curves — validity is a target-*selection* rule (#184/#186), and an
+  invalid lap's shape is still a truthful record of how it was driven.
+- **The type says nothing about its producer**, so detailed trace capture (#101) can supersede
+  the recorder as the source without touching a single consumer.
+- The trace is accumulated in memory (one list append per frame), resampled once at the
+  crossing, and attached before the existing off-thread write — so nothing new touches the
+  telemetry path.
+
+Contract additions this rests on (#177 and #179): `SessionInfo.CarClass`,
 `TrackLengthMeters`, `TotalSessionTime`, `SessionTimeRemaining`,
 `LapState.LastLapSectorsSeconds`, and `TelemetryFrame.Conditions`. All mirrored in
 `packages/types`. Fuel and tyre multipliers stay null from Le Mans Ultimate: they live in
@@ -130,11 +158,12 @@ always-on path.
   auto-detect mode, capture rate, retention). Feeds `CreatePlanRequest` defaults.
 - **#50 fuel calculator** — consumes the **lap-history corpus** (not `LapSummary`) plus
   plan race length/reserve to estimate required liters per stint.
-- **#181 reference curve** — a position→time curve per recorded lap, written by the same
-  recorder; imported laps have none and degrade to a scalar target.
 - **#182/#185 results import** — the corpus's second writer, mapping `TrackCourse` and
   `CarType` onto the same context key.
-- **#184 corpus statistics** — median of real driven laps with sample size.
+- **#186 plan targets** — the (scope, statistic) selector over `LapHistoryStatistics`.
+- **#187 chart stack** — consumes the per-lap reference curve on a track-position domain.
+- **#189 dash delivery** — pushes a chosen lap's curve into `DeltaTracker` and scalar targets
+  into `target.*` bindings.
 - **#100 planner page + lifecycle UI** — a new primary sidebar page over
   `SessionPlannerService`; Start-now vs Arm-auto-start; Q/R segmented control.
 - **#102 online detection** — draft-suggestion vs auto-create-and-arm; populate

@@ -404,6 +404,255 @@ public sealed class LapHistoryTests
         Assert.Single(recorder.OpenSession!.Laps);
     }
 
+    [Fact]
+    public void ALapSprintRecordsItselfCarriesAPositionToTimeCurve()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.True(lap.HasReferenceCurve);
+        var curve = lap.ReferenceCurve!;
+        // ~0.5 % of the track: 200 intervals from the start of the lap to the finish line.
+        Assert.Equal(0.005, curve.PositionStep, precision: 6);
+        Assert.Equal(201, curve.TimesSeconds.Count);
+        // The lap was driven at constant speed, so elapsed time at position p is exactly
+        // p * lapTime — a closed form, not the resampler's own arithmetic.
+        Assert.Equal(30.0, curve.TimesSeconds[50], precision: 3);
+        Assert.Equal(60.0, curve.TimesSeconds[100], precision: 3);
+        Assert.Equal(90.0, curve.TimesSeconds[150], precision: 3);
+        Assert.Equal(119.4, curve.TimesSeconds[199], precision: 3);
+        Assert.Equal(120.0, curve.TimesSeconds[200], precision: 3);
+    }
+
+    [Fact]
+    public void ALapJoinedPartWayRoundIsRecordedWithNoCurveRatherThanAMisleadingOne()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // Joining a session in progress: the first half of the lap was never observed, so any
+        // curve over it would describe pace nobody saw.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0, fromPosition: 0.5);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        // The lap itself still counts — it is simply a scalar-only target.
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Equal(120.0, lap.LapTimeSeconds);
+        Assert.Null(lap.ReferenceCurve);
+        Assert.False(lap.HasReferenceCurve);
+    }
+
+    [Fact]
+    public void ALapWhoseTraceStopsLongBeforeTheLineGetsNoCurveEvenThoughItStartedCleanly()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // Observation ended at 60 % of the lap. Flattening the rest to the lap time would
+        // read as a car that stopped gaining time through the last third of the circuit.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0, toPosition: 0.6);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Null(lap.ReferenceCurve);
+        Assert.False(lap.HasReferenceCurve);
+    }
+
+    [Fact]
+    public void ALapSeenAtOnlyAHandfulOfPositionsGetsNoCurve()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // The ends look complete, but a 200-point curve stretched over four readings would
+        // invent every corner between them.
+        foreach (var position in new[] { 0.0, 0.3, 0.6, 0.9 })
+        {
+            recorder.Ingest(LapFrame(lap: 1, position, lapTime: position * 120.0));
+        }
+
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Null(lap.ReferenceCurve);
+        Assert.False(lap.HasReferenceCurve);
+    }
+
+    [Fact]
+    public void ATripToTheMonitorMidLapDropsTheTraceInsteadOfSplicingTwoStints()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // A quarter of the lap driven, then out of the cockpit, then back on track near the
+        // end of the same lap. Joining those two stretches would claim a lap nobody drove.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0, toPosition: 0.25);
+        recorder.Ingest(OutOfCarFrame(lap: 1, position: 0.25));
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0, fromPosition: 0.6);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Null(lap.ReferenceCurve);
+        Assert.False(lap.HasReferenceCurve);
+    }
+
+    [Fact]
+    public void ALapFollowingOneThatWasNeverFiledStillGetsItsOwnCurve()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // The first crossing carries no completed time, so that lap is never filed. The trace
+        // still has to start over at the line: otherwise the next lap's positions all sit
+        // behind the previous trace's furthest point and it is never sampled at all.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(LapFrame(lap: 2, position: 0, lapTime: 0));
+        DriveLap(recorder, lap: 2, lapTimeSeconds: 110.0);
+        recorder.Ingest(Crossing(lap: 3, lastLapTime: 110.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Equal(2, lap.LapNumber);
+        Assert.True(lap.HasReferenceCurve);
+        // Lap 2 was driven at constant speed to a 110 s total, so half distance is half of it.
+        Assert.Equal(55.0, lap.ReferenceCurve!.TimesSeconds[100], precision: 3);
+        Assert.Equal(110.0, lap.ReferenceCurve.TimesSeconds[200], precision: 3);
+    }
+
+    [Fact]
+    public void ARecordedCurveRoundTripsThroughTheLocalStore()
+    {
+        WithStore((store, root) =>
+        {
+            var recorder = NewRecorder(store);
+
+            DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+            recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+            var lap = Assert.Single(Assert.Single(new LocalLapHistoryStore(root).LoadAll()).Laps);
+            Assert.True(lap.HasReferenceCurve);
+            Assert.Equal(0.005, lap.ReferenceCurve!.PositionStep, precision: 6);
+            Assert.Equal(201, lap.ReferenceCurve.TimesSeconds.Count);
+            Assert.Equal(30.0, lap.ReferenceCurve.TimesSeconds[50], precision: 3);
+            Assert.Equal(90.0, lap.ReferenceCurve.TimesSeconds[150], precision: 3);
+            Assert.Equal(120.0, lap.ReferenceCurve.TimesSeconds[200], precision: 3);
+        });
+    }
+
+    [Fact]
+    public void ACurveCostsOnlyAFewKilobytesPerLapOnDisk()
+    {
+        WithStore((store, root) =>
+        {
+            var recorder = NewRecorder(store);
+
+            // A full practice run's worth of laps in one file: the curve is by far the largest
+            // per-lap field, so this is what decides whether the corpus stays cheap to keep.
+            for (var lap = 1; lap <= 20; lap++)
+            {
+                DriveLap(recorder, lap, lapTimeSeconds: 120.0);
+                recorder.Ingest(Crossing(lap + 1, lastLapTime: 120.0));
+            }
+
+            var session = Assert.Single(new LocalLapHistoryStore(root).LoadAll());
+            Assert.Equal(20, session.Laps.Count);
+            Assert.All(session.Laps, lap => Assert.True(lap.HasReferenceCurve));
+
+            var bytesPerLap = new FileInfo(Directory.EnumerateFiles(root, "*.json").Single()).Length
+                / session.Laps.Count;
+            Assert.InRange(bytesPerLap, 1, 4 * 1024);
+        });
+    }
+
+    [Fact]
+    public void ALapWithHalfOfItUnobservedGetsNoCurveEvenThoughItsEndsLookComplete()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // Lap 2 is seen crossing the line and seen again from half distance on, so its first
+        // and last samples do span the lap. Nothing in between was observed though, and a
+        // curve would draw a straight line through corners nobody saw.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+        DriveLap(recorder, lap: 2, lapTimeSeconds: 120.0, fromPosition: 0.5);
+        recorder.Ingest(Crossing(lap: 3, lastLapTime: 120.0));
+
+        var laps = Assert.Single(store.Sessions).Laps;
+        Assert.Equal(2, laps.Count);
+        Assert.True(laps[0].HasReferenceCurve);
+        Assert.Null(laps[1].ReferenceCurve);
+        Assert.False(laps[1].HasReferenceCurve);
+    }
+
+    [Fact]
+    public void AnImportedLapReportsNoCurveAndSoDoesOneThatCameBackEmpty()
+    {
+        WithStore((store, root) =>
+        {
+            var session = NewSession("hs-import", HistorySessionKind.Race);
+            session.Origin = LapHistoryOrigin.Imported;
+            session.Laps =
+            [
+                new LapHistoryRecord { LapNumber = 1, LapTimeSeconds = 130.5 },
+                // A results file can never carry a trace, and an empty curve is the same tier
+                // as none at all: neither may read as a lap that can drive a delta.
+                new LapHistoryRecord
+                {
+                    LapNumber = 2,
+                    LapTimeSeconds = 131.0,
+                    ReferenceCurve = new LapReferenceCurve(),
+                },
+            ];
+            store.Save(session);
+
+            var loaded = Assert.Single(new LocalLapHistoryStore(root).LoadAll());
+            Assert.Equal(LapHistoryOrigin.Imported, loaded.Origin);
+            Assert.Null(loaded.Laps[0].ReferenceCurve);
+            Assert.All(loaded.Laps, lap => Assert.False(lap.HasReferenceCurve));
+        });
+    }
+
+    [Fact]
+    public void SamplingALapNeverTouchesTheStoreUntilTheLapIsFiled()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+
+        // Hundreds of frames have been folded into the lap's shape in memory. Writing per
+        // sample instead of per lap would put the disk on the telemetry path a few hundred
+        // times a lap.
+        Assert.Equal(0, store.Saves);
+
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        Assert.Equal(1, store.Saves);
+    }
+
+    [Fact]
+    public void ANonFinitePositionIsIgnoredRatherThanCostingTheLapItsCurve()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        // A garbage reading at the start of the lap would otherwise become the trace's first
+        // sample and then swallow the whole lap: nothing compares true against NaN, so every
+        // real sample after it looks like backwards progress.
+        recorder.Ingest(LapFrame(lap: 1, position: double.NaN, lapTime: 0));
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.True(lap.HasReferenceCurve);
+        Assert.All(lap.ReferenceCurve!.TimesSeconds, time => Assert.True(double.IsFinite(time)));
+        Assert.Equal(60.0, lap.ReferenceCurve.TimesSeconds[100], precision: 3);
+    }
+
     private sealed class BlockingLapHistoryStore(
         ManualResetEventSlim release,
         ManualResetEventSlim writeStarted) : ILapHistoryStore
@@ -490,15 +739,80 @@ public sealed class LapHistoryTests
             Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = isValid },
         };
 
+    /// <summary>
+    /// Drives one lap at constant speed, so elapsed time at track position p is exactly
+    /// <c>p * lapTimeSeconds</c> and every resampled value has an independently known
+    /// expectation. Sampled finer than the curve's own interval so each curve point is
+    /// bracketed by real samples, and on an interval that does not line up with the curve's,
+    /// so the interpolation is actually exercised rather than hitting samples head-on.
+    /// </summary>
+    private static void DriveLap(
+        LapHistoryRecorder recorder,
+        int lap,
+        double lapTimeSeconds,
+        double fromPosition = 0.0,
+        double toPosition = 1.0,
+        double sampleStep = 0.003)
+    {
+        for (var i = 0; ; i++)
+        {
+            var position = fromPosition + (i * sampleStep);
+            if (position >= toPosition)
+            {
+                return;
+            }
+
+            recorder.Ingest(LapFrame(lap, position, position * lapTimeSeconds));
+        }
+    }
+
+    /// <summary>
+    /// The start/finish frame: position has wrapped and the lap timer has already reseeded
+    /// to the new lap, so the finished lap's total only lives in <c>LastLapTime</c>.
+    /// </summary>
+    private static TelemetryFrame Crossing(int lap, double lastLapTime) =>
+        LapFrame(lap, position: 0, lapTime: 0, lastLapTime);
+
+    /// <summary>A frame from the monitor or the garage: still the same lap, but not driven.</summary>
+    private static TelemetryFrame OutOfCarFrame(int lap, double position)
+    {
+        var frame = LapFrame(lap, position, lapTime: position * 120.0);
+        return frame with { Session = frame.Session with { InCar = false } };
+    }
+
+    private static TelemetryFrame LapFrame(
+        int lap,
+        double position,
+        double lapTime,
+        double lastLapTime = 0)
+    {
+        var frame = Frame(SessionType.Practice, lap, lastLapTime);
+        return frame with
+        {
+            Lap = frame.Lap with
+            {
+                TrackPosition = (float)position,
+                CurrentLapTime = lapTime,
+            },
+        };
+    }
+
     private sealed class CollectingLapHistoryStore : ILapHistoryStore
     {
         private readonly Dictionary<string, LapHistorySession> _sessions = [];
 
         public IReadOnlyCollection<LapHistorySession> Sessions => _sessions.Values;
 
+        /// <summary>How often the disk was asked for, not how many sessions exist.</summary>
+        public int Saves { get; private set; }
+
         public IReadOnlyList<LapHistorySession> LoadAll() => [.. _sessions.Values];
 
-        public void Save(LapHistorySession session) => _sessions[session.Id] = session;
+        public void Save(LapHistorySession session)
+        {
+            Saves++;
+            _sessions[session.Id] = session;
+        }
 
         public void Delete(string sessionId) => _sessions.Remove(sessionId);
     }
