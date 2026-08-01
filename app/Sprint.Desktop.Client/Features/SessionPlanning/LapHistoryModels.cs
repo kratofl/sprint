@@ -121,7 +121,12 @@ public sealed class LapHistorySession
     [JsonPropertyName("conditions")]
     public LapHistoryConditions Conditions { get; set; } = new();
 
-    /// <summary>The setup the session was driven with, once confirmed. Null while unknown.</summary>
+    /// <summary>
+    /// The setup the session was driven with, once the driver confirmed it (#188): a captured
+    /// snapshot's id, or <c>SetupAssociation.Unknown</c> when it could not be identified. Null
+    /// while nobody has been asked — the state that may still be asked about, and the only one
+    /// that is not an answer.
+    /// </summary>
     [JsonPropertyName("setupReference")]
     public string? SetupReference { get; set; }
 

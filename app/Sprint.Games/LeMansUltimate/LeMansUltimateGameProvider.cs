@@ -1,13 +1,13 @@
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Games.LeMansUltimate.Results;
+using Sprint.Games.LeMansUltimate.Setups;
 
 namespace Sprint.Games.LeMansUltimate;
 
 /// <summary>
-/// Le Mans Ultimate as a game provider. Setups (#188) are implemented by their own ticket and
-/// stay null until then; the sim publishes its weekly schedule only to its own in-game UI, so
-/// the schedule capability has nothing to read.
+/// Le Mans Ultimate as a game provider. The sim publishes its weekly schedule only to its own
+/// in-game UI, so the schedule capability has nothing to read.
 /// </summary>
 internal sealed class LeMansUltimateGameProvider : IGameProvider
 {
@@ -23,11 +23,21 @@ internal sealed class LeMansUltimateGameProvider : IGameProvider
         return directory.Length == 0 ? null : new LmuResultsImporter(directory);
     });
 
+    private readonly Lazy<ISetupRepository?> _setups = new(() =>
+    {
+        var directory = LmuSetupRepository.DefaultSetupsPath();
+
+        // As with results: no Steam library on this platform means there is nothing to read.
+        // A driver who has saved no setups yet has an empty folder, and that repository lists
+        // nothing while still naming the root a watcher should observe.
+        return directory.Length == 0 ? null : new LmuSetupRepository(directory);
+    });
+
     public GameDescriptor Descriptor => LeMansUltimateGameData.Descriptor;
 
     public IResultsImporter? Results => _results.Value;
 
-    public ISetupRepository? Setups => null;
+    public ISetupRepository? Setups => _setups.Value;
 
     public IScheduleSource? Schedule => null;
 

@@ -46,6 +46,19 @@ public sealed record GameSetupSnapshot(
 public interface ISetupRepository
 {
     /// <summary>
+    /// The directory whose subtree holds the setups, so a host that wants to notice a save can
+    /// watch it. Null when the game's setups are not one watchable tree.
+    /// </summary>
+    /// <remarks>
+    /// A path rather than a change event (#188): a watcher has a lifetime, a thread, a debounce
+    /// and a re-scan policy, and making every repository own one would put all of that behind a
+    /// capability that is otherwise a pure reader. The host owns the watcher, points it here,
+    /// and calls <see cref="ListSetups"/> again when it fires — which is also the only way the
+    /// repository stays usable from a test with no watcher at all.
+    /// </remarks>
+    string? WatchRoot { get; }
+
+    /// <summary>
     /// Every stored setup, most recently modified first. Empty when the game has no setups
     /// stored yet, which is not an error.
     /// </summary>

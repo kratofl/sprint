@@ -58,6 +58,31 @@ history file — reference curves included — once a second. The cache is dropp
 than patched, and sharing one instance is what makes a recorder write invalidate the page's
 view; two stores would let the corpus grow behind the cache's back.
 
+## Setup capture and session association (#188) — implemented
+
+- **`LmuSetupRepository`** implements the #180 `Setups` capability over
+  `UserData/player/Settings/**/*.svm`, returning Sprint records. Values are the sim's
+  **indices**, stored verbatim: rendering "rear wing = 7 clicks" needs vehicle data the file
+  does not carry, so nothing pretends to.
+- **`ISetupRepository.WatchRoot`** is the one member #188 added. A change *event* would put a
+  watcher's lifetime, threading, debounce and re-scan policy behind what is otherwise a pure
+  reader, and force every future game to own one; a path is data, so the host runs one watcher
+  and calls `ListSetups()` again when it fires — which is also what keeps the repository
+  drivable from a test with no filesystem events.
+- **`SetupCaptureService`** snapshots on change and **dedupes by content** (a content digest
+  id, so an identical re-save adds nothing and a single changed click adds one version).
+  Promotion into the vault stays an explicit user action.
+- **`SetupAssociationService`** proposes the most recently modified setup matching car and
+  track and carries the observed vs stated brake bias for the driver to judge — it *displays*
+  the plausibility check rather than deciding on it, because converting an index to a fraction
+  needs vehicle data the `.svm` does not contain.
+- **`SetupReference` has three states**, not two: `null` (nobody asked yet — may still be
+  asked), `"unknown"` (asked and unidentifiable — never re-guessed), or a snapshot id.
+
+**Not done in this issue:** the confirmation dialog and its screenshots, and the watcher
+itself. Both need a host trigger the ticket leaves unbuilt, and wiring capture into the
+runtime would make the headless UI review scan a real game install. Export is #190.
+
 ## Chart stack (#187) — implemented
 
 `app/Sprint.Desktop.Client/Features/Charts/`. Several charts stacked vertically over **one**
