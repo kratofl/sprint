@@ -1,5 +1,6 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -447,6 +448,40 @@ public sealed class SessionPlannerPageTests
 
         Assert.Equal("Race length must be a number.", draft.Error);
         Assert.True(draft.FuelExpanded);
+    }
+
+    [Fact]
+    public void PrefillResolvesTheCarWhileTheDriverIsStillInTheLobby()
+    {
+        var remembered = new LastSeenContext();
+        // The pre-cockpit frame: scoring knows the game, track and selected car, and says
+        // the driver is not in the car yet.
+        var lobby = new SessionInfo
+        {
+            Game = "Le Mans Ultimate",
+            Track = "Spa",
+            Car = "Porsche 963",
+            InCar = false,
+        };
+
+        var changed = PlanContextCapture.Remember(remembered, lobby);
+
+        Assert.True(changed);
+        Assert.Equal("Le Mans Ultimate", remembered.Game);
+        Assert.Equal("Spa", remembered.Track);
+        Assert.Equal("Porsche 963", remembered.Car);
+    }
+
+    [Fact]
+    public void AFrameThatReportsNoCarCannotEraseTheRememberedOne()
+    {
+        var remembered = new LastSeenContext { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963" };
+
+        var changed = PlanContextCapture.Remember(remembered, new SessionInfo { Game = "Le Mans Ultimate" });
+
+        Assert.False(changed);
+        Assert.Equal("Porsche 963", remembered.Car);
+        Assert.Equal("Spa", remembered.Track);
     }
 
     private sealed class StubFuelHistory(bool hasHistory) : IFuelHistorySource

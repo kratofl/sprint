@@ -6,8 +6,15 @@ export interface Session {
   game: string
   track: string
   car: string
+  carClass: string // car class as the game states it (e.g. 'Hypercar'); '' when unknown
   sessionType: SessionType
-  sessionTime: number
+  sessionTime: number // seconds elapsed in the session
+  // Total length of a timed session in seconds. null when the session is lap-based or the
+  // game reports an implausible value — unknown, never a number to plan against.
+  totalSessionTime: number | null
+  // Seconds left in a timed session; null whenever totalSessionTime is null, since a
+  // remainder without a total describes nothing.
+  sessionTimeRemaining: number | null
   bestLapTime: number
   maxLaps: number // total laps for this session; 0 for time-based sessions
   inCar: boolean  // true only when the player has an active vehicle on track

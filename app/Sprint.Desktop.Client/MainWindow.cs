@@ -918,33 +918,10 @@ public sealed class MainWindow : Window
     }
 
     // Remember the game/car/track telemetry last reported so a new plan can be prefilled
-    // before the user is in a car. Each field is only overwritten by a non-empty value, so a
-    // frame that reports a game but no car cannot erase a known car. Saves only on a change.
+    // before the user is in a car. The rule lives in PlanContextCapture; saves only on a change.
     private void CaptureLastSeenContext(TelemetryFrame frame)
     {
-        var session = frame.Session;
-        var context = _runtime.Settings.LastSeenContext;
-        var changed = false;
-
-        if (!string.IsNullOrWhiteSpace(session.Game) && context.Game != session.Game)
-        {
-            context.Game = session.Game;
-            changed = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(session.Car) && context.Car != session.Car)
-        {
-            context.Car = session.Car;
-            changed = true;
-        }
-
-        if (!string.IsNullOrWhiteSpace(session.Track) && context.Track != session.Track)
-        {
-            context.Track = session.Track;
-            changed = true;
-        }
-
-        if (changed)
+        if (PlanContextCapture.Remember(_runtime.Settings.LastSeenContext, frame.Session))
         {
             _runtime.SaveSettings();
         }

@@ -51,7 +51,7 @@ internal sealed class LmuTelemetryMapper
         var playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
         if (!playerIsRealtime)
         {
-            return SessionOnlyFrame(parsed.ScoringInfo);
+            return SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle);
         }
 
         var telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
@@ -76,8 +76,11 @@ internal sealed class LmuTelemetryMapper
                 Game = GameName,
                 Track = parsed.ScoringInfo.TrackName,
                 Car = telemetry.VehicleName,
+                CarClass = scoring.VehicleClass,
                 SessionType = MapSessionType(parsed.ScoringInfo.Session),
                 SessionTime = ToF64(parsed.ScoringInfo.CurrentElapsedTime),
+                TotalSessionTime = PlausibleSessionLength(parsed.ScoringInfo.EndElapsedTime),
+                SessionTimeRemaining = PlausibleTimeRemaining(parsed.ScoringInfo),
                 BestLapTime = ToF64(scoring.BestLapTime),
                 MaxLaps = parsed.ScoringInfo.MaxLaps,
                 InCar = true
@@ -151,7 +154,7 @@ internal sealed class LmuTelemetryMapper
         };
     }
 
-    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo)
+    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle)
     {
         return new TelemetryFrame
         {
@@ -160,8 +163,14 @@ internal sealed class LmuTelemetryMapper
             {
                 Game = GameName,
                 Track = scoringInfo.TrackName,
+                // Scoring knows the driver's selection in the lobby, so prefill and history
+                // lookup work before the cockpit exists.
+                Car = playerVehicle?.VehicleName ?? "",
+                CarClass = playerVehicle?.VehicleClass ?? "",
                 SessionType = MapSessionType(scoringInfo.Session),
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
+                TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
+                SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
                 MaxLaps = scoringInfo.MaxLaps,
                 InCar = false
             }
@@ -458,6 +467,39 @@ internal sealed class LmuTelemetryMapper
     }
 
     private static float KelvinToCelsius(double kelvin) => ToF32(kelvin - KelvinOffset);
+
+    /// <summary>
+    /// The longest session length worth believing. Endurance racing legitimately reaches
+    /// 24 hours, so the ceiling sits above that with room to spare; anything beyond it is
+    /// the game's way of saying "no time limit" rather than a real duration.
+    /// </summary>
+    private const double MaxPlausibleSessionSeconds = 30 * 60 * 60;
+
+    /// <summary>
+    /// A session length only survives if it could describe a real timed session. Zero,
+    /// negative, non-finite and absurd values become null (unknown) instead of a number a
+    /// fuel estimate would silently trust.
+    /// </summary>
+    private static double? PlausibleSessionLength(double value) =>
+        double.IsFinite(value) && value > 0 && value <= MaxPlausibleSessionSeconds
+            ? value
+            : null;
+
+    /// <summary>
+    /// Time left in the session, reported only when the session has a believable length: a
+    /// remainder without a total describes nothing, and a lap-based session's field is
+    /// leftover noise rather than a countdown.
+    /// </summary>
+    private static double? PlausibleTimeRemaining(LmuScoringInfo scoringInfo)
+    {
+        if (PlausibleSessionLength(scoringInfo.EndElapsedTime) is not { } total)
+        {
+            return null;
+        }
+
+        var remaining = scoringInfo.SessionTimeRemaining;
+        return float.IsFinite(remaining) && remaining >= 0 && remaining <= total ? remaining : null;
+    }
 
     private static double ClampNonNegative(double value) => value < 0 ? 0 : value;
 

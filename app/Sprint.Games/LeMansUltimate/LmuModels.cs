@@ -55,6 +55,15 @@ internal sealed record LmuVehicleTelemetry
 
 internal sealed record LmuVehicleScoring
 {
+    /// <summary>mVehicleName: available from scoring, so it exists before the cockpit does.</summary>
+    public string VehicleName { get; init; } = "";
+
+    /// <summary>mVehicleClass, e.g. "Hypercar".</summary>
+    public string VehicleClass { get; init; } = "";
+
+    /// <summary>mIsPlayer: the sim stating which entry belongs to the player.</summary>
+    public bool IsPlayer { get; init; }
+
     public double BestLapTime { get; init; }
     public double LastLapTime { get; init; }
     public short PitStops { get; init; }
@@ -77,6 +86,12 @@ internal sealed record LmuScoringInfo
     public string TrackName { get; init; } = "";
     public int Session { get; init; }
     public double CurrentElapsedTime { get; init; }
+
+    /// <summary>mEndET: the session's ending time, i.e. its total length for a timed session.</summary>
+    public double EndElapsedTime { get; init; }
+
+    /// <summary>mSessionTimeRemaining: seconds left in a timed session.</summary>
+    public float SessionTimeRemaining { get; init; }
     public int MaxLaps { get; init; }
     public double LapDistance { get; init; }
     public int NumVehicles { get; init; }
@@ -91,5 +106,12 @@ internal sealed record LmuParsedFrame
     public required int PlayerIndex { get; init; }
     public LmuVehicleTelemetry? Telemetry { get; init; }
     public LmuVehicleScoring? Scoring { get; init; }
+
+    /// <summary>
+    /// The player's scoring entry as found in the vehicle array, resolved from mIsPlayer
+    /// rather than from the telemetry block's player index. Present before the driver is in
+    /// the cockpit — which is the only place the lobby car can come from.
+    /// </summary>
+    public LmuVehicleScoring? PlayerVehicle { get; init; }
     public bool PlayerInCar => PlayerHasVehicle && ScoringInfo.InRealtime && Telemetry is not null && Scoring is not null;
 }

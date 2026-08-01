@@ -284,7 +284,7 @@ public sealed class TelemetryEngineTests
         WriteDouble(buffer, scoringInfo + 68, 200.0);  // CurrentElapsedTime
         WriteDouble(buffer, scoringInfo + 88, 7004.0); // track LapDistance (>0 so TrackPosition advances)
         WriteInt32(buffer, scoringInfo + 104, 1);      // NumVehicles
-        WriteBool(buffer, scoringInfo + 114, true);    // InRealtime
+        WriteBool(buffer, scoringInfo + 115, true);    // InRealtime
 
         buffer[LmuBinary.PlayerIndexOffset] = 0;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);

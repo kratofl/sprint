@@ -17,6 +17,9 @@ public sealed class LeMansUltimateTelemetryTests
     private static void WriteDouble(byte[] buffer, int offset, double value) =>
         BitConverter.TryWriteBytes(buffer.AsSpan(offset, sizeof(double)), value);
 
+    private static void WriteSingle(byte[] buffer, int offset, float value) =>
+        BitConverter.TryWriteBytes(buffer.AsSpan(offset, sizeof(float)), value);
+
     private static void WriteBool(byte[] buffer, int offset, bool value) =>
         buffer[offset] = value ? (byte)1 : (byte)0;
 
@@ -40,6 +43,163 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(128466, LmuBinary.PlayerHasVehicleOffset);
         Assert.Equal(128468, LmuBinary.TelemetryInfoBase);
         Assert.Equal(324820, LmuBinary.TotalBufferSize);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_total_session_time_separately_from_elapsed_time()
+    {
+        var buffer = EmptyLmuBuffer();
+        // mCurrentET (elapsed) @68 and mEndET (total) @76, per ScoringInfoV01 under
+        // #pragma pack(4) — the layout whose field walk also reproduces the struct's
+        // documented 548-byte size.
+        WriteDouble(buffer, LmuBinary.ScoringStart + 68, 300.0);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(300.0, frame.Session.SessionTime);
+        Assert.Equal(5400.0, frame.Session.TotalSessionTime);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-120.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(200000.0)]
+    public void Lmu_source_reports_an_implausible_session_length_as_unknown(double endElapsedTime)
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteDouble(buffer, LmuBinary.ScoringStart + 68, 300.0);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 76, endElapsedTime);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Null(frame.Session.TotalSessionTime);
+    }
+
+    [Fact]
+    public void Lmu_source_keeps_a_twenty_four_hour_race_as_a_plausible_session_length()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteDouble(buffer, LmuBinary.ScoringStart + 76, 24 * 60 * 60.0);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(86400.0, frame.Session.TotalSessionTime);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_the_time_remaining_in_a_timed_session()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteDouble(buffer, LmuBinary.ScoringStart + 68, 4200.0);
+        WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
+        // mSessionTimeRemaining @340, reached by walking ScoringInfoV01 under pack(4);
+        // the same walk lands the trailing vehicle pointer exactly on the struct's
+        // documented 548-byte size.
+        WriteSingle(buffer, LmuBinary.ScoringStart + 340, 1200.5f);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(1200.5, frame.Session.SessionTimeRemaining!.Value, precision: 3);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_no_time_remaining_when_the_session_has_no_known_length()
+    {
+        var buffer = EmptyLmuBuffer();
+        // A lap-based session: 31 laps, no end time. Whatever the remaining-time field
+        // holds is leftover noise, not a countdown.
+        WriteInt32(buffer, LmuBinary.ScoringStart + 84, 31);
+        WriteSingle(buffer, LmuBinary.ScoringStart + 340, 900f);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(31, frame.Session.MaxLaps);
+        Assert.Null(frame.Session.TotalSessionTime);
+        Assert.Null(frame.Session.SessionTimeRemaining);
+    }
+
+    [Theory]
+    [InlineData(-30f)]
+    [InlineData(float.NaN)]
+    [InlineData(9000f)]
+    public void Lmu_source_reports_an_implausible_time_remaining_as_unknown(float remaining)
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteDouble(buffer, LmuBinary.ScoringStart + 76, 5400.0);
+        WriteSingle(buffer, LmuBinary.ScoringStart + 340, remaining);
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.Equal(5400.0, frame.Session.TotalSessionTime);
+        Assert.Null(frame.Session.SessionTimeRemaining);
+    }
+
+    [Fact]
+    public void Lmu_parser_reads_in_realtime_rather_than_the_start_light_count()
+    {
+        var buffer = EmptyLmuBuffer();
+        // mNumRedLights @114 is a track property and is routinely non-zero, so reading it
+        // as mInRealtime @115 claims the driver is on track whenever they are at the
+        // monitor with a car assigned — and hands stale telemetry to every consumer.
+        buffer[LmuBinary.ScoringStart + 114] = 5;
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, false);
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        var parsed = LmuParser.Parse(buffer);
+
+        Assert.False(parsed.ScoringInfo.InRealtime);
+        Assert.False(parsed.PlayerInCar);
+    }
+
+    [Fact]
+    public void Lmu_mapper_carries_the_car_class_from_scoring_while_in_car()
+    {
+        var mapper = new LmuTelemetryMapper();
+        var parsed = CreateInCarParsedFrame(lapNumber: 3) with
+        {
+            Scoring = new LmuVehicleScoring
+            {
+                VehicleClass = "Hypercar",
+                LapDistance = 3502.0,
+                CountLapFlag = 2
+            }
+        };
+
+        var frame = mapper.Map(parsed);
+
+        Assert.Equal("Peugeot 9X8", frame.Session.Car);
+        Assert.Equal("Hypercar", frame.Session.CarClass);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_the_lobby_car_before_the_driver_enters_the_cockpit()
+    {
+        var buffer = EmptyLmuBuffer();
+        WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 3);
+        // The player is the third entry in the lobby and the sim says so with mIsPlayer,
+        // so the car is available from scoring with no cockpit and no telemetry block.
+        var playerVehicle = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
+        WriteString(buffer, playerVehicle + 36, 64, "Porsche 963");
+        WriteBool(buffer, playerVehicle + 196, true);
+        WriteString(buffer, playerVehicle + 200, 32, "Hypercar");
+        using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out var frame));
+        Assert.False(frame.Session.InCar);
+        Assert.Equal("Spa", frame.Session.Track);
+        Assert.Equal("Porsche 963", frame.Session.Car);
+        Assert.Equal("Hypercar", frame.Session.CarClass);
     }
 
     [Fact]
@@ -108,7 +268,7 @@ public sealed class LeMansUltimateTelemetryTests
     public void Lmu_source_exposes_driver_inputs_instead_of_filtered_vehicle_controls()
     {
         var buffer = EmptyLmuBuffer();
-        WriteBool(buffer, LmuBinary.ScoringStart + 114, true);
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
         buffer[LmuBinary.PlayerIndexOffset] = 0;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
@@ -154,7 +314,7 @@ public sealed class LeMansUltimateTelemetryTests
         WriteInt32(buffer, LmuBinary.ScoringStart + 84, 31);
         WriteDouble(buffer, LmuBinary.ScoringStart + 88, 4563.2);
         WriteInt32(buffer, LmuBinary.ScoringStart + 104, 42);
-        WriteBool(buffer, LmuBinary.ScoringStart + 114, false);
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, false);
         buffer[LmuBinary.PlayerIndexOffset] = 3;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
 
@@ -183,7 +343,7 @@ public sealed class LeMansUltimateTelemetryTests
         WriteDouble(buffer, scoringInfo + 68, 200.0);
         WriteDouble(buffer, scoringInfo + 88, 7004.0);
         WriteInt32(buffer, scoringInfo + 104, 30);
-        WriteBool(buffer, scoringInfo + 114, true);
+        WriteBool(buffer, scoringInfo + 115, true);
 
         buffer[LmuBinary.PlayerIndexOffset] = 2;
         WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);

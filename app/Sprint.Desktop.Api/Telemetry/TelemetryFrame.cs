@@ -25,8 +25,31 @@ public sealed record SessionInfo
     public string Game { get; init; } = "";
     public string Track { get; init; } = "";
     public string Car { get; init; } = "";
+
+    /// <summary>
+    /// The car's class as the game states it (e.g. "Hypercar"), empty when unknown. Kept
+    /// beside <see cref="Car"/> so history can record class as metadata without making it
+    /// part of a context key.
+    /// </summary>
+    public string CarClass { get; init; } = "";
     public SessionType SessionType { get; init; } = SessionType.Unknown;
+
+    /// <summary>Seconds elapsed in the current session.</summary>
     public double SessionTime { get; init; }
+
+    /// <summary>
+    /// Total length of a timed session in seconds, or null when the game does not report
+    /// one (a lap-based session) or reports an implausible value. Null means unknown — a
+    /// planner must ask rather than commit a number nobody can vouch for.
+    /// </summary>
+    public double? TotalSessionTime { get; init; }
+
+    /// <summary>
+    /// Seconds left in a timed session, or null when the session has no known length. Only
+    /// meaningful alongside <see cref="TotalSessionTime"/>: without a total there is
+    /// nothing for a remainder to be a remainder of.
+    /// </summary>
+    public double? SessionTimeRemaining { get; init; }
     public double BestLapTime { get; init; }
     public int MaxLaps { get; init; }
     public bool InCar { get; init; }
