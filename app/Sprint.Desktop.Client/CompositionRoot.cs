@@ -46,8 +46,6 @@ internal static class CompositionRoot
 
     internal static ITelemetrySource CreateTelemetrySource()
     {
-        var descriptor = GameTelemetryPackage.SupportedGames.First(game =>
-            !game.Id.Equals("demo", StringComparison.OrdinalIgnoreCase));
-        return GameTelemetryPackage.CreateSource(descriptor);
+        return GameProviders.Default.CreateTelemetrySource();
     }
 }

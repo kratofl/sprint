@@ -94,7 +94,10 @@ Games are added entirely within the desktop solution:
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`Sprint.Games`**,
    mapping the game's shared memory / structs to `TelemetryFrame`. Keep all
    game-specific knowledge here.
-2. Add a `GameDescriptor` and wire it into `GameTelemetryPackage.CreateSource`.
+2. Implement `IGameProvider` (in `Sprint.Desktop.Api/Games`) and register it in
+   `GameProviders`. `Descriptor` and `CreateTelemetrySource()` are required; the
+   `Results`, `Setups` and `Schedule` capabilities are optional and return `null`
+   when the game cannot do them, so discovery is a null check.
 3. Select it in `CompositionRoot.CreateMainWindow` (a per-launch game-picker UI is
    a follow-up). The engine, dash painter, hardware pipeline, and UI consume the
    shared contract and need no other changes.

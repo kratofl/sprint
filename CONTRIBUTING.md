@@ -124,7 +124,8 @@ See the [README](README.md#adding-a-new-game) for the step-by-step guide. In sho
 
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in `app/Sprint.Games`,
    mapping the game's shared memory / structs to `TelemetryFrame`
-2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`
+2. Implement `IGameProvider` and register it in `GameProviders`; return `null` from
+   the optional `Results`/`Setups`/`Schedule` capabilities the game cannot support
 3. Wire it into the composition root (see
    [`app/README.md`](app/README.md#adding-a-game-desktop))
 

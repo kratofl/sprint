@@ -159,7 +159,10 @@ Games are added to the desktop app (.NET/Avalonia):
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`app/Sprint.Games`**,
    mapping the game's shared memory / structs to `TelemetryFrame`. Keep all
    game-specific knowledge here.
-2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`.
+2. Implement `IGameProvider` (also from `Sprint.Desktop.Api`) and register it in
+   `GameProviders`. Its `Descriptor` plus `CreateTelemetrySource()` are required;
+   the `Results`, `Setups` and `Schedule` capabilities are optional — return
+   `null` for whatever the game cannot do, and the UI adapts.
 3. Wire it into the composition root. Full steps in
    [`app/README.md`](app/README.md#adding-a-game-desktop).
 

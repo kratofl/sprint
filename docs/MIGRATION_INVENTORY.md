@@ -213,8 +213,8 @@ Design intent that is uncontested regardless of which palette wins:
 | Item | Status | Detail |
 | --- | --- | --- |
 | `DemoTelemetrySource` | implemented | Deterministic simulator for dev/test. It remains a non-parity source and no longer fakes delta. |
-| `GameDescriptor` | implemented | Record (Id, Name, Transport, Available) for the supported-games list. |
-| `GameTelemetryPackage` | implemented | Exposes `SupportedGames`, `CreateDemoSource()`, and `CreateSource(descriptor)` for LMU or demo. |
+| `GameDescriptor` | implemented | Record (Id, Name, Transport, Available). Moved to `Sprint.Desktop.Api/Games` with the provider layer (#180), since the contract project cannot reference `Sprint.Games`. |
+| `IGameProvider` + `GameProviders` | implemented | One provider per game (#180): `Descriptor` and `CreateTelemetrySource()` required, `Results`/`Setups`/`Schedule` optional and `null` when unsupported, so discovery is a null check. `GameTelemetryPackage` now only exposes `CreateDemoSource()` as the dev/test seam. |
 | LeMansUltimate adapter | implemented | `LeMansUltimateTelemetrySource`, `LmuParser`, `LmuTelemetryMapper`, `WindowsLmuSharedMemoryProvider`, and test `InMemoryLmuSnapshotProvider` map LMU shared-memory snapshots to `TelemetryFrame` and truthful status. |
 
 ### Tests
@@ -284,7 +284,7 @@ fidelity/persistence/threading) · **Missing** (no .NET impl) · **Stub/Placehol
 | Le Mans Ultimate adapter (LMU_Data shm, ~100Hz, struct decode → frame) | `pkg/games/lemansultimate/adapter.go`, `structs.go` | **Done** | WS4 | P0 | WS4/US15,US16 | `LeMansUltimateTelemetrySource` (+ `LmuParser`/`LmuTelemetryMapper`): synchronous memcpy+decode→frame, maps shm/decode failures to WaitingForGame/PermissionDenied/Unsupported/Faulted. Driven end-to-end through `TelemetryEngine` over a synthetic `InMemoryLmuSnapshotProvider` in tests; live GUI verification still pending a running game. |
 | LMU binary struct layout (`_pack_=4` mirror) | `lemansultimate/structs.go` | **Done** | WS4 | P0 | WS4/US16 | `LmuBinary` + `LmuModels` mirror the SharedMemoryInterface layout; offsets pinned by tests. |
 | Cross-platform shared-memory reader (Win OpenFileMapping / Linux /dev/shm) | `pkg/shm/*.go` | **Done (Windows)** | WS4 | P0 | WS4/US15 | `WindowsLmuSharedMemoryProvider` (MemoryMappedFile.OpenExisting) + `InMemoryLmuSnapshotProvider` (tests). Linux `/dev/shm` still deferred (best-effort). |
-| `CreateSource(descriptor)` factory | (gap) `GameTelemetryPackage` | **Done** | WS4 | P0 | WS4/US15 | `GameTelemetryPackage.CreateSource(descriptor)` instantiates LMU or demo by id; unknown id throws. CompositionRoot still defaults to demo (game-selection UI is a follow-up). |
+| `CreateSource(descriptor)` factory | (gap) `GameTelemetryPackage` | **Done** | WS4 | P0 | WS4/US15 | Superseded by the provider layer (#180): `GameProviders.Find(id)`/`Default` resolve an `IGameProvider` and `CreateTelemetrySource()` builds the source. The old `if`-chain factory is gone. CompositionRoot uses `GameProviders.Default` (game-selection UI is still a follow-up). |
 | Demo telemetry source (dev/test only) | (new) `DemoTelemetrySource` | Done | WS4 | P2 | WS4/US15 | Keep as dev/test adapter; **not** real-game parity. |
 | Engineer contract DTO (commands/events) | `pkg/dto/engineer.go` | Done | WS9 | P2 | WS9/US19,US20 | Shared contract shapes exist in Api; staged-change client behavior is implemented. Real cross-surface transport remains deferred. |
 

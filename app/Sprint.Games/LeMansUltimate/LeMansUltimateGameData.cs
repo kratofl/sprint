@@ -1,3 +1,5 @@
+using Sprint.Desktop.Api.Games;
+
 namespace Sprint.Games.LeMansUltimate;
 
 internal static class LeMansUltimateGameData
