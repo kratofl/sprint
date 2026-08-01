@@ -29,6 +29,36 @@ Location: `app/Sprint.Desktop.Client/Features/SessionPlanning`.
 Tests: `app/Sprint.Desktop.Tests/SessionPlannerTests.cs` (store round-trip, corrupt-
 file isolation, lifecycle, single-slot enforcement, ingestion, crash reconcile).
 
+## Le Mans Ultimate results import (#182) — implemented
+
+The corpus's **second writer**. `LmuResultsImporter` implements `IResultsImporter` over
+`UserData\Log\Results\*.xml` (wrapping the existing `LmuResultsReader`/`LmuResultsParser`),
+and `LapHistoryImportService` maps `ImportedSession` → `LapHistorySession` with
+`Origin = Imported` and writes through `ILapHistoryStore`.
+
+- **XML is an import path, never a query path.** The planner always reads Sprint records; no
+  game-native type escapes the importer.
+- **The join keys are the whole game.** The importer maps `TrackCourse` (the layout, never
+  `TrackVenue`) and `CarType` (the model) onto the same context key the live recorder writes,
+  with `CarClass` as metadata. This is pinned by a test that runs a synthetic live frame
+  through `LmuTelemetryMapper` **and** the real recorder, imports the XML into the same store,
+  and resolves `LapHistoryStatistics` over both — so if the two writers ever disagree about
+  game name, course or model, that test fails instead of the corpus silently halving.
+  `LeMansUltimateGameData.GameName` is the single constant both writers stamp.
+- **A file that cannot be keyed is not filed.** No `TrackCourse`, no `CarType` or no player
+  entry → the session is skipped and logged, rather than filed under the venue: a venue-keyed
+  bucket can never be joined by the recorder, so those laps would exist joined to nothing.
+- **Idempotency is the id.** The natural key *is* the corpus id
+  (`imported-{game}-{course}-{kind}-{timestamp}-{player}`, each part slugged), so a re-import
+  cannot write a second copy. No hashing.
+- **What the archive never states stays null:** fuel, virtual energy, conditions, setup, end
+  time, and the reference curve — so imported laps report `HasReferenceCurve == false` and
+  degrade honestly to scalar targets. Tyres carry compound only. Untimed laps are dropped
+  rather than written as a zero that would poison every median; top speed *is* carried.
+
+The startup scan, the path+size+last-write ledger, the decline list and the import prompt are
+**#185** — nothing calls the import service from production code yet.
+
 ## Global settings (#103) — implemented
 
 `AppSettings.SessionPlanner` (`SessionPlannerSettings`) holds the planner's global defaults,

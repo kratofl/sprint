@@ -4,7 +4,9 @@ namespace Sprint.Games.LeMansUltimate;
 
 internal sealed class LmuTelemetryMapper
 {
-    private const string GameName = "LeMansUltimate";
+    // Shared with the results importer: both writers stamp the same game name into the
+    // lap-history context key, and two spellings would split one context into two buckets.
+    private const string GameName = LeMansUltimateGameData.GameName;
     private const double KelvinOffset = 273.15;
     private const double SessionTimeResetThreshold = 1.0;
     private const double LapTimeSpikeThreshold = 2.0;

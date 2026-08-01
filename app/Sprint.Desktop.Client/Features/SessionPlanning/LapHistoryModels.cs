@@ -301,6 +301,13 @@ public sealed class LapHistoryRecord
     [JsonPropertyName("sectorsSeconds")]
     public List<double> SectorsSeconds { get; set; } = [];
 
+    /// <summary>
+    /// Top speed reached on the lap, in km/h. Null when the source did not state one — the
+    /// live recorder does not measure it today, while an imported archive does.
+    /// </summary>
+    [JsonPropertyName("topSpeedKph")]
+    public double? TopSpeedKph { get; set; }
+
     [JsonPropertyName("fuelUsedLiters")]
     public double? FuelUsedLiters { get; set; }
 
