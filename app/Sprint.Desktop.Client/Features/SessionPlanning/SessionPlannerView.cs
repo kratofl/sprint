@@ -23,6 +23,9 @@ internal sealed class SessionPlannerView
     /// <summary>Tags the plan-in-view card so tests can assert on it without matching the header.</summary>
     internal const string PlanCardTag = "planner-plan-card";
 
+    /// <summary>Tags the (scope, statistic) target selector (#186).</summary>
+    internal const string TargetSectionTag = "planner-target-section";
+
     private readonly SessionPlannerController _controller;
     private readonly SessionPlannerViewCallbacks _callbacks;
 
@@ -147,17 +150,213 @@ internal sealed class SessionPlannerView
         }
 
         body.Children.Add(SegmentDetail(plan));
+        body.Children.Add(TargetSection(SelectedKind()));
         body.Children.Add(TrackingControls(plan));
         var card = Graphite.Card(body, new Thickness(18, 16));
         card.Tag = PlanCardTag;
         return card;
     }
 
-    private Control SegmentDetail(SessionPlan plan)
-    {
-        var kind = _controller.SelectedTab == PlannerSegmentTab.Qualifying
+    private SegmentKind SelectedKind() =>
+        _controller.SelectedTab == PlannerSegmentTab.Qualifying
             ? SegmentKind.Qualifying
             : SegmentKind.Race;
+
+    // The target selector (#186). Targets belong to the segment kind the page is scoped to, so
+    // the block follows the segmented control's selection rather than offering both at once.
+    private Control TargetSection(SegmentKind kind)
+    {
+        var choices = _controller.TargetChoices();
+        var target = _controller.TargetFor(kind);
+
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(Graphite.SectionLabel($"{kind} lap-time target"));
+        panel.Children.Add(Graphite.TextBlock(
+            target is null
+                ? "No target set — the dash gets no lap target for this segment."
+                : PlanTargetResolver.Describe(target),
+            12,
+            FontWeight.Normal,
+            target is null ? Graphite.Text3Brush : Graphite.TextBrush,
+            TextWrapping.Wrap));
+
+        if (choices.IsEmpty)
+        {
+            // The corpus has nothing for this context: the driver types the value and the plan
+            // still completes, rather than the page dead-ending on missing history.
+            panel.Children.Add(Graphite.TextBlock(
+                PlanTargetChoices.NoHistoryMessage,
+                12,
+                FontWeight.Normal,
+                Graphite.Text3Brush,
+                TextWrapping.Wrap));
+        }
+        else
+        {
+            panel.Children.Add(ScopeRow(choices));
+            if (_controller.SelectedTargetScope(choices) is { } scope)
+            {
+                panel.Children.Add(StatisticRow(kind, scope, target));
+                panel.Children.Add(LapRow(kind, scope, target));
+            }
+        }
+
+        panel.Children.Add(ManualRow(kind, target));
+
+        return new Border
+        {
+            // Panel3 on the card's Panel2: the selector is a distinct surface inside the plan
+            // card, per the Graphite surface stack.
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusControl),
+            Padding = new Thickness(14, 12),
+            Child = panel,
+            Tag = TargetSectionTag,
+        };
+    }
+
+    private Control ScopeRow(PlanTargetChoices choices)
+    {
+        var labels = choices.Scopes.Select(scope => scope.Label).ToArray();
+        var selected = _controller.SelectedTargetScope(choices);
+        var combo = Graphite.ComboBox(labels, selected?.Label, 280, "Pick a scope");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < 0 || combo.SelectedIndex >= choices.Scopes.Count)
+            {
+                return;
+            }
+
+            var scope = choices.Scopes[combo.SelectedIndex];
+            // Selecting the scope already shown would repaint the page for nothing, and the
+            // repaint is what re-seeds this combo in the first place.
+            if (selected is not null && SameScope(scope, selected))
+            {
+                return;
+            }
+
+            _controller.SelectTargetScope(scope.Scope, scope.ProgramType);
+        };
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(combo);
+        row.Children.Add(Graphite.Chip(
+            $"{selected?.SampleSize ?? 0} {(selected?.SampleSize == 1 ? "lap" : "laps")}",
+            Graphite.Text3Brush));
+        return LabelledRow("Scope", row);
+    }
+
+    private Control StatisticRow(SegmentKind kind, PlanTargetScopeGroup scope, PlanTarget? target)
+    {
+        // Every option carries its resolved time, so the driver chooses a pace rather than a
+        // word; the sample size sits beside the scope, which is what it belongs to.
+        var labels = scope.Options.Select(option => $"{option.Label} · {option.TimeText}").ToArray();
+        var selected = target is null || !SameScope(target, scope)
+            ? -1
+            : scope.Options.ToList().FindIndex(option => option.Statistic == target.Statistic);
+
+        return LabelledRow(
+            "Aim at",
+            Graphite.Segmented(labels, selected, index => _controller.SetTarget(kind, scope.Options[index])));
+    }
+
+    private Control LapRow(SegmentKind kind, PlanTargetScopeGroup scope, PlanTarget? target)
+    {
+        var picked = target is not null
+            && SameScope(target, scope)
+            && target.Statistic == PlanTargetStatistic.Custom
+                ? scope.Laps.FirstOrDefault(lap =>
+                    lap.LapSessionId == target.LapSessionId && lap.LapNumber == target.LapNumber)
+                : null;
+
+        var labels = scope.Laps.Select(LapLabel).ToArray();
+        var combo = Graphite.ComboBox(
+            labels,
+            picked is null ? null : LapLabel(picked),
+            280,
+            "Pick a lap");
+        combo.SelectionChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex < 0 || combo.SelectedIndex >= scope.Laps.Count)
+            {
+                return;
+            }
+
+            var lap = scope.Laps[combo.SelectedIndex];
+            if (!ReferenceEquals(lap, picked))
+            {
+                _controller.SetTarget(kind, lap);
+            }
+        };
+
+        return LabelledRow("Specific lap", combo);
+    }
+
+    // Laps are listed fastest to slowest, so the ordering is the label's context; the tier note
+    // is on each entry because it varies lap by lap in a corpus that mixes both writers.
+    private static string LapLabel(PlanTargetOption lap) =>
+        $"{lap.TimeText} · {lap.Label} · {lap.TierNote}";
+
+    private Control ManualRow(SegmentKind kind, PlanTarget? target)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var input = new TextBox
+        {
+            PlaceholderText = "2:05.4",
+            MinWidth = 120,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            FontFamily = Graphite.FontStack,
+            FontSize = 12,
+        };
+        var error = Graphite.TextBlock("", 11, FontWeight.Normal, Graphite.RedBrush);
+        error.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(input);
+        row.Children.Add(ActionButton("Set", ButtonTone.Neutral, () =>
+        {
+            // A rejected entry must not repaint the page, or the typed text would vanish along
+            // with the message explaining why it was rejected.
+            error.Text = _controller.SetManualTarget(kind, input.Text ?? "")
+                ? ""
+                : "Enter a lap time like 2:05.4.";
+        }));
+
+        if (target is not null)
+        {
+            row.Children.Add(ActionButton("Clear target", ButtonTone.Ghost, () => _controller.ClearTarget(kind)));
+        }
+
+        row.Children.Add(error);
+        return LabelledRow("Set by hand", row);
+    }
+
+    private static bool SameScope(PlanTarget target, PlanTargetScopeGroup scope) =>
+        target.Scope == scope.Scope
+        && string.Equals(target.ProgramType, scope.ProgramType, StringComparison.Ordinal);
+
+    private static bool SameScope(PlanTargetScopeGroup left, PlanTargetScopeGroup right) =>
+        left.Scope == right.Scope
+        && string.Equals(left.ProgramType, right.ProgramType, StringComparison.Ordinal);
+
+    private static Control LabelledRow(string label, Control content)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*") };
+        var text = Graphite.TextBlock(label, 12, FontWeight.Normal, Graphite.Text3Brush);
+        text.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(text, 0);
+        grid.Children.Add(text);
+        content.HorizontalAlignment = HorizontalAlignment.Left;
+        Grid.SetColumn(content, 1);
+        grid.Children.Add(content);
+        return grid;
+    }
+
+    private Control SegmentDetail(SessionPlan plan)
+    {
+        var kind = SelectedKind();
         var segment = plan.Segments.LastOrDefault(entry => entry.Kind == kind);
 
         var rows = new StackPanel { Spacing = 6 };
@@ -329,16 +528,9 @@ internal sealed class SessionPlannerView
         return $"{segment.Laps.Count} recorded · last {FormatLapTime(last.LapTimeSeconds)}";
     }
 
-    private static string FormatLapTime(double seconds)
-    {
-        if (seconds <= 0)
-        {
-            return "—";
-        }
-
-        var span = TimeSpan.FromSeconds(seconds);
-        return $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}";
-    }
+    // One lap-time format for the page: the recorded-lap list and the target labels must not
+    // disagree about what 2:11.0 looks like.
+    private static string FormatLapTime(double seconds) => PlanTargetResolver.FormatLapTime(seconds);
 
     private static IBrush StatusBrush(PlanStatus status) => status switch
     {

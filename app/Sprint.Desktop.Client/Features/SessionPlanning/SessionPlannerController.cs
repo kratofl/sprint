@@ -101,18 +101,29 @@ public sealed class SessionPlannerController
     private readonly SessionPlannerService _service;
     private readonly IFuelHistorySource _fuelHistory;
     private readonly Func<PlanContext> _lastSeenContext;
+    private readonly ILapHistoryStore _lapHistory;
+    private readonly Func<DateTimeOffset> _clock;
 
     private string? _selectedPlanId;
     private PlannerSegmentTab? _selectedTab;
+    private (PlanTargetScope Scope, string? ProgramType)? _selectedTargetScope;
 
+    /// <param name="lapHistory">
+    /// The corpus target selection resolves against (#186). Omitted means an empty corpus, so
+    /// the page offers no preset and asks the driver for the value instead.
+    /// </param>
     public SessionPlannerController(
         SessionPlannerService service,
         IFuelHistorySource fuelHistory,
-        Func<PlanContext> lastSeenContext)
+        Func<PlanContext> lastSeenContext,
+        ILapHistoryStore? lapHistory = null,
+        Func<DateTimeOffset>? clock = null)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
         _fuelHistory = fuelHistory ?? throw new ArgumentNullException(nameof(fuelHistory));
         _lastSeenContext = lastSeenContext ?? throw new ArgumentNullException(nameof(lastSeenContext));
+        _lapHistory = lapHistory ?? EmptyLapHistoryStore.Instance;
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     /// <summary>Raised after any state change, so the shell can repaint the page.</summary>
@@ -325,6 +336,116 @@ public sealed class SessionPlannerController
         _selectedTab = null;
         RaiseChanged();
     }
+
+    /// <summary>
+    /// The (scope, statistic) pairs the corpus can offer for the plan in view (#186). Empty
+    /// when there is no history for the plan's context, in which case the driver sets the
+    /// value directly — see <see cref="PlanTargetChoices.NoHistoryMessage"/>.
+    /// </summary>
+    public PlanTargetChoices TargetChoices()
+    {
+        if (PlanInView is not { } plan)
+        {
+            return PlanTargetChoices.None;
+        }
+
+        return PlanTargetResolver.Choices(_lapHistory, HistoryContext(plan), plan.Mode);
+    }
+
+    /// <summary>
+    /// The scope the selector is showing: an explicit pick, else the first one offered. A pick
+    /// the corpus no longer offers falls back rather than leaving the selector on nothing —
+    /// the same rule the segment tabs use for a skipped qualifying.
+    /// </summary>
+    public PlanTargetScopeGroup? SelectedTargetScope(PlanTargetChoices choices)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        if (_selectedTargetScope is { } selected
+            && choices.Scope(selected.Scope, selected.ProgramType) is { } group)
+        {
+            return group;
+        }
+
+        return choices.Scopes.FirstOrDefault();
+    }
+
+    public void SelectTargetScope(PlanTargetScope scope, string? programType = null)
+    {
+        _selectedTargetScope = (scope, programType);
+        RaiseChanged();
+    }
+
+    /// <summary>The stored target for <paramref name="kind"/> on the plan in view, or null.</summary>
+    public PlanTarget? TargetFor(SegmentKind kind) => PlanInView?.TargetsFor(kind)?.LapTime;
+
+    /// <summary>Stores <paramref name="option"/> as the lap-time target for <paramref name="kind"/>.</summary>
+    public void SetTarget(SegmentKind kind, PlanTargetOption option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        StoreTarget(kind, option.ToTarget(_clock()));
+    }
+
+    /// <summary>
+    /// Stores a lap time the driver typed (<c>m:ss.f</c> or seconds) as the target for
+    /// <paramref name="kind"/>. False when the entry is not a lap time, in which case nothing
+    /// is written — this is the path that keeps an empty corpus from dead-ending the plan.
+    /// </summary>
+    public bool SetManualTarget(SegmentKind kind, string text)
+    {
+        if (!PlanTargetResolver.TryParseLapTime(text, out var seconds))
+        {
+            return false;
+        }
+
+        StoreTarget(kind, new PlanTarget
+        {
+            Scope = PlanTargetScope.Manual,
+            LapTimeSeconds = seconds,
+            UpdatedAt = _clock(),
+        });
+        return true;
+    }
+
+    /// <summary>Removes the lap-time target for <paramref name="kind"/>, leaving none set.</summary>
+    public void ClearTarget(SegmentKind kind)
+    {
+        if (PlanInView is not { } plan || plan.TargetsFor(kind) is not { } targets)
+        {
+            return;
+        }
+
+        targets.LapTime = null;
+        _service.UpdatePlan(plan);
+        RaiseChanged();
+    }
+
+    private void StoreTarget(SegmentKind kind, PlanTarget target)
+    {
+        if (PlanInView is not { } plan)
+        {
+            return;
+        }
+
+        var targets = plan.TargetsFor(kind);
+        if (targets is null)
+        {
+            targets = new PlanTargets { Kind = kind };
+            plan.Targets.Add(targets);
+        }
+
+        targets.LapTime = target;
+        _service.UpdatePlan(plan);
+        RaiseChanged();
+    }
+
+    // The corpus keys on the layout actually driven and the car model; the plan's Track and
+    // Car are those same two fields, captured from the same telemetry the recorder writes.
+    private static LapHistoryContext HistoryContext(SessionPlan plan) => new()
+    {
+        Game = plan.Game,
+        TrackCourse = plan.Track,
+        CarModel = plan.Car,
+    };
 
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
 }

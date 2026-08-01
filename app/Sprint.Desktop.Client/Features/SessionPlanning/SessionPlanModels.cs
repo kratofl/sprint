@@ -150,11 +150,25 @@ public sealed class SessionPlan
     [JsonPropertyName("segments")]
     public List<PlanSegment> Segments { get; set; } = [];
 
+    /// <summary>
+    /// What the driver is aiming at, one set per <see cref="SegmentKind"/> (#186). On the plan
+    /// rather than on a <see cref="PlanSegment"/> because targets are chosen before anything
+    /// starts, while a segment holds actuals and does not exist yet. A list keyed by an
+    /// explicit <see cref="PlanTargets.Kind"/> rather than a dictionary, so the on-disk shape
+    /// matches the rest of this model and cannot depend on enum key serialisation.
+    /// </summary>
+    [JsonPropertyName("targets")]
+    public List<PlanTargets> Targets { get; set; } = [];
+
     [JsonPropertyName("warnings")]
     public List<PlanWarning> Warnings { get; set; } = [];
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    /// <summary>The target set for <paramref name="kind"/>, or null when none was chosen.</summary>
+    public PlanTargets? TargetsFor(SegmentKind kind) =>
+        Targets.FirstOrDefault(targets => targets.Kind == kind);
 }
 
 /// <summary>A qualifying or race segment of a plan, planned and/or actually tracked.</summary>

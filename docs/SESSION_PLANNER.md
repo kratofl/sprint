@@ -29,6 +29,57 @@ Location: `app/Sprint.Desktop.Client/Features/SessionPlanning`.
 Tests: `app/Sprint.Desktop.Tests/SessionPlannerTests.cs` (store round-trip, corrupt-
 file isolation, lifecycle, single-slot enforcement, ingestion, crash reconcile).
 
+## Plan targets (#186) — implemented
+
+What the driver is aiming at, stored **per `SegmentKind`** on the plan (`SessionPlan.Targets`
++ `TargetsFor(kind)`) — not on `PlanSegment`, which holds actuals and does not exist at
+planning time.
+
+- A target is a **(scope, statistic)** pair. Scopes: `Current Quali` (**with its session
+  timestamp in the label**, so "the one right before the race" is verifiable — no silent
+  recency cutoff), `Quali`, `Practice`, and `Practice program` (hidden in Quick mode).
+  Statistics: `Fastest`, `Median`, `Slowest`, `Custom` (a specific lap), each label carrying
+  its resolved time and sample size.
+- `PlanTargetResolver` is the Avalonia-free seam; it narrows the corpus per scope and hands
+  each slice to `LapHistoryStatistics`, so the median/real-lap rules stay defined once in #184.
+- **Tier comes from the lap, not the session**: `LapHistoryRecord.HasReferenceCurve`, because
+  a recorded lap whose trace failed the completeness guards has no curve either. Surfaced as
+  `reference curve` / `time only` in every label and persisted on the target.
+- **Three honest empty states**: a scope with no laps is omitted rather than shown empty; no
+  scopes at all shows the manual row with "No laps recorded for this car and track yet"; no
+  stored target says the dash gets none for that segment.
+- Targets are plain serialisable data (sync-ready, last write wins). Delivering them to the
+  wheel is #189.
+
+**Wiring note:** `MainWindow` builds one `CachingLapHistoryStore` over the local store and
+gives it to **both** the recorder and the controller. The page reads the whole corpus on every
+repaint and repaints at 1 Hz while tracking, so an uncached read would deserialise every
+history file — reference curves included — once a second. The cache is dropped on write rather
+than patched, and sharing one instance is what makes a recorder write invalidate the page's
+view; two stores would let the corpus grow behind the cache's back.
+
+## Chart stack (#187) — implemented
+
+`app/Sprint.Desktop.Client/Features/Charts/`. Several charts stacked vertically over **one**
+shared X-domain, with a single crosshair reading every metric at the same coordinate.
+
+- **Pluggable domain** — track position, lap number, session time — and one domain per stack.
+  Lap comparisons belong on track position: two laps drift apart in time, so on a time axis
+  the same corner lands at different X positions in different charts, which destroys the
+  point of a shared crosshair. Stint trends belong on lap number.
+- `ChartStackController` is Avalonia-free: "cursor at 0.62 → each series reports its value
+  there" is a unit test. A series that says nothing at a coordinate reports **null**, never a
+  held edge value; out of range on either side is null, because clamping would state a
+  measurement at a coordinate nobody drove.
+- Interpolation is chosen from what the data **is** (ADR 0024): continuous telemetry is
+  linear, a per-lap figure is stepped and holds rather than inventing a value between laps.
+- Empty and insufficient-data panels say so explicitly — an axis pair drawn around nothing
+  reads as "zero", a different claim from "nothing was recorded".
+- Rendered with SkiaSharp (no new dependency), colours from Graphite tokens only.
+- **No host yet.** Which metrics go in which stack, where a stack lives, zoom/pan and
+  overlaying two laps are all still open, so wiring it into a page would have decided them.
+  It is reviewed on its own window in the agent UI journey (`charts-stack-track-position`).
+
 ## Le Mans Ultimate results import (#182) — implemented
 
 The corpus's **second writer**. `LmuResultsImporter` implements `IResultsImporter` over

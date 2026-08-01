@@ -195,16 +195,21 @@ public sealed class MainWindow : Window
         // Always on, and deliberately independent of the planner: laps are recorded whether
         // or not a plan is armed, because the corpus every later estimate rests on can only
         // be built while the driver is actually driving.
-        _lapHistory = lapHistory ?? new LapHistoryRecorder(
-            new LocalLapHistoryStore(System.IO.Path.Combine(_runtime.DataRoot, "lap-history"), _log),
-            log: _log);
+        // One store instance shared by the writer and the reader, wrapped in the cache: the
+        // planner page reads the whole corpus on every repaint (1 Hz while tracking), and the
+        // recorder's writes have to invalidate that cache. Two separate stores would let the
+        // corpus grow behind the cache's back and the page would show a stale target list.
+        var lapHistoryStore = new CachingLapHistoryStore(
+            new LocalLapHistoryStore(System.IO.Path.Combine(_runtime.DataRoot, "lap-history"), _log));
+        _lapHistory = lapHistory ?? new LapHistoryRecorder(lapHistoryStore, log: _log);
         _plannerController = new SessionPlannerController(
             _planner,
             NoFuelHistorySource.Instance,
             () => new PlanContext(
                 _runtime.Settings.LastSeenContext.Game,
                 _runtime.Settings.LastSeenContext.Car,
-                _runtime.Settings.LastSeenContext.Track));
+                _runtime.Settings.LastSeenContext.Track),
+            lapHistoryStore);
         _plannerController.Changed += (_, _) =>
         {
             if (_shell.View == AppView.SessionPlanner)

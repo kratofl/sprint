@@ -10,7 +10,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
+using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Shell;
@@ -203,7 +205,19 @@ internal static class AgentUiReviewHarness
                         "Qualifying",
                         "Race",
                         "Arm auto-start",
-                        "Plan history"));
+                        "Plan history",
+                        // #186: a fresh install has no corpus, so the selector shows its
+                        // manual fallback rather than an empty scope list.
+                        "Qualifying lap-time target",
+                        PlanTargetChoices.NoHistoryMessage));
+
+                    // #186 with a corpus behind it. Rendered on its own window because the
+                    // shell's page reads the real lap-history store, which is empty here.
+                    CapturePlanTargetSelector(frames, artifactRoot, dataRoot);
+
+                    // #187 has no host yet — placement is deliberately undecided — so the
+                    // stack is reviewed on its own window rather than wired into a page.
+                    CaptureChartStack(frames, artifactRoot);
 
                     Click(window, "Devices");
                     frames.Add(Capture(window, artifactRoot, "devices-overview", "Devices", "Add device", "Gallery", "List", runtime.Devices[0].Name, "Review Screen"));
@@ -631,6 +645,173 @@ internal static class AgentUiReviewHarness
             GridCols = 20,
             GridRows = (int)Math.Ceiling(widgets.Count / 4d) * 2,
             Pages = [new DashPage { Id = "catalog", Name = "Catalog", Widgets = widgets }],
+        };
+    }
+
+    // The chart stack (#187) over a track-position domain: three charts, one axis, one shared
+    // crosshair. Rendered through the real Avalonia control so the review sees what a page
+    // would embed — the stack has no host in app code because placement is still open.
+    private static void CaptureChartStack(List<AgentUiReviewFrame> frames, string artifactRoot)
+    {
+        static IReadOnlyList<ChartSample> Samples(Func<double, double> shape) =>
+            [.. Enumerable.Range(0, 101).Select(i => new ChartSample(i / 100d, shape(i / 100d)))];
+
+        var stack = new ChartStack(
+            ChartDomain.TrackPosition(),
+            [
+                new ChartPanel("Speed", [new ChartSeries("This lap", Samples(x => 120 + (90 * Math.Sin(x * Math.PI * 3))))])
+                {
+                    Unit = "km/h",
+                },
+                new ChartPanel("Throttle", [new ChartSeries("This lap", Samples(x => Math.Clamp(Math.Sin(x * Math.PI * 3), 0, 1)))
+                {
+                    FillArea = true,
+                }]),
+                new ChartPanel("Brake", [new ChartSeries("This lap", Samples(x => Math.Clamp(-Math.Sin(x * Math.PI * 3), 0, 1)))
+                {
+                    FillArea = true,
+                }]),
+            ]);
+
+        var view = new ChartStackView(stack) { Width = 900, Height = 500 };
+        // The chart paints its own labels into a bitmap, so the only Avalonia text in this
+        // frame is the heading a real host would supply. Expectations therefore name the
+        // heading, not the painted axis titles — asserting on pixels is what the eye is for.
+        var body = new StackPanel { Spacing = 12 };
+        body.Children.Add(Graphite.SectionLabel("Chart stack · track position"));
+        body.Children.Add(view);
+
+        var window = new Window
+        {
+            Width = 960,
+            Height = 600,
+            Background = Graphite.BgBrush,
+            Content = Graphite.Card(body, new Thickness(18, 16)),
+        };
+
+        window.Show();
+        try
+        {
+            // Park the cursor so the frame shows the crosshair and the synchronised readouts
+            // rather than an idle chart.
+            view.Controller.MoveCursor(0.62);
+            view.InvalidateVisual();
+            frames.Add(Capture(window, artifactRoot, "charts-stack-track-position", "Chart stack · track position"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // The plan-target selector (#186) over a hand-built corpus: one qualifying session on a
+    // known date plus a practice session, so the review frame shows real scopes, resolved
+    // times, sample sizes and the reference-curve/time-only tier rather than the empty state.
+    private static void CapturePlanTargetSelector(
+        List<AgentUiReviewFrame> frames,
+        string artifactRoot,
+        string dataRoot)
+    {
+        var service = new SessionPlannerService(
+            new LocalSessionPlanStore(Path.Combine(dataRoot, "target-review-plans")));
+        service.CreatePlan(new CreatePlanRequest
+        {
+            Name = "Spa 6h",
+            Game = "Le Mans Ultimate",
+            Car = "Porsche 963",
+            Track = "Spa-Francorchamps",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthValue = 360,
+        });
+
+        var controller = new SessionPlannerController(
+            service,
+            NoFuelHistorySource.Instance,
+            () => PlanContext.Empty,
+            new ReviewLapHistoryStore());
+        var view = new SessionPlannerView(
+            controller,
+            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }));
+
+        var window = new Window
+        {
+            Width = 1000,
+            Height = 720,
+            Background = Graphite.BgBrush,
+            Content = view.Build(),
+        };
+        // The shell repaints the page on every controller change; this standalone window has to
+        // do the same or the frame after a click would show the pre-click tree.
+        controller.Changed += (_, _) => window.Content = view.Build();
+
+        window.Show();
+        try
+        {
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-targets",
+                "Qualifying lap-time target",
+                "Scope",
+                "Aim at",
+                "Fastest · 2:11.0",
+                "Median · 2:13.0",
+                "Specific lap",
+                "Set by hand"));
+
+            // A chosen target states its provenance and its tier: which session it came from,
+            // how many laps it was drawn from, and whether it can drive a real delta.
+            Click(window, "Fastest · 2:11.0");
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-target-chosen",
+                "Qualifying lap-time target",
+                "2:11.0 · Current Quali · 2026-07-31 18:20 · fastest of 3 laps · reference curve",
+                "Clear target"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private sealed class ReviewLapHistoryStore : ILapHistoryStore
+    {
+        public IReadOnlyList<LapHistorySession> LoadAll() =>
+        [
+            Session("hs-q", HistorySessionKind.Qualifying, new DateTimeOffset(2026, 7, 31, 18, 20, 0, TimeSpan.Zero), 131, 133, 138),
+            Session("hs-p", HistorySessionKind.Practice, new DateTimeOffset(2026, 7, 30, 10, 0, 0, TimeSpan.Zero), 136, 140, 145),
+        ];
+
+        public void Save(LapHistorySession session) => throw new NotSupportedException();
+
+        public void Delete(string sessionId) => throw new NotSupportedException();
+
+        private static LapHistorySession Session(
+            string id,
+            HistorySessionKind kind,
+            DateTimeOffset startedAt,
+            params double[] lapTimes) => new()
+        {
+            Id = id,
+            Kind = kind,
+            StartedAt = startedAt,
+            Context = new LapHistoryContext
+            {
+                Game = "Le Mans Ultimate",
+                TrackCourse = "Spa-Francorchamps",
+                CarModel = "Porsche 963",
+            },
+            Laps =
+            [
+                .. lapTimes.Select((time, index) => new LapHistoryRecord
+                {
+                    LapNumber = index + 1,
+                    LapTimeSeconds = time,
+                    ReferenceCurve = new LapReferenceCurve { TimesSeconds = [0, time] },
+                }),
+            ],
         };
     }
 

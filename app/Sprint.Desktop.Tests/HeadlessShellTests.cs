@@ -97,6 +97,102 @@ public class HeadlessShellTests
         }
     }
 
+    [Fact]
+    public async Task TheShippedPlannerPageOffersTargetsFromLapsTheAppItselfRecorded()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        var telemetry = new RecordingTelemetrySource();
+        try
+        {
+            // A plan for the same context the laps below are driven in. Seeded on disk rather
+            // than created through the modal, so this test is about the wiring, not the sheet.
+            var plans = Path.Combine(dataRoot, "session-plans");
+            Directory.CreateDirectory(plans);
+            await File.WriteAllTextAsync(
+                Path.Combine(plans, "wired.json"),
+                """
+                {"id":"wired","name":"Spa quali","game":"Le Mans Ultimate","car":"Porsche 963",
+                 "track":"Spa-Francorchamps","raceLengthFormat":"TimeBased","raceLengthValue":360}
+                """);
+
+            await session.Dispatch(() =>
+            {
+                var shell = new ShellState();
+                shell.Navigate(AppView.SessionPlanner);
+                var window = new MainWindow(new DesktopRuntime(dataRoot, TestEnv.PresetRoot), shell, telemetry);
+                window.Show();
+
+                // Two completed qualifying laps, through the shipped frame path.
+                window.IngestTelemetryFrame(QualifyingFrame(lap: 1));
+                window.IngestTelemetryFrame(QualifyingFrame(lap: 2, lastLapTime: 131.0));
+                window.IngestTelemetryFrame(QualifyingFrame(lap: 3, lastLapTime: 133.0));
+
+                // The recorder writes off the frame thread; wait for the corpus to land, then
+                // repaint the page so it reads the store the recorder just wrote to.
+                var deadline = DateTime.UtcNow.AddSeconds(10);
+                var corpus = Path.Combine(dataRoot, "lap-history");
+                while (DateTime.UtcNow < deadline
+                    && (!Directory.Exists(corpus) || Directory.GetFiles(corpus, "*.json").Length == 0))
+                {
+                    Thread.Sleep(25);
+                }
+
+                // Isolate the two failure modes: nothing recorded at all, versus recorded but
+                // invisible to the page.
+                var recorded = new LocalLapHistoryStore(corpus).LoadAll();
+                var recordedSession = Assert.Single(recorded);
+                Assert.Equal(2, recordedSession.Laps.Count);
+                Assert.Equal(HistorySessionKind.Qualifying, recordedSession.Kind);
+                Assert.Equal("Le Mans Ultimate", recordedSession.Context.Game);
+                Assert.Equal("Spa-Francorchamps", recordedSession.Context.TrackCourse);
+                Assert.Equal("Porsche 963", recordedSession.Context.CarModel);
+
+                // Navigate the way a user does: ShellState.Navigate raises nothing, so calling
+                // it directly would leave the pre-recording tree on screen and prove nothing.
+                window.CaptureRenderedFrame();
+                var home = FindOptionalButton(window, "Home");
+                Assert.NotNull(home);
+                home!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                var planner = FindOptionalButton(window, "Session Planner");
+                Assert.NotNull(planner);
+                planner!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                var text = string.Join(
+                    " | ",
+                    window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text ?? ""));
+
+                // Before the store was shared between the recorder and the controller, this
+                // page could only ever show the empty-corpus manual path.
+                Assert.DoesNotContain("No laps recorded for this car and track yet", text);
+                Assert.Contains("Fastest · 2:11.0", text);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            telemetry.Dispose();
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static TelemetryFrame QualifyingFrame(int lap, double lastLapTime = 0) => new()
+    {
+        Session = new SessionInfo
+        {
+            Game = "Le Mans Ultimate",
+            Track = "Spa-Francorchamps",
+            Car = "Porsche 963",
+            SessionType = SessionType.Qualify,
+            InCar = true,
+        },
+        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = true },
+    };
+
     private static TelemetryFrame PracticeFrame(int lap, double lastLapTime = 0) => new()
     {
         Session = new SessionInfo
