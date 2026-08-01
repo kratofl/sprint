@@ -63,6 +63,26 @@ public class SessionPlannerViewTests
         }));
     }
 
+    [Fact]
+    public async Task ATargetEditedDuringALiveSessionSaysItAppliesFromTheNextLap()
+    {
+        await Dispatch(() => WithView(PlanMode.Planned, text =>
+        {
+            // Targets latch at the start/finish line (#189). Without the notice, a driver who
+            // retargets on lap 12 would read lap 12's delta as being against the new target.
+            Assert.Contains("Applies from the next lap", text);
+        }, WithCorpus(), tracking: true));
+    }
+
+    [Fact]
+    public async Task ATargetEditedBeforeTheSessionStartsCarriesNoNextLapNotice()
+    {
+        await Dispatch(() => WithView(PlanMode.Planned, text =>
+        {
+            Assert.DoesNotContain("Applies from the next lap", text);
+        }, WithCorpus()));
+    }
+
     /// <summary>
     /// A qualifying session on 31 Jul with laps [131, 133, 138] for the test plan's context.
     /// </summary>
@@ -95,7 +115,11 @@ public class SessionPlannerViewTests
         public void Delete(string sessionId) => throw new NotSupportedException();
     }
 
-    private static void WithView(PlanMode mode, Action<string> assert, ILapHistoryStore? corpus = null)
+    private static void WithView(
+        PlanMode mode,
+        Action<string> assert,
+        ILapHistoryStore? corpus = null,
+        bool tracking = false)
     {
         var root = TestEnv.NewTempDataRoot();
         try
@@ -114,6 +138,11 @@ public class SessionPlannerViewTests
                 RaceLengthFormat = RaceLengthFormat.TimeBased,
                 RaceLengthValue = 360,
             });
+
+            if (tracking)
+            {
+                service.StartTracking("id-1", SegmentKind.Qualifying);
+            }
 
             var controller = new SessionPlannerController(
                 service,

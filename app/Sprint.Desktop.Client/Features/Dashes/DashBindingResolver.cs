@@ -3,7 +3,19 @@ using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.Dashes;
 
-public sealed record DashBindingContext(TelemetryFrame Frame, AppSettings Settings);
+/// <summary>
+/// Everything a binding can be resolved against: what the car is doing, who is driving, and
+/// what they planned to be aiming at.
+/// </summary>
+/// <param name="Targets">
+/// The active plan's scalar targets (#189), or null when nothing is planned. Optional so the
+/// paths that render a dash without a plan — thumbnails, the editor preview — stay unchanged
+/// and their <c>target.*</c> bindings resolve to absent.
+/// </param>
+public sealed record DashBindingContext(
+    TelemetryFrame Frame,
+    AppSettings Settings,
+    DashTargets? Targets = null);
 
 public static class DashBindingResolver
 {
@@ -32,6 +44,9 @@ public static class DashBindingResolver
             "lap.target" => context.Frame.Lap.TargetLapTime,
             "lap.delta" => context.Frame.Lap.Delta,
             "lap.sector" => context.Frame.Lap.Sector,
+            // The plan's targets. Null when none was set, never zero — see DashTargets.
+            "target.lapTime" => context.Targets?.LapTimeSeconds,
+            "target.fuelPerLapLiters" => context.Targets?.FuelPerLapLiters,
             "flags.summary" => FlagSummary(context.Frame.Flags),
             "flags.yellow" => context.Frame.Flags.Yellow,
             "flags.red" => context.Frame.Flags.Red,

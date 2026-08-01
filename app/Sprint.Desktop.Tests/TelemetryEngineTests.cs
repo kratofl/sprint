@@ -210,6 +210,35 @@ public sealed class TelemetryEngineTests
     }
 
     [Fact]
+    public void Plan_reference_request_is_applied_on_the_reader_thread()
+    {
+        // A steady 55 s at half distance. Nothing in this session is a reference, so without
+        // the plan target there is no delta at all.
+        var src = new ScriptedTelemetrySource { ReadFrame = _ => LapFrame(0.5, 55, lap: 1) };
+        using var engine = new TelemetryEngine(src);
+
+        engine.Step(T0);
+        Assert.Equal(0, engine.Snapshot.Frame.Lap.TargetLapTime);
+
+        // The chosen lap: elapsed time at position p is exactly p * 100.
+        engine.RequestPlanReference(new DeltaReference
+        {
+            PositionStep = 0.01,
+            TimesSeconds = [.. Enumerable.Range(0, 101).Select(i => i * 0.01 * 100)],
+            LapTimeSeconds = 100,
+        });
+        engine.Step(T0.AddMilliseconds(20));
+
+        Assert.Equal(100, engine.Snapshot.Frame.Lap.TargetLapTime, precision: 6);
+        Assert.Equal(5.0, engine.Snapshot.Frame.Lap.Delta, precision: 3);
+
+        engine.RequestPlanReference(null);
+        engine.Step(T0.AddMilliseconds(40));
+
+        Assert.Equal(0, engine.Snapshot.Frame.Lap.TargetLapTime);
+    }
+
+    [Fact]
     public void Start_is_idempotent_and_dispose_is_safe_in_every_order()
     {
         // Dispose before Start: nothing to join, must not throw, source still released.

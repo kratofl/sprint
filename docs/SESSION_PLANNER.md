@@ -49,7 +49,7 @@ planning time.
   scopes at all shows the manual row with "No laps recorded for this car and track yet"; no
   stored target says the dash gets none for that segment.
 - Targets are plain serialisable data (sync-ready, last write wins). Delivering them to the
-  wheel is #189.
+  wheel is #189, below.
 
 **Wiring note:** `MainWindow` builds one `CachingLapHistoryStore` over the local store and
 gives it to **both** the recorder and the controller. The page reads the whole corpus on every
@@ -82,6 +82,52 @@ view; two stores would let the corpus grow behind the cache's back.
 **Not done in this issue:** the confirmation dialog and its screenshots, and the watcher
 itself. Both need a host trigger the ticket leaves unbuilt, and wiring capture into the
 runtime would make the headless UI review scan a real game install. Export is #190.
+## Target delivery to the dash (#189) — implemented
+
+`PlanTargetDelivery` carries the active plan's targets to the wheel. **Delivery splits by what
+each target physically needs**, which is why there are two routes and not one:
+
+- The chosen lap's **reference curve** becomes a `DeltaReference` and is pushed into
+  `DeltaTracker` (`SetPlanReference`), so `lap.delta` / `lap.target` measure against *that lap*
+  instead of the session best. **No telemetry contract change**: a position-relative delta can
+  only be computed inside the tracker, and it is the tracker that already holds the trace.
+  The plan curve is held apart from the auto-adopted session best rather than overwriting it,
+  so clearing the target restores the comparison that was being tracked underneath.
+- **Everything scalar** — lap time, planned fuel per lap — arrives as `DashTargets`, the third
+  member of `DashBindingContext`, exposed as `target.*` bindings. Putting these on
+  `TelemetryFrame` would force the LMU adapter, the demo source, `packages/types` and the API
+  to carry fields describing a *plan*, not a car.
+
+**Everything latches at the start/finish line.** `PlanTargetDelivery.Observe` is the only latch:
+it applies a pending target at the lap-number increment — the same instant `DeltaTracker` keys
+its own boundary off — and immediately when there is no lap to protect (out of the car, a new
+venue or session type, the first frame of a stint). A target that flipped mid-lap would have the
+rest of that lap measured against something it was never driven with. It fires on *every*
+boundary rather than only on a change, so a tracker that discarded its state is back in step one
+lap later. The planner card says **"Applies from the next lap"** while a plan is tracking.
+`TelemetryEngine.RequestPlanReference` only carries the decision onto the reader thread; it
+decides nothing about when.
+
+**Scalar-only targets never fake a delta.** The tier is read off the lap in the corpus, not off
+`PlanTarget.HasReferenceCurve` — the flag records what was true when the target was chosen, and
+the lap is what is there to measure against now. An imported lap, a manual time, or a lap whose
+curve is gone yields `Reference == null`, which leaves the tracker on its own session best
+rather than inventing a pro-rata trace from a single number.
+
+**Absent is not zero.** Every `DashTargets` member is nullable and an unset one resolves to
+absent, so widgets show their no-data state. The `fuel_target` widget is now bound to
+`target.fuelPerLapLiters` (the plan's `FuelPerLapLiters`) instead of `car.fuelPerLapLiters`,
+which was *actual* consumption — a target that followed the current burn could never be missed.
+With nothing planned it paints `-- L/lap`.
+
+Stint laps and the rest of the fuel-side targets named in spec 2.5 are **not delivered yet**:
+nothing computes them until #50 adds them to `PlanTargets`. Adding them is a new member on
+`DashTargets` and a new binding, with no change to the latch or either route.
+
+Tests: `app/Sprint.Desktop.Tests/PlanTargetDeliveryTests.cs`, plus the plan-reference cases in
+`DeltaTrackerTests`, `TelemetryEngineTests`, `DashBindingResolverTests`,
+`DashWidgetBehaviourTests`, `ScreenPipelineTests` (the wheel's frame source), and
+`HeadlessShellTests.TheRunningAppDeliversAnArmedPlansTargetsToTheDash` for the shipped path.
 
 ## Chart stack (#187) — implemented
 
@@ -287,8 +333,6 @@ always-on path.
   `CarType` onto the same context key.
 - **#186 plan targets** — the (scope, statistic) selector over `LapHistoryStatistics`.
 - **#187 chart stack** — consumes the per-lap reference curve on a track-position domain.
-- **#189 dash delivery** — pushes a chosen lap's curve into `DeltaTracker` and scalar targets
-  into `target.*` bindings.
 - **#100 planner page + lifecycle UI** — a new primary sidebar page over
   `SessionPlannerService`; Start-now vs Arm-auto-start; Q/R segmented control.
 - **#102 online detection** — draft-suggestion vs auto-create-and-arm; populate

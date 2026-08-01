@@ -50,6 +50,17 @@ public sealed class DashWidgetCatalogTests
     }
 
     [Fact]
+    public void FuelTargetDeclaresAPlannedTargetNotActualConsumption()
+    {
+        // #189: the widget used to read car.fuelPerLapLiters, which is what the car is
+        // burning — a "target" nobody set and nobody can miss.
+        var fuelTarget = DashWidgetCatalog.Get("fuel_target");
+
+        Assert.Contains("target.fuelPerLapLiters", fuelTarget.Bindings);
+        Assert.DoesNotContain("car.fuelPerLapLiters", fuelTarget.Bindings);
+    }
+
+    [Fact]
     public void CatalogRejectsUnknownWidgetTypes()
     {
         Assert.False(DashWidgetCatalog.IsKnown("unknown-widget"));

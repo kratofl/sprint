@@ -90,4 +90,14 @@ public static class DashFormat
     public static string Fuel(double liters) => liters.ToString("0.0", Inv);
 
     public static string FuelPerLap(double liters) => liters.ToString("0.00", Inv);
+
+    /// <summary>
+    /// A planned fuel figure → <c>0.00</c>, or <c>--</c> when nothing was planned. Absent is
+    /// its own state here rather than a zero: <c>0.00 L/lap</c> is a target no car can hit,
+    /// and reading it as one would send a driver looking for a plan they never made.
+    /// </summary>
+    public static string FuelPerLapTarget(double? liters) =>
+        liters is { } value && !double.IsNaN(value) && !double.IsInfinity(value)
+            ? FuelPerLap(value)
+            : "--";
 }

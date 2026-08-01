@@ -454,6 +454,47 @@ public sealed class ScreenPipelineTests
         Assert.Equal(ScreenConnectionState.Connected, publisher.Status.State);
     }
 
+    /// <summary>
+    /// The plan's targets have to reach the panel the driver is actually looking at, not just
+    /// the desktop preview — so the wheel's frame source reads them per frame (#189).
+    /// </summary>
+    [Fact]
+    public void DashPainterFrameSourceRendersThePlansTargets()
+    {
+        var layout = new DashLayout
+        {
+            Id = "single-fuel-target",
+            GridCols = 20,
+            GridRows = 12,
+            Pages =
+            [
+                new DashPage
+                {
+                    Id = "p",
+                    Name = "P",
+                    Widgets = [new DashWidget { Id = "w", Type = "fuel_target", ColSpan = 20, RowSpan = 12 }],
+                },
+            ],
+        };
+        var config = new ScreenConfig { Width = 240, Height = 120 };
+        DashTargets? targets = null;
+
+        using var source = new DashPainterFrameSource(
+            layout,
+            new AppSettings(),
+            config,
+            targetsProvider: () => targets);
+
+        var unplanned = new byte[config.Width * config.Height * 2];
+        source.Render(new TelemetryFrame(), unplanned);
+
+        targets = new DashTargets { FuelPerLapLiters = 3.4 };
+        var planned = new byte[config.Width * config.Height * 2];
+        source.Render(new TelemetryFrame(), planned);
+
+        Assert.NotEqual(unplanned, planned);
+    }
+
     [Fact]
     public void DashPainterFrameSourceRendersNativeBufferForDefaultPreset()
     {

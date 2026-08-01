@@ -102,7 +102,9 @@ public static class DashWidgetCatalog
             ["abs"] = Definition("abs", "ABS", idleCapable: false, "electronics.abs"),
             ["engine_map"] = Definition("engine_map", "Engine Map", idleCapable: false, "electronics.motorMap"),
             ["brake_bias"] = Definition("brake_bias", "Brake Bias", idleCapable: false, "car.brakeBiasRear"),
-            ["fuel_target"] = Definition("fuel_target", "Fuel Target", idleCapable: false, "car.fuelPerLapLiters"),
+            // The plan's figure, not the car's: actual consumption is what the "fuel" widget
+            // already shows, and a target that followed it could never be missed (#189).
+            ["fuel_target"] = Definition("fuel_target", "Fuel Target", idleCapable: false, "target.fuelPerLapLiters"),
             // Race-context and hybrid readouts real dashboards expose (US30). Each binds to
             // the unified TelemetryFrame and degrades to "--" when its channel is absent.
             ["position"] = Definition("position", "Position", idleCapable: false, "race.position", "race.totalPositions"),

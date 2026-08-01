@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Sprint.Desktop.Api.Telemetry;
 
@@ -63,6 +64,10 @@ public sealed class TelemetryEngine : IDisposable
     private int _started;
     private int _disposed;
     private int _manualReferenceRequested;
+
+    // A box rather than the reference itself, because null is a meaningful request here
+    // ("go back to the session best") and has to be distinguishable from "nothing asked".
+    private StrongBox<DeltaReference?>? _planReferenceRequest;
     private EngineSnapshot _snapshot;
     private TelemetryConnectionState _prevState = TelemetryConnectionState.Disconnected;
 
@@ -94,6 +99,19 @@ public sealed class TelemetryEngine : IDisposable
     /// </summary>
     public void RequestManualReference() =>
         Interlocked.Exchange(ref _manualReferenceRequested, 1);
+
+    /// <summary>
+    /// Requests that the reader thread measure against <paramref name="reference"/> — the lap
+    /// the driver's plan targets (#189) — or against the session best again when it is null.
+    /// Safe to call from the UI thread; the tracker stays single-owner.
+    /// <para>
+    /// <b>When</b> a target changes is decided by the caller, at the start/finish line. This
+    /// only carries the decision across the thread boundary; a request that arrives mid-lap is
+    /// applied mid-lap.
+    /// </para>
+    /// </summary>
+    public void RequestPlanReference(DeltaReference? reference) =>
+        Interlocked.Exchange(ref _planReferenceRequest, new StrongBox<DeltaReference?>(reference));
 
     /// <summary>
     /// Connect synchronously (so the first paint reflects the real link state) and
@@ -213,6 +231,11 @@ public sealed class TelemetryEngine : IDisposable
         if (Interlocked.Exchange(ref _manualReferenceRequested, 0) != 0)
         {
             _delta.SetManualReference();
+        }
+
+        if (Interlocked.Exchange(ref _planReferenceRequest, null) is { } request)
+        {
+            _delta.SetPlanReference(request.Value);
         }
 
         var status = _source.Status;

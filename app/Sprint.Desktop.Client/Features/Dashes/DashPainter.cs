@@ -69,10 +69,16 @@ public sealed class DashPainter : IDisposable
     /// <paramref name="idle"/> is true the idle page is drawn; otherwise
     /// <paramref name="pageId"/> selects a page (first page when null).
     /// </summary>
+    /// <param name="targets">
+    /// What the active plan says the driver is aiming at (#189), or null when nothing is
+    /// planned — thumbnails and editor previews render without a plan and their target-bound
+    /// widgets show their no-data state.
+    /// </param>
     public SKBitmap Render(
         DashLayout layout,
         TelemetryFrame frame,
         AppSettings settings,
+        DashTargets? targets = null,
         string? pageId = null,
         bool idle = false,
         DashAlertBanner? banner = null)
@@ -81,7 +87,7 @@ public sealed class DashPainter : IDisposable
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(settings);
         ObjectDisposedException.ThrowIf(_disposed, this);
-        RenderCore(layout, frame, settings, pageId, idle, banner);
+        RenderCore(layout, frame, settings, targets, pageId, idle, banner);
         return _bitmap;
     }
 
@@ -95,6 +101,7 @@ public sealed class DashPainter : IDisposable
         DashLayout layout,
         TelemetryFrame frame,
         AppSettings settings,
+        DashTargets? targets = null,
         string? pageId = null,
         bool idle = false,
         DashAlertBanner? banner = null,
@@ -118,7 +125,7 @@ public sealed class DashPainter : IDisposable
             }
 
             _canvas.ClipRect(new SKRect(0, 0, Width, Height));
-            RenderCore(layout, frame, settings, pageId, idle, banner);
+            RenderCore(layout, frame, settings, targets, pageId, idle, banner);
         }
         finally
         {
@@ -131,6 +138,7 @@ public sealed class DashPainter : IDisposable
         DashLayout layout,
         TelemetryFrame frame,
         AppSettings settings,
+        DashTargets? targets,
         string? pageId,
         bool idle,
         DashAlertBanner? banner)
@@ -151,12 +159,12 @@ public sealed class DashPainter : IDisposable
                     continue;
                 }
 
-                DrawWidget(widget, rect, frame, settings);
+                DrawWidget(widget, rect, frame, settings, targets);
             }
 
             foreach (var stack in page.WidgetStacks)
             {
-                DrawWidgetStack(stack, cols, rows, frame, settings);
+                DrawWidgetStack(stack, cols, rows, frame, settings, targets);
             }
         }
 
@@ -181,11 +189,12 @@ public sealed class DashPainter : IDisposable
         DashLayout layout,
         TelemetryFrame frame,
         AppSettings settings,
+        DashTargets? targets = null,
         string? pageId = null,
         bool idle = false,
         DashAlertBanner? banner = null)
     {
-        Render(layout, frame, settings, pageId, idle, banner);
+        Render(layout, frame, settings, targets, pageId, idle, banner);
         using var image = SKImage.FromBitmap(_bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();
@@ -258,7 +267,12 @@ public sealed class DashPainter : IDisposable
 
     // ---- Widget dispatch ----
 
-    private void DrawWidget(DashWidget widget, SKRect rect, TelemetryFrame frame, AppSettings settings)
+    private void DrawWidget(
+        DashWidget widget,
+        SKRect rect,
+        TelemetryFrame frame,
+        AppSettings settings,
+        DashTargets? targets)
     {
         // Wheel telemetry is grouped into compact outlined instruments like a real
         // motorsport display. The outline never adds a fill: the canvas remains black.
@@ -291,14 +305,16 @@ public sealed class DashPainter : IDisposable
                 case "abs": DrawElectronicsValue(rect, "ABS", frame.Electronics.Abs, frame.Electronics.AbsMax); break;
                 case "engine_map": DrawElectronicsValue(rect, "MAP", frame.Electronics.MotorMap, frame.Electronics.MotorMapMax); break;
                 case "brake_bias": DrawSimpleValue(rect, "BRAKE BIAS", $"{frame.Car.BrakeBiasRear:0.0}%"); break;
-                case "fuel_target": DrawSimpleValue(rect, "FUEL TARGET", $"{frame.Car.FuelPerLapLiters:0.00} L/lap"); break;
+                // The planned figure, never the current burn: a "target" that tracked actual
+                // consumption could only ever say the driver was exactly on it.
+                case "fuel_target": DrawSimpleValue(rect, "FUEL TARGET", $"{DashFormat.FuelPerLapTarget(targets?.FuelPerLapLiters)} L/lap"); break;
                 case "position": DrawPosition(rect, frame); break;
                 case "gaps": DrawGaps(rect, frame); break;
                 case "predictive_lap": DrawSimpleValue(rect, "PREDICTED", DashFormat.Lap(frame.Lap.TargetLapTime)); break;
                 case "racelogic_lap_timer": DrawRaceLogicLapTimer(frame); break;
                 case "tyre_pressure": DrawTyrePressure(rect, frame); break;
                 case "virtual_energy" or "ers": DrawVirtualEnergy(widget, rect, frame); break;
-                case "text": DrawText(widget, rect, frame, settings); break;
+                case "text": DrawText(widget, rect, frame, settings, targets); break;
                 default: DrawUnknown(widget, rect); break;
             }
         }
@@ -329,7 +345,13 @@ public sealed class DashPainter : IDisposable
     // Renders a widget stack's active (default) layer inside the stack's grid
     // rectangle: the layer's widgets are laid out in the stack's local sub-grid
     // (ColSpan×RowSpan cells) mapped into that rectangle.
-    private void DrawWidgetStack(DashWidgetStack stack, int cols, int rows, TelemetryFrame frame, AppSettings settings)
+    private void DrawWidgetStack(
+        DashWidgetStack stack,
+        int cols,
+        int rows,
+        TelemetryFrame frame,
+        AppSettings settings,
+        DashTargets? targets)
     {
         var rect = GridRect(cols, rows, new DashWidget
         {
@@ -356,7 +378,7 @@ public sealed class DashPainter : IDisposable
             var wr = SubRect(rect, subCols, subRows, widget);
             if (wr.Width >= 1 && wr.Height >= 1)
             {
-                DrawWidget(widget, wr, frame, settings);
+                DrawWidget(widget, wr, frame, settings, targets);
             }
         }
     }
@@ -1145,14 +1167,21 @@ public sealed class DashPainter : IDisposable
         DrawTextLine(value, r.MidX, r.Top + r.Height * 0.58f, r.Height * 0.42f, DashFonts.Value, _palette.Foreground, Align.Center, r.Width * 0.92f);
     }
 
-    private void DrawText(DashWidget widget, SKRect r, TelemetryFrame frame, AppSettings settings)
+    private void DrawText(
+        DashWidget widget,
+        SKRect r,
+        TelemetryFrame frame,
+        AppSettings settings,
+        DashTargets? targets)
     {
         var content = ConfigString(widget, "content");
         var binding = ConfigString(widget, "binding");
         string? resolved = null;
         if (!string.IsNullOrWhiteSpace(binding))
         {
-            resolved = DashBindingResolver.Resolve(new DashBindingContext(frame, settings), binding)?.ToString();
+            resolved = DashBindingResolver
+                .Resolve(new DashBindingContext(frame, settings, targets), binding)?
+                .ToString();
         }
 
         var display = !string.IsNullOrWhiteSpace(resolved) ? resolved

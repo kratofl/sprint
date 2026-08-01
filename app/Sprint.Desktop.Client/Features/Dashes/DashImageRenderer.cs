@@ -28,10 +28,11 @@ public static class DashImageRenderer
         string? pageId = null,
         bool idle = false,
         DashAlertBanner? banner = null,
-        DashPalette? palette = null)
+        DashPalette? palette = null,
+        DashTargets? targets = null)
     {
         using var painter = new DashPainter(width, height, palette);
-        painter.Render(layout, frame, settings, pageId, idle, banner);
+        painter.Render(layout, frame, settings, targets, pageId, idle, banner);
         var bitmap = new WriteableBitmap(new PixelSize(width, height), Dpi, PixelFormat.Bgra8888, AlphaFormat.Premul);
         Copy(painter, bitmap);
         return bitmap;
@@ -53,10 +54,11 @@ public static class DashImageRenderer
         string? pageId = null,
         bool idle = false,
         DashAlertBanner? banner = null,
-        DashPalette? palette = null)
+        DashPalette? palette = null,
+        DashTargets? targets = null)
     {
         using var painter = new DashPainter(width, height, palette);
-        painter.Render(layout, frame, settings, pageId, idle, banner);
+        painter.Render(layout, frame, settings, targets, pageId, idle, banner);
 
         if (existing is not null && existing.PixelSize.Width == width && existing.PixelSize.Height == height)
         {

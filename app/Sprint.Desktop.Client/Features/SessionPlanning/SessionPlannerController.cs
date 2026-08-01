@@ -378,6 +378,14 @@ public sealed class SessionPlannerController
     /// <summary>The stored target for <paramref name="kind"/> on the plan in view, or null.</summary>
     public PlanTarget? TargetFor(SegmentKind kind) => PlanInView?.TargetsFor(kind)?.LapTime;
 
+    /// <summary>
+    /// Whether an edit made now would only take effect at the next start/finish line (#189).
+    /// True exactly while a session is live: targets latch at the line, so the lap in progress
+    /// keeps the one it was started with, and the page has to say so rather than let a driver
+    /// read the current lap's delta against a target it was never driven against.
+    /// </summary>
+    public bool TargetsApplyFromNextLap => PlanInView?.Status == PlanStatus.Tracking;
+
     /// <summary>Stores <paramref name="option"/> as the lap-time target for <paramref name="kind"/>.</summary>
     public void SetTarget(SegmentKind kind, PlanTargetOption option)
     {

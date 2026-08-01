@@ -74,7 +74,7 @@ internal static class AgentUiReviewHarness
                             defaultDash,
                             DashPreviewFrames.For(DashPreviewState.MidLap),
                             runtime.Settings,
-                            page.Id));
+                            pageId: page.Id));
                         using var bitmap = new Bitmap(imagePath);
                         var failure = ValidateImage(bitmap);
                         frames.Add(new AgentUiReviewFrame(
@@ -84,12 +84,30 @@ internal static class AgentUiReviewHarness
                             failure is null ? [] : [failure]));
                     }
 
+                    // The vehicle page again, this time with an active plan behind it (#189).
+                    // Compared against its unplanned twin above, this is the whole feature:
+                    // FUEL TARGET reads the planned figure instead of "--".
+                    var plannedPath = Path.Combine(artifactRoot, "default-dash-vehicle-plan-targets-800x480.png");
+                    File.WriteAllBytes(plannedPath, painter.RenderPng(
+                        defaultDash,
+                        DashPreviewFrames.For(DashPreviewState.MidLap),
+                        runtime.Settings,
+                        new DashTargets { LapTimeSeconds = 131, FuelPerLapLiters = 3.4 },
+                        pageId: defaultDash.Pages.First(page => page.Name.Equals("Vehicle", StringComparison.OrdinalIgnoreCase)).Id));
+                    using var plannedBitmap = new Bitmap(plannedPath);
+                    var plannedFailure = ValidateImage(plannedBitmap);
+                    frames.Add(new AgentUiReviewFrame(
+                        "default-dash-vehicle-plan-targets-800x480",
+                        plannedPath,
+                        ["fuel target shows the planned 3.40 L/lap, not the current burn"],
+                        plannedFailure is null ? [] : [plannedFailure]));
+
                     var alertImagePath = Path.Combine(artifactRoot, "default-dash-adjustment-overlay-800x480.png");
                     File.WriteAllBytes(alertImagePath, painter.RenderPng(
                         defaultDash,
                         DashPreviewFrames.For(DashPreviewState.MidLap),
                         runtime.Settings,
-                        "driving-default",
+                        pageId: "driving-default",
                         banner: new DashAlertBanner("TRACTION CONTROL", "5", DashPalette.Default.Accent)));
                     using var alertBitmap = new Bitmap(alertImagePath);
                     var alertFailure = ValidateImage(alertBitmap);
@@ -812,6 +830,16 @@ internal static class AgentUiReviewHarness
                 "Qualifying lap-time target",
                 "2:11.0 · Current Quali · 2026-07-31 18:20 · fastest of 3 laps · reference curve",
                 "Clear target"));
+
+            // Once the session is live, targets latch at the start/finish line (#189), so the
+            // card has to say that an edit made now does nothing to the lap being driven.
+            service.StartTracking(service.Plans[0].Id, SegmentKind.Qualifying);
+            window.Content = view.Build();
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-target-live-latch",
+                "Applies from the next lap — the lap in progress keeps the target it started with."));
         }
         finally
         {

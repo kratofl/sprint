@@ -3,6 +3,29 @@ using Sprint.Desktop.Api.Telemetry;
 namespace Sprint.Desktop.Features.Live;
 
 /// <summary>
+/// A reference lap handed to <see cref="DeltaTracker"/> from outside the session — a lap
+/// the driver chose to be measured against rather than one this session produced. Stated
+/// as a uniform position→time curve (time at index <c>i</c> is the elapsed lap time at
+/// track position <c>i * PositionStep</c>), which is the shape the lap-history corpus
+/// stores.
+/// </summary>
+/// <remarks>
+/// Deliberately a plain telemetry-side value: the tracker never learns what a plan or a
+/// history record is, so the planner can be replaced without touching the delta path.
+/// </remarks>
+public sealed record DeltaReference
+{
+    /// <summary>Sampling interval as a fraction of a lap. Must be greater than zero.</summary>
+    public required double PositionStep { get; init; }
+
+    /// <summary>Elapsed lap time at each sampled position, from the line onwards.</summary>
+    public required IReadOnlyList<double> TimesSeconds { get; init; }
+
+    /// <summary>The reference lap's own total time, reported as <see cref="LapState.TargetLapTime"/>.</summary>
+    public required double LapTimeSeconds { get; init; }
+}
+
+/// <summary>
 /// Pure lap-delta computation: builds a position→time reference curve from the
 /// fastest completed valid lap and injects <see cref="LapState.Delta"/> (the
 /// position-relative gap to that reference; negative = ahead) and
@@ -47,6 +70,12 @@ public sealed class DeltaTracker
     private (double Pos, double Time)[]? _reference;
     private double _referenceTotal;
     private bool _manualReference;
+
+    // An externally chosen reference lap (a plan target, #189). Held apart from the
+    // auto-adopted session best rather than overwriting it, so clearing it restores the
+    // session-best comparison that was being tracked underneath all along.
+    private (double Pos, double Time)[]? _planReference;
+    private double _planReferenceTotal;
 
     // In-progress lap accumulation.
     private bool _haveLap;
@@ -147,21 +176,26 @@ public sealed class DeltaTracker
 
         _prevPos = pos;
 
-        if (_reference is null)
+        // A chosen plan target outranks the session best: it is what the driver said they
+        // are driving against.
+        var reference = _planReference ?? _reference;
+        if (reference is null)
         {
             return frame; // nothing to compare against yet
         }
+
+        var referenceTotal = _planReference is not null ? _planReferenceTotal : _referenceTotal;
 
         // Hold the last delta through the 1–2 frame line desync rather than emitting a
         // ~full-lap spike; otherwise compute the position-relative gap.
         if (!lineSkew)
         {
-            _lastDelta = Sanitize(NonNegative(lap.CurrentLapTime) - ReferenceTimeAt(pos));
+            _lastDelta = Sanitize(NonNegative(lap.CurrentLapTime) - ReferenceTimeAt(reference, referenceTotal, pos));
         }
 
         return frame with
         {
-            Lap = lap with { Delta = _lastDelta, TargetLapTime = _referenceTotal }
+            Lap = lap with { Delta = _lastDelta, TargetLapTime = referenceTotal }
         };
     }
 
@@ -185,6 +219,46 @@ public sealed class DeltaTracker
 
     /// <summary>Resume automatic best-lap reference adoption.</summary>
     public void ClearManualReference() => _manualReference = false;
+
+    /// <summary>
+    /// Measure against <paramref name="reference"/> — a lap chosen outside this session —
+    /// instead of the session best, or pass <c>null</c> to go back to the session best.
+    /// <para>
+    /// Applied the moment it is called: the caller owns <em>when</em> a target changes
+    /// (targets latch at the start/finish line, #189), because only the caller knows that a
+    /// target changed at all. A curve that cannot describe a lap — no step, fewer than two
+    /// samples, no total — clears instead of being half-adopted, so a truncated stored curve
+    /// degrades to the session best rather than to a delta against nothing.
+    /// </para>
+    /// <para>
+    /// Auto-adoption keeps running underneath, so the session best is still there when the
+    /// target is cleared. Reader-thread-only, like every other method here; the engine
+    /// marshals the request (see <see cref="TelemetryEngine.RequestPlanReference"/>).
+    /// </para>
+    /// </summary>
+    public void SetPlanReference(DeltaReference? reference)
+    {
+        if (reference is null
+            || reference.PositionStep <= 0
+            || reference.TimesSeconds.Count < 2
+            || reference.LapTimeSeconds <= 0)
+        {
+            _planReference = null;
+            _planReferenceTotal = 0;
+            return;
+        }
+
+        // Positions are known by construction — the curve stores only the times — and a
+        // positive step makes them strictly ascending, which the interpolation requires.
+        var samples = new (double Pos, double Time)[reference.TimesSeconds.Count];
+        for (var i = 0; i < samples.Length; i++)
+        {
+            samples[i] = (i * reference.PositionStep, reference.TimesSeconds[i]);
+        }
+
+        _planReference = samples;
+        _planReferenceTotal = reference.LapTimeSeconds;
+    }
 
     private void BeginLap(int lapNumber)
     {
@@ -244,15 +318,19 @@ public sealed class DeltaTracker
         _reference = null;
         _referenceTotal = 0;
         _lastDelta = 0;
+        // The plan reference goes too: it is a lap of the venue that just changed, so it no
+        // longer describes anything about what is being driven. Its owner re-delivers it at
+        // the next start/finish line if it still applies.
+        _planReference = null;
+        _planReferenceTotal = 0;
         // Manual pin and continuity markers are cleared on a true restart.
         _manualReference = false;
         _track = "";
         _session = SessionType.Unknown;
     }
 
-    private double ReferenceTimeAt(double pos)
+    private static double ReferenceTimeAt((double Pos, double Time)[] samples, double total, double pos)
     {
-        var samples = _reference!;
         if (pos <= samples[0].Pos)
         {
             return samples[0].Time;
@@ -260,7 +338,7 @@ public sealed class DeltaTracker
 
         if (pos >= samples[^1].Pos)
         {
-            return _referenceTotal; // past the last sample ⇒ the full lap time
+            return total; // past the last sample ⇒ the full lap time
         }
 
         // Binary search for the bracketing interval (positions are strictly ascending).

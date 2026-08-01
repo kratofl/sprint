@@ -149,6 +149,45 @@ public sealed class DashWidgetBehaviourTests
         return (left, right);
     }
 
+    /// <summary>
+    /// The fuel target widget shows what was planned (#189), not what the car is currently
+    /// burning. Two renders that differ only in actual consumption must be pixel-identical:
+    /// nothing the car reports may reach this widget.
+    /// </summary>
+    [Fact]
+    public void FuelTargetShowsThePlannedFigureAndIgnoresActualConsumption()
+    {
+        var planned = new DashTargets { FuelPerLapLiters = 3.4 };
+
+        var burningALot = RenderFuelTarget(planned, actualPerLap: 9.99f);
+        var burningNothing = RenderFuelTarget(planned, actualPerLap: 0f);
+
+        Assert.True(burningALot.Any(IsInk), "Expected the planned target to be painted.");
+        Assert.Equal(burningNothing, burningALot);
+    }
+
+    [Fact]
+    public void FuelTargetWithNothingPlannedShowsItsNoDataState()
+    {
+        // A widget that painted "0.00 L/lap" would be stating a target of zero. The absent
+        // state has to look different from any real figure, including from a planned 0.
+        var unplanned = RenderFuelTarget(null, actualPerLap: 9.99f);
+        var planned = RenderFuelTarget(new DashTargets { FuelPerLapLiters = 0 }, actualPerLap: 9.99f);
+
+        Assert.True(unplanned.Any(IsInk), "The no-data state still has to say something.");
+        Assert.NotEqual(planned, unplanned);
+    }
+
+    private static SKColor[] RenderFuelTarget(DashTargets? targets, float actualPerLap)
+    {
+        using var painter = new DashPainter(240, 120);
+        return painter.Render(
+            WidgetLayout("fuel_target", null),
+            new TelemetryFrame { Car = new CarState { FuelPerLapLiters = actualPerLap } },
+            new AppSettings(),
+            targets).Pixels;
+    }
+
     private static TelemetryFrame FrameWithTyres(float surface, float core) => new()
     {
         Tires =

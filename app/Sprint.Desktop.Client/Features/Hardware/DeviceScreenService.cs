@@ -19,6 +19,7 @@ public sealed class DeviceScreenService : IDisposable
 {
     private readonly IDesktopRuntime _runtime;
     private readonly Func<TelemetryFrame> _frameProvider;
+    private readonly Func<DashTargets?>? _targetsProvider;
     private readonly Func<string, IScreenDriver> _driverFactory;
     private readonly IDesktopRegionCapturer _desktopCapturer;
     private readonly Func<IDesktopRegionCapturer> _previewCapturerFactory;
@@ -39,10 +40,12 @@ public sealed class DeviceScreenService : IDisposable
         Func<string, IScreenDriver>? driverFactory = null,
         ILog? log = null,
         IDesktopRegionCapturer? desktopCapturer = null,
-        Func<IDesktopRegionCapturer>? previewCapturerFactory = null)
+        Func<IDesktopRegionCapturer>? previewCapturerFactory = null,
+        Func<DashTargets?>? targetsProvider = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _frameProvider = frameProvider ?? throw new ArgumentNullException(nameof(frameProvider));
+        _targetsProvider = targetsProvider;
         _log = log ?? NullLog.Instance;
         _driverFactory = driverFactory ?? (driver => ScreenDriverFactory.Create(driver, _log));
         _ownsDesktopCapturer = desktopCapturer is null;
@@ -358,7 +361,8 @@ public sealed class DeviceScreenService : IDisposable
                 sizedConfig,
                 DashPalette.FromLayout(layout!),
                 preferDirectRgb565: true,
-                pageSelection: pageSelection);
+                pageSelection: pageSelection,
+                targetsProvider: _targetsProvider);
         }
 
         var source = CreateSource(config.Width, config.Height);

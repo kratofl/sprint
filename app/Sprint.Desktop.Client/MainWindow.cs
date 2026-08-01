@@ -80,6 +80,7 @@ public sealed class MainWindow : Window
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
+    private readonly PlanTargetDelivery _planTargets;
     private NewPlanDraft? _newPlanDraft;
     private Border? _newPlanOverlay;
     private DateTimeOffset? _lastPlannerRender;
@@ -211,6 +212,9 @@ public sealed class MainWindow : Window
         _importService = new LapHistoryImportService(lapHistoryStore, _log);
         _importLedger = new ResultsImportLedger(_runtime.DataRoot, _log);
         _importScanner = new ResultsImportScanner(_importLedger);
+        // Reads the same shared corpus: the reference curve it hands to the delta tracker is
+        // the very lap the planner offered as a target, not a second copy of it.
+        _planTargets = new PlanTargetDelivery(() => _planner.ActivePlan, lapHistoryStore);
         _plannerController = new SessionPlannerController(
             _planner,
             NoFuelHistorySource.Instance,
@@ -252,7 +256,10 @@ public sealed class MainWindow : Window
             _runtime,
             CurrentTelemetryFrame,
             screenDriverFactory,
-            log: _log);
+            log: _log,
+            // Read per rendered frame, like the telemetry itself: the plan's targets are what
+            // the wheel is supposed to be showing while it runs (#189).
+            targetsProvider: () => _planTargets.Targets);
         _screens.Sync();
 
         // WS8: the UI-independent command bus. Handlers are wired here (the shell owns
@@ -948,7 +955,29 @@ public sealed class MainWindow : Window
         CaptureLastSeenContext(frame);
         _planner.Ingest(frame);
         _lapHistory.Ingest(frame);
+
+        // Targets latch at the start/finish line (#189), so the reference only crosses onto
+        // the reader thread when the latch fires. The scalar half is read from the dash paths
+        // as they render, which is why nothing is pushed for it here.
+        //
+        // Order matters and is deliberate: the plan and the corpus consume the boundary frame
+        // *before* the latch, so a finished lap is always summarised against the target it was
+        // actually driven with, and only then does the new one take effect (spec 2.5). The
+        // lap-summary alert (#191) has to be raised on this side of the latch too.
+        if (_planTargets.Observe(frame))
+        {
+            _engine.RequestPlanReference(_planTargets.Reference);
+        }
     }
+
+    /// <summary>
+    /// What the active plan says the driver is aiming at (#189), for every dash render path.
+    /// Internal so the shipped delivery can be asserted end to end.
+    /// </summary>
+    internal DashTargets DashTargets => _planTargets.Targets;
+
+    /// <summary>The reference lap in force, or null when the target is scalar-only (#189).</summary>
+    internal DeltaReference? PlanDeltaReference => _planTargets.Reference;
 
     // Remember the game/car/track telemetry last reported so a new plan can be prefilled
     // before the user is in a car. The rule lives in PlanContextCapture; saves only on a change.
@@ -3096,7 +3125,7 @@ public sealed class MainWindow : Window
         }
 
         var frame = DashPreviewFrames.Resolve(_devicePreviewState, CurrentTelemetryFrame());
-        _devicePreviewPainter.Render(_devicePreviewLayout, frame, _runtime.Settings);
+        _devicePreviewPainter.Render(_devicePreviewLayout, frame, _runtime.Settings, _planTargets.Targets);
         DashImageRenderer.Copy(_devicePreviewPainter, _devicePreviewBitmap, _devicePreviewPixels!);
         _devicePreviewImage?.InvalidateVisual();
     }
@@ -3202,7 +3231,8 @@ public sealed class MainWindow : Window
             _runtime.Settings,
             transform.LogicalWidth,
             transform.LogicalHeight,
-            palette: DashPalette.FromLayout(layout));
+            palette: DashPalette.FromLayout(layout),
+            targets: _planTargets.Targets);
     }
 
     private Control EditableDeviceName(SavedDevice device)
@@ -5056,7 +5086,8 @@ public sealed class MainWindow : Window
             _runtime.Settings,
             width,
             height,
-            palette: DashPalette.FromLayout(layout));
+            palette: DashPalette.FromLayout(layout),
+            targets: _planTargets.Targets);
 
         return new Border
         {

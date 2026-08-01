@@ -97,6 +97,91 @@ public class HeadlessShellTests
         }
     }
 
+    /// <summary>
+    /// The shipped app has to carry an armed plan's targets from the store all the way to the
+    /// dash (#189): the corpus lap becomes a delta reference and the plan's fuel figure becomes
+    /// a <c>target.*</c> value, both latched at the start/finish line.
+    /// </summary>
+    [Fact]
+    public async Task TheRunningAppDeliversAnArmedPlansTargetsToTheDash()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        var telemetry = new RecordingTelemetrySource();
+        try
+        {
+            // One recorded lap whose elapsed time at position p is exactly p * 100, and an
+            // armed plan aiming at it. Seeded on disk so this is about the shipped wiring.
+            new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history")).Save(new LapHistorySession
+            {
+                Id = "hs-q",
+                Kind = HistorySessionKind.Qualifying,
+                Origin = LapHistoryOrigin.Recorded,
+                StartedAt = new DateTimeOffset(2026, 7, 31, 18, 20, 0, TimeSpan.Zero),
+                Context = new LapHistoryContext
+                {
+                    Game = "Le Mans Ultimate",
+                    TrackCourse = "Spa-Francorchamps",
+                    CarModel = "Porsche 963",
+                },
+                Laps =
+                [
+                    new LapHistoryRecord
+                    {
+                        LapNumber = 1,
+                        IsValid = true,
+                        LapTimeSeconds = 100,
+                        ReferenceCurve = new LapReferenceCurve
+                        {
+                            PositionStep = 0.01,
+                            TimesSeconds = [.. Enumerable.Range(0, 101).Select(i => i * 0.01 * 100)],
+                        },
+                    },
+                ],
+            });
+
+            var plans = Path.Combine(dataRoot, "session-plans");
+            Directory.CreateDirectory(plans);
+            await File.WriteAllTextAsync(
+                Path.Combine(plans, "wired.json"),
+                """
+                {"id":"wired","name":"Spa 6h","game":"Le Mans Ultimate","car":"Porsche 963",
+                 "track":"Spa-Francorchamps","status":"Armed","fuelPerLapLiters":3.4,
+                 "raceLengthFormat":"TimeBased","raceLengthValue":360,
+                 "targets":[{"kind":"Race","lapTime":{"scope":"Qualifying","statistic":"Fastest",
+                   "lapTimeSeconds":100,"sampleSize":1,"lapSessionId":"hs-q","lapNumber":1,
+                   "hasReferenceCurve":true}}]}
+                """);
+            await File.WriteAllTextAsync(Path.Combine(plans, "active.json"), """{"planId":"wired"}""");
+
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                Assert.Null(window.DashTargets.LapTimeSeconds);
+
+                window.IngestTelemetryFrame(RaceFrame(lap: 1));
+
+                Assert.Equal(100, window.DashTargets.LapTimeSeconds);
+                Assert.Equal(3.4, window.DashTargets.FuelPerLapLiters);
+                var reference = window.PlanDeltaReference;
+                Assert.NotNull(reference);
+                Assert.Equal(100, reference!.LapTimeSeconds);
+                Assert.Equal(50, reference.TimesSeconds[50], precision: 6);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            telemetry.Dispose();
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task TheShippedPlannerPageOffersTargetsFromLapsTheAppItselfRecorded()
     {
@@ -179,6 +264,19 @@ public class HeadlessShellTests
             Directory.Delete(dataRoot, recursive: true);
         }
     }
+
+    private static TelemetryFrame RaceFrame(int lap) => new()
+    {
+        Session = new SessionInfo
+        {
+            Game = "Le Mans Ultimate",
+            Track = "Spa-Francorchamps",
+            Car = "Porsche 963",
+            SessionType = SessionType.Race,
+            InCar = true,
+        },
+        Lap = new LapState { CurrentLap = lap, IsValid = true },
+    };
 
     private static TelemetryFrame QualifyingFrame(int lap, double lastLapTime = 0) => new()
     {

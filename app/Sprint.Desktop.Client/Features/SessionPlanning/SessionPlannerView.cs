@@ -207,6 +207,19 @@ internal sealed class SessionPlannerView
 
         panel.Children.Add(ManualRow(kind, target));
 
+        if (_controller.TargetsApplyFromNextLap)
+        {
+            // Targets latch at the start/finish line (#189), so an edit made mid-session does
+            // nothing to the lap being driven. Saying it here is what keeps the driver from
+            // reading the current lap's delta against a target it never had.
+            panel.Children.Add(Graphite.TextBlock(
+                "Applies from the next lap — the lap in progress keeps the target it started with.",
+                12,
+                FontWeight.Normal,
+                Graphite.Text3Brush,
+                TextWrapping.Wrap));
+        }
+
         return new Border
         {
             // Panel3 on the card's Panel2: the selector is a distinct surface inside the plan

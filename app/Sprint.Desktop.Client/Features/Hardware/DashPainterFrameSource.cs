@@ -76,13 +76,24 @@ public sealed class DashPainterFrameSource : IDashFrameSource
     private readonly SKSurface? _directSurface;
     private readonly SKMatrix _directOutputTransform;
     private readonly DashPageSelection? _pageSelection;
+    private readonly Func<DashTargets?>? _targetsProvider;
     private DashPalette _palette;
     private readonly DashAlertTracker _alerts = new();
     private DashLayout _layout;
     private bool _idle;
 
-    public DashPainterFrameSource(DashLayout layout, AppSettings settings, ScreenConfig config, DashPalette? palette = null)
-        : this(layout, settings, config, palette, preferDirectRgb565: true)
+    /// <param name="targetsProvider">
+    /// Reads the active plan's targets (#189) at render time, the same way the frame itself is
+    /// read: they change while the panel is running, and the panel is where the driver reads
+    /// them. Omitted means nothing is planned and target-bound widgets show their no-data state.
+    /// </param>
+    public DashPainterFrameSource(
+        DashLayout layout,
+        AppSettings settings,
+        ScreenConfig config,
+        DashPalette? palette = null,
+        Func<DashTargets?>? targetsProvider = null)
+        : this(layout, settings, config, palette, preferDirectRgb565: true, targetsProvider: targetsProvider)
     {
     }
 
@@ -92,7 +103,8 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         ScreenConfig config,
         DashPalette? palette,
         bool preferDirectRgb565,
-        DashPageSelection? pageSelection = null)
+        DashPageSelection? pageSelection = null,
+        Func<DashTargets?>? targetsProvider = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(settings);
@@ -102,6 +114,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         _settings = settings;
         _config = config;
         _pageSelection = pageSelection;
+        _targetsProvider = targetsProvider;
         Width = config.Width;
         Height = config.Height;
 
@@ -192,6 +205,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
         }
 
         var banner = _idle ? null : _alerts.Evaluate(_layout, frame, _palette);
+        var targets = _targetsProvider?.Invoke();
         long sourceCompleted;
         long transformStarted;
         if (_directSurface is not null && _directPixels is not null)
@@ -201,6 +215,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
                 _layout,
                 frame,
                 _settings,
+                targets,
                 pageId: _pageSelection?.PageId,
                 idle: _idle,
                 banner: banner,
@@ -215,6 +230,7 @@ public sealed class DashPainterFrameSource : IDashFrameSource
                 _layout,
                 frame,
                 _settings,
+                targets,
                 pageId: _pageSelection?.PageId,
                 idle: _idle,
                 banner: banner);
