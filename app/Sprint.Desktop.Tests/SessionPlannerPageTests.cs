@@ -450,6 +450,141 @@ public sealed class SessionPlannerPageTests
         Assert.True(draft.FuelExpanded);
     }
 
+    [Theory]
+    [InlineData("Spa-Francorchamps", "Porsche 963", "Spa-Francorchamps – Porsche 963")]
+    [InlineData("Spa-Francorchamps", "", "Spa-Francorchamps")]
+    [InlineData("", "Porsche 963", "Porsche 963")]
+    [InlineData("", "", "New Session Plan")]
+    [InlineData("  ", "  ", "New Session Plan")]
+    public void TheDerivedNameIsWhatTheServiceWouldActuallyCallAnUnnamedPlan(
+        string track,
+        string car,
+        string expected)
+    {
+        // The modal shows this as the name placeholder, so it has to be the same string the
+        // plan really ends up with — not a lookalike built in the view.
+        var draft = new NewPlanDraft { Track = track, Car = car, RaceLengthText = "60" };
+
+        Assert.Equal(expected, draft.DerivedName);
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal(expected, request!.Name);
+    }
+
+    [Fact]
+    public void ATypedNameWinsOverTheDerivedOne()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "  Sunday race  ",
+            Track = "Spa-Francorchamps",
+            Car = "Porsche 963",
+            RaceLengthText = "60",
+        };
+
+        Assert.Equal("Spa-Francorchamps – Porsche 963", draft.DerivedName);
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal("Sunday race", request!.Name);
+    }
+
+    [Fact]
+    public void QuickModeIsASummaryPlusCreateWhenEverythingIsDetected()
+    {
+        // The best case in the issue: in the car, lap-based session, history present.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            hasFuelHistory: true);
+
+        Assert.True(detection.ContextComplete);
+        Assert.Equal(RaceLengthFormat.LapBased, detection.RaceLengthFormat);
+        Assert.Equal(31, detection.RaceLengthValue);
+        Assert.True(detection.RaceLengthKnown);
+        Assert.True(detection.HasFuelHistory);
+        // Nothing left to ask: the modal is a read-only summary and a Create button.
+        Assert.Empty(detection.MissingFields);
+    }
+
+    [Fact]
+    public void ATimedRaceHasItsDurationDetectedInMinutes()
+    {
+        var detection = Detect(
+            new SessionInfo
+            {
+                Game = "Le Mans Ultimate",
+                Track = "Spa",
+                Car = "Porsche 963",
+                TotalSessionTime = 5400,
+                InCar = true,
+            },
+            hasFuelHistory: true);
+
+        Assert.Equal(RaceLengthFormat.TimeBased, detection.RaceLengthFormat);
+        Assert.Equal(90, detection.RaceLengthValue);
+        Assert.Empty(detection.MissingFields);
+    }
+
+    [Fact]
+    public void AnUndetectableRaceLengthIsAskedForRatherThanGuessed()
+    {
+        // No lap count and no plausible total: the sim has not said how long this is, and a
+        // garbage number here becomes a garbage fuel estimate.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", InCar = true },
+            hasFuelHistory: true);
+
+        Assert.Equal(RaceLengthFormat.Unknown, detection.RaceLengthFormat);
+        Assert.False(detection.RaceLengthKnown);
+        Assert.Equal([QuickPlanField.RaceLength], detection.MissingFields);
+    }
+
+    [Fact]
+    public void QuickModeAsksForTheFuelValuesOnlyWhenThereIsNoHistory()
+    {
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            hasFuelHistory: false);
+
+        Assert.Equal([QuickPlanField.Fuel], detection.MissingFields);
+    }
+
+    [Fact]
+    public void QuickModeAsksForTheContextItCouldNotDetect()
+    {
+        // Not in the car and the sim reports nothing: everything is a gap.
+        var detection = Detect(new SessionInfo(), hasFuelHistory: false);
+
+        Assert.False(detection.ContextComplete);
+        Assert.Equal(
+            [QuickPlanField.Context, QuickPlanField.RaceLength, QuickPlanField.Fuel],
+            detection.MissingFields);
+    }
+
+    [Fact]
+    public void DetectionFallsBackToTheRememberedContextInTheLobby()
+    {
+        // The sim knows the track but not yet the car; the remembered context fills the gap
+        // so the form shrinks instead of asking again.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", MaxLaps = 31 },
+            hasFuelHistory: true,
+            remembered: new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"));
+
+        Assert.Equal("Porsche 963", detection.Context.Car);
+        Assert.True(detection.ContextComplete);
+        Assert.Empty(detection.MissingFields);
+    }
+
+    private static PlanDetection Detect(
+        SessionInfo session,
+        bool hasFuelHistory,
+        PlanContext? remembered = null)
+    {
+        PlanDetection? detection = null;
+        RunWithContext(remembered ?? PlanContext.Empty, (controller, _) =>
+            detection = controller.Detect(session), hasFuelHistory);
+        return detection!;
+    }
+
     [Fact]
     public void PrefillResolvesTheCarWhileTheDriverIsStillInTheLobby()
     {
@@ -529,7 +664,8 @@ public sealed class SessionPlannerPageTests
 
     private static void RunWithContext(
         PlanContext context,
-        Action<SessionPlannerController, SessionPlannerService> body)
+        Action<SessionPlannerController, SessionPlannerService> body,
+        bool hasFuelHistory = false)
     {
         var root = TestEnv.NewTempDataRoot();
         try
@@ -541,7 +677,7 @@ public sealed class SessionPlannerPageTests
                 idFactory: () => $"id-{++counter}");
             var controller = new SessionPlannerController(
                 service,
-                NoFuelHistorySource.Instance,
+                hasFuelHistory ? new StubFuelHistory(true) : NoFuelHistorySource.Instance,
                 () => context);
             body(controller, service);
         }

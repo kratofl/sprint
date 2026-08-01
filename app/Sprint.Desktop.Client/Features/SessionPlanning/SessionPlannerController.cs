@@ -1,3 +1,5 @@
+using Sprint.Desktop.Api.Telemetry;
+
 namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>Which segment of the plan the page is showing. Local page state only —
@@ -17,6 +19,67 @@ public sealed record PlanContext(string Game, string Car, string Track)
         string.IsNullOrWhiteSpace(Game)
         && string.IsNullOrWhiteSpace(Car)
         && string.IsNullOrWhiteSpace(Track);
+}
+
+/// <summary>Something Quick mode could not detect and therefore has to ask for.</summary>
+public enum QuickPlanField
+{
+    /// <summary>Game, car or track is still unknown.</summary>
+    Context,
+
+    /// <summary>The sim has not said how long the race is.</summary>
+    RaceLength,
+
+    /// <summary>No lap history for this context, so average lap time and fuel per lap are needed.</summary>
+    Fuel,
+}
+
+/// <summary>
+/// What Sprint already knows about the session the driver is about to run, and what it does
+/// not. Quick mode renders the known parts read-only and asks only for
+/// <see cref="MissingFields"/>, so the form shrinks by itself as detection improves.
+/// </summary>
+public sealed record PlanDetection(
+    PlanContext Context,
+    RaceLengthFormat RaceLengthFormat,
+    double RaceLengthValue,
+    bool HasFuelHistory)
+{
+    /// <summary>Every part of the context is known, so none of it needs typing.</summary>
+    public bool ContextComplete =>
+        !string.IsNullOrWhiteSpace(Context.Game)
+        && !string.IsNullOrWhiteSpace(Context.Car)
+        && !string.IsNullOrWhiteSpace(Context.Track);
+
+    public bool RaceLengthKnown => RaceLengthFormat != RaceLengthFormat.Unknown && RaceLengthValue > 0;
+
+    /// <summary>
+    /// The gaps, in the order the modal shows them. Empty means Quick mode is a read-only
+    /// summary plus <c>Create</c>.
+    /// </summary>
+    public IReadOnlyList<QuickPlanField> MissingFields
+    {
+        get
+        {
+            var missing = new List<QuickPlanField>(capacity: 3);
+            if (!ContextComplete)
+            {
+                missing.Add(QuickPlanField.Context);
+            }
+
+            if (!RaceLengthKnown)
+            {
+                missing.Add(QuickPlanField.RaceLength);
+            }
+
+            if (!HasFuelHistory)
+            {
+                missing.Add(QuickPlanField.Fuel);
+            }
+
+            return missing;
+        }
+    }
 }
 
 /// <summary>Whether a plan may claim the single active slot, and an honest reason when it
@@ -184,6 +247,40 @@ public sealed class SessionPlannerController
             ? PlanContext.Empty
             : new PlanContext(recent.Game, recent.Car, recent.Track);
     }
+
+    /// <summary>
+    /// What Quick mode can fill in for itself from <paramref name="session"/>, falling back to
+    /// the remembered context for anything the sim has not reported yet (the car is commonly
+    /// unknown until the driver has a vehicle).
+    /// <para>
+    /// Race length is taken from the lap count when there is one, else from a plausible total
+    /// session time converted to minutes. An implausible or absent length is reported as
+    /// <see cref="RaceLengthFormat.Unknown"/> so the modal asks: committing a garbage number
+    /// here would quietly become a garbage fuel estimate.
+    /// </para>
+    /// </summary>
+    public PlanDetection Detect(SessionInfo session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var remembered = _lastSeenContext();
+        var context = new PlanContext(
+            Coalesce(session.Game, remembered.Game),
+            Coalesce(session.Car, remembered.Car),
+            Coalesce(session.Track, remembered.Track));
+
+        var (format, value) = session switch
+        {
+            { MaxLaps: > 0 } => (RaceLengthFormat.LapBased, (double)session.MaxLaps),
+            { TotalSessionTime: > 0 } => (RaceLengthFormat.TimeBased, session.TotalSessionTime.Value / 60),
+            _ => (RaceLengthFormat.Unknown, 0d),
+        };
+
+        return new PlanDetection(context, format, value, HasFuelHistory(context));
+    }
+
+    private static string Coalesce(string reported, string remembered) =>
+        string.IsNullOrWhiteSpace(reported) ? remembered : reported;
 
     /// <summary>Whether the creation flow can skip asking for manual average lap time and
     /// fuel per lap. False until #50 supplies a real history source.</summary>

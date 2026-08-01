@@ -10,6 +10,10 @@ public sealed record CreatePlanRequest
     public string Game { get; init; } = "";
     public string Car { get; init; } = "";
     public string Track { get; init; } = "";
+
+    /// <summary>Which creation flow this came from. Defaults to the full sheet.</summary>
+    public PlanMode Mode { get; init; } = PlanMode.Planned;
+
     public bool QualifyingIncluded { get; init; } = true;
     public RaceLengthFormat RaceLengthFormat { get; init; } = RaceLengthFormat.Unknown;
     public double RaceLengthValue { get; init; }
@@ -84,6 +88,7 @@ public sealed class SessionPlannerService
             Car = request.Car,
             Track = request.Track,
             Status = PlanStatus.Draft,
+            Mode = request.Mode,
             QualifyingIncluded = request.QualifyingIncluded,
             RaceLengthFormat = request.RaceLengthFormat,
             RaceLengthValue = request.RaceLengthValue,

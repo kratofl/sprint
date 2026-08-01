@@ -9,7 +9,8 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>What the page needs from the shell: the modal, the confirm dialog, and a repaint.</summary>
 internal sealed record SessionPlannerViewCallbacks(
     Action OpenCreateDialog,
-    Action<string, string, string, Action> Confirm);
+    Action<string, string, string, Action> Confirm,
+    Action OpenQuickPlanDialog);
 
 /// <summary>
 /// The Session Planner page (#100). A thin renderer over
@@ -19,6 +20,9 @@ internal sealed record SessionPlannerViewCallbacks(
 /// </summary>
 internal sealed class SessionPlannerView
 {
+    /// <summary>Tags the plan-in-view card so tests can assert on it without matching the header.</summary>
+    internal const string PlanCardTag = "planner-plan-card";
+
     private readonly SessionPlannerController _controller;
     private readonly SessionPlannerViewCallbacks _callbacks;
 
@@ -41,9 +45,18 @@ internal sealed class SessionPlannerView
         caption.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(caption, 0);
         header.Children.Add(caption);
-        var create = ActionButton("New Session Plan", ButtonTone.Primary, _callbacks.OpenCreateDialog);
-        Grid.SetColumn(create, 1);
-        header.Children.Add(create);
+        // Two entry points, not a mode switch: Quick plan is the ember primary because it is
+        // the one used under time pressure, with the full sheet one click away beside it.
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        actions.Children.Add(ActionButton("New plan…", ButtonTone.Neutral, _callbacks.OpenCreateDialog));
+        actions.Children.Add(ActionButton("Quick plan", ButtonTone.Primary, _callbacks.OpenQuickPlanDialog));
+        Grid.SetColumn(actions, 1);
+        header.Children.Add(actions);
         stack.Children.Add(header);
 
         if (!_controller.HasPlans)
@@ -92,9 +105,23 @@ internal sealed class SessionPlannerView
         var title = Graphite.TextBlock(plan.Name, 17, FontWeight.Medium, Graphite.TextBrush);
         Grid.SetColumn(title, 0);
         titleRow.Children.Add(title);
-        var status = Graphite.StatusPill(plan.Status.ToString().ToUpperInvariant(), StatusBrush(plan.Status));
-        Grid.SetColumn(status, 1);
-        titleRow.Children.Add(status);
+        var badges = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // A quick plan's inputs carry lower confidence by construction, so say so on the card
+        // itself — the mode has to outlive the modal. Planned is the norm and stays unlabelled.
+        if (plan.Mode == PlanMode.Quick)
+        {
+            badges.Children.Add(Graphite.Chip("Quick plan", Graphite.Text2Brush));
+        }
+
+        badges.Children.Add(Graphite.StatusPill(plan.Status.ToString().ToUpperInvariant(), StatusBrush(plan.Status)));
+        Grid.SetColumn(badges, 1);
+        titleRow.Children.Add(badges);
         body.Children.Add(titleRow);
 
         body.Children.Add(Graphite.TextBlock(
@@ -121,7 +148,9 @@ internal sealed class SessionPlannerView
 
         body.Children.Add(SegmentDetail(plan));
         body.Children.Add(TrackingControls(plan));
-        return Graphite.Card(body, new Thickness(18, 16));
+        var card = Graphite.Card(body, new Thickness(18, 16));
+        card.Tag = PlanCardTag;
+        return card;
     }
 
     private Control SegmentDetail(SessionPlan plan)

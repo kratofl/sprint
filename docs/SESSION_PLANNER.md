@@ -29,6 +29,37 @@ Location: `app/Sprint.Desktop.Client/Features/SessionPlanning`.
 Tests: `app/Sprint.Desktop.Tests/SessionPlannerTests.cs` (store round-trip, corrupt-
 file isolation, lifecycle, single-slot enforcement, ingestion, crash reconcile).
 
+## Plan creation: Quick and Planned (#178, #183) — implemented
+
+Two entry points in the page header, not a mode switch inside the sheet: `Quick plan`
+(ember primary — the one used under time pressure) and `New plan…` (neutral). The design
+contract scopes segmented controls to closely related *state*, and the full sheet already
+carries two of them.
+
+- **`PlanMode { Planned, Quick }`** is persisted on `SessionPlan` and `CreatePlanRequest`.
+  `Planned` is first so plan files written before modes existed — which carry no `mode` key
+  — keep their original meaning. A quick plan wears a `Quick plan` chip on its card, because
+  its inputs carry lower confidence by construction and #102 reads that confidence.
+- **`SessionPlannerController.Detect(SessionInfo)`** → `PlanDetection`: the context (live
+  session first, remembered context as fallback, so the lobby case works), the race length,
+  and whether history exists. `MissingFields` drives the sheet; empty means Quick mode is a
+  read-only summary plus `Create`.
+  - Race length comes from the lap count when there is one, else from a plausible total
+    session time in minutes, else `Unknown` → the sheet asks. A garbage duration would
+    quietly become a garbage fuel estimate.
+- **`QuickPlanDialog`** lists only what was actually detected and shows inputs only for the
+  gaps; the subtitle matches what is on screen rather than promising detected values that
+  are not there. Practice-program scope is deliberately absent.
+- **Name is optional and says so** (#178): the field follows the Context section, is
+  labelled `Name (optional)`, and its placeholder previews `NewPlanDraft.DerivedName` — the
+  same string the plan really gets. The placeholder is retargeted in place from the
+  track/car change handlers, so typing is never interrupted and the caret is never lost.
+
+Tests: `SessionPlannerPageTests` (detection rules, derived name), `NewPlanDialogViewTests`
+and `SessionPlannerViewTests` (real typing through a headless window, field ordering, the
+gaps-only sheet, the mode chip), plus the Agent UI review journey which now captures both
+entry points.
+
 ## Lap-history corpus (#179) — implemented
 
 The corpus every fuel and lap-time estimate rests on. Deliberately **separate from plan

@@ -134,22 +134,42 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "home-update-available", "Home", "Update v9.9.9"));
                     window.ApplyUpdateAvailability(null);
 
-                    // Session Planner (#100): the empty state and the creation modal.
+                    // Session Planner (#100): the empty state and both creation entry points
+                    // (#183 — Quick plan as the ember primary, the full sheet beside it).
                     Click(window, "Session Planner");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
                         "session-planner-empty",
                         "No session plans yet",
-                        "New Session Plan"));
+                        "Quick plan",
+                        "New plan…"));
 
-                    Click(window, "New Session Plan");
+                    // Quick plan (#183): detected context read-only, inputs only for the gaps.
+                    // Nothing is detected in the harness, so this is the widest form it shows.
+                    Click(window, "Quick plan");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-quick-plan-dialog",
+                        "Quick plan",
+                        // The harness's fake source reports no session, so this is the widest
+                        // form Quick mode ever shows: every field is a gap.
+                        "The game has not reported this session yet — fill in what you know.",
+                        "Sprint needs",
+                        "Race length",
+                        "Create"));
+                    Click(window, "Cancel");
+
+                    Click(window, "New plan…");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
                         "session-planner-new-plan-dialog",
                         "New Session Plan",
                         "Context",
+                        // #178: the name follows Context and says it is optional.
+                        "Name (optional)",
                         "Sessions",
                         "Include",
                         "Skip",
@@ -169,8 +189,10 @@ internal static class AgentUiReviewHarness
                         "Create"));
 
                     // Fill the two required fields and commit, so the populated page — the
-                    // segmented control, the plan card, plan history — is reviewable too.
-                    TaggedPlaceholderTextBox(window, "Spa – Hypercar").Text = "Spa 6h";
+                    // segmented control, the plan card, plan history — is reviewable too. The
+                    // name box now placeholders the derived name, which is the generic default
+                    // while track and car are empty (#178).
+                    TaggedPlaceholderTextBox(window, "New Session Plan").Text = "Spa 6h";
                     TaggedPlaceholderTextBox(window, "60").Text = "60";
                     Click(window, "Create");
                     frames.Add(Capture(

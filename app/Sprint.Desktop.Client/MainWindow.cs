@@ -1085,7 +1085,8 @@ public sealed class MainWindow : Window
                     message,
                     confirmLabel,
                     confirm,
-                    ButtonTone.Primary)));
+                    ButtonTone.Primary),
+                ShowQuickPlanDialog));
         return view.Build();
     }
 
@@ -2176,6 +2177,45 @@ public sealed class MainWindow : Window
             // is retained so typed values survive the rebuild.
             ShowNewPlanDialog);
 
+        ShowPlanOverlay(dialog.Build(), "New session plan dialog");
+    }
+
+    /// <summary>
+    /// The Quick plan sheet (#183): detected context read-only, gaps only. A separate entry
+    /// point rather than a mode switch inside the full sheet, and it reads detection from the
+    /// live frame so the form shrinks as the game reports more.
+    /// </summary>
+    private void ShowQuickPlanDialog()
+    {
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+        CloseDeviceCatalogDialog(restoreFocus: false);
+
+        var detection = _plannerController.Detect(CurrentTelemetryFrame().Session);
+        _newPlanDraft ??= new NewPlanDraft();
+
+        CloseNewPlanDialog();
+
+        var dialog = new QuickPlanDialog(
+            _newPlanDraft,
+            detection,
+            request =>
+            {
+                _newPlanDraft = null;
+                CloseNewPlanDialog();
+                _plannerController.CreatePlan(request);
+            },
+            () =>
+            {
+                _newPlanDraft = null;
+                CloseNewPlanDialog();
+            });
+
+        ShowPlanOverlay(dialog.Build(), "Quick session plan dialog");
+    }
+
+    private void ShowPlanOverlay(Control body, string automationName)
+    {
         var panel = new Border
         {
             Width = 520,
@@ -2190,11 +2230,11 @@ public sealed class MainWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             // The dialog owns its own scroll region so its commit row stays pinned.
-            Child = dialog.Build(),
+            Child = body,
             Tag = "new-plan-dialog",
         };
         KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
-        AutomationProperties.SetName(panel, "New session plan dialog");
+        AutomationProperties.SetName(panel, automationName);
         panel.PointerPressed += (_, e) => e.Handled = true;
 
         _newPlanOverlay = new Border

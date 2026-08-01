@@ -12,6 +12,55 @@ namespace Sprint.Desktop.Tests;
 /// </summary>
 public sealed class SessionPlannerTests
 {
+    [Fact]
+    public void APlanRemembersWhetherItWasCreatedQuicklyOrPlanned()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var store = new LocalSessionPlanStore(root);
+            var service = new SessionPlannerService(store, clock: () => new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero));
+
+            var quick = service.CreatePlan(new CreatePlanRequest { Name = "Quick", Mode = PlanMode.Quick });
+            var planned = service.CreatePlan(new CreatePlanRequest { Name = "Planned" });
+
+            Assert.Equal(PlanMode.Quick, quick.Mode);
+            // Default is Planned, so a request that says nothing keeps the old meaning.
+            Assert.Equal(PlanMode.Planned, planned.Mode);
+
+            // The mode has to survive the modal closing — #102 shows confidence from it.
+            var reloaded = new LocalSessionPlanStore(root).LoadAll();
+            Assert.Equal(PlanMode.Quick, reloaded.Single(plan => plan.Name == "Quick").Mode);
+            Assert.Equal(PlanMode.Planned, reloaded.Single(plan => plan.Name == "Planned").Mode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void APlanFileWrittenBeforeModesExistedReadsAsPlanned()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            // A pre-existing file has no "mode" key at all; an upgrade must not silently
+            // reinterpret the user's saved plans as quick ones.
+            File.WriteAllText(
+                Path.Combine(root, "old.json"),
+                """{"id":"old","name":"Last season","raceLengthFormat":"TimeBased","raceLengthValue":60}""");
+
+            var plan = Assert.Single(new LocalSessionPlanStore(root).LoadAll());
+
+            Assert.Equal(PlanMode.Planned, plan.Mode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 7, 13, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]

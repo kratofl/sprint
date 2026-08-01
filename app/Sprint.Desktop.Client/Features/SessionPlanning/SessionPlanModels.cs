@@ -35,6 +35,23 @@ public enum SegmentKind
     Race,
 }
 
+/// <summary>
+/// Which creation flow produced a plan. Persisted rather than derived: a Quick plan's
+/// inputs carry lower confidence by construction, and that has to stay visible after the
+/// modal closes.
+/// </summary>
+public enum PlanMode
+{
+    /// <summary>
+    /// The full sheet. First so plan files written before modes existed — which have no
+    /// mode key at all — keep their original meaning instead of reading as quick ones.
+    /// </summary>
+    Planned,
+
+    /// <summary>The minute before joining a server: detected context, gaps only.</summary>
+    Quick,
+}
+
 /// <summary>How a race's length is expressed.</summary>
 public enum RaceLengthFormat
 {
@@ -85,6 +102,10 @@ public sealed class SessionPlan
 
     [JsonPropertyName("status")]
     public PlanStatus Status { get; set; } = PlanStatus.Draft;
+
+    /// <summary>Which creation flow produced this plan. Absent in pre-mode files → Planned.</summary>
+    [JsonPropertyName("mode")]
+    public PlanMode Mode { get; set; } = PlanMode.Planned;
 
     [JsonPropertyName("qualifyingIncluded")]
     public bool QualifyingIncluded { get; set; } = true;

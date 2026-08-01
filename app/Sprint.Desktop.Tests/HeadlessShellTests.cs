@@ -212,14 +212,29 @@ public class HeadlessShellTests
                     window.GetVisualDescendants().OfType<TextBlock>(),
                     text => text.Text == "No session plans yet");
 
-                var create = FindOptionalButton(window, "New Session Plan");
+                // Two entry points (#183): the ember Quick plan and the full sheet beside it.
+                var quick = FindOptionalButton(window, "Quick plan");
+                var create = FindOptionalButton(window, "New plan…");
+                Assert.NotNull(quick);
                 Assert.NotNull(create);
+
                 create!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
-
                 Assert.Contains(
                     window.GetVisualDescendants().OfType<Border>(),
                     border => border.Tag as string == "new-plan-dialog");
+                Assert.Contains(
+                    window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => text.Text == "Name (optional)");
+
+                FindOptionalButton(window, "Cancel")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                quick!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Contains(
+                    window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => text.Text == "Quick plan" || text.Text == "Detected");
 
                 window.Close();
             }, CancellationToken.None);

@@ -84,19 +84,24 @@ public sealed class NewPlanDraft
         return true;
     }
 
-    // An unnamed plan is named after where and what it is for, so history stays readable.
-    private string ResolveName()
+    /// <summary>
+    /// What an unnamed plan will be called: where and what it is for, so history stays
+    /// readable. Public because the modal shows it as the name field's placeholder — the
+    /// preview has to be the string the plan really gets, not a lookalike built in the view.
+    /// </summary>
+    public string DerivedName
     {
-        if (!string.IsNullOrWhiteSpace(Name))
+        get
         {
-            return Name.Trim();
+            var parts = new[] { Track.Trim(), Car.Trim() }
+                .Where(part => part.Length > 0)
+                .ToArray();
+            return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
         }
-
-        var parts = new[] { Track.Trim(), Car.Trim() }
-            .Where(part => part.Length > 0)
-            .ToArray();
-        return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
     }
+
+    private string ResolveName() =>
+        string.IsNullOrWhiteSpace(Name) ? DerivedName : Name.Trim();
 
     private static double? ParseOptional(string text) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value > 0
@@ -112,6 +117,11 @@ public sealed class NewPlanDraft
 /// </summary>
 internal sealed class NewPlanDialog
 {
+    /// <summary>Control names the view tests address the context and name inputs by.</summary>
+    internal const string NameInputName = "planNameInput";
+    internal const string TrackInputName = "planTrackInput";
+    internal const string CarInputName = "planCarInput";
+
     private readonly NewPlanDraft _draft;
     private readonly bool _hasFuelHistory;
     private readonly Action<CreatePlanRequest> _create;
@@ -171,12 +181,28 @@ internal sealed class NewPlanDialog
             TextWrapping.Wrap));
         content.Children.Add(headingText);
 
-        content.Children.Add(Field("Name", Input(_draft.Name, value => _draft.Name = value, "Spa – Hypercar")));
-
+        // Context first, then the name: presented first and unlabelled, the name read as
+        // something that had to be filled in. Its placeholder previews the derived name, so
+        // the field below can honestly be skipped.
         content.Children.Add(Graphite.SectionLabel("Context"));
         content.Children.Add(Field("Game", Input(_draft.Game, value => _draft.Game = value, "Le Mans Ultimate")));
-        content.Children.Add(Field("Car", Input(_draft.Car, value => _draft.Car = value, "Porsche 963")));
-        content.Children.Add(Field("Track", Input(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps")));
+
+        var carBox = Input(_draft.Car, value => _draft.Car = value, "Porsche 963");
+        carBox.Name = CarInputName;
+        content.Children.Add(Field("Car", carBox));
+
+        var trackBox = Input(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps");
+        trackBox.Name = TrackInputName;
+        content.Children.Add(Field("Track", trackBox));
+
+        var nameBox = Input(_draft.Name, value => _draft.Name = value, _draft.DerivedName);
+        nameBox.Name = NameInputName;
+        // Retarget the placeholder in place on every keystroke. Rebuilding the modal here
+        // would throw away the caret and whatever the user had already typed.
+        void PreviewDerivedName() => nameBox.PlaceholderText = _draft.DerivedName;
+        trackBox.TextChanged += (_, _) => PreviewDerivedName();
+        carBox.TextChanged += (_, _) => PreviewDerivedName();
+        content.Children.Add(Field("Name (optional)", nameBox));
 
         content.Children.Add(Graphite.SectionLabel("Sessions"));
         content.Children.Add(Field("Qualifying", Graphite.Segmented(
