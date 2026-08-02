@@ -1788,9 +1788,22 @@ public class HeadlessShellTests
 
                 window.CaptureRenderedFrame();
                 Assert.NotNull(FindOptionalText(window, "Profile"));
-                Assert.NotNull(FindOptionalText(window, "Dash defaults"));
+                Assert.NotNull(FindOptionalText(window, "Update channel"));
+                // Feature settings live on their slices (2026-08-02): the planner's defaults
+                // behind the planner's gear, dash defaults behind the Dashboards gear.
+                Assert.Null(FindOptionalText(window, "Dash defaults"));
+                Assert.Null(FindOptionalText(window, "Fuel reserve"));
                 Assert.Null(FindOptionalText(window, "Device bindings"));
                 Assert.Null(FindOptionalText(window, "Setup templates"));
+
+                // Sections fold shut from their header and reopen the same way.
+                Assert.NotNull(FindOptionalText(window, "Driver name"));
+                FindButton(window, "Profile").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Null(FindOptionalText(window, "Driver name"));
+                FindButton(window, "Profile").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.NotNull(FindOptionalText(window, "Driver name"));
 
 #if DEBUG
                 var reset = FindButton(window, "Reset settings to defaults");

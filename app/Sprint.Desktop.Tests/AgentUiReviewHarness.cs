@@ -147,7 +147,7 @@ internal static class AgentUiReviewHarness
                 window.Show();
                 try
                 {
-                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
+                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Session plans", "Nothing planned", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
 
                     // The standing update hint: toolbar pill + Settings rail badge, shown
                     // without touching the network, then cleared so later frames are clean.
@@ -168,6 +168,26 @@ internal static class AgentUiReviewHarness
                         // #185's permanent manual entry point, always available even after
                         // the startup offer has been declined.
                         "Import results"));
+
+                    // The planner's own defaults sheet (#103, moved onto the slice): the gear
+                    // in the page header, every value saving on change.
+                    Click(window, "Planner settings");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-settings",
+                        "Planner settings",
+                        "Fuel reserve",
+                        "+1 lap",
+                        "Fuel history",
+                        "Online detection",
+                        "Trace capture",
+                        "Keep traces for",
+                        "90 days",
+                        "Race format warning",
+                        "Archived sessions",
+                        "Close"));
+                    Click(window, "Close");
 
                     // Quick plan (#183): detected context read-only, inputs only for the gaps.
                     // Nothing is detected in the harness, so this is the widest form it shows.
@@ -256,6 +276,17 @@ internal static class AgentUiReviewHarness
                         // earn targets rather than showing an empty scope list.
                         "Qualifying lap-time target",
                         PlanTargetChoices.NoHistoryMessage));
+
+                    // Home's launchpad now carries the created plan as a tile.
+                    Click(window, "Home");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "home-plan-tiles",
+                        "Session plans",
+                        "Spa 6h",
+                        "Open planner"));
+                    Click(window, "Session Planner");
 
                     // #185's startup offer. Driven directly because the real path is gated on a
                     // desktop lifetime and on the sim having archived sessions on this machine.
@@ -534,27 +565,18 @@ internal static class AgentUiReviewHarness
                     // toolbar has its own "Settings" tab that would otherwise shadow the
                     // sidebar navigation button of the same label.
                     Click(window, "Settings");
+                    // Settings owns app-level preferences only; the planner and dash
+                    // defaults are captured on their own slices below.
                     frames.Add(Capture(
                         window,
                         artifactRoot,
                         "settings-global-defaults",
                         "Settings",
                         "Profile",
-                        // Session Planner defaults (#103).
-                        "Session Planner",
-                        "Fuel reserve",
-                        // Units live in the option text, so a bare number never appears.
-                        "+1 lap",
-                        "90 days",
-                        "Fuel history",
-                        "Online detection",
-                        "Trace capture",
-                        "Keep traces for",
-                        "Race format warning",
-                        // #185's second manual entry point.
-                        "Archived sessions",
-                        "Import results",
-                        "Dash defaults"
+                        "Driver name",
+                        "Release",
+                        "Update channel",
+                        "About"
 #if DEBUG
                         , "Development",
                         "Open development tools"
@@ -630,6 +652,19 @@ internal static class AgentUiReviewHarness
 
                     Click(window, "Dashboards");
                     frames.Add(Capture(window, artifactRoot, "dash-editor-list", "Dashes", "Create dash", "Edit"));
+
+                    // New-dash defaults live behind this slice's gear, not on Settings.
+                    Click(window, "Dash defaults");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "dash-defaults-settings",
+                        "Dash defaults",
+                        "Editor mode",
+                        "Speed unit",
+                        "Temperature unit",
+                        "Close"));
+                    Click(window, "Close");
 
                     Click(window, "Edit");
                     frames.Add(Capture(window, artifactRoot, "dash-editor-layout", "Layout", "Alerts", "Settings", "Pages", "Widgets", "Properties", "Basic", "Advanced"));
@@ -971,7 +1006,7 @@ internal static class AgentUiReviewHarness
             new ReviewLapHistoryStore());
         var view = new SessionPlannerView(
             controller,
-            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, true));
+            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, () => { }, true));
 
         var window = new Window
         {

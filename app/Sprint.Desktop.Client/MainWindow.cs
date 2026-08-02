@@ -105,6 +105,9 @@ public sealed class MainWindow : Window
     private string? _captureDeviceId;
     private string? _selectedDeviceId;
     private bool _deviceBindingPickerOpen;
+    // Which settings sections are folded shut. Session state on purpose: a fresh window
+    // opens with everything visible.
+    private readonly HashSet<string> _collapsedSettingsSections = new(StringComparer.Ordinal);
     private CaptureRegionWindow? _captureRegionWindow;
     internal CaptureRegionWindow? ActiveCaptureRegionWindow => _captureRegionWindow;
 
@@ -1138,6 +1141,7 @@ public sealed class MainWindow : Window
                     tone),
                 ShowQuickPlanDialog,
                 ImportArchivedSessionsManually,
+                () => ShowSliceSettingsDialog("flag", "Planner settings", PlannerSettingsForm),
                 ResultsImporter is not null));
         return view.Build();
     }
@@ -1191,10 +1195,93 @@ public sealed class MainWindow : Window
             Child = session,
         });
 
+        stack.Children.Add(LaunchpadPlans());
         stack.Children.Add(LaunchpadDashes());
         stack.Children.Add(LaunchpadScreens(screens));
 
         return Scroll(stack);
+    }
+
+    // "Session plans": the open plans as launchpad tiles — an overview, not the whole shelf.
+    // A tile opens its plan inside the planner; the full list is one click away.
+    private Control LaunchpadPlans()
+    {
+        var panel = new StackPanel { Spacing = 10 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        AddGrid(header, Graphite.SectionLabel("Session plans"), 0, 0);
+        AddGrid(header, ActionButton("Open planner", ButtonTone.Ghost, () => Navigate(AppView.SessionPlanner)), 0, 1);
+        panel.Children.Add(header);
+
+        var open = _plannerController.OpenPlans;
+        if (open.Count == 0)
+        {
+            panel.Children.Add(Graphite.StatePanel(
+                "Nothing planned",
+                "Create a plan before qualifying or joining a server. Sprint prefills the game, car, and track it last saw.",
+                Graphite.Text3Brush));
+            return panel;
+        }
+
+        var tiles = new WrapPanel { Orientation = Orientation.Horizontal };
+        // Four tiles cover a launchpad row; more open plans than that is planner business.
+        foreach (var plan in open.Take(4))
+        {
+            tiles.Children.Add(LaunchpadPlanTile(plan));
+        }
+
+        panel.Children.Add(tiles);
+        return panel;
+    }
+
+    private Control LaunchpadPlanTile(SessionPlan plan)
+    {
+        var body = new StackPanel { Spacing = 8 };
+
+        var top = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        AddGrid(top, SessionPlannerView.PlanThumbnail(plan), 0, 0);
+        var pill = Graphite.StatusPill(plan.Status.ToString().ToUpperInvariant(), PlanStatusBrush(plan.Status));
+        pill.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(top, pill, 0, 2);
+        body.Children.Add(top);
+
+        var name = Graphite.TextBlock(plan.Name, 14, FontWeight.Medium, Graphite.TextBrush, TextWrapping.NoWrap);
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        ToolTip.SetTip(name, plan.Name);
+        body.Children.Add(name);
+
+        var contextParts = new[] { plan.Car, plan.Track }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .ToArray();
+        var context = Graphite.TextBlock(
+            contextParts.Length == 0 ? "No car or track recorded" : string.Join(" · ", contextParts),
+            11,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.NoWrap);
+        context.TextTrimming = TextTrimming.CharacterEllipsis;
+        body.Children.Add(context);
+
+        var card = Graphite.Card(body, new Thickness(12));
+        card.Width = 240;
+        card.Margin = new Thickness(0, 0, 12, 12);
+        return WrapClickable(card, $"home-plan-tile:{plan.Id}", plan.Name, () => OpenPlanFromHome(plan.Id));
+    }
+
+    private static IBrush PlanStatusBrush(PlanStatus status) => status switch
+    {
+        PlanStatus.Tracking => Graphite.GreenBrush,
+        PlanStatus.Armed => Graphite.AccentBrush,
+        PlanStatus.Completed => Graphite.BlueBrush,
+        PlanStatus.Abandoned => Graphite.RedBrush,
+        _ => Graphite.Text3Brush,
+    };
+
+    private void OpenPlanFromHome(string planId)
+    {
+        // Navigate lands the planner on its overview; the explicit selection then opens the
+        // tile's plan, exactly like clicking Open on the shelf.
+        Navigate(AppView.SessionPlanner);
+        _plannerController.SelectPlan(planId);
     }
 
     // "Your dashes": every saved design as an openable card, plus a direct route into
@@ -1685,6 +1772,12 @@ public sealed class MainWindow : Window
             ScreenProfileCatalog.Default.Name,
             180);
         ToolTip.SetTip(createSize, "Target wheel-screen size for the new dash");
+        // Defaults for newly created dashes live on this slice, behind the gear — the global
+        // Settings page owns app-level preferences only.
+        actions.Children.Add(Graphite.IconButton(
+            "settings",
+            "Dash defaults",
+            () => ShowSliceSettingsDialog("layout-dashboard", "Dash defaults", DashDefaultsForm)));
         actions.Children.Add(createSize);
         actions.Children.Add(ActionButton("Create dash", ButtonTone.Primary, () =>
         {
@@ -4051,36 +4144,7 @@ public sealed class MainWindow : Window
             Background = Graphite.Panel2Brush,
             Foreground = Graphite.TextBrush,
             BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180
-        };
-
-        // Global defaults applied to newly created dashes (see NewDashDefaults).
-        var speedUnit = new ComboBox
-        {
-            ItemsSource = new[] { "km/h", "mph" },
-            SelectedItem = _runtime.Settings.NewDashDefaults.SpeedUnit,
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180
-        };
-        var tempUnit = new ComboBox
-        {
-            ItemsSource = new[] { "c", "f" },
-            SelectedItem = _runtime.Settings.NewDashDefaults.TempUnit,
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180
-        };
-        var dashMode = new ComboBox
-        {
-            ItemsSource = new[] { "Basic", "Advanced" },
-            SelectedItem = string.Equals(_runtime.Settings.NewDashDefaults.Mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "Advanced" : "Basic",
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
         void MarkSaved()
@@ -4123,21 +4187,6 @@ public sealed class MainWindow : Window
         driverNumber.LostFocus += (_, _) => CommitTextSettings();
         driverName.KeyDown += (_, e) => CommitOnEnter(driverName, e);
         driverNumber.KeyDown += (_, e) => CommitOnEnter(driverNumber, e);
-        speedUnit.SelectionChanged += (_, _) =>
-        {
-            _runtime.Settings.NewDashDefaults.SpeedUnit = speedUnit.SelectedItem?.ToString() ?? "km/h";
-            MarkSaved();
-        };
-        tempUnit.SelectionChanged += (_, _) =>
-        {
-            _runtime.Settings.NewDashDefaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
-            MarkSaved();
-        };
-        dashMode.SelectionChanged += (_, _) =>
-        {
-            _runtime.Settings.NewDashDefaults.Mode = string.Equals(dashMode.SelectedItem?.ToString(), "Advanced", StringComparison.Ordinal) ? "advanced" : "basic";
-            MarkSaved();
-        };
         // Reverting the combo from the warning dialog raises SelectionChanged again;
         // the guard keeps that programmatic revert from reopening the dialog.
         var revertingChannel = false;
@@ -4177,153 +4226,12 @@ public sealed class MainWindow : Window
             RenderBody();
         };
 
-        // Session Planner defaults (#103). These seed new plans; anything a plan stores
-        // itself stays overridable per plan.
-        var planner = _runtime.Settings.SessionPlanner;
-        // Units belong in the option text: a bare "1" next to "Fuel reserve" does not say
-        // whether it means laps, litres or minutes.
-        var reserveOptions = new[] { "No reserve", "+1 lap", "+2 laps", "+3 laps" };
-        var reserveLaps = new ComboBox
-        {
-            ItemsSource = reserveOptions,
-            SelectedItem = reserveOptions[Math.Clamp(planner.FuelReserveLaps, 0, reserveOptions.Length - 1)],
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180,
-        };
-        var historySource = new ComboBox
-        {
-            ItemsSource = new[] { HistoryAllLaps, HistoryMatchingType },
-            SelectedItem = planner.FuelHistorySource == FuelHistorySource.MatchingSessionType
-                ? HistoryMatchingType
-                : HistoryAllLaps,
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 260,
-        };
-        var autoDetect = new ComboBox
-        {
-            ItemsSource = new[] { AutoDetectDraft, AutoDetectArm },
-            SelectedItem = planner.AutoDetect == AutoDetectMode.CreateAndArm
-                ? AutoDetectArm
-                : AutoDetectDraft,
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 260,
-        };
-        var captureRate = new ComboBox
-        {
-            ItemsSource = SessionPlannerSettings.TraceCaptureRates.Select(rate => $"{rate} Hz").ToArray(),
-            SelectedItem = $"{planner.TraceCaptureHz} Hz",
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180,
-        };
-        var retentionOptions = new[] { 30, 90, 180, 365 };
-        var retentionDays = new ComboBox
-        {
-            ItemsSource = retentionOptions.Select(days => $"{days} days").ToArray(),
-            SelectedItem = $"{planner.TraceRetentionDays} days",
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            MinWidth = 180,
-        };
-        // Segmented rather than a checkbox: the codebase has no checkbox control, and On/Off
-        // is exactly the "closely related state" the design contract scopes segmented to.
-        var warnFormat = Graphite.Segmented(
-            ["On", "Off"],
-            planner.WarnOnRaceFormatMismatch ? 0 : 1,
-            index =>
-            {
-                planner.WarnOnRaceFormatMismatch = index == 0;
-                MarkSaved();
-            });
-        var warnSegment = Graphite.Segmented(
-            ["On", "Off"],
-            planner.WarnOnDetectedSegmentChange ? 0 : 1,
-            index =>
-            {
-                planner.WarnOnDetectedSegmentChange = index == 0;
-                MarkSaved();
-            });
-
-        reserveLaps.SelectionChanged += (_, _) =>
-        {
-            var index = Array.IndexOf(reserveOptions, reserveLaps.SelectedItem as string);
-            if (index >= 0)
-            {
-                planner.FuelReserveLaps = index;
-                MarkSaved();
-            }
-        };
-        historySource.SelectionChanged += (_, _) =>
-        {
-            planner.FuelHistorySource = Equals(historySource.SelectedItem, HistoryMatchingType)
-                ? FuelHistorySource.MatchingSessionType
-                : FuelHistorySource.AllValidLaps;
-            MarkSaved();
-        };
-        autoDetect.SelectionChanged += (_, _) =>
-        {
-            planner.AutoDetect = Equals(autoDetect.SelectedItem, AutoDetectArm)
-                ? AutoDetectMode.CreateAndArm
-                : AutoDetectMode.DraftSuggestion;
-            MarkSaved();
-        };
-        captureRate.SelectionChanged += (_, _) =>
-        {
-            if (captureRate.SelectedItem is string label
-                && int.TryParse(label.Replace(" Hz", "", StringComparison.Ordinal), out var hz))
-            {
-                planner.TraceCaptureHz = hz;
-                MarkSaved();
-            }
-        };
-        retentionDays.SelectionChanged += (_, _) =>
-        {
-            if (retentionDays.SelectedItem is string label
-                && int.TryParse(label.Replace(" days", "", StringComparison.Ordinal), out var days))
-            {
-                planner.TraceRetentionDays = days;
-                MarkSaved();
-            }
-        };
-        // Sections are carded surfaces with icon labels: a flat run of rows floating on the
-        // page background is what made Settings read as untidy.
+        // Settings owns app-level preferences only (2026-08-02): the Session Planner and
+        // Dash defaults live on their own slices, behind the gear on each page.
         var form = new StackPanel { Spacing = 20, MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left };
         form.Children.Add(SettingsSection("user", "Profile",
             FormRow("Driver name", driverName),
             FormRow("Driver number", driverNumber)));
-
-        var plannerRows = new List<Control>
-        {
-            FormRow("Fuel reserve", reserveLaps),
-            FormRow("Fuel history", historySource),
-            FormRow("Online detection", autoDetect),
-            FormRow("Trace capture", captureRate),
-            FormRow("Keep traces for", retentionDays),
-            FormRow("Race format warning", warnFormat),
-            FormRow("Segment change warning", warnSegment),
-        };
-        // The second permanent manual import entry point (#185), beside the planner header's.
-        // Both are absent for a game that archives nothing Sprint can read (#180).
-        if (ResultsImporter is not null)
-        {
-            var importResults = Graphite.Button("Import results", ButtonTone.Neutral, "download");
-            importResults.Click += (_, _) => ImportArchivedSessionsManually();
-            plannerRows.Add(FormRow("Archived sessions", importResults));
-        }
-
-        form.Children.Add(SettingsSection("flag", "Session Planner", [.. plannerRows]));
-        form.Children.Add(SettingsSection("layout-dashboard", "Dash defaults",
-            FormRow("Editor mode", dashMode),
-            FormRow("Speed unit", speedUnit),
-            FormRow("Temperature unit", tempUnit)));
         var updateStatus = Graphite.TextBlock(
             $"Sprint installs updates from the {AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)} channel.",
             11,
@@ -4378,10 +4286,19 @@ public sealed class MainWindow : Window
             }
         };
 
-        var checkRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
-        checkRow.Children.Add(checkButton);
-        checkRow.Children.Add(installButton);
-        checkRow.Children.Add(updateStatus);
+        // Buttons keep their size; the status text takes whatever is left and wraps inside
+        // it, so "Sprint vX is available." can never run past the card edge.
+        var checkRow = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"),
+            ColumnSpacing = 10,
+        };
+        checkButton.VerticalAlignment = VerticalAlignment.Center;
+        installButton.VerticalAlignment = VerticalAlignment.Center;
+        updateStatus.VerticalAlignment = VerticalAlignment.Center;
+        AddGrid(checkRow, checkButton, 0, 0);
+        AddGrid(checkRow, installButton, 0, 1);
+        AddGrid(checkRow, updateStatus, 0, 2);
         form.Children.Add(SettingsSection("download", "Release",
             FormRow("Update channel", channel),
             FormRow("Updates", checkRow)));
@@ -4799,20 +4716,241 @@ public sealed class MainWindow : Window
         return grid;
     }
 
-    // One carded settings section: icon label above, rows on a shared surface. Grouping the
-    // rows on a card is what keeps a long settings page scannable.
-    private static Control SettingsSection(string icon, string title, params Control[] rows)
+    // One carded settings section: icon label above, rows on a shared surface. The label row
+    // is a disclosure — a long settings page collapses to the sections that matter right now.
+    private Control SettingsSection(string icon, string title, params Control[] rows)
     {
-        var body = new StackPanel { Spacing = 12 };
+        var body = new StackPanel { Spacing = 12, Margin = new Thickness(0, 10, 0, 0) };
         foreach (var row in rows)
         {
             body.Children.Add(row);
         }
 
-        var panel = new StackPanel { Spacing = 10 };
-        panel.Children.Add(Graphite.IconSectionLabel(icon, title));
-        panel.Children.Add(Graphite.Card(body, new Thickness(16, 14)));
+        var collapsed = _collapsedSettingsSections.Contains(title);
+
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var label = Graphite.IconSectionLabel(icon, title);
+        AddGrid(head, label, 0, 0);
+        var chevron = Icons.Create(collapsed ? "chevron-right" : "chevron-down", 14, Graphite.Text3Brush);
+        chevron.VerticalAlignment = VerticalAlignment.Center;
+        AddGrid(head, chevron, 0, 1);
+
+        var header = new Button
+        {
+            Content = head,
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        AutomationProperties.SetName(header, $"{title} section");
+        header.Click += (_, _) =>
+        {
+            if (!_collapsedSettingsSections.Remove(title))
+            {
+                _collapsedSettingsSections.Add(title);
+            }
+
+            RenderBody();
+        };
+
+        var panel = new StackPanel();
+        panel.Children.Add(header);
+        // A folded section's rows are not built at all — an invisible control would still be
+        // reachable by automation and would still cost layout.
+        if (!collapsed)
+        {
+            panel.Children.Add(Graphite.Card(body, new Thickness(16, 14)));
+        }
+
         return panel;
+    }
+
+    // Settings inputs span the row (the label column carries the identity); a ragged run of
+    // differently-sized combos is what made the page read as untidy.
+    private static ComboBox SettingsCombo(IReadOnlyList<string> items, string? selected)
+    {
+        return new ComboBox
+        {
+            ItemsSource = items,
+            SelectedItem = selected,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+    }
+
+    // Session Planner defaults (#103). Since 2026-08-02 they live on the planner slice —
+    // Settings owns app-level preferences only, and each feature carries its own defaults
+    // inside its own view.
+    private Control PlannerSettingsForm(Action markSaved)
+    {
+        var planner = _runtime.Settings.SessionPlanner;
+        // Units belong in the option text: a bare "1" next to "Fuel reserve" does not say
+        // whether it means laps, litres or minutes.
+        var reserveOptions = new[] { "No reserve", "+1 lap", "+2 laps", "+3 laps" };
+        var reserveLaps = SettingsCombo(
+            reserveOptions,
+            reserveOptions[Math.Clamp(planner.FuelReserveLaps, 0, reserveOptions.Length - 1)]);
+        var historySource = SettingsCombo(
+            [HistoryAllLaps, HistoryMatchingType],
+            planner.FuelHistorySource == FuelHistorySource.MatchingSessionType ? HistoryMatchingType : HistoryAllLaps);
+        var autoDetect = SettingsCombo(
+            [AutoDetectDraft, AutoDetectArm],
+            planner.AutoDetect == AutoDetectMode.CreateAndArm ? AutoDetectArm : AutoDetectDraft);
+        var captureRate = SettingsCombo(
+            SessionPlannerSettings.TraceCaptureRates.Select(rate => $"{rate} Hz").ToArray(),
+            $"{planner.TraceCaptureHz} Hz");
+        var retentionDays = SettingsCombo(
+            new[] { 30, 90, 180, 365 }.Select(days => $"{days} days").ToArray(),
+            $"{planner.TraceRetentionDays} days");
+        // Segmented rather than a checkbox: the codebase has no checkbox control, and On/Off
+        // is exactly the "closely related state" the design contract scopes segmented to.
+        var warnFormat = Graphite.Segmented(
+            ["On", "Off"],
+            planner.WarnOnRaceFormatMismatch ? 0 : 1,
+            index =>
+            {
+                planner.WarnOnRaceFormatMismatch = index == 0;
+                markSaved();
+            });
+        var warnSegment = Graphite.Segmented(
+            ["On", "Off"],
+            planner.WarnOnDetectedSegmentChange ? 0 : 1,
+            index =>
+            {
+                planner.WarnOnDetectedSegmentChange = index == 0;
+                markSaved();
+            });
+
+        reserveLaps.SelectionChanged += (_, _) =>
+        {
+            var index = Array.IndexOf(reserveOptions, reserveLaps.SelectedItem as string);
+            if (index >= 0)
+            {
+                planner.FuelReserveLaps = index;
+                markSaved();
+            }
+        };
+        historySource.SelectionChanged += (_, _) =>
+        {
+            planner.FuelHistorySource = Equals(historySource.SelectedItem, HistoryMatchingType)
+                ? FuelHistorySource.MatchingSessionType
+                : FuelHistorySource.AllValidLaps;
+            markSaved();
+        };
+        autoDetect.SelectionChanged += (_, _) =>
+        {
+            planner.AutoDetect = Equals(autoDetect.SelectedItem, AutoDetectArm)
+                ? AutoDetectMode.CreateAndArm
+                : AutoDetectMode.DraftSuggestion;
+            markSaved();
+        };
+        captureRate.SelectionChanged += (_, _) =>
+        {
+            if (captureRate.SelectedItem is string label
+                && int.TryParse(label.Replace(" Hz", "", StringComparison.Ordinal), out var hz))
+            {
+                planner.TraceCaptureHz = hz;
+                markSaved();
+            }
+        };
+        retentionDays.SelectionChanged += (_, _) =>
+        {
+            if (retentionDays.SelectedItem is string label
+                && int.TryParse(label.Replace(" days", "", StringComparison.Ordinal), out var days))
+            {
+                planner.TraceRetentionDays = days;
+                markSaved();
+            }
+        };
+
+        var form = new StackPanel { Spacing = 12 };
+        form.Children.Add(FormRow("Fuel reserve", reserveLaps));
+        form.Children.Add(FormRow("Fuel history", historySource));
+        form.Children.Add(FormRow("Online detection", autoDetect));
+        form.Children.Add(FormRow("Trace capture", captureRate));
+        form.Children.Add(FormRow("Keep traces for", retentionDays));
+        form.Children.Add(FormRow("Race format warning", warnFormat));
+        form.Children.Add(FormRow("Segment change warning", warnSegment));
+        // The second permanent manual import entry point (#185), beside the planner header's.
+        // Both are absent for a game that archives nothing Sprint can read (#180).
+        if (ResultsImporter is not null)
+        {
+            var importResults = Graphite.Button("Import results", ButtonTone.Neutral, "download");
+            importResults.Click += (_, _) => ImportArchivedSessionsManually();
+            form.Children.Add(FormRow("Archived sessions", importResults));
+        }
+
+        return form;
+    }
+
+    // Global defaults applied to newly created dashes (see NewDashDefaults). On the
+    // Dashboards slice for the same reason the planner defaults live on the planner.
+    private Control DashDefaultsForm(Action markSaved)
+    {
+        var defaults = _runtime.Settings.NewDashDefaults;
+        var dashMode = SettingsCombo(
+            ["Basic", "Advanced"],
+            string.Equals(defaults.Mode, "advanced", StringComparison.OrdinalIgnoreCase) ? "Advanced" : "Basic");
+        var speedUnit = SettingsCombo(["km/h", "mph"], defaults.SpeedUnit);
+        var tempUnit = SettingsCombo(["c", "f"], defaults.TempUnit);
+
+        dashMode.SelectionChanged += (_, _) =>
+        {
+            defaults.Mode = string.Equals(dashMode.SelectedItem?.ToString(), "Advanced", StringComparison.Ordinal) ? "advanced" : "basic";
+            markSaved();
+        };
+        speedUnit.SelectionChanged += (_, _) =>
+        {
+            defaults.SpeedUnit = speedUnit.SelectedItem?.ToString() ?? "km/h";
+            markSaved();
+        };
+        tempUnit.SelectionChanged += (_, _) =>
+        {
+            defaults.TempUnit = tempUnit.SelectedItem?.ToString() ?? "c";
+            markSaved();
+        };
+
+        var form = new StackPanel { Spacing = 12 };
+        form.Children.Add(FormRow("Editor mode", dashMode));
+        form.Children.Add(FormRow("Speed unit", speedUnit));
+        form.Children.Add(FormRow("Temperature unit", tempUnit));
+        return form;
+    }
+
+    // A feature's settings sheet: the slice's defaults, edited in place and saved on change.
+    // "Close" is the only action because there is nothing to commit — every row wrote through
+    // already, and the saved hint says so.
+    private void ShowSliceSettingsDialog(string icon, string title, Func<Action, Control> buildForm)
+    {
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+        CloseDeviceCatalogDialog(restoreFocus: false);
+
+        var saved = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.GreenBrush);
+        saved.VerticalAlignment = VerticalAlignment.Center;
+        var body = new StackPanel { Spacing = 14 };
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var label = Graphite.IconSectionLabel(icon, title);
+        AddGrid(heading, label, 0, 0);
+        AddGrid(heading, saved, 0, 1);
+        body.Children.Add(heading);
+        body.Children.Add(buildForm(() =>
+        {
+            _runtime.SaveSettings();
+            saved.Text = "Saved";
+        }));
+
+        var footer = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+        footer.Children.Add(ActionButton("Close", ButtonTone.Neutral, CloseNewPlanDialog));
+        body.Children.Add(footer);
+
+        ShowPlanOverlay(body, $"{title} dialog");
     }
 
     private static StackPanel PageStack()

@@ -223,10 +223,13 @@ and `LapHistoryImportService` maps `ImportedSession` → `LapHistorySession` wit
 
 ## Global settings (#103) — implemented
 
-`AppSettings.SessionPlanner` (`SessionPlannerSettings`) holds the planner's global defaults,
-rendered as a `Session Planner` section on the Settings page. Defaults seed new plans; they
-never lock them — every value a plan stores stays overridable per plan, and
-`NewPlanDraft.FromDefaults` is the seam that applies them.
+`AppSettings.SessionPlanner` (`SessionPlannerSettings`) holds the planner's global defaults.
+**Since 2026-08-02 they render behind the gear in the planner's own header** (a slice-settings
+sheet, saving on change), superseding this section's original "section on the Settings page":
+the global Settings page owns app-level preferences only, and every feature carries its
+defaults inside its own view (dash defaults sit behind the Dashboards gear the same way).
+Defaults seed new plans; they never lock them — every value a plan stores stays overridable
+per plan, and `NewPlanDraft.FromDefaults` is the seam that applies them.
 
 | Setting | Default | Consumed by |
 | --- | --- | --- |

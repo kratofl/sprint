@@ -49,6 +49,7 @@ public class SessionPlannerViewTests
                     (_, _, _, _, _) => { },
                     () => { },
                     () => { },
+                    () => { },
                     canImportResults));
 
             // Header actions are buttons whose Content is the label string, so text blocks
@@ -310,6 +311,7 @@ public class SessionPlannerViewTests
                     },
                     () => { },
                     () => { },
+                    () => { },
                     true))
             .Build();
 
@@ -414,6 +416,7 @@ public class SessionPlannerViewTests
                             confirm.Title = title;
                             confirm.Accept = accept;
                         },
+                        () => { },
                         () => { },
                         () => { },
                         true))
@@ -553,7 +556,7 @@ public class SessionPlannerViewTests
             // The header carries a "Quick plan" button, so assert against the plan card only.
             var card = new SessionPlannerView(
                     controller,
-                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, true))
+                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, () => { }, true))
                 .Build()
                 .GetLogicalDescendants()
                 .OfType<Border>()

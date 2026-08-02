@@ -13,6 +13,9 @@ internal sealed record SessionPlannerViewCallbacks(
     Action<string, string, string, ButtonTone, Action> Confirm,
     Action OpenQuickPlanDialog,
     Action ImportArchivedSessions,
+    /// <summary>Opens the planner's own defaults sheet — feature settings live on their
+    /// slice, not on the global Settings page.</summary>
+    Action OpenPlannerSettings,
     /// <summary>
     /// Whether the current game archives results Sprint can read (#180). False hides the
     /// import action outright: an action whose only possible answer is "this game cannot"
@@ -67,6 +70,9 @@ internal sealed class SessionPlannerView
         // The permanent manual import entry point (#185): the startup offer can be declined,
         // and a driver who changes their mind needs somewhere to go. Absent entirely for a game
         // that archives nothing Sprint can read.
+        // The planner's own defaults (#103) live here behind the gear, not on the global
+        // Settings page — feature settings belong to their slice.
+        actions.Children.Add(Graphite.IconButton("settings", "Planner settings", _callbacks.OpenPlannerSettings));
         if (_callbacks.CanImportResults)
         {
             actions.Children.Add(ActionButton("Import results", ButtonTone.Ghost, _callbacks.ImportArchivedSessions, "download"));
@@ -668,7 +674,9 @@ internal sealed class SessionPlannerView
     /// needs no legend — the card text beside it is the identity. A plan with no laps shows
     /// the route glyph instead of an empty plot that would read as "all laps were zero".
     /// </summary>
-    private static Control PlanThumbnail(SessionPlan plan)
+    // Internal because Home's launchpad tiles reuse the exact same preview — two renderings
+    // of "this plan" must not drift apart.
+    internal static Control PlanThumbnail(SessionPlan plan)
     {
         const double plotWidth = 60;
         const double plotHeight = 32;
