@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.Updates;
 
@@ -242,11 +243,15 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
         }
     }
 
-    /// <summary>Opens the folder holding a staged/downloaded update (Linux + fallback path).</summary>
+    /// <summary>
+    /// Opens the folder holding a staged/downloaded update (Linux + fallback path). Routed
+    /// through <see cref="HostEffects"/> so a test run cannot throw a file-manager window onto
+    /// the desktop.
+    /// </summary>
     public static void RevealInFolder(string path)
     {
         var folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
-        Process.Start(new ProcessStartInfo { FileName = folder, UseShellExecute = true });
+        HostEffects.TryRevealInFileManager(folder);
     }
 
     private async Task DownloadToFileAsync(string url, string destination, IProgress<double>? progress, CancellationToken ct)

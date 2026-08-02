@@ -1,6 +1,7 @@
 namespace Sprint.Desktop.Features.Hardware;
 
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Runtime;
 
 /// <summary>
 /// Creates the appropriate <see cref="IScreenDriver"/> for a driver id (matrix 4.6
@@ -12,7 +13,9 @@ public static class ScreenDriverFactory
 {
     public static IScreenDriver Create(string driver, ILog? log = null)
     {
-        if (OperatingSystem.IsWindows())
+        // A test run must never open the screen on the developer's desk: every headless test
+        // builds a MainWindow, which starts a publisher per saved screen device.
+        if (OperatingSystem.IsWindows() && HostEffects.Enabled)
         {
             switch (driver?.Trim().ToLowerInvariant())
             {

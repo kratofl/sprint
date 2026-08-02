@@ -608,11 +608,13 @@ public sealed class DiagnosticsWindow : Window
 
         try
         {
-            Process.Start(new ProcessStartInfo
+            // Through HostEffects so a test run cannot open a window on the developer's desktop.
+            if (!HostEffects.TryRevealInFileManager(_paths.LogDirectory))
             {
-                FileName = _paths.LogDirectory,
-                UseShellExecute = true,
-            });
+                _log.Info($"Diagnostics log folder not opened: path={_paths.LogDirectory}.");
+                return;
+            }
+
             _log.Info($"Diagnostics log folder opened: path={_paths.LogDirectory}.");
         }
         catch (Exception ex)

@@ -12,7 +12,11 @@ public sealed class UpdateScriptTests
     private const string Install = @"C:\Program Files\Sprint";
     private const string Exe = "Sprint.Desktop.Client.exe";
 
-    private static string Build() => UpdateScript.BuildWindowsBatch(Pid, Staging, Install, Exe);
+    // The reveal is asked for explicitly because HostEffects turns it off for the whole test
+    // run — these tests assert the *product's* script text, and separate tests cover the fact
+    // that a test run never emits the Explorer line by default.
+    private static string Build() =>
+        UpdateScript.BuildWindowsBatch(Pid, Staging, Install, Exe, revealStagingOnFailure: true);
 
     [Fact]
     public void WaitsForTheRunningProcessToExit()

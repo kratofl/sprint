@@ -1,4 +1,5 @@
 using System.Text;
+using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.Updates;
 
@@ -29,10 +30,11 @@ public static class UpdateScript
     /// then relaunches <paramref name="exeName"/> from the install directory.
     /// </summary>
     /// <param name="revealStagingOnFailure">
-    /// Whether a permanent copy failure opens the staging folder in Explorer. Always on in
-    /// the product — the user needs the files to recover by hand. Tests that execute the
-    /// generated batch for real turn it off, so a failure branch does not open a window on
-    /// the developer's desktop on every run.
+    /// Whether a permanent copy failure opens the staging folder in Explorer. On in the product
+    /// — the user needs the files to recover by hand — and off during tests, which execute this
+    /// batch for real and would otherwise throw a file-manager window onto the developer's
+    /// desktop. Null follows <see cref="HostEffects"/>; pass an explicit value only to assert on
+    /// the generated text.
     /// </param>
     public static string BuildWindowsBatch(
         int pid,
@@ -40,11 +42,13 @@ public static class UpdateScript
         string installDir,
         string exeName,
         string? completionPath = null,
-        bool revealStagingOnFailure = true)
+        bool? revealStagingOnFailure = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(exeName);
+
+        var revealStaging = revealStagingOnFailure ?? HostEffects.Enabled;
 
         var sb = new StringBuilder();
         void Line(string text) => sb.Append(text).Append("\r\n");
@@ -96,7 +100,7 @@ public static class UpdateScript
         // diagnostic log, reveal the staged executable for manual recovery, and only
         // then relaunch the still-working old build.
         Line(":updatefailed");
-        if (revealStagingOnFailure)
+        if (revealStaging)
         {
             Line($"start \"\" explorer.exe /select,\"{stagingDir}\\{exeName}\"");
         }
