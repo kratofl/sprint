@@ -436,18 +436,19 @@ public sealed class SessionPlannerPageTests
     }
 
     [Fact]
-    public void ADraftCarriesItsErrorAndDisclosureStateAcrossAModalRebuild()
+    public void ADraftCarriesItsErrorAndItsStepAcrossAModalRebuild()
     {
-        // The modal is torn down and rebuilt on every segmented/disclosure change, so both
-        // the validation message and the open fuel section have to live on the draft.
+        // The modal is torn down and rebuilt on every segmented and step change, so both the
+        // validation message and the current step have to live on the draft — held by the
+        // dialog, either would vanish mid-edit.
         var draft = new NewPlanDraft { Name = "Spa", RaceLengthText = "", FuelReserveText = "1" };
 
         Assert.False(draft.TryBuild(out _, out var error));
         draft.Error = error;
-        draft.FuelExpanded = true;
+        draft.Step = PlanFormStep.Sessions;
 
         Assert.Equal("Race length must be a number.", draft.Error);
-        Assert.True(draft.FuelExpanded);
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
     }
 
     [Theory]
@@ -583,6 +584,61 @@ public sealed class SessionPlannerPageTests
         RunWithContext(remembered ?? PlanContext.Empty, (controller, _) =>
             detection = controller.Detect(session), hasFuelHistory);
         return detection!;
+    }
+
+    [Fact]
+    public void TheFullSheetWalksThreeStepsSoNothingHasToBeScrolled()
+    {
+        var draft = new NewPlanDraft();
+
+        Assert.Equal(PlanFormStep.Context, draft.Step);
+        Assert.False(draft.IsLastStep);
+
+        // Context asks for nothing required: a plan may be made for a car never driven.
+        Assert.True(draft.TryAdvance(out _));
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+
+        draft.RaceLengthText = "60";
+        Assert.True(draft.TryAdvance(out _));
+        Assert.Equal(PlanFormStep.Fuel, draft.Step);
+        Assert.True(draft.IsLastStep);
+
+        draft.GoBack();
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+        draft.GoBack();
+        draft.GoBack();
+        // Back from the first step stays put rather than closing the sheet out from under it.
+        Assert.Equal(PlanFormStep.Context, draft.Step);
+    }
+
+    [Fact]
+    public void AStepWillNotBeLeftWithAValueItsOwnFieldsCannotSatisfy()
+    {
+        var draft = new NewPlanDraft { Step = PlanFormStep.Sessions, RaceLengthText = "" };
+
+        // Catching this here rather than at Create means the message sits beside the field it
+        // is about, instead of three steps away.
+        Assert.False(draft.TryAdvance(out var error));
+        Assert.Equal("Race length must be a number.", error);
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+
+        draft.RaceLengthText = "0";
+        Assert.False(draft.TryAdvance(out error));
+        Assert.Equal("Race length must be greater than zero.", error);
+    }
+
+    [Fact]
+    public void TheLastStepStillValidatesEverythingBeforeCreating()
+    {
+        var draft = new NewPlanDraft
+        {
+            Step = PlanFormStep.Fuel,
+            RaceLengthText = "60",
+            FuelReserveText = "not a number",
+        };
+
+        Assert.False(draft.TryBuild(out _, out var error));
+        Assert.Equal("Fuel reserve must be a whole number of laps.", error);
     }
 
     [Fact]

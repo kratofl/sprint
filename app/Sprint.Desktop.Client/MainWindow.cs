@@ -2216,9 +2216,12 @@ public sealed class MainWindow : Window
                 _newPlanDraft = null;
                 CloseNewPlanDialog();
             },
-            // Segmented and disclosure changes rebuild the modal in place; the draft object
-            // is retained so typed values survive the rebuild.
-            ShowNewPlanDialog);
+            // Segmented, step and disclosure changes rebuild the modal in place; the draft
+            // object is retained so typed values survive the rebuild.
+            ShowNewPlanDialog,
+            // Offer the game/car/track Sprint has actually recorded: picking one guarantees the
+            // plan keys onto an existing lap-history bucket instead of a near-miss spelling.
+            _plannerController.ContextOptions());
 
         ShowPlanOverlay(dialog.Build(), "New session plan dialog");
     }

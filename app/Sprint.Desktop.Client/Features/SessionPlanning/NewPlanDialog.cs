@@ -9,11 +9,29 @@ using Sprint.Desktop.Runtime;
 namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>
+/// One step of the full creation sheet. Grouped by the question each answers rather than by
+/// field type, so a step is a thing the driver can finish and leave.
+/// </summary>
+public enum PlanFormStep
+{
+    /// <summary>Which game, car and track — and the optional name.</summary>
+    Context,
+
+    /// <summary>Which sessions the weekend has, and how long the race is.</summary>
+    Sessions,
+
+    /// <summary>Reserve, and the manual estimates when there is no history to lean on.</summary>
+    Fuel,
+}
+
+/// <summary>
 /// The mutable field state behind the New Session Plan modal, plus its validation. Kept
 /// separate from the Avalonia controls so the rules are unit-tested directly.
 /// </summary>
 public sealed class NewPlanDraft
 {
+    private static readonly PlanFormStep[] Steps = Enum.GetValues<PlanFormStep>();
+
     public string Name { get; set; } = "";
     public string Game { get; set; } = "";
     public string Car { get; set; } = "";
@@ -43,9 +61,62 @@ public sealed class NewPlanDraft
         };
     }
 
-    /// <summary>Whether the fuel disclosure is open. Null until the dialog resolves it from
-    /// fuel-history availability; retained here so it survives a rebuild.</summary>
-    public bool? FuelExpanded { get; set; }
+    /// <summary>
+    /// Which step the sheet is showing. On the draft, not the dialog, because the modal is torn
+    /// down and rebuilt on every change — a step held by the dialog would snap back to the first
+    /// one mid-edit.
+    /// </summary>
+    public PlanFormStep Step { get; set; } = PlanFormStep.Context;
+
+    public bool IsFirstStep => Step == Steps[0];
+
+    public bool IsLastStep => Step == Steps[^1];
+
+    /// <summary>Human position in the walk, for the sheet's "Step 2 of 3" line.</summary>
+    public int StepNumber => Array.IndexOf(Steps, Step) + 1;
+
+    public static int StepCount => Steps.Length;
+
+    /// <summary>
+    /// Validates just the current step and moves on. Checking here rather than only at Create
+    /// keeps a message beside the field it is about instead of two steps away.
+    /// </summary>
+    public bool TryAdvance(out string error)
+    {
+        error = "";
+        if (!ValidateStep(Step, out error))
+        {
+            return false;
+        }
+
+        if (!IsLastStep)
+        {
+            Step = Steps[Array.IndexOf(Steps, Step) + 1];
+        }
+
+        return true;
+    }
+
+    /// <summary>Steps back, staying put on the first step rather than dismissing the sheet.</summary>
+    public void GoBack()
+    {
+        if (!IsFirstStep)
+        {
+            Step = Steps[Array.IndexOf(Steps, Step) - 1];
+        }
+    }
+
+    private bool ValidateStep(PlanFormStep step, out string error)
+    {
+        error = "";
+        return step switch
+        {
+            // Context requires nothing: a plan can precede ever driving the car.
+            PlanFormStep.Context => true,
+            PlanFormStep.Sessions => TryRaceLength(out _, out error),
+            _ => TryReserve(out _, out error),
+        };
+    }
 
     /// <summary>
     /// Validates the draft and produces a <see cref="CreatePlanRequest"/>. Race length and
@@ -57,27 +128,10 @@ public sealed class NewPlanDraft
     {
         request = null;
 
-        if (!double.TryParse(RaceLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out var raceLength))
+        // The same two rules the step gates use, so a value that passed on its own step cannot
+        // be rejected by different wording at the end.
+        if (!TryRaceLength(out var raceLength, out error) || !TryReserve(out var reserve, out error))
         {
-            error = "Race length must be a number.";
-            return false;
-        }
-
-        if (raceLength <= 0)
-        {
-            error = "Race length must be greater than zero.";
-            return false;
-        }
-
-        if (!int.TryParse(FuelReserveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var reserve))
-        {
-            error = "Fuel reserve must be a whole number of laps.";
-            return false;
-        }
-
-        if (reserve < 0)
-        {
-            error = "Fuel reserve cannot be negative.";
             return false;
         }
 
@@ -94,6 +148,42 @@ public sealed class NewPlanDraft
             AvgLapTimeSeconds = ParseOptional(AvgLapTimeText),
             FuelPerLapLiters = ParseOptional(FuelPerLapText),
         };
+        error = "";
+        return true;
+    }
+
+    private bool TryRaceLength(out double raceLength, out string error)
+    {
+        if (!double.TryParse(RaceLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out raceLength))
+        {
+            error = "Race length must be a number.";
+            return false;
+        }
+
+        if (raceLength <= 0)
+        {
+            error = "Race length must be greater than zero.";
+            return false;
+        }
+
+        error = "";
+        return true;
+    }
+
+    private bool TryReserve(out int reserve, out string error)
+    {
+        if (!int.TryParse(FuelReserveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out reserve))
+        {
+            error = "Fuel reserve must be a whole number of laps.";
+            return false;
+        }
+
+        if (reserve < 0)
+        {
+            error = "Fuel reserve cannot be negative.";
+            return false;
+        }
+
         error = "";
         return true;
     }
@@ -135,40 +225,45 @@ internal sealed class NewPlanDialog
     internal const string NameInputName = "planNameInput";
     internal const string TrackInputName = "planTrackInput";
     internal const string CarInputName = "planCarInput";
+    internal const string GameInputName = "planGameInput";
 
     private readonly NewPlanDraft _draft;
     private readonly bool _hasFuelHistory;
+    private readonly PlanContextOptions _options;
     private readonly Action<CreatePlanRequest> _create;
     private readonly Action _cancel;
     private readonly Action _rebuild;
     // Every text field built this pass, with the draft property it writes. Read back on
     // submit and before any rebuild, so a value is never lost to a missed change event.
     private readonly List<(TextBox Box, Action<string> Assign)> _fields = [];
+    private readonly List<(AutoCompleteBox Box, Action<string> Assign)> _suggesting = [];
 
     public NewPlanDialog(
         NewPlanDraft draft,
         bool hasFuelHistory,
         Action<CreatePlanRequest> create,
         Action cancel,
-        Action rebuild)
+        Action rebuild,
+        PlanContextOptions? options = null)
     {
         _draft = draft;
         _hasFuelHistory = hasFuelHistory;
+        _options = options ?? PlanContextOptions.Empty;
         _create = create;
         _cancel = cancel;
         _rebuild = rebuild;
-        // With no history the manual values are the only fuel input there is, so the section
-        // opens; with history it collapses to a summary the user can still expand.
-        _draft.FuelExpanded ??= !hasFuelHistory;
     }
-
-    private bool FuelExpanded => _draft.FuelExpanded ?? !_hasFuelHistory;
 
     // Pull the live control values into the draft. The draft outlives the controls, so this
     // runs before every rebuild and before validation.
     private void Sync()
     {
         foreach (var (box, assign) in _fields)
+        {
+            assign(box.Text ?? "");
+        }
+
+        foreach (var (box, assign) in _suggesting)
         {
             assign(box.Text ?? "");
         }
@@ -183,63 +278,44 @@ internal sealed class NewPlanDialog
     public Control Build()
     {
         _fields.Clear();
+        _suggesting.Clear();
         var content = new StackPanel { Spacing = 14, Width = 460 };
 
         var headingText = new StackPanel { Spacing = 4 };
         headingText.Children.Add(Graphite.TextBlock("New Session Plan", 19, FontWeight.Bold, Graphite.TextBrush));
         headingText.Children.Add(Graphite.TextBlock(
-            "Confirm the context, choose the race format, then start or arm tracking.",
+            $"Step {_draft.StepNumber} of {NewPlanDraft.StepCount} · {StepCaption(_draft.Step)}",
             12,
             FontWeight.Normal,
             Graphite.Text2Brush,
             TextWrapping.Wrap));
         content.Children.Add(headingText);
 
-        // Context first, then the name: presented first and unlabelled, the name read as
-        // something that had to be filled in. Its placeholder previews the derived name, so
-        // the field below can honestly be skipped.
-        content.Children.Add(Graphite.SectionLabel("Context"));
-        content.Children.Add(Field("Game", Input(_draft.Game, value => _draft.Game = value, "Le Mans Ultimate")));
+        // One step at a time. The single-screen sheet was justified by the flow running under
+        // time pressure, but Quick plan (#183) now owns that case — this sheet is for planning
+        // in advance, where three short steps beat one form that has to be scrolled.
+        switch (_draft.Step)
+        {
+            case PlanFormStep.Context:
+                foreach (var control in ContextStep())
+                {
+                    content.Children.Add(control);
+                }
 
-        var carBox = Input(_draft.Car, value => _draft.Car = value, "Porsche 963");
-        carBox.Name = CarInputName;
-        content.Children.Add(Field("Car", carBox));
+                break;
 
-        var trackBox = Input(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps");
-        trackBox.Name = TrackInputName;
-        content.Children.Add(Field("Track", trackBox));
+            case PlanFormStep.Sessions:
+                foreach (var control in SessionsStep())
+                {
+                    content.Children.Add(control);
+                }
 
-        var nameBox = Input(_draft.Name, value => _draft.Name = value, _draft.DerivedName);
-        nameBox.Name = NameInputName;
-        // Retarget the placeholder in place on every keystroke. Rebuilding the modal here
-        // would throw away the caret and whatever the user had already typed.
-        void PreviewDerivedName() => nameBox.PlaceholderText = _draft.DerivedName;
-        trackBox.TextChanged += (_, _) => PreviewDerivedName();
-        carBox.TextChanged += (_, _) => PreviewDerivedName();
-        content.Children.Add(Field("Name (optional)", nameBox));
+                break;
 
-        content.Children.Add(Graphite.SectionLabel("Sessions"));
-        content.Children.Add(Field("Qualifying", Graphite.Segmented(
-            ["Include", "Skip"],
-            _draft.QualifyingIncluded ? 0 : 1,
-            index =>
-            {
-                _draft.QualifyingIncluded = index == 0;
-                Rebuild();
-            })));
-        content.Children.Add(Field("Race length", Graphite.Segmented(
-            ["Time", "Laps"],
-            _draft.RaceLengthFormat == RaceLengthFormat.LapBased ? 1 : 0,
-            index =>
-            {
-                _draft.RaceLengthFormat = index == 1 ? RaceLengthFormat.LapBased : RaceLengthFormat.TimeBased;
-                Rebuild();
-            })));
-        content.Children.Add(Field(
-            _draft.RaceLengthFormat == RaceLengthFormat.LapBased ? "Laps" : "Minutes",
-            Input(_draft.RaceLengthText, value => _draft.RaceLengthText = value, "60")));
-
-        content.Children.Add(FuelSection());
+            default:
+                content.Children.Add(FuelSection());
+                break;
+        }
 
         // The error and the commit row stay pinned outside the scroll region: an expanded fuel
         // section plus a validation message overflows the modal's height, and the action the
@@ -257,7 +333,28 @@ internal sealed class NewPlanDialog
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         actions.Children.Add(ActionButton("Cancel", ButtonTone.Ghost, _cancel));
-        actions.Children.Add(ActionButton("Create", ButtonTone.Primary, Submit));
+        if (!_draft.IsFirstStep)
+        {
+            actions.Children.Add(ActionButton("Back", ButtonTone.Neutral, () =>
+            {
+                Sync();
+                // Going back never rejects: a half-filled field the driver is returning to fix
+                // must not be the reason they cannot move.
+                _draft.Error = "";
+                _draft.GoBack();
+                _rebuild();
+            }));
+        }
+
+        if (_draft.IsLastStep)
+        {
+            actions.Children.Add(ActionButton("Create", ButtonTone.Primary, Submit));
+        }
+        else
+        {
+            actions.Children.Add(ActionButton("Next", ButtonTone.Primary, Advance));
+        }
+
         footer.Children.Add(actions);
 
         var layout = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
@@ -274,14 +371,19 @@ internal sealed class NewPlanDialog
         return layout;
     }
 
+    private void Advance()
+    {
+        Sync();
+        _draft.Error = _draft.TryAdvance(out var error) ? "" : error;
+        _rebuild();
+    }
+
     private void Submit()
     {
         Sync();
         if (!_draft.TryBuild(out var request, out var error))
         {
             _draft.Error = error;
-            // Reveal the section the user must fix.
-            _draft.FuelExpanded = true;
             _rebuild();
             return;
         }
@@ -290,29 +392,77 @@ internal sealed class NewPlanDialog
         _create(request!);
     }
 
+    private static string StepCaption(PlanFormStep step) => step switch
+    {
+        PlanFormStep.Context => "Where and what",
+        PlanFormStep.Sessions => "Which sessions, and how long",
+        _ => "Fuel",
+    };
+
+    private IEnumerable<Control> ContextStep()
+    {
+        // Editable dropdowns, not closed lists. The values are what Sprint has recorded, so
+        // picking one guarantees the plan keys onto the same lap-history bucket the corpus
+        // already holds — a typo makes a second bucket and halves every statistic. Typing a new
+        // car or track stays possible, because planning for one you have never driven is normal.
+        var gameBox = Suggesting(_draft.Game, value => _draft.Game = value, "Le Mans Ultimate", _options.Games);
+        gameBox.Name = GameInputName;
+        yield return Field("Game", Pickable(gameBox, _options.Games.Count));
+
+        // Cars and tracks narrow to the chosen game, so another sim's entries are never offered.
+        var narrowed = _options.For(_draft.Game);
+
+        var carBox = Suggesting(_draft.Car, value => _draft.Car = value, "Porsche 963", narrowed.Cars);
+        carBox.Name = CarInputName;
+        yield return Field("Car", Pickable(carBox, narrowed.Cars.Count));
+
+        var trackBox = Suggesting(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps", narrowed.Tracks);
+        trackBox.Name = TrackInputName;
+        yield return Field("Track", Pickable(trackBox, narrowed.Tracks.Count));
+
+        // The name follows the context, and previews what the plan will be called if skipped.
+        var nameBox = Input(_draft.Name, value => _draft.Name = value, _draft.DerivedName);
+        nameBox.Name = NameInputName;
+        // Retarget the placeholder in place on every keystroke. Rebuilding the modal here
+        // would throw away the caret and whatever the user had already typed.
+        void PreviewDerivedName() => nameBox.PlaceholderText = _draft.DerivedName;
+        trackBox.TextChanged += (_, _) => PreviewDerivedName();
+        carBox.TextChanged += (_, _) => PreviewDerivedName();
+        yield return Field("Name (optional)", nameBox);
+    }
+
+    private IEnumerable<Control> SessionsStep()
+    {
+        yield return Field("Qualifying", Graphite.Segmented(
+            ["Include", "Skip"],
+            _draft.QualifyingIncluded ? 0 : 1,
+            index =>
+            {
+                _draft.QualifyingIncluded = index == 0;
+                Rebuild();
+            }));
+        yield return Field("Race length", Graphite.Segmented(
+            ["Time", "Laps"],
+            _draft.RaceLengthFormat == RaceLengthFormat.LapBased ? 1 : 0,
+            index =>
+            {
+                _draft.RaceLengthFormat = index == 1 ? RaceLengthFormat.LapBased : RaceLengthFormat.TimeBased;
+                Rebuild();
+            }));
+        yield return Field(
+            _draft.RaceLengthFormat == RaceLengthFormat.LapBased ? "Laps" : "Minutes",
+            Input(_draft.RaceLengthText, value => _draft.RaceLengthText = value, "60"));
+    }
+
     private Control FuelSection()
     {
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        header.Children.Add(ActionButton(
-            FuelExpanded ? "▾  Fuel" : "▸  Fuel",
-            ButtonTone.Ghost,
-            () =>
-            {
-                Sync();
-                _draft.FuelExpanded = !FuelExpanded;
-                _rebuild();
-            }));
-        header.Children.Add(Graphite.Chip(
+        // No disclosure toggle: this is the step's whole purpose, so hiding its fields behind a
+        // click would be a control that only ever gets opened. The chip stays, because whether
+        // the numbers come from history or from an estimate is the useful part.
+        var section = new StackPanel { Spacing = 8 };
+        section.Children.Add(Graphite.Chip(
             _hasFuelHistory ? "from history" : "no history — estimate",
             _hasFuelHistory ? Graphite.Text2Brush : Graphite.AccentBrush));
-
-        var section = new StackPanel { Spacing = 8 };
-        section.Children.Add(header);
-
-        if (!FuelExpanded)
-        {
-            return section;
-        }
 
         if (!_hasFuelHistory)
         {
@@ -362,6 +512,63 @@ internal sealed class NewPlanDialog
         box.TextChanged += (_, _) => onChanged(box.Text ?? "");
         _fields.Add((box, onChanged));
         return box;
+    }
+
+    /// <summary>
+    /// A text box that suggests what Sprint already knows. Deliberately an
+    /// <see cref="AutoCompleteBox"/> rather than a <see cref="ComboBox"/>: the recorded values
+    /// are the ones that key onto an existing lap-history bucket, but a closed list would make
+    /// "new car this week" impossible, and the same control has to serve both.
+    /// </summary>
+    private AutoCompleteBox Suggesting(
+        string value,
+        Action<string> onChanged,
+        string placeholder,
+        IReadOnlyList<string> suggestions)
+    {
+        var box = new AutoCompleteBox
+        {
+            Text = value,
+            PlaceholderText = placeholder,
+            ItemsSource = suggestions,
+            MinWidth = 260,
+            Background = Graphite.Panel2Brush,
+            Foreground = Graphite.TextBrush,
+            BorderBrush = Graphite.Line2Brush,
+            FontFamily = Graphite.FontStack,
+            FontSize = 12,
+            // Show the whole (short) list on focus rather than only after typing: the point is
+            // to be pickable, not merely to complete what is already half-typed.
+            MinimumPrefixLength = 0,
+            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
+            IsTextCompletionEnabled = false,
+        };
+        box.TextChanged += (_, _) => onChanged(box.Text ?? "");
+        _suggesting.Add((box, onChanged));
+        return box;
+    }
+
+    /// <summary>
+    /// Marks a suggesting field as pickable with a chevron, but only when there is something to
+    /// pick: an affordance over an empty list promises a menu that never opens. The glyph is not
+    /// hit-testable, so a click still lands in the field.
+    /// </summary>
+    private static Control Pickable(AutoCompleteBox box, int suggestionCount)
+    {
+        if (suggestionCount == 0)
+        {
+            return box;
+        }
+
+        var grid = new Grid();
+        grid.Children.Add(box);
+        var chevron = Icons.Create("chevron-down", 14, Graphite.Text3Brush);
+        chevron.HorizontalAlignment = HorizontalAlignment.Right;
+        chevron.VerticalAlignment = VerticalAlignment.Center;
+        chevron.Margin = new Thickness(0, 0, 10, 0);
+        chevron.IsHitTestVisible = false;
+        grid.Children.Add(chevron);
+        return grid;
     }
 
     private static Button ActionButton(string label, ButtonTone tone, Action action)

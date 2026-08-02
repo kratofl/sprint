@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.LogicalTree;
+using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.SessionPlanning;
 using Xunit;
@@ -27,14 +28,104 @@ public class NewPlanDialogViewTests
                 .Select(block => block.Text ?? "")
                 .ToList();
 
-            var context = labels.IndexOf("Context");
+            // The first step *is* the context, so the name follows the three fields that derive it.
+            var track = labels.IndexOf("Track");
             var name = labels.IndexOf("Name (optional)");
 
-            Assert.True(context >= 0, "the Context section label is missing");
+            Assert.Contains("Step 1 of 3 · Where and what", labels);
+            Assert.True(track >= 0, "the track field is missing from the first step");
             Assert.True(name >= 0, "the name field is not labelled as optional");
             // Presented first and unlabelled, drivers treated the name as required.
-            Assert.True(name > context, $"the name field must follow Context (context={context}, name={name})");
+            Assert.True(name > track, $"the name field must follow the context fields (track={track}, name={name})");
         });
+    }
+
+    [Fact]
+    public async Task ContextFieldsOfferWhatSprintHasRecordedWithoutClosingTheListOff()
+    {
+        await Dispatch(() =>
+        {
+            var options = PlanContextOptions.From(
+                new StubHistory([("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963")]),
+                PlanContext.Empty);
+            var root = new NewPlanDialog(
+                    new NewPlanDraft(),
+                    hasFuelHistory: true,
+                    _ => { },
+                    cancel: () => { },
+                    rebuild: () => { },
+                    options)
+                .Build();
+
+            var track = root.GetLogicalDescendants()
+                .OfType<AutoCompleteBox>()
+                .First(box => box.Name == NewPlanDialog.TrackInputName);
+
+            // Recorded spellings are offered, because those are the ones that key onto the
+            // existing lap-history bucket.
+            Assert.Equal(["Spa-Francorchamps"], track.ItemsSource!.Cast<string>());
+            // But it is an AutoCompleteBox, not a ComboBox: a car never driven has to be
+            // typeable, and the whole short list shows on focus rather than only after typing.
+            Assert.Equal(0, track.MinimumPrefixLength);
+            Assert.False(track.IsTextCompletionEnabled);
+        });
+    }
+
+    [Fact]
+    public async Task AFieldWithNothingToSuggestDoesNotPromiseAMenu()
+    {
+        await Dispatch(() =>
+        {
+            var empty = new NewPlanDialog(
+                    new NewPlanDraft(),
+                    hasFuelHistory: true,
+                    _ => { },
+                    cancel: () => { },
+                    rebuild: () => { },
+                    PlanContextOptions.Empty)
+                .Build();
+            var populated = new NewPlanDialog(
+                    new NewPlanDraft(),
+                    hasFuelHistory: true,
+                    _ => { },
+                    cancel: () => { },
+                    rebuild: () => { },
+                    PlanContextOptions.From(
+                        new StubHistory([("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963")]),
+                        PlanContext.Empty))
+                .Build();
+
+            // A chevron over an empty list advertises a menu that never opens.
+            Assert.Equal(0, Chevrons(empty));
+            Assert.Equal(3, Chevrons(populated));
+        });
+    }
+
+    // Icons.Create returns a Viewbox around the glyph, and that wrapper is what carries the
+    // non-hit-testable flag so a click still lands in the field underneath.
+    private static int Chevrons(Control root) => root
+        .GetLogicalDescendants()
+        .OfType<Viewbox>()
+        .Count(icon => !icon.IsHitTestVisible);
+
+    private sealed class StubHistory(IReadOnlyList<(string Game, string Track, string Car)> contexts)
+        : ILapHistoryStore
+    {
+        public IReadOnlyList<LapHistorySession> LoadAll() =>
+            [.. contexts.Select(context => new LapHistorySession
+            {
+                Id = context.Track,
+                Context = new LapHistoryContext
+                {
+                    Game = context.Game,
+                    TrackCourse = context.Track,
+                    CarModel = context.Car,
+                },
+            })];
+
+        public void Save(LapHistorySession session) => throw new NotSupportedException();
+
+        public void Delete(string sessionId) => throw new NotSupportedException();
     }
 
     [Fact]
@@ -89,12 +180,26 @@ public class NewPlanDialogViewTests
         await Dispatch(() =>
         {
             CreatePlanRequest? created = null;
-            var built = BuildDialog(new NewPlanDraft { RaceLengthText = "60" }, request => created = request);
-            var window = Show(built.Root);
+            // Straight to the last step — this is about the name the plan gets, not the walk —
+            // so the sheet is built directly rather than through the helper, which resolves the
+            // first step's context boxes.
+            var draft = new NewPlanDraft
+            {
+                RaceLengthText = "60",
+                Step = PlanFormStep.Fuel,
+                Track = "Spa-Francorchamps",
+                Car = "Porsche 963",
+            };
+            var root = new NewPlanDialog(
+                    draft,
+                    hasFuelHistory: true,
+                    request => created = request,
+                    cancel: () => { },
+                    rebuild: () => { })
+                .Build();
+            Show(root);
 
-            Type(window, built.TrackBox, "Spa-Francorchamps");
-            Type(window, built.CarBox, "Porsche 963");
-            Submit(built.Root);
+            Submit(root);
 
             Assert.NotNull(created);
             Assert.Equal("Spa-Francorchamps – Porsche 963", created!.Name);
@@ -259,20 +364,31 @@ public class NewPlanDialogViewTests
 
     // Real typing: the placeholder preview hangs off TextChanged, which Avalonia raises for
     // user input but not for a programmatic Text assignment on a detached control.
-    private static void Type(Window window, TextBox box, string text)
+    private static void Type(Window window, Control box, string text)
     {
-        box.Focus();
+        InnerTextBox(box).Focus();
         window.KeyTextInput(text);
     }
 
     // Select-all then Backspace, the way a driver actually wipes a field.
-    private static void Clear(Window window, TextBox box)
+    private static void Clear(Window window, Control box)
     {
-        box.Focus();
-        box.SelectAll();
+        var inner = InnerTextBox(box);
+        inner.Focus();
+        inner.SelectAll();
         window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Backspace, Avalonia.Input.RawInputModifiers.None);
         window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Backspace, Avalonia.Input.RawInputModifiers.None);
     }
+
+    /// <summary>
+    /// An AutoCompleteBox takes input through the TextBox in its template, so typing has to be
+    /// aimed there rather than at the outer control.
+    /// </summary>
+    private static TextBox InnerTextBox(Control control) => control switch
+    {
+        TextBox box => box,
+        _ => control.GetVisualDescendants().OfType<TextBox>().First(),
+    };
 
     private static Window Show(Control root)
     {
@@ -310,25 +426,28 @@ public class NewPlanDialogViewTests
             cancel: () => { },
             rebuild: () => rebuilds++);
         var root = dialog.Build();
-        var boxes = root.GetLogicalDescendants().OfType<TextBox>().ToList();
+        var descendants = root.GetLogicalDescendants().ToList();
 
+        // Car and track are suggesting boxes now, so they are AutoCompleteBox rather than
+        // TextBox; the name field stays a plain box because there is nothing to suggest.
         return new BuiltDialog(
             root,
-            Box(boxes, NewPlanDialog.NameInputName),
-            Box(boxes, NewPlanDialog.TrackInputName),
-            Box(boxes, NewPlanDialog.CarInputName),
+            Named<TextBox>(descendants, NewPlanDialog.NameInputName),
+            Named<AutoCompleteBox>(descendants, NewPlanDialog.TrackInputName),
+            Named<AutoCompleteBox>(descendants, NewPlanDialog.CarInputName),
             () => rebuilds);
     }
 
-    private static TextBox Box(List<TextBox> boxes, string name) =>
-        boxes.FirstOrDefault(box => box.Name == name)
-        ?? throw new InvalidOperationException($"the modal has no text box named '{name}'");
+    private static T Named<T>(List<ILogical> descendants, string name)
+        where T : Control =>
+        descendants.OfType<T>().FirstOrDefault(control => control.Name == name)
+        ?? throw new InvalidOperationException($"the modal has no {typeof(T).Name} named '{name}'");
 
     private sealed record BuiltDialog(
         Control Root,
         TextBox NameBox,
-        TextBox TrackBox,
-        TextBox CarBox,
+        AutoCompleteBox TrackBox,
+        AutoCompleteBox CarBox,
         Func<int> RebuildCount)
     {
         public int Rebuilds => RebuildCount();

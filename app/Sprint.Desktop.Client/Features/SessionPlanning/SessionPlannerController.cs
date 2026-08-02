@@ -293,6 +293,14 @@ public sealed class SessionPlannerController
     private static string Coalesce(string reported, string remembered) =>
         string.IsNullOrWhiteSpace(reported) ? remembered : reported;
 
+    /// <summary>
+    /// The game/car/track values the creation sheet offers, from the corpus plus the live
+    /// context. Exposed here rather than built in the view so the sheet cannot drift from the
+    /// spellings the lap-history bucket is actually keyed on.
+    /// </summary>
+    public PlanContextOptions ContextOptions() =>
+        PlanContextOptions.From(_lapHistory, _lastSeenContext());
+
     /// <summary>Whether the creation flow can skip asking for manual average lap time and
     /// fuel per lap. False until #50 supplies a real history source.</summary>
     public bool HasFuelHistory(PlanContext context) =>

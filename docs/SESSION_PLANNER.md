@@ -253,10 +253,36 @@ carries two of them.
 - **`QuickPlanDialog`** lists only what was actually detected and shows inputs only for the
   gaps; the subtitle matches what is on screen rather than promising detected values that
   are not there. Practice-program scope is deliberately absent.
-- **Name is optional and says so** (#178): the field follows the Context section, is
-  labelled `Name (optional)`, and its placeholder previews `NewPlanDraft.DerivedName` — the
-  same string the plan really gets. The placeholder is retargeted in place from the
-  track/car change handlers, so typing is never interrupted and the caret is never lost.
+- **Name is optional and says so** (#178): the field follows the context fields, is labelled
+  `Name (optional)`, and its placeholder previews `NewPlanDraft.DerivedName` — the same string
+  the plan really gets. The placeholder is retargeted in place from the track/car change
+  handlers, so typing is never interrupted and the caret is never lost.
+
+### The full sheet is stepped, and its context fields suggest
+
+**This supersedes spec §2.1's "one screen rather than a wizard".** That rationale was "the flow
+runs under time pressure just before joining a server" — which is now Quick plan's job (#183).
+The full sheet is for planning in advance, so it walks three short steps instead of one form
+that has to be scrolled:
+
+1. **Where and what** — game, car, track, and the optional name.
+2. **Which sessions, and how long** — qualifying include/skip, race format and length.
+3. **Fuel** — reserve, plus the manual estimates when there is no history.
+
+- `NewPlanDraft.Step` holds the position (on the draft, because the modal is rebuilt on every
+  change), and `TryAdvance` validates **only the current step**, so a message lands beside the
+  field it is about instead of two steps away. `TryBuild` reuses the same two rules, so a value
+  that passed on its own step cannot be rejected by different wording at the end. `Back` never
+  validates — a half-filled field you are returning to fix must not be why you cannot move.
+- The Fuel step has no disclosure toggle any more: hiding the step's whole purpose behind a
+  click would be a control that only ever gets opened.
+- **Game, car and track suggest what Sprint has recorded** (`PlanContextOptions`, from the
+  corpus plus the live context; cars and tracks narrow to the chosen game). This is not
+  cosmetic: the corpus is keyed on `game + trackCourse + carModel`, so a typed
+  "Spa Francorchamps" beside a recorded "Spa-Francorchamps" is a second bucket, and every
+  target and fuel figure drawn from it silently uses a fraction of the laps. They are
+  `AutoCompleteBox`, **not** `ComboBox` — planning for a car never driven has to stay possible
+  — and a chevron appears only when there is actually something to pick.
 
 Tests: `SessionPlannerPageTests` (detection rules, derived name), `NewPlanDialogViewTests`
 and `SessionPlannerViewTests` (real typing through a headless window, field ordering, the

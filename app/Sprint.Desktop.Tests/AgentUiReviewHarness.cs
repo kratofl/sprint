@@ -191,33 +191,54 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "session-planner-new-plan-dialog",
                         "New Session Plan",
-                        "Context",
-                        // #178: the name follows Context and says it is optional.
+                        // Three short steps rather than one form that has to be scrolled.
+                        "Step 1 of 3 · Where and what",
+                        "Game",
+                        "Car",
+                        "Track",
+                        // #178: the name follows the context fields and says it is optional.
                         "Name (optional)",
-                        "Sessions",
-                        "Include",
-                        "Skip",
-                        "Time",
-                        "Laps",
-                        "Create"));
+                        "Next"));
 
-                    // Submitting with no race length must state the problem and keep the modal
-                    // open; the message lives on the draft so it survives the modal rebuild.
-                    Click(window, "Create");
+                    // Step 1 → 2. The name box placeholders the derived name, which is the
+                    // generic default while track and car are empty (#178).
+                    TaggedPlaceholderTextBox(window, "New Session Plan").Text = "Spa 6h";
+                    Click(window, "Next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-new-plan-sessions-step",
+                        "New Session Plan",
+                        "Step 2 of 3 · Which sessions, and how long",
+                        "Qualifying",
+                        "Race length",
+                        "Back",
+                        "Next"));
+
+                    // Leaving a step with a value its own fields cannot satisfy states the
+                    // problem beside those fields rather than two steps later.
+                    Click(window, "Next");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
                         "session-planner-new-plan-invalid",
                         "New Session Plan",
                         "Race length must be a number.",
+                        "Next"));
+
+                    TaggedPlaceholderTextBox(window, "60").Text = "60";
+                    Click(window, "Next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "session-planner-new-plan-fuel-step",
+                        "New Session Plan",
+                        "Step 3 of 3 · Fuel",
+                        "Reserve (laps)",
                         "Create"));
 
-                    // Fill the two required fields and commit, so the populated page — the
-                    // segmented control, the plan card, plan history — is reviewable too. The
-                    // name box now placeholders the derived name, which is the generic default
-                    // while track and car are empty (#178).
-                    TaggedPlaceholderTextBox(window, "New Session Plan").Text = "Spa 6h";
-                    TaggedPlaceholderTextBox(window, "60").Text = "60";
+                    // Commit, so the populated page — the segmented control, the plan card and
+                    // plan history — is reviewable too.
                     Click(window, "Create");
                     frames.Add(Capture(
                         window,
