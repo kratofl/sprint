@@ -13,6 +13,18 @@ internal static class ChartPalette
     /// <summary>The chart surface. Matches the Graphite card the stack sits in.</summary>
     public static readonly SKColor Surface = From(Graphite.Panel2);
 
+    /// <summary>
+    /// The HUD surface: the same Graphite card, translucent, so the game reads through it.
+    /// <para>
+    /// Not fully transparent. Over a bright kerb or a white car the ember and blue lines would
+    /// lose their contrast entirely, and a trace you cannot read mid-corner is worse than one
+    /// that costs a little of the view. 200/255 keeps the track visible while giving every
+    /// mark a stable ground to sit on — the legibility problem spec §5 flagged as unsolved for
+    /// the Graphite stack.
+    /// </para>
+    /// </summary>
+    public static readonly SKColor HudSurface = From(Graphite.Panel2).WithAlpha(200);
+
     /// <summary>Tooltip/readout fill and border — one step up from the surface, hairline edge.</summary>
     public static readonly SKColor Readout = From(Graphite.Panel3);
 

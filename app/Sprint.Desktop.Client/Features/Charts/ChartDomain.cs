@@ -13,6 +13,13 @@ public enum ChartDomainKind
 
     /// <summary>Elapsed session time in seconds.</summary>
     SessionTime,
+
+    /// <summary>
+    /// Metres along the lap. The domain a <em>stretch</em> of track belongs on: where a driver
+    /// lifted and where they got back on is a distance, and over a 600 m window a lap fraction
+    /// reads as four indistinguishable decimal places.
+    /// </summary>
+    TrackDistance,
 }
 
 /// <summary>
@@ -40,11 +47,21 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     public static ChartDomain SessionTime(double fromSeconds, double toSeconds) =>
         new(ChartDomainKind.SessionTime, fromSeconds, Math.Max(fromSeconds, toSeconds));
 
+    /// <summary>
+    /// A stretch of track in metres. Deliberately not clamped to the lap: the Live Compare
+    /// window runs from behind the car to ahead of it, and past the start/finish line the
+    /// stretch ahead is the next lap's opening metres. Clamping there would stall the window
+    /// exactly where the driver most needs it to keep scrolling.
+    /// </summary>
+    public static ChartDomain TrackDistance(double fromMeters, double toMeters) =>
+        new(ChartDomainKind.TrackDistance, fromMeters, Math.Max(fromMeters, toMeters));
+
     /// <summary>The descriptive name of the axis, for a host's heading or selector.</summary>
     public string Label => Kind switch
     {
         ChartDomainKind.TrackPosition => "Track position",
         ChartDomainKind.LapNumber => "Lap number",
+        ChartDomainKind.TrackDistance => "Track distance",
         _ => "Session time",
     };
 
@@ -57,6 +74,7 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     {
         ChartDomainKind.TrackPosition => "Position",
         ChartDomainKind.LapNumber => "Lap",
+        ChartDomainKind.TrackDistance => "Distance",
         _ => "Time",
     };
 
@@ -105,6 +123,9 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     {
         ChartDomainKind.TrackPosition => string.Create(Inv, $"{value * 100:0.0}%"),
         ChartDomainKind.LapNumber => string.Create(Inv, $"Lap {value:0}"),
+        // Whole metres: the window is a few hundred long, so a decimal would be noise, and a
+        // negative reading before the line is honest — that stretch is behind the car.
+        ChartDomainKind.TrackDistance => string.Create(Inv, $"{value:0} m"),
         _ => FormatSessionTime(value),
     };
 

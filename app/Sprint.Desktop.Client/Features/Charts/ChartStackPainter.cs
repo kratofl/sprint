@@ -44,9 +44,16 @@ public sealed class ChartStackPainter : IDisposable
     private readonly SKCanvas _canvas;
     private readonly SKPaint _paint = new() { IsAntialias = true };
     private readonly SKFont _font = new(DashFonts.Label, TitleSize);
+    private readonly SKColor _background;
     private bool _disposed;
 
-    public ChartStackPainter(int width, int height)
+    /// <param name="background">
+    /// What the canvas is cleared to. Defaults to the opaque Graphite card the stack sits in.
+    /// The Live Compare HUD passes a translucent surface so the game shows through — the
+    /// painter is the one place that decides what "empty" looks like, and a second painter
+    /// for the overlay would be a second place for every chart mark to drift.
+    /// </param>
+    public ChartStackPainter(int width, int height, SKColor? background = null)
     {
         if (width <= 0)
         {
@@ -60,6 +67,7 @@ public sealed class ChartStackPainter : IDisposable
 
         Width = width;
         Height = height;
+        _background = background ?? ChartPalette.Surface;
         _bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         _canvas = new SKCanvas(_bitmap);
     }
@@ -76,7 +84,7 @@ public sealed class ChartStackPainter : IDisposable
 
         var stack = controller.Stack;
         var layout = new ChartStackLayout(stack, Width, Height);
-        _canvas.Clear(ChartPalette.Surface);
+        _canvas.Clear(_background);
 
         if (stack.Charts.Count == 0 || stack.IsEmpty)
         {
