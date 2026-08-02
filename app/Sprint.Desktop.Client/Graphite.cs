@@ -231,7 +231,7 @@ internal static class Graphite
         };
     }
 
-    public static Button Button(string text, ButtonTone tone = ButtonTone.Neutral)
+    public static Button Button(string text, ButtonTone tone = ButtonTone.Neutral, string? icon = null)
     {
         var background = tone switch
         {
@@ -254,9 +254,28 @@ internal static class Graphite
             _ => LineBrush
         };
 
+        // With an icon the content becomes a panel; the label stays a text block, so tests
+        // and automation that read button text keep finding it.
+        object content = text;
+        if (icon is not null)
+        {
+            var panel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var glyph = Icons.Create(icon, 14, foreground);
+            glyph.VerticalAlignment = VerticalAlignment.Center;
+            panel.Children.Add(glyph);
+            // Font and foreground inherit from the button, so the label matches a plain one.
+            panel.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+            content = panel;
+        }
+
         var button = new Button
         {
-            Content = text,
+            Content = content,
             Background = background,
             Foreground = foreground,
             BorderBrush = border,

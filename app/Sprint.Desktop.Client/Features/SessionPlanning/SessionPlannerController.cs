@@ -107,6 +107,7 @@ public sealed class SessionPlannerController
     private string? _selectedPlanId;
     private PlannerSegmentTab? _selectedTab;
     private (PlanTargetScope Scope, string? ProgramType)? _selectedTargetScope;
+    private bool _specificLapPickerOpen;
 
     /// <param name="lapHistory">
     /// The corpus target selection resolves against (#186). Omitted means an empty corpus, so
@@ -134,22 +135,22 @@ public sealed class SessionPlannerController
 
     public bool HasPlans => _service.Plans.Count > 0;
 
-    /// <summary>
-    /// The plan the page is showing: an explicit selection, else the active plan, else the
-    /// most recent one. Null only when no plans exist at all.
-    /// </summary>
-    public SessionPlan? PlanInView
-    {
-        get
-        {
-            if (_selectedPlanId is not null && _service.Find(_selectedPlanId) is { } selected)
-            {
-                return selected;
-            }
+    /// <summary>The plans still ahead of or in a session, newest first — the overview's
+    /// main list.</summary>
+    public IReadOnlyList<SessionPlan> OpenPlans =>
+        [.. _service.Plans.Where(plan => plan.Status is not (PlanStatus.Completed or PlanStatus.Abandoned))];
 
-            return _service.ActivePlan ?? _service.Plans.FirstOrDefault();
-        }
-    }
+    /// <summary>Plans that have run their course, newest first — collapsed on the overview.</summary>
+    public IReadOnlyList<SessionPlan> CompletedPlans =>
+        [.. _service.Plans.Where(plan => plan.Status is PlanStatus.Completed or PlanStatus.Abandoned)];
+
+    /// <summary>
+    /// The plan the page is showing, or null for the overview. Only an explicit choice —
+    /// opening, creating, or taking over a plan — leaves the overview; an armed or tracking
+    /// plan is prominent in the list rather than hijacking the page.
+    /// </summary>
+    public SessionPlan? PlanInView =>
+        _selectedPlanId is null ? null : _service.Find(_selectedPlanId);
 
     public SessionPlan? ActivePlan => _service.ActivePlan;
 
@@ -192,6 +193,7 @@ public sealed class SessionPlannerController
         }
 
         _selectedTab = tab;
+        _specificLapPickerOpen = false;
         RaiseChanged();
     }
 
@@ -204,14 +206,27 @@ public sealed class SessionPlannerController
 
         _selectedPlanId = planId;
         _selectedTab = null;
+        _specificLapPickerOpen = false;
+        RaiseChanged();
+    }
+
+    /// <summary>Returns the page to the overview.</summary>
+    public void ClosePlan()
+    {
+        _selectedPlanId = null;
+        _selectedTab = null;
+        _specificLapPickerOpen = false;
         RaiseChanged();
     }
 
     public SessionPlan CreatePlan(CreatePlanRequest request)
     {
         var plan = _service.CreatePlan(request);
-        _selectedPlanId = null;
+        // The driver lands inside the plan they just made — arming it and setting targets is
+        // what creation is for — with the overview one click away.
+        _selectedPlanId = plan.Id;
         _selectedTab = null;
+        _specificLapPickerOpen = false;
         RaiseChanged();
         return plan;
     }
@@ -324,6 +339,28 @@ public sealed class SessionPlannerController
     }
 
     /// <summary>
+    /// The segment the plan would naturally run next: qualifying while the plan includes it
+    /// and it has not run yet, the race otherwise. The page draws exactly one primary start
+    /// action, and this is the one it points at.
+    /// </summary>
+    public SegmentKind NextSegment(SessionPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return plan.QualifyingIncluded
+            && plan.Segments.All(segment => segment.Kind != SegmentKind.Qualifying)
+                ? SegmentKind.Qualifying
+                : SegmentKind.Race;
+    }
+
+    /// <summary>
+    /// Whether starting the race now would skip a qualifying the plan includes but has not
+    /// run. True gates the race start behind a confirm — a skip must never be one stray
+    /// click away from a driver who meant to qualify.
+    /// </summary>
+    public bool StartingRaceSkipsQualifying(SessionPlan plan) =>
+        NextSegment(plan) == SegmentKind.Qualifying;
+
+    /// <summary>
     /// Explicit takeover: frees whatever holds the slot — disarming an armed plan, stopping a
     /// tracking one — then arms <paramref name="planId"/>. The UI gates this behind a confirm.
     /// </summary>
@@ -380,6 +417,22 @@ public sealed class SessionPlannerController
     public void SelectTargetScope(PlanTargetScope scope, string? programType = null)
     {
         _selectedTargetScope = (scope, programType);
+        // Another scope offers different laps; a picker left open would show the previous
+        // scope's list for one paint.
+        _specificLapPickerOpen = false;
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// Whether the specific-lap list is showing. The list holds every recorded lap for the
+    /// scope, so it stays out of the way until the driver asks for it by picking
+    /// <c>Specific</c> on the statistic row.
+    /// </summary>
+    public bool SpecificLapPickerOpen => _specificLapPickerOpen;
+
+    public void OpenSpecificLapPicker()
+    {
+        _specificLapPickerOpen = true;
         RaiseChanged();
     }
 
@@ -401,27 +454,6 @@ public sealed class SessionPlannerController
         StoreTarget(kind, option.ToTarget(_clock()));
     }
 
-    /// <summary>
-    /// Stores a lap time the driver typed (<c>m:ss.f</c> or seconds) as the target for
-    /// <paramref name="kind"/>. False when the entry is not a lap time, in which case nothing
-    /// is written — this is the path that keeps an empty corpus from dead-ending the plan.
-    /// </summary>
-    public bool SetManualTarget(SegmentKind kind, string text)
-    {
-        if (!PlanTargetResolver.TryParseLapTime(text, out var seconds))
-        {
-            return false;
-        }
-
-        StoreTarget(kind, new PlanTarget
-        {
-            Scope = PlanTargetScope.Manual,
-            LapTimeSeconds = seconds,
-            UpdatedAt = _clock(),
-        });
-        return true;
-    }
-
     /// <summary>Removes the lap-time target for <paramref name="kind"/>, leaving none set.</summary>
     public void ClearTarget(SegmentKind kind)
     {
@@ -431,6 +463,7 @@ public sealed class SessionPlannerController
         }
 
         targets.LapTime = null;
+        _specificLapPickerOpen = false;
         _service.UpdatePlan(plan);
         RaiseChanged();
     }
@@ -450,6 +483,8 @@ public sealed class SessionPlannerController
         }
 
         targets.LapTime = target;
+        // Whatever opened the picker, a stored choice answers it.
+        _specificLapPickerOpen = false;
         _service.UpdatePlan(plan);
         RaiseChanged();
     }

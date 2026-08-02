@@ -321,6 +321,12 @@ public class HeadlessShellTests
                 planner!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
+                // The page lands on the overview; the target selector lives inside the plan.
+                var open = FindOptionalButton(window, "Open");
+                Assert.NotNull(open);
+                open!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
                 var text = string.Join(
                     " | ",
                     window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text ?? ""));

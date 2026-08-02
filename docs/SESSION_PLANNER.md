@@ -40,13 +40,23 @@ planning time.
   recency cutoff), `Quali`, `Practice`, and `Practice program` (hidden in Quick mode).
   Statistics: `Fastest`, `Median`, `Slowest`, `Custom` (a specific lap), each label carrying
   its resolved time and sample size.
+- The statistic row renders as `Fastest / Median / Slowest / Specific`. **`Specific` opens a
+  scrollable selection list in place** (2026-08-02) — never a dropdown, because a corpus can
+  hold hundreds of laps for one context and a dropdown grows past the screen. The list shows
+  every lap fastest → slowest with an ember pick indicator and the per-lap tier note, and it
+  appears only once `Specific` is chosen, so three-choice targeting stays one row tall.
+- **There is no typed lap-time entry** (2026-08-02, superseding the earlier manual row): a
+  lap time is something a car did, not a number decided at a desk. Plans stored with a
+  `Manual` target keep deserialising and describing themselves (`set by hand`); the page
+  just no longer creates new ones.
 - `PlanTargetResolver` is the Avalonia-free seam; it narrows the corpus per scope and hands
   each slice to `LapHistoryStatistics`, so the median/real-lap rules stay defined once in #184.
 - **Tier comes from the lap, not the session**: `LapHistoryRecord.HasReferenceCurve`, because
   a recorded lap whose trace failed the completeness guards has no curve either. Surfaced as
   `reference curve` / `time only` in every label and persisted on the target.
 - **Three honest empty states**: a scope with no laps is omitted rather than shown empty; no
-  scopes at all shows the manual row with "No laps recorded for this car and track yet"; no
+  scopes at all says "No laps recorded for this car and track yet. Drive or import a session
+  to unlock targets." — it does not dead-end the plan, a target is simply optional; no
   stored target says the dash gets none for that segment.
 - Targets are plain serialisable data (sync-ready, last write wins). Delivering them to the
   wheel is #189, below.
@@ -231,6 +241,34 @@ never lock them — every value a plan stores stays overridable per plan, and
 (`JsonStringEnumConverter`), because these are on-disk settings and an ordinal would
 silently change meaning if the members were ever reordered. Settings whose consumer is not
 built yet are marked above rather than hidden: the issue asks for the defaults to exist now.
+
+## Planner page (#100, reshaped 2026-08-02) — overview landing
+
+The page lands on a **shelf of plans, not the inside of one**: an `Open plans` section
+(Draft/Armed/Tracking, newest first) and a `Completed` section (Completed/Abandoned, present
+only when non-empty). This supersedes the original "active plan, else most recent, in view"
+rule — an armed or tracking plan is prominent through its status pill instead of hijacking
+the page.
+
+- **Collapsed rows carry a thumbnail**: the plan's recorded lap times as a small bar strip
+  (last 20, oldest → newest, slower = taller, one series in the informational blue). A plan
+  with no laps shows the route glyph — an empty plot would read as "all laps were zero".
+- A plan opens only on an explicit `Open`; creation lands inside the new plan; `All plans`
+  (chevron-left) is always the first thing on an opened plan. The Q/R segmented control
+  belongs to the opened plan, not the overview.
+- **Exactly one primary start action: the next step** (`SessionPlannerController.NextSegment`
+  — qualifying while the plan includes it and no qualifying segment exists, race otherwise).
+  Two primary buttons competed for attention. Starting the race while a planned qualifying
+  has not run goes through a confirm ("Start the race without qualifying?"), because a skip
+  must never be one stray click away; a plan without qualifying is never offered a
+  qualifying start at all (#180's rule applied locally).
+- The full sheet's walk is drawn as an **ember step indicator** (done = check, current =
+  ember marker, ahead = neutral, connectors turn ember behind you) instead of a
+  "Step 1 of 3" line.
+- Planner actions wear their Tabler glyphs (`Graphite.Button` takes an optional icon; the
+  label stays a text block so tests and automation keep reading it): import = download,
+  new = plus, quick = bolt, start = player-play, stop = player-stop, back = chevron-left,
+  the target section = target.
 
 ## Plan creation: Quick and Planned (#178, #183) — implemented
 

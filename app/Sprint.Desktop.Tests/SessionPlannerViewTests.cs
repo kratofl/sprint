@@ -104,7 +104,7 @@ public class SessionPlannerViewTests
     }
 
     [Fact]
-    public async Task WithNoHistoryTheSelectorAsksForTheTimeInsteadOfOfferingNothing()
+    public async Task WithNoHistoryTheSelectorSaysSoInsteadOfOfferingNothing()
     {
         await Dispatch(() => WithView(PlanMode.Planned, text =>
         {
@@ -112,6 +112,57 @@ public class SessionPlannerViewTests
             Assert.Contains("No target set", text);
             Assert.DoesNotContain("Current Quali", text);
         }));
+    }
+
+    [Fact]
+    public async Task ALapTimeCannotBeTypedInAnymoreOnlyChosenFromRecordedLaps()
+    {
+        await Dispatch(() => WithViewCard(PlanMode.Planned, card =>
+        {
+            // A lap time is something a car did, not something a driver decides at a desk —
+            // the free-text entry is gone from the target section.
+            var target = card.GetLogicalDescendants()
+                .OfType<Border>()
+                .First(border => border.Tag as string == SessionPlannerView.TargetSectionTag);
+            Assert.Empty(target.GetLogicalDescendants().OfType<TextBox>());
+        }, WithCorpus()));
+    }
+
+    [Fact]
+    public async Task TheStatisticRowOffersSpecificAndOnlyThenShowsTheLapList()
+    {
+        await Dispatch(() => WithViewCard(PlanMode.Planned, card =>
+        {
+            // Fastest, Median, Slowest, Specific — the lap list stays out of the way until
+            // the driver says they want one specific lap.
+            Assert.NotNull(FindButton(card, "Specific"));
+            Assert.DoesNotContain(
+                card.GetLogicalDescendants().OfType<Border>(),
+                border => border.Tag as string == SessionPlannerView.SpecificLapListTag);
+            Assert.Empty(card.GetLogicalDescendants().OfType<ComboBox>().Skip(1));
+        }, WithCorpus()));
+    }
+
+    [Fact]
+    public async Task ChoosingSpecificOpensAScrollableListOfEveryRecordedLap()
+    {
+        await Dispatch(() => WithViewCard(PlanMode.Planned, card =>
+        {
+            var list = card.GetLogicalDescendants()
+                .OfType<Border>()
+                .First(border => border.Tag as string == SessionPlannerView.SpecificLapListTag);
+
+            // The corpus can hold hundreds of laps for a context, so this is a list that
+            // scrolls, never a dropdown that would grow past the screen.
+            Assert.NotEmpty(list.GetLogicalDescendants().OfType<ScrollViewer>());
+            var rows = list.GetLogicalDescendants()
+                .OfType<Button>()
+                .Select(ButtonLabel)
+                .ToList();
+            Assert.Equal(3, rows.Count);
+            Assert.Contains(rows, row => row.Contains("2:11.0"));
+            Assert.Contains(rows, row => row.Contains("2:18.0"));
+        }, WithCorpus(), specificOpen: true));
     }
 
     [Fact]
@@ -133,6 +184,230 @@ public class SessionPlannerViewTests
             Assert.DoesNotContain("Applies from the next lap", text);
         }, WithCorpus()));
     }
+
+    [Fact]
+    public async Task ThePageLandsOnAnOverviewOfOpenAndCompletedPlansWithThumbnails()
+    {
+        await Dispatch(() => WithOverview((controller, page) =>
+        {
+            var text = PageText(page);
+
+            // Landing shows the shelf, not the inside of a plan.
+            Assert.DoesNotContain(
+                page.GetLogicalDescendants().OfType<Border>(),
+                border => border.Tag as string == SessionPlannerView.PlanCardTag);
+            Assert.Contains("Open plans", text);
+            Assert.Contains("Completed", text);
+            Assert.Contains("Second", text);
+            Assert.Contains("First", text);
+
+            // Every collapsed plan row carries a thumbnail.
+            var thumbs = page.GetLogicalDescendants()
+                .OfType<Border>()
+                .Count(border => border.Tag as string == SessionPlannerView.PlanThumbnailTag);
+            Assert.Equal(2, thumbs);
+
+            // Opening a collapsed plan selects it; the shell repaint then shows the card.
+            FindButton(page, "Open")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.NotNull(controller.PlanInView);
+        }));
+    }
+
+    [Fact]
+    public async Task AnOpenPlanCarriesAWayBackToTheOverview()
+    {
+        await Dispatch(() => WithOverview((controller, _) =>
+        {
+            controller.SelectPlan("id-1");
+            var page = BuildPage(controller);
+
+            Assert.Contains(
+                page.GetLogicalDescendants().OfType<Border>(),
+                border => border.Tag as string == SessionPlannerView.PlanCardTag);
+
+            FindButton(page, "All plans")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Null(controller.PlanInView);
+        }));
+    }
+
+    private static void WithOverview(Action<SessionPlannerController, Control> assert)
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var counter = 0;
+            var service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                idFactory: () => $"id-{++counter}");
+            service.CreatePlan(new CreatePlanRequest
+            {
+                Name = "First",
+                RaceLengthFormat = RaceLengthFormat.TimeBased,
+                RaceLengthValue = 360,
+            });
+            service.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Second",
+                RaceLengthFormat = RaceLengthFormat.TimeBased,
+                RaceLengthValue = 60,
+            });
+            service.StartTracking("id-1", SegmentKind.Race);
+            service.StopTracking("id-1");
+
+            var controller = new SessionPlannerController(
+                service,
+                NoFuelHistorySource.Instance,
+                () => PlanContext.Empty,
+                clock: () => Now);
+
+            assert(controller, BuildPage(controller));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static Control BuildPage(SessionPlannerController controller) =>
+        new SessionPlannerView(
+                controller,
+                new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true))
+            .Build();
+
+    private static string PageText(Control page) => string.Join(
+        " | ",
+        page.GetLogicalDescendants()
+            .OfType<TextBlock>()
+            .Select(block => block.Text ?? "")
+            .Concat(page.GetLogicalDescendants()
+                .OfType<Button>()
+                .Select(ButtonLabel)));
+
+    [Fact]
+    public async Task OnlyTheNextStepIsAPrimaryStartAndSkippingQualifyingNeedsAConfirm()
+    {
+        await Dispatch(() => WithPlannerPage(qualifyingIncluded: true, (service, card, confirm) =>
+        {
+            var qualifying = FindButton(card, "Start Qualifying now");
+            var race = FindButton(card, "Start Race now");
+            Assert.NotNull(qualifying);
+            Assert.NotNull(race);
+
+            // One primary action per card: the next step draws the eye, the skip does not.
+            Assert.Equal(Graphite.AccentBrush, qualifying!.Background);
+            Assert.NotEqual(Graphite.AccentBrush, race!.Background);
+
+            // Starting the race now would skip the planned qualifying, so the click asks
+            // instead of acting; nothing starts until the confirm is answered.
+            race.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(PlanStatus.Draft, service.Find("id-1")!.Status);
+            Assert.NotNull(confirm.Title);
+            Assert.Contains("qualifying", confirm.Title, StringComparison.OrdinalIgnoreCase);
+
+            confirm.Accept!();
+            var plan = service.Find("id-1")!;
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            Assert.Equal(SegmentKind.Race, plan.Segments[^1].Kind);
+        }));
+    }
+
+    [Fact]
+    public async Task ARaceOnlyPlanOffersNoQualifyingStartAndTheRaceStartsWithoutAConfirm()
+    {
+        await Dispatch(() => WithPlannerPage(qualifyingIncluded: false, (service, card, confirm) =>
+        {
+            // An action whose only possible answer is "this plan has no qualifying" is not
+            // offered at all, and the race is the next step — primary, no warning.
+            Assert.Null(FindButton(card, "Start Qualifying now"));
+            var race = FindButton(card, "Start Race now");
+            Assert.NotNull(race);
+            Assert.Equal(Graphite.AccentBrush, race!.Background);
+
+            race.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Null(confirm.Title);
+            Assert.Equal(PlanStatus.Tracking, service.Find("id-1")!.Status);
+        }));
+    }
+
+    private sealed class CapturedConfirm
+    {
+        public string? Title { get; set; }
+
+        public Action? Accept { get; set; }
+    }
+
+    private static void WithPlannerPage(
+        bool qualifyingIncluded,
+        Action<SessionPlannerService, Border, CapturedConfirm> assert)
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var counter = 0;
+            var service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                idFactory: () => $"id-{++counter}");
+            var controller = new SessionPlannerController(
+                service,
+                NoFuelHistorySource.Instance,
+                () => PlanContext.Empty,
+                clock: () => Now);
+            controller.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Spa 6h",
+                Track = "Spa-Francorchamps",
+                Car = "Porsche 963",
+                QualifyingIncluded = qualifyingIncluded,
+                RaceLengthFormat = RaceLengthFormat.TimeBased,
+                RaceLengthValue = 360,
+            });
+
+            var confirm = new CapturedConfirm();
+            var card = new SessionPlannerView(
+                    controller,
+                    new SessionPlannerViewCallbacks(
+                        () => { },
+                        (title, _, _, accept) =>
+                        {
+                            confirm.Title = title;
+                            confirm.Accept = accept;
+                        },
+                        () => { },
+                        () => { },
+                        true))
+                .Build()
+                .GetLogicalDescendants()
+                .OfType<Border>()
+                .First(border => border.Tag as string == SessionPlannerView.PlanCardTag);
+
+            assert(service, card, confirm);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>Finds a button by its visible label, whether the content is a plain string or
+    /// a panel carrying an icon beside a text block.</summary>
+    private static Button? FindButton(Control root, string label) =>
+        root.GetLogicalDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => ButtonLabel(button) == label);
+
+    private static string ButtonLabel(Button button) => button.Content switch
+    {
+        string text => text,
+        TextBlock block => block.Text ?? "",
+        Control content => string.Concat(
+            content.GetLogicalDescendants()
+                .OfType<TextBlock>()
+                .Select(block => block.Text)
+                .Prepend((content as TextBlock)?.Text)),
+        _ => "",
+    };
 
     /// <summary>
     /// A qualifying session on 31 Jul with laps [131, 133, 138] for the test plan's context.
@@ -170,7 +445,34 @@ public class SessionPlannerViewTests
         PlanMode mode,
         Action<string> assert,
         ILapHistoryStore? corpus = null,
-        bool tracking = false)
+        bool tracking = false) =>
+        WithViewCard(
+            mode,
+            card =>
+                // Segmented options are button content and scopes are combo items, so neither
+                // shows up as a TextBlock: the target selector is only visible if all are read.
+                assert(string.Join(
+                    " | ",
+                    card.GetLogicalDescendants()
+                        .OfType<TextBlock>()
+                        .Select(block => block.Text ?? "")
+                        .Concat(card.GetLogicalDescendants()
+                            .OfType<Button>()
+                            .Select(ButtonLabel))
+                        .Concat(card.GetLogicalDescendants()
+                            .OfType<ComboBox>()
+                            .SelectMany(combo => (combo.ItemsSource ?? Array.Empty<string>())
+                                .Cast<object?>()
+                                .Select(item => item as string ?? ""))))),
+            corpus,
+            tracking);
+
+    private static void WithViewCard(
+        PlanMode mode,
+        Action<Border> assert,
+        ILapHistoryStore? corpus = null,
+        bool tracking = false,
+        bool specificOpen = false)
     {
         var root = TestEnv.NewTempDataRoot();
         try
@@ -201,6 +503,13 @@ public class SessionPlannerViewTests
                 () => PlanContext.Empty,
                 corpus,
                 () => Now);
+            // The page lands on the overview; these tests are about the opened plan card.
+            controller.SelectPlan("id-1");
+            if (specificOpen)
+            {
+                controller.OpenSpecificLapPicker();
+            }
+
             // The header carries a "Quick plan" button, so assert against the plan card only.
             var card = new SessionPlannerView(
                     controller,
@@ -210,21 +519,7 @@ public class SessionPlannerViewTests
                 .OfType<Border>()
                 .First(border => border.Tag as string == SessionPlannerView.PlanCardTag);
 
-            // Segmented options are button content and scopes are combo items, so neither shows
-            // up as a TextBlock: the target selector is only visible if all three are read.
-            assert(string.Join(
-                " | ",
-                card.GetLogicalDescendants()
-                    .OfType<TextBlock>()
-                    .Select(block => block.Text ?? "")
-                    .Concat(card.GetLogicalDescendants()
-                        .OfType<Button>()
-                        .Select(button => button.Content as string ?? ""))
-                    .Concat(card.GetLogicalDescendants()
-                        .OfType<ComboBox>()
-                        .SelectMany(combo => (combo.ItemsSource ?? Array.Empty<string>())
-                            .Cast<object?>()
-                            .Select(item => item as string ?? "")))));
+            assert(card);
         }
         finally
         {

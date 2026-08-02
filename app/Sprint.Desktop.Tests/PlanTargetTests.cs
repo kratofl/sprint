@@ -235,10 +235,12 @@ public sealed class PlanTargetTests
     }
 
     [Fact]
-    public void WithNoHistoryForTheContextNoTargetIsOfferedAndTheDriverSetsTheValueInstead()
+    public void WithNoHistoryForTheContextNoTargetIsOfferedAtAll()
     {
         // A corpus that holds laps for a different car: the planner must offer nothing rather
-        // than a scope resolving to someone else's pace, and no zero-second placeholder.
+        // than a scope resolving to someone else's pace, and no zero-second placeholder. There
+        // is no typed fallback either — a lap time is something a car did, so the section
+        // stays empty until a session is driven or imported.
         var otherCar = Session("hs-other", HistorySessionKind.Qualifying, CurrentQualiAt, 131, 133);
         otherCar.Context.CarModel = "Peugeot 9X8";
 
@@ -253,18 +255,6 @@ public sealed class PlanTargetTests
                 Assert.True(choices.IsEmpty);
                 Assert.Empty(choices.Scopes);
                 Assert.Null(controller.TargetFor(SegmentKind.Race));
-
-                Assert.True(controller.SetManualTarget(SegmentKind.Race, "2:05.4"));
-
-                var target = controller.TargetFor(SegmentKind.Race);
-                Assert.NotNull(target);
-                Assert.Equal(PlanTargetScope.Manual, target!.Scope);
-                Assert.Equal(125.4, target.LapTimeSeconds, 3);
-                // A typed value is not a statistic over anything and points at no lap, and it
-                // must not claim otherwise.
-                Assert.Equal(0, target.SampleSize);
-                Assert.Null(target.LapSessionId);
-                Assert.False(target.HasReferenceCurve);
             });
         }
         finally
@@ -273,51 +263,18 @@ public sealed class PlanTargetTests
         }
     }
 
-    [Theory]
-    [InlineData("2:05.4", 125.4)]
-    [InlineData("125.4", 125.4)]
-    [InlineData("1:05", 65)]
-    public void ATypedLapTimeIsAcceptedAsMinutesAndSecondsOrPlainSeconds(string text, double expected)
+    [Fact]
+    public void AManualTargetStoredByAnEarlierVersionStillDescribesItselfHonestly()
     {
-        WithManualTarget(text, target =>
-        {
-            Assert.NotNull(target);
-            Assert.Equal(expected, target!.LapTimeSeconds, 3);
-        });
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("soon")]
-    [InlineData("0")]
-    [InlineData("-90")]
-    [InlineData("2:75")]
-    public void AnEntryThatIsNotALapTimeStoresNothingRatherThanAZeroTarget(string text)
-    {
-        // A target of zero would read as "you are 2 minutes down" on the driver's screen.
-        WithManualTarget(text, Assert.Null);
-    }
-
-    private static void WithManualTarget(string text, Action<PlanTarget?> assert)
-    {
-        var root = TestEnv.NewTempDataRoot();
-        try
-        {
-            WithController(root, new FakeLapHistoryStore([]), controller =>
+        // The typed-entry path is gone from the page, but plans written before that carry
+        // Manual targets on disk and must keep rendering with their provenance intact.
+        Assert.Equal(
+            "2:05.4 · set by hand",
+            PlanTargetResolver.Describe(new PlanTarget
             {
-                controller.CreatePlan(NewRequest());
-                var accepted = controller.SetManualTarget(SegmentKind.Race, text);
-
-                var target = controller.TargetFor(SegmentKind.Race);
-                Assert.Equal(accepted, target is not null);
-                assert(target);
-            });
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
+                Scope = PlanTargetScope.Manual,
+                LapTimeSeconds = 125.4,
+            }));
     }
 
     [Fact]
@@ -561,11 +518,6 @@ public sealed class PlanTargetTests
                     "2:13.0 · Quali · lap 2 of 5 laps · reference curve",
                     PlanTargetResolver.Describe(controller.TargetFor(SegmentKind.Race)!));
 
-                // A typed value claims no provenance at all.
-                Assert.True(controller.SetManualTarget(SegmentKind.Race, "2:05.4"));
-                Assert.Equal(
-                    "2:05.4 · set by hand",
-                    PlanTargetResolver.Describe(controller.TargetFor(SegmentKind.Race)!));
             });
         }
         finally

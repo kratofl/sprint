@@ -32,11 +32,56 @@ public class NewPlanDialogViewTests
             var track = labels.IndexOf("Track");
             var name = labels.IndexOf("Name (optional)");
 
-            Assert.Contains("Step 1 of 3 · Where and what", labels);
             Assert.True(track >= 0, "the track field is missing from the first step");
             Assert.True(name >= 0, "the name field is not labelled as optional");
             // Presented first and unlabelled, drivers treated the name as required.
             Assert.True(name > track, $"the name field must follow the context fields (track={track}, name={name})");
+        });
+    }
+
+    [Fact]
+    public async Task TheStepsAreShownAsAnEmberIndicatorNotACountedLine()
+    {
+        await Dispatch(() =>
+        {
+            var draft = new NewPlanDraft { Step = PlanFormStep.Sessions, RaceLengthText = "60" };
+            // Built directly: the shared helper resolves the context step's named boxes,
+            // which this step does not carry.
+            var root = new NewPlanDialog(
+                    draft,
+                    hasFuelHistory: true,
+                    _ => { },
+                    cancel: () => { },
+                    rebuild: () => { })
+                .Build();
+            var labels = root
+                .GetLogicalDescendants()
+                .OfType<TextBlock>()
+                .Select(block => block.Text ?? "")
+                .ToList();
+
+            // The walk is drawn, not narrated: no "Step 2 of 3" prose anywhere.
+            Assert.DoesNotContain(labels, label => label.StartsWith("Step ", StringComparison.Ordinal));
+
+            var stepper = root
+                .GetLogicalDescendants()
+                .OfType<Control>()
+                .First(control => control.Tag as string == NewPlanDialog.StepIndicatorTag);
+
+            // All three stations are visible at once, so the driver knows where they are and
+            // what is left — the ember marker carries "you are here".
+            Assert.Contains("Where and what", labels);
+            Assert.Contains("Sessions", labels);
+            Assert.Contains("Fuel", labels);
+
+            var markers = stepper.GetLogicalDescendants()
+                .OfType<Border>()
+                .Where(border => border.Tag as string == NewPlanDialog.StepMarkerTag)
+                .ToList();
+            Assert.Equal(3, markers.Count);
+            // Done and current wear ember; what is ahead does not.
+            Assert.Equal(Graphite.AccentBrush, markers[1].Background);
+            Assert.NotEqual(Graphite.AccentBrush, markers[2].Background);
         });
     }
 

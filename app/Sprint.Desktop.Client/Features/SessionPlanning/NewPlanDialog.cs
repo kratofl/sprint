@@ -72,11 +72,6 @@ public sealed class NewPlanDraft
 
     public bool IsLastStep => Step == Steps[^1];
 
-    /// <summary>Human position in the walk, for the sheet's "Step 2 of 3" line.</summary>
-    public int StepNumber => Array.IndexOf(Steps, Step) + 1;
-
-    public static int StepCount => Steps.Length;
-
     /// <summary>
     /// Validates just the current step and moves on. Checking here rather than only at Create
     /// keeps a message beside the field it is about instead of two steps away.
@@ -227,6 +222,10 @@ internal sealed class NewPlanDialog
     internal const string CarInputName = "planCarInput";
     internal const string GameInputName = "planGameInput";
 
+    /// <summary>Tags the step indicator and its per-step markers for the view tests.</summary>
+    internal const string StepIndicatorTag = "plan-step-indicator";
+    internal const string StepMarkerTag = "plan-step-marker";
+
     private readonly NewPlanDraft _draft;
     private readonly bool _hasFuelHistory;
     private readonly PlanContextOptions _options;
@@ -274,14 +273,11 @@ internal sealed class NewPlanDialog
         _fields.Clear();
         var content = new StackPanel { Spacing = 14, Width = 460 };
 
-        var headingText = new StackPanel { Spacing = 4 };
+        var headingText = new StackPanel { Spacing = 12 };
         headingText.Children.Add(Graphite.TextBlock("New Session Plan", 19, FontWeight.Bold, Graphite.TextBrush));
-        headingText.Children.Add(Graphite.TextBlock(
-            $"Step {_draft.StepNumber} of {NewPlanDraft.StepCount} · {StepCaption(_draft.Step)}",
-            12,
-            FontWeight.Normal,
-            Graphite.Text2Brush,
-            TextWrapping.Wrap));
+        // The walk is drawn, not narrated: every station is visible at once, the ember marker
+        // says "you are here", and a finished step wears a check instead of its number.
+        headingText.Children.Add(StepIndicator(_draft.Step));
         content.Children.Add(headingText);
 
         // One step at a time. The single-screen sheet was justified by the flow running under
@@ -388,9 +384,102 @@ internal sealed class NewPlanDialog
     private static string StepCaption(PlanFormStep step) => step switch
     {
         PlanFormStep.Context => "Where and what",
-        PlanFormStep.Sessions => "Which sessions, and how long",
+        PlanFormStep.Sessions => "Sessions",
         _ => "Fuel",
     };
+
+    private static Control StepIndicator(PlanFormStep current)
+    {
+        var steps = Enum.GetValues<PlanFormStep>();
+        var currentIndex = Array.IndexOf(steps, current);
+
+        var grid = new Grid
+        {
+            Tag = StepIndicatorTag,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        for (var i = 0; i < steps.Length; i++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto));
+            if (i < steps.Length - 1)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            }
+        }
+
+        for (var i = 0; i < steps.Length; i++)
+        {
+            var station = StepStation(i, currentIndex, StepCaption(steps[i]));
+            Grid.SetColumn(station, i * 2);
+            grid.Children.Add(station);
+
+            if (i < steps.Length - 1)
+            {
+                // The connector belongs to the step it leaves: it turns ember once that step
+                // is behind the driver.
+                var connector = new Border
+                {
+                    Height = 2,
+                    MinWidth = 16,
+                    CornerRadius = new CornerRadius(1),
+                    Background = i < currentIndex ? Graphite.AccentBrush : Graphite.Line2Brush,
+                    Margin = new Thickness(8, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                Grid.SetColumn(connector, (i * 2) + 1);
+                grid.Children.Add(connector);
+            }
+        }
+
+        return grid;
+    }
+
+    private static Control StepStation(int index, int currentIndex, string caption)
+    {
+        var done = index < currentIndex;
+        var isCurrent = index == currentIndex;
+
+        var marker = new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(Graphite.RadiusPill),
+            Background = done || isCurrent ? Graphite.AccentBrush : Graphite.Panel3Brush,
+            BorderBrush = done || isCurrent ? Graphite.AccentBrush : Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            Tag = StepMarkerTag,
+        };
+        if (done)
+        {
+            var check = Icons.Create("check", 12, Graphite.Panel2Brush, 2.5);
+            check.HorizontalAlignment = HorizontalAlignment.Center;
+            check.VerticalAlignment = VerticalAlignment.Center;
+            marker.Child = check;
+        }
+        else
+        {
+            var number = Graphite.TextBlock(
+                (index + 1).ToString(CultureInfo.InvariantCulture),
+                11,
+                FontWeight.SemiBold,
+                isCurrent ? Graphite.Panel2Brush : Graphite.Text3Brush);
+            number.HorizontalAlignment = HorizontalAlignment.Center;
+            number.VerticalAlignment = VerticalAlignment.Center;
+            marker.Child = number;
+        }
+
+        var label = Graphite.TextBlock(
+            caption,
+            12,
+            isCurrent ? FontWeight.Medium : FontWeight.Normal,
+            isCurrent ? Graphite.TextBrush : done ? Graphite.Text2Brush : Graphite.Text3Brush);
+        label.VerticalAlignment = VerticalAlignment.Center;
+
+        var station = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        station.Children.Add(marker);
+        station.Children.Add(label);
+        return station;
+    }
 
     private IEnumerable<Control> ContextStep()
     {

@@ -28,29 +28,64 @@ public sealed class SessionPlannerPageTests
     }
 
     [Fact]
-    public void TheMostRecentPlanIsInViewWhenNoneIsActive()
+    public void ThePageLandsOnTheOverviewInsteadOfThrowingTheDriverIntoAPlan()
+    {
+        Run((controller, service) =>
+        {
+            // Plans exist from an earlier run, but nothing was selected this session: the
+            // page shows the overview of every plan, not the inside of one of them.
+            service.CreatePlan(NewRequest("First"));
+            service.CreatePlan(NewRequest("Second"));
+
+            Assert.True(controller.HasPlans);
+            Assert.Null(controller.PlanInView);
+        });
+    }
+
+    [Fact]
+    public void CreatingAPlanOpensItAndClosingItReturnsToTheOverview()
     {
         Run((controller, _) =>
         {
             controller.CreatePlan(NewRequest("First"));
             var second = controller.CreatePlan(NewRequest("Second"));
 
-            Assert.True(controller.HasPlans);
             Assert.Equal(second.Id, controller.PlanInView?.Id);
-            Assert.True(controller.SegmentedControlVisible);
+
+            controller.ClosePlan();
+
+            Assert.Null(controller.PlanInView);
         });
     }
 
     [Fact]
-    public void TheActivePlanTakesPrecedenceOverTheMostRecentOne()
+    public void AnArmedPlanDoesNotPullThePageOffTheOverview()
+    {
+        Run((controller, service) =>
+        {
+            // Armed/tracking is prominent on the overview via its status — it does not hijack
+            // the page the way the old "active plan takes precedence" rule did.
+            var first = service.CreatePlan(NewRequest("First"));
+            service.CreatePlan(NewRequest("Second"));
+            controller.Arm(first.Id);
+
+            Assert.Null(controller.PlanInView);
+        });
+    }
+
+    [Fact]
+    public void OpenAndCompletedPlansAreListedSeparatelyNewestFirst()
     {
         Run((controller, _) =>
         {
             var first = controller.CreatePlan(NewRequest("First"));
-            controller.CreatePlan(NewRequest("Second"));
-            controller.Arm(first.Id);
+            var second = controller.CreatePlan(NewRequest("Second"));
+            var third = controller.CreatePlan(NewRequest("Third"));
+            controller.StartNow(first.Id, SegmentKind.Race);
+            controller.Stop(first.Id);
 
-            Assert.Equal(first.Id, controller.PlanInView?.Id);
+            Assert.Equal(new[] { third.Id, second.Id }, controller.OpenPlans.Select(plan => plan.Id));
+            Assert.Equal(new[] { first.Id }, controller.CompletedPlans.Select(plan => plan.Id));
         });
     }
 
@@ -123,6 +158,71 @@ public sealed class SessionPlannerPageTests
 
             controller.SelectTab(PlannerSegmentTab.Race);
             Assert.Equal(PlannerSegmentTab.Race, controller.SelectedTab);
+        });
+    }
+
+    [Fact]
+    public void QualifyingIsTheNextStepUntilItHasRunSoStartingTheRaceInsteadSkipsIt()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Weekend"));
+
+            // The page draws exactly one primary start action: the next step. Starting the
+            // race while qualifying is planned but has not run is a skip and needs a confirm.
+            Assert.Equal(SegmentKind.Qualifying, controller.NextSegment(plan));
+            Assert.True(controller.StartingRaceSkipsQualifying(plan));
+
+            controller.StartNow(plan.Id, SegmentKind.Qualifying);
+
+            Assert.Equal(SegmentKind.Race, controller.NextSegment(plan));
+            Assert.False(controller.StartingRaceSkipsQualifying(plan));
+        });
+    }
+
+    [Fact]
+    public void APlanThatSkipsQualifyingGoesStraightToTheRaceWithoutAWarning()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
+
+            Assert.Equal(SegmentKind.Race, controller.NextSegment(plan));
+            Assert.False(controller.StartingRaceSkipsQualifying(plan));
+        });
+    }
+
+    [Fact]
+    public void TheSpecificLapPickerOpensOnRequestAndClosesWithTheChoiceItWasOpenedFor()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Weekend"));
+            Assert.False(controller.SpecificLapPickerOpen);
+
+            controller.OpenSpecificLapPicker();
+            Assert.True(controller.SpecificLapPickerOpen);
+
+            // Another scope offers different laps, so a picker left open would show the old
+            // scope's list for one paint.
+            controller.SelectTargetScope(PlanTargetScope.Practice);
+            Assert.False(controller.SpecificLapPickerOpen);
+
+            controller.OpenSpecificLapPicker();
+            controller.SetTarget(SegmentKind.Qualifying, new PlanTargetOption(
+                PlanTargetScope.Qualifying,
+                null,
+                PlanTargetStatistic.Custom,
+                "Lap 2",
+                "2:13.0",
+                "",
+                133,
+                3,
+                "hs-q",
+                2,
+                true,
+                null));
+            Assert.False(controller.SpecificLapPickerOpen);
         });
     }
 

@@ -191,8 +191,11 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "session-planner-new-plan-dialog",
                         "New Session Plan",
-                        // Three short steps rather than one form that has to be scrolled.
-                        "Step 1 of 3 · Where and what",
+                        // Three short steps rather than one form that has to be scrolled; the
+                        // walk is drawn as the ember step indicator, with every station named.
+                        "Where and what",
+                        "Sessions",
+                        "Fuel",
                         "Game",
                         "Car",
                         "Track",
@@ -209,7 +212,7 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "session-planner-new-plan-sessions-step",
                         "New Session Plan",
-                        "Step 2 of 3 · Which sessions, and how long",
+                        "Sessions",
                         "Qualifying",
                         "Race length",
                         "Back",
@@ -233,12 +236,12 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "session-planner-new-plan-fuel-step",
                         "New Session Plan",
-                        "Step 3 of 3 · Fuel",
+                        "Fuel",
                         "Reserve (laps)",
                         "Create"));
 
-                    // Commit, so the populated page — the segmented control, the plan card and
-                    // plan history — is reviewable too.
+                    // Commit: creation lands inside the new plan, with the overview one click
+                    // away behind "All plans".
                     Click(window, "Create");
                     frames.Add(Capture(
                         window,
@@ -248,9 +251,9 @@ internal static class AgentUiReviewHarness
                         "Qualifying",
                         "Race",
                         "Arm auto-start",
-                        "Plan history",
-                        // #186: a fresh install has no corpus, so the selector shows its
-                        // manual fallback rather than an empty scope list.
+                        "All plans",
+                        // #186: a fresh install has no corpus, so the selector says how to
+                        // earn targets rather than showing an empty scope list.
                         "Qualifying lap-time target",
                         PlanTargetChoices.NoHistoryMessage));
 
@@ -768,7 +771,7 @@ internal static class AgentUiReviewHarness
                 window,
                 artifactRoot,
                 "session-planner-context-dropdowns",
-                "Step 1 of 3 · Where and what",
+                "Where and what",
                 "Game",
                 "Car",
                 "Track"));
@@ -966,17 +969,26 @@ internal static class AgentUiReviewHarness
         window.Show();
         try
         {
+            // The page lands on the shelf: open plans with their thumbnails, not the inside
+            // of a plan.
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-overview",
+                "Open plans"));
+
+            Click(window, "Open");
             frames.Add(Capture(
                 window,
                 artifactRoot,
                 "session-planner-targets",
+                "All plans",
                 "Qualifying lap-time target",
                 "Scope",
                 "Aim at",
                 "Fastest · 2:11.0",
                 "Median · 2:13.0",
-                "Specific lap",
-                "Set by hand"));
+                "Specific"));
 
             // A chosen target states its provenance and its tier: which session it came from,
             // how many laps it was drawn from, and whether it can drive a real delta.
@@ -988,6 +1000,18 @@ internal static class AgentUiReviewHarness
                 "Qualifying lap-time target",
                 "2:11.0 · Current Quali · 2026-07-31 18:20 · fastest of 3 laps · reference curve",
                 "Clear target"));
+
+            // "Specific" opens the scrollable lap list in place — every recorded lap for the
+            // scope, fastest to slowest, each with its tier.
+            Click(window, "Specific");
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-specific-lap-list",
+                "Specific lap",
+                "2:11.0",
+                "2:18.0",
+                "reference curve"));
 
             // Once the session is live, targets latch at the start/finish line (#189), so the
             // card has to say that an edit made now does nothing to the lap being driven.

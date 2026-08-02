@@ -91,7 +91,7 @@ public sealed record PlanTargetChoices(IReadOnlyList<PlanTargetScopeGroup> Scope
 
     /// <summary>Shown in place of the scope list when there is no history to pick from.</summary>
     public const string NoHistoryMessage =
-        "No laps recorded for this car and track yet. Set the target time yourself.";
+        "No laps recorded for this car and track yet. Drive or import a session to unlock targets.";
 
     public bool IsEmpty => Scopes.Count == 0;
 
@@ -385,49 +385,6 @@ public static class PlanTargetResolver
         parts.Add(target.HasReferenceCurve ? "reference curve" : "time only");
         return string.Join(" · ", parts);
     }
-
-    /// <summary>
-    /// Parses a typed lap time — <c>m:ss.f</c> or plain seconds — for the manual path the
-    /// planner falls back to when the corpus is empty. False means nothing is stored: an
-    /// unparseable entry must not become a zero-second target.
-    /// </summary>
-    public static bool TryParseLapTime(string? text, out double seconds)
-    {
-        seconds = 0;
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return false;
-        }
-
-        var trimmed = text.Trim();
-        var colon = trimmed.LastIndexOf(':');
-        if (colon < 0)
-        {
-            return TryParseNumber(trimmed, out seconds) && seconds > 0;
-        }
-
-        if (!int.TryParse(
-                trimmed[..colon],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var minutes)
-            || minutes < 0
-            || !TryParseNumber(trimmed[(colon + 1)..], out var remainder)
-            || remainder < 0
-            || remainder >= 60)
-        {
-            return false;
-        }
-
-        seconds = (minutes * 60) + remainder;
-        return seconds > 0;
-    }
-
-    private static bool TryParseNumber(string text, out double value) =>
-        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
-        // A decimal comma is what most of Europe's keyboards produce; rejecting it would read
-        // to the driver as "2:05,4 is not a lap time".
-        || double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value);
 
     /// <summary>Lap time as <c>m:ss.f</c> — the resolution a delta is ever shown at.</summary>
     public static string FormatLapTime(double seconds)
