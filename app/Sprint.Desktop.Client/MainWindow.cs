@@ -87,6 +87,9 @@ public sealed class MainWindow : Window
     private readonly ILapHistoryStore _lapHistoryStore;
     private CompareHudWindow? _compareHud;
     private AnalysisView? _analysisView;
+    private CloudSession? _cloudSession;
+    private CloudLapSharing? _cloudSharing;
+    private string? _cloudNotice;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
@@ -3654,6 +3657,77 @@ public sealed class MainWindow : Window
         _root.Children.Add(_confirmOverlay);
     }
 
+    /// <summary>
+    /// A dialog whose body is a form rather than a sentence, with a primary action and an
+    /// optional secondary one. Sign-in needs both: signing in and creating an account are the
+    /// same three fields, and making the driver find a separate screen for the second is the
+    /// kind of split that only makes sense to whoever built it.
+    /// </summary>
+    private void ShowFormDialog(
+        string title,
+        Control body,
+        string confirmLabel,
+        Action confirm,
+        string? secondaryLabel = null,
+        Action? secondary = null)
+    {
+        CloseCommandPalette(restoreFocus: false);
+        CloseDeviceCatalogDialog();
+        CloseConfirmDialog();
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(Graphite.TextBlock(title, 17, FontWeight.Medium, Graphite.TextBrush));
+        content.Children.Add(body);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+        actions.Children.Add(ActionButton("Cancel", ButtonTone.Ghost, CloseConfirmDialog));
+        if (secondaryLabel is { Length: > 0 } && secondary is not null)
+        {
+            actions.Children.Add(ActionButton(secondaryLabel, ButtonTone.Neutral, () =>
+            {
+                CloseConfirmDialog();
+                secondary();
+            }));
+        }
+
+        actions.Children.Add(ActionButton(confirmLabel, ButtonTone.Primary, () =>
+        {
+            CloseConfirmDialog();
+            confirm();
+        }));
+        content.Children.Add(actions);
+
+        var panel = new Border
+        {
+            Width = 460,
+            Padding = new Thickness(20),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = content,
+        };
+        panel.PointerPressed += (_, e) => e.Handled = true;
+
+        _confirmOverlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(160, 0, 0, 0)),
+            Child = panel,
+            Tag = "confirm-dialog-overlay",
+        };
+        _confirmOverlay.PointerPressed += (_, _) => CloseConfirmDialog();
+        Grid.SetRowSpan(_confirmOverlay, 2);
+        _root.Children.Add(_confirmOverlay);
+    }
+
     private void CloseConfirmDialog()
     {
         if (_confirmOverlay is null)
@@ -4837,20 +4911,92 @@ public sealed class MainWindow : Window
         if (_analysisView is null)
         {
             var browser = new LapCorpusBrowser(_lapHistoryStore, _lapTraces);
+            var importer = new SharedLapImporter(_lapHistoryStore, _lapTraces, log: _log);
+            var files = new LapSharingService(browser, importer, () => _runtime.Settings.DriverName);
+            _cloudSession ??= new CloudSession(_runtime.DataRoot, _log);
+            _cloudSharing = new CloudLapSharing(_cloudSession, files, importer);
+
             _analysisView = new AnalysisView(
                 new AnalysisController(browser),
-                new LapSharingService(
-                    browser,
-                    new SharedLapImporter(_lapHistoryStore, _lapTraces, log: _log),
-                    () => _runtime.Settings.DriverName),
+                files,
+                _cloudSharing,
                 SetCompareTarget,
                 ToggleCompareHud,
                 RenderBody,
                 (title, message, confirmLabel, confirm) =>
-                    ShowConfirmDialog(title, message, confirmLabel, confirm, ButtonTone.Primary));
+                    ShowConfirmDialog(title, message, confirmLabel, confirm, ButtonTone.Primary),
+                ShowCloudSignInDialog);
         }
 
         return _analysisView.Build();
+    }
+
+    /// <summary>
+    /// Signing in to a self-hosted Sprint server. The address is a field, not a constant: every
+    /// Sprint server is somebody's own.
+    /// </summary>
+    private void ShowCloudSignInDialog()
+    {
+        if (_cloudSharing is null)
+        {
+            return;
+        }
+
+        var server = new TextBox
+        {
+            PlaceholderText = "https://sprint.example.com",
+            Text = _cloudSharing.ServerUrl,
+            FontFamily = Graphite.FontStack,
+        };
+        var email = new TextBox { PlaceholderText = "you@example.com", FontFamily = Graphite.FontStack };
+        var password = new TextBox
+        {
+            PlaceholderText = "Password",
+            PasswordChar = '•',
+            FontFamily = Graphite.FontStack,
+        };
+
+        var form = new StackPanel { Spacing = 10 };
+        form.Children.Add(Graphite.TextBlock("Server", 11.5, brush: Graphite.Text3Brush));
+        form.Children.Add(server);
+        form.Children.Add(Graphite.TextBlock("Email", 11.5, brush: Graphite.Text3Brush));
+        form.Children.Add(email);
+        form.Children.Add(Graphite.TextBlock("Password", 11.5, brush: Graphite.Text3Brush));
+        form.Children.Add(password);
+
+        ShowFormDialog(
+            "Sign in to Sprint cloud",
+            form,
+            "Sign in",
+            () => CloudSignIn(server.Text ?? "", email.Text ?? "", password.Text ?? "", register: false),
+            "Create account",
+            () => CloudSignIn(server.Text ?? "", email.Text ?? "", password.Text ?? "", register: true));
+    }
+
+    private async void CloudSignIn(string server, string email, string password, bool register)
+    {
+        if (_cloudSharing is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _cloudNotice = await _cloudSharing.SignInAsync(server, email, password, register);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Cloud sign-in failed", ex);
+            _cloudNotice = "Sign-in failed. Check the server address.";
+        }
+
+        // A fresh view so it reads the new session state.
+        _analysisView = null;
+        RenderBody();
+        if (_cloudNotice is { Length: > 0 } notice)
+        {
+            ShowToast(GraphiteIntent.Info, "Sprint cloud", notice, "cloud");
+        }
     }
 
     /// <summary>Copies the stored HUD preferences onto the controller (#195).</summary>

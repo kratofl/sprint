@@ -52,6 +52,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Sprint.Desktop.Api\Sprint.Desktop.Api.csproj" />
+    <!-- The shared cloud DTOs (auth, invites, lap sharing). Added with the first desktop
+         cloud client (#197); before that the only outbound HTTP was the GitHub release check. -->
+    <ProjectReference Include="..\Sprint.Contracts\Sprint.Contracts.csproj" />
     <ProjectReference Include="..\Sprint.Games\Sprint.Games.csproj" />
   </ItemGroup>
 

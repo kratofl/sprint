@@ -37,6 +37,22 @@ public sealed class Mutation
         return true;
     }
 
+    // ── Shared laps (#197) ─────────────────────────────────────────────────────
+    /// <summary>Mints an unguessable code for one lap. Only laps shared here ever leave a machine.</summary>
+    [Authorize]
+    public Task<SharedLapSummary> ShareLap(ShareLapInput input, ClaimsPrincipal user, [Service] LapShareService laps, CancellationToken ct) =>
+        laps.ShareAsync(user.RequireUserId(), input, ct);
+
+    /// <summary>Withdraws a code. The lap stays listed to its owner, marked revoked.</summary>
+    [Authorize]
+    public Task<SharedLapSummary> RevokeSharedLap(string code, ClaimsPrincipal user, [Service] LapShareService laps, CancellationToken ct) =>
+        laps.RevokeAsync(user.RequireUserId(), code, ct);
+
+    /// <summary>Sets the name other drivers see on a shared lap.</summary>
+    [Authorize]
+    public Task<UserProfile> SetDisplayName(string displayName, ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>
+        users.SetDisplayNameAsync(user.RequireUserId(), displayName, ct);
+
     // ── Catalog ────────────────────────────────────────────────────────────────
     [Authorize]
     public Task<SessionSummary> CreateSession(CreateSessionInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>

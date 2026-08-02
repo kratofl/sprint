@@ -189,6 +189,12 @@
         "resolved": "0.94.1",
         "contentHash": "11YMr7FnAbL83bQmVxlhbIKHvSLxjO81D12Ej0QMSGXMDTxNA9MTOa4MQxx43nv5el/efuPHwzyrj6a5ha2gug=="
       },
+      "sprint.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Sprint.Desktop.Api": "[0.1.0, )"
+        }
+      },
       "sprint.desktop.api": {
         "type": "Project"
       },

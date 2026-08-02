@@ -13,6 +13,8 @@ type Query {
   setup(id: String!): SetupSummary @authorize @cost(weight: "10")
   layouts: [LayoutSummary!]! @authorize @cost(weight: "10")
   layout(id: String!): LayoutSummary @authorize @cost(weight: "10")
+  sharedLap(code: String!): SharedLapDto! @authorize @cost(weight: "10")
+  mySharedLaps: [SharedLapSummary!]! @authorize @cost(weight: "10")
   recentTelemetry(code: String!, limit: Int!): [TelemetrySample!]!
     @authorize
     @cost(weight: "10")
@@ -25,6 +27,15 @@ type Mutation {
     @authorize
     @cost(weight: "10")
   joinAsDriver(code: String!): Boolean! @authorize @cost(weight: "10")
+  shareLap(input: ShareLapInput!): SharedLapSummary!
+    @authorize
+    @cost(weight: "10")
+  revokeSharedLap(code: String!): SharedLapSummary!
+    @authorize
+    @cost(weight: "10")
+  setDisplayName(displayName: String!): UserProfile!
+    @authorize
+    @cost(weight: "10")
   createSession(input: CreateSessionInput!): SessionSummary!
     @authorize
     @cost(weight: "10")
@@ -110,6 +121,30 @@ type SetupSummary {
   updatedAt: DateTime!
 }
 
+type SharedLapDto {
+  shareCode: String!
+  sharedBy: String!
+  game: String!
+  trackCourse: String!
+  carModel: String!
+  lapNumber: Int!
+  lapTimeSeconds: Float!
+  drivenAt: DateTime
+  payloadBase64: String!
+}
+
+type SharedLapSummary {
+  id: String!
+  shareCode: String!
+  game: String!
+  trackCourse: String!
+  carModel: String!
+  lapNumber: Int!
+  lapTimeSeconds: Float!
+  revoked: Boolean!
+  createdAt: DateTime!
+}
+
 type TelemetrySample {
   timestamp: DateTime!
   speed: Float!
@@ -124,6 +159,7 @@ type TelemetrySample {
 type UserProfile {
   id: String!
   email: String!
+  displayName: String!
   createdAt: DateTime!
 }
 
@@ -166,6 +202,16 @@ input SaveSetupInput {
   car: String!
   track: String!
   data: String!
+}
+
+input ShareLapInput {
+  game: String!
+  trackCourse: String!
+  carModel: String!
+  lapNumber: Int!
+  lapTimeSeconds: Float!
+  drivenAt: DateTime
+  payloadBase64: String!
 }
 
 "Defines when a policy shall be executed."

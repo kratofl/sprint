@@ -33,6 +33,8 @@ internal static class Icons
         ["clock"] = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M12 7v5l3 3",
         ["dots-vertical"] = "M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
         ["download"] = "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2 M7 11l5 5l5 -5 M12 4v12",
+        // Tabler's upload: the same tray as "download" with the arrow reversed.
+        ["upload"] = "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2 M7 9l5 -5l5 5 M12 4v12",
         ["droplet"] ="M12 3l5 6a7 7 0 1 1 -10 0l5 -6",
         ["flag"] = "M5 5v16 M5 5h10l-1 4l1 4h-10",
         ["gauge"] = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0 M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M13.41 10.59l2.59 -2.59 M7 12a5 5 0 0 1 5 -5",

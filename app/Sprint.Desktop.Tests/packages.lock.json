@@ -290,6 +290,12 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "sprint.contracts": {
+        "type": "Project",
+        "dependencies": {
+          "Sprint.Desktop.Api": "[0.1.0, )"
+        }
+      },
       "sprint.desktop.api": {
         "type": "Project"
       },
@@ -299,6 +305,7 @@
           "Avalonia.Desktop": "[12.1.0, )",
           "Avalonia.Themes.Fluent": "[12.1.0, )",
           "SkiaSharp": "[4.150.1, )",
+          "Sprint.Contracts": "[0.1.0, )",
           "Sprint.Desktop.Api": "[0.1.0, )",
           "Sprint.Games": "[0.1.0, )"
         }
