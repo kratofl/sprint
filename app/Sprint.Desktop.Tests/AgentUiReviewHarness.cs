@@ -936,6 +936,24 @@ internal static class AgentUiReviewHarness
     {
         var service = new SessionPlannerService(
             new LocalSessionPlanStore(Path.Combine(dataRoot, "target-review-plans")));
+
+        // A finished weekend with recorded laps, so the overview shows the lap-strip
+        // thumbnail and the Completed shelf rather than only the route placeholder.
+        var finished = service.CreatePlan(new CreatePlanRequest
+        {
+            Name = "Monza sprint",
+            Game = "Le Mans Ultimate",
+            Car = "Porsche 963",
+            Track = "Monza",
+            RaceLengthFormat = RaceLengthFormat.LapBased,
+            RaceLengthValue = 12,
+        });
+        var raceSegment = service.StartTracking(finished.Id, SegmentKind.Race);
+        raceSegment.Laps.AddRange(new double[] { 108.4, 107.9, 107.6, 108.8, 107.4, 109.6, 107.7, 107.5, 108.1, 107.3, 108.9, 107.8 }
+            .Select((seconds, index) => new LapSummary { LapNumber = index + 1, LapTimeSeconds = seconds }));
+        service.UpdatePlan(finished);
+        service.StopTracking(finished.Id);
+
         service.CreatePlan(new CreatePlanRequest
         {
             Name = "Spa 6h",
@@ -969,14 +987,19 @@ internal static class AgentUiReviewHarness
         window.Show();
         try
         {
-            // The page lands on the shelf: open plans with their thumbnails, not the inside
-            // of a plan.
+            // The page lands on the shelf: open plans with their thumbnails, and finished
+            // weekends collapsed below with their lap strips — not the inside of a plan.
             frames.Add(Capture(
                 window,
                 artifactRoot,
                 "session-planner-overview",
-                "Open plans"));
+                "Open plans",
+                "Completed",
+                "Monza sprint",
+                "Spa 6h"));
 
+            // The first Open belongs to the open shelf, which lists Spa 6h — the plan the
+            // corpus below resolves targets for.
             Click(window, "Open");
             frames.Add(Capture(
                 window,
