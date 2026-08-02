@@ -193,6 +193,22 @@ public sealed class SessionPlannerPageTests
     }
 
     [Fact]
+    public void DeletingAPlanRemovesItEverywhereAndLandsOnTheOverview()
+    {
+        Run((controller, service) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Doomed"));
+            Assert.Equal(plan.Id, controller.PlanInView?.Id);
+
+            controller.DeletePlan(plan.Id);
+
+            Assert.Null(controller.PlanInView);
+            Assert.Null(service.Find(plan.Id));
+            Assert.Empty(controller.OpenPlans);
+        });
+    }
+
+    [Fact]
     public void TheSpecificLapPickerOpensOnRequestAndClosesWithTheChoiceItWasOpenedFor()
     {
         Run((controller, _) =>

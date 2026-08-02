@@ -219,6 +219,18 @@ public sealed class SessionPlannerController
         RaiseChanged();
     }
 
+    /// <summary>
+    /// The navigation-time reset: entering the page always lands on the overview, not on
+    /// whatever was open when the driver left. Raises nothing — the shell repaints the page
+    /// right after navigating, and an event here would repaint the page being left.
+    /// </summary>
+    public void ResetToOverview()
+    {
+        _selectedPlanId = null;
+        _selectedTab = null;
+        _specificLapPickerOpen = false;
+    }
+
     public SessionPlan CreatePlan(CreatePlanRequest request)
     {
         var plan = _service.CreatePlan(request);
@@ -252,6 +264,23 @@ public sealed class SessionPlannerController
     public void Disarm(string planId)
     {
         _service.Disarm(planId);
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// Deletes the plan outright. The UI gates this behind a destructive confirm; a deleted
+    /// plan that was in view lands the page back on the overview.
+    /// </summary>
+    public void DeletePlan(string planId)
+    {
+        _service.DeletePlan(planId);
+        if (_selectedPlanId == planId)
+        {
+            _selectedPlanId = null;
+            _selectedTab = null;
+            _specificLapPickerOpen = false;
+        }
+
         RaiseChanged();
     }
 

@@ -9,7 +9,8 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>What the page needs from the shell: the modal, the confirm dialog, and a repaint.</summary>
 internal sealed record SessionPlannerViewCallbacks(
     Action OpenCreateDialog,
-    Action<string, string, string, Action> Confirm,
+    /// <summary>title, message, confirm label, confirm tone (destructive asks wear Danger), action.</summary>
+    Action<string, string, string, ButtonTone, Action> Confirm,
     Action OpenQuickPlanDialog,
     Action ImportArchivedSessions,
     /// <summary>
@@ -52,15 +53,9 @@ internal sealed class SessionPlannerView
     {
         var stack = new StackPanel { Spacing = 20, Margin = new Thickness(24, 20, 24, 32) };
 
+        // No caption line: the titlebar already names the page, and a sentence repeating it
+        // is noise. The header row is the page's actions, right-aligned like every page.
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), MinHeight = 32 };
-        var caption = Graphite.TextBlock(
-            "Plan, track, and review qualifying and race sessions",
-            12,
-            FontWeight.Normal,
-            Graphite.Text3Brush);
-        caption.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(caption, 0);
-        header.Children.Add(caption);
         // Two entry points, not a mode switch: Quick plan is the ember primary because it is
         // the one used under time pressure, with the full sheet one click away beside it.
         var actions = new StackPanel
@@ -456,23 +451,8 @@ internal sealed class SessionPlannerView
         left.Scope == right.Scope
         && string.Equals(left.ProgramType, right.ProgramType, StringComparison.Ordinal);
 
-    // A section label with its glyph: the icon repeats the label's meaning, never replaces it.
-    private static Control IconSectionLabel(string icon, string text)
-    {
-        var row = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var glyph = Icons.Create(icon, 14, Graphite.Text3Brush);
-        glyph.VerticalAlignment = VerticalAlignment.Center;
-        row.Children.Add(glyph);
-        var label = Graphite.SectionLabel(text);
-        label.VerticalAlignment = VerticalAlignment.Center;
-        row.Children.Add(label);
-        return row;
-    }
+    private static Control IconSectionLabel(string icon, string text) =>
+        Graphite.IconSectionLabel(icon, text);
 
     private static Control LabelledRow(string label, Control content)
     {
@@ -584,6 +564,7 @@ internal sealed class SessionPlannerView
             "Make this the active plan?",
             $"{activation.Reason}. Sprint allows one active plan, so it will be released first.",
             "Make active",
+            ButtonTone.Primary,
             () => _controller.TakeOver(plan.Id))));
     }
 
@@ -600,6 +581,7 @@ internal sealed class SessionPlannerView
                 "Start the race without qualifying?",
                 "Qualifying is planned but has not run. Starting the race now skips it for this plan.",
                 "Skip qualifying and start race",
+                ButtonTone.Primary,
                 () => _controller.StartNow(plan.Id, SegmentKind.Race))));
             return;
         }
@@ -633,7 +615,7 @@ internal sealed class SessionPlannerView
     {
         var row = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto,Auto"),
             ColumnSpacing = 12,
         };
 
@@ -664,6 +646,18 @@ internal sealed class SessionPlannerView
         open.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(open, 3);
         row.Children.Add(open);
+
+        // Deleting is possible from the shelf for every plan, open or completed — behind a
+        // destructive confirm, because a plan is the driver's own record of a weekend.
+        var delete = Graphite.IconButton("trash", "Delete plan", () => _callbacks.Confirm(
+            "Delete this plan?",
+            $"\"{plan.Name}\" and its recorded segments are removed. Recorded laps stay in the lap history — they belong to the corpus, not the plan.",
+            "Delete plan",
+            ButtonTone.Danger,
+            () => _controller.DeletePlan(plan.Id)));
+        delete.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(delete, 4);
+        row.Children.Add(delete);
 
         return Graphite.Card(row, new Thickness(14, 12));
     }

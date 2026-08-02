@@ -219,6 +219,25 @@ internal static class Graphite
         };
     }
 
+    /// <summary>A section label with its glyph: the icon repeats the label's meaning, never
+    /// replaces it.</summary>
+    public static Control IconSectionLabel(string icon, string text)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var glyph = Icons.Create(icon, 14, Text3Brush);
+        glyph.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(glyph);
+        var label = SectionLabel(text);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        row.Children.Add(label);
+        return row;
+    }
+
     public static TextBlock SectionLabel(string text)
     {
         return new TextBlock

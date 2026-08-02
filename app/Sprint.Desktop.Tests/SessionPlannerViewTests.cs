@@ -46,7 +46,7 @@ public class SessionPlannerViewTests
                 controller,
                 new SessionPlannerViewCallbacks(
                     () => { },
-                    (_, _, _, _) => { },
+                    (_, _, _, _, _) => { },
                     () => { },
                     () => { },
                     canImportResults));
@@ -188,7 +188,7 @@ public class SessionPlannerViewTests
     [Fact]
     public async Task ThePageLandsOnAnOverviewOfOpenAndCompletedPlansWithThumbnails()
     {
-        await Dispatch(() => WithOverview((controller, page) =>
+        await Dispatch(() => WithOverview((controller, page, _) =>
         {
             var text = PageText(page);
 
@@ -214,9 +214,33 @@ public class SessionPlannerViewTests
     }
 
     [Fact]
+    public async Task EveryCollapsedPlanCanBeDeletedBehindADangerConfirm()
+    {
+        await Dispatch(() => WithOverview((controller, page, confirm) =>
+        {
+            // Two plans, two delete affordances — completed plans are deletable too.
+            var deletes = page.GetLogicalDescendants()
+                .OfType<Button>()
+                .Where(button => ToolTip.GetTip(button) as string == "Delete plan")
+                .ToList();
+            Assert.Equal(2, deletes.Count);
+
+            // The click asks first, wearing the destructive tone; nothing is deleted yet.
+            deletes[0].RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.NotNull(confirm.Title);
+            Assert.Contains("Delete", confirm.Title);
+            Assert.Equal(ButtonTone.Danger, confirm.Tone);
+            Assert.Equal(2, controller.History.Count);
+
+            confirm.Accept!();
+            Assert.Single(controller.History);
+        }));
+    }
+
+    [Fact]
     public async Task AnOpenPlanCarriesAWayBackToTheOverview()
     {
-        await Dispatch(() => WithOverview((controller, _) =>
+        await Dispatch(() => WithOverview((controller, _, _) =>
         {
             controller.SelectPlan("id-1");
             var page = BuildPage(controller);
@@ -230,7 +254,7 @@ public class SessionPlannerViewTests
         }));
     }
 
-    private static void WithOverview(Action<SessionPlannerController, Control> assert)
+    private static void WithOverview(Action<SessionPlannerController, Control, CapturedConfirm> assert)
     {
         var root = TestEnv.NewTempDataRoot();
         try
@@ -261,7 +285,8 @@ public class SessionPlannerViewTests
                 () => PlanContext.Empty,
                 clock: () => Now);
 
-            assert(controller, BuildPage(controller));
+            var confirm = new CapturedConfirm();
+            assert(controller, BuildPage(controller, confirm), confirm);
         }
         finally
         {
@@ -269,10 +294,23 @@ public class SessionPlannerViewTests
         }
     }
 
-    private static Control BuildPage(SessionPlannerController controller) =>
+    private static Control BuildPage(SessionPlannerController controller, CapturedConfirm? confirm = null) =>
         new SessionPlannerView(
                 controller,
-                new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true))
+                new SessionPlannerViewCallbacks(
+                    () => { },
+                    (title, _, _, tone, accept) =>
+                    {
+                        if (confirm is not null)
+                        {
+                            confirm.Title = title;
+                            confirm.Tone = tone;
+                            confirm.Accept = accept;
+                        }
+                    },
+                    () => { },
+                    () => { },
+                    true))
             .Build();
 
     private static string PageText(Control page) => string.Join(
@@ -334,6 +372,8 @@ public class SessionPlannerViewTests
     {
         public string? Title { get; set; }
 
+        public ButtonTone Tone { get; set; }
+
         public Action? Accept { get; set; }
     }
 
@@ -369,7 +409,7 @@ public class SessionPlannerViewTests
                     controller,
                     new SessionPlannerViewCallbacks(
                         () => { },
-                        (title, _, _, accept) =>
+                        (title, _, _, _, accept) =>
                         {
                             confirm.Title = title;
                             confirm.Accept = accept;
@@ -513,7 +553,7 @@ public class SessionPlannerViewTests
             // The header carries a "Quick plan" button, so assert against the plan card only.
             var card = new SessionPlannerView(
                     controller,
-                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true))
+                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, true))
                 .Build()
                 .GetLogicalDescendants()
                 .OfType<Border>()

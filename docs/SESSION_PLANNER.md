@@ -255,7 +255,16 @@ the page.
   with no laps shows the route glyph — an empty plot would read as "all laps were zero".
 - A plan opens only on an explicit `Open`; creation lands inside the new plan; `All plans`
   (chevron-left) is always the first thing on an opened plan. The Q/R segmented control
-  belongs to the opened plan, not the overview.
+  belongs to the opened plan, not the overview. **Navigating away closes the plan**
+  (`ResetToOverview`, called from the shell's `Navigate` like the Devices detail reset), so
+  re-entering the page always lands on the shelf.
+- **Every collapsed row carries a delete action** (trash icon) behind a destructive confirm;
+  deleting states that recorded laps stay in the corpus, because they do. Deleting the plan
+  in view lands back on the overview.
+- The page has no caption line — the titlebar names the page. This holds shell-wide: the
+  shared `PageHeader` renders status/actions only, and the Home/Settings/Devices surfaces
+  were tidied to match (carded settings sections with icon labels, carded Home screen rows,
+  device-card names that no longer truncate against their status pill).
 - **Exactly one primary start action: the next step** (`SessionPlannerController.NextSegment`
   — qualifying while the plan includes it and no qualifying segment exists, race otherwise).
   Two primary buttons competed for attention. Starting the race while a planned qualifying

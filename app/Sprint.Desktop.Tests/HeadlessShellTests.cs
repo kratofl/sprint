@@ -336,6 +336,19 @@ public class HeadlessShellTests
                 Assert.DoesNotContain("No laps recorded for this car and track yet", text);
                 Assert.Contains("Fastest · 2:11.0", text);
 
+                // Leaving the page closes the plan: coming back lands on the overview, not
+                // inside whatever was open when the driver left.
+                FindOptionalButton(window, "Home")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                FindOptionalButton(window, "Session Planner")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                var back = string.Join(
+                    " | ",
+                    window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text ?? ""));
+                Assert.Contains("Open plans", back);
+                Assert.DoesNotContain("All plans", back);
+
                 window.Close();
             }, CancellationToken.None);
         }

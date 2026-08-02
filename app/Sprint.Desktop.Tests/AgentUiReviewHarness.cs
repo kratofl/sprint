@@ -971,7 +971,7 @@ internal static class AgentUiReviewHarness
             new ReviewLapHistoryStore());
         var view = new SessionPlannerView(
             controller,
-            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true));
+            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _, _) => { }, () => { }, () => { }, true));
 
         var window = new Window
         {
