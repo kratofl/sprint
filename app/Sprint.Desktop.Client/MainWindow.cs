@@ -1152,52 +1152,33 @@ public sealed class MainWindow : Window
     private Control HomePage()
     {
         var stack = PageStack();
-        // No page header: the titlebar already names the page and carries the session pill,
-        // and the session card right below restates the status with more detail anyway.
+        // No page header and no session band: the titlebar already names the page and carries
+        // the live session pill — repeating it here was chrome, not content.
 
-        var screens = _runtime.Devices.Where(IsScreenDevice).ToList();
-        var connected = screens.Count(device => !device.Disabled && _screens.StatusFor(device.Id)?.IsConnected == true);
+        // Only devices that are actually connected right now: Home is a launchpad, and a
+        // "Not found" row is Devices-page business.
+        var active = _runtime.Devices
+            .Where(device => IsScreenDevice(device)
+                && !device.Disabled
+                && _screens.StatusFor(device.Id)?.IsConnected == true)
+            .ToList();
 
-        var sessionText = new StackPanel { Spacing = 3 };
-        sessionText.Children.Add(Graphite.TextBlock(_statusView.Label, 15, FontWeight.Medium, Graphite.TextBrush));
-        // Skip the rate while telemetry reports none — "— ·" in front of a real count reads
-        // as a rendering bug, not as information.
-        var screensLine = $"{connected} of {screens.Count} screens connected";
-        sessionText.Children.Add(Graphite.TextBlock(
-            string.IsNullOrWhiteSpace(_statusView.RateText) || _statusView.RateText == "—"
-                ? screensLine
-                : $"{_statusView.RateText} · {screensLine}",
-            12, FontWeight.Normal, Graphite.Text3Brush));
-        if (_surfaceState is { } surface)
-        {
-            var detail = SurfaceStatePresenter.Describe(surface);
-            sessionText.Children.Add(Graphite.TextBlock(detail.Detail, 12, FontWeight.Normal, Graphite.Text2Brush, TextWrapping.Wrap));
-        }
-
-        var session = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        var sessionDot = new Border
-        {
-            Width = 9,
-            Height = 9,
-            Margin = new Thickness(0, 4, 12, 0),
-            CornerRadius = new CornerRadius(Graphite.RadiusPill),
-            Background = BrushForTone(_statusView.Tone),
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        AddGrid(session, sessionDot, 0, 0);
-        AddGrid(session, sessionText, 0, 1);
-        AddGrid(session, ActionButton("Review devices", ButtonTone.Ghost, () => Navigate(AppView.Devices)), 0, 2);
-        stack.Children.Add(new Border
-        {
-            Background = Graphite.Panel2Brush,
-            CornerRadius = new CornerRadius(Graphite.RadiusLg),
-            Padding = new Thickness(16, 14),
-            Child = session,
-        });
-
-        stack.Children.Add(LaunchpadPlans());
-        stack.Children.Add(LaunchpadDashes());
-        stack.Children.Add(LaunchpadScreens(screens));
+        // Dashes and connected devices side by side; the session plans run down the right
+        // edge as a feed of what is ahead.
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,300"), ColumnSpacing = 20 };
+        var main = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 20 };
+        var dashes = LaunchpadDashes();
+        dashes.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(main, dashes, 0, 0);
+        var devices = LaunchpadScreens(active);
+        devices.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(main, devices, 0, 1);
+        main.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(columns, main, 0, 0);
+        var plans = LaunchpadPlans();
+        plans.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(columns, plans, 0, 1);
+        stack.Children.Add(columns);
 
         return Scroll(stack);
     }
@@ -1222,14 +1203,13 @@ public sealed class MainWindow : Window
             return panel;
         }
 
-        var tiles = new WrapPanel { Orientation = Orientation.Horizontal };
-        // Four tiles cover a launchpad row; more open plans than that is planner business.
-        foreach (var plan in open.Take(4))
+        // A feed, newest first, running down the column; more open plans than a handful is
+        // planner business.
+        foreach (var plan in open.Take(5))
         {
-            tiles.Children.Add(LaunchpadPlanTile(plan));
+            panel.Children.Add(LaunchpadPlanTile(plan));
         }
 
-        panel.Children.Add(tiles);
         return panel;
     }
 
@@ -1237,17 +1217,16 @@ public sealed class MainWindow : Window
     {
         var body = new StackPanel { Spacing = 8 };
 
-        var top = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-        AddGrid(top, SessionPlannerView.PlanThumbnail(plan), 0, 0);
-        var pill = Graphite.StatusPill(plan.Status.ToString().ToUpperInvariant(), PlanStatusBrush(plan.Status));
-        pill.VerticalAlignment = VerticalAlignment.Top;
-        AddGrid(top, pill, 0, 2);
-        body.Children.Add(top);
-
-        var name = Graphite.TextBlock(plan.Name, 14, FontWeight.Medium, Graphite.TextBrush, TextWrapping.NoWrap);
+        var top = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var name = Graphite.TextBlock(plan.Name, 13, FontWeight.Medium, Graphite.TextBrush, TextWrapping.NoWrap);
         name.TextTrimming = TextTrimming.CharacterEllipsis;
+        name.VerticalAlignment = VerticalAlignment.Center;
         ToolTip.SetTip(name, plan.Name);
-        body.Children.Add(name);
+        AddGrid(top, name, 0, 0);
+        var pill = Graphite.StatusPill(plan.Status.ToString().ToUpperInvariant(), PlanStatusBrush(plan.Status));
+        pill.VerticalAlignment = VerticalAlignment.Center;
+        AddGrid(top, pill, 0, 1);
+        body.Children.Add(top);
 
         var contextParts = new[] { plan.Car, plan.Track }
             .Where(part => !string.IsNullOrWhiteSpace(part))
@@ -1261,9 +1240,8 @@ public sealed class MainWindow : Window
         context.TextTrimming = TextTrimming.CharacterEllipsis;
         body.Children.Add(context);
 
-        var card = Graphite.Card(body, new Thickness(12));
-        card.Width = 240;
-        card.Margin = new Thickness(0, 0, 12, 12);
+        var card = Graphite.Card(body, new Thickness(12, 10));
+        card.Margin = new Thickness(0, 0, 0, 8);
         return WrapClickable(card, $"home-plan-tile:{plan.Id}", plan.Name, () => OpenPlanFromHome(plan.Id));
     }
 
@@ -1317,7 +1295,17 @@ public sealed class MainWindow : Window
 
         var text = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(Graphite.TextBlock(layout.Name, 14, FontWeight.Medium, Graphite.TextBrush));
-        text.Children.Add(Graphite.TextBlock($"{profile.Orientation} {profile.ResolutionLabel} · {assignedText}", 12, FontWeight.Normal, Graphite.Text3Brush));
+        var meta = Graphite.TextBlock(
+            $"{profile.Orientation} {profile.ResolutionLabel} · {assignedText}",
+            12,
+            FontWeight.Normal,
+            Graphite.Text3Brush,
+            TextWrapping.NoWrap);
+        // The card shares a column with the devices list now, so long assignments trim with
+        // an ellipsis instead of clipping mid-letter; the tooltip carries the full line.
+        meta.TextTrimming = TextTrimming.CharacterEllipsis;
+        ToolTip.SetTip(meta, $"{profile.Orientation} {profile.ResolutionLabel} · {assignedText}");
+        text.Children.Add(meta);
         if (layout.IsDefault)
         {
             text.Children.Add(Graphite.TextBlock("Default dash", 11, FontWeight.Medium, Graphite.GreenBrush));
@@ -1340,19 +1328,23 @@ public sealed class MainWindow : Window
         };
     }
 
-    // "Connected screens": each saved wheel screen with model/resolution/status and the
-    // dash currently assigned to it (US11/US29/US33), routing into the Devices pillar.
+    // "Connected devices": only the devices Sprint can reach right now, with the dash each
+    // one is showing (US11/US29/US33). A device that is saved but unreachable is Devices-page
+    // business — a "Not found" row on a launchpad is noise.
     private Control LaunchpadScreens(IReadOnlyList<SavedDevice> screens)
     {
-        var panel = new StackPanel { Spacing = 8 };
+        var panel = new StackPanel { Spacing = 10 };
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        AddGrid(header, Graphite.SectionLabel("Connected screens"), 0, 0);
+        AddGrid(header, Graphite.SectionLabel("Connected devices"), 0, 0);
         AddGrid(header, ActionButton("Manage devices", ButtonTone.Ghost, () => Navigate(AppView.Devices)), 0, 1);
         panel.Children.Add(header);
 
         if (screens.Count == 0)
         {
-            panel.Children.Add(Graphite.StatePanel("No screens added", "Add your wheel screen in Devices to assign a dash to it.", Graphite.Text3Brush));
+            panel.Children.Add(Graphite.StatePanel(
+                "No devices connected",
+                "Devices appear here as soon as Sprint reaches them.",
+                Graphite.Text3Brush));
         }
         else
         {
@@ -1756,9 +1748,7 @@ public sealed class MainWindow : Window
     private Control DashesPage()
     {
         var stack = PageStack();
-        stack.Children.Add(PageHeader("Dashes",
-            Graphite.StatusPill($"{_runtime.DashLayouts.Count} layouts", Graphite.BlueBrush)));
-
+        // No layout-count pill: the list below is the count, and the titlebar names the page.
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -4117,9 +4107,9 @@ public sealed class MainWindow : Window
     private Control SettingsPage()
     {
         var stack = PageStack();
+        // Settings has no header actions, so the page skips the header row entirely and the
+        // "Saved" note overlays the top-right corner without reserving vertical space.
         var saveStatus = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.GreenBrush);
-        saveStatus.VerticalAlignment = VerticalAlignment.Center;
-        stack.Children.Add(PageHeader("Settings", saveStatus));
 
         var driverName = new TextBox
         {
@@ -4228,12 +4218,15 @@ public sealed class MainWindow : Window
 
         // Settings owns app-level preferences only (2026-08-02): the Session Planner and
         // Dash defaults live on their own slices, behind the gear on each page.
-        var form = new StackPanel { Spacing = 20, MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left };
-        form.Children.Add(SettingsSection("user", "Profile",
+        var leftColumn = new StackPanel { Spacing = 20 };
+        var rightColumn = new StackPanel { Spacing = 20 };
+        leftColumn.Children.Add(SettingsSection("user", "Profile",
             FormRow("Driver name", driverName),
             FormRow("Driver number", driverNumber)));
+        // Starts empty: the channel combo one row above already says where updates come
+        // from. The line only carries live check status ("Checking…", "Up to date…").
         var updateStatus = Graphite.TextBlock(
-            $"Sprint installs updates from the {AppSettings.NormalizeChannel(_runtime.Settings.UpdateChannel)} channel.",
+            "",
             11,
             FontWeight.Normal,
             Graphite.Text3Brush,
@@ -4262,7 +4255,8 @@ public sealed class MainWindow : Window
             if (result is { UpdateAvailable: true, Latest: { } latest })
             {
                 foundUpdate = latest;
-                updateStatus.Text = $"Sprint {DisplayVersion(latest.Version)} is available.";
+                // The install button names the release; a status line repeating it is noise.
+                updateStatus.Text = "";
                 installButton.Content = $"Update to {DisplayVersion(latest.Version)}";
                 installButton.IsVisible = true;
                 checkButton.Content = "Check again";
@@ -4299,12 +4293,11 @@ public sealed class MainWindow : Window
         AddGrid(checkRow, checkButton, 0, 0);
         AddGrid(checkRow, installButton, 0, 1);
         AddGrid(checkRow, updateStatus, 0, 2);
-        form.Children.Add(SettingsSection("download", "Release",
+        rightColumn.Children.Add(SettingsSection("info-circle", "About",
+            FormRow("Version", Graphite.Chip(
+                $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush)),
             FormRow("Update channel", channel),
             FormRow("Updates", checkRow)));
-        form.Children.Add(SettingsSection("info-circle", "About",
-            FormRow("Version", Graphite.Chip(
-                $"v{BuildInfo.Version} · {BuildInfo.DisplayChannel(_runtime.Settings.UpdateChannel)}", Graphite.BlueBrush))));
         if (_updateChecks.HasCheck(BuildInfo.Version, _runtime.Settings.UpdateChannel))
         {
             RunUpdateCheck(forceRefresh: false);
@@ -4315,7 +4308,7 @@ public sealed class MainWindow : Window
         ToolTip.SetTip(
             diagnostics,
             "Open global game-state simulation, real screen output, and filtered live logs.");
-        form.Children.Add(SettingsSection("tool", "Development", FormRow(
+        rightColumn.Children.Add(SettingsSection("tool", "Development", FormRow(
             "Development tools",
             new StackPanel
             {
@@ -4346,7 +4339,7 @@ public sealed class MainWindow : Window
         ToolTip.SetTip(
             resetSettings,
             "Restore app and dash-editor preferences. Dashboards, devices, and setups are not changed.");
-        form.Children.Add(SettingsSection("adjustments", "Debug", FormRow(
+        leftColumn.Children.Add(SettingsSection("adjustments", "Debug", FormRow(
             "App settings",
             new StackPanel
             {
@@ -4364,9 +4357,26 @@ public sealed class MainWindow : Window
             })));
 #endif
 
-        form.HorizontalAlignment = HorizontalAlignment.Left;
+        var form = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            ColumnSpacing = 24,
+            MaxWidth = 1100,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        leftColumn.VerticalAlignment = VerticalAlignment.Top;
+        rightColumn.VerticalAlignment = VerticalAlignment.Top;
+        AddGrid(form, leftColumn, 0, 0);
+        AddGrid(form, rightColumn, 0, 1);
         stack.Children.Add(form);
-        return Scroll(stack);
+
+        saveStatus.HorizontalAlignment = HorizontalAlignment.Right;
+        saveStatus.VerticalAlignment = VerticalAlignment.Top;
+        saveStatus.Margin = new Thickness(0, 20, 24, 0);
+        var page = new Grid();
+        page.Children.Add(Scroll(stack));
+        page.Children.Add(saveStatus);
+        return page;
     }
 
 #if DEBUG
@@ -4955,10 +4965,12 @@ public sealed class MainWindow : Window
 
     private static StackPanel PageStack()
     {
+        // Tight to the shell chrome: the sidebar and titlebar already carve the page out,
+        // so a wide gutter on top of them reads as wasted space.
         return new StackPanel
         {
-            Spacing = 20,
-            Margin = new Thickness(24, 20, 24, 32)
+            Spacing = 16,
+            Margin = new Thickness(16, 10, 16, 20)
         };
     }
 

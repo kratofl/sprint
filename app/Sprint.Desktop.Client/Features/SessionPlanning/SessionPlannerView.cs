@@ -54,7 +54,8 @@ internal sealed class SessionPlannerView
 
     public Control Build()
     {
-        var stack = new StackPanel { Spacing = 20, Margin = new Thickness(24, 20, 24, 32) };
+        // Matches the shell's PageStack: tight to the chrome, no wide gutter.
+        var stack = new StackPanel { Spacing = 16, Margin = new Thickness(16, 10, 16, 20) };
 
         // No caption line: the titlebar already names the page, and a sentence repeating it
         // is noise. The header row is the page's actions, right-aligned like every page.

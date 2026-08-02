@@ -147,7 +147,7 @@ internal static class AgentUiReviewHarness
                 window.Show();
                 try
                 {
-                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Session plans", "Nothing planned", "Your dashes", "Connected screens", "Review devices", "Review Screen"));
+                    frames.Add(Capture(window, artifactRoot, "home-runtime-overview", "Home", "Session plans", "Nothing planned", "Your dashes", "Connected devices", "Manage devices"));
 
                     // The standing update hint: toolbar pill + Settings rail badge, shown
                     // without touching the network, then cleared so later frames are clean.
@@ -574,7 +574,6 @@ internal static class AgentUiReviewHarness
                         "Settings",
                         "Profile",
                         "Driver name",
-                        "Release",
                         "Update channel",
                         "About"
 #if DEBUG

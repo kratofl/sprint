@@ -933,11 +933,12 @@ public class HeadlessShellTests
 
                 window.CaptureRenderedFrame();
 
-                // One operational session band followed by runtime-driven object rows.
+                // Runtime-driven object rows only — the titlebar owns the session status.
                 Assert.NotNull(FindOptionalText(window, "Your dashes"));
-                Assert.NotNull(FindOptionalText(window, "Connected screens"));
-                Assert.NotNull(FindOptionalButton(window, "Review devices"));
-                // Real data, no sample rows: the dash card title, the screen, its resolution.
+                Assert.NotNull(FindOptionalText(window, "Connected devices"));
+                Assert.NotNull(FindOptionalText(window, "Session plans"));
+                // Real data, no sample rows: the dash card title, the connected screen, its
+                // resolution. Only reachable devices earn a launchpad row.
                 Assert.NotNull(FindOptionalText(window, runtime.DashLayouts[0].Name));
                 Assert.NotNull(FindOptionalText(window, "Home Screen"));
                 Assert.NotNull(FindOptionalText(window, "480 × 800 · " + runtime.DashLayouts[0].Name));
