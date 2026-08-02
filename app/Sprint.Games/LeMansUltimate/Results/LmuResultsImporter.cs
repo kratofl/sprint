@@ -28,7 +28,13 @@ public sealed class LmuResultsImporter : IResultsImporter
         _reader = reader;
     }
 
-    public string SourceDescription => _reader.Directory;
+    /// <summary>
+    /// Named, not pathed. This reads inside a sentence the driver sees ("Sprint found … in
+    /// {SourceDescription}"), and a full install path is both unreadable there and tells them
+    /// nothing about their own machine they did not already know. The actual directory stays
+    /// available on the reader for diagnostics.
+    /// </summary>
+    public string SourceDescription => "the Le Mans Ultimate results folder";
 
     public IReadOnlyList<ResultsArchiveEntry> ListEntries() =>
         [.. _reader.ListResultFiles().Select(file => new ResultsArchiveEntry(

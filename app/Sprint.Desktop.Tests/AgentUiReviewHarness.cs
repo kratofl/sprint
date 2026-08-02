@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
@@ -163,10 +164,10 @@ internal static class AgentUiReviewHarness
                         "session-planner-empty",
                         "No session plans yet",
                         "Quick plan",
-                        "New plan…",
+                        "New plan",
                         // #185's permanent manual entry point, always available even after
                         // the startup offer has been declined.
-                        "Import results…"));
+                        "Import results"));
 
                     // Quick plan (#183): detected context read-only, inputs only for the gaps.
                     // Nothing is detected in the harness, so this is the widest form it shows.
@@ -184,7 +185,7 @@ internal static class AgentUiReviewHarness
                         "Create"));
                     Click(window, "Cancel");
 
-                    Click(window, "New plan…");
+                    Click(window, "New plan");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
@@ -248,14 +249,19 @@ internal static class AgentUiReviewHarness
                         window,
                         artifactRoot,
                         "session-planner-import-prompt",
-                        "Import sessions the game already recorded?",
+                        "Import archived sessions",
                         // The per-kind breakdown is the point of the prompt — a blind yes/no is
                         // what it replaces — so the whole sentence is pinned, not just a word.
                         "Sprint found Practice 9, Qualifying 3, Race 2 in the Le Mans Ultimate results folder. "
-                            + "Importing them gives fuel and lap-time estimates something to work from straight away. "
-                            + "Nothing is imported until you say so.",
+                            + "Importing them gives fuel and lap-time estimates something to work from "
+                            + "straight away. Nothing is imported until you choose to.",
                         "Import"));
-                    Click(window, "Cancel");
+                    Click(window, "Not now");
+
+                    // Every other state of the import sheet. Rendered standalone because they
+                    // are driven by the dialog's own controller, and the shell only reaches
+                    // them with a real archive on this machine.
+                    CaptureImportResultsStates(frames, artifactRoot);
 
                     // #186 with a corpus behind it. Rendered on its own window because the
                     // shell's page reads the real lap-history store, which is empty here.
@@ -520,7 +526,7 @@ internal static class AgentUiReviewHarness
                         "Race format warning",
                         // #185's second manual entry point.
                         "Archived sessions",
-                        "Import results…",
+                        "Import results",
                         "Dash defaults"
 #if DEBUG
                         , "Development",
@@ -697,6 +703,82 @@ internal static class AgentUiReviewHarness
         };
     }
 
+    // The import sheet's other states: searching, nothing found, working, and done. Each one
+    // resolves inside the dialog rather than as a toast, so each one has to be reviewable.
+    private static void CaptureImportResultsStates(List<AgentUiReviewFrame> frames, string artifactRoot)
+    {
+        const string source = "the Le Mans Ultimate results folder";
+        var offered = new ResultsImportProposal(
+            [new Sprint.Desktop.Api.Games.ResultsArchiveEntry("race.xml", 2048, DateTimeOffset.UnixEpoch)],
+            new Dictionary<HistorySessionKind, int> { [HistorySessionKind.Race] = 2 });
+
+        // Searching: the manual entry point opens the sheet first and looks inside it, so a
+        // press is never answered by silence.
+        var searching = new TaskCompletionSource<ResultsImportProposal>();
+        Show(
+            new ImportResultsController(source, null, () => searching.Task, _ => Task.FromResult(0), _ => { }),
+            "import-results-searching",
+            ["Import archived sessions", $"Looking through {source}"]);
+        searching.SetResult(ResultsImportProposal.Empty);
+
+        // Nothing new: stated in the dialog the driver is looking at, not thrown at the corner
+        // of the screen where it can be missed and cannot be re-read.
+        var nothing = new ImportResultsController(
+            source,
+            null,
+            () => Task.FromResult(ResultsImportProposal.Empty),
+            _ => Task.FromResult(0),
+            _ => { });
+        nothing.SearchAsync().GetAwaiter().GetResult();
+        Show(nothing, "import-results-nothing-new", ["Nothing new to import"]);
+
+        // Working: the same button, in place, saying so and refusing a second press.
+        var gate = new TaskCompletionSource<int>();
+        var importing = new ImportResultsController(
+            source,
+            offered,
+            () => Task.FromResult(offered),
+            _ => gate.Task,
+            _ => { });
+        var running = importing.ImportAsync();
+        Show(importing, "import-results-importing", ["Importing"]);
+        gate.SetResult(2);
+        running.GetAwaiter().GetResult();
+
+        // Done: the outcome as an alert inside the sheet, with one way out.
+        Show(importing, "import-results-imported", ["Sessions imported", "2 sessions added to your lap history."]);
+
+        void Show(ImportResultsController controller, string name, string[] expected)
+        {
+            var window = new Window
+            {
+                Width = 620,
+                Height = 380,
+                Background = Graphite.BgBrush,
+                Content = new Border
+                {
+                    Padding = new Thickness(22),
+                    Background = Graphite.Panel2Brush,
+                    BorderBrush = Graphite.Line2Brush,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(Graphite.RadiusXl),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Child = new ImportResultsDialog(controller, () => { }).Build(),
+                },
+            };
+            window.Show();
+            try
+            {
+                frames.Add(Capture(window, artifactRoot, name, expected));
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+    }
+
     // Stands in for a game's results archive so the import prompt can be reviewed without one
     // on this machine. Nothing reads it: the prompt only shows the counts it was handed.
     private sealed class ReviewResultsImporter : Sprint.Desktop.Api.Games.IResultsImporter
@@ -792,7 +874,7 @@ internal static class AgentUiReviewHarness
             new ReviewLapHistoryStore());
         var view = new SessionPlannerView(
             controller,
-            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }));
+            new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true));
 
         var window = new Window
         {

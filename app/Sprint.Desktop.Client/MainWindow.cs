@@ -1130,7 +1130,8 @@ public sealed class MainWindow : Window
                     confirm,
                     ButtonTone.Primary),
                 ShowQuickPlanDialog,
-                () => _ = ImportArchivedSessionsManuallyAsync()));
+                ImportArchivedSessionsManually,
+                ResultsImporter is not null));
         return view.Build();
     }
 
@@ -4264,9 +4265,13 @@ public sealed class MainWindow : Window
         form.Children.Add(FormRow("Race format warning", warnFormat));
         form.Children.Add(FormRow("Segment change warning", warnSegment));
         // The second permanent manual import entry point (#185), beside the planner header's.
-        var importResults = Graphite.Button("Import results…", ButtonTone.Neutral);
-        importResults.Click += (_, _) => _ = ImportArchivedSessionsManuallyAsync();
-        form.Children.Add(FormRow("Archived sessions", importResults));
+        // Both are absent for a game that archives nothing Sprint can read (#180).
+        if (ResultsImporter is not null)
+        {
+            var importResults = Graphite.Button("Import results", ButtonTone.Neutral);
+            importResults.Click += (_, _) => ImportArchivedSessionsManually();
+            form.Children.Add(FormRow("Archived sessions", importResults));
+        }
         form.Children.Add(Graphite.SectionLabel("Dash defaults"));
         form.Children.Add(FormRow("Editor mode", dashMode));
         form.Children.Add(FormRow("Speed unit", speedUnit));
@@ -4588,74 +4593,72 @@ public sealed class MainWindow : Window
     /// desktop lifetime and on an archive actually holding un-answered sessions, neither of
     /// which a headless review host has.
     /// </summary>
-    internal void PromptForArchivedSessions(IResultsImporter importer, ResultsImportProposal proposal)
+    internal void PromptForArchivedSessions(IResultsImporter importer, ResultsImportProposal proposal) =>
+        ShowImportResultsDialog(importer, proposal);
+
+    /// <summary>
+    /// The manual entry point (#185), from the planner header and Settings. It opens the dialog
+    /// <em>first</em> and searches inside it: pressing a button and getting nothing back until a
+    /// toast appears somewhere else reads as if the click was lost. Unlike the startup offer it
+    /// re-proposes declined archives, because declining silenced a prompt rather than deciding
+    /// those laps are unwanted forever.
+    /// </summary>
+    private void ImportArchivedSessionsManually()
     {
-        ShowConfirmDialog(
-            "Import sessions the game already recorded?",
-            $"Sprint found {proposal.Summary} in {importer.SourceDescription}. Importing them gives fuel "
-                + "and lap-time estimates something to work from straight away. Nothing is imported until you say so.",
-            "Import",
-            () => _ = ImportArchivedSessionsAsync(importer, proposal),
-            ButtonTone.Primary,
-            // "Not now" is remembered, so this never asks about these files again — the
-            // planner header and Settings still offer them if the driver changes their mind.
-            cancel: () => _importLedger.MarkDeclined(proposal.Entries));
-    }
-
-    private async Task ImportArchivedSessionsAsync(IResultsImporter importer, ResultsImportProposal proposal)
-    {
-        // Parsing and writing stay off the UI thread: an archive can hold hundreds of files.
-        var report = await Task.Run(() =>
+        // The entry points are hidden for a game with no importer (#180), so reaching this with
+        // nothing to import is not a state the driver can get into.
+        if (ResultsImporter is { } importer)
         {
-            var result = _importService.Import(importer, proposal.Entries);
-            _importLedger.MarkImported(proposal.Entries);
-            return result;
-        });
-
-        ShowToast(
-            GraphiteIntent.Success,
-            "Sessions imported",
-            report.ImportedCount == 0
-                ? "Sprint already had every session in that archive."
-                : $"{report.ImportedCount} session(s) added to your lap history.",
-            "database-import");
-
-        if (_shell.View == AppView.SessionPlanner)
-        {
-            RenderBody();
+            ShowImportResultsDialog(importer, offered: null);
         }
     }
 
     /// <summary>
-    /// The manual entry point (#185), from the planner header and Settings. Unlike the startup
-    /// offer it re-proposes declined archives, because declining silenced a prompt rather than
-    /// deciding those laps are unwanted forever.
+    /// Opens the import sheet. <paramref name="offered"/> is the startup scan's already-found
+    /// proposal; null means the dialog searches for itself and shows that it is doing so.
     /// </summary>
-    private async Task ImportArchivedSessionsManuallyAsync()
+    private void ShowImportResultsDialog(IResultsImporter importer, ResultsImportProposal? offered)
     {
-        if (ResultsImporter is not { } importer)
-        {
-            ShowToast(
-                GraphiteIntent.Info,
-                "No results archive",
-                "This game does not write session results Sprint can read.",
-                "info-circle");
-            return;
-        }
+        CloseCommandPalette(restoreFocus: false);
+        CloseConfirmDialog();
+        CloseDeviceCatalogDialog(restoreFocus: false);
+        CloseNewPlanDialog();
 
-        var proposal = await Task.Run(() => _importScanner.Scan(importer, includeDeclined: true));
-        if (proposal.IsEmpty)
-        {
-            ShowToast(
-                GraphiteIntent.Info,
-                "Nothing new to import",
-                $"Sprint already has every session in {importer.SourceDescription}.",
-                "info-circle");
-            return;
-        }
+        var controller = new ImportResultsController(
+            importer.SourceDescription,
+            offered,
+            // Parsing stays off the UI thread: an archive can hold hundreds of files.
+            () => Task.Run(() => _importScanner.Scan(importer, includeDeclined: true)),
+            proposal => Task.Run(() =>
+            {
+                var report = _importService.Import(importer, proposal.Entries);
+                _importLedger.MarkImported(proposal.Entries);
+                return report.ImportedCount;
+            }),
+            _importLedger.MarkDeclined);
 
-        PromptForArchivedSessions(importer, proposal);
+        void Render() => ShowPlanOverlay(
+            new ImportResultsDialog(controller, CloseImportResultsDialog).Build(),
+            "Import archived sessions dialog");
+
+        controller.Changed += (_, _) =>
+        {
+            Render();
+            if (controller.Phase == ImportResultsPhase.Imported && _shell.View == AppView.SessionPlanner)
+            {
+                // The corpus grew behind the page; repaint so the target choices include it.
+                RenderBody();
+            }
+        };
+
+        Render();
+        if (offered is null)
+        {
+            _ = controller.SearchAsync();
+        }
     }
+
+    private void CloseImportResultsDialog() => CloseNewPlanDialog();
 
     private async Task NotifyIfUpdateAvailableAsync()
     {

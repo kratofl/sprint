@@ -408,7 +408,7 @@ public class HeadlessShellTests
 
                 // Two entry points (#183): the ember Quick plan and the full sheet beside it.
                 var quick = FindOptionalButton(window, "Quick plan");
-                var create = FindOptionalButton(window, "New plan…");
+                var create = FindOptionalButton(window, "New plan");
                 Assert.NotNull(quick);
                 Assert.NotNull(create);
 

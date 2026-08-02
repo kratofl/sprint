@@ -191,9 +191,20 @@ and `LapHistoryImportService` maps `ImportedSession` → `LapHistorySession` wit
 - **The prompt shows the breakdown** (`Practice 9, Qualifying 3, Race 2`) rather than a blind
   yes/no, and nothing is written until it is answered — a silent first run would put hundreds
   of sessions behind every fuel and lap-time figure with no consent and no traceable origin.
-- **Two permanent manual entry points**: `Import results…` in the planner header and in the
-  Settings → Session Planner section. Both are hidden-by-capability: a game whose provider
-  returns `null` for `Results` has no importer, and the action says so rather than failing.
+- **Two permanent manual entry points**: `Import results` in the planner header and in the
+  Settings → Session Planner section. Both are **absent** for a game whose provider returns
+  `null` for `Results` (#180) — an action whose only possible answer is "this game cannot"
+  should not be offered at all.
+- **Every outcome resolves inside the dialog, never as a toast.** `ImportResultsController`
+  drives the sheet through Searching → NothingNew / Ready → Importing → Imported / Failed. A
+  toast is a transient aside that can be missed and cannot be re-read; "nothing new to import"
+  and "12 sessions added" are the answer to what the driver just pressed, so they appear where
+  they are looking and the sheet closes only once they dismiss the answer.
+  - The manual entry point opens the sheet **first** and searches inside it with a visible
+    indicator, so a press is never answered by silence.
+  - The primary button shows an indeterminate indicator and refuses a second press while the
+    import runs. The work has no measurable total — the archive is however many files it is —
+    so a percentage would be invented.
 - Scanning and importing run off the UI thread; the import writes through the same
   `CachingLapHistoryStore` the recorder uses, so the planner page sees new sessions at once.
 - **A moved or restored results folder** costs exactly one re-parse pass and creates zero

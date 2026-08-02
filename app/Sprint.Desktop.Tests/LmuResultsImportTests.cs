@@ -229,10 +229,13 @@ public sealed class LmuResultsImportTests : IDisposable
     {
         var importer = new LmuResultsImporter(Path.Combine(_dir, "never-run"));
 
-        // A game that has never been run is not an error, and an empty result has to be able
-        // to say what was scanned.
+        // A game that has never been run is not an error.
         Assert.Empty(importer.ListEntries());
-        Assert.Contains("never-run", importer.SourceDescription);
+
+        // What it says about itself is a name, not a path: it lands inside a sentence the
+        // driver reads, where an install path is unreadable and tells them nothing.
+        Assert.Equal("the Le Mans Ultimate results folder", importer.SourceDescription);
+        Assert.DoesNotContain(Path.DirectorySeparatorChar, importer.SourceDescription);
     }
 
     [Fact]
@@ -468,7 +471,7 @@ public sealed class LmuResultsImportTests : IDisposable
             return;
         }
 
-        Assert.Equal(defaultPath, importer.SourceDescription);
+        Assert.Equal("the Le Mans Ultimate results folder", importer.SourceDescription);
         Assert.Same(importer, provider.Results); // resolved once, not per read
     }
 

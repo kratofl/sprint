@@ -11,7 +11,13 @@ internal sealed record SessionPlannerViewCallbacks(
     Action OpenCreateDialog,
     Action<string, string, string, Action> Confirm,
     Action OpenQuickPlanDialog,
-    Action ImportArchivedSessions);
+    Action ImportArchivedSessions,
+    /// <summary>
+    /// Whether the current game archives results Sprint can read (#180). False hides the
+    /// import action outright: an action whose only possible answer is "this game cannot"
+    /// should not be offered.
+    /// </summary>
+    bool CanImportResults);
 
 /// <summary>
 /// The Session Planner page (#100). A thin renderer over
@@ -58,9 +64,13 @@ internal sealed class SessionPlannerView
             VerticalAlignment = VerticalAlignment.Center,
         };
         // The permanent manual import entry point (#185): the startup offer can be declined,
-        // and a driver who changes their mind needs somewhere to go.
-        actions.Children.Add(ActionButton("Import results…", ButtonTone.Ghost, _callbacks.ImportArchivedSessions));
-        actions.Children.Add(ActionButton("New plan…", ButtonTone.Neutral, _callbacks.OpenCreateDialog));
+        // and a driver who changes their mind needs somewhere to go. Absent entirely for a game
+        // that archives nothing Sprint can read.
+        if (_callbacks.CanImportResults)
+        {
+            actions.Children.Add(ActionButton("Import results", ButtonTone.Ghost, _callbacks.ImportArchivedSessions));
+        }
+        actions.Children.Add(ActionButton("New plan", ButtonTone.Neutral, _callbacks.OpenCreateDialog));
         actions.Children.Add(ActionButton("Quick plan", ButtonTone.Primary, _callbacks.OpenQuickPlanDialog));
         Grid.SetColumn(actions, 1);
         header.Children.Add(actions);

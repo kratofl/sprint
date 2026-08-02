@@ -16,6 +16,57 @@ public class SessionPlannerViewTests
     private static readonly DateTimeOffset Now = new(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task TheImportEntryPointHidesItselfForAGameThatArchivesNothing()
+    {
+        await Dispatch(() =>
+        {
+            // #180's rule: null capability means "this game cannot", and the surface adapts
+            // rather than offering an action that can only answer with an apology.
+            var withArchive = HeaderLabels(canImportResults: true);
+            var without = HeaderLabels(canImportResults: false);
+
+            Assert.Contains("Import results", withArchive);
+            Assert.DoesNotContain("Import results", without);
+            // The rest of the header is unaffected.
+            Assert.Contains("Quick plan", without);
+            Assert.Contains("New plan", without);
+        });
+    }
+
+    private static List<string> HeaderLabels(bool canImportResults)
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var controller = new SessionPlannerController(
+                new SessionPlannerService(new LocalSessionPlanStore(root), clock: () => Now),
+                NoFuelHistorySource.Instance,
+                () => PlanContext.Empty);
+            var view = new SessionPlannerView(
+                controller,
+                new SessionPlannerViewCallbacks(
+                    () => { },
+                    (_, _, _, _) => { },
+                    () => { },
+                    () => { },
+                    canImportResults));
+
+            // Header actions are buttons whose Content is the label string, so text blocks
+            // alone would miss exactly the thing under test.
+            var tree = view.Build().GetLogicalDescendants().ToList();
+            return
+            [
+                .. tree.OfType<TextBlock>().Select(block => block.Text ?? ""),
+                .. tree.OfType<Button>().Select(button => button.Content as string ?? ""),
+            ];
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task AQuickPlanStaysMarkedAsQuickAfterTheModalCloses()
     {
         await Dispatch(() => WithView(PlanMode.Quick, text =>
@@ -153,7 +204,7 @@ public class SessionPlannerViewTests
             // The header carries a "Quick plan" button, so assert against the plan card only.
             var card = new SessionPlannerView(
                     controller,
-                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }))
+                    new SessionPlannerViewCallbacks(() => { }, (_, _, _, _) => { }, () => { }, () => { }, true))
                 .Build()
                 .GetLogicalDescendants()
                 .OfType<Border>()
