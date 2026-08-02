@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
 using Sprint.Desktop.Api.Telemetry;
@@ -180,6 +181,80 @@ public class HeadlessShellTests
             telemetry.Dispose();
             Directory.Delete(dataRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task TheImportSheetReplacesItsOwnOverlayRatherThanStackingThem()
+    {
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+
+        var dataRoot = TestEnv.NewTempDataRoot();
+        var telemetry = new RecordingTelemetrySource();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var window = new MainWindow(new DesktopRuntime(dataRoot, TestEnv.PresetRoot), new ShellState(), telemetry);
+                window.Show();
+
+                // A stand-in archive with nothing in it: the sheet searches, then reports it.
+                window.ShowImportResultsDialog(new EmptyResultsImporter(), offered: null);
+                PumpUntil(window, "Nothing new to import");
+
+                // The sheet re-renders itself on every phase change. Each render must replace
+                // the overlay, not stack a new one on top: the previous render is still the
+                // searching state, and revealing it on close looks exactly like a second search.
+                Assert.Equal(1, Overlays(window));
+
+                FindOptionalButton(window, "Close")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.Equal(0, Overlays(window));
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            telemetry.Dispose();
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private static int Overlays(MainWindow window) => window
+        .GetVisualDescendants()
+        .OfType<Border>()
+        .Count(border => border.Tag as string == "new-plan-dialog-overlay");
+
+    /// <summary>
+    /// Pumps the dispatcher until the window shows <paramref name="text"/>. The search runs off
+    /// the UI thread and posts its result back, so the test has to let that continuation run.
+    /// </summary>
+    private static void PumpUntil(MainWindow window, string text)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            Dispatcher.UIThread.RunJobs();
+            window.CaptureRenderedFrame();
+            if (window.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == text))
+            {
+                return;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        Assert.Fail($"the window never showed \"{text}\"");
+    }
+
+    private sealed class EmptyResultsImporter : Sprint.Desktop.Api.Games.IResultsImporter
+    {
+        public string SourceDescription => "the test archive";
+
+        public IReadOnlyList<Sprint.Desktop.Api.Games.ResultsArchiveEntry> ListEntries() => [];
+
+        public Sprint.Desktop.Api.Games.ImportedSession? Read(
+            Sprint.Desktop.Api.Games.ResultsArchiveEntry entry) => null;
     }
 
     [Fact]

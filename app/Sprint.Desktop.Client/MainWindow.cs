@@ -2197,8 +2197,6 @@ public sealed class MainWindow : Window
             _newPlanDraft.Track = prefill.Track;
         }
 
-        CloseNewPlanDialog();
-
         var dialog = new NewPlanDialog(
             _newPlanDraft,
             _plannerController.HasFuelHistory(new PlanContext(
@@ -2240,8 +2238,6 @@ public sealed class MainWindow : Window
         var detection = _plannerController.Detect(CurrentTelemetryFrame().Session);
         _newPlanDraft ??= NewPlanDraft.FromDefaults(_runtime.Settings.SessionPlanner);
 
-        CloseNewPlanDialog();
-
         var dialog = new QuickPlanDialog(
             _newPlanDraft,
             detection,
@@ -2262,6 +2258,12 @@ public sealed class MainWindow : Window
 
     private void ShowPlanOverlay(Control body, string automationName)
     {
+        // Replace, never stack. Only the newest overlay is tracked, so adding one over another
+        // leaks the older into the visual tree where nothing can close it — and closing the new
+        // one reveals a stale dialog that looks like it started doing something by itself.
+        // Callers re-render on every state change, so this happens on the ordinary path.
+        CloseNewPlanDialog();
+
         var panel = new Border
         {
             Width = 520,
@@ -4620,12 +4622,15 @@ public sealed class MainWindow : Window
     /// Opens the import sheet. <paramref name="offered"/> is the startup scan's already-found
     /// proposal; null means the dialog searches for itself and shows that it is doing so.
     /// </summary>
-    private void ShowImportResultsDialog(IResultsImporter importer, ResultsImportProposal? offered)
+    /// <summary>
+    /// Internal so a test can drive the sheet with a stand-in archive: the real path resolves
+    /// the installed game's results folder, which a test must never read.
+    /// </summary>
+    internal void ShowImportResultsDialog(IResultsImporter importer, ResultsImportProposal? offered)
     {
         CloseCommandPalette(restoreFocus: false);
         CloseConfirmDialog();
         CloseDeviceCatalogDialog(restoreFocus: false);
-        CloseNewPlanDialog();
 
         var controller = new ImportResultsController(
             importer.SourceDescription,
