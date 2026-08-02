@@ -50,6 +50,10 @@ public sealed class AppSettings
     /// <summary>Session Planner defaults and behaviour (#103). Desktop-local for this phase.</summary>
     [JsonPropertyName("sessionPlanner")]
     public SessionPlannerSettings SessionPlanner { get; set; } = new();
+
+    /// <summary>Live Compare HUD preferences (#195).</summary>
+    [JsonPropertyName("liveCompare")]
+    public LiveCompareSettings LiveCompare { get; set; } = new();
 }
 
 /// <summary>
@@ -135,6 +139,56 @@ public sealed class SessionPlannerSettings
     /// <summary>Warn when the detected qualifying/race segment changes mid-plan.</summary>
     [JsonPropertyName("warnOnDetectedSegmentChange")]
     public bool WarnOnDetectedSegmentChange { get; set; } = true;
+}
+
+/// <summary>Where the Live Compare HUD sat on one (monitor, resolution).</summary>
+public sealed class HudWindowLayout
+{
+    [JsonPropertyName("key")]
+    public string Key { get; set; } = "";
+
+    [JsonPropertyName("x")]
+    public int X { get; set; }
+
+    [JsonPropertyName("y")]
+    public int Y { get; set; }
+
+    [JsonPropertyName("width")]
+    public int Width { get; set; }
+
+    [JsonPropertyName("height")]
+    public int Height { get; set; }
+}
+
+/// <summary>
+/// Live Compare HUD preferences (#195). The target itself is deliberately not here: it is a
+/// lap in the corpus, chosen per session, and a stored target could point at a lap retention
+/// has since pruned.
+/// </summary>
+public sealed class LiveCompareSettings
+{
+    /// <summary>Metres of already-driven track kept behind the car.</summary>
+    [JsonPropertyName("metersBehind")]
+    public double MetersBehind { get; set; } = 200;
+
+    /// <summary>Metres ahead of the car, where a braking zone slides into view.</summary>
+    [JsonPropertyName("metersAhead")]
+    public double MetersAhead { get; set; } = 600;
+
+    /// <summary>Panel ids from the chart catalogue, in display order.</summary>
+    [JsonPropertyName("panelIds")]
+    public List<string> PanelIds { get; set; } = ["speed", "pedals"];
+
+    /// <summary>
+    /// Whether the HUD is click-through. Persisted because a driver who locked it wants it
+    /// locked next time too — an overlay that silently became draggable would be nudged out of
+    /// place by the first stray click.
+    /// </summary>
+    [JsonPropertyName("locked")]
+    public bool Locked { get; set; }
+
+    [JsonPropertyName("layouts")]
+    public List<HudWindowLayout> Layouts { get; set; } = [];
 }
 
 public sealed class LastSeenContext

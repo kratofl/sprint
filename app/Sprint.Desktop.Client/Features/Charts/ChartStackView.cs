@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
+using SkiaSharp;
 using Sprint.Desktop.Features.Dashes;
 
 namespace Sprint.Desktop.Features.Charts;
@@ -27,20 +28,42 @@ public sealed class ChartStackView : Control
     // steps by the thing it counts.
     private const double ContinuousKeyStepFraction = 0.01;
 
+    private readonly SKColor? _background;
+
     private ChartStackPainter? _painter;
     private WriteableBitmap? _bitmap;
     private byte[]? _staging;
 
-    public ChartStackView(ChartStack stack)
+    /// <param name="background">
+    /// What the surface is cleared to, or null for the opaque Graphite card. The Live Compare
+    /// HUD passes a translucent colour so the game reads through the chart.
+    /// </param>
+    public ChartStackView(ChartStack stack, SKColor? background = null)
     {
         ArgumentNullException.ThrowIfNull(stack);
+        _background = background;
         Controller = new ChartStackController(stack);
         Focusable = true;
         ClipToBounds = true;
         Cursor = new Cursor(StandardCursorType.Cross);
     }
 
-    public ChartStackController Controller { get; }
+    public ChartStackController Controller { get; private set; }
+
+    /// <summary>
+    /// Swaps in a new stack — a different pair of laps, or the next frame of a live window.
+    /// <para>
+    /// The cursor is dropped with the old controller. That is correct rather than merely
+    /// convenient: a crosshair carried onto a different lap's data would keep reporting the
+    /// coordinate it was placed at while the values under it silently became someone else's.
+    /// </para>
+    /// </summary>
+    public void SetStack(ChartStack stack)
+    {
+        ArgumentNullException.ThrowIfNull(stack);
+        Controller = new ChartStackController(stack);
+        InvalidateVisual();
+    }
 
     /// <summary>The device scale the surface is rendered at (1.0 at 100%).</summary>
     public double Scaling => TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
@@ -116,7 +139,7 @@ public sealed class ChartStackView : Control
         if (_painter is null || _painter.Width != width || _painter.Height != height)
         {
             _painter?.Dispose();
-            _painter = new ChartStackPainter(width, height);
+            _painter = new ChartStackPainter(width, height, _background);
             _bitmap?.Dispose();
             _bitmap = new WriteableBitmap(new PixelSize(width, height), Dpi, PixelFormat.Bgra8888, AlphaFormat.Premul);
         }

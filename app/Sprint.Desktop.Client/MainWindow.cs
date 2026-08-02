@@ -16,8 +16,10 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.LiveCompare;
 #if DEBUG
 using Sprint.Desktop.Features.Development;
 #endif
@@ -78,6 +80,9 @@ public sealed class MainWindow : Window
     private readonly SessionPlannerController _plannerController;
     private readonly LapHistoryRecorder _lapHistory;
     private readonly LapTraceRetention _lapTraceRetention;
+    private readonly ILapTraceStore _lapTraces;
+    private readonly LiveCompareController _liveCompare = new();
+    private CompareHudWindow? _compareHud;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
@@ -216,6 +221,8 @@ public sealed class MainWindow : Window
         var lapTraceStore = new LocalLapTraceStore(
             System.IO.Path.Combine(_runtime.DataRoot, "lap-traces"), _log);
         _lapTraceRetention = new LapTraceRetention(lapTraceStore, lapHistoryStore, _log);
+        _lapTraces = lapTraceStore;
+        ApplyLiveCompareSettings();
         _lapHistory = lapHistory ?? new LapHistoryRecorder(lapHistoryStore, lapTraceStore, log: _log);
         // Bring the trace directory inside its budget once, off the UI thread. At startup
         // rather than per lap, so the crossing path never pays for a directory scan.
@@ -281,6 +288,7 @@ public sealed class MainWindow : Window
         _commands.Handle(SprintCommands.DashPageNext, payload => CycleDashPage(payload, 1));
         _commands.Handle(SprintCommands.DashPagePrev, payload => CycleDashPage(payload, -1));
         _commands.Handle(SprintCommands.DashTargetSet, _ => _engine.RequestManualReference());
+        _commands.Handle(SprintCommands.CompareHudToggle, _ => ToggleCompareHud());
         _hardwareInput.InputPressed += OnHardwareInputPressed;
         _shellCommands = CreateShellCommands();
         KeyDown += OnGlobalKeyDown;
@@ -975,6 +983,8 @@ public sealed class MainWindow : Window
         CaptureLastSeenContext(frame);
         _planner.Ingest(frame);
         _lapHistory.Ingest(frame);
+        // Appends one sample; the window is only resampled when the HUD actually repaints.
+        _liveCompare.Ingest(frame);
 
         // Targets latch at the start/finish line (#189), so the reference only crosses onto
         // the reader thread when the latch fires. The scalar half is read from the dash paths
@@ -4807,6 +4817,54 @@ public sealed class MainWindow : Window
     /// <summary>A trace storage ceiling in the unit a driver thinks about their disk in.</summary>
     private static string TraceStorageLabel(int megabytes) =>
         megabytes >= 1024 ? $"{megabytes / 1024} GB" : $"{megabytes} MB";
+
+    /// <summary>Copies the stored HUD preferences onto the controller (#195).</summary>
+    private void ApplyLiveCompareSettings()
+    {
+        var settings = _runtime.Settings.LiveCompare;
+        _liveCompare.MetersBehind = settings.MetersBehind;
+        _liveCompare.MetersAhead = settings.MetersAhead;
+        _liveCompare.Panels = LapChartPanels.Resolve(settings.PanelIds, LapChartPanels.HudDefaults);
+    }
+
+    /// <summary>
+    /// Shows or hides the overlay. Bound to <c>compare.hud.toggle</c> and also reachable from
+    /// Analysis, because a driver who cannot see the HUD needs a way to get it back that does
+    /// not involve the HUD.
+    /// </summary>
+    internal void ToggleCompareHud()
+    {
+        if (_compareHud is not null)
+        {
+            _compareHud.Close();
+            _compareHud = null;
+            return;
+        }
+
+        ApplyLiveCompareSettings();
+        _compareHud = new CompareHudWindow(
+            _liveCompare,
+            _runtime.Settings.LiveCompare,
+            _runtime.SaveSettings);
+        _compareHud.Closed += (_, _) => _compareHud = null;
+        _compareHud.Show();
+    }
+
+    /// <summary>
+    /// Points Live Compare at a lap. Refused when the lap has no channels: the HUD would name
+    /// a target it cannot draw, which is the tier lie the corpus works hard to avoid.
+    /// </summary>
+    internal bool SetCompareTarget(LiveCompareTarget? target)
+    {
+        if (target is null)
+        {
+            _liveCompare.SetTarget(null, null);
+            return true;
+        }
+
+        _liveCompare.SetTarget(target, _lapTraces.Load(target.TraceId));
+        return _liveCompare.HasTarget;
+    }
 
     /// <summary>
     /// Brings the trace directory back inside its disk budget (#194). Never on the telemetry

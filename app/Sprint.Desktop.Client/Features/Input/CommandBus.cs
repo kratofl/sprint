@@ -102,11 +102,18 @@ public static class SprintCommands
     public const string DashPagePrev = "dash.page.prev";
     public const string DashTargetSet = "dash.target.set";
 
+    /// <summary>Show/hide the Live Compare overlay (#195).</summary>
+    public const string CompareHudToggle = "compare.hud.toggle";
+
     public static void RegisterDefaults(CommandBus bus)
     {
         ArgumentNullException.ThrowIfNull(bus);
         bus.RegisterMeta(new CommandMeta(DashPageNext, "Next dash page", "Dashboard", Capturable: true, DeviceOnly: true));
         bus.RegisterMeta(new CommandMeta(DashPagePrev, "Previous dash page", "Dashboard", Capturable: true, DeviceOnly: true));
         bus.RegisterMeta(new CommandMeta(DashTargetSet, "Set delta reference", "Timing", Capturable: true, DeviceOnly: false));
+        // Not DeviceOnly: most drivers have few spare wheel buttons, so the keyboard fallback
+        // has to work (spec §2.5). Lock and target selection are deliberately absent — a locked
+        // HUD is click-through, so those belong in the Sprint window where they stay reachable.
+        bus.RegisterMeta(new CommandMeta(CompareHudToggle, "Show/hide Live Compare", "Live Compare", Capturable: true, DeviceOnly: false));
     }
 }
