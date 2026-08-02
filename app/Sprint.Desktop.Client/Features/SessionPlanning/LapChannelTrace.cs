@@ -153,6 +153,40 @@ public sealed class LapChannelTrace
             return null;
         }
 
+        return Resample(samples, trackLengthMeters, lapTimeSeconds);
+    }
+
+    /// <summary>
+    /// The lap in progress, resampled onto the same grid so a live line can be drawn through
+    /// the same renderer as a stored one. Null until there are two samples to draw between.
+    /// <para>
+    /// Deliberately unguarded, and deliberately <em>not for storage</em>. The completeness
+    /// guards ask "did we see the whole lap", which is false by construction for a lap the
+    /// driver is still on. Grid points past the last observation hold the last value; a caller
+    /// must not read them, which is what <c>LapTraceSeriesSource.UpTo</c> is for.
+    /// </para>
+    /// </summary>
+    public static LapChannelTrace? Live(
+        IReadOnlyList<LapTraceSample> samples,
+        double? trackLengthMeters)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+
+        return samples.Count < 2
+            ? null
+            : Resample(samples, trackLengthMeters, samples[^1].ElapsedSeconds);
+    }
+
+    /// <summary>
+    /// Lays observed samples onto the track's grid. <paramref name="tailElapsedSeconds"/> is
+    /// the elapsed time stated past the last observation — the lap total for a finished lap,
+    /// the last reading for one still running.
+    /// </summary>
+    private static LapChannelTrace Resample(
+        IReadOnlyList<LapTraceSample> samples,
+        double? trackLengthMeters,
+        double tailElapsedSeconds)
+    {
         var step = StepForTrackLength(trackLengthMeters);
         var count = (int)Math.Round(1.0 / step) + 1;
 
@@ -176,11 +210,11 @@ public sealed class LapChannelTrace
                 continue;
             }
 
-            // Past the last observation the lap total is the only time known to be true, and
+            // Past the last observation the tail time is the only time that can be stated, and
             // the last reading is the only car state that was observed.
             if (position >= samples[^1].Position)
             {
-                Write(i, samples[^1], lapTimeSeconds);
+                Write(i, samples[^1], tailElapsedSeconds);
                 continue;
             }
 
