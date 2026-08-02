@@ -5013,6 +5013,9 @@ public sealed class MainWindow : Window
     /// Analysis, because a driver who cannot see the HUD needs a way to get it back that does
     /// not involve the HUD.
     /// </summary>
+    /// <summary>Whether the Live Compare overlay is open. Internal so the shell tests can drive it.</summary>
+    internal bool CompareHudOpen => _compareHud is not null;
+
     internal void ToggleCompareHud()
     {
         if (_compareHud is not null)

@@ -679,6 +679,88 @@ public class HeadlessShellTests
     }
 
     [Fact]
+    public async Task TheLiveCompareOverlayOpensAndClosesFromTheToggle()
+    {
+        // The first thing a driver does with this feature is press the toggle. Nothing else
+        // constructs the overlay window, so without this the whole HUD path is untested until
+        // somebody clicks it.
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                // Open, close, open, close. Constructing and showing the overlay is the part
+                // that has never run anywhere else, and a second open must not leave the first
+                // one behind.
+                Assert.False(window.CompareHudOpen);
+                window.ToggleCompareHud();
+                Assert.True(window.CompareHudOpen);
+                window.ToggleCompareHud();
+                Assert.False(window.CompareHudOpen);
+                window.ToggleCompareHud();
+                Assert.True(window.CompareHudOpen);
+                window.ToggleCompareHud();
+                Assert.False(window.CompareHudOpen);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AnAnalysisLapCanBeMadeTheLiveCompareTarget()
+    {
+        // The other half of the HUD path: a lap with channels becomes the target, and one
+        // without is refused rather than named as a target the overlay cannot draw.
+        var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
+        var dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+                using var telemetry = new RecordingTelemetrySource();
+                var window = new MainWindow(runtime, new ShellState(), telemetry);
+                window.Show();
+
+                var context = new Sprint.Desktop.Features.SessionPlanning.LapHistoryContext
+                {
+                    Game = "Le Mans Ultimate",
+                    TrackCourse = "Spa-Francorchamps",
+                    CarModel = "Porsche 963",
+                };
+
+                var missing = new Sprint.Desktop.Features.LiveCompare.LiveCompareTarget(
+                    "hs-missing",
+                    1,
+                    "Lap 1",
+                    100,
+                    context);
+                Assert.False(window.SetCompareTarget(missing));
+
+                // Clearing is always allowed: "chase nothing" is a valid state.
+                Assert.True(window.SetCompareTarget(null));
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ProductionSidebarUsesRequestedPrimaryAndUtilityGroups()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
