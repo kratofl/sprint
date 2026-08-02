@@ -158,6 +158,60 @@ public sealed class LapHistoryTire
 }
 
 /// <summary>
+/// Whether a lap's observed positions span enough of the lap to describe it honestly.
+/// <para>
+/// Shared by both stored tiers on purpose. A lap that produced a reference curve but no
+/// channel trace — or the reverse — would be a tier the UI has no words for, so the two must
+/// accept and reject exactly the same laps.
+/// </para>
+/// </summary>
+public static class LapCompleteness
+{
+    /// <summary>A trace that starts later than this joined the lap in progress.</summary>
+    public const double StartMax = 0.2;
+
+    /// <summary>A trace that ends earlier than this describes an out lap or an aborted one.</summary>
+    public const double EndMin = 0.8;
+
+    public const int MinSamples = 8;
+
+    /// <summary>
+    /// The largest unobserved stretch tolerated, as a fraction of the lap. Sized against the
+    /// reference curve's output interval rather than against a trace's much finer grid: the
+    /// question is whether the driving was seen at all, and seconds of unobserved driving is
+    /// the same amount of missing lap whichever tier is being built from it.
+    /// <para>
+    /// A lap seen at the line and again from half distance passes the two end guards, and
+    /// interpolating across the hole would draw a straight line through corners nobody saw.
+    /// </para>
+    /// </summary>
+    public const double MaxGap = LapReferenceCurve.PositionStepDefault * 10;
+
+    /// <summary>Positions must be supplied in ascending order.</summary>
+    public static bool IsComplete(IReadOnlyList<double> positions)
+    {
+        ArgumentNullException.ThrowIfNull(positions);
+
+        if (positions.Count < MinSamples
+            || positions[0] > StartMax
+            || positions[^1] < EndMin)
+        {
+            return false;
+        }
+
+        for (var i = 1; i < positions.Count; i++)
+        {
+            if (positions[i] - positions[i - 1] > MaxGap)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+/// <summary>
 /// How a lap was driven, not just how long it took: elapsed lap time resampled at a fixed
 /// fraction of the track, from the start of the lap to the finish line. This is what lets a
 /// lap chosen as a target drive a position-accurate delta rather than a single number.
@@ -180,20 +234,6 @@ public sealed class LapReferenceCurve
     // Milliseconds are the resolution the sims report and the resolution any delta is shown
     // at; further digits would grow every history file on disk with noise.
     private const int TimeDecimals = 3;
-
-    // The completeness guards the live delta path already applies (Features/Live/DeltaTracker).
-    // A trace that does not span roughly the whole lap describes a join-mid-session lap, an
-    // out lap or an aborted one, and a curve resampled from it reads as a lap nobody drove.
-    private const double CompleteStartMax = 0.2;
-    private const double CompleteEndMin = 0.8;
-    private const int CompleteMinSamples = 8;
-
-    // One guard the delta path does not need. Its own trace is only ever compared live, while
-    // this one is stored and re-read as "how the lap was driven", so a hole in the middle
-    // matters: a lap seen at the line and again from half distance passes the two end guards,
-    // and interpolating across the hole would draw a straight line through corners nobody saw.
-    // Ten output intervals is seconds of unobserved driving, not a stutter.
-    private const double CompleteMaxGap = PositionStepDefault * 10;
 
     // Degenerate-interval guard for the interpolation divisor.
     private const double PositionEpsilon = 1e-6;
@@ -226,11 +266,11 @@ public sealed class LapReferenceCurve
         // The recorder only files laps the game gave a completed time for, but this factory is
         // the seam a future trace source writes through too, and past the last sample the lap
         // total is the only time it can state — an absent one would be stated as zero.
+        // The completeness guards the live delta path already applies
+        // (Features/Live/DeltaTracker), plus the mid-lap hole guard a stored curve needs and a
+        // live one does not — shared with the channel trace so the tiers never disagree.
         if (lapTimeSeconds <= 0
-            || samples.Count < CompleteMinSamples
-            || samples[0].Position > CompleteStartMax
-            || samples[^1].Position < CompleteEndMin
-            || HasGap(samples))
+            || !LapCompleteness.IsComplete([.. samples.Select(sample => sample.Position)]))
         {
             return null;
         }
@@ -270,19 +310,6 @@ public sealed class LapReferenceCurve
         }
 
         return new LapReferenceCurve { PositionStep = PositionStepDefault, TimesSeconds = times };
-    }
-
-    private static bool HasGap(IReadOnlyList<(double Position, double Time)> samples)
-    {
-        for (var i = 1; i < samples.Count; i++)
-        {
-            if (samples[i].Position - samples[i - 1].Position > CompleteMaxGap)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static double Round(double seconds) => Math.Round(seconds, TimeDecimals);
