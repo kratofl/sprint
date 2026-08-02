@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Sprint.Desktop.Features.SessionPlanning;
 
 namespace Sprint.Desktop.Runtime;
 
@@ -92,11 +93,8 @@ public enum AutoDetectMode
 /// </summary>
 public sealed class SessionPlannerSettings
 {
-    /// <summary>60 Hz is the default trace rate; higher rates are offered for sources and disks that keep up.</summary>
-    public const int DefaultTraceCaptureHz = 60;
-
-    /// <summary>The offered capture rates, ascending.</summary>
-    public static readonly int[] TraceCaptureRates = [30, 60, 120, 240];
+    /// <summary>The offered trace storage ceilings in megabytes, ascending.</summary>
+    public static readonly int[] TraceStorageBudgets = [1024, 2048, 4096, 8192, 16384];
 
     /// <summary>Default fuel reserve on top of the estimate, in whole laps.</summary>
     [JsonPropertyName("fuelReserveLaps")]
@@ -108,17 +106,27 @@ public sealed class SessionPlannerSettings
     [JsonPropertyName("autoDetect")]
     public AutoDetectMode AutoDetect { get; set; } = AutoDetectMode.DraftSuggestion;
 
-    /// <summary>Detailed trace capture rate. Consumed by trace capture (#101), which is not built yet.</summary>
-    [JsonPropertyName("traceCaptureHz")]
-    public int TraceCaptureHz { get; set; } = DefaultTraceCaptureHz;
-
-    /// <summary>How long traces are kept. Bounds local disk use rather than growing forever.</summary>
+    /// <summary>How long traces are kept, or 0 for no age limit. Protection outranks it.</summary>
     [JsonPropertyName("traceRetentionDays")]
     public int TraceRetentionDays { get; set; } = 90;
 
     /// <summary>A hard ceiling on trace storage, so a long stint cannot fill the disk.</summary>
     [JsonPropertyName("traceMaxTotalMegabytes")]
     public int TraceMaxTotalMegabytes { get; set; } = 4096;
+
+    /// <summary>
+    /// How many of the fastest valid laps per (game, track, car) are exempt from pruning. This
+    /// is what makes recording a trace for every lap safe: a reference lap gets old, so an
+    /// unqualified oldest-first policy would delete exactly the laps worth chasing.
+    /// </summary>
+    [JsonPropertyName("traceProtectedLapsPerContext")]
+    public int TraceProtectedLapsPerContext { get; set; } = 5;
+
+    /// <summary>These settings as the retention service's budget (#194).</summary>
+    public LapTraceBudget TraceBudget() => new(
+        Math.Max(1, TraceMaxTotalMegabytes) * 1024L * 1024L,
+        Math.Max(0, TraceProtectedLapsPerContext),
+        TraceRetentionDays > 0 ? TraceRetentionDays : null);
 
     /// <summary>Warn when live telemetry disagrees with the planned race-length format.</summary>
     [JsonPropertyName("warnOnRaceFormatMismatch")]

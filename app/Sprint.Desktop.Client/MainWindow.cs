@@ -77,6 +77,7 @@ public sealed class MainWindow : Window
     private readonly SessionPlannerService _planner;
     private readonly SessionPlannerController _plannerController;
     private readonly LapHistoryRecorder _lapHistory;
+    private readonly LapTraceRetention _lapTraceRetention;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
@@ -209,7 +210,16 @@ public sealed class MainWindow : Window
         // corpus grow behind the cache's back and the page would show a stale target list.
         var lapHistoryStore = new CachingLapHistoryStore(
             new LocalLapHistoryStore(System.IO.Path.Combine(_runtime.DataRoot, "lap-history"), _log));
-        _lapHistory = lapHistory ?? new LapHistoryRecorder(lapHistoryStore, log: _log);
+        // Traces live in their own directory, not in the session document: that document is
+        // rewritten on every lap crossing, and a trace is two orders of magnitude larger than
+        // everything else in it put together (#194).
+        var lapTraceStore = new LocalLapTraceStore(
+            System.IO.Path.Combine(_runtime.DataRoot, "lap-traces"), _log);
+        _lapTraceRetention = new LapTraceRetention(lapTraceStore, lapHistoryStore, _log);
+        _lapHistory = lapHistory ?? new LapHistoryRecorder(lapHistoryStore, lapTraceStore, log: _log);
+        // Bring the trace directory inside its budget once, off the UI thread. At startup
+        // rather than per lap, so the crossing path never pays for a directory scan.
+        ThreadPool.QueueUserWorkItem(_ => PruneLapTraces());
         // The importer writes through the same cached store, so an import invalidates the
         // page's view of the corpus exactly as a recorded lap does.
         _importService = new LapHistoryImportService(lapHistoryStore, _log);
@@ -4794,6 +4804,33 @@ public sealed class MainWindow : Window
         };
     }
 
+    /// <summary>A trace storage ceiling in the unit a driver thinks about their disk in.</summary>
+    private static string TraceStorageLabel(int megabytes) =>
+        megabytes >= 1024 ? $"{megabytes / 1024} GB" : $"{megabytes} MB";
+
+    /// <summary>
+    /// Brings the trace directory back inside its disk budget (#194). Never on the telemetry
+    /// path: it scans a directory and can rewrite history documents.
+    /// <para>
+    /// Once per start, not per lap and not on close. <c>OnClosed</c> would race the process
+    /// exit, and the overshoot that would prevent is not real — a 24-hour endurance run is
+    /// roughly 700 laps at ~160 KB against a multi-gigabyte ceiling.
+    /// </para>
+    /// </summary>
+    private void PruneLapTraces()
+    {
+        try
+        {
+            _lapTraceRetention.Prune(
+                _runtime.Settings.SessionPlanner.TraceBudget(),
+                DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Lap trace retention failed", ex);
+        }
+    }
+
     // Session Planner defaults (#103). Since 2026-08-02 they live on the planner slice —
     // Settings owns app-level preferences only, and each feature carries its own defaults
     // inside its own view.
@@ -4812,9 +4849,11 @@ public sealed class MainWindow : Window
         var autoDetect = SettingsCombo(
             [AutoDetectDraft, AutoDetectArm],
             planner.AutoDetect == AutoDetectMode.CreateAndArm ? AutoDetectArm : AutoDetectDraft);
-        var captureRate = SettingsCombo(
-            SessionPlannerSettings.TraceCaptureRates.Select(rate => $"{rate} Hz").ToArray(),
-            $"{planner.TraceCaptureHz} Hz");
+        // Not a capture rate (#194): the grid is fixed at ~2 m of track, and what the driver
+        // chooses is how much disk the trace tier may occupy before it starts pruning.
+        var storageBudget = SettingsCombo(
+            [.. SessionPlannerSettings.TraceStorageBudgets.Select(TraceStorageLabel)],
+            TraceStorageLabel(planner.TraceMaxTotalMegabytes));
         var retentionDays = SettingsCombo(
             new[] { 30, 90, 180, 365 }.Select(days => $"{days} days").ToArray(),
             $"{planner.TraceRetentionDays} days");
@@ -4860,12 +4899,14 @@ public sealed class MainWindow : Window
                 : AutoDetectMode.DraftSuggestion;
             markSaved();
         };
-        captureRate.SelectionChanged += (_, _) =>
+        // By index rather than by parsing the label back: "4 GB" would have to be un-formatted
+        // to reach 4096, and the offered list is already the source of truth.
+        storageBudget.SelectionChanged += (_, _) =>
         {
-            if (captureRate.SelectedItem is string label
-                && int.TryParse(label.Replace(" Hz", "", StringComparison.Ordinal), out var hz))
+            var index = storageBudget.SelectedIndex;
+            if (index >= 0 && index < SessionPlannerSettings.TraceStorageBudgets.Length)
             {
-                planner.TraceCaptureHz = hz;
+                planner.TraceMaxTotalMegabytes = SessionPlannerSettings.TraceStorageBudgets[index];
                 markSaved();
             }
         };
@@ -4883,7 +4924,7 @@ public sealed class MainWindow : Window
         form.Children.Add(FormRow("Fuel reserve", reserveLaps));
         form.Children.Add(FormRow("Fuel history", historySource));
         form.Children.Add(FormRow("Online detection", autoDetect));
-        form.Children.Add(FormRow("Trace capture", captureRate));
+        form.Children.Add(FormRow("Trace storage", storageBudget));
         form.Children.Add(FormRow("Keep traces for", retentionDays));
         form.Children.Add(FormRow("Race format warning", warnFormat));
         form.Children.Add(FormRow("Segment change warning", warnSegment));

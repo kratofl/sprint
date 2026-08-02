@@ -209,8 +209,12 @@ public sealed class PlanSegment
     [JsonPropertyName("laps")]
     public List<LapSummary> Laps { get; set; } = [];
 
-    [JsonPropertyName("capture")]
-    public CaptureManifest? Capture { get; set; }
+    /// <summary>
+    /// Unknown fields are carried rather than dropped, so a plan written by another build
+    /// survives a round trip through this one.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>A single completed lap's summary within a tracked segment.</summary>
@@ -244,30 +248,12 @@ public sealed class LapSummary
     public string? SetupReference { get; set; }
 }
 
-/// <summary>
-/// Index of a segment's detailed trace capture (#101 writes the chunks; this is the
-/// loadable manifest so history can be summarized without scanning trace data).
-/// </summary>
-public sealed class CaptureManifest
-{
-    [JsonPropertyName("chunkFiles")]
-    public List<string> ChunkFiles { get; set; } = [];
-
-    [JsonPropertyName("frameCount")]
-    public long FrameCount { get; set; }
-
-    [JsonPropertyName("droppedFrameCount")]
-    public long DroppedFrameCount { get; set; }
-
-    [JsonPropertyName("captureRateHz")]
-    public int CaptureRateHz { get; set; }
-
-    [JsonPropertyName("startTime")]
-    public DateTimeOffset? StartTime { get; set; }
-
-    [JsonPropertyName("endTime")]
-    public DateTimeOffset? EndTime { get; set; }
-}
+// CaptureManifest was the seam for #101's 60 Hz time-gridded capture, which the Live Compare
+// design rejects (docs/specs/live-compare.md §2.2): the corpus is position-gridded, two laps
+// sampled by time never share an x-grid, and 60 Hz is sparse in slow corners and wasteful on
+// straights. Nothing ever wrote it. Per-lap channel traces (#194) replace it, stored outside
+// the plan entirely, so leaving a captureRateHz field here would only invite someone to build
+// the design that was ruled out.
 
 /// <summary>A warning surfaced against a plan (e.g. detected race format mismatch).</summary>
 public sealed class PlanWarning

@@ -993,11 +993,13 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(1, planner.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.AllValidLaps, planner.FuelHistorySource);
             Assert.Equal(AutoDetectMode.DraftSuggestion, planner.AutoDetect);
-            Assert.Equal(60, planner.TraceCaptureHz);
             Assert.True(planner.WarnOnRaceFormatMismatch);
             Assert.True(planner.WarnOnDetectedSegmentChange);
             Assert.True(planner.TraceRetentionDays > 0, "retention must bound local disk use");
             Assert.True(planner.TraceMaxTotalMegabytes > 0, "a storage ceiling must exist");
+            // #194 replaced #103's capture rate: the grid is fixed at ~2 m of track, so what
+            // is configurable is the disk budget and how many reference laps it protects.
+            Assert.True(planner.TraceProtectedLapsPerContext > 0, "reference laps must be protected");
         }
         finally
         {
@@ -1015,7 +1017,7 @@ public sealed class RuntimePersistenceTests
             runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
             runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
             runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
-            runtime.Settings.SessionPlanner.TraceCaptureHz = 120;
+            runtime.Settings.SessionPlanner.TraceMaxTotalMegabytes = 8192;
             runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
             runtime.SaveSettings();
 
@@ -1024,7 +1026,7 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(2, reloaded.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
             Assert.Equal(AutoDetectMode.CreateAndArm, reloaded.AutoDetect);
-            Assert.Equal(120, reloaded.TraceCaptureHz);
+            Assert.Equal(8192, reloaded.TraceMaxTotalMegabytes);
             Assert.False(reloaded.WarnOnRaceFormatMismatch);
 
             // A settings file written before this section existed keeps the documented defaults.
@@ -1049,14 +1051,16 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void HigherTraceCaptureRatesAreOfferedAndSixtyIsTheDefault()
+    public void SeveralTraceStorageBudgetsAreOfferedAndTheDefaultIsOneOfThem()
     {
-        // The issue asks for 60 Hz by default "with higher options available", so the option
-        // list has to actually contain some.
-        Assert.Equal(60, SessionPlannerSettings.DefaultTraceCaptureHz);
-        Assert.Contains(60, SessionPlannerSettings.TraceCaptureRates);
-        Assert.Contains(SessionPlannerSettings.TraceCaptureRates, rate => rate > 60);
-        Assert.Equal(SessionPlannerSettings.TraceCaptureRates.OrderBy(rate => rate), SessionPlannerSettings.TraceCaptureRates);
+        // #103 offered a capture rate; #194 rejected the 60 Hz time grid that setting served
+        // (docs/specs/live-compare.md §2.2). What a driver chooses now is a disk budget.
+        var budgets = SessionPlannerSettings.TraceStorageBudgets;
+
+        Assert.True(budgets.Length > 1, "a single option is not a choice");
+        Assert.Equal(budgets.OrderBy(megabytes => megabytes), budgets);
+        // The settings combo selects by index, so a default outside the list would show blank.
+        Assert.Contains(new SessionPlannerSettings().TraceMaxTotalMegabytes, budgets);
     }
 
     [Fact]

@@ -2334,14 +2334,7 @@ Add the method:
     }
 ```
 
-And after the existing `_lapHistory.Close();` at ~line 1090:
-
-```csharp
-        _lapHistory.Close();
-        // A long session can add hundreds of megabytes; waiting for the next start to notice
-        // would let a single endurance run overshoot the budget by a whole session.
-        ThreadPool.QueueUserWorkItem(_ => PruneLapTraces());
-```
+**Startup only — do not also prune at `_lapHistory.Close()`.** That call site is `OnClosed`, so a background prune there races the process exit, and a synchronous one delays shutdown by a directory scan plus session rewrites. The overshoot it would prevent is not real: a 24-hour endurance run is roughly 700 laps at ~160 KB, about 112 MB against a 4 GB ceiling. One prune per start is enough.
 
 - [ ] **Step 7: Build and run the full desktop suite**
 
