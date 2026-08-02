@@ -57,17 +57,74 @@ public class NewPlanDialogViewTests
                     options)
                 .Build();
 
+            var window = Show(root);
             var track = root.GetLogicalDescendants()
-                .OfType<AutoCompleteBox>()
+                .OfType<TextBox>()
                 .First(box => box.Name == NewPlanDialog.TrackInputName);
 
-            // Recorded spellings are offered, because those are the ones that key onto the
-            // existing lap-history bucket.
-            Assert.Equal(["Spa-Francorchamps"], track.ItemsSource!.Cast<string>());
-            // But it is an AutoCompleteBox, not a ComboBox: a car never driven has to be
-            // typeable, and the whole short list shows on focus rather than only after typing.
-            Assert.Equal(0, track.MinimumPrefixLength);
-            Assert.False(track.IsTextCompletionEnabled);
+            // Nothing typed yet: clicking the field must already show what Sprint knows. An
+            // autocomplete that only reveals its list after a keystroke reads as a plain text
+            // box, which is what made these look like they had not changed at all.
+            var popup = PopupFor(root, track);
+            Assert.False(popup.IsOpen);
+
+            track.RaiseEvent(new Avalonia.Input.PointerPressedEventArgs(
+                track,
+                new Avalonia.Input.Pointer(0, Avalonia.Input.PointerType.Mouse, true),
+                track,
+                default,
+                0,
+                new Avalonia.Input.PointerPointProperties(
+                    Avalonia.Input.RawInputModifiers.LeftMouseButton,
+                    Avalonia.Input.PointerUpdateKind.LeftButtonPressed),
+                Avalonia.Input.KeyModifiers.None));
+
+            Assert.True(popup.IsOpen);
+            var list = popup.Child!.GetLogicalDescendants().OfType<ListBox>().Single();
+            Assert.Equal(["Spa-Francorchamps"], list.ItemsSource!.Cast<string>());
+
+            // And it stays a text box: a car never driven has to be typeable.
+            Type(window, track, "Sebring");
+            Assert.Equal("Sebring", track.Text);
+        });
+    }
+
+    [Fact]
+    public async Task PickingFromTheDropdownFillsTheFieldAndTheDraft()
+    {
+        await Dispatch(() =>
+        {
+            var draft = new NewPlanDraft();
+            var root = new NewPlanDialog(
+                    draft,
+                    hasFuelHistory: true,
+                    _ => { },
+                    cancel: () => { },
+                    rebuild: () => { },
+                    PlanContextOptions.From(
+                        new StubHistory([("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963")]),
+                        PlanContext.Empty))
+                .Build();
+            Show(root);
+
+            var track = root.GetLogicalDescendants()
+                .OfType<TextBox>()
+                .First(box => box.Name == NewPlanDialog.TrackInputName);
+            var toggle = root.GetLogicalDescendants()
+                .OfType<Button>()
+                .First(button => button.Name == SuggestingField.ToggleName(NewPlanDialog.TrackInputName));
+
+            toggle.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            var popup = PopupFor(root, track);
+            var list = popup.Child!.GetLogicalDescendants().OfType<ListBox>().Single();
+
+            list.SelectedItem = "Spa-Francorchamps";
+
+            Assert.Equal("Spa-Francorchamps", track.Text);
+            // A programmatic Text assignment raises no TextChanged, so the draft has to be
+            // written by the picker itself or the choice would be lost on submit.
+            Assert.Equal("Spa-Francorchamps", draft.Track);
+            Assert.False(popup.IsOpen);
         });
     }
 
@@ -101,12 +158,17 @@ public class NewPlanDialogViewTests
         });
     }
 
-    // Icons.Create returns a Viewbox around the glyph, and that wrapper is what carries the
-    // non-hit-testable flag so a click still lands in the field underneath.
+    // Each suggesting field owns its own popup, anchored to its text box.
+    private static Avalonia.Controls.Primitives.Popup PopupFor(Control root, TextBox box) => root
+        .GetLogicalDescendants()
+        .OfType<Avalonia.Controls.Primitives.Popup>()
+        .Single(popup => ReferenceEquals(popup.PlacementTarget, box));
+
+    // The dropdown toggle is only built for a field that has values to offer.
     private static int Chevrons(Control root) => root
         .GetLogicalDescendants()
-        .OfType<Viewbox>()
-        .Count(icon => !icon.IsHitTestVisible);
+        .OfType<Button>()
+        .Count(button => button.Name?.EndsWith("-toggle", StringComparison.Ordinal) == true);
 
     private sealed class StubHistory(IReadOnlyList<(string Game, string Track, string Car)> contexts)
         : ILapHistoryStore
@@ -380,10 +442,6 @@ public class NewPlanDialogViewTests
         window.KeyReleaseQwerty(Avalonia.Input.PhysicalKey.Backspace, Avalonia.Input.RawInputModifiers.None);
     }
 
-    /// <summary>
-    /// An AutoCompleteBox takes input through the TextBox in its template, so typing has to be
-    /// aimed there rather than at the outer control.
-    /// </summary>
     private static TextBox InnerTextBox(Control control) => control switch
     {
         TextBox box => box,
@@ -428,13 +486,13 @@ public class NewPlanDialogViewTests
         var root = dialog.Build();
         var descendants = root.GetLogicalDescendants().ToList();
 
-        // Car and track are suggesting boxes now, so they are AutoCompleteBox rather than
-        // TextBox; the name field stays a plain box because there is nothing to suggest.
+        // Every field is a TextBox again: the suggesting fields wrap one in a grid with a
+        // chevron and a popup rather than replacing it with a different control.
         return new BuiltDialog(
             root,
             Named<TextBox>(descendants, NewPlanDialog.NameInputName),
-            Named<AutoCompleteBox>(descendants, NewPlanDialog.TrackInputName),
-            Named<AutoCompleteBox>(descendants, NewPlanDialog.CarInputName),
+            Named<TextBox>(descendants, NewPlanDialog.TrackInputName),
+            Named<TextBox>(descendants, NewPlanDialog.CarInputName),
             () => rebuilds);
     }
 
@@ -446,8 +504,8 @@ public class NewPlanDialogViewTests
     private sealed record BuiltDialog(
         Control Root,
         TextBox NameBox,
-        AutoCompleteBox TrackBox,
-        AutoCompleteBox CarBox,
+        TextBox TrackBox,
+        TextBox CarBox,
         Func<int> RebuildCount)
     {
         public int Rebuilds => RebuildCount();

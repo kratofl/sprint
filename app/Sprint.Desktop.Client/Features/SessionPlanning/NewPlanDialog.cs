@@ -236,7 +236,6 @@ internal sealed class NewPlanDialog
     // Every text field built this pass, with the draft property it writes. Read back on
     // submit and before any rebuild, so a value is never lost to a missed change event.
     private readonly List<(TextBox Box, Action<string> Assign)> _fields = [];
-    private readonly List<(AutoCompleteBox Box, Action<string> Assign)> _suggesting = [];
 
     public NewPlanDialog(
         NewPlanDraft draft,
@@ -262,11 +261,6 @@ internal sealed class NewPlanDialog
         {
             assign(box.Text ?? "");
         }
-
-        foreach (var (box, assign) in _suggesting)
-        {
-            assign(box.Text ?? "");
-        }
     }
 
     private void Rebuild()
@@ -278,7 +272,6 @@ internal sealed class NewPlanDialog
     public Control Build()
     {
         _fields.Clear();
-        _suggesting.Clear();
         var content = new StackPanel { Spacing = 14, Width = 460 };
 
         var headingText = new StackPanel { Spacing = 4 };
@@ -405,20 +398,20 @@ internal sealed class NewPlanDialog
         // picking one guarantees the plan keys onto the same lap-history bucket the corpus
         // already holds — a typo makes a second bucket and halves every statistic. Typing a new
         // car or track stays possible, because planning for one you have never driven is normal.
-        var gameBox = Suggesting(_draft.Game, value => _draft.Game = value, "Le Mans Ultimate", _options.Games);
-        gameBox.Name = GameInputName;
-        yield return Field("Game", Pickable(gameBox, _options.Games.Count));
+        var game = Suggesting(_draft.Game, value => _draft.Game = value, "Le Mans Ultimate", _options.Games, GameInputName);
+        yield return Field("Game", game.Control);
 
         // Cars and tracks narrow to the chosen game, so another sim's entries are never offered.
         var narrowed = _options.For(_draft.Game);
 
-        var carBox = Suggesting(_draft.Car, value => _draft.Car = value, "Porsche 963", narrowed.Cars);
-        carBox.Name = CarInputName;
-        yield return Field("Car", Pickable(carBox, narrowed.Cars.Count));
+        var car = Suggesting(_draft.Car, value => _draft.Car = value, "Porsche 963", narrowed.Cars, CarInputName);
+        yield return Field("Car", car.Control);
 
-        var trackBox = Suggesting(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps", narrowed.Tracks);
-        trackBox.Name = TrackInputName;
-        yield return Field("Track", Pickable(trackBox, narrowed.Tracks.Count));
+        var track = Suggesting(_draft.Track, value => _draft.Track = value, "Spa-Francorchamps", narrowed.Tracks, TrackInputName);
+        yield return Field("Track", track.Control);
+
+        var carBox = car.Box;
+        var trackBox = track.Box;
 
         // The name follows the context, and previews what the plan will be called if skipped.
         var nameBox = Input(_draft.Name, value => _draft.Name = value, _draft.DerivedName);
@@ -515,60 +508,19 @@ internal sealed class NewPlanDialog
     }
 
     /// <summary>
-    /// A text box that suggests what Sprint already knows. Deliberately an
-    /// <see cref="AutoCompleteBox"/> rather than a <see cref="ComboBox"/>: the recorded values
-    /// are the ones that key onto an existing lap-history bucket, but a closed list would make
-    /// "new car this week" impossible, and the same control has to serve both.
+    /// A field that offers the recorded values through a real dropdown while staying typeable.
+    /// Registered so Submit and every rebuild read its text back, like the plain inputs.
     /// </summary>
-    private AutoCompleteBox Suggesting(
+    private SuggestingField Suggesting(
         string value,
         Action<string> onChanged,
         string placeholder,
-        IReadOnlyList<string> suggestions)
+        IReadOnlyList<string> suggestions,
+        string name)
     {
-        var box = new AutoCompleteBox
-        {
-            Text = value,
-            PlaceholderText = placeholder,
-            ItemsSource = suggestions,
-            MinWidth = 260,
-            Background = Graphite.Panel2Brush,
-            Foreground = Graphite.TextBrush,
-            BorderBrush = Graphite.Line2Brush,
-            FontFamily = Graphite.FontStack,
-            FontSize = 12,
-            // Show the whole (short) list on focus rather than only after typing: the point is
-            // to be pickable, not merely to complete what is already half-typed.
-            MinimumPrefixLength = 0,
-            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
-            IsTextCompletionEnabled = false,
-        };
-        box.TextChanged += (_, _) => onChanged(box.Text ?? "");
-        _suggesting.Add((box, onChanged));
-        return box;
-    }
-
-    /// <summary>
-    /// Marks a suggesting field as pickable with a chevron, but only when there is something to
-    /// pick: an affordance over an empty list promises a menu that never opens. The glyph is not
-    /// hit-testable, so a click still lands in the field.
-    /// </summary>
-    private static Control Pickable(AutoCompleteBox box, int suggestionCount)
-    {
-        if (suggestionCount == 0)
-        {
-            return box;
-        }
-
-        var grid = new Grid();
-        grid.Children.Add(box);
-        var chevron = Icons.Create("chevron-down", 14, Graphite.Text3Brush);
-        chevron.HorizontalAlignment = HorizontalAlignment.Right;
-        chevron.VerticalAlignment = VerticalAlignment.Center;
-        chevron.Margin = new Thickness(0, 0, 10, 0);
-        chevron.IsHitTestVisible = false;
-        grid.Children.Add(chevron);
-        return grid;
+        var field = new SuggestingField(value, onChanged, placeholder, suggestions, name);
+        _fields.Add((field.Box, onChanged));
+        return field;
     }
 
     private static Button ActionButton(string label, ButtonTone tone, Action action)

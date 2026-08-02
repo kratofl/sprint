@@ -284,6 +284,9 @@ internal static class AgentUiReviewHarness
                     // them with a real archive on this machine.
                     CaptureImportResultsStates(frames, artifactRoot);
 
+                    // The context dropdowns, which need a corpus the shell does not have here.
+                    CapturePlanContextDropdowns(frames, artifactRoot);
+
                     // #186 with a corpus behind it. Rendered on its own window because the
                     // shell's page reads the real lap-history store, which is empty here.
                     CapturePlanTargetSelector(frames, artifactRoot, dataRoot);
@@ -722,6 +725,58 @@ internal static class AgentUiReviewHarness
             GridRows = (int)Math.Ceiling(widgets.Count / 4d) * 2,
             Pages = [new DashPage { Id = "catalog", Name = "Catalog", Widgets = widgets }],
         };
+    }
+
+    // The creation sheet's first step with a corpus behind it, so the review shows the dropdown
+    // affordance on game/car/track. The shell's own corpus is empty on a fresh data root, which
+    // is exactly when a chevron must *not* appear.
+    private static void CapturePlanContextDropdowns(List<AgentUiReviewFrame> frames, string artifactRoot)
+    {
+        var options = PlanContextOptions.From(
+            new ReviewLapHistoryStore(),
+            new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa-Francorchamps"));
+        var body = new NewPlanDialog(
+                new NewPlanDraft { Game = "Le Mans Ultimate" },
+                hasFuelHistory: true,
+                _ => { },
+                cancel: () => { },
+                rebuild: () => { },
+                options)
+            .Build();
+
+        var window = new Window
+        {
+            Width = 620,
+            Height = 420,
+            Background = Graphite.BgBrush,
+            Content = new Border
+            {
+                Padding = new Thickness(22),
+                Background = Graphite.Panel2Brush,
+                BorderBrush = Graphite.Line2Brush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusXl),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = body,
+            },
+        };
+        window.Show();
+        try
+        {
+            frames.Add(Capture(
+                window,
+                artifactRoot,
+                "session-planner-context-dropdowns",
+                "Step 1 of 3 · Where and what",
+                "Game",
+                "Car",
+                "Track"));
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     // The import sheet's other states: searching, nothing found, working, and done. Each one

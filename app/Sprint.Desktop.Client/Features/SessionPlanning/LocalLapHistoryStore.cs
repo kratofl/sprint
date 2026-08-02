@@ -46,6 +46,60 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
         return sessions;
     }
 
+    /// <summary>
+    /// Reads only each file's <c>context</c> object, skipping the laps as raw tokens. The laps
+    /// carry a 201-point reference curve each, so materialising them to answer "which tracks
+    /// have I driven" costs orders of magnitude more than the answer is worth.
+    /// </summary>
+    public IReadOnlyList<LapHistoryContext> LoadContexts()
+    {
+        var contexts = new List<LapHistoryContext>();
+        foreach (var file in Directory.EnumerateFiles(_root, "*.json"))
+        {
+            if (ReadContext(file) is { } context)
+            {
+                contexts.Add(context);
+            }
+        }
+
+        return contexts;
+    }
+
+    private LapHistoryContext? ReadContext(string path)
+    {
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            var reader = new Utf8JsonReader(bytes);
+
+            // Walk the top level only: step into the context object when it appears and skip
+            // every other value wholesale, so the lap array is never turned into objects.
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1)
+                {
+                    continue;
+                }
+
+                var isContext = reader.ValueTextEquals("context");
+                reader.Read();
+                if (isContext)
+                {
+                    return JsonSerializer.Deserialize<LapHistoryContext>(ref reader, JsonOptions);
+                }
+
+                reader.Skip();
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            _log.Warn($"Ignoring unreadable lap-history file at {path}", ex);
+            return null;
+        }
+    }
+
     public void Save(LapHistorySession session)
     {
         ArgumentNullException.ThrowIfNull(session);

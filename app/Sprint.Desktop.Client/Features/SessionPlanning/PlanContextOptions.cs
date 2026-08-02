@@ -32,8 +32,9 @@ public sealed record PlanContextOptions(
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(live);
 
-        var contexts = store.LoadAll()
-            .Select(session => (session.Context.Game, session.Context.TrackCourse, session.Context.CarModel))
+        // Contexts only: the sheet needs distinct names, not every lap's reference curve.
+        var contexts = store.LoadContexts()
+            .Select(context => (context.Game, context.TrackCourse, context.CarModel))
             .Append((live.Game, live.Track, live.Car))
             .Where(context => context != (null, null, null))
             .ToList();

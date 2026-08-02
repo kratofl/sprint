@@ -12,6 +12,19 @@ public interface ILapHistoryStore
     /// <summary>Loads every persisted history session. Order is not guaranteed.</summary>
     IReadOnlyList<LapHistorySession> LoadAll();
 
+    /// <summary>
+    /// Just the context of every session — the game/track/car buckets — without materialising
+    /// laps. A reference curve is the largest thing Sprint stores (201 points per lap), so
+    /// deserialising the whole corpus to list distinct track names is what made the creation
+    /// sheet stall once a driver had real mileage recorded.
+    /// <para>
+    /// The default implementation projects <see cref="LoadAll"/>, which keeps fakes and future
+    /// stores working; a store that can read cheaply overrides it.
+    /// </para>
+    /// </summary>
+    IReadOnlyList<LapHistoryContext> LoadContexts() =>
+        [.. LoadAll().Select(session => session.Context)];
+
     /// <summary>Creates or replaces the session identified by <see cref="LapHistorySession.Id"/>.</summary>
     void Save(LapHistorySession session);
 

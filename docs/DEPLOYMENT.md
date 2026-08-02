@@ -145,11 +145,15 @@ The API applies its schema on startup, so no separate migration step is needed.
 
 ## Troubleshooting
 
-- **Web image fails to build:** `web/Dockerfile` copies `web/` and the root
-  manifests but not `packages/*`, so the `workspace:*` dependencies
-  (`@sprint/ui`, `@sprint/types`, `@sprint/tokens`) may not resolve during
-  `pnpm install --filter @sprint/web`. Copying `packages/` into the `deps` and
-  `builder` stages fixes it.
+- **`Cannot find module '@sprint/types'` while building the web image:** a stale
+  `tsconfig.tsbuildinfo` reached the build context. The `composite` packages then
+  trust it, emit nothing, and leave `dist/` empty. `.dockerignore` excludes
+  `**/*.tsbuildinfo` for exactly this reason — check it is still there.
+- **API restarts with `28P01: password authentication failed`:**
+  `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` disagree. They are
+  two separate values in `.env` and must match. Note that the Postgres volume
+  keeps the password it was first initialised with, so changing `.env` alone is
+  not enough — recreate the volume or alter the role.
 - **`502` from Cloudflare:** the hostname points at a service the tunnel cannot
   reach. Check the Public Hostname target uses the Docker service name and port
   (`web:3000`, `api:8080`), not `localhost`.
@@ -159,5 +163,5 @@ The API applies its schema on startup, so no separate migration step is needed.
   missing in `.env`. Compose deliberately does not hard-fail on it, so that
   runs without the `tunnel` profile keep working — an empty token only surfaces
   once cloudflared starts.
-- **Tunnel logs show authentication errors:** the token is truncated or belongs
-  to a deleted tunnel. Copy it again from the dashboard.
+- **Tunnel logs `Provided Tunnel token is not valid`:** the token is truncated or
+  belongs to a deleted tunnel. Copy it again from the dashboard.

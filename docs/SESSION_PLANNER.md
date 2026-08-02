@@ -276,13 +276,27 @@ that has to be scrolled:
   validates — a half-filled field you are returning to fix must not be why you cannot move.
 - The Fuel step has no disclosure toggle any more: hiding the step's whole purpose behind a
   click would be a control that only ever gets opened.
-- **Game, car and track suggest what Sprint has recorded** (`PlanContextOptions`, from the
-  corpus plus the live context; cars and tracks narrow to the chosen game). This is not
+- **Game, car and track are dropdowns over what Sprint has recorded** (`PlanContextOptions`,
+  from the corpus plus the live context; cars and tracks narrow to the chosen game). This is not
   cosmetic: the corpus is keyed on `game + trackCourse + carModel`, so a typed
   "Spa Francorchamps" beside a recorded "Spa-Francorchamps" is a second bucket, and every
-  target and fuel figure drawn from it silently uses a fraction of the laps. They are
-  `AutoCompleteBox`, **not** `ComboBox` — planning for a car never driven has to stay possible
-  — and a chevron appears only when there is actually something to pick.
+  target and fuel figure drawn from it silently uses a fraction of the laps.
+  - `SuggestingField` is a `TextBox` with a chevron and a popup list. **Not an
+    `AutoCompleteBox`** — that only reveals its list after a keystroke, so it reads as a plain
+    text box and the recorded spellings stay invisible, which defeats the point. **Not a
+    `ComboBox`** either: a closed list would make planning for a car never driven impossible.
+    Clicking the field or the chevron opens the list; picking writes both the box and the draft
+    (a programmatic `Text` assignment raises no `TextChanged`).
+  - The chevron and the popup exist only when there is something to offer, and the list itself
+    is built on first open rather than up front.
+
+**Opening cost.** The sheet asks for its options on every build, and `ILapHistoryStore` now has
+`LoadContexts()` for exactly that: `LocalLapHistoryStore` reads each file with a
+`Utf8JsonReader`, deserialises the `context` object and **skips the laps as raw tokens**. A lap
+carries a 201-point reference curve, so materialising the corpus to list distinct track names was
+the reason the dialog stalled — measured on a 120-session / 3,000-lap corpus, **9 ms instead of
+128 ms**. `CachingLapHistoryStore` caches contexts separately from the full read, and both caches
+drop on any write.
 
 Tests: `SessionPlannerPageTests` (detection rules, derived name), `NewPlanDialogViewTests`
 and `SessionPlannerViewTests` (real typing through a headless window, field ordering, the

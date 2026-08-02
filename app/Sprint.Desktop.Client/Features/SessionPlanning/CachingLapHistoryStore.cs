@@ -19,6 +19,7 @@ public sealed class CachingLapHistoryStore : ILapHistoryStore
     private readonly object _gate = new();
 
     private IReadOnlyList<LapHistorySession>? _cached;
+    private IReadOnlyList<LapHistoryContext>? _cachedContexts;
 
     public CachingLapHistoryStore(ILapHistoryStore inner) =>
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
@@ -33,12 +34,25 @@ public sealed class CachingLapHistoryStore : ILapHistoryStore
         }
     }
 
+    /// <summary>
+    /// Cached separately from the full read: the creation sheet asks for contexts on every
+    /// build, and answering that from a cached full read would still have paid for one.
+    /// </summary>
+    public IReadOnlyList<LapHistoryContext> LoadContexts()
+    {
+        lock (_gate)
+        {
+            return _cachedContexts ??= _inner.LoadContexts();
+        }
+    }
+
     public void Save(LapHistorySession session)
     {
         lock (_gate)
         {
             _inner.Save(session);
             _cached = null;
+            _cachedContexts = null;
         }
     }
 
@@ -48,6 +62,7 @@ public sealed class CachingLapHistoryStore : ILapHistoryStore
         {
             _inner.Delete(sessionId);
             _cached = null;
+            _cachedContexts = null;
         }
     }
 }
