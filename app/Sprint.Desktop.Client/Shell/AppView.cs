@@ -4,6 +4,9 @@ public enum AppView
 {
     Home,
     SessionPlanner,
+
+    /// <summary>Lap comparison and the shared-lap library (#196).</summary>
+    Analysis,
     Dashes,
     Devices,
     Setups,

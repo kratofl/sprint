@@ -705,6 +705,9 @@ public class HeadlessShellTests
                         Assert.IsType<StackPanel>(child).Children.OfType<TextBlock>(),
                         text => string.Equals(text.Text, "RACE WEEKEND", StringComparison.Ordinal)),
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Session Planner")),
+                    // Analysis sits beside the planner under Race Weekend (#196): comparing
+                    // laps is a race-weekend activity, not a workspace tool.
+                    child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Analysis")),
                     child => Assert.Contains(
                         Assert.IsType<StackPanel>(child).Children.OfType<TextBlock>(),
                         text => string.Equals(text.Text, "WORKSPACE", StringComparison.Ordinal)),

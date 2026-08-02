@@ -155,6 +155,21 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "home-update-available", "Home", "Update v9.9.9"));
                     window.ApplyUpdateAvailability(null);
 
+                    // Analysis (#196): the eighth view, hosting the chart stack. The harness
+                    // corpus is empty, so this is the state a new driver actually opens it in.
+                    Click(window, "Analysis");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-empty",
+                        "Analysis",
+                        "Car and track",
+                        "Nothing recorded yet.",
+                        // One empty state, in the panel the eye goes to — not repeated in a
+                        // notice bar above it.
+                        "No laps recorded yet. Drive a session, or import one, and it will appear here.",
+                        "Live Compare overlay"));
+
                     // Session Planner (#100): the empty state and both creation entry points
                     // (#183 — Quick plan as the ember primary, the full sheet beside it).
                     Click(window, "Session Planner");

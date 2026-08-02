@@ -16,6 +16,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
@@ -82,7 +83,9 @@ public sealed class MainWindow : Window
     private readonly LapTraceRetention _lapTraceRetention;
     private readonly ILapTraceStore _lapTraces;
     private readonly LiveCompareController _liveCompare = new();
+    private readonly ILapHistoryStore _lapHistoryStore;
     private CompareHudWindow? _compareHud;
+    private AnalysisView? _analysisView;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
@@ -222,6 +225,7 @@ public sealed class MainWindow : Window
             System.IO.Path.Combine(_runtime.DataRoot, "lap-traces"), _log);
         _lapTraceRetention = new LapTraceRetention(lapTraceStore, lapHistoryStore, _log);
         _lapTraces = lapTraceStore;
+        _lapHistoryStore = lapHistoryStore;
         ApplyLiveCompareSettings();
         _lapHistory = lapHistory ?? new LapHistoryRecorder(lapHistoryStore, lapTraceStore, log: _log);
         // Bring the trace directory inside its budget once, off the UI thread. At startup
@@ -538,7 +542,8 @@ public sealed class MainWindow : Window
         };
         AddNavGroup(null, null, (AppView.Home, "Home"));
         AddNavGroup("Race Weekend", "flag",
-            (AppView.SessionPlanner, "Session Planner"));
+            (AppView.SessionPlanner, "Session Planner"),
+            (AppView.Analysis, "Analysis"));
         AddNavGroup("Workspace", "layout-dashboard",
             (AppView.Devices, "Devices"),
             (AppView.Dashes, "Dashboards"));
@@ -575,6 +580,7 @@ public sealed class MainWindow : Window
     {
         AppView.Home => "home",
         AppView.SessionPlanner => "flag",
+        AppView.Analysis => "activity",
         AppView.Dashes => "layout-dashboard",
         AppView.Devices => "device-desktop",
         AppView.Setups => "adjustments",
@@ -769,11 +775,13 @@ public sealed class MainWindow : Window
         [
             new("nav.home", "Go to Home", "overview session", "Alt+1", () => Navigate(AppView.Home)),
             new("nav.planner", "Go to Session Planner", "session plan race weekend qualifying", "Alt+2", () => Navigate(AppView.SessionPlanner)),
-            new("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+3", () => Navigate(AppView.Dashes)),
-            new("nav.devices", "Go to Devices", "screens wheels bindings", "Alt+4", () => Navigate(AppView.Devices)),
-            new("nav.setups", "Go to Setups", "car setup compare", "Alt+5", () => Navigate(AppView.Setups)),
-            new("nav.settings", "Go to Settings", "preferences profile updates", "Alt+6", () => Navigate(AppView.Settings)),
-            new("nav.help", "Open Help", "reference shortcuts", "Alt+7", () => Navigate(AppView.Help)),
+            new("nav.analysis", "Go to Analysis", "compare laps telemetry graphs traces", "Alt+3", () => Navigate(AppView.Analysis)),
+            new("nav.dashes", "Go to Dashes", "dash layouts dashboard", "Alt+4", () => Navigate(AppView.Dashes)),
+            new("nav.devices", "Go to Devices", "screens wheels bindings", "Alt+5", () => Navigate(AppView.Devices)),
+            new("nav.setups", "Go to Setups", "car setup compare", "Alt+6", () => Navigate(AppView.Setups)),
+            new("nav.settings", "Go to Settings", "preferences profile updates", "Alt+7", () => Navigate(AppView.Settings)),
+            new("nav.help", "Open Help", "reference shortcuts", "Alt+8", () => Navigate(AppView.Help)),
+            new("compare.hud", "Toggle Live Compare overlay", "hud overlay compare trace", null, ToggleCompareHud),
             new("dash.create", "Create dash", "new layout dashboard", null, () =>
             {
                 _shell.Navigate(AppView.Dashes);
@@ -1132,6 +1140,7 @@ public sealed class MainWindow : Window
         {
             AppView.Home => HomePage(),
             AppView.SessionPlanner => SessionPlannerPage(),
+            AppView.Analysis => AnalysisPage(),
             AppView.Dashes => _dashEditor is null ? DashesPage() : DashEditorPage(),
             AppView.Devices => DevicesPage(),
             AppView.Setups => SetupPage(),
@@ -4817,6 +4826,21 @@ public sealed class MainWindow : Window
     /// <summary>A trace storage ceiling in the unit a driver thinks about their disk in.</summary>
     private static string TraceStorageLabel(int megabytes) =>
         megabytes >= 1024 ? $"{megabytes / 1024} GB" : $"{megabytes} MB";
+
+    /// <summary>
+    /// The Analysis page (#196). The view is rebuilt per render but the controller is not, so
+    /// the driver's lap choices survive a repaint.
+    /// </summary>
+    private Control AnalysisPage()
+    {
+        _analysisView ??= new AnalysisView(
+            new AnalysisController(new LapCorpusBrowser(_lapHistoryStore, _lapTraces)),
+            SetCompareTarget,
+            ToggleCompareHud,
+            RenderBody);
+
+        return _analysisView.Build();
+    }
 
     /// <summary>Copies the stored HUD preferences onto the controller (#195).</summary>
     private void ApplyLiveCompareSettings()

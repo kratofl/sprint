@@ -39,6 +39,12 @@ public enum LapHistoryOrigin
 
     /// <summary>Parsed from a file the game wrote. No fuel, no conditions, no trace.</summary>
     Imported,
+
+    /// <summary>
+    /// Somebody else's lap, received as a file or by share code (#197, #198). Carries channels
+    /// but none of the driver's own context — no fuel, no setup, no conditions.
+    /// </summary>
+    Shared,
 }
 
 /// <summary>
@@ -148,6 +154,28 @@ public sealed class LapHistorySession
 
     [JsonPropertyName("laps")]
     public List<LapHistoryRecord> Laps { get; set; } = [];
+
+    /// <summary>
+    /// Who drove this lap, when it did not come from this machine. Provenance is recorded
+    /// rather than dropped so a shared lap can be a Live Compare target exactly like one of
+    /// your own while still being honestly attributed (spec §2.7).
+    /// </summary>
+    [JsonPropertyName("sharedFrom")]
+    public string? SharedFrom { get; set; }
+
+    [JsonPropertyName("sharedAt")]
+    public DateTimeOffset? SharedAt { get; set; }
+
+    /// <summary>The code this lap was pulled with, when it came from the cloud. Null for a file.</summary>
+    [JsonPropertyName("shareCode")]
+    public string? ShareCode { get; set; }
+
+    /// <summary>
+    /// Identity of the shared lap, so importing the same one twice is a no-op. Null for laps
+    /// this machine recorded — those are already identified by their session and lap number.
+    /// </summary>
+    [JsonPropertyName("sharedFingerprint")]
+    public string? SharedFingerprint { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

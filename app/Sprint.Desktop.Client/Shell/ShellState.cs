@@ -26,6 +26,7 @@ public sealed class ShellState
     {
         AppView.Home => "Home",
         AppView.SessionPlanner => "Session Planner",
+        AppView.Analysis => "Analysis",
         AppView.Dashes => "Dashes",
         AppView.Devices => "Devices",
         AppView.Setups => "Setups",
@@ -43,6 +44,7 @@ public sealed class ShellState
     {
         AppView.Home => "Overview",
         AppView.SessionPlanner => "Race Weekend",
+        AppView.Analysis => "Race Weekend",
         AppView.Dashes => "Dashboards",
         AppView.Devices => "Dashboards",
         AppView.Setups => "Setups",
