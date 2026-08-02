@@ -42,6 +42,22 @@ public enum LapHistoryOrigin
 }
 
 /// <summary>
+/// How much a stored lap can honestly tell a consumer. Ordered from thinnest to richest, so a
+/// caller can compare tiers rather than enumerate them.
+/// </summary>
+public enum LapTargetTier
+{
+    /// <summary>A lap time and nothing else. An imported lap, or a recorded one too partial to resample.</summary>
+    TimeOnly,
+
+    /// <summary>Position→time, so a position-accurate delta is possible.</summary>
+    ReferenceCurve,
+
+    /// <summary>Named channels on a metre-sized grid, so a channel-by-channel comparison is possible.</summary>
+    FullTrace,
+}
+
+/// <summary>
 /// The bucket a lap belongs to. <see cref="Game"/> + <see cref="TrackCourse"/> +
 /// <see cref="CarModel"/> is the key, and both writers must map onto exactly these three:
 /// if one wrote a venue where the other writes a course, one real context would split into

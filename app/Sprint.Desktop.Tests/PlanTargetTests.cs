@@ -651,4 +651,94 @@ public sealed class PlanTargetTests
 
         public void Delete(string sessionId) => throw new NotSupportedException();
     }
+
+    [Fact]
+    public void TheTierNoteNamesAllThreeTiers()
+    {
+        Assert.Equal("time only", TierOption(curve: false, trace: false).TierNote);
+        Assert.Equal("reference curve", TierOption(curve: true, trace: false).TierNote);
+        Assert.Equal("full trace", TierOption(curve: true, trace: true).TierNote);
+    }
+
+    [Fact]
+    public void TheTiersAreOrderedThinnestToRichest()
+    {
+        Assert.True(TierOption(curve: true, trace: true).Tier
+            > TierOption(curve: true, trace: false).Tier);
+        Assert.True(TierOption(curve: true, trace: false).Tier
+            > TierOption(curve: false, trace: false).Tier);
+    }
+
+    [Fact]
+    public void ATraceWithoutACurveIsStillOnlyTheThinnestTier()
+    {
+        // The two tiers share their completeness guards, so this should not arise — but if a
+        // pruned or half-written corpus produces it, the note must not promise what a target
+        // consumer cannot use. Plan target delivery reads the curve, not the trace.
+        Assert.Equal("time only", TierOption(curve: false, trace: true).TierNote);
+    }
+
+    [Fact]
+    public void TheTierIsCarriedOntoTheStoredTarget()
+    {
+        var stored = TierOption(curve: true, trace: true).ToTarget(Now);
+
+        Assert.True(stored.HasReferenceCurve);
+        Assert.True(stored.HasChannelTrace);
+    }
+
+    [Fact]
+    public void ARecordedLapWithATraceResolvesToTheFullTraceTier()
+    {
+        // End to end through the resolver, so the flag is actually read off the corpus rather
+        // than only being carried by a hand-built option.
+        var store = new FakeLapHistoryStore([TracedSession()]);
+
+        var choices = PlanTargetResolver.Choices(store, TracedContext(), PlanMode.Planned);
+        var best = choices.Scope(PlanTargetScope.Practice)!.Option(PlanTargetStatistic.Fastest)!;
+
+        Assert.Equal(LapTargetTier.FullTrace, best.Tier);
+        Assert.Equal("full trace", best.TierNote);
+    }
+
+    private static PlanTargetOption TierOption(bool curve, bool trace) => new(
+        PlanTargetScope.Practice,
+        null,
+        PlanTargetStatistic.Fastest,
+        "Fastest",
+        "1:30.500",
+        "",
+        90.5,
+        1,
+        "hs-tier",
+        3,
+        curve,
+        trace,
+        null);
+
+    private static LapHistoryContext TracedContext() => new()
+    {
+        Game = "Le Mans Ultimate",
+        TrackCourse = "Monza",
+        CarModel = "Ferrari 499P",
+    };
+
+    private static LapHistorySession TracedSession() => new()
+    {
+        Id = "hs-traced",
+        Kind = HistorySessionKind.Practice,
+        StartedAt = Now.AddHours(-2),
+        Context = TracedContext(),
+        Laps =
+        [
+            new LapHistoryRecord
+            {
+                LapNumber = 1,
+                IsValid = true,
+                LapTimeSeconds = 100,
+                TraceId = LapTraceId.For("hs-traced", 1),
+                ReferenceCurve = new LapReferenceCurve { PositionStep = 0.5, TimesSeconds = [0, 50, 100] },
+            },
+        ],
+    };
 }

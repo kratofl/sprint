@@ -35,18 +35,40 @@ public sealed record PlanTargetOption(
     string LapSessionId,
     int LapNumber,
     bool HasReferenceCurve,
+    bool HasChannelTrace,
     DateTimeOffset? LapSessionStartedAt)
 {
     /// <summary>
-    /// Which tier this option delivers, in the driver's words. A recorded lap with a trace can
-    /// drive a position-accurate delta; anything else is a single number, and presenting a
-    /// pro-rata delta from one as if it were measured would be a lie on a driver's screen.
+    /// Which tier this option delivers. A lap with channels can drive a channel-by-channel
+    /// comparison; one with only a curve can drive a position-accurate delta; anything else is
+    /// a single number, and presenting a pro-rata delta from one as if it were measured would
+    /// be a lie on a driver's screen.
     /// <para>
-    /// Read off the lap's own curve rather than its session's origin: a recorded lap whose
-    /// trace failed the completeness guards has no curve either.
+    /// Read off the lap's own artifacts rather than its session's origin: a recorded lap whose
+    /// samples failed the completeness guards has neither, and a lap whose trace was pruned to
+    /// stay inside the disk budget has dropped a tier since it was driven.
+    /// </para>
+    /// <para>
+    /// A trace without a curve reports the thinnest tier, not the richest. The two share their
+    /// completeness guards so it should not arise, but every current consumer of a target reads
+    /// the curve, and a note promising more than the consumer can use is the lie this property
+    /// exists to prevent.
     /// </para>
     /// </summary>
-    public string TierNote => HasReferenceCurve ? "reference curve" : "time only";
+    public LapTargetTier Tier => (HasReferenceCurve, HasChannelTrace) switch
+    {
+        (true, true) => LapTargetTier.FullTrace,
+        (true, false) => LapTargetTier.ReferenceCurve,
+        _ => LapTargetTier.TimeOnly,
+    };
+
+    /// <summary>The tier in the driver's words.</summary>
+    public string TierNote => Tier switch
+    {
+        LapTargetTier.FullTrace => "full trace",
+        LapTargetTier.ReferenceCurve => "reference curve",
+        _ => "time only",
+    };
 
     /// <summary>The stored form of this choice, for <paramref name="now"/>'s write.</summary>
     public PlanTarget ToTarget(DateTimeOffset now) => new()
@@ -60,6 +82,7 @@ public sealed record PlanTargetOption(
         LapNumber = LapNumber,
         LapSessionStartedAt = LapSessionStartedAt,
         HasReferenceCurve = HasReferenceCurve,
+        HasChannelTrace = HasChannelTrace,
         UpdatedAt = now,
     };
 }
@@ -270,6 +293,7 @@ public static class PlanTargetResolver
             candidate.Session.Id,
             candidate.Lap.LapNumber,
             candidate.Lap.HasReferenceCurve,
+            candidate.Lap.HasChannelTrace,
             candidate.Session.StartedAt);
     }
 
@@ -293,6 +317,7 @@ public static class PlanTargetResolver
             resolved.Session.Id,
             resolved.Lap.LapNumber,
             resolved.Lap.HasReferenceCurve,
+            resolved.Lap.HasChannelTrace,
             resolved.Session.StartedAt);
     }
 

@@ -138,6 +138,14 @@ public sealed class PlanTarget
     public bool HasReferenceCurve { get; set; }
 
     /// <summary>
+    /// Whether the resolved lap had a channel trace when it was chosen, so the planner can say
+    /// which tier the driver picked. A consumer that needs the trace itself must still ask the
+    /// trace store: retention can prune one after the fact.
+    /// </summary>
+    [JsonPropertyName("hasChannelTrace")]
+    public bool HasChannelTrace { get; set; }
+
+    /// <summary>
     /// When this target was last written. Targets are intent, not measurements, so a future
     /// sync resolves conflicts last-write-wins and nothing irrecoverable is lost.
     /// </summary>

@@ -237,6 +237,7 @@ public sealed class SessionPlannerPageTests
                 "hs-q",
                 2,
                 true,
+                false,
                 null));
             Assert.False(controller.SpecificLapPickerOpen);
         });
