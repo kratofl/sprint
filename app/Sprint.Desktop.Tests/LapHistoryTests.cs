@@ -653,6 +653,137 @@ public sealed class LapHistoryTests
         Assert.Equal(60.0, lap.ReferenceCurve.TimesSeconds[100], precision: 3);
     }
 
+    [Fact]
+    public void TheRecorderFilesAChannelTraceForACompletedLap()
+    {
+        var store = new CollectingLapHistoryStore();
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(store, traces);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.True(lap.HasChannelTrace);
+        // Derived from the session and lap, so a lap and its trace can always find each other.
+        Assert.Equal(LapTraceId.For("hs-1", 1), lap.TraceId);
+
+        var trace = traces.Load(lap.TraceId!);
+        Assert.NotNull(trace);
+        Assert.True(trace!.IsUsable);
+        foreach (var name in LapTraceChannels.Default)
+        {
+            Assert.True(trace.TryGetChannel(name, out var values), $"missing channel {name}");
+            Assert.Equal(trace.SampleCount, values.Length);
+        }
+    }
+
+    [Fact]
+    public void TheRecordedChannelsAreTheOnesTheDriverActuallyProduced()
+    {
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(new CollectingLapHistoryStore(), traces);
+
+        // LapFrame ramps every input with track position, so mid-lap has a known answer:
+        // speed 40 + 30*0.5 = 55 m/s = 198 km/h, throttle 0.5, brake 0.5, half the lap time.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var trace = Assert.Single(traces.All).Value;
+        Assert.Equal(198.0, trace.ValueAt(LapTraceChannels.SpeedKph, 0.5)!.Value, 0);
+        Assert.Equal(0.5, trace.ValueAt(LapTraceChannels.Throttle, 0.5)!.Value, 2);
+        Assert.Equal(0.5, trace.ValueAt(LapTraceChannels.Brake, 0.5)!.Value, 2);
+        Assert.Equal(60.0, trace.ValueAt(LapTraceChannels.ElapsedSeconds, 0.5)!.Value, 1);
+    }
+
+    [Fact]
+    public void TheTraceGridIsSizedFromTheTracksLength()
+    {
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(new CollectingLapHistoryStore(), traces);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 200.0, trackLengthMeters: 13_626);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 200.0, trackLengthMeters: 13_626));
+
+        var trace = Assert.Single(traces.All).Value;
+        Assert.InRange(trace.PositionStep * 13_626, 1.5, 5.0);
+        Assert.Equal(13_626, trace.TrackLengthMeters);
+    }
+
+    [Fact]
+    public void APracticeLapWithNoPlanArmedStillGetsATrace()
+    {
+        // The trace tier inherits the always-on recorder's reach: nothing here consults a plan,
+        // and practice with no plan armed is precisely the case Live Compare exists for.
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(new CollectingLapHistoryStore(), traces);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        Assert.Single(traces.All);
+    }
+
+    [Fact]
+    public void APartialLapProducesNeitherACurveNorATrace()
+    {
+        var store = new CollectingLapHistoryStore();
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(store, traces);
+
+        // Joined at half distance: the same guard both tiers apply, so neither tier appears.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0, fromPosition: 0.5);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.False(lap.HasReferenceCurve);
+        Assert.False(lap.HasChannelTrace);
+        Assert.Empty(traces.All);
+    }
+
+    [Fact]
+    public void ARecorderWithNoTraceStoreRecordsLapsThatHonestlyReportNoTrace()
+    {
+        var store = new CollectingLapHistoryStore();
+        var recorder = NewRecorder(store);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        var lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.True(lap.HasReferenceCurve);
+        // Not merely "no file": the record must not claim a tier nobody stored.
+        Assert.False(lap.HasChannelTrace);
+        Assert.Null(lap.TraceId);
+    }
+
+    [Fact]
+    public void TraceWritingHappensOnTheDispatchHandOffNotTheTelemetryThread()
+    {
+        // Nothing may reach the disk on the thread that delivered the frame: the engine polls
+        // at 200 Hz and a locked disk would stall the read that feeds the wheel screen.
+        var traces = new CollectingLapTraceStore();
+        var queued = new List<Action>();
+        var recorder = new LapHistoryRecorder(
+            new CollectingLapHistoryStore(),
+            traces,
+            clock: () => Now,
+            idFactory: () => "hs-1",
+            dispatch: queued.Add);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
+
+        Assert.Empty(traces.All);
+        Assert.NotEmpty(queued);
+        foreach (var work in queued)
+        {
+            work();
+        }
+
+        Assert.Single(traces.All);
+    }
+
     private sealed class BlockingLapHistoryStore(
         ManualResetEventSlim release,
         ManualResetEventSlim writeStarted) : ILapHistoryStore
@@ -709,11 +840,12 @@ public sealed class LapHistoryTests
         PressureKPa = 190f,
     };
 
-    private static LapHistoryRecorder NewRecorder(ILapHistoryStore store)
+    private static LapHistoryRecorder NewRecorder(ILapHistoryStore store, ILapTraceStore? traces = null)
     {
         var counter = 0;
         return new LapHistoryRecorder(
             store,
+            traces,
             clock: () => Now,
             idFactory: () => $"hs-{++counter}",
             dispatch: work => work());
@@ -725,7 +857,11 @@ public sealed class LapHistoryTests
         double lastLapTime = 0,
         bool isValid = true,
         string track = "Spa-Francorchamps",
-        string car = "Porsche 963") => new()
+        string car = "Porsche 963",
+        // Unknown by default, so the test that asserts an unreported length stays null keeps
+        // its premise. Only the lap-driving helpers supply one, because only the channel
+        // trace's grid is derived from it.
+        double? trackLengthMeters = null) => new()
         {
             Session = new SessionInfo
             {
@@ -733,6 +869,7 @@ public sealed class LapHistoryTests
                 Track = track,
                 Car = car,
                 CarClass = "Hypercar",
+                TrackLengthMeters = trackLengthMeters,
                 SessionType = sessionType,
                 InCar = true,
             },
@@ -752,7 +889,8 @@ public sealed class LapHistoryTests
         double lapTimeSeconds,
         double fromPosition = 0.0,
         double toPosition = 1.0,
-        double sampleStep = 0.003)
+        double sampleStep = 0.003,
+        double? trackLengthMeters = 5000)
     {
         for (var i = 0; ; i++)
         {
@@ -762,7 +900,11 @@ public sealed class LapHistoryTests
                 return;
             }
 
-            recorder.Ingest(LapFrame(lap, position, position * lapTimeSeconds));
+            recorder.Ingest(LapFrame(
+                lap,
+                position,
+                position * lapTimeSeconds,
+                trackLengthMeters: trackLengthMeters));
         }
     }
 
@@ -770,8 +912,8 @@ public sealed class LapHistoryTests
     /// The start/finish frame: position has wrapped and the lap timer has already reseeded
     /// to the new lap, so the finished lap's total only lives in <c>LastLapTime</c>.
     /// </summary>
-    private static TelemetryFrame Crossing(int lap, double lastLapTime) =>
-        LapFrame(lap, position: 0, lapTime: 0, lastLapTime);
+    private static TelemetryFrame Crossing(int lap, double lastLapTime, double? trackLengthMeters = 5000) =>
+        LapFrame(lap, position: 0, lapTime: 0, lastLapTime, trackLengthMeters);
 
     /// <summary>A frame from the monitor or the garage: still the same lap, but not driven.</summary>
     private static TelemetryFrame OutOfCarFrame(int lap, double position)
@@ -780,15 +922,33 @@ public sealed class LapHistoryTests
         return frame with { Session = frame.Session with { InCar = false } };
     }
 
+    /// <summary>
+    /// One frame mid-lap. Every driver input ramps with track position, so a resampled channel
+    /// trace has an independently known expectation at each grid point — the same property
+    /// <see cref="DriveLap"/> gives elapsed time.
+    /// </summary>
     private static TelemetryFrame LapFrame(
         int lap,
         double position,
         double lapTime,
-        double lastLapTime = 0)
+        double lastLapTime = 0,
+        double? trackLengthMeters = 5000)
     {
-        var frame = Frame(SessionType.Practice, lap, lastLapTime);
+        var frame = Frame(SessionType.Practice, lap, lastLapTime, trackLengthMeters: trackLengthMeters);
+        // A NaN position is deliberately fed by one test. Clamping leaves it NaN, and .NET's
+        // saturating float-to-int conversion turns (int)NaN into 0, so Gear stays valid; the
+        // recorder rejects the frame on its non-finite guard before any of this is sampled.
+        var ramp = Math.Clamp(position, 0, 1);
         return frame with
         {
+            Car = frame.Car with
+            {
+                SpeedMetersPerSecond = (float)(40 + (30 * ramp)),
+                Throttle = (float)(1 - ramp),
+                Brake = (float)ramp,
+                Steering = (float)((2 * ramp) - 1),
+                Gear = 1 + (int)(ramp * 6),
+            },
             Lap = frame.Lap with
             {
                 TrackPosition = (float)position,
@@ -815,6 +975,22 @@ public sealed class LapHistoryTests
         }
 
         public void Delete(string sessionId) => _sessions.Remove(sessionId);
+    }
+
+    /// <summary>An in-memory <see cref="ILapTraceStore"/>, so recorder tests never touch a disk.</summary>
+    private sealed class CollectingLapTraceStore : ILapTraceStore
+    {
+        public Dictionary<string, LapChannelTrace> All { get; } = new(StringComparer.Ordinal);
+
+        public void Save(string traceId, LapChannelTrace trace) => All[traceId] = trace;
+
+        public LapChannelTrace? Load(string traceId) =>
+            All.TryGetValue(traceId, out var trace) ? trace : null;
+
+        public void Delete(string traceId) => All.Remove(traceId);
+
+        public IReadOnlyList<LapTraceInfo> List() =>
+            [.. All.Select(pair => new LapTraceInfo(pair.Key, 0, Now))];
     }
 
     private static LapHistorySession NewSession(string id, HistorySessionKind kind) => new()

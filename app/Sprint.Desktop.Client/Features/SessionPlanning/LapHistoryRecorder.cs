@@ -18,6 +18,12 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 public sealed class LapHistoryRecorder
 {
     private readonly ILapHistoryStore _store;
+
+    // Nullable rather than defaulted to a no-op store. A no-op would still let this recorder
+    // set a TraceId for a trace it then threw away, and the lap would advertise a tier nothing
+    // can deliver — the exact lie the tier note exists to prevent.
+    private readonly ILapTraceStore? _traces;
+
     private readonly Func<DateTimeOffset> _clock;
     private readonly Func<string> _idFactory;
     private readonly Action<Action> _dispatch;
@@ -26,10 +32,11 @@ public sealed class LapHistoryRecorder
     // Strictly-forward guard for the trace, so it stays a function of position.
     private const double PositionEpsilon = 1e-6;
 
-    // The in-progress lap's position→time trace (#181). Held in memory and resampled once,
-    // at the crossing, so a lap's shape costs one list append per frame and nothing on the
-    // disk path mid-lap.
-    private readonly List<(double Position, double Time)> _samples = [];
+    // The in-progress lap's observed samples. Held in memory and resampled once, at the
+    // crossing, so a lap's shape costs one list append per frame and nothing on the disk path
+    // mid-lap. Both stored tiers come out of this one buffer: the position→time reference
+    // curve (#181) and the named-channel trace (#194).
+    private readonly List<LapTraceSample> _samples = [];
 
     private LapHistorySession? _session;
     private int _lastSeenLap;
@@ -39,12 +46,17 @@ public sealed class LapHistoryRecorder
 
     public LapHistoryRecorder(
         ILapHistoryStore store,
+        ILapTraceStore? traces = null,
         Func<DateTimeOffset>? clock = null,
         Func<string>? idFactory = null,
         Action<Action>? dispatch = null,
         ILog? log = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        // Optional: a caller with nowhere to put traces still records laps and reference
+        // curves, and those laps report the thinner tier honestly rather than not being
+        // recorded at all.
+        _traces = traces;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _idFactory = idFactory ?? (() => Guid.NewGuid().ToString("N"));
         // Laps complete about once a minute, so the default hand-off is a plain thread-pool
@@ -83,13 +95,28 @@ public sealed class LapHistoryRecorder
         // reading that matters is the one in force as laps are being filed.
         _session.Conditions = MapConditions(frame.Conditions);
 
+        LapChannelTrace? trace = null;
         var completed = CompletedLap(frame);
         if (completed is not null)
         {
             // The finished lap is resampled before this frame is sampled: at the line the
             // position has already wrapped and the lap timer has reseeded, so this frame's
             // sample belongs to the lap that is starting, not the one that just ended.
-            completed.ReferenceCurve = LapReferenceCurve.FromSamples(_samples, completed.LapTimeSeconds);
+            completed.ReferenceCurve = LapReferenceCurve.FromSamples(
+                [.. _samples.Select(sample => (sample.Position, sample.ElapsedSeconds))],
+                completed.LapTimeSeconds);
+
+            if (_traces is not null)
+            {
+                trace = LapChannelTrace.FromSamples(
+                    _samples,
+                    completed.LapTimeSeconds,
+                    _session.Context.TrackLengthMeters);
+                if (trace is not null)
+                {
+                    completed.TraceId = LapTraceId.For(_session.Id, completed.LapNumber);
+                }
+            }
         }
 
         Sample(frame);
@@ -100,6 +127,11 @@ public sealed class LapHistoryRecorder
         }
 
         _session.Laps.Add(completed);
+        if (trace is not null && completed.TraceId is { } traceId)
+        {
+            PersistTrace(traceId, trace);
+        }
+
         Persist(_session);
     }
 
@@ -271,7 +303,15 @@ public sealed class LapHistoryRecorder
         var position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
         if (_samples.Count == 0 || position > _samples[^1].Position + PositionEpsilon)
         {
-            _samples.Add((position, Math.Max(frame.Lap.CurrentLapTime, 0)));
+            _samples.Add(new LapTraceSample(
+                position,
+                // Stored in km/h: the unit the driver reads and the unit the HUD draws.
+                frame.Car.SpeedMetersPerSecond * 3.6f,
+                frame.Car.Throttle,
+                frame.Car.Brake,
+                frame.Car.Steering,
+                frame.Car.Gear,
+                Math.Max(frame.Lap.CurrentLapTime, 0)));
         }
     }
 
@@ -303,6 +343,23 @@ public sealed class LapHistoryRecorder
         tire.PressureKPa > 0
         || tire.TempSurfaceCelsius > 0
         || !string.IsNullOrWhiteSpace(tire.Compound);
+
+    /// <summary>
+    /// Files the lap's channel trace. Dispatched like the session write: a trace is the largest
+    /// thing Sprint stores, so it is the last thing that should meet the telemetry thread.
+    /// </summary>
+    private void PersistTrace(string traceId, LapChannelTrace trace) => _dispatch(() =>
+    {
+        try
+        {
+            _traces?.Save(traceId, trace);
+        }
+        catch (Exception ex)
+        {
+            // A lost trace costs the lap its richest tier, never the lap itself.
+            _log.Warn($"Failed to persist lap trace '{traceId}'", ex);
+        }
+    });
 
     private void Persist(LapHistorySession session) => _dispatch(() =>
     {

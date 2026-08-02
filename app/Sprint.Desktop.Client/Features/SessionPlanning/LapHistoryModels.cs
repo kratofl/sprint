@@ -368,6 +368,26 @@ public sealed class LapHistoryRecord
     public LapReferenceCurve? ReferenceCurve { get; set; }
 
     /// <summary>
+    /// The id of this lap's channel trace in the trace store, when one was written and has not
+    /// been pruned. Null otherwise.
+    /// <para>
+    /// A pointer rather than the trace itself: a history session is rewritten on every lap
+    /// crossing, and a trace is two orders of magnitude larger than everything else in the
+    /// document put together. Retention clears this when it deletes the file, so a stored
+    /// record never claims a trace that is no longer there.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("traceId")]
+    public string? TraceId { get; set; }
+
+    /// <summary>
+    /// Whether this lap can drive a channel-by-channel comparison — the third and richest tier,
+    /// above <see cref="HasReferenceCurve"/>.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasChannelTrace => !string.IsNullOrEmpty(TraceId);
+
+    /// <summary>
     /// Whether this lap can honestly drive a position-accurate delta. A reader has to be
     /// able to tell the two tiers apart, and a curve that came back off disk truncated is no
     /// more usable than no curve at all.
