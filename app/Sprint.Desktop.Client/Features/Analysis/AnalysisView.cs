@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Sharing;
 
 namespace Sprint.Desktop.Features.Analysis;
 
@@ -24,22 +25,29 @@ namespace Sprint.Desktop.Features.Analysis;
 public sealed class AnalysisView
 {
     private readonly AnalysisController _controller;
+    private readonly LapSharingService _sharing;
     private readonly Func<LiveCompareTarget?, bool> _setCompareTarget;
     private readonly Action _toggleHud;
     private readonly Action _rerender;
+    private readonly Action<string, string, string, Action> _confirm;
 
     private CorpusLap? _hudTarget;
+    private string? _sharingNotice;
 
     public AnalysisView(
         AnalysisController controller,
+        LapSharingService sharing,
         Func<LiveCompareTarget?, bool> setCompareTarget,
         Action toggleHud,
-        Action rerender)
+        Action rerender,
+        Action<string, string, string, Action> confirm)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
+        _sharing = sharing ?? throw new ArgumentNullException(nameof(sharing));
         _setCompareTarget = setCompareTarget ?? throw new ArgumentNullException(nameof(setCompareTarget));
         _toggleHud = toggleHud ?? throw new ArgumentNullException(nameof(toggleHud));
         _rerender = rerender ?? throw new ArgumentNullException(nameof(rerender));
+        _confirm = confirm ?? throw new ArgumentNullException(nameof(confirm));
     }
 
     /// <summary>The lap the HUD is chasing, for the page to show and for tests to read.</summary>
@@ -229,12 +237,31 @@ public sealed class AnalysisView
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var hud = Graphite.Button("Live Compare overlay", ButtonTone.Neutral, "layout-dashboard");
+
+        var import = Graphite.Button("Import lap", ButtonTone.Ghost, "download");
+        import.Click += (_, _) => ImportLap(import);
+        actions.Children.Add(import);
+
+        if (state.Primary is { HasChannels: true } exportable)
+        {
+            var export = Graphite.Button("Export lap A", ButtonTone.Ghost, "upload");
+            export.Click += (_, _) => ExportLap(export, exportable);
+            actions.Children.Add(export);
+        }
+
+        // The one ember action on the page: everything else here is a way of choosing what the
+        // overlay will show.
+        var hud = Graphite.Button("Live Compare overlay", ButtonTone.Primary, "layout-dashboard");
         hud.Click += (_, _) => _toggleHud();
         actions.Children.Add(hud);
         Grid.SetColumn(actions, 1);
         header.Children.Add(actions);
         stack.Children.Add(header);
+
+        if (_sharingNotice is { Length: > 0 } sharing)
+        {
+            stack.Children.Add(Note(sharing, Graphite.Text2Brush));
+        }
 
         if (_hudTarget is not null)
         {
@@ -309,6 +336,59 @@ public sealed class AnalysisView
         button.MinWidth = 0;
         button.Click += (_, _) => click();
         return button;
+    }
+
+    private async void ExportLap(Control anchor, CorpusLap lap)
+    {
+        try
+        {
+            _sharingNotice = await _sharing.ExportAsync(anchor, lap);
+        }
+        catch (Exception ex)
+        {
+            _sharingNotice = $"Could not export the lap: {ex.Message}";
+        }
+
+        _rerender();
+    }
+
+    /// <summary>
+    /// Reads a lap file and asks before adding it. Import is never silent (spec §2.7) — the
+    /// same standard the planner's results import set by refusing to auto-import.
+    /// </summary>
+    private async void ImportLap(Control anchor)
+    {
+        SharedLapOffer offer;
+        try
+        {
+            offer = await _sharing.OfferAsync(anchor);
+        }
+        catch (Exception ex)
+        {
+            _sharingNotice = $"Could not read that lap file: {ex.Message}";
+            _rerender();
+            return;
+        }
+
+        if (offer.Lap is null)
+        {
+            _sharingNotice = offer.Message;
+            _rerender();
+            return;
+        }
+
+        var lap = offer.Lap;
+        _confirm(
+            "Add this lap to your corpus?",
+            $"{lap.Attribution} · {lap.Context.TrackCourse} · {lap.Context.CarModel}\n"
+            + $"Lap {lap.LapNumber} · {PlanTargetResolver.FormatLapTime(lap.LapTimeSeconds)}\n\n"
+            + "It will be added as a third-party lap and can be chased in Live Compare.",
+            "Add lap",
+            () =>
+            {
+                _sharingNotice = _sharing.Accept(lap);
+                _rerender();
+            });
     }
 
     private void ChaseLap(CorpusLap lap)

@@ -30,6 +30,7 @@ using Sprint.Desktop.Features.Hardware;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
+using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.Notifications;
 using Sprint.Desktop.Features.Updates;
@@ -4833,11 +4834,21 @@ public sealed class MainWindow : Window
     /// </summary>
     private Control AnalysisPage()
     {
-        _analysisView ??= new AnalysisView(
-            new AnalysisController(new LapCorpusBrowser(_lapHistoryStore, _lapTraces)),
-            SetCompareTarget,
-            ToggleCompareHud,
-            RenderBody);
+        if (_analysisView is null)
+        {
+            var browser = new LapCorpusBrowser(_lapHistoryStore, _lapTraces);
+            _analysisView = new AnalysisView(
+                new AnalysisController(browser),
+                new LapSharingService(
+                    browser,
+                    new SharedLapImporter(_lapHistoryStore, _lapTraces, log: _log),
+                    () => _runtime.Settings.DriverName),
+                SetCompareTarget,
+                ToggleCompareHud,
+                RenderBody,
+                (title, message, confirmLabel, confirm) =>
+                    ShowConfirmDialog(title, message, confirmLabel, confirm, ButtonTone.Primary));
+        }
 
         return _analysisView.Build();
     }

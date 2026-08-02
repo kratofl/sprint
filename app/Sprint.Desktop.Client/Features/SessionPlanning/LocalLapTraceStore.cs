@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Text;
 using Sprint.Desktop.Features.Diagnostics;
 
 namespace Sprint.Desktop.Features.SessionPlanning;
@@ -14,17 +13,13 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// dependency.
 /// </para>
 /// <para>
-/// The layout is length-prefixed and channel names are written into the file, so a trace
-/// carrying a channel this build has never heard of still round-trips. That is what makes the
-/// named-and-versioned channel decision real rather than nominal.
+/// The payload itself is <see cref="LapTraceCodec"/>'s, shared with the shareable lap file and
+/// the cloud blob so the three cannot disagree about what a trace is.
 /// </para>
 /// </summary>
 public sealed class LocalLapTraceStore : ILapTraceStore
 {
     private const string Extension = ".trace";
-
-    // Identifies the format in a hex dump, and rejects any other file that lands here.
-    private static readonly byte[] Magic = "SPTR"u8.ToArray();
 
     private readonly string _root;
     private readonly ILog _log;
@@ -53,25 +48,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         {
             using var file = File.Create(TracePath(traceId));
             using var deflate = new DeflateStream(file, CompressionLevel.Fastest);
-            using var writer = new BinaryWriter(deflate, Encoding.UTF8, leaveOpen: true);
-
-            writer.Write(Magic);
-            writer.Write(trace.Version);
-            writer.Write(trace.PositionStep);
-            // NaN carries "the game never said" through a fixed-width field without a flag byte.
-            writer.Write(trace.TrackLengthMeters ?? double.NaN);
-            writer.Write(trace.SampleCount);
-            writer.Write(trace.Channels.Count);
-
-            foreach (var (name, values) in trace.Channels)
-            {
-                writer.Write(name);
-                writer.Write(values.Length);
-                foreach (var value in values)
-                {
-                    writer.Write(value);
-                }
-            }
+            LapTraceCodec.Write(deflate, trace);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -92,37 +69,15 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         {
             using var file = File.OpenRead(path);
             using var deflate = new DeflateStream(file, CompressionMode.Decompress);
-            using var reader = new BinaryReader(deflate, Encoding.UTF8, leaveOpen: true);
-
-            if (!reader.ReadBytes(Magic.Length).AsSpan().SequenceEqual(Magic))
+            var trace = LapTraceCodec.Read(deflate);
+            if (trace is null)
             {
-                _log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace file");
-                return null;
-            }
-
-            var trace = new LapChannelTrace { Version = reader.ReadInt32() };
-            trace.PositionStep = reader.ReadDouble();
-            var length = reader.ReadDouble();
-            trace.TrackLengthMeters = double.IsNaN(length) ? null : length;
-            _ = reader.ReadInt32(); // Sample count: each channel carries its own length.
-            var channelCount = reader.ReadInt32();
-
-            for (var i = 0; i < channelCount; i++)
-            {
-                var name = reader.ReadString();
-                var count = reader.ReadInt32();
-                var values = new float[count];
-                for (var j = 0; j < count; j++)
-                {
-                    values[j] = reader.ReadSingle();
-                }
-
-                trace.Channels[name] = values;
+                _log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace payload");
             }
 
             return trace;
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or EndOfStreamException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
             // One unreadable trace must not cost the driver every other lap they have driven.
             _log.Warn($"Ignoring unreadable lap trace at {path}", ex);
