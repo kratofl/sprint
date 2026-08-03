@@ -30,6 +30,7 @@ internal sealed class QuickPlanDialog
 
     private readonly NewPlanDraft _draft;
     private readonly PlanDetection _detection;
+    private readonly PlanContextOptions _options;
     private readonly Action<CreatePlanRequest> _create;
     private readonly Action _cancel;
     private readonly List<(TextBox Box, Action<string> Assign)> _fields = [];
@@ -38,10 +39,12 @@ internal sealed class QuickPlanDialog
         NewPlanDraft draft,
         PlanDetection detection,
         Action<CreatePlanRequest> create,
-        Action cancel)
+        Action cancel,
+        PlanContextOptions? options = null)
     {
         _draft = draft;
         _detection = detection;
+        _options = options ?? PlanContextOptions.Empty;
         _create = create;
         _cancel = cancel;
 
@@ -159,31 +162,35 @@ internal sealed class QuickPlanDialog
         switch (field)
         {
             case QuickPlanField.Context:
+                var narrowed = _options.For(_draft.Game);
                 if (string.IsNullOrWhiteSpace(_detection.Context.Game))
                 {
-                    yield return Field("Game", Input(
+                    yield return Field("Game", Suggesting(
                         _draft.Game,
                         value => _draft.Game = value,
                         "Le Mans Ultimate",
-                        GameInputName));
+                        _options.Games,
+                        GameInputName).Control);
                 }
 
                 if (string.IsNullOrWhiteSpace(_detection.Context.Car))
                 {
-                    yield return Field("Car", Input(
+                    yield return Field("Car", Suggesting(
                         _draft.Car,
                         value => _draft.Car = value,
                         "Porsche 963",
-                        CarInputName));
+                        narrowed.Cars,
+                        CarInputName).Control);
                 }
 
                 if (string.IsNullOrWhiteSpace(_detection.Context.Track))
                 {
-                    yield return Field("Track", Input(
+                    yield return Field("Track", Suggesting(
                         _draft.Track,
                         value => _draft.Track = value,
                         "Spa-Francorchamps",
-                        TrackInputName));
+                        narrowed.Tracks,
+                        TrackInputName).Control);
                 }
 
                 break;
@@ -279,6 +286,18 @@ internal sealed class QuickPlanDialog
         box.TextChanged += (_, _) => onChanged(box.Text ?? "");
         _fields.Add((box, onChanged));
         return box;
+    }
+
+    private SuggestingField Suggesting(
+        string value,
+        Action<string> onChanged,
+        string placeholder,
+        IReadOnlyList<string> suggestions,
+        string name)
+    {
+        var field = new SuggestingField(value, onChanged, placeholder, suggestions, name);
+        _fields.Add((field.Box, onChanged));
+        return field;
     }
 
     private static Button ActionButton(string label, ButtonTone tone, Action action)

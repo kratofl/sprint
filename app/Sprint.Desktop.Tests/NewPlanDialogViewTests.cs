@@ -391,6 +391,34 @@ public class NewPlanDialogViewTests
     }
 
     [Fact]
+    public async Task QuickModeOffersRecordedContextThroughEditableDropdowns()
+    {
+        await Dispatch(() =>
+        {
+            var detection = new PlanDetection(PlanContext.Empty, RaceLengthFormat.Unknown, 0, HasFuelHistory: false);
+            var options = PlanContextOptions.From(
+                new StubHistory([("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963")]),
+                PlanContext.Empty);
+            var root = new QuickPlanDialog(
+                    new NewPlanDraft(),
+                    detection,
+                    _ => { },
+                    () => { },
+                    options)
+                .Build();
+
+            Assert.Equal(3, Chevrons(root));
+            Assert.Equal(
+                [QuickPlanDialog.GameInputName, QuickPlanDialog.CarInputName, QuickPlanDialog.TrackInputName],
+                root.GetLogicalDescendants()
+                    .OfType<TextBox>()
+                    .Where(box => box.Name is not null && box.Name.StartsWith("quick", StringComparison.Ordinal))
+                    .Take(3)
+                    .Select(box => box.Name));
+        });
+    }
+
+    [Fact]
     public async Task QuickModeListsOnlyTheDetectedPartsWhenSomeContextIsKnown()
     {
         await Dispatch(() =>

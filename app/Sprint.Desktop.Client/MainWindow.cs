@@ -93,6 +93,8 @@ public sealed class MainWindow : Window
     private readonly LapHistoryImportService _importService;
     private readonly PlanTargetDelivery _planTargets;
     private NewPlanDraft? _newPlanDraft;
+    private Task<PlanContextOptions>? _planContextOptionsWarmup;
+    private PlanContextOptions? _openPlanContextOptions;
     private Border? _newPlanOverlay;
     private DateTimeOffset? _lastPlannerRender;
     // Transient notification stack (bottom-right). Re-attached on demand because
@@ -249,6 +251,10 @@ public sealed class MainWindow : Window
                 _runtime.Settings.LastSeenContext.Car,
                 _runtime.Settings.LastSeenContext.Track),
             lapHistoryStore);
+        // The editable plan dropdowns only need context names, but the first disk scan can
+        // still be noticeable on a long-lived corpus. Warm that cached read away from the UI
+        // thread so opening either plan sheet never owns the scan.
+        _planContextOptionsWarmup = Task.Run(_plannerController.ContextOptions);
         _plannerController.Changed += (_, _) =>
         {
             if (_shell.View == AppView.SessionPlanner)
@@ -790,8 +796,7 @@ public sealed class MainWindow : Window
         CloseCommandPalette();
         CloseConfirmDialog();
         CloseDeviceCatalogDialog();
-        _newPlanDraft = null;
-        CloseNewPlanDialog();
+        DismissPlanDialog();
         if (_dashEditor is not null && _restoreSidebarAfterEditor && _shell.SidebarCollapsed)
         {
             _shell.ToggleSidebar();
@@ -2384,7 +2389,7 @@ public sealed class MainWindow : Window
         Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
     }
 
-    private void ShowNewPlanDialog()
+    private async void ShowNewPlanDialog()
     {
         CloseCommandPalette(restoreFocus: false);
         CloseConfirmDialog();
@@ -2399,6 +2404,21 @@ public sealed class MainWindow : Window
             _newPlanDraft.Track = prefill.Track;
         }
 
+        var draft = _newPlanDraft;
+        var optionLoad = PlanContextOptionsForOpenDialogAsync();
+        if (!optionLoad.IsCompleted)
+        {
+            ShowPlanOverlay(PlanContextLoading("New Session Plan"), "Loading plan context suggestions");
+        }
+
+        var options = await optionLoad;
+        // The user can navigate while the background read finishes. Do not resurrect a sheet
+        // whose draft was deliberately cleared in the meantime.
+        if (!ReferenceEquals(_newPlanDraft, draft))
+        {
+            return;
+        }
+
         var dialog = new NewPlanDialog(
             _newPlanDraft,
             _plannerController.HasFuelHistory(new PlanContext(
@@ -2407,21 +2427,16 @@ public sealed class MainWindow : Window
                 _newPlanDraft.Track)),
             request =>
             {
-                _newPlanDraft = null;
-                CloseNewPlanDialog();
+                DismissPlanDialog();
                 _plannerController.CreatePlan(request);
             },
-            () =>
-            {
-                _newPlanDraft = null;
-                CloseNewPlanDialog();
-            },
+            DismissPlanDialog,
             // Segmented, step and disclosure changes rebuild the modal in place; the draft
             // object is retained so typed values survive the rebuild.
             ShowNewPlanDialog,
             // Offer the game/car/track Sprint has actually recorded: picking one guarantees the
             // plan keys onto an existing lap-history bucket instead of a near-miss spelling.
-            _plannerController.ContextOptions());
+            options);
 
         ShowPlanOverlay(dialog.Build(), "New session plan dialog");
     }
@@ -2431,7 +2446,7 @@ public sealed class MainWindow : Window
     /// point rather than a mode switch inside the full sheet, and it reads detection from the
     /// live frame so the form shrinks as the game reports more.
     /// </summary>
-    private void ShowQuickPlanDialog()
+    private async void ShowQuickPlanDialog()
     {
         CloseCommandPalette(restoreFocus: false);
         CloseConfirmDialog();
@@ -2439,23 +2454,77 @@ public sealed class MainWindow : Window
 
         var detection = _plannerController.Detect(CurrentTelemetryFrame().Session);
         _newPlanDraft ??= NewPlanDraft.FromDefaults(_runtime.Settings.SessionPlanner);
+        var draft = _newPlanDraft;
+        var optionLoad = PlanContextOptionsForOpenDialogAsync();
+        if (!optionLoad.IsCompleted)
+        {
+            ShowPlanOverlay(PlanContextLoading("Quick plan"), "Loading plan context suggestions");
+        }
+
+        var options = await optionLoad;
+        if (!ReferenceEquals(_newPlanDraft, draft))
+        {
+            return;
+        }
 
         var dialog = new QuickPlanDialog(
             _newPlanDraft,
             detection,
             request =>
             {
-                _newPlanDraft = null;
-                CloseNewPlanDialog();
+                DismissPlanDialog();
                 _plannerController.CreatePlan(request);
             },
-            () =>
-            {
-                _newPlanDraft = null;
-                CloseNewPlanDialog();
-            });
+            DismissPlanDialog,
+            options);
 
         ShowPlanOverlay(dialog.Build(), "Quick session plan dialog");
+    }
+
+    private async Task<PlanContextOptions> PlanContextOptionsForOpenDialogAsync()
+    {
+        if (_openPlanContextOptions is not null)
+        {
+            return _openPlanContextOptions;
+        }
+
+        var load = _planContextOptionsWarmup ??= Task.Run(_plannerController.ContextOptions);
+        try
+        {
+            _openPlanContextOptions = await load;
+        }
+        catch (Exception ex)
+        {
+            // Suggestions are convenience, not a reason to keep the sheet closed. Every field
+            // remains fully typeable when a history file disappears during the background read.
+            _log.Warn("Could not load plan context suggestions.", ex);
+            _openPlanContextOptions = PlanContextOptions.Empty;
+        }
+
+        _planContextOptionsWarmup = null;
+        return _openPlanContextOptions;
+    }
+
+    private Control PlanContextLoading(string title)
+    {
+        var content = new StackPanel { Spacing = 12, Width = 460 };
+        content.Children.Add(Graphite.TextBlock(title, 19, FontWeight.Bold));
+        content.Children.Add(Graphite.TextBlock(
+            "Loading recorded contexts…",
+            12,
+            brush: Graphite.Text2Brush));
+        content.Children.Add(new ProgressBar
+        {
+            IsIndeterminate = true,
+            Height = 3,
+            Foreground = Graphite.AccentBrush,
+            Background = Graphite.Panel3Brush,
+        });
+        var cancel = Graphite.Button("Cancel", ButtonTone.Ghost);
+        cancel.HorizontalAlignment = HorizontalAlignment.Right;
+        cancel.Click += (_, _) => DismissPlanDialog();
+        content.Children.Add(cancel);
+        return content;
     }
 
     private void ShowPlanOverlay(Control body, string automationName)
@@ -2485,6 +2554,15 @@ public sealed class MainWindow : Window
         };
         KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
         AutomationProperties.SetName(panel, automationName);
+        AutomationProperties.SetHelpText(panel, "Escape closes this dialog.");
+        panel.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                DismissPlanDialog();
+            }
+        };
         panel.PointerPressed += (_, e) => e.Handled = true;
 
         _newPlanOverlay = new Border
@@ -2493,11 +2571,7 @@ public sealed class MainWindow : Window
             Child = panel,
             Tag = "new-plan-dialog-overlay",
         };
-        _newPlanOverlay.PointerPressed += (_, _) =>
-        {
-            _newPlanDraft = null;
-            CloseNewPlanDialog();
-        };
+        _newPlanOverlay.PointerPressed += (_, _) => DismissPlanDialog();
         Grid.SetRowSpan(_newPlanOverlay, 2);
         _root.Children.Add(_newPlanOverlay);
         Dispatcher.UIThread.Post(() => panel.Focus(), DispatcherPriority.Input);
@@ -2512,6 +2586,13 @@ public sealed class MainWindow : Window
 
         _root.Children.Remove(_newPlanOverlay);
         _newPlanOverlay = null;
+    }
+
+    private void DismissPlanDialog()
+    {
+        _newPlanDraft = null;
+        _openPlanContextOptions = null;
+        CloseNewPlanDialog();
     }
 
     // "Build your own wheel" (issue #49): the shipped presets cannot cover every rim,

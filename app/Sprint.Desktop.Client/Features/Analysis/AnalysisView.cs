@@ -1,5 +1,8 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Sprint.Desktop.Features.Charts;
@@ -33,6 +36,8 @@ public sealed class AnalysisView
 
     private CorpusLap? _hudTarget;
     private string? _sharingNotice;
+    private bool _sessionPickerOpen;
+    private LapCorpusFilter? _sessionFilter;
 
     public AnalysisView(
         AnalysisController controller,
@@ -56,75 +61,139 @@ public sealed class AnalysisView
     public Control Build()
     {
         var state = _controller.Load();
-        var root = new Grid
+        var root = new Grid { Margin = new Thickness(16, 10, 16, 20) };
+        root.Children.Add(Surface(state));
+
+        if (_sessionPickerOpen)
         {
-            ColumnDefinitions = new ColumnDefinitions("300,*"),
-            Margin = new Thickness(16, 10, 16, 20),
-        };
-
-        var left = Sidebar(state);
-        Grid.SetColumn(left, 0);
-        root.Children.Add(left);
-
-        var right = Surface(state);
-        right.Margin = new Thickness(16, 0, 0, 0);
-        Grid.SetColumn(right, 1);
-        root.Children.Add(right);
+            root.Children.Add(SessionPicker(state));
+        }
 
         return root;
     }
 
-    private Control Sidebar(AnalysisState state)
+    private void OpenSessionPicker()
     {
-        var stack = new StackPanel { Spacing = 14 };
-        var filter = state.Filter;
+        _sessionFilter = _controller.CreateSessionFilter();
+        _sessionPickerOpen = true;
+        _rerender();
+    }
+
+    private void CloseSessionPicker()
+    {
+        _sessionPickerOpen = false;
+        _sessionFilter = null;
+        _rerender();
+    }
+
+    private Control SessionPicker(AnalysisState state)
+    {
+        var filter = _sessionFilter ??= _controller.CreateSessionFilter();
+        var content = new StackPanel { Spacing = 14, Width = 600 };
+
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var headingText = new StackPanel { Spacing = 3 };
+        headingText.Children.Add(Graphite.TextBlock("Open session", 19, FontWeight.Bold));
+        headingText.Children.Add(Graphite.TextBlock(
+            "Choose a track, class and day, then open the run you want to analyse.",
+            12,
+            brush: Graphite.Text2Brush,
+            wrapping: TextWrapping.Wrap));
+        heading.Children.Add(headingText);
+
+        var close = Graphite.Button("Close", ButtonTone.Ghost, "x");
+        close.Click += (_, _) => CloseSessionPicker();
+        Grid.SetColumn(close, 1);
+        heading.Children.Add(close);
+        content.Children.Add(heading);
 
         if (filter.IsEmpty)
         {
-            stack.Children.Add(Graphite.TextBlock(
-                "Nothing recorded yet.",
+            content.Children.Add(Graphite.TextBlock(
+                "No laps recorded yet. Drive a session or import a lap first.",
                 12,
                 brush: Graphite.Text3Brush,
                 wrapping: TextWrapping.Wrap));
-            return new ScrollViewer { Content = stack };
         }
-
-        // Narrowed the way a driver remembers a session: which track, then which class, then
-        // which car, then optionally which day. A flat list of every lap is unusable once
-        // somebody has real mileage - hundreds of rows with nothing to steer by.
-        stack.Children.Add(FilterStep("Track", filter.Tracks, filter.Track, _controller.SelectTrack));
-
-        // A step with one answer is not a question. Offering "Hypercar" as the only class and
-        // asking for a click is asking the driver to confirm something they cannot change.
-        if (filter.ClassIsAChoice)
+        else
         {
-            stack.Children.Add(FilterStep("Class", filter.Classes, filter.CarClass, _controller.SelectClass));
+            // The picker follows the way the request is remembered: track, class, day, then
+            // the concrete session. Car stays on the session row, where it disambiguates runs
+            // without adding another gate to the flow.
+            content.Children.Add(FilterStep("Track", filter.Tracks, filter.Track, value => filter.SelectTrack(value)));
+            content.Children.Add(FilterStep("Class", filter.Classes, filter.CarClass, value => filter.SelectClass(value)));
+            if (filter.CarClass is null)
+            {
+                content.Children.Add(Graphite.TextBlock(
+                    "Choose a class to continue to day and session.",
+                    11.5,
+                    brush: Graphite.Text3Brush));
+            }
+            else
+            {
+                content.Children.Add(DayStep(filter));
+                content.Children.Add(Graphite.IconSectionLabel("clock", "Session"));
+                content.Children.Add(new ScrollViewer
+                {
+                    MaxHeight = 280,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = SessionList(filter, state.Session),
+                });
+            }
         }
 
-        if (filter.CarClass is not null && filter.CarModelIsAChoice)
+        var panel = new Border
         {
-            stack.Children.Add(FilterStep("Car", filter.CarModels, filter.CarModel, _controller.SelectCarModel));
-        }
-
-        stack.Children.Add(DayStep(filter));
-
-        stack.Children.Add(Graphite.IconSectionLabel("clock", "Sessions"));
-        stack.Children.Add(new ScrollViewer { MaxHeight = 220, Content = SessionList(state) });
-
-        if (state.Session is not null && state.Laps.Count > 0)
+            Width = 648,
+            MaxHeight = 700,
+            Padding = new Thickness(22),
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.Line2Brush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusXl),
+            BoxShadow = new BoxShadows(new BoxShadow
+            {
+                OffsetX = 0,
+                OffsetY = 12,
+                Blur = 32,
+                Spread = 0,
+                Color = Color.FromArgb(90, 0, 0, 0),
+            }),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = content,
+            },
+        };
+        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+        AutomationProperties.SetName(panel, "Open analysis session dialog");
+        AutomationProperties.SetHelpText(
+            panel,
+            "Choose track, class, day and session. Escape closes this dialog.");
+        panel.KeyDown += (_, e) =>
         {
-            stack.Children.Add(Graphite.IconSectionLabel("flag", "Laps"));
-            stack.Children.Add(new ScrollViewer { MaxHeight = 300, Content = LapList(state) });
-        }
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                CloseSessionPicker();
+            }
+        };
+        panel.AttachedToVisualTree += (_, _) => close.Focus();
+        panel.PointerPressed += (_, e) => e.Handled = true;
 
-        return new ScrollViewer { Content = stack };
+        var overlay = new Border
+        {
+            Background = Graphite.Brush(Color.FromArgb(190, 0, 0, 0)),
+            Child = panel,
+        };
+        overlay.PointerPressed += (_, _) => CloseSessionPicker();
+        return overlay;
     }
 
-    /// <summary>
-    /// One narrowing step: a label and its options as chips. Chips rather than a dropdown -
-    /// there are a handful of tracks and cars, and seeing them all at once is faster than
-    /// opening a popup to find out what there is.
-    /// </summary>
+    /// <summary>One step in the modal narrowing flow, rendered as immediately visible chips.</summary>
     private Control FilterStep(
         string label,
         IReadOnlyList<string> options,
@@ -164,7 +233,7 @@ public sealed class AnalysisView
         var chips = new WrapPanel();
         chips.Children.Add(Chip("Any day", filter.Day is null, () =>
         {
-            _controller.SelectDay(null);
+            filter.SelectDay(null);
             _rerender();
         }));
 
@@ -177,7 +246,7 @@ public sealed class AnalysisView
                 filter.Day == value,
                 () =>
                 {
-                    _controller.SelectDay(value);
+                    filter.SelectDay(value);
                     _rerender();
                 }));
         }
@@ -197,10 +266,10 @@ public sealed class AnalysisView
         return chip;
     }
 
-    private Control SessionList(AnalysisState state)
+    private Control SessionList(LapCorpusFilter filter, CorpusSession? current)
     {
         var list = new StackPanel { Spacing = 4 };
-        if (state.Filter.Sessions.Count == 0)
+        if (filter.Sessions.Count == 0)
         {
             list.Children.Add(Graphite.TextBlock(
                 "No sessions match this filter.",
@@ -210,15 +279,15 @@ public sealed class AnalysisView
             return list;
         }
 
-        foreach (var session in state.Filter.Sessions)
+        foreach (var session in filter.Sessions)
         {
-            var selected = state.Session?.Id == session.Id;
+            var selected = current?.Id == session.Id;
             var text = new StackPanel { Spacing = 1 };
             text.Children.Add(Graphite.TextBlock(session.Label, 12.5, FontWeight.SemiBold));
-            var detail = state.Filter.CarModel is null
-                ? $"{session.Context.CarModel} · {session.Detail}"
-                : session.Detail;
-            text.Children.Add(Graphite.TextBlock(detail, 11, brush: Graphite.Text3Brush));
+            text.Children.Add(Graphite.TextBlock(
+                $"{session.Context.CarModel} · {session.Detail}",
+                11,
+                brush: Graphite.Text3Brush));
             if (!session.HasChannels)
             {
                 // Said on the row: opening it and finding nothing to overlay is worse.
@@ -228,6 +297,7 @@ public sealed class AnalysisView
             var captured = session;
             var button = new Button
             {
+                Tag = "analysis-session-row",
                 Content = text,
                 Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
                 BorderBrush = selected ? Graphite.AccentBorderBrush : Graphite.LineBrush,
@@ -240,7 +310,7 @@ public sealed class AnalysisView
             button.Click += (_, _) =>
             {
                 _controller.SelectSession(captured);
-                _rerender();
+                CloseSessionPicker();
             };
             list.Children.Add(button);
         }
@@ -250,7 +320,7 @@ public sealed class AnalysisView
 
     private Control LapList(AnalysisState state)
     {
-        var list = new StackPanel { Spacing = 4 };
+        var list = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         foreach (var lap in state.Laps)
         {
             list.Children.Add(LapRow(lap, state));
@@ -323,10 +393,10 @@ public sealed class AnalysisView
 
         return new Border
         {
-            Background = isPrimary || isComparison ? Graphite.Panel2Brush : Brushes.Transparent,
+            Width = 282,
+            Background = isPrimary || isComparison ? Graphite.Panel3Brush : Brushes.Transparent,
             BorderBrush = Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            BorderThickness = new Thickness(0, 0, 1, 0),
             Padding = new Thickness(10, 7),
             Child = row,
         };
@@ -355,6 +425,13 @@ public sealed class AnalysisView
             VerticalAlignment = VerticalAlignment.Center,
         };
 
+        if (state.Session is not null)
+        {
+            var change = Graphite.Button("Change session", ButtonTone.Ghost, "folder-open");
+            change.Click += (_, _) => OpenSessionPicker();
+            actions.Children.Add(change);
+        }
+
         var import = Graphite.Button("Import lap", ButtonTone.Ghost, "download");
         import.Click += (_, _) => ImportLap(import);
         actions.Children.Add(import);
@@ -366,11 +443,13 @@ public sealed class AnalysisView
             actions.Children.Add(export);
         }
 
-        // The one ember action on the page: everything else here is a way of choosing what the
-        // overlay will show.
-        var hud = Graphite.Button("Live Compare overlay", ButtonTone.Primary, "layout-dashboard");
-        hud.Click += (_, _) => _toggleHud();
-        actions.Children.Add(hud);
+        if (state.Session is not null)
+        {
+            // Once a session is open, the one ember action is the live driving surface.
+            var hud = Graphite.Button("Live Compare overlay", ButtonTone.Primary, "layout-dashboard");
+            hud.Click += (_, _) => _toggleHud();
+            actions.Children.Add(hud);
+        }
         Grid.SetColumn(actions, 1);
         header.Children.Add(actions);
         stack.Children.Add(header);
@@ -385,12 +464,35 @@ public sealed class AnalysisView
             stack.Children.Add(Note($"Live Compare is chasing {_hudTarget.Label}.", Graphite.GreenBrush));
         }
 
+        if (state.Session is null)
+        {
+            stack.Children.Add(SessionEmptySurface(state.Filter.IsEmpty));
+            return stack;
+        }
+
+        var laps = new StackPanel { Spacing = 8 };
+        laps.Children.Add(Graphite.IconSectionLabel("flag", "Laps"));
+        laps.Children.Add(new Border
+        {
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            Child = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = LapList(state),
+            },
+        });
+        stack.Children.Add(laps);
+
         if (state.Stack is null)
         {
             // One statement, where the eye already is. A notice bar repeating the empty panel's
             // message is the same fact said twice, and the second one teaches people to skip
             // both.
-            stack.Children.Add(EmptySurface(state.Notice ?? "Pick a lap to draw."));
+            stack.Children.Add(EmptySurface(state.Notice ?? "Pick a lap to draw.", 430));
             return stack;
         }
 
@@ -406,20 +508,60 @@ public sealed class AnalysisView
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(Graphite.RadiusLg),
             Padding = new Thickness(4),
-            Height = 560,
+            Height = 470,
             Child = new ChartStackView(state.Stack),
         });
 
         return stack;
     }
 
-    private static Control EmptySurface(string message) => new Border
+    private Control SessionEmptySurface(bool corpusEmpty)
+    {
+        var content = new StackPanel
+        {
+            Spacing = 12,
+            Width = 420,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        content.Children.Add(Graphite.TextBlock(
+            corpusEmpty ? "No sessions yet" : "Open a session to begin",
+            18,
+            FontWeight.SemiBold,
+            Graphite.TextBrush));
+        content.Children.Add(Graphite.TextBlock(
+            corpusEmpty
+                ? "Drive a session or import a lap, then come back here to compare it."
+                : "Filter your recorded runs by track, class and day, then choose the session whose laps you want to inspect.",
+            12,
+            brush: Graphite.Text3Brush,
+            wrapping: TextWrapping.Wrap));
+        if (!corpusEmpty)
+        {
+            var open = Graphite.Button("Open session", ButtonTone.Primary, "folder-open");
+            open.HorizontalAlignment = HorizontalAlignment.Center;
+            open.Click += (_, _) => OpenSessionPicker();
+            content.Children.Add(open);
+        }
+
+        return new Border
+        {
+            Height = 500,
+            Background = Graphite.Panel2Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusLg),
+            Child = content,
+        };
+    }
+
+    private static Control EmptySurface(string message, double height) => new Border
     {
         Background = Graphite.Panel2Brush,
         BorderBrush = Graphite.LineBrush,
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(Graphite.RadiusLg),
-        Height = 560,
+        Height = height,
         Padding = new Thickness(48, 0),
         Child = new TextBlock
         {

@@ -177,14 +177,15 @@ public sealed class AnalysisTests
     }
 
     [Fact]
-    public void OpeningThePageLandsOnTheNewestSession()
+    public void OpeningThePageWaitsForAnExplicitSessionChoice()
     {
-        var controller = Controller(
-            out _,
+        var browser = BrowserFor(
             Session("hs-old", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)),
             Session("hs-new", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening));
+        var controller = new AnalysisController(browser);
 
-        Assert.Equal("hs-new", controller.Load().Session!.Id);
+        Assert.Null(controller.Load().Session);
+        Assert.Equal("hs-new", controller.CreateSessionFilter().Sessions[0].Id);
     }
 
     [Fact]
@@ -330,7 +331,10 @@ public sealed class AnalysisTests
         params LapHistorySession[] sessions)
     {
         browser = BrowserFor(sessions);
-        return new AnalysisController(browser);
+        var controller = new AnalysisController(browser);
+        controller.Load();
+        controller.SelectSession(controller.Filter.Sessions.FirstOrDefault());
+        return controller;
     }
 
     private static LapCorpusFilter Filter(params LapHistorySession[] sessions) =>

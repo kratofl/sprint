@@ -46,8 +46,8 @@ public sealed class AnalysisController
     public event EventHandler? Changed;
 
     /// <summary>
-    /// Re-reads the corpus and lands on the most recent session, which is the one a driver has
-    /// just finished and most often wants to look at.
+    /// Re-reads the corpus while keeping an explicitly opened session. The page no longer
+    /// guesses which run the driver meant: opening one is the first action in Analysis.
     /// </summary>
     public AnalysisState Load()
     {
@@ -61,12 +61,31 @@ public sealed class AnalysisController
             _filter.SelectTrack(previousTrack);
         }
 
-        // Keep the driver where they were if that session still matches the filter; otherwise
-        // the newest one, so opening the page after a session shows that session.
-        _session = _filter.Sessions.FirstOrDefault(candidate => candidate.Id == previousSessionId)
-            ?? _filter.Sessions.FirstOrDefault();
+        // Keep an opened session if it still exists. Null stays null: the central Open session
+        // action owns the initial choice instead of a left rail silently making one.
+        _session = previousSessionId is null
+            ? null
+            : sessions.FirstOrDefault(candidate => candidate.Id == previousSessionId);
 
         return State();
+    }
+
+    /// <summary>
+    /// A fresh modal filter. It is deliberately separate from the active session so closing
+    /// the dialog cannot strand the page on a half-applied track or day selection.
+    /// </summary>
+    public LapCorpusFilter CreateSessionFilter()
+    {
+        var filter = new LapCorpusFilter(_browser.Sessions());
+        if (_session is null)
+        {
+            return filter;
+        }
+
+        filter.SelectTrack(_session.Context.TrackCourse);
+        filter.SelectClass(LapCorpusFilter.ClassOf(_session));
+        filter.SelectDay(_session.Day);
+        return filter;
     }
 
     /// <summary>Narrows to a track. Lap choices do not survive: they belong to the old track.</summary>
@@ -110,7 +129,24 @@ public sealed class AnalysisController
     /// </summary>
     public void SelectSession(CorpusSession? session)
     {
+        if (_session is not null
+            && session is not null
+            && !string.Equals(
+                _session.Context.TrackCourse,
+                session.Context.TrackCourse,
+                StringComparison.Ordinal))
+        {
+            ClearLaps();
+        }
+
         _session = session;
+        if (session is not null)
+        {
+            _filter.SelectTrack(session.Context.TrackCourse);
+            _filter.SelectClass(LapCorpusFilter.ClassOf(session));
+            _filter.SelectDay(null);
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

@@ -160,14 +160,35 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "home-update-available", "Home", "Update v9.9.9"));
                     window.ApplyUpdateAvailability(null);
 
-                    // Analysis (#196): the narrowing cascade a driver uses to find one session —
-                    // track, class, car, day — then its laps.
+                    // Analysis: the page starts with one central session-opening action instead
+                    // of keeping the entire corpus browser in a permanent left column.
                     Click(window, "Analysis");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "analysis-session-filter",
+                        "analysis-open-session",
                         "Analysis",
+                        "Open a session to begin",
+                        "Open session"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-open-session-1120x720",
+                        "Open a session to begin",
+                        "Open session"));
+                    window.Width = 1440;
+                    window.Height = 900;
+
+                    // The modal narrows the remembered run as track, class, day, session.
+                    Click(window, "Open session");
+                    Click(window, "Hypercar");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-filter",
+                        "Open session",
                         "TRACK",
                         "CLASS",
                         "DAY",
@@ -175,10 +196,27 @@ internal static class AgentUiReviewHarness
                         "Spa-Francorchamps",
                         "Hypercar",
                         "GT3",
-                        "Sessions",
-                        "Laps",
+                        "Session",
                         // Accounts live on the web app; the rail's row opens a browser.
                         "Sign in"));
+
+                    // Day is part of the modal-local filter, not a hidden page selection. The
+                    // GT3's seeded yesterday has exactly one run, so this also catches wiring
+                    // the chip to the wrong state object.
+                    Click(window, "GT3");
+                    Click(window, "Yesterday");
+                    Assert.Single(
+                        window.GetVisualDescendants().OfType<Button>(),
+                        button => string.Equals(
+                            button.Tag?.ToString(),
+                            "analysis-session-row",
+                            StringComparison.Ordinal));
+
+                    // Return to the richer Hypercar fixture used for the chart overlay frame.
+                    Click(window, "Hypercar");
+
+                    // Opening the run closes the picker and reveals its laps in the main page.
+                    ClickTaggedButton(window, "analysis-session-row");
 
                     // Two laps overlaid: A ember, B blue, over one shared track-position axis.
                     // Every lap row carries an A and a B, so these have to be indexed — clicking
@@ -194,6 +232,17 @@ internal static class AgentUiReviewHarness
                         // on the lap rows are what proves two laps are overlaid.
                         "Lap 1 · 1:41.0",
                         "Lap 2 · 1:42.0"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-two-laps-1120x720",
+                        "Analysis",
+                        "Laps",
+                        "Lap 1 · 1:41.0"));
+                    window.Width = 1440;
+                    window.Height = 900;
                     Click(window, "Home");
 
                     // Session Planner (#100): the empty state and both creation entry points
@@ -1432,6 +1481,17 @@ internal static class AgentUiReviewHarness
 
         Assert.NotNull(button);
         button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    }
+
+    private static void ClickTaggedButton(MainWindow window, string tag)
+    {
+        var button = window.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Tag?.ToString(), tag, StringComparison.Ordinal));
+
+        Assert.NotNull(button);
+        button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        using var frame = window.CaptureRenderedFrame();
     }
 
     // Modal fields are identified by their placeholder: the Session Planner modal is built
