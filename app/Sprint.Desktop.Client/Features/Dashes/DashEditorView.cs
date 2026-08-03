@@ -2656,13 +2656,7 @@ public sealed class DashEditorView : UserControl
 
     private static Control DurationRow(double value, Action decrement, Action increment)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var text = Graphite.TextBlock("Duration", 12, FontWeight.SemiBold, Graphite.Text2Brush);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
-
-        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right };
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Left };
         controls.Children.Add(Stepper("-", decrement));
         var valueBox = new Border
         {
@@ -2676,20 +2670,12 @@ public sealed class DashEditorView : UserControl
         };
         controls.Children.Add(valueBox);
         controls.Children.Add(Stepper("+", increment));
-        Grid.SetColumn(controls, 1);
-        grid.Children.Add(controls);
-        return grid;
+        return Graphite.FormField("Duration", controls);
     }
 
     private static Control StepperRow(string label, int value, Action decrement, Action increment)
     {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var text = Graphite.TextBlock(label, 12, FontWeight.Normal, Graphite.Text2Brush);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
-
-        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, HorizontalAlignment = HorizontalAlignment.Right };
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, HorizontalAlignment = HorizontalAlignment.Left };
         controls.Children.Add(Stepper("-", decrement));
         var valueBox = new Border
         {
@@ -2703,9 +2689,7 @@ public sealed class DashEditorView : UserControl
         };
         controls.Children.Add(valueBox);
         controls.Children.Add(Stepper("+", increment));
-        Grid.SetColumn(controls, 1);
-        grid.Children.Add(controls);
-        return grid;
+        return Graphite.FormField(label, controls);
     }
 
     private static Button Stepper(string label, Action action)

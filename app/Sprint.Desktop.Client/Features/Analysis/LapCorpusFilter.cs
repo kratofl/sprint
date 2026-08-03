@@ -45,8 +45,8 @@ public sealed record CorpusSession(
 /// Narrowing the corpus down to one session (#196).
 /// <para>
 /// A flat list of every lap is unusable once a driver has real mileage — hundreds of rows with
-/// nothing to steer by. This narrows the way a driver actually remembers a session: which track,
-/// then which class, then which car, then optionally which day. A step with one answer is
+/// nothing to steer by. This narrows the way a driver actually remembers a session: which game,
+/// then which track, class and car, then optionally which day. A step with one answer is
 /// answered for them rather than asked.
 /// </para>
 /// <para>Avalonia-free, so the whole cascade is a unit test.</para>
@@ -61,8 +61,13 @@ public sealed class LapCorpusFilter
     public LapCorpusFilter(IReadOnlyList<CorpusSession> sessions)
     {
         _all = sessions ?? throw new ArgumentNullException(nameof(sessions));
-        SelectTrack(Tracks.FirstOrDefault());
+        if (Games.Count == 1)
+        {
+            SelectGame(Games[0]);
+        }
     }
+
+    public string? Game { get; private set; }
 
     public string? Track { get; private set; }
 
@@ -73,37 +78,44 @@ public sealed class LapCorpusFilter
     /// <summary>The optional day filter. Null means every day.</summary>
     public DateOnly? Day { get; private set; }
 
-    /// <summary>Tracks in the corpus, most recently driven first.</summary>
-    public IReadOnlyList<string> Tracks =>
+    /// <summary>Games in the corpus, most recently driven first.</summary>
+    public IReadOnlyList<string> Games =>
         [.. _all
+            .GroupBy(session => session.Context.Game, StringComparer.Ordinal)
+            .OrderByDescending(group => group.Max(session => session.StartedAt))
+            .Select(group => group.Key)];
+
+    /// <summary>Tracks for the selected game, most recently driven first.</summary>
+    public IReadOnlyList<string> Tracks =>
+        [.. Matching(game: true)
             .GroupBy(session => session.Context.TrackCourse, StringComparer.Ordinal)
             .OrderByDescending(group => group.Max(session => session.StartedAt))
             .Select(group => group.Key)];
 
     /// <summary>Car classes at the selected track.</summary>
     public IReadOnlyList<string> Classes =>
-        [.. Matching(track: true)
+        [.. Matching(game: true, track: true)
             .Select(ClassOf)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
 
     /// <summary>Car models in the selected track and class.</summary>
     public IReadOnlyList<string> CarModels =>
-        [.. Matching(track: true, carClass: true)
+        [.. Matching(game: true, track: true, carClass: true)
             .Select(session => session.Context.CarModel)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
 
     /// <summary>Days that have a session for the selected track, class and car — newest first.</summary>
     public IReadOnlyList<DateOnly> Days =>
-        [.. Matching(track: true, carClass: true, carModel: true)
+        [.. Matching(game: true, track: true, carClass: true, carModel: true)
             .Select(session => session.Day)
             .Distinct()
             .OrderDescending()];
 
     /// <summary>The sessions that survive every filter, newest first.</summary>
     public IReadOnlyList<CorpusSession> Sessions =>
-        [.. Matching(track: true, carClass: true, carModel: true, day: true)
+        [.. Matching(game: true, track: true, carClass: true, carModel: true, day: true)
             .OrderByDescending(session => session.StartedAt)];
 
     /// <summary>Whether the corpus holds nothing at all.</summary>
@@ -116,6 +128,22 @@ public sealed class LapCorpusFilter
     public bool ClassIsAChoice => Classes.Count > 1;
 
     public bool CarModelIsAChoice => CarModels.Count > 1;
+
+    public void SelectGame(string? game)
+    {
+        Game = game;
+        Track = null;
+        CarClass = null;
+        CarModel = null;
+        Day = null;
+
+        var tracks = Tracks;
+        if (tracks.Count == 1)
+        {
+            Track = tracks[0];
+            CascadeClass();
+        }
+    }
 
     public void SelectTrack(string? track)
     {
@@ -187,12 +215,19 @@ public sealed class LapCorpusFilter
     }
 
     private IEnumerable<CorpusSession> Matching(
+        bool game = false,
         bool track = false,
         bool carClass = false,
         bool carModel = false,
         bool day = false)
     {
         var query = _all.AsEnumerable();
+        if (game && Game is not null)
+        {
+            query = query.Where(session =>
+                string.Equals(session.Context.Game, Game, StringComparison.Ordinal));
+        }
+
         if (track && Track is not null)
         {
             query = query.Where(session =>

@@ -181,42 +181,48 @@ internal static class AgentUiReviewHarness
                     window.Width = 1440;
                     window.Height = 900;
 
-                    // The modal narrows the remembered run as track, class, day, session.
+                    // The modal is a five-step context picker. Games and tracks are visual
+                    // tiles, and the track step keeps search in the same place as the choices.
                     Click(window, "Open session");
-                    Click(window, "Hypercar");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "analysis-session-filter",
+                        "analysis-game-step",
+                        "Choose a game",
+                        "Le Mans Ultimate",
+                        "Continue"));
+                    Click(window, "Le Mans Ultimate");
+                    ClickTaggedButton(window, "analysis-session-next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-step",
                         "Open session",
-                        "TRACK",
-                        "CLASS",
-                        "DAY",
-                        "Any day",
+                        "Game",
+                        "Track",
+                        "Search tracks",
                         "Spa-Francorchamps",
-                        "Hypercar",
-                        "GT3",
-                        "Session",
+                        "Monza",
                         // Accounts live on the web app; the rail's row opens a browser.
                         "Sign in"));
 
-                    // Day is part of the modal-local filter, not a hidden page selection. The
-                    // GT3's seeded yesterday has exactly one run, so this also catches wiring
-                    // the chip to the wrong state object.
-                    Click(window, "GT3");
-                    Click(window, "Yesterday");
-                    Assert.Single(
-                        window.GetVisualDescendants().OfType<Button>(),
-                        button => string.Equals(
-                            button.Tag?.ToString(),
-                            "analysis-session-row",
-                            StringComparison.Ordinal));
-
-                    // Return to the richer Hypercar fixture used for the chart overlay frame.
+                    Click(window, "Spa-Francorchamps");
+                    ClickTaggedButton(window, "analysis-session-next");
                     Click(window, "Hypercar");
+                    ClickTaggedButton(window, "analysis-session-next");
+                    Click(window, "Porsche 963");
+                    ClickTaggedButton(window, "analysis-session-next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-step",
+                        "Choose a session",
+                        "Any day"));
 
-                    // Opening the run closes the picker and reveals its laps in the main page.
+                    // Selecting a run is distinct from opening it, so the final action remains
+                    // explicit and the user can still change the date filter first.
                     ClickTaggedButton(window, "analysis-session-row");
+                    ClickTaggedButton(window, "analysis-session-open");
 
                     // Two laps overlaid: A ember, B blue, over one shared track-position axis.
                     // Every lap row carries an A and a B, so these have to be indexed — clicking
@@ -228,6 +234,11 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "analysis-two-laps",
                         "Analysis",
+                        "Filter laps",
+                        "Sort laps",
+                        "Fastest first",
+                        "Channels",
+                        "Time only",
                         // The chart titles are painted pixels, not Avalonia text; the A/B pills
                         // on the lap rows are what proves two laps are overlaid.
                         "Lap 1 · 1:41.0",
@@ -240,6 +251,8 @@ internal static class AgentUiReviewHarness
                         "analysis-two-laps-1120x720",
                         "Analysis",
                         "Laps",
+                        "Filter laps",
+                        "Sort laps",
                         "Lap 1 · 1:41.0"));
                     window.Width = 1440;
                     window.Height = 900;

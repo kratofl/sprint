@@ -3105,21 +3105,13 @@ public sealed class MainWindow : Window
         selector.Show(this);
     }
 
-    // A label/control row where every label shares one left column so the controls
-    // line up in a single column beneath the section heading.
+    // Device controls use the same label-above-field rhythm as every other form.
     private static Control AlignmentRow(string label, Control control)
-    {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("92,*") };
-        var text = Graphite.TextBlock(label, 12, FontWeight.SemiBold, Graphite.Text2Brush);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
-        control.VerticalAlignment = VerticalAlignment.Center;
-        control.HorizontalAlignment = HorizontalAlignment.Left;
-        Grid.SetColumn(control, 1);
-        grid.Children.Add(control);
-        return new Border { Padding = new Thickness(0, 4), Child = grid };
-    }
+        => new Border
+        {
+            Padding = new Thickness(0, 4),
+            Child = Graphite.FormField(label, control),
+        };
 
     // What this screen is used for (issue #53). The sentence-like heading keeps the
     // choice in user language; the helper text says what selecting it will do.
@@ -5743,15 +5735,7 @@ public sealed class MainWindow : Window
     }
 
     private static Control FormRow(string label, Control input)
-    {
-        var grid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("160,*")
-        };
-        AddGrid(grid, Graphite.TextBlock(label, 12, FontWeight.SemiBold, Graphite.Text2Brush), 0, 0);
-        AddGrid(grid, input, 0, 1);
-        return grid;
-    }
+        => Graphite.FormField(label, input);
 
     private static Control ReferenceCard(string title, string body)
     {

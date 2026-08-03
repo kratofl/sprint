@@ -257,17 +257,7 @@ internal sealed class QuickPlanDialog
     }
 
     private static Control Field(string label, Control control)
-    {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("140,*") };
-        var text = Graphite.TextBlock(label, 12, FontWeight.Normal, Graphite.Text2Brush);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
-        control.HorizontalAlignment = HorizontalAlignment.Left;
-        Grid.SetColumn(control, 1);
-        grid.Children.Add(control);
-        return grid;
-    }
+        => Graphite.FormField(label, control);
 
     private TextBox Input(string value, Action<string> onChanged, string placeholder, string name)
     {

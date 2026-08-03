@@ -38,7 +38,7 @@ public sealed class AnalysisController
         _filter = new LapCorpusFilter(_browser.Sessions());
     }
 
-    /// <summary>The narrowing cascade: track, class, car, optionally day.</summary>
+    /// <summary>The narrowing cascade: game, track, class, car, optionally day.</summary>
     public LapCorpusFilter Filter => _filter;
 
     public IReadOnlyList<LapChartPanelSpec> Panels { get; set; } = LapChartPanels.AnalysisDefaults;
@@ -52,10 +52,16 @@ public sealed class AnalysisController
     public AnalysisState Load()
     {
         var sessions = _browser.Sessions();
+        var previousGame = _filter.Game;
         var previousTrack = _filter.Track;
         var previousSessionId = _session?.Id;
 
         _filter = new LapCorpusFilter(sessions);
+        if (previousGame is not null && _filter.Games.Contains(previousGame, StringComparer.Ordinal))
+        {
+            _filter.SelectGame(previousGame);
+        }
+
         if (previousTrack is not null && _filter.Tracks.Contains(previousTrack, StringComparer.Ordinal))
         {
             _filter.SelectTrack(previousTrack);
@@ -82,8 +88,10 @@ public sealed class AnalysisController
             return filter;
         }
 
+        filter.SelectGame(_session.Context.Game);
         filter.SelectTrack(_session.Context.TrackCourse);
         filter.SelectClass(LapCorpusFilter.ClassOf(_session));
+        filter.SelectCarModel(_session.Context.CarModel);
         filter.SelectDay(_session.Day);
         return filter;
     }
@@ -131,10 +139,11 @@ public sealed class AnalysisController
     {
         if (_session is not null
             && session is not null
-            && !string.Equals(
-                _session.Context.TrackCourse,
-                session.Context.TrackCourse,
-                StringComparison.Ordinal))
+            && (!string.Equals(_session.Context.Game, session.Context.Game, StringComparison.Ordinal)
+                || !string.Equals(
+                    _session.Context.TrackCourse,
+                    session.Context.TrackCourse,
+                    StringComparison.Ordinal)))
         {
             ClearLaps();
         }
@@ -142,8 +151,10 @@ public sealed class AnalysisController
         _session = session;
         if (session is not null)
         {
+            _filter.SelectGame(session.Context.Game);
             _filter.SelectTrack(session.Context.TrackCourse);
             _filter.SelectClass(LapCorpusFilter.ClassOf(session));
+            _filter.SelectCarModel(session.Context.CarModel);
             _filter.SelectDay(null);
         }
 

@@ -250,6 +250,22 @@ internal static class Graphite
         };
     }
 
+    /// <summary>
+    /// Canonical desktop form field. Labels sit above their controls so scanning does not
+    /// depend on two unrelated baselines or a fixed label-column width.
+    /// </summary>
+    public static Control FormField(string label, Control input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        var stack = new StackPanel { Spacing = 6 };
+        var labelControl = TextBlock(label, 11.5, FontWeight.SemiBold, Text2Brush);
+        AutomationProperties.SetLabeledBy(input, labelControl);
+        stack.Children.Add(labelControl);
+        stack.Children.Add(input);
+        return stack;
+    }
+
     public static Button Button(string text, ButtonTone tone = ButtonTone.Neutral, string? icon = null)
     {
         var background = tone switch

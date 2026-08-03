@@ -462,17 +462,7 @@ internal sealed class SessionPlannerView
         Graphite.IconSectionLabel(icon, text);
 
     private static Control LabelledRow(string label, Control content)
-    {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*") };
-        var text = Graphite.TextBlock(label, 12, FontWeight.Normal, Graphite.Text3Brush);
-        text.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
-        content.HorizontalAlignment = HorizontalAlignment.Left;
-        Grid.SetColumn(content, 1);
-        grid.Children.Add(content);
-        return grid;
-    }
+        => Graphite.FormField(label, content);
 
     private Control SegmentDetail(SessionPlan plan)
     {

@@ -21,15 +21,32 @@ public sealed class AnalysisTests
     // ── The narrowing cascade ────────────────────────────────────────────────
 
     [Fact]
-    public void TracksAreOfferedMostRecentlyDrivenFirst()
+    public void GamesAndTracksAreOfferedMostRecentlyDrivenFirst()
     {
         var filter = Filter(
             Session("hs-spa", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-7)),
             Session("hs-monza", "Monza", "Hypercar", "Porsche 963", Evening));
 
+        Assert.Equal(["Le Mans Ultimate"], filter.Games);
+        Assert.Equal("Le Mans Ultimate", filter.Game);
         Assert.Equal(["Monza", "Spa-Francorchamps"], filter.Tracks);
-        // And it lands on the newest, which is the session the driver just finished.
+        // A real choice stays unanswered until the track step.
+        Assert.Null(filter.Track);
+    }
+
+    [Fact]
+    public void PickingAGameKeepsTracksFromOtherGamesOutOfTheNextStep()
+    {
+        var lmu = HistorySession("hs-lmu", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        var acc = HistorySession("hs-acc", "Monza", "GT3", "Ferrari 296", Evening.AddHours(-1), traced: true, game: "Assetto Corsa Competizione");
+        var filter = Filter(lmu, acc);
+
+        Assert.Null(filter.Game);
+        filter.SelectGame("Assetto Corsa Competizione");
+
+        Assert.Equal(["Monza"], filter.Tracks);
         Assert.Equal("Monza", filter.Track);
+        Assert.Equal("GT3", filter.CarClass);
     }
 
     [Fact]
@@ -202,6 +219,21 @@ public sealed class AnalysisTests
     }
 
     [Fact]
+    public void LapSidebarCanFilterByChannelsAndSortByLapNumber()
+    {
+        var session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
+        session.Laps[1].TraceId = null;
+        var browser = BrowserFor(session);
+        var described = browser.Laps(browser.Sessions()[0]);
+
+        var channels = AnalysisLapList.Apply(described, AnalysisLapFilter.WithChannels, AnalysisLapSort.LapNumber);
+        var timeOnly = AnalysisLapList.Apply(described, AnalysisLapFilter.TimeOnly, AnalysisLapSort.Fastest);
+
+        Assert.Equal([1, 3], channels.Select(lap => lap.LapNumber));
+        Assert.Equal(2, Assert.Single(timeOnly).LapNumber);
+    }
+
+    [Fact]
     public void AnInvalidLapIsNotOfferedAsSomethingToShapeACornerAgainst()
     {
         var session = HistorySession("hs-1", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening, traced: true);
@@ -333,7 +365,7 @@ public sealed class AnalysisTests
         browser = BrowserFor(sessions);
         var controller = new AnalysisController(browser);
         controller.Load();
-        controller.SelectSession(controller.Filter.Sessions.FirstOrDefault());
+        controller.SelectSession(browser.Sessions().FirstOrDefault());
         return controller;
     }
 
@@ -365,7 +397,8 @@ public sealed class AnalysisTests
         string? carClass,
         string car,
         DateTimeOffset at,
-        bool traced)
+        bool traced,
+        string game = "Le Mans Ultimate")
     {
         var session = new LapHistorySession
         {
@@ -374,7 +407,7 @@ public sealed class AnalysisTests
             StartedAt = at,
             Context = new LapHistoryContext
             {
-                Game = "Le Mans Ultimate",
+                Game = game,
                 TrackCourse = track,
                 CarModel = car,
                 CarClass = carClass,

@@ -421,28 +421,25 @@ public sealed class DiagnosticsWindow : Window
         RefreshScreens();
     }
 
-    private static Grid SimulationField(string label, NumericUpDown input, string? unit = null)
+    private static Control SimulationField(string label, NumericUpDown input, string? unit = null)
     {
-        var grid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("80,*,Auto"),
-            ColumnSpacing = 6,
-        };
-        var name = Graphite.TextBlock(label, 11, FontWeight.SemiBold, Graphite.Text2Brush);
-        name.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(name, 0);
-        grid.Children.Add(name);
-        Grid.SetColumn(input, 1);
-        grid.Children.Add(input);
+        Control field = input;
         if (!string.IsNullOrWhiteSpace(unit))
         {
+            var value = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                ColumnSpacing = 6,
+            };
+            value.Children.Add(input);
             var suffix = Graphite.TextBlock(unit, 11, FontWeight.Normal, Graphite.Text3Brush);
             suffix.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(suffix, 2);
-            grid.Children.Add(suffix);
+            Grid.SetColumn(suffix, 1);
+            value.Children.Add(suffix);
+            field = value;
         }
 
-        return grid;
+        return Graphite.FormField(label, field);
     }
 
     private static NumericUpDown Number(
