@@ -258,7 +258,7 @@ internal static class Graphite
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var stack = new StackPanel { Spacing = 6 };
+        var stack = new StackPanel { Spacing = 4 };
         var labelControl = TextBlock(label, 11.5, FontWeight.SemiBold, Text2Brush);
         AutomationProperties.SetLabeledBy(input, labelControl);
         stack.Children.Add(labelControl);
@@ -319,8 +319,8 @@ internal static class Graphite
             FontFamily = FontStack,
             FontSize = 13,
             FontWeight = FontWeight.Medium,
-            Padding = new Thickness(12, 6),
-            MinHeight = 30,
+            Padding = new Thickness(12, 4),
+            MinHeight = 28,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),

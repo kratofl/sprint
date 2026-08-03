@@ -123,8 +123,8 @@ public sealed class GraphiteTokenTests
         {
             var button = Graphite.Button("Save");
 
-            Assert.Equal(30, button.MinHeight);
-            Assert.Equal(new Thickness(12, 6), button.Padding);
+            Assert.Equal(28, button.MinHeight);
+            Assert.Equal(new Thickness(12, 4), button.Padding);
             Assert.Equal(13, button.FontSize);
             Assert.Equal(FontWeight.Medium, button.FontWeight);
             Assert.Equal(new CornerRadius(Graphite.RadiusMd), button.CornerRadius);

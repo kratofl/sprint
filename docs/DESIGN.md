@@ -307,8 +307,9 @@ Shape does not determine action priority.
 ### Inputs
 
 Inputs use a solid neutral fill, quiet `1px` boundary, persistent external label
-directly above the field, and stable trailing unit. Side-by-side label columns are
-not used. Placeholders provide examples, never replacement labels.
+directly above the field with a `4px` field gap, and stable trailing unit.
+Side-by-side label columns are not used. Placeholders provide examples, never
+replacement labels.
 Focus uses the standard ring. Validation uses explicit text and a red cue without
 unexpectedly shifting surrounding content. Underline-only and bright persistent
 outlines are not used.
