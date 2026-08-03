@@ -137,6 +137,11 @@ internal static class AgentUiReviewHarness
                         failure is null ? [] : [failure]));
                 }
 
+                // Before the window: CachingLapHistoryStore caches its first read and is only
+                // invalidated by writes through itself, so a corpus seeded afterwards would be
+                // invisible to the page.
+                SeedAnalysisCorpus(dataRoot);
+
                 using var telemetry = new RecordingTelemetrySource();
                 var window = new MainWindow(runtime, new ShellState(), telemetry)
                 {
@@ -155,20 +160,41 @@ internal static class AgentUiReviewHarness
                     frames.Add(Capture(window, artifactRoot, "home-update-available", "Home", "Update v9.9.9"));
                     window.ApplyUpdateAvailability(null);
 
-                    // Analysis (#196): the eighth view, hosting the chart stack. The harness
-                    // corpus is empty, so this is the state a new driver actually opens it in.
+                    // Analysis (#196): the narrowing cascade a driver uses to find one session —
+                    // track, class, car, day — then its laps.
                     Click(window, "Analysis");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
-                        "analysis-empty",
+                        "analysis-session-filter",
                         "Analysis",
-                        "Car and track",
-                        "Nothing recorded yet.",
-                        // One empty state, in the panel the eye goes to — not repeated in a
-                        // notice bar above it.
-                        "No laps recorded yet. Drive a session, or import one, and it will appear here.",
-                        "Live Compare overlay"));
+                        "TRACK",
+                        "CLASS",
+                        "DAY",
+                        "Any day",
+                        "Spa-Francorchamps",
+                        "Hypercar",
+                        "GT3",
+                        "Sessions",
+                        "Laps",
+                        // Accounts live on the web app; the rail's row opens a browser.
+                        "Sign in"));
+
+                    // Two laps overlaid: A ember, B blue, over one shared track-position axis.
+                    // Every lap row carries an A and a B, so these have to be indexed — clicking
+                    // both on the same row would select one lap and then clear it.
+                    ClickNth(window, "A", 0);
+                    ClickNth(window, "B", 1);
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-two-laps",
+                        "Analysis",
+                        // The chart titles are painted pixels, not Avalonia text; the A/B pills
+                        // on the lap rows are what proves two laps are overlaid.
+                        "Lap 1 · 1:41.0",
+                        "Lap 2 · 1:42.0"));
+                    Click(window, "Home");
 
                     // Session Planner (#100): the empty state and both creation entry points
                     // (#183 — Quick plan as the ember primary, the full sheet beside it).
@@ -755,6 +781,110 @@ internal static class AgentUiReviewHarness
         return new AgentUiReviewResult(artifactRoot, reportPath, frames);
     }
 
+    /// <summary>
+    /// A small corpus for the Analysis frames: one track with two classes, and two sessions on
+    /// different days, so the cascade has something real to narrow.
+    /// </summary>
+    private static void SeedAnalysisCorpus(string dataRoot)
+    {
+        var history = new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history"));
+        var traces = new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"));
+        var now = DateTimeOffset.Now;
+
+        Write(history, traces, "review-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-2), 101);
+        Write(history, traces, "review-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", now.AddDays(-1).AddHours(-5), 118);
+        Write(history, traces, "review-monza", "Monza", "Hypercar", "Porsche 963", now.AddDays(-3), 104);
+    }
+
+    private static void Write(
+        LocalLapHistoryStore history,
+        LocalLapTraceStore traces,
+        string id,
+        string track,
+        string carClass,
+        string car,
+        DateTimeOffset startedAt,
+        double bestSeconds)
+    {
+        var session = new LapHistorySession
+        {
+            Id = id,
+            Kind = HistorySessionKind.Practice,
+            StartedAt = startedAt,
+            EndedAt = startedAt.AddMinutes(35),
+            Context = new LapHistoryContext
+            {
+                Game = "Le Mans Ultimate",
+                TrackCourse = track,
+                CarModel = car,
+                CarClass = carClass,
+                TrackLengthMeters = 7004,
+            },
+        };
+
+        for (var lap = 1; lap <= 4; lap++)
+        {
+            var traceId = LapTraceId.For(id, lap);
+            traces.Save(traceId, ReviewTrace(bestSeconds + lap - 1, lap));
+            session.Laps.Add(new LapHistoryRecord
+            {
+                LapNumber = lap,
+                IsValid = true,
+                LapTimeSeconds = bestSeconds + lap - 1,
+                TraceId = traceId,
+                ReferenceCurve = new LapReferenceCurve
+                {
+                    PositionStep = 0.5,
+                    TimesSeconds = [0, (bestSeconds + lap - 1) / 2, bestSeconds + lap - 1],
+                },
+            });
+        }
+
+        history.Save(session);
+    }
+
+    /// <summary>A lap with a braking zone, so the review frames show shapes and not ramps.</summary>
+    private static LapChannelTrace ReviewTrace(double lapSeconds, int lap)
+    {
+        const int Count = 1001;
+        var speed = new float[Count];
+        var brake = new float[Count];
+        var throttle = new float[Count];
+        var steering = new float[Count];
+        var gear = new float[Count];
+        var elapsed = new float[Count];
+        for (var i = 0; i < Count; i++)
+        {
+            var t = i / (double)(Count - 1);
+            // Two braking zones, shifted slightly per lap so an overlay shows a real difference.
+            var shift = lap * 0.004;
+            var zone = Math.Exp(-Math.Pow((t - 0.3 - shift) * 26, 2))
+                + Math.Exp(-Math.Pow((t - 0.68 - shift) * 22, 2));
+            zone = Math.Clamp(zone, 0, 1);
+            speed[i] = (float)((300 - (190 * zone)));
+            brake[i] = (float)zone;
+            throttle[i] = (float)Math.Clamp(1 - (zone * 1.3), 0, 1);
+            steering[i] = (float)(Math.Sin(t * Math.PI * 6) * 0.7);
+            gear[i] = 7 - (int)(5 * zone);
+            elapsed[i] = (float)(lapSeconds * t);
+        }
+
+        return new LapChannelTrace
+        {
+            PositionStep = 1.0 / (Count - 1),
+            TrackLengthMeters = 7004,
+            Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
+            {
+                [LapTraceChannels.SpeedKph] = speed,
+                [LapTraceChannels.Brake] = brake,
+                [LapTraceChannels.Throttle] = throttle,
+                [LapTraceChannels.Steering] = steering,
+                [LapTraceChannels.Gear] = gear,
+                [LapTraceChannels.ElapsedSeconds] = elapsed,
+            },
+        };
+    }
+
     private static DashLayout WidgetCatalogDash()
     {
         var widgets = DashWidgetCatalog.All
@@ -1278,6 +1408,19 @@ internal static class AgentUiReviewHarness
             .OrderByDescending(candidate => candidate.Bounds.Width * candidate.Bounds.Height)
             .First();
         scroller.Offset = new Vector(scroller.Offset.X, scroller.Extent.Height);
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    /// <summary>Clicks the <paramref name="index"/>th button carrying <paramref name="label"/>.</summary>
+    private static void ClickNth(MainWindow window, string label, int index)
+    {
+        var button = window.GetVisualDescendants()
+            .OfType<Button>()
+            .Where(candidate => ButtonMatches(candidate, label))
+            .ElementAtOrDefault(index);
+
+        Assert.NotNull(button);
+        button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         using var frame = window.CaptureRenderedFrame();
     }
 

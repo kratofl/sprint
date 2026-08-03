@@ -88,8 +88,6 @@ public sealed class MainWindow : Window
     private CompareHudWindow? _compareHud;
     private AnalysisView? _analysisView;
     private CloudSession? _cloudSession;
-    private CloudLapSharing? _cloudSharing;
-    private string? _cloudNotice;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
     private readonly LapHistoryImportService _importService;
@@ -691,8 +689,55 @@ public sealed class MainWindow : Window
         }
 
         footer.Children.Clear();
+        footer.Children.Add(AccountNavItem());
         footer.Children.Add(NavButton(AppView.Settings, "Settings"));
         footer.Children.Add(NavButton(AppView.Help, "Help"));
+    }
+
+    /// <summary>
+    /// The account row at the foot of the rail. Not a view: accounts live on the web app, so this
+    /// opens a browser rather than reproducing a sign-in form here. Signed in, it names who —
+    /// the one thing about an account a driver needs while the app is open.
+    /// </summary>
+    private Button AccountNavItem()
+    {
+        _cloudSession ??= new CloudSession(_runtime.DataRoot, _log);
+
+        var signedIn = _cloudSession.IsSignedIn;
+        var label = signedIn ? _cloudSession.Attribution : "Sign in";
+        var button = Graphite.NavigationItem("user", label, active: false, _shell.SidebarCollapsed, badge: false);
+        ToolTip.SetTip(button, signedIn ? "Manage your Sprint account on the web" : "Sign in on the Sprint web app");
+        button.Click += (_, _) => OpenWebApp(signedIn ? "account" : "sign-in");
+        return button;
+    }
+
+    /// <summary>
+    /// Hands a page off to the driver's browser. Sprint self-hosts, so the address is a setting,
+    /// and a blank one is stated rather than silently doing nothing.
+    /// </summary>
+    private void OpenWebApp(string path)
+    {
+        var configured = _runtime.Settings.Cloud.WebAppUrl?.Trim();
+        if (string.IsNullOrEmpty(configured))
+        {
+            ShowToast(
+                GraphiteIntent.Info,
+                "No web address set",
+                "Set the Sprint web app address in Settings to sign in.",
+                "user");
+            return;
+        }
+
+        var url = configured.TrimEnd('/') + "/" + path.TrimStart('/');
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _log.Warn($"Could not open {url}", ex);
+            ShowToast(GraphiteIntent.Danger, "Could not open the browser", url, "alert-triangle");
+        }
     }
 
     private void RenderUpdateIndicator()
@@ -4918,90 +4963,18 @@ public sealed class MainWindow : Window
             var browser = new LapCorpusBrowser(_lapHistoryStore, _lapTraces);
             var importer = new SharedLapImporter(_lapHistoryStore, _lapTraces, log: _log);
             var files = new LapSharingService(browser, importer, () => _runtime.Settings.DriverName);
-            _cloudSession ??= new CloudSession(_runtime.DataRoot, _log);
-            _cloudSharing = new CloudLapSharing(_cloudSession, files, importer);
 
             _analysisView = new AnalysisView(
                 new AnalysisController(browser),
                 files,
-                _cloudSharing,
                 SetCompareTarget,
                 ToggleCompareHud,
                 RenderBody,
                 (title, message, confirmLabel, confirm) =>
-                    ShowConfirmDialog(title, message, confirmLabel, confirm, ButtonTone.Primary),
-                ShowCloudSignInDialog);
+                    ShowConfirmDialog(title, message, confirmLabel, confirm, ButtonTone.Primary));
         }
 
         return _analysisView.Build();
-    }
-
-    /// <summary>
-    /// Signing in to a self-hosted Sprint server. The address is a field, not a constant: every
-    /// Sprint server is somebody's own.
-    /// </summary>
-    private void ShowCloudSignInDialog()
-    {
-        if (_cloudSharing is null)
-        {
-            return;
-        }
-
-        var server = new TextBox
-        {
-            PlaceholderText = "https://sprint.example.com",
-            Text = _cloudSharing.ServerUrl,
-            FontFamily = Graphite.FontStack,
-        };
-        var email = new TextBox { PlaceholderText = "you@example.com", FontFamily = Graphite.FontStack };
-        var password = new TextBox
-        {
-            PlaceholderText = "Password",
-            PasswordChar = '•',
-            FontFamily = Graphite.FontStack,
-        };
-
-        var form = new StackPanel { Spacing = 10 };
-        form.Children.Add(Graphite.TextBlock("Server", 11.5, brush: Graphite.Text3Brush));
-        form.Children.Add(server);
-        form.Children.Add(Graphite.TextBlock("Email", 11.5, brush: Graphite.Text3Brush));
-        form.Children.Add(email);
-        form.Children.Add(Graphite.TextBlock("Password", 11.5, brush: Graphite.Text3Brush));
-        form.Children.Add(password);
-
-        ShowFormDialog(
-            "Sign in to Sprint cloud",
-            form,
-            "Sign in",
-            () => CloudSignIn(server.Text ?? "", email.Text ?? "", password.Text ?? "", register: false),
-            "Create account",
-            () => CloudSignIn(server.Text ?? "", email.Text ?? "", password.Text ?? "", register: true));
-    }
-
-    private async void CloudSignIn(string server, string email, string password, bool register)
-    {
-        if (_cloudSharing is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _cloudNotice = await _cloudSharing.SignInAsync(server, email, password, register);
-        }
-        catch (Exception ex)
-        {
-            _log.Warn("Cloud sign-in failed", ex);
-            _cloudNotice = "Sign-in failed. Check the server address.";
-        }
-
-        // A fresh view so it reads the new session state.
-        _analysisView = null;
-        RenderBody();
-        if (_cloudNotice is { Length: > 0 } notice)
-        {
-            ShowToast(GraphiteIntent.Info, "Sprint cloud", notice, "cloud");
-        }
     }
 
     /// <summary>Copies the stored HUD preferences onto the controller (#195).</summary>

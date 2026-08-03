@@ -801,6 +801,9 @@ public class HeadlessShellTests
                     .Single(panel => Equals(panel.Tag, "utility-navigation"));
                 Assert.Collection(
                     utility.Children,
+                    // Accounts live on the web app, so the rail's account row opens a browser
+                    // rather than being an eighth view (driver feedback, 2026-08-03).
+                    child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Sign in")),
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Settings")),
                     child => Assert.True(ButtonMatches(Assert.IsType<Button>(child), "Help")));
 

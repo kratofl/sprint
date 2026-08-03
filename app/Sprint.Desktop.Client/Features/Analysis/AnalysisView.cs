@@ -26,8 +26,6 @@ public sealed class AnalysisView
 {
     private readonly AnalysisController _controller;
     private readonly LapSharingService _sharing;
-    private readonly CloudLapSharing _cloud;
-    private readonly Action _signIn;
     private readonly Func<LiveCompareTarget?, bool> _setCompareTarget;
     private readonly Action _toggleHud;
     private readonly Action _rerender;
@@ -39,17 +37,13 @@ public sealed class AnalysisView
     public AnalysisView(
         AnalysisController controller,
         LapSharingService sharing,
-        CloudLapSharing cloud,
         Func<LiveCompareTarget?, bool> setCompareTarget,
         Action toggleHud,
         Action rerender,
-        Action<string, string, string, Action> confirm,
-        Action signIn)
+        Action<string, string, string, Action> confirm)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _sharing = sharing ?? throw new ArgumentNullException(nameof(sharing));
-        _cloud = cloud ?? throw new ArgumentNullException(nameof(cloud));
-        _signIn = signIn ?? throw new ArgumentNullException(nameof(signIn));
         _setCompareTarget = setCompareTarget ?? throw new ArgumentNullException(nameof(setCompareTarget));
         _toggleHud = toggleHud ?? throw new ArgumentNullException(nameof(toggleHud));
         _rerender = rerender ?? throw new ArgumentNullException(nameof(rerender));
@@ -82,127 +76,170 @@ public sealed class AnalysisView
 
     private Control Sidebar(AnalysisState state)
     {
-        var stack = new StackPanel { Spacing = 12 };
+        var stack = new StackPanel { Spacing = 14 };
+        var filter = state.Filter;
 
-        stack.Children.Add(Graphite.IconSectionLabel("route", "Car and track"));
-        stack.Children.Add(ContextList(state));
-
-        if (state.Context is not null)
+        if (filter.IsEmpty)
         {
-            stack.Children.Add(Graphite.IconSectionLabel("clock", "Laps"));
-            // A list, not a dropdown: the corpus is unbounded, and a driver with real mileage
-            // cannot scan hundreds of laps through a six-row popup.
-            stack.Children.Add(new ScrollViewer
-            {
-                MaxHeight = 420,
-                Content = LapList(state),
-            });
+            stack.Children.Add(Graphite.TextBlock(
+                "Nothing recorded yet.",
+                12,
+                brush: Graphite.Text3Brush,
+                wrapping: TextWrapping.Wrap));
+            return new ScrollViewer { Content = stack };
         }
 
-        stack.Children.Add(Graphite.IconSectionLabel("user", "Sprint cloud"));
-        stack.Children.Add(CloudPanel(state));
+        // Narrowed the way a driver remembers a session: which track, then which class, then
+        // which car, then optionally which day. A flat list of every lap is unusable once
+        // somebody has real mileage - hundreds of rows with nothing to steer by.
+        stack.Children.Add(FilterStep("Track", filter.Tracks, filter.Track, _controller.SelectTrack));
+
+        // A step with one answer is not a question. Offering "Hypercar" as the only class and
+        // asking for a click is asking the driver to confirm something they cannot change.
+        if (filter.ClassIsAChoice)
+        {
+            stack.Children.Add(FilterStep("Class", filter.Classes, filter.CarClass, _controller.SelectClass));
+        }
+
+        if (filter.CarClass is not null && filter.CarModelIsAChoice)
+        {
+            stack.Children.Add(FilterStep("Car", filter.CarModels, filter.CarModel, _controller.SelectCarModel));
+        }
+
+        stack.Children.Add(DayStep(filter));
+
+        stack.Children.Add(Graphite.IconSectionLabel("clock", "Sessions"));
+        stack.Children.Add(new ScrollViewer { MaxHeight = 220, Content = SessionList(state) });
+
+        if (state.Session is not null && state.Laps.Count > 0)
+        {
+            stack.Children.Add(Graphite.IconSectionLabel("flag", "Laps"));
+            stack.Children.Add(new ScrollViewer { MaxHeight = 300, Content = LapList(state) });
+        }
 
         return new ScrollViewer { Content = stack };
     }
 
     /// <summary>
-    /// Sharing by code. Compact on purpose: the page's job is comparing laps, and the cloud is
-    /// how one more lap gets here.
+    /// One narrowing step: a label and its options as chips. Chips rather than a dropdown -
+    /// there are a handful of tracks and cars, and seeing them all at once is faster than
+    /// opening a popup to find out what there is.
     /// </summary>
-    private Control CloudPanel(AnalysisState state)
+    private Control FilterStep(
+        string label,
+        IReadOnlyList<string> options,
+        string? selected,
+        Action<string?> select)
     {
-        var panel = new StackPanel { Spacing = 8 };
+        var group = new StackPanel { Spacing = 6 };
+        group.Children.Add(Graphite.TextBlock(label.ToUpperInvariant(), 9.5, FontWeight.SemiBold, Graphite.Text3Brush));
 
-        if (!_cloud.IsSignedIn)
+        var chips = new WrapPanel();
+        foreach (var option in options)
         {
-            panel.Children.Add(Graphite.TextBlock(
-                "Sign in to share a lap by code, or to pull somebody else's.",
+            var value = option;
+            chips.Children.Add(Chip(
+                value,
+                string.Equals(value, selected, StringComparison.Ordinal),
+                () =>
+                {
+                    select(value);
+                    _rerender();
+                }));
+        }
+
+        group.Children.Add(chips);
+        return group;
+    }
+
+    /// <summary>
+    /// The optional day filter, for "there was a session yesterday around seven". "Any day" is an
+    /// option rather than a separate clear button, so the current state is always on screen.
+    /// </summary>
+    private Control DayStep(LapCorpusFilter filter)
+    {
+        var group = new StackPanel { Spacing = 6 };
+        group.Children.Add(Graphite.TextBlock("DAY", 9.5, FontWeight.SemiBold, Graphite.Text3Brush));
+
+        var chips = new WrapPanel();
+        chips.Children.Add(Chip("Any day", filter.Day is null, () =>
+        {
+            _controller.SelectDay(null);
+            _rerender();
+        }));
+
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        foreach (var day in filter.Days)
+        {
+            var value = day;
+            chips.Children.Add(Chip(
+                LapCorpusFilter.DayLabel(value, today),
+                filter.Day == value,
+                () =>
+                {
+                    _controller.SelectDay(value);
+                    _rerender();
+                }));
+        }
+
+        group.Children.Add(chips);
+        return group;
+    }
+
+    private static Button Chip(string text, bool selected, Action click)
+    {
+        var chip = Graphite.Button(text, selected ? ButtonTone.Primary : ButtonTone.Ghost);
+        chip.FontSize = 11.5;
+        chip.Padding = new Thickness(10, 5);
+        chip.MinWidth = 0;
+        chip.Margin = new Thickness(0, 0, 6, 6);
+        chip.Click += (_, _) => click();
+        return chip;
+    }
+
+    private Control SessionList(AnalysisState state)
+    {
+        var list = new StackPanel { Spacing = 4 };
+        if (state.Filter.Sessions.Count == 0)
+        {
+            list.Children.Add(Graphite.TextBlock(
+                "No sessions match this filter.",
                 11.5,
                 brush: Graphite.Text3Brush,
                 wrapping: TextWrapping.Wrap));
-
-            var signIn = Graphite.Button("Sign in", ButtonTone.Ghost, "user");
-            signIn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            signIn.Click += (_, _) => _signIn();
-            panel.Children.Add(signIn);
-            return panel;
+            return list;
         }
 
-        var identity = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        var who = Graphite.TextBlock(_cloud.Identity, 11.5, brush: Graphite.Text2Brush);
-        Grid.SetColumn(who, 0);
-        identity.Children.Add(who);
-        var signOut = Graphite.Button("Sign out", ButtonTone.Ghost);
-        signOut.FontSize = 11;
-        signOut.Padding = new Thickness(8, 3);
-        signOut.Click += (_, _) =>
+        foreach (var session in state.Filter.Sessions)
         {
-            _cloud.SignOut();
-            _sharingNotice = "Signed out of Sprint cloud.";
-            _rerender();
-        };
-        Grid.SetColumn(signOut, 1);
-        identity.Children.Add(signOut);
-        panel.Children.Add(identity);
+            var selected = state.Session?.Id == session.Id;
+            var text = new StackPanel { Spacing = 1 };
+            text.Children.Add(Graphite.TextBlock(session.Label, 12.5, FontWeight.SemiBold));
+            var detail = state.Filter.CarModel is null
+                ? $"{session.Context.CarModel} · {session.Detail}"
+                : session.Detail;
+            text.Children.Add(Graphite.TextBlock(detail, 11, brush: Graphite.Text3Brush));
+            if (!session.HasChannels)
+            {
+                // Said on the row: opening it and finding nothing to overlay is worse.
+                text.Children.Add(Graphite.TextBlock("No channels", 10.5, brush: Graphite.YellowBrush));
+            }
 
-        if (state.Primary is { HasChannels: true } shareable)
-        {
-            var share = Graphite.Button($"Share lap {shareable.LapNumber}", ButtonTone.Ghost, "upload");
-            share.HorizontalAlignment = HorizontalAlignment.Stretch;
-            // Consent is per lap and says what leaves the machine — the corpus stays local.
-            share.Click += (_, _) => _confirm(
-                "Upload this lap?",
-                $"{shareable.Label} at {shareable.Context.TrackCourse} will be uploaded and given a "
-                + "share code. Anyone holding the code can pull it until you revoke it.\n\n"
-                + "Nothing else from your corpus leaves this machine.",
-                "Upload and get a code",
-                () => RunCloud(() => _cloud.ShareAsync(shareable)));
-            panel.Children.Add(share);
-        }
-
-        var code = new TextBox
-        {
-            PlaceholderText = "Paste a share code",
-            FontFamily = Graphite.FontStack,
-            FontSize = 12,
-        };
-        panel.Children.Add(code);
-
-        var fetch = Graphite.Button("Fetch lap", ButtonTone.Ghost, "download");
-        fetch.HorizontalAlignment = HorizontalAlignment.Stretch;
-        fetch.Click += (_, _) => FetchByCode(code.Text ?? "");
-        panel.Children.Add(fetch);
-
-        return panel;
-    }
-
-    private Control ContextList(AnalysisState state)
-    {
-        if (state.Contexts.Count == 0)
-        {
-            return Graphite.TextBlock(
-                "Nothing recorded yet.",
-                12,
-                brush: Graphite.Text3Brush,
-                wrapping: TextWrapping.Wrap);
-        }
-
-        var list = new StackPanel { Spacing = 4 };
-        foreach (var context in state.Contexts)
-        {
-            var selected = state.Context is not null
-                && context.TrackCourse == state.Context.TrackCourse
-                && context.CarModel == state.Context.CarModel
-                && context.Game == state.Context.Game;
-
-            var button = Graphite.Button($"{context.TrackCourse} · {context.CarModel}", ButtonTone.Ghost);
-            button.HorizontalAlignment = HorizontalAlignment.Stretch;
-            button.HorizontalContentAlignment = HorizontalAlignment.Left;
-            button.Background = selected ? Graphite.Panel3Brush : Brushes.Transparent;
-            button.Foreground = selected ? Graphite.TextBrush : Graphite.Text2Brush;
+            var captured = session;
+            var button = new Button
+            {
+                Content = text,
+                Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
+                BorderBrush = selected ? Graphite.AccentBorderBrush : Graphite.LineBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusSm),
+                Padding = new Thickness(10, 7),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+            };
             button.Click += (_, _) =>
             {
-                _controller.SelectContext(context);
+                _controller.SelectSession(captured);
                 _rerender();
             };
             list.Children.Add(button);
@@ -303,9 +340,9 @@ public sealed class AnalysisView
         var heading = new StackPanel { Spacing = 2 };
         heading.Children.Add(Graphite.TextBlock("Analysis", 18, FontWeight.SemiBold));
         heading.Children.Add(Graphite.TextBlock(
-            state.Context is null
+            state.Session is null
                 ? "Compare any two laps."
-                : $"{state.Context.TrackCourse} · {state.Context.CarModel}",
+                : $"{state.Session.Context.TrackCourse} · {state.Session.Context.CarModel} · {state.Session.Label}",
             12,
             brush: Graphite.Text3Brush));
         Grid.SetColumn(heading, 0);
@@ -467,56 +504,6 @@ public sealed class AnalysisView
             () =>
             {
                 _sharingNotice = _sharing.Accept(lap);
-                _rerender();
-            });
-    }
-
-    /// <summary>Runs a cloud call and shows whatever it has to say. Never throws at the page.</summary>
-    private async void RunCloud(Func<Task<string>> call)
-    {
-        try
-        {
-            _sharingNotice = await call();
-        }
-        catch (Exception ex)
-        {
-            _sharingNotice = $"Sprint cloud call failed: {ex.Message}";
-        }
-
-        _rerender();
-    }
-
-    private async void FetchByCode(string code)
-    {
-        SharedLapOffer offer;
-        try
-        {
-            offer = await _cloud.OfferAsync(code);
-        }
-        catch (Exception ex)
-        {
-            _sharingNotice = $"Could not fetch that lap: {ex.Message}";
-            _rerender();
-            return;
-        }
-
-        if (offer.Lap is null)
-        {
-            _sharingNotice = offer.Message;
-            _rerender();
-            return;
-        }
-
-        var lap = offer.Lap;
-        _confirm(
-            "Add this lap to your corpus?",
-            $"{lap.Attribution} · {lap.Context.TrackCourse} · {lap.Context.CarModel}\n"
-            + $"Lap {lap.LapNumber} · {PlanTargetResolver.FormatLapTime(lap.LapTimeSeconds)}\n\n"
-            + "It will be added as a third-party lap and can be chased in Live Compare.",
-            "Add lap",
-            () =>
-            {
-                _sharingNotice = _cloud.Accept(lap);
                 _rerender();
             });
     }

@@ -189,8 +189,8 @@ public sealed class SharedLapTests
         importer.Import(Lap());
 
         var browser = new Sprint.Desktop.Features.Analysis.LapCorpusBrowser(history, traces);
-        var context = Assert.Single(browser.Contexts());
-        var lap = Assert.Single(browser.Laps(context));
+        var session = Assert.Single(browser.Sessions());
+        var lap = Assert.Single(browser.Laps(session));
 
         Assert.True(lap.HasChannels);
         Assert.Equal(LapTargetTier.FullTrace, lap.Tier);

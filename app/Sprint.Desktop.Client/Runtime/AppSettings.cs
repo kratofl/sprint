@@ -54,6 +54,32 @@ public sealed class AppSettings
     /// <summary>Live Compare HUD preferences (#195).</summary>
     [JsonPropertyName("liveCompare")]
     public LiveCompareSettings LiveCompare { get; set; } = new();
+
+    /// <summary>Where this Sprint's cloud lives (#197).</summary>
+    [JsonPropertyName("cloud")]
+    public CloudSettings Cloud { get; set; } = new();
+}
+
+/// <summary>
+/// Which Sprint server this desktop belongs to.
+/// <para>
+/// Both addresses are settings, not constants: Sprint is self-hosted, so there is no single
+/// sprint.gg to point at. The defaults are the docker-compose ports, which is what a driver
+/// running the stack on their own machine will have.
+/// </para>
+/// </summary>
+public sealed class CloudSettings
+{
+    /// <summary>
+    /// The web app. Accounts live there, so the desktop opens a browser rather than carrying a
+    /// second sign-in form that would have to be kept in step with it.
+    /// </summary>
+    [JsonPropertyName("webAppUrl")]
+    public string WebAppUrl { get; set; } = "http://localhost:3000";
+
+    /// <summary>The GraphQL API, for lap sharing.</summary>
+    [JsonPropertyName("apiUrl")]
+    public string ApiUrl { get; set; } = "http://localhost:8080";
 }
 
 /// <summary>

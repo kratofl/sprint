@@ -8,8 +8,8 @@ namespace Sprint.Desktop.Features.Analysis;
 /// needs told rather than left to infer.
 /// </summary>
 public sealed record AnalysisState(
-    IReadOnlyList<LapHistoryContext> Contexts,
-    LapHistoryContext? Context,
+    LapCorpusFilter Filter,
+    CorpusSession? Session,
     IReadOnlyList<CorpusLap> Laps,
     CorpusLap? Primary,
     CorpusLap? Comparison,
@@ -25,44 +25,93 @@ public sealed class AnalysisController
 {
     private readonly LapCorpusBrowser _browser;
 
-    private LapHistoryContext? _context;
+    private LapCorpusFilter _filter;
+    private CorpusSession? _session;
     private CorpusLap? _primary;
     private CorpusLap? _comparison;
     private LapChannelTrace? _primaryTrace;
     private LapChannelTrace? _comparisonTrace;
 
-    public AnalysisController(LapCorpusBrowser browser) =>
+    public AnalysisController(LapCorpusBrowser browser)
+    {
         _browser = browser ?? throw new ArgumentNullException(nameof(browser));
+        _filter = new LapCorpusFilter(_browser.Sessions());
+    }
+
+    /// <summary>The narrowing cascade: track, class, car, optionally day.</summary>
+    public LapCorpusFilter Filter => _filter;
 
     public IReadOnlyList<LapChartPanelSpec> Panels { get; set; } = LapChartPanels.AnalysisDefaults;
 
     public event EventHandler? Changed;
 
-    /// <summary>Reads the corpus and picks a sensible starting point.</summary>
+    /// <summary>
+    /// Re-reads the corpus and lands on the most recent session, which is the one a driver has
+    /// just finished and most often wants to look at.
+    /// </summary>
     public AnalysisState Load()
     {
-        var contexts = _browser.Contexts();
-        if (_context is null || !contexts.Any(Same))
+        var sessions = _browser.Sessions();
+        var previousTrack = _filter.Track;
+        var previousSessionId = _session?.Id;
+
+        _filter = new LapCorpusFilter(sessions);
+        if (previousTrack is not null && _filter.Tracks.Contains(previousTrack, StringComparer.Ordinal))
         {
-            SelectContext(contexts.FirstOrDefault(), notify: false);
+            _filter.SelectTrack(previousTrack);
         }
 
-        return State(contexts);
+        // Keep the driver where they were if that session still matches the filter; otherwise
+        // the newest one, so opening the page after a session shows that session.
+        _session = _filter.Sessions.FirstOrDefault(candidate => candidate.Id == previousSessionId)
+            ?? _filter.Sessions.FirstOrDefault();
+
+        return State();
     }
 
-    /// <summary>Switches bucket. Lap choices do not survive: they belong to the old track.</summary>
-    public void SelectContext(LapHistoryContext? context, bool notify = true)
+    /// <summary>Narrows to a track. Lap choices do not survive: they belong to the old track.</summary>
+    public void SelectTrack(string? track)
     {
-        _context = context;
-        _primary = null;
-        _comparison = null;
-        _primaryTrace = null;
-        _comparisonTrace = null;
+        _filter.SelectTrack(track);
+        ClearLaps();
+        SnapToNewestSession();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
-        if (notify)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
+    public void SelectClass(string? carClass)
+    {
+        _filter.SelectClass(carClass);
+        SnapToNewestSession();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SelectCarModel(string? carModel)
+    {
+        _filter.SelectCarModel(carModel);
+        SnapToNewestSession();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Sets or clears the optional day filter — "the run I did yesterday evening".</summary>
+    public void SelectDay(DateOnly? day)
+    {
+        _filter.SelectDay(day);
+        SnapToNewestSession();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Opens one session's laps.
+    /// <para>
+    /// Lap choices deliberately survive this. Picking A in one session and B in another is how a
+    /// driver compares tonight's lap against their best ever, and it needs no extra UI — only
+    /// changing track clears them, because laps from two tracks cannot be overlaid.
+    /// </para>
+    /// </summary>
+    public void SelectSession(CorpusSession? session)
+    {
+        _session = session;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -100,20 +149,36 @@ public sealed class AnalysisController
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public AnalysisState State() => State(_browser.Contexts());
-
-    private AnalysisState State(IReadOnlyList<LapHistoryContext> contexts)
+    public AnalysisState State()
     {
-        var laps = _context is null ? [] : _browser.Laps(_context);
+        var laps = _browser.Laps(_session);
 
         return new AnalysisState(
-            contexts,
-            _context,
+            _filter,
+            _session,
             laps,
             _primary,
             _comparison,
             BuildStack(),
-            Notice(contexts, laps));
+            Notice(laps));
+    }
+
+    private void ClearLaps()
+    {
+        _primary = null;
+        _comparison = null;
+        _primaryTrace = null;
+        _comparisonTrace = null;
+    }
+
+    // After any narrowing, land on the newest session that still matches rather than leaving the
+    // page pointed at one the filter has just excluded.
+    private void SnapToNewestSession()
+    {
+        if (_session is null || !_filter.Sessions.Any(candidate => candidate.Id == _session.Id))
+        {
+            _session = _filter.Sessions.FirstOrDefault();
+        }
     }
 
     private ChartStack? BuildStack()
@@ -151,16 +216,21 @@ public sealed class AnalysisController
     /// The one thing the driver most needs told. Never a list: a page that stacks three
     /// advisories teaches people to ignore all of them.
     /// </summary>
-    private string? Notice(IReadOnlyList<LapHistoryContext> contexts, IReadOnlyList<CorpusLap> laps)
+    private string? Notice(IReadOnlyList<CorpusLap> laps)
     {
-        if (contexts.Count == 0)
+        if (_filter.IsEmpty)
         {
             return "No laps recorded yet. Drive a session, or import one, and it will appear here.";
         }
 
+        if (_filter.Sessions.Count == 0)
+        {
+            return "No sessions match this filter.";
+        }
+
         if (laps.Count == 0)
         {
-            return "No valid laps for this car and track yet.";
+            return "That session has no valid laps.";
         }
 
         if (_primary is null && _comparison is null)
@@ -197,12 +267,6 @@ public sealed class AnalysisController
 
         return null;
     }
-
-    private bool Same(LapHistoryContext context) =>
-        _context is not null
-        && context.Game == _context.Game
-        && context.TrackCourse == _context.TrackCourse
-        && context.CarModel == _context.CarModel;
 
     private static bool Same(CorpusLap? left, CorpusLap? right) =>
         left is not null
