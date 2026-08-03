@@ -1118,6 +1118,11 @@ public sealed class MainWindow : Window
         _diagnosticsWindow = null;
 #endif
         _log.Info("Main window closed; stopping input, screen, and telemetry services.");
+        // Before anything else: the overlay is topmost and borderless, so an orphaned one is a
+        // window the driver cannot get rid of without Task Manager. It must not outlive the app
+        // that owns it under any circumstances.
+        _compareHud?.Close();
+        _compareHud = null;
         // Stamp the open history session as finished so it is not left looking live.
         _lapHistory.Close();
         _hardwareInput.InputPressed -= OnHardwareInputPressed;
@@ -5003,6 +5008,12 @@ public sealed class MainWindow : Window
     private void ApplyLiveCompareSettings()
     {
         var settings = _runtime.Settings.LiveCompare;
+        if (settings.Migrate())
+        {
+            _log.Info("Reset Live Compare overlay size and panels to the current defaults.");
+            _runtime.SaveSettings();
+        }
+
         _liveCompare.MetersBehind = settings.MetersBehind;
         _liveCompare.MetersAhead = settings.MetersAhead;
         _liveCompare.Panels = LapChartPanels.Resolve(settings.PanelIds, LapChartPanels.HudDefaults);

@@ -40,6 +40,13 @@ public sealed class ChartStackPainter : IDisposable
     // Within this much of a plot edge a tick label is aligned inward instead of centred.
     private const float EdgeTickInset = 24f;
 
+    private const float LegendKeyLength = 12f;
+    private const float LegendEntryGap = 14f;
+
+    // Clear water between a chart's title and its legend, so a legend that only just fits does
+    // not read as one long string.
+    private const float LegendTitleGap = 12f;
+
     private readonly SKBitmap _bitmap;
     private readonly SKCanvas _canvas;
     private readonly SKPaint _paint = new() { IsAntialias = true };
@@ -151,6 +158,9 @@ public sealed class ChartStackPainter : IDisposable
 
         var title = panel.Unit is { Length: > 0 } unit ? $"{panel.Title} ({unit})" : panel.Title;
         DrawText(title, header.Left, header.MidY, TitleSize, DashFonts.LabelBold, ChartPalette.TextSecondary);
+        _font.Typeface = DashFonts.LabelBold;
+        _font.Size = TitleSize;
+        var titleWidth = _font.MeasureText(title);
 
         if (panel.State != ChartPanelState.Ready)
         {
@@ -169,7 +179,7 @@ public sealed class ChartStackPainter : IDisposable
 
         if (panel.Series.Count > 1)
         {
-            DrawLegend(panel, header);
+            DrawLegend(panel, header, titleWidth);
         }
 
         foreach (var series in panel.Series)
@@ -210,27 +220,87 @@ public sealed class ChartStackPainter : IDisposable
         DrawText(scale.Format(scale.Min), plot.Left - 8, plot.Bottom - 4, TickSize, DashFonts.Label, ChartPalette.TextMuted, SKTextAlign.Right);
     }
 
-    private void DrawLegend(ChartPanel panel, SKRect header)
+    private void DrawLegend(ChartPanel panel, SKRect header, float titleWidth)
     {
         // Identity never rests on colour alone: with two or more series the legend is always
         // there, keyed with a short stroke of the series colour beside text-token text.
-        var x = header.Right;
-        for (var i = panel.Series.Count - 1; i >= 0; i--)
+        //
+        // What it says depends on the room. A four-series panel in a 440px overlay cannot list
+        // "Brake · Target" four times without running over its own title, so at that width it
+        // keys by whose lap instead — the channels in a panel are already told apart by fill,
+        // which is the mechanism the design chose precisely so colour stays free to mean this.
+        var available = header.Width - titleWidth - LegendTitleGap;
+        var entries = Entries([.. panel.Series.Select(series => (series.Name, series.Role))]);
+        if (LegendWidth(entries) > available)
         {
-            var series = panel.Series[i];
-            _font.Typeface = DashFonts.Label;
-            _font.Size = LegendSize;
-            var width = _font.MeasureText(series.Name);
-            DrawText(series.Name, x, header.MidY, LegendSize, DashFonts.Label, ChartPalette.TextSecondary, SKTextAlign.Right);
-            var keyRight = x - width - 6;
+            entries = Entries([.. panel.Series.Select(series => (Owner(series.Name), series.Role))]);
+        }
+
+        // Still no room: the title is the reading, a legend is the aid. Dropping the aid beats
+        // drawing two overlapping strings, neither of which can then be read.
+        if (LegendWidth(entries) > available)
+        {
+            return;
+        }
+
+        var x = header.Right;
+        for (var i = entries.Count - 1; i >= 0; i--)
+        {
+            var (name, role) = entries[i];
+            DrawText(name, x, header.MidY, LegendSize, DashFonts.Label, ChartPalette.TextSecondary, SKTextAlign.Right);
+            var keyRight = x - TextWidth(name) - 6;
             _canvas.DrawLine(
-                keyRight - 12,
+                keyRight - LegendKeyLength,
                 header.MidY,
                 keyRight,
                 header.MidY,
-                Paint(ChartPalette.Series(series.Role), SKPaintStyle.Stroke, SeriesStroke));
-            x = keyRight - 12 - 14;
+                Paint(ChartPalette.Series(role), SKPaintStyle.Stroke, SeriesStroke));
+            x = keyRight - LegendKeyLength - LegendEntryGap;
         }
+    }
+
+    /// <summary>Legend entries in series order, with consecutive duplicates collapsed.</summary>
+    private static List<(string Name, ChartSeriesRole Role)> Entries(
+        IReadOnlyList<(string Name, ChartSeriesRole Role)> series)
+    {
+        var entries = new List<(string Name, ChartSeriesRole Role)>();
+        foreach (var entry in series)
+        {
+            if (!entries.Contains(entry))
+            {
+                entries.Add(entry);
+            }
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// Whose lap a series belongs to: the part of its name after the last separator, or the
+    /// whole name when it carries none. <c>LapTraceCharts</c> writes "Brake · Target".
+    /// </summary>
+    private static string Owner(string name)
+    {
+        var separator = name.LastIndexOf(" · ", StringComparison.Ordinal);
+        return separator < 0 ? name : name[(separator + 3)..];
+    }
+
+    private float LegendWidth(IReadOnlyList<(string Name, ChartSeriesRole Role)> entries)
+    {
+        var total = 0f;
+        foreach (var (name, _) in entries)
+        {
+            total += TextWidth(name) + 6 + LegendKeyLength + LegendEntryGap;
+        }
+
+        return total;
+    }
+
+    private float TextWidth(string text)
+    {
+        _font.Typeface = DashFonts.Label;
+        _font.Size = LegendSize;
+        return _font.MeasureText(text);
     }
 
     private void DrawSeries(ChartSeries series, ChartStackLayout layout, SKRect plot, ChartScale scale)

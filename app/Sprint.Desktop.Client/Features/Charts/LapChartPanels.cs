@@ -78,8 +78,16 @@ public static class LapChartPanels
 
     public static IReadOnlyList<LapChartPanelSpec> All { get; } = [Speed, Pedals, Steering, Gear];
 
-    /// <summary>What the HUD shows until the driver says otherwise (spec §2.3).</summary>
-    public static IReadOnlyList<LapChartPanelSpec> HudDefaults { get; } = [Speed, Pedals];
+    /// <summary>
+    /// What the HUD shows until the driver says otherwise: pedals, speed, gear, in that order.
+    /// <para>
+    /// Pedals first because that is the reading a driver is shaping against a reference — where
+    /// they got off the throttle and how they released the brake. Speed is the consequence of
+    /// it, and gear is the context. Spec §5 left gear deliberately open as a default; driver
+    /// feedback on 2026-08-03 settled it as one of three.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<LapChartPanelSpec> HudDefaults { get; } = [Pedals, Speed, Gear];
 
     /// <summary>What the Analysis view opens with. Wider: there is room, and no corner to take.</summary>
     public static IReadOnlyList<LapChartPanelSpec> AnalysisDefaults { get; } = [Speed, Pedals, Steering];

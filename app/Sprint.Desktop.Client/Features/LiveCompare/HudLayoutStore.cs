@@ -14,9 +14,16 @@ public readonly record struct HudScreen(int X, int Y, int Width, int Height);
 /// </summary>
 public static class HudLayoutStore
 {
-    /// <summary>Fraction of the screen the HUD covers when it has never been placed.</summary>
-    private const double DefaultWidthFraction = 0.34;
-    private const double DefaultHeightFraction = 0.30;
+    /// <summary>
+    /// The first size, in pixels rather than a fraction of the screen.
+    /// <para>
+    /// A fraction was wrong: 34% of a 2560-wide monitor is 870 px of overlay sitting on top of
+    /// the game, which is not a HUD, it is a second window. This is sized for what it holds —
+    /// three small stacked charts and a delta — and the driver resizes from there.
+    /// </para>
+    /// </summary>
+    private const int DefaultWidth = 460;
+    private const int DefaultHeight = 340;
 
     /// <summary>Margin from the screen edge for the first placement.</summary>
     private const int DefaultMargin = 48;
@@ -100,8 +107,9 @@ public static class HudLayoutStore
         Key = KeyFor(screen),
         X = screen.X + DefaultMargin,
         Y = screen.Y + DefaultMargin,
-        Width = Math.Max(MinWidth, (int)(screen.Width * DefaultWidthFraction)),
-        Height = Math.Max(MinHeight, (int)(screen.Height * DefaultHeightFraction)),
+        // Never larger than the screen it is placed on, for a very small display.
+        Width = Math.Clamp(DefaultWidth, MinWidth, Math.Max(MinWidth, screen.Width - (2 * DefaultMargin))),
+        Height = Math.Clamp(DefaultHeight, MinHeight, Math.Max(MinHeight, screen.Height - (2 * DefaultMargin))),
     };
 
     private static bool Overlaps(HudWindowLayout layout, HudScreen screen) =>

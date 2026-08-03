@@ -167,6 +167,21 @@ public sealed class HudWindowLayout
 /// </summary>
 public sealed class LiveCompareSettings
 {
+    /// <summary>
+    /// The current shape of these preferences. Bumped when a stored default becomes wrong
+    /// rather than merely different, so the next start discards it.
+    /// <para>
+    /// 2: the first build sized the overlay as a fraction of the screen (a third of a 2560-wide
+    /// monitor) and shipped speed+pedals. Both were wrong in use, and a driver who had already
+    /// opened the HUD once had the bad size and panel set persisted.
+    /// </para>
+    /// </summary>
+    public const int CurrentVersion = 2;
+
+    /// <summary>What wrote these preferences. 0 for anything written before versioning.</summary>
+    [JsonPropertyName("version")]
+    public int Version { get; set; }
+
     /// <summary>Metres of already-driven track kept behind the car.</summary>
     [JsonPropertyName("metersBehind")]
     public double MetersBehind { get; set; } = 200;
@@ -177,7 +192,7 @@ public sealed class LiveCompareSettings
 
     /// <summary>Panel ids from the chart catalogue, in display order.</summary>
     [JsonPropertyName("panelIds")]
-    public List<string> PanelIds { get; set; } = ["speed", "pedals"];
+    public List<string> PanelIds { get; set; } = ["pedals", "speed", "gear"];
 
     /// <summary>
     /// Whether the HUD is click-through. Persisted because a driver who locked it wants it
@@ -189,6 +204,24 @@ public sealed class LiveCompareSettings
 
     [JsonPropertyName("layouts")]
     public List<HudWindowLayout> Layouts { get; set; } = [];
+
+    /// <summary>
+    /// Drops preferences an older build persisted that are now wrong. Only the ones a stale
+    /// value actively breaks: the driver's window position is theirs, but a size derived from a
+    /// bad formula and a panel set they never chose are not.
+    /// </summary>
+    public bool Migrate()
+    {
+        if (Version >= CurrentVersion)
+        {
+            return false;
+        }
+
+        Version = CurrentVersion;
+        PanelIds = ["pedals", "speed", "gear"];
+        Layouts.Clear();
+        return true;
+    }
 }
 
 public sealed class LastSeenContext

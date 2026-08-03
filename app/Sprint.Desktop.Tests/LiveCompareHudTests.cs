@@ -145,13 +145,52 @@ public sealed class LiveCompareHudTests
     }
 
     [Fact]
-    public void TheHudDefaultsMatchTheProposedWindowAndPanels()
+    public void TheHudDefaultsMatchTheWindowAndPanelsTheDriverAskedFor()
     {
         var settings = new LiveCompareSettings();
 
         Assert.Equal(200, settings.MetersBehind);
         Assert.Equal(600, settings.MetersAhead);
-        Assert.Equal(["speed", "pedals"], settings.PanelIds);
+        // Pedals, speed, gear — settled by driver feedback on 2026-08-03.
+        Assert.Equal(["pedals", "speed", "gear"], settings.PanelIds);
         Assert.False(settings.Locked);
+    }
+
+    [Fact]
+    public void TheFirstPlacementIsOverlaySizedNotAThirdOfTheScreen()
+    {
+        // The first build sized this as a fraction, which on a 2560-wide monitor put an 870 px
+        // window on top of the game. That is a second window, not a HUD.
+        var layout = HudLayoutStore.Default(Primary);
+
+        Assert.InRange(layout.Width, HudLayoutStore.MinWidth, 600);
+        Assert.InRange(layout.Height, HudLayoutStore.MinHeight, 460);
+    }
+
+    [Fact]
+    public void ASmallScreenStillGetsAnOverlayThatFitsOnIt()
+    {
+        var layout = HudLayoutStore.Default(new HudScreen(0, 0, 1024, 600));
+
+        Assert.True(layout.Width <= 1024);
+        Assert.True(layout.Height <= 600);
+    }
+
+    [Fact]
+    public void PreferencesFromTheFirstBuildAreResetRatherThanKept()
+    {
+        // A driver who opened the overlay once had the bad size and panel set persisted, so the
+        // fix has to reach their settings file, not only new installs.
+        var settings = new LiveCompareSettings { Version = 0, PanelIds = ["speed", "pedals"] };
+        HudLayoutStore.Save(settings, Primary, 100, 100, 870, 432);
+
+        Assert.True(settings.Migrate());
+
+        Assert.Equal(["pedals", "speed", "gear"], settings.PanelIds);
+        Assert.Empty(settings.Layouts);
+        // Idempotent: the next start must not wipe a placement the driver has since chosen.
+        HudLayoutStore.Save(settings, Primary, 40, 40, 460, 340);
+        Assert.False(settings.Migrate());
+        Assert.Single(settings.Layouts);
     }
 }

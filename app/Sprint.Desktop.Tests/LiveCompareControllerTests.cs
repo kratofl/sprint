@@ -46,7 +46,7 @@ public sealed class LiveCompareControllerTests
 
         Assert.NotNull(frame);
         Assert.False(frame!.HasLiveLine);
-        var speed = frame.Stack.Charts[0];
+        var speed = Speed(frame.Stack);
         Assert.Single(speed.Series);
         Assert.Equal(ChartSeriesRole.Comparison, speed.Series[0].Role);
     }
@@ -86,7 +86,7 @@ public sealed class LiveCompareControllerTests
         var frame = controller.Snapshot()!;
 
         Assert.True(frame.HasLiveLine);
-        var speed = frame.Stack.Charts[0];
+        var speed = Speed(frame.Stack);
         var you = speed.Series.Single(series => series.Role == ChartSeriesRole.Current);
         var target = speed.Series.Single(series => series.Role == ChartSeriesRole.Comparison);
         Assert.True(you.Samples[^1].X <= 2500 + 1);
@@ -113,7 +113,7 @@ public sealed class LiveCompareControllerTests
 
         // Across the line: position wraps and the lap number increments.
         controller.Ingest(Frame(position: 0.01, lap: 2));
-        var you = controller.Snapshot()!.Stack.Charts[0].Series
+        var you = Speed(controller.Snapshot()!.Stack).Series
             .SingleOrDefault(series => series.Role == ChartSeriesRole.Current);
 
         // One sample is not a line; the previous lap's shape must not survive the wrap.
@@ -171,9 +171,13 @@ public sealed class LiveCompareControllerTests
         controller.Ingest(Frame(position: 0.98));
         var frame = controller.Snapshot()!;
 
-        var target = frame.Stack.Charts[0].Series.Single(s => s.Role == ChartSeriesRole.Comparison);
+        var target = Speed(frame.Stack).Series.Single(s => s.Role == ChartSeriesRole.Comparison);
         Assert.Contains(target.Samples, sample => sample.X > TrackLength);
     }
+
+    /// <summary>The speed panel by title, so a change of default panel order cannot break these.</summary>
+    private static ChartPanel Speed(ChartStack stack) =>
+        stack.Charts.Single(chart => chart.Title == "Speed");
 
     private static LiveCompareController Loaded()
     {

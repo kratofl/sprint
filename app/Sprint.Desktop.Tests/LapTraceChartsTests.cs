@@ -34,8 +34,10 @@ public sealed class LapTraceChartsTests
             ChartDomain.TrackPosition(),
             [Source("You", ChartSeriesRole.Current), Source("Target", ChartSeriesRole.Comparison)]);
 
-        var speed = stack.Charts[0];
-        Assert.Equal("Speed", speed.Title);
+        // Pedals lead the HUD stack: that is the reading a driver shapes against a reference.
+        Assert.Equal(["Throttle & brake", "Speed", "Gear"], stack.Charts.Select(chart => chart.Title));
+
+        var speed = stack.Charts.Single(chart => chart.Title == "Speed");
         Assert.Equal(2, speed.Series.Count);
         Assert.Equal(ChartSeriesRole.Current, speed.Series[0].Role);
         Assert.Equal(ChartSeriesRole.Comparison, speed.Series[1].Role);

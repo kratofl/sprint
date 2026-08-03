@@ -2,10 +2,12 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Runtime;
 
@@ -47,6 +49,8 @@ public sealed class CompareHudWindow : Window
     private readonly Border _noticeHost;
     private readonly ContentControl _surfaceHost;
 
+    private Button? _close;
+
     private ChartStackView? _surface;
     private DateTimeOffset _lastFullscreenCheck = DateTimeOffset.MinValue;
     private bool _locked;
@@ -66,7 +70,12 @@ public sealed class CompareHudWindow : Window
         TransparencyBackgroundFallback = Brushes.Transparent;
         TransparencyLevelHint = [WindowTransparencyLevel.Transparent, WindowTransparencyLevel.None];
         CanResize = true;
-        ShowInTaskbar = false;
+        // Deliberately IN the taskbar, unlike CaptureRegionWindow. A borderless, topmost,
+        // taskbar-less window with no title bar has no way out if anything goes wrong with the
+        // app that owns it — which is exactly what happened the first time this shipped. While
+        // driving the taskbar is not on screen anyway, so the entry costs nothing and is the
+        // last resort that has to exist.
+        ShowInTaskbar = true;
         Topmost = true;
         WindowStartupLocation = WindowStartupLocation.Manual;
         MinWidth = HudLayoutStore.MinWidth;
@@ -104,6 +113,17 @@ public sealed class CompareHudWindow : Window
         Closed += (_, _) => _timer.Stop();
         PositionChanged += (_, _) => RememberLayout();
         Resized += (_, _) => RememberLayout();
+
+        // Escape closes it. A borderless overlay has no close button of the window manager's,
+        // so the keyboard is the one affordance every desktop user already expects to work.
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                Close();
+                e.Handled = true;
+            }
+        };
     }
 
     /// <summary>Whether the HUD is click-through and unfocusable.</summary>
@@ -141,6 +161,11 @@ public sealed class CompareHudWindow : Window
             root.BorderBrush = locked ? Graphite.LineBrush : Graphite.AccentBorderBrush;
             root.BorderThickness = new Thickness(locked ? 1 : 2);
         }
+
+        if (_close is not null)
+        {
+            _close.IsVisible = !locked;
+        }
     }
 
     private Control BuildContent()
@@ -157,11 +182,25 @@ public sealed class CompareHudWindow : Window
         Grid.SetColumn(name, 0);
         header.Children.Add(name);
 
-        var delta = new StackPanel { Spacing = 1, HorizontalAlignment = HorizontalAlignment.Right };
+        var right = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var delta = new StackPanel { Spacing = 1 };
         delta.Children.Add(Graphite.TextBlock("DELTA", 9, FontWeight.SemiBold, Graphite.Text3Brush));
         delta.Children.Add(_delta);
-        Grid.SetColumn(delta, 1);
-        header.Children.Add(delta);
+        right.Children.Add(delta);
+
+        // Only while unlocked. Locked, the window is click-through and this could not be hit
+        // anyway, so showing it would be a control that lies about being usable.
+        _close = Graphite.IconButton("x", "Close the overlay (Esc)", Close);
+        right.Children.Add(_close);
+
+        Grid.SetColumn(right, 1);
+        header.Children.Add(right);
 
         var body = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(header, Dock.Top);
@@ -170,7 +209,7 @@ public sealed class CompareHudWindow : Window
         body.Children.Add(_noticeHost);
         body.Children.Add(_surfaceHost);
 
-        return new Border
+        var root = new Border
         {
             // The panel colour at partial alpha: the game reads through, but every mark still
             // has a stable ground. Full transparency loses the traces over a bright kerb.
@@ -181,6 +220,21 @@ public sealed class CompareHudWindow : Window
             Padding = new Thickness(12, 10),
             Child = body,
         };
+
+        // The whole surface is the drag handle. A borderless window has no title bar to grab,
+        // and reserving a strip for one would spend the overlay's scarcest resource — height —
+        // on chrome. Dragging from anywhere is also what a driver reaching for it expects.
+        root.PointerPressed += (_, e) =>
+        {
+            if (_locked || e.Source is Button || e.Source is Visual visual && visual.FindAncestorOfType<Button>() is not null)
+            {
+                return;
+            }
+
+            BeginMoveDrag(e);
+        };
+
+        return root;
     }
 
     private void Tick()
