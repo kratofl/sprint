@@ -274,8 +274,7 @@ internal static class AgentUiReviewHarness
                         "Hypercar",
                         "LMP2",
                         "LMGT3",
-                        "GTE",
-                        "Not available at this track"));
+                        "GTE"));
                     window.Width = 1120;
                     window.Height = 720;
                     frames.Add(Capture(
@@ -366,7 +365,8 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "analysis-session-step",
                         "Choose a session",
-                        "Any day"));
+                        "From",
+                        "To"));
                     window.Width = 1120;
                     window.Height = 720;
                     frames.Add(Capture(
@@ -374,10 +374,44 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "analysis-session-step-1120x720",
                         "Choose a session",
-                        "Any day",
+                        "From",
+                        "To",
                         "Open session"));
                     window.Width = 1440;
                     window.Height = 900;
+
+                    var fromDate = window.GetVisualDescendants()
+                        .OfType<DatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-from",
+                            StringComparison.Ordinal));
+                    fromDate.Focus();
+                    fromDate.SelectedDate = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+
+                    var restoredFromDate = window.GetVisualDescendants()
+                        .OfType<DatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-from",
+                            StringComparison.Ordinal));
+                    Assert.Same(fromDate, restoredFromDate);
+                    var toDate = window.GetVisualDescendants()
+                        .OfType<DatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-to",
+                            StringComparison.Ordinal));
+                    toDate.SelectedDate = new DateTimeOffset(2001, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    fromDate.SelectedDate = new DateTimeOffset(2002, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    Assert.Equal(fromDate.SelectedDate, toDate.SelectedDate);
+                    toDate.SelectedDate = new DateTimeOffset(1999, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    Assert.Equal(fromDate.SelectedDate, toDate.SelectedDate);
+                    fromDate.SelectedDate = null;
+                    toDate.SelectedDate = null;
 
                     // Selecting a run is distinct from opening it, so the final action remains
                     // explicit and the user can still change the date filter first.

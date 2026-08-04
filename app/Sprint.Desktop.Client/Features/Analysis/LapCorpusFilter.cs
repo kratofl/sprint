@@ -76,8 +76,14 @@ public sealed class LapCorpusFilter
 
     public string? CarModel { get; private set; }
 
-    /// <summary>The optional day filter. Null means every day.</summary>
-    public DateOnly? Day { get; private set; }
+    /// <summary>The optional inclusive start of the session date range.</summary>
+    public DateOnly? DateFrom { get; private set; }
+
+    /// <summary>The optional inclusive end of the session date range.</summary>
+    public DateOnly? DateTo { get; private set; }
+
+    /// <summary>Compatibility view for callers that selected one exact day.</summary>
+    public DateOnly? Day => DateFrom == DateTo ? DateFrom : null;
 
     /// <summary>Games in the corpus, most recently driven first.</summary>
     public IReadOnlyList<string> Games =>
@@ -144,7 +150,7 @@ public sealed class LapCorpusFilter
         Track = null;
         CarClass = null;
         CarModel = null;
-        Day = null;
+        ClearDateRange();
 
         var tracks = Tracks;
         if (tracks.Count == 1)
@@ -160,7 +166,7 @@ public sealed class LapCorpusFilter
         // Everything downstream belonged to the old track.
         CarClass = null;
         CarModel = null;
-        Day = null;
+        ClearDateRange();
         CascadeClass();
     }
 
@@ -168,18 +174,50 @@ public sealed class LapCorpusFilter
     {
         CarClass = carClass is null ? null : GameCarClassCatalog.CanonicalId(Game, carClass);
         CarModel = null;
-        Day = null;
+        ClearDateRange();
         CascadeCarModel();
     }
 
     public void SelectCarModel(string? carModel)
     {
         CarModel = carModel;
-        Day = null;
+        ClearDateRange();
     }
 
-    /// <summary>Sets or clears the optional day filter.</summary>
-    public void SelectDay(DateOnly? day) => Day = day;
+    /// <summary>Sets or clears one exact day while preserving the existing controller API.</summary>
+    public void SelectDay(DateOnly? day) => SelectDateRange(day, day);
+
+    /// <summary>Sets an inclusive, optionally open-ended date range.</summary>
+    public void SelectDateRange(DateOnly? from, DateOnly? to)
+    {
+        if (from is not null && to is not null && from > to)
+        {
+            throw new ArgumentException("The start date must not be later than the end date.", nameof(from));
+        }
+
+        DateFrom = from;
+        DateTo = to;
+    }
+
+    /// <summary>Changes the start and moves an older end forward to keep the range valid.</summary>
+    public void SelectDateFrom(DateOnly? from)
+    {
+        DateFrom = from;
+        if (from is not null && DateTo is not null && DateTo < from)
+        {
+            DateTo = from;
+        }
+    }
+
+    /// <summary>Changes the end and moves a newer start back to keep the range valid.</summary>
+    public void SelectDateTo(DateOnly? to)
+    {
+        DateTo = to;
+        if (to is not null && DateFrom is not null && DateFrom > to)
+        {
+            DateFrom = to;
+        }
+    }
 
     /// <summary>The class of a session, with the unknown case named rather than blank.</summary>
     public static string ClassOf(CorpusSession session)
@@ -257,11 +295,22 @@ public sealed class LapCorpusFilter
                 string.Equals(session.Context.CarModel, CarModel, StringComparison.Ordinal));
         }
 
-        if (day && Day is { } selected)
+        if (day && DateFrom is { } from)
         {
-            query = query.Where(session => session.Day == selected);
+            query = query.Where(session => session.Day >= from);
+        }
+
+        if (day && DateTo is { } to)
+        {
+            query = query.Where(session => session.Day <= to);
         }
 
         return query;
+    }
+
+    private void ClearDateRange()
+    {
+        DateFrom = null;
+        DateTo = null;
     }
 }

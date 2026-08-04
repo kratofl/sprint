@@ -73,6 +73,7 @@ public sealed class AnalysisView
     private bool _sessionPickerOpen;
     private LapCorpusFilter? _sessionFilter;
     private CorpusSession? _pendingSession;
+    private Button? _sessionOpenButton;
     private SessionStep _sessionStep;
     private string _trackSearch = string.Empty;
     private readonly Dictionary<SessionStep, Vector> _wizardScrollOffsets = [];
@@ -128,6 +129,7 @@ public sealed class AnalysisView
         _sessionPickerOpen = false;
         _sessionFilter = null;
         _pendingSession = null;
+        _sessionOpenButton = null;
         _rerender();
     }
 
@@ -325,8 +327,14 @@ public sealed class AnalysisView
 
     private Control TrackStep(LapCorpusFilter filter)
     {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(StepHeading("Choose a track", filter.Game ?? string.Empty));
+        var layout = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowSpacing = 12,
+        };
+        var heading = StepHeading("Choose a track", filter.Game ?? string.Empty);
+        Grid.SetRow(heading, 0);
+        layout.Children.Add(heading);
         var search = new TextBox
         {
             PlaceholderText = "Type a track name",
@@ -338,10 +346,13 @@ public sealed class AnalysisView
             BorderBrush = Graphite.Line2Brush,
             Padding = new Thickness(10, 7),
         };
-        stack.Children.Add(Graphite.FormField("Search tracks", search));
+        var searchField = Graphite.FormField("Search tracks", search);
+        Grid.SetRow(searchField, 1);
+        layout.Children.Add(searchField);
 
         var tiles = new UniformGrid { Columns = 4 };
-        var scroller = WizardScroller(SessionStep.Track, tiles, 300, "analysis-track-scroll");
+        var scroller = WizardScroller(SessionStep.Track, tiles, tag: "analysis-track-scroll");
+        Grid.SetRow(scroller, 2);
         void RefreshTiles()
         {
             tiles.Children.Clear();
@@ -363,7 +374,7 @@ public sealed class AnalysisView
                         _pendingSession = null;
                         _rerender();
                     },
-                    artworkHeight: 140));
+                    artworkHeight: 184));
             }
 
             if (tiles.Children.Count == 0)
@@ -380,8 +391,8 @@ public sealed class AnalysisView
             RefreshTiles();
         };
         RefreshTiles();
-        stack.Children.Add(scroller);
-        return stack;
+        layout.Children.Add(scroller);
+        return layout;
     }
 
     private Control ChoiceStep(
@@ -428,21 +439,16 @@ public sealed class AnalysisView
         {
             var isAvailable = available.Contains(option.Id);
             var selected = string.Equals(filter.CarClass, option.Id, StringComparison.Ordinal);
-            var copy = new StackPanel
+            var copy = new Grid
             {
-                Margin = new Thickness(16, 12),
-                Spacing = 4,
+                Margin = new Thickness(16, 8),
                 VerticalAlignment = VerticalAlignment.Center,
             };
             copy.Children.Add(Graphite.TextBlock(
                 option.Name,
-                22,
+                24,
                 FontWeight.Bold,
                 isAvailable ? Graphite.TextBrush : Graphite.Text2Brush));
-            copy.Children.Add(Graphite.TextBlock(
-                isAvailable ? "Available at this track" : "Not available at this track",
-                11,
-                brush: isAvailable ? Graphite.TextBrush : Graphite.Text2Brush));
 
             var content = new Grid();
             content.Children.Add(copy);
@@ -458,7 +464,7 @@ public sealed class AnalysisView
             {
                 Tag = isAvailable ? "analysis-class-available" : "analysis-class-unavailable",
                 Content = content,
-                Height = 144,
+                Height = 88,
                 Margin = new Thickness(0, 0, 8, 8),
                 Padding = new Thickness(0),
                 IsEnabled = isAvailable,
@@ -477,6 +483,11 @@ public sealed class AnalysisView
             AutomationProperties.SetHelpText(
                 button,
                 isAvailable ? $"{option.Name}, available at {filter.Track}." : $"{option.Name}, not available at {filter.Track}.");
+            if (!isAvailable)
+            {
+                ToolTip.SetTip(button, "Not available at this track");
+                ToolTip.SetShowOnDisabled(button, true);
+            }
             button.Click += (_, _) =>
             {
                 filter.SelectClass(captured);
@@ -486,7 +497,7 @@ public sealed class AnalysisView
             choices.Children.Add(button);
         }
 
-        stack.Children.Add(WizardScroller(SessionStep.CarClass, choices, 336));
+        stack.Children.Add(WizardScroller(SessionStep.CarClass, choices, 240));
         return stack;
     }
 
@@ -528,18 +539,25 @@ public sealed class AnalysisView
         return stack;
     }
 
-    private ScrollViewer WizardScroller(SessionStep step, Control content, double maxHeight, string? tag = null)
+    private ScrollViewer WizardScroller(
+        SessionStep step,
+        Control content,
+        double? maxHeight = null,
+        string? tag = null)
     {
         var savedOffset = _wizardScrollOffsets.GetValueOrDefault(step);
         var restoring = savedOffset != default;
         var scroller = new ScrollViewer
         {
             Tag = tag,
-            MaxHeight = maxHeight,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = content,
         };
+        if (maxHeight is { } constrainedHeight)
+        {
+            scroller.MaxHeight = constrainedHeight;
+        }
         scroller.ScrollChanged += (_, _) =>
         {
             if (!restoring)
@@ -760,13 +778,22 @@ public sealed class AnalysisView
     {
         var stack = new StackPanel { Spacing = 10 };
         stack.Children.Add(StepHeading("Choose a session", $"{filter.Track} · {filter.CarModel}"));
-        stack.Children.Add(DayStep(filter));
-        stack.Children.Add(new ScrollViewer
+        var sessions = new ScrollViewer
         {
             MaxHeight = 190,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Content = SessionList(filter),
-        });
+        };
+        stack.Children.Add(DayStep(filter, () =>
+        {
+            _pendingSession = null;
+            sessions.Content = SessionList(filter);
+            if (_sessionOpenButton is not null)
+            {
+                _sessionOpenButton.IsEnabled = false;
+            }
+        }));
+        stack.Children.Add(sessions);
         return stack;
     }
 
@@ -796,6 +823,7 @@ public sealed class AnalysisView
         next.Tag = isLast ? "analysis-session-open" : "analysis-session-next";
         next.Margin = new Thickness(8, 0, 0, 0);
         next.IsEnabled = isLast ? _pendingSession is not null : StepComplete(_sessionStep, filter);
+        _sessionOpenButton = isLast ? next : null;
         next.Click += (_, _) =>
         {
             if (isLast)
@@ -833,52 +861,66 @@ public sealed class AnalysisView
                 .Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 
-    /// <summary>
-    /// The optional day filter, for "there was a session yesterday around seven". "Any day" is an
-    /// option rather than a separate clear button, so the current state is always on screen.
-    /// </summary>
-    private Control DayStep(LapCorpusFilter filter)
+    /// <summary>An inclusive, optionally open-ended session date range.</summary>
+    private Control DayStep(LapCorpusFilter filter, Action rangeChanged)
     {
-        var group = new StackPanel { Spacing = 6 };
-        group.Children.Add(Graphite.TextBlock("DAY", 9.5, FontWeight.SemiBold, Graphite.Text3Brush));
-
-        var chips = new WrapPanel();
-        chips.Children.Add(Chip("Any day", filter.Day is null, () =>
+        var range = new Grid
         {
-            filter.SelectDay(null);
-            _pendingSession = null;
-            _rerender();
-        }));
-
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        foreach (var day in filter.Days)
+            ColumnDefinitions = new ColumnDefinitions("*,*"),
+            ColumnSpacing = 12,
+        };
+        var from = new DatePicker
         {
-            var value = day;
-            chips.Children.Add(Chip(
-                LapCorpusFilter.DayLabel(value, today),
-                filter.Day == value,
-                () =>
-                {
-                    filter.SelectDay(value);
-                    _pendingSession = null;
-                    _rerender();
-                }));
-        }
+            Tag = "analysis-date-from",
+            SelectedDate = PickerDate(filter.DateFrom),
+        };
+        var to = new DatePicker
+        {
+            Tag = "analysis-date-to",
+            SelectedDate = PickerDate(filter.DateTo),
+        };
+        var synchronizingRange = false;
+        from.SelectedDateChanged += (_, _) =>
+        {
+            if (synchronizingRange)
+            {
+                return;
+            }
 
-        group.Children.Add(chips);
-        return group;
+            filter.SelectDateFrom(DateOnlyValue(from.SelectedDate));
+            synchronizingRange = true;
+            to.SelectedDate = PickerDate(filter.DateTo);
+            synchronizingRange = false;
+            rangeChanged();
+        };
+        to.SelectedDateChanged += (_, _) =>
+        {
+            if (synchronizingRange)
+            {
+                return;
+            }
+
+            filter.SelectDateTo(DateOnlyValue(to.SelectedDate));
+            synchronizingRange = true;
+            from.SelectedDate = PickerDate(filter.DateFrom);
+            synchronizingRange = false;
+            rangeChanged();
+        };
+
+        range.Children.Add(Graphite.FormField("From", from));
+        var toField = Graphite.FormField("To", to);
+        Grid.SetColumn(toField, 1);
+        range.Children.Add(toField);
+        return range;
     }
 
-    private static Button Chip(string text, bool selected, Action click)
-    {
-        var chip = Graphite.Button(text, selected ? ButtonTone.Primary : ButtonTone.Ghost);
-        chip.FontSize = 11.5;
-        chip.Padding = new Thickness(10, 5);
-        chip.MinWidth = 0;
-        chip.Margin = new Thickness(0, 0, 6, 6);
-        chip.Click += (_, _) => click();
-        return chip;
-    }
+    private static DateTimeOffset? PickerDate(DateOnly? date) => date is { } value
+        ? new DateTimeOffset(value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+        : null;
+
+    private static DateOnly? DateOnlyValue(DateTimeOffset? date) => date is { } value
+        ? DateOnly.FromDateTime(value.DateTime)
+        : null;
 
     private Control SessionList(LapCorpusFilter filter)
     {

@@ -163,6 +163,32 @@ public sealed class AnalysisTests
     }
 
     [Fact]
+    public void TheDateRangeIsInclusiveAndCanBeOpenEnded()
+    {
+        var filter = Filter(
+            Session("hs-today", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
+            Session("hs-yesterday", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-1)),
+            Session("hs-older", "Spa-Francorchamps", "Hypercar", "Porsche 963", Evening.AddDays(-2)));
+
+        var yesterday = DateOnly.FromDateTime(Evening.AddDays(-1).LocalDateTime);
+        filter.SelectDateRange(yesterday, null);
+        Assert.Equal(["hs-today", "hs-yesterday"], filter.Sessions.Select(session => session.Id));
+
+        filter.SelectDateRange(null, yesterday);
+        Assert.Equal(["hs-yesterday", "hs-older"], filter.Sessions.Select(session => session.Id));
+
+        filter.SelectDateRange(yesterday, yesterday);
+        Assert.Equal("hs-yesterday", Assert.Single(filter.Sessions).Id);
+
+        Assert.Throws<ArgumentException>(() => filter.SelectDateRange(yesterday, yesterday.AddDays(-1)));
+
+        filter.SelectDateFrom(yesterday.AddDays(1));
+        Assert.Equal(filter.DateFrom, filter.DateTo);
+        filter.SelectDateTo(yesterday.AddDays(-2));
+        Assert.Equal(filter.DateFrom, filter.DateTo);
+    }
+
+    [Fact]
     public void DaysReadTheWayADriverNamesThem()
     {
         var today = new DateOnly(2026, 8, 3);
