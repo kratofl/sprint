@@ -8,10 +8,13 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using System.Xml.Linq;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
+using Sprint.Games;
+using PathShape = Avalonia.Controls.Shapes.Path;
 
 namespace Sprint.Desktop.Features.Analysis;
 
@@ -35,22 +38,19 @@ public sealed class AnalysisView
         {
             ["Le Mans Ultimate"] = "game-le-mans-ultimate.png",
             ["LeMansUltimate"] = "game-le-mans-ultimate.png",
-            ["Daytona International Speedway Road Course"] = "track-daytona.jpg",
-            ["Daytona International Speedway"] = "track-daytona.jpg",
-            ["Daytona"] = "track-daytona.jpg",
-            ["Circuit de Barcelona"] = "track-barcelona.jpg",
-            ["Circuit de Barcelona-Catalunya"] = "track-barcelona.jpg",
-            ["Barcelona"] = "track-barcelona.jpg",
-            ["Sebring International Raceway"] = "track-sebring.png",
-            ["Sebring"] = "track-sebring.png",
-            ["Circuit de la Sarthe"] = "track-le-mans.jpg",
-            ["Circuit des 24 Heures du Mans"] = "track-le-mans.jpg",
-            ["Le Mans"] = "track-le-mans.jpg",
-            ["Spa-Francorchamps"] = "track-spa-francorchamps.jpg",
-            ["Monza"] = "track-monza.jpg",
+            ["Porsche 963"] = "car-porsche-963.jpg",
+            ["Porsche_963"] = "car-porsche-963.jpg",
+            ["Ferrari 296"] = "car-ferrari-296-gt3.jpg",
+            ["Ferrari 296 GT3"] = "car-ferrari-296-gt3.jpg",
+            ["Ferrari 296 LMGT3"] = "car-ferrari-296-gt3.jpg",
+            ["Ferrari_296_GT3"] = "car-ferrari-296-gt3.jpg",
         };
 
     private static readonly Dictionary<string, Bitmap> ThumbnailCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, TrackLayoutAsset> TrackLayoutAssets = CreateTrackLayoutAssets();
+    private static readonly Dictionary<string, Geometry> TrackLayoutCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record TrackLayoutAsset(string FileName, string? PathId = null, bool Filled = false);
 
     private enum SessionStep
     {
@@ -103,14 +103,14 @@ public sealed class AnalysisView
         var state = _controller.Load();
         var root = new Grid { Margin = new Thickness(16, 10, 16, 20) };
         root.Children.Add(Surface(state));
-
-        if (_sessionPickerOpen)
-        {
-            root.Children.Add(SessionPicker());
-        }
-
         return root;
     }
+
+    /// <summary>
+    /// Builds the picker separately from the page so MainWindow can place it above the whole
+    /// shell. Keeping it inside Analysis made even a large dialog inherit the narrower body tray.
+    /// </summary>
+    public Control? BuildOverlay() => _sessionPickerOpen ? SessionPicker() : null;
 
     private void OpenSessionPicker()
     {
@@ -134,7 +134,11 @@ public sealed class AnalysisView
     private Control SessionPicker()
     {
         var filter = _sessionFilter ??= _controller.CreateSessionFilter();
-        var content = new StackPanel { Spacing = 14, Width = 812 };
+        var content = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"),
+            RowSpacing = 16,
+        };
 
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var headingText = new StackPanel { Spacing = 3 };
@@ -150,37 +154,42 @@ public sealed class AnalysisView
         close.Click += (_, _) => CloseSessionPicker();
         Grid.SetColumn(close, 1);
         heading.Children.Add(close);
+        Grid.SetRow(heading, 0);
         content.Children.Add(heading);
 
         if (filter.IsEmpty)
         {
-            content.Children.Add(Graphite.TextBlock(
+            var empty = Graphite.TextBlock(
                 "No laps recorded yet. Drive a session or import a lap first.",
                 12,
                 brush: Graphite.Text3Brush,
-                wrapping: TextWrapping.Wrap));
+                wrapping: TextWrapping.Wrap);
+            Grid.SetRow(empty, 2);
+            content.Children.Add(empty);
         }
         else
         {
-            content.Children.Add(WizardStepper());
-            content.Children.Add(new Border
-            {
-                MinHeight = 360,
-                Background = Graphite.PanelBrush,
-                BorderBrush = Graphite.LineBrush,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(Graphite.RadiusMd),
-                Padding = new Thickness(14),
-                Child = WizardBody(filter),
-            });
-            content.Children.Add(WizardFooter(filter));
+            var stepper = WizardStepper();
+            Grid.SetRow(stepper, 1);
+            content.Children.Add(stepper);
+            var wizardBody = new Grid();
+            wizardBody.Children.Add(WizardBody(filter));
+            Grid.SetRow(wizardBody, 2);
+            content.Children.Add(wizardBody);
+            var footer = WizardFooter(filter);
+            Grid.SetRow(footer, 3);
+            content.Children.Add(footer);
         }
 
         var panel = new Border
         {
-            Width = 860,
-            Height = 640,
-            Padding = new Thickness(24),
+            Tag = "analysis-session-dialog",
+            MinWidth = 900,
+            MinHeight = 660,
+            MaxWidth = 1240,
+            MaxHeight = 860,
+            Margin = new Thickness(24),
+            Padding = new Thickness(28),
             Background = Graphite.Panel2Brush,
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
@@ -193,14 +202,9 @@ public sealed class AnalysisView
                 Spread = 0,
                 Color = Color.FromArgb(90, 0, 0, 0),
             }),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = content,
-            },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Child = content,
         };
         KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
         AutomationProperties.SetName(panel, "Open analysis session dialog");
@@ -314,28 +318,8 @@ public sealed class AnalysisView
             },
             thumbnail: true),
         SessionStep.Track => TrackStep(filter),
-        SessionStep.CarClass => ChoiceStep(
-            "Choose a car class",
-            filter.Track ?? string.Empty,
-            filter.Classes,
-            filter.CarClass,
-            "flag",
-            carClass =>
-            {
-                filter.SelectClass(carClass);
-                _pendingSession = null;
-            }),
-        SessionStep.Car => ChoiceStep(
-            "Choose a car",
-            filter.CarClass ?? string.Empty,
-            filter.CarModels,
-            filter.CarModel,
-            "gauge",
-            car =>
-            {
-                filter.SelectCarModel(car);
-                _pendingSession = null;
-            }),
+        SessionStep.CarClass => CarClassStep(filter),
+        SessionStep.Car => CarStep(filter),
         _ => SessionStepBody(filter),
     };
 
@@ -356,8 +340,8 @@ public sealed class AnalysisView
         };
         stack.Children.Add(Graphite.FormField("Search tracks", search));
 
-        var tiles = new WrapPanel();
-        var scroller = WizardScroller(SessionStep.Track, tiles, 286, "analysis-track-scroll");
+        var tiles = new UniformGrid { Columns = 4 };
+        var scroller = WizardScroller(SessionStep.Track, tiles, 300, "analysis-track-scroll");
         void RefreshTiles()
         {
             tiles.Children.Clear();
@@ -372,12 +356,14 @@ public sealed class AnalysisView
                     string.Equals(filter.Track, value, StringComparison.Ordinal),
                     "route",
                     thumbnail: true,
-                    () =>
+                    stretch: true,
+                    click: () =>
                     {
                         filter.SelectTrack(value);
                         _pendingSession = null;
                         _rerender();
-                    }));
+                    },
+                    artworkHeight: 140));
             }
 
             if (tiles.Children.Count == 0)
@@ -419,7 +405,8 @@ public sealed class AnalysisView
                 string.Equals(value, selected, StringComparison.Ordinal),
                 icon,
                 thumbnail,
-                () =>
+                stretch: false,
+                click: () =>
                 {
                     select(value);
                     _rerender();
@@ -427,6 +414,117 @@ public sealed class AnalysisView
         }
 
         stack.Children.Add(scroller);
+        return stack;
+    }
+
+    private Control CarClassStep(LapCorpusFilter filter)
+    {
+        var stack = new StackPanel { Spacing = 16 };
+        stack.Children.Add(StepHeading("Choose a car class", filter.Track ?? string.Empty));
+
+        var available = filter.Classes.ToHashSet(StringComparer.Ordinal);
+        var choices = new UniformGrid { Columns = 4 };
+        foreach (var option in filter.ClassOptions)
+        {
+            var isAvailable = available.Contains(option.Id);
+            var selected = string.Equals(filter.CarClass, option.Id, StringComparison.Ordinal);
+            var copy = new StackPanel
+            {
+                Margin = new Thickness(16, 12),
+                Spacing = 4,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            copy.Children.Add(Graphite.TextBlock(
+                option.Name,
+                22,
+                FontWeight.Bold,
+                isAvailable ? Graphite.TextBrush : Graphite.Text2Brush));
+            copy.Children.Add(Graphite.TextBlock(
+                isAvailable ? "Available at this track" : "Not available at this track",
+                11,
+                brush: isAvailable ? Graphite.TextBrush : Graphite.Text2Brush));
+
+            var content = new Grid();
+            content.Children.Add(copy);
+            if (selected)
+            {
+                var indicator = SelectedIndicator();
+                Grid.SetColumn(indicator, 1);
+                content.Children.Add(indicator);
+            }
+
+            var captured = option.Id;
+            var button = new Button
+            {
+                Tag = isAvailable ? "analysis-class-available" : "analysis-class-unavailable",
+                Content = content,
+                Height = 144,
+                Margin = new Thickness(0, 0, 8, 8),
+                Padding = new Thickness(0),
+                IsEnabled = isAvailable,
+                Opacity = 1,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                VerticalContentAlignment = VerticalAlignment.Stretch,
+                Background = isAvailable
+                    ? CarClassBrush(option.VisualRole)
+                    : Graphite.Panel3Brush,
+                BorderBrush = selected ? Graphite.AccentBrush : Brushes.Transparent,
+                BorderThickness = new Thickness(selected ? 2 : 0),
+                CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            };
+            AutomationProperties.SetName(button, option.Name);
+            AutomationProperties.SetHelpText(
+                button,
+                isAvailable ? $"{option.Name}, available at {filter.Track}." : $"{option.Name}, not available at {filter.Track}.");
+            button.Click += (_, _) =>
+            {
+                filter.SelectClass(captured);
+                _pendingSession = null;
+                _rerender();
+            };
+            choices.Children.Add(button);
+        }
+
+        stack.Children.Add(WizardScroller(SessionStep.CarClass, choices, 336));
+        return stack;
+    }
+
+    private Control CarStep(LapCorpusFilter filter)
+    {
+        var stack = new StackPanel { Spacing = 16 };
+        stack.Children.Add(StepHeading(
+            "Choose a car",
+            filter.CarClass is null
+                ? string.Empty
+                : GameCarClassCatalog.DisplayName(filter.Game, filter.CarClass)));
+        var selectedClassRole = filter.ClassOptions
+            .FirstOrDefault(option => string.Equals(option.Id, filter.CarClass, StringComparison.Ordinal))
+            ?.VisualRole ?? GameCarClassVisualRole.Default;
+        var fallbackAsset = selectedClassRole is GameCarClassVisualRole.Hypercar or GameCarClassVisualRole.Lmp2
+            ? "car-generic-generated.png"
+            : "car-generic-gt-generated.png";
+        var tiles = new UniformGrid { Columns = 2 };
+        foreach (var car in filter.CarModels)
+        {
+            var captured = car;
+            tiles.Children.Add(ChoiceTile(
+                car,
+                string.Equals(filter.CarModel, car, StringComparison.Ordinal),
+                "gauge",
+                thumbnail: true,
+                stretch: true,
+                click: () =>
+                {
+                    filter.SelectCarModel(captured);
+                    _pendingSession = null;
+                    _rerender();
+                },
+                artworkHeight: 240,
+                fallbackAsset: fallbackAsset));
+        }
+
+        stack.Children.Add(WizardScroller(SessionStep.Car, tiles, 360));
         return stack;
     }
 
@@ -471,45 +569,106 @@ public sealed class AnalysisView
         return heading;
     }
 
-    private static Button ChoiceTile(string label, bool selected, string icon, bool thumbnail, Action click)
+    private static Button ChoiceTile(
+        string label,
+        bool selected,
+        string icon,
+        bool thumbnail,
+        bool stretch,
+        Action click,
+        double artworkHeight = 160,
+        string? fallbackAsset = null)
     {
-        var content = new StackPanel { Spacing = 7 };
-        var artwork = ThumbnailImage(label, thumbnail);
+        var content = new StackPanel { Spacing = 8 };
+        var artwork = ThumbnailArtwork(label, thumbnail, selected, fallbackAsset);
+        var artworkFrame = new Grid();
+        artworkFrame.Children.Add(
+            artwork ?? Icons.Create(icon, thumbnail ? 32 : 22, selected ? Graphite.AccentBrush : Graphite.Text2Brush));
+        if (selected)
+        {
+            artworkFrame.Children.Add(SelectedIndicator());
+        }
+
         content.Children.Add(new Border
         {
-            Height = thumbnail ? 92 : 40,
+            Height = thumbnail ? artworkHeight : 48,
             Background = selected ? Graphite.AccentBgBrush : Graphite.Panel3Brush,
             CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            BorderBrush = selected ? Graphite.AccentBrush : Brushes.Transparent,
+            BorderThickness = new Thickness(selected ? 2 : 0),
             ClipToBounds = true,
-            Child = artwork ?? Icons.Create(icon, thumbnail ? 32 : 22, selected ? Graphite.AccentBrush : Graphite.Text2Brush),
+            Child = artworkFrame,
         });
         content.Children.Add(Graphite.TextBlock(label, 12, FontWeight.SemiBold, wrapping: TextWrapping.Wrap));
 
         var button = new Button
         {
             Content = content,
-            Width = thumbnail ? 260 : 210,
-            MinHeight = thumbnail ? 136 : 78,
+            Width = stretch ? double.NaN : thumbnail ? 400 : 212,
+            MinHeight = thumbnail ? artworkHeight + 40 : 88,
             Margin = new Thickness(0, 0, 8, 8),
-            Padding = new Thickness(8),
+            Padding = new Thickness(0),
+            HorizontalAlignment = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Stretch,
-            Background = selected ? Graphite.Panel3Brush : Graphite.Panel2Brush,
-            BorderBrush = selected ? Graphite.AccentBorderBrush : Graphite.LineBrush,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Background = Brushes.Transparent,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
         };
         AutomationProperties.SetName(button, label);
         button.Click += (_, _) => click();
         return button;
     }
 
-    private static Control? ThumbnailImage(string label, bool requested)
+    private static Border SelectedIndicator()
     {
-        if (!requested || !ThumbnailAssets.TryGetValue(label, out var asset))
+        var indicator = new Border
+        {
+            Width = 24,
+            Height = 24,
+            Margin = new Thickness(8),
+            Padding = new Thickness(4),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = Graphite.AccentBrush,
+            CornerRadius = new CornerRadius(12),
+            Child = Icons.Create("check", 16, Graphite.Panel2Brush),
+        };
+        AutomationProperties.SetName(indicator, "Selected");
+        return indicator;
+    }
+
+    private static IBrush CarClassBrush(GameCarClassVisualRole role) => role switch
+    {
+        GameCarClassVisualRole.Hypercar => Graphite.ClassHypercarBrush,
+        GameCarClassVisualRole.Lmp2 => Graphite.ClassLmp2Brush,
+        GameCarClassVisualRole.Lmgt3 => Graphite.ClassLmgt3Brush,
+        GameCarClassVisualRole.Gte => Graphite.ClassGteBrush,
+        _ => Graphite.ClassDefaultBrush,
+    };
+
+    private static Control? ThumbnailArtwork(
+        string label,
+        bool requested,
+        bool selected,
+        string? fallbackAsset)
+    {
+        if (!requested)
         {
             return null;
         }
+
+        if (TrackLayoutAssets.TryGetValue(label, out var layout))
+        {
+            return TrackLayout(layout, selected);
+        }
+
+        if (!ThumbnailAssets.TryGetValue(label, out var asset) && fallbackAsset is null)
+        {
+            return null;
+        }
+
+        asset ??= fallbackAsset!;
 
         if (!ThumbnailCache.TryGetValue(asset, out var bitmap))
         {
@@ -520,10 +679,81 @@ public sealed class AnalysisView
 
         return new Image
         {
+            Tag = asset.StartsWith("car-", StringComparison.Ordinal) ? "analysis-car-image" : null,
             Source = bitmap,
-            Stretch = asset.StartsWith("game-", StringComparison.Ordinal) ? Stretch.Uniform : Stretch.UniformToFill,
-            Margin = asset.StartsWith("game-", StringComparison.Ordinal) ? new Thickness(22, 12) : new Thickness(0),
+            Stretch = asset.StartsWith("game-", StringComparison.Ordinal)
+                ? Stretch.Uniform
+                : Stretch.UniformToFill,
+            Margin = asset.StartsWith("game-", StringComparison.Ordinal)
+                ? new Thickness(24, 16)
+                : new Thickness(0),
         };
+    }
+
+    private static Control TrackLayout(TrackLayoutAsset asset, bool selected)
+    {
+        if (!TrackLayoutCache.TryGetValue(asset.FileName, out var geometry))
+        {
+            using var stream = AssetLoader.Open(
+                new Uri($"avares://Sprint.Desktop.Client/Assets/Analysis/{asset.FileName}"));
+            var document = XDocument.Load(stream);
+            var paths = document.Descendants()
+                .Where(element => element.Name.LocalName == "path")
+                .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("d")))
+                .ToArray();
+            var path = asset.PathId is null
+                ? paths.MaxBy(element => ((string?)element.Attribute("d"))!.Length)
+                : paths.Single(element => string.Equals(
+                    (string?)element.Attribute("id"),
+                    asset.PathId,
+                    StringComparison.Ordinal));
+            geometry = Geometry.Parse((string?)path?.Attribute("d")
+                ?? throw new InvalidOperationException($"Track layout '{asset.FileName}' has no usable path."));
+            TrackLayoutCache[asset.FileName] = geometry;
+        }
+
+        var brush = selected ? Graphite.AccentBrush : Graphite.Text2Brush;
+        return new PathShape
+        {
+            Tag = "analysis-track-layout",
+            Data = geometry,
+            Fill = asset.Filled ? brush : null,
+            Stroke = brush,
+            StrokeThickness = asset.Filled ? 2.5 : 5,
+            StrokeLineCap = PenLineCap.Round,
+            StrokeJoin = PenLineJoin.Round,
+            Stretch = Stretch.Uniform,
+            Margin = new Thickness(24, 16),
+        };
+    }
+
+    private static IReadOnlyDictionary<string, TrackLayoutAsset> CreateTrackLayoutAssets()
+    {
+        var layouts = new Dictionary<string, TrackLayoutAsset>(StringComparer.OrdinalIgnoreCase);
+        AddAliases(layouts, new TrackLayoutAsset("track-daytona.svg", "path2463", Filled: true),
+            "Daytona International Speedway Road Course", "Daytona International Speedway", "Daytona");
+        AddAliases(layouts, new TrackLayoutAsset("track-barcelona.svg", "path3115"),
+            "Circuit de Barcelona", "Circuit de Barcelona-Catalunya", "Barcelona");
+        AddAliases(layouts, new TrackLayoutAsset("track-sebring.svg", "path4147"),
+            "Sebring International Raceway", "Sebring");
+        AddAliases(layouts, new TrackLayoutAsset("track-le-mans.svg"),
+            "Circuit de la Sarthe", "Circuit des 24 Heures du Mans", "Le Mans");
+        AddAliases(layouts, new TrackLayoutAsset("track-spa-francorchamps.svg", "path2840"),
+            "Spa-Francorchamps");
+        AddAliases(layouts, new TrackLayoutAsset("track-monza.svg", "path2182"),
+            "Autodromo Nazionale Monza", "Monza");
+        return layouts;
+    }
+
+    private static void AddAliases(
+        IDictionary<string, TrackLayoutAsset> layouts,
+        TrackLayoutAsset asset,
+        params string[] aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            layouts[alias] = asset;
+        }
     }
 
     private Control SessionStepBody(LapCorpusFilter filter)
@@ -592,9 +822,16 @@ public sealed class AnalysisView
         _ => false,
     };
 
-    private static string WizardSummary(LapCorpusFilter filter) => string.Join(
-        "  /  ",
-        new[] { filter.Game, filter.Track, filter.CarClass, filter.CarModel }.Where(value => !string.IsNullOrWhiteSpace(value)));
+    private static string WizardSummary(LapCorpusFilter filter)
+    {
+        var className = filter.CarClass is null
+            ? null
+            : GameCarClassCatalog.DisplayName(filter.Game, filter.CarClass);
+        return string.Join(
+            "  /  ",
+            new[] { filter.Game, filter.Track, className, filter.CarModel }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
 
     /// <summary>
     /// The optional day filter, for "there was a session yesterday around seven". "Any day" is an
@@ -645,7 +882,7 @@ public sealed class AnalysisView
 
     private Control SessionList(LapCorpusFilter filter)
     {
-        var list = new StackPanel { Spacing = 4 };
+        var list = new StackPanel { Spacing = 0 };
         if (filter.Sessions.Count == 0)
         {
             list.Children.Add(Graphite.TextBlock(
@@ -671,18 +908,41 @@ public sealed class AnalysisView
                 text.Children.Add(Graphite.TextBlock("No channels", 10.5, brush: Graphite.YellowBrush));
             }
 
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+            if (selected)
+            {
+                row.Children.Add(new Border
+                {
+                    Width = 3,
+                    Margin = new Thickness(0, 2, 12, 2),
+                    Background = Graphite.AccentBrush,
+                    CornerRadius = new CornerRadius(2),
+                });
+            }
+
+            Grid.SetColumn(text, 1);
+            row.Children.Add(text);
+            if (selected)
+            {
+                var check = Icons.Create("check", 16, Graphite.AccentBrush);
+                check.Margin = new Thickness(16, 0, 4, 0);
+                check.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(check, 2);
+                row.Children.Add(check);
+            }
+
             var captured = session;
             var button = new Button
             {
                 Tag = "analysis-session-row",
-                Content = text,
+                Content = row,
                 Background = selected ? Graphite.Panel3Brush : Brushes.Transparent,
-                BorderBrush = selected ? Graphite.AccentBorderBrush : Graphite.LineBrush,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(Graphite.RadiusSm),
-                Padding = new Thickness(10, 7),
+                BorderBrush = Graphite.LineBrush,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                CornerRadius = new CornerRadius(0),
+                Padding = new Thickness(12, 10),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
             };
             button.Click += (_, _) =>
             {

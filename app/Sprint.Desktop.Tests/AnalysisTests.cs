@@ -1,6 +1,7 @@
 using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -71,7 +72,7 @@ public sealed class AnalysisTests
             Session("hs-gt3b", "Spa-Francorchamps", "GT3", "BMW M4", Evening.AddHours(-3)));
 
         Assert.True(filter.ClassIsAChoice);
-        Assert.Equal(["GT3", "Hypercar"], filter.Classes);
+        Assert.Equal(["Hypercar", "LMGT3"], filter.Classes);
 
         filter.SelectClass("GT3");
 
@@ -113,10 +114,35 @@ public sealed class AnalysisTests
 
         filter.SelectTrack("Monza");
 
-        Assert.Equal("GT3", filter.CarClass);
+        Assert.Equal("LMGT3", filter.CarClass);
         // Two cars at Monza, so nothing is assumed.
         Assert.Null(filter.CarModel);
         Assert.All(filter.Sessions, session => Assert.Equal("Monza", session.Context.TrackCourse));
+    }
+
+    [Fact]
+    public void LmuClassAliasesCombineUnderReadableGameClassNames()
+    {
+        var filter = Filter(
+            Session("hs-hyper", "Spa-Francorchamps", "Hyper", "Porsche 963", Evening),
+            Session("hs-hypercar", "Spa-Francorchamps", "Hypercar", "Ferrari 499P", Evening.AddHours(-1)),
+            Session("hs-lmp2", "Monza", "LMP2_ELMS", "Oreca 07", Evening.AddHours(-2)));
+
+        filter.SelectTrack("Spa-Francorchamps");
+
+        Assert.Equal(["Hypercar"], filter.Classes);
+        Assert.Equal(["Ferrari 499P", "Porsche 963"], filter.CarModels);
+        Assert.Equal(["Hypercar", "LMP2", "LMGT3", "GTE"], filter.ClassOptions.Select(option => option.Name));
+    }
+
+    [Fact]
+    public void UnknownGameClassNamesRemainReadableWithoutSharingLmuAliases()
+    {
+        var classes = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]);
+
+        var definition = Assert.Single(classes);
+        Assert.Equal("GT3 WORLD CHALLENGE", definition.Name);
+        Assert.Equal("GT3_WORLD-CHALLENGE", GameCarClassCatalog.CanonicalId("Another Game", definition.Id));
     }
 
     [Fact]

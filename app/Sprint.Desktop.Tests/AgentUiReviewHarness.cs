@@ -18,6 +18,7 @@ using Sprint.Desktop.Runtime;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Shell;
 using Xunit;
+using PathShape = Avalonia.Controls.Shapes.Path;
 
 namespace Sprint.Desktop.Tests;
 
@@ -202,7 +203,7 @@ internal static class AgentUiReviewHarness
                         "Track",
                         "Search tracks",
                         "Spa-Francorchamps",
-                        "Monza",
+                        "Autodromo Nazionale Monza",
                         // Accounts live on the web app; the rail's row opens a browser.
                         "Sign in"));
 
@@ -216,6 +217,23 @@ internal static class AgentUiReviewHarness
                         "Circuit de Barcelona",
                         "Sebring International Raceway",
                         "Circuit de la Sarthe"));
+                    var analysisDialog = window.GetVisualDescendants()
+                        .OfType<Border>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-session-dialog",
+                            StringComparison.Ordinal));
+                    Assert.True(
+                        analysisDialog.Bounds.Width >= 1000 && analysisDialog.Bounds.Height >= 650,
+                        "The session picker must use most of the minimum-size application window.");
+                    Assert.Equal(
+                        6,
+                        window.GetVisualDescendants()
+                            .OfType<PathShape>()
+                            .Count(candidate => string.Equals(
+                                candidate.Tag?.ToString(),
+                                "analysis-track-layout",
+                                StringComparison.Ordinal)));
 
                     // Reproduce the original regression: select a tile after scrolling down.
                     // The rebuilt step must retain that offset instead of jumping to row one.
@@ -248,8 +266,99 @@ internal static class AgentUiReviewHarness
                     window.Width = 1440;
                     window.Height = 900;
                     ClickTaggedButton(window, "analysis-session-next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-class-step",
+                        "Choose a car class",
+                        "Hypercar",
+                        "LMP2",
+                        "LMGT3",
+                        "GTE",
+                        "Not available at this track"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-class-step-1120x720",
+                        "Choose a car class",
+                        "Hypercar",
+                        "LMP2",
+                        "LMGT3",
+                        "GTE",
+                        "Continue"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    Assert.Equal(
+                        2,
+                        window.GetVisualDescendants()
+                            .OfType<Button>()
+                            .Count(candidate => string.Equals(
+                                candidate.Tag?.ToString(),
+                                "analysis-class-available",
+                                StringComparison.Ordinal)));
+                    Assert.Equal(
+                        2,
+                        window.GetVisualDescendants()
+                            .OfType<Button>()
+                            .Count(candidate => string.Equals(
+                                candidate.Tag?.ToString(),
+                                "analysis-class-unavailable",
+                                StringComparison.Ordinal)));
+                    Click(window, "LMGT3");
+                    ClickTaggedButton(window, "analysis-session-next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step-lmgt3",
+                        "Choose a car",
+                        "BMW M4",
+                        "Ferrari 296"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step-lmgt3-1120x720",
+                        "Choose a car",
+                        "BMW M4",
+                        "Ferrari 296",
+                        "Continue"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    Assert.Equal(
+                        2,
+                        window.GetVisualDescendants().OfType<Image>().Count(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-car-image",
+                            StringComparison.Ordinal)));
+                    Click(window, "Back");
                     Click(window, "Hypercar");
                     ClickTaggedButton(window, "analysis-session-next");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step",
+                        "Choose a car",
+                        "Porsche 963"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step-1120x720",
+                        "Choose a car",
+                        "Porsche 963",
+                        "Continue"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    Assert.Single(
+                        window.GetVisualDescendants().OfType<Image>(),
+                        candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-car-image",
+                            StringComparison.Ordinal));
                     Click(window, "Porsche 963");
                     ClickTaggedButton(window, "analysis-session-next");
                     frames.Add(Capture(
@@ -258,6 +367,17 @@ internal static class AgentUiReviewHarness
                         "analysis-session-step",
                         "Choose a session",
                         "Any day"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-step-1120x720",
+                        "Choose a session",
+                        "Any day",
+                        "Open session"));
+                    window.Width = 1440;
+                    window.Height = 900;
 
                     // Selecting a run is distinct from opening it, so the final action remains
                     // explicit and the user can still change the date filter first.
@@ -899,7 +1019,8 @@ internal static class AgentUiReviewHarness
         Write(history, traces, "review-le-mans", "Circuit de la Sarthe", "Hypercar", "Porsche 963", now.AddHours(-4), 198);
         Write(history, traces, "review-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-5), 101);
         Write(history, traces, "review-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", now.AddHours(-6), 118);
-        Write(history, traces, "review-monza", "Monza", "Hypercar", "Porsche 963", now.AddHours(-7), 104);
+        Write(history, traces, "review-gt3-bmw", "Spa-Francorchamps", "GT3", "BMW M4", now.AddHours(-6.5), 119);
+        Write(history, traces, "review-monza", "Autodromo Nazionale Monza", "Hypercar", "Porsche 963", now.AddHours(-7), 104);
     }
 
     private static void Write(

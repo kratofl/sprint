@@ -64,6 +64,13 @@ internal static class Graphite
     public static readonly Color BlueBorder = Color.Parse("#114F99");
     public static readonly Color AccentBg = Color.Parse("#421A02");
     public static readonly Color AccentBorder = Color.Parse("#BF4D00");
+    // Literal race-class category colors. These are data identities, not action or status
+    // colors, and are kept here so Analysis does not invent component-local palette values.
+    public static readonly Color ClassHypercar = Color.Parse("#A32630");
+    public static readonly Color ClassLmp2 = Color.Parse("#1F5F99");
+    public static readonly Color ClassLmgt3 = Color.Parse("#B85A00");
+    public static readonly Color ClassGte = Color.Parse("#2E6A45");
+    public static readonly Color ClassDefault = Color.Parse("#315E91");
     public static readonly Color IconNeutral = Color.Parse("#A0A0A0"); // Neutral/300 — muted status icon
     public static readonly Color Panel2Hover = Color.Parse("#232327");
     public static readonly Color Panel3Hover = Color.Parse("#232327");
@@ -149,6 +156,11 @@ internal static class Graphite
     public static readonly IBrush BlueBorderBrush = Brush(BlueBorder);
     public static readonly IBrush AccentBgBrush = Brush(AccentBg);
     public static readonly IBrush AccentBorderBrush = Brush(AccentBorder);
+    public static readonly IBrush ClassHypercarBrush = Brush(ClassHypercar);
+    public static readonly IBrush ClassLmp2Brush = Brush(ClassLmp2);
+    public static readonly IBrush ClassLmgt3Brush = Brush(ClassLmgt3);
+    public static readonly IBrush ClassGteBrush = Brush(ClassGte);
+    public static readonly IBrush ClassDefaultBrush = Brush(ClassDefault);
     public static readonly IBrush IconNeutralBrush = Brush(IconNeutral);
     public static readonly IBrush Panel2HoverBrush = Brush(Panel2Hover);
     public static readonly IBrush Panel3HoverBrush = Brush(Panel3Hover);

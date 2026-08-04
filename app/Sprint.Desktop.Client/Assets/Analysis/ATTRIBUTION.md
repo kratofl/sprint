@@ -1,4 +1,4 @@
-# Analysis thumbnails
+# Analysis artwork
 
 ## Le Mans Ultimate logo
 
@@ -8,50 +8,86 @@
 - License: Public-domain text logo (trademark rights may still apply)
 - Changes: none
 
-## Circuit de Spa-Francorchamps
+## Porsche 963
 
-- File: `track-spa-francorchamps.jpg`
-- Creator: Planet Labs, Inc.
-- Source: https://commons.wikimedia.org/wiki/File:Circuit_de_Spa-Francorchamps,_April_22,_2018_SkySat_(cropped).jpg
+- File: `car-porsche-963.jpg`
+- Creator: MrWalkr
+- Source: https://commons.wikimedia.org/wiki/File:Porsche_963.jpg
 - License: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
 - Changes: resized by Wikimedia's thumbnail service; displayed with a center crop in the app
+
+## Ferrari 296 GT3
+
+- File: `car-ferrari-296-gt3.jpg`
+- Creator: Alexandre Prévot
+- Source: https://commons.wikimedia.org/wiki/File:Ferrari_296_GT3_(54971924786).jpg
+- License: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
+- Changes: resized by Wikimedia's thumbnail service; displayed with a center crop in the app
+
+## Generic prototype car fallback
+
+- File: `car-generic-generated.png`
+- Creator: OpenAI image generation, generated for Sprint
+- Source: project-generated asset; no third-party image source
+- Changes: none; displayed with a center crop in the app
+- Prompt summary: unbranded modern endurance race car on a matte near-black studio backdrop,
+  centered for a wide UI crop, with restrained graphite and ember-orange details and no logos,
+  text, people, watermark, glow, or track environment
+
+## Generic GT car fallback
+
+- File: `car-generic-gt-generated.png`
+- Creator: OpenAI image generation, generated for Sprint
+- Source: project-generated asset; no third-party image source
+- Changes: none; displayed with a center crop in the app
+- Prompt summary: unbranded, production-derived modern GT3 endurance car on a matte near-black
+  studio backdrop, centered for a wide UI crop, with restrained graphite and ember-orange details
+  and no logos, text, people, watermark, glow, or track environment
+
+## Circuit de Spa-Francorchamps
+
+- File: `track-spa-francorchamps.svg`
+- Creator: Will Pittenger
+- Source: https://commons.wikimedia.org/wiki/File:Spa-Francorchamps_of_Belgium.svg
+- License: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/
+- Changes: the circuit path is extracted and recolored at runtime
 
 ## Daytona International Speedway
 
-- File: `track-daytona.jpg`
-- Creator: United States Geological Survey (USGS)
-- Source: https://commons.wikimedia.org/wiki/File:DaytonaInternationalSpeedwayAerial.jpg
-- License: Public domain (USGS work)
-- Changes: displayed with a center crop in the app
+- File: `track-daytona.svg`
+- Creator: Will Pittenger
+- Source: https://commons.wikimedia.org/wiki/File:Daytona_International_Speedway_-_Road_Course.svg
+- License: Public domain
+- Changes: the road-course path is extracted and recolored at runtime
 
 ## Circuit de Barcelona-Catalunya
 
-- File: `track-barcelona.jpg`
-- Creator: Tony Hisgett
-- Source: https://commons.wikimedia.org/wiki/File:Circuit_of_Catalunya.jpg
-- License: CC BY 2.0 — https://creativecommons.org/licenses/by/2.0/
-- Changes: resized by Wikimedia's thumbnail service; displayed with a center crop in the app
+- File: `track-barcelona.svg`
+- Creator: Rumbin
+- Source: https://commons.wikimedia.org/wiki/File:Circuit_Catalunya.svg
+- License: Public domain
+- Changes: the circuit path is extracted and recolored at runtime
 
 ## Sebring International Raceway
 
-- File: `track-sebring.png`
-- Creator: NASA World Wind / public-domain satellite layer
-- Source: https://commons.wikimedia.org/wiki/File:Sebring_satellite.png
+- File: `track-sebring.svg`
+- Creator: Wikimedia Commons contributor (vector version of the public-domain Circuit Sebring map)
+- Source: https://commons.wikimedia.org/wiki/File:Sebring_International_Raceway.svg
 - License: Public domain
-- Changes: displayed with a center crop in the app
+- Changes: the circuit path is extracted and recolored at runtime
 
 ## Circuit de la Sarthe
 
-- File: `track-le-mans.jpg`
-- Creator: Mike Roberts
-- Source: https://commons.wikimedia.org/wiki/File:Le_Mans_From_Above.jpg
-- License: CC BY-SA 2.0 — https://creativecommons.org/licenses/by-sa/2.0/
-- Changes: resized by Wikimedia's thumbnail service; displayed with a center crop in the app
+- File: `track-le-mans.svg`
+- Creator: Paul Skinner
+- Source: https://commons.wikimedia.org/wiki/File:Circuit_de_la_Sarthe.svg
+- License: CC BY-SA 2.0 UK — https://creativecommons.org/licenses/by-sa/2.0/uk/
+- Changes: the circuit path is extracted and recolored at runtime
 
 ## Autodromo Nazionale Monza
 
-- File: `track-monza.jpg`
-- Creator: Planet Labs, Inc.
-- Source: https://commons.wikimedia.org/wiki/File:Autodromo_Nazionale_Monza,_April_22,_2018_SkySat_(cropped).jpg
-- License: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
-- Changes: resized by Wikimedia's thumbnail service; displayed with a center crop in the app
+- File: `track-monza.svg`
+- Creator: Wikimedia Commons contributor
+- Source: https://commons.wikimedia.org/wiki/File:Autodromo_monza.svg
+- License: Public domain
+- Changes: the circuit path is extracted and recolored at runtime

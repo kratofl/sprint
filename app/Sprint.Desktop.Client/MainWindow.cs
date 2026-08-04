@@ -87,6 +87,7 @@ public sealed class MainWindow : Window
     private readonly ILapHistoryStore _lapHistoryStore;
     private CompareHudWindow? _compareHud;
     private AnalysisView? _analysisView;
+    private Control? _analysisOverlay;
     private CloudSession? _cloudSession;
     private readonly ResultsImportLedger _importLedger;
     private readonly ResultsImportScanner _importScanner;
@@ -1211,6 +1212,26 @@ public sealed class MainWindow : Window
             AppView.DebugSetup => SetupPage(),
             _ => DashesPage()
         };
+        SetAnalysisOverlay(_shell.View == AppView.Analysis ? _analysisView?.BuildOverlay() : null);
+    }
+
+    private void SetAnalysisOverlay(Control? overlay)
+    {
+        if (_analysisOverlay is not null)
+        {
+            _root.Children.Remove(_analysisOverlay);
+        }
+
+        _analysisOverlay = overlay;
+        if (overlay is null)
+        {
+            return;
+        }
+
+        Grid.SetRow(overlay, 0);
+        Grid.SetColumn(overlay, 0);
+        Grid.SetRowSpan(overlay, 2);
+        _root.Children.Add(overlay);
     }
 
     // The Session Planner page (#100). MainWindow only owns the overlay and the confirm

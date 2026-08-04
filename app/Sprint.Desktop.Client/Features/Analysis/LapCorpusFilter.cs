@@ -1,5 +1,6 @@
 using System.Globalization;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.Analysis;
 
@@ -92,12 +93,20 @@ public sealed class LapCorpusFilter
             .OrderByDescending(group => group.Max(session => session.StartedAt))
             .Select(group => group.Key)];
 
-    /// <summary>Car classes at the selected track.</summary>
+    /// <summary>Canonical car classes at the selected track.</summary>
     public IReadOnlyList<string> Classes =>
         [.. Matching(game: true, track: true)
-            .Select(ClassOf)
+            .Select(session => GameCarClassCatalog.CanonicalId(Game, ClassOf(session)))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Every class the selected game knows, including unavailable classes that help explain why
+    /// a track choice narrowed the next step.
+    /// </summary>
+    public IReadOnlyList<GameCarClass> ClassOptions => GameCarClassCatalog.Classes(
+        Game,
+        Matching(game: true).Select(ClassOf));
 
     /// <summary>Car models in the selected track and class.</summary>
     public IReadOnlyList<string> CarModels =>
@@ -157,7 +166,7 @@ public sealed class LapCorpusFilter
 
     public void SelectClass(string? carClass)
     {
-        CarClass = carClass;
+        CarClass = carClass is null ? null : GameCarClassCatalog.CanonicalId(Game, carClass);
         CarModel = null;
         Day = null;
         CascadeCarModel();
@@ -236,7 +245,10 @@ public sealed class LapCorpusFilter
 
         if (carClass && CarClass is not null)
         {
-            query = query.Where(session => string.Equals(ClassOf(session), CarClass, StringComparison.Ordinal));
+            query = query.Where(session => string.Equals(
+                GameCarClassCatalog.CanonicalId(Game, ClassOf(session)),
+                CarClass,
+                StringComparison.Ordinal));
         }
 
         if (carModel && CarModel is not null)
