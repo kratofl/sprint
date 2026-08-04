@@ -7,6 +7,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
@@ -33,6 +34,18 @@ public sealed class AnalysisView
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Le Mans Ultimate"] = "game-le-mans-ultimate.png",
+            ["LeMansUltimate"] = "game-le-mans-ultimate.png",
+            ["Daytona International Speedway Road Course"] = "track-daytona.jpg",
+            ["Daytona International Speedway"] = "track-daytona.jpg",
+            ["Daytona"] = "track-daytona.jpg",
+            ["Circuit de Barcelona"] = "track-barcelona.jpg",
+            ["Circuit de Barcelona-Catalunya"] = "track-barcelona.jpg",
+            ["Barcelona"] = "track-barcelona.jpg",
+            ["Sebring International Raceway"] = "track-sebring.png",
+            ["Sebring"] = "track-sebring.png",
+            ["Circuit de la Sarthe"] = "track-le-mans.jpg",
+            ["Circuit des 24 Heures du Mans"] = "track-le-mans.jpg",
+            ["Le Mans"] = "track-le-mans.jpg",
             ["Spa-Francorchamps"] = "track-spa-francorchamps.jpg",
             ["Monza"] = "track-monza.jpg",
         };
@@ -62,6 +75,7 @@ public sealed class AnalysisView
     private CorpusSession? _pendingSession;
     private SessionStep _sessionStep;
     private string _trackSearch = string.Empty;
+    private readonly Dictionary<SessionStep, Vector> _wizardScrollOffsets = [];
     private AnalysisLapFilter _lapFilter;
     private AnalysisLapSort _lapSort;
 
@@ -104,6 +118,7 @@ public sealed class AnalysisView
         _pendingSession = _controller.State().Session;
         _sessionStep = SessionStep.Game;
         _trackSearch = string.Empty;
+        _wizardScrollOffsets.Clear();
         _sessionPickerOpen = true;
         _rerender();
     }
@@ -119,7 +134,7 @@ public sealed class AnalysisView
     private Control SessionPicker()
     {
         var filter = _sessionFilter ??= _controller.CreateSessionFilter();
-        var content = new StackPanel { Spacing = 14, Width = 708 };
+        var content = new StackPanel { Spacing = 14, Width = 812 };
 
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         var headingText = new StackPanel { Spacing = 3 };
@@ -150,7 +165,7 @@ public sealed class AnalysisView
             content.Children.Add(WizardStepper());
             content.Children.Add(new Border
             {
-                MinHeight = 310,
+                MinHeight = 360,
                 Background = Graphite.PanelBrush,
                 BorderBrush = Graphite.LineBrush,
                 BorderThickness = new Thickness(1),
@@ -163,9 +178,9 @@ public sealed class AnalysisView
 
         var panel = new Border
         {
-            Width = 756,
-            MaxHeight = 680,
-            Padding = new Thickness(22),
+            Width = 860,
+            Height = 640,
+            Padding = new Thickness(24),
             Background = Graphite.Panel2Brush,
             BorderBrush = Graphite.Line2Brush,
             BorderThickness = new Thickness(1),
@@ -342,6 +357,7 @@ public sealed class AnalysisView
         stack.Children.Add(Graphite.FormField("Search tracks", search));
 
         var tiles = new WrapPanel();
+        var scroller = WizardScroller(SessionStep.Track, tiles, 286, "analysis-track-scroll");
         void RefreshTiles()
         {
             tiles.Children.Clear();
@@ -373,15 +389,12 @@ public sealed class AnalysisView
         search.TextChanged += (_, _) =>
         {
             _trackSearch = search.Text ?? string.Empty;
+            _wizardScrollOffsets[SessionStep.Track] = default;
+            scroller.Offset = default;
             RefreshTiles();
         };
         RefreshTiles();
-        stack.Children.Add(new ScrollViewer
-        {
-            MaxHeight = 220,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = tiles,
-        });
+        stack.Children.Add(scroller);
         return stack;
     }
 
@@ -397,6 +410,7 @@ public sealed class AnalysisView
         var stack = new StackPanel { Spacing = 10 };
         stack.Children.Add(StepHeading(title, subtitle));
         var tiles = new WrapPanel();
+        var scroller = WizardScroller(_sessionStep, tiles, 286);
         foreach (var option in options)
         {
             var value = option;
@@ -412,13 +426,37 @@ public sealed class AnalysisView
                 }));
         }
 
-        stack.Children.Add(new ScrollViewer
-        {
-            MaxHeight = 238,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Content = tiles,
-        });
+        stack.Children.Add(scroller);
         return stack;
+    }
+
+    private ScrollViewer WizardScroller(SessionStep step, Control content, double maxHeight, string? tag = null)
+    {
+        var savedOffset = _wizardScrollOffsets.GetValueOrDefault(step);
+        var restoring = savedOffset != default;
+        var scroller = new ScrollViewer
+        {
+            Tag = tag,
+            MaxHeight = maxHeight,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = content,
+        };
+        scroller.ScrollChanged += (_, _) =>
+        {
+            if (!restoring)
+            {
+                _wizardScrollOffsets[step] = scroller.Offset;
+            }
+        };
+        scroller.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(
+            () =>
+            {
+                scroller.Offset = savedOffset;
+                restoring = false;
+            },
+            DispatcherPriority.Loaded);
+        return scroller;
     }
 
     private static Control StepHeading(string title, string subtitle)
@@ -439,7 +477,7 @@ public sealed class AnalysisView
         var artwork = ThumbnailImage(label, thumbnail);
         content.Children.Add(new Border
         {
-            Height = thumbnail ? 72 : 40,
+            Height = thumbnail ? 92 : 40,
             Background = selected ? Graphite.AccentBgBrush : Graphite.Panel3Brush,
             CornerRadius = new CornerRadius(Graphite.RadiusSm),
             ClipToBounds = true,
@@ -450,8 +488,8 @@ public sealed class AnalysisView
         var button = new Button
         {
             Content = content,
-            Width = 210,
-            MinHeight = thumbnail ? 116 : 78,
+            Width = thumbnail ? 260 : 210,
+            MinHeight = thumbnail ? 136 : 78,
             Margin = new Thickness(0, 0, 8, 8),
             Padding = new Thickness(8),
             HorizontalContentAlignment = HorizontalAlignment.Stretch,

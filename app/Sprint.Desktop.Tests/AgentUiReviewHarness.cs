@@ -206,7 +206,47 @@ internal static class AgentUiReviewHarness
                         // Accounts live on the web app; the rail's row opens a browser.
                         "Sign in"));
 
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-step-1120x720",
+                        "Daytona International Speedway Road Course",
+                        "Circuit de Barcelona",
+                        "Sebring International Raceway",
+                        "Circuit de la Sarthe"));
+
+                    // Reproduce the original regression: select a tile after scrolling down.
+                    // The rebuilt step must retain that offset instead of jumping to row one.
+                    var trackScroller = window.GetVisualDescendants()
+                        .OfType<ScrollViewer>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-track-scroll",
+                            StringComparison.Ordinal));
+                    trackScroller.Offset = new Vector(0, trackScroller.Extent.Height);
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
                     Click(window, "Spa-Francorchamps");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-step-selected-lower",
+                        "Spa-Francorchamps",
+                        "Continue"));
+                    var restoredTrackScroller = window.GetVisualDescendants()
+                        .OfType<ScrollViewer>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-track-scroll",
+                            StringComparison.Ordinal));
+                    Assert.True(
+                        restoredTrackScroller.Offset.Y > 0,
+                        "Selecting a lower track must preserve the track list's vertical scroll offset.");
+                    window.Width = 1440;
+                    window.Height = 900;
                     ClickTaggedButton(window, "analysis-session-next");
                     Click(window, "Hypercar");
                     ClickTaggedButton(window, "analysis-session-next");
@@ -853,9 +893,13 @@ internal static class AgentUiReviewHarness
         var traces = new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"));
         var now = DateTimeOffset.Now;
 
-        Write(history, traces, "review-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-2), 101);
-        Write(history, traces, "review-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", now.AddDays(-1).AddHours(-5), 118);
-        Write(history, traces, "review-monza", "Monza", "Hypercar", "Porsche 963", now.AddDays(-3), 104);
+        Write(history, traces, "review-daytona", "Daytona International Speedway Road Course", "Hypercar", "Porsche 963", now.AddHours(-1), 105);
+        Write(history, traces, "review-barcelona", "Circuit de Barcelona", "Hypercar", "Porsche 963", now.AddHours(-2), 106);
+        Write(history, traces, "review-sebring", "Sebring International Raceway", "Hypercar", "Porsche 963", now.AddHours(-3), 107);
+        Write(history, traces, "review-le-mans", "Circuit de la Sarthe", "Hypercar", "Porsche 963", now.AddHours(-4), 198);
+        Write(history, traces, "review-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-5), 101);
+        Write(history, traces, "review-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", now.AddHours(-6), 118);
+        Write(history, traces, "review-monza", "Monza", "Hypercar", "Porsche 963", now.AddHours(-7), 104);
     }
 
     private static void Write(
