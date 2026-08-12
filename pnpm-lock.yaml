@@ -128,10 +128,10 @@ importers:
         version: 19.2.3(@types/react@19.2.17)
       autoprefixer:
         specifier: ^10.5.0
-        version: 10.5.0(postcss@8.5.25)
+        version: 10.5.0(postcss@8.5.26)
       postcss:
-        specifier: ^8.5.18
-        version: 8.5.25
+        specifier: ^8.5.26
+        version: 8.5.26
       tailwindcss:
         specifier: ^4.3.2
         version: 4.3.2
@@ -2531,13 +2531,8 @@ packages:
     resolution: {integrity: sha512-WWdIxpyjEn+FhQJQQv9aQAYlHoNVdzIzUySNV1gHUPDSdZJ3yZn7pAAbQcV7B56Mvu881q9FZV+0Vx2xC44VWA==}
     engines: {node: ^18.17.0 || >=20.5.0}
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
-  nanoid@3.3.16:
-    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2637,8 +2632,8 @@ packages:
     resolution: {integrity: sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.25:
-    resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
+  postcss@8.5.26:
+    resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   queue-microtask@1.2.3:
@@ -4870,13 +4865,13 @@ snapshots:
 
   auto-bind@5.0.1: {}
 
-  autoprefixer@10.5.0(postcss@8.5.25):
+  autoprefixer@10.5.0(postcss@8.5.26):
     dependencies:
       browserslist: 4.28.2
       caniuse-lite: 1.0.30001799
       fraction.js: 5.3.4
       picocolors: 1.1.1
-      postcss: 8.5.25
+      postcss: 8.5.26
       postcss-value-parser: 4.2.0
 
   balanced-match@4.0.4: {}
@@ -5408,9 +5403,7 @@ snapshots:
 
   mute-stream@2.0.0: {}
 
-  nanoid@3.3.12: {}
-
-  nanoid@3.3.16: {}
+  nanoid@3.3.18: {}
 
   next@16.2.12(@babel/core@7.29.7)(@types/node@26.1.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
     dependencies:
@@ -5512,13 +5505,13 @@ snapshots:
 
   postcss@8.5.18:
     dependencies:
-      nanoid: 3.3.12
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postcss@8.5.25:
+  postcss@8.5.26:
     dependencies:
-      nanoid: 3.3.16
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
