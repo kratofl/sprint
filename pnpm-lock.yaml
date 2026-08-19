@@ -45,8 +45,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       '@tabler/icons-react':
-        specifier: ^3.44.0
-        version: 3.44.0(react@19.2.7)
+        specifier: ^3.46.0
+        version: 3.46.0(react@19.2.7)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -91,8 +91,8 @@ importers:
         specifier: workspace:*
         version: link:../packages/ui
       '@tabler/icons-react':
-        specifier: ^3.44.0
-        version: 3.44.0(react@19.2.7)
+        specifier: ^3.46.0
+        version: 3.46.0(react@19.2.7)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1768,13 +1768,13 @@ packages:
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
 
-  '@tabler/icons-react@3.44.0':
-    resolution: {integrity: sha512-8+rvzBbVm/1Z3sG3x7GUNAaxIKxwgz8xaMhRs23nrCnMTKRFAhEC+82zAIFeAA0seXdrAGX5HFCkaLpGK2rVHg==}
+  '@tabler/icons-react@3.46.0':
+    resolution: {integrity: sha512-CCm7xJWhDT2PH4ZIFkP6AgYKtVhq0gpYkjUN+GVh1AzmIQaa77OW0bQPBPQiTE0PsXMR9oSxFqA3qBglzPyrVQ==}
     peerDependencies:
       react: '>= 16'
 
-  '@tabler/icons@3.44.0':
-    resolution: {integrity: sha512-Wn0AOZG9sg0L+bjfMqq4eNhC6pQjIrk94LvvWYNYkY8KH8wC3YILRzQlrnVJc4FUeMxH/AK97QsYCX35H3LndA==}
+  '@tabler/icons@3.46.0':
+    resolution: {integrity: sha512-f2RYFl3fzPwj5WO82x6en0dmkjefxEfOm16D1ByM6cj/McNiwOkL4VaPUoP9VVIrXAD9WnTSVFr70px703b//A==}
 
   '@tailwindcss/node@4.3.2':
     resolution: {integrity: sha512-yWP/sqEcBLaD8JuA6zNwxoYKr75qxTioYwlRwekj5Jr/I5GXnoJfjetH/psLUIv74cYTH2lBUEzBkinthoYcBg==}
@@ -4705,12 +4705,12 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@tabler/icons-react@3.44.0(react@19.2.7)':
+  '@tabler/icons-react@3.46.0(react@19.2.7)':
     dependencies:
-      '@tabler/icons': 3.44.0
+      '@tabler/icons': 3.46.0
       react: 19.2.7
 
-  '@tabler/icons@3.44.0': {}
+  '@tabler/icons@3.46.0': {}
 
   '@tailwindcss/node@4.3.2':
     dependencies:
