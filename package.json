@@ -8,7 +8,7 @@
     "format": "turbo format"
   },
   "devDependencies": {
-    "turbo": "^2.10.3"
+    "turbo": "^2.10.12"
   },
   "engines": {
     "node": ">=20",
