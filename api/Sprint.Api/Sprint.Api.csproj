@@ -11,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="HotChocolate.AspNetCore" Version="16.5.1" />
     <PackageReference Include="HotChocolate.AspNetCore.Authorization" Version="16.5.1" />
-    <PackageReference Include="HotChocolate.Subscriptions.InMemory" Version="16.5.1" />
+    <PackageReference Include="HotChocolate.Subscriptions.InMemory" Version="16.6.2" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.1" />
