@@ -183,6 +183,132 @@ public sealed class ResultsImportScanTests
         }
     }
 
+    [Fact]
+    public void AnArchivedCopyOfARecordedSessionDoesNotReplaceItsChannelLapWithATimeOnlyDuplicate()
+    {
+        CollectingLapHistoryStore corpus = new();
+        corpus.Save(RecordedRace());
+        ResultsArchiveEntry entry = Entry("race.xml") with { LastWriteUtc = Stamp.AddMinutes(20) };
+        FakeResultsImporter importer = new(entry);
+        LapHistoryImportReport report = new LapHistoryImportService(corpus).Import(importer);
+
+        Assert.Equal(0, report.ImportedCount);
+        Assert.Equal(1, report.AlreadyImportedCount);
+        Assert.Single(corpus.Sessions);
+        Assert.True(Assert.Single(corpus.Sessions).Laps[0].HasChannelTrace);
+    }
+
+    [Fact]
+    public void StartupDoesNotOfferAnXmlSessionThatSprintAlreadyRecorded()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            ResultsImportLedger ledger = new(root);
+            CollectingLapHistoryStore corpus = new();
+            corpus.Save(RecordedRace());
+            ResultsArchiveEntry entry = Entry("race.xml") with { LastWriteUtc = Stamp.AddMinutes(20) };
+            FakeResultsImporter importer = new(entry);
+
+            ResultsImportProposal first = new ResultsImportScanner(ledger, corpus).Scan(importer);
+
+            Assert.True(first.IsEmpty);
+            Assert.True(ledger.WasImported(entry));
+            Assert.Equal(1, importer.Reads);
+
+            ResultsImportProposal afterRestart = new ResultsImportScanner(new ResultsImportLedger(root), corpus).Scan(importer);
+            Assert.True(afterRestart.IsEmpty);
+            Assert.Equal(1, importer.Reads);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StartupDoesNotOfferRecordedPracticeWhenLmuLapNumbersDifferAtTheBoundary()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            ResultsImportLedger ledger = new(root);
+            CollectingLapHistoryStore corpus = new();
+            LapHistorySession recorded = RecordedRace();
+            recorded.Kind = HistorySessionKind.Practice;
+            recorded.Laps[0].LapNumber = 5;
+            recorded.Laps[0].IsValid = false;
+            recorded.Context.CarModel = "IDEC Sport #18";
+            corpus.Save(recorded);
+
+            ResultsArchiveEntry entry = Entry("practice.xml") with { LastWriteUtc = Stamp.AddMinutes(20) };
+            FakeResultsImporter importer = new(entry);
+            importer.Kinds[entry.Id] = ImportedSessionKind.Practice;
+            importer.LapNumbers[entry.Id] = 6;
+            importer.TrackCourse = "Circuit de Spa-Francorchamps";
+            importer.CarModel = "IDEC Sport #18:ELMS25";
+
+            ResultsImportProposal proposal = new ResultsImportScanner(ledger, corpus).Scan(importer);
+
+            Assert.True(proposal.IsEmpty);
+            Assert.True(ledger.WasImported(entry));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ARecordedSessionWithADifferentLapTimeDoesNotSettleTheArchive()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            ResultsImportLedger ledger = new(root);
+            CollectingLapHistoryStore corpus = new();
+            LapHistorySession differentSession = RecordedRace();
+            differentSession.Laps[0].LapTimeSeconds = 132.0;
+            corpus.Save(differentSession);
+            ResultsArchiveEntry entry = Entry("race.xml") with { LastWriteUtc = Stamp.AddMinutes(20) };
+
+            ResultsImportProposal proposal = new ResultsImportScanner(
+                ledger,
+                corpus).Scan(new FakeResultsImporter(entry));
+
+            Assert.False(proposal.IsEmpty);
+            Assert.False(ledger.WasImported(entry));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static LapHistorySession RecordedRace() => new()
+    {
+        Id = "recorded-race",
+        Origin = LapHistoryOrigin.Recorded,
+        Kind = HistorySessionKind.Race,
+        StartedAt = Stamp.AddMinutes(1),
+        EndedAt = Stamp.AddMinutes(20),
+        Context = new LapHistoryContext
+        {
+            Game = "Le Mans Ultimate",
+            TrackCourse = "Spa-Francorchamps",
+            CarModel = "Porsche 963",
+        },
+        Laps =
+        [
+            new LapHistoryRecord
+            {
+                LapNumber = 1,
+                LapTimeSeconds = 131.0,
+                TraceId = LapTraceId.For("recorded-race", 1),
+            },
+        ],
+    };
+
     private static ResultsArchiveEntry Entry(string id) => new(id, 2048, Stamp);
 
     private static void WithLedger(Action<ResultsImportLedger> body)
@@ -204,6 +330,12 @@ public sealed class ResultsImportScanTests
 
         public Dictionary<string, ImportedSessionKind> Kinds { get; } = [];
 
+        public Dictionary<string, int> LapNumbers { get; } = [];
+
+        public string TrackCourse { get; set; } = "Spa-Francorchamps";
+
+        public string CarModel { get; set; } = "Porsche 963";
+
         public int Reads { get; private set; }
 
         public string SourceDescription => "fake archive";
@@ -212,16 +344,19 @@ public sealed class ResultsImportScanTests
 
         public ImportedSession? Read(ResultsArchiveEntry entry)
         {
-            Reads++;
-            var kind = Kinds.TryGetValue(entry.Id, out var stated) ? stated : ImportedSessionKind.Race;
+            this.Reads++;
+            ImportedSessionKind kind = this.Kinds.TryGetValue(entry.Id, out ImportedSessionKind stated)
+                ? stated
+                : ImportedSessionKind.Race;
+            int lapNumber = this.LapNumbers.GetValueOrDefault(entry.Id, 1);
             return new ImportedSession(
                 Game: "Le Mans Ultimate",
-                TrackCourse: "Spa-Francorchamps",
-                CarModel: "Porsche 963",
+                TrackCourse: this.TrackCourse,
+                CarModel: this.CarModel,
                 Kind: kind,
                 SessionTimeUtc: Stamp,
                 PlayerName: "Alpha Tester",
-                Laps: [new ImportedLap(1, 131.0, [])]);
+                Laps: [new ImportedLap(lapNumber, 131.0, [])]);
         }
     }
 

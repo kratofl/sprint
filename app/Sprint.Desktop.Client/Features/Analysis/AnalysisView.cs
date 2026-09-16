@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -18,6 +19,99 @@ using PathShape = Avalonia.Controls.Shapes.Path;
 
 namespace Sprint.Desktop.Features.Analysis;
 
+/// <summary>The resolved car identity and the only real asset, if Sprint has one.</summary>
+internal sealed record AnalysisCarArtwork(
+    string Identity,
+    string? AssetFileName,
+    string MissingMessage)
+{
+    public bool IsMissing => AssetFileName is null;
+}
+
+/// <summary>A real circuit layout and the asset that draws it.</summary>
+internal sealed record AnalysisTrackArtwork(string Identity, string AssetFileName);
+
+/// <summary>
+/// Resolves artwork from the car model identity, never from a broad class fallback.
+/// </summary>
+internal static class AnalysisArtworkCatalog
+{
+    /// <summary>
+    /// The circuits Sprint has a real outline for, keyed by <see cref="GameTrackCatalog"/>'s
+    /// circuit identity. Every layout of a circuit shares its outline; a circuit that is missing
+    /// here draws no outline at all rather than borrowing another circuit's.
+    /// </summary>
+    private static readonly IReadOnlySet<string> CircuitsWithLayouts = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "algarve",
+        "bahrain",
+        "barcelona",
+        "cota",
+        "daytona",
+        "fuji",
+        "imola",
+        "interlagos",
+        "le-mans",
+        "monza",
+        "paul-ricard",
+        "sebring",
+        "silverstone",
+        "spa",
+    };
+
+    /// <summary>The outline for a raw track name, resolved through the game's circuit identity.</summary>
+    public static AnalysisTrackArtwork? ResolveTrack(string? game, string? track) =>
+        string.IsNullOrWhiteSpace(track) ? null : ResolveCircuit(GameTrackCatalog.CircuitId(game, track));
+
+    /// <summary>The outline for a circuit identity, or null when Sprint has no real asset.</summary>
+    public static AnalysisTrackArtwork? ResolveCircuit(string? circuitId) =>
+        circuitId is not null && CircuitsWithLayouts.Contains(circuitId)
+            ? new AnalysisTrackArtwork(circuitId, $"track-{circuitId}.svg")
+            : null;
+
+    public static AnalysisCarArtwork ResolveCar(string? game, string? carModel)
+    {
+        _ = game;
+        var normalized = Normalize(carModel);
+        return normalized switch
+        {
+            "porsche963" => Real("porsche-963", "car-porsche-963.jpg"),
+            "ferrari296" or "ferrari296gt3" or "ferrari296lmgt3" =>
+                Real("ferrari-296-gt3", "car-ferrari-296-gt3.jpg"),
+            "mclaren720slmgt3evo" or "mclaren720sgt3evo" or "mclaren720s" =>
+                Missing("mclaren-720s-lmgt3-evo"),
+            "porsche911gt3rlmgt3" or "porsche911gt3r" or "porsche911gt3r992" =>
+                Missing("porsche-911-gt3-r-lmgt3"),
+            _ => Missing(string.IsNullOrWhiteSpace(normalized) ? "unknown-car" : normalized),
+        };
+    }
+
+    private static AnalysisCarArtwork Real(string identity, string assetFileName) =>
+        new(identity, assetFileName, string.Empty);
+
+    private static AnalysisCarArtwork Missing(string identity) =>
+        new(identity, null, "No real asset for this model");
+
+    private static string Normalize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value.Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(character);
+            }
+        }
+
+        return builder.ToString();
+    }
+}
+
 /// <summary>
 /// The Analysis page (#196): pick two laps from the corpus and overlay them, and pick the lap
 /// the Live Compare HUD chases.
@@ -33,24 +127,20 @@ namespace Sprint.Desktop.Features.Analysis;
 /// </summary>
 public sealed class AnalysisView
 {
-    private static readonly IReadOnlyDictionary<string, string> ThumbnailAssets =
+    /// <summary>
+    /// Game logos. Cars resolve through <see cref="AnalysisArtworkCatalog.ResolveCar"/> so a model
+    /// can never quietly borrow another model's photograph.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> GameThumbnails =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Le Mans Ultimate"] = "game-le-mans-ultimate.png",
             ["LeMansUltimate"] = "game-le-mans-ultimate.png",
-            ["Porsche 963"] = "car-porsche-963.jpg",
-            ["Porsche_963"] = "car-porsche-963.jpg",
-            ["Ferrari 296"] = "car-ferrari-296-gt3.jpg",
-            ["Ferrari 296 GT3"] = "car-ferrari-296-gt3.jpg",
-            ["Ferrari 296 LMGT3"] = "car-ferrari-296-gt3.jpg",
-            ["Ferrari_296_GT3"] = "car-ferrari-296-gt3.jpg",
         };
 
     private static readonly Dictionary<string, Bitmap> ThumbnailCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly IReadOnlyDictionary<string, TrackLayoutAsset> TrackLayoutAssets = CreateTrackLayoutAssets();
-    private static readonly Dictionary<string, Geometry> TrackLayoutCache = new(StringComparer.OrdinalIgnoreCase);
-
-    private sealed record TrackLayoutAsset(string FileName, string? PathId = null, bool Filled = false);
+    private static readonly Geometry CalendarButtonGeometry = Geometry.Parse(
+        "M6 3V6 M18 3V6 M4 5H20C21.1 5 22 5.9 22 7V19C22 20.1 21.1 21 20 21H4C2.9 21 2 20.1 2 19V7C2 5.9 2.9 5 4 5H20 M2 10H22");
 
     private enum SessionStep
     {
@@ -76,7 +166,9 @@ public sealed class AnalysisView
     private Button? _sessionOpenButton;
     private SessionStep _sessionStep;
     private string _trackSearch = string.Empty;
-    private readonly Dictionary<SessionStep, Vector> _wizardScrollOffsets = [];
+    // Keyed by list, not by step: the track step's grid and its layout list are two lists in one
+    // step, and one offset shared between them scrolled the wrong one.
+    private readonly Dictionary<string, Vector> _wizardScrollOffsets = [];
     private AnalysisLapFilter _lapFilter;
     private AnalysisLapSort _lapSort;
 
@@ -307,34 +399,80 @@ public sealed class AnalysisView
 
     private Control WizardBody(LapCorpusFilter filter) => _sessionStep switch
     {
-        SessionStep.Game => ChoiceStep(
-            "Choose a game",
-            "Only games with recorded sessions are shown.",
-            filter.Games,
-            filter.Game,
-            "device-gamepad",
-            game =>
-            {
-                filter.SelectGame(game);
-                _pendingSession = null;
-            },
-            thumbnail: true),
+        SessionStep.Game => GameStep(filter),
         SessionStep.Track => TrackStep(filter),
         SessionStep.CarClass => CarClassStep(filter),
         SessionStep.Car => CarStep(filter),
         _ => SessionStepBody(filter),
     };
 
-    private Control TrackStep(LapCorpusFilter filter)
+    /// <summary>
+    /// A step's heading, an optional filter row, and the choices under them. The choices take
+    /// every remaining pixel of the dialog: a step that stops halfway down looks broken and
+    /// hides rows for no reason.
+    /// </summary>
+    private static Control StepLayout(Control heading, Control? filterRow, Control body)
     {
         var layout = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,*"),
+            RowDefinitions = new RowDefinitions(filterRow is null ? "Auto,*" : "Auto,Auto,*"),
             RowSpacing = 12,
         };
-        var heading = StepHeading("Choose a track", filter.Game ?? string.Empty);
-        Grid.SetRow(heading, 0);
         layout.Children.Add(heading);
+        if (filterRow is not null)
+        {
+            Grid.SetRow(filterRow, 1);
+            layout.Children.Add(filterRow);
+        }
+
+        Grid.SetRow(body, filterRow is null ? 1 : 2);
+        layout.Children.Add(body);
+        return layout;
+    }
+
+    private Control GameStep(LapCorpusFilter filter)
+    {
+        var tiles = new WrapPanel();
+        foreach (var game in filter.Games)
+        {
+            var value = game;
+            tiles.Children.Add(ChoiceTile(
+                value,
+                subtitle: null,
+                selected: string.Equals(filter.Game, value, StringComparison.Ordinal),
+                artwork: GameArtwork(value),
+                icon: "device-gamepad",
+                artworkHeight: 184,
+                stretch: false,
+                // The logo is the game's name set in the game's own type. Repeating it underneath
+                // said the same thing twice.
+                showLabel: false,
+                click: () =>
+                {
+                    filter.SelectGame(value);
+                    _pendingSession = null;
+                    _rerender();
+                }));
+        }
+
+        return StepLayout(
+            StepHeading("Choose a game", "Only games with recorded sessions are shown."),
+            null,
+            WizardScroller("game", tiles));
+    }
+
+    /// <summary>
+    /// One card per circuit, never one per layout. Spa and Spa Endurance are the same place, and
+    /// spending two of four columns on that left less room for the places a driver is scanning
+    /// for.
+    /// </summary>
+    private Control TrackStep(LapCorpusFilter filter)
+    {
+        if (filter.Circuit is { } chosen && filter.LayoutIsAChoice)
+        {
+            return LayoutStep(filter, chosen);
+        }
+
         var search = new TextBox
         {
             PlaceholderText = "Type a track name",
@@ -346,35 +484,36 @@ public sealed class AnalysisView
             BorderBrush = Graphite.Line2Brush,
             Padding = new Thickness(10, 7),
         };
-        var searchField = Graphite.FormField("Search tracks", search);
-        Grid.SetRow(searchField, 1);
-        layout.Children.Add(searchField);
 
         var tiles = new UniformGrid { Columns = 4 };
-        var scroller = WizardScroller(SessionStep.Track, tiles, tag: "analysis-track-scroll");
-        Grid.SetRow(scroller, 2);
+        var scroller = WizardScroller("track", tiles, tag: "analysis-track-scroll");
         void RefreshTiles()
         {
             tiles.Children.Clear();
-            var matches = filter.Tracks.Where(track =>
+            var matches = filter.Circuits.Where(circuit =>
                 string.IsNullOrWhiteSpace(_trackSearch)
-                || track.Contains(_trackSearch, StringComparison.OrdinalIgnoreCase));
-            foreach (var track in matches)
+                || circuit.Name.Contains(_trackSearch, StringComparison.OrdinalIgnoreCase)
+                || circuit.Layouts.Any(layout =>
+                    layout.TrackName.Contains(_trackSearch, StringComparison.OrdinalIgnoreCase)));
+            foreach (var circuit in matches)
             {
-                var value = track;
+                var value = circuit;
+                var selected = string.Equals(filter.Circuit, value.Id, StringComparison.Ordinal);
                 tiles.Children.Add(ChoiceTile(
-                    value,
-                    string.Equals(filter.Track, value, StringComparison.Ordinal),
+                    value.Name,
+                    CircuitSubtitle(value),
+                    selected,
+                    TrackArtwork(value.Id, value.Name, selected),
                     "route",
-                    thumbnail: true,
+                    artworkHeight: 168,
                     stretch: true,
+                    showLabel: true,
                     click: () =>
                     {
-                        filter.SelectTrack(value);
+                        filter.SelectCircuit(value.Id);
                         _pendingSession = null;
                         _rerender();
-                    },
-                    artworkHeight: 184));
+                    }));
             }
 
             if (tiles.Children.Count == 0)
@@ -386,72 +525,170 @@ public sealed class AnalysisView
         search.TextChanged += (_, _) =>
         {
             _trackSearch = search.Text ?? string.Empty;
-            _wizardScrollOffsets[SessionStep.Track] = default;
+            _wizardScrollOffsets["track"] = default;
             scroller.Offset = default;
             RefreshTiles();
         };
         RefreshTiles();
-        layout.Children.Add(scroller);
-        return layout;
+        return StepLayout(
+            StepHeading("Choose a track", filter.Game ?? string.Empty),
+            Graphite.FormField("Search tracks", search),
+            scroller);
     }
 
-    private Control ChoiceStep(
-        string title,
-        string subtitle,
-        IReadOnlyList<string> options,
-        string? selected,
-        string icon,
-        Action<string> select,
-        bool thumbnail = false)
+    /// <summary>
+    /// The rest of the track question, asked only when the chosen circuit really has more than
+    /// one layout in the driver's history.
+    /// </summary>
+    private Control LayoutStep(LapCorpusFilter filter, string circuitId)
     {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(StepHeading(title, subtitle));
-        var tiles = new WrapPanel();
-        var scroller = WizardScroller(_sessionStep, tiles, 286);
-        foreach (var option in options)
+        var circuit = filter.Circuits.First(candidate =>
+            string.Equals(candidate.Id, circuitId, StringComparison.Ordinal));
+
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        header.Children.Add(StepHeading(
+            "Choose a layout",
+            $"{circuit.Name} · {circuit.Layouts.Count} layouts driven"));
+        var back = Graphite.Button("All tracks", ButtonTone.Ghost, "chevron-left");
+        back.Tag = "analysis-layout-back";
+        back.VerticalAlignment = VerticalAlignment.Center;
+        back.Click += (_, _) =>
         {
-            var value = option;
-            tiles.Children.Add(ChoiceTile(
-                value,
-                string.Equals(value, selected, StringComparison.Ordinal),
-                icon,
-                thumbnail,
-                stretch: false,
-                click: () =>
-                {
-                    select(value);
-                    _rerender();
-                }));
+            filter.SelectCircuit(null);
+            _pendingSession = null;
+            _rerender();
+        };
+        Grid.SetColumn(back, 1);
+        header.Children.Add(back);
+
+        var rows = new StackPanel { Spacing = 8 };
+        foreach (var layout in circuit.Layouts)
+        {
+            var value = layout;
+            var selected = string.Equals(filter.Track, value.TrackName, StringComparison.Ordinal);
+            var sessions = filter.SessionsOnLayout(value.TrackName);
+            var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(Graphite.TextBlock(value.Label, 14, FontWeight.SemiBold));
+            text.Children.Add(Graphite.TextBlock(
+                $"{value.TrackName} · {(sessions == 1 ? "1 session" : $"{sessions} sessions")}",
+                11.5,
+                brush: Graphite.Text3Brush));
+
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            row.Children.Add(text);
+            if (selected)
+            {
+                var check = Icons.Create("check", 16, Graphite.AccentBrush);
+                check.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumn(check, 1);
+                row.Children.Add(check);
+            }
+
+            var button = new Button
+            {
+                Tag = "analysis-layout-row",
+                Content = row,
+                Padding = new Thickness(14, 11),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Background = selected ? Graphite.AccentBgBrush : Graphite.Panel3Brush,
+                BorderBrush = selected ? Graphite.AccentBrush : Graphite.LineBrush,
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            };
+            AutomationProperties.SetName(button, $"{circuit.Name}, {value.Label}");
+            Graphite.QuietPointerFeedback(button);
+            var restBackground = button.Background;
+            button.PointerEntered += (_, _) => button.Background = selected
+                ? Graphite.AccentBgBrush
+                : Graphite.Panel3HoverBrush;
+            button.PointerExited += (_, _) => button.Background = restBackground;
+            button.Click += (_, _) =>
+            {
+                filter.SelectTrack(value.TrackName);
+                _pendingSession = null;
+                _rerender();
+            };
+            rows.Children.Add(button);
         }
 
-        stack.Children.Add(scroller);
-        return stack;
+        // The outline is context, not the question: it stays a card beside the layouts rather
+        // than filling the dialog with a drawing the driver has already recognised.
+        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*"), ColumnSpacing = 20 };
+        var preview = new Border
+        {
+            Height = 196,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            ClipToBounds = true,
+            Child = TrackArtwork(circuit.Id, circuit.Name, selected: false)
+                ?? Icons.Create("route", 32, Graphite.Text3Brush),
+        };
+        body.Children.Add(preview);
+        var list = WizardScroller("track-layouts", rows, tag: "analysis-layout-scroll");
+        Grid.SetColumn(list, 1);
+        body.Children.Add(list);
+
+        return StepLayout(header, null, body);
     }
 
     private Control CarClassStep(LapCorpusFilter filter)
     {
-        var stack = new StackPanel { Spacing = 16 };
-        stack.Children.Add(StepHeading("Choose a car class", filter.Track ?? string.Empty));
-
         var available = filter.Classes.ToHashSet(StringComparer.Ordinal);
-        var choices = new UniformGrid { Columns = 4 };
+        var choices = new UniformGrid { Columns = 2 };
         foreach (var option in filter.ClassOptions)
         {
+            var display = LapCorpusFilter.DisplayClass(option);
             var isAvailable = available.Contains(option.Id);
             var selected = string.Equals(filter.CarClass, option.Id, StringComparison.Ordinal);
-            var copy = new Grid
+            var row = new StackPanel
             {
-                Margin = new Thickness(16, 8),
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            copy.Children.Add(Graphite.TextBlock(
-                option.Name,
-                24,
-                FontWeight.Bold,
-                isAvailable ? Graphite.TextBrush : Graphite.Text2Brush));
+            row.Children.Add(new Border
+            {
+                Tag = "analysis-class-badge",
+                Width = 58,
+                MinHeight = 28,
+                Padding = new Thickness(6, 4),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = isAvailable ? CarClassBrush(option.VisualRole) : Graphite.Panel3Brush,
+                BorderBrush = isAvailable ? Graphite.Line2Brush : Graphite.LineBrush,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(Graphite.RadiusSm),
+                Child = new TextBlock
+                {
+                    Text = display.Abbreviation,
+                    FontFamily = Graphite.FontStack,
+                    FontSize = 11,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = isAvailable ? Graphite.TextBrush : Graphite.Text3Brush,
+                    TextAlignment = TextAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            });
+            // A text block beside a badge stretches to the row's height by default and then draws
+            // its text at the top of that box, which is what put the name above the badge's
+            // middle. Centre it explicitly.
+            var name = Graphite.TextBlock(
+                display.Name,
+                14,
+                FontWeight.SemiBold,
+                isAvailable ? Graphite.TextBrush : Graphite.Text2Brush,
+                wrapping: TextWrapping.Wrap);
+            name.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(name);
 
             var content = new Grid();
-            content.Children.Add(copy);
+            Grid.SetColumn(row, 0);
+            content.Children.Add(row);
             if (selected)
             {
                 var indicator = SelectedIndicator();
@@ -464,30 +701,35 @@ public sealed class AnalysisView
             {
                 Tag = isAvailable ? "analysis-class-available" : "analysis-class-unavailable",
                 Content = content,
-                Height = 88,
+                Height = 64,
                 Margin = new Thickness(0, 0, 8, 8),
-                Padding = new Thickness(0),
+                Padding = new Thickness(12, 8),
                 IsEnabled = isAvailable,
                 Opacity = 1,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 VerticalContentAlignment = VerticalAlignment.Stretch,
-                Background = isAvailable
-                    ? CarClassBrush(option.VisualRole)
-                    : Graphite.Panel3Brush,
-                BorderBrush = selected ? Graphite.AccentBrush : Brushes.Transparent,
-                BorderThickness = new Thickness(selected ? 2 : 0),
+                Background = selected ? Graphite.AccentBgBrush : Graphite.Panel3Brush,
+                BorderBrush = selected ? Graphite.AccentBrush : Graphite.LineBrush,
+                BorderThickness = new Thickness(selected ? 2 : 1),
                 CornerRadius = new CornerRadius(Graphite.RadiusMd),
             };
-            AutomationProperties.SetName(button, option.Name);
+            AutomationProperties.SetName(button, $"{display.Abbreviation}, {display.Name}");
             AutomationProperties.SetHelpText(
                 button,
-                isAvailable ? $"{option.Name}, available at {filter.Track}." : $"{option.Name}, not available at {filter.Track}.");
+                isAvailable ? $"{display.Name}, available at {filter.Track}." : $"{display.Name}, not available at {filter.Track}.");
             if (!isAvailable)
             {
                 ToolTip.SetTip(button, "Not available at this track");
                 ToolTip.SetShowOnDisabled(button, true);
             }
+
+            Graphite.QuietPointerFeedback(button);
+            var restBackground = button.Background;
+            button.PointerEntered += (_, _) => button.Background = selected
+                ? Graphite.AccentBgBrush
+                : Graphite.Panel3HoverBrush;
+            button.PointerExited += (_, _) => button.Background = restBackground;
             button.Click += (_, _) =>
             {
                 filter.SelectClass(captured);
@@ -497,55 +739,56 @@ public sealed class AnalysisView
             choices.Children.Add(button);
         }
 
-        stack.Children.Add(WizardScroller(SessionStep.CarClass, choices, 240));
-        return stack;
+        return StepLayout(
+            StepHeading("Choose a car class", filter.Track ?? string.Empty),
+            null,
+            WizardScroller("class", choices));
     }
 
     private Control CarStep(LapCorpusFilter filter)
     {
-        var stack = new StackPanel { Spacing = 16 };
-        stack.Children.Add(StepHeading(
-            "Choose a car",
-            filter.CarClass is null
-                ? string.Empty
-                : GameCarClassCatalog.DisplayName(filter.Game, filter.CarClass)));
-        var selectedClassRole = filter.ClassOptions
-            .FirstOrDefault(option => string.Equals(option.Id, filter.CarClass, StringComparison.Ordinal))
-            ?.VisualRole ?? GameCarClassVisualRole.Default;
-        var fallbackAsset = selectedClassRole is GameCarClassVisualRole.Hypercar or GameCarClassVisualRole.Lmp2
-            ? "car-generic-generated.png"
-            : "car-generic-gt-generated.png";
         var tiles = new UniformGrid { Columns = 2 };
         foreach (var car in filter.CarModels)
         {
             var captured = car;
+            var selected = string.Equals(filter.CarModel, car, StringComparison.Ordinal);
             tiles.Children.Add(ChoiceTile(
                 car,
-                string.Equals(filter.CarModel, car, StringComparison.Ordinal),
+                subtitle: null,
+                selected,
+                CarArtwork(car, selected),
                 "gauge",
-                thumbnail: true,
+                artworkHeight: 240,
                 stretch: true,
+                showLabel: true,
                 click: () =>
                 {
                     filter.SelectCarModel(captured);
                     _pendingSession = null;
                     _rerender();
-                },
-                artworkHeight: 240,
-                fallbackAsset: fallbackAsset));
+                }));
         }
 
-        stack.Children.Add(WizardScroller(SessionStep.Car, tiles, 360));
-        return stack;
+        return StepLayout(
+            StepHeading(
+                "Choose a car",
+                filter.CarClass is null
+                    ? string.Empty
+                    : GameCarClassCatalog.DisplayName(filter.Game, filter.CarClass)),
+            null,
+            WizardScroller("car", tiles, tag: "analysis-car-scroll"));
     }
 
-    private ScrollViewer WizardScroller(
-        SessionStep step,
-        Control content,
-        double? maxHeight = null,
-        string? tag = null)
+    /// <summary>
+    /// The scrolling half of a step. It has no height of its own: the dialog's body row is what
+    /// bounds it, so every step ends where the footer starts.
+    /// </summary>
+    private ScrollViewer WizardScroller(string key, Control content, string? tag = null)
     {
-        var savedOffset = _wizardScrollOffsets.GetValueOrDefault(step);
+        // Choices sit at the top of the room they are given. A grid that stretches its rows to
+        // fill the dialog pushes two options to opposite ends of the screen.
+        content.VerticalAlignment = VerticalAlignment.Top;
+        var savedOffset = _wizardScrollOffsets.GetValueOrDefault(key);
         var restoring = savedOffset != default;
         var scroller = new ScrollViewer
         {
@@ -554,15 +797,11 @@ public sealed class AnalysisView
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = content,
         };
-        if (maxHeight is { } constrainedHeight)
-        {
-            scroller.MaxHeight = constrainedHeight;
-        }
         scroller.ScrollChanged += (_, _) =>
         {
             if (!restoring)
             {
-                _wizardScrollOffsets[step] = scroller.Offset;
+                _wizardScrollOffsets[key] = scroller.Offset;
             }
         };
         scroller.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(
@@ -587,53 +826,101 @@ public sealed class AnalysisView
         return heading;
     }
 
+    /// <summary>"3 layouts" when the layout is still a question, otherwise which one this is.</summary>
+    private static string? CircuitSubtitle(GameCircuit circuit)
+    {
+        if (circuit.LayoutIsAChoice)
+        {
+            return $"{circuit.Layouts.Count} layouts";
+        }
+
+        var label = circuit.Layouts[0].Label;
+        return string.Equals(label, circuit.Name, StringComparison.Ordinal) ? null : label;
+    }
+
     private static Button ChoiceTile(
         string label,
+        string? subtitle,
         bool selected,
+        Control? artwork,
         string icon,
-        bool thumbnail,
+        double artworkHeight,
         bool stretch,
-        Action click,
-        double artworkHeight = 160,
-        string? fallbackAsset = null)
+        bool showLabel,
+        Action click)
     {
         var content = new StackPanel { Spacing = 8 };
-        var artwork = ThumbnailArtwork(label, thumbnail, selected, fallbackAsset);
         var artworkFrame = new Grid();
         artworkFrame.Children.Add(
-            artwork ?? Icons.Create(icon, thumbnail ? 32 : 22, selected ? Graphite.AccentBrush : Graphite.Text2Brush));
+            artwork ?? Icons.Create(icon, 32, selected ? Graphite.AccentBrush : Graphite.Text2Brush));
         if (selected)
         {
             artworkFrame.Children.Add(SelectedIndicator());
         }
 
-        content.Children.Add(new Border
+        var card = new Border
         {
-            Height = thumbnail ? artworkHeight : 48,
-            Background = selected ? Graphite.AccentBgBrush : Graphite.Panel3Brush,
+            Height = artworkHeight,
+            // Selection is the ember border and the check, not an ember wash: tinting the surface
+            // under a logo or a photograph only made the artwork muddy.
+            Background = Graphite.Panel3Brush,
             CornerRadius = new CornerRadius(Graphite.RadiusSm),
-            BorderBrush = selected ? Graphite.AccentBrush : Brushes.Transparent,
-            BorderThickness = new Thickness(selected ? 2 : 0),
+            BorderBrush = selected ? Graphite.AccentBrush : Graphite.LineBrush,
+            BorderThickness = new Thickness(selected ? 2 : 1),
             ClipToBounds = true,
             Child = artworkFrame,
-        });
-        content.Children.Add(Graphite.TextBlock(label, 12, FontWeight.SemiBold, wrapping: TextWrapping.Wrap));
+        };
+        content.Children.Add(card);
+        if (showLabel)
+        {
+            var caption = new StackPanel { Spacing = 1 };
+            caption.Children.Add(Graphite.TextBlock(label, 12.5, FontWeight.SemiBold, wrapping: TextWrapping.Wrap));
+            if (subtitle is { Length: > 0 })
+            {
+                caption.Children.Add(Graphite.TextBlock(subtitle, 11, brush: Graphite.Text3Brush));
+            }
+
+            content.Children.Add(caption);
+        }
 
         var button = new Button
         {
             Content = content,
-            Width = stretch ? double.NaN : thumbnail ? 400 : 212,
-            MinHeight = thumbnail ? artworkHeight + 40 : 88,
+            Width = stretch ? double.NaN : 400,
             Margin = new Thickness(0, 0, 8, 8),
             Padding = new Thickness(0),
             HorizontalAlignment = stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Left,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Top,
             Background = Brushes.Transparent,
             BorderBrush = Brushes.Transparent,
             BorderThickness = new Thickness(0),
+            Cursor = new Cursor(StandardCursorType.Hand),
         };
         AutomationProperties.SetName(button, label);
+        ToolTip.SetTip(button, label);
+
+        // The tile's own card is the hover surface. Left to the Fluent template, hovering a tile
+        // repainted the whole button — a pale box behind the artwork and a recoloured caption —
+        // which read as a selection that had not happened.
+        Graphite.QuietPointerFeedback(button);
+        var restBackground = card.Background;
+        var restBorder = card.BorderBrush;
+        button.PointerEntered += (_, _) =>
+        {
+            if (selected)
+            {
+                return;
+            }
+
+            card.Background = Graphite.Panel3HoverBrush;
+            card.BorderBrush = Graphite.Line2Brush;
+        };
+        button.PointerExited += (_, _) =>
+        {
+            card.Background = restBackground;
+            card.BorderBrush = restBorder;
+        };
         button.Click += (_, _) => click();
         return button;
     }
@@ -665,136 +952,120 @@ public sealed class AnalysisView
         _ => Graphite.ClassDefaultBrush,
     };
 
-    private static Control? ThumbnailArtwork(
-        string label,
-        bool requested,
-        bool selected,
-        string? fallbackAsset)
+    /// <summary>The circuit's outline, or null when Sprint has no real asset for it.</summary>
+    private static Control? TrackArtwork(string circuitId, string circuitName, bool selected)
     {
-        if (!requested)
+        if (AnalysisArtworkCatalog.ResolveCircuit(circuitId) is not { } artwork)
         {
             return null;
         }
 
-        if (TrackLayoutAssets.TryGetValue(label, out var layout))
+        return TrackLayoutView.Card(
+            artwork.AssetFileName,
+            circuitName,
+            selected ? Graphite.AccentBrush : Graphite.Text2Brush);
+    }
+
+    private static Control? GameArtwork(string game) =>
+        GameThumbnails.TryGetValue(game, out var asset)
+            ? new Image
+            {
+                Source = LoadBitmap(asset),
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(28, 20),
+            }
+            : null;
+
+    private static Control CarArtwork(string label, bool selected)
+    {
+        var artwork = AnalysisArtworkCatalog.ResolveCar(null, label);
+        if (artwork.AssetFileName is null)
         {
-            return TrackLayout(layout, selected);
+            var missing = new StackPanel
+            {
+                Spacing = 7,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            missing.Children.Add(Icons.Create(
+                "help-circle",
+                30,
+                selected ? Graphite.TextBrush : Graphite.Text3Brush));
+            missing.Children.Add(Graphite.TextBlock(
+                "Artwork unavailable",
+                12,
+                FontWeight.SemiBold,
+                selected ? Graphite.TextBrush : Graphite.Text2Brush));
+            missing.Children.Add(Graphite.TextBlock(
+                artwork.MissingMessage,
+                10.5,
+                brush: Graphite.Text3Brush));
+            var state = new Border
+            {
+                Tag = "analysis-car-missing",
+                Background = Graphite.Panel3Brush,
+                Child = missing,
+            };
+            AutomationProperties.SetName(state, $"{label}: artwork unavailable");
+            return state;
         }
 
-        if (!ThumbnailAssets.TryGetValue(label, out var asset) && fallbackAsset is null)
+        var image = new Image
         {
-            return null;
-        }
-
-        asset ??= fallbackAsset!;
-
-        if (!ThumbnailCache.TryGetValue(asset, out var bitmap))
-        {
-            using var stream = AssetLoader.Open(new Uri($"avares://Sprint.Desktop.Client/Assets/Analysis/{asset}"));
-            bitmap = new Bitmap(stream);
-            ThumbnailCache[asset] = bitmap;
-        }
-
-        return new Image
-        {
-            Tag = asset.StartsWith("car-", StringComparison.Ordinal) ? "analysis-car-image" : null,
-            Source = bitmap,
-            Stretch = asset.StartsWith("game-", StringComparison.Ordinal)
-                ? Stretch.Uniform
-                : Stretch.UniformToFill,
-            Margin = asset.StartsWith("game-", StringComparison.Ordinal)
-                ? new Thickness(24, 16)
-                : new Thickness(0),
+            Tag = "analysis-car-image",
+            Source = LoadBitmap(artwork.AssetFileName),
+            Stretch = Stretch.UniformToFill,
         };
+        AutomationProperties.SetName(image, label);
+        return image;
     }
 
-    private static Control TrackLayout(TrackLayoutAsset asset, bool selected)
+    private static Bitmap LoadBitmap(string asset)
     {
-        if (!TrackLayoutCache.TryGetValue(asset.FileName, out var geometry))
+        if (ThumbnailCache.TryGetValue(asset, out var cached))
         {
-            using var stream = AssetLoader.Open(
-                new Uri($"avares://Sprint.Desktop.Client/Assets/Analysis/{asset.FileName}"));
-            var document = XDocument.Load(stream);
-            var paths = document.Descendants()
-                .Where(element => element.Name.LocalName == "path")
-                .Where(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("d")))
-                .ToArray();
-            var path = asset.PathId is null
-                ? paths.MaxBy(element => ((string?)element.Attribute("d"))!.Length)
-                : paths.Single(element => string.Equals(
-                    (string?)element.Attribute("id"),
-                    asset.PathId,
-                    StringComparison.Ordinal));
-            geometry = Geometry.Parse((string?)path?.Attribute("d")
-                ?? throw new InvalidOperationException($"Track layout '{asset.FileName}' has no usable path."));
-            TrackLayoutCache[asset.FileName] = geometry;
+            return cached;
         }
 
-        var brush = selected ? Graphite.AccentBrush : Graphite.Text2Brush;
-        return new PathShape
-        {
-            Tag = "analysis-track-layout",
-            Data = geometry,
-            Fill = asset.Filled ? brush : null,
-            Stroke = brush,
-            StrokeThickness = asset.Filled ? 2.5 : 5,
-            StrokeLineCap = PenLineCap.Round,
-            StrokeJoin = PenLineJoin.Round,
-            Stretch = Stretch.Uniform,
-            Margin = new Thickness(24, 16),
-        };
-    }
-
-    private static IReadOnlyDictionary<string, TrackLayoutAsset> CreateTrackLayoutAssets()
-    {
-        var layouts = new Dictionary<string, TrackLayoutAsset>(StringComparer.OrdinalIgnoreCase);
-        AddAliases(layouts, new TrackLayoutAsset("track-daytona.svg", "path2463", Filled: true),
-            "Daytona International Speedway Road Course", "Daytona International Speedway", "Daytona");
-        AddAliases(layouts, new TrackLayoutAsset("track-barcelona.svg", "path3115"),
-            "Circuit de Barcelona", "Circuit de Barcelona-Catalunya", "Barcelona");
-        AddAliases(layouts, new TrackLayoutAsset("track-sebring.svg", "path4147"),
-            "Sebring International Raceway", "Sebring");
-        AddAliases(layouts, new TrackLayoutAsset("track-le-mans.svg"),
-            "Circuit de la Sarthe", "Circuit des 24 Heures du Mans", "Le Mans");
-        AddAliases(layouts, new TrackLayoutAsset("track-spa-francorchamps.svg", "path2840"),
-            "Spa-Francorchamps");
-        AddAliases(layouts, new TrackLayoutAsset("track-monza.svg", "path2182"),
-            "Autodromo Nazionale Monza", "Monza");
-        return layouts;
-    }
-
-    private static void AddAliases(
-        IDictionary<string, TrackLayoutAsset> layouts,
-        TrackLayoutAsset asset,
-        params string[] aliases)
-    {
-        foreach (var alias in aliases)
-        {
-            layouts[alias] = asset;
-        }
+        using var stream = AssetLoader.Open(new Uri($"avares://Sprint.Desktop.Client/Assets/Analysis/{asset}"));
+        var bitmap = new Bitmap(stream);
+        ThumbnailCache[asset] = bitmap;
+        return bitmap;
     }
 
     private Control SessionStepBody(LapCorpusFilter filter)
     {
-        var stack = new StackPanel { Spacing = 10 };
-        stack.Children.Add(StepHeading("Choose a session", $"{filter.Track} · {filter.CarModel}"));
         var sessions = new ScrollViewer
         {
-            MaxHeight = 190,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = SessionList(filter),
         };
-        stack.Children.Add(DayStep(filter, () =>
+        var list = new Border
         {
-            _pendingSession = null;
-            sessions.Content = SessionList(filter);
-            if (_sessionOpenButton is not null)
+            // Hugs its rows and grows to the dialog's remaining height, so two sessions are not
+            // framed by an empty half-screen and forty still scroll.
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusSm),
+            ClipToBounds = true,
+            Child = sessions,
+        };
+
+        return StepLayout(
+            StepHeading("Choose a session", $"{filter.Track} · {filter.CarModel}"),
+            DayStep(filter, () =>
             {
-                _sessionOpenButton.IsEnabled = false;
-            }
-        }));
-        stack.Children.Add(sessions);
-        return stack;
+                _pendingSession = null;
+                sessions.Content = SessionList(filter);
+                if (_sessionOpenButton is not null)
+                {
+                    _sessionOpenButton.IsEnabled = false;
+                }
+            }),
+            list);
     }
 
     private Control WizardFooter(LapCorpusFilter filter)
@@ -861,27 +1132,36 @@ public sealed class AnalysisView
                 .Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 
-    /// <summary>An inclusive, optionally open-ended session date range.</summary>
+    /// <summary>
+    /// An inclusive, optionally open-ended session date range.
+    /// <para>
+    /// One control, not two inputs at opposite ends of the dialog: the two ends of a range belong
+    /// next to each other, and the ranges a driver actually asks for — this week, this month —
+    /// are one click rather than two calendars.
+    /// </para>
+    /// </summary>
     private Control DayStep(LapCorpusFilter filter, Action rangeChanged)
     {
-        var range = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,*"),
-            ColumnSpacing = 12,
-        };
-        var from = new DatePicker
-        {
-            Tag = "analysis-date-from",
-            SelectedDate = PickerDate(filter.DateFrom),
-        };
-        var to = new DatePicker
-        {
-            Tag = "analysis-date-to",
-            SelectedDate = PickerDate(filter.DateTo),
-        };
+        var from = DatePicker("analysis-date-from", filter.DateFrom);
+        var to = DatePicker("analysis-date-to", filter.DateTo);
+        StyleCalendarButton(from);
+        StyleCalendarButton(to);
+        AutomationProperties.SetName(from, "From date");
+        AutomationProperties.SetHelpText(
+            from,
+            "Optional inclusive start date. Type a locale-aware date or open the calendar with Alt+Down.");
+        AutomationProperties.SetName(to, "To date");
+        AutomationProperties.SetHelpText(
+            to,
+            "Optional inclusive end date. Type a locale-aware date or open the calendar with Alt+Down.");
         var synchronizingRange = false;
-        from.SelectedDateChanged += (_, _) =>
+        from.PropertyChanged += (_, change) =>
         {
+            if (change.Property != CalendarDatePicker.SelectedDateProperty)
+            {
+                return;
+            }
+
             if (synchronizingRange)
             {
                 return;
@@ -893,8 +1173,13 @@ public sealed class AnalysisView
             synchronizingRange = false;
             rangeChanged();
         };
-        to.SelectedDateChanged += (_, _) =>
+        to.PropertyChanged += (_, change) =>
         {
+            if (change.Property != CalendarDatePicker.SelectedDateProperty)
+            {
+                return;
+            }
+
             if (synchronizingRange)
             {
                 return;
@@ -907,19 +1192,144 @@ public sealed class AnalysisView
             rangeChanged();
         };
 
-        range.Children.Add(Graphite.FormField("From", from));
-        var toField = Graphite.FormField("To", to);
-        Grid.SetColumn(toField, 1);
-        range.Children.Add(toField);
-        return range;
+        // The two labels already say which end is which, so there is no dash between the fields
+        // to nudge onto the labels' line or the inputs'.
+        var fields = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        fields.Children.Add(Graphite.FormField("From", from));
+        fields.Children.Add(Graphite.FormField("To", to));
+
+        var presets = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        presets.Children.Add(RangePreset("Last 7 days", today.AddDays(-6), today, filter));
+        presets.Children.Add(RangePreset("Last 30 days", today.AddDays(-29), today, filter));
+        presets.Children.Add(RangePreset("Any date", null, null, filter));
+
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        row.Children.Add(fields);
+        Grid.SetColumn(presets, 1);
+        presets.HorizontalAlignment = HorizontalAlignment.Right;
+        row.Children.Add(presets);
+
+        return new Border
+        {
+            Tag = "analysis-date-range",
+            Background = Graphite.Panel3Brush,
+            BorderBrush = Graphite.LineBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Graphite.RadiusMd),
+            Padding = new Thickness(14, 10, 14, 12),
+            Child = row,
+        };
     }
 
-    private static DateTimeOffset? PickerDate(DateOnly? date) => date is { } value
-        ? new DateTimeOffset(value.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+    private static CalendarDatePicker DatePicker(string tag, DateOnly? value) => new()
+    {
+        Tag = tag,
+        PlaceholderText = "Select date",
+        SelectedDateFormat = CalendarDatePickerFormat.Short,
+        FirstDayOfWeek = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek,
+        FontFamily = Graphite.FontStack,
+        FontSize = 12.5,
+        Background = Graphite.Panel2Brush,
+        Foreground = Graphite.TextBrush,
+        BorderBrush = Graphite.Line2Brush,
+        Padding = new Thickness(10, 6),
+        MinHeight = 32,
+        Width = 168,
+        SelectedDate = PickerDate(value),
+    };
+
+    /// <summary>A named range, which is how a driver asks for one: "this week", not two dates.</summary>
+    private Button RangePreset(string label, DateOnly? from, DateOnly? to, LapCorpusFilter filter)
+    {
+        var active = filter.DateFrom == from && filter.DateTo == to;
+        var button = Graphite.Button(label, active ? ButtonTone.Neutral : ButtonTone.Ghost);
+        button.Tag = "analysis-date-preset";
+        button.FontSize = 12;
+        button.MinHeight = 32;
+        if (active)
+        {
+            button.BorderBrush = Graphite.AccentBorderBrush;
+            button.Foreground = Graphite.TextBrush;
+        }
+
+        button.Click += (_, _) =>
+        {
+            filter.SelectDateRange(from, to);
+            _pendingSession = null;
+            _rerender();
+        };
+        return button;
+    }
+
+    private static void StyleCalendarButton(CalendarDatePicker picker)
+    {
+        picker.TemplateApplied += (_, applied) =>
+        {
+            if (applied.NameScope.Find<Button>("PART_Button") is not { } button)
+            {
+                return;
+            }
+
+            // CalendarDatePicker's Fluent template uses PART_Button for the native
+            // calendar command. Replace only that button's visual template so the
+            // command, Alt+Down handling, and popup wiring remain CalendarDatePicker's.
+            button.Foreground = Graphite.Text2Brush;
+            button.Background = Brushes.Transparent;
+            button.BorderBrush = Brushes.Transparent;
+            button.BorderThickness = new Thickness(0);
+            button.Padding = new Thickness(0);
+            button.Width = 28;
+            button.MinWidth = 28;
+            button.Height = 28;
+            button.MinHeight = 28;
+            button.HorizontalContentAlignment = HorizontalAlignment.Center;
+            button.VerticalContentAlignment = VerticalAlignment.Center;
+            button.Template = new FuncControlTemplate<Button>((control, _) =>
+            {
+                var glyph = new PathShape
+                {
+                    Tag = "analysis-calendar-glyph",
+                    Data = CalendarButtonGeometry,
+                    Fill = null,
+                    Stroke = control.Foreground ?? Graphite.Text2Brush,
+                    StrokeThickness = 1.6,
+                    StrokeLineCap = PenLineCap.Round,
+                    StrokeJoin = PenLineJoin.Round,
+                    Stretch = Stretch.Uniform,
+                    Width = 19,
+                    Height = 19,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                return new Grid
+                {
+                    Width = 28,
+                    Height = 28,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children = { glyph },
+                };
+            });
+        };
+    }
+
+    private static DateTime? PickerDate(DateOnly? date) => date is { } value
+        ? value.ToDateTime(TimeOnly.MinValue)
         : null;
 
-    private static DateOnly? DateOnlyValue(DateTimeOffset? date) => date is { } value
-        ? DateOnly.FromDateTime(value.DateTime)
+    private static DateOnly? DateOnlyValue(DateTime? date) => date is { } value
+        ? DateOnly.FromDateTime(value)
         : null;
 
     private Control SessionList(LapCorpusFilter filter)
@@ -1025,21 +1435,20 @@ public sealed class AnalysisView
         var isHudTarget = Same(lap, _hudTarget);
 
         var text = new StackPanel { Spacing = 1 };
-        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        title.Children.Add(Graphite.TextBlock(lap.Label, 12.5, FontWeight.SemiBold));
+        var title = Graphite.InlineRow(6, Graphite.TextBlock(lap.Label, 12.5, FontWeight.SemiBold));
         if (isPrimary)
         {
-            title.Children.Add(Graphite.StatusPill("A", Graphite.AccentBrush));
+            title.AddInline(Graphite.StatusPill("A", Graphite.AccentBrush));
         }
 
         if (isComparison)
         {
-            title.Children.Add(Graphite.StatusPill("B", Graphite.BlueBrush));
+            title.AddInline(Graphite.StatusPill("B", Graphite.BlueBrush));
         }
 
         if (isHudTarget)
         {
-            title.Children.Add(Graphite.StatusPill("HUD", Graphite.GreenBrush));
+            title.AddInline(Graphite.StatusPill("HUD", Graphite.GreenBrush));
         }
 
         text.Children.Add(title);

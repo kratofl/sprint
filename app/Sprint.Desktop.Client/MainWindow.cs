@@ -59,8 +59,6 @@ public sealed class MainWindow : Window
     private TextBlock _breadcrumb = null!;
     private TextBlock _groupCrumb = null!;
     private TextBlock _signalText = null!;
-    private TextBlock _hzText = null!;
-    private Border _hzIndicator = null!;
     private Border _signalDot = null!;
     private TelemetrySnapshot _telemetry;
     private TelemetryStatusView _statusView = new();
@@ -85,7 +83,7 @@ public sealed class MainWindow : Window
     private readonly ILapTraceStore _lapTraces;
     private readonly LiveCompareController _liveCompare = new();
     private readonly ILapHistoryStore _lapHistoryStore;
-    private CompareHudWindow? _compareHud;
+    private CompareHudHost? _compareHud;
     private AnalysisView? _analysisView;
     private Control? _analysisOverlay;
     private CloudSession? _cloudSession;
@@ -240,7 +238,7 @@ public sealed class MainWindow : Window
         // page's view of the corpus exactly as a recorded lap does.
         _importService = new LapHistoryImportService(lapHistoryStore, _log);
         _importLedger = new ResultsImportLedger(_runtime.DataRoot, _log);
-        _importScanner = new ResultsImportScanner(_importLedger);
+        this._importScanner = new ResultsImportScanner(this._importLedger, lapHistoryStore);
         // Reads the same shared corpus: the reference curve it hands to the delta tracker is
         // the very lap the planner offered as a target, not a second copy of it.
         _planTargets = new PlanTargetDelivery(() => _planner.ActivePlan, lapHistoryStore);
@@ -427,7 +425,6 @@ public sealed class MainWindow : Window
         _breadcrumb = Graphite.TextBlock("", 13, FontWeight.Medium, Graphite.TextBrush);
         _groupCrumb = Graphite.TextBlock("", 12, FontWeight.Normal, Graphite.Text3Brush);
         _signalText = Graphite.TextBlock("", 11, FontWeight.Medium, Graphite.Text2Brush);
-        _hzText = Graphite.TextBlock("", 11, FontWeight.Normal, Graphite.Text3Brush);
         _signalDot = new Border
         {
             Width = 6,
@@ -445,7 +442,6 @@ public sealed class MainWindow : Window
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(new GridLength(1, GridUnitType.Star)),
-                new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Auto),
@@ -525,16 +521,6 @@ public sealed class MainWindow : Window
         ToolTip.SetTip(signal, "Telemetry connection state");
         Grid.SetColumn(signal, 5);
         grid.Children.Add(signal);
-
-        _hzIndicator = new Border
-        {
-            Tag = "telemetry-rate",
-            Padding = new Thickness(12, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = _hzText
-        };
-        Grid.SetColumn(_hzIndicator, 6);
-        grid.Children.Add(_hzIndicator);
 
         RenderUpdateIndicator();
         UpdateTitlebar();
@@ -1127,20 +1113,18 @@ public sealed class MainWindow : Window
 
     private void UpdateTitlebar()
     {
-        if (_breadcrumb is null || _signalText is null || _hzText is null || _signalDot is null)
+        if (this._breadcrumb is null || this._signalText is null || this._signalDot is null)
         {
             return;
         }
 
-        _breadcrumb.Text = _shell.CurrentTitle;
-        if (_groupCrumb is not null)
+        this._breadcrumb.Text = this._shell.CurrentTitle;
+        if (this._groupCrumb is not null)
         {
-            _groupCrumb.Text = $"· {_shell.CurrentGroup}";
+            this._groupCrumb.Text = $"· {this._shell.CurrentGroup}";
         }
-        _signalText.Text = _statusView.Label;
-        _hzText.Text = _statusView.RateText;
-        _hzIndicator.IsVisible = !string.Equals(_statusView.RateText, "—", StringComparison.Ordinal);
-        _signalDot.Background = BrushForTone(_statusView.Tone);
+        this._signalText.Text = this._statusView.Label;
+        this._signalDot.Background = BrushForTone(this._statusView.Tone);
     }
 
     private static IBrush BrushForTone(StatusTone tone) => tone switch
@@ -5086,30 +5070,25 @@ public sealed class MainWindow : Window
         _liveCompare.Panels = LapChartPanels.Resolve(settings.PanelIds, LapChartPanels.HudDefaults);
     }
 
-    /// <summary>
-    /// Shows or hides the overlay. Bound to <c>compare.hud.toggle</c> and also reachable from
-    /// Analysis, because a driver who cannot see the HUD needs a way to get it back that does
-    /// not involve the HUD.
-    /// </summary>
     /// <summary>Whether the Live Compare overlay is open. Internal so the shell tests can drive it.</summary>
-    internal bool CompareHudOpen => _compareHud is not null;
+    internal bool CompareHudOpen => _compareHud?.IsOpen == true;
 
+    /// <summary>
+    /// Shows or hides the overlay set. Bound to <c>compare.hud.toggle</c> and also reachable
+    /// from Analysis, because a driver who cannot see the HUD needs a way to get it back that
+    /// does not involve the HUD.
+    /// </summary>
     internal void ToggleCompareHud()
     {
-        if (_compareHud is not null)
-        {
-            _compareHud.Close();
-            _compareHud = null;
-            return;
-        }
-
         ApplyLiveCompareSettings();
-        _compareHud = new CompareHudWindow(
+        // The host outlives its windows: it owns the shared frame timer and the lock, and both
+        // have to survive the driver closing one window and toggling the set back on.
+        _compareHud ??= new CompareHudHost(
+            this,
             _liveCompare,
             _runtime.Settings.LiveCompare,
             _runtime.SaveSettings);
-        _compareHud.Closed += (_, _) => _compareHud = null;
-        _compareHud.Show();
+        _compareHud.Toggle();
     }
 
     /// <summary>

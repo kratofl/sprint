@@ -314,6 +314,16 @@ Focus uses the standard ring. Validation uses explicit text and a red cue withou
 unexpectedly shifting surrounding content. Underline-only and bright persistent
 outlines are not used.
 
+### Inline rows
+
+A label and the badges, pills, chips or glyphs that qualify it read on one line:
+their text sits on a shared optical centre, never a few pixels apart. In Avalonia a
+text block placed in a horizontal stack fills the row's height and then draws its
+glyphs at the top of that box, so the alignment must be stated —
+`Graphite.InlineRow` / `AddInline` do it for every child. The agent UI review harness
+measures drawn text positions on every captured frame and fails the build on a row
+whose labels disagree by more than `1.5px`.
+
 ### Icons
 
 Icons use one simple outline family with consistent optical weight. Standard sizes

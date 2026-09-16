@@ -100,7 +100,7 @@ public sealed class DashAlertTracker
             alert.RowSpan,
             layout.GridCols,
             layout.GridRows,
-            DashAttention.AllowsInversion(condition) && (alert.InvertColors ?? config.InvertColors),
+            alert.InvertColors ?? config.InvertColors,
             condition);
 
     private static SkiaSharp.SKColor ResolveColor(string? token, SkiaSharp.SKColor fallback, DashPalette palette)

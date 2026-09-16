@@ -72,6 +72,28 @@ public sealed class DashEditorViewTests
     }
 
     [Fact]
+    public async Task DeleteKeyRemovesSelectedWidgetWithoutConfirmation()
+    {
+        await RunGestureTest((window, controller, widget) =>
+        {
+            controller.SelectWidget(widget.Id);
+            window.CaptureRenderedFrame();
+
+            DashEditorView view = window.GetVisualDescendants().OfType<DashEditorView>().Single();
+            view.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Source = view,
+                Key = Key.Delete,
+            });
+
+            DashPage page = Assert.IsType<DashPage>(controller.ActivePage);
+            Assert.DoesNotContain(page.Widgets, candidate => string.Equals(candidate.Id, widget.Id, StringComparison.Ordinal));
+            Assert.Null(controller.SelectedWidgetId);
+        });
+    }
+
+    [Fact]
     public async Task PointerDragMovesWidgetByGridCellsAcrossSelectionRebuild()
     {
         await RunGestureTest((window, controller, widget) =>
@@ -399,7 +421,70 @@ public sealed class DashEditorViewTests
     }
 
     [Fact]
-    public async Task Alerts_color_picker_lists_every_theme_as_a_labeled_button_with_an_indicator()
+    public async Task Alerts_sidebar_keeps_inherited_settings_visible_but_disabled()
+    {
+        HeadlessUnitTestSession session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
+        string dataRoot = TestEnv.NewTempDataRoot();
+        try
+        {
+            await session.Dispatch(() =>
+            {
+                DesktopRuntime runtime = new(dataRoot, TestEnv.PresetRoot);
+                DashLayout layout = runtime.DashLayouts.First(item => item.IsDefault);
+                DashEditorController controller = new(layout, runtime.SaveDashLayout);
+                controller.SetAlert("tc_change", true);
+                DashEditorView view = new(controller, runtime.Settings, () => new TelemetryFrame(), () => { });
+                Window window = new() { Width = 1440, Height = 900, Content = view };
+                window.Show();
+
+                Button alertsTab = window.GetVisualDescendants().OfType<Button>()
+                    .First(button => string.Equals(button.Content?.ToString(), "Alerts", StringComparison.Ordinal));
+                alertsTab.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+
+                Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => string.Equals(text.Text, "Global defaults", StringComparison.Ordinal));
+                Control inheritedFields = window.GetVisualDescendants().OfType<Control>()
+                    .Single(control => string.Equals(control.Tag?.ToString(), "alert-individual-fields", StringComparison.Ordinal));
+                Assert.False(inheritedFields.IsEnabled);
+                Assert.Contains(inheritedFields.GetVisualDescendants().OfType<TextBlock>(), text => string.Equals(text.Text, "Color", StringComparison.Ordinal));
+                Assert.Contains(inheritedFields.GetVisualDescendants().OfType<TextBlock>(), text => string.Equals(text.Text, "Duration", StringComparison.Ordinal));
+                Assert.Contains(inheritedFields.GetVisualDescendants().OfType<TextBlock>(), text => string.Equals(text.Text, "Invert colors", StringComparison.Ordinal));
+
+                controller.SetAlertUseGlobal("tc_change", false);
+                window.CaptureRenderedFrame();
+                Control overrideFields = window.GetVisualDescendants().OfType<Control>()
+                    .Single(control => string.Equals(control.Tag?.ToString(), "alert-individual-fields", StringComparison.Ordinal));
+                Assert.True(overrideFields.IsEnabled);
+
+                Button settingsTab = window.GetVisualDescendants().OfType<Button>()
+                    .First(button => string.Equals(button.Content?.ToString(), "Settings", StringComparison.Ordinal));
+                settingsTab.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.CaptureRenderedFrame();
+                Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => string.Equals(text.Text, "Global defaults", StringComparison.Ordinal));
+                TextBlock globalInvertLabel = Assert.Single(window.GetVisualDescendants().OfType<TextBlock>(),
+                    text => string.Equals(text.Text, "Invert colors", StringComparison.Ordinal));
+                Grid globalInvertRow = Assert.IsType<Grid>(globalInvertLabel.Parent);
+                Border globalInvertToggle = Assert.Single(globalInvertRow.GetVisualDescendants().OfType<Border>(),
+                    candidate => candidate.Width == 44 && candidate.Height == 24);
+                bool wasInverted = controller.AlertConfig.InvertColors;
+                Point globalInvertPoint = PointInWindow(globalInvertToggle, window, 0.5, 0.5);
+                window.MouseDown(globalInvertPoint, MouseButton.Left, RawInputModifiers.LeftMouseButton);
+                window.MouseUp(globalInvertPoint, MouseButton.Left, RawInputModifiers.None);
+                Assert.Equal(!wasInverted, controller.AlertConfig.InvertColors);
+
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Settings_alert_color_picker_lists_every_theme_as_a_labeled_button_with_an_indicator()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(DashEditorViewTests).Assembly);
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -417,7 +502,7 @@ public sealed class DashEditorViewTests
                 window.Show();
 
                 window.GetVisualDescendants().OfType<Button>()
-                    .First(button => string.Equals(button.Content?.ToString(), "Alerts", StringComparison.Ordinal))
+                    .First(button => string.Equals(button.Content?.ToString(), "Settings", StringComparison.Ordinal))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
@@ -434,9 +519,6 @@ public sealed class DashEditorViewTests
                 var iceButton = themeButtons.Single(
                     button => string.Equals(button.Tag?.ToString(), "alert-color:ice", StringComparison.Ordinal));
                 Assert.Equal(new Thickness(2), iceButton.BorderThickness);
-                Assert.Contains(
-                    window.GetVisualDescendants().OfType<TextBlock>(),
-                    text => text.Text?.StartsWith("Ice ·", StringComparison.Ordinal) == true);
                 var graphiteIndicator = themeButtons
                     .Single(button => string.Equals(button.Tag?.ToString(), "alert-color:graphite", StringComparison.Ordinal))
                     .GetVisualDescendants().OfType<Border>()
@@ -505,6 +587,7 @@ public sealed class DashEditorViewTests
                 Assert.DoesNotContain("Color system", labels);
                 Assert.DoesNotContain("Racing conditions", labels);
                 Assert.DoesNotContain("Legacy authored accents", labels);
+                Assert.Contains("Global defaults", labels);
 
                 var presets = window.GetVisualDescendants().OfType<Button>()
                     .Where(button => button.Tag?.ToString()?.StartsWith("theme-preset-", StringComparison.Ordinal) == true)

@@ -167,9 +167,14 @@ public sealed class SessionPlannerSettings
     public bool WarnOnDetectedSegmentChange { get; set; } = true;
 }
 
-/// <summary>Where the Live Compare HUD sat on one (monitor, resolution).</summary>
+/// <summary>Where one Live Compare overlay window sat on one (monitor, resolution).</summary>
 public sealed class HudWindowLayout
 {
+    /// <summary>
+    /// Identifies the overlay window and the monitor it was left on — see
+    /// <c>HudLayoutStore.KeyFor</c>. Since 2026-08-07 the HUD is a set of small windows rather
+    /// than one, so the window id is part of the key: each of them keeps its own place.
+    /// </summary>
     [JsonPropertyName("key")]
     public string Key { get; set; } = "";
 
@@ -201,8 +206,14 @@ public sealed class LiveCompareSettings
     /// monitor) and shipped speed+pedals. Both were wrong in use, and a driver who had already
     /// opened the HUD once had the bad size and panel set persisted.
     /// </para>
+    /// <para>
+    /// 3: the overlay was one window holding a stack of charts. It was asked for as a set of
+    /// small windows the driver drags and sizes one by one — throttle, brake and speed each on
+    /// their own — so both the panel set and every stored rectangle describe a window shape
+    /// that no longer exists.
+    /// </para>
     /// </summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     /// <summary>What wrote these preferences. 0 for anything written before versioning.</summary>
     [JsonPropertyName("version")]
@@ -216,14 +227,30 @@ public sealed class LiveCompareSettings
     [JsonPropertyName("metersAhead")]
     public double MetersAhead { get; set; } = 600;
 
-    /// <summary>Panel ids from the chart catalogue, in display order.</summary>
+    /// <summary>
+    /// Panel ids from the chart catalogue. One overlay window each, in this order down the
+    /// screen on first open.
+    /// </summary>
     [JsonPropertyName("panelIds")]
-    public List<string> PanelIds { get; set; } = ["pedals", "speed", "gear"];
+    public List<string> PanelIds { get; set; } = ["throttle", "brake", "speed"];
 
     /// <summary>
-    /// Whether the HUD is click-through. Persisted because a driver who locked it wants it
-    /// locked next time too — an overlay that silently became draggable would be nudged out of
-    /// place by the first stray click.
+    /// Whether the small delta window is part of the set.
+    /// <para>
+    /// On by default and its own window rather than a strip inside each chart: spec §2.4
+    /// requires the HUD to always name the lap it is chasing, because the wheel delta and the
+    /// HUD can legitimately be measuring against different laps. Repeating that in every chart
+    /// window would say it three times; dropping it would say it nowhere.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("showDelta")]
+    public bool ShowDelta { get; set; } = true;
+
+    /// <summary>
+    /// Whether the overlay windows are click-through. Persisted because a driver who locked
+    /// them wants them locked next time too — an overlay that silently became draggable would
+    /// be nudged out of place by the first stray click. One flag for the whole set: locking is
+    /// "I am done placing these and about to drive", which is never true of one window only.
     /// </summary>
     [JsonPropertyName("locked")]
     public bool Locked { get; set; }
@@ -244,7 +271,8 @@ public sealed class LiveCompareSettings
         }
 
         Version = CurrentVersion;
-        PanelIds = ["pedals", "speed", "gear"];
+        PanelIds = ["throttle", "brake", "speed"];
+        ShowDelta = true;
         Layouts.Clear();
         return true;
     }

@@ -1230,7 +1230,7 @@ public sealed class DashPainter : IDisposable
             return;
         }
 
-        var inverted = banner.Condition == DashCondition.Critical && banner.InvertColors;
+        bool inverted = banner.InvertColors;
         var fill = inverted ? banner.Color : new SKColor(8, 8, 10, 246);
         var titleColor = inverted ? _palette.Background : banner.Color;
         var valueColor = inverted ? _palette.Background : _palette.Foreground;

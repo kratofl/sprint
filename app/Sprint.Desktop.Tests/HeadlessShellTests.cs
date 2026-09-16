@@ -598,10 +598,9 @@ public class HeadlessShellTests
                     toolbar.ColumnDefinitions[^1].Width);
                 Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(),
                     button => button.Tag is string tag && tag.StartsWith("caption:", StringComparison.Ordinal));
-                var telemetryRate = window.GetVisualDescendants()
-                    .OfType<Border>()
-                    .Single(border => Equals(border.Tag, "telemetry-rate"));
-                Assert.False(telemetryRate.IsVisible);
+                Assert.DoesNotContain(
+                    window.GetVisualDescendants().OfType<Border>(),
+                    border => Equals(border.Tag, "telemetry-rate"));
 
                 window.Close();
             }, CancellationToken.None);
@@ -1411,7 +1410,7 @@ public class HeadlessShellTests
     }
 
     [Fact]
-    public async Task DashEditorProductionToolbarDoesNotExposeLegacyPageActions()
+    public async Task DashEditorProductionToolbarShowsSaveAndKeepsLegacyPageActionsOut()
     {
         var session = HeadlessUnitTestSession.GetOrStartForAssembly(typeof(HeadlessShellTests).Assembly);
 
@@ -1431,11 +1430,11 @@ public class HeadlessShellTests
                 FindButton(window, "Edit").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
 
-                // The genuinely-retired legacy toolbar sprawl stays gone (autosave replaced
-                // "Save"; "Clear page" was a toolbar action). Page management now lives in
-                // the Pages side rail, which offers Add page without changing canvas width.
+                // Page management stays in the side rail. The primary action uses the
+                // product-facing Save label and the standard check icon.
                 Assert.Null(FindOptionalButton(window, "Clear page"));
-                Assert.Null(FindOptionalButton(window, "Save"));
+                Button save = Assert.IsType<Button>(FindOptionalButton(window, "Save"));
+                Assert.Single(save.GetVisualDescendants().OfType<Viewbox>());
                 FindButton(window, "Pages").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.CaptureRenderedFrame();
                 Assert.NotNull(FindOptionalButton(window, "+  Add page"));

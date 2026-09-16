@@ -21,14 +21,16 @@ The attention ladder is:
   only while immediate driver action is required.
 - **Fault** is stable red with explicit fault text or a fault code.
 - **RaceControl** follows the behavior of its defined signal protocol.
+- Parameter-change alerts may use an author-selected, stable foreground/background
+  inversion. This is a color treatment, not an animation.
 - Desktop application alerts never flash; they use stable banners or inline
   status.
 - Glow, bounce, scaling, and continuous pulsing are not alert mechanisms.
 
 ## Consequences
 
-- Flashing or inversion requires a Critical condition and an immediate-action
-  justification.
+- Animated inversion requires a Critical condition and an immediate-action
+  justification. Stable authored inversion does not.
 - Warning cannot animate merely to increase visual drama.
 - Critical inversion must stop when the condition clears or no longer requires
   immediate action.

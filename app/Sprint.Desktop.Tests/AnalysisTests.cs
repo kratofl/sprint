@@ -2,6 +2,7 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Games;
+using System.Xml.Linq;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -18,6 +19,181 @@ public sealed class AnalysisTests
 {
     private static readonly DateTimeOffset Evening = new(2026, 8, 2, 19, 0, 0, TimeSpan.Zero);
     private const double TrackLength = 5000;
+    private const string Lmu = "Le Mans Ultimate";
+
+    /// <summary>Every distinct track name in a real Le Mans Ultimate history, 2026-08-05.</summary>
+    private static readonly string[] LmuCorpusTracks =
+    [
+        "Algarve International Circuit",
+        "Autodromo Enzo e Dino Ferrari",
+        "Autódromo José Carlos Pace",
+        "Autodromo Nazionale Monza",
+        "Bahrain International Circuit",
+        "Circuit de Barcelona",
+        "Circuit de la Sarthe",
+        "Circuit de la Sarthe Mulsanne",
+        "Circuit de Spa-Francorchamps",
+        "Circuit de Spa-Francorchamps Endurance",
+        "Circuit of the Americas",
+        "Daytona International Speedway Road Course",
+        "Fuji Speedway Classic",
+        "Monza Curva Grande Circuit",
+        "Paul Ricard - ELMS",
+        "Sebring International Raceway",
+        "Silverstone Grand Prix Circuit - ELMS",
+    ];
+
+    [Fact]
+    public void CarArtworkUsesStableModelIdentityAndReportsMissingAssetsHonestly()
+    {
+        var mclaren = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "McLaren 720S LMGT3 Evo");
+        var porsche = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 911 GT3 R LMGT3");
+        var porschePrototype = AnalysisArtworkCatalog.ResolveCar("Le Mans Ultimate", "Porsche 963");
+
+        Assert.Equal("mclaren-720s-lmgt3-evo", mclaren.Identity);
+        Assert.Equal("porsche-911-gt3-r-lmgt3", porsche.Identity);
+        Assert.NotEqual(mclaren.Identity, porsche.Identity);
+        Assert.True(mclaren.IsMissing);
+        Assert.True(porsche.IsMissing);
+        Assert.Null(mclaren.AssetFileName);
+        Assert.Null(porsche.AssetFileName);
+        Assert.Equal("car-porsche-963.jpg", porschePrototype.AssetFileName);
+    }
+
+    [Fact]
+    public void CarClassDisplayUsesCompactBadgesAndCanonicalFullNames()
+    {
+        var options = GameCarClassCatalog.Classes(
+            "Le Mans Ultimate",
+            ["Hypercar", "LMP2", "LMGT3", "GTE", "LMP3"]);
+
+        Assert.Equal(
+            ("HYP", "Hypercar"),
+            (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "Hypercar")).Abbreviation,
+             LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "Hypercar")).Name));
+        Assert.Equal(
+            ("LMP2", "LMP2"),
+            (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP2")).Abbreviation,
+             LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP2")).Name));
+        Assert.Equal(
+            ("LMGT3", "LMGT3"),
+            (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMGT3")).Abbreviation,
+             LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMGT3")).Name));
+        Assert.Equal(
+            ("GTE", "GTE"),
+            (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "GTE")).Abbreviation,
+             LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "GTE")).Name));
+        Assert.Equal(
+            ("LMP3", "LMP3"),
+            (LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP3")).Abbreviation,
+             LapCorpusFilter.DisplayClass(options.Single(option => option.Id == "LMP3")).Name));
+
+        var unknown = GameCarClassCatalog.Classes("Another Game", ["GT3_WORLD-CHALLENGE"]).Single();
+        var unknownDisplay = LapCorpusFilter.DisplayClass(unknown);
+        Assert.Equal("GT3-WC", unknownDisplay.Abbreviation);
+        Assert.Equal("GT3 WORLD CHALLENGE", unknownDisplay.Name);
+    }
+
+    [Fact]
+    public void TrackArtworkResolvesDistinctRealLayoutsAndSpaAliases()
+    {
+        var barcelona = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de Barcelona-Catalunya");
+        var leMans = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Circuit de la Sarthe");
+        var spa = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps");
+        var spaEndurance = AnalysisArtworkCatalog.ResolveTrack(Lmu, "Spa-Francorchamps Endurance");
+        Assert.NotNull(barcelona);
+        Assert.NotNull(leMans);
+        Assert.NotNull(spa);
+        Assert.NotNull(spaEndurance);
+
+        Assert.Equal("track-barcelona.svg", barcelona.AssetFileName);
+        Assert.Equal("track-le-mans.svg", leMans.AssetFileName);
+        Assert.NotEqual(barcelona.AssetFileName, leMans.AssetFileName);
+        // Two layouts of one place share its outline; two places never share one.
+        Assert.Equal(spa.AssetFileName, spaEndurance.AssetFileName);
+        Assert.Equal(spa.Identity, spaEndurance.Identity);
+        Assert.Null(AnalysisArtworkCatalog.ResolveTrack(Lmu, "Nürburgring Nordschleife"));
+    }
+
+    [Fact]
+    public void EveryTrackTheGameRecordsHasItsOwnCircuitLayout()
+    {
+        // The exact TrackCourse names Le Mans Ultimate wrote into a real driver's history.
+        var circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
+
+        var artwork = circuits.ToDictionary(
+            circuit => circuit.Name,
+            circuit => AnalysisArtworkCatalog.ResolveCircuit(circuit.Id)?.AssetFileName);
+        Assert.DoesNotContain(null, artwork.Values);
+        Assert.Equal(artwork.Count, artwork.Values.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(artwork.Values, asset => Assert.True(
+            File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Analysis", asset!)),
+            $"Missing track asset {asset}."));
+    }
+
+    [Fact]
+    public void EachTrackAssetHoldsExactlyOneCircuitPath()
+    {
+        // TrackLayoutView reads the single path in the file. Two paths would mean the pit lane or
+        // a kerb could be drawn as the circuit, which is how the old id-guessing went wrong.
+        var directory = Path.Combine(AppContext.BaseDirectory, "Assets", "Analysis");
+        var assets = Directory.GetFiles(directory, "track-*.svg");
+        Assert.Equal(14, assets.Length);
+        foreach (var asset in assets)
+        {
+            var paths = XDocument.Load(asset)
+                .Descendants()
+                .Where(element => element.Name.LocalName == "path")
+                .Count(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("d")));
+            Assert.Equal(1, paths);
+        }
+    }
+
+    [Fact]
+    public void LayoutVariantsShareOneCircuitCardAndAreAskedAfterwards()
+    {
+        var circuits = GameTrackCatalog.Circuits(Lmu, LmuCorpusTracks);
+
+        // 17 recorded track names, 14 places: variants are not places of their own.
+        Assert.Equal(17, LmuCorpusTracks.Length);
+        Assert.Equal(14, circuits.Count);
+        var spa = circuits.Single(circuit => circuit.Id == "spa");
+        Assert.Equal("Circuit de Spa-Francorchamps", spa.Name);
+        Assert.True(spa.LayoutIsAChoice);
+        Assert.Equal(["Grand Prix", "Endurance"], spa.Layouts.Select(layout => layout.Label));
+        Assert.False(circuits.Single(circuit => circuit.Id == "sebring").LayoutIsAChoice);
+
+        // An unknown track keeps the name the game gave it rather than joining a circuit it may
+        // not belong to.
+        var unknown = GameTrackCatalog.Circuits(Lmu, ["Nürburgring Nordschleife"]).Single();
+        Assert.Equal("Nürburgring Nordschleife", unknown.Name);
+        Assert.False(unknown.LayoutIsAChoice);
+    }
+
+    [Fact]
+    public void PickingACircuitWithSeveralLayoutsLeavesTheLayoutUnanswered()
+    {
+        var filter = Filter(
+            Session("hs-spa", "Circuit de Spa-Francorchamps", "Hypercar", "Porsche 963", Evening),
+            Session("hs-spa-e", "Circuit de Spa-Francorchamps Endurance", "Hypercar", "Porsche 963", Evening.AddHours(-1)),
+            Session("hs-monza", "Autodromo Nazionale Monza", "Hypercar", "Porsche 963", Evening.AddHours(-2)));
+
+        Assert.Equal(["spa", "monza"], filter.Circuits.Select(circuit => circuit.Id));
+
+        filter.SelectCircuit("spa");
+        Assert.True(filter.LayoutIsAChoice);
+        Assert.Null(filter.Track);
+        Assert.Equal(1, filter.SessionsOnLayout("Circuit de Spa-Francorchamps Endurance"));
+
+        filter.SelectTrack("Circuit de Spa-Francorchamps Endurance");
+        Assert.Equal("spa", filter.Circuit);
+        Assert.Single(filter.Sessions);
+
+        // One layout is not a question, so choosing the place answers it.
+        filter.SelectCircuit("monza");
+        Assert.False(filter.LayoutIsAChoice);
+        Assert.Equal("Autodromo Nazionale Monza", filter.Track);
+    }
 
     // ── The narrowing cascade ────────────────────────────────────────────────
 
@@ -232,6 +408,90 @@ public sealed class AnalysisTests
     }
 
     // ── Laps within a session ────────────────────────────────────────────────
+
+    [Fact]
+    public void AnalysisPrefersARecordedChannelSessionOverItsImportedTimeOnlyCopy()
+    {
+        LapHistorySession recorded = HistorySession(
+            "recorded",
+            "Spa-Francorchamps",
+            "LMP2",
+            "IDEC Sport #18",
+            Evening,
+            traced: true);
+        LapHistorySession imported = HistorySession(
+            "imported",
+            "Circuit de Spa-Francorchamps",
+            "LMP2",
+            "IDEC Sport #18:ELMS25",
+            Evening.AddMinutes(10),
+            traced: false);
+        imported.Origin = LapHistoryOrigin.Imported;
+
+        CorpusSession visible = Assert.Single(BrowserFor(recorded, imported).Sessions());
+
+        Assert.Equal(recorded.Id, visible.Id);
+        Assert.True(visible.HasChannels);
+    }
+
+    [Fact]
+    public void AnalysisRecoversRecordedChannelsMislabelledInvalidByTheLmuCrossingFrame()
+    {
+        LapHistorySession recorded = HistorySession(
+            "recorded",
+            "Spa-Francorchamps",
+            "Hypercar",
+            "Porsche 963",
+            Evening,
+            traced: true);
+        foreach (LapHistoryRecord lap in recorded.Laps)
+        {
+            lap.IsValid = false;
+        }
+
+        LapHistorySession imported = HistorySession(
+            "imported",
+            "Spa-Francorchamps",
+            "Hypercar",
+            "Porsche 963",
+            Evening.AddMinutes(10),
+            traced: false);
+        imported.Origin = LapHistoryOrigin.Imported;
+
+        LapCorpusBrowser browser = BrowserFor(recorded, imported);
+        CorpusSession visible = Assert.Single(browser.Sessions());
+        IReadOnlyList<CorpusLap> laps = browser.Laps(visible);
+
+        Assert.Equal(recorded.Id, visible.Id);
+        Assert.All(laps, lap => Assert.True(lap.HasChannels));
+        Assert.Equal(3, laps.Count);
+    }
+
+    [Fact]
+    public void AnalysisKeepsASeparateImportedSessionWithDifferentLapTimes()
+    {
+        LapHistorySession recorded = HistorySession(
+            "recorded",
+            "Spa-Francorchamps",
+            "Hypercar",
+            "Porsche 963",
+            Evening,
+            traced: true);
+        LapHistorySession imported = HistorySession(
+            "imported",
+            "Spa-Francorchamps",
+            "Hypercar",
+            "Porsche 963",
+            Evening.AddMinutes(10),
+            traced: false);
+        imported.Origin = LapHistoryOrigin.Imported;
+        foreach (LapHistoryRecord lap in imported.Laps)
+        {
+            lap.LapTimeSeconds += 0.5;
+        }
+
+        Assert.Equal(2, BrowserFor(recorded, imported).Sessions().Count);
+    }
 
     [Fact]
     public void AnEmptyCorpusSaysSoRatherThanShowingAnEmptyChart()

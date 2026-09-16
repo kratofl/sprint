@@ -103,9 +103,17 @@ segments was already superseded by the always-on recorder.
 
 ### 2.3 The HUD
 
-- **A transparent, topmost, borderless Avalonia window,** following `CaptureRegionWindow`. No
-  injection: an injected overlay is a large dependency, an anti-cheat risk against an online sim,
-  and a per-game maintenance burden, for placement that is nicer but not necessary.
+- **A set of small, transparent, topmost, borderless Avalonia windows** — one per reading —
+  following `CaptureRegionWindow`. No injection: an injected overlay is a large dependency, an
+  anti-cheat risk against an online sim, and a per-game maintenance burden, for placement that is
+  nicer but not necessary.
+  - *Revised 2026-08-07 from a single window holding a chart stack, on driver feedback.* The
+    point of an overlay is that each reading sits where the driver's eyes already are, and a
+    stack cannot express that: every panel in it shares one position, one size and one aspect
+    ratio. Cost: a host that owns the shared frame, and a layout key per window. Implemented in
+    `Features/LiveCompare/` — `HudWindowPlan` (which windows), `HudOverlayWindow` (what they all
+    are), `CompareHudWindow` (one chart), `CompareDeltaWindow`, `CompareHudHost` (one timer, one
+    fullscreen check, one resample of the rolling window per frame, sliced out to each window).
 - **The game must run borderless or windowed.** Exclusive fullscreen will hide the window. The app
   **detects that case and states it** — a HUD that silently shows nothing is the worst outcome.
 - **Interactive by default; a lock makes it click-through.** Locked sets
@@ -116,12 +124,20 @@ segments was already superseded by the always-on recorder.
   A braking zone slides into view as you approach it, which is the described experience, and it needs
   no corner detection: **no dependency on #13 or #19**, both unstarted. Corner anchoring can layer on
   later from the trace's own speed channel, still without a trackmap.
-- **Two default panels: speed, and throttle+brake.** Throttle and brake are distinguished by
-  `FillArea`, not colour, because `ChartSeriesRole` colour must keep meaning *whose lap it is* —
-  ember for yours, blue for the target. The panel set is user-configurable; the chart stack already
-  takes N panels.
+- **Three default windows: throttle, brake, speed** — each showing your lap against the target's,
+  ember for yours and blue for the target. Split rather than a combined throttle+brake panel,
+  because the whole point of separate windows is placing each pedal trace independently; neither
+  is filled, since in a single-channel panel the two series are the same channel on two laps and a
+  fill would wash them over each other. The combined `Pedals` panel (`FillArea` to tell the two
+  apart without spending colour) stays for the Analysis view, where they share one frame and one
+  axis. The window set is user-configurable from the panel catalogue.
+- **Plus a fourth, smaller delta window,** carrying the target's name and the delta. Its own
+  window rather than a strip in each chart: §2.4 requires the HUD to always name the lap it is
+  chasing, and repeating that three times would bury it while dropping it would lose it.
 - **The HUD hosts `ChartStackPainter` directly.** It is Avalonia-free by design and hands back BGRA
-  pixels, so the overlay is a thin window around the same renderer the Analysis view uses.
+  pixels, so each overlay window is a thin frame around the same renderer the Analysis view uses.
+  A window renders a one-chart stack: with the charts in separate windows there is no shared
+  crosshair left for a multi-chart stack to honour.
 
 ### 2.4 Target selection
 

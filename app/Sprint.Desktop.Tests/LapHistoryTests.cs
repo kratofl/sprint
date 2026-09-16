@@ -291,7 +291,7 @@ public sealed class LapHistoryTests
         var recorder = NewRecorder(store);
         var crossing = Frame(SessionType.Practice, lap: 2, lastLapTime: 131.0, isValid: false);
 
-        recorder.Ingest(Frame(SessionType.Practice, lap: 1));
+        recorder.Ingest(Frame(SessionType.Practice, lap: 1, isValid: false));
         recorder.Ingest(crossing with
         {
             Lap = crossing.Lap with { LastLapSectorsSeconds = [30.5, 44.75, 55.75] },
@@ -722,6 +722,26 @@ public sealed class LapHistoryTests
         recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0));
 
         Assert.Single(traces.All);
+    }
+
+    [Fact]
+    public void ACompletedLapKeepsItsChannelsWhenTheNewLapIsNotCountableYet()
+    {
+        CollectingLapHistoryStore store = new();
+        CollectingLapTraceStore traces = new();
+        LapHistoryRecorder recorder = NewRecorder(store, traces);
+
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(Crossing(lap: 2, lastLapTime: 120.0) with
+        {
+            Lap = Crossing(lap: 2, lastLapTime: 120.0).Lap with { IsValid = false },
+        });
+
+        LapHistoryRecord completed = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.True(completed.IsValid);
+        Assert.True(completed.HasChannelTrace);
+        string traceId = Assert.IsType<string>(completed.TraceId);
+        Assert.NotNull(traces.Load(traceId));
     }
 
     [Fact]

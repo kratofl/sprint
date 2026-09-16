@@ -40,6 +40,7 @@ public sealed class LapHistoryRecorder
 
     private LapHistorySession? _session;
     private int _lastSeenLap;
+    private bool _lastSeenLapIsValid = true;
     private int _sampledLap;
     private double? _fuelAtLastCrossing;
     private double? _energyAtLastCrossing;
@@ -146,9 +147,10 @@ public sealed class LapHistoryRecorder
         var finished = _session;
         finished.EndedAt = _clock();
         _session = null;
-        _lastSeenLap = 0;
-        _sampledLap = 0;
-        _samples.Clear();
+        this._lastSeenLap = 0;
+        this._lastSeenLapIsValid = true;
+        this._sampledLap = 0;
+        this._samples.Clear();
 
         // A session with no completed laps carries nothing a reader could use.
         if (finished.Laps.Count > 0)
@@ -229,42 +231,49 @@ public sealed class LapHistoryRecorder
     /// </summary>
     private LapHistoryRecord? CompletedLap(TelemetryFrame frame)
     {
-        var currentLap = frame.Lap.CurrentLap;
-        if (_lastSeenLap == 0)
+        int currentLap = frame.Lap.CurrentLap;
+        if (this._lastSeenLap == 0)
         {
-            _lastSeenLap = currentLap;
+            this._lastSeenLap = currentLap;
+            this._lastSeenLapIsValid = frame.Lap.IsValid;
             return null;
         }
 
-        if (currentLap <= _lastSeenLap || frame.Lap.LastLapTime <= 0)
+        if (currentLap <= this._lastSeenLap || frame.Lap.LastLapTime <= 0)
         {
-            _lastSeenLap = Math.Max(_lastSeenLap, currentLap);
+            this._lastSeenLap = Math.Max(this._lastSeenLap, currentLap);
+            this._lastSeenLapIsValid = frame.Lap.IsValid;
             return null;
         }
 
-        var finished = _lastSeenLap;
-        _lastSeenLap = currentLap;
+        int finished = this._lastSeenLap;
+        bool finishedIsValid = this._lastSeenLapIsValid;
+        this._lastSeenLap = currentLap;
+        this._lastSeenLapIsValid = frame.Lap.IsValid;
 
-        var fuel = Reported(frame.Car.FuelLiters);
-        var energy = Reported(frame.Energy.VirtualEnergy);
-        var record = new LapHistoryRecord
+        double? fuel = Reported(frame.Car.FuelLiters);
+        double? energy = Reported(frame.Energy.VirtualEnergy);
+        LapHistoryRecord record = new()
         {
             LapNumber = finished,
-            IsValid = frame.Lap.IsValid,
+            // The crossing frame already describes the new lap. LMU may not mark that lap
+            // countable yet, so the completed lap keeps the last validity observed before
+            // the lap number changed.
+            IsValid = finishedIsValid,
             LapTimeSeconds = frame.Lap.LastLapTime,
             SectorsSeconds = [.. frame.Lap.LastLapSectorsSeconds],
             FuelRemainingLiters = fuel,
-            FuelUsedLiters = Consumed(_fuelAtLastCrossing, fuel),
+            FuelUsedLiters = Consumed(this._fuelAtLastCrossing, fuel),
             VirtualEnergyRemaining = energy,
-            VirtualEnergyUsed = Consumed(_energyAtLastCrossing, energy),
+            VirtualEnergyUsed = Consumed(this._energyAtLastCrossing, energy),
             // A frame always carries four corners; out of the car they are all zero. Filing
             // four all-null corners for every lap would be noise on disk, so only corners
             // that actually report anything are kept.
             Tires = [.. frame.Tires.Where(Reporting).Select(MapTire)],
         };
 
-        _fuelAtLastCrossing = fuel;
-        _energyAtLastCrossing = energy;
+        this._fuelAtLastCrossing = fuel;
+        this._energyAtLastCrossing = energy;
         return record;
     }
 

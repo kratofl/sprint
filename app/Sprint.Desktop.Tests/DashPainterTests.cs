@@ -752,7 +752,7 @@ public sealed class DashPainterTests
     }
 
     [Fact]
-    public void AdjustmentAlertsRemainStableEvenWhenLegacyConfigurationRequestsInversion()
+    public void AdjustmentAlertsHonorConfiguredColorInversion()
     {
         var tracker = new DashAlertTracker();
         var layout = new DashLayout
@@ -771,7 +771,11 @@ public sealed class DashPainterTests
 
         Assert.NotNull(banner);
         Assert.Equal(DashCondition.AssistActive, banner.Value.Condition);
-        Assert.False(banner.Value.InvertColors);
+        Assert.True(banner.Value.InvertColors);
+
+        using DashPainter painter = new(400, 240, palette);
+        using SKBitmap bitmap = painter.Render(layout, new TelemetryFrame(), new AppSettings(), banner: banner);
+        Assert.Equal(banner.Value.Color, bitmap.GetPixel(140, 80));
     }
 
     [Fact]

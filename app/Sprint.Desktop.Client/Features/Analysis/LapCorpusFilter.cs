@@ -42,6 +42,13 @@ public sealed record CorpusSession(
     public bool HasChannels => TracedLapCount > 0;
 }
 
+/// <summary>The compact badge and full name shown for one car-class choice.</summary>
+public sealed record AnalysisCarClassDisplay(
+    string Id,
+    string Abbreviation,
+    string Name,
+    GameCarClassVisualRole VisualRole);
+
 /// <summary>
 /// Narrowing the corpus down to one session (#196).
 /// <para>
@@ -69,6 +76,12 @@ public sealed class LapCorpusFilter
     }
 
     public string? Game { get; private set; }
+
+    /// <summary>
+    /// The chosen circuit, which may still have more than one layout under it. A layout variant
+    /// is not a place of its own, so it never occupies a card in the track step.
+    /// </summary>
+    public string? Circuit { get; private set; }
 
     public string? Track { get; private set; }
 
@@ -98,6 +111,21 @@ public sealed class LapCorpusFilter
             .GroupBy(session => session.Context.TrackCourse, StringComparer.Ordinal)
             .OrderByDescending(group => group.Max(session => session.StartedAt))
             .Select(group => group.Key)];
+
+    /// <summary>Circuits for the selected game, most recently driven first.</summary>
+    public IReadOnlyList<GameCircuit> Circuits => GameTrackCatalog.Circuits(Game, Tracks);
+
+    /// <summary>The layouts of the selected circuit, in catalog order.</summary>
+    public IReadOnlyList<GameTrackLayout> Layouts =>
+        Circuit is null
+            ? []
+            : Circuits
+                .FirstOrDefault(circuit => string.Equals(circuit.Id, Circuit, StringComparison.Ordinal))
+                ?.Layouts
+              ?? [];
+
+    /// <summary>Whether the chosen circuit still leaves a layout to pick.</summary>
+    public bool LayoutIsAChoice => Layouts.Count > 1;
 
     /// <summary>Canonical car classes at the selected track.</summary>
     public IReadOnlyList<string> Classes =>
@@ -137,6 +165,17 @@ public sealed class LapCorpusFilter
     public bool IsEmpty => _all.Count == 0;
 
     /// <summary>
+    /// How many sessions were driven on one exact layout, so choosing between a circuit's layouts
+    /// is a choice between things of known size.
+    /// </summary>
+    public int SessionsOnLayout(string trackName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trackName);
+        return Matching(game: true).Count(session =>
+            string.Equals(session.Context.TrackCourse, trackName, StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Whether a step still has a real choice in it. A step with one answer is not a question,
     /// so the view does not draw it.
     /// </summary>
@@ -147,15 +186,35 @@ public sealed class LapCorpusFilter
     public void SelectGame(string? game)
     {
         Game = game;
+        Circuit = null;
         Track = null;
         CarClass = null;
         CarModel = null;
         ClearDateRange();
 
-        var tracks = Tracks;
-        if (tracks.Count == 1)
+        var circuits = Circuits;
+        if (circuits.Count == 1)
         {
-            Track = tracks[0];
+            SelectCircuit(circuits[0].Id);
+        }
+    }
+
+    /// <summary>
+    /// Chooses a place. A circuit with one layout answers the layout question too; one with
+    /// several leaves it open, because guessing which layout was meant is worse than asking.
+    /// </summary>
+    public void SelectCircuit(string? circuitId)
+    {
+        Circuit = circuitId;
+        Track = null;
+        CarClass = null;
+        CarModel = null;
+        ClearDateRange();
+
+        var layouts = Layouts;
+        if (layouts.Count == 1)
+        {
+            Track = layouts[0].TrackName;
             CascadeClass();
         }
     }
@@ -163,6 +222,7 @@ public sealed class LapCorpusFilter
     public void SelectTrack(string? track)
     {
         Track = track;
+        Circuit = track is null ? null : GameTrackCatalog.CircuitId(Game, track);
         // Everything downstream belonged to the old track.
         CarClass = null;
         CarModel = null;
@@ -224,6 +284,22 @@ public sealed class LapCorpusFilter
     {
         ArgumentNullException.ThrowIfNull(session);
         return session.Context.CarClass is { Length: > 0 } carClass ? carClass : UnspecifiedClass;
+    }
+
+    /// <summary>
+    /// Keeps the catalog's canonical full name while giving the picker a compact, readable badge.
+    /// Unknown model-emitted classes retain their full catalog name and get a deterministic badge
+    /// derived from their identity rather than being relabeled as a known class.
+    /// </summary>
+    public static AnalysisCarClassDisplay DisplayClass(GameCarClass option)
+    {
+        ArgumentNullException.ThrowIfNull(option);
+        var abbreviation = option.Id switch
+        {
+            "Hypercar" => "HYP",
+            _ => AbbreviationFromIdentity(option.Id),
+        };
+        return new AnalysisCarClassDisplay(option.Id, abbreviation, option.Name, option.VisualRole);
     }
 
     /// <summary>How a day reads in the filter. Yesterday is how a driver names it.</summary>
@@ -312,5 +388,24 @@ public sealed class LapCorpusFilter
     {
         DateFrom = null;
         DateTo = null;
+    }
+
+    private static string AbbreviationFromIdentity(string identity)
+    {
+        var parts = identity
+            .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.ToUpperInvariant())
+            .ToArray();
+        if (parts.Length == 0)
+        {
+            return "CLASS";
+        }
+
+        if (parts.Length == 1)
+        {
+            return parts[0];
+        }
+
+        return $"{parts[0]}-{string.Concat(parts.Skip(1).Select(part => part[0]))}";
     }
 }

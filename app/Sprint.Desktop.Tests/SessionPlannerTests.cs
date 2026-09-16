@@ -225,6 +225,21 @@ public sealed class SessionPlannerTests
     }
 
     [Fact]
+    public void CompletedLapValidityDoesNotComeFromTheNewLapCrossingFrame()
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, isValid: true));
+            service.Ingest(Frame(lap: 2, lastLapTime: 92.5, isValid: false));
+
+            Assert.True(Assert.Single(segment.Laps).IsValid);
+        });
+    }
+
+    [Fact]
     public void IngestRaisesRaceFormatMismatchWarningOnceWhenTelemetryDisagrees()
     {
         Run((service, _) =>
@@ -533,10 +548,15 @@ public sealed class SessionPlannerTests
         }
     }
 
-    private static TelemetryFrame Frame(int lap, double lastLapTime, float fuel = 0f, int maxLaps = 0) => new()
+    private static TelemetryFrame Frame(
+        int lap,
+        double lastLapTime,
+        float fuel = 0f,
+        int maxLaps = 0,
+        bool isValid = true) => new()
     {
         Session = new SessionInfo { SessionType = SessionType.Race, MaxLaps = maxLaps },
-        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = true },
+        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = isValid },
         Car = new CarState { FuelLiters = fuel },
     };
 

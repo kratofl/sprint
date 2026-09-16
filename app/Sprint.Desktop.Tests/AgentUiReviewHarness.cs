@@ -11,6 +11,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Sprint.Desktop;
+using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.SessionPlanning;
@@ -190,8 +191,9 @@ internal static class AgentUiReviewHarness
                         artifactRoot,
                         "analysis-game-step",
                         "Choose a game",
-                        "Le Mans Ultimate",
                         "Continue"));
+                    // The tile is the game's logo with no caption under it; its tooltip and
+                    // automation name still say which game it is.
                     Click(window, "Le Mans Ultimate");
                     ClickTaggedButton(window, "analysis-session-next");
                     frames.Add(Capture(
@@ -202,10 +204,15 @@ internal static class AgentUiReviewHarness
                         "Game",
                         "Track",
                         "Search tracks",
-                        "Spa-Francorchamps",
+                        "Circuit de Spa-Francorchamps",
+                        // Endurance is a layout of Spa, not a second place in the grid.
+                        "2 layouts",
                         "Autodromo Nazionale Monza",
                         // Accounts live on the web app; the rail's row opens a browser.
                         "Sign in"));
+                    Assert.DoesNotContain(
+                        "Circuit de Spa-Francorchamps Endurance",
+                        window.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? ""));
 
                     window.Width = 1120;
                     window.Height = 720;
@@ -213,8 +220,8 @@ internal static class AgentUiReviewHarness
                         window,
                         artifactRoot,
                         "analysis-track-step-1120x720",
-                        "Daytona International Speedway Road Course",
-                        "Circuit de Barcelona",
+                        "Daytona International Speedway",
+                        "Circuit de Barcelona-Catalunya",
                         "Sebring International Raceway",
                         "Circuit de la Sarthe"));
                     var analysisDialog = window.GetVisualDescendants()
@@ -226,14 +233,40 @@ internal static class AgentUiReviewHarness
                     Assert.True(
                         analysisDialog.Bounds.Width >= 1000 && analysisDialog.Bounds.Height >= 650,
                         "The session picker must use most of the minimum-size application window.");
+                    // Every circuit in the corpus draws its own outline, at one line weight.
                     Assert.Equal(
-                        6,
+                        14,
                         window.GetVisualDescendants()
-                            .OfType<PathShape>()
+                            .OfType<TrackLayoutView>()
                             .Count(candidate => string.Equals(
                                 candidate.Tag?.ToString(),
                                 "analysis-track-layout",
                                 StringComparison.Ordinal)));
+
+                    // Hovering a tile lifts its own card by one surface step. The Fluent template's
+                    // own pointer-over used to repaint the whole button and recolour the caption,
+                    // which read as a selection that had not happened.
+                    var hoverTile = window.GetVisualDescendants()
+                        .OfType<Button>()
+                        .First(candidate => ButtonMatches(candidate, "Autodromo Nazionale Monza"));
+                    var hoverCard = hoverTile.GetVisualDescendants()
+                        .OfType<Border>()
+                        .First(candidate => candidate.Child is Grid);
+                    window.MouseMove(hoverTile
+                        .TranslatePoint(new Point(hoverTile.Bounds.Width / 2, hoverTile.Bounds.Height / 2), window)!
+                        .Value);
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-step-hover",
+                        "Autodromo Nazionale Monza"));
+                    Assert.Equal(Graphite.Panel3HoverBrush, hoverCard.Background);
+                    Assert.Equal(Graphite.Line2Brush, hoverCard.BorderBrush);
+                    window.MouseMove(new Point(4, 4));
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    Assert.Equal(Graphite.Panel3Brush, hoverCard.Background);
 
                     // Reproduce the original regression: select a tile after scrolling down.
                     // The rebuilt step must retain that offset instead of jumping to row one.
@@ -247,12 +280,14 @@ internal static class AgentUiReviewHarness
                     using (window.CaptureRenderedFrame())
                     {
                     }
-                    Click(window, "Spa-Francorchamps");
+                    // Sebring has one layout, so the grid stays on screen and its offset is what
+                    // the regression is about.
+                    Click(window, "Sebring International Raceway");
                     frames.Add(Capture(
                         window,
                         artifactRoot,
                         "analysis-track-step-selected-lower",
-                        "Spa-Francorchamps",
+                        "Sebring International Raceway",
                         "Continue"));
                     var restoredTrackScroller = window.GetVisualDescendants()
                         .OfType<ScrollViewer>()
@@ -265,6 +300,33 @@ internal static class AgentUiReviewHarness
                         "Selecting a lower track must preserve the track list's vertical scroll offset.");
                     window.Width = 1440;
                     window.Height = 900;
+
+                    // A circuit with more than one layout asks which, after the place is settled.
+                    Click(window, "Circuit de Spa-Francorchamps");
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-layout-step",
+                        "Choose a layout",
+                        "Circuit de Spa-Francorchamps · 2 layouts driven",
+                        "Grand Prix",
+                        "Endurance",
+                        "All tracks"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-track-layout-step-1120x720",
+                        "Choose a layout",
+                        "Grand Prix",
+                        "Endurance"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    // Until a layout is chosen the step is unfinished.
+                    Assert.False(TaggedButton(window, "analysis-session-next").IsEnabled);
+                    Click(window, "Grand Prix");
+                    Assert.True(TaggedButton(window, "analysis-session-next").IsEnabled);
                     ClickTaggedButton(window, "analysis-session-next");
                     frames.Add(Capture(
                         window,
@@ -313,7 +375,10 @@ internal static class AgentUiReviewHarness
                         "analysis-car-step-lmgt3",
                         "Choose a car",
                         "BMW M4",
-                        "Ferrari 296"));
+                        "Ferrari 296",
+                        "McLaren 720S LMGT3 Evo",
+                        "Porsche 911 GT3 R LMGT3",
+                        "Artwork unavailable"));
                     window.Width = 1120;
                     window.Height = 720;
                     frames.Add(Capture(
@@ -323,15 +388,70 @@ internal static class AgentUiReviewHarness
                         "Choose a car",
                         "BMW M4",
                         "Ferrari 296",
+                        "McLaren 720S LMGT3 Evo",
+                        "Porsche 911 GT3 R LMGT3",
+                        "Artwork unavailable",
                         "Continue"));
                     window.Width = 1440;
                     window.Height = 900;
                     Assert.Equal(
-                        2,
+                        1,
                         window.GetVisualDescendants().OfType<Image>().Count(candidate => string.Equals(
                             candidate.Tag?.ToString(),
                             "analysis-car-image",
                             StringComparison.Ordinal)));
+                    Assert.Equal(
+                        3,
+                        window.GetVisualDescendants().OfType<Border>().Count(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-car-missing",
+                            StringComparison.Ordinal)));
+                    var lmgt3CarScroller = window.GetVisualDescendants()
+                        .OfType<ScrollViewer>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-car-scroll",
+                            StringComparison.Ordinal));
+                    lmgt3CarScroller.Offset = new Vector(0, lmgt3CarScroller.Extent.Height);
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    // The step now fills the dialog, so whether the lower row needs scrolling
+                    // depends on the window. Either way it must be reachable, and the list must
+                    // never be capped to less than the room the dialog has.
+                    Assert.True(
+                        lmgt3CarScroller.Offset.Y > 0
+                        || lmgt3CarScroller.Extent.Height <= lmgt3CarScroller.Viewport.Height + 1,
+                        "The LMGT3 car list must either fit or scroll to its lower row.");
+                    Assert.True(
+                        lmgt3CarScroller.Viewport.Height > 400,
+                        $"The car step must use the dialog's height, not {lmgt3CarScroller.Viewport.Height:0}px of it.");
+                    Assert.All(
+                        new[] { "McLaren 720S LMGT3 Evo", "Porsche 911 GT3 R LMGT3" },
+                        car => Assert.Contains(
+                            car,
+                            window.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? "")));
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step-lmgt3-lower",
+                        "McLaren 720S LMGT3 Evo",
+                        "Porsche 911 GT3 R LMGT3",
+                        "Artwork unavailable"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    using (window.CaptureRenderedFrame())
+                    {
+                    }
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-car-step-lmgt3-lower-1120x720",
+                        "McLaren 720S LMGT3 Evo",
+                        "Porsche 911 GT3 R LMGT3",
+                        "Artwork unavailable"));
+                    window.Width = 1440;
+                    window.Height = 900;
                     Click(window, "Back");
                     Click(window, "Hypercar");
                     ClickTaggedButton(window, "analysis-session-next");
@@ -381,37 +501,102 @@ internal static class AgentUiReviewHarness
                     window.Height = 900;
 
                     var fromDate = window.GetVisualDescendants()
-                        .OfType<DatePicker>()
+                        .OfType<CalendarDatePicker>()
                         .Single(candidate => string.Equals(
                             candidate.Tag?.ToString(),
                             "analysis-date-from",
                             StringComparison.Ordinal));
+                    Assert.Equal("Select date", fromDate.PlaceholderText);
+                    Assert.Equal(
+                        2,
+                        window.GetVisualDescendants()
+                            .OfType<PathShape>()
+                            .Count(candidate => string.Equals(
+                                candidate.Tag?.ToString(),
+                                "analysis-calendar-glyph",
+                                StringComparison.Ordinal)));
+                    fromDate.IsDropDownOpen = true;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-calendar-open",
+                        "From",
+                        "To",
+                        "Select date"));
+                    window.Width = 1120;
+                    window.Height = 720;
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-calendar-open-1120x720",
+                        "From",
+                        "To",
+                        "Select date"));
+                    window.Width = 1440;
+                    window.Height = 900;
+                    fromDate.IsDropDownOpen = false;
                     fromDate.Focus();
-                    fromDate.SelectedDate = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    fromDate.SelectedDate = new DateTime(2000, 1, 1);
                     using (window.CaptureRenderedFrame())
                     {
                     }
 
                     var restoredFromDate = window.GetVisualDescendants()
-                        .OfType<DatePicker>()
+                        .OfType<CalendarDatePicker>()
                         .Single(candidate => string.Equals(
                             candidate.Tag?.ToString(),
                             "analysis-date-from",
                             StringComparison.Ordinal));
                     Assert.Same(fromDate, restoredFromDate);
                     var toDate = window.GetVisualDescendants()
-                        .OfType<DatePicker>()
+                        .OfType<CalendarDatePicker>()
                         .Single(candidate => string.Equals(
                             candidate.Tag?.ToString(),
                             "analysis-date-to",
                             StringComparison.Ordinal));
-                    toDate.SelectedDate = new DateTimeOffset(2001, 1, 1, 0, 0, 0, TimeSpan.Zero);
-                    fromDate.SelectedDate = new DateTimeOffset(2002, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    toDate.SelectedDate = new DateTime(2001, 1, 1);
+                    fromDate.SelectedDate = new DateTime(2002, 1, 1);
                     Assert.Equal(fromDate.SelectedDate, toDate.SelectedDate);
-                    toDate.SelectedDate = new DateTimeOffset(1999, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                    toDate.SelectedDate = new DateTime(1999, 1, 1);
                     Assert.Equal(fromDate.SelectedDate, toDate.SelectedDate);
                     fromDate.SelectedDate = null;
                     toDate.SelectedDate = null;
+
+                    // A named range is one click, and it fills both ends of the control it names.
+                    Click(window, "Last 7 days");
+                    var appliedFrom = window.GetVisualDescendants()
+                        .OfType<CalendarDatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-from",
+                            StringComparison.Ordinal));
+                    var appliedTo = window.GetVisualDescendants()
+                        .OfType<CalendarDatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-to",
+                            StringComparison.Ordinal));
+                    Assert.NotNull(appliedFrom.SelectedDate);
+                    Assert.NotNull(appliedTo.SelectedDate);
+                    Assert.Equal(6, (appliedTo.SelectedDate!.Value - appliedFrom.SelectedDate!.Value).Days);
+                    frames.Add(Capture(
+                        window,
+                        artifactRoot,
+                        "analysis-session-date-range-applied",
+                        "Choose a session",
+                        "From",
+                        "To",
+                        "Last 7 days",
+                        "Last 30 days",
+                        "Any date"));
+                    Click(window, "Any date");
+                    Assert.Null(window.GetVisualDescendants()
+                        .OfType<CalendarDatePicker>()
+                        .Single(candidate => string.Equals(
+                            candidate.Tag?.ToString(),
+                            "analysis-date-from",
+                            StringComparison.Ordinal))
+                        .SelectedDate);
 
                     // Selecting a run is distinct from opening it, so the final action remains
                     // explicit and the user can still change the date filter first.
@@ -981,7 +1166,6 @@ internal static class AgentUiReviewHarness
                         "ABS",
                         "ENGINE MAP",
                         "Alert canvas",
-                        "Global defaults",
                         .. DashThemePresets.All.Select(preset => preset.Name),
                         "Use global settings",
                         "Duration",
@@ -989,10 +1173,10 @@ internal static class AgentUiReviewHarness
                         ]));
 
                     ClickEditor(window, "Settings");
-                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1440x900", "Theme presets", "Choose a complete visual direction. Graphite preserves functional racing colors; optical presets apply their representative accent.", "Graphite", "Ice", "Suzuki", "Selected"));
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1440x900", "Global defaults", "Theme presets", "Choose a complete visual direction. Graphite preserves functional racing colors; optical presets apply their representative accent.", "Graphite", "Ice", "Suzuki", "Selected"));
                     window.Width = 1120;
                     window.Height = 720;
-                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1120x720", "Theme presets", "Graphite", "Ice", "Suzuki"));
+                    frames.Add(Capture(window, artifactRoot, "dash-editor-theme-presets-1120x720", "Global defaults", "Theme presets", "Graphite", "Ice", "Suzuki"));
                     window.Width = 1440;
                     window.Height = 900;
 
@@ -1047,14 +1231,29 @@ internal static class AgentUiReviewHarness
         var traces = new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"));
         var now = DateTimeOffset.Now;
 
+        // The track names Le Mans Ultimate really writes, variants included, so the picker's
+        // grouping and every circuit outline are exercised by the frames an agent reviews.
         Write(history, traces, "review-daytona", "Daytona International Speedway Road Course", "Hypercar", "Porsche 963", now.AddHours(-1), 105);
         Write(history, traces, "review-barcelona", "Circuit de Barcelona", "Hypercar", "Porsche 963", now.AddHours(-2), 106);
         Write(history, traces, "review-sebring", "Sebring International Raceway", "Hypercar", "Porsche 963", now.AddHours(-3), 107);
         Write(history, traces, "review-le-mans", "Circuit de la Sarthe", "Hypercar", "Porsche 963", now.AddHours(-4), 198);
-        Write(history, traces, "review-hyper", "Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-5), 101);
-        Write(history, traces, "review-gt3", "Spa-Francorchamps", "GT3", "Ferrari 296", now.AddHours(-6), 118);
-        Write(history, traces, "review-gt3-bmw", "Spa-Francorchamps", "GT3", "BMW M4", now.AddHours(-6.5), 119);
+        Write(history, traces, "review-le-mans-mulsanne", "Circuit de la Sarthe Mulsanne", "Hypercar", "Porsche 963", now.AddHours(-4.5), 201);
+        Write(history, traces, "review-hyper", "Circuit de Spa-Francorchamps", "Hypercar", "Porsche 963", now.AddHours(-5), 101);
+        Write(history, traces, "review-gt3", "Circuit de Spa-Francorchamps", "GT3", "Ferrari 296", now.AddHours(-6), 118);
+        Write(history, traces, "review-gt3-bmw", "Circuit de Spa-Francorchamps", "GT3", "BMW M4", now.AddHours(-6.5), 119);
+        Write(history, traces, "review-gt3-mclaren", "Circuit de Spa-Francorchamps", "LMGT3", "McLaren 720S LMGT3 Evo", now.AddHours(-7.0), 120);
+        Write(history, traces, "review-gt3-porsche", "Circuit de Spa-Francorchamps", "LMGT3", "Porsche 911 GT3 R LMGT3", now.AddHours(-7.5), 121);
+        Write(history, traces, "review-spa-endurance", "Circuit de Spa-Francorchamps Endurance", "Hypercar", "Porsche 963", now.AddHours(-8), 102);
         Write(history, traces, "review-monza", "Autodromo Nazionale Monza", "Hypercar", "Porsche 963", now.AddHours(-7), 104);
+        Write(history, traces, "review-monza-curva", "Monza Curva Grande Circuit", "Hypercar", "Porsche 963", now.AddHours(-9), 96);
+        Write(history, traces, "review-imola", "Autodromo Enzo e Dino Ferrari", "Hypercar", "Porsche 963", now.AddHours(-10), 95);
+        Write(history, traces, "review-bahrain", "Bahrain International Circuit", "Hypercar", "Porsche 963", now.AddHours(-11), 112);
+        Write(history, traces, "review-silverstone", "Silverstone Grand Prix Circuit - ELMS", "Hypercar", "Porsche 963", now.AddHours(-12), 108);
+        Write(history, traces, "review-algarve", "Algarve International Circuit", "Hypercar", "Porsche 963", now.AddHours(-13), 99);
+        Write(history, traces, "review-cota", "Circuit of the Americas", "Hypercar", "Porsche 963", now.AddHours(-14), 116);
+        Write(history, traces, "review-fuji", "Fuji Speedway Classic", "Hypercar", "Porsche 963", now.AddHours(-15), 103);
+        Write(history, traces, "review-interlagos", "Autódromo José Carlos Pace", "Hypercar", "Porsche 963", now.AddHours(-16), 84);
+        Write(history, traces, "review-paul-ricard", "Paul Ricard - ELMS", "Hypercar", "Porsche 963", now.AddHours(-17), 110);
     }
 
     private static void Write(
@@ -1570,8 +1769,92 @@ internal static class AgentUiReviewHarness
             failures.Add(imageFailure);
         }
 
+        failures.AddRange(AlignmentFailures(window));
+
         return new AgentUiReviewFrame(name, imagePath, visibleText, failures);
     }
+
+    /// <summary>
+    /// Every label that sits beside a badge, pill or second label on one row must read on the same
+    /// line as it.
+    /// <para>
+    /// A text block in a horizontal <see cref="StackPanel"/> stretches to the row's height by
+    /// default and then draws its glyphs at the top of that box, so a 19px name beside a 30px
+    /// badge silently rides 5px high. The control bounds still line up, which is why only the
+    /// drawn text position can catch it — and why it kept coming back.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<string> AlignmentFailures(Visual root)
+    {
+        const double tolerance = 1.5;
+        foreach (var row in root.GetVisualDescendants().OfType<StackPanel>())
+        {
+            if (row.Orientation != Orientation.Horizontal || !row.IsVisible)
+            {
+                continue;
+            }
+
+            var labels = row.Children
+                .OfType<Control>()
+                .Where(child => child.IsVisible)
+                .Where(child => child.VerticalAlignment is not (VerticalAlignment.Top or VerticalAlignment.Bottom))
+                .Select(child => (Child: child, Center: TextCenter(child, root)))
+                .Where(entry => entry.Center is not null)
+                .ToList();
+            if (labels.Count < 2)
+            {
+                continue;
+            }
+
+            var lowest = labels.Min(entry => entry.Center!.Value);
+            var highest = labels.Max(entry => entry.Center!.Value);
+            if (highest - lowest <= tolerance)
+            {
+                continue;
+            }
+
+            var described = labels.Select(entry =>
+                $"\"{Text(entry.Child)}\" at {entry.Center!.Value:0.0}");
+            yield return $"Misaligned row: {string.Join(", ", described)}";
+        }
+    }
+
+    /// <summary>
+    /// Where a row item's text is actually drawn, or null when the item is not a single label.
+    /// </summary>
+    private static double? TextCenter(Control child, Visual root)
+    {
+        var texts = child.GetSelfAndVisualDescendants()
+            .OfType<TextBlock>()
+            .Where(text => text.IsVisible && !string.IsNullOrWhiteSpace(text.Text))
+            .ToList();
+        if (texts.Count != 1)
+        {
+            return null;
+        }
+
+        var text = texts[0];
+        if (text.VerticalAlignment is VerticalAlignment.Top or VerticalAlignment.Bottom)
+        {
+            return null;
+        }
+
+        var drawn = text.DesiredSize.Height;
+        if (drawn <= 0)
+        {
+            return null;
+        }
+
+        // A stretched block is taller than its glyphs and draws them at the top of that box.
+        var inkHeight = text.Bounds.Height > drawn ? drawn : text.Bounds.Height;
+        return text.TranslatePoint(new Point(0, inkHeight / 2), root)?.Y;
+    }
+
+    private static string Text(Control child) => child
+        .GetSelfAndVisualDescendants()
+        .OfType<TextBlock>()
+        .Select(text => text.Text ?? string.Empty)
+        .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? "?";
 
     private static AgentUiReviewFrame CaptureTransparentSelector(
         Window window,
@@ -1697,13 +1980,19 @@ internal static class AgentUiReviewHarness
 
     private static void ClickTaggedButton(MainWindow window, string tag)
     {
+        var button = TaggedButton(window, tag);
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        using var frame = window.CaptureRenderedFrame();
+    }
+
+    private static Button TaggedButton(Window window, string tag)
+    {
         var button = window.GetVisualDescendants()
             .OfType<Button>()
             .FirstOrDefault(candidate => string.Equals(candidate.Tag?.ToString(), tag, StringComparison.Ordinal));
 
         Assert.NotNull(button);
-        button!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        using var frame = window.CaptureRenderedFrame();
+        return button!;
     }
 
     // Modal fields are identified by their placeholder: the Session Planner modal is built

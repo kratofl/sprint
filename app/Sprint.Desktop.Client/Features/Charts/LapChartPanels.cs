@@ -46,6 +46,28 @@ public static class LapChartPanels
         [new LapChartChannel(LapTraceChannels.SpeedKph, "Speed")]);
 
     /// <summary>
+    /// Throttle on its own.
+    /// <para>
+    /// No fill, unlike <see cref="Pedals"/>. In this panel the two series are the same channel
+    /// on two different laps, so a fill would wash your lap and the target's over each other
+    /// into one block and stop meaning magnitude. Two crisp lines, ember and blue, is the
+    /// reading — which is the same rule spec §2.3 states from the other direction.
+    /// </para>
+    /// </summary>
+    public static LapChartPanelSpec Throttle { get; } = new(
+        "throttle",
+        "Throttle",
+        "%",
+        [new LapChartChannel(LapTraceChannels.Throttle, "Throttle", 100)]);
+
+    /// <summary>Brake on its own. Unfilled for the same reason as <see cref="Throttle"/>.</summary>
+    public static LapChartPanelSpec Brake { get; } = new(
+        "brake",
+        "Brake",
+        "%",
+        [new LapChartChannel(LapTraceChannels.Brake, "Brake", 100)]);
+
+    /// <summary>
     /// Brake is listed first, so <see cref="LapChartPanelSpec.FillFirst"/> fills the braking
     /// trace. The braking shape is the thing a driver is trying to match against a reference;
     /// throttle stays a crisp line on top of it.
@@ -76,18 +98,21 @@ public static class LapChartPanels
         null,
         [new LapChartChannel(LapTraceChannels.Gear, "Gear", 1, ChartInterpolation.Stepped)]);
 
-    public static IReadOnlyList<LapChartPanelSpec> All { get; } = [Speed, Pedals, Steering, Gear];
+    public static IReadOnlyList<LapChartPanelSpec> All { get; } =
+        [Speed, Throttle, Brake, Pedals, Steering, Gear];
 
     /// <summary>
-    /// What the HUD shows until the driver says otherwise: pedals, speed, gear, in that order.
+    /// What the HUD shows until the driver says otherwise: throttle, brake, speed — one panel
+    /// each, because the HUD now gives every panel its own window (see
+    /// <c>Features/LiveCompare/HudWindowPlan.cs</c>).
     /// <para>
-    /// Pedals first because that is the reading a driver is shaping against a reference — where
-    /// they got off the throttle and how they released the brake. Speed is the consequence of
-    /// it, and gear is the context. Spec §5 left gear deliberately open as a default; driver
-    /// feedback on 2026-08-03 settled it as one of three.
+    /// Throttle and brake are split rather than combined here: in separate windows the driver
+    /// places each pedal trace where they want it, which is the whole reason for the split, and
+    /// the combined <see cref="Pedals"/> panel earns its shared axis only where the two are
+    /// stacked in one frame — the Analysis view. Driver feedback 2026-08-07.
     /// </para>
     /// </summary>
-    public static IReadOnlyList<LapChartPanelSpec> HudDefaults { get; } = [Pedals, Speed, Gear];
+    public static IReadOnlyList<LapChartPanelSpec> HudDefaults { get; } = [Throttle, Brake, Speed];
 
     /// <summary>What the Analysis view opens with. Wider: there is room, and no corner to take.</summary>
     public static IReadOnlyList<LapChartPanelSpec> AnalysisDefaults { get; } = [Speed, Pedals, Steering];

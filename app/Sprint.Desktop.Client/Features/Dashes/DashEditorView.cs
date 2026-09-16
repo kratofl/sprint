@@ -174,27 +174,16 @@ public sealed class DashEditorView : UserControl
             return;
         }
 
-        if ((e.Key is Key.Delete or Key.Back) && _controller.SelectedWidget is { } selected)
+        if ((e.Key is Key.Delete or Key.Back) && this._controller.SelectedWidgetId is not null)
         {
-            // First press arms the inspector's confirm; second removes. Mirrors the
-            // old editor's delete-confirmation without a modal dialog.
-            if (string.Equals(_confirmDeleteId, selected.Id, StringComparison.OrdinalIgnoreCase))
-            {
-                _confirmDeleteId = null;
-                _controller.DeleteSelected();
-            }
-            else
-            {
-                _confirmDeleteId = selected.Id;
-                Rebuild();
-            }
-
+            this._confirmDeleteId = null;
+            this._controller.DeleteSelected();
             e.Handled = true;
         }
-        else if (e.Key == Key.Escape && _confirmDeleteId is not null)
+        else if (e.Key == Key.Escape && this._confirmDeleteId is not null)
         {
-            _confirmDeleteId = null;
-            Rebuild();
+            this._confirmDeleteId = null;
+            this.Rebuild();
             e.Handled = true;
         }
     }
@@ -373,14 +362,14 @@ public sealed class DashEditorView : UserControl
         actions.Children.Add(BuildPreviewSelector());
         // Apply-to-screen is honest about hardware: enabled only when a screen is assigned
         // to this dash, dimmed and self-explaining via tooltip otherwise (US34).
-        var apply = _controller.ApplyAvailability;
-        var applyButton = Graphite.Button("Apply", ButtonTone.Primary);
-        applyButton.Tag = "apply-to-screen";
-        ToolTip.SetTip(applyButton, apply.Summary);
-        applyButton.Click += (_, _) => _controller.RequestApplyToScreen();
-        applyButton.IsEnabled = apply.CanApply;
-        applyButton.Opacity = apply.CanApply ? 1.0 : 0.4;
-        actions.Children.Add(applyButton);
+        DashApplyAvailability apply = this._controller.ApplyAvailability;
+        Button saveButton = Graphite.Button("Save", ButtonTone.Primary, "check");
+        saveButton.Tag = "apply-to-screen";
+        ToolTip.SetTip(saveButton, apply.Summary);
+        saveButton.Click += (_, _) => this._controller.RequestApplyToScreen();
+        saveButton.IsEnabled = apply.CanApply;
+        saveButton.Opacity = apply.CanApply ? 1.0 : 0.4;
+        actions.Children.Add(saveButton);
 
         Grid.SetColumn(actions, 2);
         bar.Children.Add(actions);
@@ -1911,7 +1900,9 @@ public sealed class DashEditorView : UserControl
 
     private Control BuildThemePanel()
     {
-        var stack = new StackPanel { Spacing = 8 };
+        StackPanel stack = new() { Spacing = 8 };
+        stack.Children.Add(this.BuildGlobalAlertSettings());
+        stack.Children.Add(Divider());
         stack.Children.Add(Graphite.SectionLabel("Theme presets"));
         stack.Children.Add(Graphite.TextBlock(
             "Choose a complete visual direction. Graphite preserves functional racing colors; optical presets apply their representative accent.",
@@ -2059,11 +2050,9 @@ public sealed class DashEditorView : UserControl
         Grid.SetColumn(canvasColumn, 1);
         grid.Children.Add(canvasColumn);
 
-        var settings = new StackPanel { Spacing = 12 };
-        settings.Children.Add(BuildGlobalAlertSettings());
-        settings.Children.Add(Divider());
-        settings.Children.Add(BuildIndividualAlertSettings(alert));
-        var settingsSurface = EditorPanelSurface(new ScrollViewer { Content = settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        StackPanel settings = new() { Spacing = 12 };
+        settings.Children.Add(this.BuildIndividualAlertSettings(alert));
+        Border settingsSurface = EditorPanelSurface(new ScrollViewer { Content = settings, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Grid.SetColumn(settingsSurface, 2);
         grid.Children.Add(settingsSurface);
         return grid;
@@ -2437,14 +2426,14 @@ public sealed class DashEditorView : UserControl
         stack.Children.Add(DurationRow(config.DurationSeconds,
             () => _controller.SetAlertDuration(config.DurationSeconds - 0.1),
             () => _controller.SetAlertDuration(config.DurationSeconds + 0.1)));
-        stack.Children.Add(AlertInvertRow(config.InvertColors, _controller.SetAlertInvertColors));
+        stack.Children.Add(AlertToggleRow("Invert colors", config.InvertColors, this._controller.SetAlertInvertColors));
         return stack;
     }
 
     private Control BuildIndividualAlertSettings(DashAlert? alert)
     {
-        var stack = new StackPanel { Spacing = 10 };
-        var label = AlertTypes.First(item => string.Equals(item.Type, _selectedAlertType, StringComparison.OrdinalIgnoreCase)).Label;
+        StackPanel stack = new() { Spacing = 10 };
+        string label = AlertTypes.First(item => string.Equals(item.Type, this._selectedAlertType, StringComparison.OrdinalIgnoreCase)).Label;
         stack.Children.Add(Graphite.SectionLabel(label));
         if (alert is null)
         {
@@ -2453,21 +2442,23 @@ public sealed class DashEditorView : UserControl
         }
 
         stack.Children.Add(AlertToggleRow("Use global settings", alert.UsesGlobalSettings,
-            useGlobal => _controller.SetAlertUseGlobal(alert.Type, useGlobal)));
-        var effective = _controller.EffectiveAlertConfig(alert.Type);
-        if (alert.UsesGlobalSettings)
+            useGlobal => this._controller.SetAlertUseGlobal(alert.Type, useGlobal)));
+        DashAlertConfig effective = this._controller.EffectiveAlertConfig(alert.Type);
+        StackPanel fields = new()
         {
-            stack.Children.Add(Graphite.TextBlock(
-                $"{AlertColorName(effective.ColorToken)} · {effective.DurationSeconds:0.0}s · {(effective.InvertColors ? "Inverted" : "Normal")}",
-                12, FontWeight.Medium, AlertTokenBrush(effective.ColorToken, alert.Type)));
-            return stack;
-        }
-
-        stack.Children.Add(AlertColorPicker("Color", effective.ColorToken, alert.Type, token => _controller.SetAlertColorToken(alert.Type, token)));
-        stack.Children.Add(DurationRow(effective.DurationSeconds,
-            () => _controller.SetAlertDuration(alert.Type, effective.DurationSeconds - 0.1),
-            () => _controller.SetAlertDuration(alert.Type, effective.DurationSeconds + 0.1)));
-        stack.Children.Add(AlertInvertRow(effective.InvertColors, invert => _controller.SetAlertInvertColors(alert.Type, invert)));
+            Tag = "alert-individual-fields",
+            Spacing = 10,
+            IsEnabled = !alert.UsesGlobalSettings,
+            Opacity = alert.UsesGlobalSettings ? 0.45 : 1.0,
+        };
+        fields.Children.Add(this.AlertColorPicker("Color", effective.ColorToken, alert.Type,
+            token => this._controller.SetAlertColorToken(alert.Type, token)));
+        fields.Children.Add(DurationRow(effective.DurationSeconds,
+            () => this._controller.SetAlertDuration(alert.Type, effective.DurationSeconds - 0.1),
+            () => this._controller.SetAlertDuration(alert.Type, effective.DurationSeconds + 0.1)));
+        fields.Children.Add(AlertToggleRow("Invert colors", effective.InvertColors,
+            invert => this._controller.SetAlertInvertColors(alert.Type, invert)));
+        stack.Children.Add(fields);
         return stack;
     }
 
@@ -2578,19 +2569,6 @@ public sealed class DashEditorView : UserControl
         }
 
         return AlertTokenBrush("auto", type);
-    }
-
-    private static Control AlertInvertRow(bool value, Action<bool> set)
-    {
-        var stack = new StackPanel { Spacing = 3 };
-        stack.Children.Add(AlertToggleRow("Invert colors", value: false, set, enabled: false));
-        stack.Children.Add(Graphite.TextBlock(
-            "Critical alerts only · preview remains stable.",
-            10,
-            FontWeight.Normal,
-            Graphite.Text3Brush));
-        ToolTip.SetTip(stack, "Parameter-change alerts are not Critical and cannot invert.");
-        return stack;
     }
 
     private static Control AlertToggleRow(string label, bool value, Action<bool> set, bool enabled = true)

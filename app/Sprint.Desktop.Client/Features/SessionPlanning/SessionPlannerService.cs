@@ -44,6 +44,7 @@ public sealed class SessionPlannerService
 
     private string? _activePlanId;
     private int _lastSeenLap;
+    private bool _lastSeenLapIsValid = true;
     private SessionType _autoStartCandidate = SessionType.Unknown;
     private DateTimeOffset? _autoStartSince;
 
@@ -221,7 +222,8 @@ public sealed class SessionPlannerService
             segment = AppendSegment(plan, kind, source, now);
         }
 
-        _lastSeenLap = 0;
+        this._lastSeenLap = 0;
+        this._lastSeenLapIsValid = true;
         _store.Save(plan);
         _log.Info($"Started tracking {kind} for session plan '{plan.Id}'");
         return segment;
@@ -355,30 +357,33 @@ public sealed class SessionPlannerService
 
     private bool RecordCompletedLap(PlanSegment segment, TelemetryFrame frame)
     {
-        var currentLap = frame.Lap.CurrentLap;
-        if (_lastSeenLap == 0)
+        int currentLap = frame.Lap.CurrentLap;
+        if (this._lastSeenLap == 0)
         {
-            _lastSeenLap = currentLap;
+            this._lastSeenLap = currentLap;
+            this._lastSeenLapIsValid = frame.Lap.IsValid;
             return false;
         }
 
         // A lap crossing: the just-finished lap is the one we were on. Only record it
         // when telemetry gives a completed lap time, so we never log a phantom lap 0.
-        if (currentLap <= _lastSeenLap || frame.Lap.LastLapTime <= 0)
+        if (currentLap <= this._lastSeenLap || frame.Lap.LastLapTime <= 0)
         {
-            _lastSeenLap = Math.Max(_lastSeenLap, currentLap);
+            this._lastSeenLap = Math.Max(this._lastSeenLap, currentLap);
+            this._lastSeenLapIsValid = frame.Lap.IsValid;
             return false;
         }
 
         segment.Laps.Add(new LapSummary
         {
-            LapNumber = _lastSeenLap,
-            IsValid = frame.Lap.IsValid,
+            LapNumber = this._lastSeenLap,
+            IsValid = this._lastSeenLapIsValid,
             LapTimeSeconds = frame.Lap.LastLapTime,
             FuelRemainingLiters = frame.Car.FuelLiters,
         });
 
-        _lastSeenLap = currentLap;
+        this._lastSeenLap = currentLap;
+        this._lastSeenLapIsValid = frame.Lap.IsValid;
         return true;
     }
 
@@ -451,7 +456,8 @@ public sealed class SessionPlannerService
     private void ClearActiveSlot()
     {
         _activePlanId = null;
-        _lastSeenLap = 0;
+        this._lastSeenLap = 0;
+        this._lastSeenLapIsValid = true;
         _autoStartCandidate = SessionType.Unknown;
         _autoStartSince = null;
         _store.SaveActivePlanId(null);

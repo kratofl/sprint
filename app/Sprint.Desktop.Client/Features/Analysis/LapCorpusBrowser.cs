@@ -64,10 +64,20 @@ public sealed class LapCorpusBrowser
     /// </summary>
     public IReadOnlyList<CorpusSession> Sessions()
     {
-        var sessions = new List<CorpusSession>();
-        foreach (var session in _history.LoadAll())
+        List<CorpusSession> sessions = [];
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        foreach (LapHistorySession session in stored)
         {
-            var valid = session.Laps.Where(Usable).ToList();
+            // Older builds could import the XML copy of a session Sprint had already recorded.
+            // Keep both files, but list only the richer recorded session in Analysis.
+            if (LapHistoryImportService.HasRecordedEquivalent(session, stored))
+            {
+                continue;
+            }
+
+            List<LapHistoryRecord> valid = session.Laps
+                .Where(lap => Usable(session, lap, stored))
+                .ToList();
             if (valid.Count == 0)
             {
                 continue;
@@ -99,15 +109,24 @@ public sealed class LapCorpusBrowser
             return [];
         }
 
-        var stored = _history.LoadAll()
+        IReadOnlyList<LapHistorySession> all = this._history.LoadAll();
+        LapHistorySession? stored = all
             .FirstOrDefault(candidate => string.Equals(candidate.Id, session.Id, StringComparison.Ordinal));
 
         return stored is null
             ? []
-            : [.. stored.Laps.Where(Usable).Select(lap => Describe(stored, lap)).OrderBy(lap => lap.LapTimeSeconds)];
+            : [.. stored.Laps
+                .Where(lap => Usable(stored, lap, all))
+                .Select(lap => Describe(stored, lap))
+                .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
-    private static bool Usable(LapHistoryRecord lap) => lap.IsValid && lap.LapTimeSeconds > 0;
+    private static bool Usable(
+        LapHistorySession session,
+        LapHistoryRecord lap,
+        IReadOnlyList<LapHistorySession> stored) =>
+        lap.LapTimeSeconds > 0
+        && (lap.IsValid || LapHistoryImportService.HasImportedEquivalent(session, lap, stored));
 
     /// <summary>
     /// The lap's channels, or null when there is no lap, it has none, or they could not be

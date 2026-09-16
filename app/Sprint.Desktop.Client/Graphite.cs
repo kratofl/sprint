@@ -341,6 +341,24 @@ internal static class Graphite
         return button;
     }
 
+    /// <summary>
+    /// Stops the templated button from painting its own pointer-over and pressed states, for
+    /// buttons whose content is a card that carries the hover itself. Without this the Fluent
+    /// template repaints the whole control — a pale fill and a recoloured caption — which reads
+    /// as a selection rather than a hover.
+    /// </summary>
+    public static void QuietPointerFeedback(Button button)
+    {
+        ArgumentNullException.ThrowIfNull(button);
+        button.Resources["ButtonBackgroundPointerOver"] = button.Background ?? Brushes.Transparent;
+        button.Resources["ButtonBackgroundPressed"] = button.Background ?? Brushes.Transparent;
+        button.Resources["ButtonBorderBrushPointerOver"] = button.BorderBrush ?? Brushes.Transparent;
+        button.Resources["ButtonBorderBrushPressed"] = button.BorderBrush ?? Brushes.Transparent;
+        button.Resources["ButtonForegroundPointerOver"] = button.Foreground ?? TextBrush;
+        button.Resources["ButtonForegroundPressed"] = button.Foreground ?? TextBrush;
+        button.Resources[PointerOverBackgroundResourceKey] = button.Background ?? Brushes.Transparent;
+    }
+
     public static Button IconButton(string iconName, string tooltip, Action? action = null)
     {
         var button = new Button
@@ -653,6 +671,49 @@ internal static class Graphite
             FontSize = 12,
             VerticalAlignment = VerticalAlignment.Center,
         };
+    }
+
+    /// <summary>
+    /// One line of inline items: a label and the pills, chips or glyphs that qualify it.
+    /// <para>
+    /// Children are centred on the line. A text block dropped into a horizontal stack stretches
+    /// to the tallest sibling and then draws its glyphs at the top of that box, so a label beside
+    /// a pill rides a few pixels high — invisible in the code, obvious on screen.
+    /// </para>
+    /// </summary>
+    public static StackPanel InlineRow(double spacing, params Control[] children)
+    {
+        ArgumentNullException.ThrowIfNull(children);
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = spacing,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        foreach (var child in children)
+        {
+            row.Children.Add(Centered(child));
+        }
+
+        return row;
+    }
+
+    /// <summary>Adds an item to an <see cref="InlineRow"/>, centred like the rest of the line.</summary>
+    public static void AddInline(this StackPanel row, Control child)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        row.Children.Add(Centered(child));
+    }
+
+    private static Control Centered(Control child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (child.VerticalAlignment is VerticalAlignment.Stretch)
+        {
+            child.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        return child;
     }
 
     public static Border StatusPill(string text, IBrush? brush = null)

@@ -17,11 +17,11 @@ public static class DashAttention
     // Two complete cycles per second: each stable/inverted phase lasts 250ms.
     private static readonly TimeSpan CriticalInversionPhase = TimeSpan.FromMilliseconds(250);
 
-    public static bool AllowsInversion(DashCondition condition) => condition == DashCondition.Critical;
+    private static bool AllowsAnimatedInversion(DashCondition condition) => condition == DashCondition.Critical;
 
     public static bool IsInverted(DashCondition condition, bool requested, TimeSpan activeFor)
     {
-        if (!requested || !AllowsInversion(condition) || activeFor < TimeSpan.Zero)
+        if (!requested || !AllowsAnimatedInversion(condition) || activeFor < TimeSpan.Zero)
         {
             return false;
         }

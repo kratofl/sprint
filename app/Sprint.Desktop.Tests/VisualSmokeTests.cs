@@ -228,10 +228,15 @@ public sealed class VisualSmokeTests
                 window.CaptureRenderedFrame();
 
                 AssertText(view, "Alert canvas");
-                AssertText(view, "Global defaults");
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(),
+                    candidate => string.Equals(candidate.Text, "Global defaults", StringComparison.Ordinal));
                 AssertText(view, "Duration");
                 AssertText(view, "Invert colors");
-                AssertText(view, "Critical alerts only · preview remains stable.");
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(),
+                    candidate => string.Equals(candidate.Text, "Critical alerts only · preview remains stable.", StringComparison.Ordinal));
+                Control inheritedFields = view.GetVisualDescendants().OfType<Control>()
+                    .Single(control => string.Equals(control.Tag?.ToString(), "alert-individual-fields", StringComparison.Ordinal));
+                Assert.False(inheritedFields.IsEnabled);
                 AssertText(view, "Use global settings");
                 Assert.Contains(view.GetVisualDescendants().OfType<Canvas>(), IsEditorCanvas);
 

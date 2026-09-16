@@ -48,6 +48,11 @@ internal sealed class SprintComponentTheme : Styles
         Set("ButtonBackgroundPointerOver", Graphite.Panel2HoverBrush);
         Set("ButtonBorderBrush", Graphite.LineBrush);
         Set("ButtonBorderBrushPointerOver", Graphite.LineBrush);
+        // Disabled recedes. Fluent's own disabled fill is lighter than the resting surface, which
+        // made unavailable choices the most prominent thing on the screen.
+        Set("ButtonBackgroundDisabled", Graphite.PanelBrush);
+        Set("ButtonBorderBrushDisabled", Graphite.LineBrush);
+        Set("ButtonForegroundDisabled", Graphite.Text3Brush);
 
         // TextBox (input) surfaces + interaction states — see docs/FIGMA_COMPONENTS.md.
         Set("TextControlBackground", Graphite.Panel2Brush);

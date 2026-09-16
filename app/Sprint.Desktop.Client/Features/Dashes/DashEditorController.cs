@@ -8,7 +8,7 @@ public sealed record DashPageTab(string Id, string Name, bool IsIdle);
 
 /// <summary>
 /// Whether the current dash can be pushed to a physical screen, and an honest
-/// one-line reason for the editor's Apply button (US27/US34). The shell resolves
+/// one-line reason for the editor's screen-sync button (US27/US34). The shell resolves
 /// this from the saved-device assignments; the controller only surfaces it so the
 /// view can enable/disable and label the action without knowing about devices.
 /// </summary>
@@ -142,7 +142,7 @@ public sealed class DashEditorController
         return DashPreviewFrames.Resolve(PreviewState, liveFrame);
     }
 
-    /// <summary>Whether Apply-to-screen is currently offered, plus the honest reason shown on the button (US34).</summary>
+    /// <summary>Whether screen sync is currently offered, plus the honest reason shown on the button (US34).</summary>
     public DashApplyAvailability ApplyAvailability => _applyAvailability();
 
     /// <summary>

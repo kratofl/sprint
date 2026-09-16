@@ -87,12 +87,13 @@ public sealed class LapHistoryImportService
 
         // One read of the corpus per pass, not per entry: the natural key is the session id, so
         // the ids already on disk are the whole dedupe state.
-        var known = new HashSet<string>(_store.LoadAll().Select(session => session.Id), StringComparer.Ordinal);
-        var outcomes = new List<LapHistoryImportOutcome>();
+        List<LapHistorySession> existing = [.. this._store.LoadAll()];
+        HashSet<string> known = new(existing.Select(session => session.Id), StringComparer.Ordinal);
+        List<LapHistoryImportOutcome> outcomes = [];
 
-        foreach (var entry in entries ?? importer.ListEntries())
+        foreach (ResultsArchiveEntry entry in entries ?? importer.ListEntries())
         {
-            outcomes.Add(ImportOne(importer, entry, known));
+            outcomes.Add(this.ImportOne(importer, entry, known, existing));
         }
 
         return new LapHistoryImportReport { Outcomes = outcomes };
@@ -101,9 +102,10 @@ public sealed class LapHistoryImportService
     private LapHistoryImportOutcome ImportOne(
         IResultsImporter importer,
         ResultsArchiveEntry entry,
-        HashSet<string> known)
+        HashSet<string> known,
+        List<LapHistorySession> existing)
     {
-        var imported = importer.Read(entry);
+        ImportedSession? imported = importer.Read(entry);
         if (imported is null)
         {
             // One file the sim left half-written, or a session with no context to file it under,
@@ -112,20 +114,192 @@ public sealed class LapHistoryImportService
             return new LapHistoryImportOutcome(entry, LapHistoryImportStatus.Unreadable);
         }
 
-        var session = Map(imported, SessionTime(imported, entry));
+        LapHistorySession? session = Map(imported, SessionTime(imported, entry));
         if (session is null)
         {
             return new LapHistoryImportOutcome(entry, LapHistoryImportStatus.NoTimedLaps);
         }
 
-        if (!known.Add(session.Id))
+        if (!known.Add(session.Id) || MatchesRecordedSession(imported, entry, existing))
         {
             return new LapHistoryImportOutcome(entry, LapHistoryImportStatus.AlreadyImported);
         }
 
-        _store.Save(session);
+        this._store.Save(session);
+        existing.Add(session);
         return new LapHistoryImportOutcome(entry, LapHistoryImportStatus.Imported) { Session = session };
     }
+
+    /// <summary>
+    /// Whether the archive describes a session Sprint already watched live. Recorded and
+    /// imported sessions deliberately use different ids, so their shared facts are the only
+    /// safe bridge: context, kind, time window, and lap time. Lap numbers are intentionally
+    /// excluded because LMU's live and archived counters can differ at the crossing boundary.
+    /// </summary>
+    internal static bool MatchesRecordedSession(
+        ImportedSession imported,
+        ResultsArchiveEntry entry,
+        IEnumerable<LapHistorySession> existing)
+    {
+        ArgumentNullException.ThrowIfNull(imported);
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(existing);
+
+        DateTimeOffset archiveStart = SessionTime(imported, entry);
+        DateTimeOffset archiveEnd = entry.LastWriteUtc > archiveStart ? entry.LastWriteUtc : archiveStart;
+        TimeSpan clockTolerance = TimeSpan.FromMinutes(5);
+        HistorySessionKind kind = MapKind(imported.Kind);
+
+        foreach (LapHistorySession recorded in existing)
+        {
+            if (recorded.Origin != LapHistoryOrigin.Recorded
+                || recorded.Kind != kind
+                || !Same(recorded.Context.Game, imported.Game)
+                || !SameTrack(imported.Game, recorded.Context.TrackCourse, imported.TrackCourse)
+                || !SameCar(imported.Game, recorded.Context.CarModel, imported.CarModel)
+                || recorded.StartedAt < archiveStart - clockTolerance
+                || recorded.StartedAt > archiveEnd + clockTolerance)
+            {
+                continue;
+            }
+
+            foreach (ImportedLap archivedLap in imported.Laps)
+            {
+                if (archivedLap.LapTimeSeconds is not > 0)
+                {
+                    continue;
+                }
+
+                if (recorded.Laps.Any(lap =>
+                    Math.Abs(lap.LapTimeSeconds - archivedLap.LapTimeSeconds.Value) <= 0.01))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether an already-stored imported session is the time-only copy of a richer recorded
+    /// session. Readers can hide the copy without deleting either file.
+    /// </summary>
+    internal static bool HasRecordedEquivalent(
+        LapHistorySession imported,
+        IEnumerable<LapHistorySession> existing)
+    {
+        ArgumentNullException.ThrowIfNull(imported);
+        ArgumentNullException.ThrowIfNull(existing);
+        if (imported.Origin != LapHistoryOrigin.Imported)
+        {
+            return false;
+        }
+
+        TimeSpan sessionTolerance = TimeSpan.FromHours(1);
+        foreach (LapHistorySession recorded in existing)
+        {
+            if (recorded.Origin != LapHistoryOrigin.Recorded
+                || recorded.Kind != imported.Kind
+                || !Same(recorded.Context.Game, imported.Context.Game)
+                || !SameTrack(imported.Context.Game, recorded.Context.TrackCourse, imported.Context.TrackCourse)
+                || !SameCar(imported.Context.Game, recorded.Context.CarModel, imported.Context.CarModel)
+                || Math.Abs((recorded.StartedAt - imported.StartedAt).TotalMinutes) > sessionTolerance.TotalMinutes)
+            {
+                continue;
+            }
+
+            if (imported.Laps.Any(importedLap =>
+                importedLap.LapTimeSeconds > 0
+                && recorded.Laps.Any(recordedLap =>
+                    Math.Abs(recordedLap.LapTimeSeconds - importedLap.LapTimeSeconds) <= 0.01)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether an archived lap corroborates a recorded channel lap that an older recorder
+    /// mislabelled with the validity of the newly started lap at the crossing.
+    /// </summary>
+    internal static bool HasImportedEquivalent(
+        LapHistorySession recorded,
+        LapHistoryRecord recordedLap,
+        IEnumerable<LapHistorySession> existing)
+    {
+        ArgumentNullException.ThrowIfNull(recorded);
+        ArgumentNullException.ThrowIfNull(recordedLap);
+        ArgumentNullException.ThrowIfNull(existing);
+        if (recorded.Origin != LapHistoryOrigin.Recorded || !recordedLap.HasChannelTrace)
+        {
+            return false;
+        }
+
+        TimeSpan sessionTolerance = TimeSpan.FromHours(1);
+        return existing.Any(imported =>
+            imported.Origin == LapHistoryOrigin.Imported
+            && imported.Kind == recorded.Kind
+            && Same(imported.Context.Game, recorded.Context.Game)
+            && SameTrack(recorded.Context.Game, imported.Context.TrackCourse, recorded.Context.TrackCourse)
+            && SameCar(recorded.Context.Game, imported.Context.CarModel, recorded.Context.CarModel)
+            && Math.Abs((imported.StartedAt - recorded.StartedAt).TotalMinutes) <= sessionTolerance.TotalMinutes
+            && imported.Laps.Any(importedLap =>
+                importedLap.LapTimeSeconds > 0
+                && Math.Abs(importedLap.LapTimeSeconds - recordedLap.LapTimeSeconds) <= 0.01));
+    }
+
+    private static bool Same(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SameTrack(string game, string left, string right)
+    {
+        if (Same(left, right))
+        {
+            return true;
+        }
+
+        return Same(game, "Le Mans Ultimate")
+            && Same(NormalizeLmuTrack(left), NormalizeLmuTrack(right));
+    }
+
+    private static bool SameCar(string game, string left, string right)
+    {
+        if (Same(left, right))
+        {
+            return true;
+        }
+
+        return Same(game, "Le Mans Ultimate")
+            && Same(NormalizeLmuCar(left), NormalizeLmuCar(right));
+    }
+
+    private static string NormalizeLmuTrack(string value)
+    {
+        string normalized = LettersAndDigits(value);
+        string[] venuePrefixes = ["circuitde", "circuitdu"];
+        foreach (string prefix in venuePrefixes)
+        {
+            if (normalized.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return normalized[prefix.Length..];
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeLmuCar(string value)
+    {
+        int skinSeparator = value.IndexOf(':');
+        string identity = skinSeparator < 0 ? value : value[..skinSeparator];
+        return LettersAndDigits(identity);
+    }
+
+    private static string LettersAndDigits(string value) =>
+        new string([.. value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant)]);
 
     /// <summary>
     /// When the session ran. An archive that states no session time still has a file the game
