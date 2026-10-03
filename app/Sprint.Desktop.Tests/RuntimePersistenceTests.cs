@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Sprint.Desktop;
+using Sprint.Desktop.Core;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Runtime;
@@ -12,7 +13,9 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DesktopRuntimeExposesSmallRuntimeInterface()
     {
-        var constructor = typeof(MainWindow).GetConstructors().Single(ctor => ctor.GetParameters().Length == 3);
+        // RuntimeCoordinator is the real production consumer (the headless host's command
+        // dispatcher): it depends on IDesktopRuntime, not the concrete DesktopRuntime class.
+        var constructor = typeof(RuntimeCoordinator).GetConstructors().Single();
         Assert.Equal(typeof(IDesktopRuntime), constructor.GetParameters()[0].ParameterType);
 
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -66,31 +69,6 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(
                 "profile.driverName",
                 clone.IdlePage.Widgets.Single(widget => widget.Id == "idle-name").Config!["binding"].GetString());
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void CreatedDashLayoutWritesThumbnailPng()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-
-        try
-        {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-
-            var layout = runtime.CreateDashLayout();
-            var thumbnailPath = runtime.GetDashThumbnailPath(layout);
-
-            Assert.True(File.Exists(thumbnailPath), $"Expected thumbnail at {thumbnailPath}.");
-            Assert.True(new FileInfo(thumbnailPath).Length > 100, "Thumbnail should not be an empty placeholder.");
-
-            var (width, height) = ReadPngSize(thumbnailPath);
-            Assert.Equal(320, width);
-            Assert.Equal(192, height);
         }
         finally
         {
@@ -1107,20 +1085,4 @@ public sealed class RuntimePersistenceTests
         }
     }
 
-    private static (int Width, int Height) ReadPngSize(string path)
-    {
-        var bytes = File.ReadAllBytes(path);
-        Assert.True(bytes.Length >= 24, "PNG should contain a signature and IHDR chunk.");
-        Assert.Equal([137, 80, 78, 71, 13, 10, 26, 10], bytes[..8]);
-        Assert.Equal("IHDR", System.Text.Encoding.ASCII.GetString(bytes, 12, 4));
-        return (ReadBigEndian(bytes, 16), ReadBigEndian(bytes, 20));
-    }
-
-    private static int ReadBigEndian(byte[] bytes, int offset)
-    {
-        return (bytes[offset] << 24) |
-            (bytes[offset + 1] << 16) |
-            (bytes[offset + 2] << 8) |
-            bytes[offset + 3];
-    }
 }

@@ -8,7 +8,7 @@ internal static class TestEnv
 {
     public static string RepoRoot { get; } = FindRepoRoot();
 
-    public static string PresetRoot => Path.Combine(RepoRoot, "app", "Sprint.Desktop.Client", "presets");
+    public static string PresetRoot => Path.Combine(RepoRoot, "app", "Sprint.Desktop.Host", "presets");
 
     /// <summary>A unique, empty temp data root for a single test. Caller deletes it.</summary>
     public static string NewTempDataRoot()
@@ -22,12 +22,12 @@ internal static class TestEnv
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (Directory.Exists(Path.Combine(dir.FullName, "app", "Sprint.Desktop.Client", "presets")))
+            if (Directory.Exists(Path.Combine(dir.FullName, "app", "Sprint.Desktop.Host", "presets")))
             {
                 return dir.FullName;
             }
         }
 
-        throw new DirectoryNotFoundException("Could not find repository root containing app/Sprint.Desktop.Client/presets.");
+        throw new DirectoryNotFoundException("Could not find repository root containing app/Sprint.Desktop.Host/presets.");
     }
 }

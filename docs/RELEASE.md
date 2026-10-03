@@ -15,13 +15,17 @@ When you push a tag the workflow:
 
 1. Strips the leading `v` to get a bare version number (`1.2.3`)
 2. Runs a **Windows + Linux** matrix (`windows-latest` / `ubuntu-latest`)
-3. Publishes a **self-contained, single-file** binary per OS via `dotnet publish
-   -r <rid> -p:PublishSingleFile=true` — no installed .NET runtime is required to
-   run it
-4. Packages the binary + its `presets/`/`Assets/` into one archive per OS:
-   `sprint-<tag>-windows-amd64.zip` and `sprint-<tag>-linux-amd64.tar.gz`
+3. Builds and packages the desktop app the same way `make build-app` does locally
+   (below) — a self-contained native host plus the packaged Electron app
+4. Packages the output into one archive per OS: `sprint-<tag>-windows-amd64.zip`
+   and `sprint-<tag>-linux-amd64.tar.gz`
 5. Uploads both to a single GitHub Release (auto-generates notes; marks
    alpha/beta/rc tags as pre-releases)
+
+> The workflow file (`.github/workflows/desktop-release.yml`) still publishes the
+> retired `Sprint.Desktop.Client` project as of this writing and needs updating to
+> the `make build-app` pipeline described below before the next tag push — it is
+> not part of this doc pass.
 
 (The workflow ships the desktop app only. The .NET API server is deployed as a
    container image built from `api/Dockerfile` via `docker compose`, not as a
@@ -111,18 +115,29 @@ Use the Makefile to produce a local build without triggering a GitHub Release.
 The version defaults to the most recent git tag; override it with `VERSION=`.
 
 ```bash
-# Windows self-contained single-file binary (default RID = win-x64)
+# Windows package (default RID = win-x64)
 make build-app
 
-# Linux self-contained single-file binary (cross-publishes from any host)
+# Linux package (cross-publishes the host from any host OS)
 make build-app RID=linux-x64
 
 # Override the version explicitly
 make build-app VERSION=0.2.0-alpha.1-dev
-
-# Output (one self-contained binary + presets/ + Assets/) is under
-app/build/bin
 ```
+
+`build-app` does three things in order (`Makefile`, `app/desktop/scripts/package.mjs`):
+
+1. `dotnet publish` the native host (`Sprint.Desktop.Host`), self-contained for
+   the target RID with `-p:PublishSingleFile=true`, into `app/desktop/resources/host`.
+2. `pnpm --filter @sprint/desktop build` — type-checks and builds the Vite
+   renderer (`dist/`) and the Electron main process (`dist-electron/`).
+3. `pnpm --filter @sprint/desktop package` — `@electron/packager` bundles the
+   renderer, main process, and the published host (as `extraResource`, unpacked
+   from the asar so the native binary stays executable) into
+   `app/build/bin/Sprint-<platform>-<arch>/` (e.g. `Sprint-win32-x64/Sprint.exe`
+   on Windows).
+
+Packaging fails fast with a clear message if step 1 or 2 has not run yet.
 
 ---
 
@@ -133,22 +148,25 @@ app/build/bin
 | `sprint-<tag>-windows-amd64.zip` | Windows x64 | `windows-latest` | tag push |
 | `sprint-<tag>-linux-amd64.tar.gz` | Linux x64 | `ubuntu-latest` | tag push |
 
-Each archive contains one **self-contained, single-file** binary (no installed
-.NET runtime required) plus its `presets/` and `Assets/`. `desktop-release.yml`
-produces both; the .NET API server ships as a container (see `api/Dockerfile` /
-`docker-compose.yml`), not as part of this workflow.
+Each archive should contain the packaged Electron app produced by `make build-app`
+(see "Building locally" above) — no installed .NET runtime or Node required to
+run it. `desktop-release.yml` is meant to produce both archives; the .NET API
+server ships as a container (see `api/Dockerfile` / `docker-compose.yml`), not as
+part of this workflow.
 
 ---
 
-## In-app version reporting & updates (WS10, issue #28)
+## In-app version reporting & updates
 
-The desktop client reports its own version and installs updates in one click:
+The desktop app reports its own version and checks for updates on demand; it
+never self-installs:
 
 - **Version metadata** — `Directory.Build.props` carries `Version` (and
   Product/Company); `make build-app` / the release workflow stamp the tag via
   `-p:InformationalVersion=<ver>`. `Runtime/BuildInfo.Version` reads that back
-  (stripping any `+<sha>` suffix), shown as a badge on the **Settings → About**
-  card next to the active update channel.
+  (stripping any `+<sha>` suffix), shown in the **Settings → About** card next
+  to the active update channel, and again under **Help & diagnostics →
+  Updates**.
 - **Channels — two, not three:** `stable` and `pre-release`
   (`AppSettings.Channels`). `stable` sees stable releases only; `pre-release`
   sees stable + pre-release. Legacy persisted `beta`/`alpha` settings normalize
@@ -158,69 +176,53 @@ The desktop client reports its own version and installs updates in one click:
 - **Update check** — `Features/Updates/UpdateChecker` is a pure, channel-aware
   semver check: it picks the newest release visible on the user's channel and
   reports whether it is newer than the running build. `GitHubReleaseSource`
-  fetches the repo's releases (`GitHubReleaseSource.DefaultRepo`), carries each
-  release's assets, and degrades to "no releases" on any network failure (never
-  crashes). It runs once at startup and caches the successful result for the
-  running session, so opening Settings immediately shows the known state without
-  another request or click. **Check again** explicitly refreshes the feed; changing
-  channels creates a new channel-specific check.
-- **Startup notice** — an in-app Graphite toast (bottom-right, 12s, "Open
-  Settings" action) with restrained enter/exit motion and a bottom lifetime bar.
-  Best-effort and silent when up to date or offline; it runs only under a classic
-  desktop lifetime, so headless/test hosts never fetch.
-- **One-click install (Windows)** — `ReleaseAssetSelector` picks the platform
-  archive (`win-x64` → `*windows-amd64.zip`, `linux-x64` → `*linux-amd64.tar.gz`),
-  `UpdateInstaller.DownloadAsync` streams it to
-  `%TEMP%\Sprint\updates\<version>\` with progress and extracts every attempt to
-  a fresh staging dir (so a stale lock cannot block retry), then
-  `UpdateScript.BuildWindowsBatch` produces the helper batch that waits
-  for the app's PID to exit, robocopies staging over the install dir with a
-  retry window for post-exit executable locks, and copies the primary executable
-  only after the support files succeed. When the install directory is protected
-  (for example `%ProgramFiles%\Sprint`), Sprint launches the helper with Windows
-  elevation before shutting down; declining the UAC prompt leaves the current app
-  running. A separate watcher launched by the original user process waits for the
-  privileged copy result and reopens Sprint without inheriting administrator
-  privileges. The app then shuts down, swaps, relaunches, and deletes the helpers.
-  A persistent post-exit copy failure
-  preserves `%TEMP%\Sprint\apply-update-<pid>.log`, reveals the staged executable
-  for manual recovery, and relaunches the still-working old executable.
-- **Linux and fallbacks** — self-replace is Windows-only
-  (`UpdateInstaller.SupportsSelfReplace`). Linux reveals the downloaded archive
-  for manual installation. Download, extraction, helper launch, and declined
-  elevation are reported while the current Windows build remains running;
-  post-exit copy failures follow the logged recovery path above.
-- **Decision record (resolves Open Question #5):** the earlier
-  "check-and-notify only, self-replace deferred" decision is **superseded** by
-  issue #28. Unattended/background auto-install (no user click) remains out of
-  scope: every install is user-initiated and confirmed.
+  fetches the repo's releases (`GitHubReleaseSource.DefaultRepo`) and degrades
+  to "no releases" on any network failure (never crashes). The host exposes it
+  at `POST /api/updates/check`; **Check for updates** in Settings or in Help &
+  diagnostics is the only thing that triggers a check — there is no automatic
+  check at startup. A result that finds a newer release shows the version and a
+  link to the GitHub release page; there is no in-app download or install.
+- **One-click self-replace installer (built, not wired)** — `UpdateInstaller`,
+  `UpdateScript`, and `ReleaseAssetSelector` in `Sprint.Desktop.Core/Features/Updates`
+  implement a full download-stage-elevate-swap-relaunch flow (Windows helper
+  batch, robocopy over the install dir, UAC elevation when the install directory
+  is protected, a relaunch watcher, and a logged recovery path on a persistent
+  copy failure), and are covered by `UpdateInstallerTests`/`UpdateScriptTests`.
+  Nothing in `Sprint.Desktop.Host` or `app/desktop` calls into this flow today —
+  the shipped app is check-and-notify only. Wiring it up is a real follow-up, not
+  a description of current behavior.
 
 ## Publish target
 
-The client project targets `<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>`.
-Dev `build`/`run`/`test` stay framework-dependent (fast); a **publish** with
-`-p:PublishSingleFile=true` (what `make build-app` and the release workflow use)
-switches on the shipping profile:
+`Sprint.Desktop.Host` has no `<RuntimeIdentifiers>` fixed in the project — the
+RID is passed on the command line (`Makefile`'s `RID`, default `win-x64`).
+Dev `run`/`watch`/`test` stay framework-dependent (fast); the `-r <rid>
+-p:PublishSingleFile=true` publish `make build-app` uses (see "Building locally"
+above) switches on the shipping profile:
 
-- **self-contained** — bundles the .NET runtime, so no runtime install is needed;
-- **single-file** with native libraries self-extracting (SkiaSharp/Avalonia) and
-  the payload compressed → one ~55 MB binary;
-- a post-publish target **strips the 100+ MB of native `.pdb`** the Skia/HarfBuzz
-  runtime packs would otherwise dump into the output.
+- **self-contained** — bundles the .NET runtime, so no runtime install is needed
+  to run the host;
+- **single-file** — the host's managed assemblies compress into one executable
+  under `app/desktop/resources/host`. The host is a plain ASP.NET Core minimal
+  API with no graphics/UI native dependencies, so it carries none of the
+  SkiaSharp/Avalonia native-library weight the previous UI binary did;
+- presets (`app/Sprint.Desktop.Host/presets/**/*.json`) are `CopyToOutputDirectory`
+  and ship alongside the host executable.
 
-Assets, fonts, presets, and the app icon are `CopyToOutputDirectory` and verified
-present alongside the binary.
+`@electron/packager` (step 3 of `build-app`) then bundles that published host as
+an unpacked `extraResource` next to the Electron/Chromium runtime, the renderer
+bundle, and the app icon — see `app/desktop/scripts/package.mjs`.
 
 ### Going smaller: trimming / Native AOT (future)
 
-`-p:PublishTrimmed=true` roughly halves the size and **Native AOT**
-(`-p:PublishAot=true`) produces a true native binary with faster startup. Both are
-**not enabled yet** because the runtime persistence uses **reflection-based
-`System.Text.Json`**, which trimming/AOT can break — enabling them first requires
-`System.Text.Json` source generators (`JsonSerializerContext`) plus a per-OS GUI
-smoke run to confirm nothing was trimmed away. Native AOT additionally **cannot
+`-p:PublishTrimmed=true` and **Native AOT** (`-p:PublishAot=true`) are not
+enabled for the host publish. `Sprint.Desktop.Core`'s runtime persistence uses
+**reflection-based `System.Text.Json`** (`DesktopRuntime`'s (de)serialization),
+which trimming/AOT can break — enabling either first requires
+`System.Text.Json` source generators (`JsonSerializerContext`) plus a smoke run
+to confirm nothing was trimmed away. Native AOT additionally **cannot
 cross-compile** (each OS must build on its own runner — which the release matrix
-already does). Treat this as the follow-up once a GUI smoke harness exists.
+already does).
 
 ## Release validation
 
@@ -229,12 +231,13 @@ Before tagging, run the full local gate:
 ```powershell
 & 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx -warnaserror   # 0/0
 make test-app                                                                            # all green
-make build-app VERSION=<ver>                                                             # publishes to app/build/bin
+make build-app VERSION=<ver>                                                             # publishes + packages -> app/build/bin
 ```
 
-Then smoke the artifact: launch `app/build/bin/Sprint.Desktop.Client.exe`, confirm
-the shell opens, and confirm the publish output contains `presets/`,
-`Assets/Fonts/`, and `build/appicon.png`.
+Then smoke the artifact: launch the packaged executable under
+`app/build/bin/Sprint-<platform>-<arch>/` (e.g. `Sprint.exe` on Windows), confirm
+the window opens and telemetry/dash pages render, and confirm
+`resources/host/presets/` shipped alongside the app.
 
 ## Checklist before tagging
 

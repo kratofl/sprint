@@ -1,0 +1,1603 @@
+@import '@sprint/tokens/windows.css';
+
+/* Desktop UI type is Segoe UI Variable (a Windows system font, nothing bundled;
+   see --font-text/--font-display in windows.css). The faces below exist only for
+   the dash renderer (packages/dashboard), which names Inter for wheel labels and
+   Saira SemiCondensed for wheel numerics. Without them every dash readout — in
+   the editor preview and on the USB panel — silently falls back to system-ui.
+   App UI must never name either family. */
+@font-face { font-family: Inter; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/Inter-Regular.ttf') format('truetype'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/Inter-Medium.ttf') format('truetype'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 600; font-display: block; src: url('./fonts/Inter-SemiBold.ttf') format('truetype'); }
+@font-face { font-family: Inter; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/Inter-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/SairaSemiCondensed-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/SairaSemiCondensed-Medium.ttf') format('truetype'); }
+@font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/SairaSemiCondensed-Bold.ttf') format('truetype'); }
+
+/* ── Base ───────────────────────────────────────────────────────────────────
+   Fluent desktop density: 13px/20px Segoe UI Variable Text on Mica. Every value
+   in this file comes from @sprint/tokens/windows.css; the geometry (heights,
+   paddings, radii) is copied from the Windows mockup
+   (docs/design/_unpacked/pages/windows-light.readable.html).
+
+   Load order: main.tsx imports this file before App, so these shared
+   primitives come first in the bundle and every view's CSS lands after them.
+   A view adjusts a primitive with an ordinary selector on its own class
+   (`.devices-list-columns { display: grid }` beats `.list-row`); it never
+   redefines a primitive class itself. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 900px;
+}
+
+body {
+  font: 400 13px/20px var(--font-text);
+  color: var(--label);
+  background: var(--mica);
+}
+
+/* Windows controls keep the arrow cursor; only links get the hand. */
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: var(--link);
+}
+
+a:hover {
+  color: var(--link-hover);
+}
+
+/* Fluent focus visual: 2px outer stroke + 1px inner stroke, keyboard focus only. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px var(--focus-ring-inner);
+}
+
+/* ── App frame ────────────────────────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--mica);
+  color: var(--label);
+}
+
+/* In the Electron main window the OS draws the window backdrop: Mica, or its solid
+   colour when Windows "Transparency effects" are off (electron/windowChrome.ts).
+   The title bar and navigation pane sit directly on it; the content layer's
+   translucent `--layer` lets a trace of it through, as in every Windows 11 app. */
+[data-backdrop="window"] body,
+[data-backdrop="window"] .app {
+  background: transparent;
+}
+
+/* Pane width is restored from persisted settings after the first state load
+   (App.tsx); staying invisible until then avoids painting the wrong width and
+   snapping to the right one a moment later. */
+.app.pending {
+  opacity: 0;
+}
+
+.app.ready {
+  opacity: 1;
+  transition: opacity var(--motion-normal) var(--ease-out);
+}
+
+.app-frame {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Content layer: sits under the title bar, right of the pane, and scrolls on its own. */
+.content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+  background: var(--layer);
+  border-top: 1px solid var(--layer-stroke);
+  border-left: 1px solid var(--layer-stroke);
+  border-top-left-radius: var(--radius-card);
+}
+
+/* ── Title bar (48px on Mica) ─────────────────────────────────────────────── */
+
+.titlebar {
+  height: 48px;
+  flex: none;
+  display: grid;
+  /* Equal side columns keep the search box centred on the whole window, caption buttons included. */
+  grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);
+  align-items: center;
+  user-select: none;
+  /* This bar IS the window title bar, so it drags the window; every control opts back out. */
+  -webkit-app-region: drag;
+}
+
+.titlebar button,
+.titlebar a,
+.titlebar .telemetry-badge {
+  -webkit-app-region: no-drag;
+}
+
+/* The telemetry status may shrink (and ellipsize) before it reaches the caption buttons. */
+.titlebar .telemetry-badge {
+  flex: 0 1 auto;
+}
+
+.titlebar-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  min-width: 0;
+}
+
+.titlebar-back {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+}
+
+.titlebar-back:hover:not(:disabled) {
+  background: var(--subtle-hover);
+}
+
+.titlebar-back:active:not(:disabled) {
+  background: var(--subtle-pressed);
+}
+
+.titlebar-back:disabled {
+  color: var(--label-tertiary);
+}
+
+.titlebar-mark {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  -webkit-user-drag: none;
+}
+
+.titlebar-name {
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Looks like the mockup's title-bar text box; it opens the command palette. */
+.titlebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 360px;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--control-stroke);
+  border-bottom-color: var(--input-stroke-bottom);
+  border-radius: var(--radius-control);
+  background: var(--titlebar-search);
+  color: var(--label-secondary);
+  font-size: 13px;
+  text-align: left;
+}
+
+.titlebar-search:hover {
+  background: var(--control-fill-hover);
+}
+
+.titlebar-search-placeholder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-search kbd {
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--label-secondary);
+}
+
+.titlebar-search svg {
+  flex: none;
+}
+
+.titlebar-trail {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  /* The OS caption buttons overlay the right edge. The titlebar-area env()
+     values describe the space left for the app, so nothing lands under them.
+     Outside Electron they fall back to no reserve. */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+}
+
+/* ── NavigationView pane (248px, compact 48px) ────────────────────────────── */
+
+.navview {
+  width: 248px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px 8px;
+  overflow: hidden auto;
+  transition: width var(--motion-normal) var(--ease-out);
+}
+
+.navview.collapsed {
+  width: 48px;
+  padding: 2px 0 8px;
+}
+
+.navview-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 32px;
+  flex: none;
+  margin: 0 0 4px 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+}
+
+.navview.collapsed .navview-toggle {
+  margin-left: 6px;
+}
+
+.navview-spacer {
+  flex: 1;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  flex: none;
+  margin: 0 4px;
+  padding: 0 10px 0 14px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navview.collapsed .nav-item {
+  padding: 0 0 0 12px;
+}
+
+.navview-toggle:hover,
+.nav-item:hover {
+  background: var(--subtle-hover);
+}
+
+.navview-toggle:active,
+.nav-item:active {
+  background: var(--subtle-pressed);
+  color: var(--label-secondary);
+}
+
+.nav-item.active {
+  background: var(--subtle-selected);
+}
+
+/* The 3×16px brand selection indicator shared by nav items and list rows. */
+.nav-item.active::before,
+.list-row.selected::before,
+.list-row[aria-selected='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.nav-item svg {
+  flex: none;
+}
+
+.nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navview.collapsed .nav-item-label {
+  display: none;
+}
+
+/* Update-available dot on the Settings item. */
+.nav-item-badge {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  margin-left: auto;
+  border-radius: var(--radius-pill);
+  background: var(--brand-500);
+}
+
+.navview.collapsed .nav-item-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  margin-left: 0;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  flex: none;
+  margin: 0 4px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--label);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.account-row:hover {
+  color: var(--label);
+}
+
+.account-row:not([aria-disabled='true']):hover {
+  background: var(--subtle-hover);
+}
+
+.navview.collapsed .account-row {
+  padding: 0 0 0 8px;
+}
+
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--avatar-bg);
+  color: var(--avatar-text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navview.collapsed .account-name {
+  display: none;
+}
+
+/* ── Page header + CommandBar (shell/PageHeader.tsx) ──────────────────────── */
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.page-title {
+  margin: 0;
+  font: 600 24px/32px var(--font-display);
+}
+
+.command-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  min-width: 0;
+}
+
+.command-divider {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--command-divider);
+}
+
+.command-spacer {
+  flex: 1;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────
+   .button          standard: control fill, 1px stroke with a darker bottom edge
+   .button.primary  accent: brand-500 + on-brand text. One per view.
+   .button.subtle   transparent until hover
+   .button.destructive        standard look, danger text (disabled: the disabled colour)
+   .button.destructive-solid  final irreversible step only
+   .button.small    24px, for dense rows and card footers
+   A leading 14px icon tightens the left padding. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  flex: none;
+  padding: 0 10px;
+  border: 1px solid var(--control-stroke);
+  border-top-color: var(--control-stroke-top);
+  border-bottom-color: var(--control-stroke-bottom);
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.button:has(> svg:first-child) {
+  padding-left: 8px;
+}
+
+.button > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.button:hover {
+  background: var(--control-fill-hover);
+}
+
+.button:active {
+  background: var(--control-fill-hover);
+  color: var(--label-secondary);
+}
+
+.button:disabled,
+.button[aria-disabled='true'] {
+  background: var(--control-fill-disabled);
+  border-color: var(--control-stroke);
+  color: var(--label-disabled);
+}
+
+.button.primary {
+  border-color: var(--accent-stroke);
+  border-bottom-color: var(--accent-stroke-bottom);
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-weight: 600;
+}
+
+.button.primary:hover {
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--mica));
+}
+
+.button.primary:active {
+  background: color-mix(in srgb, var(--brand-500) 80%, var(--mica));
+  color: var(--on-brand);
+}
+
+.button.primary:disabled {
+  border-color: transparent;
+  background: var(--subtle-selected);
+  color: var(--label-disabled);
+}
+
+.button.subtle {
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.button.subtle:hover {
+  background: var(--subtle-hover);
+}
+
+.button.subtle:active {
+  background: var(--subtle-pressed);
+}
+
+.button.subtle:disabled {
+  background: transparent;
+}
+
+.button.destructive {
+  color: var(--danger-text);
+}
+
+.button.destructive:disabled,
+.button.destructive[aria-disabled='true'] {
+  color: var(--label-disabled);
+}
+
+.button.destructive-solid {
+  border-color: var(--accent-stroke);
+  border-bottom-color: var(--accent-stroke-bottom);
+  background: var(--danger-text);
+  color: var(--on-status);
+  font-weight: 600;
+}
+
+.button.destructive-solid:hover {
+  background: color-mix(in srgb, var(--danger-text) 90%, var(--mica));
+}
+
+.button.small {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 16px;
+  align-self: flex-start;
+}
+
+/* Icon-only button (close, more options, row actions). Needs an aria-label. */
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+}
+
+.icon-button:hover {
+  background: var(--subtle-hover);
+}
+
+.icon-button:active {
+  background: var(--subtle-pressed);
+  color: var(--label-secondary);
+}
+
+.icon-button:disabled {
+  background: transparent;
+  color: var(--label-disabled);
+}
+
+/* ── Text helpers ─────────────────────────────────────────────────────────── */
+
+.muted {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Small section label (the mockup's "Kategorien" pane header). */
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* Label above a control. */
+.ui-label {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.mono {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  padding: 14px;
+}
+
+.card-title {
+  margin: 0;
+  color: var(--label);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+/* List card (the mockup's "Letzte Buchungen"): no padding, a 40px title row,
+   then a .list-header and .list-rows of .list-row, inset by the rows' own margin.
+   <section class="card list-card">
+     <div class="card-header"><h2 class="card-title">…</h2>[count | link | controls]</div>
+     <div class="list-header">…</div><ul class="list-rows">…</ul>
+   </section>
+   The card-header's trailing content sits at the right edge; 28px controls fit
+   inside its 6px padding. */
+.card.list-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 0 4px;
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  flex: none;
+  padding: 6px 16px;
+}
+
+/* Nothing to list: one line under the title row, or under the column header. */
+.list-card-empty {
+  margin: 0;
+  padding: 0 16px 12px;
+  color: var(--label-secondary);
+}
+
+.list-header + .list-card-empty {
+  padding: 12px 16px 8px;
+}
+
+/* KPI card: label, Display value, optional delta or meter. */
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+}
+
+.kpi-label {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.kpi-value {
+  font: 600 22px/28px var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-delta {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.kpi-delta.positive {
+  color: var(--success-text);
+}
+
+.kpi-delta.negative {
+  color: var(--danger-text);
+}
+
+/* ── Form controls (Fluent text box) ──────────────────────────────────────
+   Bare <input>/<select>/<textarea> are styled through :where() so any class a
+   view or the shell puts on a control still wins. `.input` opts a non-native
+   element into the same look. */
+
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])),
+:where(select, textarea),
+.input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--control-stroke);
+  border-bottom-color: var(--input-stroke-bottom);
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+:where(textarea) {
+  height: auto;
+  min-height: 52px;
+  padding: 4px 10px;
+  resize: vertical;
+}
+
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])):hover,
+:where(select, textarea):hover,
+.input:hover {
+  background-color: var(--control-fill-hover);
+}
+
+/* Focus = a 2px brand underline (1px border + 1px inset), no outline. The state
+   rules set background-color only: the `background` shorthand would also wipe
+   the select's drawn chevron (a background-image). */
+:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])):focus,
+:where(select, textarea):focus,
+.input:focus-within {
+  outline: none;
+  border-bottom-color: var(--brand-500);
+  background-color: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--brand-500);
+}
+
+:where(input, select, textarea):disabled {
+  border-bottom-color: var(--control-stroke);
+  background-color: var(--control-fill-disabled);
+  color: var(--label-disabled);
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--label-secondary);
+}
+
+/* Native select with a drawn chevron (no hex in a data URI; follows the text colour). */
+:where(select) {
+  appearance: none;
+  padding-right: 28px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
+:where(select) option {
+  background: var(--surface);
+  color: var(--label);
+}
+
+:where(input[type='checkbox'], input[type='radio'], input[type='range']) {
+  accent-color: var(--brand-500);
+}
+
+:where(input[type='checkbox'], input[type='radio']) {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+/* Label + control + hint, stacked. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field > span:first-child,
+.field > label:first-child {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.field-hint {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.field-error {
+  color: var(--danger-text);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── Chips (tags and status labels) ───────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control);
+  background: var(--subtle-selected);
+  color: var(--label);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.chip-muted {
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+/* The default/active item among several (e.g. the default dash). */
+.chip-default {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+  color: var(--link);
+}
+
+/* ── Segmented control and tabs ───────────────────────────────────────────
+   .segmented > .segmented-item: same data, different presentation. Flat:
+   the selected item is a raised fill, no shadow, no border. In a CommandBar,
+   Windows prefers a <select>.
+   .tabs > .tab: separate panes of one page; selected = bold + brand underline. */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  width: fit-content;
+  padding: 2px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control);
+  background: var(--subtle-selected);
+}
+
+.segmented-item {
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.segmented-item:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.segmented-item.active,
+.segmented-item[aria-pressed='true'],
+.segmented-item[aria-checked='true'] {
+  background: var(--surface);
+  color: var(--label);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  position: relative;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: 13px;
+}
+
+.tab:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.tab.active,
+.tab[aria-selected='true'] {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.tab.active::after,
+.tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+/* ── InfoBar ──────────────────────────────────────────────────────────────
+   <div class="infobar warning" role="alert">
+     <span class="infobar-icon">!</span><strong class="infobar-title">…</strong>
+     <span class="infobar-message">…</span> [.button] [.icon-button close]
+   </div> */
+
+.infobar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--infobar-stroke);
+  border-radius: var(--radius-control);
+  background: var(--infobar-info);
+  color: var(--label);
+  font-size: 13px;
+}
+
+.infobar-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--infobar-info-icon);
+  color: var(--on-status);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.infobar-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
+.infobar-title {
+  font-weight: 600;
+}
+
+.infobar-message {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+}
+
+.infobar.warning { background: var(--infobar-warning); }
+.infobar.warning .infobar-icon { background: var(--infobar-warning-icon); }
+.infobar.error { background: var(--infobar-error); }
+.infobar.error .infobar-icon { background: var(--infobar-error-icon); }
+.infobar.success { background: var(--infobar-success); }
+.infobar.success .infobar-icon { background: var(--infobar-success-icon); }
+.infobar.info { background: var(--infobar-info); }
+.infobar.info .infobar-icon { background: var(--infobar-info-icon); }
+
+/* ── Acrylic surfaces: menu flyout, command palette, notifications ────────── */
+
+.menu-flyout,
+.command-palette,
+.toast {
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--acrylic);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(30px) saturate(150%);
+}
+
+/* "Transparency effects" off in Windows: solid surface, same shape. */
+@media (prefers-reduced-transparency: reduce) {
+  .menu-flyout,
+  .command-palette,
+  .toast {
+    background: var(--surface);
+    backdrop-filter: none;
+  }
+}
+
+.menu-flyout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+  padding: 4px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 28px;
+  flex: none;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.menu-item > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.menu-item:hover,
+.menu-item.selected {
+  background: var(--subtle-selected);
+}
+
+.menu-item:disabled {
+  background: transparent;
+  color: var(--label-disabled);
+}
+
+.menu-item.destructive {
+  color: var(--danger-text);
+}
+
+.menu-item.destructive:disabled {
+  color: var(--label-disabled);
+}
+
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-item-shortcut {
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.menu-separator {
+  height: 1px;
+  flex: none;
+  margin: 2px -4px;
+  background: var(--acrylic-stroke);
+}
+
+/* ── Lists (Fluent ListView) ──────────────────────────────────────────────
+   .list-header: 32px column heads between rules. .list-row: 32px row inset
+   4px, selected = subtle fill + brand indicator. Views set the columns
+   (display: grid; grid-template-columns: …) on both. */
+
+.list-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 16px;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 8px);
+  min-height: 32px;
+  margin: 2px 4px 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+}
+
+.list-row:hover {
+  background: var(--subtle-hover);
+}
+
+.list-row.selected,
+.list-row[aria-selected='true'] {
+  background: var(--subtle-selected);
+}
+
+/* A row that is not clickable keeps the ListView look without the hover fill. */
+.list-row.static:hover {
+  background: transparent;
+}
+
+/* <ul>/<div> holding .list-row items: no bullets, no indent. */
+.list-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Status: 8px dot + word, never colour alone (shell/Status.tsx) ────────────
+   <span class="status tone-success"><span class="status-dot"></span><span class="status-label">Connected</span></span>
+   Tones: success green · info blue · warning yellow · danger red · brand ·
+   neutral (default) grey. The word inherits the row's text; `.quiet` makes it
+   12px secondary for chrome and dense metadata (title bar, dash cards). In a
+   flex row the status keeps its full word (neighbours truncate instead); in a
+   grid cell it ellipsizes at the cell edge. */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  /* In running text the dot would become the baseline and grow the line by a pixel. */
+  vertical-align: top;
+}
+
+.status.quiet {
+  gap: 6px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--label-tertiary);
+}
+
+.status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status.tone-success .status-dot { background: var(--green-500); }
+.status.tone-info .status-dot { background: var(--blue-500); }
+.status.tone-warning .status-dot { background: var(--yellow-500); }
+.status.tone-danger .status-dot { background: var(--red-500); }
+.status.tone-brand .status-dot { background: var(--brand-500); }
+
+/* ── Meter (progress) ─────────────────────────────────────────────────────
+   <div class="meter success"><span style="width: 72%"></span></div> */
+
+.meter {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--track);
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.meter.success > span { background: var(--green-500); }
+.meter.warning > span { background: var(--yellow-500); }
+.meter.danger > span { background: var(--red-500); }
+.meter.info > span { background: var(--blue-500); }
+
+/* ── Content states ───────────────────────────────────────────────────────── */
+
+/* Centred empty state for a view or panel with nothing to show yet. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 320px;
+  padding: 40px 24px;
+  color: var(--label-secondary);
+  text-align: center;
+}
+
+.empty-state h2 {
+  margin: 0;
+  color: var(--label);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.empty-state p {
+  max-width: 360px;
+  margin: 0;
+  color: var(--label-secondary);
+  font-size: 13px;
+}
+
+/* Loading: stable placeholder geometry, no shimmer/pulse animation. */
+.skeleton {
+  border-color: transparent;
+  background: var(--subtle-selected);
+  color: transparent;
+}
+
+/* ── ContentDialog (shell/ContentDialog.tsx renders this markup) ─────────────
+   <div class="dialog-smoke"><div class="content-dialog" role="dialog" aria-modal="true">
+     <div class="content-dialog-body"><h2 class="content-dialog-title">…</h2>…</div>
+     <div class="content-dialog-footer">[primary][Cancel]</div>
+   </div></div> */
+
+.dialog-smoke {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--smoke);
+}
+
+.content-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(548px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-dialog);
+}
+
+.content-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.content-dialog-title {
+  margin: 0;
+  font: 600 20px/28px var(--font-display);
+}
+
+/* The dialog itself takes focus when no control asked for it; it shows no focus ring. */
+.content-dialog:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-dialog);
+}
+
+.content-dialog-text {
+  margin: 0;
+}
+
+.content-dialog-footer {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  padding: 24px;
+  border-top: 1px solid var(--card-stroke);
+  background: var(--mica);
+}
+
+/* Import archived sessions (shell/ImportResultsDialog.tsx): the offer's per-kind breakdown. */
+.import-breakdown {
+  margin: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.import-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.import-breakdown-row dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* ── Suggest box (shell/SuggestBox.tsx) ───────────────────────────────────
+   Fluent AutoSuggestBox: a text box that stays free to type in, plus an acrylic
+   list of known values under it. The list is position: fixed (placed from the
+   box's rect) so a ContentDialog's scrolling body cannot clip it. */
+
+.suggest-box {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.suggest-box > input {
+  flex: 1;
+  padding-right: 32px;
+}
+
+.suggest-box-toggle {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.suggest-box-toggle:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.suggest-box-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.suggest-list {
+  position: fixed;
+  z-index: 1;
+  max-height: 232px;
+  margin: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.suggest-list .menu-item {
+  cursor: default;
+}
+
+/* ── Command palette (acrylic flyout under the title-bar search) ──────────── */
+
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  padding-top: 42px;
+}
+
+.command-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 480px;
+  max-width: calc(100vw - 48px);
+  max-height: 60vh;
+  height: fit-content;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.command-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  flex: none;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--control-stroke);
+  border-bottom-color: var(--brand-500);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: inset 0 -1px 0 var(--brand-500);
+  color: var(--label-secondary);
+}
+
+.command-palette-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+}
+
+.command-palette-input:focus,
+.command-palette-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.command-palette-input::placeholder {
+  color: var(--label-secondary);
+}
+
+.command-palette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: 28px;
+  flex: none;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+  font-size: 13px;
+  text-align: left;
+}
+
+.command-palette-item.selected {
+  background: var(--subtle-selected);
+}
+
+.command-palette-shortcut {
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.command-palette-empty {
+  margin: 0;
+  padding: 4px 10px 6px;
+  color: var(--label-secondary);
+  font-size: 13px;
+}
+
+/* ── Notifications (Windows toast look, bottom-right) ─────────────────────── */
+
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px 14px;
+  pointer-events: auto;
+  animation: toast-enter var(--motion-normal) var(--ease-out) both;
+}
+
+.toast.leaving {
+  opacity: 0;
+  transform: translateX(12px);
+  transition:
+    opacity var(--motion-normal) var(--ease-out),
+    transform var(--motion-normal) var(--ease-out);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.toast-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.toast-mark {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.toast-app {
+  flex: 1;
+}
+
+.toast-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label);
+}
+
+.toast-close:hover {
+  background: var(--subtle-hover);
+}
+
+.toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toast-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.toast-title svg {
+  flex: none;
+  color: var(--danger-text);
+}
+
+.toast-message {
+  margin: 0;
+  color: var(--label);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.toast-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}

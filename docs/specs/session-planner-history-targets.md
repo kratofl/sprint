@@ -19,7 +19,7 @@ so neither has to be re-derived. Nothing here is built yet except where explicit
 | Dash bindings read from `DashBindingContext(TelemetryFrame, AppSettings)`; `lap.delta`, `lap.target` already exist | `Features/Dashes/DashBindingResolver.cs` |
 | `fuel_target` widget is bound to `car.fuelPerLapLiters` — i.e. *actual* consumption; no real target value exists anywhere | `Features/Dashes/DashWidgetCatalog.cs` |
 | Semantic condition vocabulary exists (`Neutral`, `GoodOnTarget`, `ColdLow`, `AssistActive`, `Warning`, `Critical`, `Fault`, `RaceControl`) but is used only for banner inversion | `Features/Dashes/DashAttention.cs`, `DashPainter` |
-| Per-widget style overrides store **Graphite token names, never raw hex**; `FromTheme` forces `Critical`/`Fault`/`Danger`/`RpmNearLimit` back to functional red | `DashModels.DashWidgetStyle`, `DashPalette.FromTheme`, `DashPalette.StyleColor` |
+| Per-widget style overrides store **style-color token names, never raw hex**; `FromTheme` forces `Critical`/`Fault`/`Danger`/`RpmNearLimit` back to functional red | `DashModels.DashWidgetStyle`, `DashPalette.FromTheme`, `DashPalette.StyleColor` |
 | Alerts are transient banners with **one** value, types `tc_change`/`abs_change`/`enginemap_change`, duration clamped **0.5–5 s** | `Features/Dashes/DashAlertTracker.cs` |
 | Game extension point covers **telemetry only**: `GameDescriptor(Id, Name, Transport, Available)` + a hardcoded `if`-chain factory | `Sprint.Games/GameDescriptor.cs`, `GameTelemetryPackage.cs` |
 | `SessionPlan.SetupReferences` and `LapSummary.SetupReference` already exist | `Features/SessionPlanning/SessionPlanModels.cs` |
@@ -160,7 +160,7 @@ A target is picked as **(scope, statistic)**:
   live session.
 - **Declarative condition rules** replace ad-hoc colour choices — filed as **#159**. Rule = binding,
   operator, threshold *or* `ThresholdBinding` (so a plan target can drive it), resulting `DashCondition`,
-  optional style property, **Graphite token value — never hex**, plus `Priority`. `Critical`/`Fault` red stays
+  optional style property, **style-color token — never hex**, plus `Priority`. `Critical`/`Fault` red stays
   unoverridable. `DashPalette.TyreColor`'s hardcoded 110/100/70 thresholds are the proof case.
 - **New alert type `lap_summary`:** full-screen takeover with a fixed composition — `Lap x/y`
   (`Session.MaxLaps == 0` → lap number only), `Race.Position`, Δ to target, `Lap.LastLapTime`,

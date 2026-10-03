@@ -48,9 +48,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build shared packages
-        run: |
-          pnpm --filter @sprint/types build
-          pnpm --filter @sprint/ui build
+        run: pnpm --filter @sprint/types build
 
       - name: Check GraphQL codegen is up to date
         run: pnpm --filter @sprint/web codegen:check

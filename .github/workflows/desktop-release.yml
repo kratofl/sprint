@@ -36,6 +36,17 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: '10.32.1'
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Extract version and channel
         shell: bash
         run: |
@@ -48,27 +59,48 @@ jobs:
             echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Publish self-contained single-file binary
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @sprint/types build
+
+      - name: Publish native host
         shell: bash
         run: >-
-          dotnet publish app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj
+          dotnet publish app/Sprint.Desktop.Host/Sprint.Desktop.Host.csproj
           -c Release -r ${{ matrix.rid }} -p:PublishSingleFile=true
-          -p:InformationalVersion="$VERSION" -o app/build/bin
+          -p:InformationalVersion="$VERSION" -o app/desktop/resources/host
+
+      - name: Build desktop renderer
+        run: pnpm --filter @sprint/desktop build
+
+      - name: Package desktop app
+        run: pnpm --filter @sprint/desktop package
 
       - name: Package artifact
         shell: bash
         run: |
           name="sprint-${GITHUB_REF_NAME}-${{ matrix.label }}"
-          bin="app/build/bin/Sprint.Desktop.Client${{ matrix.ext }}"
-          [ -f "$bin" ] && chmod +x "$bin" || true
-          # Ship the self-contained binary + its presets/assets as one archive
-          # (the binary needs no installed .NET runtime).
-          cd app/build/bin
           if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "../../../${name}.zip" ./* >/dev/null
+            platform=win32
+          else
+            platform=linux
+          fi
+          # electron-packager writes the packaged app to app/build/bin/Sprint-<platform>-<arch>/.
+          # The updater extracts a downloaded archive straight into a staging directory and
+          # mirrors that directory over the install directory (see UpdateScript.BuildWindowsBatch),
+          # so the archive must contain this directory's files at its root, not the directory
+          # itself.
+          pkgdir="app/build/bin/Sprint-${platform}-x64"
+          [ -d "$pkgdir" ] || { echo "::error::packaged app not found at $pkgdir"; exit 1; }
+          [ -f "$pkgdir/Sprint" ] && chmod +x "$pkgdir/Sprint" || true
+          cd "$pkgdir"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "../../../../${name}.zip" ./* >/dev/null
             echo "ASSET=${name}.zip" >> "$GITHUB_ENV"
           else
-            tar -czf "../../../${name}.tar.gz" ./*
+            tar -czf "../../../../${name}.tar.gz" ./*
             echo "ASSET=${name}.tar.gz" >> "$GITHUB_ENV"
           fi
 

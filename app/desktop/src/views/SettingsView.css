@@ -1,0 +1,158 @@
+/* Settings (SettingsView.tsx): Windows 11 Settings layout. Groups of setting
+   cards 4px apart; each card is icon · title + description · control. Built on
+   .card, .button and .infobar from styles.css (dialogs: shell/ContentDialog.tsx);
+   the setting row and the ToggleSwitch are local because no other view uses them. */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1000px;
+}
+
+/* The column gap spaces the header from the first group. */
+.settings > .page-header {
+  margin-bottom: 0;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-group-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.settings-row-skeleton {
+  height: 64px;
+}
+
+/* ── Setting card ─────────────────────────────────────────────────────────── */
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 16px;
+}
+
+.settings-row-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--label);
+}
+
+.settings-row-icon.tone-success {
+  color: var(--success-text);
+}
+
+.settings-row-icon.tone-danger {
+  color: var(--danger-text);
+}
+
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-row-title {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.settings-row-description {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-row-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-input-wide {
+  width: 240px;
+}
+
+.settings-input-narrow {
+  width: 96px;
+}
+
+/* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
+
+.settings-switch-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-switch-state {
+  min-width: 22px;
+  text-align: right;
+}
+
+.settings-switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--label-secondary);
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+}
+
+.settings-switch:hover {
+  background: var(--control-fill-hover);
+}
+
+.settings-switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: var(--radius-pill);
+  background: var(--label-secondary);
+  transition:
+    left var(--motion-fast) var(--ease-out),
+    width var(--motion-fast) var(--ease-out),
+    height var(--motion-fast) var(--ease-out),
+    margin var(--motion-fast) var(--ease-out);
+}
+
+.settings-switch:hover .settings-switch-knob {
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+}
+
+.settings-switch[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+}
+
+.settings-switch[aria-checked='true']:hover {
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--mica));
+}
+
+.settings-switch[aria-checked='true'] .settings-switch-knob {
+  left: 23px;
+  background: var(--on-brand);
+}
+
+.settings-switch[aria-checked='true']:hover .settings-switch-knob {
+  left: 21px;
+}

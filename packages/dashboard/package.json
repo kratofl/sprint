@@ -1,0 +1,11 @@
+{
+  "name": "@sprint/dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "type-check": "tsc --noEmit", "test": "tsx --test src/*.test.ts src/*.test.tsx" },
+  "peerDependencies": { "react": "^19.2.7" },
+  "dependencies": { "@sprint/types": "workspace:*" },
+  "devDependencies": { "@types/node": "^26.1.0", "@types/react": "^19.2.16", "@types/react-dom": "^19.2.2", "react": "^19.2.7", "react-dom": "^19.2.7", "typescript": "^6.0.3", "tsx": "^4.19.3" },
+  "exports": { ".": "./src/index.tsx", "./styles.css": "./src/styles.css" }
+}

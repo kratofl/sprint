@@ -6,10 +6,9 @@ using Xunit;
 namespace Sprint.Desktop.Tests;
 
 /// <summary>
-/// The test run must not reach out of the process. Running the suite used to drive the
-/// developer's real wheel screen — every headless test builds a MainWindow, which syncs the
-/// hardware publishers for saved screen devices — and to pop Explorer windows from the update
-/// paths. Those effects are gated now, and this pins the gate shut.
+/// The test run must not reach out of the process: no driving the developer's real wheel
+/// screen through a hardware publisher, and no Explorer windows popped from the update
+/// paths. Those effects are gated by <see cref="HostEffects"/>, and this pins the gate shut.
 /// </summary>
 public sealed class HostEffectsTests
 {

@@ -10,7 +10,7 @@ public sealed class UpdateScriptTests
     private const int Pid = 4321;
     private const string Staging = @"C:\Temp\Sprint\updates\1.2.3\staged";
     private const string Install = @"C:\Program Files\Sprint";
-    private const string Exe = "Sprint.Desktop.Client.exe";
+    private const string Exe = "Sprint.exe";
 
     // The reveal is asked for explicitly because HostEffects turns it off for the whole test
     // run — these tests assert the *product's* script text, and separate tests cover the fact

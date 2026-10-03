@@ -8,13 +8,12 @@ WORKDIR /app
 RUN corepack enable
 
 # Manifests only, so the install layer caches across source changes. web depends on
-# the workspace packages (@sprint/ui, @sprint/types, @sprint/tokens) — their
+# the workspace packages (@sprint/types, @sprint/tokens) — their
 # package.json files must be present or the workspace:* links cannot resolve.
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY web/package.json ./web/
 COPY packages/tokens/package.json ./packages/tokens/
 COPY packages/types/package.json ./packages/types/
-COPY packages/ui/package.json ./packages/ui/
 
 RUN pnpm install --frozen-lockfile
 
@@ -35,9 +34,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV TURBO_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# turbo's build task declares dependsOn ["^build"], so @sprint/types, @sprint/ui and
-# @sprint/tokens compile first. They ship no dist/ in git but resolve to
-# dist/index.js, so building them is required, not an optimization.
+# turbo's build task declares dependsOn ["^build"], so @sprint/types compiles first.
+# It ships no dist/ in git but resolves to dist/index.js, so building it is
+# required, not an optimization. @sprint/tokens is plain CSS and has no build.
 RUN pnpm turbo build --filter=@sprint/web
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────

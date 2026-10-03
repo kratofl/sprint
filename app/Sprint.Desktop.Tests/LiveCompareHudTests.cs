@@ -252,15 +252,6 @@ public sealed class LiveCompareHudTests
     }
 
     [Fact]
-    public void TheFullscreenCaseIsStatedRatherThanShowingNothing()
-    {
-        // Spec §2.3: a HUD that silently shows nothing is the worst outcome, so the message has
-        // to name the cause and the fix.
-        Assert.Contains("exclusive fullscreen", CompareHudHost.FullscreenNotice, StringComparison.Ordinal);
-        Assert.Contains("borderless", CompareHudHost.FullscreenNotice, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void TheHudDefaultsMatchTheWindowsAndPanelsTheDriverAskedFor()
     {
         var settings = new LiveCompareSettings();

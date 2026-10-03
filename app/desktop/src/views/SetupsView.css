@@ -1,0 +1,138 @@
+/* Setups: PageHeader + CommandBar, then the setups table card beside the selected
+   setup's parameter cards. Builds on the shared primitives in styles.css
+   (.card.list-card, .list-header, .list-row, .infobar, .chip, .icon-button) and only
+   lays them out. Tokens come from @sprint/tokens/windows.css only. */
+
+.setups {
+  display: flex;
+  flex-direction: column;
+}
+
+.setups-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setups-split {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* ── Setups table card ────────────────────────────────────────────────────── */
+
+.setups-list {
+  width: 320px;
+  flex: none;
+}
+
+.setups-list.skeleton {
+  height: 320px;
+}
+
+.setups-editor-skeleton {
+  flex: 1;
+  height: 320px;
+}
+
+.setups-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 12px;
+}
+
+.list-row.setups-columns {
+  height: 32px;
+}
+
+.setups-row-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setups-row-type {
+  color: var(--label-secondary);
+}
+
+.setups-list-hint {
+  margin: 0;
+  padding: 8px 16px 8px;
+}
+
+/* ── Editor ───────────────────────────────────────────────────────────────── */
+
+.setups-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setups-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.setups-editor-title {
+  margin: 0;
+  overflow: hidden;
+  font: 600 20px/28px var(--font-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Group cards differ a lot in height (Fuel: 1 row, Suspension: 6), so they flow
+   in columns rather than grid rows, which would leave holes beside the tall ones. */
+.setups-groups {
+  column-width: 300px;
+  column-gap: 12px;
+}
+
+.setups-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 12px;
+  break-inside: avoid;
+}
+
+.setups-params {
+  display: flex;
+  flex-direction: column;
+}
+
+.setups-param-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+}
+
+.setups-param-row + .setups-param-row {
+  border-top: 1px solid var(--divider);
+}
+
+.setups-param-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setups-stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.setups-stepper-value {
+  min-width: 72px;
+  text-align: center;
+}

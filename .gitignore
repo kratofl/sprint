@@ -53,6 +53,7 @@ venv/
 env/
 *.egg-info/
 dist/
+dist-*/
 __pycache__/build/
 .pytest_cache/
 .mypy_cache/
@@ -120,3 +121,7 @@ docs/superpowers/*
 output/
 handoffs/
 bash.exe.stackdump
+
+# ─── Desktop preview harness ─────────────────────────────────────────────────
+# A captured /api/state payload is the user's own data; never commit it.
+app/desktop/scripts/preview/state.local.json

@@ -2,9 +2,9 @@ namespace Sprint.Games.LeMansUltimate.Results;
 
 // Game-native model for a Le Mans Ultimate (rFactor 2 / ISI) result XML written to
 // UserData\Log\Results after every session. These are intentionally Sprint.Games-owned
-// shapes: they mirror the on-disk XML, not any Sprint.Desktop.Client model. Mapping this
-// into the game-agnostic Session Planner records (LapSummary/PlanSegment) is the Client
-// layer's job, because Sprint.Games must not reference the desktop client (dependency
+// shapes: they mirror the on-disk XML, not any Sprint.Desktop.Core model. Mapping this
+// into the game-agnostic Session Planner records (LapSummary/PlanSegment) is Core's
+// job, because Sprint.Games must not reference the desktop runtime (dependency
 // direction) and SessionPlanModels explicitly references no game-native structure.
 
 /// <summary>Which part of a race weekend a result file covers.</summary>

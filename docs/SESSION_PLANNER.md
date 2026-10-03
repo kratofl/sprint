@@ -152,7 +152,7 @@ shared X-domain, with a single crosshair reading every metric at the same coordi
   there" is a unit test. A series that says nothing at a coordinate reports **null**, never a
   held edge value; out of range on either side is null, because clamping would state a
   measurement at a coordinate nobody drove.
-- Interpolation is chosen from what the data **is** (ADR 0024): continuous telemetry is
+- Interpolation is chosen from what the data **is**: continuous telemetry is
   linear, a per-lap figure is stepped and holds rather than inventing a value between laps.
 - Empty and insufficient-data panels say so explicitly — an axis pair drawn around nothing
   reads as "zero", a different claim from "nothing was recorded".

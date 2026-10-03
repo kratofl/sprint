@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Focused tests for RuntimeCoordinator (command validation/dispatch), kept as a separate
+    project from app/Sprint.Desktop.Tests so the Host-hosted command surface has its own
+    fast, isolated suite next to the Host project it exercises.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Sprint.Desktop.Core\Sprint.Desktop.Core.csproj" />
+    <!-- FrameStore/ScreenOutputs live in the Host exe project itself; referencing it here is
+         safe because Host has no types that collide with Core, and referencing an Exe
+         project does not invoke its top-level Main. -->
+    <ProjectReference Include="..\Sprint.Desktop.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

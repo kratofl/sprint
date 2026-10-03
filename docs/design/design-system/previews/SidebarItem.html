@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>SidebarItem</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--sidebar-bg);color:var(--label)}
+nav{width:256px;box-sizing:border-box;padding:var(--space-2xl) var(--space-lg);display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--separator);min-height:230px}
+.top{display:flex;align-items:center;gap:10px;padding:0 10px 12px;font-weight:600;font-size:15px}
+.top button{margin-left:auto;width:32px;height:32px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--label-secondary);display:flex;align-items:center;justify-content:center}
+a{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:10px;color:var(--label);text-decoration:none;font-size:14px;font-weight:500}
+a[aria-current="page"]{background:var(--fill-strong);font-weight:600}
+a svg{color:var(--brand-500)}
+.count{margin-left:auto;font-size:13px;color:var(--label-secondary)}
+.sec{font-size:12px;font-weight:600;color:var(--label-secondary);padding:14px 10px 6px}
+</style></head>
+<body>
+<nav aria-label="Beispiel-Seitenleiste">
+<div class="top">Webix<button aria-label="Seitenleiste ausblenden"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"></rect><path d="M9 4v16"></path></svg></button></div>
+<a href="#" aria-current="page"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"></path></svg>Übersicht</a>
+<a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"></path></svg>Projekte<span class="count">24</span></a>
+<span class="sec">Favoriten</span>
+<a href="#"><span style="width:10px;height:10px;margin:0 4px;border-radius:999px;background:var(--red-500)"></span>CRM-Migration</a>
+</nav>
+</body>
+</html>

@@ -14,16 +14,16 @@ Sprint is a full-stack telemetry system for sim racers. A native desktop app run
 Sim Game (e.g. LeMansUltimate)
         ↓  UDP / shared memory
 ┌──────────────────────────────────────────────────────┐
-│  .NET / Avalonia Desktop App  (/app)                 │
+│  Desktop App  (/app)                                 │
 │                                                      │
-│  C# backend (Sprint.Desktop.* projects):             │
+│  Headless .NET host (Sprint.Desktop.Core + .Host):   │
 │    · Game telemetry reader + telemetry frame pipeline│
 │    · USB screen renderer  (RGB565 → WinUSB → wheel/dash screens)    │
 │    · Wheel button detector  (set target lap)         │
 │    · Race Engineer hub  (WebSocket, LAN or remote)   │
 │    · Setup manager & sync client                     │
 │                                                      │
-│  Avalonia UI (XAML/C#, Sprint.Desktop.Client):       │
+│  Electron + React UI (app/desktop):                  │
 │    · Live telemetry  · Dash editor  · Setups         │
 │    · Race Engineer status panel                      │
 └──────────────────────────────────────────────────────┘
@@ -56,16 +56,16 @@ Sim Game (e.g. LeMansUltimate)
 
 | Path | Language | Description |
 |---|---|---|
-| `/app` | C# / .NET | Avalonia desktop app — driver's rig |
+| `/app` | C# / .NET + TypeScript | Desktop app — driver's rig (headless .NET host + Electron/React UI) |
 | `/api` | C# / .NET | ASP.NET Core + HotChocolate GraphQL API server |
 | `/web` | TypeScript | Next.js web frontend |
-| `/packages` | TypeScript | Shared UI components, types + design tokens |
+| `/packages` | TypeScript | Shared types, design tokens + the dash renderer |
 
-The API (`api/Sprint.Api.slnx`) and the desktop app (`app/Sprint.Desktop.slnx`) are
-.NET solutions restored/built with the `dotnet` CLI; they share the
-`app/Sprint.Contracts` DTO package. The web app and shared packages (`web`,
-`packages/*`) share a pnpm workspace managed by Turborepo, and the web app's GraphQL
-types are generated from `web/schema.graphql` via graphql-codegen.
+The API (`api/Sprint.Api.slnx`) and the desktop app's native host (`app/Sprint.Desktop.slnx`)
+are .NET solutions restored/built with the `dotnet` CLI; they share the
+`app/Sprint.Contracts` DTO package. The desktop UI (`app/desktop`), the web app, and
+shared packages (`web`, `packages/*`) share a pnpm workspace managed by Turborepo, and
+the web app's GraphQL types are generated from `web/schema.graphql` via graphql-codegen.
 
 ---
 
@@ -104,7 +104,7 @@ make dev-api
 # Terminal 2 — Web app
 make dev-web
 
-# Terminal 3 — Desktop app (requires .NET 10 SDK; game running for real telemetry)
+# Terminal 3 — Desktop app (requires .NET 10 SDK + Node; game running for real telemetry)
 make dev-app
 ```
 
@@ -114,8 +114,8 @@ make dev-app
 
 > Run `make help` for the authoritative, always-current target list — the table
 > below is a summary. The desktop targets (`dev-app`, `build-app`, `lint-app`,
-> `test-app`) drive the .NET 10 Avalonia solution via the `dotnet` CLI; there is
-> no Wails build step.
+> `test-app`) drive the .NET 10 host solution and the `app/desktop` Electron/React
+> app together.
 
 ```
 make help          # list all targets
@@ -123,21 +123,23 @@ make help          # list all targets
 Development
   dev-api          Run the API server locally (dotnet watch, hot reload)
   dev-web          Run the Next.js web app in dev mode
+  dev-app          Run the desktop app (Vite + Electron + native host)
+  dev-host         Run only the native desktop host (loopback HTTP, no UI)
   schema           Export the GraphQL schema → web/schema.graphql
 
 Build
   build-api        Publish the API server → api/build/bin (dotnet publish)
   build-web        Build Next.js production output
-  build-app        Publish the Avalonia desktop app → app/build/bin (dotnet publish)
+  build-app        Publish the native host + package the Electron app → app/build/bin
   build            build-api + build-web
 
 Test & lint
   test             Run API + desktop tests
   test-api         Run API server tests (xunit)
-  test-app         Run the Avalonia desktop tests (xunit)
+  test-app         Run desktop tests (native xunit + dashboard/electron TS)
   lint             Build API solution -warnaserror + pnpm lint
   lint-api         Build the API solution with warnings as errors
-  lint-app         Build the Avalonia solution with warnings as errors (dotnet build -warnaserror)
+  lint-app         Build the desktop solution with warnings as errors + type-check the UI
   fmt              dotnet format (app + api) + pnpm format
 
 Docker
@@ -154,7 +156,7 @@ Misc
 
 ## Adding a new game
 
-Games are added to the desktop app (.NET/Avalonia):
+Games are added to the desktop app's native layer (`app/Sprint.Games`):
 
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`app/Sprint.Games`**,
    mapping the game's shared memory / structs to `TelemetryFrame`. Keep all
@@ -162,8 +164,7 @@ Games are added to the desktop app (.NET/Avalonia):
 2. Implement `IGameProvider` (also from `Sprint.Desktop.Api`) and register it in
    `GameProviders`. Its `Descriptor` plus `CreateTelemetrySource()` are required;
    the `Results`, `Setups` and `Schedule` capabilities are optional — return
-   `null` for whatever the game cannot do, and the UI adapts.
-3. Wire it into the composition root. Full steps in
+   `null` for whatever the game cannot do, and the UI adapts. Full steps in
    [`app/README.md`](app/README.md#adding-a-game-desktop).
 
 Because every source maps to the unified `Sprint.Desktop.Api` contract, the dash
@@ -210,12 +211,12 @@ The change triggers an immediate USB screen re-render and is broadcast to all co
 
 ## Design system
 
-Full specification: [`docs/DESIGN.md`](docs/DESIGN.md)
+The rules live in [`docs/design/design-system/DESIGN.md`](docs/design/design-system/DESIGN.md); `docs/DESIGN.md` maps them onto Sprint's surfaces.
 
-Sprint uses the Graphite product language: flat near-black surfaces, hairline borders, tabular data, and one ember accent. Shared tokens live in `packages/tokens`; reusable controls live in `packages/ui`; desktop pages compose those controls instead of recreating local variants.
-
-- **Ember `#FF6A00`** — primary action, active state, selection, and focus.
-- **Graphite surfaces** — `#070707`, `#0D0D0D`, `#131313`, `#1B1B1B`.
+- **Desktop app** (`app/desktop`) follows Windows Fluent, with tokens from `@sprint/tokens/windows.css`.
+- **Web app** (`web/`) follows the web CI (Apple look, glass only on chrome), with tokens from `@sprint/tokens/web.css`.
+- **Wheel dash** (`packages/dashboard`) is hardware output with its own palette — see [`docs/internals/dash-rendering.md`](docs/internals/dash-rendering.md).
+- Brand **`#FF6A00`** (`--brand-500`) and the status colors are the only colors shared across platforms. Light and dark follow the OS.
 
 ---
 

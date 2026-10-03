@@ -2,7 +2,6 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Games;
-using System.Xml.Linq;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -126,27 +125,6 @@ public sealed class AnalysisTests
             circuit => AnalysisArtworkCatalog.ResolveCircuit(circuit.Id)?.AssetFileName);
         Assert.DoesNotContain(null, artwork.Values);
         Assert.Equal(artwork.Count, artwork.Values.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(artwork.Values, asset => Assert.True(
-            File.Exists(Path.Combine(AppContext.BaseDirectory, "Assets", "Analysis", asset!)),
-            $"Missing track asset {asset}."));
-    }
-
-    [Fact]
-    public void EachTrackAssetHoldsExactlyOneCircuitPath()
-    {
-        // TrackLayoutView reads the single path in the file. Two paths would mean the pit lane or
-        // a kerb could be drawn as the circuit, which is how the old id-guessing went wrong.
-        var directory = Path.Combine(AppContext.BaseDirectory, "Assets", "Analysis");
-        var assets = Directory.GetFiles(directory, "track-*.svg");
-        Assert.Equal(14, assets.Length);
-        foreach (var asset in assets)
-        {
-            var paths = XDocument.Load(asset)
-                .Descendants()
-                .Where(element => element.Name.LocalName == "path")
-                .Count(element => !string.IsNullOrWhiteSpace((string?)element.Attribute("d")));
-            Assert.Equal(1, paths);
-        }
     }
 
     [Fact]

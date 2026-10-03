@@ -1,0 +1,14 @@
+/*
+ * The dash canvas itself is laid out entirely from explicit pixel geometry computed in
+ * grid.ts/DashRenderer.tsx (no CSS grid, no vw/vh, no media queries) so it renders identically
+ * at a fixed size on-screen, in the editor preview, and in an offscreen capture. This
+ * stylesheet only covers what inline styles don't: box resets and the editor chrome around it.
+ */
+.dash-canvas{display:block;box-sizing:border-box}
+.dash-widget-tile{box-sizing:border-box;cursor:default}
+.dash-editor{display:flex;width:100%;height:100%;min-height:300px;background:#0d0f12}
+.dash-inspector{width:190px;padding:12px;display:flex;flex-direction:column;gap:10px;background:#181b21;border-left:1px solid #30343d;color:#f4f5f6}
+.dash-inspector label{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#aeb5c0}
+.dash-inspector input{width:60px;background:#0d0f12;border:1px solid #3a404b;color:#fff;padding:3px}
+.dash-inspector button{background:#ff6a00;border:0;color:#111;padding:7px;cursor:pointer}
+

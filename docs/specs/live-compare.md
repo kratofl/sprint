@@ -232,4 +232,4 @@ Dependency order, one issue per capability under a Live Compare epic:
 - **Friend graph** (§2.7) — layerable later, deliberately not designed.
 - **Visual design of the HUD.** Follow the `dataviz` guidance and `docs/DESIGN.md` before the first
   line is drawn, as the chart stack did. Semi-transparency over a moving game image is a legibility
-  problem the Graphite surface stack has never had to solve.
+  problem the app's surfaces have never had to solve.

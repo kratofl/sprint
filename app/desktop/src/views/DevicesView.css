@@ -1,0 +1,322 @@
+/* Devices: PageHeader + CommandBar, then the device list card beside the selected
+   device's detail cards. Builds on the shared primitives in styles.css (.card.list-card,
+   .list-row, .list-header, .status, .infobar, .content-dialog, .tabs, .field, …) and
+   only lays them out. Tokens come from @sprint/tokens/windows.css only. */
+
+.devices {
+  display: flex;
+  flex-direction: column;
+}
+
+.devices .command-bar select {
+  width: 120px;
+}
+
+.devices-split {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* ── Device list card ─────────────────────────────────────────────────────── */
+
+.devices-list {
+  width: 300px;
+  flex: none;
+}
+
+.devices-list.skeleton {
+  height: 320px;
+}
+
+/* Gallery mode has no column header; a rule separates the tiles from the title row. */
+.devices-gallery {
+  border-top: 1px solid var(--divider);
+}
+
+/* List mode: 32px rows, name | status, header and rows share the columns. */
+.devices-list-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.list-row.devices-list-columns {
+  height: 32px;
+}
+
+.devices-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.devices-row-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devices-row-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devices-row-status {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}
+
+/* Gallery mode: a tile per device — the native-shape preview, then name, driver ·
+   resolution and status. Same row primitive, so hover/selected match list mode. */
+.devices-tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'preview preview'
+    'text status';
+  align-items: start;
+  gap: 8px 12px;
+  padding: 8px 12px 6px;
+}
+
+.devices-tile .devices-tile-preview {
+  grid-area: preview;
+  display: flex;
+  justify-content: center;
+}
+
+.devices-tile .devices-row-text {
+  grid-area: text;
+}
+
+.devices-tile .devices-row-status {
+  grid-area: status;
+}
+
+/* ── Detail pane ──────────────────────────────────────────────────────────── */
+
+.devices-detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.devices-detail > .muted {
+  margin: 0;
+}
+
+.devices-detail-empty,
+.devices-detail-skeleton {
+  flex: 1;
+  min-width: 0;
+}
+
+.devices-detail-skeleton {
+  height: 320px;
+}
+
+.devices-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.devices-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.devices-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.devices-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 236px;
+}
+
+/* Label/control rows, divider between rows. */
+.devices-settings {
+  display: flex;
+  flex-direction: column;
+}
+
+.devices-setting {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 0;
+}
+
+.devices-setting + .devices-setting {
+  border-top: 1px solid var(--divider);
+}
+
+.devices-setting-label {
+  align-self: start;
+  padding-top: 6px;
+}
+
+.devices-setting-control {
+  display: flex;
+  min-width: 0;
+}
+
+.devices-setting-control > input,
+.devices-setting-control > select {
+  width: 100%;
+}
+
+.devices-control-stack,
+.devices-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.devices-status-cell {
+  padding-top: 4px;
+}
+
+.devices-control-stack > select {
+  width: 100%;
+}
+
+.devices-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.devices-stepper-value {
+  min-width: 64px;
+  text-align: center;
+}
+
+.devices-capture-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.devices-capture-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Screen performance ───────────────────────────────────────────────────── */
+
+.devices-performance {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.devices-performance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 12px;
+}
+
+.devices-performance-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.devices-performance-value {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+/* ── Live dash preview (detail card + gallery tile) ───────────────────────── */
+/* The frame is the device's native panel shape; the dash inside keeps its own
+   colours in both app themes (it is the hardware output, not app UI). */
+.devices-preview-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-control);
+  background: var(--subtle-selected);
+}
+
+.devices-preview-canvas {
+  border-radius: 2px;
+}
+
+.devices-preview-empty {
+  flex-direction: column;
+  gap: 4px;
+  color: var(--label-tertiary);
+}
+
+/* ── Add device dialog ─────────────────────────────────────────────────────── */
+
+/* Fluent pivot sits flush under the title. */
+.devices-catalog-dialog .tabs {
+  margin: -4px 0 0 -12px;
+}
+
+.devices-catalog-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -16px;
+  padding: 0;
+  list-style: none;
+}
+
+.devices-catalog-row {
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 6px 12px;
+}
+
+/* One button: it takes the right column, like a Fluent dialog's lone close button. */
+.devices-catalog-dialog .content-dialog-footer {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.devices-dialog-close:only-child {
+  grid-column: 2;
+}
+
+.devices-custom-wheel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.devices-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.devices-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}

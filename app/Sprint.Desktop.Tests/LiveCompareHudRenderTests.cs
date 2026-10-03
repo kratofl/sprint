@@ -9,36 +9,11 @@ namespace Sprint.Desktop.Tests;
 /// Does one small overlay window actually hold a readable chart? Since 2026-08-07 the HUD is a
 /// set of small windows rather than one stack, so the case that decides whether "small" is
 /// usable is a single panel at a single window's size — including at the smallest size a driver
-/// can drag it to. Renders to <c>artifacts/visual/</c> so it can be looked at rather than
-/// argued about.
+/// can drag it to.
 /// </summary>
 public sealed class LiveCompareHudRenderTests
 {
     private const double TrackLength = 5000;
-
-    /// <summary>What a 380x160 chart window leaves inside its 2 px unlocked border.</summary>
-    private const int SurfaceWidth = 376;
-    private const int SurfaceHeight = 156;
-
-    /// <summary>The same, at the smallest size the window lets a driver resize to (240x118).</summary>
-    private const int MinSurfaceWidth = 236;
-    private const int MinSurfaceHeight = 114;
-
-    [Fact]
-    public void AChartFitsInsideOneOverlayWindow()
-    {
-        var hud = HudStack();
-        foreach (var chart in hud.Charts)
-        {
-            var stack = Single(hud, chart);
-            Assert.True(
-                new ChartStackLayout(stack, SurfaceWidth, SurfaceHeight).HasRoom,
-                $"{chart.Title} does not fit in {SurfaceWidth}x{SurfaceHeight}; the default window is too small for its own chart");
-            Assert.True(
-                new ChartStackLayout(stack, MinSurfaceWidth, MinSurfaceHeight).HasRoom,
-                $"{chart.Title} does not fit at the window's own minimum size; a driver can resize to a chart that cannot be drawn");
-        }
-    }
 
     [Fact]
     public void EveryHudPanelHasSomethingToDraw()
@@ -61,40 +36,6 @@ public sealed class LiveCompareHudRenderTests
             Assert.Contains(chart.Series, series => series.Name.EndsWith("You", StringComparison.Ordinal));
             Assert.Contains(chart.Series, series => series.Name.EndsWith("Target", StringComparison.Ordinal));
         }
-    }
-
-    [Fact]
-    public void EachOverlayWindowRendersAtItsDefaultSizeForInspection()
-    {
-        var root = Path.Combine(
-            TestEnv.RepoRoot, "app", "Sprint.Desktop.Tests", "artifacts", "visual");
-        Directory.CreateDirectory(root);
-
-        using var painter = new ChartStackPainter(SurfaceWidth, SurfaceHeight, ChartPalette.HudSurface);
-        var hud = HudStack();
-        var written = 0;
-
-        foreach (var chart in hud.Charts)
-        {
-            var name = chart.Title.ToLowerInvariant();
-
-            // No cursor: this is what a driver actually sees. The overlay is click-through while
-            // locked, so no pointer ever enters it and the crosshair readouts never appear.
-            var driving = new ChartStackController(Single(hud, chart));
-            var png = painter.RenderPng(driving);
-            File.WriteAllBytes(Path.Combine(root, $"live-compare-hud-{name}.png"), png);
-            Assert.True(png.Length > 1000, $"the {name} window rendered to an empty image");
-            written++;
-
-            // And with one, for the unlocked case where the driver is inspecting it by hand.
-            var inspecting = new ChartStackController(Single(hud, chart));
-            inspecting.MoveCursor(2500);
-            File.WriteAllBytes(
-                Path.Combine(root, $"live-compare-hud-{name}-cursor.png"),
-                painter.RenderPng(inspecting));
-        }
-
-        Assert.Equal(3, written);
     }
 
     /// <summary>

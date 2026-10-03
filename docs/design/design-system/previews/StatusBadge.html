@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>StatusBadge</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--surface);color:var(--label)}
+.wrap{padding:var(--space-3xl);display:flex;flex-direction:column;gap:var(--space-lg)}
+.row{display:flex;flex-wrap:wrap;gap:var(--space-2xl);align-items:center;font-size:14px}
+.dot{display:inline-flex;align-items:center;gap:7px}
+.dot i{width:8px;height:8px;border-radius:999px;display:inline-block}
+.tag{padding:3px 10px;border-radius:var(--radius-xs);font-size:12px;font-weight:600}
+.count{min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:999px;background:var(--red-500);color:#ffffff;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+</style></head>
+<body>
+<div class="wrap">
+<div class="row">
+<span class="dot"><i style="background:var(--green-500)"></i>Aktiv</span>
+<span class="dot"><i style="background:var(--blue-500)"></i>Review</span>
+<span class="dot"><i style="background:var(--yellow-500)"></i>Pausiert</span>
+<span class="dot"><i style="background:var(--red-500)"></i>Risiko</span>
+<span class="count">3</span>
+</div>
+<div class="row" style="gap:8px">
+<span class="tag" style="background:var(--green-100);color:var(--green-700)">Erledigt</span>
+<span class="tag" style="background:var(--blue-100);color:var(--blue-700)">In Arbeit</span>
+<span class="tag" style="background:var(--yellow-100);color:var(--yellow-700)">Wartet</span>
+<span class="tag" style="background:var(--red-100);color:var(--red-700)">Blockiert</span>
+<span class="tag" style="background:var(--purple-100);color:var(--purple-700)">Neu</span>
+</div>
+</div>
+</body>
+</html>

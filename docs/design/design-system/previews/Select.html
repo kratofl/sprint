@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>Select</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--surface);color:var(--label)}
+.wrap{padding:var(--space-3xl);display:flex;flex-direction:column;gap:6px;width:320px}
+.lbl{font-size:13px;font-weight:600}
+.field{display:flex;align-items:center;justify-content:space-between;height:40px;box-sizing:border-box;padding:0 5px 0 var(--space-lg);border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);font-size:14px}
+.trigger{width:28px;height:28px;border:0;border-radius:var(--radius-sm);background:var(--fill);color:var(--label);display:flex;align-items:center;justify-content:center}
+.field:focus-within{outline:2px solid var(--focus-ring);outline-offset:2px}
+</style></head>
+<body>
+<div class="wrap">
+<span class="lbl" id="l">Verantwortlich</span>
+<div class="field" role="combobox" aria-labelledby="l" aria-haspopup="listbox" aria-expanded="false">M. Keller<button class="trigger" aria-label="Auswahl öffnen" tabindex="-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></svg></button></div>
+</div>
+</body>
+</html>

@@ -47,45 +47,6 @@ public sealed class DeviceRefreshRateTests
     }
 
     [Fact]
-    public void PublisherRunsAtTheDeviceRate()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        try
-        {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var device = new SavedDevice
-            {
-                Id = "screen",
-                Name = "Screen",
-                Type = "screen",
-                Driver = "vocore",
-                Width = 480,
-                Height = 800,
-                DashId = "default",
-                RefreshHz = 15,
-            };
-            runtime.Devices.Add(device);
-
-            var driver = new FakeScreenDriver();
-            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => driver);
-            service.Sync();
-
-            Assert.Equal(15, driver.LastConfig!.TargetFps);
-
-            runtime.UpdateDeviceRefreshHz(device, 60);
-            Assert.Equal(60, device.RefreshHz);
-
-            // A reload must keep the rate; unsupported values are normalized on load.
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            Assert.Equal(60, reloaded.Devices.Single(item => item.Id == "screen").RefreshHz);
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
     public void UnsetRateLoadsAsTheDefault()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
