@@ -15,7 +15,7 @@ import type { ChartCursorState, ChartPanel, ChartPanelReadout, ChartSeries, Char
 
 /**
  * The chart stack `AnalysisDomain.buildLapTraceChartPanels` computes — samples in, lines out
- * (docs/design/design-system/DESIGN.md "Charts": brand-500 for the current/selected series,
+ * (docs/design/DESIGN.md "Color": brand-500 for the current/selected series,
  * blue-500 for comparison, linear interpolation for continuous channels, stepped for discrete
  * ones, no decorative smoothing, `--divider` rules, 12px secondary axis labels), plus a shared
  * hover/keyboard crosshair with a per-panel readout,

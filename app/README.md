@@ -7,9 +7,8 @@ screens, and owns all native/platform logic; the Electron app renders the shared
 for USB output, and hosts the Home / Session Planner / Analysis / Dashes / Devices
 / Setups / Race Engineer / Settings / Help shell.
 
-> **Source of truth for status:** `docs/WEB_DESKTOP_CUTOVER.md` (the accepted
-> direction, architecture, and work-order record for the Electron/Core/Host
-> split). Read it before changing `app/`.
+> Read [`docs/internals/overview.md`](../docs/internals/overview.md) before
+> changing `app/`: why the Electron/Core/Host split looks the way it does.
 
 ## Solution & module boundaries
 
@@ -53,7 +52,7 @@ Sprint.Desktop.Core/
     ├── Charts/                ← chart scale/series/panel models shared by Analysis
     ├── LiveCompare/           ← live-compare HUD controller and window plan
     ├── Sharing/               ← shared-lap import/export and the Sprint cloud client
-    ├── Diagnostics/           ← FileLogger, CrashReporter, LiveLogStore (see docs/DIAGNOSTICS.md)
+    ├── Diagnostics/           ← FileLogger, CrashReporter, LiveLogStore (see docs/operations/diagnostics.md)
     ├── Notifications/         ← toast timeline, system-animation preference
     ├── Development/           ← dev/test game-state override
     └── Updates/               ← UpdateChecker (channel-aware semver), GitHubReleaseSource, UpdateInstaller
@@ -74,7 +73,7 @@ Sprint.Desktop.Core/
   `make` targets work wherever the correct SDK resolves; CI installs it via
   `global.json`. Dev `run`/`watch` stay framework-dependent (fast); a shipping
   **publish** is self-contained and RID-specific (`win-x64` by default, override
-  with `RID=linux-x64`) — see `docs/RELEASE.md`.
+  with `RID=linux-x64`) — see [`docs/operations/release.md`](../docs/operations/release.md).
 - Node ≥ 20 and `pnpm install` are required for `app/desktop`, `packages/dashboard`,
   and `packages/tokens`, which the desktop app depends on.
 
@@ -139,9 +138,10 @@ the command/binding model — is verified in the test suite against fake adapter
 
 ## Pointers
 
-- `docs/WEB_DESKTOP_CUTOVER.md` — the accepted direction, architecture, and
-  work-order/status record for the Electron/Core/Host split (read first).
-- `docs/DESIGN.md` — how the design system maps onto Sprint's surfaces; the wheel dash rules are in `docs/internals/dash-rendering.md`.
-- `docs/DESKTOP_SMOKE.md` — the manual launch/telemetry/dash/devices smoke script.
-- `docs/SCREEN_PROTOCOLS.md` — WinUSB / VoCore / USBD480 / RGB565 protocol reference.
-- `docs/RELEASE.md` — publishing, version/channel reporting, and the updater decision.
+- [`docs/README.md`](../docs/README.md) — index of internals and runbooks.
+- [`docs/internals/overview.md`](../docs/internals/overview.md) — architecture and the reasons behind it.
+- [`docs/design/DESIGN.md`](../docs/design/DESIGN.md) — UI rules; the wheel dash rules are in
+  [`docs/internals/dash-rendering.md`](../docs/internals/dash-rendering.md).
+- [`docs/internals/screen-protocols.md`](../docs/internals/screen-protocols.md) — WinUSB / VoCore / USBD480 / RGB565.
+- [`docs/operations/release.md`](../docs/operations/release.md) — packaging, versions, channels, updates.
+- [`.agents/skills/test-sprint-desktop`](../.agents/skills/test-sprint-desktop/SKILL.md) — how to verify desktop UI.

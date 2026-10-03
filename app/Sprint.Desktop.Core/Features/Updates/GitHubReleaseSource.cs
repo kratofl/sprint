@@ -10,7 +10,7 @@ namespace Sprint.Desktop.Features.Updates;
 /// "Check for updates" action and on the best-effort startup notice, and degrades
 /// gracefully (returns an empty list on any failure) so a check never crashes the
 /// app. Release assets are carried through so <see cref="ReleaseAssetSelector"/> can
-/// pick the platform archive for the one-click install (see docs/RELEASE.md).
+/// pick the platform archive for the one-click install (see docs/operations/release.md).
 /// </summary>
 public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
 {

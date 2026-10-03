@@ -249,7 +249,7 @@ public sealed class LapSummary
 }
 
 // CaptureManifest was the seam for #101's 60 Hz time-gridded capture, which the Live Compare
-// design rejects (docs/specs/live-compare.md §2.2): the corpus is position-gridded, two laps
+// design rejects (docs/internals/live-compare.md "Traces"): the corpus is position-gridded, two laps
 // sampled by time never share an x-grid, and 60 Hz is sparse in slow corners and wasteful on
 // straights. Nothing ever wrote it. Per-lap channel traces (#194) replace it, stored outside
 // the plan entirely, so leaving a captureRateHz field here would only invite someone to build

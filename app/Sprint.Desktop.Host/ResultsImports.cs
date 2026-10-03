@@ -9,8 +9,8 @@ public sealed record ResultsImportKindCount(HistorySessionKind Kind, int Count);
 
 /// <summary>
 /// What a scan of the game's results archive found and is offering to import. Nothing has been
-/// written: the driver answers in the import dialog first (docs/specs/session-planner-history-targets.md
-/// 2.7). <see cref="Entries"/> are the importer's opaque entry ids, handed back unchanged to
+/// written: the driver answers in the import dialog first (docs/internals/session-planner.md
+/// "Results import"). <see cref="Entries"/> are the importer's opaque entry ids, handed back unchanged to
 /// import or decline exactly what was offered.
 /// </summary>
 public sealed record ResultsImportOffer(

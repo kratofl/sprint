@@ -40,7 +40,7 @@ web/
 └── package.json            ← @sprint/web
 ```
 
-The UI follows the Web App mockup and `docs/design/design-system/DESIGN.md`.
+The UI follows the Web App mockup and `docs/design/DESIGN.md`.
 Use only the custom properties from `@sprint/tokens/web.css`; no hex values in
 `app/` or `components/`. Tests: `pnpm --filter @sprint/web test`.
 

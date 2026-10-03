@@ -187,7 +187,7 @@ export function DashEditorPanel({
   const loadedId = useRef(layout.id)
   const tabsId = useId()
 
-  // A one-shot, non-repeating flash for a rejected drag/resize/drop (docs/DESIGN.md forbids
+  // A one-shot, non-repeating flash for a rejected drag/resize/drop (AGENTS.md forbids
   // continuously repainting animation) — clears itself a couple of seconds after the last
   // rejection so it never lingers as stale advice.
   const flashValidation = (message: string): void => {
@@ -264,7 +264,7 @@ export function DashEditorPanel({
     }
   }
 
-  // Leaving with unsaved edits asks first (docs/design/design-system/DESIGN.md, Forms & sheets).
+  // Leaving with unsaved edits asks first (docs/design/DESIGN.md, Forms and dialogs).
   const requestClose = (): void => {
     if (dirty) setConfirmingClose(true)
     else onClose()

@@ -1,8 +1,8 @@
 # Sprint Agent Guide
 
 This is the neutral, agent-facing entrypoint for the Sprint repository. Keep it
-short, current, and tool-agnostic. Put deep project docs in `README.md`,
-`docs/DESIGN.md`, or package-local documentation instead of expanding this file.
+short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
+`docs/README.md`) or package-local READMEs instead of expanding this file.
 
 ## Scope
 
@@ -170,9 +170,11 @@ type-checks both desktop TypeScript packages.
   (see its `README.md`).
 - For dash rendering changes, render a preset with
   `packages/dashboard/scripts/render-check.tsx` at the panel size, screenshot it,
-  and compare against the old-renderer ground truth in
-  `docs/design/dash-reference/`. Compare layout, alignment, clip direction,
-  weights and colour — not the telemetry values, which differ.
+  and check it against `docs/internals/dash-rendering.md`: layout, alignment,
+  clip direction, weights and colour — not the telemetry values.
+- Before calling desktop UI work done, run the `test-sprint-desktop` skill
+  (`.agents/skills/test-sprint-desktop/`). Real-app traps are in
+  `docs/operations/development.md`.
 - Launching the full app (`make dev-app`) starts Electron, Vite and the .NET host.
   Say so before running it, and make sure every one of those processes is gone
   afterwards.
@@ -223,13 +225,12 @@ type-checks both desktop TypeScript packages.
 
 ## UI Rules
 
-- `docs/design/design-system/DESIGN.md` is the product design system; its
-  MUST/NEVER rules are binding. `docs/DESIGN.md` maps it onto Sprint's surfaces;
-  the wheel dash rules are in `docs/internals/dash-rendering.md`.
+- `docs/design/DESIGN.md` is the product design system; its MUST/NEVER rules
+  are binding. The wheel dash rules are in `docs/internals/dash-rendering.md`.
 - The desktop app follows Windows Fluent (Mica window, 48px title bar,
   NavigationView, content layer, CommandBar, ContentDialog, acrylic flyouts;
   4px controls, 8px cards). Its tokens are `@sprint/tokens/windows.css`; the
-  reference is the Windows mockup in `docs/design/_unpacked/pages/`.
+  reference is the Windows mockup in `docs/design/mockups/`.
 - The web app follows the web CI (Apple look, glass only on chrome) with
   `@sprint/tokens/web.css`.
 - Only brand and status colors carry across platforms. Brand `#ff6a00` is
@@ -253,8 +254,8 @@ type-checks both desktop TypeScript packages.
 
 ### Typography
 
-`docs/DESIGN.md` is the authority here; this is a summary of it, not a second
-opinion. If the two ever disagree, `docs/DESIGN.md` wins.
+`docs/design/DESIGN.md` is the authority here; this is a summary of it, not a
+second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
 
 - Desktop UI is Segoe UI Variable (`--font-text`, `--font-display` in
   `windows.css`): a Windows system font, nothing bundled. 13px/20px base, 24px
@@ -270,19 +271,32 @@ opinion. If the two ever disagree, `docs/DESIGN.md` wins.
 - The dash faces live in `app/desktop/src/fonts/`; without their `@font-face`
   rules every dash readout silently falls back to `system-ui`.
 
-## Canonical Docs
+## Docs
 
-- Repository overview and current architecture: `README.md`
-- Design system and UI implementation contract: `docs/DESIGN.md`
-- Wheel dash rendering rules: `docs/internals/dash-rendering.md`
-- Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
-- Manual desktop parity smoke script: `docs/DESKTOP_SMOKE.md`
-- Desktop logging and crash reports: `docs/DIAGNOSTICS.md`
-- Desktop cutover record (Avalonia → Electron): `docs/WEB_DESKTOP_CUTOVER.md`
-- Old-renderer dash ground truth: `docs/design/dash-reference/`
-- Release notes: `docs/RELEASE.md`
+`docs/README.md` indexes everything. The repo is written by agents, so docs are
+for agents first; human-facing docs stay at the root `README.md`.
+
+- `docs/internals/` — decisions and their reasons, cross-component constraints,
+  and traps the source does not reveal. Start with `overview.md` and
+  `glossary.md`; read the note for the area you are changing.
+- `docs/operations/` — development/verification, diagnostics, release,
+  deployment runbooks.
+- `docs/design/` — the design system, tokens, component previews, mockups.
 - Package-local notes: `app/README.md`, `api/README.md`, and package
   `README.md` files when present.
+
+Rules for writing them:
+
+- Most changes need no doc change. Add to `docs/internals/` only what a
+  maintainer would get wrong without it; link to source instead of copying it.
+- No feature tours, field lists, control-flow narration, file catalogs or PR
+  summaries.
+- When a decision changes, rewrite or remove the old text — never append a
+  second account.
+- No plans, specs, checklists or status trackers in the repo. Work in progress
+  lives in GitHub issues; settled decisions move into `docs/internals/`.
+- Moving or renaming a doc means updating every reference to it, including code
+  comments.
 
 This file is the single source of truth for agent instructions in this repo.
 Tool-specific companion files such as `CLAUDE.md` exist only to point here and

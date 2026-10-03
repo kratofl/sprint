@@ -10,7 +10,7 @@ namespace Sprint.Desktop.Tests;
 /// GET_DEVICE_DETAILS block, resolving which size to render at, and adopting the
 /// detected panel size onto the saved device. The native WinUSB transfers stay
 /// hardware-gated; everything that decides what to do with their answer is pinned
-/// here (see docs/SCREEN_PROTOCOLS.md).
+/// here (see docs/internals/screen-protocols.md).
 /// </summary>
 public sealed class Usbd480ProtocolTests
 {

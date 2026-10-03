@@ -1,11 +1,11 @@
 @import 'tailwindcss/preflight.css' layer(base);
 @import '@sprint/tokens/web.css';
 
-/* Sprint web — styles for the Web App mockup (docs/design/_unpacked/pages/web-light|dark.readable.html).
+/* Sprint web — styles for the Web App mockup (docs/design/mockups/web-light|dark.html).
    Desktop density is the compact web scale from the components sheet: 13px body, 28px controls,
    34px table rows, 52px toolbar, 224px sidebar. Colours, radii and spacing come from
    @sprint/tokens/web.css; the few web-local values below are derived from those tokens or quoted
-   from docs/design/design-system/DESIGN.md. */
+   from docs/design/DESIGN.md. */
 
 /* Figtree is the non-Apple face of --font-sans. Bundled (variable, latin) so nothing loads from the internet. */
 @font-face {

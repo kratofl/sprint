@@ -1032,7 +1032,7 @@ public sealed class RuntimePersistenceTests
     public void SeveralTraceStorageBudgetsAreOfferedAndTheDefaultIsOneOfThem()
     {
         // #103 offered a capture rate; #194 rejected the 60 Hz time grid that setting served
-        // (docs/specs/live-compare.md §2.2). What a driver chooses now is a disk budget.
+        // (docs/internals/live-compare.md "Traces"). What a driver chooses now is a disk budget.
         var budgets = SessionPlannerSettings.TraceStorageBudgets;
 
         Assert.True(budgets.Length > 1, "a single option is not a choice");

@@ -3,9 +3,9 @@
 Settled rules for the rendered wheel dash: `packages/dashboard`, which drives the editor
 preview, the on-screen display and the USB panel output. The dash is hardware output, not
 app UI. It keeps its own palette and type and is not restyled with the app. The research
-behind the color model is in `docs/research/racing-dashboard-color-semantics.md`.
+behind the color model is in [dash-color-research.md](dash-color-research.md).
 
-Readouts follow the Glance readout rules in `docs/DESIGN.md` (stable geometry, tabular
+Readouts follow the Glance readout rules in [`docs/design/DESIGN.md`](../design/DESIGN.md) (stable geometry, tabular
 figures, no animated value updates).
 
 ## Color means a racing condition

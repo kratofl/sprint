@@ -78,7 +78,7 @@ services:
 
   # Publishes web + api through Cloudflare Tunnel: cloudflared dials out to the
   # Cloudflare edge, so the host needs no public IP, no port forwarding, and no
-  # inbound firewall rule. Opt in explicitly — see docs/DEPLOYMENT.md.
+  # inbound firewall rule. Opt in explicitly — see docs/operations/deployment.md.
   #   docker compose --profile tunnel up -d
   tunnel:
     image: cloudflare/cloudflared:latest

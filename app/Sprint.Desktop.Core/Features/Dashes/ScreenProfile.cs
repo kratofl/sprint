@@ -5,7 +5,7 @@ namespace Sprint.Desktop.Features.Dashes;
 /// model). The profile fixes the canvas resolution/aspect and the sensible grid a
 /// user places widgets on, so what they design is pixel-faithful to the hardware
 /// (US15/US16/US19). Sizes are drawn from the VoCore M-PRO / USBD480 NX families
-/// documented in <c>docs/SCREEN_PROTOCOLS.md</c>.
+/// documented in <c>docs/internals/screen-protocols.md</c>.
 /// </summary>
 public sealed record ScreenProfile(string Id, string Name, int Width, int Height, int GridCols, int GridRows)
 {

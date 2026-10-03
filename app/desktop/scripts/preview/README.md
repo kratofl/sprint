@@ -2,7 +2,7 @@
 
 Renders any desktop view in a plain browser, light or dark, without Electron or
 the native host, so a UI change can be screenshotted and compared against the
-Windows mockup (`docs/design/_unpacked/win.png`, `win-dark.png`).
+Windows mockup (`docs/design/mockups/win.png`, `win-dark.png`).
 
 Run everything from `app/desktop`.
 

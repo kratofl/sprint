@@ -1,13 +1,13 @@
 /* Sprint – Windows (Fluent) platform tokens for the desktop app.
-   Source: docs/design/design-system (brand scales) + the "Windows App – Fluent (nativ)"
-   light/dark mockups in docs/design/Dashboard Mockup.html. Per docs/design/design-system/DESIGN.md
+   Source: docs/design (brand scales) + the "Windows App – Fluent (nativ)"
+   light/dark mockups in docs/design/mockups/bundle.html. Per docs/design/DESIGN.md
    only the brand and status scales carry over from the web CI; every neutral, radius and font
    here is Fluent (Mica window, content layer, 4px controls, 8px cards and flyouts, Segoe UI Variable).
    Light is the default; dark follows the OS (prefers-color-scheme) or [data-theme="dark"]. */
 
 :root,
 [data-theme="light"] {
-  /* Brand + status scales (shared with the web CI, docs/design/design-system/tokens.css) */
+  /* Brand + status scales (shared with the web CI, docs/design/tokens.css) */
   --brand-100: #ffe9d9; --brand-300: #ffb27f; --brand-500: #ff6a00; --brand-700: #b34a00; --brand-900: #5c2600;
   --green-100: #dcf5e8; --green-300: #7fd9ab; --green-500: #16b566; --green-700: #0c7a43; --green-900: #06401f;
   --red-100: #fde0e4; --red-300: #f78b9a; --red-500: #f02744; --red-700: #b3182f; --red-900: #5c0c18;

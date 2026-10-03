@@ -8,7 +8,7 @@ public sealed record Usbd480Details(string Name, int Width, int Height);
 
 /// <summary>
 /// USBD480 NX wire-protocol constants and the pure decoding of its
-/// <c>GET_DEVICE_DETAILS</c> block (see docs/SCREEN_PROTOCOLS.md). Split out of the
+/// <c>GET_DEVICE_DETAILS</c> block (see docs/internals/screen-protocols.md). Split out of the
 /// WinUSB driver so the parts that do not touch hardware — request numbers, the
 /// details layout, the known-model sizes — are unit-testable; the driver keeps only
 /// the native transfers.

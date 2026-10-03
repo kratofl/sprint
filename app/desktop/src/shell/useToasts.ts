@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { Toast, ToastInput } from './toast'
 
-/** Toasts auto-dismiss after this long, matching docs/DESIGN.md's 12s toast lifetime. */
+/** Toasts auto-dismiss after this long, so a missed one can still be read. */
 const TOAST_LIFETIME_MS = 12_000
 /** Matches the CSS `.toast.leaving` transition (`--motion-normal`); the DOM node is removed once it finishes. */
 const TOAST_EXIT_MS = 167

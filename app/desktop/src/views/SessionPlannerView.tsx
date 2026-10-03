@@ -38,8 +38,8 @@ import type { CreatePlanInput, PlanMode, PlanSegment, PlanStatus, RaceLengthForm
 import './SessionPlannerView.css'
 
 /**
- * Session planner: create/edit/arm/start/stop a race-weekend plan (docs/specs/
- * session-planner-history-targets.md, docs/SESSION_PLANNER.md "Planner page").
+ * Session planner: create/edit/arm/start/stop a race-weekend plan (docs/internals/
+ * session-planner.md).
  *
  * The page lands on the plan list; a plan opens on an explicit click and "All plans" leads
  * back. Leaving the page closes the plan, because the router remounts the view. The
@@ -708,8 +708,7 @@ function NewPlanDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (
 }
 
 /**
- * Create or edit a plan in a ContentDialog that walks three short steps (docs/SESSION_PLANNER.md
- * "The full sheet is stepped"): where and what, sessions and length, fuel. Nothing is validated
+ * Create or edit a plan in a ContentDialog that walks three short steps (docs/internals/session-planner.md): where and what, sessions and length, fuel. Nothing is validated
  * per step, so the step indicator also jumps directly. Closing with changes asks first.
  * Editing locks game/car/track and mode — `plan.update` does not accept them.
  *

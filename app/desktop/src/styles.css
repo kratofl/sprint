@@ -18,7 +18,7 @@
    Fluent desktop density: 13px/20px Segoe UI Variable Text on Mica. Every value
    in this file comes from @sprint/tokens/windows.css; the geometry (heights,
    paddings, radii) is copied from the Windows mockup
-   (docs/design/_unpacked/pages/windows-light.readable.html).
+   (docs/design/mockups/windows-light.html).
 
    Load order: main.tsx imports this file before App, so these shared
    primitives come first in the bundle and every view's CSS lands after them.

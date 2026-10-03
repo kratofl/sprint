@@ -39,8 +39,8 @@ import './AnalysisView.css'
 
 /**
  * Analysis: browse the recorded/imported/shared lap corpus, pick a primary and a comparison
- * lap — even across two different sessions — and overlay their traces (docs/specs/live-compare.md
- * §2.6 "hosts the chart stack, two-lap overlay, target picker"; the target-picker half is not
+ * lap — even across two different sessions — and overlay their traces (docs/internals/live-compare.md
+ * "Analysis view"; the target-picker half is not
  * built here). All narrowing and lap-picking state lives server-side in `AnalysisController`;
  * this view only renders `state.analysis` and sends `analysis.*` commands.
  *

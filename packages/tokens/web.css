@@ -1,5 +1,5 @@
-/* Sprint – web CI tokens. Verbatim from docs/design/design-system/tokens.css (the source of truth;
-   regenerate from docs/design/design-system/tokens.json, never edit values here by hand). */
+/* Sprint – web CI tokens. Verbatim from docs/design/tokens.css (the source of truth;
+   regenerate from docs/design/tokens.json, never edit values here by hand). */
 
 
 :root, [data-theme="light"] {
