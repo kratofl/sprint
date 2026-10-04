@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "exports": {
     "./windows.css": "./windows.css",
+    "./macos.css": "./macos.css",
     "./web.css": "./web.css"
   }
 }

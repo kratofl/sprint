@@ -4,6 +4,7 @@ import { buildShellCommands, filterCommands } from './commands'
 import { primaryNav } from './nav'
 
 const noopContext = () => ({
+  platform: 'windows' as const,
   navigate: () => undefined,
   send: async () => undefined,
   toggleSidebar: () => undefined,
@@ -20,6 +21,14 @@ test('the first seven commands are navigation, one per primaryNav entry in order
   assert.deepEqual(
     navCommands.map((command) => command.label),
     primaryNav.map((item) => `Go to ${item.label}`),
+  )
+})
+
+test('on mac the navigation shortcuts read ⌘1..7', () => {
+  const commands = buildShellCommands({ ...noopContext(), platform: 'mac' })
+  assert.deepEqual(
+    commands.slice(0, primaryNav.length).map((command) => command.shortcut),
+    primaryNav.map((_, index) => `⌘${index + 1}`),
   )
 })
 

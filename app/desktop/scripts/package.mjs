@@ -55,13 +55,15 @@ const [built] = await packager({
   executableName: 'Sprint',
   appBundleId: 'com.sprint.desktop',
   // Packager appends the platform extension (.ico on Windows, .icns on macOS).
+  // The .icns comes from scripts/icons/make-mac-icon.mjs.
   icon: join(appDir, 'resources', 'icon'),
   overwrite: true,
   prune: true,
   asar: true,
   // The published host is a native binary; asar would make it unexecutable.
   extraResource: [join(appDir, 'resources', 'host')],
-  ignore: [/^\/src($|\/)/, /^\/electron($|\/)/, /^\/scripts($|\/)/, /^\/resources\/host($|\/)/, /\.ts$/, /tsconfig.*\.json$/, /vite\.config\./],
+  // .dev holds the dev-run Sprint.app clone (scripts/dev.mjs); never ship it.
+  ignore: [/^\/\.dev($|\/)/, /^\/src($|\/)/, /^\/electron($|\/)/, /^\/scripts($|\/)/, /^\/resources\/host($|\/)/, /\.ts$/, /tsconfig.*\.json$/, /vite\.config\./],
 })
 
 console.log(`Packaged to ${built}`)

@@ -12,6 +12,7 @@
 //   frame=none            drop the live telemetry frame (dash previews then render their no-data state)
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
+//   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Windows look: Home InfoBar; Mac look: toolbar indicator)
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
 //                         repeat the parameter to click several things in order
 ;(() => {
@@ -23,6 +24,14 @@
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
   if (params.get('frame') === 'none' && state.telemetry) state.telemetry = { ...state.telemetry, frame: null }
+  // telemetry=unsupported: what a Mac reports: the LMU source is Windows-only. The Windows look shows the Home InfoBar; the Mac look shows only the toolbar indicator.
+  if (params.get('telemetry') === 'unsupported' && state.telemetry) {
+    state.telemetry = {
+      ...state.telemetry,
+      frame: null,
+      status: { ...state.telemetry.status, state: 'Unsupported', detail: 'The LMU_Data shared-memory provider is only supported on Windows.', lastFrameValid: false, isLive: false },
+    }
+  }
   // Payloads captured before the results import existed carry no `resultsImport`; preview as LMU does.
   state.resultsImport ??= { available: true, sourceName: 'the Le Mans Ultimate results folder' }
 
@@ -74,15 +83,17 @@
   }
 
   // Pages are reached through the app's own input paths, so the preview adds
-  // nothing to production code: Alt+1..7 for the primary pages (shell/nav.ts
-  // order), a click on the pane item for the footer pages.
+  // nothing to production code: Alt+1..7 (⌘1..7 with platform=mac) for the
+  // primary pages (shell/nav.ts order), a click on the pane item for the footer pages.
   const primaryOrder = ['Home', 'SessionPlanner', 'Analysis', 'Dashes', 'Devices', 'Setups', 'RaceEngineer']
   const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
+  // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
+  const mac = params.get('platform') === 'mac'
 
   const openView = (view) => {
     const index = primaryOrder.indexOf(view)
     if (index >= 0) {
-      window.dispatchEvent(new KeyboardEvent('keydown', { altKey: true, code: `Digit${index + 1}`, key: String(index + 1), bubbles: true }))
+      window.dispatchEvent(new KeyboardEvent('keydown', { [mac ? 'metaKey' : 'altKey']: true, code: `Digit${index + 1}`, key: String(index + 1), bubbles: true }))
       return
     }
     const label = footerLabels[view]
@@ -119,7 +130,7 @@
     const view = params.get('view')
     if (view && view !== 'Home') openView(view)
     if (params.get('palette') === '1') {
-      window.dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, key: 'k', code: 'KeyK', bubbles: true }))
+      window.dispatchEvent(new KeyboardEvent('keydown', { [mac ? 'metaKey' : 'ctrlKey']: true, key: 'k', code: 'KeyK', bubbles: true }))
     }
     clickInOrder(params.getAll('click'))
   })

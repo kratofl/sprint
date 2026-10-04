@@ -70,16 +70,19 @@ Sprint.Desktop.Core/
   & 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx
   ```
 
-  `make` targets work wherever the correct SDK resolves; CI installs it via
-  `global.json`. Dev `run`/`watch` stay framework-dependent (fast); a shipping
-  **publish** is self-contained and RID-specific (`win-x64` by default, override
-  with `RID=linux-x64`) — see [`docs/operations/release.md`](../docs/operations/release.md).
+  `make` targets work wherever the correct SDK resolves, on Windows and macOS;
+  CI installs it via `global.json`. Dev `run`/`watch` stay framework-dependent
+  (fast); a shipping **publish** is self-contained and RID-specific (this
+  machine's RID by default, e.g. `win-x64` or `osx-arm64`; override with
+  `RID=linux-x64`) — see [`docs/operations/release.md`](../docs/operations/release.md).
+- **macOS:** builds, tests and runs, without game telemetry or USB screens —
+  see [`docs/operations/development.md`](../docs/operations/development.md#developing-on-macos).
 - Node ≥ 20 and `pnpm install` are required for `app/desktop`, `packages/dashboard`,
   and `packages/tokens`, which the desktop app depends on.
 
 ## Commands
 
-```powershell
+```sh
 # Restore / build (the real gate is -warnaserror)
 dotnet restore app/Sprint.Desktop.slnx
 make lint-app                      # = dotnet build app/Sprint.Desktop.slnx -warnaserror
@@ -94,7 +97,7 @@ make test-app                      # = dotnet test (Sprint.Desktop.Tests + Sprin
                                     #   + pnpm test for @sprint/dashboard and @sprint/desktop
 
 # Publish + package → app/build/bin
-make build-app [VERSION=1.2.3]     # = dotnet publish the host (self-contained, -r win-x64|linux-x64)
+make build-app [VERSION=1.2.3]     # = dotnet publish the host (self-contained, -r <this machine's RID>)
                                     #   into app/desktop/resources/host, then pnpm build + pnpm package
 ```
 
@@ -132,8 +135,9 @@ Games are added entirely within the native layer:
 
 The VoCore/USBD480 WinUSB drivers and Windows Raw Input capture
 (`Sprint.Desktop.Core/Features/Hardware`, `Features/Input`) are Windows-only
-P/Invoke. Everything they plug into — RGB565 conversion, the screen publisher, and
-the command/binding model — is verified in the test suite against fake adapters
+P/Invoke; elsewhere screens report `Unsupported` and input capture is a no-op.
+Everything they plug into — RGB565 conversion, the screen publisher, and the
+command/binding model — is verified in the test suite against fake adapters
 (`FakeScreenDriver`) and keyboard-fallback capture rather than physical hardware.
 
 ## Pointers

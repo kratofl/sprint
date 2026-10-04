@@ -102,15 +102,10 @@ public sealed class InputBindingTests
         Assert.Equal(expected, WindowsRawInputSource.SignExtend(raw, bits));
     }
 
-    [Fact]
+    [WindowsFact]
     public void WindowsRawInputSourceStartsAndStopsMessageLoop()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var source = new WindowsRawInputSource(NullLog.Instance);
+        WindowsRawInputSource source = new(NullLog.Instance);
         Assert.True(source.IsRunning);
 
         source.Dispose();

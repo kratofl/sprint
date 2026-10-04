@@ -1,0 +1,892 @@
+@import '@sprint/tokens/macos.css';
+
+/* ── macOS look ─────────────────────────────────────────────────────────────
+   The Mac half of the desktop shell, from the "Haushalt macOS" mockup
+   (docs/design/mockups/macos-light.html, macos-dark.html), its component sheet
+   and the macOS 27 HIG: a full-height source-list sidebar on vibrancy, a 52px
+   toolbar in three zones that carries the page's actions, content that scrolls
+   under the toolbar, borderless 28px controls, glass menus/palette/
+   notifications/dialogs.
+
+   main.tsx imports this right after styles.css. Every rule is scoped with
+   `:where([data-platform="mac"])`, so Windows renders exactly styles.css, and
+   the :where() keeps each rule at the specificity of the styles.css rule it
+   overrides: it wins by coming later, and a view's own adjustment of a
+   primitive (view CSS lands after this file) still wins over it, as on Windows.
+   Colours, radii, fonts and motion come from macos.css under the same token
+   names; this file only changes shapes and layout. */
+
+/* ── App frame: sidebar | toolbar over content ──────────────────────────────
+   One grid on .app; .app-frame dissolves so the sidebar spans both rows. The
+   sidebar column is `auto`: hiding it slides the sidebar out with a negative
+   margin, which shrinks the column with it (a finite transition; the motion
+   tokens drop to 0ms under Reduce motion).
+   The content spans both rows and starts below the toolbar by padding, so it
+   scrolls underneath it (macOS 27 scroll edge, see the toolbar below). The
+   content's scroll timeline is hoisted to .app so the toolbar, a sibling, can
+   follow it. */
+
+:where([data-platform="mac"]) .app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-areas:
+    "sidebar toolbar"
+    "sidebar content";
+  overflow: hidden;
+  timeline-scope: --mac-content-scroll;
+}
+
+:where([data-platform="mac"]) .app-frame {
+  display: contents;
+}
+
+:where([data-platform="mac"]) .content {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  padding: 68px 20px 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--layer);
+  /* Keyboard focus and scrollIntoView keep items out from under the toolbar. */
+  scroll-padding-top: 52px;
+  scroll-timeline: --mac-content-scroll block;
+}
+
+/* ── Toolbar (52px) ──────────────────────────────────────────────────────────
+   The HIG's three zones as one grid: leading (sidebar toggle while hidden,
+   back, page title) | centre (the telemetry indicator) | trailing (the page's
+   actions, then search). The centre takes what is left; its 28px minimum is
+   the indicator shrunk to its dot, and TitleBar.tsx reads it when it works out
+   the actions' room. The whole bar drags the window (styles.css already opts
+   its buttons out). */
+
+:where([data-platform="mac"]) .titlebar {
+  grid-area: toolbar;
+  position: relative;
+  z-index: 1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+  height: 52px;
+  min-width: 0;
+  padding: 0 16px 0 12px;
+  transition: padding-left var(--motion-normal) var(--ease-out);
+}
+
+/* Sidebar hidden: the traffic lights now sit over the toolbar (they end at x=76). */
+:where([data-platform="mac"]) .app.collapsed .titlebar {
+  padding-left: 84px;
+}
+
+/* Scroll edge (macOS 27): no bar at rest, the content's own colour shows; once the content
+   scrolls, a continuous translucent bar with a hairline fades in over the first 24px of
+   scroll. Driven by the scroll position (no listeners, nothing runs while nothing scrolls). */
+:where([data-platform="mac"]) .titlebar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-bottom: 1px solid var(--layer-stroke);
+  background: color-mix(in srgb, var(--toolbar) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  pointer-events: none;
+  opacity: 0;
+  animation: mac-scroll-edge linear both;
+  animation-timeline: --mac-content-scroll;
+  animation-range: 0px 24px;
+}
+
+@keyframes mac-scroll-edge {
+  to {
+    opacity: 1;
+  }
+}
+
+/* Reduce transparency: the same bar, solid. */
+@media (prefers-reduced-transparency: reduce) {
+  :where([data-platform="mac"]) .titlebar::before {
+    background: var(--toolbar);
+    backdrop-filter: none;
+  }
+}
+
+/* No scroll-driven animations: the bar is always there, so scrolled content never runs
+   under bare toolbar items. */
+@supports not (animation-timeline: scroll()) {
+  :where([data-platform="mac"]) .titlebar::before {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+/* Leading zone: never shrinks, so the title stays whole and the actions give way instead. */
+:where([data-platform="mac"]) .titlebar-lead {
+  gap: 8px;
+  min-width: max-content;
+  padding: 0;
+}
+
+:where([data-platform="mac"]) .titlebar-sidebar-toggle,
+:where([data-platform="mac"]) .titlebar-back {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label);
+}
+
+:where([data-platform="mac"]) .titlebar-sidebar-toggle:hover,
+:where([data-platform="mac"]) .titlebar-back:hover:not(:disabled) {
+  background: var(--control-fill-hover);
+}
+
+:where([data-platform="mac"]) .titlebar-sidebar-toggle:active,
+:where([data-platform="mac"]) .titlebar-back:active:not(:disabled) {
+  background: var(--subtle-pressed);
+}
+
+:where([data-platform="mac"]) .titlebar-back:disabled {
+  background: transparent;
+  color: var(--label-disabled);
+}
+
+:where([data-platform="mac"]) .titlebar-title {
+  flex: none;
+  font: 700 17px/22px var(--font-display);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Centre zone. A size container, so the indicator can fall back to its dot when the centre
+   gets narrow (below), before the actions are evicted to the content. */
+:where([data-platform="mac"]) .titlebar-centre {
+  display: flex;
+  justify-content: center;
+  min-width: 28px;
+  container-type: inline-size;
+}
+
+/* The telemetry indicator: a capsule that opens Help & diagnostics (TelemetryBadge.tsx). */
+:where([data-platform="mac"]) .telemetry-indicator {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+}
+
+:where([data-platform="mac"]) .telemetry-indicator:hover {
+  background: var(--control-fill-hover);
+  color: var(--label);
+}
+
+:where([data-platform="mac"]) .telemetry-indicator:active {
+  background: var(--subtle-pressed);
+}
+
+:where([data-platform="mac"]) .telemetry-indicator .telemetry-badge {
+  flex: 0 1 auto;
+  color: inherit;
+}
+
+@container (max-width: 180px) {
+  :where([data-platform="mac"]) .telemetry-indicator {
+    justify-content: center;
+    width: 28px;
+    padding: 0;
+  }
+
+  /* The word stays for screen readers; the tooltip names it for everyone else. */
+  :where([data-platform="mac"]) .telemetry-indicator .status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Trailing zone: the page's actions (PageHeader portals its CommandBar into the slot), then search. */
+:where([data-platform="mac"]) .titlebar-trail {
+  gap: 12px;
+  /* No caption buttons on the right: the traffic lights are on the left. */
+  padding-right: 0;
+}
+
+:where([data-platform="mac"]) .titlebar-actions {
+  display: contents;
+}
+
+/* The mockup's toolbar search field: a 200px pill, magnifier first. */
+:where([data-platform="mac"]) .titlebar-search {
+  gap: 6px;
+  width: 200px;
+  flex: none;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--titlebar-search);
+}
+
+:where([data-platform="mac"]) .titlebar-search:hover {
+  background: var(--control-fill-hover);
+}
+
+:where([data-platform="mac"]) .titlebar-search svg {
+  order: -1;
+}
+
+:where([data-platform="mac"]) .titlebar-search kbd {
+  color: var(--label-tertiary);
+}
+
+/* ── Sidebar (224px source list, full height) ────────────────────────────── */
+
+:where([data-platform="mac"]) .navview {
+  grid-area: sidebar;
+  width: 224px;
+  gap: 1px;
+  padding: 0 10px 12px;
+  border-right: 1px solid var(--layer-stroke);
+  background: var(--sidebar);
+  backdrop-filter: blur(20px) saturate(180%);
+  transition:
+    margin-left var(--motion-normal) var(--ease-out),
+    visibility 0s linear 0s;
+}
+
+/* In the Electron window the OS draws vibrancy behind the page (electron/windowChrome.ts),
+   or its solid colour under Reduce transparency. */
+:where([data-platform="mac"][data-backdrop="window"]) .navview {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+/* Hidden, Finder/Mail style: slides out left, then leaves the tab order. */
+:where([data-platform="mac"]) .navview.collapsed {
+  width: 224px;
+  margin-left: -224px;
+  padding: 0 10px 12px;
+  visibility: hidden;
+  transition:
+    margin-left var(--motion-normal) var(--ease-out),
+    visibility 0s linear var(--motion-normal);
+}
+
+/* The 52px band at the top: traffic lights in its first 80px, the toggle on
+   the right, and the rest drags the window like a title bar. */
+:where([data-platform="mac"]) .navview-band {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 52px;
+  flex: none;
+  margin: 0 -10px 4px;
+  padding: 0 12px 0 80px;
+  -webkit-app-region: drag;
+}
+
+:where([data-platform="mac"]) .navview-toggle,
+:where([data-platform="mac"]) .navview.collapsed .navview-toggle {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: var(--radius-control);
+  color: var(--label-secondary);
+  -webkit-app-region: no-drag;
+}
+
+:where([data-platform="mac"]) .nav-item,
+:where([data-platform="mac"]) .navview.collapsed .nav-item {
+  gap: 8px;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+}
+
+:where([data-platform="mac"]) .navview-toggle:active,
+:where([data-platform="mac"]) .nav-item:active {
+  color: var(--label);
+}
+
+/* Selected: a rounded fill and semibold label, no Fluent indicator bar. */
+:where([data-platform="mac"]) .nav-item.active {
+  font-weight: 600;
+}
+
+:where([data-platform="mac"]) .nav-item.active::before {
+  content: none;
+}
+
+/* Source-list icons carry the brand colour, as in the mockup and the web sidebar. */
+:where([data-platform="mac"]) .nav-item svg {
+  color: var(--brand-500);
+}
+
+:where([data-platform="mac"]) .navview.collapsed .nav-item-label,
+:where([data-platform="mac"]) .navview.collapsed .account-name {
+  display: inline;
+}
+
+:where([data-platform="mac"]) .navview.collapsed .nav-item-badge {
+  position: static;
+  margin-left: auto;
+}
+
+/* Account last, under a hairline, below Settings and Help (mockup footer). */
+:where([data-platform="mac"]) .account-row,
+:where([data-platform="mac"]) .navview.collapsed .account-row {
+  order: 1;
+  gap: 8px;
+  height: auto;
+  margin: 6px 0 0;
+  padding: 10px 8px 0;
+  border-top: 1px solid var(--layer-stroke);
+  border-radius: 0;
+  font-weight: 500;
+}
+
+:where([data-platform="mac"]) .account-row:not([aria-disabled='true']):hover {
+  background: transparent;
+  color: var(--link);
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────
+   The toolbar names the page, so the in-content title is for screen readers
+   only — unless it is a `detail` title naming an item (PageHeader.tsx). The
+   CommandBar moves into the toolbar (next section); it stays at the top of
+   the content for a `detail` header, or when the toolbar has no room for it. */
+
+:where([data-platform="mac"]) .page-header {
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+/* With no CommandBar the header holds only the hidden title; dissolving it keeps a
+   view's own flex/grid gap from spacing out an empty box. */
+:where([data-platform="mac"]) .page-header:not(:has(.command-bar)) {
+  display: contents;
+}
+
+:where([data-platform="mac"]) .page-title:not(.detail) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* In the content the CommandBar is a plain row of the component sheet's 28px buttons. */
+:where([data-platform="mac"]) .command-bar {
+  gap: 8px;
+  height: 28px;
+}
+
+/* Groups are told apart by fixed space, not a rule (HIG: separate text-labelled actions). */
+:where([data-platform="mac"]) .command-divider {
+  width: 4px;
+  margin: 0;
+  background: transparent;
+}
+
+:where([data-platform="mac"]) .command-bar select {
+  height: 28px;
+  padding-left: 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--control-fill);
+}
+
+:where([data-platform="mac"]) .command-bar .segmented {
+  height: 28px;
+  border-radius: var(--radius-pill);
+}
+
+:where([data-platform="mac"]) .command-bar .segmented-item {
+  border-radius: var(--radius-pill);
+}
+
+/* Home's quiet "live" status duplicates the toolbar's telemetry indicator. */
+:where([data-platform="mac"]) .overview-status {
+  display: none;
+}
+
+/* ── Page actions as toolbar items ───────────────────────────────────────────
+   PageHeader portals its CommandBar into the toolbar's trailing zone, marked
+   `.toolbar-items`. It follows the HIG: borderless items in shared capsules,
+   groups split by fixed space, the whole group trailing next to search. When
+   the toolbar has no room, the same items fall back to the top of the content
+   drawn identically, so their width there is their width in the toolbar
+   (toolbarActions.ts measures it to decide when they may return).
+   - A `.button.subtle` with a leading icon shows only the icon; its text stays
+     for screen readers, and the shell gives it a tooltip (toolbarActions.ts).
+   - Neighbouring subtle buttons share one capsule: segments touch, and only a
+     group's outer ends are rounded. (Every subtle CommandBar button has an icon,
+     so neighbours are matched as `.button.subtle`: :has() cannot nest.)
+   - The `.button.primary` is a brand capsule. It keeps its DOM place (first),
+     so the Tab order matches what is seen.
+   - `.command-spacer` becomes the same fixed space as `.command-divider`. */
+
+/* The toolbar drags the window and only opts buttons out (styles.css); selects and the
+   status among the actions need it too, so the whole bar opts out. */
+:where([data-platform="mac"]) .toolbar-items {
+  flex: none;
+  min-width: max-content;
+  -webkit-app-region: no-drag;
+}
+
+/* In the content the row keeps its natural width instead of stretching. */
+:where([data-platform="mac"]) .page-header > .toolbar-items {
+  align-self: flex-start;
+}
+
+:where([data-platform="mac"]) .toolbar-items .command-spacer {
+  width: 4px;
+  flex: none;
+}
+
+:where([data-platform="mac"]) .toolbar-items .button {
+  border-radius: var(--radius-pill);
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child) {
+  gap: 0;
+  padding: 0 8px;
+  border-radius: 0;
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 0;
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child) > svg {
+  width: 16px;
+  height: 16px;
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child):hover:not(:disabled) {
+  background: var(--control-fill-hover);
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child):active:not(:disabled) {
+  background: var(--subtle-pressed);
+}
+
+/* A disabled segment keeps the capsule's fill so the group stays one shape. */
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child):disabled {
+  background: var(--control-fill);
+  color: var(--label-disabled);
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child):not(.button.subtle + .button.subtle) {
+  padding-left: 10px;
+  border-start-start-radius: var(--radius-pill);
+  border-end-start-radius: var(--radius-pill);
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle:has(> svg:first-child):not(:has(+ .button.subtle)) {
+  padding-right: 10px;
+  border-start-end-radius: var(--radius-pill);
+  border-end-end-radius: var(--radius-pill);
+}
+
+:where([data-platform="mac"]) .toolbar-items .button.subtle + .button.subtle:has(> svg:first-child) {
+  margin-left: -8px;
+}
+
+:where([data-platform="mac"]) .toolbar-items select {
+  max-width: 180px;
+}
+
+/* A page status among the actions (the race engineer's push state) reads as a quiet label. */
+:where([data-platform="mac"]) .toolbar-items > .status {
+  padding: 0 4px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── Buttons (component sheet): 28px borderless fills, 8px corners ────────── */
+
+:where([data-platform="mac"]) .button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  font-weight: 500;
+}
+
+:where([data-platform="mac"]) .button:has(> svg:first-child) {
+  padding-left: 9px;
+}
+
+:where([data-platform="mac"]) .button:active {
+  background: var(--subtle-pressed);
+  color: var(--label);
+}
+
+:where([data-platform="mac"]) .button:disabled,
+:where([data-platform="mac"]) .button[aria-disabled='true'] {
+  background: var(--control-fill);
+  color: var(--label-disabled);
+}
+
+:where([data-platform="mac"]) .button.primary,
+:where([data-platform="mac"]) .button.destructive-solid {
+  font-weight: 600;
+}
+
+/* Secondary: the same grey fill as a standard button. */
+:where([data-platform="mac"]) .button.subtle,
+:where([data-platform="mac"]) .button.subtle:disabled {
+  background: var(--control-fill);
+}
+
+:where([data-platform="mac"]) .button.subtle:hover {
+  background: var(--control-fill-hover);
+}
+
+:where([data-platform="mac"]) .button.small {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-control-small);
+  font-size: 12px;
+}
+
+:where([data-platform="mac"]) .button.small:has(> svg:first-child) {
+  padding-left: 7px;
+}
+
+/* ── Focus: the macOS accent halo, hugging the control's own corners ──────── */
+
+:where([data-platform="mac"]) :focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+/* ── Cards (component sheet: 14px corners from --radius-card, 14px 16px padding) ── */
+
+:where([data-platform="mac"]) .card {
+  padding: 14px 16px;
+}
+
+:where([data-platform="mac"]) .card.list-card {
+  padding: 0 0 6px;
+}
+
+:where([data-platform="mac"]) .kpi {
+  padding: 14px 16px;
+}
+
+:where([data-platform="mac"]) .kpi-label {
+  font-weight: 500;
+}
+
+:where([data-platform="mac"]) .kpi-value {
+  font: 700 24px/30px var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+:where([data-platform="mac"]) .eyebrow {
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* ── Form controls: borderless fill, accent halo on focus ────────────────── */
+
+:where([data-platform="mac"]) :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])):focus,
+:where([data-platform="mac"]) :where(select, textarea):focus,
+:where([data-platform="mac"]) .input:focus-within {
+  border-color: transparent;
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+/* ── Chips, segmented control, tabs ──────────────────────────────────────── */
+
+:where([data-platform="mac"]) .chip {
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+}
+
+/* Mockup: a --track trough with a 2px inset; the selected segment is a flat fill. */
+:where([data-platform="mac"]) .segmented {
+  gap: 1px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+:where([data-platform="mac"]) .segmented-item {
+  border-radius: var(--radius-control-small);
+  color: var(--label);
+  font-weight: 500;
+}
+
+:where([data-platform="mac"]) .segmented-item:hover {
+  background: var(--subtle-hover);
+}
+
+:where([data-platform="mac"]) .segmented-item.active,
+:where([data-platform="mac"]) .segmented-item[aria-pressed='true'],
+:where([data-platform="mac"]) .segmented-item[aria-checked='true'] {
+  background: var(--segmented-selected);
+  font-weight: 600;
+}
+
+/* Tabs: the selected pane's tab is a rounded fill, not a Fluent underline. */
+:where([data-platform="mac"]) .tabs {
+  gap: 2px;
+}
+
+:where([data-platform="mac"]) .tab {
+  height: 28px;
+  border-radius: var(--radius-pill);
+  color: var(--label);
+}
+
+:where([data-platform="mac"]) .tab.active,
+:where([data-platform="mac"]) .tab[aria-selected='true'] {
+  background: var(--subtle-selected);
+}
+
+:where([data-platform="mac"]) .tab.active::after,
+:where([data-platform="mac"]) .tab[aria-selected='true']::after {
+  content: none;
+}
+
+/* ── InfoBar: the component sheet's flat inline alert ──────────────────────
+   Tint background, bold title + message in the tint's text colour, no icon
+   disc. The message's own 10px vertical padding (the Fluent bar's height)
+   goes, so the 8px 12px padding sets the height. */
+
+:where([data-platform="mac"]) .infobar {
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--infobar-info-text);
+}
+
+:where([data-platform="mac"]) .infobar-icon {
+  display: none;
+}
+
+:where([data-platform="mac"]) .infobar-message {
+  padding: 0;
+}
+
+:where([data-platform="mac"]) .infobar.warning { color: var(--infobar-warning-text); }
+:where([data-platform="mac"]) .infobar.error { color: var(--infobar-error-text); }
+:where([data-platform="mac"]) .infobar.success { color: var(--infobar-success-text); }
+
+/* Controls inside a bar (undo, dismiss) keep the bar's height. */
+:where([data-platform="mac"]) .infobar .button,
+:where([data-platform="mac"]) .infobar .icon-button {
+  height: 22px;
+  margin: -2px 0;
+}
+
+:where([data-platform="mac"]) .infobar .icon-button {
+  width: 22px;
+  color: inherit;
+}
+
+/* Home's telemetry bar is informational and not actionable: the toolbar indicator says it
+   (HIG: an indicator, not a banner, as Mail's offline state). Help & diagnostics keeps it. */
+:where([data-platform="mac"]) .overview > .telemetry-infobar {
+  display: none;
+}
+
+/* ── Lists: rounded selection fill, no indicator bar ─────────────────────── */
+
+:where([data-platform="mac"]) .list-header {
+  height: 28px;
+  border-top: 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+:where([data-platform="mac"]) .list-row {
+  width: calc(100% - 12px);
+  margin: 1px 6px 0;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+}
+
+:where([data-platform="mac"]) .list-row.selected::before,
+:where([data-platform="mac"]) .list-row[aria-selected='true']::before {
+  content: none;
+}
+
+/* ── Glass: menus, command palette, notifications, dialogs ───────────────── */
+
+:where([data-platform="mac"]) .menu-flyout,
+:where([data-platform="mac"]) .command-palette,
+:where([data-platform="mac"]) .toast,
+:where([data-platform="mac"]) .content-dialog {
+  border: 1px solid var(--acrylic-stroke);
+  background: var(--acrylic);
+  backdrop-filter: blur(22px) saturate(180%);
+}
+
+:where([data-platform="mac"]) .menu-flyout,
+:where([data-platform="mac"]) .command-palette,
+:where([data-platform="mac"]) .toast {
+  box-shadow: var(--shadow-flyout);
+}
+
+/* Reduce transparency, or no backdrop-filter: flat surface + hairline, no blur, no shadow
+   (DESIGN.md "Flat fallback"). */
+@media (prefers-reduced-transparency: reduce) {
+  :where([data-platform="mac"]) .menu-flyout,
+  :where([data-platform="mac"]) .command-palette,
+  :where([data-platform="mac"]) .toast,
+  :where([data-platform="mac"]) .content-dialog {
+    border-color: var(--card-stroke);
+    background: var(--surface);
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  :where([data-platform="mac"]) .menu-flyout,
+  :where([data-platform="mac"]) .command-palette,
+  :where([data-platform="mac"]) .toast,
+  :where([data-platform="mac"]) .content-dialog {
+    border-color: var(--card-stroke);
+    background: var(--surface);
+    box-shadow: none;
+  }
+}
+
+:where([data-platform="mac"]) .menu-flyout {
+  gap: 1px;
+  padding: 5px;
+}
+
+:where([data-platform="mac"]) .menu-item {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-control-small);
+}
+
+/* Menu items are text only (HIG macOS 27: icons sparingly); an item without a label keeps its icon. */
+:where([data-platform="mac"]) .menu-item:has(> .menu-item-label) > svg {
+  display: none;
+}
+
+/* The menu highlight is the brand fill (DESIGN.md), with the dark on-brand text. */
+/* :not(:disabled) — without it this rule outranks styles.css's disabled menu item
+   (same specificity, later file) and a disabled item would light up on hover. */
+:where([data-platform="mac"]) .menu-item:hover:not(:disabled),
+:where([data-platform="mac"]) .menu-item.selected,
+:where([data-platform="mac"]) .command-palette-item.selected {
+  background: var(--brand-500);
+  color: var(--on-brand);
+}
+
+:where([data-platform="mac"]) .menu-item:hover:not(:disabled) .menu-item-shortcut,
+:where([data-platform="mac"]) .menu-item.selected .menu-item-shortcut,
+:where([data-platform="mac"]) .command-palette-item.selected .command-palette-shortcut {
+  color: inherit;
+}
+
+:where([data-platform="mac"]) .menu-separator {
+  margin: 3px 6px;
+}
+
+/* Command palette: Spotlight-like, centred under the toolbar. */
+:where([data-platform="mac"]) .command-palette-backdrop {
+  padding-top: 64px;
+}
+
+:where([data-platform="mac"]) .command-palette {
+  gap: 2px;
+  width: 560px;
+  padding: 0 6px 6px;
+}
+
+:where([data-platform="mac"]) .command-palette-search {
+  gap: 10px;
+  height: 44px;
+  margin: 0 -6px 4px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--acrylic-stroke);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+:where([data-platform="mac"]) .command-palette-input {
+  font-size: 15px;
+}
+
+:where([data-platform="mac"]) .command-palette-list {
+  gap: 1px;
+}
+
+/* Notifications: macOS banners, top-right under the toolbar (mockup). */
+:where([data-platform="mac"]) .toast-host {
+  top: 62px;
+  right: 20px;
+  bottom: auto;
+}
+
+:where([data-platform="mac"]) .toast {
+  width: 320px;
+  padding: 12px;
+  border-radius: 16px;
+}
+
+:where([data-platform="mac"]) .toast-close {
+  border-radius: var(--radius-pill);
+}
+
+/* Dialog: a glass alert, buttons trailing with the primary rightmost (macOS order;
+   Windows puts it left of Cancel). */
+:where([data-platform="mac"]) .content-dialog {
+  border-radius: 16px;
+  box-shadow: var(--shadow-dialog);
+}
+
+:where([data-platform="mac"]) .content-dialog-body {
+  padding: 20px 20px 16px;
+}
+
+:where([data-platform="mac"]) .content-dialog-title {
+  font: 700 17px/22px var(--font-display);
+}
+
+:where([data-platform="mac"]) .content-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 20px 20px;
+  border-top: 0;
+  background: transparent;
+}
+
+:where([data-platform="mac"]) .content-dialog-footer .button {
+  min-width: 80px;
+}
+
+:where([data-platform="mac"]) .content-dialog-footer .button.primary,
+:where([data-platform="mac"]) .content-dialog-footer .button.destructive-solid {
+  order: 1;
+}

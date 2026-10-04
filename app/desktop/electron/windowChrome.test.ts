@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { supportsMica, windowChrome } from './windowChrome'
+import { supportsMica, windowChrome, windowLook } from './windowChrome'
 
 test('Mica when the OS supports it and transparency is on', () => {
-  assert.deepEqual(windowChrome({ dark: false, reducedTransparency: false, micaSupported: true }), { kind: 'mica', symbol: '#1a1a1a' })
+  assert.deepEqual(windowChrome({ look: 'windows', dark: false, reducedTransparency: false, micaSupported: true }), { kind: 'mica', symbol: '#1a1a1a' })
 })
 
 test('Windows "Transparency effects" off falls back to the solid Mica colour', () => {
-  assert.deepEqual(windowChrome({ dark: true, reducedTransparency: true, micaSupported: true }), {
+  assert.deepEqual(windowChrome({ look: 'windows', dark: true, reducedTransparency: true, micaSupported: true }), {
     kind: 'solid',
     background: '#202020',
     symbol: '#ffffff',
@@ -20,5 +20,21 @@ test('no Mica before Windows 11 22H2 or off Windows', () => {
   assert.equal(supportsMica('win32', '10.0.22000'), false)
   assert.equal(supportsMica('win32', '10.0.19045'), false)
   assert.equal(supportsMica('linux', '6.8.0'), false)
-  assert.deepEqual(windowChrome({ dark: false, reducedTransparency: false, micaSupported: false }).kind, 'solid')
+  assert.deepEqual(windowChrome({ look: 'windows', dark: false, reducedTransparency: false, micaSupported: false }).kind, 'solid')
+})
+
+test('macOS gets the native look; every other OS keeps the Windows look', () => {
+  assert.equal(windowLook('darwin'), 'mac')
+  assert.equal(windowLook('win32'), 'windows')
+  assert.equal(windowLook('linux'), 'windows')
+})
+
+test('macOS draws the sidebar with system vibrancy in either theme', () => {
+  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: false }), { kind: 'vibrancy' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: false }), { kind: 'vibrancy' })
+})
+
+test('macOS "Reduce transparency" falls back to the solid sidebar colour', () => {
+  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: true }), { kind: 'opaque', background: '#f6f6f8' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: true }), { kind: 'opaque', background: '#28282a' })
 })

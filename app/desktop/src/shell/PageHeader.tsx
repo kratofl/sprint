@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { useActionsPlacement, useIconButtonTitles, useToolbarActions } from './toolbarActions'
 
 /**
  * The Fluent page header every view starts with: a 24px Display title and,
@@ -17,16 +19,33 @@ import type { ReactNode } from 'react'
  *     <span className="command-spacer" />
  *     <button type="button" className="icon-button" aria-label="More options"><MoreHorizontal /></button>
  *   </PageHeader>
+ *
+ * On macOS the toolbar names the page, so the in-content title is for screen readers only, and
+ * the CommandBar moves into the toolbar's trailing slot (the shell provides it through
+ * `ToolbarActionsContext`), drawn as toolbar items (`.toolbar-items` in styles.mac.css). When the
+ * toolbar is too narrow for it, the same items fall back to a row at the top of the content
+ * (`useActionsPlacement`).
+ *
+ * `detail` marks a title that names an item (the dash being edited) rather than the
+ * page: it stays on screen, and its CommandBar stays with it in the content.
  */
-export function PageHeader({ title, children }: { title: string; children?: ReactNode }) {
+export function PageHeader({ title, detail = false, children }: { title: string; detail?: boolean; children?: ReactNode }) {
+  const provided = useToolbarActions()
+  const toolbar = detail ? null : provided
+  const [bar, setBar] = useState<HTMLDivElement | null>(null)
+  const placement = useActionsPlacement(toolbar, bar)
+  const inToolbar = toolbar !== null && placement === 'toolbar'
+  useIconButtonTitles(bar, toolbar !== null)
+
+  const commandBar = children ? (
+    <div ref={setBar} className={toolbar ? 'command-bar toolbar-items' : 'command-bar'} role="toolbar" aria-label={`${title} commands`}>
+      {children}
+    </div>
+  ) : null
   return (
     <div className="page-header">
-      <h1 className="page-title">{title}</h1>
-      {children ? (
-        <div className="command-bar" role="toolbar" aria-label={`${title} commands`}>
-          {children}
-        </div>
-      ) : null}
+      <h1 className={detail ? 'page-title detail' : 'page-title'}>{title}</h1>
+      {toolbar && inToolbar ? createPortal(commandBar, toolbar.slot) : commandBar}
     </div>
   )
 }
