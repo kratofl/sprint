@@ -1,6 +1,6 @@
+using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Hardware;
-using Sprint.Desktop.Api.Telemetry;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -345,17 +345,15 @@ public sealed class DesktopCaptureSelectionTests
         var destination = new byte[config.Width * config.Height * 2];
         var frame = new TelemetryFrame();
 
-        // Warm the lazily created composer and Skia's first draw through it, so
-        // only the steady-state capture path is measured.
+        // Warm up first, so only the steady-state capture + compose path is measured.
         for (var index = 0; index < 10; index++)
         {
             source.Render(frame, destination);
         }
 
-        // A one-off allocation elsewhere in the process — Skia's global handle
-        // registry rehashing, for instance — can land in any single window and
-        // has made this guard flake on CI. Score the quietest window instead: a
-        // genuine per-frame allocation shows up in every one of them.
+        // A one-off allocation elsewhere in the process can land in any single window and has
+        // made this guard flake on CI. Score the quietest window instead: a genuine per-frame
+        // allocation shows up in every one of them.
         const int windows = 5;
         const int framesPerWindow = 50;
         var quietestWindow = long.MaxValue;
@@ -455,9 +453,7 @@ public sealed class DesktopCaptureSelectionTests
             using var source = new DesktopCaptureFrameSource(
                 new ScreenCaptureRegion(0, 0, 50, 30),
                 config,
-                capturer,
-                sharedFrames: null,
-                preferNativeRgb565: false);
+                capturer);
             var actual = new byte[config.Width * config.Height * 2];
 
             source.Render(new TelemetryFrame(), actual);
@@ -490,60 +486,7 @@ public sealed class DesktopCaptureSelectionTests
     }
 
     [Fact]
-    public void NativeRearViewCompositionStaysCloseToTheFusedReferenceForEveryOrientation()
-    {
-        var cases = new[]
-        {
-            (Width: 120, Height: 200, Orientation: DeviceOrientation.Portrait),
-            (Width: 120, Height: 200, Orientation: DeviceOrientation.Landscape),
-            (Width: 120, Height: 200, Orientation: DeviceOrientation.PortraitInverted),
-            (Width: 120, Height: 200, Orientation: DeviceOrientation.LandscapeInverted),
-            (Width: 200, Height: 120, Orientation: DeviceOrientation.Portrait),
-            (Width: 200, Height: 120, Orientation: DeviceOrientation.Landscape),
-            (Width: 200, Height: 120, Orientation: DeviceOrientation.PortraitInverted),
-            (Width: 200, Height: 120, Orientation: DeviceOrientation.LandscapeInverted),
-        };
-
-        foreach (var testCase in cases)
-        {
-            var config = new ScreenConfig
-            {
-                Width = testCase.Width,
-                Height = testCase.Height,
-                Orientation = testCase.Orientation,
-                Margin = 3,
-                OffsetX = 2,
-                OffsetY = 1,
-            };
-            using var native = new DesktopCaptureFrameSource(
-                new ScreenCaptureRegion(0, 0, 800, 480),
-                config,
-                new PatternCapturer(),
-                sharedFrames: null,
-                preferNativeRgb565: true);
-            using var fallback = new DesktopCaptureFrameSource(
-                new ScreenCaptureRegion(0, 0, 800, 480),
-                config,
-                new PatternCapturer(),
-                sharedFrames: null,
-                preferNativeRgb565: false);
-            var nativePixels = new byte[config.Width * config.Height * 2];
-            var fallbackPixels = new byte[nativePixels.Length];
-
-            native.Render(new TelemetryFrame(), nativePixels);
-            fallback.Render(new TelemetryFrame(), fallbackPixels);
-
-            Rgb565Similarity.AssertLooksTheSame(
-                fallbackPixels,
-                nativePixels,
-                config.Width,
-                config.Height,
-                $"native rear-view composition at {config.Width}x{config.Height} {config.Orientation}");
-        }
-    }
-
-    [Fact]
-    public void NativeRearViewCompositionReadsEachNewCapturedFrame()
+    public void CaptureSourceReadsEachNewCapturedFrame()
     {
         var config = new ScreenConfig
         {

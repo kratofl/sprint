@@ -67,6 +67,7 @@ else
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<InviteService>();
 builder.Services.AddSingleton<CatalogService>();
+builder.Services.AddSingleton<LapShareService>();
 builder.Services.AddHostedService<InviteReaper>();
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────────

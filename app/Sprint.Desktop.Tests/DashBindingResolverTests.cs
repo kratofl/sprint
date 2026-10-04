@@ -72,6 +72,29 @@ public sealed class DashBindingResolverTests
     }
 
     [Fact]
+    public void ResolvesPlannedTargetsFromTheThirdContextMember()
+    {
+        var context = new DashBindingContext(
+            new TelemetryFrame(),
+            new AppSettings(),
+            new DashTargets { LapTimeSeconds = 100.5, FuelPerLapLiters = 3.4 });
+
+        Assert.Equal(100.5, DashBindingResolver.Resolve(context, "target.lapTime"));
+        Assert.Equal(3.4, DashBindingResolver.Resolve(context, "target.fuelPerLapLiters"));
+    }
+
+    [Fact]
+    public void AnUnplannedTargetResolvesToAbsentRatherThanZero()
+    {
+        // Zero would be a target the driver could try to hit. Absent is the honest answer,
+        // and it is what puts a widget bound to it into its no-data state.
+        var context = new DashBindingContext(new TelemetryFrame(), new AppSettings());
+
+        Assert.Null(DashBindingResolver.Resolve(context, "target.lapTime"));
+        Assert.Null(DashBindingResolver.Resolve(context, "target.fuelPerLapLiters"));
+    }
+
+    [Fact]
     public void UnknownBindingReturnsNull()
     {
         var context = new DashBindingContext(new TelemetryFrame(), new AppSettings());

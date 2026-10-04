@@ -18,15 +18,73 @@ public sealed record TelemetryFrame
     public RaceState Race { get; init; } = new();
     public EnergyState Energy { get; init; } = new();
     public PenaltiesState Penalties { get; init; } = new();
+    public SessionConditions Conditions { get; init; } = new();
+}
+
+/// <summary>
+/// The conditions a session is being run under. Every value is nullable because no game
+/// reports all of them: null means "this game did not say", never a default. Recorded with
+/// each lap so filtering history by conditions becomes possible later without re-driving
+/// anything.
+/// </summary>
+public sealed record SessionConditions
+{
+    /// <summary>Average wetness of the racing line, 0–1. Null when the game does not report it.</summary>
+    public double? PathWetness { get; init; }
+
+    /// <summary>
+    /// Track grip as the game grades it. A game-defined level, not a physical coefficient,
+    /// so it is only comparable against itself.
+    /// </summary>
+    public double? TrackGripLevel { get; init; }
+
+    /// <summary>Fuel usage multiplier, where the game exposes one.</summary>
+    public double? FuelMultiplier { get; init; }
+
+    /// <summary>Tyre wear multiplier, where the game exposes one.</summary>
+    public double? TireMultiplier { get; init; }
+
+    /// <summary>Whether the session forces a fixed setup.</summary>
+    public bool? FixedSetup { get; init; }
 }
 
 public sealed record SessionInfo
 {
     public string Game { get; init; } = "";
     public string Track { get; init; } = "";
+
+    /// <summary>
+    /// Length of the track layout in metres, or null when unknown. Recorded beside a lap's
+    /// context as a cross-check between writers — a live lap distance and an imported track
+    /// length should agree about which layout was driven.
+    /// </summary>
+    public double? TrackLengthMeters { get; init; }
     public string Car { get; init; } = "";
+
+    /// <summary>
+    /// The car's class as the game states it (e.g. "Hypercar"), empty when unknown. Kept
+    /// beside <see cref="Car"/> so history can record class as metadata without making it
+    /// part of a context key.
+    /// </summary>
+    public string CarClass { get; init; } = "";
     public SessionType SessionType { get; init; } = SessionType.Unknown;
+
+    /// <summary>Seconds elapsed in the current session.</summary>
     public double SessionTime { get; init; }
+
+    /// <summary>
+    /// Total length of a timed session in seconds, or null when the game does not report
+    /// one (a lap-based session) or reports an implausible value. Null means unknown — a
+    /// planner must ask rather than commit a number nobody can vouch for.
+    /// </summary>
+    public double? TotalSessionTime { get; init; }
+
+    /// <summary>
+    /// Seconds left in a timed session, or null when the session has no known length. Only
+    /// meaningful alongside <see cref="TotalSessionTime"/>: without a total there is
+    /// nothing for a remainder to be a remainder of.
+    /// </summary>
+    public double? SessionTimeRemaining { get; init; }
     public double BestLapTime { get; init; }
     public int MaxLaps { get; init; }
     public bool InCar { get; init; }
@@ -97,6 +155,14 @@ public sealed record LapState
     public double TargetLapTime { get; init; }
     public double Delta { get; init; }
     public int Sector { get; init; }
+
+    /// <summary>
+    /// Durations of the last completed lap's sectors in seconds, in order. Empty when the
+    /// game has not reported credible marks yet (an out lap, or a build that does not fill
+    /// them). Durations, not the cumulative marks sims usually publish.
+    /// </summary>
+    public IReadOnlyList<double> LastLapSectorsSeconds { get; init; } = [];
+
     public bool IsValid { get; init; } = true;
     public float TrackPosition { get; init; }
 }

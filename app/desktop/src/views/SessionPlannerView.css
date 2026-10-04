@@ -1,0 +1,317 @@
+/* Session planner (SessionPlannerView.tsx). Composes the shared Fluent primitives from
+   styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .segmented,
+   .field, .content-dialog); this file only lays them out and adds what the page owns: the
+   plan/segment column grids, the lap strip and the step indicator. Tokens come from
+   @sprint/tokens/windows.css only. */
+
+.planner-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.planner-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.planner-kpi-skeleton {
+  min-height: 82px;
+}
+
+.planner-card-skeleton {
+  min-height: 240px;
+}
+
+/* KPI details can be long ("Practice · Fastest · 9 laps · time only"): one line, full text in the title. */
+.planner-kpi-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── List cards: plan and segment column grids ──────────────────────────── */
+
+.planner-plan-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) 96px 120px 28px;
+  gap: 12px;
+}
+
+.planner-segment-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 48px 72px;
+  gap: 12px;
+}
+
+.planner-segment-columns > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-num {
+  text-align: right;
+}
+
+/* A row's delete button sits at the right edge of the 28px column. */
+.planner-row {
+  height: 32px;
+  padding-right: 2px;
+}
+
+.planner-row-plan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The row's keyboard target: reads as the row's bold title, not as a button. */
+.planner-row-name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-row-context {
+  color: var(--label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.planner-row-laps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planner-row-delete {
+  color: var(--label-secondary);
+}
+
+.planner-strip {
+  display: block;
+  flex: none;
+  fill: var(--blue-500);
+}
+
+.planner-strip-empty {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+.planner-segment-kind {
+  font-weight: 600;
+}
+
+/* ── An opened plan ─────────────────────────────────────────────────────── */
+
+.planner-plan-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.planner-back {
+  margin-left: -8px;
+}
+
+.planner-plan-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.planner-plan-name {
+  margin: 0;
+  font: 600 20px/28px var(--font-display);
+}
+
+.planner-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.planner-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.planner-facts dl {
+  margin: 0;
+}
+
+.planner-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.planner-fact:last-child {
+  border-bottom: 0;
+}
+
+.planner-fact dt {
+  color: var(--label-secondary);
+}
+
+.planner-fact dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.planner-notes {
+  margin: 0;
+  color: var(--label-secondary);
+  white-space: pre-wrap;
+}
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+
+.planner-confirm {
+  width: min(440px, 100%);
+}
+
+.planner-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.planner-form-wide {
+  grid-column: 1 / -1;
+}
+
+.planner-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.planner-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planner-race-length {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.planner-unit-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planner-unit-input input {
+  width: 96px;
+}
+
+/* Step indicator: done = brand check, current = brand marker, ahead = neutral; the
+   connector turns brand behind you. Each step is a button, so a step can be revisited. */
+.planner-steps {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planner-steps li {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.planner-steps li:last-child {
+  flex: none;
+}
+
+.planner-steps li:not(:last-child)::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  margin: 0 8px;
+  background: var(--divider);
+}
+
+.planner-steps li.done::after {
+  background: var(--brand-500);
+}
+
+.planner-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.planner-step:hover {
+  background: var(--subtle-hover);
+}
+
+.planner-step-marker {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 1px solid var(--control-stroke-bottom);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.planner-steps li.done .planner-step-marker,
+.planner-steps li.current .planner-step-marker {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+  color: var(--on-brand);
+}
+
+.planner-steps li.current .planner-step {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.planner-step-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

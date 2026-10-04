@@ -19,3 +19,5 @@ export type {
 } from './engineer'
 
 export type { AppSettings, NewDashDefaults, DashEditorPanelPreferences, DashEditorUIPreferences, ReleaseInfo, FormatPreferences, LapFormat, SpeedUnit, TempUnit, PressureUnit, DeltaPrecision } from './settings'
+
+export type { ShareLapInput, SharedLapSummary, SharedLapDto } from './sharing'

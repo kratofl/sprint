@@ -33,6 +33,14 @@ public sealed record UserProfile
     [JsonPropertyName("email")]
     public string Email { get; init; } = "";
 
+    /// <summary>
+    /// What other drivers see. A shared lap is attributed to this, never to
+    /// <see cref="Email"/> — crediting somebody's Spa lap to <c>luca@…</c> is both wrong and a
+    /// disclosure nobody asked for. Empty until the driver sets one.
+    /// </summary>
+    [JsonPropertyName("displayName")]
+    public string DisplayName { get; init; } = "";
+
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; init; }
 }

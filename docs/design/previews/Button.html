@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>Button</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.row{display:flex;flex-wrap:wrap;gap:var(--space-sm);align-items:center;padding:var(--space-2xl) var(--space-3xl)}
+button{font-family:inherit;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.m{height:40px;padding:0 18px;border-radius:var(--radius-md);font-size:14px;font-weight:600}
+.primary{background:var(--brand-500);color:var(--on-brand)}
+.secondary{background:var(--fill);color:var(--label)}
+.outline{background:var(--surface);color:var(--label);border:1px solid var(--border);font-weight:500}
+.text{background:transparent;color:var(--link);padding:0 12px}
+.danger{background:var(--red-100);color:var(--red-700)}
+.s{height:28px;padding:0 12px;border-radius:var(--radius-sm);font-size:12px;font-weight:600}
+.l{height:48px;padding:0 22px;border-radius:var(--radius-md);font-size:15px;font-weight:600}
+.xl{height:56px;padding:0 28px;border-radius:var(--radius-pill);font-size:17px;font-weight:600}
+</style></head>
+<body>
+<div class="row">
+<button class="m primary">Primär</button>
+<button class="m secondary">Sekundär</button>
+<button class="m outline">Umrandet</button>
+<button class="m text">Text</button>
+<button class="m danger">Löschen</button>
+</div>
+<div class="row" style="padding-top:0">
+<button class="s primary">S</button>
+<button class="m primary">M</button>
+<button class="l primary">L</button>
+<button class="xl primary">XL · Pill</button>
+</div>
+</body>
+</html>

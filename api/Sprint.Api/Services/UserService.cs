@@ -53,8 +53,35 @@ public sealed class UserService(
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var user = await db.Users.FindAsync([userId], ct);
-        return user is null
-            ? null
-            : new UserProfile { Id = user.Id, Email = user.Email, CreatedAt = user.CreatedAt };
+        return user is null ? null : Profile(user);
     }
+
+    /// <summary>
+    /// Sets the name other drivers see. Trimmed and bounded: this is the one field of a user
+    /// that strangers read, so it cannot be blank-but-not-empty or a paragraph.
+    /// </summary>
+    public async Task<UserProfile> SetDisplayNameAsync(string userId, string displayName, CancellationToken ct = default)
+    {
+        var trimmed = (displayName ?? "").Trim();
+        if (trimmed.Length is 0 or > 40)
+        {
+            throw new GraphQLException("A display name must be between 1 and 40 characters.");
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        var user = await db.Users.FindAsync([userId], ct)
+            ?? throw new GraphQLException("That user no longer exists.");
+
+        user.DisplayName = trimmed;
+        await db.SaveChangesAsync(ct);
+        return Profile(user);
+    }
+
+    private static UserProfile Profile(UserEntity user) => new()
+    {
+        Id = user.Id,
+        Email = user.Email,
+        DisplayName = user.DisplayName,
+        CreatedAt = user.CreatedAt,
+    };
 }

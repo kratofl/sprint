@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>SelectionGuide</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--surface);color:var(--label);font-size:13px}
+.t{padding:var(--space-2xl) var(--space-3xl)}
+h1{margin:0 0 10px;font-size:15px;font-weight:600}
+.r{display:grid;grid-template-columns:1.7fr 1fr 1.5fr;gap:12px;align-items:center;min-height:36px;border-bottom:1px solid var(--separator)}
+.r:last-child{border-bottom:0}
+.h{min-height:28px;font-size:11px;font-weight:600;color:var(--label-secondary)}
+.r b{font-weight:600}
+.r span:last-child{color:var(--label-secondary)}
+</style></head>
+<body>
+<div class="t">
+<h1>Welches Element wann?</h1>
+<div class="r h"><span>Situation</span><span>Element</span><span>Beispiel</span></div>
+<div class="r"><span>2–5 kurze Optionen, ändern die Darstellung derselben Daten, alle sichtbar</span><b>Segmented (flach)</b><span>Monat / Quartal / Jahr</span></div>
+<div class="r"><span>Zwischen eigenständigen Bereichen einer Seite wechseln (2–6)</span><b>Tab-Umschalter (Glass)</b><span>Übersicht / Buchungen / Verträge</span></div>
+<div class="r"><span>6+ Optionen, lange/dynamische Labels, Formularwert, selten geändert</span><b>Dropdown (Pop-up)</b><span>Kategorie, Wiederholung, Währung</span></div>
+<div class="r"><span>Liste von Aktionen, mind. 3</span><b>Pull-down-Button</b><span>Exportieren ▾</span></div>
+<div class="r"><span>Fortlaufender Zeitraum vor/zurück</span><b>Stepper ‹ ›</b><span>‹ September 2026 ›</span></div>
+<div class="r"><span>An/Aus sofort · im Formular mit Speichern</span><b>Switch · Checkbox</b><span>„Automatisch kategorisieren“</span></div>
+<div class="r"><span>Mehrfachauswahl zum Filtern</span><b>Filter-Chips</b><span>Lebensmittel · Freizeit</span></div>
+<div class="r"><span>Navigation zwischen App-Bereichen</span><b>Sidebar / Tab-Bar</b><span>nie Segmented oder Tabs</span></div>
+</div>
+</body>
+</html>

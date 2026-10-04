@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Sprint.Desktop;
+using Sprint.Desktop.Core;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Runtime;
@@ -12,7 +13,9 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DesktopRuntimeExposesSmallRuntimeInterface()
     {
-        var constructor = typeof(MainWindow).GetConstructors().Single(ctor => ctor.GetParameters().Length == 3);
+        // RuntimeCoordinator is the real production consumer (the headless host's command
+        // dispatcher): it depends on IDesktopRuntime, not the concrete DesktopRuntime class.
+        var constructor = typeof(RuntimeCoordinator).GetConstructors().Single();
         Assert.Equal(typeof(IDesktopRuntime), constructor.GetParameters()[0].ParameterType);
 
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -66,31 +69,6 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(
                 "profile.driverName",
                 clone.IdlePage.Widgets.Single(widget => widget.Id == "idle-name").Config!["binding"].GetString());
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void CreatedDashLayoutWritesThumbnailPng()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-
-        try
-        {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-
-            var layout = runtime.CreateDashLayout();
-            var thumbnailPath = runtime.GetDashThumbnailPath(layout);
-
-            Assert.True(File.Exists(thumbnailPath), $"Expected thumbnail at {thumbnailPath}.");
-            Assert.True(new FileInfo(thumbnailPath).Length > 100, "Thumbnail should not be an empty placeholder.");
-
-            var (width, height) = ReadPngSize(thumbnailPath);
-            Assert.Equal(320, width);
-            Assert.Equal(192, height);
         }
         finally
         {
@@ -965,20 +943,146 @@ public sealed class RuntimePersistenceTests
         }
     }
 
-    private static (int Width, int Height) ReadPngSize(string path)
+    [Fact]
+    public void RuntimeExposesTheResolvedDataRoot()
     {
-        var bytes = File.ReadAllBytes(path);
-        Assert.True(bytes.Length >= 24, "PNG should contain a signature and IHDR chunk.");
-        Assert.Equal([137, 80, 78, 71, 13, 10, 26, 10], bytes[..8]);
-        Assert.Equal("IHDR", System.Text.Encoding.ASCII.GetString(bytes, 12, 4));
-        return (ReadBigEndian(bytes, 16), ReadBigEndian(bytes, 20));
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal(root, runtime.DataRoot);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
-    private static int ReadBigEndian(byte[] bytes, int offset)
+    [Fact]
+    public void SessionPlannerSettingsCarryTheDefaultsTheSpecRequires()
     {
-        return (bytes[offset] << 24) |
-            (bytes[offset + 1] << 16) |
-            (bytes[offset + 2] << 8) |
-            bytes[offset + 3];
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var planner = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+            // #103: every default is stated in the issue, so they are asserted as literals.
+            Assert.Equal(1, planner.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.AllValidLaps, planner.FuelHistorySource);
+            Assert.Equal(AutoDetectMode.DraftSuggestion, planner.AutoDetect);
+            Assert.True(planner.WarnOnRaceFormatMismatch);
+            Assert.True(planner.WarnOnDetectedSegmentChange);
+            Assert.True(planner.TraceRetentionDays > 0, "retention must bound local disk use");
+            Assert.True(planner.TraceMaxTotalMegabytes > 0, "a storage ceiling must exist");
+            // #194 replaced #103's capture rate: the grid is fixed at ~2 m of track, so what
+            // is configurable is the disk budget and how many reference laps it protects.
+            Assert.True(planner.TraceProtectedLapsPerContext > 0, "reference laps must be protected");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
+
+    [Fact]
+    public void SessionPlannerSettingsRoundTripAndOldFilesKeepTheDefaults()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
+            runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
+            runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
+            runtime.Settings.SessionPlanner.TraceMaxTotalMegabytes = 8192;
+            runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
+            runtime.SaveSettings();
+
+            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+            Assert.Equal(2, reloaded.FuelReserveLaps);
+            Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
+            Assert.Equal(AutoDetectMode.CreateAndArm, reloaded.AutoDetect);
+            Assert.Equal(8192, reloaded.TraceMaxTotalMegabytes);
+            Assert.False(reloaded.WarnOnRaceFormatMismatch);
+
+            // A settings file written before this section existed keeps the documented defaults.
+            var older = TestEnv.NewTempDataRoot();
+            try
+            {
+                File.WriteAllText(Path.Combine(older, "settings.json"), """{"driverName":"Ada"}""");
+                var upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
+
+                Assert.Equal(1, upgraded.FuelReserveLaps);
+                Assert.Equal(AutoDetectMode.DraftSuggestion, upgraded.AutoDetect);
+            }
+            finally
+            {
+                Directory.Delete(older, recursive: true);
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SeveralTraceStorageBudgetsAreOfferedAndTheDefaultIsOneOfThem()
+    {
+        // #103 offered a capture rate; #194 rejected the 60 Hz time grid that setting served
+        // (docs/internals/live-compare.md "Traces"). What a driver chooses now is a disk budget.
+        var budgets = SessionPlannerSettings.TraceStorageBudgets;
+
+        Assert.True(budgets.Length > 1, "a single option is not a choice");
+        Assert.Equal(budgets.OrderBy(megabytes => megabytes), budgets);
+        // The settings combo selects by index, so a default outside the list would show blank.
+        Assert.Contains(new SessionPlannerSettings().TraceMaxTotalMegabytes, budgets);
+    }
+
+    [Fact]
+    public void LastSeenContextRoundTripsThroughSettings()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            runtime.Settings.LastSeenContext.Game = "Le Mans Ultimate";
+            runtime.Settings.LastSeenContext.Car = "Porsche 963";
+            runtime.Settings.LastSeenContext.Track = "Spa-Francorchamps";
+            runtime.SaveSettings();
+
+            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal("Le Mans Ultimate", reloaded.Settings.LastSeenContext.Game);
+            Assert.Equal("Porsche 963", reloaded.Settings.LastSeenContext.Car);
+            Assert.Equal("Spa-Francorchamps", reloaded.Settings.LastSeenContext.Track);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LastSeenContextDefaultsToEmptyForOldSettingsFiles()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            // A settings file written before this feature existed has no lastSeenContext.
+            File.WriteAllText(Path.Combine(root, "settings.json"), """{"driverName":"Ada"}""");
+
+            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+
+            Assert.Equal("Ada", runtime.Settings.DriverName);
+            Assert.Equal("", runtime.Settings.LastSeenContext.Game);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
 }

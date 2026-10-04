@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>Toast</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.stage{position:relative;height:110px;overflow:hidden}
+.under{position:absolute;left:20px;right:20px;top:16px;bottom:16px;display:flex;gap:12px}
+.under div{flex:1;border-radius:var(--radius-lg)}
+.toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:10px;padding:10px 10px 10px 12px;border-radius:var(--radius-pill);background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(180%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);border:1px solid var(--glass-border);box-shadow:var(--shadow-glass);white-space:nowrap}
+.ok{width:22px;height:22px;border-radius:999px;background:var(--green-500);color:var(--green-900);display:flex;align-items:center;justify-content:center}
+.undo{height:28px;padding:0 10px;border:0;border-radius:var(--radius-pill);background:var(--fill);color:var(--label);font-family:inherit;font-size:13px;font-weight:600}
+</style></head>
+<body>
+<div class="stage">
+<div class="under"><div style="background:var(--surface)"></div><div style="background:var(--brand-500)"></div><div style="background:var(--purple-500)"></div></div>
+<div class="toast" role="status"><span class="ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></span><span style="font-size:14px;font-weight:600">Änderungen gesichert</span><button class="undo">Widerrufen</button></div>
+</div>
+</body>
+</html>

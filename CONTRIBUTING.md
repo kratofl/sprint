@@ -32,17 +32,19 @@ make test
 
 See the [README](README.md) for more options including Docker.
 
-### Desktop app (.NET / Avalonia)
+### Desktop app (.NET host + Electron/React UI)
 
-The desktop app (`app/Sprint.Desktop.slnx`) is a separate .NET 10 solution — see
-[`app/README.md`](app/README.md) for the full development guide (module
-boundaries, feature layout, testing seams, adding a game).
+The desktop app pairs a headless .NET 10 host (`app/Sprint.Desktop.slnx`) with an
+Electron + React UI (`app/desktop`) — see [`app/README.md`](app/README.md) for the
+full development guide (module boundaries, feature layout, testing seams, adding
+a game).
 
 ```powershell
-make dev-app        # run the Avalonia shell (dotnet run)
-make lint-app       # build with warnings as errors (the real gate)
-make test-app       # xunit tests (dotnet test)
-make build-app      # publish → app/build/bin
+make dev-app        # run the app (Vite + Electron + native host)
+make dev-host       # run only the native host (loopback HTTP, no UI)
+make lint-app       # build .NET with warnings as errors + type-check the UI (the real gate)
+make test-app       # native xunit + dashboard/electron TS tests
+make build-app      # publish the host + package the Electron app → app/build/bin
 ```
 
 > **SDK note:** the .NET `10.0.301` SDK (pinned by `global.json`) is installed
@@ -68,8 +70,10 @@ make build-app      # publish → app/build/bin
 ### C# (desktop-specific)
 - Keep game-specific code in `Sprint.Games` and UI-free contracts in
   `Sprint.Desktop.Api` — the project references enforce these seams
-- Prefer pure, testable presenter/reducer seams over growing `MainWindow.cs`; do
-  not hardcode hex outside `Graphite.cs`
+- `Sprint.Desktop.Core` owns native behaviour and stays free of any UI framework;
+  prefer pure, testable presenter/reducer seams there. Don't hardcode hex in the
+  desktop UI — `app/desktop` reads the `@sprint/tokens/windows.css` custom
+  properties
 
 ### General
 - Comment only when the code isn't self-explanatory
@@ -124,9 +128,11 @@ See the [README](README.md#adding-a-new-game) for the step-by-step guide. In sho
 
 1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in `app/Sprint.Games`,
    mapping the game's shared memory / structs to `TelemetryFrame`
-2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`
-3. Wire it into the composition root (see
-   [`app/README.md`](app/README.md#adding-a-game-desktop))
+2. Implement `IGameProvider` and register it in `GameProviders`; return `null` from
+   the optional `Results`/`Setups`/`Schedule` capabilities the game cannot support
+3. `GameProviders.Default` picks up the first registered real game automatically
+   (see [`app/README.md`](app/README.md#adding-a-game-desktop)) — no other wiring
+   is needed
 
 ## Questions?
 

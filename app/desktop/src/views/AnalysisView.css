@@ -1,0 +1,407 @@
+/* Analysis (AnalysisView.tsx, AnalysisChart.tsx). Composes the shared Fluent primitives from
+   styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .chip); this file lays them out
+   and adds what the page owns: column grids, the comparison-row indicator, the lap pick
+   toggles and the chart card. Primary/current = brand-500, comparison = blue-500, everywhere
+   on this page, so a legend square, a row indicator and a line always agree. Tokens come from
+   @sprint/tokens/windows.css only. */
+
+.analysis-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.analysis-page .command-bar select {
+  max-width: 220px;
+}
+
+.analysis-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.analysis-kpi-skeleton {
+  min-height: 82px;
+}
+
+.analysis-card-skeleton {
+  min-height: 320px;
+}
+
+.analysis-kpi-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Session head ───────────────────────────────────────────────────────── */
+
+.analysis-session-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.analysis-back {
+  margin-left: -8px;
+}
+
+.analysis-session-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.analysis-session-name {
+  margin: 0;
+  font: 600 20px/28px var(--font-display);
+}
+
+/* ── List cards: session and lap column grids ───────────────────────────── */
+
+/* Empty list with a "Clear filters" button beside the message. */
+.analysis-list-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.analysis-session-columns {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) 48px 80px;
+  gap: 12px;
+}
+
+.analysis-lap-columns {
+  display: grid;
+  /* Fixed action column: a pressed toggle grows by its series square, and every row (and the
+     header) must keep the same column edges. */
+  grid-template-columns: 80px 88px 88px minmax(0, 1fr) 172px;
+  gap: 12px;
+}
+
+.list-row.analysis-lap-columns,
+.list-row.analysis-session-columns {
+  height: 32px;
+}
+
+.analysis-num {
+  text-align: right;
+}
+
+.analysis-strong {
+  font-weight: 600;
+}
+
+.analysis-secondary {
+  color: var(--label-secondary);
+}
+
+.analysis-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-cell-strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+/* The comparison lap's row: same fill as a selected row, blue indicator instead of brand. */
+.list-row.is-comparison {
+  background: var(--subtle-selected);
+}
+
+.list-row.is-comparison::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--blue-500);
+}
+
+/* Trace availability (dot + word): a lap without channels reads secondary. */
+.analysis-trace-missing {
+  color: var(--label-secondary);
+}
+
+.analysis-lap-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Primary/Compare toggles: a pressed toggle gains its series square and the selected fill.
+   Neither is ever a .primary button — the page has no primary action. */
+/* `.button.small` aligns itself to the top of a flex row; these sit on the row's centre line. */
+.analysis-lap-actions > .button {
+  align-self: center;
+}
+
+.analysis-pick[aria-pressed='true'] {
+  background: var(--subtle-selected);
+  font-weight: 600;
+}
+
+.analysis-pick[aria-pressed='true']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.analysis-pick.role-comparison[aria-pressed='true']::before {
+  background: var(--blue-500);
+}
+
+/* ── Lap comparison chart card ──────────────────────────────────────────── */
+
+.analysis-chart-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.analysis-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 20px;
+}
+
+.analysis-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.analysis-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.analysis-legend-key {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.analysis-legend-item.role-comparison .analysis-legend-key {
+  background: var(--blue-500);
+}
+
+.analysis-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-legend-clear {
+  width: 20px;
+  height: 20px;
+  margin-left: -2px;
+  color: var(--label-secondary);
+}
+
+.analysis-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.analysis-chart-empty {
+  margin: 0;
+  padding: 20px 16px;
+  text-align: center;
+}
+
+/* The stack owns one shared crosshair: hover or keyboard focus anywhere in it moves every
+   panel's cursor together (mirrors the old Avalonia ChartStackView, one control per stack). */
+.analysis-chart-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: var(--radius-control);
+  cursor: crosshair;
+}
+
+.analysis-chart-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.analysis-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 16px;
+}
+
+.analysis-chart-title {
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.analysis-chart-head-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Identity never rests on colour alone: a legend entry always pairs its square with the series name. */
+.analysis-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+
+.analysis-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.analysis-chart-legend-key {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.analysis-chart-unit {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.analysis-chart-plot {
+  position: relative;
+}
+
+.analysis-chart-svg {
+  display: block;
+  width: 100%;
+  height: 148px;
+  overflow: visible;
+}
+
+.analysis-chart-grid {
+  stroke: var(--divider);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.analysis-chart-axis-label {
+  font-size: 12px;
+  fill: var(--label-secondary);
+}
+
+.analysis-chart-empty-panel {
+  margin: 0;
+  padding: 16px;
+  border-bottom: 1px solid var(--divider);
+  color: var(--label-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Crosshair chrome stays neutral so the only loud thing in a chart is its data. */
+.analysis-chart-cursor-line {
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.analysis-chart-marker-ring {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+/* Readout flyout beside the crosshair. */
+.analysis-chart-readout {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-flyout);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.analysis-chart-readout-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analysis-chart-readout-key {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
+}
+
+.analysis-chart-readout-value {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.analysis-chart-axis-svg {
+  display: block;
+  width: 100%;
+  height: 24px;
+}
+
+.analysis-chart-cursor-chip {
+  fill: var(--surface);
+  stroke: var(--card-stroke);
+  stroke-width: 1;
+}
+
+.analysis-chart-cursor-chip-label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--label);
+}

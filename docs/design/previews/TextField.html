@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>TextField</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--surface);color:var(--label);font-size:14px}
+.wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-2xl);padding:var(--space-3xl)}
+.col{display:flex;flex-direction:column;gap:6px}
+.lbl{font-size:13px;font-weight:600}
+input{height:40px;box-sizing:border-box;padding:0 var(--space-lg);border-radius:var(--radius-md);border:1px solid var(--border);background:var(--surface);color:var(--label);font-family:inherit;font-size:14px;outline:none}
+input::placeholder{color:var(--label-disabled)}
+.focus{border-color:var(--focus-ring);outline:2px solid var(--focus-ring);outline-offset:2px}
+.err{border-color:var(--red-500)}
+.msg{font-size:13px;color:var(--danger-text)}
+</style></head>
+<body>
+<div class="wrap">
+<div class="col"><label class="lbl" for="a">Beschreibung</label><input id="a" placeholder="z. B. REWE"></div>
+<div class="col"><label class="lbl" for="b">Beschreibung</label><input id="b" class="focus" value="REWE Markt"></div>
+<div class="col"><label class="lbl" for="c">E-Mail</label><input id="c" class="err" value="luca@webix" aria-invalid="true" aria-describedby="m"><span class="msg" id="m">Gib eine gültige E-Mail-Adresse ein.</span></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>Notification</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.stage{position:relative;height:150px;overflow:hidden}
+.under{position:absolute;left:20px;right:20px;top:20px;bottom:20px;display:flex;gap:12px}
+.under div{flex:1;border-radius:var(--radius-xl)}
+.note{position:absolute;right:32px;top:28px;width:360px;box-sizing:border-box;padding:14px;display:flex;gap:12px;border-radius:20px;background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(180%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);border:1px solid var(--glass-border);box-shadow:var(--shadow-glass)}
+.tile{width:36px;height:36px;flex-shrink:0;border-radius:10px;background:var(--brand-500);color:var(--on-brand);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px}
+.t{display:flex;justify-content:space-between;font-size:14px;font-weight:600}
+.t span:last-child{font-size:12px;font-weight:400;opacity:.75}
+.b{font-size:13px;line-height:18px}
+</style></head>
+<body>
+<div class="stage">
+<div class="under"><div style="background:var(--surface)"></div><div style="background:var(--blue-500)"></div><div style="background:var(--brand-500)"></div></div>
+<div class="note" role="alert">
+<div class="tile">W</div>
+<div style="display:flex;flex-direction:column;gap:2px;flex-grow:1"><div class="t"><span>Budget fast ausgeschöpft</span><span>jetzt</span></div><span class="b">CRM-Migration hat 90 % des Budgets erreicht – 12 Tage vor Fälligkeit.</span></div>
+</div>
+</div>
+</body>
+</html>

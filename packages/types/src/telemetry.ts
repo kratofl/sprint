@@ -5,9 +5,19 @@ export type SessionType = 'practice' | 'qualify' | 'race' | 'warmup' | 'unknown'
 export interface Session {
   game: string
   track: string
+  // Length of the track layout in metres; null when unknown. Recorded beside a lap's
+  // context as a cross-check that two writers mean the same layout.
+  trackLengthMeters: number | null
   car: string
+  carClass: string // car class as the game states it (e.g. 'Hypercar'); '' when unknown
   sessionType: SessionType
-  sessionTime: number
+  sessionTime: number // seconds elapsed in the session
+  // Total length of a timed session in seconds. null when the session is lap-based or the
+  // game reports an implausible value — unknown, never a number to plan against.
+  totalSessionTime: number | null
+  // Seconds left in a timed session; null whenever totalSessionTime is null, since a
+  // remainder without a total describes nothing.
+  sessionTimeRemaining: number | null
   bestLapTime: number
   maxLaps: number // total laps for this session; 0 for time-based sessions
   inCar: boolean  // true only when the player has an active vehicle on track
@@ -60,6 +70,9 @@ export interface LapState {
   sector: number
   sector1Time: number
   sector2Time: number
+  // Durations (not cumulative marks) of the last completed lap's sectors, in order.
+  // Empty until the game reports credible marks.
+  lastLapSectorsSeconds: number[]
   isInLap: boolean
   isOutLap: boolean
   isValid: boolean
@@ -130,4 +143,16 @@ export interface TelemetryFrame {
   race: RaceState
   energy: EnergyState
   penalties: Penalties
+  conditions: SessionConditions
+}
+
+// Conditions a session is run under. Every value is nullable because no game reports all
+// of them: null means "this game did not say", never a default. Recorded with each lap so
+// history can later be filtered by conditions without re-driving anything.
+export interface SessionConditions {
+  pathWetness: number | null      // average wetness of the racing line, 0–1
+  trackGripLevel: number | null   // game-graded grip; only comparable against itself
+  fuelMultiplier: number | null
+  tireMultiplier: number | null
+  fixedSetup: boolean | null
 }

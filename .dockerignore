@@ -19,6 +19,11 @@ web/.next
 web/out
 **/dist
 
+# TypeScript incremental build info. These are gitignored, so a fresh clone never
+# has them — but a build from a working copy would copy them in, and `composite`
+# projects then trust the stale info, emit nothing, and leave dist/ empty.
+**/*.tsbuildinfo
+
 # .NET desktop app — native Windows/Linux app, NOT containerized. The API image
 # only needs the shared contract libs (Sprint.Contracts + Sprint.Desktop.Api), so
 # exclude the desktop-only projects and publish output.

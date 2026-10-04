@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>KpiCard</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.grid{padding:var(--space-3xl);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-2xl)}
+.card{background:var(--surface);border-radius:var(--radius-xl);padding:18px 20px;display:flex;flex-direction:column;gap:4px}
+.k{font-size:13px;color:var(--label-secondary);font-weight:500}
+.v{font-size:32px;font-weight:700;letter-spacing:-0.03em}
+.d{font-size:12px;font-weight:600}
+.track{height:6px;border-radius:999px;background:var(--fill);margin-top:4px}
+.track div{height:6px;border-radius:999px}
+</style></head>
+<body>
+<div class="grid">
+<div class="card"><span class="k">Aktive Projekte</span><span class="v">24</span><span class="d" style="color:var(--success-text)">+3 ggü. Vormonat</span></div>
+<div class="card"><span class="k">Offene Aufgaben</span><span class="v">138</span><span class="d" style="color:var(--danger-text)">9 überfällig</span></div>
+<div class="card"><span class="k">Budget genutzt</span><span class="v">64 %</span><div class="track"><div style="width:64%;background:var(--brand-500)"></div></div></div>
+</div>
+</body>
+</html>

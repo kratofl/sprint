@@ -1,0 +1,149 @@
+/* Race engineer: PageHeader + CommandBar (push, revert, push status), InfoBars for
+   the telemetry link and failures, the car controls table beside staged changes and
+   quick messages, then the radio log table. Builds on the shared primitives in
+   styles.css (.card.list-card, .list-header, .list-row, .status, .infobar) and only
+   lays them out. Tokens come from @sprint/tokens/windows.css only. */
+
+.engineer {
+  display: flex;
+  flex-direction: column;
+}
+
+.engineer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.engineer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  align-items: start;
+  gap: 12px;
+}
+
+.engineer-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.engineer-skeleton-tall {
+  min-height: 360px;
+}
+
+.engineer-skeleton {
+  min-height: 120px;
+}
+
+.engineer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engineer-secondary {
+  color: var(--label-secondary);
+}
+
+.engineer-control-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 152px;
+  gap: 12px;
+}
+
+.list-row.engineer-control-columns {
+  height: 32px;
+}
+
+.engineer-numeric {
+  text-align: right;
+}
+
+.engineer-staged-head {
+  text-align: center;
+}
+
+.engineer-control-label {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineer-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.engineer-stepper .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.engineer-control-value {
+  flex: 1;
+  text-align: center;
+}
+
+/* A staged value that differs from the car reads in the brand link colour. */
+.engineer-control-value.staged {
+  color: var(--link);
+  font-weight: 600;
+}
+
+/* ── Staged changes, quick message ────────────────────────────────────────── */
+
+.engineer-diff-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.engineer-diff-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.engineer-diff-list li + li {
+  border-top: 1px solid var(--divider);
+}
+
+.engineer-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* ── Radio log ────────────────────────────────────────────────────────────── */
+
+.engineer-radio-columns {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1.2fr) minmax(0, 2fr) 132px;
+  gap: 12px;
+}
+
+.list-row.engineer-radio-columns {
+  height: 32px;
+}
+
+.engineer-radio-message {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineer-radio-detail {
+  overflow: hidden;
+  color: var(--label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
