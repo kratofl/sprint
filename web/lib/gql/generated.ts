@@ -114,9 +114,12 @@ export type Mutation = {
   login: AuthResponse;
   publishEngineerEvent: Scalars['Boolean']['output'];
   register: AuthResponse;
+  revokeSharedLap: SharedLapSummary;
   saveLayout: LayoutSummary;
   saveSetup: SetupSummary;
   sendEngineerCommand: Scalars['Boolean']['output'];
+  setDisplayName: UserProfile;
+  shareLap: SharedLapSummary;
 };
 
 
@@ -151,6 +154,11 @@ export type MutationRegisterArgs = {
 };
 
 
+export type MutationRevokeSharedLapArgs = {
+  code: Scalars['String']['input'];
+};
+
+
 export type MutationSaveLayoutArgs = {
   input: SaveLayoutInput;
 };
@@ -166,16 +174,28 @@ export type MutationSendEngineerCommandArgs = {
   message: EngineerCommandMessageInput;
 };
 
+
+export type MutationSetDisplayNameArgs = {
+  displayName: Scalars['String']['input'];
+};
+
+
+export type MutationShareLapArgs = {
+  input: ShareLapInput;
+};
+
 export type Query = {
   health: HealthStatus;
   layout?: Maybe<LayoutSummary>;
   layouts: Array<LayoutSummary>;
   me?: Maybe<UserProfile>;
+  mySharedLaps: Array<SharedLapSummary>;
   recentTelemetry: Array<TelemetrySample>;
   session?: Maybe<SessionSummary>;
   sessions: Array<SessionSummary>;
   setup?: Maybe<SetupSummary>;
   setups: Array<SetupSummary>;
+  sharedLap: SharedLapDto;
 };
 
 
@@ -197,6 +217,11 @@ export type QuerySessionArgs = {
 
 export type QuerySetupArgs = {
   id: Scalars['String']['input'];
+};
+
+
+export type QuerySharedLapArgs = {
+  code: Scalars['String']['input'];
 };
 
 export type SaveLayoutInput = {
@@ -236,6 +261,40 @@ export type SetupSummary = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type ShareLapInput = {
+  carModel: Scalars['String']['input'];
+  drivenAt?: InputMaybe<Scalars['DateTime']['input']>;
+  game: Scalars['String']['input'];
+  lapNumber: Scalars['Int']['input'];
+  lapTimeSeconds: Scalars['Float']['input'];
+  payloadBase64: Scalars['String']['input'];
+  trackCourse: Scalars['String']['input'];
+};
+
+export type SharedLapDto = {
+  carModel: Scalars['String']['output'];
+  drivenAt?: Maybe<Scalars['DateTime']['output']>;
+  game: Scalars['String']['output'];
+  lapNumber: Scalars['Int']['output'];
+  lapTimeSeconds: Scalars['Float']['output'];
+  payloadBase64: Scalars['String']['output'];
+  shareCode: Scalars['String']['output'];
+  sharedBy: Scalars['String']['output'];
+  trackCourse: Scalars['String']['output'];
+};
+
+export type SharedLapSummary = {
+  carModel: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  game: Scalars['String']['output'];
+  id: Scalars['String']['output'];
+  lapNumber: Scalars['Int']['output'];
+  lapTimeSeconds: Scalars['Float']['output'];
+  revoked: Scalars['Boolean']['output'];
+  shareCode: Scalars['String']['output'];
+  trackCourse: Scalars['String']['output'];
+};
+
 export type Subscription = {
   engineerCommands: EngineerCommandMessage;
   engineerEvents: EngineerEventMessage;
@@ -266,6 +325,7 @@ export type TelemetrySample = {
 
 export type UserProfile = {
   createdAt: Scalars['DateTime']['output'];
+  displayName: Scalars['String']['output'];
   email: Scalars['String']['output'];
   id: Scalars['String']['output'];
 };
