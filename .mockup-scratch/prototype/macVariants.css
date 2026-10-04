@@ -1,0 +1,296 @@
+/* PROTOTYPE — throwaway. Three takes on the macOS look, judged on the real Home
+   screen in the preview harness: ?platform=mac&variant=A|B|C. Delete this folder
+   once a variant is chosen; the winner gets rewritten properly into styles.mac.css.
+
+   A  Components from the sheet: action row stays in the content, but buttons,
+      cards and inline alerts follow "Komponenten Übersicht" exactly.
+   B  Mockup toolbar: page actions move into the toolbar (brand capsule + grouped
+      icon buttons), telemetry becomes the centred toolbar capsule, flat alerts.
+   C  macOS 26 glass: floating inset sidebar, a toolbar of glass capsules over the
+      content, neutral alert card with a coloured glyph.
+   D  B, corrected against the macOS 27 HIG: toolbar groups leading / centre /
+      trailing with the one prominent action trailing next to search; the
+      informational "not supported" state is a toolbar indicator, not a banner. */
+
+/* ── Shared by A, B, C: components from the sheet ───────────────────────── */
+
+[data-mac-variant] .button {
+  height: 28px;
+  padding: 0 12px;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+[data-mac-variant] .button:hover:not(:disabled) {
+  background: var(--control-fill-hover);
+}
+
+[data-mac-variant] .button.primary {
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-weight: 600;
+}
+
+[data-mac-variant] .button.primary:hover:not(:disabled) {
+  background: var(--brand-500);
+  filter: brightness(1.05);
+}
+
+[data-mac-variant] .button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+[data-mac-variant] .command-divider {
+  display: none;
+}
+
+[data-mac-variant] .command-bar {
+  gap: 8px;
+}
+
+[data-mac-variant] .card {
+  border-radius: 14px;
+}
+
+/* ── A + B: flat inline alert — tint, bold label, message; no icon ──────── */
+
+[data-mac-variant="A"] .infobar,
+[data-mac-variant="B"] .infobar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+}
+
+[data-mac-variant="A"] .infobar-icon,
+[data-mac-variant="B"] .infobar-icon {
+  display: none;
+}
+
+[data-mac-variant="A"] .infobar.error, [data-mac-variant="B"] .infobar.error { background: var(--red-100); color: var(--red-900); }
+[data-mac-variant="A"] .infobar.warning, [data-mac-variant="B"] .infobar.warning { background: var(--yellow-100); color: var(--yellow-900); }
+[data-mac-variant="A"] .infobar.info, [data-mac-variant="B"] .infobar.info { background: var(--blue-100); color: var(--blue-900); }
+[data-mac-variant="A"] .infobar.success, [data-mac-variant="B"] .infobar.success { background: var(--green-100); color: var(--green-900); }
+
+[data-mac-variant] .infobar-message {
+  padding: 0;
+}
+
+[data-mac-variant="A"] .infobar-message,
+[data-mac-variant="B"] .infobar-message {
+  color: inherit;
+}
+
+/* ── B + C: page actions live in the toolbar ────────────────────────────── */
+
+[data-mac-variant="B"] .page-header,
+[data-mac-variant="D"] .page-header,
+[data-mac-variant="C"] .page-header {
+  margin: 0;
+}
+
+[data-mac-variant="B"] .page-header .command-bar,
+[data-mac-variant="D"] .page-header .command-bar,
+[data-mac-variant="C"] .page-header .command-bar {
+  position: fixed;
+  z-index: 5;
+  top: 12px;
+  right: 236px; /* the 200px search field, its 20px inset and a 16px gap */
+  height: 28px;
+  -webkit-app-region: no-drag;
+}
+
+[data-mac-variant="B"] .command-spacer,
+[data-mac-variant="D"] .command-spacer,
+[data-mac-variant="C"] .command-spacer,
+[data-mac-variant="B"] .overview-status,
+[data-mac-variant="D"] .overview-status,
+[data-mac-variant="C"] .overview-status {
+  display: none;
+}
+
+/* Secondary actions become one grouped capsule of icon buttons, as in the mockup. */
+[data-mac-variant="B"] .command-bar .button.subtle,
+[data-mac-variant="D"] .command-bar .button.subtle,
+[data-mac-variant="C"] .command-bar .button.subtle {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 0;
+  font-size: 0;
+}
+
+[data-mac-variant="B"] .command-bar .button.subtle > svg,
+[data-mac-variant="D"] .command-bar .button.subtle > svg,
+[data-mac-variant="C"] .command-bar .button.subtle > svg {
+  width: 16px;
+  height: 16px;
+}
+
+[data-mac-variant="B"] .command-bar .button.subtle:not(.button.subtle + .button.subtle),
+[data-mac-variant="D"] .command-bar .button.subtle:not(.button.subtle + .button.subtle),
+[data-mac-variant="C"] .command-bar .button.subtle:not(.button.subtle + .button.subtle) {
+  padding-left: 4px;
+  border-radius: 999px 0 0 999px;
+}
+
+[data-mac-variant="B"] .command-bar .button.subtle:not(:has(+ .button.subtle)),
+[data-mac-variant="D"] .command-bar .button.subtle:not(:has(+ .button.subtle)),
+[data-mac-variant="C"] .command-bar .button.subtle:not(:has(+ .button.subtle)) {
+  padding-right: 4px;
+  border-radius: 0 999px 999px 0;
+}
+
+[data-mac-variant="B"] .command-bar .button.subtle + .button.subtle,
+[data-mac-variant="D"] .command-bar .button.subtle + .button.subtle,
+[data-mac-variant="C"] .command-bar .button.subtle + .button.subtle {
+  margin-left: -8px;
+}
+
+[data-mac-variant="B"] .command-bar .button.primary,
+[data-mac-variant="D"] .command-bar .button.primary,
+[data-mac-variant="C"] .command-bar .button.primary {
+  border-radius: 999px;
+}
+
+/* ── B: the mockup toolbar ──────────────────────────────────────────────── */
+
+/* Telemetry is the toolbar's centred context capsule (the mockup's month stepper). */
+[data-mac-variant="B"] .titlebar .telemetry-badge,
+[data-mac-variant="D"] .titlebar .telemetry-badge,
+[data-mac-variant="C"] .titlebar .telemetry-badge {
+  position: fixed;
+  top: 12px;
+  left: calc(224px + (100vw - 224px) / 2);
+  transform: translateX(-50%);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--control-fill);
+}
+
+[data-mac-variant="B"] .app.collapsed .titlebar .telemetry-badge,
+[data-mac-variant="D"] .app.collapsed .titlebar .telemetry-badge,
+[data-mac-variant="C"] .app.collapsed .titlebar .telemetry-badge {
+  left: 50%;
+}
+
+/* ── C: macOS 26 glass ──────────────────────────────────────────────────── */
+
+[data-mac-variant="C"] .navview {
+  margin: 8px 0 8px 8px;
+  height: calc(100vh - 16px);
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: 16px;
+  background: var(--sidebar);
+  backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+[data-mac-variant="C"] .titlebar {
+  border-bottom: 0;
+  background: transparent;
+}
+
+[data-mac-variant="C"] .titlebar-search,
+[data-mac-variant="C"] .titlebar .telemetry-badge,
+[data-mac-variant="C"] .titlebar-back,
+[data-mac-variant="C"] .command-bar .button.subtle {
+  border: 1px solid var(--acrylic-stroke);
+  background: var(--acrylic);
+  backdrop-filter: blur(20px) saturate(1.8);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+[data-mac-variant="C"] .titlebar .telemetry-badge {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+}
+
+[data-mac-variant="C"] .card {
+  border-color: transparent;
+  border-radius: 18px;
+}
+
+/* Alert as a neutral card with the status colour only on its glyph. */
+[data-mac-variant="C"] .infobar {
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+[data-mac-variant="C"] .infobar-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+}
+
+[data-mac-variant="C"] .infobar-message {
+  color: var(--label-secondary);
+}
+
+/* ── The switcher (not part of any design) ──────────────────────────────── */
+
+.mac-variant-switcher {
+  position: fixed;
+  z-index: 1000;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--label);
+  color: var(--mica);
+  font: 600 12px/16px system-ui, sans-serif;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.mac-variant-switcher button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+
+.mac-variant-switcher span {
+  min-width: 220px;
+  text-align: center;
+}
+
+/* ── D: macOS 27 HIG corrections on top of B ────────────────────────────── */
+
+/* Trailing edge, left to right: the secondary group, the one prominent action, search. */
+[data-mac-variant="D"] .command-bar .button.primary {
+  order: 2;
+}
+
+/* Toolbar items sit bezel-less in shared capsules; the hover is the only fill. */
+[data-mac-variant="D"] .command-bar .button.subtle {
+  background: var(--control-fill);
+}
+
+/* Informational and not actionable: the HIG says indicator, not banner (Mail's
+   offline indicator). The centred toolbar status already says it. */
+[data-mac-variant="D"] .overview > .infobar {
+  display: none;
+}

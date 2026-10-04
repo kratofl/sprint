@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isRecord, readScreenOutputs } from './frames.js'
 import { NativeHost } from './native-host.js'
 import { OffscreenOutputs } from './offscreen.js'
-import { supportsMica, TRANSPARENT, windowChrome, type WindowChrome } from './windowChrome.js'
+import { macMenuTemplate } from './appMenu.js'
+import { supportsMica, TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -19,14 +20,14 @@ const X86_DOTNET = 'C:\\Program Files (x86)\\dotnet\\dotnet.exe'
  * A bare `dotnet` on this machine can resolve to a runtime-only install with
  * no SDK, which makes `dotnet run` fail. Prefer an explicit override, then
  * verify the default actually resolves an SDK before trusting it, falling
- * back to the known x86 SDK install used elsewhere in this repo.
+ * back to the known x86 SDK install used elsewhere in this repo (Windows only).
  */
 function resolveDotnetCommand(): string {
   const override = process.env.SPRINT_DOTNET_EXE
   if (override) return override
   const probe = spawnSync('dotnet', ['--list-sdks'], { windowsHide: true, encoding: 'utf8' })
   if (probe.status === 0 && probe.stdout.trim().length > 0) return 'dotnet'
-  return existsSync(X86_DOTNET) ? X86_DOTNET : 'dotnet'
+  return process.platform === 'win32' && existsSync(X86_DOTNET) ? X86_DOTNET : 'dotnet'
 }
 
 const nativeHost = new NativeHost()
@@ -172,37 +173,93 @@ ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
   subscribers.delete(event.sender)
 })
 
+const look = windowLook(process.platform)
 const micaSupported = supportsMica(process.platform, os.release())
 
 function currentChrome(): WindowChrome {
-  return windowChrome({
-    dark: nativeTheme.shouldUseDarkColors,
-    reducedTransparency: nativeTheme.prefersReducedTransparency,
-    micaSupported,
-  })
+  const dark = nativeTheme.shouldUseDarkColors
+  const reducedTransparency = nativeTheme.prefersReducedTransparency
+  return look === 'mac'
+    ? windowChrome({ look, dark, reducedTransparency })
+    : windowChrome({ look, dark, reducedTransparency, micaSupported })
 }
 
 /** Height of the renderer's title bar (styles.css `.titlebar`); the caption buttons fill it. */
 const TITLE_BAR_HEIGHT = 48
 
+/**
+ * macOS traffic lights, as the top-left of the close button. The renderer's
+ * toolbar band is 52px tall and reserves the first 80px of the sidebar header
+ * for the buttons. Each button is a 14px square, so y = (52 - 14) / 2 = 19
+ * centres them on the band. The buttons sit 23px apart on macOS 26+ (20px
+ * before), so x = 16 ends the zoom button at 76px, inside the 80px.
+ */
+const TRAFFIC_LIGHT_POSITION = { x: 16, y: 19 }
+
+/** BrowserWindow options that differ between the Windows and macOS looks. */
+function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
+  switch (chrome.kind) {
+    case 'mica':
+    case 'solid': {
+      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
+      return {
+        // The renderer leaves its window background transparent (see main.tsx), so the
+        // title bar and navigation pane show whatever is drawn here: Mica, or its solid colour.
+        backgroundColor: background,
+        ...(micaSupported ? { backgroundMaterial: chrome.kind === 'mica' ? ('mica' as const) : ('none' as const) } : {}),
+        // The app's 48px title bar is the window title bar. Hiding the OS one but keeping
+        // its caption buttons as an overlay retains the real Windows minimise,
+        // snap/maximise and close — including the Snap Layouts flyout, which a drawn
+        // HTML button cannot offer.
+        titleBarStyle: 'hidden',
+        titleBarOverlay: { color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+      }
+    }
+    case 'vibrancy':
+    case 'opaque':
+      return {
+        // The renderer paints its content opaque and leaves the sidebar transparent,
+        // so the sidebar shows the vibrancy material — or, with Reduce Transparency,
+        // the solid sidebar colour drawn here.
+        backgroundColor: chrome.kind === 'vibrancy' ? TRANSPARENT : chrome.background,
+        ...(chrome.kind === 'vibrancy' ? { vibrancy: 'sidebar' as const, visualEffectState: 'followWindow' as const } : {}),
+        // No OS title bar: the real traffic lights float over the sidebar header,
+        // and the renderer's toolbar is the drag region.
+        titleBarStyle: 'hidden',
+        trafficLightPosition: TRAFFIC_LIGHT_POSITION,
+      }
+  }
+}
+
+/** Live counterpart of `chromeOptions` for an already open window. */
+function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
+  switch (chrome.kind) {
+    case 'mica':
+    case 'solid': {
+      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
+      if (micaSupported) window.setBackgroundMaterial(chrome.kind === 'mica' ? 'mica' : 'none')
+      window.setBackgroundColor(background)
+      window.setTitleBarOverlay({ color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+      return
+    }
+    case 'vibrancy':
+      window.setVibrancy('sidebar')
+      window.setBackgroundColor(TRANSPARENT)
+      return
+    case 'opaque':
+      window.setVibrancy(null)
+      window.setBackgroundColor(chrome.background)
+      return
+  }
+}
+
 function createWindow(): BrowserWindow {
-  const chrome = currentChrome()
-  const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1040,
     minHeight: 680,
-    // The renderer leaves its window background transparent (see main.tsx), so the
-    // title bar and navigation pane show whatever is drawn here: Mica, or its solid colour.
-    backgroundColor: background,
-    ...(micaSupported ? { backgroundMaterial: chrome.kind === 'mica' ? ('mica' as const) : ('none' as const) } : {}),
-    // The app's 48px title bar is the window title bar. Hiding the OS one but keeping
-    // its caption buttons as an overlay retains the real Windows minimise,
-    // snap/maximise and close — including the Snap Layouts flyout, which a drawn
-    // HTML button cannot offer.
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+    ...chromeOptions(currentChrome()),
     icon: path.join(desktopRoot, 'resources', 'icon.png'),
     webPreferences: {
       // Sandboxed preloads must be CommonJS (Electron rejects an ES-module preload
@@ -232,26 +289,22 @@ function createWindow(): BrowserWindow {
   })
 
   // The backdrop and caption buttons follow the OS light/dark switch and the
-  // Windows "Transparency effects" setting live.
-  const onThemeUpdated = (): void => {
-    const next = currentChrome()
-    const nextBackground = next.kind === 'mica' ? TRANSPARENT : next.background
-    if (micaSupported) window.setBackgroundMaterial(next.kind === 'mica' ? 'mica' : 'none')
-    window.setBackgroundColor(nextBackground)
-    window.setTitleBarOverlay({ color: nextBackground, symbolColor: next.symbol, height: TITLE_BAR_HEIGHT })
-  }
+  // Windows "Transparency effects" / macOS "Reduce transparency" setting live.
+  const onThemeUpdated = (): void => applyChrome(window, currentChrome())
   nativeTheme.on('updated', onThemeUpdated)
   window.once('closed', () => nativeTheme.off('updated', onThemeUpdated))
 
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
   // `?backdrop=window` tells the renderer it is the main window, drawn over the
   // backdrop above (the offscreen dash pages and the preview harness are not).
+  // `?platform=` picks the look the chrome above was built for.
+  const query = { backdrop: 'window', platform: look }
   if (devServerUrl) {
     const url = new URL(devServerUrl)
-    url.searchParams.set('backdrop', 'window')
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
     void window.loadURL(url.toString())
   } else {
-    void window.loadFile(path.join(desktopRoot, 'dist', 'index.html'), { query: { backdrop: 'window' } })
+    void window.loadFile(path.join(desktopRoot, 'dist', 'index.html'), { query })
   }
   return window
 }
@@ -263,8 +316,13 @@ if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
 
 async function bootstrap(): Promise<void> {
   await app.whenReady()
-  // No OS menu bar: every command this app has lives in its own UI.
-  Menu.setApplicationMenu(null)
+  // No OS menu bar on Windows: every command this app has lives in its own UI.
+  // macOS needs the standard menu for Quit, Hide, window keys and text editing.
+  Menu.setApplicationMenu(look === 'mac' ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged })) : null)
+  // A packaged build gets its icon from the bundle. A dev run may be Electron's own
+  // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
+  // the version already shaped and inset to Apple's icon grid.
+  if (look === 'mac' && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
   await startNativeHost()
   offscreen = new OffscreenOutputs(
     rendererBaseUrl(),

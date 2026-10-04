@@ -19,6 +19,8 @@
   --mica: #f3f3f3;              /* window, title bar, navigation pane; Mica's solid fallback colour */
   --layer: rgba(255, 255, 255, 0.5); /* content layer (Fluent LayerFillColorDefault); #f9f9f9 over solid --mica */
   --layer-stroke: #e5e5e5;      /* top + left edge of the content layer */
+  --sidebar: transparent;       /* the navigation pane sits on the window's Mica (macos.css fills it) */
+  --toolbar: transparent;       /* the title bar sits on the window's Mica (macos.css fills it) */
   --surface: #ffffff;           /* cards */
   --card-stroke: #e5e5e5;
   --divider: #e5e5e5;           /* table header/rule lines */
@@ -45,6 +47,7 @@
   --control-fill: #ffffff;
   --control-fill-hover: #f9f9f9;
   --control-fill-disabled: rgba(249, 249, 249, 0.3);
+  --segmented-selected: var(--surface); /* selected segment; follows the theme's --surface */
   --control-stroke: rgba(0, 0, 0, 0.06);
   --control-stroke-top: rgba(0, 0, 0, 0.06);
   --control-stroke-bottom: rgba(0, 0, 0, 0.2);
@@ -66,6 +69,8 @@
   --infobar-success: #dff6dd;  --infobar-success-icon: #0f7b0f;
   --infobar-info: #f6f6f6;     --infobar-info-icon: #a84600;
   --infobar-stroke: rgba(0, 0, 0, 0.06);
+  /* Text on the bars: the page's label colour on Windows (macos.css tints it per status) */
+  --infobar-warning-text: #1a1a1a; --infobar-error-text: #1a1a1a; --infobar-success-text: #1a1a1a; --infobar-info-text: #1a1a1a;
   --on-status: #ffffff;         /* glyph/text on a solid status fill (InfoBar icon, destructive button) */
 
   /* Avatar */
@@ -118,6 +123,7 @@
   --infobar-success: #393d1b;  --infobar-success-icon: #6ccb5f;
   --infobar-info: #2b2b2b;     --infobar-info-icon: #ff9a4d;
   --infobar-stroke: rgba(0, 0, 0, 0.2);
+  --infobar-warning-text: #ffffff; --infobar-error-text: #ffffff; --infobar-success-text: #ffffff; --infobar-info-text: #ffffff;
   --on-status: #1a1a1a;
   --avatar-bg: #3a3366;
   --avatar-text: #d9d3ff;
@@ -142,6 +148,7 @@
     --infobar-warning: #433519; --infobar-warning-icon: #fce100; --infobar-error: #442726; --infobar-error-icon: #ff99a4;
     --infobar-success: #393d1b; --infobar-success-icon: #6ccb5f; --infobar-info: #2b2b2b; --infobar-info-icon: #ff9a4d;
     --infobar-stroke: rgba(0, 0, 0, 0.2); --on-status: #1a1a1a;
+    --infobar-warning-text: #ffffff; --infobar-error-text: #ffffff; --infobar-success-text: #ffffff; --infobar-info-text: #ffffff;
     --avatar-bg: #3a3366; --avatar-text: #d9d3ff; --focus-ring: #ffffff; --focus-ring-inner: rgba(0, 0, 0, 0.7);
     color-scheme: dark;
   }
@@ -150,6 +157,7 @@
 :root {
   /* Fluent geometry */
   --radius-control: 4px;   /* buttons, inputs, nav items, list rows, menu items */
+  --radius-control-small: 4px; /* small (24px) buttons; macos.css rounds them less than M controls */
   --radius-card: 8px;      /* cards, content layer corner, flyouts, notifications */
   --radius-pill: 999px;
   --space-xs: 6px; --space-sm: 8px; --space-md: 10px; --space-lg: 12px; --space-xl: 14px;

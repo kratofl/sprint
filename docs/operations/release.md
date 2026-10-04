@@ -22,17 +22,18 @@ back.
 
 ## Gate before tagging
 
-```powershell
-& 'C:\Program Files (x86)\dotnet\dotnet.exe' build app/Sprint.Desktop.slnx -warnaserror
+```sh
+dotnet build app/Sprint.Desktop.slnx -warnaserror   # x86 SDK on Windows if needed (AGENTS.md#platform)
 make test-app
 make build-app VERSION=<ver>
 ```
 
-Then launch `app/build/bin/Sprint-<platform>-<arch>/Sprint.exe`, confirm the window opens, the views
-render and `resources/host/presets/` shipped beside the app. Run the
+Then launch `app/build/bin/Sprint-<platform>-<arch>/Sprint.exe` (`Sprint.app` on macOS), confirm the
+window opens, the views render and `resources/host/presets/` shipped beside the app
+(`Sprint.app/Contents/Resources/host/presets/` on macOS). Run the
 [`test-sprint-desktop`](../../.agents/skills/test-sprint-desktop/SKILL.md) pass on the packaged app.
 
-```powershell
+```sh
 git tag v0.2.0-alpha.1
 git push origin v0.2.0-alpha.1
 ```
@@ -42,7 +43,8 @@ Release (`gh release delete <tag> --yes`), then re-tag. Both are destructive —
 
 ## What `make build-app` does
 
-1. `dotnet publish` the host self-contained, single-file, for `RID` (default `win-x64`) into
+1. `dotnet publish` the host self-contained, single-file, for `RID` (default: this machine's, from
+   `scripts/make-tasks.mjs rid`) into
    `app/desktop/resources/host`.
 2. `pnpm --filter @sprint/desktop build` — renderer (`dist/`) and main process (`dist-electron/`).
 3. `pnpm --filter @sprint/desktop package` — `@electron/packager` bundles both plus the host as an

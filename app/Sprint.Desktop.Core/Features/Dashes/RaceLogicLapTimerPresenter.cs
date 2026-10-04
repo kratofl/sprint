@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Sprint.Desktop.Api.Telemetry;
 
 namespace Sprint.Desktop.Features.Dashes;
@@ -35,28 +36,28 @@ public sealed class RaceLogicLapTimerPresenter
     public RaceLogicLapTimerView Present(TelemetryFrame frame, long timestamp)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        var lap = frame.Lap;
-        if (_observedLap is { } previousLap
+        LapState lap = frame.Lap;
+        if (this._observedLap is { } previousLap
             && lap.CurrentLap > previousLap
             && lap.LastLapTime > 0)
         {
-            _resultLapTime = lap.LastLapTime;
-            _resultDelta = lap.TargetLapTime > 0
+            this._resultLapTime = lap.LastLapTime;
+            this._resultDelta = lap.TargetLapTime > 0
                 ? lap.LastLapTime - lap.TargetLapTime
                 : 0;
-            _resultUntil = timestamp + ResultDurationTicks;
+            this._resultUntil = timestamp + ResultDurationTicks;
         }
 
-        _observedLap = lap.CurrentLap;
-        if (timestamp < _resultUntil)
+        this._observedLap = lap.CurrentLap;
+        if (timestamp < this._resultUntil)
         {
             return new RaceLogicLapTimerView(
                 RaceLogicLapTimerMode.LapResult,
-                DashFormat.Lap(_resultLapTime),
+                DashFormat.Lap(this._resultLapTime),
                 lap.TargetLapTime > 0
-                    ? $"{FormatDelta(_resultDelta)} TO REFERENCE"
+                    ? $"{FormatDelta(this._resultDelta)} TO REFERENCE"
                     : "LAP COMPLETE",
-                _resultDelta,
+                this._resultDelta,
                 ShowDeltaBar: lap.TargetLapTime > 0);
         }
 
@@ -78,5 +79,7 @@ public sealed class RaceLogicLapTimerPresenter
             ShowDeltaBar: true);
     }
 
-    private static string FormatDelta(double delta) => $"{delta:+0.00;-0.00;0.00}";
+    // Invariant like DashFormat: the wheel always shows a dot decimal separator.
+    private static string FormatDelta(double delta) =>
+        delta.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
 }

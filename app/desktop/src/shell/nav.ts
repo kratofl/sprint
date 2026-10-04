@@ -33,3 +33,5 @@ export const footerNav: NavItem[] = [
   { view: 'Help', label: 'Help & diagnostics', icon: CircleHelp },
 ]
 
+/** The label a page goes by in the navigation pane; the macOS toolbar shows it as the page title. */
+export const viewLabel = (view: AppView): string => [...primaryNav, ...footerNav].find((item) => item.view === view)?.label ?? view

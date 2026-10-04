@@ -21,6 +21,12 @@ It exists because the suite used to reach out of the process on a developer's ma
 If you add a test that needs to reach the OS or a device, inject a fake at the seam — do not
 re-enable the gate. `HostEffectsTests` pins all of this.
 
+## Windows-only tests
+
+The suite runs on Windows and macOS. A test that calls a real Windows API (a raw-input message loop,
+a `cmd.exe` batch) is a `[WindowsFact]`: elsewhere it reports as skipped. An early `return` off
+Windows would count as a pass.
+
 ## Agent UI Review
 
 Run this after desktop UI changes when an agent needs to inspect the rendered app:

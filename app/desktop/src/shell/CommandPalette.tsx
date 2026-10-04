@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Search } from 'lucide-react'
 import { filterCommands, type ShellCommand } from './commands'
 
-// Ctrl+K palette (old app: `OpenCommandPalette`), opened from the title-bar
-// search box as an acrylic flyout right under it. Type to filter, arrows to move,
+// Ctrl+K / ⌘K palette (old app: `OpenCommandPalette`), opened from the title-bar
+// search box as an acrylic (Windows) or glass (macOS) flyout right under it. Type to filter, arrows to move,
 // Enter to run; clicking outside closes it. Escape is handled by the shared shell keydown listener in App.tsx
 // so it can close whichever transient surface (palette, toast) is topmost.
 export function CommandPalette({ commands, onClose }: { commands: ShellCommand[]; onClose: () => void }) {

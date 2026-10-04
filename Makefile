@@ -7,8 +7,14 @@
         docker-build docker-up docker-down docker-logs \
         clean
 
+# Recipes are written to run unchanged under PowerShell (Windows) and sh
+# (macOS/Linux). Anything shell-specific goes through scripts/make-tasks.mjs.
+ifeq ($(OS),Windows_NT)
 SHELL = powershell.exe
 .SHELLFLAGS = -NoProfile -Command
+endif
+
+TASKS := node scripts/make-tasks.mjs
 
 APP_DIR    := app
 APP_SOLUTION := $(APP_DIR)/Sprint.Desktop.slnx
@@ -21,18 +27,19 @@ API_SOLUTION := $(API_DIR)/Sprint.Api.slnx
 API_PROJECT := $(API_DIR)/Sprint.Api/Sprint.Api.csproj
 API_TEST_PROJECT := $(API_DIR)/Sprint.Api.Tests/Sprint.Api.Tests.csproj
 
-# Publish runtime identifier. Override for Linux: make build-app RID=linux-x64
-RID ?= win-x64
+# Publish runtime identifier. Defaults to this machine: win-x64 on Windows,
+# osx-arm64/osx-x64 on macOS, linux-x64/linux-arm64 on Linux.
+# Override with: make build-app RID=osx-x64
+RID ?= $(shell $(TASKS) rid)
 
-# Version: read from the most recent git tag (strips leading "v").
+# Version: read from the most recent git tag (strips leading "v"), else "dev".
 # Override with: make build-app VERSION=1.2.3
-_RAW_VERSION := $(shell $$tag = git describe --tags --abbrev=0 2>&1; if ($$LASTEXITCODE -eq 0) { $$tag.Trim() } else { 'dev' })
-VERSION ?= $(patsubst v%,%,$(_RAW_VERSION))
+VERSION ?= $(shell $(TASKS) version)
 
 # ─── Help─────────────────────────────────────────────────────────────────────
 
 help: ## Show this help message
-	Select-String -Path Makefile -Pattern '^[a-zA-Z_-]+:.*?## ' | ForEach-Object { if ($$_.Line -match '^([a-zA-Z_-]+):.*?## (.*)') { '  {0,-18} {1}' -f $$Matches[1], $$Matches[2] } } | Sort-Object
+	@$(TASKS) help
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -40,7 +47,7 @@ setup: ## Restore project dependencies
 	dotnet restore $(APP_SOLUTION)
 	dotnet restore $(API_SOLUTION)
 	pnpm install
-	Write-Host 'Setup complete'
+	echo 'Setup complete'
 
 # ─── Development ──────────────────────────────────────────────────────────────
 
@@ -72,7 +79,7 @@ build-api: ## Publish the API server → api/build/bin
 build-web: ## Build the Next.js web app (production)
 	pnpm --filter @sprint/web build
 
-build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|linux-x64)
+build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|osx-arm64|osx-x64|linux-x64)
 	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
 	pnpm --filter @sprint/desktop build
 	pnpm --filter @sprint/desktop package
@@ -128,4 +135,4 @@ docker-logs: ## Tail logs from all running services
 # ─── Clean ────────────────────────────────────────────────────────────────────
 
 clean: ## Remove build artifacts
-	Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'web/.next', 'app/build/bin', 'api/build/bin', 'app/Sprint.Desktop.Core/bin', 'app/Sprint.Desktop.Core/obj', 'app/Sprint.Desktop.Host/bin', 'app/Sprint.Desktop.Host/obj', 'app/desktop/dist', 'app/desktop/dist-electron', 'app/desktop/resources/host', 'app/Sprint.Desktop.Api/bin', 'app/Sprint.Desktop.Api/obj', 'app/Sprint.Contracts/bin', 'app/Sprint.Contracts/obj', 'app/Sprint.Games/bin', 'app/Sprint.Games/obj', 'app/Sprint.Desktop.Tests/bin', 'app/Sprint.Desktop.Tests/obj', 'api/Sprint.Api/bin', 'api/Sprint.Api/obj', 'api/Sprint.Api.Tests/bin', 'api/Sprint.Api.Tests/obj'
+	$(TASKS) clean

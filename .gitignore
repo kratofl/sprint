@@ -89,6 +89,8 @@ secrets/
 # ─── Desktop app ──────────────────────────────────────────────────────────────
 app/build/bin/
 app/Sprint.Desktop.Tests/artifacts/
+# Renamed Electron bundle that `make dev-app` runs from on macOS (scripts/dev.mjs).
+app/desktop/.dev/
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/

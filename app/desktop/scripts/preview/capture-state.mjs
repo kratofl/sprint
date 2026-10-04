@@ -4,18 +4,20 @@
 // harness can render views with real content.
 //
 // Usage (from app/desktop, after `dotnet build app/Sprint.Desktop.Host -nodeReuse:false`):
-//   node scripts/preview/capture-state.mjs [path\to\dotnet.exe]
+//   node scripts/preview/capture-state.mjs [path/to/dotnet]
 //
 // Speaks the same readiness protocol Electron does (electron/native-host.ts):
 // a per-launch bearer token in SPRINT_DESKTOP_TOKEN, then one
 // `{ "type": "ready", "port": n }` line on stdout. The host is asked to shut
-// down over HTTP and, failing that, is killed by its own PID — never by name.
+// down over HTTP and, failing that, its process tree is stopped by its own
+// PID (process-tree.mjs) — never by name.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+import { stopTree, treeSpawnOptions } from '../process-tree.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '..', '..', '..', '..')
@@ -30,6 +32,7 @@ if (!existsSync(hostDll)) {
 
 const token = randomBytes(32).toString('hex')
 const child = spawn(dotnet, [hostDll], {
+  ...treeSpawnOptions,
   cwd: path.dirname(hostDll),
   windowsHide: true,
   stdio: ['pipe', 'pipe', 'inherit'],
@@ -57,7 +60,7 @@ const ready = new Promise((resolve, reject) => {
 
 const exited = new Promise((resolve) => child.once('exit', resolve))
 
-/** Asks the host to exit, then kills it by PID if it is still alive after 5s. */
+/** Asks the host to exit, then stops its process tree by PID if it is still alive after 5s. */
 async function stop(port) {
   if (port !== undefined) {
     try {
@@ -71,11 +74,17 @@ async function stop(port) {
     }
   }
   const timedOut = await Promise.race([exited.then(() => false), new Promise((resolve) => setTimeout(() => resolve(true), 5000))])
-  if (timedOut && child.pid !== undefined) {
-    spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
-    await exited
-  }
+  if (timedOut) await stopTree(child)
   console.log(`host pid ${child.pid} exited`)
+}
+
+// On macOS/Linux the host runs in its own process group, so the terminal's
+// Ctrl+C no longer reaches it; stop it here instead.
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, async () => {
+    await stopTree(child)
+    process.exit(1)
+  })
 }
 
 let port

@@ -1,4 +1,6 @@
-import { Menu } from 'lucide-react'
+import type { RefObject } from 'react'
+import { Menu, PanelLeft } from 'lucide-react'
+import { platform } from '../platform'
 import { footerNav, primaryNav, type NavItem } from './nav'
 import { AccountRow } from './AccountRow'
 import type { AppView } from '../bridge'
@@ -12,11 +14,16 @@ const NAV_ICON_STROKE = 1.6
  * selected item gets the subtle fill plus a 3×16px brand indicator. The footer
  * holds the account row, then Settings (with a dot when an update is
  * available) and Help.
+ *
+ * On macOS the same markup is a full-height 224px source-list sidebar
+ * (styles.mac.css): the toggle sits right of the traffic lights and hides the
+ * sidebar entirely, as in Finder or Mail; the toolbar then offers it back.
  */
 export function Sidebar({
   view,
   collapsed,
   onToggleCollapsed,
+  toggleRef,
   onSelect,
   webAppUrl,
   driverName,
@@ -25,23 +32,31 @@ export function Sidebar({
   view: AppView
   collapsed: boolean
   onToggleCollapsed: () => void
+  toggleRef: RefObject<HTMLButtonElement | null>
   onSelect: (view: AppView) => void
   webAppUrl: string | null
   driverName: string | null
   updateAvailable: boolean
 }) {
+  const mac = platform === 'mac'
+  const toggleLabel = mac ? 'Hide sidebar' : collapsed ? 'Expand navigation' : 'Collapse navigation'
+  const toggle = (
+    <button
+      ref={toggleRef}
+      type="button"
+      className="navview-toggle"
+      onClick={onToggleCollapsed}
+      aria-label={toggleLabel}
+      aria-expanded={!collapsed}
+      title={toggleLabel}
+    >
+      {mac ? <PanelLeft size={16} strokeWidth={NAV_ICON_STROKE} /> : <Menu size={16} strokeWidth={NAV_ICON_STROKE} />}
+    </button>
+  )
+  // On macOS the toggle sits in the sidebar's 52px top band, right of the traffic lights.
   return (
     <nav className={collapsed ? 'navview collapsed' : 'navview'} aria-label="Main navigation">
-      <button
-        type="button"
-        className="navview-toggle"
-        onClick={onToggleCollapsed}
-        aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        aria-expanded={!collapsed}
-        title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-      >
-        <Menu size={16} strokeWidth={NAV_ICON_STROKE} />
-      </button>
+      {mac ? <div className="navview-band">{toggle}</div> : toggle}
       {primaryNav.map((item) => renderItem(item, view, collapsed, onSelect, false))}
       <div className="navview-spacer" />
       <AccountRow webAppUrl={webAppUrl} driverName={driverName} collapsed={collapsed} />

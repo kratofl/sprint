@@ -84,7 +84,8 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   Postgres (relational) and InfluxDB (time-series telemetry).
 - `web/`: Next.js frontend.
 - `packages/types/`: shared TypeScript contracts.
-- `packages/tokens/`: design tokens — `windows.css` (desktop) and `web.css` (web).
+- `packages/tokens/`: design tokens — `windows.css` (desktop), `macos.css` (desktop
+  on macOS, overlaid on `windows.css`) and `web.css` (web).
 - `packages/dashboard/`: the HTML/CSS/SVG dash renderer. One component drives
   the editor preview, the on-screen display, and the USB panel output.
 
@@ -95,7 +96,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   both the API server and the desktop client; references `Sprint.Desktop.Api`.
 - `app/Sprint.Games`: game adapter implementations against the desktop contract.
 - `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
-- `packages/tokens`: design tokens (`windows.css`, `web.css`).
+- `packages/tokens`: design tokens (`windows.css`, `macos.css`, `web.css`).
 - `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
   persistence ownership (Postgres relational; InfluxDB time-series).
 - `web/schema.graphql`: committed GraphQL schema; source for web codegen (`make schema`).
@@ -111,12 +112,18 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 
 ## Platform
 
-- This repo is Windows-first. The `Makefile` runs targets through PowerShell.
-- Desktop hardware integrations are Windows-first.
-- Use PowerShell syntax for shell examples and local automation in this repo.
+- Develop on Windows or macOS. The `Makefile` runs recipes through PowerShell on
+  Windows and `sh` elsewhere, so a recipe is one line both shells accept;
+  anything shell-specific goes into `scripts/make-tasks.mjs`.
+- Write local automation as Node scripts (`.mjs`). Shell examples run in both
+  shells or name the one they need.
+- The product is Windows-only where it touches the game or hardware: LMU
+  telemetry, USB screens, raw input, desktop capture, the HUD overlay and the
+  self-update script. On macOS the host builds, tests and runs; telemetry and
+  USB screens report `Unsupported`. See `docs/operations/development.md`.
 - Do not set NuGet/dotnet caches to repo-local paths. Use the normal user-level caches.
-- If `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and reports no
-  SDKs, use the installed x86 SDK at
+- Windows only: if `dotnet` resolves to `C:\Program Files\dotnet\dotnet.exe` and
+  reports no SDKs, use the installed x86 SDK at
   `C:\Program Files (x86)\dotnet\dotnet.exe` for desktop test/build commands.
 
 ## Commands
@@ -140,7 +147,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Export GraphQL schema: `make schema`
 - Type-check / test the desktop app: `pnpm --filter @sprint/desktop type-check`,
   `pnpm --filter @sprint/desktop test`
-- Preview / screenshot a desktop view without Electron (from `app/desktop`):
+- Preview / screenshot a desktop view without the app or host (from `app/desktop`):
   `node scripts/preview/build-preview.mjs`, then
   `node scripts/preview/screenshot.mjs --view Devices --theme dark --out <abs.png>`
 - Type-check / test the dash renderer: `pnpm --filter @sprint/dashboard type-check`,
@@ -159,15 +166,10 @@ type-checks both desktop TypeScript packages.
 
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
 - Do not claim desktop UI work is complete until you have looked at it rendered.
-  The renderer is a plain web bundle, so it can be inspected without launching
-  Electron: `pnpm --filter @sprint/desktop build`, then open
-  `app/desktop/dist/index.html` in a browser (headless Edge needs
-  `--allow-file-access-from-files`). Outside Electron the bridge returns an empty
-  state; to see real screens, inject a `window.sprint` stub carrying a payload
-  captured from a running host's `/api/state`.
-- The preview harness in `app/desktop/scripts/preview/` does that for you: any
-  view, light or dark, real or sample state, screenshotted in headless Edge
-  (see its `README.md`).
+  The preview harness in `app/desktop/scripts/preview/` renders any view from a
+  stubbed `window.sprint` (real or sample state), light or dark, in the Windows
+  or the macOS look (`platform=mac`), and screenshots it with Electron (see its
+  `README.md`).
 - For dash rendering changes, render a preset with
   `packages/dashboard/scripts/render-check.tsx` at the panel size, screenshot it,
   and check it against `docs/internals/dash-rendering.md`: layout, alignment,
@@ -227,10 +229,17 @@ type-checks both desktop TypeScript packages.
 
 - `docs/design/DESIGN.md` is the product design system; its MUST/NEVER rules
   are binding. The wheel dash rules are in `docs/internals/dash-rendering.md`.
-- The desktop app follows Windows Fluent (Mica window, 48px title bar,
-  NavigationView, content layer, CommandBar, ContentDialog, acrylic flyouts;
-  4px controls, 8px cards). Its tokens are `@sprint/tokens/windows.css`; the
-  reference is the Windows mockup in `docs/design/mockups/`.
+- The desktop app wears the look of the OS it runs on. Windows (and Linux):
+  Fluent (Mica window, 48px title bar, NavigationView, content layer,
+  CommandBar, ContentDialog, acrylic flyouts; 4px controls, 8px cards), tokens
+  `@sprint/tokens/windows.css`. macOS (macOS 27 HIG): full-height translucent
+  sidebar, 52px toolbar carrying the page title and actions, 8px buttons, 14px
+  cards, tokens `@sprint/tokens/macos.css` overlaid on `windows.css` under the
+  same names. References: the Windows and macOS mockups in `docs/design/mockups/`.
+- Electron passes the look as `?platform=mac|windows`; the renderer sets
+  `<html data-platform>`. Mac-only shapes go in `app/desktop/src/styles.mac.css`,
+  each rule under `:where([data-platform="mac"])`; views stay platform-neutral
+  (on macOS the shell moves a `PageHeader`'s actions into the toolbar).
 - The web app follows the web CI (Apple look, glass only on chrome) with
   `@sprint/tokens/web.css`.
 - Only brand and status colors carry across platforms. Brand `#ff6a00` is
@@ -241,8 +250,11 @@ type-checks both desktop TypeScript packages.
 - Use only the token custom properties (`--mica`, `--layer`, `--surface`,
   `--label*`, `--control-*`, `--brand-500`, …). Do not hardcode hex in
   `app/desktop` or `packages/dashboard`; a missing token goes into the token
-  file for both themes. The Electron main process repeats `--mica`/`--label`
-  for the native caption buttons because it cannot read CSS.
+  file for both themes, in `windows.css` and `macos.css` alike
+  (`app/desktop/src/macTokens.test.ts` enforces parity). The Electron main
+  process cannot read CSS, so it repeats `--mica`/`--label` (Windows caption
+  buttons) and the solid `--sidebar` (macOS Reduce Transparency) in
+  `app/desktop/electron/windowChrome.ts`.
 - Desktop views use the shared primitives in `app/desktop/src/styles.css`
   (`.button` + `primary`/`subtle`/`destructive`, `.card`, `.kpi`, `.infobar`,
   `.list-row`, `.menu-flyout`, `.segmented`, `.meter`, `.empty-state`,
@@ -257,9 +269,10 @@ type-checks both desktop TypeScript packages.
 `docs/design/DESIGN.md` is the authority here; this is a summary of it, not a
 second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
 
-- Desktop UI is Segoe UI Variable (`--font-text`, `--font-display` in
-  `windows.css`): a Windows system font, nothing bundled. 13px/20px base, 24px
-  Display page titles, 14px semibold card titles, 12px captions.
+- Desktop UI is the OS system font, nothing bundled (`--font-text`,
+  `--font-display`): Segoe UI Variable from `windows.css`, SF from `macos.css`.
+  13px/20px base, 24px Display page titles, 14px semibold card titles, 12px
+  captions; on macOS the 17px toolbar title names the page and captions are 11px.
 - Web UI uses the system stack from `web.css`.
 - Inter is **not** an app UI face. The desktop bundles and declares it in
   `app/desktop/src/styles.css` only because the dash renderer names it for

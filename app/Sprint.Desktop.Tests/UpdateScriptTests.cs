@@ -174,22 +174,17 @@ public sealed class UpdateScriptTests
         Assert.Contains("\r\n", Build());
     }
 
-    [Fact]
+    [WindowsFact]
     public async Task RetriesTheCopyUntilAPostExitExecutableLockIsReleased()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        var root = Path.Combine(Path.GetTempPath(), $"sprint-update-script-{Guid.NewGuid():N}");
-        var staging = Path.Combine(root, "staged");
-        var install = Path.Combine(root, "installed");
-        var exe = "Sprint.Test.exe";
-        var stagedExe = Path.Combine(staging, exe);
-        var installedExe = Path.Combine(install, exe);
-        var batchPath = Path.Combine(root, "apply-update.bat");
-        var completionPath = Path.Combine(root, "apply-update.done");
+        string root = Path.Combine(Path.GetTempPath(), $"sprint-update-script-{Guid.NewGuid():N}");
+        string staging = Path.Combine(root, "staged");
+        string install = Path.Combine(root, "installed");
+        string exe = "Sprint.Test.exe";
+        string stagedExe = Path.Combine(staging, exe);
+        string installedExe = Path.Combine(install, exe);
+        string batchPath = Path.Combine(root, "apply-update.bat");
+        string completionPath = Path.Combine(root, "apply-update.done");
 
         Directory.CreateDirectory(staging);
         Directory.CreateDirectory(install);
@@ -199,7 +194,7 @@ public sealed class UpdateScriptTests
         // exercise copy/retry semantics without starting another process.
         await File.WriteAllBytesAsync(stagedExe, Enumerable.Repeat((byte)0xA5, 4096).ToArray());
         await File.WriteAllBytesAsync(installedExe, Enumerable.Repeat((byte)0x5A, 4096).ToArray());
-        var sharedTimestamp = DateTime.UtcNow.AddMinutes(-5);
+        DateTime sharedTimestamp = DateTime.UtcNow.AddMinutes(-5);
         File.SetLastWriteTimeUtc(stagedExe, sharedTimestamp);
         File.SetLastWriteTimeUtc(installedExe, sharedTimestamp);
 
