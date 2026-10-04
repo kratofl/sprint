@@ -1,17 +1,19 @@
 #!/usr/bin/env node
-// Screenshots dist/preview.html in headless Edge (build it first with
-// build-preview.mjs). Edge runs under PowerShell's Start-Process -Wait, which
-// waits for the whole Edge process tree: msedge.exe hands the work to a second
-// process and exits early, so waiting on it directly returns before the PNG is
-// written. That PowerShell host is tracked by PID and its tree is killed by that
-// PID if it has not finished after 60s — never by name.
+// Screenshots dist/preview.html with Electron (build it first with
+// build-preview.mjs), on Windows and macOS alike. screenshot-electron.mjs loads
+// the page in a hidden offscreen window at --size with a device scale factor of
+// 1, so the PNG is exactly that many pixels. Electron gets a throwaway profile
+// inside the dist folder, and its process tree is stopped by its own PID if it
+// has not finished after 60s (process-tree.mjs) -- never by name.
 //
-//   node scripts/preview/screenshot.mjs --out C:\path\shot.png [--view Devices] [--theme dark]
+//   node scripts/preview/screenshot.mjs --out /abs/path/shot.png [--view Devices] [--theme dark]
 //        [--size 1440,900] [--query collapsed=1&palette=1] [--dist dist-views-a]
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import electronPath from 'electron'
+import { stopTree, treeSpawnOptions } from '../process-tree.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(here, '..', '..')
@@ -29,13 +31,9 @@ function distFolder(argv) {
 }
 const dist = path.join(desktopRoot, distFolder(process.argv))
 const preview = path.join(dist, 'preview.html')
-const edge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 // A fresh throwaway profile per run, inside dist/ (gitignored), so the user's own
-// Edge profile is never touched. Reusing one profile made later headless runs
-// exit without writing a screenshot. Edge also gets forward-slash paths: with
-// backslashes it sometimes exits the same way.
-const profileDir = path.join(dist, `edge-profile-${process.pid}`)
-const forEdge = (filePath) => filePath.replaceAll(path.sep, '/')
+// Electron profile is never touched and parallel runs never share one.
+const profileDir = path.join(dist, `electron-profile-${process.pid}`)
 
 /** Reads `--name value` pairs from the command line. */
 function option(name, fallback) {
@@ -61,41 +59,40 @@ const theme = option('theme')
 if (theme) query.set('theme', theme)
 const url = `${pathToFileURL(preview).href}?${query.toString()}`
 
-const edgeArgs = [
-  '--headless=new',
-  '--disable-gpu',
-  '--hide-scrollbars',
-  '--allow-file-access-from-files',
-  '--no-first-run',
-  `--user-data-dir=${forEdge(profileDir)}`,
-  `--window-size=${option('size', '1440,900')}`,
-  // Lets the async state load and the view switch settle before the capture.
-  '--virtual-time-budget=4000',
-  `--screenshot=${forEdge(out)}`,
-  url,
-]
-// Single-quoted PowerShell literals: only an embedded ' needs escaping.
-const psLiteral = (value) => `'${value.replaceAll("'", "''")}'`
-const command = `Start-Process -FilePath ${psLiteral(edge)} -ArgumentList @(${edgeArgs.map(psLiteral).join(',')}) -Wait`
-const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { stdio: 'ignore', windowsHide: true })
+const size = option('size', '1440,900')
+const [width, height] = size.split(',').map(Number)
+if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+  console.error('--size must be <width>,<height> in pixels, e.g. 1440,900')
+  process.exit(1)
+}
+
+const job = { url, out, width, height, userData: profileDir, settleMs: 4000 }
+// ELECTRON_RUN_AS_NODE (set when this runs under an Electron-based tool) would make
+// Electron start as plain Node and fail on `import { app } from 'electron'`.
+const { ELECTRON_RUN_AS_NODE, ...env } = process.env
+const child = spawn(electronPath, [path.join(here, 'screenshot-electron.mjs')], {
+  ...treeSpawnOptions,
+  stdio: ['ignore', 'inherit', 'inherit'],
+  windowsHide: true,
+  env: { ...env, SPRINT_SCREENSHOT: JSON.stringify(job) },
+})
+console.log(`electron pid ${child.pid}`)
 
 const exited = new Promise((resolve) => child.once('exit', resolve))
 let timer
 const timedOut = await Promise.race([exited.then(() => false), new Promise((resolve) => (timer = setTimeout(() => resolve(true), 60_000)))])
 clearTimeout(timer)
-if (timedOut && child.pid !== undefined) {
-  spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' })
-  await exited
-}
+// Also sweeps any helper left behind after a normal exit; a no-op otherwise.
+await stopTree(child)
 // The profile path is built above from dist/ and this process id, never from input.
 rmSync(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 
 if (timedOut) {
-  console.error('Edge did not exit within 60s and was stopped.')
+  console.error('Electron did not exit within 60s and was stopped.')
   process.exit(1)
 }
 if (!existsSync(out)) {
-  console.error(`Edge exited without writing ${out}`)
+  console.error(`Electron exited without writing ${out}`)
   process.exit(1)
 }
 console.log(`wrote ${out}`)

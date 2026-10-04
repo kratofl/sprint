@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { bridge, type AppView, type ResultsImportOffer, type SprintCommand } from './bridge'
 import type { RuntimeState } from './shell/runtime'
 import { TitleBar } from './shell/TitleBar'
@@ -9,21 +9,18 @@ import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
-import { primaryNav } from './shell/nav'
+import { primaryNav, viewLabel } from './shell/nav'
+import { matchShortcut } from './shell/shortcuts'
+import { platform } from './platform'
 import { readDriverName, readSidebarCollapsed, readWebAppUrl } from './shell/settings'
 import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
 import { canGoBack, goBack, initialHistory, navigateTo } from './shell/history'
+import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
 
-// Physical Alt+1..7 keys, matching both the digit row and numpad (old app:
-// `TryProductionShortcutView` supported both). Index maps 1:1 onto
-// `shell/nav.ts`'s `primaryNav` order.
-const ALT_DIGIT_CODES = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7']
-const ALT_NUMPAD_CODES = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7']
-
 export function App() {
-  // Current page plus the pages visited before it (title-bar back, Alt+Left).
+  // Current page plus the pages visited before it (title-bar back, Alt+Left / ⌘[).
   const [history, setHistory] = useState(() => initialHistory('Home'))
   const view = history.view
   // A pending "open this specific item" request from Home (dash card, device
@@ -96,6 +93,22 @@ export function App() {
     })
   }, [send])
 
+  // Pressing a sidebar toggle hands keyboard focus to the toggle that is visible
+  // afterwards: on macOS hiding the sidebar hides the pressed button, and the
+  // toolbar's "Show sidebar" unmounts once pressed, so focus would fall to <body>.
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null)
+  const showSidebarRef = useRef<HTMLButtonElement>(null)
+  const refocusSidebarToggle = useRef(false)
+  const toggleSidebarFromButton = useCallback(() => {
+    refocusSidebarToggle.current = true
+    toggleSidebar()
+  }, [toggleSidebar])
+  useEffect(() => {
+    if (!refocusSidebarToggle.current) return
+    refocusSidebarToggle.current = false
+    ;(collapsed ? showSidebarRef : sidebarToggleRef).current?.focus()
+  }, [collapsed])
+
   // Shared by the startup check and the palette's manual "Check for updates"
   // (old app: `NotifyIfUpdateAvailableAsync`). `force` only affects whether a
   // silent "up to date" result also gets a toast — a background check must
@@ -151,16 +164,11 @@ export function App() {
   const openImport = useCallback(() => setImportDialog({ offered: null }), [])
   const importResults = importSource?.available ? openImport : undefined
 
-  // Ctrl+K, Alt+1..7, Alt+Left (back), and Escape for the topmost transient surface (palette,
-  // then the newest toast). Views own their own dialogs, so Escape never
-  // reaches into ViewRouter's children.
+  // The palette, page and back shortcuts (Ctrl+K / Alt+1..7 / Alt+Left on Windows, ⌘K / ⌘1..7 /
+  // ⌘[ on macOS; shell/shortcuts.ts), and Escape for the topmost transient surface (palette, then
+  // the newest toast). Views own their own dialogs, so Escape never reaches into ViewRouter's children.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        setPaletteOpen(true)
-        return
-      }
       if (event.key === 'Escape') {
         if (paletteOpen) {
           setPaletteOpen(false)
@@ -170,16 +178,16 @@ export function App() {
         if (topmost) dismissToast(topmost.id)
         return
       }
-      if (event.altKey && !event.ctrlKey && !event.metaKey) {
-        if (event.key === 'ArrowLeft') {
-          event.preventDefault()
-          back()
-          return
-        }
-        const digitIndex = ALT_DIGIT_CODES.indexOf(event.code)
-        const numpadIndex = ALT_NUMPAD_CODES.indexOf(event.code)
-        const index = digitIndex >= 0 ? digitIndex : numpadIndex
-        const target = index >= 0 ? primaryNav[index] : undefined
+      const shortcut = matchShortcut(platform, event)
+      if (!shortcut) return
+      if (shortcut.kind === 'palette') {
+        event.preventDefault()
+        setPaletteOpen(true)
+      } else if (shortcut.kind === 'back') {
+        event.preventDefault()
+        back()
+      } else {
+        const target = primaryNav[shortcut.index]
         if (target) {
           event.preventDefault()
           navigate(target.view)
@@ -193,6 +201,7 @@ export function App() {
   const webAppUrl = runtime.kind === 'ready' ? readWebAppUrl(runtime.sprint.settings) : null
   const driverName = runtime.kind === 'ready' ? readDriverName(runtime.sprint.settings) : null
   const commands = buildShellCommands({
+    platform,
     navigate,
     send,
     toggleSidebar,
@@ -200,31 +209,56 @@ export function App() {
     importResults,
   })
 
+  // macOS: the toolbar slot the page's actions render into, and the room it has for them.
+  // Windows never mounts the slot, so the context stays null and PageHeader keeps its CommandBar.
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
+  const [actionsRoom, setActionsRoom] = useState<{ measure: () => number } | null>(null)
+  const toolbarActions = useMemo<ToolbarActions | null>(
+    () => (actionsSlot && actionsRoom ? { slot: actionsSlot, measureRoom: actionsRoom.measure } : null),
+    [actionsSlot, actionsRoom],
+  )
+  const openDiagnostics = useCallback(() => navigate('Help'), [navigate])
+
   const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : ''].filter(Boolean).join(' ')
 
   return (
     <div className={appClassName}>
-      <TitleBar canGoBack={canGoBack(history)} onBack={back} runtime={runtime} onOpenPalette={() => setPaletteOpen(true)} />
+      <TitleBar
+        canGoBack={canGoBack(history)}
+        onBack={back}
+        runtime={runtime}
+        onOpenPalette={() => setPaletteOpen(true)}
+        title={viewLabel(view)}
+        sidebarCollapsed={collapsed ?? false}
+        onToggleSidebar={toggleSidebarFromButton}
+        showSidebarRef={showSidebarRef}
+        onOpenDiagnostics={openDiagnostics}
+        onActionsSlot={setActionsSlot}
+        onActionsRoom={setActionsRoom}
+      />
       <div className="app-frame">
         <Sidebar
           view={view}
           collapsed={collapsed ?? false}
-          onToggleCollapsed={toggleSidebar}
+          onToggleCollapsed={toggleSidebarFromButton}
+          toggleRef={sidebarToggleRef}
           onSelect={navigate}
           webAppUrl={webAppUrl}
           driverName={driverName}
           updateAvailable={updateRelease !== null}
         />
         <main className="content">
-          <ViewRouter
-            view={view}
-            focus={focus}
-            runtime={runtime}
-            send={send}
-            onNavigate={navigate}
-            onOpenItem={openItem}
-            onImportResults={importResults}
-          />
+          <ToolbarActionsContext value={toolbarActions}>
+            <ViewRouter
+              view={view}
+              focus={focus}
+              runtime={runtime}
+              send={send}
+              onNavigate={navigate}
+              onOpenItem={openItem}
+              onImportResults={importResults}
+            />
+          </ToolbarActionsContext>
         </main>
       </div>
       {paletteOpen ? <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} /> : null}

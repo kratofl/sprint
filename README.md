@@ -24,7 +24,8 @@ WinUSB.
 
 ## Running it
 
-Windows 10/11. Requirements for building from source:
+Windows 10/11. It also builds and runs on macOS for development, without game telemetry or USB
+screens. Requirements for building from source:
 
 | Tool | Version |
 | --- | --- |
@@ -34,7 +35,7 @@ Windows 10/11. Requirements for building from source:
 | Make | any |
 | [Docker](https://www.docker.com) | for the API stack only |
 
-```powershell
+```sh
 pnpm install
 make dev-app        # desktop app: Vite + Electron + native host
 make build-app      # packaged app -> app/build/bin/

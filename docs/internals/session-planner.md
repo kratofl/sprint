@@ -38,7 +38,7 @@ capture. Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` and `Features
 
 Separate from plans: plans are a short list made on purpose, the corpus grows to hundreds of sessions.
 Two writers (the live recorder, the results importer), one reader. One JSON file per session under
-`%AppData%/Sprint/lap-history/`, so a corrupt file costs one session.
+`lap-history/` in the desktop data folder, so a corrupt file costs one session.
 
 - **Context key is `game` + `trackCourse` + `carModel`.** Track length is stored beside it as a
   cross-check; car class is metadata so a "same class" fallback stays possible. Both writers must map

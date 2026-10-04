@@ -219,7 +219,7 @@ export function TelemetryInfoBar({ telemetry }: { telemetry: TelemetryDescriptio
   const message = telemetry.detail ?? (telemetry.tone === 'idle' ? 'Sprint connects on its own once the game is running.' : null)
 
   return (
-    <div className={`infobar ${severity}`} role={severity === 'info' ? 'status' : 'alert'}>
+    <div className={`infobar telemetry-infobar ${severity}`} role={severity === 'info' ? 'status' : 'alert'}>
       <span className="infobar-icon" aria-hidden="true">
         {severity === 'info' ? 'i' : '!'}
       </span>

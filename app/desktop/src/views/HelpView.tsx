@@ -6,6 +6,8 @@ import type { RuntimeState } from '../shell/runtime'
 import { Status } from '../shell/Status'
 import type { StatusTone } from '../shell/Status'
 import { TELEMETRY_STATUS_TONE, describeTelemetry } from '../shell/telemetry'
+import { shortcutLabel } from '../shell/shortcuts'
+import { platform } from '../platform'
 import { LOG_LEVELS, isLogLevelName, parseDiagnosticsInfo, parseLogEntries, parseScreenStatus, screenStatusLabel, screenStatusTone } from './HelpDiagnostics'
 import type { LogEntry, LogLevelName } from './HelpDiagnostics'
 import { TelemetryInfoBar } from './HomeView'
@@ -21,11 +23,14 @@ type Topic = { title: string; body: string }
 const TOPICS: Topic[] = [
   {
     title: 'Navigation',
-    body: 'Use the navigation pane to move between Overview, Session planner, Analysis, Dashes, Devices, Setups, Race engineer, Settings, and Help. The menu button at its top collapses it to icons to reclaim width.',
+    body:
+      platform === 'mac'
+        ? 'Use the sidebar to move between Overview, Session planner, Analysis, Dashes, Devices, Setups, Race engineer, Settings, and Help. The sidebar button next to the window controls hides it to reclaim width; the same button in the toolbar brings it back.'
+        : 'Use the navigation pane to move between Overview, Session planner, Analysis, Dashes, Devices, Setups, Race engineer, Settings, and Help. The menu button at its top collapses it to icons to reclaim width.',
   },
   {
     title: 'Telemetry status',
-    body: 'The title bar and the build details on this page report the active telemetry link. Green is a live connection; amber means connecting or stale data, gray means no game is running, red means the source cannot work.',
+    body: `The ${platform === 'mac' ? 'toolbar' : 'title bar'} and the build details on this page report the active telemetry link. Green is a live connection; amber means connecting or stale data, gray means no game is running, red means the source cannot work.`,
   },
   {
     title: 'Race engineer',
@@ -37,7 +42,7 @@ const TOPICS: Topic[] = [
   },
   {
     title: 'Keyboard shortcuts',
-    body: 'Press Ctrl+K to open the command palette and search for any action or page. Alt+1 through Alt+7 jump straight to each page in the navigation pane, in the order it is listed.',
+    body: `Press ${shortcutLabel(platform, { kind: 'palette' })} to open the command palette and search for any action or page. ${shortcutLabel(platform, { kind: 'navigate', index: 0 })} through ${shortcutLabel(platform, { kind: 'navigate', index: 6 })} jump straight to each page in the ${platform === 'mac' ? 'sidebar' : 'navigation pane'}, in the order it is listed, and ${shortcutLabel(platform, { kind: 'back' })} goes back.`,
   },
 ]
 

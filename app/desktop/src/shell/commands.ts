@@ -1,16 +1,20 @@
 import type { AppView, SprintCommand } from '../bridge'
+import type { Platform } from '../platform'
 import { primaryNav } from './nav'
+import { shortcutLabel } from './shortcuts'
 
 export type ShellCommand = {
   id: string
   label: string
   keywords: string
-  /** Display text only (e.g. "Alt+1"). The shared shell keydown handler owns the actual binding. */
+  /** Display text only (e.g. "Alt+1", "⌘1"). The shared shell keydown handler owns the actual binding. */
   shortcut?: string
   run: () => void
 }
 
 export type ShellCommandContext = {
+  /** Picks the shortcut notation shown next to each command. */
+  platform: Platform
   navigate: (view: AppView) => void
   send: (command: SprintCommand) => Promise<void>
   toggleSidebar: () => void
@@ -35,7 +39,7 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
     id: `nav.${item.view.toLowerCase()}`,
     label: `Go to ${item.label}`,
     keywords: item.label.toLowerCase(),
-    shortcut: `Alt+${index + 1}`,
+    shortcut: shortcutLabel(context.platform, { kind: 'navigate', index }),
     run: () => context.navigate(item.view),
   }))
 

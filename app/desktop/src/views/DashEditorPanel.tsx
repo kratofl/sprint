@@ -305,7 +305,7 @@ export function DashEditorPanel({
         <button type="button" className="icon-button dash-editor-back" aria-label="Back to dashes" title="Back to dashes" onClick={requestClose}>
           <ArrowLeft size={16} />
         </button>
-        <PageHeader title={draft.name || 'Untitled dash'}>
+        <PageHeader title={draft.name || 'Untitled dash'} detail>
           <button type="button" className="button primary" disabled={!dirty || saving} onClick={() => void handleSave()}>
             <Save /> {saving ? 'Saving…' : 'Save'}
           </button>
