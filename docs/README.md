@@ -23,7 +23,7 @@ note for the area you are changing before you change it.
 
 ## Design
 
-- [Design system](design/DESIGN.md) — binding UI rules, tokens, component previews, mockups.
+- [Design system](design/DESIGN.md) — binding UI rules, token roles, reference mockups.
 
 ## Writing docs
 

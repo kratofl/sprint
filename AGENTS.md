@@ -294,7 +294,7 @@ for agents first; human-facing docs stay at the root `README.md`.
   `glossary.md`; read the note for the area you are changing.
 - `docs/operations/` — development/verification, diagnostics, release,
   deployment runbooks.
-- `docs/design/` — the design system, tokens, component previews, mockups.
+- `docs/design/` — the design system and the reference mockups.
 - Package-local notes: `app/README.md`, `api/README.md`, and package
   `README.md` files when present.
 

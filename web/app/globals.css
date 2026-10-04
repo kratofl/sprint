@@ -17,9 +17,9 @@
 }
 
 :root {
-  /* Controls inside the frosted toolbar sit on a 5 % fill (DESIGN.md → Toolbar). */
+  /* Controls inside the frosted toolbar sit on a 5 % fill (DESIGN.md → Toolbar / CommandBar). */
   --toolbar-fill: rgba(0, 0, 0, 0.05);
-  /* Tint pairs: -100 background + -700 text in light, 20 % of the -500 in dark (DESIGN.md → StatusBadge). */
+  /* Tint pairs: -100 background + -700 text in light, 20 % of the -500 in dark (DESIGN.md → Color). */
   --tint-brand-bg: var(--brand-100);
   --tint-brand-fg: var(--brand-700);
   --avatar-bg: var(--purple-100);
@@ -189,7 +189,7 @@ button:not(:disabled) {
   padding: 0;
 }
 
-/* Icons are always brand-500, active or not (DESIGN.md → SidebarItem). */
+/* Icons are always brand-500, active or not (DESIGN.md → Navigation). */
 .nav-icon {
   flex-shrink: 0;
   color: var(--brand-500);
@@ -452,7 +452,7 @@ button:not(:disabled) {
 }
 
 /* ── Bar chart: brand-500 at track-tint, the highest bar in full brand-500,
-      radius-xs on top only, separator baseline (DESIGN.md → Colour/Shape). ── */
+      radius-xs on top only, separator baseline (DESIGN.md → Color, Web token roles). ── */
 
 .chart-bars {
   display: flex;

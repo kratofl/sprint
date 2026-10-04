@@ -4,17 +4,23 @@ The authority for app UI. MUST = mandatory, NEVER = forbidden, SHOULD = default 
 reason exists. The rendered wheel dash is not app UI; its rules are in
 [`../internals/dash-rendering.md`](../internals/dash-rendering.md).
 
-References in this folder: [`tokens.css`](tokens.css) / [`tokens.json`](tokens.json) (web values),
-component previews in [`previews/`](previews/) (rendered from the original mockup; their German
-sample copy is not Sprint's), and the mockups in [`mockups/`](mockups/) — `windows-light|dark.html`
-for the desktop app on Windows (exact sizes in their inline styles, screenshots `win.png` /
-`win-dark.png`), `macos-light|dark.html` for the desktop app on macOS (take the shell, materials and
-geometry; their screens are a sample app, not Sprint), `web-light|dark.html` for the web app,
-`web-sheet.html` for the sheet pattern, `components-web.html` for the web component sheet.
-`mockups/bundle.html` is the original bundle the Windows and web pages were unpacked from;
-`mockups/Dashboard Mockup.html` is the newer bundle the macOS pages came from (it also holds web, iOS
-and Windows pages, and the macOS component sheet: buttons, cards, inline alerts). Where the mockups
-are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 27.
+Token values live in `packages/tokens/` (`windows.css`, `macos.css`, `web.css`); this file holds the
+rules for using them, and [Web token roles](#web-token-roles) says what each web token is for.
+
+## Reference mockups
+
+In [`mockups/`](mockups/). Their copy is a German sample app ("Haushalt"), not Sprint; take the
+shell, materials, geometry and component shapes, never the screens or the words.
+
+| Look | Mockup |
+| --- | --- |
+| Desktop on Windows | `windows-light.html`, `windows-dark.html` — exact sizes in their inline styles; screenshots `win.png`, `win-dark.png` |
+| Desktop on macOS | `macos-light.html`, `macos-dark.html` — shell, materials and geometry |
+| Web app | `web-light.html`, `web-dark.html` |
+| Web sheet (create/edit) | `web-sheet.html` |
+| Component sheet | `components-web.html` — the compact web scale, and the source of the macOS buttons, cards and inline alerts |
+
+Where the mockups are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 27.
 
 ## Surfaces
 
@@ -26,7 +32,7 @@ are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 
 | Wheel dash (`packages/dashboard`) | Hardware instrument with its own color domain. Not restyled with the app. | Dash palette in `packages/dashboard` | Saira Semi Condensed numerics, Inter labels |
 
 - Only the brand and status colors carry across platforms. Component shapes are native to each
-  platform. Never use Material Design patterns (FABs with elevation, ripple, filled text fields,
+  platform. NEVER use Material Design patterns (FABs with elevation, ripple, filled text fields,
   app bars with shadows).
 - The desktop app wears the look of the OS it runs on; views are shared, and only the shell and
   primitive shapes change. Mac shapes live in `app/desktop/src/styles.mac.css`, scoped to
@@ -41,7 +47,8 @@ are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 
 
 ### Flat first, glass on chrome
 
-- Content is flat: cards (`surface` on `bg`), lists, tables, inputs, buttons, sidebar — no shadow, no gradients.
+- Content is flat: cards (`surface` on `bg`), lists, tables, inputs, buttons, sidebar — no shadow,
+  no gradients.
 - **Glass only on:** context menus, the toolbar, alerts/notifications, toasts, popovers and dialogs.
   Web glass = `glass-bg` + `backdrop-filter: blur(var(--glass-blur)) saturate(180%)` +
   `1px solid var(--glass-border)` + `shadow-glass`. On Windows the equivalent is acrylic on flyouts
@@ -61,11 +68,13 @@ are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 
 
 - `brand-500` (`#ff6a00`) is the only brand color: the one primary button per view, the selection
   indicator, active icons, progress, the highlighted chart value, the menu highlight. Text on it is
-  always the dark `on-brand` — white on orange fails contrast.
+  always the dark `on-brand` — white on orange fails contrast (2.9:1).
 - Brand as text uses `link` / `brand-700`, never `brand-500` on white.
 - Status is **dot + word, never color alone**: `green-500` good/connected, `blue-500` informational,
   `yellow-500` waiting/paused, `red-500` failed/risk. Status text uses the -700 step.
-- Tints (-100) are backgrounds for tags and inline banners; text on them uses -900.
+- Scale steps: -100 backgrounds (tags, inline banners), -300 graphics only (never text), -500 the
+  token itself (dots, chart series; not text on white), -700 text on white and on -100 tags, -900
+  text on -100 banners.
 - Charts: one primary series in `brand-500`, a comparison series in `blue-500`; further series in
   `purple-500`, `green-500`, `yellow-500`.
 - No hardcoded hex in `app/desktop` or `packages/dashboard`. A missing token goes into the token
@@ -78,11 +87,14 @@ are silent, the macOS look follows Apple's Human Interface Guidelines for macOS 
 - Desktop on macOS: SF — the 17px bold toolbar title names the page (the in-content page `<h1>` is
   visually hidden and stays the accessible title), 14px semibold card titles, 13px/20px body, 11px
   captions and list headers.
-- Web: system stack — page title `title-2` in the toolbar, card titles `headline`,
-  tables/sidebar/buttons `callout`, labels/column heads `caption`, metadata `footnote`. KPI numbers
-  32px bold.
+- Web: system stack, sizes as shipped in `web/app/globals.css` (it wins over the `web.css` type
+  classes) — 13px base for tables, sidebar and buttons; the 17px bold toolbar title names the page;
+  14px semibold card titles; 12px labels, links and small buttons; 11px column heads, section
+  headers, captions and metadata. KPI numbers 24px bold.
 - Continuously changing values use tabular figures (`.tabular`).
-- Inter is not an app UI face; the desktop bundles it only because the dash names it for wheel labels.
+- Inter is not an app UI face; the desktop bundles it only because the dash names it for wheel
+  labels. Saira Semi Condensed is only for numeric values on the rendered wheel. Brand lettering is
+  artwork, not a font choice.
 
 ### Shape and spacing
 
@@ -108,7 +120,7 @@ invalid and disconnected values keep their geometry and show `—` with an expli
 an old value is never frozen and presented as live. Primary values stay neutral at rest — orange
 appears only when it adds interaction or state meaning.
 
-## Interface guidelines
+## Choosing a control
 
 ### Decision procedure — top to bottom, stop at the first match
 
@@ -136,10 +148,9 @@ grows past the screen once the corpus holds hundreds of entries.
 
 ### Segmented control vs. tabs
 
-- **Same data, different presentation** (period, unit, chart type, sort) → segmented control. It is
-  flat: the selected segment NEVER has a shadow, border, gradient or glass.
-- **Different content** (another table, form or panel) → tabs / tab switcher, one per page, never
-  inside a card. NEVER use a segmented control to swap whole panels.
+- **Same data, different presentation** (period, unit, chart type, sort) → segmented control.
+- **Different content** (another table, form or panel) → tabs / tab switcher. NEVER use a segmented
+  control to swap whole panels.
 
 ### All selection controls
 
@@ -150,12 +161,12 @@ grows past the screen once the corpus holds hundreds of entries.
 - Every control is keyboard-operable (radiogroup, tablist, combobox/listbox, menu) with a visible
   2px focus ring.
 
-### Forms and dialogs — creating or editing a record
+## Forms and dialogs — creating or editing a record
 
 **Container**
 
 - Create/edit of one record opens in a **ContentDialog** (desktop) or **Sheet** (web): a scoped task
-  in the current context.
+  in the current context; the rest of the window is dimmed.
 - One dialog at a time. NEVER open a dialog from a dialog — close the first, or use a stepped dialog
   / full page for long flows (> 8 fields or more than one step). Stepped dialogs draw their steps
   with a step indicator, not a "Step 1 of 3" line.
@@ -167,17 +178,21 @@ grows past the screen once the corpus holds hundreds of entries.
   fields last.
 - Mark required fields only when they are the exception; optional fields say "Optional". NEVER use
   asterisks.
-- Field width matches the expected input.
+- Field width matches the expected input. Fields share a row only when they belong together and
+  are short.
+- Web sheet layout: labels right-aligned in a 96px column, fields left-aligned, 10px between rows.
+- Numeric values are right-aligned with tabular figures, the unit as a suffix.
 - Measured values (lap times, fuel use) come from recorded data, not typed entry.
-- Validate on blur, not on every keystroke; show the message directly under the field with a red
-  border. NEVER show errors before the first interaction.
+- Validate on blur, not on every keystroke; show the message directly under the field in
+  `danger-text` with a red border. NEVER show errors before the first interaction.
 - Context feedback informs but never blocks saving.
 
 **Actions**
 
 - Buttons bottom-right; exactly one primary, labelled with a verb ("Create", "Save"). NEVER "OK"
   or "Submit". Windows ContentDialog puts the primary left of "Cancel", per Fluent; macOS and web
-  put "Cancel" left of the primary, so the primary is rightmost.
+  put "Cancel" left of the primary, so the primary is rightmost. A "create another" checkbox, when
+  offered, sits at the left of the footer.
 - Enter = primary, Esc = Cancel. The primary is disabled until required fields are valid.
 - Closing with unsaved changes asks "Discard changes?" with "Discard" (destructive) and
   "Keep editing".
@@ -221,8 +236,8 @@ Single-line input with a visible label; the placeholder is a hint, never the onl
 
 ### Date field
 
-Typeable field with a trailing calendar button. Accepts typed input and normalises on blur. NEVER
-three separate day/month/year selects.
+Typeable field with a trailing calendar button that opens a picker popover. Accepts typed input and
+normalises on blur; defaults to today. NEVER three separate day/month/year selects.
 
 ### Select
 
@@ -233,13 +248,13 @@ make the whole dropdown a button, or use a select to switch panes.
 ### Segmented control
 
 Flat choice between 2–5 related options that change **how the current view is shown**. Equal-width,
-text-only segments; the selected segment has no shadow, border, gradient or glass. Renders as
+text-only segments; the selected segment NEVER has a shadow, border, gradient or glass. Renders as
 `role="radiogroup"` with arrow-key navigation.
 
 ### Tabs / tab switcher
 
 Switches between 2–6 separate panes of one page. Desktop uses `.tabs`; web uses the glass tab
-switcher centred at the top of the content. One per page, never inside a card. Renders as
+switcher centred at the top of the content. One per page, NEVER inside a card. Renders as
 `role="tablist"` with `role="tabpanel"` panes.
 
 ### Switch
@@ -280,6 +295,8 @@ macOS: the toolbar has the HIG's three zones.
 - A `detail` header — a title naming an item (the dash being edited), not the page — keeps its
   title and CommandBar in the content.
 
+Everywhere:
+
 - **MUST:** max. 4 icon actions, the rest in overflow · every icon action has a tooltip · views
   write one CommandBar in `PageHeader` and leave its placement to the shell.
 - **NEVER:** a second toolbar row · the app name as page title · orange toolbar fills on web.
@@ -311,8 +328,9 @@ errors that need action; never stacked.
 ### Status
 
 8px dot + word, the same color and word for the same state everywhere. Tags use the -100 tint with
--700 text. Counters are red pills. NEVER color alone; at most one badge per row. The one exception is
-the macOS toolbar indicator shrunk to its dot, whose word stays in its tooltip and accessible name.
+-700 text. Counters are red pills (`red-500`, white text). NEVER color alone; at most one badge per
+row. The one exception is the macOS toolbar indicator shrunk to its dot, whose word stays in its
+tooltip and accessible name.
 
 ### KPI card
 
@@ -336,3 +354,78 @@ Line icons on a 24px grid, consistent stroke, round caps and joins, `currentColo
   selection.
 - Status is never color-only.
 - Dialogs trap focus and return it to the trigger on close.
+
+## Web token roles
+
+What each token in `packages/tokens/web.css` is for; the values live only there. Desktop tokens
+share the brand and status scales and otherwise follow the platform look.
+
+**Scales** (`brand`, `green`, `red`, `yellow`, `blue`, `purple`; steps as in [Color](#color))
+
+| Token | Role |
+| --- | --- |
+| `brand-100` | Selected chips, empty-state icon tiles, focus halo fill. Use sparingly in dark. |
+| `brand-700` | Brand as text on white: links, text buttons, eyebrow labels (5.6:1 on `surface`). |
+| `brand-900` | Text on `brand-100`. |
+| `green-500` | Success dot and check icon, chart series. Not text on white (2.9:1). `green-900` is also the ink on `green-500` icon discs. |
+| `red-500` | Risk dot, counter/notification badge fill (white text), destructive dialog button. |
+| `red-100` / `red-700` | Danger tag and banner background, destructive secondary button background / danger text, destructive menu items. |
+| `yellow-300` | Warning graphics, warning icon disc on `yellow-100`. |
+| `blue-500` | Info dot, utilisation meter, chart series. |
+| `purple-*` | Accent: "new" tag and avatar fill (`-100`), avatar and accent text (`-700`), accent chart series (`-500`). |
+
+**Neutrals and roles**
+
+| Token | Role |
+| --- | --- |
+| `bg` | Page background. |
+| `surface` | Cards, lists, tables, inputs; sits on `bg`. |
+| `sidebar-bg` | Web sidebar: flat, edge-to-edge, `separator` on its right. |
+| `fill` | Standard button, meter/progress track, selected table row, small icon buttons inside fields. |
+| `fill-strong` | Active sidebar item, segmented-control track in flat contexts. |
+| `separator` | Hairlines between rows, sidebar edge, toolbar bottom edge. |
+| `border` | Input and outlined-button borders; flat-fallback overlay borders. |
+| `label` | Primary text and icons on `bg`, `surface`, `fill`, `glass-bg`. |
+| `label-secondary` | Labels, metadata, column heads on `surface` and `bg` (≥ 4.5:1). |
+| `label-disabled` | Disabled text only, never readable content. |
+| `on-brand` | Text and icons on `brand-500` fills. |
+| `link` | Links and text buttons on `surface` and `bg`. |
+| `success-text` / `danger-text` | Positive / negative deltas on `surface`; `danger-text` also for errors and destructive menu items on `surface` and `glass-bg`. |
+| `segment-selected` | The selected segment of a flat segmented control (text `label`). |
+| `tab-selected` + `tab-highlight` | The selected tab of the glass tab switcher, with an `inset 0 1px 0` specular edge. Never in a segmented control. |
+| `focus-ring` | The 2px focus ring (≥ 3:1 on every surface; `brand-500` is too light on white). |
+
+**Glass, shadow, shape**
+
+| Token | Role |
+| --- | --- |
+| `glass-bg`, `glass-opacity` | The 55 % glass fill of menus, notifications, toasts, popovers and dialogs; always with `glass-blur`. |
+| `glass-border` / `glass-highlight` | Darkened outer edge / 1px inner specular edge of glass elements. |
+| `toolbar-bg` + `toolbar-blur` | The frosted toolbar band, `separator` underneath. |
+| `glass-blur` / `toolbar-blur` | Backdrop blur radii, each paired with `saturate(180%)`. |
+| `shadow-glass` | Glass overlays, with `glass-bg` + `glass-border`. |
+| `shadow-tabs` | The glass tab switcher track. |
+| `shadow-none` | Everything flat: cards, buttons, sidebar, tables, segmented controls (track and selected segment). |
+| `track-tint` | Alpha of `brand-500` for non-highlighted chart bars: 0.25 light, 0.32 dark. |
+| `radius-xs` | Tags, checkboxes, chart bar tops (top corners only). |
+| `radius-sm` | S buttons, icon buttons inside fields, menu items, tooltips. |
+| `radius-md` | M/L buttons, inputs, selects, flat segmented tracks. |
+| `radius-lg` | Popovers. |
+| `radius-xl` | Cards, notifications, sidebar-free panels. |
+| `radius-pill` | XL buttons, search fields, chips, toolbar groups, segmented controls in toolbars, toasts. |
+| `space-xs` … `space-xl` | Inside components: icon-to-label gaps (`xs` in chips and dots, `sm` in buttons and between grouped buttons), sidebar item gap and menu item padding (`md`), input padding and toolbar gaps (`lg`), search-field padding and list-row vertical padding (`xl`). |
+| `space-2xl` … `space-6xl` | Layout: gap between cards (`2xl`), card padding (`3xl`), content gutter and gap between sections in a card (`4xl`), large section spacing (`5xl`), documentation page padding (`6xl`). |
+
+**Type styles** (`web.css` classes; the shipped web sizes are under Type, from `web/app/globals.css`)
+
+| Style | Role |
+| --- | --- |
+| `large-title` | Component-sheet page titles. |
+| `title-1` | Section headings. |
+| `title-2` | Large standalone page titles (not the web toolbar, which uses 17px). |
+| `title-3` | Dialog titles, large card titles. |
+| `headline` | Card, list and notification titles. |
+| `body` | Body copy. |
+| `callout` | Web default for tables, sidebar items, buttons, inputs. |
+| `footnote` | Help text, metadata, menu items, segmented labels. |
+| `caption` | Column heads, field labels, tags, sidebar section headers. |

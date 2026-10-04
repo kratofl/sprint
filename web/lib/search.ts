@@ -1,4 +1,4 @@
-// Toolbar search starts filtering at two characters (DESIGN.md → SearchField).
+// Toolbar search starts filtering at two characters.
 export const MIN_QUERY_LENGTH = 2
 
 // Whether a query is long enough to filter at all.
