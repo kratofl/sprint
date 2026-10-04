@@ -122,6 +122,9 @@ docs/superpowers/*
 # Playwright visual-verification screenshots and session handoff docs.
 output/
 handoffs/
+# Throwaway probes and mockup research scratch.
+.artifacts/
+.mockup-scratch/
 bash.exe.stackdump
 
 # ─── Desktop preview harness ─────────────────────────────────────────────────
