@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>ContextMenu</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.stage{position:relative;height:240px;overflow:hidden}
+.under{position:absolute;inset:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.under div{border-radius:var(--radius-lg)}
+.menu{position:absolute;left:40px;top:28px;width:230px;box-sizing:border-box;padding:6px;display:flex;flex-direction:column;gap:1px;border-radius:14px;background:var(--glass-bg);backdrop-filter:blur(var(--glass-blur)) saturate(180%);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);border:1px solid var(--glass-border);box-shadow:var(--shadow-glass)}
+.menu button{display:flex;align-items:center;justify-content:space-between;height:30px;padding:0 10px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--label);font-family:inherit;font-size:13px;font-weight:500}
+.menu button.hl{background:var(--brand-500);color:var(--on-brand)}
+.menu button.del{color:var(--danger-text);font-weight:600}
+.menu .k{font-size:12px;opacity:.75}
+.sep{height:1px;background:var(--separator);margin:4px 8px}
+</style></head>
+<body>
+<div class="stage">
+<div class="under"><div style="background:var(--brand-100)"></div><div style="background:var(--blue-500)"></div><div style="background:var(--purple-100)"></div><div style="background:var(--green-500)"></div></div>
+<div class="menu" role="menu" aria-label="Projektaktionen">
+<button role="menuitem" class="hl"><span>Öffnen</span><span class="k">⌘O</span></button>
+<button role="menuitem"><span>Bearbeiten</span><span class="k">⌘E</span></button>
+<button role="menuitem"><span>Duplizieren</span><span class="k">⌘D</span></button>
+<div class="sep"></div>
+<button role="menuitem"><span>Archivieren</span></button>
+<button role="menuitem" class="del"><span>Löschen</span></button>
+</div>
+</div>
+</body>
+</html>

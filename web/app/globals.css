@@ -1,13 +1,747 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-@import 'tailwindcss';
-@import '@sprint/tokens/globals.css';
+@import 'tailwindcss/preflight.css' layer(base);
+@import '@sprint/tokens/web.css';
 
-@config '../tailwind.config.ts';
-@source '../../packages/ui/src';
+/* Sprint web — styles for the Web App mockup (docs/design/mockups/web-light|dark.html).
+   Desktop density is the compact web scale from the components sheet: 13px body, 28px controls,
+   34px table rows, 52px toolbar, 224px sidebar. Colours, radii and spacing come from
+   @sprint/tokens/web.css; the few web-local values below are derived from those tokens or quoted
+   from docs/design/DESIGN.md. */
+
+/* Figtree is the non-Apple face of --font-sans. Bundled (variable, latin) so nothing loads from the internet. */
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('./fonts/figtree-latin.woff2') format('woff2');
+}
+
+:root {
+  /* Controls inside the frosted toolbar sit on a 5 % fill (DESIGN.md → Toolbar). */
+  --toolbar-fill: rgba(0, 0, 0, 0.05);
+  /* Tint pairs: -100 background + -700 text in light, 20 % of the -500 in dark (DESIGN.md → StatusBadge). */
+  --tint-brand-bg: var(--brand-100);
+  --tint-brand-fg: var(--brand-700);
+  --avatar-bg: var(--purple-100);
+  --avatar-fg: var(--purple-700);
+}
+
+[data-theme='dark'] {
+  --toolbar-fill: rgba(255, 255, 255, 0.08);
+  --tint-brand-bg: color-mix(in srgb, var(--brand-500) 20%, transparent);
+  --tint-brand-fg: var(--link);
+  --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
+  --avatar-fg: var(--purple-300);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --toolbar-fill: rgba(255, 255, 255, 0.08);
+    --tint-brand-bg: color-mix(in srgb, var(--brand-500) 20%, transparent);
+    --tint-brand-fg: var(--link);
+    --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
+    --avatar-fg: var(--purple-300);
+  }
+}
+
+/* Flat toolbar variant: solid band, fills become fill-strong. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --toolbar-fill: var(--fill-strong);
+  }
+}
 
 html,
 body {
-  min-height: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
   background: var(--bg);
-  color: var(--text);
+  color: var(--label);
+  /* Line height stays `normal`, as in the mockup; multi-line text sets its own. */
+  font: 400 13px var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.shell {
+  display: flex;
+  height: 100vh;
+}
+
+.shell-main {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+/* ── Sidebar (edge-to-edge, flat) ──────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 224px;
+  flex-shrink: 0;
+  padding: var(--space-xl) var(--space-md);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--separator);
+}
+
+.sidebar[data-collapsed='true'] {
+  width: 52px;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 2px var(--space-sm) var(--space-xl);
+}
+
+.sidebar[data-collapsed='true'] .sidebar-head {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.app-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--radius-xs);
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.app-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.sidebar[data-collapsed='true'] .sidebar-toggle {
+  margin-left: 0;
+}
+
+.sidebar-toggle:hover {
+  background: var(--fill);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 28px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-xs);
+  color: var(--label);
+}
+
+.nav-item:hover {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.nav-item[aria-current='page'] {
+  background: var(--fill-strong);
+  font-weight: 600;
+}
+
+.sidebar[data-collapsed='true'] .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+/* Icons are always brand-500, active or not (DESIGN.md → SidebarItem). */
+.nav-icon {
+  flex-shrink: 0;
+  color: var(--brand-500);
+}
+
+.nav-section {
+  padding: var(--space-2xl) var(--space-sm) 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sidebar[data-collapsed='true'] .nav-section {
+  height: 1px;
+  margin: var(--space-sm) var(--space-xs);
+  padding: 0;
+  background: var(--separator);
+}
+
+.sidebar-spacer {
+  flex-grow: 1;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-xs);
+  padding: var(--space-md) var(--space-sm) 0;
+  border-top: 1px solid var(--separator);
+  color: var(--label-secondary);
+  font-weight: 500;
+}
+
+.sidebar[data-collapsed='true'] .sidebar-user {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background: var(--avatar-bg);
+  color: var(--avatar-fg);
+}
+
+/* ── Toolbar (one frosted band; .toolbar-band comes from the tokens) ──── */
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  height: 52px;
+  padding: 0 var(--space-3xl);
+}
+
+.toolbar-lead,
+.toolbar-trail {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.toolbar-trail {
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.toolbar-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Pill group of borderless controls inside the toolbar (stepper). */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--toolbar-fill);
+}
+
+.toolbar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--label);
+}
+
+.toolbar-icon:hover {
+  background: var(--toolbar-fill);
+}
+
+.stepper-label {
+  min-width: 108px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Search is always a pill and always last in the toolbar. */
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 200px;
+  height: 28px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-pill);
+  background: var(--toolbar-fill);
+  color: var(--label-secondary);
+}
+
+.search-field:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.search-field input {
+  flex-grow: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--label);
+}
+
+.search-field input::placeholder {
+  color: var(--label-secondary);
+}
+
+.search-field input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* ── Page content ──────────────────────────────────────────────────────── */
+
+.page-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  min-height: calc(100vh - 52px);
+  padding: var(--space-2xl) var(--space-3xl) var(--space-3xl);
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+/* Main column + side column, like the mockup's chart and list rows. */
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: var(--space-lg);
+}
+
+.split-row-chart {
+  height: 256px;
+}
+
+/* The last row of a page stretches to the bottom edge. */
+.fill-row {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+/* ── Cards (flat: surface on bg, no shadow) ───────────────────────────── */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-xl) var(--space-2xl);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.card-flush {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  min-height: 22px;
+}
+
+.card-flush > .card-head {
+  padding: var(--space-lg) var(--space-2xl) var(--space-sm);
+}
+
+.card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card-link {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.card-link:hover {
+  color: var(--brand-700);
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kpi-label {
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 30px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-value[data-empty='true'] {
+  color: var(--label-disabled);
+}
+
+.kpi-caption {
+  color: var(--label-secondary);
+  font-size: 11px;
+}
+
+/* ── Bar chart: brand-500 at track-tint, the highest bar in full brand-500,
+      radius-xs on top only, separator baseline (DESIGN.md → Colour/Shape). ── */
+
+.chart-bars {
+  display: flex;
+  flex-grow: 1;
+  align-items: flex-end;
+  gap: var(--space-xl);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.chart-bar {
+  flex: 1 1 0;
+  min-height: 2px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: var(--brand-500);
+  opacity: var(--track-tint);
+}
+
+.chart-bar[data-highlight='true'] {
+  opacity: 1;
+}
+
+.chart-labels {
+  display: flex;
+  gap: var(--space-xl);
+  padding: 0 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-labels > span {
+  flex: 1 1 0;
+  text-align: center;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────── */
+
+.table-head,
+.table-row {
+  display: grid;
+  align-items: center;
+  column-gap: var(--space-lg);
+}
+
+.table-head {
+  height: 26px;
+  padding: 0 var(--space-2xl);
+  border-bottom: 1px solid var(--separator);
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.table-row {
+  height: 34px;
+  margin: 0 var(--space-xs);
+  padding: 0 var(--space-md);
+  border-bottom: 1px solid var(--fill);
+}
+
+.table-row:last-child {
+  border-bottom: 0;
+}
+
+.table-row[aria-selected='true'] {
+  border-bottom-color: transparent;
+  border-radius: var(--radius-sm);
+  background: var(--fill);
+}
+
+.table-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-end {
+  text-align: right;
+}
+
+.cell-muted {
+  color: var(--label-secondary);
+}
+
+.cell-strong {
+  font-weight: 500;
+}
+
+/* ── Lists inside cards (hairline-separated rows) ─────────────────────── */
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--fill);
+  color: var(--label);
+}
+
+.list-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.list-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.list-row-title {
+  font-weight: 600;
+}
+
+.list-row-meta {
+  color: var(--label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.list-row-trail {
+  flex-shrink: 0;
+  color: var(--label-secondary);
+}
+
+a.list-row:hover .list-row-title {
+  color: var(--link);
+}
+
+/* ── Status: dot + word, never colour alone ───────────────────────────── */
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--status-color);
+}
+
+.status[data-status='active'] { --status-color: var(--green-500); }
+.status[data-status='review'] { --status-color: var(--blue-500); }
+.status[data-status='paused'] { --status-color: var(--yellow-500); }
+.status[data-status='risk'] { --status-color: var(--red-500); }
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-3xl);
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--tint-brand-bg);
+  color: var(--tint-brand-fg);
+}
+
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.empty-body {
+  max-width: 280px;
+  line-height: 18px;
+  color: var(--label-secondary);
+}
+
+/* ── Buttons (flat, never glow) ───────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: 28px;
+  padding: 0 var(--space-lg);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.btn-sm {
+  height: 22px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-xs);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-weight: 600;
+}
+
+.btn-secondary {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.btn:disabled {
+  background: var(--fill);
+  color: var(--label-disabled);
+}
+
+/* ── Text field ───────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.field input {
+  height: 28px;
+  padding: 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.field input::placeholder {
+  color: var(--label-disabled);
+}
+
+.field input:focus {
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+.muted {
+  margin: 0;
+  line-height: 18px;
+  color: var(--label-secondary);
+}
+
+/* ── Page-specific layouts ────────────────────────────────────────────── */
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-lg);
+}
+
+.join-form .field {
+  align-self: stretch;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 280px;
+  gap: var(--space-lg);
+}
+
+/* The wheel display is 5:3; the empty canvas keeps that frame. */
+.dash-canvas {
+  display: flex;
+  aspect-ratio: 5 / 3;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--bg);
 }

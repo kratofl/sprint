@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Sprint.Desktop.Host</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Sprint.Desktop.Core\Sprint.Desktop.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tests\ holds its own standalone test project (Sprint.Desktop.Host.Tests.csproj);
+         exclude it from this Exe project's default recursive globs. -->
+    <Compile Remove="Tests\**" />
+    <Content Remove="Tests\**" />
+    <None Remove="Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Real dash/device/settings/setup presets (incl. the default "Driver Focus" dash),
+         loaded by DesktopRuntime from Path.Combine(AppContext.BaseDirectory, "presets").
+         The Web SDK already globs these in as default Content items, so this only adds
+         the copy-to-output metadata rather than including them a second time. -->
+    <Content Update="presets\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

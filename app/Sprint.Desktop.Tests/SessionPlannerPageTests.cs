@@ -1,0 +1,885 @@
+using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
+using Xunit;
+
+namespace Sprint.Desktop.Tests;
+
+/// <summary>
+/// Acceptance-criteria tests for the Session Planner page (#100). These drive
+/// <see cref="SessionPlannerController"/> directly, so the page's behaviour is covered
+/// without launching Avalonia. Rendering is covered by the headless shell and visual
+/// smoke tests.
+/// </summary>
+public sealed class SessionPlannerPageTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void WithNoPlansThePageIsEmptyAndTheSegmentedControlIsHidden()
+    {
+        Run((controller, _) =>
+        {
+            Assert.False(controller.HasPlans);
+            Assert.Null(controller.PlanInView);
+            Assert.False(controller.SegmentedControlVisible);
+            Assert.Empty(controller.History);
+        });
+    }
+
+    [Fact]
+    public void ThePageLandsOnTheOverviewInsteadOfThrowingTheDriverIntoAPlan()
+    {
+        Run((controller, service) =>
+        {
+            // Plans exist from an earlier run, but nothing was selected this session: the
+            // page shows the overview of every plan, not the inside of one of them.
+            service.CreatePlan(NewRequest("First"));
+            service.CreatePlan(NewRequest("Second"));
+
+            Assert.True(controller.HasPlans);
+            Assert.Null(controller.PlanInView);
+        });
+    }
+
+    [Fact]
+    public void CreatingAPlanOpensItAndClosingItReturnsToTheOverview()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("First"));
+            var second = controller.CreatePlan(NewRequest("Second"));
+
+            Assert.Equal(second.Id, controller.PlanInView?.Id);
+
+            controller.ClosePlan();
+
+            Assert.Null(controller.PlanInView);
+        });
+    }
+
+    [Fact]
+    public void AnArmedPlanDoesNotPullThePageOffTheOverview()
+    {
+        Run((controller, service) =>
+        {
+            // Armed/tracking is prominent on the overview via its status — it does not hijack
+            // the page the way the old "active plan takes precedence" rule did.
+            var first = service.CreatePlan(NewRequest("First"));
+            service.CreatePlan(NewRequest("Second"));
+            controller.Arm(first.Id);
+
+            Assert.Null(controller.PlanInView);
+        });
+    }
+
+    [Fact]
+    public void OpenAndCompletedPlansAreListedSeparatelyNewestFirst()
+    {
+        Run((controller, _) =>
+        {
+            var first = controller.CreatePlan(NewRequest("First"));
+            var second = controller.CreatePlan(NewRequest("Second"));
+            var third = controller.CreatePlan(NewRequest("Third"));
+            controller.StartNow(first.Id, SegmentKind.Race);
+            controller.Stop(first.Id);
+
+            Assert.Equal(new[] { third.Id, second.Id }, controller.OpenPlans.Select(plan => plan.Id));
+            Assert.Equal(new[] { first.Id }, controller.CompletedPlans.Select(plan => plan.Id));
+        });
+    }
+
+    [Fact]
+    public void SelectingAPlanFromHistoryPutsItInView()
+    {
+        Run((controller, _) =>
+        {
+            var first = controller.CreatePlan(NewRequest("First"));
+            controller.CreatePlan(NewRequest("Second"));
+
+            controller.SelectPlan(first.Id);
+
+            Assert.Equal(first.Id, controller.PlanInView?.Id);
+        });
+    }
+
+    [Fact]
+    public void HistoryListsEveryPlanNewestFirstIncludingCompletedOnes()
+    {
+        Run((controller, _) =>
+        {
+            var first = controller.CreatePlan(NewRequest("First"));
+            var second = controller.CreatePlan(NewRequest("Second"));
+            controller.StartNow(first.Id, SegmentKind.Race);
+            controller.Stop(first.Id);
+
+            Assert.Equal(new[] { second.Id, first.Id }, controller.History.Select(plan => plan.Id));
+            Assert.Equal(PlanStatus.Completed, controller.History[1].Status);
+        });
+    }
+
+    [Fact]
+    public void ASkippedQualifyingTabStaysVisibleButDisabledAndTheRaceTabIsSelected()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
+
+            Assert.True(controller.SegmentedControlVisible);
+            Assert.False(controller.QualifyingTabEnabled);
+            Assert.Equal("Skipped", controller.QualifyingTabLabel);
+            Assert.Equal(PlannerSegmentTab.Race, controller.SelectedTab);
+        });
+    }
+
+    [Fact]
+    public void SelectingADisabledQualifyingTabIsIgnored()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
+
+            controller.SelectTab(PlannerSegmentTab.Qualifying);
+
+            Assert.Equal(PlannerSegmentTab.Race, controller.SelectedTab);
+        });
+    }
+
+    [Fact]
+    public void QualifyingIsSelectableAndDefaultWhenThePlanIncludesIt()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Weekend"));
+
+            Assert.True(controller.QualifyingTabEnabled);
+            Assert.Equal("Qualifying", controller.QualifyingTabLabel);
+            Assert.Equal(PlannerSegmentTab.Qualifying, controller.SelectedTab);
+
+            controller.SelectTab(PlannerSegmentTab.Race);
+            Assert.Equal(PlannerSegmentTab.Race, controller.SelectedTab);
+        });
+    }
+
+    [Fact]
+    public void QualifyingIsTheNextStepUntilItHasRunSoStartingTheRaceInsteadSkipsIt()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Weekend"));
+
+            // The page draws exactly one primary start action: the next step. Starting the
+            // race while qualifying is planned but has not run is a skip and needs a confirm.
+            Assert.Equal(SegmentKind.Qualifying, controller.NextSegment(plan));
+            Assert.True(controller.StartingRaceSkipsQualifying(plan));
+
+            controller.StartNow(plan.Id, SegmentKind.Qualifying);
+
+            Assert.Equal(SegmentKind.Race, controller.NextSegment(plan));
+            Assert.False(controller.StartingRaceSkipsQualifying(plan));
+        });
+    }
+
+    [Fact]
+    public void APlanThatSkipsQualifyingGoesStraightToTheRaceWithoutAWarning()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
+
+            Assert.Equal(SegmentKind.Race, controller.NextSegment(plan));
+            Assert.False(controller.StartingRaceSkipsQualifying(plan));
+        });
+    }
+
+    [Fact]
+    public void DeletingAPlanRemovesItEverywhereAndLandsOnTheOverview()
+    {
+        Run((controller, service) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Doomed"));
+            Assert.Equal(plan.Id, controller.PlanInView?.Id);
+
+            controller.DeletePlan(plan.Id);
+
+            Assert.Null(controller.PlanInView);
+            Assert.Null(service.Find(plan.Id));
+            Assert.Empty(controller.OpenPlans);
+        });
+    }
+
+    [Fact]
+    public void TheSpecificLapPickerOpensOnRequestAndClosesWithTheChoiceItWasOpenedFor()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Weekend"));
+            Assert.False(controller.SpecificLapPickerOpen);
+
+            controller.OpenSpecificLapPicker();
+            Assert.True(controller.SpecificLapPickerOpen);
+
+            // Another scope offers different laps, so a picker left open would show the old
+            // scope's list for one paint.
+            controller.SelectTargetScope(PlanTargetScope.Practice);
+            Assert.False(controller.SpecificLapPickerOpen);
+
+            controller.OpenSpecificLapPicker();
+            controller.SetTarget(SegmentKind.Qualifying, new PlanTargetOption(
+                PlanTargetScope.Qualifying,
+                null,
+                PlanTargetStatistic.Custom,
+                "Lap 2",
+                "2:13.0",
+                "",
+                133,
+                3,
+                "hs-q",
+                2,
+                true,
+                false,
+                null));
+            Assert.False(controller.SpecificLapPickerOpen);
+        });
+    }
+
+    [Fact]
+    public void StateChangesRaiseChangedSoTheShellCanRepaint()
+    {
+        Run((controller, _) =>
+        {
+            var raised = 0;
+            controller.Changed += (_, _) => raised++;
+
+            controller.CreatePlan(NewRequest("One"));
+            controller.SelectTab(PlannerSegmentTab.Race);
+
+            Assert.Equal(2, raised);
+        });
+    }
+
+    [Fact]
+    public void PrefillPrefersThePersistedLastSeenContext()
+    {
+        RunWithContext(
+            new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa-Francorchamps"),
+            (controller, _) =>
+            {
+                controller.CreatePlan(NewRequest("Older", game: "Old game", track: "Monza"));
+
+                var prefill = controller.Prefill();
+
+                Assert.Equal("Le Mans Ultimate", prefill.Game);
+                Assert.Equal("Porsche 963", prefill.Car);
+                Assert.Equal("Spa-Francorchamps", prefill.Track);
+            });
+    }
+
+    [Fact]
+    public void PrefillFallsBackToTheMostRecentPlanWhenNoContextIsKnown()
+    {
+        Run((controller, _) =>
+        {
+            controller.CreatePlan(NewRequest("Recent", game: "Le Mans Ultimate", track: "Monza"));
+
+            var prefill = controller.Prefill();
+
+            Assert.Equal("Le Mans Ultimate", prefill.Game);
+            Assert.Equal("Monza", prefill.Track);
+        });
+    }
+
+    [Fact]
+    public void PrefillIsEmptyWithNoContextAndNoPlans()
+    {
+        Run((controller, _) => Assert.True(controller.Prefill().IsEmpty));
+    }
+
+    [Fact]
+    public void TheCreationFlowAsksForManualFuelValuesWhenNoHistoryExists()
+    {
+        Run((controller, _) =>
+            Assert.False(controller.HasFuelHistory(new PlanContext("lmu", "963", "spa"))));
+    }
+
+    [Fact]
+    public void TheCreationFlowSkipsTheManualFuelQuestionWhenHistoryExists()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                idFactory: () => "id-1");
+            var controller = new SessionPlannerController(
+                service,
+                new StubFuelHistory(hasHistory: true),
+                () => PlanContext.Empty);
+
+            Assert.True(controller.HasFuelHistory(new PlanContext("lmu", "963", "spa")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void OnlyOnePlanMayBeActivatedAndTheReasonIsStatedForTheOthers()
+    {
+        Run((controller, _) =>
+        {
+            var active = controller.CreatePlan(NewRequest("Active"));
+            var other = controller.CreatePlan(NewRequest("Other"));
+            controller.Arm(active.Id);
+
+            var availability = controller.CanActivate(other.Id);
+
+            Assert.False(availability.CanActivate);
+            Assert.Contains("Active", availability.Reason, StringComparison.Ordinal);
+            Assert.True(controller.CanActivate(active.Id).CanActivate);
+        });
+    }
+
+    [Fact]
+    public void EveryPlanIsActivatableWhenTheSlotIsFree()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Free"));
+
+            Assert.True(controller.CanActivate(plan.Id).CanActivate);
+            Assert.Equal("", controller.CanActivate(plan.Id).Reason);
+        });
+    }
+
+    [Fact]
+    public void TakeOverReleasesAnArmedHolderBackToDraftAndArmsTheNewPlan()
+    {
+        Run((controller, _) =>
+        {
+            var holder = controller.CreatePlan(NewRequest("Holder"));
+            var next = controller.CreatePlan(NewRequest("Next"));
+            controller.Arm(holder.Id);
+
+            controller.TakeOver(next.Id);
+
+            Assert.Equal(PlanStatus.Draft, holder.Status);
+            Assert.Equal(PlanStatus.Armed, next.Status);
+            Assert.Equal(next.Id, controller.ActivePlan?.Id);
+        });
+    }
+
+    [Fact]
+    public void TakeOverStopsATrackingHolderAndCompletesIt()
+    {
+        Run((controller, _) =>
+        {
+            var holder = controller.CreatePlan(NewRequest("Holder"));
+            var next = controller.CreatePlan(NewRequest("Next"));
+            controller.StartNow(holder.Id, SegmentKind.Race);
+
+            controller.TakeOver(next.Id);
+
+            Assert.Equal(PlanStatus.Completed, holder.Status);
+            Assert.Equal(PlanStatus.Armed, next.Status);
+        });
+    }
+
+    [Fact]
+    public void TakeOverOnAFreeSlotSimplyArmsThePlan()
+    {
+        Run((controller, _) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Only"));
+
+            controller.TakeOver(plan.Id);
+
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+        });
+    }
+
+    [Fact]
+    public void ARaceFormatMismatchWarningIsSurfacedForThePlanInView()
+    {
+        Run((controller, service) =>
+        {
+            var plan = controller.CreatePlan(NewRequest("Timed"));
+            controller.StartNow(plan.Id, SegmentKind.Race);
+            Assert.Null(controller.RaceFormatWarning);
+
+            // Plan says time-based; telemetry reports MaxLaps > 0, i.e. lap-based.
+            service.Ingest(new TelemetryFrame
+            {
+                Session = new SessionInfo { SessionType = SessionType.Race, MaxLaps = 20 },
+                Lap = new LapState { CurrentLap = 1 },
+            });
+
+            Assert.NotNull(controller.RaceFormatWarning);
+            Assert.Contains("LapBased", controller.RaceFormatWarning, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void TimeBasedAndLapBasedPlansBothRoundTripThroughTheController()
+    {
+        Run((controller, _) =>
+        {
+            var timed = controller.CreatePlan(NewRequest("Timed"));
+            Assert.Equal(RaceLengthFormat.TimeBased, timed.RaceLengthFormat);
+            Assert.Equal(60, timed.RaceLengthValue);
+
+            var lapped = controller.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Lapped",
+                RaceLengthFormat = RaceLengthFormat.LapBased,
+                RaceLengthValue = 24,
+            });
+            Assert.Equal(RaceLengthFormat.LapBased, lapped.RaceLengthFormat);
+            Assert.Equal(24, lapped.RaceLengthValue);
+        });
+    }
+
+    [Fact]
+    public void ADraftWithAPositiveRaceLengthAndReserveIsValid()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "Spa",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthText = "60",
+            FuelReserveText = "1",
+        };
+
+        Assert.True(draft.TryBuild(out var request, out var error));
+        Assert.Equal("", error);
+        Assert.Equal(60, request!.RaceLengthValue);
+        Assert.Equal(1, request.FuelReserveLaps);
+    }
+
+    [Theory]
+    [InlineData("0", "1", "Race length must be greater than zero.")]
+    [InlineData("-5", "1", "Race length must be greater than zero.")]
+    [InlineData("abc", "1", "Race length must be a number.")]
+    [InlineData("60", "-1", "Fuel reserve cannot be negative.")]
+    [InlineData("60", "abc", "Fuel reserve must be a whole number of laps.")]
+    public void AnInvalidDraftReportsTheProblemAndBuildsNothing(
+        string raceLength,
+        string reserve,
+        string expectedError)
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "Spa",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthText = raceLength,
+            FuelReserveText = reserve,
+        };
+
+        Assert.False(draft.TryBuild(out var request, out var error));
+        Assert.Null(request);
+        Assert.Equal(expectedError, error);
+    }
+
+    [Fact]
+    public void AnEmptyContextIsAllowedBecauseAPlanMayPrecedeDrivingTheCar()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "Unknown car",
+            RaceLengthFormat = RaceLengthFormat.LapBased,
+            RaceLengthText = "24",
+            FuelReserveText = "1",
+        };
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal("", request!.Game);
+        Assert.Equal("", request.Car);
+        Assert.Equal("", request.Track);
+    }
+
+    [Fact]
+    public void BlankManualFuelValuesStayUnsetRatherThanBecomingZero()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "Spa",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthText = "60",
+            FuelReserveText = "1",
+            AvgLapTimeText = "",
+            FuelPerLapText = "   ",
+        };
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Null(request!.AvgLapTimeSeconds);
+        Assert.Null(request.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void NonNumericManualFuelValuesStayUnsetRatherThanWritingABogusEstimate()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "Spa",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthText = "60",
+            FuelReserveText = "1",
+            AvgLapTimeText = "two minutes",
+            FuelPerLapText = "lots",
+        };
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Null(request!.AvgLapTimeSeconds);
+        Assert.Null(request.FuelPerLapLiters);
+    }
+
+    [Fact]
+    public void AnUnnamedDraftFallsBackToTheTrackAndCarForItsName()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "",
+            Car = "Porsche 963",
+            Track = "Spa-Francorchamps",
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthText = "60",
+            FuelReserveText = "1",
+        };
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal("Spa-Francorchamps – Porsche 963", request!.Name);
+    }
+
+    [Fact]
+    public void ADraftCarriesItsErrorAndItsStepAcrossAModalRebuild()
+    {
+        // The modal is torn down and rebuilt on every segmented and step change, so both the
+        // validation message and the current step have to live on the draft — held by the
+        // dialog, either would vanish mid-edit.
+        var draft = new NewPlanDraft { Name = "Spa", RaceLengthText = "", FuelReserveText = "1" };
+
+        Assert.False(draft.TryBuild(out _, out var error));
+        draft.Error = error;
+        draft.Step = PlanFormStep.Sessions;
+
+        Assert.Equal("Race length must be a number.", draft.Error);
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+    }
+
+    [Theory]
+    [InlineData("Spa-Francorchamps", "Porsche 963", "Spa-Francorchamps – Porsche 963")]
+    [InlineData("Spa-Francorchamps", "", "Spa-Francorchamps")]
+    [InlineData("", "Porsche 963", "Porsche 963")]
+    [InlineData("", "", "New Session Plan")]
+    [InlineData("  ", "  ", "New Session Plan")]
+    public void TheDerivedNameIsWhatTheServiceWouldActuallyCallAnUnnamedPlan(
+        string track,
+        string car,
+        string expected)
+    {
+        // The modal shows this as the name placeholder, so it has to be the same string the
+        // plan really ends up with — not a lookalike built in the view.
+        var draft = new NewPlanDraft { Track = track, Car = car, RaceLengthText = "60" };
+
+        Assert.Equal(expected, draft.DerivedName);
+
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal(expected, request!.Name);
+    }
+
+    [Fact]
+    public void ATypedNameWinsOverTheDerivedOne()
+    {
+        var draft = new NewPlanDraft
+        {
+            Name = "  Sunday race  ",
+            Track = "Spa-Francorchamps",
+            Car = "Porsche 963",
+            RaceLengthText = "60",
+        };
+
+        Assert.Equal("Spa-Francorchamps – Porsche 963", draft.DerivedName);
+        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.Equal("Sunday race", request!.Name);
+    }
+
+    [Fact]
+    public void QuickModeIsASummaryPlusCreateWhenEverythingIsDetected()
+    {
+        // The best case in the issue: in the car, lap-based session, history present.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            hasFuelHistory: true);
+
+        Assert.True(detection.ContextComplete);
+        Assert.Equal(RaceLengthFormat.LapBased, detection.RaceLengthFormat);
+        Assert.Equal(31, detection.RaceLengthValue);
+        Assert.True(detection.RaceLengthKnown);
+        Assert.True(detection.HasFuelHistory);
+        // Nothing left to ask: the modal is a read-only summary and a Create button.
+        Assert.Empty(detection.MissingFields);
+    }
+
+    [Fact]
+    public void ATimedRaceHasItsDurationDetectedInMinutes()
+    {
+        var detection = Detect(
+            new SessionInfo
+            {
+                Game = "Le Mans Ultimate",
+                Track = "Spa",
+                Car = "Porsche 963",
+                TotalSessionTime = 5400,
+                InCar = true,
+            },
+            hasFuelHistory: true);
+
+        Assert.Equal(RaceLengthFormat.TimeBased, detection.RaceLengthFormat);
+        Assert.Equal(90, detection.RaceLengthValue);
+        Assert.Empty(detection.MissingFields);
+    }
+
+    [Fact]
+    public void AnUndetectableRaceLengthIsAskedForRatherThanGuessed()
+    {
+        // No lap count and no plausible total: the sim has not said how long this is, and a
+        // garbage number here becomes a garbage fuel estimate.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", InCar = true },
+            hasFuelHistory: true);
+
+        Assert.Equal(RaceLengthFormat.Unknown, detection.RaceLengthFormat);
+        Assert.False(detection.RaceLengthKnown);
+        Assert.Equal([QuickPlanField.RaceLength], detection.MissingFields);
+    }
+
+    [Fact]
+    public void QuickModeAsksForTheFuelValuesOnlyWhenThereIsNoHistory()
+    {
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
+            hasFuelHistory: false);
+
+        Assert.Equal([QuickPlanField.Fuel], detection.MissingFields);
+    }
+
+    [Fact]
+    public void QuickModeAsksForTheContextItCouldNotDetect()
+    {
+        // Not in the car and the sim reports nothing: everything is a gap.
+        var detection = Detect(new SessionInfo(), hasFuelHistory: false);
+
+        Assert.False(detection.ContextComplete);
+        Assert.Equal(
+            [QuickPlanField.Context, QuickPlanField.RaceLength, QuickPlanField.Fuel],
+            detection.MissingFields);
+    }
+
+    [Fact]
+    public void DetectionFallsBackToTheRememberedContextInTheLobby()
+    {
+        // The sim knows the track but not yet the car; the remembered context fills the gap
+        // so the form shrinks instead of asking again.
+        var detection = Detect(
+            new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", MaxLaps = 31 },
+            hasFuelHistory: true,
+            remembered: new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"));
+
+        Assert.Equal("Porsche 963", detection.Context.Car);
+        Assert.True(detection.ContextComplete);
+        Assert.Empty(detection.MissingFields);
+    }
+
+    private static PlanDetection Detect(
+        SessionInfo session,
+        bool hasFuelHistory,
+        PlanContext? remembered = null)
+    {
+        PlanDetection? detection = null;
+        RunWithContext(remembered ?? PlanContext.Empty, (controller, _) =>
+            detection = controller.Detect(session), hasFuelHistory);
+        return detection!;
+    }
+
+    [Fact]
+    public void TheFullSheetWalksThreeStepsSoNothingHasToBeScrolled()
+    {
+        var draft = new NewPlanDraft();
+
+        Assert.Equal(PlanFormStep.Context, draft.Step);
+        Assert.False(draft.IsLastStep);
+
+        // Context asks for nothing required: a plan may be made for a car never driven.
+        Assert.True(draft.TryAdvance(out _));
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+
+        draft.RaceLengthText = "60";
+        Assert.True(draft.TryAdvance(out _));
+        Assert.Equal(PlanFormStep.Fuel, draft.Step);
+        Assert.True(draft.IsLastStep);
+
+        draft.GoBack();
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+        draft.GoBack();
+        draft.GoBack();
+        // Back from the first step stays put rather than closing the sheet out from under it.
+        Assert.Equal(PlanFormStep.Context, draft.Step);
+    }
+
+    [Fact]
+    public void AStepWillNotBeLeftWithAValueItsOwnFieldsCannotSatisfy()
+    {
+        var draft = new NewPlanDraft { Step = PlanFormStep.Sessions, RaceLengthText = "" };
+
+        // Catching this here rather than at Create means the message sits beside the field it
+        // is about, instead of three steps away.
+        Assert.False(draft.TryAdvance(out var error));
+        Assert.Equal("Race length must be a number.", error);
+        Assert.Equal(PlanFormStep.Sessions, draft.Step);
+
+        draft.RaceLengthText = "0";
+        Assert.False(draft.TryAdvance(out error));
+        Assert.Equal("Race length must be greater than zero.", error);
+    }
+
+    [Fact]
+    public void TheLastStepStillValidatesEverythingBeforeCreating()
+    {
+        var draft = new NewPlanDraft
+        {
+            Step = PlanFormStep.Fuel,
+            RaceLengthText = "60",
+            FuelReserveText = "not a number",
+        };
+
+        Assert.False(draft.TryBuild(out _, out var error));
+        Assert.Equal("Fuel reserve must be a whole number of laps.", error);
+    }
+
+    [Fact]
+    public void ANewDraftInheritsTheGlobalPlannerDefaultsAndCanStillBeOverriddenPerPlan()
+    {
+        var draft = NewPlanDraft.FromDefaults(new SessionPlannerSettings { FuelReserveLaps = 3 });
+        draft.RaceLengthText = "60";
+
+        Assert.Equal("3", draft.FuelReserveText);
+        Assert.True(draft.TryBuild(out var inherited, out _));
+        Assert.Equal(3, inherited!.FuelReserveLaps);
+
+        // Per-plan override: the global default seeds the field, it does not lock it.
+        draft.FuelReserveText = "0";
+        Assert.True(draft.TryBuild(out var overridden, out _));
+        Assert.Equal(0, overridden!.FuelReserveLaps);
+    }
+
+    [Fact]
+    public void ADraftBuiltWithNoSettingsStillDefaultsToOneReserveLap()
+    {
+        // The documented default, so the plain constructor keeps behaving as before.
+        Assert.Equal("1", new NewPlanDraft().FuelReserveText);
+    }
+
+    [Fact]
+    public void PrefillResolvesTheCarWhileTheDriverIsStillInTheLobby()
+    {
+        var remembered = new LastSeenContext();
+        // The pre-cockpit frame: scoring knows the game, track and selected car, and says
+        // the driver is not in the car yet.
+        var lobby = new SessionInfo
+        {
+            Game = "Le Mans Ultimate",
+            Track = "Spa",
+            Car = "Porsche 963",
+            InCar = false,
+        };
+
+        var changed = PlanContextCapture.Remember(remembered, lobby);
+
+        Assert.True(changed);
+        Assert.Equal("Le Mans Ultimate", remembered.Game);
+        Assert.Equal("Spa", remembered.Track);
+        Assert.Equal("Porsche 963", remembered.Car);
+    }
+
+    [Fact]
+    public void AFrameThatReportsNoCarCannotEraseTheRememberedOne()
+    {
+        var remembered = new LastSeenContext { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963" };
+
+        var changed = PlanContextCapture.Remember(remembered, new SessionInfo { Game = "Le Mans Ultimate" });
+
+        Assert.False(changed);
+        Assert.Equal("Porsche 963", remembered.Car);
+        Assert.Equal("Spa", remembered.Track);
+    }
+
+    private sealed class StubFuelHistory(bool hasHistory) : IFuelHistorySource
+    {
+        public bool HasHistory(string game, string car, string track) => hasHistory;
+    }
+
+    private static CreatePlanRequest NewRequest(
+        string name,
+        bool qualifyingIncluded = true,
+        string game = "Le Mans Ultimate",
+        string car = "Porsche 963",
+        string track = "Spa-Francorchamps") => new()
+    {
+        Name = name,
+        Game = game,
+        Car = car,
+        Track = track,
+        QualifyingIncluded = qualifyingIncluded,
+        RaceLengthFormat = RaceLengthFormat.TimeBased,
+        RaceLengthValue = 60,
+    };
+
+    private static void Run(Action<SessionPlannerController, SessionPlannerService> body)
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var counter = 0;
+            var service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                idFactory: () => $"id-{++counter}");
+            var controller = new SessionPlannerController(
+                service,
+                NoFuelHistorySource.Instance,
+                () => new PlanContext("", "", ""));
+            body(controller, service);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void RunWithContext(
+        PlanContext context,
+        Action<SessionPlannerController, SessionPlannerService> body,
+        bool hasFuelHistory = false)
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var counter = 0;
+            var service = new SessionPlannerService(
+                new LocalSessionPlanStore(root),
+                clock: () => Now,
+                idFactory: () => $"id-{++counter}");
+            var controller = new SessionPlannerController(
+                service,
+                hasFuelHistory ? new StubFuelHistory(true) : NoFuelHistorySource.Instance,
+                () => context);
+            body(controller, service);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+}

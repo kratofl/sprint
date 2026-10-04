@@ -10,9 +10,13 @@ public sealed class UpdateScriptTests
     private const int Pid = 4321;
     private const string Staging = @"C:\Temp\Sprint\updates\1.2.3\staged";
     private const string Install = @"C:\Program Files\Sprint";
-    private const string Exe = "Sprint.Desktop.Client.exe";
+    private const string Exe = "Sprint.exe";
 
-    private static string Build() => UpdateScript.BuildWindowsBatch(Pid, Staging, Install, Exe);
+    // The reveal is asked for explicitly because HostEffects turns it off for the whole test
+    // run — these tests assert the *product's* script text, and separate tests cover the fact
+    // that a test run never emits the Explorer line by default.
+    private static string Build() =>
+        UpdateScript.BuildWindowsBatch(Pid, Staging, Install, Exe, revealStagingOnFailure: true);
 
     [Fact]
     public void WaitsForTheRunningProcessToExit()
@@ -72,6 +76,30 @@ public sealed class UpdateScriptTests
             && relaunch > reveal);
         Assert.Contains("apply-update-%PID%.log", batch);
         Assert.Contains($"start \"\" explorer.exe /select,\"{Staging}\\{Exe}\"", batch);
+    }
+
+    [Fact]
+    public void TheStagingRevealCanBeSuppressedWithoutChangingTheRestOfTheScript()
+    {
+        var withReveal = Build();
+        var withoutReveal = UpdateScript.BuildWindowsBatch(
+            Pid,
+            Staging,
+            Install,
+            Exe,
+            revealStagingOnFailure: false);
+
+        Assert.Contains("explorer.exe", withReveal);
+        Assert.DoesNotContain("explorer.exe", withoutReveal);
+        // Everything else — including the failure branch and its relaunch — is unchanged.
+        Assert.Contains(":updatefailed", withoutReveal);
+        Assert.Contains($"start \"\" \"{Install}\\{Exe}\"", withoutReveal);
+        Assert.Equal(
+            withReveal.Replace(
+                $"start \"\" explorer.exe /select,\"{Staging}\\{Exe}\"\r\n",
+                "",
+                StringComparison.Ordinal),
+            withoutReveal);
     }
 
     [Fact]
@@ -186,7 +214,11 @@ public sealed class UpdateScriptTests
                     staging,
                     install,
                     exe,
-                    completionPath));
+                    completionPath,
+                    // This test runs the generated batch for real. Its failure branch would
+                    // otherwise open an Explorer window on the developer's desktop on every
+                    // run; the reveal line itself is asserted from the script text instead.
+                    revealStagingOnFailure: false));
 
             executableLock = new FileStream(
                 installedExe,

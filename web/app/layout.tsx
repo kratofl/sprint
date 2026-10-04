@@ -1,25 +1,22 @@
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import './globals.css'
-import WebNavRail from '@/components/WebNavRail'
+import Sidebar from '@/components/Sidebar'
 
 export const metadata: Metadata = {
   title: 'Sprint',
   description: 'Sim racing telemetry platform',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+// App shell: edge-to-edge sidebar + scrolling content. Each page renders its
+// own toolbar band through <Page>. Light/dark follow the OS (tokens handle it).
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen overflow-hidden bg-[var(--bg)] font-inter text-[var(--text)] antialiased">
-        <div className="flex h-screen">
-          <WebNavRail />
-          <main className="min-w-0 flex-1 overflow-y-auto bg-[var(--bg)] p-[14px]">
-            {children}
-          </main>
+    <html lang="en">
+      <body>
+        <div className="shell">
+          <Sidebar />
+          <main className="shell-main">{children}</main>
         </div>
       </body>
     </html>

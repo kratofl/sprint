@@ -15,7 +15,7 @@ public sealed class UpdateInstallerTests
         var version = $"retry-{Guid.NewGuid():N}";
         var versionRoot = Path.Combine(Path.GetTempPath(), "Sprint", "updates", version);
         var previousStaging = Path.Combine(versionRoot, "staged");
-        var previousExe = Path.Combine(previousStaging, "Sprint.Desktop.Client.exe");
+        var previousExe = Path.Combine(previousStaging, "Sprint.exe");
         Directory.CreateDirectory(previousStaging);
         File.WriteAllText(previousExe, "old");
 
@@ -39,7 +39,7 @@ public sealed class UpdateInstallerTests
             Assert.Equal(
                 "new",
                 await File.ReadAllTextAsync(
-                    Path.Combine(staged.StagingDir, "Sprint.Desktop.Client.exe")));
+                    Path.Combine(staged.StagingDir, "Sprint.exe")));
         }
         finally
         {
@@ -135,7 +135,7 @@ public sealed class UpdateInstallerTests
         using var bytes = new MemoryStream();
         using (var archive = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
         {
-            var entry = archive.CreateEntry("Sprint.Desktop.Client.exe");
+            var entry = archive.CreateEntry("Sprint.exe");
             using var writer = new StreamWriter(entry.Open());
             writer.Write("new");
         }

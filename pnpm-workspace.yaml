@@ -1,7 +1,9 @@
 packages:
   - "packages/*"
   - "web"
+  - "app/desktop"
 
 allowBuilds:
   esbuild: true
   sharp: true
+  electron: true

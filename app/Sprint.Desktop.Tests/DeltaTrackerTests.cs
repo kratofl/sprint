@@ -296,4 +296,72 @@ public sealed class DeltaTrackerTests
         tracker.Augment(Boundary(newLap: 4, completedLapTime: 88));
         Assert.Equal(88, tracker.Augment(Frame(0.5, 44, 4)).Lap.TargetLapTime, precision: 6);
     }
+
+    // A plan target's stored curve, resampled at 1 % of the track: elapsed time at
+    // position p is exactly p * pace, so the expected reference time at any position is
+    // arithmetic rather than a re-derivation of the interpolator.
+    private static DeltaReference PlanCurve(double pace) => new()
+    {
+        PositionStep = 0.01,
+        TimesSeconds = [.. Enumerable.Range(0, 101).Select(i => i * 0.01 * pace)],
+        LapTimeSeconds = pace,
+    };
+
+    [Fact]
+    public void Plan_reference_is_measured_against_instead_of_the_session_best()
+    {
+        var tracker = new DeltaTracker();
+
+        // The session's own best is a 90 — without a plan target that is what the delta
+        // would be read against.
+        DriveLap(tracker, lap: 1, pace: 90);
+        tracker.Augment(Boundary(newLap: 2, completedLapTime: 90));
+        Assert.Equal(90, tracker.Augment(Frame(0.5, 45, 2)).Lap.TargetLapTime, precision: 6);
+
+        tracker.SetPlanReference(PlanCurve(pace: 100));
+
+        // Half-way round at 55 s: the plan lap was at 50 s there, so 5 s behind it — and
+        // 10 s behind the session best, which must no longer be the comparison.
+        var result = tracker.Augment(Frame(pos: 0.5, lapTime: 55, lap: 2));
+
+        Assert.Equal(100, result.Lap.TargetLapTime, precision: 6);
+        Assert.Equal(5.0, result.Lap.Delta, precision: 3);
+    }
+
+    [Fact]
+    public void Clearing_the_plan_reference_restores_the_session_best_comparison()
+    {
+        var tracker = new DeltaTracker();
+
+        DriveLap(tracker, lap: 1, pace: 90);
+        tracker.Augment(Boundary(newLap: 2, completedLapTime: 90));
+        tracker.SetPlanReference(PlanCurve(pace: 100));
+        Assert.Equal(100, tracker.Augment(Frame(0.5, 55, 2)).Lap.TargetLapTime, precision: 6);
+
+        tracker.SetPlanReference(null);
+
+        // Back to the 90 the session actually produced, which kept being tracked underneath.
+        var result = tracker.Augment(Frame(pos: 0.5, lapTime: 55, lap: 2));
+
+        Assert.Equal(90, result.Lap.TargetLapTime, precision: 6);
+        Assert.Equal(10.0, result.Lap.Delta, precision: 3);
+    }
+
+    [Fact]
+    public void Changing_track_discards_the_plan_reference_too()
+    {
+        var tracker = new DeltaTracker();
+
+        tracker.Augment(Frame(pos: 0.1, lapTime: 10, lap: 1, track: "Spa"));
+        tracker.SetPlanReference(PlanCurve(pace: 100));
+        Assert.Equal(100, tracker.Augment(Frame(0.5, 55, 1, track: "Spa")).Lap.TargetLapTime, precision: 6);
+
+        // A curve is a lap of one circuit. Once the venue changes it describes nothing about
+        // what is being driven, so it goes with the rest of the stale state and the owner
+        // re-delivers it (latched at the line) if it still applies.
+        var result = tracker.Augment(Frame(pos: 0.5, lapTime: 55, lap: 1, track: "Monza"));
+
+        Assert.Equal(0, result.Lap.TargetLapTime);
+        Assert.Equal(0, result.Lap.Delta);
+    }
 }

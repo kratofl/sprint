@@ -1,4 +1,3 @@
-using Avalonia.Controls;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Shell;
@@ -9,32 +8,20 @@ namespace Sprint.Desktop.Tests;
 
 /// <summary>
 /// Behavior regression tests at the highest practical seams (PRD #107 testing
-/// decisions): window-chrome drag policy, shell navigation/state, the
-/// Games→Api telemetry mapping, and runtime preset-load + device persistence.
-/// All pure/headless — no Avalonia application bootstrap required.
+/// decisions): shell navigation/state, the Games→Api telemetry mapping, and
+/// runtime preset-load + device persistence.
 /// </summary>
 public class DesktopRegressionTests
 {
     [Fact]
-    public void WindowChromeDragIgnoresButtonClicks()
+    public void ShellStateOwnsNavigationAndSidebarState()
     {
-        Assert.False(WindowDragPolicy.ShouldBeginDrag(new Button()), "Button clicks must not start a window drag.");
-        Assert.False(WindowDragPolicy.ShouldBeginDrag(new TextBox()), "Text input clicks must not start a window drag.");
-        Assert.False(WindowDragPolicy.ShouldBeginDrag(new ComboBox()), "Select clicks must not start a window drag.");
-        Assert.True(WindowDragPolicy.ShouldBeginDrag(new Border()), "Plain titlebar surface should still start a window drag.");
-    }
-
-    [Fact]
-    public void ShellStateOwnsNavigationAndSidebarWidth()
-    {
-        var shell = new ShellState();
+        ShellState shell = new ShellState();
         Assert.Equal(AppView.Home, shell.View);
         Assert.Equal("Home", shell.CurrentTitle);
-        Assert.Equal(184, shell.SidebarWidth);
 
         shell.ToggleSidebar();
         Assert.True(shell.SidebarCollapsed, "Sidebar should collapse after toggle.");
-        Assert.Equal(52, shell.SidebarWidth);
 
         shell.Navigate(AppView.Devices);
         Assert.Equal(AppView.Devices, shell.View);
@@ -54,15 +41,6 @@ public class DesktopRegressionTests
         Assert.True(second.SpeedKph != first.SpeedKph, "Telemetry simulator should advance speed.");
         Assert.True(second.Rpm > 0, "Telemetry simulator should produce RPM.");
         Assert.True(second.Gear is >= 1 and <= 6, "Telemetry simulator should clamp gear.");
-    }
-
-    [Fact]
-    public void CompositionRootUsesRealTelemetrySourceByDefault()
-    {
-        using var source = CompositionRoot.CreateTelemetrySource();
-
-        Assert.Equal("Le Mans Ultimate", source.Name);
-        Assert.NotEqual("Sprint Demo", source.Name);
     }
 
     [Fact]

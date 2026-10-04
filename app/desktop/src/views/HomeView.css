@@ -1,0 +1,117 @@
+/* Overview (HomeView.tsx). Composed from the shared primitives in styles.css
+   (.kpi, .card.list-card, .list-header, .list-row, .status, .infobar, .skeleton);
+   this file only lays them out the way the Windows mockup's dashboard does:
+   12px gaps, a 4-up KPI row, list cards, and the card-header text link. */
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  container-type: inline-size;
+}
+
+/* The page header's own bottom margin is replaced by the 12px column gap. */
+.overview > .page-header {
+  margin-bottom: 0;
+}
+
+/* The quiet telemetry status at the end of the CommandBar. */
+.overview-status {
+  padding: 0 8px;
+}
+
+/* ── KPI row ──────────────────────────────────────────────────────────────── */
+
+.overview-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.overview-kpis .kpi-delta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-kpi-skeleton {
+  height: 80px;
+}
+
+/* ── List cards ───────────────────────────────────────────────────────────── */
+
+.overview-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+@container (max-width: 860px) {
+  .overview-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.overview-card-skeleton {
+  height: 200px;
+}
+
+/* Card-header text link ("Alle anzeigen" in the mockup), as a button. */
+.overview-link {
+  height: 24px;
+  padding: 0 4px;
+  margin-right: -4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--link);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.overview-link:hover {
+  color: var(--link-hover);
+  background: var(--subtle-hover);
+}
+
+.overview-plans .list-header,
+.overview-plans .list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.4fr) 92px;
+}
+
+.overview-devices .list-header,
+.overview-devices .list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 128px;
+}
+
+.overview-dashes .list-header,
+.overview-dashes .list-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1.4fr);
+}
+
+.overview-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-name {
+  font-weight: 600;
+}
+
+.overview-secondary {
+  color: var(--label-secondary);
+}
+
+.overview-dash-preview {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 2px;
+}

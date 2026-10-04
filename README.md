@@ -1,220 +1,62 @@
 <div align="center">
-  <img src="docs/sprint-ico.svg" alt="Sprint" width="120" />
+  <img src="assets/dev/sprint-ico.svg" alt="Sprint" width="120" />
   <h1>Sprint</h1>
-  <p>Sim racing telemetry system — live data on your wheel, your engineer on voice, your setup in the cloud.</p>
+  <p>Sim racing telemetry — live data on your wheel, a plan for every race, your laps to compare.</p>
 </div>
 
-Sprint is a full-stack telemetry system for sim racers. A native desktop app runs on your rig, reads live telemetry from the game, and streams data to a VoCore steering wheel display. A remote race engineer can connect from anywhere to see the same live data and push commands — change the target laptime, send pit notes, adjust dash parameters. Sessions are synced to a cloud API for post-session analysis on the web.
+Sprint is a desktop app for sim racers. It reads live telemetry from the game, renders a dash you
+design onto the USB screen in your wheel, plans race weekends against your own lap history, and
+compares laps trace by trace. A cloud API and web app hold shared laps and sessions.
 
----
+Supported game: **Le Mans Ultimate**. Supported screens: **VoCore M-PRO** and **USBD480 NX** over
+WinUSB.
 
-## Architecture
+## What it does
 
-```
-Sim Game (e.g. LeMansUltimate)
-        ↓  UDP / shared memory
-┌──────────────────────────────────────────────────────┐
-│  .NET / Avalonia Desktop App  (/app)                 │
-│                                                      │
-│  C# backend (Sprint.Desktop.* projects):             │
-│    · Game telemetry reader + telemetry frame pipeline│
-│    · USB screen renderer  (RGB565 → WinUSB → wheel/dash screens)    │
-│    · Wheel button detector  (set target lap)         │
-│    · Race Engineer hub  (WebSocket, LAN or remote)   │
-│    · Setup manager & sync client                     │
-│                                                      │
-│  Avalonia UI (XAML/C#, Sprint.Desktop.Client):       │
-│    · Live telemetry  · Dash editor  · Setups         │
-│    · Race Engineer status panel                      │
-└──────────────────────────────────────────────────────┘
-        │  RGB565 frames (WinUSB)      │  WebSocket
-        ↓                          ↓
-  USB Screen               Race Engineer (LAN)
-  (VoCore / USBD480)       direct IP:port
+- **Dashes** — build wheel dashes from a widget catalog; the editor preview, the on-screen display
+  and the wheel show the same render.
+- **Devices** — add wheels and screens, set rotation, offsets and what each screen shows: a dash, a
+  flag display, a lap timer or a rear-view mirror of a desktop region.
+- **Session planner** — plan qualifying and race, pick targets from your recorded laps, and get them
+  on the wheel from the next lap.
+- **Analysis** — overlay any two laps, your own, imported or shared.
+- **Setups** and **Race engineer** — keep setup variants; let an engineer stage and push changes.
 
-        ↓  GraphQL (queries/mutations + subscriptions)
-┌──────────────────────────────────────────────────────┐
-│  .NET GraphQL API Server  (/api)                     │
-│    · GraphQL API  (sessions, setups, layouts, auth)  │
-│    · GraphQL subscriptions  (remote engineer relay)  │
-│    · Postgres (relational) + InfluxDB (telemetry)    │
-└──────────────────────────────────────────────────────┘
-        ↓  serves frontend
-┌──────────────────────────────────────────────────────┐
-│  Next.js Web App  (/web)                            │
-│    · Telemetry analysis & session history            │
-│    · Dash layout editor  (syncs ↕ via API)          │
-│    · Setup management    (syncs ↕ via API)          │
-│    · Race Engineer portal  (live view + commands)    │
-│    · Multi-user session sharing                      │
-└──────────────────────────────────────────────────────┘
+## Running it
+
+Windows 10/11. Requirements for building from source:
+
+| Tool | Version |
+| --- | --- |
+| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x |
+| [Node.js](https://nodejs.org) | ≥ 20 |
+| [pnpm](https://pnpm.io) | ≥ 9 |
+| Make | any |
+| [Docker](https://www.docker.com) | for the API stack only |
+
+```powershell
+pnpm install
+make dev-app        # desktop app: Vite + Electron + native host
+make build-app      # packaged app -> app/build/bin/
 ```
 
----
+The API and web app run with `cp .env.example .env; make docker-up` (web on `:3000`, GraphQL on
+`:8080/graphql`). `make help` lists every target.
 
-## Monorepo structure
+USB screens need the WinUSB driver bound. A screen already working with SimHub works as-is;
+otherwise bind it with the vendor tool or [Zadig](https://zadig.akeo.ie).
 
-| Path | Language | Description |
-|---|---|---|
-| `/app` | C# / .NET | Avalonia desktop app — driver's rig |
-| `/api` | C# / .NET | ASP.NET Core + HotChocolate GraphQL API server |
-| `/web` | TypeScript | Next.js web frontend |
-| `/packages` | TypeScript | Shared UI components, types + design tokens |
+## Repository
 
-The API (`api/Sprint.Api.slnx`) and the desktop app (`app/Sprint.Desktop.slnx`) are
-.NET solutions restored/built with the `dotnet` CLI; they share the
-`app/Sprint.Contracts` DTO package. The web app and shared packages (`web`,
-`packages/*`) share a pnpm workspace managed by Turborepo, and the web app's GraphQL
-types are generated from `web/schema.graphql` via graphql-codegen.
+| Path | What |
+| --- | --- |
+| `app/` | Desktop app: .NET 10 native host + Electron/React UI |
+| `api/` | .NET 10 GraphQL API (Postgres + InfluxDB) |
+| `web/` | Next.js web app |
+| `packages/` | Shared TypeScript types, design tokens, the dash renderer |
+| `docs/` | Architecture notes, runbooks, design system — [index](docs/README.md) |
 
----
-
-## Prerequisites
-
-| Tool | Version | Required for |
-|---|---|---|
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10.0.x | Desktop app + API server build |
-| [Node.js](https://nodejs.org) | ≥ 20 | Web app + shared packages |
-| [pnpm](https://pnpm.io) | ≥ 9 | Package manager |
-| [Docker](https://www.docker.com) | — | Containerised deployment |
-| [Make](https://www.gnu.org/software/make/) | — | Build shortcuts |
-
----
-
-## Quick start
-
-### Docker (API + web + database)
-
-```bash
-cp .env.example .env
-make docker-up
-```
-
-- Web app → http://localhost:3000
-- API server → http://localhost:8080 (GraphQL IDE at `/graphql`)
-- Postgres → localhost:5432
-- InfluxDB → localhost:8086
-
-### Local development
-
-```bash
-# Terminal 1 — API server
-make dev-api
-
-# Terminal 2 — Web app
-make dev-web
-
-# Terminal 3 — Desktop app (requires .NET 10 SDK; game running for real telemetry)
-make dev-app
-```
-
----
-
-## Make targets
-
-> Run `make help` for the authoritative, always-current target list — the table
-> below is a summary. The desktop targets (`dev-app`, `build-app`, `lint-app`,
-> `test-app`) drive the .NET 10 Avalonia solution via the `dotnet` CLI; there is
-> no Wails build step.
-
-```
-make help          # list all targets
-
-Development
-  dev-api          Run the API server locally (dotnet watch, hot reload)
-  dev-web          Run the Next.js web app in dev mode
-  schema           Export the GraphQL schema → web/schema.graphql
-
-Build
-  build-api        Publish the API server → api/build/bin (dotnet publish)
-  build-web        Build Next.js production output
-  build-app        Publish the Avalonia desktop app → app/build/bin (dotnet publish)
-  build            build-api + build-web
-
-Test & lint
-  test             Run API + desktop tests
-  test-api         Run API server tests (xunit)
-  test-app         Run the Avalonia desktop tests (xunit)
-  lint             Build API solution -warnaserror + pnpm lint
-  lint-api         Build the API solution with warnings as errors
-  lint-app         Build the Avalonia solution with warnings as errors (dotnet build -warnaserror)
-  fmt              dotnet format (app + api) + pnpm format
-
-Docker
-  docker-build     Build all Docker images
-  docker-up        Start services in the background
-  docker-down      Stop and remove containers
-  docker-logs      Tail logs from all services
-
-Misc
-  clean            Remove bin/, web/.next/, app/build/bin/, and .NET bin/obj dirs
-```
-
----
-
-## Adding a new game
-
-Games are added to the desktop app (.NET/Avalonia):
-
-1. Implement `ITelemetrySource` (from `Sprint.Desktop.Api`) in **`app/Sprint.Games`**,
-   mapping the game's shared memory / structs to `TelemetryFrame`. Keep all
-   game-specific knowledge here.
-2. Add a `GameDescriptor` and register it via `GameTelemetryPackage.CreateSource`.
-3. Wire it into the composition root. Full steps in
-   [`app/README.md`](app/README.md#adding-a-game-desktop).
-
-Because every source maps to the unified `Sprint.Desktop.Api` contract, the dash
-renderer, engineer surfaces, and hardware pipeline are unaffected by a new adapter.
-
----
-
-## Key features
-
-### VoCore and USBD480 wheel displays
-The desktop app renders RGB565 image frames and sends them to a USB screen embedded in the steering wheel via **WinUSB** (no serial port — the screen uses a vendor-specific bulk transfer protocol). Two screen families are supported:
-- **VoCore M-PRO** (`VID 0xC872`) — 4"–10" OLED/LCD panels; model auto-detected via USB query
-- **USBD480** (`VID 0x16C0`, `PID 0x08A7`) — NX43/NX50 800×480 displays
-
-Both require the WinUSB driver bound in Windows (installed automatically by the vendor setup tool, or manually via [Zadig](https://zadig.akeo.ie)). Layout and content are controlled by the dash layout configuration editable in the desktop app's **Dash Designer**.
-
-Low-level WinUSB and frame-transfer details are documented in [`docs/SCREEN_PROTOCOLS.md`](docs/SCREEN_PROTOCOLS.md).
-
-### Dash Designer
-A built-in visual editor lets you build custom wheel display layouts without writing any code:
-- **Widget palette** — drag widgets from categorised groups (Layout, Timing, Car, Race) onto a grid canvas
-- **Grid canvas** — 20×12 grid matching the 800×480 native screen. Widgets snap to cells; ghost overlay shows valid (orange) or invalid (red) placements in real-time
-- **Properties panel** — configure widget-specific parameters (TC level 1/2/3, etc.)
-- **Multiple pages** — cycle between pages via a wheel button; a dedicated Idle page is shown when no session is running
-- **Live hot-reload** — saving a layout immediately updates the configured USB screen without restarting
-
-### Wheel button — set target lap
-Press a configurable wheel button to set the current delta reference to the most recent **valid lap**. A valid lap must pass all of:
-- No out-lap or in-lap
-- No yellow flag or safety car during the lap
-- No track limits violation
-- Lap time within ±5% of session best
-
-The change triggers an immediate USB screen re-render and is broadcast to all connected engineers.
-
-### Race Engineer mode
-- Share a live session via LAN (direct IP:port) or remote invite link (via web app)
-- Engineers receive the same live telemetry WebSocket stream
-- Engineers can push commands: change target laptime, send pit notes, adjust dash parameters
-- The desktop app is always **authoritative** — it applies or rejects engineer commands
-- Both sides see command status in real time
-
----
-
-## Design system
-
-Full specification: [`docs/DESIGN.md`](docs/DESIGN.md)
-
-Sprint uses the Graphite product language: flat near-black surfaces, hairline borders, tabular data, and one ember accent. Shared tokens live in `packages/tokens`; reusable controls live in `packages/ui`; desktop pages compose those controls instead of recreating local variants.
-
-- **Ember `#FF6A00`** — primary action, active state, selection, and focus.
-- **Graphite surfaces** — `#070707`, `#0D0D0D`, `#131313`, `#1B1B1B`.
-
----
+This repository is written by coding agents; [`AGENTS.md`](AGENTS.md) is where they start.
 
 ## License
 

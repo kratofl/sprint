@@ -12,6 +12,55 @@ namespace Sprint.Desktop.Tests;
 /// </summary>
 public sealed class SessionPlannerTests
 {
+    [Fact]
+    public void APlanRemembersWhetherItWasCreatedQuicklyOrPlanned()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var store = new LocalSessionPlanStore(root);
+            var service = new SessionPlannerService(store, clock: () => new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero));
+
+            var quick = service.CreatePlan(new CreatePlanRequest { Name = "Quick", Mode = PlanMode.Quick });
+            var planned = service.CreatePlan(new CreatePlanRequest { Name = "Planned" });
+
+            Assert.Equal(PlanMode.Quick, quick.Mode);
+            // Default is Planned, so a request that says nothing keeps the old meaning.
+            Assert.Equal(PlanMode.Planned, planned.Mode);
+
+            // The mode has to survive the modal closing — #102 shows confidence from it.
+            var reloaded = new LocalSessionPlanStore(root).LoadAll();
+            Assert.Equal(PlanMode.Quick, reloaded.Single(plan => plan.Name == "Quick").Mode);
+            Assert.Equal(PlanMode.Planned, reloaded.Single(plan => plan.Name == "Planned").Mode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void APlanFileWrittenBeforeModesExistedReadsAsPlanned()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            // A pre-existing file has no "mode" key at all; an upgrade must not silently
+            // reinterpret the user's saved plans as quick ones.
+            File.WriteAllText(
+                Path.Combine(root, "old.json"),
+                """{"id":"old","name":"Last season","raceLengthFormat":"TimeBased","raceLengthValue":60}""");
+
+            var plan = Assert.Single(new LocalSessionPlanStore(root).LoadAll());
+
+            Assert.Equal(PlanMode.Planned, plan.Mode);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 7, 13, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -176,6 +225,21 @@ public sealed class SessionPlannerTests
     }
 
     [Fact]
+    public void CompletedLapValidityDoesNotComeFromTheNewLapCrossingFrame()
+    {
+        Run((service, _) =>
+        {
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            PlanSegment segment = service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Ingest(Frame(lap: 1, lastLapTime: 0, isValid: true));
+            service.Ingest(Frame(lap: 2, lastLapTime: 92.5, isValid: false));
+
+            Assert.True(Assert.Single(segment.Laps).IsValid);
+        });
+    }
+
+    [Fact]
     public void IngestRaisesRaceFormatMismatchWarningOnceWhenTelemetryDisagrees()
     {
         Run((service, _) =>
@@ -231,10 +295,268 @@ public sealed class SessionPlannerTests
         }
     }
 
-    private static TelemetryFrame Frame(int lap, double lastLapTime, float fuel = 0f, int maxLaps = 0) => new()
+    [Fact]
+    public void CreatePlanPersistsManualFuelFallbackValues()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var service = NewService(root, out _);
+            service.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Spa",
+                AvgLapTimeSeconds = 125.4,
+                FuelPerLapLiters = 3.4,
+            });
+
+            var reloaded = NewService(root, out _);
+
+            var restored = Assert.Single(reloaded.Plans);
+            Assert.Equal(125.4, restored.AvgLapTimeSeconds);
+            Assert.Equal(3.4, restored.FuelPerLapLiters);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PlanFilesWrittenBeforeTheFuelFieldsExistedStillLoad()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(root, "old.json"),
+                """{"id":"old","name":"Legacy","createdAt":"2026-01-01T00:00:00+00:00"}""");
+
+            var service = NewService(root, out _);
+
+            var restored = Assert.Single(service.Plans);
+            Assert.Equal("Legacy", restored.Name);
+            Assert.Null(restored.AvgLapTimeSeconds);
+            Assert.Null(restored.FuelPerLapLiters);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void DisarmReturnsAnArmedPlanToDraftAndReleasesTheSlot()
+    {
+        Run((service, _) =>
+        {
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
+            service.Arm(plan.Id);
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+
+            service.Disarm(plan.Id);
+
+            Assert.Equal(PlanStatus.Draft, plan.Status);
+            Assert.Null(service.ActivePlan);
+            Assert.Empty(plan.Segments);
+
+            // The slot is genuinely free: another plan can claim it.
+            var other = service.CreatePlan(new CreatePlanRequest { Name = "Other" });
+            service.Arm(other.Id);
+            Assert.Equal(other.Id, service.ActivePlan?.Id);
+        });
+    }
+
+    [Fact]
+    public void DisarmIsANoOpForAPlanThatIsNotArmed()
+    {
+        Run((service, _) =>
+        {
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
+            service.StartTracking(plan.Id, SegmentKind.Race);
+
+            service.Disarm(plan.Id);
+
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            Assert.Equal(plan.Id, service.ActivePlan?.Id);
+        });
+    }
+
+    [Fact]
+    public void ReleaseActiveSlotDisarmsAnArmedPlanAndStopsATrackingOne()
+    {
+        Run((service, _) =>
+        {
+            var armed = service.CreatePlan(new CreatePlanRequest { Name = "Armed" });
+            service.Arm(armed.Id);
+            service.ReleaseActiveSlot();
+            Assert.Equal(PlanStatus.Draft, armed.Status);
+            Assert.Null(service.ActivePlan);
+
+            var tracking = service.CreatePlan(new CreatePlanRequest { Name = "Tracking" });
+            service.StartTracking(tracking.Id, SegmentKind.Race);
+            service.ReleaseActiveSlot();
+            Assert.Equal(PlanStatus.Completed, tracking.Status);
+            Assert.Null(service.ActivePlan);
+
+            // Releasing with nothing active is harmless.
+            service.ReleaseActiveSlot();
+            Assert.Null(service.ActivePlan);
+        });
+    }
+
+    [Fact]
+    public void ArmedPlanAutoStartsOnceTheReportedSessionTypeHoldsForASecond()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var now = Now;
+            var service = NewServiceWithClock(root, () => now);
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            service.Arm(plan.Id);
+
+            // First sighting only starts the hold.
+            service.Ingest(SessionFrame(SessionType.Race));
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+            Assert.Empty(plan.Segments);
+
+            // Still inside the hold window.
+            now = Now.AddMilliseconds(500);
+            service.Ingest(SessionFrame(SessionType.Race));
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+
+            // Hold satisfied.
+            now = Now.AddMilliseconds(1000);
+            service.Ingest(SessionFrame(SessionType.Race));
+
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            var segment = Assert.Single(plan.Segments);
+            Assert.Equal(SegmentKind.Race, segment.Kind);
+            Assert.Equal(SegmentSource.Detected, segment.Source);
+            Assert.Equal(DetectionConfidence.Medium, segment.SourceConfidence);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AFlickeringSessionTypeRestartsTheAutoStartHold()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var now = Now;
+            var service = NewServiceWithClock(root, () => now);
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Race" });
+            service.Arm(plan.Id);
+
+            service.Ingest(SessionFrame(SessionType.Race));
+            now = Now.AddMilliseconds(900);
+            service.Ingest(SessionFrame(SessionType.Practice)); // breaks the run
+            now = Now.AddMilliseconds(1800);
+            service.Ingest(SessionFrame(SessionType.Race));     // hold starts over here
+
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+            Assert.Empty(plan.Segments);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AutoStartIgnoresQualifyingWhenThePlanSkipsIt()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var now = Now;
+            var service = NewServiceWithClock(root, () => now);
+            var plan = service.CreatePlan(new CreatePlanRequest
+            {
+                Name = "Race only",
+                QualifyingIncluded = false,
+            });
+            service.Arm(plan.Id);
+
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(5);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            Assert.Equal(PlanStatus.Armed, plan.Status);
+
+            // It waits for Race and starts on that instead.
+            now = Now.AddSeconds(6);
+            service.Ingest(SessionFrame(SessionType.Race));
+            now = Now.AddSeconds(8);
+            service.Ingest(SessionFrame(SessionType.Race));
+
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            Assert.Equal(SegmentKind.Race, Assert.Single(plan.Segments).Kind);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AutoStartStartsQualifyingWhenThePlanIncludesIt()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var now = Now;
+            var service = NewServiceWithClock(root, () => now);
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Weekend" });
+            service.Arm(plan.Id);
+
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(2);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+
+            Assert.Equal(SegmentKind.Qualifying, Assert.Single(plan.Segments).Kind);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ADraftPlanNeverAutoStarts()
+    {
+        var root = TestEnv.NewTempDataRoot();
+        try
+        {
+            var now = Now;
+            var service = NewServiceWithClock(root, () => now);
+            var plan = service.CreatePlan(new CreatePlanRequest { Name = "Draft" });
+
+            service.Ingest(SessionFrame(SessionType.Race));
+            now = Now.AddSeconds(5);
+            service.Ingest(SessionFrame(SessionType.Race));
+
+            Assert.Equal(PlanStatus.Draft, plan.Status);
+            Assert.Empty(plan.Segments);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static TelemetryFrame Frame(
+        int lap,
+        double lastLapTime,
+        float fuel = 0f,
+        int maxLaps = 0,
+        bool isValid = true) => new()
     {
         Session = new SessionInfo { SessionType = SessionType.Race, MaxLaps = maxLaps },
-        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = true },
+        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = isValid },
         Car = new CarState { FuelLiters = fuel },
     };
 
@@ -251,6 +573,22 @@ public sealed class SessionPlannerTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    /// <summary>A service whose clock the test drives, for time-dependent behaviour.</summary>
+    private static SessionPlannerService NewServiceWithClock(string root, Func<DateTimeOffset> clock)
+    {
+        var counter = 0;
+        return new SessionPlannerService(
+            new LocalSessionPlanStore(root),
+            clock: clock,
+            idFactory: () => $"id-{++counter}");
+    }
+
+    private static TelemetryFrame SessionFrame(SessionType type) => new()
+    {
+        Session = new SessionInfo { SessionType = type },
+        Lap = new LapState { CurrentLap = 0, LastLapTime = 0 },
+    };
 
     private static SessionPlannerService NewService(string root, out string storeRoot)
     {

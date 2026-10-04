@@ -5,7 +5,8 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-sprint}
       POSTGRES_USER: ${POSTGRES_USER:-sprint}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sprint}
+      # Must match the password in the api service's DATABASE_URL default below.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
       - "5432:5432"
     volumes:
@@ -74,6 +75,23 @@ services:
       - "3000:3000"
     depends_on:
       - api
+
+  # Publishes web + api through Cloudflare Tunnel: cloudflared dials out to the
+  # Cloudflare edge, so the host needs no public IP, no port forwarding, and no
+  # inbound firewall rule. Opt in explicitly — see docs/operations/deployment.md.
+  #   docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    # Soft default on purpose: a `:?` guard here would fail every compose command,
+    # including runs that leave this profile out. Set the token in .env before
+    # enabling the profile.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+      - web
 
 volumes:
   postgres_data:

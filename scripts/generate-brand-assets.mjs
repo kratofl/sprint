@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import sharp from 'sharp'
 import pngToIco from 'png-to-ico'
 
-const source = 'docs/sprint-ico.svg'
+const source = 'assets/dev/sprint-ico.svg'
 const pngTarget = 'app/build/appicon.png'
 const icoTarget = 'app/build/windows/icon.ico'
 

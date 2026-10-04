@@ -1,0 +1,558 @@
+/* Dash editor: Fluent editor chrome around the dash canvas. A sub-page header
+   (back + dash name + CommandBar), section tabs, then three panes — pages,
+   widget catalogue and stacks on the left, the canvas in the middle, properties
+   on the right. Built on the styles.css primitives (.card, .list-row, .field,
+   .tabs, .infobar, content dialog); this file lays them out and draws the canvas
+   overlays. The dash itself (DashRenderer) is hardware output and keeps its own
+   colours in both app themes; only the overlays drawn on top use brand/status. */
+
+.dash-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
+.dash-editor-panel .page-header {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.dash-editor-panel p.field-hint {
+  margin: 0;
+}
+
+/* Sub-page header: the back button sits beside the title, the CommandBar lines up under it,
+   and the unsaved-changes status sits at the end of the title row. */
+.dash-editor-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: start;
+}
+
+.dash-editor-back {
+  margin-top: 2px;
+}
+
+.dash-editor-unsaved {
+  margin-top: 8px;
+}
+
+.dash-editor-command-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  color: var(--label-secondary);
+}
+
+.dash-editor-command-field select {
+  width: 132px;
+}
+
+.dash-editor-toggle[aria-pressed='true'] {
+  background: var(--subtle-selected);
+}
+
+.dash-editor-toggle[aria-pressed='true'] > svg {
+  color: var(--link);
+}
+
+.dash-editor-zoom-value {
+  min-width: 40px;
+  flex: none;
+  color: var(--label-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.dash-editor-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dash-editor-section > .card {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Panes ─────────────────────────────────────────────────────────────── */
+
+.dash-editor-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 240px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dash-editor-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dash-editor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash-editor-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.dash-editor-card-head .icon-button {
+  margin: -4px -6px -4px 0;
+}
+
+.dash-editor-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dash-editor-group .eyebrow {
+  margin: 0;
+}
+
+.dash-editor-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -8px;
+}
+
+/* Fluent ListView inside a card: rows reach to 4px from the card edge, text lines up with the title. */
+.dash-editor-list {
+  display: flex;
+  flex-direction: column;
+  margin: -2px -14px 0;
+}
+
+.dash-editor-list .list-row {
+  padding: 0 10px;
+}
+
+.dash-editor-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-editor-catalog {
+  max-height: 272px;
+  overflow-y: auto;
+}
+
+.dash-editor-catalog-item {
+  touch-action: none;
+}
+
+.dash-editor-grip {
+  flex: none;
+  color: var(--label-tertiary);
+}
+
+/* A list row with its own trailing action: the row is a container, its main part a button. */
+.dash-editor-list .dash-editor-row {
+  gap: 2px;
+  padding: 0 2px 0 0;
+}
+
+.dash-editor-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 0 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.dash-editor-row-main > svg {
+  flex: none;
+}
+
+.dash-editor-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider);
+}
+
+.dash-editor-stack > .button.small {
+  margin-left: -8px;
+}
+
+.dash-editor-group > .button.small {
+  margin-left: -8px;
+}
+
+.dash-editor-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.dash-editor-inline select {
+  flex: 1;
+}
+
+.dash-editor-properties {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dash-editor-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* NumberBox: a text-box frame with inline spin buttons. */
+.dash-editor-geometry {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.dash-editor-numberbox {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 2px 0 10px;
+  border: 1px solid var(--control-stroke);
+  border-bottom-color: var(--input-stroke-bottom);
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+}
+
+.dash-editor-numberbox-value {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.dash-editor-spin {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.dash-editor-spin:hover:not(:disabled) {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.dash-editor-spin:disabled {
+  color: var(--label-disabled);
+}
+
+.dash-editor-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.dash-editor-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.dash-editor-field-row .field {
+  width: 160px;
+}
+
+/* ── Canvas ────────────────────────────────────────────────────────────── */
+
+.dash-editor-stage {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dash-editor-well {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+/* margin: auto centres the canvas while still letting an oversized one scroll from its left edge. */
+.dash-editor-canvas-zoom,
+.dash-editor-no-page {
+  flex: none;
+  margin: auto;
+}
+
+.dash-editor-flash {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  z-index: 2;
+}
+
+.dash-editor-canvas {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--card-stroke);
+  touch-action: none;
+}
+
+.dash-editor-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--brand-500) 40%, transparent) 1px, transparent 1px);
+}
+
+.dash-editor-widget-overlay {
+  position: absolute;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: move;
+}
+
+.dash-editor-widget-overlay:hover {
+  border-color: color-mix(in srgb, var(--brand-500) 60%, transparent);
+}
+
+.dash-editor-widget-overlay.is-selected {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
+}
+
+.dash-editor-widget-tag {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font: 600 10px/14px var(--font-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.dash-editor-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--on-brand);
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.dash-editor-ghost {
+  position: absolute;
+  border: 2px dashed var(--brand-500);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+  pointer-events: none;
+}
+
+.dash-editor-ghost.is-invalid {
+  border-color: var(--red-500);
+  background: color-mix(in srgb, var(--red-500) 18%, transparent);
+}
+
+/* ── Alerts ────────────────────────────────────────────────────────────── */
+
+.dash-editor-alerts {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dash-editor-alerts-body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dash-editor-alert-well {
+  display: flex;
+  padding: 12px;
+  overflow: auto;
+  border-radius: var(--radius-control);
+  background: var(--subtle-selected);
+}
+
+.dash-editor-alert-canvas {
+  position: relative;
+  flex: none;
+  margin: auto;
+  overflow: hidden;
+  border-radius: 2px;
+  touch-action: none;
+}
+
+/* Dimmed by brightness, not opacity, so the dash stays dark on the light app theme too. */
+.dash-editor-alert-canvas-backdrop {
+  position: absolute;
+  inset: 0;
+  filter: brightness(0.35);
+  pointer-events: none;
+}
+
+.dash-editor-alert-canvas-dim {
+  position: absolute;
+  inset: 0;
+  background: var(--smoke);
+  pointer-events: none;
+}
+
+.dash-editor-alert-widget {
+  position: absolute;
+  border: 1px solid var(--brand-500);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
+  cursor: move;
+}
+
+.dash-editor-alert-widget-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--on-brand);
+  border-radius: 2px;
+  background: var(--brand-500);
+  cursor: nwse-resize;
+}
+
+/* ── Theme presets (GridView, selected = 2px brand stroke) ─────────────── */
+
+.dash-editor-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 12px;
+}
+
+.dash-editor-theme-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--label);
+  text-align: left;
+}
+
+.dash-editor-theme-item:hover .dash-editor-theme-label {
+  background: var(--subtle-hover);
+}
+
+.dash-editor-theme-item.selected {
+  border-color: var(--brand-500);
+  box-shadow: inset 0 0 0 1px var(--brand-500);
+}
+
+.dash-editor-theme-preview {
+  display: grid;
+  place-items: center;
+  height: 156px;
+  background: var(--subtle-selected);
+  border-bottom: 1px solid var(--card-stroke);
+  pointer-events: none;
+}
+
+.dash-editor-theme-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.dash-editor-theme-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  box-shadow: inset 0 0 0 1px var(--control-stroke-bottom);
+}
+
+.dash-editor-theme-check {
+  flex: none;
+  color: var(--link);
+}
+
+/* ── Narrow windows: properties drop under the canvas, the page scrolls ── */
+
+@media (max-width: 1399px) {
+  .dash-editor-panel {
+    height: auto;
+  }
+
+  .dash-editor-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+    flex: none;
+  }
+
+  .dash-editor-rail {
+    grid-row: span 2;
+    overflow: visible;
+  }
+
+  .dash-editor-properties {
+    overflow: visible;
+  }
+
+  .dash-editor-alerts {
+    overflow: visible;
+  }
+
+  .dash-editor-alerts-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

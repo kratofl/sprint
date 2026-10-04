@@ -1,0 +1,4569 @@
+{
+  "telemetry": {
+    "frame": {
+      "timestamp": "2026-10-01T18:30:12.000+00:00",
+      "session": {
+        "game": "Le Mans Ultimate",
+        "track": "Circuit de Spa-Francorchamps",
+        "trackLengthMeters": 6981.6,
+        "car": "Porsche 963",
+        "carClass": "Hypercar",
+        "sessionType": "Practice",
+        "sessionTime": 1820,
+        "totalSessionTime": 3600,
+        "sessionTimeRemaining": 1780,
+        "bestLapTime": 124.912,
+        "maxLaps": 0,
+        "inCar": true
+      },
+      "car": {
+        "speedMetersPerSecond": 71.4,
+        "gear": 5,
+        "rpm": 7420,
+        "maxRpm": 8600,
+        "throttle": 0.86,
+        "brake": 0,
+        "clutch": 0,
+        "steering": -0.04,
+        "fuelLiters": 42.6,
+        "fuelPerLapLiters": 3.52,
+        "positionX": 0,
+        "positionY": 0,
+        "positionZ": 0,
+        "brakeBiasRear": 0.435
+      },
+      "tires": [
+        {
+          "position": "FrontLeft",
+          "tempInnerCelsius": 88,
+          "tempMiddleCelsius": 85,
+          "tempOuterCelsius": 82,
+          "tempSurfaceCelsius": 84,
+          "tempCoreCelsius": 90,
+          "pressureKPa": 170.2,
+          "wearPercent": 93,
+          "compound": "Medium"
+        },
+        {
+          "position": "FrontRight",
+          "tempInnerCelsius": 89,
+          "tempMiddleCelsius": 86,
+          "tempOuterCelsius": 83,
+          "tempSurfaceCelsius": 85,
+          "tempCoreCelsius": 91,
+          "pressureKPa": 170.6,
+          "wearPercent": 92,
+          "compound": "Medium"
+        },
+        {
+          "position": "RearLeft",
+          "tempInnerCelsius": 90,
+          "tempMiddleCelsius": 87,
+          "tempOuterCelsius": 84,
+          "tempSurfaceCelsius": 86,
+          "tempCoreCelsius": 92,
+          "pressureKPa": 171,
+          "wearPercent": 91,
+          "compound": "Medium"
+        },
+        {
+          "position": "RearRight",
+          "tempInnerCelsius": 91,
+          "tempMiddleCelsius": 88,
+          "tempOuterCelsius": 85,
+          "tempSurfaceCelsius": 87,
+          "tempCoreCelsius": 93,
+          "pressureKPa": 171.39999999999998,
+          "wearPercent": 90,
+          "compound": "Medium"
+        }
+      ],
+      "lap": {
+        "currentLap": 11,
+        "currentLapTime": 63.48,
+        "lastLapTime": 125.734,
+        "bestLapTime": 124.912,
+        "targetLapTime": 125.2,
+        "delta": -0.214,
+        "sector": 2,
+        "lastLapSectorsSeconds": [
+          36.41,
+          53.62,
+          35.7
+        ],
+        "isValid": true,
+        "trackPosition": 0.51
+      },
+      "flags": {
+        "yellow": false,
+        "doubleYellow": false,
+        "red": false,
+        "safetyCar": false,
+        "virtualSafetyCar": false,
+        "checkered": false
+      },
+      "electronics": {
+        "tractionControlActive": false,
+        "tractionControl": 4,
+        "tractionControlMax": 12,
+        "abs": 7,
+        "absMax": 12,
+        "motorMap": 3,
+        "motorMapMax": 8,
+        "drsActive": false
+      },
+      "race": {
+        "position": 4,
+        "totalPositions": 22,
+        "gapAhead": 1.84,
+        "gapBehind": 0.62
+      },
+      "energy": {
+        "virtualEnergy": 0.62,
+        "virtualEnergyPerLap": 0.041,
+        "stateOfCharge": 0.71,
+        "regenPower": 0,
+        "deployPower": 0
+      },
+      "penalties": {
+        "incidents": 0,
+        "trackLimitSteps": 0,
+        "pitStops": 0
+      },
+      "conditions": {
+        "pathWetness": null,
+        "trackGripLevel": null,
+        "fuelMultiplier": null,
+        "tireMultiplier": null,
+        "fixedSetup": null
+      }
+    },
+    "status": {
+      "state": "Connected",
+      "sourceName": "Le Mans Ultimate",
+      "detail": null,
+      "lastFrameAt": "2026-10-01T18:30:12.000+00:00",
+      "lastFrameValid": true,
+      "invalidReason": null,
+      "isLive": true
+    },
+    "hz": 60
+  },
+  "targets": {
+    "lapTimeSeconds": 125.2,
+    "fuelPerLapLiters": 3.52,
+    "isEmpty": false
+  },
+  "settings": {
+    "sidebarCollapsed": false,
+    "updateChannel": "stable",
+    "driverName": "Alex Driver",
+    "driverNumber": "7",
+    "dashEditorUI": {
+      "palette": {
+        "open": true,
+        "pinned": true
+      },
+      "inspector": {
+        "open": true,
+        "pinned": true
+      }
+    },
+    "newDashDefaults": {
+      "mode": "basic",
+      "display": "",
+      "speedUnit": "km/h",
+      "tempUnit": "c"
+    },
+    "devicesUI": {
+      "viewMode": "gallery",
+      "livePreview": true
+    },
+    "lastSeenContext": {
+      "game": "LeMansUltimate",
+      "car": "Porsche 963",
+      "track": "Circuit de Spa-Francorchamps"
+    },
+    "sessionPlanner": {
+      "fuelReserveLaps": 1,
+      "fuelHistorySource": "AllValidLaps",
+      "autoDetect": "DraftSuggestion",
+      "traceRetentionDays": 365,
+      "traceMaxTotalMegabytes": 4096,
+      "traceProtectedLapsPerContext": 5,
+      "warnOnRaceFormatMismatch": true,
+      "warnOnDetectedSegmentChange": true
+    },
+    "cloud": {
+      "webAppUrl": "https://sprint.example",
+      "apiUrl": "https://api.sprint.example"
+    }
+  },
+  "controls": {
+    "bindings": []
+  },
+  "catalog": [
+    {
+      "id": "bavarian-omega-v2-pro",
+      "name": "BavarianSimTec Omega PRO V2",
+      "description": "Integrated wheel with VoCore screen and button inputs",
+      "type": "wheel",
+      "vid": 51314,
+      "pid": 4100,
+      "width": 480,
+      "height": 800,
+      "rotation": 90,
+      "offset_x": 0,
+      "offset_y": 0,
+      "margin": 5,
+      "driver": "vocore",
+      "bindings": []
+    },
+    {
+      "id": "generic-usbd480",
+      "name": "Generic USBD480 NX Screen",
+      "description": "Any USBD480 NX display (NX43, NX50) — Sprint will find the first unregistered device",
+      "type": "screen",
+      "vid": 0,
+      "pid": 0,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "offset_x": 0,
+      "offset_y": 0,
+      "margin": 0,
+      "driver": "usbd480",
+      "bindings": []
+    },
+    {
+      "id": "generic-vocore",
+      "name": "Generic VoCore Screen",
+      "description": "Any VoCore display — Sprint will find the first unregistered device",
+      "type": "screen",
+      "vid": 0,
+      "pid": 0,
+      "width": 0,
+      "height": 0,
+      "rotation": 0,
+      "offset_x": 0,
+      "offset_y": 0,
+      "margin": 0,
+      "driver": "vocore",
+      "bindings": []
+    }
+  ],
+  "devices": [
+    {
+      "id": "sample-omega",
+      "name": "BavarianSimTec Omega PRO V2",
+      "driver": "vocore",
+      "type": "wheel",
+      "vid": 51314,
+      "pid": 4100,
+      "serial": "SAMPLE-1",
+      "width": 480,
+      "height": 800,
+      "rotation": 90,
+      "offsetX": 0,
+      "offsetY": 0,
+      "margin": 5,
+      "dashId": "default",
+      "captureRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "isValid": false
+      },
+      "purpose": "dash",
+      "refreshHz": 30,
+      "bindings": [
+        {
+          "input": "button:26",
+          "command": "dash.page.next"
+        }
+      ],
+      "disabled": false
+    },
+    {
+      "id": "sample-usbd480",
+      "name": "USBD480 NX50",
+      "driver": "usbd480",
+      "type": "screen",
+      "vid": 51314,
+      "pid": 4100,
+      "serial": "SAMPLE-2",
+      "width": 800,
+      "height": 480,
+      "rotation": 0,
+      "offsetX": 0,
+      "offsetY": 0,
+      "margin": 0,
+      "dashId": "default",
+      "captureRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "isValid": false
+      },
+      "purpose": "dash",
+      "refreshHz": 30,
+      "bindings": [],
+      "disabled": false
+    }
+  ],
+  "dashLayouts": [
+    {
+      "id": "default",
+      "name": "Driver Focus",
+      "default": true,
+      "mode": "advanced",
+      "colorSystem": "Functional",
+      "screenProfile": "landscape-800x480",
+      "gridCols": 20,
+      "gridRows": 12,
+      "idlePage": {
+        "id": "idle-default",
+        "name": "Idle",
+        "widgets": [
+          {
+            "id": "idle-name",
+            "type": "text",
+            "col": 4,
+            "row": 3,
+            "colSpan": 12,
+            "rowSpan": 3,
+            "config": {
+              "content": "Your Name",
+              "binding": "profile.driverName"
+            },
+            "style": null
+          },
+          {
+            "id": "idle-number",
+            "type": "text",
+            "col": 7,
+            "row": 6,
+            "colSpan": 6,
+            "rowSpan": 2,
+            "config": {
+              "content": "#22",
+              "binding": "profile.driverNumber"
+            },
+            "style": {
+              "textColor": "ember",
+              "labelColor": null,
+              "border": null
+            }
+          }
+        ],
+        "widgetStacks": []
+      },
+      "pages": [
+        {
+          "id": "driving-default",
+          "name": "Driving",
+          "widgets": [
+            {
+              "id": "driving-tc",
+              "type": "tc",
+              "col": 0,
+              "row": 1,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-abs",
+              "type": "abs",
+              "col": 3,
+              "row": 1,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-bias",
+              "type": "brake_bias",
+              "col": 6,
+              "row": 1,
+              "colSpan": 4,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-map",
+              "type": "engine_map",
+              "col": 10,
+              "row": 1,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-fuel",
+              "type": "fuel",
+              "col": 13,
+              "row": 1,
+              "colSpan": 4,
+              "rowSpan": 2,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "driving-position",
+              "type": "position",
+              "col": 17,
+              "row": 1,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-laps",
+              "type": "lap_time",
+              "col": 0,
+              "row": 3,
+              "colSpan": 5,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "driving-delta",
+              "type": "delta",
+              "col": 0,
+              "row": 9,
+              "colSpan": 5,
+              "rowSpan": 3,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "driving-gear",
+              "type": "gear_speed",
+              "col": 5,
+              "row": 3,
+              "colSpan": 10,
+              "rowSpan": 9,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "driving-sectors",
+              "type": "sector",
+              "col": 15,
+              "row": 3,
+              "colSpan": 5,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "driving-inputs",
+              "type": "input_trace",
+              "col": 15,
+              "row": 9,
+              "colSpan": 5,
+              "rowSpan": 3,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            }
+          ],
+          "widgetStacks": []
+        },
+        {
+          "id": "endurance-default",
+          "name": "Endurance",
+          "widgets": [
+            {
+              "id": "endurance-gear",
+              "type": "gear_speed",
+              "col": 0,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 7,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "endurance-fuel",
+              "type": "fuel",
+              "col": 7,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 5,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "endurance-ers",
+              "type": "virtual_energy",
+              "col": 14,
+              "row": 1,
+              "colSpan": 6,
+              "rowSpan": 5,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "endurance-temps",
+              "type": "tyre_temp",
+              "col": 7,
+              "row": 6,
+              "colSpan": 7,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "endurance-pressures",
+              "type": "tyre_pressure",
+              "col": 14,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "endurance-position",
+              "type": "position",
+              "col": 0,
+              "row": 8,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "endurance-bias",
+              "type": "brake_bias",
+              "col": 3,
+              "row": 8,
+              "colSpan": 4,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "endurance-tc",
+              "type": "tc",
+              "col": 0,
+              "row": 10,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "endurance-abs",
+              "type": "abs",
+              "col": 3,
+              "row": 10,
+              "colSpan": 4,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            }
+          ],
+          "widgetStacks": []
+        },
+        {
+          "id": "timing-default",
+          "name": "Timing",
+          "widgets": [
+            {
+              "id": "timing-laps",
+              "type": "lap_time",
+              "col": 0,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 9,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "timing-gear",
+              "type": "gear_speed",
+              "col": 7,
+              "row": 1,
+              "colSpan": 6,
+              "rowSpan": 7,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "timing-sectors",
+              "type": "sector",
+              "col": 13,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 9,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "timing-delta",
+              "type": "delta",
+              "col": 7,
+              "row": 8,
+              "colSpan": 6,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "timing-position",
+              "type": "position",
+              "col": 0,
+              "row": 10,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "timing-gaps",
+              "type": "gaps",
+              "col": 3,
+              "row": 10,
+              "colSpan": 9,
+              "rowSpan": 2,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "timing-predicted",
+              "type": "predictive_lap",
+              "col": 12,
+              "row": 10,
+              "colSpan": 8,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            }
+          ],
+          "widgetStacks": []
+        },
+        {
+          "id": "vehicle-default",
+          "name": "Vehicle",
+          "widgets": [
+            {
+              "id": "vehicle-gear",
+              "type": "gear_speed",
+              "col": 0,
+              "row": 1,
+              "colSpan": 6,
+              "rowSpan": 7,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "vehicle-temps",
+              "type": "tyre_temp",
+              "col": 6,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "vehicle-pressures",
+              "type": "tyre_pressure",
+              "col": 13,
+              "row": 1,
+              "colSpan": 7,
+              "rowSpan": 6,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "vehicle-position",
+              "type": "position",
+              "col": 0,
+              "row": 8,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-bias",
+              "type": "brake_bias",
+              "col": 3,
+              "row": 8,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-tc",
+              "type": "tc",
+              "col": 6,
+              "row": 7,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-abs",
+              "type": "abs",
+              "col": 9,
+              "row": 7,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-map",
+              "type": "engine_map",
+              "col": 12,
+              "row": 7,
+              "colSpan": 3,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-fuel",
+              "type": "fuel",
+              "col": 15,
+              "row": 7,
+              "colSpan": 5,
+              "rowSpan": 2,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "vehicle-inputs",
+              "type": "input_trace",
+              "col": 6,
+              "row": 9,
+              "colSpan": 7,
+              "rowSpan": 3,
+              "config": null,
+              "style": {
+                "textColor": null,
+                "labelColor": null,
+                "border": false
+              }
+            },
+            {
+              "id": "vehicle-ers",
+              "type": "virtual_energy",
+              "col": 13,
+              "row": 9,
+              "colSpan": 7,
+              "rowSpan": 3,
+              "config": null,
+              "style": null
+            },
+            {
+              "id": "vehicle-fuel-target",
+              "type": "fuel_target",
+              "col": 0,
+              "row": 10,
+              "colSpan": 6,
+              "rowSpan": 2,
+              "config": null,
+              "style": null
+            }
+          ],
+          "widgetStacks": []
+        }
+      ],
+      "alerts": [
+        {
+          "id": "alert-tc",
+          "type": "tc_change",
+          "enabled": true,
+          "col": 0,
+          "row": 0,
+          "colSpan": 20,
+          "rowSpan": 12,
+          "colorToken": null,
+          "durationSeconds": null,
+          "invertColors": null
+        },
+        {
+          "id": "alert-abs",
+          "type": "abs_change",
+          "enabled": true,
+          "col": 0,
+          "row": 0,
+          "colSpan": 20,
+          "rowSpan": 12,
+          "colorToken": null,
+          "durationSeconds": null,
+          "invertColors": null
+        },
+        {
+          "id": "alert-engine-map",
+          "type": "enginemap_change",
+          "enabled": true,
+          "col": 0,
+          "row": 0,
+          "colSpan": 20,
+          "rowSpan": 12,
+          "colorToken": "crimson",
+          "durationSeconds": 1.5,
+          "invertColors": true
+        }
+      ],
+      "theme": null,
+      "alertConfig": {
+        "displayMode": "full",
+        "durationSeconds": 1.5,
+        "invertColors": true,
+        "colorToken": "auto",
+        "enabledTypes": [
+          "tc_change",
+          "abs_change",
+          "enginemap_change"
+        ]
+      }
+    }
+  ],
+  "setupTemplates": [
+    {
+      "id": "setup-baseline",
+      "name": "Baseline | Race",
+      "isTemplate": true,
+      "values": {
+        "splitter": 3,
+        "rearWing": 7,
+        "springF": 130,
+        "springR": 145,
+        "arbF": 3,
+        "arbR": 4,
+        "rideF": 60,
+        "rideR": 68,
+        "pressF": 27.4,
+        "pressR": 27.1,
+        "bias": 56.5,
+        "ducts": 3,
+        "diff": 60,
+        "fuelLoad": 62
+      }
+    },
+    {
+      "id": "setup-quali-low-df",
+      "name": "Quali | Low DF",
+      "isTemplate": true,
+      "values": {
+        "splitter": 2,
+        "rearWing": 4,
+        "springF": 140,
+        "springR": 155,
+        "arbF": 4,
+        "arbR": 4,
+        "rideF": 56,
+        "rideR": 64,
+        "pressF": 27.8,
+        "pressR": 27.5,
+        "bias": 57.5,
+        "ducts": 2,
+        "diff": 70,
+        "fuelLoad": 18
+      }
+    },
+    {
+      "id": "setup-race-high-df",
+      "name": "Race | High DF",
+      "isTemplate": true,
+      "values": {
+        "splitter": 4,
+        "rearWing": 10,
+        "springF": 125,
+        "springR": 140,
+        "arbF": 3,
+        "arbR": 3,
+        "rideF": 62,
+        "rideR": 72,
+        "pressF": 27,
+        "pressR": 26.8,
+        "bias": 55.5,
+        "ducts": 4,
+        "diff": 55,
+        "fuelLoad": 88
+      }
+    }
+  ],
+  "setupPrograms": [],
+  "setupParameters": [
+    {
+      "key": "splitter",
+      "label": "Front splitter",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "unit": "",
+      "group": "Aero"
+    },
+    {
+      "key": "rearWing",
+      "label": "Rear wing",
+      "min": 1,
+      "max": 12,
+      "step": 1,
+      "unit": "",
+      "group": "Aero"
+    },
+    {
+      "key": "springF",
+      "label": "Spring F",
+      "min": 80,
+      "max": 180,
+      "step": 5,
+      "unit": "N/mm",
+      "group": "Suspension"
+    },
+    {
+      "key": "springR",
+      "label": "Spring R",
+      "min": 90,
+      "max": 200,
+      "step": 5,
+      "unit": "N/mm",
+      "group": "Suspension"
+    },
+    {
+      "key": "arbF",
+      "label": "Anti-roll F",
+      "min": 1,
+      "max": 6,
+      "step": 1,
+      "unit": "",
+      "group": "Suspension"
+    },
+    {
+      "key": "arbR",
+      "label": "Anti-roll R",
+      "min": 1,
+      "max": 6,
+      "step": 1,
+      "unit": "",
+      "group": "Suspension"
+    },
+    {
+      "key": "rideF",
+      "label": "Ride height F",
+      "min": 50,
+      "max": 80,
+      "step": 1,
+      "unit": "mm",
+      "group": "Suspension"
+    },
+    {
+      "key": "rideR",
+      "label": "Ride height R",
+      "min": 55,
+      "max": 90,
+      "step": 1,
+      "unit": "mm",
+      "group": "Suspension"
+    },
+    {
+      "key": "pressF",
+      "label": "Pressure F",
+      "min": 24,
+      "max": 30,
+      "step": 0.1,
+      "unit": "psi",
+      "group": "Tires"
+    },
+    {
+      "key": "pressR",
+      "label": "Pressure R",
+      "min": 24,
+      "max": 30,
+      "step": 0.1,
+      "unit": "psi",
+      "group": "Tires"
+    },
+    {
+      "key": "bias",
+      "label": "Brake bias",
+      "min": 48,
+      "max": 64,
+      "step": 0.5,
+      "unit": "%",
+      "group": "Brakes"
+    },
+    {
+      "key": "ducts",
+      "label": "Brake ducts",
+      "min": 1,
+      "max": 6,
+      "step": 1,
+      "unit": "",
+      "group": "Brakes"
+    },
+    {
+      "key": "diff",
+      "label": "Diff preload",
+      "min": 20,
+      "max": 120,
+      "step": 5,
+      "unit": "Nm",
+      "group": "Brakes"
+    },
+    {
+      "key": "fuelLoad",
+      "label": "Fuel load",
+      "min": 10,
+      "max": 90,
+      "step": 1,
+      "unit": "L",
+      "group": "Fuel"
+    }
+  ],
+  "engineerControls": [
+    {
+      "key": "tcCut",
+      "label": "TC cut",
+      "min": 0,
+      "max": 12,
+      "step": 1,
+      "unit": "",
+      "carValue": 4,
+      "stagedValue": 4
+    },
+    {
+      "key": "tcSlip",
+      "label": "TC slip",
+      "min": 0,
+      "max": 12,
+      "step": 1,
+      "unit": "",
+      "carValue": 6,
+      "stagedValue": 6
+    },
+    {
+      "key": "abs",
+      "label": "ABS",
+      "min": 0,
+      "max": 12,
+      "step": 1,
+      "unit": "",
+      "carValue": 7,
+      "stagedValue": 7
+    },
+    {
+      "key": "brakeBias",
+      "label": "Brake bias",
+      "min": 48,
+      "max": 64,
+      "step": 0.5,
+      "unit": "%",
+      "carValue": 56.5,
+      "stagedValue": 57
+    },
+    {
+      "key": "engineMap",
+      "label": "Engine map",
+      "min": 1,
+      "max": 8,
+      "step": 1,
+      "unit": "",
+      "carValue": 3,
+      "stagedValue": 3
+    },
+    {
+      "key": "fuelTarget",
+      "label": "Fuel target",
+      "min": 1,
+      "max": 6,
+      "step": 0.1,
+      "unit": "L",
+      "carValue": 2.6,
+      "stagedValue": 2.6
+    }
+  ],
+  "radioLog": [
+    {
+      "message": "Box this lap",
+      "detail": "Fuel only, no tyres",
+      "lap": 11,
+      "status": "ACK"
+    },
+    {
+      "message": "Brake bias",
+      "detail": "Staged 57.0 % for the next stint",
+      "lap": 10,
+      "status": "DASH"
+    },
+    {
+      "message": "Radio check",
+      "detail": "Crew channel confirmed",
+      "lap": 1,
+      "status": "ACK"
+    }
+  ],
+  "engineerPushState": "Idle",
+  "plans": [
+    {
+      "id": "plan-spa-6h",
+      "name": "Spa 6h · Stint 2",
+      "game": "Le Mans Ultimate",
+      "car": "Porsche 963",
+      "track": "Circuit de Spa-Francorchamps",
+      "status": "Armed",
+      "mode": "Planned",
+      "qualifyingIncluded": true,
+      "raceLengthFormat": "TimeBased",
+      "raceLengthValue": 360,
+      "fuelReserveLaps": 1,
+      "avgLapTimeSeconds": 125.6,
+      "fuelPerLapLiters": 3.52,
+      "setupReferences": [
+        "Race | High DF"
+      ],
+      "notes": "Double stint on mediums, box under VSC if possible.",
+      "createdAt": "2026-10-01T18:00:00+00:00",
+      "startedAt": null,
+      "endedAt": null,
+      "segments": [
+        {
+          "id": "seg-q",
+          "kind": "Qualifying",
+          "source": "Planned",
+          "sourceConfidence": "None",
+          "plannedStart": "2026-10-02T17:00:00+00:00",
+          "plannedEnd": "2026-10-02T17:20:00+00:00",
+          "actualStart": null,
+          "actualEnd": null,
+          "liveSessionType": "",
+          "detectedRaceFormat": "Unknown",
+          "laps": []
+        },
+        {
+          "id": "seg-r",
+          "kind": "Race",
+          "source": "Planned",
+          "sourceConfidence": "None",
+          "plannedStart": "2026-10-02T17:30:00+00:00",
+          "plannedEnd": "2026-10-02T23:30:00+00:00",
+          "actualStart": null,
+          "actualEnd": null,
+          "liveSessionType": "",
+          "detectedRaceFormat": "Unknown",
+          "laps": []
+        }
+      ],
+      "targets": [
+        {
+          "kind": "Qualifying",
+          "lapTime": {
+            "scope": "Practice",
+            "statistic": "Fastest",
+            "programType": null,
+            "lapTimeSeconds": 124.912,
+            "sampleSize": 9,
+            "lapSessionId": "sample-spa-practice",
+            "lapNumber": 7,
+            "lapSessionStartedAt": "2026-09-28T18:02:00+00:00",
+            "hasReferenceCurve": false,
+            "hasChannelTrace": false,
+            "updatedAt": "2026-10-01T18:00:00+00:00"
+          }
+        },
+        {
+          "kind": "Race",
+          "lapTime": {
+            "scope": "Practice",
+            "statistic": "Median",
+            "programType": null,
+            "lapTimeSeconds": 125.8,
+            "sampleSize": 9,
+            "lapSessionId": null,
+            "lapNumber": null,
+            "lapSessionStartedAt": null,
+            "hasReferenceCurve": false,
+            "hasChannelTrace": false,
+            "updatedAt": "2026-10-01T18:00:00+00:00"
+          }
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "id": "plan-monza-sprint",
+      "name": "Monza sprint",
+      "game": "Le Mans Ultimate",
+      "car": "Ferrari 499P",
+      "track": "Autodromo Nazionale Monza",
+      "status": "Draft",
+      "mode": "Quick",
+      "qualifyingIncluded": false,
+      "raceLengthFormat": "LapBased",
+      "raceLengthValue": 24,
+      "fuelReserveLaps": 1,
+      "avgLapTimeSeconds": 98.6,
+      "fuelPerLapLiters": 2.9,
+      "setupReferences": [],
+      "notes": "",
+      "createdAt": "2026-09-25T10:00:00+00:00",
+      "startedAt": null,
+      "endedAt": null,
+      "segments": [],
+      "targets": [],
+      "warnings": []
+    },
+    {
+      "id": "plan-lemans-test",
+      "name": "Le Mans night test",
+      "game": "Le Mans Ultimate",
+      "car": "Oreca 07",
+      "track": "Circuit de la Sarthe",
+      "status": "Completed",
+      "mode": "Planned",
+      "qualifyingIncluded": false,
+      "raceLengthFormat": "TimeBased",
+      "raceLengthValue": 120,
+      "fuelReserveLaps": 1,
+      "avgLapTimeSeconds": 215.2,
+      "fuelPerLapLiters": 4.8,
+      "setupReferences": [],
+      "notes": "",
+      "createdAt": "2026-09-20T15:00:00+00:00",
+      "startedAt": "2026-09-20T16:00:00+00:00",
+      "endedAt": "2026-09-20T18:00:00+00:00",
+      "segments": [],
+      "targets": [],
+      "warnings": []
+    }
+  ],
+  "lapHistory": [
+    {
+      "id": "sample-spa-practice",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Circuit de Spa-Francorchamps",
+        "carModel": "Porsche 963",
+        "trackLengthMeters": 6981.6,
+        "carClass": "Hypercar"
+      },
+      "kind": "Practice",
+      "origin": "Recorded",
+      "startedAt": "2026-09-28T18:02:00+00:00",
+      "endedAt": "2026-09-28T18:02:00+00:00",
+      "conditions": {
+        "pathWetness": 0,
+        "trackGripLevel": 2,
+        "fuelMultiplier": null,
+        "tireMultiplier": null,
+        "fixedSetup": false
+      },
+      "setupReference": null,
+      "laps": [
+        {
+          "lapNumber": 1,
+          "isValid": true,
+          "lapTimeSeconds": 125.4,
+          "sectorsSeconds": [
+            36.366,
+            53.922,
+            35.112
+          ],
+          "topSpeedKph": 319.7,
+          "fuelUsedLiters": null,
+          "fuelRemainingLiters": 66.32,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 98.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.8,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.1,
+              "pressureKpa": 169.3
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 87,
+              "pressureKpa": 171
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.2,
+              "pressureKpa": 170.7
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 2,
+          "isValid": true,
+          "lapTimeSeconds": 126.926,
+          "sectorsSeconds": [
+            36.809,
+            54.578,
+            35.539
+          ],
+          "topSpeedKph": 319.5,
+          "fuelUsedLiters": 3.51,
+          "fuelRemainingLiters": 62.68,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.8,
+              "pressureKpa": 170.8
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.2,
+              "pressureKpa": 170.7
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.9,
+              "pressureKpa": 171.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.2,
+              "pressureKpa": 168.5
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 3,
+          "isValid": true,
+          "lapTimeSeconds": 126.031,
+          "sectorsSeconds": [
+            36.549,
+            54.193,
+            35.289
+          ],
+          "topSpeedKph": 322.1,
+          "fuelUsedLiters": 3.59,
+          "fuelRemainingLiters": 59,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.3,
+              "pressureKpa": 171.6
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.6,
+              "pressureKpa": 169.5
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.3,
+              "pressureKpa": 171.3
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.3,
+              "pressureKpa": 168.6
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 4,
+          "isValid": false,
+          "lapTimeSeconds": 125.514,
+          "sectorsSeconds": [
+            36.399,
+            53.971,
+            35.144
+          ],
+          "topSpeedKph": 319.8,
+          "fuelUsedLiters": 3.68,
+          "fuelRemainingLiters": 55.47,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.2,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.5,
+              "pressureKpa": 168.2
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.1,
+              "pressureKpa": 170.2
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 87,
+              "pressureKpa": 169.7
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 5,
+          "isValid": true,
+          "lapTimeSeconds": 125.263,
+          "sectorsSeconds": [
+            36.326,
+            53.863,
+            35.074
+          ],
+          "topSpeedKph": 318.3,
+          "fuelUsedLiters": 3.51,
+          "fuelRemainingLiters": 51.8,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.4,
+              "pressureKpa": 170.7
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.7,
+              "pressureKpa": 170.1
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.7,
+              "pressureKpa": 169.6
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.1,
+              "pressureKpa": 169.5
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 6,
+          "isValid": true,
+          "lapTimeSeconds": 125.817,
+          "sectorsSeconds": [
+            36.487,
+            54.101,
+            35.229
+          ],
+          "topSpeedKph": 321.2,
+          "fuelUsedLiters": 3.58,
+          "fuelRemainingLiters": 48.3,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.9,
+              "pressureKpa": 171.6
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.8,
+              "pressureKpa": 171.5
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 93.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.5,
+              "pressureKpa": 170.5
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.1,
+              "pressureKpa": 170
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 7,
+          "isValid": true,
+          "lapTimeSeconds": 126.454,
+          "sectorsSeconds": [
+            36.672,
+            54.375,
+            35.407
+          ],
+          "topSpeedKph": 320.4,
+          "fuelUsedLiters": 3.61,
+          "fuelRemainingLiters": 44.62,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 93.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 83,
+              "pressureKpa": 170.3
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 93,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.4,
+              "pressureKpa": 169.3
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 92.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.6,
+              "pressureKpa": 171.2
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 92.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.5,
+              "pressureKpa": 168.4
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 8,
+          "isValid": true,
+          "lapTimeSeconds": 126.766,
+          "sectorsSeconds": [
+            36.762,
+            54.509,
+            35.495
+          ],
+          "topSpeedKph": 320.4,
+          "fuelUsedLiters": 3.45,
+          "fuelRemainingLiters": 41.2,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 92.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.3,
+              "pressureKpa": 172
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 92.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.9,
+              "pressureKpa": 170.5
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 91.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.6,
+              "pressureKpa": 169.8
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 91.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.4,
+              "pressureKpa": 168.6
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 9,
+          "isValid": true,
+          "lapTimeSeconds": 127.012,
+          "sectorsSeconds": [
+            36.833,
+            54.615,
+            35.564
+          ],
+          "topSpeedKph": 323.3,
+          "fuelUsedLiters": 3.67,
+          "fuelRemainingLiters": 37.53,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 91.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.6,
+              "pressureKpa": 171
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 91.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.1,
+              "pressureKpa": 168
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 91,
+              "compound": "Medium",
+              "tempAverageCelsius": 85,
+              "pressureKpa": 168.3
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 90.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85,
+              "pressureKpa": 170.5
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        }
+      ],
+      "sharedFrom": null,
+      "sharedAt": null,
+      "shareCode": null,
+      "sharedFingerprint": null
+    },
+    {
+      "id": "sample-spa-quali",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Circuit de Spa-Francorchamps",
+        "carModel": "Porsche 963",
+        "trackLengthMeters": 6981.6,
+        "carClass": "Hypercar"
+      },
+      "kind": "Qualifying",
+      "origin": "Recorded",
+      "startedAt": "2026-09-28T19:10:00+00:00",
+      "endedAt": "2026-09-28T19:10:00+00:00",
+      "conditions": {
+        "pathWetness": 0,
+        "trackGripLevel": 2,
+        "fuelMultiplier": null,
+        "tireMultiplier": null,
+        "fixedSetup": false
+      },
+      "setupReference": null,
+      "laps": [
+        {
+          "lapNumber": 1,
+          "isValid": true,
+          "lapTimeSeconds": 125.155,
+          "sectorsSeconds": [
+            36.295,
+            53.817,
+            35.043
+          ],
+          "topSpeedKph": 320.9,
+          "fuelUsedLiters": null,
+          "fuelRemainingLiters": 66.38,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 98.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.8,
+              "pressureKpa": 169
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.5,
+              "pressureKpa": 168.9
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 171.6
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 170
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 2,
+          "isValid": true,
+          "lapTimeSeconds": 124.607,
+          "sectorsSeconds": [
+            36.136,
+            53.581,
+            34.89
+          ],
+          "topSpeedKph": 321.8,
+          "fuelUsedLiters": 3.68,
+          "fuelRemainingLiters": 62.7,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.1,
+              "pressureKpa": 171.6
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.8,
+              "pressureKpa": 171.9
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.3,
+              "pressureKpa": 170.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.1,
+              "pressureKpa": 168.9
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 3,
+          "isValid": true,
+          "lapTimeSeconds": 124.501,
+          "sectorsSeconds": [
+            36.105,
+            53.535,
+            34.861
+          ],
+          "topSpeedKph": 318.3,
+          "fuelUsedLiters": 3.63,
+          "fuelRemainingLiters": 59.13,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.8,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85,
+              "pressureKpa": 168.1
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.4,
+              "pressureKpa": 171.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 170.8
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 4,
+          "isValid": false,
+          "lapTimeSeconds": 126.143,
+          "sectorsSeconds": [
+            36.581,
+            54.241,
+            35.321
+          ],
+          "topSpeedKph": 323.3,
+          "fuelUsedLiters": 3.66,
+          "fuelRemainingLiters": 55.72,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86,
+              "pressureKpa": 171.8
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.1,
+              "pressureKpa": 169.7
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 85,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.5,
+              "pressureKpa": 169.6
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        }
+      ],
+      "sharedFrom": null,
+      "sharedAt": null,
+      "shareCode": null,
+      "sharedFingerprint": null
+    },
+    {
+      "id": "sample-monza-race",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Autodromo Nazionale Monza",
+        "carModel": "Ferrari 499P",
+        "trackLengthMeters": 5793,
+        "carClass": "Hypercar"
+      },
+      "kind": "Race",
+      "origin": "Recorded",
+      "startedAt": "2026-09-24T19:30:00+00:00",
+      "endedAt": "2026-09-24T19:30:00+00:00",
+      "conditions": {
+        "pathWetness": 0,
+        "trackGripLevel": 2,
+        "fuelMultiplier": null,
+        "tireMultiplier": null,
+        "fixedSetup": false
+      },
+      "setupReference": null,
+      "laps": [
+        {
+          "lapNumber": 1,
+          "isValid": true,
+          "lapTimeSeconds": 98.763,
+          "sectorsSeconds": [
+            28.641,
+            42.468,
+            27.654
+          ],
+          "topSpeedKph": 323.3,
+          "fuelUsedLiters": null,
+          "fuelRemainingLiters": 66.48,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 98.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.2,
+              "pressureKpa": 169.4
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.3,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.7,
+              "pressureKpa": 168.8
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 2,
+          "isValid": true,
+          "lapTimeSeconds": 98.948,
+          "sectorsSeconds": [
+            28.695,
+            42.548,
+            27.705
+          ],
+          "topSpeedKph": 324,
+          "fuelUsedLiters": 3.59,
+          "fuelRemainingLiters": 62.78,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 171.7
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.8,
+              "pressureKpa": 170.6
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.5,
+              "pressureKpa": 170
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.2,
+              "pressureKpa": 171.1
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 3,
+          "isValid": true,
+          "lapTimeSeconds": 99.87,
+          "sectorsSeconds": [
+            28.962,
+            42.944,
+            27.964
+          ],
+          "topSpeedKph": 319.1,
+          "fuelUsedLiters": 3.53,
+          "fuelRemainingLiters": 59.24,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.7,
+              "pressureKpa": 170.7
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.1,
+              "pressureKpa": 170.2
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86,
+              "pressureKpa": 171
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.4,
+              "pressureKpa": 171
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 4,
+          "isValid": false,
+          "lapTimeSeconds": 97.662,
+          "sectorsSeconds": [
+            28.322,
+            41.995,
+            27.345
+          ],
+          "topSpeedKph": 321.3,
+          "fuelUsedLiters": 3.46,
+          "fuelRemainingLiters": 55.75,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.9,
+              "pressureKpa": 169.2
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.9,
+              "pressureKpa": 170.6
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.7,
+              "pressureKpa": 168.3
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.1,
+              "pressureKpa": 171.3
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 5,
+          "isValid": true,
+          "lapTimeSeconds": 99.797,
+          "sectorsSeconds": [
+            28.941,
+            42.913,
+            27.943
+          ],
+          "topSpeedKph": 322.1,
+          "fuelUsedLiters": 3.69,
+          "fuelRemainingLiters": 52.08,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.1,
+              "pressureKpa": 171
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.4,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.6,
+              "pressureKpa": 168.1
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 168.3
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 6,
+          "isValid": true,
+          "lapTimeSeconds": 97.86,
+          "sectorsSeconds": [
+            28.379,
+            42.08,
+            27.401
+          ],
+          "topSpeedKph": 318.1,
+          "fuelUsedLiters": 3.58,
+          "fuelRemainingLiters": 48.65,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.8,
+              "pressureKpa": 168.8
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.5,
+              "pressureKpa": 168.8
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 93.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.7,
+              "pressureKpa": 169
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.8,
+              "pressureKpa": 172
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 7,
+          "isValid": true,
+          "lapTimeSeconds": 98.614,
+          "sectorsSeconds": [
+            28.598,
+            42.404,
+            27.612
+          ],
+          "topSpeedKph": 322.6,
+          "fuelUsedLiters": 3.52,
+          "fuelRemainingLiters": 45.05,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 93.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.7,
+              "pressureKpa": 168.2
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 93,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.9,
+              "pressureKpa": 171.2
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 92.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.9,
+              "pressureKpa": 168.6
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 92.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.7,
+              "pressureKpa": 170
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 8,
+          "isValid": true,
+          "lapTimeSeconds": 97.893,
+          "sectorsSeconds": [
+            28.389,
+            42.094,
+            27.41
+          ],
+          "topSpeedKph": 321.6,
+          "fuelUsedLiters": 3.45,
+          "fuelRemainingLiters": 41.58,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 92.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.3,
+              "pressureKpa": 169.1
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 92.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.6,
+              "pressureKpa": 170.2
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 91.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.9,
+              "pressureKpa": 172
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 91.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.3,
+              "pressureKpa": 169.7
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 9,
+          "isValid": true,
+          "lapTimeSeconds": 98.355,
+          "sectorsSeconds": [
+            28.523,
+            42.293,
+            27.539
+          ],
+          "topSpeedKph": 318,
+          "fuelUsedLiters": 3.52,
+          "fuelRemainingLiters": 38.18,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 91.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 82.4,
+              "pressureKpa": 168.9
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 91.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.7,
+              "pressureKpa": 171.1
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 91,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.1,
+              "pressureKpa": 169.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 90.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.4,
+              "pressureKpa": 171.8
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 10,
+          "isValid": true,
+          "lapTimeSeconds": 99.522,
+          "sectorsSeconds": [
+            28.861,
+            42.794,
+            27.867
+          ],
+          "topSpeedKph": 321.4,
+          "fuelUsedLiters": 3.5,
+          "fuelRemainingLiters": 34.59,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 91,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.6,
+              "pressureKpa": 170
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 90.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85,
+              "pressureKpa": 170.3
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 90.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.9,
+              "pressureKpa": 170.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 89.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.5,
+              "pressureKpa": 170.9
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 11,
+          "isValid": true,
+          "lapTimeSeconds": 99.723,
+          "sectorsSeconds": [
+            28.92,
+            42.881,
+            27.922
+          ],
+          "topSpeedKph": 323.9,
+          "fuelUsedLiters": 3.53,
+          "fuelRemainingLiters": 30.93,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 90.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.9,
+              "pressureKpa": 171.8
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 89.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.9,
+              "pressureKpa": 169.4
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 89.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.3,
+              "pressureKpa": 169.4
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 89,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.5,
+              "pressureKpa": 170.8
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 12,
+          "isValid": true,
+          "lapTimeSeconds": 99.371,
+          "sectorsSeconds": [
+            28.818,
+            42.73,
+            27.823
+          ],
+          "topSpeedKph": 322.7,
+          "fuelUsedLiters": 3.46,
+          "fuelRemainingLiters": 27.25,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 89.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 83,
+              "pressureKpa": 171.2
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 89,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.4,
+              "pressureKpa": 171.7
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 88.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.2,
+              "pressureKpa": 170.5
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 88.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.8,
+              "pressureKpa": 170.1
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        }
+      ],
+      "sharedFrom": null,
+      "sharedAt": null,
+      "shareCode": null,
+      "sharedFingerprint": null
+    },
+    {
+      "id": "sample-lemans-practice",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Circuit de la Sarthe",
+        "carModel": "Oreca 07",
+        "trackLengthMeters": 13626,
+        "carClass": "LMP2"
+      },
+      "kind": "Practice",
+      "origin": "Recorded",
+      "startedAt": "2026-09-20T16:00:00+00:00",
+      "endedAt": "2026-09-20T16:00:00+00:00",
+      "conditions": {
+        "pathWetness": 0,
+        "trackGripLevel": 2,
+        "fuelMultiplier": null,
+        "tireMultiplier": null,
+        "fixedSetup": false
+      },
+      "setupReference": null,
+      "laps": [
+        {
+          "lapNumber": 1,
+          "isValid": true,
+          "lapTimeSeconds": 215.863,
+          "sectorsSeconds": [
+            62.6,
+            92.821,
+            60.442
+          ],
+          "topSpeedKph": 321.4,
+          "fuelUsedLiters": null,
+          "fuelRemainingLiters": 66.34,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 98.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 169.1
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.7,
+              "pressureKpa": 169.7
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.6,
+              "pressureKpa": 168.8
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.4,
+              "pressureKpa": 168.9
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 2,
+          "isValid": true,
+          "lapTimeSeconds": 216.957,
+          "sectorsSeconds": [
+            62.918,
+            93.292,
+            60.747
+          ],
+          "topSpeedKph": 320,
+          "fuelUsedLiters": 3.6,
+          "fuelRemainingLiters": 62.69,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 97.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 168.5
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 97,
+              "compound": "Medium",
+              "tempAverageCelsius": 84.2,
+              "pressureKpa": 171.7
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 84,
+              "pressureKpa": 168.5
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.6,
+              "pressureKpa": 168.1
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 3,
+          "isValid": true,
+          "lapTimeSeconds": 215.863,
+          "sectorsSeconds": [
+            62.6,
+            92.821,
+            60.442
+          ],
+          "topSpeedKph": 319,
+          "fuelUsedLiters": 3.46,
+          "fuelRemainingLiters": 59.02,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 96.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.8,
+              "pressureKpa": 170.8
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 96.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 83.7,
+              "pressureKpa": 168.5
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.5,
+              "pressureKpa": 168.1
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.2,
+              "pressureKpa": 170.4
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 4,
+          "isValid": false,
+          "lapTimeSeconds": 216.003,
+          "sectorsSeconds": [
+            62.641,
+            92.881,
+            60.481
+          ],
+          "topSpeedKph": 320,
+          "fuelUsedLiters": 3.61,
+          "fuelRemainingLiters": 55.58,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.8,
+              "pressureKpa": 170.2
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 95.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.4,
+              "pressureKpa": 171.1
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.8,
+              "pressureKpa": 170.9
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.4,
+              "pressureKpa": 168.4
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 5,
+          "isValid": true,
+          "lapTimeSeconds": 214.309,
+          "sectorsSeconds": [
+            62.15,
+            92.153,
+            60.006
+          ],
+          "topSpeedKph": 319.3,
+          "fuelUsedLiters": 3.57,
+          "fuelRemainingLiters": 52,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 95,
+              "compound": "Medium",
+              "tempAverageCelsius": 83,
+              "pressureKpa": 168.9
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 94.6,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.5,
+              "pressureKpa": 170.5
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.3,
+              "pressureKpa": 169
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.6,
+              "pressureKpa": 168.2
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        },
+        {
+          "lapNumber": 6,
+          "isValid": true,
+          "lapTimeSeconds": 215.858,
+          "sectorsSeconds": [
+            62.599,
+            92.819,
+            60.44
+          ],
+          "topSpeedKph": 322.8,
+          "fuelUsedLiters": 3.6,
+          "fuelRemainingLiters": 48.48,
+          "virtualEnergyUsed": null,
+          "virtualEnergyRemaining": null,
+          "tires": [
+            {
+              "position": "FrontLeft",
+              "wearPercent": 94.2,
+              "compound": "Medium",
+              "tempAverageCelsius": 85.2,
+              "pressureKpa": 168.4
+            },
+            {
+              "position": "FrontRight",
+              "wearPercent": 93.8,
+              "compound": "Medium",
+              "tempAverageCelsius": 86.7,
+              "pressureKpa": 170
+            },
+            {
+              "position": "RearLeft",
+              "wearPercent": 93.4,
+              "compound": "Medium",
+              "tempAverageCelsius": 87.3,
+              "pressureKpa": 169.7
+            },
+            {
+              "position": "RearRight",
+              "wearPercent": 93,
+              "compound": "Medium",
+              "tempAverageCelsius": 88.5,
+              "pressureKpa": 171.2
+            }
+          ],
+          "referenceCurve": null,
+          "traceId": null,
+          "programType": null,
+          "programId": null,
+          "runId": null
+        }
+      ],
+      "sharedFrom": null,
+      "sharedAt": null,
+      "shareCode": null,
+      "sharedFingerprint": null
+    }
+  ],
+  "analysis": {
+    "filter": {
+      "game": "LeMansUltimate",
+      "track": null,
+      "carClass": null,
+      "carModel": null,
+      "day": null,
+      "games": [
+        "LeMansUltimate"
+      ],
+      "tracks": [
+        "Circuit de Spa-Francorchamps",
+        "Autodromo Nazionale Monza",
+        "Circuit de la Sarthe"
+      ],
+      "classes": [
+        "Hypercar",
+        "LMP2"
+      ],
+      "carModels": [
+        "Porsche 963",
+        "Ferrari 499P",
+        "Oreca 07"
+      ],
+      "days": [
+        "2026-09-28",
+        "2026-09-24",
+        "2026-09-20"
+      ],
+      "sessions": [
+        {
+          "id": "sample-spa-practice",
+          "context": {
+            "game": "LeMansUltimate",
+            "trackCourse": "Circuit de Spa-Francorchamps",
+            "carModel": "Porsche 963",
+            "trackLengthMeters": 6981.6,
+            "carClass": "Hypercar"
+          },
+          "kind": "Practice",
+          "origin": "Recorded",
+          "startedAt": "2026-09-28T18:02:00+00:00",
+          "lapCount": 9,
+          "tracedLapCount": 0,
+          "bestLapSeconds": 125.263,
+          "sharedFrom": null,
+          "day": "2026-09-28",
+          "label": "Practice · 18:02",
+          "detail": "9 laps · best 2:05.3",
+          "hasChannels": false
+        },
+        {
+          "id": "sample-spa-quali",
+          "context": {
+            "game": "LeMansUltimate",
+            "trackCourse": "Circuit de Spa-Francorchamps",
+            "carModel": "Porsche 963",
+            "trackLengthMeters": 6981.6,
+            "carClass": "Hypercar"
+          },
+          "kind": "Qualifying",
+          "origin": "Recorded",
+          "startedAt": "2026-09-28T19:10:00+00:00",
+          "lapCount": 4,
+          "tracedLapCount": 0,
+          "bestLapSeconds": 124.501,
+          "sharedFrom": null,
+          "day": "2026-09-28",
+          "label": "Qualifying · 19:10",
+          "detail": "4 laps · best 2:04.5",
+          "hasChannels": false
+        },
+        {
+          "id": "sample-monza-race",
+          "context": {
+            "game": "LeMansUltimate",
+            "trackCourse": "Autodromo Nazionale Monza",
+            "carModel": "Ferrari 499P",
+            "trackLengthMeters": 5793,
+            "carClass": "Hypercar"
+          },
+          "kind": "Race",
+          "origin": "Recorded",
+          "startedAt": "2026-09-24T19:30:00+00:00",
+          "lapCount": 12,
+          "tracedLapCount": 0,
+          "bestLapSeconds": 97.86,
+          "sharedFrom": null,
+          "day": "2026-09-24",
+          "label": "Race · 19:30",
+          "detail": "12 laps · best 1:37.9",
+          "hasChannels": false
+        },
+        {
+          "id": "sample-lemans-practice",
+          "context": {
+            "game": "LeMansUltimate",
+            "trackCourse": "Circuit de la Sarthe",
+            "carModel": "Oreca 07",
+            "trackLengthMeters": 13626,
+            "carClass": "LMP2"
+          },
+          "kind": "Practice",
+          "origin": "Recorded",
+          "startedAt": "2026-09-20T16:00:00+00:00",
+          "lapCount": 6,
+          "tracedLapCount": 0,
+          "bestLapSeconds": 214.309,
+          "sharedFrom": null,
+          "day": "2026-09-20",
+          "label": "Practice · 16:00",
+          "detail": "6 laps · best 3:34.3",
+          "hasChannels": false
+        }
+      ]
+    },
+    "session": {
+      "id": "sample-spa-practice",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Circuit de Spa-Francorchamps",
+        "carModel": "Porsche 963",
+        "trackLengthMeters": 6981.6,
+        "carClass": "Hypercar"
+      },
+      "kind": "Practice",
+      "origin": "Recorded",
+      "startedAt": "2026-09-28T18:02:00+00:00",
+      "lapCount": 9,
+      "tracedLapCount": 0,
+      "bestLapSeconds": 125.263,
+      "sharedFrom": null,
+      "day": "2026-09-28",
+      "label": "Practice · 18:02",
+      "detail": "9 laps · best 2:05.3",
+      "hasChannels": false
+    },
+    "laps": [
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 1,
+        "label": "Lap 1",
+        "detail": "2:05.4",
+        "lapTimeSeconds": 125.4,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/1",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 2,
+        "label": "Lap 2",
+        "detail": "2:06.9",
+        "lapTimeSeconds": 126.926,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/2",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 3,
+        "label": "Lap 3",
+        "detail": "2:06.0",
+        "lapTimeSeconds": 126.031,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/3",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 4,
+        "label": "Lap 4",
+        "detail": "2:05.5 · invalid",
+        "lapTimeSeconds": 125.514,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/4",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 5,
+        "label": "Lap 5",
+        "detail": "2:05.3",
+        "lapTimeSeconds": 125.263,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/5",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 6,
+        "label": "Lap 6",
+        "detail": "2:05.8",
+        "lapTimeSeconds": 125.817,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/6",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 7,
+        "label": "Lap 7",
+        "detail": "2:06.5",
+        "lapTimeSeconds": 126.454,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/7",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 8,
+        "label": "Lap 8",
+        "detail": "2:06.8",
+        "lapTimeSeconds": 126.766,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/8",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      },
+      {
+        "sessionId": "sample-spa-practice",
+        "lapNumber": 9,
+        "label": "Lap 9",
+        "detail": "2:07.0",
+        "lapTimeSeconds": 127.012,
+        "tier": "TimeOnly",
+        "context": {
+          "game": "LeMansUltimate",
+          "trackCourse": "Circuit de Spa-Francorchamps",
+          "carModel": "Porsche 963",
+          "trackLengthMeters": 6981.6,
+          "carClass": "Hypercar"
+        },
+        "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+        "sharedFrom": null,
+        "traceId": "sample-spa-practice/9",
+        "hasChannels": false,
+        "unavailableReason": "No channel trace was recorded for this lap."
+      }
+    ],
+    "primary": {
+      "sessionId": "sample-spa-practice",
+      "lapNumber": 7,
+      "label": "Lap 7",
+      "detail": "2:06.5",
+      "lapTimeSeconds": 126.454,
+      "tier": "TimeOnly",
+      "context": {
+        "game": "LeMansUltimate",
+        "trackCourse": "Circuit de Spa-Francorchamps",
+        "carModel": "Porsche 963",
+        "trackLengthMeters": 6981.6,
+        "carClass": "Hypercar"
+      },
+      "sessionStartedAt": "2026-09-28T18:02:00+00:00",
+      "sharedFrom": null,
+      "traceId": "sample-spa-practice/7",
+      "hasChannels": false,
+      "unavailableReason": "No channel trace was recorded for this lap."
+    },
+    "comparison": null,
+    "notice": null
+  },
+  "diagnostics": {
+    "logLevel": "Info",
+    "directory": "C:\\Users\\Driver\\AppData\\Roaming\\Sprint\\diagnostics"
+  },
+  "updates": {
+    "version": "0.1.0",
+    "channel": "stable"
+  },
+  "screens": [
+    {
+      "deviceId": "sample-omega",
+      "source": "dash",
+      "width": 800,
+      "height": 480,
+      "refreshHz": 30,
+      "pageId": null,
+      "idle": false,
+      "performance": null,
+      "layout": {
+        "id": "default",
+        "name": "Driver Focus",
+        "default": true,
+        "mode": "advanced",
+        "colorSystem": "Functional",
+        "screenProfile": "landscape-800x480",
+        "gridCols": 20,
+        "gridRows": 12,
+        "idlePage": {
+          "id": "idle-default",
+          "name": "Idle",
+          "widgets": [
+            {
+              "id": "idle-name",
+              "type": "text",
+              "col": 4,
+              "row": 3,
+              "colSpan": 12,
+              "rowSpan": 3,
+              "config": {
+                "content": "Your Name",
+                "binding": "profile.driverName"
+              },
+              "style": null
+            },
+            {
+              "id": "idle-number",
+              "type": "text",
+              "col": 7,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 2,
+              "config": {
+                "content": "#22",
+                "binding": "profile.driverNumber"
+              },
+              "style": {
+                "textColor": "ember",
+                "labelColor": null,
+                "border": null
+              }
+            }
+          ],
+          "widgetStacks": []
+        },
+        "pages": [
+          {
+            "id": "driving-default",
+            "name": "Driving",
+            "widgets": [
+              {
+                "id": "driving-tc",
+                "type": "tc",
+                "col": 0,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-abs",
+                "type": "abs",
+                "col": 3,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-bias",
+                "type": "brake_bias",
+                "col": 6,
+                "row": 1,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-map",
+                "type": "engine_map",
+                "col": 10,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-fuel",
+                "type": "fuel",
+                "col": 13,
+                "row": 1,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-position",
+                "type": "position",
+                "col": 17,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-laps",
+                "type": "lap_time",
+                "col": 0,
+                "row": 3,
+                "colSpan": 5,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-delta",
+                "type": "delta",
+                "col": 0,
+                "row": 9,
+                "colSpan": 5,
+                "rowSpan": 3,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-gear",
+                "type": "gear_speed",
+                "col": 5,
+                "row": 3,
+                "colSpan": 10,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-sectors",
+                "type": "sector",
+                "col": 15,
+                "row": 3,
+                "colSpan": 5,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-inputs",
+                "type": "input_trace",
+                "col": 15,
+                "row": 9,
+                "colSpan": 5,
+                "rowSpan": 3,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "endurance-default",
+            "name": "Endurance",
+            "widgets": [
+              {
+                "id": "endurance-gear",
+                "type": "gear_speed",
+                "col": 0,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-fuel",
+                "type": "fuel",
+                "col": 7,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 5,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-ers",
+                "type": "virtual_energy",
+                "col": 14,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 5,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-temps",
+                "type": "tyre_temp",
+                "col": 7,
+                "row": 6,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-pressures",
+                "type": "tyre_pressure",
+                "col": 14,
+                "row": 6,
+                "colSpan": 6,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-position",
+                "type": "position",
+                "col": 0,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-bias",
+                "type": "brake_bias",
+                "col": 3,
+                "row": 8,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-tc",
+                "type": "tc",
+                "col": 0,
+                "row": 10,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-abs",
+                "type": "abs",
+                "col": 3,
+                "row": 10,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "timing-default",
+            "name": "Timing",
+            "widgets": [
+              {
+                "id": "timing-laps",
+                "type": "lap_time",
+                "col": 0,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-gear",
+                "type": "gear_speed",
+                "col": 7,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-sectors",
+                "type": "sector",
+                "col": 13,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-delta",
+                "type": "delta",
+                "col": 7,
+                "row": 8,
+                "colSpan": 6,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "timing-position",
+                "type": "position",
+                "col": 0,
+                "row": 10,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "timing-gaps",
+                "type": "gaps",
+                "col": 3,
+                "row": 10,
+                "colSpan": 9,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-predicted",
+                "type": "predictive_lap",
+                "col": 12,
+                "row": 10,
+                "colSpan": 8,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "vehicle-default",
+            "name": "Vehicle",
+            "widgets": [
+              {
+                "id": "vehicle-gear",
+                "type": "gear_speed",
+                "col": 0,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-temps",
+                "type": "tyre_temp",
+                "col": 6,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-pressures",
+                "type": "tyre_pressure",
+                "col": 13,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-position",
+                "type": "position",
+                "col": 0,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-bias",
+                "type": "brake_bias",
+                "col": 3,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-tc",
+                "type": "tc",
+                "col": 6,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-abs",
+                "type": "abs",
+                "col": 9,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-map",
+                "type": "engine_map",
+                "col": 12,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-fuel",
+                "type": "fuel",
+                "col": 15,
+                "row": 7,
+                "colSpan": 5,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-inputs",
+                "type": "input_trace",
+                "col": 6,
+                "row": 9,
+                "colSpan": 7,
+                "rowSpan": 3,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-ers",
+                "type": "virtual_energy",
+                "col": 13,
+                "row": 9,
+                "colSpan": 7,
+                "rowSpan": 3,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-fuel-target",
+                "type": "fuel_target",
+                "col": 0,
+                "row": 10,
+                "colSpan": 6,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          }
+        ],
+        "alerts": [
+          {
+            "id": "alert-tc",
+            "type": "tc_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": null,
+            "durationSeconds": null,
+            "invertColors": null
+          },
+          {
+            "id": "alert-abs",
+            "type": "abs_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": null,
+            "durationSeconds": null,
+            "invertColors": null
+          },
+          {
+            "id": "alert-engine-map",
+            "type": "enginemap_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": "crimson",
+            "durationSeconds": 1.5,
+            "invertColors": true
+          }
+        ],
+        "theme": null,
+        "alertConfig": {
+          "displayMode": "full",
+          "durationSeconds": 1.5,
+          "invertColors": true,
+          "colorToken": "auto",
+          "enabledTypes": [
+            "tc_change",
+            "abs_change",
+            "enginemap_change"
+          ]
+        }
+      },
+      "hardware": {
+        "status": {
+          "state": "Connected",
+          "detail": null,
+          "isConnected": true
+        },
+        "performance": {
+          "framesPerSecond": 30,
+          "sourceTime": "00:00:00.0010000",
+          "pixelTransformTime": "00:00:00.0008000",
+          "frameTime": "00:00:00.0040000",
+          "usbTransferTime": "00:00:00.0090000",
+          "totalFrameTime": "00:00:00.0150000",
+          "framesRendered": 5400,
+          "framesSent": 5398,
+          "framesSkipped": 2,
+          "hasSamples": true
+        }
+      }
+    },
+    {
+      "deviceId": "sample-usbd480",
+      "source": "dash",
+      "width": 800,
+      "height": 480,
+      "refreshHz": 30,
+      "pageId": null,
+      "idle": false,
+      "performance": null,
+      "layout": {
+        "id": "default",
+        "name": "Driver Focus",
+        "default": true,
+        "mode": "advanced",
+        "colorSystem": "Functional",
+        "screenProfile": "landscape-800x480",
+        "gridCols": 20,
+        "gridRows": 12,
+        "idlePage": {
+          "id": "idle-default",
+          "name": "Idle",
+          "widgets": [
+            {
+              "id": "idle-name",
+              "type": "text",
+              "col": 4,
+              "row": 3,
+              "colSpan": 12,
+              "rowSpan": 3,
+              "config": {
+                "content": "Your Name",
+                "binding": "profile.driverName"
+              },
+              "style": null
+            },
+            {
+              "id": "idle-number",
+              "type": "text",
+              "col": 7,
+              "row": 6,
+              "colSpan": 6,
+              "rowSpan": 2,
+              "config": {
+                "content": "#22",
+                "binding": "profile.driverNumber"
+              },
+              "style": {
+                "textColor": "ember",
+                "labelColor": null,
+                "border": null
+              }
+            }
+          ],
+          "widgetStacks": []
+        },
+        "pages": [
+          {
+            "id": "driving-default",
+            "name": "Driving",
+            "widgets": [
+              {
+                "id": "driving-tc",
+                "type": "tc",
+                "col": 0,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-abs",
+                "type": "abs",
+                "col": 3,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-bias",
+                "type": "brake_bias",
+                "col": 6,
+                "row": 1,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-map",
+                "type": "engine_map",
+                "col": 10,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-fuel",
+                "type": "fuel",
+                "col": 13,
+                "row": 1,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-position",
+                "type": "position",
+                "col": 17,
+                "row": 1,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-laps",
+                "type": "lap_time",
+                "col": 0,
+                "row": 3,
+                "colSpan": 5,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-delta",
+                "type": "delta",
+                "col": 0,
+                "row": 9,
+                "colSpan": 5,
+                "rowSpan": 3,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "driving-gear",
+                "type": "gear_speed",
+                "col": 5,
+                "row": 3,
+                "colSpan": 10,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-sectors",
+                "type": "sector",
+                "col": 15,
+                "row": 3,
+                "colSpan": 5,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "driving-inputs",
+                "type": "input_trace",
+                "col": 15,
+                "row": 9,
+                "colSpan": 5,
+                "rowSpan": 3,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "endurance-default",
+            "name": "Endurance",
+            "widgets": [
+              {
+                "id": "endurance-gear",
+                "type": "gear_speed",
+                "col": 0,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-fuel",
+                "type": "fuel",
+                "col": 7,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 5,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-ers",
+                "type": "virtual_energy",
+                "col": 14,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 5,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-temps",
+                "type": "tyre_temp",
+                "col": 7,
+                "row": 6,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-pressures",
+                "type": "tyre_pressure",
+                "col": 14,
+                "row": 6,
+                "colSpan": 6,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "endurance-position",
+                "type": "position",
+                "col": 0,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-bias",
+                "type": "brake_bias",
+                "col": 3,
+                "row": 8,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-tc",
+                "type": "tc",
+                "col": 0,
+                "row": 10,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "endurance-abs",
+                "type": "abs",
+                "col": 3,
+                "row": 10,
+                "colSpan": 4,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "timing-default",
+            "name": "Timing",
+            "widgets": [
+              {
+                "id": "timing-laps",
+                "type": "lap_time",
+                "col": 0,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-gear",
+                "type": "gear_speed",
+                "col": 7,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-sectors",
+                "type": "sector",
+                "col": 13,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 9,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-delta",
+                "type": "delta",
+                "col": 7,
+                "row": 8,
+                "colSpan": 6,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "timing-position",
+                "type": "position",
+                "col": 0,
+                "row": 10,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "timing-gaps",
+                "type": "gaps",
+                "col": 3,
+                "row": 10,
+                "colSpan": 9,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "timing-predicted",
+                "type": "predictive_lap",
+                "col": 12,
+                "row": 10,
+                "colSpan": 8,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          },
+          {
+            "id": "vehicle-default",
+            "name": "Vehicle",
+            "widgets": [
+              {
+                "id": "vehicle-gear",
+                "type": "gear_speed",
+                "col": 0,
+                "row": 1,
+                "colSpan": 6,
+                "rowSpan": 7,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-temps",
+                "type": "tyre_temp",
+                "col": 6,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-pressures",
+                "type": "tyre_pressure",
+                "col": 13,
+                "row": 1,
+                "colSpan": 7,
+                "rowSpan": 6,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-position",
+                "type": "position",
+                "col": 0,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-bias",
+                "type": "brake_bias",
+                "col": 3,
+                "row": 8,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-tc",
+                "type": "tc",
+                "col": 6,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-abs",
+                "type": "abs",
+                "col": 9,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-map",
+                "type": "engine_map",
+                "col": 12,
+                "row": 7,
+                "colSpan": 3,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-fuel",
+                "type": "fuel",
+                "col": 15,
+                "row": 7,
+                "colSpan": 5,
+                "rowSpan": 2,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-inputs",
+                "type": "input_trace",
+                "col": 6,
+                "row": 9,
+                "colSpan": 7,
+                "rowSpan": 3,
+                "config": null,
+                "style": {
+                  "textColor": null,
+                  "labelColor": null,
+                  "border": false
+                }
+              },
+              {
+                "id": "vehicle-ers",
+                "type": "virtual_energy",
+                "col": 13,
+                "row": 9,
+                "colSpan": 7,
+                "rowSpan": 3,
+                "config": null,
+                "style": null
+              },
+              {
+                "id": "vehicle-fuel-target",
+                "type": "fuel_target",
+                "col": 0,
+                "row": 10,
+                "colSpan": 6,
+                "rowSpan": 2,
+                "config": null,
+                "style": null
+              }
+            ],
+            "widgetStacks": []
+          }
+        ],
+        "alerts": [
+          {
+            "id": "alert-tc",
+            "type": "tc_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": null,
+            "durationSeconds": null,
+            "invertColors": null
+          },
+          {
+            "id": "alert-abs",
+            "type": "abs_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": null,
+            "durationSeconds": null,
+            "invertColors": null
+          },
+          {
+            "id": "alert-engine-map",
+            "type": "enginemap_change",
+            "enabled": true,
+            "col": 0,
+            "row": 0,
+            "colSpan": 20,
+            "rowSpan": 12,
+            "colorToken": "crimson",
+            "durationSeconds": 1.5,
+            "invertColors": true
+          }
+        ],
+        "theme": null,
+        "alertConfig": {
+          "displayMode": "full",
+          "durationSeconds": 1.5,
+          "invertColors": true,
+          "colorToken": "auto",
+          "enabledTypes": [
+            "tc_change",
+            "abs_change",
+            "enginemap_change"
+          ]
+        }
+      },
+      "hardware": {
+        "status": {
+          "state": "Disconnected",
+          "detail": "No USB interface matched VID=0x0000 PID=0x0000.",
+          "isConnected": false
+        },
+        "performance": {
+          "framesPerSecond": 0,
+          "sourceTime": "00:00:00.0010000",
+          "pixelTransformTime": "00:00:00.0008000",
+          "frameTime": "00:00:00.0040000",
+          "usbTransferTime": "00:00:00.0090000",
+          "totalFrameTime": "00:00:00.0150000",
+          "framesRendered": 0,
+          "framesSent": 0,
+          "framesSkipped": 0,
+          "hasSamples": false
+        }
+      }
+    }
+  ]
+}

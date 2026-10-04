@@ -10,7 +10,7 @@ namespace Sprint.Desktop.Tests;
 /// GET_DEVICE_DETAILS block, resolving which size to render at, and adopting the
 /// detected panel size onto the saved device. The native WinUSB transfers stay
 /// hardware-gated; everything that decides what to do with their answer is pinned
-/// here (see docs/SCREEN_PROTOCOLS.md).
+/// here (see docs/internals/screen-protocols.md).
 /// </summary>
 public sealed class Usbd480ProtocolTests
 {
@@ -123,83 +123,6 @@ public sealed class Usbd480ProtocolTests
     [InlineData(4096, 4096, false)] // RGB565 frame exceeds the 24-bit address space
     public void RenderableSizeGuardsTheFramebufferRange(int width, int height, bool expected) =>
         Assert.Equal(expected, Usbd480Protocol.IsRenderableSize(width, height));
-
-    [Fact]
-    public void DetectedPanelSizeIsAdoptedOntoTheSavedDevice()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        try
-        {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            // A generic USBD480 entry starts with the documented stand-in size.
-            var device = new SavedDevice
-            {
-                Id = "usbd480",
-                Name = "Generic USBD480 NX Screen",
-                Type = "screen",
-                Driver = "usbd480",
-                Width = 800,
-                Height = 480,
-                DashId = "default",
-            };
-            runtime.Devices.Add(device);
-
-            // The panel turns out to be an NX43.
-            var driver = new FakeScreenDriver { NativeSizeOverride = new ScreenNativeSize(480, 272) };
-            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => driver);
-            service.Sync();
-
-            Assert.True(service.AdoptDetectedResolutions());
-            Assert.Equal(480, device.Width);
-            Assert.Equal(272, device.Height);
-
-            // Idempotent: nothing left to adopt on a second pass.
-            Assert.False(service.AdoptDetectedResolutions());
-
-            // The adoption is persisted, so the UI shows the real panel after a restart.
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var saved = reloaded.Devices.Single(item => item.Id == "usbd480");
-            Assert.Equal(480, saved.Width);
-            Assert.Equal(272, saved.Height);
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void AnInvalidDetectedSizeIsIgnored()
-    {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        try
-        {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var device = new SavedDevice
-            {
-                Id = "usbd480",
-                Name = "Screen",
-                Type = "screen",
-                Driver = "usbd480",
-                Width = 800,
-                Height = 480,
-                DashId = "default",
-            };
-            runtime.Devices.Add(device);
-
-            var driver = new FakeScreenDriver { NativeSizeOverride = new ScreenNativeSize(0, 0) };
-            using var service = new DeviceScreenService(runtime, () => new TelemetryFrame(), _ => driver);
-            service.Sync();
-
-            Assert.False(service.AdoptDetectedResolutions());
-            Assert.Equal(800, device.Width);
-            Assert.Equal(480, device.Height);
-        }
-        finally
-        {
-            Directory.Delete(dataRoot, recursive: true);
-        }
-    }
 
     [Fact]
     public void GenericUsbd480EntryResolvesToItsDocumentedIdentityAndSize()

@@ -9,6 +9,7 @@ public sealed class SprintDbContext(DbContextOptions<SprintDbContext> options) :
     public DbSet<SessionEntity> Sessions => Set<SessionEntity>();
     public DbSet<SetupEntity> Setups => Set<SetupEntity>();
     public DbSet<LayoutEntity> Layouts => Set<LayoutEntity>();
+    public DbSet<LapTraceEntity> LapTraces => Set<LapTraceEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -17,5 +18,8 @@ public sealed class SprintDbContext(DbContextOptions<SprintDbContext> options) :
         modelBuilder.Entity<SetupEntity>().HasIndex(s => s.OwnerId);
         modelBuilder.Entity<LayoutEntity>().HasIndex(l => l.OwnerId);
         modelBuilder.Entity<InviteCodeEntity>().HasIndex(c => c.ExpiresAt);
+        // A fetch is always by code, and a code must resolve to exactly one lap.
+        modelBuilder.Entity<LapTraceEntity>().HasIndex(t => t.ShareCode).IsUnique();
+        modelBuilder.Entity<LapTraceEntity>().HasIndex(t => t.OwnerId);
     }
 }

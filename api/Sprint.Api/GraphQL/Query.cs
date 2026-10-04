@@ -46,6 +46,20 @@ public sealed class Query
     public Task<LayoutSummary?> Layout(string id, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
         catalog.GetLayoutAsync(user.RequireUserId(), id, ct);
 
+    // ── Shared laps (#197) ────────────────────────────────────────────────────
+    /// <summary>
+    /// The lap behind a share code. Holding the code is the whole permission — there is no
+    /// friend graph, by design — but the caller still has to be a signed-in Sprint user.
+    /// </summary>
+    [Authorize]
+    public Task<SharedLapDto> SharedLap(string code, [Service] LapShareService laps, CancellationToken ct) =>
+        laps.FetchAsync(code, ct);
+
+    /// <summary>Every lap this driver has shared, including ones they have revoked.</summary>
+    [Authorize]
+    public Task<IReadOnlyList<SharedLapSummary>> MySharedLaps(ClaimsPrincipal user, [Service] LapShareService laps, CancellationToken ct) =>
+        laps.ListMineAsync(user.RequireUserId(), ct);
+
     // ── Telemetry history ─────────────────────────────────────────────────────
     /// <summary>Recent stored telemetry samples for a relay channel. Requires a valid invite code.</summary>
     [Authorize]

@@ -6,7 +6,8 @@
   </Configurations>
   <Project Path="Sprint.Contracts/Sprint.Contracts.csproj" />
   <Project Path="Sprint.Desktop.Api/Sprint.Desktop.Api.csproj" />
-  <Project Path="Sprint.Desktop.Client/Sprint.Desktop.Client.csproj" />
+  <Project Path="Sprint.Desktop.Core/Sprint.Desktop.Core.csproj" />
+  <Project Path="Sprint.Desktop.Host/Sprint.Desktop.Host.csproj" />
   <Project Path="Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj" />
   <Project Path="Sprint.Games/Sprint.Games.csproj" />
 </Solution>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>TabSwitcher</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--bg);color:var(--label)}
+.stage{position:relative;height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.stripes{position:absolute;inset:34px 24px;display:flex;gap:8px}
+.stripes div{flex:1;border-radius:var(--radius-sm)}
+.tabs{position:relative;display:flex;gap:2px;padding:3px;border-radius:var(--radius-pill);background:var(--glass-bg);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(180%);backdrop-filter:blur(var(--glass-blur)) saturate(180%);border:1px solid var(--glass-border);box-shadow:var(--shadow-tabs)}
+.tabs button{height:32px;padding:0 16px;border:0;border-radius:var(--radius-pill);background:transparent;font-family:inherit;font-size:13px;font-weight:500;color:var(--label)}
+.tabs button[aria-selected="true"]{background:var(--tab-selected);box-shadow:inset 0 1px 0 var(--tab-highlight);font-weight:600}
+.tabs button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+</style></head>
+<body>
+<div class="stage">
+<div class="stripes" aria-hidden="true"><div style="background:var(--blue-500)"></div><div style="background:var(--brand-500)"></div><div style="background:var(--purple-500)"></div></div>
+<div class="tabs" role="tablist" aria-label="Ansicht">
+<button role="tab" aria-selected="true">Übersicht</button>
+<button role="tab" aria-selected="false">Buchungen</button>
+<button role="tab" aria-selected="false">Verträge</button>
+</div>
+</div>
+</body>
+</html>

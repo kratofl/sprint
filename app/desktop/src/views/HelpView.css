@@ -1,0 +1,193 @@
+/* Help & diagnostics (HelpView.tsx). Laid out like the Windows mockup's
+   dashboard: InfoBars for problems, list cards with a 40px title row, 32px
+   rows under a 12px caption header. Built on .card.list-card, .list-header,
+   .list-row, .status, .infobar and .skeleton from styles.css. */
+
+.help {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  container-type: inline-size;
+}
+
+.help > .page-header {
+  margin-bottom: 0;
+}
+
+.help-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+@container (max-width: 860px) {
+  .help-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.help-skeleton {
+  height: 200px;
+}
+
+.help-skeleton-tall {
+  height: 320px;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+
+.help-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-strong {
+  font-weight: 600;
+}
+
+.help-secondary {
+  color: var(--label-secondary);
+}
+
+/* ── This build (label · value rows) ──────────────────────────────────────── */
+
+.help-facts {
+  margin: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.help-fact {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+  padding: 6px 16px;
+}
+
+.help-fact + .help-fact {
+  border-top: 1px solid var(--divider);
+}
+
+.help-fact dt {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.help-fact dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.help-path {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* ── Help topics ──────────────────────────────────────────────────────────── */
+
+.help-search {
+  width: 200px;
+}
+
+.help-topics {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--divider);
+}
+
+.help-topic {
+  padding: 8px 16px;
+}
+
+.help-topic + .help-topic {
+  border-top: 1px solid var(--divider);
+}
+
+.help-topic-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.help-topic-body {
+  margin: 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── Screens ──────────────────────────────────────────────────────────────── */
+
+.help-screens .list-header,
+.help-screens .list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) 150px;
+}
+
+/* ── Logs ─────────────────────────────────────────────────────────────────── */
+
+.help-log-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-log-filters select {
+  width: 104px;
+}
+
+.help-log-search {
+  width: 220px;
+}
+
+.help-log-skeleton {
+  height: 96px;
+  margin: 0 16px 12px;
+  border-radius: var(--radius-control);
+}
+
+.help-inset {
+  margin: 0 16px 12px;
+}
+
+.help-logs .list-header,
+.help-logs .help-log-entry {
+  display: grid;
+  grid-template-columns: 160px 72px minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.help-log-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.help-log-entry {
+  align-items: start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  line-height: 20px;
+}
+
+.help-log-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.help-log-exception {
+  grid-column: 3;
+  color: var(--label-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.help-log-truncated {
+  padding-top: 8px;
+}

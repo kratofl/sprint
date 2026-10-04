@@ -4,7 +4,9 @@ namespace Sprint.Games.LeMansUltimate;
 
 internal sealed class LmuTelemetryMapper
 {
-    private const string GameName = "LeMansUltimate";
+    // Shared with the results importer: both writers stamp the same game name into the
+    // lap-history context key, and two spellings would split one context into two buckets.
+    private const string GameName = LeMansUltimateGameData.GameName;
     private const double KelvinOffset = 273.15;
     private const double SessionTimeResetThreshold = 1.0;
     private const double LapTimeSpikeThreshold = 2.0;
@@ -51,7 +53,7 @@ internal sealed class LmuTelemetryMapper
         var playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
         if (!playerIsRealtime)
         {
-            return SessionOnlyFrame(parsed.ScoringInfo);
+            return SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle);
         }
 
         var telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
@@ -76,8 +78,12 @@ internal sealed class LmuTelemetryMapper
                 Game = GameName,
                 Track = parsed.ScoringInfo.TrackName,
                 Car = telemetry.VehicleName,
+                CarClass = scoring.VehicleClass,
+                TrackLengthMeters = PlausibleTrackLength(parsed.ScoringInfo.LapDistance),
                 SessionType = MapSessionType(parsed.ScoringInfo.Session),
                 SessionTime = ToF64(parsed.ScoringInfo.CurrentElapsedTime),
+                TotalSessionTime = PlausibleSessionLength(parsed.ScoringInfo.EndElapsedTime),
+                SessionTimeRemaining = PlausibleTimeRemaining(parsed.ScoringInfo),
                 BestLapTime = ToF64(scoring.BestLapTime),
                 MaxLaps = parsed.ScoringInfo.MaxLaps,
                 InCar = true
@@ -107,6 +113,7 @@ internal sealed class LmuTelemetryMapper
                 LastLapTime = ToF64(scoring.LastLapTime),
                 BestLapTime = ToF64(scoring.BestLapTime),
                 Sector = (telemetry.CurrentSectorRaw & 0x7FFFFFFF) + 1,
+                LastLapSectorsSeconds = SectorDurations(scoring),
                 IsValid = scoring.CountLapFlag == 2,
                 TrackPosition = TrackPosition(scoring.LapDistance, parsed.ScoringInfo.LapDistance)
             },
@@ -147,11 +154,12 @@ internal sealed class LmuTelemetryMapper
                 Incidents = scoring.Penalties,
                 TrackLimitSteps = telemetry.TrackLimitSteps,
                 PitStops = scoring.PitStops
-            }
+            },
+            Conditions = MapConditions(parsed.ScoringInfo)
         };
     }
 
-    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo)
+    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle)
     {
         return new TelemetryFrame
         {
@@ -160,13 +168,37 @@ internal sealed class LmuTelemetryMapper
             {
                 Game = GameName,
                 Track = scoringInfo.TrackName,
+                // Scoring knows the driver's selection in the lobby, so prefill and history
+                // lookup work before the cockpit exists.
+                Car = playerVehicle?.VehicleName ?? "",
+                CarClass = playerVehicle?.VehicleClass ?? "",
+                TrackLengthMeters = PlausibleTrackLength(scoringInfo.LapDistance),
                 SessionType = MapSessionType(scoringInfo.Session),
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
+                TotalSessionTime = PlausibleSessionLength(scoringInfo.EndElapsedTime),
+                SessionTimeRemaining = PlausibleTimeRemaining(scoringInfo),
                 MaxLaps = scoringInfo.MaxLaps,
                 InCar = false
-            }
+            },
+            Conditions = MapConditions(scoringInfo)
         };
     }
+
+    /// <summary>
+    /// The conditions the sim publishes. Fuel and tyre multipliers are deliberately absent:
+    /// they live in PhysicsOptionsV01, which the shared-memory layout does not expose, so
+    /// claiming a value would be inventing one.
+    /// </summary>
+    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo) => new()
+    {
+        PathWetness = Fraction(scoringInfo.AveragePathWetness),
+        TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
+        FixedSetup = scoringInfo.IsFixedSetup,
+    };
+
+    /// <summary>A 0–1 reading, or null when it is not a usable fraction.</summary>
+    private static double? Fraction(double value) =>
+        double.IsFinite(value) && value is >= 0 and <= 1 ? value : null;
 
     private double MonotonicCurrentLapTime(
         double scoringRaw,
@@ -458,6 +490,67 @@ internal sealed class LmuTelemetryMapper
     }
 
     private static float KelvinToCelsius(double kelvin) => ToF32(kelvin - KelvinOffset);
+
+    /// <summary>
+    /// The longest session length worth believing. Endurance racing legitimately reaches
+    /// 24 hours, so the ceiling sits above that with room to spare; anything beyond it is
+    /// the game's way of saying "no time limit" rather than a real duration.
+    /// </summary>
+    private const double MaxPlausibleSessionSeconds = 30 * 60 * 60;
+
+    /// <summary>
+    /// A session length only survives if it could describe a real timed session. Zero,
+    /// negative, non-finite and absurd values become null (unknown) instead of a number a
+    /// fuel estimate would silently trust.
+    /// </summary>
+    private static double? PlausibleSessionLength(double value) =>
+        double.IsFinite(value) && value > 0 && value <= MaxPlausibleSessionSeconds
+            ? value
+            : null;
+
+    /// <summary>
+    /// Time left in the session, reported only when the session has a believable length: a
+    /// remainder without a total describes nothing, and a lap-based session's field is
+    /// leftover noise rather than a countdown.
+    /// </summary>
+    private static double? PlausibleTimeRemaining(LmuScoringInfo scoringInfo)
+    {
+        if (PlausibleSessionLength(scoringInfo.EndElapsedTime) is not { } total)
+        {
+            return null;
+        }
+
+        var remaining = scoringInfo.SessionTimeRemaining;
+        return float.IsFinite(remaining) && remaining >= 0 && remaining <= total ? remaining : null;
+    }
+
+    /// <summary>
+    /// Track length, reported only when the game has actually loaded a course. Zero is what
+    /// the field holds on the main menu, and a zero length would look like a real
+    /// cross-check value to anything comparing layouts.
+    /// </summary>
+    private static double? PlausibleTrackLength(double value) =>
+        double.IsFinite(value) && value > 0 ? value : null;
+
+    /// <summary>
+    /// Turns the sim's cumulative sector marks into per-sector durations: mLastSector1 is
+    /// the S1 time, mLastSector2 is S1+S2, and the final sector is the remainder of the lap.
+    /// Returns empty unless all three marks increase in order, so an out lap or a partially
+    /// filled record yields nothing rather than negative sectors.
+    /// </summary>
+    private static IReadOnlyList<double> SectorDurations(LmuVehicleScoring scoring)
+    {
+        var firstMark = ToF64(scoring.LastSector1);
+        var secondMark = ToF64(scoring.LastSector2);
+        var lapTime = ToF64(scoring.LastLapTime);
+
+        if (firstMark <= 0 || secondMark <= firstMark || lapTime <= secondMark)
+        {
+            return [];
+        }
+
+        return [firstMark, secondMark - firstMark, lapTime - secondMark];
+    }
 
     private static double ClampNonNegative(double value) => value < 0 ? 0 : value;
 

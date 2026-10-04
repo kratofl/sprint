@@ -2,21 +2,8 @@
   "name": "@sprint/tokens",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "exports": {
-    "./tailwind": "./tailwind.config.ts",
-    "./globals.css": "./globals.css",
-    "./src": "./src/index.ts"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "tsx --test \"src/**/*.test.ts\"",
-    "type-check": "tsc -p tsconfig.json --noEmit"
-  },
-  "devDependencies": {
-    "@types/node": "^26.4.0",
-    "tailwindcss": "^4.3.2",
-    "tsx": "^4.23.12",
-    "typescript": "^6.0.3"
+    "./windows.css": "./windows.css",
+    "./web.css": "./web.css"
   }
 }

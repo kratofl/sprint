@@ -124,17 +124,27 @@ public sealed class LmuResultsReader
     /// </summary>
     public static string? DefaultResultsDirectory()
     {
+        var candidate = DefaultResultsPath();
+        return candidate.Length > 0 && System.IO.Directory.Exists(candidate) ? candidate : null;
+    }
+
+    /// <summary>
+    /// Where the default Steam install keeps its results, whether or not anything is there yet,
+    /// or an empty string on a platform with no such library. A caller that has to <em>say</em>
+    /// where it looked needs the path even when the folder is missing — a game that has never
+    /// been run is not an error.
+    /// </summary>
+    public static string DefaultResultsPath()
+    {
         var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
         if (string.IsNullOrEmpty(programFilesX86))
         {
-            return null;
+            return "";
         }
 
-        var candidate = Path.Combine(
+        return Path.Combine(
             programFilesX86,
             "Steam", "steamapps", "common", "Le Mans Ultimate",
             ResultsSubPath);
-
-        return System.IO.Directory.Exists(candidate) ? candidate : null;
     }
 }

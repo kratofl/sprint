@@ -1,8 +1,8 @@
 # Sprint Agent Guide
 
 This is the neutral, agent-facing entrypoint for the Sprint repository. Keep it
-short, current, and tool-agnostic. Put deep project docs in `README.md`,
-`docs/DESIGN.md`, or package-local documentation instead of expanding this file.
+short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
+`docs/README.md`) or package-local READMEs instead of expanding this file.
 
 ## Scope
 
@@ -60,21 +60,33 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 
 ## Default Focus
 
-- Prioritize work in `app/`, especially the Avalonia desktop app.
+- Prioritize work in `app/`, especially the desktop app.
 - Only change `api/` or `web/` when the user asks, or when a shared contract
   requires corresponding consumer updates.
-- When shared DTOs, shared TypeScript types, shared UI, or shared tokens change,
+- When shared DTOs, shared TypeScript types, or shared tokens change,
   update affected consumers or call out the follow-up explicitly.
 
 ## Repo Layout
 
-- `app/`: .NET/Avalonia desktop app and desktop presets.
+- `app/desktop/`: the desktop app — Electron main process + a Vite/React
+  renderer. Owns windows, the frameless title bar, native-host lifetime, and one
+  offscreen browser per active dash output.
+- `app/Sprint.Desktop.Host/`: headless .NET host the desktop app launches as a
+  child process. Loopback HTTP with a per-launch bearer token; ships the presets.
+- `app/Sprint.Desktop.Core/`: all native desktop logic — runtime persistence,
+  telemetry engine, session planning, analysis, dash layout model, devices,
+  hardware/USB, input, diagnostics, updates.
+- `app/Sprint.Desktop.Api`, `app/Sprint.Contracts`, `app/Sprint.Games`: shared
+  contracts and game adapters (see Source Of Truth).
+- There is no native desktop UI. The Avalonia app and the Go/Wails app before it
+  are both retired — do not reintroduce either.
 - `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
   Postgres (relational) and InfluxDB (time-series telemetry).
 - `web/`: Next.js frontend.
 - `packages/types/`: shared TypeScript contracts.
-- `packages/tokens/`: Graphite design tokens.
-- `packages/ui/`: reusable token-backed React components for web surfaces.
+- `packages/tokens/`: design tokens — `windows.css` (desktop) and `web.css` (web).
+- `packages/dashboard/`: the HTML/CSS/SVG dash renderer. One component drives
+  the editor preview, the on-screen display, and the USB panel output.
 
 ## Source Of Truth
 
@@ -83,12 +95,19 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
   both the API server and the desktop client; references `Sprint.Desktop.Api`.
 - `app/Sprint.Games`: game adapter implementations against the desktop contract.
 - `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
-- `packages/tokens`: design tokens and theme primitives.
-- `packages/ui`: reusable UI components.
+- `packages/tokens`: design tokens (`windows.css`, `web.css`).
 - `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
   persistence ownership (Postgres relational; InfluxDB time-series).
 - `web/schema.graphql`: committed GraphQL schema; source for web codegen (`make schema`).
-- `app/Sprint.Desktop.Client/DesktopRuntime.cs`: desktop preset loading and local persistence.
+- `app/Sprint.Desktop.Core/DesktopRuntime.cs`: desktop preset loading and local persistence.
+- `app/Sprint.Desktop.Core/RuntimeCoordinator.cs`: the command surface the desktop
+  UI drives. Every user action is a validated command here; the host serves it.
+- `app/Sprint.Desktop.Host/Program.cs`: the HTTP surface (`/api/state`,
+  `/api/commands`, frame intake, traces, logs, update checks).
+- `app/desktop/src/bridge.ts`: the renderer's only data access. Narrows host
+  JSON once; views never fetch.
+- `packages/dashboard`: dash widget catalog, bindings, formatting, palette,
+  alert types. The desktop editor reads these; it keeps no copies.
 
 ## Platform
 
@@ -106,7 +125,8 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - List targets: `make help`
 - Start API: `make dev-api`
 - Start web: `make dev-web`
-- Start desktop: `make dev-app` (= `dotnet run --project app/Sprint.Desktop.Client/Sprint.Desktop.Client.csproj`)
+- Start desktop: `make dev-app` (Vite + Electron; Electron launches the native host)
+- Start the native host alone: `make dev-host` (no UI)
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
@@ -114,38 +134,76 @@ short, current, and tool-agnostic. Put deep project docs in `README.md`,
 - Test API only: `make test-api`
 - Test desktop only: `make test-app`
 - Build desktop solution: `dotnet build app/Sprint.Desktop.slnx`
+- Build desktop solution with warnings as errors:
+  `dotnet build app/Sprint.Desktop.slnx -warnaserror`
 - Build API solution: `dotnet build api/Sprint.Api.slnx`
 - Export GraphQL schema: `make schema`
-- Type-check shared UI: `pnpm --filter @sprint/ui type-check`
-- Test shared UI: `pnpm --filter @sprint/ui test`
-- Test tokens: `pnpm --filter @sprint/tokens test`
+- Type-check / test the desktop app: `pnpm --filter @sprint/desktop type-check`,
+  `pnpm --filter @sprint/desktop test`
+- Preview / screenshot a desktop view without Electron (from `app/desktop`):
+  `node scripts/preview/build-preview.mjs`, then
+  `node scripts/preview/screenshot.mjs --view Devices --theme dark --out <abs.png>`
+- Type-check / test the dash renderer: `pnpm --filter @sprint/dashboard type-check`,
+  `pnpm --filter @sprint/dashboard test`
+- Native host tests: `dotnet test app/Sprint.Desktop.Host/Tests/Sprint.Desktop.Host.Tests.csproj`
 - Lint: `make lint`
 - Format: `make fmt`
 
 Run the smallest relevant checks for your change set. Do not claim checks you
 did not run.
 
-`make lint-app` builds the Avalonia desktop project with warnings as errors.
+`make lint-app` builds the desktop solution with warnings as errors and
+type-checks both desktop TypeScript packages.
 
 ## Browser And Desktop Checks
 
 - For frontend/browser testing and UI-flow debugging, use Playwright MCP.
-- Browser-safe desktop checks no longer apply to `app/`; use native Avalonia
-  build/run checks for the desktop app.
-- For any desktop UI change, run the agent UI review harness so agents can see
-  the rendered app before claiming completion:
-  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter AgentUiReview`.
-  Inspect the generated screenshots and report under
-  `app/Sprint.Desktop.Tests/artifacts/ui-review/latest/` with the image viewer
-  or browser. Do not claim desktop UI work is complete until the relevant PNGs
-  have been visually inspected.
-- After visual, layout, Graphite, or Avalonia shell changes in
-  `app/Sprint.Desktop.Client`, run the desktop visual smoke tests before
-  finishing:
-  `dotnet test app/Sprint.Desktop.Tests/Sprint.Desktop.Tests.csproj --filter VisualSmokeTests`.
-  If that filter is not implemented yet, run `make test-app` and call out the
-  missing visual harness. Inspect generated PNG artifacts under
-  `app/Sprint.Desktop.Tests/artifacts/visual/` on failures before editing again.
+- Do not claim desktop UI work is complete until you have looked at it rendered.
+  The renderer is a plain web bundle, so it can be inspected without launching
+  Electron: `pnpm --filter @sprint/desktop build`, then open
+  `app/desktop/dist/index.html` in a browser (headless Edge needs
+  `--allow-file-access-from-files`). Outside Electron the bridge returns an empty
+  state; to see real screens, inject a `window.sprint` stub carrying a payload
+  captured from a running host's `/api/state`.
+- The preview harness in `app/desktop/scripts/preview/` does that for you: any
+  view, light or dark, real or sample state, screenshotted in headless Edge
+  (see its `README.md`).
+- For dash rendering changes, render a preset with
+  `packages/dashboard/scripts/render-check.tsx` at the panel size, screenshot it,
+  and check it against `docs/internals/dash-rendering.md`: layout, alignment,
+  clip direction, weights and colour — not the telemetry values.
+- Before calling desktop UI work done, run the `test-sprint-desktop` skill
+  (`.agents/skills/test-sprint-desktop/`). Real-app traps are in
+  `docs/operations/development.md`.
+- Launching the full app (`make dev-app`) starts Electron, Vite and the .NET host.
+  Say so before running it, and make sure every one of those processes is gone
+  afterwards.
+
+## Module Boundaries
+
+- `app/Sprint.Desktop.Api` owns shared desktop/game contracts: `TelemetryFrame`,
+  `ITelemetrySource`, telemetry health/freshness, and engineer command shapes. It
+  must not reference UI or game-specific implementation.
+- `app/Sprint.Games` owns game-specific paths, shared-memory names, binary
+  layouts, parsers, and telemetry adapters. Le Mans Ultimate is implemented
+  through parser, mapper, shared-memory provider, and `ITelemetrySource`.
+- `app/Sprint.Desktop.Core` owns native behaviour and must not reference any UI
+  framework. It has no Avalonia or SkiaSharp dependency; keep it that way.
+- `app/Sprint.Desktop.Host` is an adapter: HTTP in, Core calls, JSON out. Input
+  validation lives at this boundary and in `RuntimeCoordinator`; code inward of
+  it assumes clean data.
+- `app/desktop` owns presentation only. Views render state and raise intent via
+  `send(command)`; they hold local UI state (selection, drafts, open dialogs) but
+  no business rules, and they never fetch. State arrives from one subscription
+  in `App.tsx`.
+- `packages/dashboard` is host-independent. It renders at an explicit pixel size
+  (no viewport units), with HTML/CSS/SVG only (no canvas), and no continuously
+  repainting animation — its output is captured and pushed to USB hardware.
+- `app/Sprint.Desktop.Tests` owns behaviour tests at stable seams: contracts,
+  runtime persistence, LMU parsing/mapping/source, telemetry engine, dash layout
+  model, hardware fakes/RGB565, input binding, updates, session planning and
+  analysis. `app/Sprint.Desktop.Host/Tests` covers the command surface and
+  screen outputs.
 
 ## Architecture Notes
 
@@ -153,42 +211,100 @@ did not run.
   data is mapped into `Sprint.Desktop.Api`'s `TelemetryFrame` at the edge;
   downstream dash render, hardware, engineer, and UI consumers depend on that
   shared contract. Web surfaces use `packages/types`.
-- For the desktop app, add a game by implementing a telemetry source in
-  `app/Sprint.Games` against the `Sprint.Desktop.Api` contract, then registering
-  it via `app/Sprint.Desktop.Client/DesktopRuntime.cs` or a focused service next
-  to it.
-- Keep desktop business logic in focused C# services instead of growing
-  `app/Sprint.Desktop.Client/MainWindow.cs`.
+- Add a game by implementing a telemetry source in `app/Sprint.Games` against
+  the `Sprint.Desktop.Api` contract and registering it in `GameProviders`.
+- A new user-facing capability is usually three edits in this order: the Core
+  behaviour, a validated `RuntimeCoordinator` command (or a focused host endpoint
+  for large or async payloads), then the view that sends it. A button whose
+  command the host does not handle is a bug, not a placeholder.
+- The frame path is telemetry → dash DOM → Electron offscreen paint → raw BGRA →
+  host → RGB565 → USB. No PNG/JPEG/base64 on that path; a busy consumer keeps
+  only the latest frame.
+- Enums cross the wire as names. When a host enum gains a member, the matching
+  TypeScript union in `app/desktop/src/bridge.ts` must gain it too.
 
 ## UI Rules
 
-- Graphite from `docs/DESIGN.md` is the canonical product UI system.
-- Ember orange `#FF6A00` is the primary action, active, focus, and selection
-  color.
-- Blue `#4F9CFF` is informational, advanced, and comparison.
-- Use the Graphite surface stack and 1px borders for depth. Do not revive old
-  glass, glow, neutral/decorative gradient, or neumorphic directions. Primary
-  orange is flat; only the restrained selection and telemetry gradients
-  explicitly defined in `docs/DESIGN.md` are permitted.
-- Reuse tokens from `packages/tokens` instead of inventing theme values.
-- Keep the Avalonia desktop shell aligned with the Graphite tokens in
-  `app/Sprint.Desktop.Client/Graphite.cs` and `docs/DESIGN.md`.
+- `docs/design/DESIGN.md` is the product design system; its MUST/NEVER rules
+  are binding. The wheel dash rules are in `docs/internals/dash-rendering.md`.
+- The desktop app follows Windows Fluent (Mica window, 48px title bar,
+  NavigationView, content layer, CommandBar, ContentDialog, acrylic flyouts;
+  4px controls, 8px cards). Its tokens are `@sprint/tokens/windows.css`; the
+  reference is the Windows mockup in `docs/design/mockups/`.
+- The web app follows the web CI (Apple look, glass only on chrome) with
+  `@sprint/tokens/web.css`.
+- Only brand and status colors carry across platforms. Brand `#ff6a00` is
+  `--brand-500`: the one primary button per view, the selection indicator,
+  progress. Text on it is the dark `--on-brand`, never white. Buttons never glow.
+- Light **and** dark ship everywhere and follow the OS (`prefers-color-scheme`,
+  or `data-theme` on `<html>`).
+- Use only the token custom properties (`--mica`, `--layer`, `--surface`,
+  `--label*`, `--control-*`, `--brand-500`, …). Do not hardcode hex in
+  `app/desktop` or `packages/dashboard`; a missing token goes into the token
+  file for both themes. The Electron main process repeats `--mica`/`--label`
+  for the native caption buttons because it cannot read CSS.
+- Desktop views use the shared primitives in `app/desktop/src/styles.css`
+  (`.button` + `primary`/`subtle`/`destructive`, `.card`, `.kpi`, `.infobar`,
+  `.list-row`, `.menu-flyout`, `.segmented`, `.meter`, `.empty-state`,
+  `.content-dialog`, …) and `PageHeader` from `app/desktop/src/shell/` instead
+  of restyling their own.
+- `packages/dashboard` is hardware output, not app UI; it keeps its own palette.
 - Keep screens dense, scannable, keyboard-operable, and explicit about focus,
   hover, selected, disabled, loading, empty, and destructive states.
 
-## Canonical Docs
+### Typography
 
-- Repository overview and current architecture: `README.md`
-- Design system and UI implementation contract: `docs/DESIGN.md`
-- Screen protocols and WinUSB behavior: `docs/SCREEN_PROTOCOLS.md`
-- Release notes: `docs/RELEASE.md`
+`docs/design/DESIGN.md` is the authority here; this is a summary of it, not a
+second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
+
+- Desktop UI is Segoe UI Variable (`--font-text`, `--font-display` in
+  `windows.css`): a Windows system font, nothing bundled. 13px/20px base, 24px
+  Display page titles, 14px semibold card titles, 12px captions.
+- Web UI uses the system stack from `web.css`.
+- Inter is **not** an app UI face. The desktop bundles and declares it in
+  `app/desktop/src/styles.css` only because the dash renderer names it for
+  wheel labels.
+- Saira Semi Condensed is used **only** for numeric values on the rendered wheel
+  instrument.
+- Brand lettering is artwork, not a font choice.
+- Continuously changing values use tabular figures (`.tabular`).
+- The dash faces live in `app/desktop/src/fonts/`; without their `@font-face`
+  rules every dash readout silently falls back to `system-ui`.
+
+## Docs
+
+`docs/README.md` indexes everything. The repo is written by agents, so docs are
+for agents first; human-facing docs stay at the root `README.md`.
+
+- `docs/internals/` — decisions and their reasons, cross-component constraints,
+  and traps the source does not reveal. Start with `overview.md` and
+  `glossary.md`; read the note for the area you are changing.
+- `docs/operations/` — development/verification, diagnostics, release,
+  deployment runbooks.
+- `docs/design/` — the design system, tokens, component previews, mockups.
 - Package-local notes: `app/README.md`, `api/README.md`, and package
   `README.md` files when present.
 
-Tool-specific companion files such as `CLAUDE.md` may exist, but this file is
-the neutral repo entrypoint. Retired agent-doc trees and Copilot wrappers are
-not present in the current working tree. Do not add references to them unless
-those files are restored.
+Rules for writing them:
+
+- Most changes need no doc change. Add to `docs/internals/` only what a
+  maintainer would get wrong without it; link to source instead of copying it.
+- No feature tours, field lists, control-flow narration, file catalogs or PR
+  summaries.
+- When a decision changes, rewrite or remove the old text — never append a
+  second account.
+- No plans, specs, checklists or status trackers in the repo. Work in progress
+  lives in GitHub issues; settled decisions move into `docs/internals/`.
+- Moving or renaming a doc means updating every reference to it, including code
+  comments.
+
+This file is the single source of truth for agent instructions in this repo.
+Tool-specific companion files such as `CLAUDE.md` exist only to point here and
+must stay free of rules, commands, conventions, and status — a second copy of
+the guidance drifts, and then the stale copy gets followed. Put new instructions
+here instead. Retired agent-doc trees and Copilot wrappers are not present in
+the current working tree. Do not add references to them unless those files are
+restored.
 
 ## GitHub Collaboration
 

@@ -21,7 +21,8 @@ internal static class LmuParser
             {
                 ScoringInfo = scoringInfo,
                 PlayerHasVehicle = playerHasVehicle,
-                PlayerIndex = playerIndex
+                PlayerIndex = playerIndex,
+                PlayerVehicle = FindPlayerVehicle(buffer, scoringInfo.NumVehicles)
             };
         }
 
@@ -41,6 +42,30 @@ internal static class LmuParser
     public static bool PlayerInCar(bool playerHasVehicle, LmuScoringInfo scoringInfo) =>
         playerHasVehicle && scoringInfo.InRealtime;
 
+    /// <summary>
+    /// Finds the player's entry in the vehicle scoring array by the sim's own mIsPlayer
+    /// flag. The telemetry block's player index cannot be trusted here: it belongs to a
+    /// block that is only populated once the driver has a car. Only the flag byte is read
+    /// per candidate, so the scan stays cheap on a full grid.
+    /// </summary>
+    private static LmuVehicleScoring? FindPlayerVehicle(ReadOnlySpan<byte> buffer, int numVehicles)
+    {
+        var count = Math.Clamp(numVehicles, 0, LmuBinary.MaxVehicles);
+        for (var i = 0; i < count; i++)
+        {
+            var offset = LmuBinary.VehicleScoringBase + i * LmuBinary.VehicleScoringSize;
+            if (LmuBinary.ReadBool(buffer, offset + PlayerVehicleFlagOffset))
+            {
+                return ParseVehicleScoring(LmuBinary.Slice(buffer, offset, LmuBinary.VehicleScoringSize));
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>mIsPlayer, relative to a VehicleScoringInfoV01 entry.</summary>
+    private const int PlayerVehicleFlagOffset = 196;
+
     private static LmuVector3 ParseVector3(ReadOnlySpan<byte> bytes, int offset) =>
         new(
             LmuBinary.ReadDouble(bytes, offset),
@@ -54,11 +79,17 @@ internal static class LmuParser
             TrackName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 0, 64)),
             Session = LmuBinary.ReadInt32(bytes, 64),
             CurrentElapsedTime = LmuBinary.ReadDouble(bytes, 68),
+            EndElapsedTime = LmuBinary.ReadDouble(bytes, 76),
             MaxLaps = LmuBinary.ReadInt32(bytes, 84),
             LapDistance = LmuBinary.ReadDouble(bytes, 88),
             NumVehicles = LmuBinary.ReadInt32(bytes, 104),
             GamePhase = LmuBinary.ReadByte(bytes, 108),
-            InRealtime = LmuBinary.ReadBool(bytes, 114)
+            SessionTimeRemaining = LmuBinary.ReadSingle(bytes, 340),
+            AveragePathWetness = LmuBinary.ReadDouble(bytes, 332),
+            IsFixedSetup = LmuBinary.ReadBool(bytes, 348),
+            TrackGripLevel = LmuBinary.ReadByte(bytes, 349),
+            // mInRealtime sits at 115, after mStartLight@113 and mNumRedLights@114.
+            InRealtime = LmuBinary.ReadBool(bytes, 115)
         };
     }
 
@@ -127,6 +158,9 @@ internal static class LmuParser
     {
         return new LmuVehicleScoring
         {
+            VehicleName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 36, 64)),
+            VehicleClass = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 200, 32)),
+            IsPlayer = LmuBinary.ReadBool(bytes, 196),
             BestLapTime = LmuBinary.ReadDouble(bytes, 144),
             LastLapTime = LmuBinary.ReadDouble(bytes, 168),
             PitStops = LmuBinary.ReadInt16(bytes, 192),

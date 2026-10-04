@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../tokens.css"><title>Checkbox</title>
+<style>
+body{margin:0;font-family:var(--font-sans);background:var(--surface);color:var(--label);font-size:14px}
+.wrap{display:flex;gap:var(--space-4xl);padding:var(--space-3xl)}
+label{display:flex;align-items:center;gap:var(--space-sm)}
+.box{width:16px;height:16px;box-sizing:border-box;border-radius:4px;border:1px solid var(--label-disabled);background:var(--surface);display:flex;align-items:center;justify-content:center}
+.on{background:var(--brand-500);border-color:var(--brand-500);color:var(--on-brand)}
+</style></head>
+<body>
+<div class="wrap">
+<label><span class="box" role="checkbox" aria-checked="false"></span>Danach weitere Ausgabe erfassen</label>
+<label><span class="box on" role="checkbox" aria-checked="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7"></path></svg></span>Als Fixkosten markieren</label>
+</div>
+</body>
+</html>
