@@ -8,9 +8,9 @@ import MonthStepper from '@/components/MonthStepper'
 import Table from '@/components/Table'
 import { Card, EmptyState, KpiCard } from '@/components/Card'
 import { sessionColumns, sessionTemplate } from '@/components/columns'
-import { sessions, setups } from '@/lib/data'
-import { newestFirst, overviewKpis, sessionsPerWeek } from '@/lib/overview'
+import { drivenAt, newestFirst, overviewKpis, sessionsPerWeek } from '@/lib/overview'
 import { formatDay, formatMonth, type Month } from '@/lib/period'
+import type { Overview as OverviewData } from '@/lib/records'
 
 const QUICK_ACCESS = [
   { href: '/sessions', title: 'Sessions', meta: 'Sessions recorded and synced from the desktop app' },
@@ -21,12 +21,14 @@ const QUICK_ACCESS = [
 
 // Overview: KPI row, session-activity chart, recent setups, recent sessions and
 // quick access. KPIs and the chart follow the month chosen in the toolbar stepper.
-export default function Overview({ initialMonth }: { initialMonth: Month }) {
+// `data` is the signed-in user's sessions and setups, loaded by page.tsx.
+export default function Overview({ initialMonth, data }: { initialMonth: Month; data: OverviewData }) {
+  const { sessions, setups } = data
   const [month, setMonth] = useState(initialMonth)
   const kpis = overviewKpis(sessions, setups, month)
   const weeks = sessionsPerWeek(sessions, month)
   const busiest = Math.max(...weeks.map((week) => week.count))
-  const recentSessions = newestFirst(sessions, (session) => session.createdAt).slice(0, 8)
+  const recentSessions = newestFirst(sessions, drivenAt).slice(0, 8)
   const recentSetups = newestFirst(setups, (setup) => setup.updatedAt).slice(0, 3)
 
   return (

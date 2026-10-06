@@ -87,6 +87,33 @@ export class NativeHost {
     )
   }
 
+  /** Signing in waits on the Sprint server, not just the host, so it gets longer than the 5s bound. */
+  async accountSignIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> {
+    return this.json(
+      '/api/account/sign-in',
+      { method: 'POST', body: JSON.stringify({ serverUrl, email, password, createAccount }), headers: { 'content-type': 'application/json' } },
+      30_000,
+    )
+  }
+
+  /** Sweeps the local network for Sprint servers; a few seconds, bounded well above that. */
+  async cloudDiscover(): Promise<unknown> {
+    return this.json('/api/cloud/discover', { method: 'POST' }, 60_000)
+  }
+
+  /** A first upload or download can carry a driver's whole history, so it gets minutes. */
+  async cloudPush(): Promise<unknown> {
+    return this.json('/api/cloud/push', { method: 'POST' }, 10 * 60_000)
+  }
+
+  async cloudPull(): Promise<unknown> {
+    return this.json('/api/cloud/pull', { method: 'POST' }, 10 * 60_000)
+  }
+
+  async accountSignOut(): Promise<void> {
+    await this.request('/api/account/sign-out', { method: 'POST' })
+  }
+
   async checkUpdates(force: boolean): Promise<unknown> {
     return this.json(`/api/updates/check?force=${force ? 'true' : 'false'}`, { method: 'POST' })
   }

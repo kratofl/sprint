@@ -47,12 +47,15 @@ type EmptyStateProps = {
   title: string
   body: string
   action?: ReactNode
+  // `error` marks a failure (red tint, announced as an alert) rather than
+  // "nothing here yet".
+  tone?: 'empty' | 'error'
 }
 
-// Centred placeholder for a card with nothing to show yet.
-export function EmptyState({ icon: StateIcon, title, body, action }: EmptyStateProps) {
+// Centred placeholder for a card with nothing to show yet, or that failed to load.
+export function EmptyState({ icon: StateIcon, title, body, action, tone = 'empty' }: EmptyStateProps) {
   return (
-    <div className="empty-state">
+    <div className="empty-state" data-tone={tone} role={tone === 'error' ? 'alert' : undefined}>
       <span className="empty-icon" aria-hidden>
         <StateIcon size={22} stroke={1.8} />
       </span>

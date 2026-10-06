@@ -64,6 +64,7 @@ else
 }
 
 // ── Domain services ─────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<ServerSettingsService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<InviteService>();
 builder.Services.AddSingleton<CatalogService>();
@@ -98,6 +99,19 @@ await using (var db = await app.Services
     .GetRequiredService<IDbContextFactory<SprintDbContext>>().CreateDbContextAsync())
 {
     await db.Database.EnsureCreatedAsync();
+    // EnsureCreated never alters an existing database; SchemaUpgrades adds what later versions need.
+    await SchemaUpgrades.ApplyAsync(db);
+}
+
+// ── Dev seed ──────────────────────────────────────────────────────────────────────
+// Local only: launchSettings.json makes `make dev-api` Development; the container never is.
+if (app.Environment.IsDevelopment())
+{
+    DevSeeder seeder = new(
+        app.Services.GetRequiredService<IDbContextFactory<SprintDbContext>>(),
+        app.Services.GetRequiredService<PasswordHasher>());
+    if (await seeder.SeedAsync())
+        app.Logger.LogInformation("Seeded the dev sign-in {Email} / {Password}", DevSeeder.AdminEmail, DevSeeder.AdminPassword);
 }
 
 app.UseWebSockets();

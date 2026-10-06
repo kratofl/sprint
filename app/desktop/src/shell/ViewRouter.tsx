@@ -43,6 +43,7 @@ export function ViewRouter({
   onNavigate,
   onOpenItem,
   onImportResults,
+  onSetUpCloud,
 }: {
   view: AppView
   focus: NavigationTarget | null
@@ -51,6 +52,8 @@ export function ViewRouter({
   onNavigate: (view: AppView) => void
   onOpenItem: (target: NavigationTarget) => void
   onImportResults?: () => void
+  /** Opens the Sprint web setup (Settings' "Set up Sprint web"). */
+  onSetUpCloud: () => void
 }) {
   switch (view) {
     case 'Home':
@@ -75,7 +78,7 @@ export function ViewRouter({
     case 'RaceEngineer':
       return <RaceEngineerView runtime={runtime} send={send} />
     case 'Settings':
-      return <SettingsView runtime={runtime} send={send} />
+      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
     case 'Help':
       return <HelpView runtime={runtime} send={send} />
   }

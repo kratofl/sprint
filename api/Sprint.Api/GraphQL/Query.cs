@@ -14,6 +14,10 @@ public sealed class Query
     public HealthStatus Health([Service] ServerInfo info) =>
         new() { Status = "ok", Version = info.Version };
 
+    /// <summary>The server's name and whether it takes new accounts. Anonymous: the sign-in page reads it.</summary>
+    public Task<ServerSettingsDto> ServerSettings([Service] ServerSettingsService settings, CancellationToken ct) =>
+        settings.GetAsync(ct);
+
     /// <summary>The authenticated user's profile.</summary>
     [Authorize]
     public Task<UserProfile?> Me(ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>

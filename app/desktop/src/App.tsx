@@ -7,12 +7,15 @@ import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
 import { CommandPalette } from './shell/CommandPalette'
 import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
+import { AccountDialog } from './shell/AccountDialog'
+import { Onboarding } from './onboarding/Onboarding'
+import { localCounts } from './onboarding/summary'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
 import { primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
-import { readDriverName, readSidebarCollapsed, readWebAppUrl } from './shell/settings'
+import { readSidebarCollapsed } from './shell/settings'
 import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
 import { canGoBack, goBack, initialHistory, navigateTo } from './shell/history'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
@@ -34,6 +37,10 @@ export function App() {
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' })
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  // The Sprint web setup: on the first launch, or to connect later (Settings, the account row).
+  const [setup, setSetup] = useState<'first-run' | 'connect' | null>(null)
+  const firstRunChecked = useRef(false)
   const [updateRelease, setUpdateRelease] = useState<UpdateRelease | null>(null)
   // The results import dialog (#185). `offered` is the startup scan's proposal; null means the
   // dialog was opened by hand and searches for itself.
@@ -198,8 +205,22 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [paletteOpen, toasts, dismissToast, navigate, back])
 
-  const webAppUrl = runtime.kind === 'ready' ? readWebAppUrl(runtime.sprint.settings) : null
-  const driverName = runtime.kind === 'ready' ? readDriverName(runtime.sprint.settings) : null
+  const account = runtime.kind === 'ready' ? runtime.sprint.account : null
+
+  // Asked once, on the first state that says the setup was never answered.
+  useEffect(() => {
+    if (runtime.kind !== 'ready' || firstRunChecked.current) return
+    firstRunChecked.current = true
+    if (!runtime.sprint.cloud.setupDone) setSetup('first-run')
+  }, [runtime])
+  const onboardingActions = useMemo(
+    () => ({ send, discover: bridge.discoverServers, signIn: bridge.signIn, upload: bridge.syncUp }),
+    [send],
+  )
+  const openSetup = useCallback(() => {
+    setAccountOpen(false)
+    setSetup('connect')
+  }, [])
   const commands = buildShellCommands({
     platform,
     navigate,
@@ -243,8 +264,8 @@ export function App() {
           onToggleCollapsed={toggleSidebarFromButton}
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
-          webAppUrl={webAppUrl}
-          driverName={driverName}
+          account={account}
+          onOpenAccount={() => (account?.signedIn ? setAccountOpen(true) : openSetup())}
           updateAvailable={updateRelease !== null}
         />
         <main className="content">
@@ -257,6 +278,7 @@ export function App() {
               onNavigate={navigate}
               onOpenItem={openItem}
               onImportResults={importResults}
+              onSetUpCloud={openSetup}
             />
           </ToolbarActionsContext>
         </main>
@@ -270,6 +292,19 @@ export function App() {
           runImport={bridge.resultsImport}
           decline={bridge.resultsImportDecline}
           onClose={() => setImportDialog(null)}
+        />
+      ) : null}
+      {accountOpen && account?.signedIn ? (
+        <AccountDialog account={account} signOut={bridge.signOut} onChangeServer={openSetup} onClose={() => setAccountOpen(false)} />
+      ) : null}
+      {setup && runtime.kind === 'ready' ? (
+        <Onboarding
+          entry={setup}
+          cloud={runtime.sprint.cloud}
+          account={runtime.sprint.account}
+          counts={localCounts(runtime.sprint)}
+          actions={onboardingActions}
+          onClose={() => setSetup(null)}
         />
       ) : null}
       <ToastHost toasts={toasts} leaving={leaving} onDismiss={dismissToast} />

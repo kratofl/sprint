@@ -59,6 +59,12 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
   with a hairline fades in over the first 24px. With Reduce Transparency the bar is solid.
 - The web **toolbar is one uniform frosted band** across the content area. Controls inside it sit
   on subtle fills, not on separate glass capsules.
+- **Web backdrop:** the web app sits on the light-trails artwork (`web/components/Backdrop.tsx`):
+  vivid behind the sign-in card (dialog glass), blurred and dimmed under the app (`bg` at 82 % over
+  it). Cards and every other content element stay opaque; only the gaps, the glass sidebar and the
+  toolbar show it. The artwork is plain strokes painted once — no SVG/CSS filters or masks
+  in it (Safari re-runs them on every repaint), never animate its strokes, and no `backdrop-filter`
+  over the whole content area.
 - **Flat fallback:** with `prefers-reduced-transparency: reduce` or no `backdrop-filter` support,
   glass becomes `surface` + `1px solid var(--border)`, no blur, no shadow. It is a complete,
   supported option.

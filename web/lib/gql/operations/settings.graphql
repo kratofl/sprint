@@ -1,0 +1,32 @@
+# Everything the settings page shows: the account, and the server settings the
+# Server section edits (only rendered for admins).
+query Settings {
+  me {
+    id
+    email
+    displayName
+    isAdmin
+  }
+  serverSettings {
+    instanceName
+    allowRegistration
+  }
+}
+
+mutation SetDisplayName($displayName: String!) {
+  setDisplayName(displayName: $displayName) {
+    id
+    displayName
+  }
+}
+
+mutation ChangePassword($currentPassword: String!, $newPassword: String!) {
+  changePassword(currentPassword: $currentPassword, newPassword: $newPassword)
+}
+
+mutation UpdateServerSettings($input: UpdateServerSettingsInput!) {
+  updateServerSettings(input: $input) {
+    instanceName
+    allowRegistration
+  }
+}

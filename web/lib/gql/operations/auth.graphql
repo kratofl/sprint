@@ -1,0 +1,13 @@
+# Both mutations alias their result to `session` so sign-in and register share
+# one result shape.
+mutation Login($input: AuthRequestInput!) {
+  session: login(input: $input) {
+    token
+  }
+}
+
+mutation Register($input: AuthRequestInput!) {
+  session: register(input: $input) {
+    token
+  }
+}

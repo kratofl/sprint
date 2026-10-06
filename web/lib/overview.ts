@@ -1,5 +1,9 @@
-import type { SessionSummary, SetupSummary } from './gql/generated'
+import type { Session, Setup } from './records'
 import { formatMonth, isInMonth, type Month } from './period.ts'
+
+// When a session was driven: its start time for desktop uploads, else when it
+// was created. Session lists show and sort by this.
+export const drivenAt = (session: Session): string => session.startedAt ?? session.createdAt
 
 // One headline number on the overview. `empty` means nothing has been synced
 // yet, so there is no honest number to show (DESIGN.md: never invent figures).
@@ -10,8 +14,8 @@ export type Kpi =
 // The four overview KPIs for a month: sessions driven, distinct tracks and
 // cars in that month, and the size of the setup bank.
 export function overviewKpis(
-  sessions: readonly SessionSummary[],
-  setups: readonly SetupSummary[],
+  sessions: readonly Session[],
+  setups: readonly Setup[],
   month: Month,
 ): readonly Kpi[] {
   const period = `in ${formatMonth(month)}`
@@ -26,7 +30,7 @@ export function overviewKpis(
       ]
     }
     const inMonth = sessions.filter((session) => isInMonth(session.createdAt, month))
-    const distinct = (pick: (session: SessionSummary) => string) => String(new Set(inMonth.map(pick)).size)
+    const distinct = (pick: (session: Session) => string) => String(new Set(inMonth.map(pick)).size)
     return [
       { kind: 'value', label: 'Sessions', value: String(inMonth.length), caption: period },
       { kind: 'value', label: 'Tracks', value: distinct((session) => session.track), caption: period },
@@ -46,7 +50,7 @@ export function overviewKpis(
 export type WeekBar = { label: string; count: number }
 
 // Sessions per 7-day slice of a month (1–7, 8–14, …, 29–end), for the chart.
-export function sessionsPerWeek(sessions: readonly SessionSummary[], month: Month): readonly WeekBar[] {
+export function sessionsPerWeek(sessions: readonly Session[], month: Month): readonly WeekBar[] {
   const daysInMonth = new Date(Date.UTC(month.year, month.month + 1, 0)).getUTCDate()
   const bars: WeekBar[] = []
   for (let first = 1; first <= daysInMonth; first += 7) {

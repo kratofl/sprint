@@ -61,25 +61,53 @@ public sealed class AppSettings
 }
 
 /// <summary>
-/// Which Sprint server this desktop belongs to.
-/// <para>
-/// Both addresses are settings, not constants: Sprint is self-hosted, so there is no single
-/// sprint.gg to point at. The defaults are the docker-compose ports, which is what a driver
-/// running the stack on their own machine will have.
-/// </para>
+/// Whether this desktop uses a Sprint server, and where its data lives. Answered once by the
+/// first-run setup (<see cref="SetupDone"/>), changeable later in Settings. The server address
+/// and the signed-in account live in <c>cloud-session.json</c> (CloudSession), not here:
+/// settings get copied between machines, a session token must not.
 /// </summary>
 public sealed class CloudSettings
 {
-    /// <summary>
-    /// The web app. Accounts live there, so the desktop opens a browser rather than carrying a
-    /// second sign-in form that would have to be kept in step with it.
-    /// </summary>
-    [JsonPropertyName("webAppUrl")]
-    public string WebAppUrl { get; set; } = "http://localhost:3000";
+    /// <summary>The first-run setup was answered — whatever the answer — so it is not shown again.</summary>
+    [JsonPropertyName("setupDone")]
+    public bool SetupDone { get; set; }
 
-    /// <summary>The GraphQL API, for lap sharing.</summary>
-    [JsonPropertyName("apiUrl")]
-    public string ApiUrl { get; set; } = "http://localhost:8080";
+    [JsonPropertyName("server")]
+    public CloudServerChoice Server { get; set; } = CloudServerChoice.None;
+
+    [JsonPropertyName("storage")]
+    public CloudStorageMode Storage { get; set; } = CloudStorageMode.Local;
+}
+
+/// <summary>Which Sprint server the driver chose. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<CloudServerChoice>))]
+public enum CloudServerChoice
+{
+    /// <summary>Sprint on this PC only.</summary>
+    None,
+
+    /// <summary>The official server, at the address the build ships in the host's appsettings.json.</summary>
+    Official,
+
+    /// <summary>A server the driver runs, found on the network or typed in.</summary>
+    SelfHosted,
+}
+
+/// <summary>Where sessions, setups and dashes are kept once a server is connected. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<CloudStorageMode>))]
+public enum CloudStorageMode
+{
+    /// <summary>Only on this PC; nothing is uploaded.</summary>
+    Local,
+
+    /// <summary>On this PC and on the server, kept in step.</summary>
+    Both,
+
+    /// <summary>
+    /// On the server. Finished sessions are removed from this PC once the server holds them;
+    /// dashes and setups stay, because driving needs them.
+    /// </summary>
+    Remote,
 }
 
 /// <summary>

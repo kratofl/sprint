@@ -11,7 +11,8 @@ public class UserServiceTests
     private static UserService NewUsers(out JwtTokenService tokens)
     {
         tokens = new JwtTokenService(JwtTokenService.KeyFromSecret("test-secret-long-enough-for-hs256-aaaaaa"));
-        return new UserService(TestFactory.NewDb(), new PasswordHasher(), tokens);
+        var db = TestFactory.NewDb();
+        return new UserService(db, new PasswordHasher(), tokens, new ServerSettingsService(db));
     }
 
     [Fact]

@@ -60,7 +60,7 @@ make build-app      # publish the host + package the Electron app → app/build/
   (`app/Sprint.Contracts`), business logic in focused services, and resolvers thin
 - Run `make fmt` before committing
 - When the GraphQL schema changes, run `make schema` and `pnpm --filter @sprint/web
-  codegen` and commit `web/schema.graphql` + `web/lib/gql/generated.ts`
+  codegen` and commit `web/schema.graphql` + `web/lib/gql/operations.ts`
 
 ### TypeScript / React
 - Format with Prettier

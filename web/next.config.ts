@@ -1,23 +1,13 @@
 import type { NextConfig } from 'next'
 
+// The browser never talks to the API: server components and Server Actions call
+// it server-side at API_URL (lib/server/api.ts), and /api/health is a route
+// handler. So there are no rewrites.
 const nextConfig: NextConfig = {
   // Required for optimized Docker image (copies only what's needed to run)
   output: 'standalone',
-
-  // The API server runs separately — proxy REST + GraphQL calls in dev
-  async rewrites() {
-    const apiUrl = process.env.API_URL ?? 'http://localhost:8080'
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${apiUrl}/api/:path*`,
-      },
-      {
-        source: '/graphql',
-        destination: `${apiUrl}/graphql`,
-      },
-    ]
-  },
+  // Bottom-left (the default) covers the account row at the foot of the sidebar.
+  devIndicators: { position: 'bottom-right' },
 }
 
 export default nextConfig

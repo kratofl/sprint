@@ -372,10 +372,13 @@ a:hover {
   flex: none;
   margin: 0 4px;
   padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-control);
+  background: transparent;
   color: var(--label);
+  font: inherit;
   font-size: 13px;
-  text-decoration: none;
+  text-align: start;
   white-space: nowrap;
   cursor: default;
 }
@@ -384,7 +387,7 @@ a:hover {
   color: var(--label);
 }
 
-.account-row:not([aria-disabled='true']):hover {
+.account-row:not(:disabled):hover {
   background: var(--subtle-hover);
 }
 

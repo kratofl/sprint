@@ -30,11 +30,15 @@ test('macOS gets the native look; every other OS keeps the Windows look', () => 
 })
 
 test('macOS draws the sidebar with system vibrancy in either theme', () => {
-  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: false }), { kind: 'vibrancy' })
-  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: false }), { kind: 'vibrancy' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: false, vibrancySupported: true }), { kind: 'vibrancy' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: false, vibrancySupported: true }), { kind: 'vibrancy' })
 })
 
 test('macOS "Reduce transparency" falls back to the solid sidebar colour', () => {
-  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: true }), { kind: 'opaque', background: '#f6f6f8' })
-  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: true }), { kind: 'opaque', background: '#28282a' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: true, vibrancySupported: true }), { kind: 'opaque', background: '#f6f6f8' })
+  assert.deepEqual(windowChrome({ look: 'mac', dark: true, reducedTransparency: true, vibrancySupported: true }), { kind: 'opaque', background: '#28282a' })
+})
+
+test('the macOS look off macOS has no vibrancy and shows the solid sidebar colour', () => {
+  assert.deepEqual(windowChrome({ look: 'mac', dark: false, reducedTransparency: false, vibrancySupported: false }), { kind: 'opaque', background: '#f6f6f8' })
 })
