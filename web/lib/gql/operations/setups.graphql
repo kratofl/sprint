@@ -1,0 +1,11 @@
+# The signed-in user's setup bank: the fields the setup table shows.
+query Setups {
+  setups {
+    id
+    name
+    game
+    car
+    track
+    updatedAt
+  }
+}

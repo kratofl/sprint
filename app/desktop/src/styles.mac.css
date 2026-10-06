@@ -357,7 +357,7 @@
   font-weight: 500;
 }
 
-:where([data-platform="mac"]) .account-row:not([aria-disabled='true']):hover {
+:where([data-platform="mac"]) .account-row:not(:disabled):hover {
   background: transparent;
   color: var(--link);
 }

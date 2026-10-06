@@ -1,0 +1,7 @@
+# The server's public settings, for the sign-in page (anonymous).
+query ServerSettings {
+  serverSettings {
+    instanceName
+    allowRegistration
+  }
+}

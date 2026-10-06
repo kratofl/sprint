@@ -56,6 +56,9 @@ Running the real app:
   over CDP.
 - `make dev-app` starts Vite, Electron and the host. Say so before running it, and make sure all three
   are gone afterwards.
+- In a dev run, ⌘⌥⇧L / Ctrl+Alt+Shift+L reopens the main window in the other OS look (macOS:
+  Developer menu). Off its own OS a look has no vibrancy/Mica and no native caption buttons, so it
+  matches the real chrome only on that OS.
 
 ## Electron traps
 

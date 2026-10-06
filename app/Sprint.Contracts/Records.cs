@@ -27,6 +27,14 @@ public sealed record SessionSummary
     [JsonPropertyName("sessionType")]
     public string SessionType { get; init; } = "unknown";
 
+    /// <summary>When it was driven, for a session uploaded from the desktop; null for one created here.</summary>
+    [JsonPropertyName("startedAt")]
+    public DateTimeOffset? StartedAt { get; init; }
+
+    /// <summary>Opaque session payload (JSON): the desktop's lap history for an uploaded session.</summary>
+    [JsonPropertyName("data")]
+    public string Data { get; init; } = "{}";
+
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; init; }
 }
@@ -45,6 +53,31 @@ public sealed record CreateSessionInput
 
     [JsonPropertyName("sessionType")]
     public string SessionType { get; init; } = "unknown";
+}
+
+/// <summary>Input for the <c>saveSession</c> mutation (desktop upload). A null/empty <see cref="Id"/> creates; otherwise upserts.</summary>
+public sealed record SaveSessionInput
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("game")]
+    public string Game { get; init; } = "";
+
+    [JsonPropertyName("track")]
+    public string Track { get; init; } = "";
+
+    [JsonPropertyName("car")]
+    public string Car { get; init; } = "";
+
+    [JsonPropertyName("sessionType")]
+    public string SessionType { get; init; } = "unknown";
+
+    [JsonPropertyName("startedAt")]
+    public DateTimeOffset? StartedAt { get; init; }
+
+    [JsonPropertyName("data")]
+    public string Data { get; init; } = "{}";
 }
 
 /// <summary>A saved car setup.</summary>

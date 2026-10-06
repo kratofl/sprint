@@ -1,0 +1,13 @@
+# The signed-in user's sessions: the fields the overview and session table show.
+# `data` (the recorded payload) is deliberately not selected for lists.
+query Sessions {
+  sessions {
+    id
+    game
+    track
+    car
+    sessionType
+    startedAt
+    createdAt
+  }
+}

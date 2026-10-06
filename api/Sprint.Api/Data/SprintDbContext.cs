@@ -10,6 +10,7 @@ public sealed class SprintDbContext(DbContextOptions<SprintDbContext> options) :
     public DbSet<SetupEntity> Setups => Set<SetupEntity>();
     public DbSet<LayoutEntity> Layouts => Set<LayoutEntity>();
     public DbSet<LapTraceEntity> LapTraces => Set<LapTraceEntity>();
+    public DbSet<ServerSettingsEntity> ServerSettings => Set<ServerSettingsEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

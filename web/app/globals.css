@@ -24,6 +24,32 @@
   --tint-brand-fg: var(--brand-700);
   --avatar-bg: var(--purple-100);
   --avatar-fg: var(--purple-700);
+  /* Error tint: -100 background, -700 icon, -900 text in light (DESIGN.md → Colour). */
+  --tint-danger-bg: var(--red-100);
+  --tint-danger-fg: var(--red-700);
+  --tint-danger-text: var(--red-900);
+  /* The switch knob stays the lightest neutral in both themes. */
+  --switch-knob: var(--surface);
+  /* Motion: one base duration drives every animation. <html> carries it from the Motion
+     setting (lib/preferences.ts); the rest derive from it, so 0 turns all motion off.
+     Animations are finite and triggered (load, navigation, hover, save) — nothing loops. */
+  --motion: 220ms;
+  --motion-fast: calc(var(--motion) * 0.6);
+  --motion-slow: calc(var(--motion) * 4);
+  --motion-stagger: calc(var(--motion) * 0.2);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Glass on the chrome (sidebar, toolbar): fill opacity and blur, from the Glass setting.
+     The defaults are the toolbar-bg / toolbar-blur tokens. */
+  --chrome-opacity: 72%;
+  --chrome-backdrop: blur(20px) saturate(180%);
+  --chrome-fill: color-mix(in srgb, var(--sidebar-bg) var(--chrome-opacity), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Beats the inline value on <html>: no motion, whatever the setting says. */
+  :root {
+    --motion: 0ms !important;
+  }
 }
 
 [data-theme='dark'] {
@@ -32,6 +58,10 @@
   --tint-brand-fg: var(--link);
   --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
   --avatar-fg: var(--purple-300);
+  --tint-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
+  --tint-danger-fg: var(--danger-text);
+  --tint-danger-text: var(--danger-text);
+  --switch-knob: var(--label);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +71,10 @@
     --tint-brand-fg: var(--link);
     --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
     --avatar-fg: var(--purple-300);
+    --tint-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
+    --tint-danger-fg: var(--danger-text);
+    --tint-danger-text: var(--danger-text);
+    --switch-knob: var(--label);
   }
 }
 
@@ -77,6 +111,16 @@ input {
   color: inherit;
 }
 
+/* Read by screen readers, not drawn (e.g. the user's name in the collapsed rail). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }
@@ -84,28 +128,36 @@ button:not(:disabled) {
 /* ── Shell ─────────────────────────────────────────────────────────────── */
 
 .shell {
+  position: relative;
+  isolation: isolate;
   display: flex;
   height: 100vh;
 }
 
+/* The page background is a dark veil over the ambient backdrop, so the trails glow faintly
+   between the cards. Cards and other elements stay opaque. */
 .shell-main {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
   overflow-y: auto;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
 }
 
-/* ── Sidebar (edge-to-edge, flat) ──────────────────────────────────────── */
+/* ── Sidebar (edge-to-edge glass; see Glass below) ─────────────────────── */
 
+/* Collapsing animates the width. Icons keep their place (an 8px inset centres them in the
+   52px rail), and labels and the brand fade instead of unmounting. */
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: 1px;
   width: 224px;
   flex-shrink: 0;
+  overflow: hidden;
   padding: var(--space-xl) var(--space-md);
-  background: var(--sidebar-bg);
   border-right: 1px solid var(--separator);
+  transition: width var(--motion) var(--ease-out);
 }
 
 .sidebar[data-collapsed='true'] {
@@ -115,27 +167,43 @@ button:not(:disabled) {
 .sidebar-head {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
   padding: 2px var(--space-sm) var(--space-xl);
+  transition: padding var(--motion) var(--ease-out);
 }
 
 .sidebar[data-collapsed='true'] .sidebar-head {
-  justify-content: center;
-  padding-inline: 0;
+  padding-inline: 3px;
 }
 
-.app-tile {
+/* Grows to push the toggle to the right; shrinks to nothing in the rail. */
+.sidebar-brand {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
+  gap: var(--space-sm);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.sidebar[data-collapsed='true'] .sidebar-brand {
+  flex-grow: 0;
+  opacity: 0;
+}
+
+.nav-label {
+  white-space: nowrap;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.sidebar[data-collapsed='true'] .nav-label {
+  opacity: 0;
+}
+
+.app-mark {
+  display: block;
   flex-shrink: 0;
-  border-radius: var(--radius-xs);
-  background: var(--brand-500);
-  color: var(--on-brand);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .app-name {
@@ -143,25 +211,24 @@ button:not(:disabled) {
   font-weight: 600;
 }
 
-.sidebar-toggle {
+.sidebar-toggle,
+.sidebar-action {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
-  margin-left: auto;
+  flex-shrink: 0;
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--label-secondary);
 }
 
-.sidebar[data-collapsed='true'] .sidebar-toggle {
-  margin-left: 0;
-}
-
-.sidebar-toggle:hover {
+.sidebar-toggle:hover,
+.sidebar-action:hover {
   background: var(--fill);
+  color: var(--label);
 }
 
 .nav-item {
@@ -182,11 +249,6 @@ button:not(:disabled) {
 .nav-item[aria-current='page'] {
   background: var(--fill-strong);
   font-weight: 600;
-}
-
-.sidebar[data-collapsed='true'] .nav-item {
-  justify-content: center;
-  padding: 0;
 }
 
 /* Icons are always brand-500, active or not (DESIGN.md → Navigation). */
@@ -217,16 +279,42 @@ button:not(:disabled) {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  min-height: 26px;
   margin-top: var(--space-xs);
   padding: var(--space-md) var(--space-sm) 0;
   border-top: 1px solid var(--separator);
-  color: var(--label-secondary);
+  color: var(--label);
   font-weight: 500;
 }
 
+/* Signed out, the footer is a link to /sign-in. */
+a.sidebar-user {
+  color: var(--label-secondary);
+}
+
+a.sidebar-user:hover {
+  color: var(--label);
+}
+
+/* The rail stacks avatar and sign-out button. */
 .sidebar[data-collapsed='true'] .sidebar-user {
+  flex-direction: column;
   justify-content: center;
+  gap: var(--space-xs);
   padding-inline: 0;
+}
+
+.sidebar-user-name {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-signout {
+  display: flex;
+  margin: 0;
 }
 
 .avatar {
@@ -239,6 +327,8 @@ button:not(:disabled) {
   border-radius: var(--radius-pill);
   background: var(--avatar-bg);
   color: var(--avatar-fg);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 /* ── Toolbar (one frosted band; .toolbar-band comes from the tokens) ──── */
@@ -630,6 +720,11 @@ a.list-row:hover .list-row-title {
   color: var(--tint-brand-fg);
 }
 
+.empty-state[data-tone='error'] .empty-icon {
+  background: var(--tint-danger-bg);
+  color: var(--tint-danger-fg);
+}
+
 .empty-title {
   font-size: 14px;
   font-weight: 600;
@@ -681,6 +776,29 @@ a.list-row:hover .list-row-title {
   color: var(--label-disabled);
 }
 
+/* Inline text action, e.g. "Create an account" on the sign-in page. */
+.text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font-weight: 500;
+}
+
+.text-button:hover {
+  color: var(--brand-700);
+}
+
+/* ── Inline alert (flat error tint, component sheet → Inline-Hinweise) ── */
+
+.alert {
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-sm);
+  background: var(--tint-danger-bg);
+  color: var(--tint-danger-text);
+  line-height: 18px;
+}
+
 /* ── Text field ───────────────────────────────────────────────────────── */
 
 .field {
@@ -689,6 +807,7 @@ a.list-row:hover .list-row-title {
   gap: 5px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 16px;
 }
 
 .field input {
@@ -710,6 +829,18 @@ a.list-row:hover .list-row-title {
   border-color: var(--focus-ring);
   outline: 2px solid var(--focus-ring);
   outline-offset: 0;
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--red-500);
+}
+
+/* Validation message under a field, shown after blur (DESIGN.md → Fields). */
+.field-error {
+  color: var(--danger-text);
+  font-weight: 400;
+  line-height: 16px;
+  animation: rise-in var(--motion) var(--ease-out) both;
 }
 
 .muted {
@@ -744,4 +875,480 @@ a.list-row:hover .list-row-title {
   border: 1px solid var(--separator);
   border-radius: var(--radius-md);
   background: var(--bg);
+}
+
+/* ── Sign-in page (no app shell): brand, then one card centred on bg ──── */
+
+.auth-page {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow-y: auto;
+  padding: var(--space-4xl);
+}
+
+/* The panel only slides: an ancestor below full opacity cuts the card's backdrop-filter
+   off from the trails, so a fade here would show it unblurred until the fade ends. The
+   card's contents fade instead. */
+.auth-panel {
+  animation: slide-up calc(var(--motion) * 1.5) var(--ease-out) both;
+}
+
+.auth-card > * {
+  animation: fade-in calc(var(--motion) * 1.5) var(--ease-out) both;
+}
+
+/* The round Sprint mark heads the card, the title centred under it. */
+.auth-card {
+  width: 340px;
+  gap: var(--space-2xl);
+  padding: var(--space-4xl) var(--space-3xl) var(--space-3xl);
+}
+
+.auth-mark {
+  align-self: center;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 1px var(--glass-highlight);
+}
+
+.auth-title {
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.auth-form .btn {
+  height: 36px;
+  margin-top: var(--space-xs);
+  border-radius: var(--radius-pill);
+}
+
+/* Pill fields, glass on the glass card. No blur of their own: the card's blur already sits
+   behind them, and a nested backdrop-filter would only blur the card. */
+.auth-form .field input {
+  height: 36px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+/* Only the resting edge is glass; focus and error keep their own colours. */
+.auth-form .field input:not(:focus, [aria-invalid='true']) {
+  border-color: var(--glass-border);
+}
+
+.auth-switch {
+  margin: 0;
+  text-align: center;
+  color: var(--label-secondary);
+}
+
+/* ── Settings ─────────────────────────────────────────────────────────── */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
+  width: 100%;
+  max-width: 720px;
+}
+
+/* Quiet text in a card header's action slot (the account email, "Saved in this browser"). */
+.card-meta {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.setting-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  margin: 0;
+}
+
+/* A second group inside one card, split off by a hairline like list rows. */
+.setting-divided {
+  padding-top: var(--space-xl);
+  border-top: 1px solid var(--fill);
+}
+
+.setting-heading {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A field with its button (and save feedback) beside it, aligned to the input. */
+.inline-form {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.inline-form > .field {
+  width: 280px;
+}
+
+/* Skips the field label: 16px line + 5px gap (see .field). */
+.inline-form > :not(.field) {
+  margin-top: 21px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: var(--space-lg) var(--space-md);
+}
+
+.field-grid > :first-child {
+  grid-column: 1 / -1;
+  max-width: 240px;
+}
+
+.setting-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+/* Label + hint on the left, the control on the right. */
+.setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xl);
+}
+
+.setting-text {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setting-label {
+  font-weight: 600;
+}
+
+.setting-hint {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Native select with the chevron trigger on the right. */
+.select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.select select {
+  min-width: 140px;
+  height: 28px;
+  padding: 0 28px 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--label);
+  font: inherit;
+  appearance: none;
+}
+
+.select-chevron {
+  position: absolute;
+  right: var(--space-sm);
+  color: var(--label-secondary);
+  pointer-events: none;
+}
+
+.slider-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  width: 280px;
+  flex-shrink: 0;
+}
+
+.slider-control input[type='range'] {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--brand-500);
+}
+
+.slider-value {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--label-secondary);
+}
+
+.slider-end {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+/* A dot that glides across once at the chosen motion length when the slider is released. */
+.motion-preview {
+  position: relative;
+  flex-basis: 100%;
+  height: 8px;
+}
+
+.motion-preview::before {
+  content: '';
+  position: absolute;
+  inset: 3px 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-strong);
+}
+
+.motion-preview-dot {
+  position: absolute;
+  top: 0;
+  left: calc(100% - 8px);
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brand-500);
+  animation: glide calc(var(--motion) * 2) var(--ease-out) both;
+}
+
+@keyframes glide {
+  from {
+    left: 0;
+  }
+}
+
+/* Switch: applies at once. Brand track when on (the selection colour), flat knob. */
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-strong);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--switch-knob);
+  box-shadow: inset 0 0 0 0.5px var(--border);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.switch[aria-checked='true'] {
+  background: var(--brand-500);
+}
+
+.switch[aria-checked='true']::after {
+  transform: translateX(16px);
+}
+
+.save-feedback {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 28px;
+}
+
+.save-feedback:empty {
+  min-height: 0;
+}
+
+/* "Saved": pops in, then fades away on its own after a moment. */
+.save-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--success-text);
+  font-weight: 600;
+  animation:
+    pop-in var(--motion) var(--ease-out) both,
+    fade-out var(--motion) ease-in 2.4s forwards;
+}
+
+.save-error {
+  animation: rise-in var(--motion) var(--ease-out) both;
+}
+
+/* ── Glass: sidebar, toolbar and the sign-in card (DESIGN.md → glass on chrome) ── */
+
+/* The sign-in card floats over the light trails like a dialog, so it is dialog glass. */
+.auth-card {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+}
+
+.sidebar,
+.toolbar-band {
+  background: var(--chrome-fill);
+  -webkit-backdrop-filter: var(--chrome-backdrop);
+  backdrop-filter: var(--chrome-backdrop);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar { background: var(--sidebar-bg); }
+  .toolbar-band { background: var(--bg); }
+  .auth-card { border-color: var(--border); background: var(--surface); box-shadow: none; }
+  .auth-form .field input { border-color: var(--border); background: var(--surface); box-shadow: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .shell-main { background: var(--bg); }
+  .sidebar,
+  .toolbar-band {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .sidebar { background: var(--sidebar-bg); }
+  .toolbar-band { background: var(--bg); }
+  .auth-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .auth-form .field input {
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: none;
+  }
+}
+
+/* ── Backdrop: glowing light trails (sign-in, and behind the app shell) ── */
+
+/* Painted once, from plain strokes (no filters; see Backdrop.tsx). The entrance only fades and
+   slides the finished layer, and does not hold its end state, so the layer settles into an
+   ordinary static paint afterwards. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+  animation: trails-in calc(var(--motion-slow) * 2) var(--ease-out);
+}
+
+/* A broken streak: a car on the brakes. */
+.backdrop-trail.broken {
+  stroke-dasharray: 0.06 0.025;
+}
+
+/* ── Motion: entrances, stagger, hover and press (all from --motion) ──── */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(8px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes trails-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4%);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+}
+
+/* Page content rises in on every navigation; sections, KPI cards, settings cards and the
+   first table rows follow each other by --i steps. */
+.page-content > :not(.kpi-row, .settings),
+.kpi-row > *,
+.settings > *,
+.table-row {
+  animation: rise-in var(--motion) var(--ease-out) both;
+  animation-delay: calc(var(--motion-stagger) * var(--i));
+}
+
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(1) { --i: 0; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(2) { --i: 1; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(3) { --i: 2; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(4) { --i: 3; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(5) { --i: 4; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(6) { --i: 5; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(7) { --i: 6; }
+:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(n + 8) { --i: 7; }
+
+.btn,
+.nav-item,
+.sidebar-toggle,
+.sidebar-action,
+.toolbar-icon,
+.text-button,
+.card-link,
+.list-row-title,
+.switch,
+.field input,
+.select select,
+a.sidebar-user {
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.btn:active:not(:disabled),
+.nav-item:active,
+.sidebar-toggle:active,
+.sidebar-action:active,
+.toolbar-icon:active,
+.switch:active {
+  transform: scale(0.96);
 }

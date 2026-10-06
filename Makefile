@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app dev-host dev-api dev-web build-api build-web build-app build \
+.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
         test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -62,11 +62,19 @@ dev-app: types ## Run the desktop app in dev mode (Vite + Electron + native host
 dev-host: ## Run only the native desktop host (loopback HTTP, no UI)
 	dotnet watch --project $(APP_HOST_PROJECT)
 
-dev-api: ## Run the API server locally (hot-reload)
+# Compose interpolates the whole file, and the prod services require .env secrets,
+# so without a .env the dev database comes up with the .env.example defaults.
+dev-db: ## Start the local Postgres the API needs (no-op when it is already up)
+	docker compose $(if $(wildcard .env),,--env-file .env.example) up -d --wait db
+
+dev-api: dev-db ## Run the API server locally (hot-reload)
 	dotnet watch --project $(API_PROJECT)
 
 dev-web: ## Run the Next.js web app in dev mode
 	pnpm --filter @sprint/web dev
+
+dev-cloud: ## Run Postgres, the API and the web app together (Ctrl+C stops both servers)
+	$(MAKE) -j2 dev-api dev-web
 
 schema: ## Export the GraphQL schema → web/schema.graphql (for web codegen)
 	dotnet run --project $(API_PROJECT) -- export-schema ../../web/schema.graphql

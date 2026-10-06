@@ -25,6 +25,7 @@ public class GraphQLSmokeTests
         services.AddSingleton<PasswordHasher>();
         services.AddSingleton<IDbContextFactory<SprintDbContext>>(TestFactory.NewDb());
         services.AddSingleton<ITelemetryStore, NullTelemetryStore>();
+        services.AddSingleton<ServerSettingsService>();
         services.AddSingleton<UserService>();
         services.AddSingleton<InviteService>();
         services.AddSingleton<CatalogService>();

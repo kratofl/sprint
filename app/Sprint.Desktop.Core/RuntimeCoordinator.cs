@@ -67,6 +67,7 @@ public sealed class RuntimeCoordinator
             case "settings.save": _runtime.SaveSettings(); return true;
             case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
             case "settings.update": return UpdateSettings(command, out error);
+            case "cloud.configure": return ConfigureCloud(command, out error);
             case "controls.save": _runtime.SaveControls(); return true;
             case "controls.update": return UpdateControls(command, out error);
             case "engineer.revert": _runtime.RevertEngineerChanges(); return true;
@@ -162,6 +163,47 @@ public sealed class RuntimeCoordinator
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
             _runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Records the driver's answer to "use a Sprint server?" and where data lives. Either field may
+    /// be sent alone; any accepted call marks the first-run setup as done.
+    /// </summary>
+    private bool ConfigureCloud(JsonElement command, out string error)
+    {
+        error = "";
+        CloudServerChoice? server = null;
+        CloudStorageMode? storage = null;
+        if (TryStringField(command, "server", out string serverText))
+        {
+            if (!Enum.TryParse(serverText, ignoreCase: false, out CloudServerChoice parsed) || !Enum.IsDefined(parsed))
+            {
+                error = $"unknown server choice: {serverText}";
+                return false;
+            }
+            server = parsed;
+        }
+
+        if (TryStringField(command, "storage", out string storageText))
+        {
+            if (!Enum.TryParse(storageText, ignoreCase: false, out CloudStorageMode parsed) || !Enum.IsDefined(parsed))
+            {
+                error = $"unknown storage mode: {storageText}";
+                return false;
+            }
+            storage = parsed;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            CloudSettings cloud = this._runtime.Settings.Cloud;
+            if (server is { } chosenServer) cloud.Server = chosenServer;
+            if (storage is { } chosenStorage) cloud.Storage = chosenStorage;
+            cloud.SetupDone = true;
+            this._runtime.SaveSettings();
         }
 
         return true;

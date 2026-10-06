@@ -41,6 +41,10 @@ public sealed record UserProfile
     [JsonPropertyName("displayName")]
     public string DisplayName { get; init; } = "";
 
+    /// <summary>Whether this account may change the server settings. The server's first account is.</summary>
+    [JsonPropertyName("isAdmin")]
+    public bool IsAdmin { get; init; }
+
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; init; }
 }
@@ -50,6 +54,12 @@ public sealed record HealthStatus
 {
     [JsonPropertyName("status")]
     public string Status { get; init; } = "ok";
+
+    /// <summary>Always <see cref="SprintService"/>: how the desktop tells a Sprint server from any other port 8080 on the network.</summary>
+    [JsonPropertyName("service")]
+    public string Service { get; init; } = SprintService;
+
+    public const string SprintService = "sprint-api";
 
     [JsonPropertyName("version")]
     public string Version { get; init; } = "";

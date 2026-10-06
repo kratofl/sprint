@@ -6,6 +6,7 @@ schema {
 
 type Query {
   health: HealthStatus!
+  serverSettings: ServerSettingsDto! @cost(weight: "10")
   me: UserProfile @authorize @cost(weight: "10")
   sessions: [SessionSummary!]! @authorize @cost(weight: "10")
   session(id: String!): SessionSummary @authorize @cost(weight: "10")
@@ -36,7 +37,16 @@ type Mutation {
   setDisplayName(displayName: String!): UserProfile!
     @authorize
     @cost(weight: "10")
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
+    @authorize
+    @cost(weight: "10")
+  updateServerSettings(input: UpdateServerSettingsInput!): ServerSettingsDto!
+    @authorize
+    @cost(weight: "10")
   createSession(input: CreateSessionInput!): SessionSummary!
+    @authorize
+    @cost(weight: "10")
+  saveSession(input: SaveSessionInput!): SessionSummary!
     @authorize
     @cost(weight: "10")
   saveSetup(input: SaveSetupInput!): SetupSummary!
@@ -78,6 +88,7 @@ type EngineerEventMessage {
 
 type HealthStatus {
   status: String!
+  service: String!
   version: String!
 }
 
@@ -99,6 +110,11 @@ type LayoutSummary {
   updatedAt: DateTime!
 }
 
+type ServerSettingsDto {
+  instanceName: String!
+  allowRegistration: Boolean!
+}
+
 type SessionSummary {
   id: String!
   ownerId: String!
@@ -106,6 +122,8 @@ type SessionSummary {
   track: String!
   car: String!
   sessionType: String!
+  startedAt: DateTime
+  data: String!
   createdAt: DateTime!
 }
 
@@ -160,6 +178,7 @@ type UserProfile {
   id: String!
   email: String!
   displayName: String!
+  isAdmin: Boolean!
   createdAt: DateTime!
 }
 
@@ -195,6 +214,16 @@ input SaveLayoutInput {
   data: String!
 }
 
+input SaveSessionInput {
+  id: String
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+  startedAt: DateTime
+  data: String!
+}
+
 input SaveSetupInput {
   id: String
   name: String!
@@ -212,6 +241,11 @@ input ShareLapInput {
   lapTimeSeconds: Float!
   drivenAt: DateTime
   payloadBase64: String!
+}
+
+input UpdateServerSettingsInput {
+  instanceName: String!
+  allowRegistration: Boolean!
 }
 
 "Defines when a policy shall be executed."

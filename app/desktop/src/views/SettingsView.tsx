@@ -1,8 +1,9 @@
 import { useId, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Download, FlaskConical, Hash, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Download, FlaskConical, HardDrive, Hash, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { SprintCommand } from '../bridge'
+import type { Account, CloudState, CloudStorageMode, SprintCommand, SyncDirection, SyncReport } from '../bridge'
+import { syncReportText } from '../onboarding/summary'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
 import type { RuntimeState } from '../shell/runtime'
@@ -21,7 +22,7 @@ type Send = (command: SprintCommand) => Promise<void>
  * risky changes — opting into pre-release builds, installing an update,
  * resetting preferences — confirm in a ContentDialog first.
  */
-export function SettingsView({ runtime, send }: { runtime: RuntimeState; send: Send }) {
+export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: RuntimeState; send: Send; onSetUpCloud: () => void }) {
   if (runtime.kind === 'loading') {
     return (
       <div className="settings">
@@ -43,6 +44,7 @@ export function SettingsView({ runtime, send }: { runtime: RuntimeState; send: S
       <PageHeader title="Settings" />
       {/* Keyed on the saved values so a reset (or any host-side change) refreshes the drafts. */}
       <ProfileGroup key={`${settings.driverName}\u0000${settings.driverNumber}`} settings={settings} send={send} />
+      <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
       <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
       <ResetGroup send={send} />
     </div>
@@ -97,6 +99,131 @@ function ProfileGroup({ settings, send }: { settings: AppSettings; send: Send })
 
 const blurOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
   if (event.key === 'Enter') event.currentTarget.blur()
+}
+
+const STORAGE_OPTIONS: Array<{ id: CloudStorageMode; label: string }> = [
+  { id: 'Local', label: 'This PC' },
+  { id: 'Both', label: 'Both' },
+  { id: 'Remote', label: 'Web only' },
+]
+
+const STORAGE_DESCRIPTIONS: Record<CloudStorageMode, string> = {
+  Local: 'Sessions, setups and dashes stay on this PC. Nothing uploads by itself.',
+  Both: 'Everything stays here and is copied to Sprint web every few minutes.',
+  Remote: 'Finished sessions move to Sprint web once uploaded. Setups and dashes stay here too.',
+}
+
+/**
+ * Sprint web: where this PC is connected, where data lives, and manual upload/download.
+ * Connecting (or changing server) runs the setup flow; the rows below only appear once signed in.
+ */
+function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud: CloudState; send: Send; onSetUp: () => void }) {
+  const [confirmRemote, setConfirmRemote] = useState(false)
+  const [busy, setBusy] = useState<SyncDirection | null>(null)
+  const [result, setResult] = useState<{ direction: SyncDirection; report: SyncReport } | null>(null)
+
+  const sync = async (direction: SyncDirection) => {
+    setBusy(direction)
+    const report = await (direction === 'upload' ? bridge.syncUp() : bridge.syncDown())
+    setResult({ direction, report })
+    setBusy(null)
+  }
+
+  const setStorage = (storage: CloudStorageMode) => {
+    if (storage === cloud.storage) return
+    if (storage === 'Remote') setConfirmRemote(true)
+    else void send({ type: 'cloud.configure', storage })
+  }
+
+  // This session's own result first; otherwise what the host last did (the background upload included).
+  const shown = result ?? cloud.lastSync
+  const progress = cloud.progress
+
+  return (
+    <SettingsGroup title="Sprint web">
+      <SettingRow
+        id="settings-cloud-server"
+        icon={Cloud}
+        title={account.signedIn ? `Signed in as ${account.displayName}` : 'Not connected'}
+        description={account.signedIn ? `${account.email} on ${account.serverUrl}` : 'Keep sessions, setups and dashes on your Sprint web server too.'}
+      >
+        {(labels) =>
+          account.signedIn ? (
+            <>
+              <button type="button" className="button" aria-describedby={labels['aria-describedby']} onClick={onSetUp}>
+                Change server…
+              </button>
+              <button type="button" className="button subtle" onClick={() => void bridge.signOut()}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button type="button" className="button primary" aria-describedby={labels['aria-describedby']} onClick={onSetUp}>
+              Set up Sprint web…
+            </button>
+          )
+        }
+      </SettingRow>
+
+      {account.signedIn && (
+        <>
+          <SettingRow id="settings-cloud-storage" icon={HardDrive} title="Keep data on" description={STORAGE_DESCRIPTIONS[cloud.storage]}>
+            {(labels) => (
+              <div className="segmented" role="radiogroup" {...labels}>
+                {STORAGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={cloud.storage === option.id}
+                    className="segmented-item"
+                    onClick={() => setStorage(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            id="settings-cloud-sync"
+            icon={shown && !shown.report.ok ? AlertTriangle : CloudUpload}
+            iconTone={shown && !shown.report.ok ? 'danger' : null}
+            title={progress ? `${progress.direction === 'upload' ? 'Uploading' : 'Downloading'} ${progress.done} of ${progress.total}…` : 'Sync now'}
+            description={shown ? syncReportText(shown.direction, shown.report) : 'Upload what changed here, or download what is only on the web.'}
+          >
+            {(labels) => (
+              <>
+                <button type="button" className="button" aria-describedby={labels['aria-describedby']} disabled={busy !== null} onClick={() => void sync('download')}>
+                  <CloudDownload />
+                  {busy === 'download' ? 'Downloading…' : 'Download'}
+                </button>
+                <button type="button" className="button" aria-describedby={labels['aria-describedby']} disabled={busy !== null} onClick={() => void sync('upload')}>
+                  <CloudUpload />
+                  {busy === 'upload' ? 'Uploading…' : 'Upload'}
+                </button>
+              </>
+            )}
+          </SettingRow>
+        </>
+      )}
+
+      {confirmRemote && (
+        <ConfirmDialog
+          title="Keep sessions on the web only?"
+          message="After each upload, finished sessions are removed from this PC. Download brings them back at any time. Setups and dashes stay here."
+          confirmLabel="Web only"
+          initialFocus="cancel"
+          onConfirm={() => {
+            void send({ type: 'cloud.configure', storage: 'Remote' })
+            setConfirmRemote(false)
+          }}
+          onCancel={() => setConfirmRemote(false)}
+        />
+      )}
+    </SettingsGroup>
+  )
 }
 
 const UPDATE_HEADLINES: Record<UpdateCheckState['status'], string> = {
