@@ -31,6 +31,46 @@ public static class SchemaUpgrades
             "UpdatedAt" timestamp with time zone NOT NULL
         )
         """,
+        // Discord sign-in: an account may have no email (unverified on Discord) and no password.
+        """ALTER TABLE "Users" ALTER COLUMN "Email" DROP NOT NULL""",
+        """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "DiscordId" text NULL""",
+        """ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "AvatarUrl" text NULL""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_DiscordId" ON "Users" ("DiscordId")""",
+        // Session keys: rows from before keys existed are keyed by their own id, permanently.
+        """ALTER TABLE "Sessions" ADD COLUMN IF NOT EXISTS "SessionKey" text NOT NULL DEFAULT ''""",
+        """UPDATE "Sessions" SET "SessionKey" = "Id" WHERE "SessionKey" = ''""",
+        """CREATE UNIQUE INDEX IF NOT EXISTS "IX_Sessions_OwnerId_SessionKey" ON "Sessions" ("OwnerId", "SessionKey")""",
+        // Race engineers.
+        """
+        CREATE TABLE IF NOT EXISTS "EngineerInvites" (
+            "Token" text NOT NULL PRIMARY KEY,
+            "DriverId" text NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL,
+            "ExpiresAt" timestamp with time zone NOT NULL,
+            "UsedAt" timestamp with time zone NULL,
+            "UsedById" text NULL,
+            "RevokedAt" timestamp with time zone NULL
+        )
+        """,
+        """CREATE INDEX IF NOT EXISTS "IX_EngineerInvites_DriverId" ON "EngineerInvites" ("DriverId")""",
+        """
+        CREATE TABLE IF NOT EXISTS "EngineerLinks" (
+            "DriverId" text NOT NULL,
+            "EngineerId" text NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL,
+            CONSTRAINT "PK_EngineerLinks" PRIMARY KEY ("DriverId", "EngineerId")
+        )
+        """,
+        """CREATE INDEX IF NOT EXISTS "IX_EngineerLinks_EngineerId" ON "EngineerLinks" ("EngineerId")""",
+        """
+        CREATE TABLE IF NOT EXISTS "SessionEngineerExclusions" (
+            "DriverId" text NOT NULL,
+            "SessionKey" text NOT NULL,
+            "EngineerId" text NOT NULL,
+            "CreatedAt" timestamp with time zone NOT NULL,
+            CONSTRAINT "PK_SessionEngineerExclusions" PRIMARY KEY ("DriverId", "SessionKey", "EngineerId")
+        )
+        """,
     ];
 
     public static async Task ApplyAsync(SprintDbContext db, CancellationToken ct = default)

@@ -3,13 +3,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 
 WORKDIR /src
 
-# Pin the SDK (global.json) and restore against only the project files first so the
-# NuGet layer caches across source changes.
+# Pin the SDK (global.json) and restore against only the project and lock files first
+# so the NuGet layer caches across source changes. The lock files make the image
+# restore the same package versions as a local build.
 COPY global.json ./
 COPY api/Directory.Build.props api/
-COPY api/Sprint.Api/Sprint.Api.csproj api/Sprint.Api/
-COPY app/Sprint.Contracts/Sprint.Contracts.csproj app/Sprint.Contracts/
-COPY app/Sprint.Desktop.Api/Sprint.Desktop.Api.csproj app/Sprint.Desktop.Api/
+COPY api/Sprint.Api/Sprint.Api.csproj api/Sprint.Api/packages.lock.json api/Sprint.Api/
+COPY app/Sprint.Contracts/Sprint.Contracts.csproj app/Sprint.Contracts/packages.lock.json app/Sprint.Contracts/
+COPY app/Sprint.Desktop.Api/Sprint.Desktop.Api.csproj app/Sprint.Desktop.Api/packages.lock.json app/Sprint.Desktop.Api/
 COPY app/Directory.Build.props app/
 RUN dotnet restore api/Sprint.Api/Sprint.Api.csproj
 
@@ -40,5 +41,9 @@ USER sprint
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 EXPOSE 8080
+
+# Follows PORT when set (Program.cs listens there instead of ASPNETCORE_URLS).
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl -fsS "http://127.0.0.1:${PORT:-8080}/api/health" || exit 1
 
 ENTRYPOINT ["dotnet", "Sprint.Api.dll"]

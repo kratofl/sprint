@@ -13,4 +13,6 @@ test('accountName is the display name, or the email until one is set', () => {
   const account = { signedIn: true, serverUrl: 'http://localhost:8080', email: 'ada@sprint.gg' } as const
   assert.equal(accountName({ ...account, displayName: 'Ada Lovelace' }), 'Ada Lovelace')
   assert.equal(accountName({ ...account, displayName: '  ' }), 'ada@sprint.gg')
+  // A Discord account may have no email and, briefly, no name.
+  assert.equal(accountName({ ...account, email: '', displayName: '' }), 'Sprint account')
 })

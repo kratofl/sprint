@@ -1,13 +1,23 @@
-@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss';
+@import 'tw-animate-css';
 @import '@sprint/tokens/web.css';
+@import './sign-in/sign-in.css';
 
-/* Sprint web — styles for the Web App mockup (docs/design/mockups/web-light|dark.html).
-   Desktop density is the compact web scale from the components sheet: 13px body, 28px controls,
-   34px table rows, 52px toolbar, 224px sidebar. Colours, radii and spacing come from
-   @sprint/tokens/web.css; the few web-local values below are derived from those tokens or quoted
-   from docs/design/DESIGN.md. */
+/*
+  Sprint web: the design system in docs/design/DESIGN.md ("Web app"). Colour, glass and elevation
+  values live in @sprint/tokens/web.css; this file maps them to Tailwind utilities (bg-surface,
+  text-label-secondary, shadow-(--shadow-e1), …), defines the type and radius scales, the dark
+  variant and the few component classes (.glass, .floating, .toolbar-band, .chrome, .hairline-rows).
 
-/* Figtree is the non-Apple face of --font-sans. Bundled (variable, latin) so nothing loads from the internet. */
+  Type and radii have two scales: the base values are the phone's, and from lg (1024px) the
+  desktop block makes text and corners smaller. Their @theme is not inline, so utilities read the
+  variables and follow the breakpoint.
+
+  Tailwind's default palette, radii and text sizes are cleared on purpose, so a class that is not
+  part of the system does not compile to anything.
+*/
+
+/* Figtree is the web's face on every platform. Bundled (variable, latin) so nothing loads from the internet. */
 @font-face {
   font-family: 'Figtree';
   font-style: normal;
@@ -16,33 +26,212 @@
   src: url('./fonts/figtree-latin.woff2') format('woff2');
 }
 
+/* Dark follows data-theme on <html>, or the OS while the theme is "System" (lib/preferences.ts). */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
+/* Radix state variants (Radix sets data-state="open" etc.). */
+@custom-variant data-open {
+  &:where([data-state='open']) {
+    @slot;
+  }
+}
+@custom-variant data-closed {
+  &:where([data-state='closed']) {
+    @slot;
+  }
+}
+@custom-variant data-checked {
+  &:where([data-state='checked']) {
+    @slot;
+  }
+}
+@custom-variant data-unchecked {
+  &:where([data-state='unchecked']) {
+    @slot;
+  }
+}
+@custom-variant data-disabled {
+  &:where([data-disabled]:not([data-disabled='false'])) {
+    @slot;
+  }
+}
+@custom-variant data-horizontal {
+  &:where([data-orientation='horizontal']) {
+    @slot;
+  }
+}
+@custom-variant data-vertical {
+  &:where([data-orientation='vertical']) {
+    @slot;
+  }
+}
+
+@theme inline {
+  --font-sans: Figtree, system-ui, sans-serif;
+
+  /* Every transition and entrance takes its length from the Motion setting (--motion). */
+  --default-transition-duration: var(--motion-fast);
+  --default-transition-timing-function: var(--ease-out);
+
+  --color-*: initial;
+  --color-white: white;
+  --color-black: black;
+  --color-brand-100: var(--brand-100);
+  --color-brand-300: var(--brand-300);
+  --color-brand-500: var(--brand-500);
+  --color-brand-700: var(--brand-700);
+  --color-brand-900: var(--brand-900);
+  --color-green-100: var(--green-100);
+  --color-green-300: var(--green-300);
+  --color-green-500: var(--green-500);
+  --color-green-700: var(--green-700);
+  --color-green-900: var(--green-900);
+  --color-red-100: var(--red-100);
+  --color-red-300: var(--red-300);
+  --color-red-500: var(--red-500);
+  --color-red-700: var(--red-700);
+  --color-red-900: var(--red-900);
+  --color-yellow-100: var(--yellow-100);
+  --color-yellow-300: var(--yellow-300);
+  --color-yellow-500: var(--yellow-500);
+  --color-yellow-700: var(--yellow-700);
+  --color-yellow-900: var(--yellow-900);
+  --color-blue-100: var(--blue-100);
+  --color-blue-300: var(--blue-300);
+  --color-blue-500: var(--blue-500);
+  --color-blue-700: var(--blue-700);
+  --color-blue-900: var(--blue-900);
+  --color-purple-100: var(--purple-100);
+  --color-purple-300: var(--purple-300);
+  --color-purple-500: var(--purple-500);
+  --color-purple-700: var(--purple-700);
+  --color-purple-900: var(--purple-900);
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-floating: var(--surface-floating);
+  --color-sidebar: var(--sidebar-bg);
+  --color-fill: var(--fill);
+  --color-fill-strong: var(--fill-strong);
+  --color-separator: var(--separator);
+  --color-border: var(--border);
+  --color-border-control: var(--border-control);
+  --color-meter-track: var(--meter-track);
+  --color-chart-muted: var(--chart-muted);
+  --color-chart-muted-strong: var(--chart-muted-strong);
+  --color-label: var(--label);
+  --color-label-secondary: var(--label-secondary);
+  --color-label-disabled: var(--label-disabled);
+  --color-on-brand: var(--on-brand);
+  --color-link: var(--link);
+  --color-success-text: var(--success-text);
+  --color-danger-text: var(--danger-text);
+  --color-segment-selected: var(--segment-selected);
+  --color-focus-ring: var(--focus-ring);
+  --color-toolbar-fill: var(--toolbar-fill);
+}
+
+@theme {
+  --radius-*: initial;
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 18px;
+
+  /* Type styles. `text-display` is a page's one hero number, `text-kpi` every other metric. */
+  --text-*: initial;
+  --text-display: 40px;
+  --text-display--line-height: 44px;
+  --text-display--font-weight: 600;
+  --text-display--letter-spacing: -0.035em;
+  --text-large-title: 34px;
+  --text-large-title--line-height: 41px;
+  --text-large-title--font-weight: 600;
+  --text-large-title--letter-spacing: -0.03em;
+  --text-kpi: 32px;
+  --text-kpi--line-height: 38px;
+  --text-kpi--font-weight: 600;
+  --text-kpi--letter-spacing: -0.03em;
+  --text-title-1: 28px;
+  --text-title-1--line-height: 34px;
+  --text-title-1--font-weight: 600;
+  --text-title-1--letter-spacing: -0.02em;
+  --text-title-2: 22px;
+  --text-title-2--line-height: 28px;
+  --text-title-2--font-weight: 600;
+  --text-title-2--letter-spacing: -0.02em;
+  --text-title-3: 20px;
+  --text-title-3--line-height: 25px;
+  --text-title-3--font-weight: 600;
+  --text-headline: 17px;
+  --text-headline--line-height: 22px;
+  --text-headline--font-weight: 600;
+  --text-body: 15px;
+  --text-body--line-height: 21px;
+  --text-callout: 14px;
+  --text-callout--line-height: 20px;
+  --text-footnote: 13px;
+  --text-footnote--line-height: 18px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-caption--font-weight: 600;
+}
+
+/* Desktop scale from lg: dense web dashboard sizes. Phones keep the base values. */
+@media (width >= 64rem) {
+  :root {
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+
+    --text-display: 44px;
+    --text-display--line-height: 48px;
+    --text-large-title: 24px;
+    --text-large-title--line-height: 30px;
+    --text-kpi: 22px;
+    --text-kpi--line-height: 28px;
+    --text-title-1: 22px;
+    --text-title-1--line-height: 28px;
+    --text-title-2: 17px;
+    --text-title-2--line-height: 22px;
+    --text-title-3: 15px;
+    --text-title-3--line-height: 20px;
+    --text-headline: 14px;
+    --text-headline--line-height: 20px;
+    --text-body: 13px;
+    --text-body--line-height: 18px;
+    --text-callout: 13px;
+    --text-callout--line-height: 18px;
+    --text-footnote: 12px;
+    --text-footnote--line-height: 16px;
+    --text-caption: 11px;
+    --text-caption--line-height: 14px;
+  }
+}
+
 :root {
-  /* Controls inside the frosted toolbar sit on a 5 % fill (DESIGN.md → Toolbar / CommandBar). */
-  --toolbar-fill: rgba(0, 0, 0, 0.05);
-  /* Tint pairs: -100 background + -700 text in light, 20 % of the -500 in dark (DESIGN.md → Color). */
-  --tint-brand-bg: var(--brand-100);
-  --tint-brand-fg: var(--brand-700);
-  --avatar-bg: var(--purple-100);
-  --avatar-fg: var(--purple-700);
-  /* Error tint: -100 background, -700 icon, -900 text in light (DESIGN.md → Colour). */
-  --tint-danger-bg: var(--red-100);
-  --tint-danger-fg: var(--red-700);
-  --tint-danger-text: var(--red-900);
-  /* The switch knob stays the lightest neutral in both themes. */
-  --switch-knob: var(--surface);
   /* Motion: one base duration drives every animation. <html> carries it from the Motion
      setting (lib/preferences.ts); the rest derive from it, so 0 turns all motion off.
-     Animations are finite and triggered (load, navigation, hover, save) — nothing loops. */
+     Animations are finite and triggered (load, navigation, hover, save); nothing loops. */
   --motion: 220ms;
   --motion-fast: calc(var(--motion) * 0.6);
   --motion-slow: calc(var(--motion) * 4);
-  --motion-stagger: calc(var(--motion) * 0.2);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  /* Glass on the chrome (sidebar, toolbar): fill opacity and blur, from the Glass setting.
-     The defaults are the toolbar-bg / toolbar-blur tokens. */
+  /* The chrome (sidebar, toolbar band) from the Glass setting: fill opacity and blur. */
   --chrome-opacity: 72%;
   --chrome-backdrop: blur(20px) saturate(180%);
-  --chrome-fill: color-mix(in srgb, var(--sidebar-bg) var(--chrome-opacity), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -52,1202 +241,87 @@
   }
 }
 
-[data-theme='dark'] {
-  --toolbar-fill: rgba(255, 255, 255, 0.08);
-  --tint-brand-bg: color-mix(in srgb, var(--brand-500) 20%, transparent);
-  --tint-brand-fg: var(--link);
-  --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
-  --avatar-fg: var(--purple-300);
-  --tint-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
-  --tint-danger-fg: var(--danger-text);
-  --tint-danger-text: var(--danger-text);
-  --switch-knob: var(--label);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --toolbar-fill: rgba(255, 255, 255, 0.08);
-    --tint-brand-bg: color-mix(in srgb, var(--brand-500) 20%, transparent);
-    --tint-brand-fg: var(--link);
-    --avatar-bg: color-mix(in srgb, var(--purple-500) 30%, transparent);
-    --avatar-fg: var(--purple-300);
-    --tint-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
-    --tint-danger-fg: var(--danger-text);
-    --tint-danger-text: var(--danger-text);
-    --switch-knob: var(--label);
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply h-full font-sans;
+  }
+  body {
+    @apply bg-bg text-callout text-label;
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+  /* 2px focus ring, offset 2px, on every focusable control. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  /* Line icons: 1.8 stroke on the 24px grid. Controls that draw them at 16px set 2. */
+  svg.tabler-icon {
+    stroke-width: 1.8;
   }
 }
 
-/* Flat toolbar variant: solid band, fills become fill-strong. */
-@media (prefers-reduced-transparency: reduce) {
-  :root {
-    --toolbar-fill: var(--fill-strong);
+@layer components {
+  /*
+    Frosted glass for small floating chrome: context menus, select lists, popovers, toasts and
+    the phone tab bar. Never on content, never under numbers (tooltips are solid).
+  */
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+    border: 1px solid var(--floating-border);
+    box-shadow: var(--shadow-e3);
   }
-}
 
-html,
-body {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  overflow: hidden;
-  background: var(--bg);
-  color: var(--label);
-  /* Line height stays `normal`, as in the mockup; multi-line text sets its own. */
-  font: 400 13px var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
-
-a {
-  color: var(--link);
-  text-decoration: none;
-}
-
-button,
-input {
-  font: inherit;
-  color: inherit;
-}
-
-/* Read by screen readers, not drawn (e.g. the user's name in the collapsed rail). */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-button:not(:disabled) {
-  cursor: pointer;
-}
-
-/* ── Shell ─────────────────────────────────────────────────────────────── */
-
-.shell {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  height: 100vh;
-}
-
-/* The page background is a dark veil over the ambient backdrop, so the trails glow faintly
-   between the cards. Cards and other elements stay opaque. */
-.shell-main {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  overflow-y: auto;
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-}
-
-/* ── Sidebar (edge-to-edge glass; see Glass below) ─────────────────────── */
-
-/* Collapsing animates the width. Icons keep their place (an 8px inset centres them in the
-   52px rail), and labels and the brand fade instead of unmounting. */
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  width: 224px;
-  flex-shrink: 0;
-  overflow: hidden;
-  padding: var(--space-xl) var(--space-md);
-  border-right: 1px solid var(--separator);
-  transition: width var(--motion) var(--ease-out);
-}
-
-.sidebar[data-collapsed='true'] {
-  width: 52px;
-}
-
-.sidebar-head {
-  display: flex;
-  align-items: center;
-  padding: 2px var(--space-sm) var(--space-xl);
-  transition: padding var(--motion) var(--ease-out);
-}
-
-.sidebar[data-collapsed='true'] .sidebar-head {
-  padding-inline: 3px;
-}
-
-/* Grows to push the toggle to the right; shrinks to nothing in the rail. */
-.sidebar-brand {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-sm);
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  transition: opacity var(--motion-fast) var(--ease-out);
-}
-
-.sidebar[data-collapsed='true'] .sidebar-brand {
-  flex-grow: 0;
-  opacity: 0;
-}
-
-.nav-label {
-  white-space: nowrap;
-  transition: opacity var(--motion-fast) var(--ease-out);
-}
-
-.sidebar[data-collapsed='true'] .nav-label {
-  opacity: 0;
-}
-
-.app-mark {
-  display: block;
-  flex-shrink: 0;
-}
-
-.app-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.sidebar-toggle,
-.sidebar-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  flex-shrink: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--label-secondary);
-}
-
-.sidebar-toggle:hover,
-.sidebar-action:hover {
-  background: var(--fill);
-  color: var(--label);
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  height: 28px;
-  padding: 0 var(--space-sm);
-  border-radius: var(--radius-xs);
-  color: var(--label);
-}
-
-.nav-item:hover {
-  background: var(--fill);
-  color: var(--label);
-}
-
-.nav-item[aria-current='page'] {
-  background: var(--fill-strong);
-  font-weight: 600;
-}
-
-/* Icons are always brand-500, active or not (DESIGN.md → Navigation). */
-.nav-icon {
-  flex-shrink: 0;
-  color: var(--brand-500);
-}
-
-.nav-section {
-  padding: var(--space-2xl) var(--space-sm) 4px;
-  color: var(--label-secondary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.sidebar[data-collapsed='true'] .nav-section {
-  height: 1px;
-  margin: var(--space-sm) var(--space-xs);
-  padding: 0;
-  background: var(--separator);
-}
-
-.sidebar-spacer {
-  flex-grow: 1;
-}
-
-.sidebar-user {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  min-height: 26px;
-  margin-top: var(--space-xs);
-  padding: var(--space-md) var(--space-sm) 0;
-  border-top: 1px solid var(--separator);
-  color: var(--label);
-  font-weight: 500;
-}
-
-/* Signed out, the footer is a link to /sign-in. */
-a.sidebar-user {
-  color: var(--label-secondary);
-}
-
-a.sidebar-user:hover {
-  color: var(--label);
-}
-
-/* The rail stacks avatar and sign-out button. */
-.sidebar[data-collapsed='true'] .sidebar-user {
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-xs);
-  padding-inline: 0;
-}
-
-.sidebar-user-name {
-  flex-grow: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sidebar-signout {
-  display: flex;
-  margin: 0;
-}
-
-.avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  border-radius: var(--radius-pill);
-  background: var(--avatar-bg);
-  color: var(--avatar-fg);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-/* ── Toolbar (one frosted band; .toolbar-band comes from the tokens) ──── */
-
-.toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  height: 52px;
-  padding: 0 var(--space-3xl);
-}
-
-.toolbar-lead,
-.toolbar-trail {
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
-  gap: var(--space-md);
-  min-width: 0;
-}
-
-.toolbar-trail {
-  justify-content: flex-end;
-  gap: var(--space-sm);
-}
-
-.toolbar-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-/* Pill group of borderless controls inside the toolbar (stepper). */
-.toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--toolbar-fill);
-}
-
-.toolbar-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--label);
-}
-
-.toolbar-icon:hover {
-  background: var(--toolbar-fill);
-}
-
-.stepper-label {
-  min-width: 108px;
-  text-align: center;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Search is always a pill and always last in the toolbar. */
-.search-field {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  width: 200px;
-  height: 28px;
-  padding: 0 var(--space-md);
-  border-radius: var(--radius-pill);
-  background: var(--toolbar-fill);
-  color: var(--label-secondary);
-}
-
-.search-field:focus-within {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.search-field input {
-  flex-grow: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--label);
-}
-
-.search-field input::placeholder {
-  color: var(--label-secondary);
-}
-
-.search-field input::-webkit-search-cancel-button {
-  display: none;
-}
-
-/* ── Page content ──────────────────────────────────────────────────────── */
-
-.page-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xl);
-  min-height: calc(100vh - 52px);
-  padding: var(--space-2xl) var(--space-3xl) var(--space-3xl);
-}
-
-.kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-lg);
-}
-
-/* Main column + side column, like the mockup's chart and list rows. */
-.split-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
-  gap: var(--space-lg);
-}
-
-.split-row-chart {
-  height: 256px;
-}
-
-/* The last row of a page stretches to the bottom edge. */
-.fill-row {
-  flex-grow: 1;
-  min-height: 0;
-}
-
-/* ── Cards (flat: surface on bg, no shadow) ───────────────────────────── */
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  min-width: 0;
-  padding: var(--space-xl) var(--space-2xl);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-
-.card-flush {
-  gap: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-.card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  min-height: 22px;
-}
-
-.card-flush > .card-head {
-  padding: var(--space-lg) var(--space-2xl) var(--space-sm);
-}
-
-.card-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.card-link {
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.card-link:hover {
-  color: var(--brand-700);
-}
-
-.kpi {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.kpi-label {
-  color: var(--label-secondary);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.kpi-value {
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 30px;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.kpi-value[data-empty='true'] {
-  color: var(--label-disabled);
-}
-
-.kpi-caption {
-  color: var(--label-secondary);
-  font-size: 11px;
-}
-
-/* ── Bar chart: brand-500 at track-tint, the highest bar in full brand-500,
-      radius-xs on top only, separator baseline (DESIGN.md → Color, Web token roles). ── */
-
-.chart-bars {
-  display: flex;
-  flex-grow: 1;
-  align-items: flex-end;
-  gap: var(--space-xl);
-  padding: 0 4px;
-  border-bottom: 1px solid var(--separator);
-}
-
-.chart-bar {
-  flex: 1 1 0;
-  min-height: 2px;
-  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  background: var(--brand-500);
-  opacity: var(--track-tint);
-}
-
-.chart-bar[data-highlight='true'] {
-  opacity: 1;
-}
-
-.chart-labels {
-  display: flex;
-  gap: var(--space-xl);
-  padding: 0 4px;
-  color: var(--label-secondary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.chart-labels > span {
-  flex: 1 1 0;
-  text-align: center;
-}
-
-/* ── Tables ────────────────────────────────────────────────────────────── */
-
-.table-head,
-.table-row {
-  display: grid;
-  align-items: center;
-  column-gap: var(--space-lg);
-}
-
-.table-head {
-  height: 26px;
-  padding: 0 var(--space-2xl);
-  border-bottom: 1px solid var(--separator);
-  color: var(--label-secondary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.table-row {
-  height: 34px;
-  margin: 0 var(--space-xs);
-  padding: 0 var(--space-md);
-  border-bottom: 1px solid var(--fill);
-}
-
-.table-row:last-child {
-  border-bottom: 0;
-}
-
-.table-row[aria-selected='true'] {
-  border-bottom-color: transparent;
-  border-radius: var(--radius-sm);
-  background: var(--fill);
-}
-
-.table-row > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cell-end {
-  text-align: right;
-}
-
-.cell-muted {
-  color: var(--label-secondary);
-}
-
-.cell-strong {
-  font-weight: 500;
-}
-
-/* ── Lists inside cards (hairline-separated rows) ─────────────────────── */
-
-.list-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding-bottom: var(--space-lg);
-  border-bottom: 1px solid var(--fill);
-  color: var(--label);
-}
-
-.list-row:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.list-row-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex-grow: 1;
-  min-width: 0;
-}
-
-.list-row-title {
-  font-weight: 600;
-}
-
-.list-row-meta {
-  color: var(--label-secondary);
-  font-size: 11px;
-  line-height: 14px;
-}
-
-.list-row-trail {
-  flex-shrink: 0;
-  color: var(--label-secondary);
-}
-
-a.list-row:hover .list-row-title {
-  color: var(--link);
-}
-
-/* ── Status: dot + word, never colour alone ───────────────────────────── */
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.status::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  background: var(--status-color);
-}
-
-.status[data-status='active'] { --status-color: var(--green-500); }
-.status[data-status='review'] { --status-color: var(--blue-500); }
-.status[data-status='paused'] { --status-color: var(--yellow-500); }
-.status[data-status='risk'] { --status-color: var(--red-500); }
-
-/* ── Empty state ───────────────────────────────────────────────────────── */
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  flex-grow: 1;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  padding: var(--space-3xl);
-  text-align: center;
-}
-
-.empty-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  background: var(--tint-brand-bg);
-  color: var(--tint-brand-fg);
-}
-
-.empty-state[data-tone='error'] .empty-icon {
-  background: var(--tint-danger-bg);
-  color: var(--tint-danger-fg);
-}
-
-.empty-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.empty-body {
-  max-width: 280px;
-  line-height: 18px;
-  color: var(--label-secondary);
-}
-
-/* ── Buttons (flat, never glow) ───────────────────────────────────────── */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  height: 28px;
-  padding: 0 var(--space-lg);
-  border: 0;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.btn-sm {
-  height: 22px;
-  padding: 0 var(--space-md);
-  border-radius: var(--radius-xs);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.btn-primary {
-  background: var(--brand-500);
-  color: var(--on-brand);
-  font-weight: 600;
-}
-
-.btn-secondary {
-  background: var(--fill);
-  color: var(--label);
-}
-
-.btn:disabled {
-  background: var(--fill);
-  color: var(--label-disabled);
-}
-
-/* Inline text action, e.g. "Create an account" on the sign-in page. */
-.text-button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--link);
-  font-weight: 500;
-}
-
-.text-button:hover {
-  color: var(--brand-700);
-}
-
-/* ── Inline alert (flat error tint, component sheet → Inline-Hinweise) ── */
-
-.alert {
-  padding: var(--space-sm) var(--space-lg);
-  border-radius: var(--radius-sm);
-  background: var(--tint-danger-bg);
-  color: var(--tint-danger-text);
-  line-height: 18px;
-}
-
-/* ── Text field ───────────────────────────────────────────────────────── */
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-}
-
-.field input {
-  height: 28px;
-  padding: 0 var(--space-md);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--label);
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.field input::placeholder {
-  color: var(--label-disabled);
-}
-
-.field input:focus {
-  border-color: var(--focus-ring);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 0;
-}
-
-.field input[aria-invalid='true'] {
-  border-color: var(--red-500);
-}
-
-/* Validation message under a field, shown after blur (DESIGN.md → Fields). */
-.field-error {
-  color: var(--danger-text);
-  font-weight: 400;
-  line-height: 16px;
-  animation: rise-in var(--motion) var(--ease-out) both;
-}
-
-.muted {
-  margin: 0;
-  line-height: 18px;
-  color: var(--label-secondary);
-}
-
-/* ── Page-specific layouts ────────────────────────────────────────────── */
-
-.join-form {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-lg);
-}
-
-.join-form .field {
-  align-self: stretch;
-}
-
-.dash-grid {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) 280px;
-  gap: var(--space-lg);
-}
-
-/* The wheel display is 5:3; the empty canvas keeps that frame. */
-.dash-canvas {
-  display: flex;
-  aspect-ratio: 5 / 3;
-  border: 1px solid var(--separator);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-}
-
-/* ── Sign-in page (no app shell): brand, then one card centred on bg ──── */
-
-.auth-page {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  overflow-y: auto;
-  padding: var(--space-4xl);
-}
-
-/* The panel only slides: an ancestor below full opacity cuts the card's backdrop-filter
-   off from the trails, so a fade here would show it unblurred until the fade ends. The
-   card's contents fade instead. */
-.auth-panel {
-  animation: slide-up calc(var(--motion) * 1.5) var(--ease-out) both;
-}
-
-.auth-card > * {
-  animation: fade-in calc(var(--motion) * 1.5) var(--ease-out) both;
-}
-
-/* The round Sprint mark heads the card, the title centred under it. */
-.auth-card {
-  width: 340px;
-  gap: var(--space-2xl);
-  padding: var(--space-4xl) var(--space-3xl) var(--space-3xl);
-}
-
-.auth-mark {
-  align-self: center;
-  border-radius: var(--radius-pill);
-  box-shadow: 0 0 0 1px var(--glass-highlight);
-}
-
-.auth-title {
-  margin: 0;
-  text-align: center;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
-}
-
-.auth-form .btn {
-  height: 36px;
-  margin-top: var(--space-xs);
-  border-radius: var(--radius-pill);
-}
-
-/* Pill fields, glass on the glass card. No blur of their own: the card's blur already sits
-   behind them, and a nested backdrop-filter would only blur the card. */
-.auth-form .field input {
-  height: 36px;
-  padding: 0 var(--space-lg);
-  border-radius: var(--radius-pill);
-  background: var(--glass-bg);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-
-/* Only the resting edge is glass; focus and error keep their own colours. */
-.auth-form .field input:not(:focus, [aria-invalid='true']) {
-  border-color: var(--glass-border);
-}
-
-.auth-switch {
-  margin: 0;
-  text-align: center;
-  color: var(--label-secondary);
-}
-
-/* ── Settings ─────────────────────────────────────────────────────────── */
-
-.settings {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xl);
-  width: 100%;
-  max-width: 720px;
-}
-
-/* Quiet text in a card header's action slot (the account email, "Saved in this browser"). */
-.card-meta {
-  color: var(--label-secondary);
-  font-size: 12px;
-}
-
-.setting-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-lg);
-  margin: 0;
-}
-
-/* A second group inside one card, split off by a hairline like list rows. */
-.setting-divided {
-  padding-top: var(--space-xl);
-  border-top: 1px solid var(--fill);
-}
-
-.setting-heading {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* A field with its button (and save feedback) beside it, aligned to the input. */
-.inline-form {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-md);
-}
-
-.inline-form > .field {
-  width: 280px;
-}
-
-/* Skips the field label: 16px line + 5px gap (see .field). */
-.inline-form > :not(.field) {
-  margin-top: 21px;
-}
-
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 240px));
-  gap: var(--space-lg) var(--space-md);
-}
-
-.field-grid > :first-child {
-  grid-column: 1 / -1;
-  max-width: 240px;
-}
-
-.setting-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-}
-
-/* Label + hint on the left, the control on the right. */
-.setting {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2xl);
-}
-
-.setting-text {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.setting-label {
-  font-weight: 600;
-}
-
-.setting-hint {
-  color: var(--label-secondary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-/* Native select with the chevron trigger on the right. */
-.select {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.select select {
-  min-width: 140px;
-  height: 28px;
-  padding: 0 28px 0 var(--space-md);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--label);
-  font: inherit;
-  appearance: none;
-}
-
-.select-chevron {
-  position: absolute;
-  right: var(--space-sm);
-  color: var(--label-secondary);
-  pointer-events: none;
-}
-
-.slider-control {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm) var(--space-md);
-  width: 280px;
-  flex-shrink: 0;
-}
-
-.slider-control input[type='range'] {
-  flex: 1 1 0;
-  min-width: 0;
-  margin: 0;
-  accent-color: var(--brand-500);
-}
-
-.slider-value {
-  min-width: 48px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--label-secondary);
-}
-
-.slider-end {
-  color: var(--label-secondary);
-  font-size: 12px;
-}
-
-/* A dot that glides across once at the chosen motion length when the slider is released. */
-.motion-preview {
-  position: relative;
-  flex-basis: 100%;
-  height: 8px;
-}
-
-.motion-preview::before {
-  content: '';
-  position: absolute;
-  inset: 3px 0;
-  border-radius: var(--radius-pill);
-  background: var(--fill-strong);
-}
-
-.motion-preview-dot {
-  position: absolute;
-  top: 0;
-  left: calc(100% - 8px);
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--brand-500);
-  animation: glide calc(var(--motion) * 2) var(--ease-out) both;
-}
-
-@keyframes glide {
-  from {
-    left: 0;
+  /* Solid floating layers: chart tooltips (e3), dialogs, sheets and panels (e4). */
+  .floating {
+    background: var(--surface-floating);
+    border: 1px solid var(--floating-border);
   }
-}
 
-/* Switch: applies at once. Brand track when on (the selection colour), flat knob. */
-.switch {
-  position: relative;
-  width: 38px;
-  height: 22px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--fill-strong);
-}
+  /* The shell chrome over the ambient backdrop: the sidebar and the toolbar band. Their fill
+     opacity and blur come from the Glass setting; the trails show through both. */
+  .chrome {
+    background: color-mix(in srgb, var(--sidebar-bg) var(--chrome-opacity), transparent);
+    -webkit-backdrop-filter: var(--chrome-backdrop);
+    backdrop-filter: var(--chrome-backdrop);
+  }
 
-.switch::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-pill);
-  background: var(--switch-knob);
-  box-shadow: inset 0 0 0 0.5px var(--border);
-  transition: transform var(--motion-fast) var(--ease-out);
-}
-
-.switch[aria-checked='true'] {
-  background: var(--brand-500);
-}
-
-.switch[aria-checked='true']::after {
-  transform: translateX(16px);
-}
-
-.save-feedback {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  min-height: 28px;
-}
-
-.save-feedback:empty {
-  min-height: 0;
-}
-
-/* "Saved": pops in, then fades away on its own after a moment. */
-.save-note {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  color: var(--success-text);
-  font-weight: 600;
-  animation:
-    pop-in var(--motion) var(--ease-out) both,
-    fade-out var(--motion) ease-in 2.4s forwards;
-}
-
-.save-error {
-  animation: rise-in var(--motion) var(--ease-out) both;
-}
-
-/* ── Glass: sidebar, toolbar and the sign-in card (DESIGN.md → glass on chrome) ── */
-
-/* The sign-in card floats over the light trails like a dialog, so it is dialog glass. */
-.auth-card {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
-  box-shadow: var(--shadow-glass);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-}
-
-.sidebar,
-.toolbar-band {
-  background: var(--chrome-fill);
-  -webkit-backdrop-filter: var(--chrome-backdrop);
-  backdrop-filter: var(--chrome-backdrop);
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .sidebar { background: var(--sidebar-bg); }
-  .toolbar-band { background: var(--bg); }
-  .auth-card { border-color: var(--border); background: var(--surface); box-shadow: none; }
-  .auth-form .field input { border-color: var(--border); background: var(--surface); box-shadow: none; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .shell-main { background: var(--bg); }
-  .sidebar,
+  /* The one uniform frosted band across the top of the content area. */
   .toolbar-band {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    background: color-mix(in srgb, var(--bg) var(--chrome-opacity), transparent);
+    -webkit-backdrop-filter: var(--chrome-backdrop);
+    backdrop-filter: var(--chrome-backdrop);
+    border-bottom: 1px solid var(--separator);
   }
-  .sidebar { background: var(--sidebar-bg); }
-  .toolbar-band { background: var(--bg); }
-  .auth-card {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    border-color: var(--border);
-    background: var(--surface);
-    box-shadow: none;
+
+  /* The content area over the ambient backdrop: bg at 82 %, so the trails glow faintly between
+     the cards. Cards and every other content element stay opaque. */
+  .content-veil {
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
   }
-  .auth-form .field input {
-    border-color: var(--border);
-    background: var(--surface);
-    box-shadow: none;
+
+  /* Hairlines between rows of a list card. */
+  .hairline-rows > * + * {
+    border-top: 1px solid var(--separator);
+  }
+
+  /* Finite entrance for freshly mounted screens. */
+  .rise {
+    animation: rise var(--motion) var(--ease-out) both;
   }
 }
 
-/* ── Backdrop: glowing light trails (sign-in, and behind the app shell) ── */
-
-/* Painted once, from plain strokes (no filters; see Backdrop.tsx). The entrance only fades and
-   slides the finished layer, and does not hold its end state, so the layer settles into an
-   ordinary static paint afterwards. */
+/* Light trails behind sign-in and the app shell (components/Backdrop.tsx). Painted once, from plain
+   strokes (no filters). The entrance only fades and slides the finished layer, and does not hold its
+   end state, so the layer settles into an ordinary static paint afterwards. */
 .backdrop {
   position: absolute;
   inset: 0;
@@ -1265,12 +339,14 @@ a.list-row:hover .list-row-title {
   stroke-dasharray: 0.06 0.025;
 }
 
-/* ── Motion: entrances, stagger, hover and press (all from --motion) ──── */
-
-@keyframes rise-in {
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -1293,62 +369,31 @@ a.list-row:hover .list-row-title {
   }
 }
 
-@keyframes fade-out {
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes pop-in {
+@keyframes glide {
   from {
-    opacity: 0;
-    transform: translateY(4px) scale(0.96);
+    left: 0;
   }
 }
 
-/* Page content rises in on every navigation; sections, KPI cards, settings cards and the
-   first table rows follow each other by --i steps. */
-.page-content > :not(.kpi-row, .settings),
-.kpi-row > *,
-.settings > *,
-.table-row {
-  animation: rise-in var(--motion) var(--ease-out) both;
-  animation-delay: calc(var(--motion-stagger) * var(--i));
+/* Flat fallback: without backdrop-filter or with reduced transparency, glass becomes the solid
+   floating surface, the chrome solid and the content veil opaque. A complete variant. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass { background: var(--surface-floating); }
+  .glass.toast { background: var(--label); border-color: transparent; color: var(--bg); }
+  .chrome { background: var(--sidebar-bg); }
+  .toolbar-band { background: var(--bg); --toolbar-fill: var(--fill-strong); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass { background: var(--surface-floating); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  /* The toast's flat variant is a solid inverse pill. */
+  .glass.toast { background: var(--label); border-color: transparent; color: var(--bg); }
+  .chrome { background: var(--sidebar-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .toolbar-band { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; --toolbar-fill: var(--fill-strong); }
+  .content-veil { background: var(--bg); }
 }
 
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(1) { --i: 0; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(2) { --i: 1; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(3) { --i: 2; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(4) { --i: 3; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(5) { --i: 4; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(6) { --i: 5; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(7) { --i: 6; }
-:is(.page-content, .kpi-row, .settings, [role='table']) > :nth-child(n + 8) { --i: 7; }
-
-.btn,
-.nav-item,
-.sidebar-toggle,
-.sidebar-action,
-.toolbar-icon,
-.text-button,
-.card-link,
-.list-row-title,
-.switch,
-.field input,
-.select select,
-a.sidebar-user {
-  transition:
-    background-color var(--motion-fast) var(--ease-out),
-    border-color var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
-}
-
-.btn:active:not(:disabled),
-.nav-item:active,
-.sidebar-toggle:active,
-.sidebar-action:active,
-.toolbar-icon:active,
-.switch:active {
-  transform: scale(0.96);
+/* High contrast: shadows vanish, so every floating layer keeps an opaque fill and a system-coloured edge. */
+@media (forced-colors: active) {
+  .glass, .floating { background: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; border-color: CanvasText; }
+  .chrome, .toolbar-band { background: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
 }

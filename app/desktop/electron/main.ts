@@ -137,6 +137,38 @@ ipcMain.handle('sprint:account-sign-in', (_event: IpcMainInvokeEvent, serverUrl:
   return nativeHost.accountSignIn(serverUrl, email, password, createAccount === true)
 })
 
+ipcMain.handle('sprint:cloud-server-info', (_event: IpcMainInvokeEvent, serverUrl: unknown) => {
+  if (typeof serverUrl !== 'string') throw new Error('A server address is required.')
+  return nativeHost.serverInfo(serverUrl)
+})
+
+/**
+ * Discord sign-in: the host builds the server's Discord URL (with its own loopback callback and a
+ * nonce), this process opens it in the system browser — never in an Electron window, so the driver
+ * signs in where their Discord session already is — and then waits for the host to report how it
+ * ended. Sprint comes back to the front once signed in.
+ */
+ipcMain.handle('sprint:account-discord', async (_event: IpcMainInvokeEvent, serverUrl: unknown) => {
+  if (typeof serverUrl !== 'string') throw new Error('A server address is required.')
+  const started = await nativeHost.discordStart(serverUrl)
+  if (!isRecord(started) || typeof started.authorizeUrl !== 'string') return started
+  const url = new URL(started.authorizeUrl)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    await nativeHost.discordCancel()
+    return { outcome: 'Failed', error: 'The server returned an unexpected sign-in address.' }
+  }
+  try {
+    await shell.openExternal(url.href)
+  } catch {
+    await nativeHost.discordCancel()
+    return { outcome: 'Failed', error: 'Sprint could not open your browser.' }
+  }
+  const result = await nativeHost.discordWait()
+  if (isRecord(result) && result.outcome === 'SignedIn') bringToFront()
+  return result
+})
+
+ipcMain.handle('sprint:account-discord-cancel', () => nativeHost.discordCancel())
 ipcMain.handle('sprint:account-sign-out', () => nativeHost.accountSignOut())
 ipcMain.handle('sprint:cloud-discover', () => nativeHost.cloudDiscover())
 ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
@@ -190,6 +222,15 @@ const isMac = process.platform === 'darwin'
 let look = windowLook(process.platform)
 const micaSupported = supportsMica(process.platform, os.release())
 let mainWindow: BrowserWindow | undefined
+
+/** After a browser sign-in: the browser has focus, and the result is in Sprint. */
+function bringToFront(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  if (isMac) app.focus({ steal: true })
+}
 
 function currentChrome(): WindowChrome {
   const dark = nativeTheme.shouldUseDarkColors

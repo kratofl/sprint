@@ -554,11 +554,11 @@ public sealed class SessionPlannerTests
         float fuel = 0f,
         int maxLaps = 0,
         bool isValid = true) => new()
-    {
-        Session = new SessionInfo { SessionType = SessionType.Race, MaxLaps = maxLaps },
-        Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = isValid },
-        Car = new CarState { FuelLiters = fuel },
-    };
+        {
+            Session = new SessionInfo { SessionType = SessionType.Race, MaxLaps = maxLaps },
+            Lap = new LapState { CurrentLap = lap, LastLapTime = lastLapTime, IsValid = isValid },
+            Car = new CarState { FuelLiters = fuel },
+        };
 
     private static void Run(Action<SessionPlannerService, string> body)
     {

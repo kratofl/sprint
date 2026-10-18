@@ -24,13 +24,20 @@ web/out
 # projects then trust the stale info, emit nothing, and leave dist/ empty.
 **/*.tsbuildinfo
 
-# .NET desktop app — native Windows/Linux app, NOT containerized. The API image
-# only needs the shared contract libs (Sprint.Contracts + Sprint.Desktop.Api), so
+# Desktop app — NOT containerized. The API image only needs the shared contract
+# libs (Sprint.Contracts + Sprint.Desktop.Api) and the web image none of app/, so
 # exclude the desktop-only projects and publish output.
-app/Sprint.Desktop.Client/
+app/desktop/
+app/frontend/
+app/Sprint.Desktop.Core/
+app/Sprint.Desktop.Host/
 app/Sprint.Games/
 app/Sprint.Desktop.Tests/
 app/build/
+
+# Not needed by any image
+deploy/
+docs/
 
 # Local build artifacts
 bin/
@@ -40,6 +47,7 @@ bin/
 # Local env & logs (never bake secrets into an image)
 .env
 .env.local
+api/Sprint.Api/appsettings.Development.json
 *.log
 bash.exe.stackdump
 

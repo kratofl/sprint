@@ -8,3 +8,6 @@ public sealed record AccountSignInRequest(string? ServerUrl, string? Email, stri
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(this.ServerUrl) && !string.IsNullOrWhiteSpace(this.Email) && !string.IsNullOrEmpty(this.Password);
 }
+
+/// <summary>Body of the endpoints that only need a server address (server info, Discord start).</summary>
+public sealed record ServerAddressRequest(string? ServerUrl);

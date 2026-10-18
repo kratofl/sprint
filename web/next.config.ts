@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // Bottom-left (the default) covers the account row at the foot of the sidebar.
   devIndicators: { position: 'bottom-right' },
+  // `next dev` would otherwise write web/AGENTS.md and web/CLAUDE.md; the repo's
+  // agent instructions live only in the root AGENTS.md.
+  agentRules: false,
 }
 
 export default nextConfig

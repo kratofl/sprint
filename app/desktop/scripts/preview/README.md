@@ -41,6 +41,8 @@ browser launched with `--allow-file-access-from-files`.
 | `setup=first-run` | Sprint web setup has not run yet, so it opens on its welcome step. Any password signs in except `wrong` |
 | `servers=none` | The setup's network scan finds no server; otherwise it finds one at `192.168.1.20` |
 | `storage=Both` / `storage=Remote` | Where data lives (default: this PC only). `Both` also reports a last upload in Settings |
+| `live=<status>` | The live uplink's status in Settings: `Off`, `WaitingForGame`, `Connecting`, `Streaming`, `Reconnecting`. Default: `WaitingForGame` when signed in with `storage=Both`/`Remote`, otherwise `Off` |
+| `discord=1` / `discord=fail` | The server offers Discord sign-in. "Continue with Discord" then waits for the browser until Cancel (`1`), or fails at once with a server error (`fail`) |
 | `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-list .list-row&click=.command-bar .button.subtle.destructive` selects a device and opens the remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
 
 ## How it works

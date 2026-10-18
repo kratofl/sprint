@@ -1,0 +1,142 @@
+# Sprint server stack for a Komodo UI-defined stack (or plain `docker compose`).
+#
+# Paste this file into the stack's compose editor and stack.env.example (filled in)
+# into its environment. Images only, no build and no bind mounts: everything the
+# stack needs is in this file, the environment and two named volumes.
+# Walkthrough: docs/operations/deployment.md#komodo.
+#
+# Only web and api are published on the host. Postgres and InfluxDB sit on a
+# network with no route out and no published port.
+
+services:
+  db:
+    # Postgres 17 keeps its data at /var/lib/postgresql/data. 18+ moves the mount to
+    # /var/lib/postgresql, so a major bump is a dump/restore, not a tag change.
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sprint}
+      POSTGRES_USER: ${POSTGRES_USER:-sprint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d \"$${POSTGRES_DB}\" -U \"$${POSTGRES_USER}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    restart: unless-stopped
+    environment:
+      # Applied on the first start only (empty volume). Changing them later does
+      # nothing; the token stays whatever the volume was initialised with.
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME:-sprint}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:?set INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-sprint}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?set INFLUXDB_TOKEN}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    image: ghcr.io/${SPRINT_IMAGE_OWNER:-kratofl}/sprint-api:${SPRINT_VERSION:-unstable}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      # Built from the Postgres values above so the two can never disagree. Use a
+      # URL-safe password (hex); `+`, `/` or `@` would break this URL.
+      DATABASE_URL: postgres://${POSTGRES_USER:-sprint}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-sprint}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:?set INFLUXDB_TOKEN}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-sprint}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+      # Discord sign-in is on only when both are set.
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      SPRINT_PUBLIC_API_URL: ${SPRINT_PUBLIC_API_URL:?set SPRINT_PUBLIC_API_URL}
+      SPRINT_PUBLIC_WEB_URL: ${SPRINT_PUBLIC_WEB_URL:?set SPRINT_PUBLIC_WEB_URL}
+    ports:
+      # The desktop app talks to the API directly (sign-in, sync, live telemetry).
+      - "${SPRINT_API_PORT:-8080}:8080"
+    networks:
+      - data
+      - edge
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # First start creates the schema.
+      start_period: 30s
+
+  web:
+    image: ghcr.io/${SPRINT_IMAGE_OWNER:-kratofl}/sprint-web:${SPRINT_VERSION:-unstable}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Server-side only; the browser never calls the API.
+      API_URL: http://api:8080
+      SPRINT_PUBLIC_API_URL: ${SPRINT_PUBLIC_API_URL:?set SPRINT_PUBLIC_API_URL}
+      SPRINT_PUBLIC_WEB_URL: ${SPRINT_PUBLIC_WEB_URL:?set SPRINT_PUBLIC_WEB_URL}
+    ports:
+      - "${SPRINT_WEB_PORT:-3000}:3000"
+    networks:
+      - edge
+    healthcheck:
+      # Any HTTP answer means Next is serving; /api/health itself reports 503
+      # while the API is down, which is the api container's problem, not this one's.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(()=>process.exit(0),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Optional: publish web + api through a Cloudflare Tunnel instead of (or next to)
+  # the host ports. Enable with COMPOSE_PROFILES=tunnel in the environment.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles:
+      - tunnel
+    command: tunnel --no-autoupdate run
+    environment:
+      # Soft default: a `:?` guard would fail every deploy that leaves the
+      # profile off. An empty token only surfaces once cloudflared starts.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+      - web
+    networks:
+      - edge
+
+networks:
+  # Postgres and InfluxDB: no egress, reachable only by the api.
+  data:
+    internal: true
+  # api (Discord, published port), web and the tunnel.
+  edge:
+
+volumes:
+  postgres_data:
+  influxdb_data:

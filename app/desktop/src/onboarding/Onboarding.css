@@ -352,3 +352,34 @@
     animation: none;
   }
 }
+
+/* "Continue with Discord": the step's primary action, full width above the email fallback. */
+.onboarding-discord {
+  width: 100%;
+}
+
+.onboarding-discord-mark {
+  color: var(--label-secondary);
+}
+
+/* "or use your email": a rule either side of the words. */
+.onboarding-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--label-tertiary);
+  font-size: 12px;
+}
+
+.onboarding-divider::before,
+.onboarding-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--divider);
+}
+
+.onboarding-note {
+  margin: 0;
+  color: var(--label-secondary);
+}

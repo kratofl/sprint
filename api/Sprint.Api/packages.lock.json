@@ -33,16 +33,6 @@
           "HotChocolate": "16.6.2"
         }
       },
-      "HotChocolate.Subscriptions.InMemory": {
-        "type": "Direct",
-        "requested": "[16.6.2, )",
-        "resolved": "16.6.2",
-        "contentHash": "NBzBEZWB7w0KxrVd3RlSYck4YDTTRWWXTzEkLeaMYYEWU7lz+Aw9DkmjGYy1NAjZzp6vUwogBdBxxny19zQCWg==",
-        "dependencies": {
-          "HotChocolate.Execution.Configuration.Abstractions": "16.6.2",
-          "HotChocolate.Subscriptions": "16.6.2"
-        }
-      },
       "InfluxDB.Client": {
         "type": "Direct",
         "requested": "[5.1.0, )",
@@ -345,6 +335,15 @@
           "HotChocolate.Abstractions": "16.6.2",
           "HotChocolate.Execution.Configuration.Abstractions": "16.6.2",
           "HotChocolate.Utilities": "16.6.2"
+        }
+      },
+      "HotChocolate.Subscriptions.InMemory": {
+        "type": "Transitive",
+        "resolved": "16.6.2",
+        "contentHash": "NBzBEZWB7w0KxrVd3RlSYck4YDTTRWWXTzEkLeaMYYEWU7lz+Aw9DkmjGYy1NAjZzp6vUwogBdBxxny19zQCWg==",
+        "dependencies": {
+          "HotChocolate.Execution.Configuration.Abstractions": "16.6.2",
+          "HotChocolate.Subscriptions": "16.6.2"
         }
       },
       "HotChocolate.Text.Json": {

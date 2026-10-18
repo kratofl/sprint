@@ -1,4 +1,4 @@
-import Unavailable from '@/components/Unavailable'
+import { Unavailable } from '@/components/app/unavailable'
 import { loadSetups } from '@/lib/server/data'
 import Setups from './Setups'
 

@@ -1,5 +1,5 @@
-# Both mutations alias their result to `session` so sign-in and register share
-# one result shape.
+# All three mutations alias their result to `session` so sign-in, register and
+# the Discord ticket share one result shape.
 mutation Login($input: AuthRequestInput!) {
   session: login(input: $input) {
     token
@@ -8,6 +8,13 @@ mutation Login($input: AuthRequestInput!) {
 
 mutation Register($input: AuthRequestInput!) {
   session: register(input: $input) {
+    token
+  }
+}
+
+# Trades the single-use ticket from the Discord callback for a session (anonymous).
+mutation RedeemSignInTicket($ticket: String!) {
+  session: redeemSignInTicket(ticket: $ticket) {
     token
   }
 }

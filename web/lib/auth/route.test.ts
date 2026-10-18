@@ -47,6 +47,16 @@ test('sign-in, sign-out and the health check need no session', () => {
   })
 })
 
+test('Discord sign-in and an engineer invite link work signed out', () => {
+  for (const pathname of ['/auth/discord', '/auth/complete', '/engineer/invite/k7Qx2']) {
+    assert.deepEqual(routeDecision({ token: undefined, now, pathname, search: '?next=%2F' }), { kind: 'pass' }, pathname)
+  }
+  // Only an invite with a token is public, not the engineers page itself.
+  for (const pathname of ['/engineer', '/engineer/invite', '/engineer/invite/']) {
+    assert.equal(routeDecision({ token: undefined, now, pathname, search: '' }).kind, 'redirect', pathname)
+  }
+})
+
 test('a signed-in visit to sign-in goes on to where it was headed', () => {
   const visit = (search: string) => routeDecision({ token: valid, now, pathname: '/sign-in', search })
 

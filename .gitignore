@@ -85,6 +85,7 @@ Cargo.lock
 *.key
 *.p12
 secrets/
+api/Sprint.Api/appsettings.Development.json
 
 # ─── Desktop app ──────────────────────────────────────────────────────────────
 app/build/bin/

@@ -1,11 +1,13 @@
 import { useId, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Download, FlaskConical, HardDrive, Hash, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Download, FlaskConical, HardDrive, Hash, Radio, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { Account, CloudState, CloudStorageMode, SprintCommand, SyncDirection, SyncReport } from '../bridge'
+import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
+import { accountName, accountWhere } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
+import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
 import { CHANNELS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
@@ -113,6 +115,32 @@ const STORAGE_DESCRIPTIONS: Record<CloudStorageMode, string> = {
   Remote: 'Finished sessions move to Sprint web once uploaded. Setups and dashes stay here too.',
 }
 
+const LIVE_STATUS: Record<LiveUplinkStatus, { label: string; tone: StatusTone }> = {
+  Off: { label: 'Off', tone: 'neutral' },
+  WaitingForGame: { label: 'Waiting for game', tone: 'neutral' },
+  Connecting: { label: 'Connecting', tone: 'info' },
+  Streaming: { label: 'Streaming', tone: 'success' },
+  Reconnecting: { label: 'Reconnecting', tone: 'warning' },
+}
+
+/** What the live uplink is doing, in a sentence: why it is off, what it waits for, or why it reconnects. */
+const liveDescription = (live: LiveUplink, storage: CloudStorageMode): string => {
+  switch (live.status) {
+    case 'Off':
+      return storage === 'Local'
+        ? 'Streams your sessions while you drive once data is kept on the web too.'
+        : 'Streams your sessions to Sprint web while you drive.'
+    case 'WaitingForGame':
+      return 'Starts streaming when a game sends telemetry for a session.'
+    case 'Connecting':
+      return 'Connecting to Sprint web…'
+    case 'Streaming':
+      return 'Your session is live on Sprint web for you and your race engineers.'
+    case 'Reconnecting':
+      return `${live.detail ?? 'The connection dropped.'} Retrying by itself; live data is skipped until it is back.`
+  }
+}
+
 /**
  * Sprint web: where this PC is connected, where data lives, and manual upload/download.
  * Connecting (or changing server) runs the setup flow; the rows below only appear once signed in.
@@ -144,8 +172,8 @@ function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud
       <SettingRow
         id="settings-cloud-server"
         icon={Cloud}
-        title={account.signedIn ? `Signed in as ${account.displayName}` : 'Not connected'}
-        description={account.signedIn ? `${account.email} on ${account.serverUrl}` : 'Keep sessions, setups and dashes on your Sprint web server too.'}
+        title={account.signedIn ? `Signed in as ${accountName(account)}` : 'Not connected'}
+        description={account.signedIn ? accountWhere(account) : 'Keep sessions, setups and dashes on your Sprint web server too.'}
       >
         {(labels) =>
           account.signedIn ? (
@@ -204,6 +232,19 @@ function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud
                   {busy === 'upload' ? 'Uploading…' : 'Upload'}
                 </button>
               </>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            id="settings-cloud-live"
+            icon={Radio}
+            title="Live telemetry"
+            description={liveDescription(cloud.live, cloud.storage)}
+          >
+            {() => (
+              <Status tone={LIVE_STATUS[cloud.live.status].tone} role="status">
+                {LIVE_STATUS[cloud.live.status].label}
+              </Status>
             )}
           </SettingRow>
         </>

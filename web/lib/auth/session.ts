@@ -23,8 +23,9 @@ export type AuthOutcome =
 type AuthData = { session: { token: string } }
 
 // Turns the API's answer to `login` / `register` into the cookie to set or the
-// message to show. `now` is epoch milliseconds.
-export function authOutcome(result: ApiResult<AuthData>, env: { production: boolean; now: number }): AuthOutcome {
+// message to show. `secure` is servedOverHttps() for the request; `now` is epoch
+// milliseconds.
+export function authOutcome(result: ApiResult<AuthData>, env: { secure: boolean; now: number }): AuthOutcome {
   switch (result.kind) {
     case 'error':
       return { kind: 'failed', message: result.message }
@@ -44,11 +45,23 @@ export function authOutcome(result: ApiResult<AuthData>, env: { production: bool
       value: token,
       httpOnly: true,
       sameSite: 'lax',
-      secure: env.production,
+      secure: env.secure,
       path: '/',
       maxAge: expiry - Math.floor(env.now / 1000),
     },
   }
+}
+
+// Whether the browser reached the web over https, so cookies set now may be
+// Secure. A Secure cookie sent over plain http is dropped by the browser (except
+// on localhost), which would make sign-in on a LAN address bounce straight back.
+// Behind a TLS-terminating proxy the scheme is the first X-Forwarded-Proto hop;
+// without one it is the scheme of `url` (the request URL, or a Server Action's
+// Origin header).
+export function servedOverHttps(forwardedProto: string | null, url: string | null): boolean {
+  const forwarded = forwardedProto?.split(',')[0].trim().toLowerCase()
+  if (forwarded) return forwarded === 'https'
+  return url?.trim().toLowerCase().startsWith('https:') ?? false
 }
 
 // The `exp` claim (epoch seconds) of a JWT, decoded without verifying the

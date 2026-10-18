@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Data;
 using Sprint.Api.Services;
 using Sprint.Contracts;
@@ -16,7 +17,7 @@ public class DevSeederTests
     {
         IDbContextFactory<SprintDbContext> db = TestFactory.NewDb();
         PasswordHasher hasher = new();
-        UserService users = new(db, hasher, NewTokens(), new ServerSettingsService(db));
+        UserService users = new(db, hasher, NewTokens(), new ServerSettingsService(db, DiscordOptions.Disabled));
 
         await new DevSeeder(db, hasher).SeedAsync();
 
@@ -43,7 +44,7 @@ public class DevSeederTests
         IDbContextFactory<SprintDbContext> db = TestFactory.NewDb();
         PasswordHasher hasher = new();
         JwtTokenService tokens = NewTokens();
-        UserService users = new(db, hasher, tokens, new ServerSettingsService(db));
+        UserService users = new(db, hasher, tokens, new ServerSettingsService(db, DiscordOptions.Disabled));
 
         await new DevSeeder(db, hasher).SeedAsync();
 

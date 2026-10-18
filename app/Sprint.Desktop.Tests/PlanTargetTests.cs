@@ -583,18 +583,18 @@ public sealed class PlanTargetTests
         HistorySessionKind kind,
         DateTimeOffset startedAt,
         params double[] lapTimes) => new()
-    {
-        Id = id,
-        Kind = kind,
-        StartedAt = startedAt,
-        Origin = LapHistoryOrigin.Recorded,
-        Context = new LapHistoryContext
         {
-            Game = "Le Mans Ultimate",
-            TrackCourse = "Spa-Francorchamps",
-            CarModel = "Porsche 963",
-        },
-        Laps =
+            Id = id,
+            Kind = kind,
+            StartedAt = startedAt,
+            Origin = LapHistoryOrigin.Recorded,
+            Context = new LapHistoryContext
+            {
+                Game = "Le Mans Ultimate",
+                TrackCourse = "Spa-Francorchamps",
+                CarModel = "Porsche 963",
+            },
+            Laps =
         [
             .. lapTimes.Select((time, index) => new LapHistoryRecord
             {
@@ -605,7 +605,7 @@ public sealed class PlanTargetTests
                 ReferenceCurve = new LapReferenceCurve { TimesSeconds = [0, time] },
             }),
         ],
-    };
+        };
 
     /// <summary>Creates one plan for the corpus's context and hands over its target choices.</summary>
     private static void WithChoices(ILapHistoryStore corpus, Action<PlanTargetChoices> assert)

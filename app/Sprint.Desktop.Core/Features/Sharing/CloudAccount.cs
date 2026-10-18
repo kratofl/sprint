@@ -6,6 +6,9 @@ namespace Sprint.Desktop.Features.Sharing;
 /// <summary>What the desktop shows about its Sprint account. <c>ServerUrl</c> survives sign-out to prefill the next sign-in.</summary>
 public sealed record CloudAccountState(bool SignedIn, string ServerUrl, string Email, string DisplayName);
 
+/// <summary>Where the signed-in account lives and the bearer token that proves it.</summary>
+public sealed record CloudCredentials(string ServerUrl, string Token);
+
 /// <summary>The outcome of a sign-in attempt: success, or the message to show the driver.</summary>
 public sealed record CloudSignInResult(bool Ok, string Error)
 {
@@ -31,8 +34,7 @@ public sealed class CloudAccount(CloudSession session, HttpMessageHandler transp
     /// </summary>
     public async Task<CloudSignInResult> SignInAsync(string serverUrl, string email, string password, bool createAccount = false, CancellationToken ct = default)
     {
-        if (!Uri.TryCreate(serverUrl.Trim().TrimEnd('/') + "/", UriKind.Absolute, out Uri? server)
-            || server.Scheme is not ("http" or "https"))
+        if (ServerAddress(serverUrl) is not { } server)
             return CloudSignInResult.Failed("Enter the server address, starting with https:// or http://.");
 
         using HttpClient http = new(transport, disposeHandler: false) { BaseAddress = server };
@@ -49,12 +51,63 @@ public sealed class CloudAccount(CloudSession session, HttpMessageHandler transp
         session.SignIn(server.ToString(), token, email);
         CloudResult<UserProfile> me = await client.MeAsync(ct).ConfigureAwait(false);
         if (me.Value is { } profile)
-            session.SetDisplayName(profile.DisplayName);
+            session.SetProfile(profile.Id, profile.DisplayName);
         return CloudSignInResult.Success;
     }
 
-    /// <summary><c>server|email</c>: what the sync ledger is scoped to. Empty when signed out.</summary>
-    public string AccountKey => session.IsSignedIn ? $"{session.State.ServerUrl}|{session.State.Email}" : "";
+    /// <summary>
+    /// Finishes a browser sign-in (Discord): trades the single-use <paramref name="ticket"/> the
+    /// server handed the browser for a token, then reads who it belongs to. Nothing is kept unless
+    /// both succeed, because without the profile the account has no name and possibly no email.
+    /// </summary>
+    public async Task<CloudSignInResult> SignInWithTicketAsync(string serverUrl, string ticket, CancellationToken ct = default)
+    {
+        if (ServerAddress(serverUrl) is not { } server)
+            return CloudSignInResult.Failed("Enter the server address, starting with https:// or http://.");
+
+        using HttpClient http = new(transport, disposeHandler: false) { BaseAddress = server };
+        string? token = null;
+        SprintCloudClient client = new(http, () => token);
+
+        CloudResult<AuthResponse> redeemed = await client.RedeemSignInTicketAsync(ticket, ct).ConfigureAwait(false);
+        if (!redeemed.Ok || redeemed.Value is null)
+            return CloudSignInResult.Failed(redeemed.Message);
+
+        token = redeemed.Value.Token;
+        CloudResult<UserProfile> me = await client.MeAsync(ct).ConfigureAwait(false);
+        if (!me.Ok || me.Value is null)
+            return CloudSignInResult.Failed(me.Message);
+
+        session.SignIn(server.ToString(), token, me.Value.Email);
+        session.SetProfile(me.Value.Id, me.Value.DisplayName);
+        return CloudSignInResult.Success;
+    }
+
+    /// <summary>
+    /// The public settings of the server at <paramref name="serverUrl"/> (no sign-in needed), so
+    /// the sign-in step knows whether to offer Discord. Null when it cannot be read.
+    /// </summary>
+    public async Task<ServerSettingsDto?> ServerSettingsAsync(string serverUrl, CancellationToken ct = default)
+    {
+        if (ServerAddress(serverUrl) is not { } server)
+            return null;
+        using HttpClient http = new(transport, disposeHandler: false) { BaseAddress = server };
+        CloudResult<ServerSettingsDto> settings = await new SprintCloudClient(http, () => null).ServerSettingsAsync(ct).ConfigureAwait(false);
+        return settings.Value;
+    }
+
+    /// <summary>
+    /// <c>server|email</c>: what the sync ledger is scoped to, or <c>server|id:&lt;id&gt;</c> for an
+    /// account with no email (Discord). Empty when signed out.
+    /// </summary>
+    public string AccountKey => session.IsSignedIn
+        ? session.State.Email.Length > 0
+            ? $"{session.State.ServerUrl}|{session.State.Email}"
+            : $"{session.State.ServerUrl}|id:{session.State.UserId}"
+        : "";
+
+    /// <summary>The signed-in server and token, for the live uplink. Null when signed out.</summary>
+    public CloudCredentials? Credentials => session.IsSignedIn ? new CloudCredentials(session.State.ServerUrl, session.State.Token) : null;
 
     /// <summary>
     /// Runs <paramref name="call"/> with a client for the signed-in account, or returns
@@ -71,4 +124,10 @@ public sealed class CloudAccount(CloudSession session, HttpMessageHandler transp
 
     /// <summary>Forgets the token and profile; the server address stays for the next sign-in.</summary>
     public void SignOut() => session.SignOut();
+
+    /// <summary>A typed server address as the base every request is relative to, or null when it is not a web address.</summary>
+    public static Uri? ServerAddress(string serverUrl) =>
+        Uri.TryCreate(serverUrl.Trim().TrimEnd('/') + "/", UriKind.Absolute, out Uri? server) && server.Scheme is "http" or "https"
+            ? server
+            : null;
 }

@@ -36,6 +36,14 @@ public sealed class CloudSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task ASessionIsUploadedUnderItsOwnIdAsTheSessionKeySoItsLiveTelemetryJoinsIt()
+    {
+        await this.Sync(new FakeLocal(Session("s1", ended: true))).PushAsync(this._server.Client(), Account, removeUploadedSessions: false);
+
+        Assert.Equal("s1", this._server.SingleField("sessionKey"));
+    }
+
+    [Fact]
     public async Task AChangedItemReplacesItsCopyOnTheServerInsteadOfAddingOne()
     {
         FakeLocal local = new(Dash("d1", "Race"));
@@ -185,6 +193,8 @@ public sealed class CloudSyncTests : IDisposable
             KeyValuePair<string, (string Field, JsonObject Row)> row = Assert.Single(this._rows);
             return (row.Key, row.Value.Row["data"]?.GetValue<string>() ?? "");
         }
+
+        public string? SingleField(string name) => Assert.Single(this._rows).Value.Row[name]?.GetValue<string>();
 
         public void EditSingle(string data) => Assert.Single(this._rows).Value.Row["data"] = data;
 

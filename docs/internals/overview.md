@@ -123,5 +123,6 @@ the retired clients is not migrated.
 ## Cloud
 
 `api/` is .NET 10 + HotChocolate GraphQL over Postgres (relational) and InfluxDB (live telemetry time
-series); shared DTOs live in `app/Sprint.Contracts`. The desktop's only cloud traffic is sign-in and lap
-sharing (`SprintCloudClient`) plus GitHub release checks and update downloads. Deployment: [operations/deployment.md](../operations/deployment.md).
+series); shared DTOs live in `app/Sprint.Contracts`. The desktop's cloud traffic is sign-in, sync and lap
+sharing (`SprintCloudClient`), the live telemetry stream while syncing, plus GitHub release checks and
+update downloads. Sign-in, live and engineer access: [live-telemetry.md](live-telemetry.md). Deployment: [operations/deployment.md](../operations/deployment.md).

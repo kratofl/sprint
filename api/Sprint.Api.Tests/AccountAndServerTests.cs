@@ -1,6 +1,7 @@
 using HotChocolate;
 using Microsoft.EntityFrameworkCore;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Data;
 using Sprint.Api.Services;
 using Sprint.Contracts;
@@ -17,7 +18,7 @@ public class AccountAndServerTests
     private static Server NewServer()
     {
         IDbContextFactory<SprintDbContext> db = TestFactory.NewDb();
-        ServerSettingsService settings = new(db);
+        ServerSettingsService settings = new(db, DiscordOptions.Disabled);
         return new Server(new UserService(db, new PasswordHasher(), Tokens, settings), settings);
     }
 
@@ -96,11 +97,22 @@ public class AccountAndServerTests
 
         SessionSummary created = await catalog.SaveSessionAsync("owner-A", new SaveSessionInput
         {
-            Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = "Practice", StartedAt = started, Data = "{\"laps\":3}",
+            Game = "Le Mans Ultimate",
+            Track = "Spa",
+            Car = "Porsche 963",
+            SessionType = "Practice",
+            StartedAt = started,
+            Data = "{\"laps\":3}",
         });
         SessionSummary updated = await catalog.SaveSessionAsync("owner-A", new SaveSessionInput
         {
-            Id = created.Id, Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", SessionType = "Practice", StartedAt = started, Data = "{\"laps\":5}",
+            Id = created.Id,
+            Game = "Le Mans Ultimate",
+            Track = "Spa",
+            Car = "Porsche 963",
+            SessionType = "Practice",
+            StartedAt = started,
+            Data = "{\"laps\":5}",
         });
 
         IReadOnlyList<SessionSummary> list = await catalog.ListSessionsAsync("owner-A");
