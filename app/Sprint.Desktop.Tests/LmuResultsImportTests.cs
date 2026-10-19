@@ -501,8 +501,10 @@ public sealed class LmuResultsImportTests : IDisposable
 
         var store = new RecordingLapHistoryStore();
         var recorder = new LapHistoryRecorder(store, dispatch: work => work());
-        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 4 } });
-        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
+        // The mapped frame is the lobby's; the recorder times laps from in-car frames only.
+        SessionInfo driving = live.Session with { InCar = true };
+        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 4 } });
+        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
 
         WriteResult("race.xml", RaceXml);
         new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
