@@ -119,3 +119,9 @@ export function formatFuelPerLapTarget(liters: number | null): string {
 export function formatBrakeBias(rearFraction: number): string {
   return (rearFraction * 100).toFixed(1)
 }
+
+/** Signed liters -> `+0.10` / `-0.05` / `0.00`, for fuel against a target. */
+export function formatSignedLiters(liters: number): string {
+  const fixed = liters.toFixed(2)
+  return liters > 0 && fixed !== '0.00' ? `+${fixed}` : fixed === '-0.00' ? '0.00' : fixed
+}

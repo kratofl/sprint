@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { ArrowLeft, Check, Grid2x2, GripVertical, Layers, Minus, Plus, RotateCcw, Save, Star, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
-import { DashRenderer, dashPreviewStates, dashStyles, dashThemePresets, gridRect, isDashWidgetType, matchLayoutThemeName, presetSwatchColor, resolvePreviewFrame } from '@sprint/dashboard'
+import { DashRenderer, LAP_SUMMARY_SECONDS, dashPreviewStates, dashStyles, dashThemePresets, gridRect, isDashWidgetType, matchLayoutThemeName, presetSwatchColor, resolvePreviewFrame } from '@sprint/dashboard'
 import type { DashLayout, DashPage, DashStyle, DashWidget, DashWidgetStack, DashWidgetType, PixelRect } from '@sprint/dashboard'
 import type { DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
@@ -1646,7 +1646,14 @@ function AlertDetail({
         Show on the dash
       </label>
 
-      {enabled && alert ? (
+      {enabled && alert && type === 'lap_summary' ? (
+        <>
+          <p className="field-hint">Shows full screen after each timed lap: the lap time against your best before it, and the fuel the lap used against the session plan's fuel target. The gear stays visible.</p>
+          <div className="dash-editor-field-row">
+            <DurationStepper seconds={alert.durationSeconds ?? LAP_SUMMARY_SECONDS} onChange={(durationSeconds) => apply((current) => setAlertOverride(current, type, { durationSeconds }))} />
+          </div>
+        </>
+      ) : enabled && alert ? (
         <>
           {fullScreen ? (
             <p className="field-hint">Shows full screen in the setting's color. Set Display to Centered in the alert defaults to place it on the dash instead.</p>
@@ -1685,7 +1692,7 @@ function AlertDetail({
           )}
         </>
       ) : (
-        <p className="field-hint">Turn the alert on to place it on the dash and set its look.</p>
+        <p className="field-hint">Turn the alert on to show it on the dash and set its look.</p>
       )}
     </section>
   )

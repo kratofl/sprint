@@ -1,12 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TirePosition, type TelemetryFrame } from '@sprint/types'
-import { DashAlertTracker, isAttentionInverted } from './alerts'
+import { DashAlertTracker, isAttentionInverted, type DashAlertBanner, type DashSettingPopup } from './alerts'
 import { dashSettingColors, defaultDashPalette, findPresetByAlertColorToken, presetSwatchColor } from './palette'
 import type { DashAlert, DashLayout } from './index'
 
 function assertDefined<T>(value: T | null | undefined): asserts value is T {
   assert.ok(value)
+}
+
+function settingPopup(banner: DashAlertBanner | null): DashSettingPopup {
+  assert.ok(banner && banner.kind === 'setting', 'expected a setting popup')
+  return banner
 }
 
 function tire(position: TirePosition): TelemetryFrame['tires'][number] {
@@ -46,8 +51,7 @@ test('no banner on the first frame — there is nothing to diff against yet', ()
 test('a tc_change fires once the value differs from the previous frame', () => {
   const tracker = new DashAlertTracker()
   tracker.evaluate(layout([alert()]), frame({ tc: 0 }), defaultDashPalette)
-  const banner = tracker.evaluate(layout([alert()]), frame({ tc: 5 }), defaultDashPalette)
-  assertDefined(banner)
+  const banner = settingPopup(tracker.evaluate(layout([alert()]), frame({ tc: 5 }), defaultDashPalette))
   assert.equal(banner.title, 'TC')
   assert.equal(banner.value, '5')
   assert.equal(banner.previous, '0')
@@ -62,18 +66,18 @@ test('a brake bias change fires on the shown value, so noise below one decimal s
   const alerts = [alert({ type: 'bias_change' })]
   tracker.evaluate(layout(alerts), bias(0.462), defaultDashPalette)
   assert.equal(tracker.evaluate(layout(alerts), bias(0.46201), defaultDashPalette), null)
-  const banner = tracker.evaluate(layout(alerts), bias(0.465), defaultDashPalette)
-  assert.equal(banner?.title, 'BIAS')
-  assert.equal(banner?.value, '46.5')
-  assert.equal(banner?.max, null)
-  assert.equal(banner?.color, dashSettingColors.brakeBias)
+  const banner = settingPopup(tracker.evaluate(layout(alerts), bias(0.465), defaultDashPalette))
+  assert.equal(banner.title, 'BIAS')
+  assert.equal(banner.value, '46.5')
+  assert.equal(banner.max, null)
+  assert.equal(banner.color, dashSettingColors.brakeBias)
 })
 
 test('displayMode "center" keeps the popup in the alert rect', () => {
   const tracker = new DashAlertTracker()
   const centered = layout([alert()], { alertConfig: { displayMode: 'center' } })
   tracker.evaluate(centered, frame({ tc: 0 }), defaultDashPalette)
-  assert.equal(tracker.evaluate(centered, frame({ tc: 5 }), defaultDashPalette)?.fullScreen, false)
+  assert.equal(settingPopup(tracker.evaluate(centered, frame({ tc: 5 }), defaultDashPalette)).fullScreen, false)
 })
 
 test('a disabled alert never fires', () => {
@@ -102,8 +106,8 @@ test('the last configured alert that fires this frame wins', () => {
   const tracker = new DashAlertTracker()
   const alerts = [alert({ id: 'tc', type: 'tc_change' }), alert({ id: 'abs', type: 'abs_change' })]
   tracker.evaluate(layout(alerts), frame({ tc: 0, abs: 0 }), defaultDashPalette)
-  const banner = tracker.evaluate(layout(alerts), frame({ tc: 5, abs: 5 }), defaultDashPalette)
-  assert.equal(banner?.title, 'ABS')
+  const banner = settingPopup(tracker.evaluate(layout(alerts), frame({ tc: 5, abs: 5 }), defaultDashPalette))
+  assert.equal(banner.title, 'ABS')
 })
 
 test('reset clears the diff baseline so the next frame cannot fire on a stale comparison', () => {
@@ -128,13 +132,13 @@ test('an alert duration is clamped to [0.5, 5.0] seconds', () => {
 test("a named color token resolves to that theme preset's swatch, overriding the fallback color", () => {
   const tracker = new DashAlertTracker()
   tracker.evaluate(layout([alert({ colorToken: 'green' })]), frame({ tc: 0 }), defaultDashPalette)
-  const banner = tracker.evaluate(layout([alert({ colorToken: 'green' })]), frame({ tc: 5 }), defaultDashPalette)
+  const banner = settingPopup(tracker.evaluate(layout([alert({ colorToken: 'green' })]), frame({ tc: 5 }), defaultDashPalette))
   // "green" canonicalizes to the Viper preset, whose primary swatch is the dash green —
   // not TC's own blue, which is what tc_change would otherwise use.
   const viper = findPresetByAlertColorToken('green')
   assertDefined(viper)
-  assert.equal(banner?.color, presetSwatchColor(viper))
-  assert.notEqual(banner?.color, dashSettingColors.tc)
+  assert.equal(banner.color, presetSwatchColor(viper))
+  assert.notEqual(banner.color, dashSettingColors.tc)
 })
 
 test('isAttentionInverted only blinks for the critical condition, and only when requested', () => {

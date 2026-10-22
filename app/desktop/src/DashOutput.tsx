@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   DashAlertTracker,
   DashRenderer,
+  narrowDashTargets,
   parseDashRenderInput,
   resolveDashPalette,
   type DashAlertBanner,
@@ -20,7 +21,7 @@ export function DashOutput({ deviceId }: { deviceId: string }) {
   const [state, setState] = useState<SprintState | null>(null)
   const [alertBanner, setAlertBanner] = useState<DashAlertBanner | null>(null)
   // One tracker for the lifetime of this window: it diffs each frame against the
-  // previous one to detect tc/abs/engine-map changes, so it must survive across renders.
+  // previous one to detect setting changes and finished laps, so it must survive across renders.
   const trackerRef = useRef<DashAlertTracker | null>(null)
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export function DashOutput({ deviceId }: { deviceId: string }) {
     // choice without needing that internal helper here.
     const palette = resolveDashPalette(current.layout.theme, current.layout.colorSystem)
     trackerRef.current.advanceTo(Date.now())
-    setAlertBanner(trackerRef.current.evaluate(current.layout, frame, palette))
+    setAlertBanner(trackerRef.current.evaluate(current.layout, frame, palette, narrowDashTargets(current.targets)))
   }, [input?.frame])
 
   // A blank frame is the honest output for an unconfigured or not-yet-known

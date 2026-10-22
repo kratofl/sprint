@@ -297,6 +297,7 @@ const ALERT_TYPE_LABELS: Record<AlertTypeId, string> = {
   abs_change: 'ABS change',
   bias_change: 'Brake bias change',
   enginemap_change: 'Engine map change',
+  lap_summary: 'Lap summary',
 }
 
 export const ALERT_TYPES: readonly { type: AlertTypeId; label: string }[] =

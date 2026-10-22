@@ -31,7 +31,8 @@ export {
   resolveTyreColor, dimColor, withAlpha, dashThemePresets, presetSwatchColor, dashSettingColors,
   canonicalAlertColorToken, matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
 } from './palette'
-export { DashAlertTracker, isAttentionInverted, dashAlertTypes, type DashCondition, type DashAlertBanner, type DashAlertType } from './alerts'
+export { DashAlertTracker, isAttentionInverted, dashAlertTypes, LAP_SUMMARY_SECONDS, type DashCondition, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
+export { narrowDashTargets, type DashTargets } from './bindings'
 // Grid pixel math is part of the public contract too: the desktop editor's direct-manipulation
 // overlay (drag/resize handles) positions itself with the exact same math `DashRenderer` uses to
 // place widgets, so the overlay can never drift a pixel out of alignment with what's rendered.

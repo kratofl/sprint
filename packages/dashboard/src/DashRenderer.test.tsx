@@ -67,6 +67,7 @@ test('a widget stack renders its defaultLayerId layer, not the others', () => {
 
 test('an alert banner renders its title and value when one is supplied', () => {
   const banner: DashAlertBanner = {
+    kind: 'setting',
     title: 'TRACTION CONTROL',
     value: '5',
     previous: '4',
@@ -88,7 +89,7 @@ test('an alert banner renders its title and value when one is supplied', () => {
 })
 
 test('a full-screen setting popup covers the whole dash in the setting color, with the old value beside the new one', () => {
-  const banner: DashAlertBanner = { title: 'ABS', value: '2', previous: '3', max: 9, color: '#A06BFF', fullScreen: true, col: 6, row: 3, colSpan: 8, rowSpan: 6, gridCols: 20, gridRows: 12, invertColors: false }
+  const banner: DashAlertBanner = { kind: 'setting', title: 'ABS', value: '2', previous: '3', max: 9, color: '#A06BFF', fullScreen: true, col: 6, row: 3, colSpan: 8, rowSpan: 6, gridCols: 20, gridRows: 12, invertColors: false }
   const html = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page()] })} frame={frame()} width={800} height={480} alertBanner={banner} />)
   assert.match(html, /inset:0;background:#A06BFF/i)
   assert.ok(html.includes('WAS 3 · OF 9'), html)
@@ -134,4 +135,12 @@ test('the dash style changes only the chrome: every widget keeps the same cell i
   }
   assert.deepEqual(cells('grid'), cells('panels'))
   assert.deepEqual(cells('bars'), cells('panels'))
+})
+
+test('the lap summary shows the lap time, the delta to the best before it and the fuel against target', () => {
+  const banner: DashAlertBanner = { kind: 'lapSummary', lap: 14, lapTime: 208.228, valid: true, lapDelta: -0.212, fuelUsed: 4.52, fuelDelta: 0.1 }
+  const html = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page()] })} frame={frame()} width={800} height={480} alertBanner={banner} />)
+  for (const text of [formatLap(208.228), '-0.212', 'NEW BEST', '+0.10', 'SAVE 0.10 L']) {
+    assert.ok(html.includes(text), `${text} missing`)
+  }
 })

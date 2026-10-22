@@ -18,10 +18,10 @@ import {
 } from './grid'
 import { bareContent, CHROME_CELL_PX, GridOuterFrame, WidgetFrame, type ChromeContext } from './chrome'
 import { effectiveColorSystem, resolveDashPalette, resolveStyleColor, withAlpha, type DashPaletteColors } from './palette'
-import type { DashAlertBanner } from './alerts'
-import type { DashTargets } from './bindings'
-import { formatLap } from './format'
-import { Dot, TextLine } from './primitives'
+import type { DashAlertBanner, DashLapSummaryPopup, DashSettingPopup } from './alerts'
+import { narrowDashTargets, type DashTargets } from './bindings'
+import { formatDelta, formatLap, formatSignedLiters } from './format'
+import { Dot, TextLine, ValueWithUnit } from './primitives'
 import { RaceLogicLapTimerPresenter } from './raceLogicLapTimer'
 import { WidgetContent, widgetChrome } from './widgets'
 
@@ -69,14 +69,6 @@ function narrowSettings(raw: Record<string, unknown> | undefined): Pick<AppSetti
   return {
     driverName: typeof raw.driverName === 'string' ? raw.driverName : undefined,
     driverNumber: typeof raw.driverNumber === 'string' ? raw.driverNumber : undefined,
-  }
-}
-
-function narrowTargets(raw: Record<string, unknown> | undefined): DashTargets | null {
-  if (!raw) return null
-  return {
-    lapTimeSeconds: typeof raw.lapTimeSeconds === 'number' ? raw.lapTimeSeconds : null,
-    fuelPerLapLiters: typeof raw.fuelPerLapLiters === 'number' ? raw.fuelPerLapLiters : null,
   }
 }
 
@@ -240,7 +232,11 @@ function FlagOverlay({ frame, palette, canvasWidth, canvasHeight }: { frame: Tel
  * the right, so the driver reads which knob moved before the number. Inverted, it turns dark
  * with the color on the text. A centered popup sits in the alert's own grid rect instead.
  */
-function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: DashAlertBanner; palette: DashPaletteColors; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
+function AlertBanner({ banner, frame, palette, chrome, canvasWidth, canvasHeight }: { banner: DashAlertBanner; frame: TelemetryFrame; palette: DashPaletteColors; chrome: ChromeContext; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
+  if (banner.kind === 'lapSummary') {
+    return <LapSummaryScreen summary={banner} frame={frame} palette={palette} chrome={chrome} width={canvasWidth} height={canvasHeight} />
+  }
+
   if (banner.fullScreen) {
     return <FullScreenSettingPopup banner={banner} palette={palette} width={canvasWidth} height={canvasHeight} />
   }
@@ -275,7 +271,7 @@ function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: D
   )
 }
 
-function FullScreenSettingPopup({ banner, palette, width, height }: { banner: DashAlertBanner; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
+function FullScreenSettingPopup({ banner, palette, width, height }: { banner: DashSettingPopup; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
   const ink = banner.invertColors ? banner.color : palette.background
   const pad = Math.min(width, height) * 0.055
   // The value takes up to 55% of the width; its size comes from the setting's widest value ("00" or "00.0").
@@ -299,6 +295,70 @@ function FullScreenSettingPopup({ banner, palette, width, height }: { banner: Da
     </div>
   )
 }
+
+/** One number of the lap summary: its value, unit and a short verdict, on a condition fill when there is one. */
+interface SummaryBlock {
+  title: string
+  value: string
+  unit: string
+  note: string
+  fill: string | null
+}
+
+function lapBlock(summary: DashLapSummaryPopup, palette: DashPaletteColors): SummaryBlock {
+  if (summary.lapDelta === null) return { title: 'LAP Δ', value: '--', unit: '', note: summary.valid ? 'NO BEST YET' : 'INVALID', fill: null }
+  const best = summary.valid && summary.lapDelta < 0
+  return { title: 'LAP Δ', value: formatDelta(summary.lapDelta), unit: '', note: !summary.valid ? 'INVALID' : best ? 'NEW BEST' : 'VS BEST', fill: best ? palette.timingPersonalBest : null }
+}
+
+function fuelBlock(summary: DashLapSummaryPopup, palette: DashPaletteColors): SummaryBlock {
+  if (summary.fuelDelta !== null) {
+    const over = summary.fuelDelta > 0
+    return { title: 'FUEL Δ', value: formatSignedLiters(summary.fuelDelta), unit: 'L', note: over ? `SAVE ${summary.fuelDelta.toFixed(2)} L` : 'ON TARGET', fill: over ? palette.warning : palette.goodOnTarget }
+  }
+  if (summary.fuelUsed !== null) return { title: 'FUEL USED', value: summary.fuelUsed.toFixed(2), unit: 'L', note: 'NO TARGET SET', fill: null }
+  return { title: 'FUEL USED', value: '--', unit: '', note: 'NOT MEASURED', fill: null }
+}
+
+/**
+ * The lap summary, shown for a few seconds after each lap: the lap time, its delta to the
+ * best before it, and the fuel the lap used against the plan's target. The gear stays in its
+ * own column on the right, because the driver is still at speed. The two numbers wear the
+ * layout's dash style, so the summary looks like the rest of the dash.
+ */
+function LapSummaryScreen({ summary, frame, palette, chrome, width, height }: { summary: DashLapSummaryPopup; frame: TelemetryFrame; palette: DashPaletteColors; chrome: ChromeContext; width: number; height: number }): React.ReactElement {
+  const gearWidth = width * 0.19
+  const gearHeight = Math.min(height, gearWidth * 2.3)
+  const mainWidth = width - gearWidth
+  const headHeight = height * 0.2
+  const pad = 12 * chrome.scale
+  const blocks = [lapBlock(summary, palette), fuelBlock(summary, palette)]
+  const blockWidth = mainWidth / blocks.length
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: palette.background }}>
+      <TextLine text={`LAP ${summary.lap}`} left={pad} top={headHeight / 2} size={18 * chrome.scale} color={palette.secondary} align="start" maxWidth={mainWidth * 0.35} weight="labelBold" sizing="fit" />
+      <TextLine text={formatLap(summary.lapTime)} left={mainWidth - pad} top={headHeight / 2} size={Math.min(headHeight * 0.72, mainWidth * 0.55 / (8 * 0.56))} color={palette.foreground} align="end" maxWidth={mainWidth * 0.6} weight="value" />
+      {blocks.map((block, i) => (
+        <WidgetFrame key={block.title} ctx={chrome} rect={{ left: i * blockWidth, top: headHeight, width: blockWidth, height: height - headHeight }} title={block.title} accent={null} fill={block.fill} palette={palette}>
+          {(content, blockPalette) => (
+            <>
+              <ValueWithUnit value={block.value} unit={block.unit} left={content.width / 2} top={content.height * 0.44} size={Math.min(content.height * 0.5, (content.width * 0.96) / ((6 + 0.36) * 0.56))} color={blockPalette.foreground} unitColor={blockPalette.secondary} maxWidth={content.width} />
+              <TextLine text={block.note} left={content.width / 2} top={content.height * 0.86} size={Math.min(content.height * 0.08, 16 * chrome.scale)} color={blockPalette.secondary} align="center" maxWidth={content.width} weight="labelBold" sizing="fit" />
+            </>
+          )}
+        </WidgetFrame>
+      ))}
+      <div style={{ position: 'absolute', left: mainWidth, top: 0, width: gearWidth, height, borderLeft: `2px solid ${palette.border}`, boxSizing: 'border-box' }}>
+        {/* The gear widget sizes its text from its height, so a narrow column gets a box no taller than the speed can fit across. */}
+        <div style={{ position: 'absolute', left: 0, top: (height - gearHeight) / 2, width: gearWidth, height: gearHeight }}>
+          <WidgetContent widget={SUMMARY_GEAR} frame={frame} palette={palette} width={gearWidth} height={gearHeight} targets={null} chrome={chrome} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const SUMMARY_GEAR: DashWidget = { id: 'lap-summary-gear', type: 'gear_speed', col: 0, row: 0, colSpan: 1, rowSpan: 1 }
 
 /**
  * The RaceLogic-style purpose display: a fixed 4:1 island centered on the whole canvas,
@@ -357,7 +417,7 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
   const cols = layout.gridCols > 0 ? layout.gridCols : 20
   const rows = layout.gridRows > 0 ? layout.gridRows : 12
   const resolvedSettings = narrowSettings(settings)
-  const resolvedTargets = narrowTargets(targets)
+  const resolvedTargets = narrowDashTargets(targets)
   const telemetry = frame ?? EMPTY_TELEMETRY_FRAME
 
   // Focused purpose screens (currently only the RaceLogic lap timer) own their entire visual
@@ -405,7 +465,7 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
       </div>
       {ruled && <GridOuterFrame ctx={chrome} width={width} height={height} palette={palette} />}
       {pageHasRaceLogicLapTimer(page) && <RaceLogicLapTimerOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
-      {alertBanner && <AlertBanner banner={alertBanner} palette={palette} canvasWidth={width} canvasHeight={height} />}
+      {alertBanner && <AlertBanner banner={alertBanner} frame={telemetry} palette={palette} chrome={chrome} canvasWidth={width} canvasHeight={height} />}
       {!focusedLapTimer && <FlagOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
     </div>
   )
