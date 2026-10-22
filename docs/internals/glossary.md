@@ -8,7 +8,7 @@ splits searches and confuses the next agent.
 - **Telemetry frame** — `TelemetryFrame`, the one game-agnostic snapshot every consumer reads.
 - **Game provider** — `IGameProvider`: a game's descriptor, telemetry source and optional
   capabilities (`Results`, `Setups`, `Schedule`). A `null` capability means the game cannot do it.
-- **Link state** — the telemetry connection state shown in the title bar, including `Stale` when frames
+- **Link state** — the telemetry connection state shown in the toolbar, including `Stale` when frames
   stop arriving.
 
 ## Desktop process

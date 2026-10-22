@@ -685,7 +685,7 @@ function CatalogDialog({
               Add wheel
             </button>
           )}
-          <button type="button" className="button devices-dialog-close" onClick={onClose}>
+          <button type="button" className="button" onClick={onClose}>
             {tab === 'custom' ? 'Cancel' : 'Close'}
           </button>
         </>

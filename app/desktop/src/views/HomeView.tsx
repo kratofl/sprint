@@ -36,7 +36,7 @@ export function HomeView({
   if (runtime.kind === 'loading') {
     return (
       <div className="overview">
-        <OverviewHeader primary={{ kind: 'plan-session' }} telemetry={null} onNavigate={onNavigate} onOpenItem={onOpenItem} />
+        <OverviewHeader primary={{ kind: 'plan-session' }} onNavigate={onNavigate} onOpenItem={onOpenItem} />
         <div className="overview-kpis">
           {[0, 1, 2, 3].map((index) => (
             <div key={index} className="kpi skeleton overview-kpi-skeleton" />
@@ -63,7 +63,7 @@ export function HomeView({
 
   return (
     <div className="overview">
-      <OverviewHeader primary={primary} telemetry={telemetry} onNavigate={onNavigate} onOpenItem={onOpenItem} />
+      <OverviewHeader primary={primary} onNavigate={onNavigate} onOpenItem={onOpenItem} />
 
       <TelemetryInfoBar telemetry={telemetry} />
 
@@ -164,12 +164,10 @@ export function HomeView({
 
 function OverviewHeader({
   primary,
-  telemetry,
   onNavigate,
   onOpenItem,
 }: {
   primary: OverviewPrimary
-  telemetry: TelemetryDescription | null
   onNavigate: (view: AppView) => void
   onOpenItem: (target: NavigationTarget) => void
 }) {
@@ -200,18 +198,11 @@ function OverviewHeader({
         <Radio />
         Race engineer
       </button>
-      <span className="command-spacer" />
-      {/* Quiet status while the link is healthy; anything else is an InfoBar below. */}
-      {telemetry && telemetry.tone === 'live' && !telemetry.detail && (
-        <Status tone="success" quiet role="status" className="overview-status">
-          {telemetry.label}
-        </Status>
-      )}
     </PageHeader>
   )
 }
 
-/** The telemetry link as a Fluent InfoBar whenever it is not simply live. Help & diagnostics shows the same bar. */
+/** The telemetry link as an InfoBar whenever it is not simply live (the toolbar indicator says "live"). Help & diagnostics shows the same bar. */
 export function TelemetryInfoBar({ telemetry }: { telemetry: TelemetryDescription }) {
   if (telemetry.tone === 'live' && !telemetry.detail) return null
 

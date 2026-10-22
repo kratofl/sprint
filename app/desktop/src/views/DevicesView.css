@@ -1,7 +1,7 @@
 /* Devices: PageHeader + CommandBar, then the device list card beside the selected
    device's detail cards. Builds on the shared primitives in styles.css (.card.list-card,
    .list-row, .list-header, .status, .infobar, .content-dialog, .tabs, .field, …) and
-   only lays them out. Tokens come from @sprint/tokens/windows.css only. */
+   only lays them out. Tokens come from @sprint/tokens/desktop.css only. */
 
 .devices {
   display: flex;
@@ -275,7 +275,7 @@
 
 /* ── Add device dialog ─────────────────────────────────────────────────────── */
 
-/* Fluent pivot sits flush under the title. */
+/* The tabs sit flush under the title. */
 .devices-catalog-dialog .tabs {
   margin: -4px 0 0 -12px;
 }
@@ -292,15 +292,6 @@
   justify-content: space-between;
   min-height: 48px;
   padding: 6px 12px;
-}
-
-/* One button: it takes the right column, like a Fluent dialog's lone close button. */
-.devices-catalog-dialog .content-dialog-footer {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.devices-dialog-close:only-child {
-  grid-column: 2;
 }
 
 .devices-custom-wheel {

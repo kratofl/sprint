@@ -2,7 +2,7 @@
    the telemetry link and failures, the car controls table beside staged changes and
    quick messages, then the radio log table. Builds on the shared primitives in
    styles.css (.card.list-card, .list-header, .list-row, .status, .infobar) and only
-   lays them out. Tokens come from @sprint/tokens/windows.css only. */
+   lays them out. Tokens come from @sprint/tokens/desktop.css only. */
 
 .engineer {
   display: flex;

@@ -1,4 +1,4 @@
-/** Where a page's actions render on macOS: in the toolbar, or as a row at the top of the content. */
+/** Where a page's actions render: in the toolbar, or as a row at the top of the content. */
 export type ActionsPlacement = 'toolbar' | 'content'
 
 /**

@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptio
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isRecord, readScreenOutputs } from './frames.js'
@@ -11,7 +10,7 @@ import { GuideOverlay } from './guideOverlay.js'
 import { NativeHost } from './native-host.js'
 import { OffscreenOutputs } from './offscreen.js'
 import { macMenuTemplate } from './appMenu.js'
-import { supportsMica, TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
+import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -269,7 +268,6 @@ ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
 const isMac = process.platform === 'darwin'
 /** The look the main window wears. Follows the OS, except after the dev toggle (`toggleLook`). */
 let look = windowLook(process.platform)
-const micaSupported = supportsMica(process.platform, os.release())
 let mainWindow: BrowserWindow | undefined
 
 /** After a browser sign-in: the browser has focus, and the result is in Sprint. */
@@ -286,11 +284,11 @@ function currentChrome(): WindowChrome {
   const reducedTransparency = nativeTheme.prefersReducedTransparency
   return look === 'mac'
     ? windowChrome({ look, dark, reducedTransparency, vibrancySupported: isMac })
-    : windowChrome({ look, dark, reducedTransparency, micaSupported })
+    : windowChrome({ look, dark })
 }
 
 /**
- * Dev only: reopen the main window in the other OS look, so both can be checked on
+ * Dev only: reopen the main window in the other look (brand or macOS), so both can be checked on
  * one machine. A reopen rather than a restyle, because the caption buttons, traffic
  * lights and backdrop are fixed when a window is created. The new window opens
  * before the old one closes, so `window-all-closed` never stops the host.
@@ -310,7 +308,7 @@ function isToggleLookKey(input: Electron.Input): boolean {
   return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
-/** Height of the renderer's title bar (styles.css `.titlebar`); the caption buttons fill it. */
+/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar; the caption buttons fill it. */
 const TITLE_BAR_HEIGHT = 48
 
 /**
@@ -322,25 +320,20 @@ const TITLE_BAR_HEIGHT = 48
  */
 const TRAFFIC_LIGHT_POSITION = { x: 16, y: 19 }
 
-/** BrowserWindow options that differ between the Windows and macOS looks. */
+/** BrowserWindow options that differ between the brand and macOS looks. */
 function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
   switch (chrome.kind) {
-    case 'mica':
-    case 'solid': {
-      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
+    case 'solid':
       return {
-        // The renderer leaves its window background transparent (see main.tsx), so the
-        // title bar and navigation pane show whatever is drawn here: Mica, or its solid colour.
-        backgroundColor: background,
-        ...(micaSupported ? { backgroundMaterial: chrome.kind === 'mica' ? ('mica' as const) : ('none' as const) } : {}),
-        // The app's 48px title bar is the window title bar. Hiding the OS one but keeping
+        // The brand background, so nothing flashes before the renderer paints the same colour.
+        backgroundColor: chrome.background,
+        // The app's 48px toolbar is the window title bar. Hiding the OS one but keeping
         // its caption buttons as an overlay retains the real Windows minimise,
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
       }
-    }
     case 'vibrancy':
     case 'opaque':
       return {
@@ -360,15 +353,11 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
 /** Live counterpart of `chromeOptions` for an already open window. */
 function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
   switch (chrome.kind) {
-    case 'mica':
-    case 'solid': {
-      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
-      if (micaSupported) window.setBackgroundMaterial(chrome.kind === 'mica' ? 'mica' : 'none')
-      window.setBackgroundColor(background)
+    case 'solid':
+      window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
       return
-    }
     case 'vibrancy':
       window.setVibrancy('sidebar')
       window.setBackgroundColor(TRANSPARENT)
@@ -432,8 +421,8 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  // The backdrop and caption buttons follow the OS light/dark switch and the
-  // Windows "Transparency effects" / macOS "Reduce transparency" setting live.
+  // The background and caption buttons follow the OS light/dark switch, and the macOS
+  // vibrancy follows "Reduce transparency", live.
   const onThemeUpdated = (): void => applyChrome(window, currentChrome())
   nativeTheme.on('updated', onThemeUpdated)
   window.once('closed', () => nativeTheme.off('updated', onThemeUpdated))

@@ -27,14 +27,14 @@ For each view you changed — `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `D
 - keyboard: Tab order reaches every control with a visible focus ring; Esc closes dialogs.
 
 Check: at most one primary button per view; status is dot + word; no redundant caption under the
-title bar or toolbar; tokens only, no hardcoded hex; tabular figures on changing numbers; empty
+toolbar; tokens only, no hardcoded hex; tabular figures on changing numbers; empty
 states explain what to do next instead of showing a blank list.
 
 ### 2. Real Electron pass
 
 On a copy of the data (`SPRINT_DESKTOP_DATA_ROOT`, no `devices.json`), driven over CDP:
 
-- the window opens with its native chrome — Windows: the 48px title bar and caption buttons; macOS:
+- the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
   the traffic lights over the sidebar's top band and the 52px toolbar — and telemetry status shows
   the real link state, never fake live data (on macOS that is `Unsupported`);
 - every navigation item and Alt+1…8 (⌘1…8) opens its view; Ctrl+K (⌘K) opens the command palette;

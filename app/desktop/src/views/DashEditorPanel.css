@@ -244,10 +244,9 @@
   gap: 2px;
   height: 28px;
   padding: 0 2px 0 10px;
-  border: 1px solid var(--control-stroke);
-  border-bottom-color: var(--input-stroke-bottom);
+  border: 1px solid var(--input-stroke);
   border-radius: var(--radius-control);
-  background: var(--control-fill);
+  background: var(--input-fill);
 }
 
 .dash-editor-numberbox-value {
@@ -519,7 +518,7 @@
   height: 12px;
   flex: none;
   border-radius: var(--radius-pill);
-  box-shadow: inset 0 0 0 1px var(--control-stroke-bottom);
+  box-shadow: inset 0 0 0 1px var(--control-stroke);
 }
 
 .dash-editor-theme-check {

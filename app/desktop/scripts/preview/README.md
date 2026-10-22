@@ -1,9 +1,9 @@
 # Desktop preview harness
 
 Renders any desktop view without the app or the native host, light or dark, in
-the Windows or the macOS look, so a UI change can be screenshotted and compared
-against the mockups: `docs/design/mockups/win.png` / `win-dark.png` for Windows,
-`macos-light.html` / `macos-dark.html` for macOS. Works the same on Windows and
+the brand look (Windows and Linux) or the macOS look, so a UI change can be
+screenshotted and checked against `docs/design/DESIGN.md` and, for macOS, the
+`macos-light.html` / `macos-dark.html` mockups. Works the same on Windows and
 macOS.
 
 Run everything from `app/desktop`. The commands are the same in PowerShell and sh;
@@ -30,12 +30,12 @@ browser launched with `--allow-file-access-from-files`.
 | --- | --- |
 | `view=<AppView>` | `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`, `RaceEngineer`, `LiveLink`, `Settings`, `Help` |
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
-| `platform=mac\|windows` | The look Electron would pick on that OS; omitted is Windows. Linux has no look of its own |
-| `collapsed=1` | Navigation pane in compact (48px) mode; with `platform=mac` the sidebar is hidden |
+| `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
+| `collapsed=1` | The sidebar collapsed to its 56px icon rail; with `platform=mac` it is hidden |
 | `palette=1` | Opens the command palette |
 | `update=1` | Reports an available update (Settings dot + notification) |
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
-| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. Windows look shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
+| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. The brand look also shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |
 | `sprintWeb=1` | Turns the Sprint web feature flag on: the account row, the setup and the Sprint web group in Settings. Off by default, as the app ships. Any of `account`, `setup`, `servers`, `storage`, `live` or `discord` turns it on as well |
 | `account=signed-in` | The desktop is signed in to Sprint; otherwise the account row reads "Sign in" |
@@ -63,9 +63,9 @@ browser launched with `--allow-file-access-from-files`.
   `scripts/process-tree.mjs` — never by name.
 - `screenshot.mjs` (like `dev.mjs`) drops `ELECTRON_RUN_AS_NODE` from Electron's
   environment; agent shells set it, and Electron would then start as plain Node.
-- The preview has no window backdrop, so neither Mica nor macOS vibrancy shows:
-  the title bar and sidebar draw their token colour instead (`--mica`; `--sidebar`
-  on macOS).
+- The preview has no window backdrop, so macOS vibrancy does not show: the sidebar
+  draws its `--sidebar` token colour instead. The OS caption buttons are missing
+  too; in Electron they sit at the right end of the toolbar.
 
 ## State payloads
 

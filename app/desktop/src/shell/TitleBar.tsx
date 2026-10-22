@@ -1,6 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
 import { ArrowLeft, ChevronLeft, PanelLeft, Search } from 'lucide-react'
-import sprintMark from '../assets/sprint-mark.svg'
 import { platform } from '../platform'
 import type { RuntimeState } from './runtime'
 import { shortcutAria, shortcutLabel } from './shortcuts'
@@ -12,58 +11,37 @@ type TitleBarProps = {
   onBack: () => void
   runtime: RuntimeState
   onOpenPalette: () => void
-  /** The current page's navigation label; only the macOS toolbar shows it. */
+  /** The current page's navigation label, shown as the page title. */
   title: string
   sidebarCollapsed: boolean
   onToggleSidebar: () => void
-  /** The macOS "Show sidebar" button, focused after the sidebar is hidden from the keyboard. */
+  /** The "Show sidebar" button, focused after the sidebar is hidden from the keyboard. */
   showSidebarRef: RefObject<HTMLButtonElement | null>
-  /** macOS: the telemetry indicator opens Help & diagnostics. */
+  /** The telemetry indicator opens Help & diagnostics. */
   onOpenDiagnostics: () => void
-  /** macOS: the element the current page's actions render into (PageHeader portals them). */
+  /** The element the current page's actions render into (PageHeader portals them). */
   onActionsSlot: (slot: HTMLElement | null) => void
   /**
-   * macOS: hands up `measure`, which reads the room (px) the toolbar can give those actions
+   * Hands up `measure`, which reads the room (px) the toolbar can give those actions
    * right now. Sent again, as a new object, whenever the toolbar resizes.
    */
   onActionsRoom: (room: { measure: () => number }) => void
 }
 
 /**
- * The window's top bar, drawn per platform.
+ * The window's toolbar, right of the sidebar, in three zones (styles.css lays them out as
+ * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), back, the page title.
+ * Centre: the telemetry indicator. Trailing: the page's actions (PageHeader portals them into
+ * the slot), then a search field that opens the palette.
  *
- * Windows: the 48px Fluent title bar on Mica — back, app mark + name, a centred search
- * box that opens the command palette, and the telemetry status. The OS caption buttons
- * are Electron's native `titleBarOverlay` on the right; `.titlebar-trail` reserves their
- * width from the `titlebar-area-*` env() values.
+ * Windows and Linux: 48px, and it is the window's title bar. The OS caption buttons are
+ * Electron's native `titleBarOverlay` on the right; `.titlebar-trail` reserves their width
+ * from the `titlebar-area-*` env() values.
  *
- * macOS: the 52px toolbar right of the sidebar, in the HIG's three zones (styles.mac.css lays
- * them out as one grid). Leading: (sidebar toggle while the sidebar is hidden), back, the page
- * title. Centre: the telemetry indicator. Trailing: the page's actions (PageHeader portals them
- * into the slot), then a search field that opens the palette. The traffic lights are the OS's,
- * over the sidebar's top band (or over the toolbar's left inset while the sidebar is hidden).
+ * macOS: 52px (styles.mac.css). The traffic lights are the OS's, over the sidebar's top band
+ * (or over the toolbar's left inset while the sidebar is hidden).
  */
-export function TitleBar(props: TitleBarProps) {
-  return platform === 'mac' ? <MacToolbar {...props} /> : <WindowsTitleBar {...props} />
-}
-
-function WindowsTitleBar({ canGoBack, onBack, runtime, onOpenPalette }: TitleBarProps) {
-  return (
-    <header className="titlebar">
-      <div className="titlebar-lead">
-        <BackButton canGoBack={canGoBack} onBack={onBack} />
-        <img className="titlebar-mark" src={sprintMark} alt="" aria-hidden="true" />
-        <span className="titlebar-name">Sprint</span>
-      </div>
-      <SearchButton onOpenPalette={onOpenPalette} />
-      <div className="titlebar-trail">
-        {runtime.kind === 'ready' ? <TelemetryBadge telemetry={runtime.sprint.telemetry} /> : <TelemetryLoading />}
-      </div>
-    </header>
-  )
-}
-
-function MacToolbar({
+export function TitleBar({
   canGoBack,
   onBack,
   runtime,
@@ -110,7 +88,8 @@ function MacToolbar({
   return (
     <header ref={toolbarRef} className="titlebar">
       <div ref={leadRef} className="titlebar-lead">
-        {sidebarCollapsed ? (
+        {/* Only the Mac hides the sidebar; the brand look keeps it as a rail with its own toggle. */}
+        {sidebarCollapsed && platform === 'mac' ? (
           <button
             ref={showSidebarRef}
             type="button"
@@ -124,7 +103,7 @@ function MacToolbar({
           </button>
         ) : null}
         <BackButton canGoBack={canGoBack} onBack={onBack} />
-        {/* The page's own <h1> (visually hidden on macOS) stays the accessible title. */}
+        {/* The page's own <h1> (visually hidden) stays the accessible title. */}
         <span className="titlebar-title" aria-hidden="true">
           {title}
         </span>
@@ -156,13 +135,12 @@ function BackButton({ canGoBack, onBack }: { canGoBack: boolean; onBack: () => v
       aria-keyshortcuts={shortcutAria(platform, { kind: 'back' })}
       title={`Back (${shortcutLabel(platform, { kind: 'back' })})`}
     >
-      {mac ? <ChevronLeft size={18} strokeWidth={1.8} /> : <ArrowLeft size={14} strokeWidth={1.7} />}
+      {mac ? <ChevronLeft size={18} strokeWidth={1.8} /> : <ArrowLeft size={16} strokeWidth={1.7} />}
     </button>
   )
 }
 
 function SearchButton({ onOpenPalette, ref }: { onOpenPalette: () => void; ref?: RefObject<HTMLButtonElement | null> }) {
-  const mac = platform === 'mac'
   return (
     <button
       ref={ref}
@@ -172,7 +150,7 @@ function SearchButton({ onOpenPalette, ref }: { onOpenPalette: () => void; ref?:
       aria-label="Search commands and pages"
       aria-keyshortcuts={shortcutAria(platform, { kind: 'palette' })}
     >
-      <span className="titlebar-search-placeholder">{mac ? 'Search' : 'Search commands and pages'}</span>
+      <span className="titlebar-search-placeholder">Search</span>
       <kbd>{shortcutLabel(platform, { kind: 'palette' })}</kbd>
       <Search size={13} strokeWidth={1.8} aria-hidden="true" />
     </button>

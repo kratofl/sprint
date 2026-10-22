@@ -43,24 +43,30 @@ the Go/Wails app before it are retired; do not reintroduce either.
 - Enums cross the wire as names. A new host enum member needs the matching union member in `bridge.ts`.
 - All assets and fonts ship locally; the app works offline.
 
-## One renderer, two native looks
+## One renderer, two looks
 
-The desktop wears the look of the OS it runs on: Fluent on Windows (and Linux, which has no look of
-its own), macOS on a Mac. The main process decides (`windowLook` in
+On Windows and Linux the desktop wears the Sprint brand look, the web app's system, so the desktop
+and the web read as one product; on a Mac it wears the native macOS look. Both share one shell
+layout (full-height sidebar, a toolbar that names the page and carries its actions), so only shapes
+and materials differ. The brand look used to be Windows Fluent; it was dropped because it made Sprint
+look like a Windows utility rather than the product. The main process decides (`windowLook` in
 [`electron/windowChrome.ts`](../../app/desktop/electron/windowChrome.ts)) and passes
 `?platform=mac|windows`; the renderer reads it once and sets `<html data-platform>`. One bundle
 serves both.
 
-- `@sprint/tokens/macos.css` is an overlay on `windows.css` under the same names, so `styles.css`
-  reads Mac values without knowing about them. `macTokens.test.ts` fails when a token lands in only one
+- `@sprint/tokens/macos.css` is an overlay on `desktop.css` under the same names, so `styles.css`
+  reads Mac values without knowing about them. `desktop.css` copies its neutrals from `web.css`
+  under the desktop's names; a brand change lands in both. `macTokens.test.ts` fails when a token lands in only one
   file.
 - Mac shapes live in `app/desktop/src/styles.mac.css`, every rule under
   `:where([data-platform="mac"])`. `:where()` adds no specificity, so each rule wins only by loading
   after `styles.css`, and view CSS (loaded later still) keeps winning on both platforms. That scoping
   is also the Windows guarantee: without `data-platform="mac"`, Windows renders exactly
-  `styles.css`. Raising the specificity of a Mac rule breaks view overrides on Mac only.
+  `styles.css`. Raising the specificity of a Mac rule breaks view overrides on Mac only. The Mac
+  look is `styles.css` plus these overrides, so a change to a shared rule moves the Mac too unless
+  `styles.mac.css` already sets that property; screenshot both looks.
 - The main process cannot read CSS, so `windowChrome.ts` repeats the colours it paints natively:
-  `--mica`/`--label` for the Windows caption buttons, the opaque `--sidebar` for macOS with Reduce
+  `--window`/`--label` for the Windows caption buttons, the opaque `--sidebar` for macOS with Reduce
   Transparency on. Change a token there too.
 - The traffic lights are positioned in `main.ts` (`TRAFFIC_LIGHT_POSITION`) against renderer
   geometry: 14px buttons centred on the 52px toolbar band (y = 19), ending at x = 76 inside the 80px
@@ -69,7 +75,7 @@ serves both.
 - macOS keeps a standard app menu ([`electron/appMenu.ts`](../../app/desktop/electron/appMenu.ts)):
   Quit, Hide and copy/paste in text fields route through it. The app's own shortcuts (⌘K, ⌘1…8, ⌘[)
   stay in the renderer (`shell/shortcuts.ts`) and must not become menu accelerators.
-- Page actions reach the Mac toolbar through one seam: `TitleBar` hands up a slot and a function
+- Page actions reach the toolbar through one seam: `TitleBar` hands up a slot and a function
   that measures the toolbar's room on the spot, `App` provides both as `ToolbarActionsContext`, and
   `PageHeader` portals its CommandBar into the slot
   ([`shell/toolbarActions.ts`](../../app/desktop/src/shell/toolbarActions.ts)). Whether the actions
@@ -84,7 +90,7 @@ serves both.
   and appends a view's own `title`), and nothing is reordered (Tab order is the visual order). A
   subtle button without an icon, a hand-made toolbar or a per-platform branch in a view breaks
   that. Once portalled, the CommandBar is no longer inside the view's DOM, so view CSS scoped to the
-  view does not reach it on Mac.
+  view does not reach it.
 - The Mac scroll edge is CSS only: `.content` names its scroll timeline, `.app` hoists it with
   `timeline-scope`, and the toolbar's `::before` (a sibling of the content) fades in on it — no
   scroll listener, and nothing animates while nothing scrolls. The content spans both grid rows and
