@@ -6,8 +6,9 @@
 //   node scripts/make-tasks.mjs version           latest git tag without its leading "v", or "dev"
 //   node scripts/make-tasks.mjs rid               default .NET runtime identifier for this machine
 //   node scripts/make-tasks.mjs clean [--dry-run] delete the fixed list of build outputs below
+//   node scripts/make-tasks.mjs build-xr-layer    build the OpenXR layer (Windows) into app/desktop/resources/openxr-layer
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,6 +28,8 @@ const cleanPaths = [
   'app/desktop/dist',
   'app/desktop/dist-electron',
   'app/desktop/resources/host',
+  'app/desktop/resources/openxr-layer',
+  'app/Sprint.OpenXrLayer/build',
   'app/Sprint.Desktop.Api/bin',
   'app/Sprint.Desktop.Api/obj',
   'app/Sprint.Contracts/bin',
@@ -92,6 +95,28 @@ function clean(dryRun) {
   }
 }
 
+// Configures and builds the layer (Release, x64) with CMake, then copies the DLL and its manifest
+// next to each other into resources/openxr-layer, which the desktop packager ships unpacked.
+function buildXrLayer() {
+  if (process.platform !== 'win32') {
+    console.error('The OpenXR layer builds on Windows only.')
+    process.exit(1)
+  }
+  const source = path.join(repoRoot, 'app', 'Sprint.OpenXrLayer')
+  const build = path.join(source, 'build')
+  const run = (args) => execFileSync('cmake', args, { cwd: repoRoot, stdio: 'inherit' })
+  run(['-S', source, '-B', build, '-A', 'x64'])
+  run(['--build', build, '--config', 'Release', '--target', 'sprint_xr_layer'])
+
+  const output = path.join(build, 'Release')
+  const target = path.join(repoRoot, 'app', 'desktop', 'resources', 'openxr-layer')
+  mkdirSync(target, { recursive: true })
+  for (const file of ['XR_APILAYER_SPRINT_driving_guide.dll', 'XR_APILAYER_SPRINT_driving_guide.json']) {
+    copyFileSync(path.join(output, file), path.join(target, file))
+  }
+  console.log(`OpenXR layer copied to ${path.relative(repoRoot, target)}`)
+}
+
 const [command, ...rest] = process.argv.slice(2)
 switch (command) {
   case 'help':
@@ -106,7 +131,10 @@ switch (command) {
   case 'clean':
     clean(rest.includes('--dry-run'))
     break
+  case 'build-xr-layer':
+    buildXrLayer()
+    break
   default:
-    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]')
+    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|build-xr-layer')
     process.exit(1)
 }

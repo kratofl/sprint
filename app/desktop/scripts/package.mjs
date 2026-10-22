@@ -43,6 +43,11 @@ if (!platform) {
   process.exit(1)
 }
 
+// The OpenXR layer (Windows only, from `make build-xr-layer`) ships when it was built. The loader
+// loads it from disk, so like the host it must sit outside the asar.
+const xrLayerDir = join(appDir, 'resources', 'openxr-layer')
+const xrLayer = (await exists(xrLayerDir)) ? [xrLayerDir] : []
+
 await rm(outDir, { recursive: true, force: true })
 await mkdir(outDir, { recursive: true })
 
@@ -61,9 +66,9 @@ const [built] = await packager({
   prune: true,
   asar: true,
   // The published host is a native binary; asar would make it unexecutable.
-  extraResource: [join(appDir, 'resources', 'host')],
+  extraResource: [join(appDir, 'resources', 'host'), ...xrLayer],
   // .dev holds the dev-run Sprint.app clone (scripts/dev.mjs); never ship it.
-  ignore: [/^\/\.dev($|\/)/, /^\/src($|\/)/, /^\/electron($|\/)/, /^\/scripts($|\/)/, /^\/resources\/host($|\/)/, /\.ts$/, /tsconfig.*\.json$/, /vite\.config\./],
+  ignore: [/^\/\.dev($|\/)/, /^\/src($|\/)/, /^\/electron($|\/)/, /^\/scripts($|\/)/, /^\/resources\/host($|\/)/, /^\/resources\/openxr-layer($|\/)/, /\.ts$/, /tsconfig.*\.json$/, /vite\.config\./],
 })
 
 console.log(`Packaged to ${built}`)

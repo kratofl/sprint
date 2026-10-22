@@ -151,6 +151,17 @@ export class NativeHost {
     )
   }
   async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
+
+  /**
+   * The driving guide's pose feed: newline-delimited JSON for as long as `signal` stays open.
+   * No timeout; the caller owns the stream's lifetime.
+   */
+  async guideStream(signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    if (!this.address) throw new Error('Native runtime is not ready.')
+    const response = await fetch(`${this.address}/api/guide/stream`, { headers: { authorization: `Bearer ${this.token}` }, signal })
+    if (!response.ok || !response.body) throw new Error(`Runtime ${response.status} on the guide stream.`)
+    return response.body
+  }
   async command(command: unknown): Promise<unknown> {
     if (!isRecord(command) || typeof command.type !== 'string') throw new Error('A typed command is required.')
     return this.json('/api/commands', { method: 'POST', body: JSON.stringify(command), headers: { 'content-type': 'application/json' } })
@@ -165,6 +176,33 @@ export class NativeHost {
         'x-frame-sequence': String(frame.sequence),
       },
     })
+  }
+
+  /**
+   * A lap as `.sprintlap` bytes, or the host's reason it cannot be shared (a lap with only a
+   * time, one that was deleted). The filename is a suggestion for the save dialog.
+   */
+  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string; hasPositions: boolean } | { ok: false; error: string }> {
+    if (!this.address) throw new Error('Native runtime is not ready.')
+    const response = await fetch(`${this.address}/api/laps/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}/file`, {
+      headers: { authorization: `Bearer ${this.token}` },
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null)
+      return { ok: false, error: isRecord(body) && typeof body.error === 'string' ? body.error : `Runtime ${response.status}` }
+    }
+    return {
+      ok: true,
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      fileName: decodeURIComponent(response.headers.get('x-lap-filename') ?? 'lap.sprintlap'),
+      hasPositions: response.headers.get('x-lap-has-positions') === 'true',
+    }
+  }
+
+  /** Files a `.sprintlap` into the corpus; the host answers with what it was, or why not. */
+  async importLap(bytes: Uint8Array<ArrayBuffer>): Promise<unknown> {
+    return this.json('/api/laps/import', { method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' } }, 60_000)
   }
 
   async stop(): Promise<void> {

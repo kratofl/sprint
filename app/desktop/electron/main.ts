@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isRecord, readScreenOutputs } from './frames.js'
+import { guideRoute, readGuideOverlayWanted } from './guideFeed.js'
+import { GuideOverlay } from './guideOverlay.js'
 import { NativeHost } from './native-host.js'
 import { OffscreenOutputs } from './offscreen.js'
 import { macMenuTemplate } from './appMenu.js'
@@ -51,6 +54,8 @@ function shutdown(): Promise<void> {
     if (pollTimer !== undefined) { clearTimeout(pollTimer); pollTimer = undefined }
     offscreen?.closeAll()
     offscreen = undefined
+    guideOverlay?.close()
+    guideOverlay = undefined
     shutdownPromise = nativeHost.stop().catch((error: unknown) => {
       console.error('[sprint] native host stop failed:', error)
     })
@@ -64,6 +69,7 @@ const subscribers = new Set<WebContents>()
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
 let offscreen: OffscreenOutputs | undefined
+let guideOverlay: GuideOverlay | undefined
 
 function rendererBaseUrl(): string {
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
@@ -85,6 +91,7 @@ async function pollTick(): Promise<void> {
     // Dashboard output is driven from the same poll rather than from a renderer
     // subscription, so screens keep painting with the main window hidden.
     offscreen?.reconcile(readScreenOutputs(state))
+    guideOverlay?.reconcile(mainWindow !== undefined && readGuideOverlayWanted(state))
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -200,6 +207,48 @@ ipcMain.handle('sprint:updates-install', async () => {
     setImmediate(() => { void shutdown().finally(() => app.quit()) })
   }
   return result
+})
+
+/** The lap file filter for both dialogs. The extension matches `SharedLapFile.Extension`. */
+const LAP_FILE_FILTERS = [{ name: 'Sprint lap', extensions: ['sprintlap'] }]
+const MAX_LAP_FILE_BYTES = 32 * 1024 * 1024
+
+/** Saves a lap as a .sprintlap wherever the driver picks; the host only produces the bytes. */
+ipcMain.handle('sprint:lap-export', async (event: IpcMainInvokeEvent, sessionId: unknown, lapNumber: unknown) => {
+  if (typeof sessionId !== 'string' || typeof lapNumber !== 'number' || !Number.isInteger(lapNumber)) {
+    throw new Error('A session id and lap number are required.')
+  }
+  const file = await nativeHost.lapFile(sessionId, lapNumber)
+  if (!file.ok) return { outcome: 'failed', error: file.error }
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = {
+    // The host's suggestion is a name only, never a path.
+    defaultPath: path.join(app.getPath('downloads'), path.basename(file.fileName)),
+    filters: LAP_FILE_FILTERS,
+  }
+  const choice = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+  if (choice.canceled || !choice.filePath) return { outcome: 'cancelled' }
+  try {
+    await writeFile(choice.filePath, file.bytes)
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be written.' }
+  }
+  return { outcome: 'saved', fileName: path.basename(choice.filePath), hasPositions: file.hasPositions }
+})
+
+/** Opens a .sprintlap a friend sent and files it into the corpus. */
+ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = { properties: ['openFile' as const], filters: LAP_FILE_FILTERS }
+  const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+  const filePath = choice.filePaths[0]
+  if (choice.canceled || !filePath) return { outcome: 'cancelled' }
+  try {
+    if ((await stat(filePath)).size > MAX_LAP_FILE_BYTES) return { outcome: 'failed', error: 'That file is far too large to be a Sprint lap file.' }
+    return await nativeHost.importLap(Uint8Array.from(await readFile(filePath)))
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be read.' }
+  }
 })
 
 ipcMain.handle('sprint:send-command', (_event: IpcMainInvokeEvent, command: unknown) => {
@@ -349,7 +398,12 @@ function createWindow(): BrowserWindow {
     },
   })
   mainWindow = window
-  window.once('closed', () => { if (mainWindow === window) mainWindow = undefined })
+  window.once('closed', () => {
+    if (mainWindow !== window) return
+    mainWindow = undefined
+    // The overlay is click-through and has no controls; without the main window nothing could turn it off.
+    guideOverlay?.close()
+  })
   // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
   // and icon, so hide them. ⌘W and ⌘Q still close the window.
   if (isMac && look === 'windows') window.setWindowButtonVisibility(false)
@@ -418,6 +472,11 @@ async function bootstrap(): Promise<void> {
     rendererBaseUrl(),
     (deviceId, frame, signal) => nativeHost.frame(deviceId, frame, signal),
     (deviceId, error) => { console.error(`[sprint] frame delivery failed for ${deviceId}:`, error) },
+  )
+  guideOverlay = new GuideOverlay(
+    guideRoute(rendererBaseUrl()),
+    path.join(__dirname, 'preload.cjs'),
+    (signal) => nativeHost.guideStream(signal),
   )
   polling = true
   ensurePolling()

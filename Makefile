@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
+.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build-xr-layer build \
         test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
         clean
@@ -91,6 +91,9 @@ build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|osx-ar
 	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
 	pnpm --filter @sprint/desktop build
 	pnpm --filter @sprint/desktop package
+
+build-xr-layer: ## Build the OpenXR driving-guide layer -> app/desktop/resources/openxr-layer (Windows only)
+	$(TASKS) build-xr-layer
 
 build: build-api build-web ## Build all (API + web)
 

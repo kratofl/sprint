@@ -92,6 +92,9 @@ app/build/bin/
 app/Sprint.Desktop.Tests/artifacts/
 # Renamed Electron bundle that `make dev-app` runs from on macOS (scripts/dev.mjs).
 app/desktop/.dev/
+# OpenXR layer: CMake build tree, and the copy `make build-xr-layer` stages for packaging.
+app/Sprint.OpenXrLayer/build/
+app/desktop/resources/openxr-layer/
 
 # ─── Next.js ──────────────────────────────────────────────────────────────────
 .next/

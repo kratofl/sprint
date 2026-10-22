@@ -78,6 +78,9 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   hardware/USB, input, diagnostics, updates.
 - `app/Sprint.Desktop.Api`, `app/Sprint.Contracts`, `app/Sprint.Games`: shared
   contracts and game adapters (see Source Of Truth).
+- `app/Sprint.OpenXrLayer/`: the driving guide's OpenXR API layer, a native
+  Windows DLL that draws into the headset. Reads the host's shared memory
+  (`docs/internals/driving-guide.md`).
 - There is no native desktop UI. The Avalonia app and the Go/Wails app before it
   are both retired — do not reintroduce either.
 - `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to

@@ -10,6 +10,7 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.DrivingGuide;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.Peer;
@@ -17,6 +18,7 @@ using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
+using Sprint.Desktop.Host.DrivingGuide;
 using Sprint.Desktop.Runtime;
 using Sprint.Games;
 
@@ -143,7 +145,39 @@ UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubRele
 // throw (contracted on ITelemetrySource/TelemetryEngine), so "no game running" surfaces
 // as a clean disconnected/waiting status rather than an exception.
 ITelemetrySource telemetrySource = GameProviders.Default.CreateTelemetrySource();
-TelemetryEngine telemetryEngine = new(telemetrySource);
+
+// The AR driving line and brake boards (docs/internals/driving-guide.md). The pose leaves on the
+// telemetry reader thread, at the game's rate: the OpenXR layer reads it from shared memory, the
+// monitor overlay from /api/guide/stream. Settings and the lap's geometry follow from the
+// publish loop below.
+DrivingGuideService drivingGuide = new(
+    new DrivingGuideLapPicker(lapHistoryStore, lapTraceStore),
+    () => runtime.Settings.DrivingGuide.Wanted,
+    log: log);
+DrivingGuideFeed? drivingGuideFeed = null;
+try
+{
+    drivingGuideFeed = DrivingGuideFeed.TryCreateNamed();
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    log.Warn("Driving guide: the shared memory for the VR layer could not be created", ex);
+}
+
+DrivingGuideStream drivingGuideStream = new();
+PoseConventionCheck poseCheck = new(log);
+OpenXrLayerRegistration openXrLayer = new(log);
+openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
+
+TelemetryEngine telemetryEngine = new(telemetrySource)
+{
+    FrameRead = frame =>
+    {
+        drivingGuideFeed?.WritePose(frame);
+        drivingGuideStream.Offer(frame);
+        poseCheck.Observe(frame);
+    },
+};
 telemetryEngine.Start();
 
 // The background wiring the deleted Avalonia MainWindow did for every telemetry frame
@@ -194,6 +228,9 @@ Task telemetryPublishLoop = Task.Run(async () =>
             // see TelemetryIngestionPipeline. Kept off the HTTP request path: this loop is the
             // only caller, and a bad frame in one consumer never stops the others or this loop.
             ingestion.Poll(snapshot.Frame);
+            drivingGuide.Observe(snapshot.Frame);
+            drivingGuideFeed?.WriteSettings(runtime.Settings.DrivingGuide);
+            drivingGuideFeed?.WriteGeometry(drivingGuide.State);
             liveUplink.Update(cloudAccount.Credentials, runtime.Settings.Cloud.Storage, lapHistoryRecorder.OpenSession);
             peerLink.Update(lapHistoryRecorder.OpenSession);
             // Sources report the raw link; "stale" is derived from frame age, so it
@@ -259,6 +296,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
     peerLinkCts.Cancel();
     discordSignIn.Cancel();
     screenOutputs.Dispose();
+    drivingGuideFeed?.Dispose();
 });
 
 app.Use(async (context, next) =>
@@ -358,11 +396,23 @@ app.MapGet("/api/state", () =>
             version = BuildInfo.Version,
             channel = runtime.Settings.UpdateChannel,
         },
+        guide = new
+        {
+            status = drivingGuide.State.Status,
+            lap = drivingGuide.State.Lap,
+            boards = drivingGuide.State.Geometry?.Boards.Count ?? 0,
+            vr = openXrLayer.State,
+        },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, frames, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
 });
 
 app.MapGet("/api/telemetry", () => Results.Json(state.Telemetry, json));
+app.MapGet("/api/guide/stream", (HttpContext context) => drivingGuideStream.ServeAsync(
+    context.Response,
+    () => runtime.Settings.DrivingGuide,
+    () => drivingGuide.State,
+    context.RequestAborted));
 app.MapPost("/api/shutdown", () =>
 {
     app.Lifetime.StopApplication();
@@ -378,6 +428,7 @@ app.MapPost("/api/commands", async (HttpRequest request) =>
         return Results.BadRequest(new { error = "command type is required" });
     }
     if (!coordinator.Execute(document.RootElement, out string error)) return Results.BadRequest(new { error });
+    if (type.GetString() == "guide.update") openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
     return Results.Ok(new { accepted = true, type = type.GetString() });
 });
 
@@ -391,6 +442,58 @@ app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId,
 
 // Focused endpoint: building the choices reads every lap-history file's context, which is far too
 // much work for the 4 Hz state poll, so the New plan dialog fetches it once when it opens.
+// Lap files (#198): a lap with channels as a .sprintlap, and back. Electron owns the file
+// dialogs and the disk; these only turn a lap into bytes and bytes into a corpus entry.
+const long MaxLapFileBytes = 32 * 1024 * 1024;
+SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log);
+app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int lapNumber, HttpContext context) =>
+{
+    SharedLapExportResult export = SharedLapExport.Build(lapHistoryStore, lapTraceStore, sessionId, lapNumber, runtime.Settings.DriverName, DateTimeOffset.UtcNow);
+    if (export.Lap is not { } lap)
+    {
+        return Results.NotFound(new { error = export.Error });
+    }
+
+    using MemoryStream buffer = new();
+    SharedLapFile.Write(buffer, lap);
+    context.Response.Headers["x-lap-filename"] = Uri.EscapeDataString(SharedLapFile.SuggestedFileName(lap));
+    context.Response.Headers["x-lap-has-positions"] = export.HasPositions ? "true" : "false";
+    return Results.Bytes(buffer.ToArray(), "application/octet-stream");
+});
+app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct) =>
+{
+    if (request.ContentLength is > MaxLapFileBytes)
+    {
+        return Results.Json(new { outcome = "Failed", error = "That file is far too large to be a Sprint lap file." }, json);
+    }
+
+    using MemoryStream body = new();
+    await request.Body.CopyToAsync(body, ct);
+    body.Position = 0;
+    SharedLapReadResult read = SharedLapFile.Read(body);
+    if (read.Lap is not { } lap)
+    {
+        return Results.Json(new { outcome = "Failed", error = read.Message }, json);
+    }
+
+    SharedLapImportResult imported = sharedLapImporter.Import(lap);
+    if (imported.Added)
+    {
+        // The corpus grew behind Analysis' session filter, which is only rebuilt on a load.
+        analysisController.Load();
+    }
+
+    return Results.Json(new
+    {
+        outcome = imported.Added ? "Imported" : "AlreadyPresent",
+        sharedBy = lap.Attribution,
+        track = lap.Context.TrackCourse,
+        car = lap.Context.CarModel,
+        lapTimeSeconds = lap.LapTimeSeconds,
+        hasPositions = lap.Trace.TryGetChannel(LapTraceChannels.WorldX, out float[] _),
+    }, json);
+});
+
 app.MapGet("/api/planner/context", async (CancellationToken ct) =>
 {
     PlanContextChoices choices = await Task.Run(() => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions()), ct);

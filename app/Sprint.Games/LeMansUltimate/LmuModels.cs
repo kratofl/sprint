@@ -20,6 +20,14 @@ internal sealed record LmuVehicleTelemetry
     public string VehicleName { get; init; } = "";
     public LmuVector3 Position { get; init; }
     public LmuVector3 LocalVelocity { get; init; }
+
+    /// <summary>mOri: the orientation matrix's rows, world = rows · local, in LMU's left-handed axes.</summary>
+    public LmuVector3 OrientationRowX { get; init; }
+    public LmuVector3 OrientationRowY { get; init; }
+    public LmuVector3 OrientationRowZ { get; init; }
+
+    /// <summary>mLocalRot: angular velocity in the car's frame, rad/s.</summary>
+    public LmuVector3 LocalRotation { get; init; }
     public int Gear { get; init; }
     public double EngineRpm { get; init; }
     public double EngineMaxRpm { get; init; }
