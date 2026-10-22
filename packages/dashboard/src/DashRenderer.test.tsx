@@ -116,3 +116,13 @@ test('an unknown widget type falls back to a placeholder instead of throwing', (
     assert.ok(html.includes('NOT-A-REAL-WIDGET'), html)
   })
 })
+
+test('the dash style changes only the chrome: every widget keeps the same cell in each style', () => {
+  const widgets = [widget({ id: 'tc', type: 'tc', col: 0, row: 0, colSpan: 4, rowSpan: 3 }), widget({ id: 'gear', type: 'gear_speed', col: 4, row: 0, colSpan: 8, rowSpan: 6 })]
+  const cells = (dashStyle: DashLayout['dashStyle']) => {
+    const html = renderToStaticMarkup(<DashRenderer layout={layout({ dashStyle, pages: [page({ widgets })] })} frame={frame()} width={800} height={480} />)
+    return [...html.matchAll(/class="dash-widget-tile[^"]*" style="([^"]*)"/g)].map((match) => match[1])
+  }
+  assert.deepEqual(cells('grid'), cells('panels'))
+  assert.deepEqual(cells('bars'), cells('panels'))
+})

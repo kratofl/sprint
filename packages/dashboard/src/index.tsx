@@ -3,14 +3,22 @@ import type { TelemetryFrame } from '@sprint/types'
 import { DashRenderer, type DashRendererProps } from './DashRenderer'
 
 export type DashColorSystem = 'functional' | 'styled'
+/**
+ * How every widget on a dash is framed and titled: separate rounded panels, one ruled grid,
+ * or panels with a title bar. Independent of layout: switching it never moves or resizes a
+ * widget, and condition colors read the same in each.
+ */
+export type DashStyle = 'panels' | 'grid' | 'bars'
+export const dashStyles: readonly DashStyle[] = ['panels', 'grid', 'bars']
+export const isDashStyle = (value: unknown): value is DashStyle => value === 'panels' || value === 'grid' || value === 'bars'
 export interface DashTheme { [key: string]: string | undefined }
-export interface DashWidgetStyle { textColor?: string; labelColor?: string; border?: boolean }
+export interface DashWidgetStyle { textColor?: string; labelColor?: string }
 export interface DashWidget { id: string; type: string; col: number; row: number; colSpan: number; rowSpan: number; config?: Record<string, unknown>; style?: DashWidgetStyle }
 export interface DashWidgetStackLayer { id: string; name: string; widgets: DashWidget[] }
 export interface DashWidgetStack { id: string; name: string; col: number; row: number; colSpan: number; rowSpan: number; defaultLayerId?: string; layers: DashWidgetStackLayer[] }
 export interface DashPage { id: string; name: string; widgets: DashWidget[]; widgetStacks?: DashWidgetStack[] }
 export interface DashAlert { id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number; colorToken?: string; durationSeconds?: number; invertColors?: boolean }
-export interface DashLayout { id: string; name: string; default: boolean; mode: string; colorSystem?: DashColorSystem; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown> }
+export interface DashLayout { id: string; name: string; default: boolean; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown> }
 export interface DashRenderInput { layout: DashLayout; frame?: TelemetryFrame | null; width?: number; height?: number; pageId?: string; idle?: boolean; settings?: Record<string, unknown>; targets?: Record<string, unknown> }
 
 export { DashRenderer, type DashRendererProps }
@@ -20,7 +28,7 @@ export { dashboardWidgetTypes, isDashWidgetType, type DashWidgetType } from './w
 // consumer never has to keep its own copy in step.
 export {
   defaultDashPalette, resolveDashPalette, styleColorTokens, resolveStyleColor,
-  resolveTyreColor, dimColor, withAlpha, dashThemePresets, presetSwatchColor,
+  resolveTyreColor, dimColor, withAlpha, dashThemePresets, presetSwatchColor, dashSettingColors,
   canonicalAlertColorToken, matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
 } from './palette'
 export { DashAlertTracker, isAttentionInverted, dashAlertTypes, type DashCondition, type DashAlertBanner, type DashAlertType } from './alerts'
@@ -47,6 +55,7 @@ export function parseDashRenderInput(value: unknown): DashRenderInput {
   if (isRecord(raw.theme)) layout.theme = Object.fromEntries(Object.entries(raw.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   if (isRecord(raw.alertConfig)) layout.alertConfig = raw.alertConfig
   if (typeof raw.colorSystem === 'string' && (raw.colorSystem === 'functional' || raw.colorSystem === 'styled')) layout.colorSystem = raw.colorSystem
+  if (isDashStyle(raw.dashStyle)) layout.dashStyle = raw.dashStyle
   if (typeof raw.screenProfile === 'string') layout.screenProfile = raw.screenProfile
   return { layout, frame: isTelemetryFrame(value.frame) ? value.frame : null, pageId: typeof value.pageId === 'string' ? value.pageId : undefined, idle: value.idle === true, width: typeof value.width === 'number' ? value.width : undefined, height: typeof value.height === 'number' ? value.height : undefined, settings: isRecord(value.settings) ? value.settings : undefined, targets: isRecord(value.targets) ? value.targets : undefined }
 }

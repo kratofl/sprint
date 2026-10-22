@@ -191,15 +191,32 @@ public sealed class DashEditorControllerTests
         saves = 0;
 
         Assert.True(controller.SetSelectedTextColor("red"));
-        Assert.True(controller.SetSelectedBorder(false));
+        Assert.True(controller.SetSelectedLabelColor("muted"));
         Assert.Equal("red", widget.Style!.TextColor);
-        Assert.False(widget.Style!.Border);
+        Assert.Equal("muted", widget.Style!.LabelColor);
         Assert.Equal(2, saves);
 
         // Clearing every override collapses the style back to null (no empty object persisted).
         Assert.True(controller.SetSelectedTextColor(null));
-        Assert.True(controller.SetSelectedBorder(null));
+        Assert.True(controller.SetSelectedLabelColor(null));
         Assert.Null(widget.Style);
+    }
+
+    [Fact]
+    public void DashStyleChangesOnlyTheChromeAndSkipsANoOp()
+    {
+        int saves = 0;
+        DashEditorController controller = new DashEditorController(NewLayout(), _ => saves++);
+        controller.AddWidget("gear_speed");
+        DashWidget widget = controller.SelectedWidget!;
+        (int Col, int Row, int ColSpan, int RowSpan) placement = (widget.Col, widget.Row, widget.ColSpan, widget.RowSpan);
+        saves = 0;
+
+        Assert.False(controller.SetDashStyle(DashStyle.Panels));
+        Assert.True(controller.SetDashStyle(DashStyle.Bars));
+        Assert.Equal(DashStyle.Bars, controller.Layout.DashStyle);
+        Assert.Equal(placement, (widget.Col, widget.Row, widget.ColSpan, widget.RowSpan));
+        Assert.Equal(1, saves);
     }
 
     [Fact]

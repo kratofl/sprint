@@ -1,6 +1,6 @@
 import type { SprintCommand } from '../bridge'
-import { dashboardWidgetTypes, isDashWidgetType, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
-import type { DashAlert, DashColorSystem, DashLayout, DashPage, DashTheme, DashWidget, DashWidgetStack, DashWidgetStackLayer, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
+import { dashboardWidgetTypes, isDashStyle, isDashWidgetType, styleColorTokens, dashAlertTypes, type DashAlertType } from '@sprint/dashboard'
+import type { DashAlert, DashColorSystem, DashLayout, DashStyle, DashPage, DashTheme, DashWidget, DashWidgetStack, DashWidgetStackLayer, DashWidgetStyle, DashWidgetType } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 
 /**
@@ -96,6 +96,7 @@ export function parseDashLayout(row: Record<string, unknown>): DashLayout | null
   if (isDashPageRow(row.idlePage)) layout.idlePage = row.idlePage
   if (typeof row.screenProfile === 'string') layout.screenProfile = row.screenProfile
   if (row.colorSystem === 'functional' || row.colorSystem === 'styled') layout.colorSystem = row.colorSystem
+  if (isDashStyle(row.dashStyle)) layout.dashStyle = row.dashStyle
   if (isRecord(row.theme)) {
     layout.theme = Object.fromEntries(Object.entries(row.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   }
@@ -486,6 +487,14 @@ export function applyThemePreset(layout: DashLayout, theme: DashTheme, colorSyst
   return next
 }
 
+/** Sets how every widget is framed — mirrors `DashEditorController.SetDashStyle`. The layout itself does not change. */
+export function setDashStyle(layout: DashLayout, dashStyle: DashStyle): DashLayout | null {
+  if ((layout.dashStyle ?? 'panels') === dashStyle) return null
+  const next = cloneLayout(layout)
+  next.dashStyle = dashStyle
+  return next
+}
+
 // ── Page widgets ─────────────────────────────────────────────────────────
 
 /** Adds a widget at the first free grid cell — mirrors `DashLayoutEditor.TryAddWidget`. */
@@ -611,7 +620,7 @@ export function setWidgetConfig(layout: DashLayout, location: WidgetLocation, wi
 export function setWidgetStyle(layout: DashLayout, location: WidgetLocation, widgetId: string, patch: Partial<DashWidgetStyle>): DashLayout | null {
   return withWidget(layout, location, widgetId, (widget) => {
     const style: DashWidgetStyle = { ...(widget.style ?? {}), ...patch }
-    widget.style = style.textColor || style.labelColor || style.border !== undefined ? style : undefined
+    widget.style = style.textColor || style.labelColor ? style : undefined
   })
 }
 

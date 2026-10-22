@@ -858,15 +858,16 @@ public sealed class DesktopRuntime : IDesktopRuntime
 
     public void ResetDashLayout(DashLayout layout)
     {
-        var preset = LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
-        var id = layout.Id;
-        var name = layout.Name;
-        var isDefault = layout.IsDefault;
+        DashLayout preset = this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+        string id = layout.Id;
+        string name = layout.Name;
+        bool isDefault = layout.IsDefault;
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
         layout.Mode = preset.Mode;
         layout.ColorSystem = preset.EffectiveColorSystem;
+        layout.DashStyle = preset.DashStyle;
         layout.IdlePage = Clone(preset.IdlePage);
         layout.Pages = Clone(preset.Pages);
         layout.Alerts = Clone(preset.Alerts);
@@ -877,8 +878,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.Name = name;
         layout.IsDefault = isDefault;
 
-        SaveDashLayout(layout);
-        _log.Info($"Dash reset to preset content: id={layout.Id}.");
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash reset to preset content: id={layout.Id}.");
     }
 
     private static void NormalizeLayoutColorSystem(DashLayout layout) =>

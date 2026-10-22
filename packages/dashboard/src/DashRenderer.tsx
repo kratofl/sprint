@@ -8,23 +8,22 @@ import { TirePosition, type AppSettings, type TelemetryFrame } from '@sprint/typ
 import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
 import {
   alertPanelRect,
-  contentRect,
   gridRect,
   pageHasRaceLogicLapTimer,
   raceLogicPanelBounds,
   selectLayer,
   selectPage,
   subRect,
-  usesInstrumentFrame,
   type PixelRect,
 } from './grid'
+import { bareContent, CHROME_CELL_PX, GridOuterFrame, WidgetFrame, type ChromeContext } from './chrome'
 import { effectiveColorSystem, resolveDashPalette, resolveStyleColor, withAlpha, type DashPaletteColors } from './palette'
 import type { DashAlertBanner } from './alerts'
 import type { DashTargets } from './bindings'
 import { formatLap } from './format'
-import { Dot, PanelBorder, TextLine } from './primitives'
+import { Dot, TextLine } from './primitives'
 import { RaceLogicLapTimerPresenter } from './raceLogicLapTimer'
-import { WidgetContent } from './widgets'
+import { WidgetContent, widgetChrome } from './widgets'
 
 export interface DashRendererProps {
   layout: DashLayout
@@ -99,24 +98,46 @@ interface WidgetTileProps {
   settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
   targets: DashTargets | null
   palette: DashPaletteColors
+  chrome: ChromeContext
   selected: boolean
   onSelect?: (widget: DashWidget) => void
 }
 
 /**
- * One widget's outer cell: an optional instrument-frame border, then its type-specific content
- * inset inside it. The RaceLogic lap timer draws nothing here — it ignores its assigned grid
- * cell entirely and renders as a full-canvas overlay instead — see `RaceLogicLapTimerOverlay`
- * below.
+ * One widget's cell: its frame and title in the layout's dash style (see `widgetChrome`), then
+ * its type-specific values in the content box. The RaceLogic lap timer draws nothing here — it
+ * ignores its assigned grid cell entirely and renders as a full-canvas overlay instead — see
+ * `RaceLogicLapTimerOverlay` below.
  */
-function WidgetTile({ widget, rect, frame, settings, targets, palette, selected, onSelect }: WidgetTileProps): React.ReactElement | null {
+function WidgetTile({ widget, rect, frame, settings, targets, palette, chrome, selected, onSelect }: WidgetTileProps): React.ReactElement | null {
   if (rect.width < 1 || rect.height < 1) {
     return null
   }
 
-  const showBorder = widget.style?.border ?? usesInstrumentFrame(widget.type)
-  const inset = contentRect(rect, widget.type)
   const tilePalette = stylePalette(palette, widget.style)
+  const spec = widgetChrome(widget, frame, tilePalette)
+  const content = (box: { width: number; height: number }, contentPalette: DashPaletteColors): React.ReactNode => (
+    <WidgetContent widget={widget} frame={frame} settings={settings} targets={targets} palette={contentPalette} width={box.width} height={box.height} chrome={chrome} />
+  )
+  const cell = { left: 0, top: 0, width: rect.width, height: rect.height }
+
+  let body: React.ReactNode
+  if (spec.kind === 'framed') {
+    body = (
+      <WidgetFrame ctx={chrome} rect={cell} title={spec.title} accent={spec.accent} fill={spec.fill} titleColor={resolveStyleColor(widget.style?.labelColor, palette)} palette={tilePalette}>
+        {content}
+      </WidgetFrame>
+    )
+  } else if (spec.kind === 'split') {
+    body = content(cell, tilePalette)
+  } else if (chrome.style === 'grid') {
+    // The grid rules every cell, so an unframed widget still sits inside its lines.
+    body = <WidgetFrame ctx={chrome} rect={cell} title={null} accent={null} fill={null} palette={tilePalette}>{content}</WidgetFrame>
+  } else {
+    const inset = bareContent(chrome, rect.width, rect.height)
+    body = <div style={{ position: 'absolute', left: inset.left, top: inset.top, width: inset.width, height: inset.height }}>{content(inset, tilePalette)}</div>
+  }
+
   return (
     <div
       className={`dash-widget-tile dash-widget-${widget.type}${selected ? ' is-selected' : ''}`}
@@ -131,10 +152,7 @@ function WidgetTile({ widget, rect, frame, settings, targets, palette, selected,
       }}
       onClick={onSelect ? () => onSelect(widget) : undefined}
     >
-      {showBorder && <PanelBorder width={rect.width} height={rect.height} color={tilePalette.border} />}
-      <div style={{ position: 'absolute', left: inset.left - rect.left, top: inset.top - rect.top, width: Math.max(0, inset.width), height: Math.max(0, inset.height) }}>
-        <WidgetContent widget={widget} frame={frame} settings={settings} targets={targets} palette={tilePalette} width={Math.max(0, inset.width)} height={Math.max(0, inset.height)} />
-      </div>
+      {body}
     </div>
   )
 }
@@ -149,12 +167,13 @@ interface WidgetStackTileProps {
   settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
   targets: DashTargets | null
   palette: DashPaletteColors
+  chrome: ChromeContext
   selectedId?: string
   onWidgetSelect?: (widget: DashWidget) => void
 }
 
 /** Renders a widget stack's selected layer, laid out in the stack's own local sub-grid. */
-function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, settings, targets, palette, selectedId, onWidgetSelect }: WidgetStackTileProps): React.ReactElement | null {
+function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, settings, targets, palette, chrome, selectedId, onWidgetSelect }: WidgetStackTileProps): React.ReactElement | null {
   const outerRect = gridRect(canvasWidth, canvasHeight, cols, rows, { col: stack.col, row: stack.row, colSpan: Math.max(1, stack.colSpan), rowSpan: Math.max(1, stack.rowSpan) })
   if (outerRect.width < 1 || outerRect.height < 1) {
     return null
@@ -178,6 +197,7 @@ function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, 
           settings={settings}
           targets={targets}
           palette={palette}
+          chrome={chrome}
           selected={selectedId === widget.id}
           onSelect={onWidgetSelect}
         />
@@ -310,9 +330,13 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
   // language: the outer panel stays pure black and the flag overlay never covers it.
   const focusedLapTimer = layout.id === 'purpose-lap-times'
   const background = focusedLapTimer ? '#000000' : palette.background
+  const chrome: ChromeContext = { style: layout.dashStyle ?? 'panels', scale: Math.min(width / cols, height / rows) / CHROME_CELL_PX }
+  // The grid style rounds the whole canvas, so corner cells clip to its outer frame.
+  const ruled = chrome.style === 'grid' && !focusedLapTimer
 
   return (
     <div className={`dash-canvas ${className ?? ''}`} style={{ position: 'relative', width, height, background, overflow: 'hidden', boxSizing: 'border-box' }}>
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: ruled ? 14 * chrome.scale : undefined }}>
       {page?.widgets.map((widget) => (
         <WidgetTile
           key={widget.id}
@@ -322,6 +346,7 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
           settings={resolvedSettings}
           targets={resolvedTargets}
           palette={palette}
+          chrome={chrome}
           selected={selectedId === widget.id}
           onSelect={onWidgetSelect}
         />
@@ -338,10 +363,13 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
           settings={resolvedSettings}
           targets={resolvedTargets}
           palette={palette}
+          chrome={chrome}
           selectedId={selectedId}
           onWidgetSelect={onWidgetSelect}
         />
       ))}
+      </div>
+      {ruled && <GridOuterFrame ctx={chrome} width={width} height={height} palette={palette} />}
       {pageHasRaceLogicLapTimer(page) && <RaceLogicLapTimerOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
       {alertBanner && <AlertBanner banner={alertBanner} palette={palette} canvasWidth={width} canvasHeight={height} />}
       {!focusedLapTimer && <FlagOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
