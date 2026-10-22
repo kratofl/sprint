@@ -17,6 +17,7 @@ export function AccountRow({ account, collapsed, onOpen }: { account: Account | 
       type="button"
       className="account-row"
       title={collapsed ? `${label} — ${tooltip}` : tooltip}
+      aria-label={collapsed ? label : undefined}
       disabled={account === null}
       onClick={onOpen}
     >

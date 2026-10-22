@@ -103,6 +103,8 @@ export function App() {
   // Pressing a sidebar toggle hands keyboard focus to the toggle that is visible
   // afterwards: on macOS hiding the sidebar hides the pressed button, and the
   // toolbar's "Show sidebar" unmounts once pressed, so focus would fall to <body>.
+  // The toolbar button only exists while the Mac sidebar is hidden; otherwise (and
+  // always on the brand look's rail) focus stays on the sidebar's own toggle.
   const sidebarToggleRef = useRef<HTMLButtonElement>(null)
   const showSidebarRef = useRef<HTMLButtonElement>(null)
   const refocusSidebarToggle = useRef(false)
@@ -113,7 +115,7 @@ export function App() {
   useEffect(() => {
     if (!refocusSidebarToggle.current) return
     refocusSidebarToggle.current = false
-    ;(collapsed ? showSidebarRef : sidebarToggleRef).current?.focus()
+    ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
   }, [collapsed])
 
   // Shared by the startup check and the palette's manual "Check for updates"
@@ -238,8 +240,8 @@ export function App() {
     importResults,
   })
 
-  // macOS: the toolbar slot the page's actions render into, and the room it has for them.
-  // Windows never mounts the slot, so the context stays null and PageHeader keeps its CommandBar.
+  // The toolbar slot the page's actions render into, and the room it has for them. Null until
+  // the toolbar mounts, so PageHeader keeps its CommandBar in the content until then.
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [actionsRoom, setActionsRoom] = useState<{ measure: () => number } | null>(null)
   const toolbarActions = useMemo<ToolbarActions | null>(

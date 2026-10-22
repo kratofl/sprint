@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron'
 
-/** Dev-only shortcut that reopens the main window in the other OS look (see `main.ts`). */
+/** Dev-only shortcut that reopens the main window in the other look, brand or macOS (see `main.ts`). */
 export const TOGGLE_LOOK_ACCELERATOR = 'CmdOrCtrl+Alt+Shift+L'
 
 /**
@@ -26,7 +26,7 @@ export function macMenuTemplate({ packaged, onToggleLook }: { packaged: boolean;
       label: 'Developer',
       submenu: [
         { role: 'toggleDevTools' },
-        { label: 'Toggle Windows / macOS Look', accelerator: TOGGLE_LOOK_ACCELERATOR, registerAccelerator: false, click: onToggleLook },
+        { label: 'Toggle Brand / macOS Look', accelerator: TOGGLE_LOOK_ACCELERATOR, registerAccelerator: false, click: onToggleLook },
       ],
     })
   }

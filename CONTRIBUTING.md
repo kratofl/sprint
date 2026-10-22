@@ -72,7 +72,7 @@ make build-app      # publish the host + package the Electron app → app/build/
   `Sprint.Desktop.Api` — the project references enforce these seams
 - `Sprint.Desktop.Core` owns native behaviour and stays free of any UI framework;
   prefer pure, testable presenter/reducer seams there. Don't hardcode hex in the
-  desktop UI — `app/desktop` reads the `@sprint/tokens/windows.css` custom
+  desktop UI — `app/desktop` reads the `@sprint/tokens/desktop.css` custom
   properties
 
 ### General

@@ -1,9 +1,9 @@
-/* Analysis (AnalysisView.tsx, AnalysisChart.tsx). Composes the shared Fluent primitives from
+/* Analysis (AnalysisView.tsx, AnalysisChart.tsx). Composes the shared primitives from
    styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .chip); this file lays them out
    and adds what the page owns: column grids, the comparison-row indicator, the lap pick
    toggles and the chart card. Primary/current = brand-500, comparison = blue-500, everywhere
    on this page, so a legend square, a row indicator and a line always agree. Tokens come from
-   @sprint/tokens/windows.css only. */
+   @sprint/tokens/desktop.css only. */
 
 .analysis-page {
   display: flex;

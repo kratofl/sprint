@@ -1,11 +1,13 @@
-@import '@sprint/tokens/windows.css';
+@import '@sprint/tokens/desktop.css';
 
-/* Desktop UI type is Segoe UI Variable (a Windows system font, nothing bundled;
-   see --font-text/--font-display in windows.css). The faces below exist only for
-   the dash renderer (packages/dashboard), which names Inter for wheel labels and
-   Saira SemiCondensed for wheel numerics. Without them every dash readout — in
-   the editor preview and on the USB panel — silently falls back to system-ui.
-   App UI must never name either family. */
+/* Desktop UI type is Figtree, the brand face the web uses too, bundled so nothing
+   loads from the internet (--font-text/--font-display in desktop.css; macos.css
+   swaps in SF on a Mac). Inter and Saira SemiCondensed exist only for the dash
+   renderer (packages/dashboard), which names Inter for wheel labels and Saira
+   SemiCondensed for wheel numerics. Without them every dash readout — in the
+   editor preview and on the USB panel — silently falls back to system-ui. App UI
+   must never name either family. */
+@font-face { font-family: Figtree; font-style: normal; font-weight: 300 900; font-display: block; src: url('./fonts/Figtree-latin.woff2') format('woff2'); }
 @font-face { font-family: Inter; font-style: normal; font-weight: 400; font-display: block; src: url('./fonts/Inter-Regular.ttf') format('truetype'); }
 @font-face { font-family: Inter; font-style: normal; font-weight: 500; font-display: block; src: url('./fonts/Inter-Medium.ttf') format('truetype'); }
 @font-face { font-family: Inter; font-style: normal; font-weight: 600; font-display: block; src: url('./fonts/Inter-SemiBold.ttf') format('truetype'); }
@@ -15,10 +17,12 @@
 @font-face { font-family: 'Saira SemiCondensed'; font-style: normal; font-weight: 700; font-display: block; src: url('./fonts/SairaSemiCondensed-Bold.ttf') format('truetype'); }
 
 /* ── Base ───────────────────────────────────────────────────────────────────
-   Fluent desktop density: 13px/20px Segoe UI Variable Text on Mica. Every value
-   in this file comes from @sprint/tokens/windows.css; the geometry (heights,
-   paddings, radii) is copied from the Windows mockup
-   (docs/design/mockups/windows-light.html).
+   The Sprint brand look, the one the web app wears: 13px/20px Figtree on a
+   calm canvas, cards one hairline off it, flat fills for controls, glass only
+   on small floating layers. Every value in this file comes from
+   @sprint/tokens/desktop.css; the geometry follows the web's desktop scale
+   (docs/design/DESIGN.md → Web app). styles.mac.css reshapes the same markup
+   into the macOS look.
 
    Load order: main.tsx imports this file before App, so these shared
    primitives come first in the bundle and every view's CSS lands after them.
@@ -39,10 +43,10 @@ body {
 body {
   font: 400 13px/20px var(--font-text);
   color: var(--label);
-  background: var(--mica);
+  background: var(--window);
 }
 
-/* Windows controls keep the arrow cursor; only links get the hand. */
+/* Desktop controls keep the arrow cursor; only links get the hand. */
 button {
   font: inherit;
   color: inherit;
@@ -63,30 +67,29 @@ a:hover {
   color: var(--link-hover);
 }
 
-/* Fluent focus visual: 2px outer stroke + 1px inner stroke, keyboard focus only. */
+/* Keyboard focus only: a 2px ring, 2px off the control. */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px var(--focus-ring-inner);
+  outline-offset: 2px;
 }
 
-/* ── App frame ────────────────────────────────────────────────────────────── */
+/* ── App frame: sidebar | toolbar over content ──────────────────────────────
+   One grid on .app; .app-frame dissolves so the sidebar spans both rows. The
+   sidebar column is `auto`: hiding it slides the sidebar out with a negative
+   margin, which shrinks the column with it (a finite transition; the motion
+   tokens drop to 0ms under reduced motion). */
 
 .app {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-areas:
+    "sidebar toolbar"
+    "sidebar content";
   height: 100vh;
-  background: var(--mica);
+  overflow: hidden;
+  background: var(--window);
   color: var(--label);
-}
-
-/* In the Electron main window the OS draws the window backdrop: Mica, or its solid
-   colour when Windows "Transparency effects" are off (electron/windowChrome.ts).
-   The title bar and navigation pane sit directly on it; the content layer's
-   translucent `--layer` lets a trace of it through, as in every Windows 11 app. */
-[data-backdrop="window"] body,
-[data-backdrop="window"] .app {
-  background: transparent;
 }
 
 /* Pane width is restored from persisted settings after the first state load
@@ -102,34 +105,38 @@ a:hover {
 }
 
 .app-frame {
-  display: flex;
-  flex: 1;
-  min-height: 0;
+  display: contents;
 }
 
-/* Content layer: sits under the title bar, right of the pane, and scrolls on its own. */
+/* The content scrolls on its own under the toolbar. */
 .content {
-  flex: 1;
+  grid-area: content;
   min-width: 0;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 20px;
   background: var(--layer);
-  border-top: 1px solid var(--layer-stroke);
-  border-left: 1px solid var(--layer-stroke);
-  border-top-left-radius: var(--radius-card);
 }
 
-/* ── Title bar (48px on Mica) ─────────────────────────────────────────────── */
+/* ── Toolbar (48px) ──────────────────────────────────────────────────────────
+   Three zones as one grid: leading (sidebar toggle while hidden, back, page
+   title) | centre (the telemetry indicator) | trailing (the page's actions,
+   then search). The centre takes what is left; its 28px minimum is the
+   indicator shrunk to its dot, and TitleBar.tsx reads it when it works out the
+   actions' room. The bar is the window's title bar: it drags the window, and
+   every control opts back out. */
 
 .titlebar {
-  height: 48px;
-  flex: none;
+  grid-area: toolbar;
   display: grid;
-  /* Equal side columns keep the search box centred on the whole window, caption buttons included. */
-  grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
+  column-gap: 12px;
+  height: 48px;
+  min-width: 0;
+  padding: 0 0 0 16px;
+  border-bottom: 1px solid var(--layer-stroke);
+  background: var(--toolbar);
   user-select: none;
-  /* This bar IS the window title bar, so it drags the window; every control opts back out. */
   -webkit-app-region: drag;
 }
 
@@ -139,69 +146,135 @@ a:hover {
   -webkit-app-region: no-drag;
 }
 
-/* The telemetry status may shrink (and ellipsize) before it reaches the caption buttons. */
-.titlebar .telemetry-badge {
-  flex: 0 1 auto;
-}
-
+/* Leading zone: never shrinks, so the title stays whole and the actions give way instead. */
 .titlebar-lead {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
-  min-width: 0;
+  gap: 8px;
+  min-width: max-content;
 }
 
+.titlebar-sidebar-toggle,
 .titlebar-back {
   display: grid;
   place-items: center;
-  width: 36px;
+  width: 28px;
   height: 28px;
   flex: none;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
+  color: var(--label-secondary);
+}
+
+.titlebar-sidebar-toggle:hover,
+.titlebar-back:hover:not(:disabled) {
+  background: var(--subtle-hover);
   color: var(--label);
 }
 
-.titlebar-back:hover:not(:disabled) {
-  background: var(--subtle-hover);
-}
-
+.titlebar-sidebar-toggle:active,
 .titlebar-back:active:not(:disabled) {
   background: var(--subtle-pressed);
 }
 
 .titlebar-back:disabled {
-  color: var(--label-tertiary);
+  background: transparent;
+  color: var(--label-disabled);
 }
 
-.titlebar-mark {
-  display: block;
-  width: 16px;
-  height: 16px;
+.titlebar-title {
   flex: none;
-  -webkit-user-drag: none;
-}
-
-.titlebar-name {
-  font-size: 12px;
-  line-height: 16px;
+  font: 600 17px/22px var(--font-display);
   white-space: nowrap;
 }
 
-/* Looks like the mockup's title-bar text box; it opens the command palette. */
+/* Centre zone. A size container, so the indicator can fall back to its dot when the centre
+   gets narrow (below), before the actions are evicted to the content. */
+.titlebar-centre {
+  display: flex;
+  justify-content: center;
+  min-width: 28px;
+  container-type: inline-size;
+}
+
+/* The telemetry indicator: a capsule that opens Help & diagnostics (TelemetryBadge.tsx). */
+.telemetry-indicator {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+}
+
+.telemetry-indicator:hover {
+  background: var(--control-fill-hover);
+  color: var(--label);
+}
+
+.telemetry-indicator:active {
+  background: var(--subtle-pressed);
+}
+
+/* The status may shrink (and ellipsize) inside the capsule. */
+.telemetry-indicator .telemetry-badge {
+  flex: 0 1 auto;
+  color: inherit;
+}
+
+@container (max-width: 180px) {
+  .telemetry-indicator {
+    justify-content: center;
+    width: 28px;
+    padding: 0;
+  }
+
+  /* The word stays for screen readers; the tooltip names it for everyone else. */
+  .telemetry-indicator .status-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* Trailing zone: the page's actions (PageHeader portals its CommandBar into the slot), then search. */
+.titlebar-trail {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  /* The OS caption buttons overlay the right edge. The titlebar-area env()
+     values describe the space left for the app, so nothing lands under them.
+     Outside Electron they fall back to a 12px inset. */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+}
+
+.titlebar-actions {
+  display: contents;
+}
+
+/* The search field; it opens the command palette. Magnifier first. */
 .titlebar-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 360px;
+  gap: 6px;
+  width: 220px;
   height: 28px;
-  padding: 0 10px 0 12px;
-  border: 1px solid var(--control-stroke);
-  border-bottom-color: var(--input-stroke-bottom);
+  flex: none;
+  padding: 0 10px;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--titlebar-search);
+  background: var(--control-fill);
   color: var(--label-secondary);
   font-size: 13px;
   text-align: left;
@@ -223,73 +296,124 @@ a:hover {
   font: inherit;
   font-size: 12px;
   line-height: 16px;
-  color: var(--label-secondary);
+  color: var(--label-tertiary);
 }
 
 .titlebar-search svg {
   flex: none;
+  order: -1;
 }
 
-.titlebar-trail {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  min-width: 0;
-  /* The OS caption buttons overlay the right edge. The titlebar-area env()
-     values describe the space left for the app, so nothing lands under them.
-     Outside Electron they fall back to no reserve. */
-  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
-}
-
-/* ── NavigationView pane (248px, compact 48px) ────────────────────────────── */
+/* ── Sidebar (224px, full height; a 56px rail when collapsed) ────────────── */
 
 .navview {
-  width: 248px;
-  flex: none;
+  grid-area: sidebar;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 2px 4px 8px;
+  gap: 1px;
+  width: 224px;
+  padding: 0 8px 8px;
   overflow: hidden auto;
+  border-right: 1px solid var(--layer-stroke);
+  background: var(--sidebar);
   transition: width var(--motion-normal) var(--ease-out);
 }
 
+/* Collapsed: a rail of icons, as the web sidebar. The toggle stays at the top to bring the
+   labels back; each item keeps its name as tooltip and aria-label (Sidebar.tsx). */
 .navview.collapsed {
-  width: 48px;
-  padding: 2px 0 8px;
+  width: 56px;
+}
+
+/* The 48px band at the top, level with the toolbar: the Sprint mark and name, then
+   the toggle. It drags the window like the toolbar beside it. */
+.navview-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  flex: none;
+  margin: 0 -8px 4px;
+  padding: 0 10px 0 16px;
+  -webkit-app-region: drag;
+}
+
+.navview-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.navview-brand img {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  -webkit-user-drag: none;
 }
 
 .navview-toggle {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex: none;
-  margin: 0 0 4px 4px;
+  margin: 0;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--label);
-}
-
-.navview.collapsed .navview-toggle {
-  margin-left: 6px;
+  color: var(--label-secondary);
+  -webkit-app-region: no-drag;
 }
 
 .navview-spacer {
   flex: 1;
 }
 
+.navview.collapsed .navview-band {
+  justify-content: center;
+  padding: 0;
+}
+
+.navview.collapsed .navview-brand,
+.navview.collapsed .nav-item-label,
+.navview.collapsed .account-name {
+  display: none;
+}
+
+.navview.collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+/* The update dot moves onto the icon's corner. */
+.navview.collapsed .nav-item-badge {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  margin: 0;
+}
+
+.navview.collapsed .account-row {
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+
 .nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 32px;
+  gap: 8px;
+  height: 28px;
   flex: none;
-  margin: 0 4px;
-  padding: 0 10px 0 14px;
+  margin: 0;
+  padding: 0 8px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -300,10 +424,6 @@ a:hover {
   white-space: nowrap;
 }
 
-.navview.collapsed .nav-item {
-  padding: 0 0 0 12px;
-}
-
 .navview-toggle:hover,
 .nav-item:hover {
   background: var(--subtle-hover);
@@ -312,39 +432,27 @@ a:hover {
 .navview-toggle:active,
 .nav-item:active {
   background: var(--subtle-pressed);
-  color: var(--label-secondary);
+  color: var(--label);
 }
 
+/* Selected: the strong fill, a semibold label and the brand icon (web sidebar). */
 .nav-item.active {
   background: var(--subtle-selected);
-}
-
-/* The 3×16px brand selection indicator shared by nav items and list rows. */
-.nav-item.active::before,
-.list-row.selected::before,
-.list-row[aria-selected='true']::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 16px;
-  margin-top: -8px;
-  border-radius: 2px;
-  background: var(--brand-500);
+  font-weight: 600;
 }
 
 .nav-item svg {
   flex: none;
+  color: var(--label-secondary);
+}
+
+.nav-item.active svg {
+  color: var(--brand-500);
 }
 
 .nav-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.navview.collapsed .nav-item-label {
-  display: none;
 }
 
 /* Update-available dot on the Settings item. */
@@ -357,42 +465,30 @@ a:hover {
   background: var(--brand-500);
 }
 
-.navview.collapsed .nav-item-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  margin-left: 0;
-}
-
+/* Account last, under a hairline, below Settings and Help (web sidebar footer). */
 .account-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 36px;
+  gap: 8px;
   flex: none;
-  margin: 0 4px;
-  padding: 0 10px;
+  order: 1;
+  margin: 6px 0 0;
+  padding: 10px 8px 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-top: 1px solid var(--layer-stroke);
+  border-radius: 0;
   background: transparent;
   color: var(--label);
   font: inherit;
   font-size: 13px;
+  font-weight: 500;
   text-align: start;
   white-space: nowrap;
   cursor: default;
 }
 
-.account-row:hover {
-  color: var(--label);
-}
-
 .account-row:not(:disabled):hover {
-  background: var(--subtle-hover);
-}
-
-.navview.collapsed .account-row {
-  padding: 0 0 0 8px;
+  color: var(--link);
 }
 
 .account-avatar {
@@ -414,52 +510,131 @@ a:hover {
   text-overflow: ellipsis;
 }
 
-.navview.collapsed .account-name {
-  display: none;
-}
-
-/* ── Page header + CommandBar (shell/PageHeader.tsx) ──────────────────────── */
+/* ── Page header (shell/PageHeader.tsx) ─────────────────────────────────────
+   The toolbar names the page, so the in-content title is for screen readers
+   only — unless it is a `detail` title naming an item. The CommandBar moves
+   into the toolbar (toolbar items, below); it stays at the top of the content
+   for a `detail` header, or when the toolbar has no room for it. */
 
 .page-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: 0;
+  margin-bottom: 14px;
+}
+
+/* With no CommandBar the header holds only the hidden title; dissolving it keeps a
+   view's own flex/grid gap from spacing out an empty box. */
+.page-header:not(:has(.command-bar)) {
+  display: contents;
 }
 
 .page-title {
   margin: 0;
-  font: 600 24px/32px var(--font-display);
+  font: 600 24px/30px var(--font-display);
 }
 
+.page-title:not(.detail) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* In the content the CommandBar is a plain row of 28px buttons. */
 .command-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 36px;
+  gap: 8px;
+  height: 28px;
   min-width: 0;
 }
 
+/* Groups are told apart by fixed space, not a rule. */
 .command-divider {
-  width: 1px;
-  height: 16px;
+  width: 4px;
   flex: none;
-  margin: 0 4px;
-  background: var(--command-divider);
 }
 
 .command-spacer {
   flex: 1;
 }
 
+/* ── Page actions as toolbar items ───────────────────────────────────────────
+   PageHeader portals its CommandBar into the toolbar's trailing zone, marked
+   `.toolbar-items`. When the toolbar has no room, the same items fall back to
+   the top of the content drawn identically, so their width there is their
+   width in the toolbar (toolbarActions.ts measures it to decide when they may
+   return).
+   - A `.button.subtle` with a leading icon shows only the icon; its text stays
+     for screen readers, and the shell gives it a tooltip (toolbarActions.ts).
+   - The `.button.primary` keeps its DOM place (first), so the Tab order
+     matches what is seen.
+   - `.command-spacer` becomes the same fixed space as `.command-divider`. */
+
+/* The toolbar drags the window and only opts buttons out; selects and the status
+   among the actions need it too, so the whole bar opts out. */
+.toolbar-items {
+  flex: none;
+  min-width: max-content;
+  -webkit-app-region: no-drag;
+}
+
+/* In the content the row keeps its natural width instead of stretching. */
+.page-header > .toolbar-items {
+  align-self: flex-start;
+}
+
+.toolbar-items .command-spacer {
+  width: 4px;
+  flex: none;
+}
+
+.toolbar-items .button.subtle:has(> svg:first-child) {
+  gap: 0;
+  padding: 0 6px;
+  color: var(--label-secondary);
+  font-size: 0;
+}
+
+.toolbar-items .button.subtle:has(> svg:first-child):hover:not(:disabled) {
+  color: var(--label);
+}
+
+.toolbar-items .button.subtle:has(> svg:first-child) > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* A select among the actions is a flat toolbar control, not a form field. */
+.toolbar-items select {
+  max-width: 180px;
+  border-color: transparent;
+  background-color: var(--control-fill);
+}
+
+.toolbar-items select:hover {
+  background-color: var(--control-fill-hover);
+}
+
+/* A page status among the actions (the race engineer's push state) reads as a quiet label. */
+.toolbar-items > .status {
+  padding: 0 4px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 /* ── Buttons ──────────────────────────────────────────────────────────────
-   .button          standard: control fill, 1px stroke with a darker bottom edge
-   .button.primary  accent: brand-500 + on-brand text. One per view.
-   .button.subtle   transparent until hover
-   .button.destructive        standard look, danger text (disabled: the disabled colour)
+   .button          secondary: a flat fill, no border
+   .button.primary  brand-500 + on-brand text. One per view.
+   .button.subtle   ghost: transparent until hover
+   .button.destructive        the standard fill, danger text (disabled: the disabled colour)
    .button.destructive-solid  final irreversible step only
    .button.small    24px, for dense rows and card footers
-   A leading 14px icon tightens the left padding. */
+   A leading 14px icon tightens the left padding. Buttons never glow. */
 
 .button {
   display: inline-flex;
@@ -468,22 +643,20 @@ a:hover {
   gap: 6px;
   height: 28px;
   flex: none;
-  padding: 0 10px;
-  border: 1px solid var(--control-stroke);
-  border-top-color: var(--control-stroke-top);
-  border-bottom-color: var(--control-stroke-bottom);
+  padding: 0 12px;
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--control-fill);
   color: var(--label);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 600;
   line-height: 20px;
   white-space: nowrap;
   text-decoration: none;
 }
 
 .button:has(> svg:first-child) {
-  padding-left: 8px;
+  padding-left: 10px;
 }
 
 .button > svg {
@@ -497,43 +670,38 @@ a:hover {
 }
 
 .button:active {
-  background: var(--control-fill-hover);
-  color: var(--label-secondary);
+  background: var(--subtle-pressed);
+  color: var(--label);
 }
 
 .button:disabled,
 .button[aria-disabled='true'] {
   background: var(--control-fill-disabled);
-  border-color: var(--control-stroke);
   color: var(--label-disabled);
 }
 
 .button.primary {
-  border-color: var(--accent-stroke);
-  border-bottom-color: var(--accent-stroke-bottom);
   background: var(--brand-500);
   color: var(--on-brand);
   font-weight: 600;
 }
 
 .button.primary:hover {
-  background: color-mix(in srgb, var(--brand-500) 90%, var(--mica));
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--window));
 }
 
 .button.primary:active {
-  background: color-mix(in srgb, var(--brand-500) 80%, var(--mica));
+  background: color-mix(in srgb, var(--brand-500) 80%, var(--window));
   color: var(--on-brand);
 }
 
 .button.primary:disabled {
-  border-color: transparent;
   background: var(--subtle-selected);
   color: var(--label-disabled);
 }
 
 .button.subtle {
   padding: 0 8px;
-  border-color: transparent;
   background: transparent;
 }
 
@@ -559,15 +727,13 @@ a:hover {
 }
 
 .button.destructive-solid {
-  border-color: var(--accent-stroke);
-  border-bottom-color: var(--accent-stroke-bottom);
   background: var(--danger-text);
   color: var(--on-status);
   font-weight: 600;
 }
 
 .button.destructive-solid:hover {
-  background: color-mix(in srgb, var(--danger-text) 90%, var(--mica));
+  background: color-mix(in srgb, var(--danger-text) 90%, var(--window));
 }
 
 .button.small {
@@ -614,13 +780,13 @@ a:hover {
   line-height: 16px;
 }
 
-/* Small section label (the mockup's "Kategorien" pane header). */
+/* Small section label (the web's caption: sidebar section headers, field groups). */
 .eyebrow {
   margin: 0 0 4px;
   color: var(--label-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 16px;
+  line-height: 14px;
 }
 
 /* Label above a control. */
@@ -637,11 +803,12 @@ a:hover {
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 
+/* One hairline off the canvas, no shadow: cards are edged, not lifted. */
 .card {
   background: var(--surface);
   border: 1px solid var(--card-stroke);
   border-radius: var(--radius-card);
-  padding: 14px;
+  padding: 16px;
 }
 
 .card-title {
@@ -652,7 +819,7 @@ a:hover {
   line-height: 20px;
 }
 
-/* List card (the mockup's "Letzte Buchungen"): no padding, a 40px title row,
+/* List card: no padding, a 40px title row,
    then a .list-header and .list-rows of .list-row, inset by the rows' own margin.
    <section class="card list-card">
      <div class="card-header"><h2 class="card-title">…</h2>[count | link | controls]</div>
@@ -695,7 +862,7 @@ a:hover {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--surface);
   border: 1px solid var(--card-stroke);
   border-radius: var(--radius-card);
@@ -726,7 +893,7 @@ a:hover {
   color: var(--danger-text);
 }
 
-/* ── Form controls (Fluent text box) ──────────────────────────────────────
+/* ── Form controls: a 28px surface field with a ≥ 3:1 edge ───────────────────
    Bare <input>/<select>/<textarea> are styled through :where() so any class a
    view or the shell puts on a control still wins. `.input` opts a non-native
    element into the same look. */
@@ -737,10 +904,9 @@ a:hover {
   min-width: 0;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--control-stroke);
-  border-bottom-color: var(--input-stroke-bottom);
+  border: 1px solid var(--input-stroke);
   border-radius: var(--radius-control);
-  background: var(--control-fill);
+  background: var(--input-fill);
   color: var(--label);
   font-size: 13px;
   line-height: 20px;
@@ -753,26 +919,20 @@ a:hover {
   resize: vertical;
 }
 
-:where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])):hover,
-:where(select, textarea):hover,
-.input:hover {
-  background-color: var(--control-fill-hover);
-}
-
-/* Focus = a 2px brand underline (1px border + 1px inset), no outline. The state
-   rules set background-color only: the `background` shorthand would also wipe
-   the select's drawn chevron (a background-image). */
+/* Focus = the edge turns to the focus colour and doubles to 2px (1px border + 1px
+   ring), no outline. The state rules set background-color only: the `background`
+   shorthand would also wipe the select's drawn chevron (a background-image). */
 :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'])):focus,
 :where(select, textarea):focus,
 .input:focus-within {
   outline: none;
-  border-bottom-color: var(--brand-500);
+  border-color: var(--focus-ring);
   background-color: var(--surface);
-  box-shadow: inset 0 -1px 0 var(--brand-500);
+  box-shadow: 0 0 0 1px var(--focus-ring);
 }
 
 :where(input, select, textarea):disabled {
-  border-bottom-color: var(--control-stroke);
+  border-color: var(--control-stroke);
   background-color: var(--control-fill-disabled);
   color: var(--label-disabled);
 }
@@ -867,9 +1027,8 @@ a:hover {
 }
 
 /* ── Segmented control and tabs ───────────────────────────────────────────
-   .segmented > .segmented-item: same data, different presentation. Flat:
-   the selected item is a raised fill, no shadow, no border. In a CommandBar,
-   Windows prefers a <select>.
+   .segmented > .segmented-item: same data, different presentation. A flat
+   --track trough; the selected item is a raised fill, semibold.
    .tabs > .tab: separate panes of one page; selected = bold + brand underline. */
 
 .segmented {
@@ -877,16 +1036,16 @@ a:hover {
   gap: 2px;
   width: fit-content;
   padding: 2px;
-  border: 1px solid var(--control-stroke);
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--subtle-selected);
+  background: var(--track);
 }
 
 .segmented-item {
   height: 24px;
   padding: 0 10px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-control-small);
   background: transparent;
   color: var(--label-secondary);
   font-size: 13px;
@@ -902,8 +1061,9 @@ a:hover {
 .segmented-item.active,
 .segmented-item[aria-pressed='true'],
 .segmented-item[aria-checked='true'] {
-  background: var(--surface);
+  background: var(--segmented-selected);
   color: var(--label);
+  font-weight: 600;
 }
 
 .tabs {
@@ -946,7 +1106,7 @@ a:hover {
   background: var(--brand-500);
 }
 
-/* ── InfoBar ──────────────────────────────────────────────────────────────
+/* ── InfoBar: an inline alert in its status tint ─────────────────────────────
    <div class="infobar warning" role="alert">
      <span class="infobar-icon">!</span><strong class="infobar-title">…</strong>
      <span class="infobar-message">…</span> [.button] [.icon-button close]
@@ -956,12 +1116,12 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
-  padding: 0 6px 0 14px;
-  border: 1px solid var(--infobar-stroke);
+  min-height: 36px;
+  padding: 0 6px 0 12px;
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--infobar-info);
-  color: var(--label);
+  color: var(--infobar-info-text);
   font-size: 13px;
 }
 
@@ -991,19 +1151,19 @@ a:hover {
 .infobar-message {
   flex: 1;
   min-width: 0;
-  padding: 10px 0;
+  padding: 8px 0;
 }
 
-.infobar.warning { background: var(--infobar-warning); }
+.infobar.warning { background: var(--infobar-warning); color: var(--infobar-warning-text); }
 .infobar.warning .infobar-icon { background: var(--infobar-warning-icon); }
-.infobar.error { background: var(--infobar-error); }
+.infobar.error { background: var(--infobar-error); color: var(--infobar-error-text); }
 .infobar.error .infobar-icon { background: var(--infobar-error-icon); }
-.infobar.success { background: var(--infobar-success); }
+.infobar.success { background: var(--infobar-success); color: var(--infobar-success-text); }
 .infobar.success .infobar-icon { background: var(--infobar-success-icon); }
 .infobar.info { background: var(--infobar-info); }
 .infobar.info .infobar-icon { background: var(--infobar-info-icon); }
 
-/* ── Acrylic surfaces: menu flyout, command palette, notifications ────────── */
+/* ── Glass: menu flyout, command palette, notifications ───────────────────── */
 
 .menu-flyout,
 .command-palette,
@@ -1012,10 +1172,10 @@ a:hover {
   border-radius: var(--radius-card);
   background: var(--acrylic);
   box-shadow: var(--shadow-flyout);
-  backdrop-filter: blur(30px) saturate(150%);
+  backdrop-filter: blur(14px);
 }
 
-/* "Transparency effects" off in Windows: solid surface, same shape. */
+/* Reduced transparency: solid surface, same shape. */
 @media (prefers-reduced-transparency: reduce) {
   .menu-flyout,
   .command-palette,
@@ -1056,9 +1216,16 @@ a:hover {
   flex: none;
 }
 
-.menu-item:hover,
+/* The menu highlight is the brand fill, with the dark on-brand text. */
+.menu-item:hover:not(:disabled),
 .menu-item.selected {
-  background: var(--subtle-selected);
+  background: var(--brand-500);
+  color: var(--on-brand);
+}
+
+.menu-item:hover:not(:disabled) .menu-item-shortcut,
+.menu-item.selected .menu-item-shortcut {
+  color: inherit;
 }
 
 .menu-item:disabled {
@@ -1094,21 +1261,21 @@ a:hover {
   background: var(--acrylic-stroke);
 }
 
-/* ── Lists (Fluent ListView) ──────────────────────────────────────────────
-   .list-header: 32px column heads between rules. .list-row: 32px row inset
-   4px, selected = subtle fill + brand indicator. Views set the columns
+/* ── Lists ────────────────────────────────────────────────────────────────
+   .list-header: 28px caption column heads over a rule. .list-row: 32px row
+   inset 6px, selected = a rounded fill. Views set the columns
    (display: grid; grid-template-columns: …) on both. */
 
 .list-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 32px;
+  height: 28px;
   padding: 0 16px;
-  border-top: 1px solid var(--divider);
   border-bottom: 1px solid var(--divider);
   color: var(--label-secondary);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 16px;
 }
 
@@ -1117,10 +1284,10 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: calc(100% - 8px);
+  width: calc(100% - 12px);
   min-height: 32px;
-  margin: 2px 4px 0;
-  padding: 0 12px;
+  margin: 1px 6px 0;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1138,7 +1305,7 @@ a:hover {
   background: var(--subtle-selected);
 }
 
-/* A row that is not clickable keeps the ListView look without the hover fill. */
+/* A row that is not clickable keeps the list look without the hover fill. */
 .list-row.static:hover {
   background: transparent;
 }
@@ -1261,7 +1428,9 @@ a:hover {
    <div class="dialog-smoke"><div class="content-dialog" role="dialog" aria-modal="true">
      <div class="content-dialog-body"><h2 class="content-dialog-title">…</h2>…</div>
      <div class="content-dialog-footer">[primary][Cancel]</div>
-   </div></div> */
+   </div></div>
+   Solid, the largest radius, buttons trailing with the primary rightmost (the
+   footer reorders it; the DOM keeps it first). */
 
 .dialog-smoke {
   position: fixed;
@@ -1281,7 +1450,7 @@ a:hover {
   max-height: calc(100vh - 48px);
   overflow: hidden;
   border: 1px solid var(--acrylic-stroke);
-  border-radius: var(--radius-card);
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow-dialog);
 }
@@ -1290,13 +1459,13 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 24px;
+  padding: 20px 20px 16px;
   overflow-y: auto;
 }
 
 .content-dialog-title {
   margin: 0;
-  font: 600 20px/28px var(--font-display);
+  font: 600 17px/22px var(--font-display);
 }
 
 /* The dialog itself takes focus when no control asked for it; it shows no focus ring. */
@@ -1310,13 +1479,19 @@ a:hover {
 }
 
 .content-dialog-footer {
-  display: grid;
-  grid-auto-columns: minmax(0, 1fr);
-  grid-auto-flow: column;
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  padding: 24px;
-  border-top: 1px solid var(--card-stroke);
-  background: var(--mica);
+  padding: 0 20px 20px;
+}
+
+.content-dialog-footer .button {
+  min-width: 80px;
+}
+
+.content-dialog-footer .button.primary,
+.content-dialog-footer .button.destructive-solid {
+  order: 1;
 }
 
 /* Import archived sessions (shell/ImportResultsDialog.tsx): the offer's per-kind breakdown. */
@@ -1339,7 +1514,7 @@ a:hover {
 }
 
 /* ── Suggest box (shell/SuggestBox.tsx) ───────────────────────────────────
-   Fluent AutoSuggestBox: a text box that stays free to type in, plus an acrylic
+   A text box that stays free to type in, plus a glass
    list of known values under it. The list is position: fixed (placed from the
    box's rect) so a ContentDialog's scrolling body cannot clip it. */
 
@@ -1392,7 +1567,7 @@ a:hover {
   cursor: default;
 }
 
-/* ── Command palette (acrylic flyout under the title-bar search) ──────────── */
+/* ── Command palette (glass, centred under the toolbar) ────────────────────── */
 
 .command-palette-backdrop {
   position: fixed;
@@ -1400,33 +1575,31 @@ a:hover {
   z-index: 200;
   display: flex;
   justify-content: center;
-  padding-top: 42px;
+  padding-top: 56px;
 }
 
 .command-palette {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 480px;
+  gap: 2px;
+  width: 560px;
   max-width: calc(100vw - 48px);
   max-height: 60vh;
   height: fit-content;
-  padding: 4px;
+  padding: 0 6px 6px;
   overflow: hidden;
 }
 
+/* The search row is the palette's head: a hairline under it, no field of its own. */
 .command-palette-search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
+  gap: 10px;
+  height: 44px;
   flex: none;
-  padding: 0 10px 0 12px;
-  border: 1px solid var(--control-stroke);
-  border-bottom-color: var(--brand-500);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  box-shadow: inset 0 -1px 0 var(--brand-500);
+  margin: 0 -6px 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--acrylic-stroke);
   color: var(--label-secondary);
 }
 
@@ -1438,7 +1611,7 @@ a:hover {
   border: 0;
   background: transparent;
   color: var(--label);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .command-palette-input:focus,
@@ -1454,7 +1627,7 @@ a:hover {
 .command-palette-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   overflow-y: auto;
 }
 
@@ -1476,7 +1649,12 @@ a:hover {
 }
 
 .command-palette-item.selected {
-  background: var(--subtle-selected);
+  background: var(--brand-500);
+  color: var(--on-brand);
+}
+
+.command-palette-item.selected .command-palette-shortcut {
+  color: inherit;
 }
 
 .command-palette-shortcut {
@@ -1492,7 +1670,7 @@ a:hover {
   font-size: 13px;
 }
 
-/* ── Notifications (Windows toast look, bottom-right) ─────────────────────── */
+/* ── Notifications (glass cards, bottom-right) ────────────────────────────── */
 
 .toast-host {
   position: fixed;

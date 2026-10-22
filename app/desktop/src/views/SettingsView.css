@@ -145,7 +145,7 @@
 }
 
 .settings-switch[aria-checked='true']:hover {
-  background: color-mix(in srgb, var(--brand-500) 90%, var(--mica));
+  background: color-mix(in srgb, var(--brand-500) 90%, var(--window));
 }
 
 .settings-switch[aria-checked='true'] .settings-switch-knob {

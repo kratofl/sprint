@@ -2,11 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { actionsPlacement, type ActionsPlacement } from './actionsPlacement'
 
 /**
- * The macOS toolbar's slot for the current page's actions. App provides it from the element
+ * The toolbar's slot for the current page's actions. App provides it from the element
  * TitleBar hands up, with `measureRoom`, which reads the toolbar's geometry on the spot and
  * returns the width (px) it can give the actions. The value is replaced whenever the toolbar
- * resizes, so consumers re-check. Windows provides nothing, so PageHeader keeps its CommandBar
- * in the content.
+ * resizes, so consumers re-check. Until the toolbar has mounted it is null, and PageHeader keeps
+ * its CommandBar in the content.
  */
 export type ToolbarActions = { slot: HTMLElement; measureRoom: () => number }
 
@@ -16,7 +16,7 @@ export const useToolbarActions = (): ToolbarActions | null => useContext(Toolbar
 
 /**
  * Where a page header's actions go. The bar is drawn the same in both places (toolbar items,
- * styles.mac.css `.toolbar-items`), so its width is the width it needs in the toolbar wherever it
+ * styles.css `.toolbar-items`), so its width is the width it needs in the toolbar wherever it
  * sits. Room and width are read together before paint on every render (page change, new
  * children, toolbar resize) and whenever the bar itself resizes (a label changes), then
  * `actionsPlacement` decides.
@@ -48,7 +48,7 @@ const SHELL_TITLE = 'data-toolbar-title'
 const VIEW_TITLE = 'data-view-title'
 
 /**
- * In the toolbar items a `.button.subtle` with a leading icon shows only the icon (styles.mac.css), so
+ * In the toolbar items a `.button.subtle` with a leading icon shows only the icon (styles.css), so
  * the shell gives it a tooltip naming its label; a title the view set itself (a disabled reason)
  * follows the label. Views never set these. React still owns `title`: whatever differs from what
  * this last wrote came from the view, and is kept.
