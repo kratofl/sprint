@@ -68,7 +68,7 @@ test('a brake bias change fires on the shown value, so noise below one decimal s
   assert.equal(tracker.evaluate(layout(alerts), bias(0.46201), defaultDashPalette), null)
   const banner = settingPopup(tracker.evaluate(layout(alerts), bias(0.465), defaultDashPalette))
   assert.equal(banner.title, 'BIAS')
-  assert.equal(banner.value, '46.5')
+  assert.equal(banner.value, '53.5', 'the front share')
   assert.equal(banner.max, null)
   assert.equal(banner.color, dashSettingColors.brakeBias)
 })

@@ -112,12 +112,12 @@ export function formatFuelPerLapTarget(liters: number | null): string {
 }
 
 /**
- * Rear brake bias -> percentage with one decimal. Discrepancy carried from bindings.ts:
- * CarState.brakeBiasRear is a 0-1 fraction here, a percentage in the desktop model, so it is
- * scaled to match the "car.brakeBiasRear" text binding. The widget and its change popup share it.
+ * Front brake bias as a percentage with one decimal, from the frame's rear 0-1 fraction.
+ * Drivers set and read bias by its front share, so the widget and its change popup show that.
+ * The "car.brakeBiasRear" text binding stays the rear share.
  */
-export function formatBrakeBias(rearFraction: number): string {
-  return (rearFraction * 100).toFixed(1)
+export function formatFrontBrakeBias(rearFraction: number): string {
+  return ((1 - rearFraction) * 100).toFixed(1)
 }
 
 /** Signed liters -> `+0.10` / `-0.05` / `0.00`, for fuel against a target. */

@@ -13,7 +13,7 @@ import { TirePosition, type AppSettings, type TelemetryFrame, type TireState } f
 import type { DashWidget } from './index'
 import { resolveBinding, type DashTargets } from './bindings'
 import {
-  formatBrakeBias,
+  formatFrontBrakeBias,
   formatDelta,
   formatFuel,
   formatFuelPerLap,
@@ -412,7 +412,7 @@ function EngineMapWidget({ frame, palette, width, height }: WidgetContentProps):
 }
 
 function BrakeBiasWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <BigValue text={formatBrakeBias(frame.car.brakeBiasRear)} template="00.0" width={width} height={height} color={palette.neutral} />
+  return <BigValue text={formatFrontBrakeBias(frame.car.brakeBiasRear)} template="00.0" width={width} height={height} color={palette.neutral} />
 }
 
 function FuelTargetWidget({ targets, palette, width, height }: WidgetContentProps): React.ReactElement {

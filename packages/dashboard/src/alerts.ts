@@ -7,7 +7,7 @@
 import type { TelemetryFrame } from '@sprint/types'
 import type { DashAlert, DashLayout } from './index'
 import { canonicalAlertColorToken, dashSettingColors, findPresetByAlertColorToken, presetSwatchColor, type DashPaletteColors } from './palette'
-import { formatBrakeBias } from './format'
+import { formatFrontBrakeBias } from './format'
 import type { DashTargets } from './bindings'
 import { LapSummaryWatcher, type LapSummary } from './lapSummary'
 
@@ -109,7 +109,7 @@ function resolveAlertColor(token: string | undefined, settingColor: string, pale
 const SETTINGS: Record<SettingAlertType, { title: string; color: string; value: (frame: TelemetryFrame) => string; max: (frame: TelemetryFrame) => number }> = {
   tc_change: { title: 'TC', color: dashSettingColors.tc, value: (frame) => String(Math.trunc(frame.electronics.tc)), max: (frame) => frame.electronics.tcMax },
   abs_change: { title: 'ABS', color: dashSettingColors.abs, value: (frame) => String(Math.trunc(frame.electronics.abs)), max: (frame) => frame.electronics.absMax },
-  bias_change: { title: 'BIAS', color: dashSettingColors.brakeBias, value: (frame) => formatBrakeBias(frame.car.brakeBiasRear), max: () => 0 },
+  bias_change: { title: 'BIAS', color: dashSettingColors.brakeBias, value: (frame) => formatFrontBrakeBias(frame.car.brakeBiasRear), max: () => 0 },
   enginemap_change: { title: 'MAP', color: dashSettingColors.engineMap, value: (frame) => String(Math.trunc(frame.electronics.motorMap)), max: (frame) => frame.electronics.motorMapMax },
 }
 
