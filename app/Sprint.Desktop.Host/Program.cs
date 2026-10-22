@@ -24,8 +24,10 @@ const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // The shipped appsettings.json sits beside the binary; the content root is wherever the host
-// was started from, so it is read from there explicitly.
+// was started from, so it is read from there explicitly. Environment variables go back on top, so
+// they still override it (e.g. Sprint__Features__SprintWeb=true for a dev run).
 builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true);
+builder.Configuration.AddEnvironmentVariables();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 WebApplication app = builder.Build();
 DesktopState state = new();
@@ -116,8 +118,12 @@ CloudSyncRunner cloudSync = new(
     runtime,
     log);
 string officialServerUrl = (builder.Configuration["Sprint:OfficialServerUrl"] ?? "").Trim();
+// Sprint web (accounts, sync, the server live stream) is behind a feature flag, off in the shipped
+// appsettings.json until the server side is ready. Off, nothing talks to a server even if a sign-in
+// is left over, and the UI hides every Sprint web surface. Sprint__Features__SprintWeb=true turns it on.
+bool sprintWeb = builder.Configuration.GetValue<bool>("Sprint:Features:SprintWeb");
 CancellationTokenSource cloudSyncCts = new();
-Task cloudSyncLoop = cloudSync.RunAsync(cloudSyncCts.Token);
+Task cloudSyncLoop = sprintWeb ? cloudSync.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
 
 // "Continue with Discord": the browser leg comes back to this host's loopback callback
 // (DiscordCallbackPage.Path, the one route without the bearer token), guarded by DiscordSignIn's nonce.
@@ -126,7 +132,7 @@ DiscordSignIn discordSignIn = new(cloudAccount);
 // Streams the session being driven to the signed-in server while sync keeps data there. Fed from
 // the telemetry loop below without waiting on it; its own worker owns the WebSocket.
 LiveUplink liveUplink = new(WebSocketLiveConnection.ConnectAsync, log);
-Task liveUplinkLoop = liveUplink.RunAsync(cloudSyncCts.Token);
+Task liveUplinkLoop = sprintWeb ? liveUplink.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
 
 GitHubReleaseSource releaseSource = new();
 UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
@@ -346,6 +352,7 @@ app.MapGet("/api/state", () =>
             },
         },
         link = peerLink.State,
+        features = new { sprintWeb },
         updates = new
         {
             version = BuildInfo.Version,

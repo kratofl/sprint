@@ -12,8 +12,8 @@ const NAV_ICON_STROKE = 1.6
  * Fluent NavigationView pane on Mica: 248px, or 48px icon-only in compact mode
  * (the hamburger toggles the persisted `sidebarCollapsed` setting). The
  * selected item gets the subtle fill plus a 3×16px brand indicator. The footer
- * holds the account row, then Settings (with a dot when an update is
- * available) and Help.
+ * holds the account row (absent while Sprint web is off), then Settings (with a
+ * dot when an update is available) and Help.
  *
  * On macOS the same markup is a full-height 224px source-list sidebar
  * (styles.mac.css): the toggle sits right of the traffic lights and hides the
@@ -25,8 +25,7 @@ export function Sidebar({
   onToggleCollapsed,
   toggleRef,
   onSelect,
-  account,
-  onOpenAccount,
+  accountRow,
   updateAvailable,
 }: {
   view: AppView
@@ -34,8 +33,8 @@ export function Sidebar({
   onToggleCollapsed: () => void
   toggleRef: RefObject<HTMLButtonElement | null>
   onSelect: (view: AppView) => void
-  account: Account | null
-  onOpenAccount: () => void
+  /** Null hides the row: Sprint web is off. */
+  accountRow: { account: Account | null; onOpen: () => void } | null
   updateAvailable: boolean
 }) {
   const mac = platform === 'mac'
@@ -59,7 +58,7 @@ export function Sidebar({
       {mac ? <div className="navview-band">{toggle}</div> : toggle}
       {primaryNav.map((item) => renderItem(item, view, collapsed, onSelect, false))}
       <div className="navview-spacer" />
-      <AccountRow account={account} collapsed={collapsed} onOpen={onOpenAccount} />
+      {accountRow && <AccountRow account={accountRow.account} collapsed={collapsed} onOpen={accountRow.onOpen} />}
       {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
     </nav>
   )

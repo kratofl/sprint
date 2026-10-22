@@ -37,6 +37,7 @@ browser launched with `--allow-file-access-from-files`.
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
 | `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. Windows look shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |
+| `sprintWeb=1` | Turns the Sprint web feature flag on: the account row, the setup and the Sprint web group in Settings. Off by default, as the app ships. Any of `account`, `setup`, `servers`, `storage`, `live` or `discord` turns it on as well |
 | `account=signed-in` | The desktop is signed in to Sprint; otherwise the account row reads "Sign in" |
 | `setup=first-run` | Sprint web setup has not run yet, so it opens on its welcome step. Any password signs in except `wrong` |
 | `servers=none` | The setup's network scan finds no server; otherwise it finds one at `192.168.1.20` |

@@ -46,7 +46,9 @@ export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: Runtime
       <PageHeader title="Settings" />
       {/* Keyed on the saved values so a reset (or any host-side change) refreshes the drafts. */}
       <ProfileGroup key={`${settings.driverName}\u0000${settings.driverNumber}`} settings={settings} send={send} />
-      <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
+      {runtime.sprint.features.sprintWeb && (
+        <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
+      )}
       <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
       <ResetGroup send={send} />
     </div>

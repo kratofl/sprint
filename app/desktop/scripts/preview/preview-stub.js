@@ -13,6 +13,8 @@
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
 //   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Windows look: Home InfoBar; Mac look: toolbar indicator)
+//   sprintWeb=1           the Sprint web feature flag is on (accounts, setup, sync). Off by default, as
+//                         shipped; any of account/setup/servers/storage/live/discord turns it on too
 //   account=signed-in     the desktop is signed in to Sprint (the account row shows the name);
 //                         otherwise it is signed out and the row reads "Sign in"
 //   setup=first-run       Sprint web setup not done yet, so the setup opens on its welcome step
@@ -107,6 +109,8 @@
     detail: live === 'Reconnecting' ? 'Could not reach Sprint web.' : null,
   }
   state.link = previewLink(params.get('link'), params.get('linkRole') === 'Engineer' ? 'Engineer' : 'Driver')
+  const sprintWebParams = ['sprintWeb', 'account', 'setup', 'servers', 'storage', 'live', 'discord']
+  state.features = { sprintWeb: sprintWebParams.some((name) => params.has(name)) && params.get('sprintWeb') !== '0' }
   const discord = params.get('discord')
   let pendingDiscord = null
   const syncReport = (uploaded, downloaded) => ({ uploaded, downloaded, conflicts: 0, removedLocally: 0 })
