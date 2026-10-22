@@ -15,7 +15,7 @@ Read every screenshot you take. Rules to check against: `docs/design/DESIGN.md`.
 ### 1. Preview pass (every touched view, light and dark)
 
 For each view you changed — `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`,
-`RaceEngineer`, `Settings`, `Help` — screenshot:
+`RaceEngineer`, `LiveLink`, `Settings`, `Help` — screenshot:
 
 - light and dark, expanded and `collapsed=1` navigation;
 - both looks: Windows, and macOS with `platform=mac` (compare against
@@ -37,7 +37,7 @@ On a copy of the data (`SPRINT_DESKTOP_DATA_ROOT`, no `devices.json`), driven ov
 - the window opens with its native chrome — Windows: the 48px title bar and caption buttons; macOS:
   the traffic lights over the sidebar's top band and the 52px toolbar — and telemetry status shows
   the real link state, never fake live data (on macOS that is `Unsupported`);
-- every navigation item and Alt+1…7 (⌘1…7) opens its view; Ctrl+K (⌘K) opens the command palette;
+- every navigation item and Alt+1…8 (⌘1…8) opens its view; Ctrl+K (⌘K) opens the command palette;
   Alt+Left (⌘[) goes back;
 - each action you touched round-trips: send it, then confirm `/api/state` changed and the view shows
   it — create/edit/delete a plan, arm and stop it; create, edit and delete a dash; add, disable and

@@ -12,18 +12,18 @@ const key = (overrides: Partial<ShortcutKey>): ShortcutKey => ({
   ...overrides,
 })
 
-test('windows: Ctrl+K opens the palette, Alt+1..7 (digit row or numpad) navigate, Alt+Left goes back', () => {
+test('windows: Ctrl+K opens the palette, Alt+1..8 (digit row or numpad) navigate, Alt+Left goes back', () => {
   assert.deepEqual(matchShortcut('windows', key({ ctrlKey: true, key: 'k', code: 'KeyK' })), { kind: 'palette' })
   assert.deepEqual(matchShortcut('windows', key({ ctrlKey: true, key: 'K', code: 'KeyK' })), { kind: 'palette' })
   assert.deepEqual(matchShortcut('windows', key({ altKey: true, key: '1', code: 'Digit1' })), { kind: 'navigate', index: 0 })
-  assert.deepEqual(matchShortcut('windows', key({ altKey: true, key: '7', code: 'Numpad7' })), { kind: 'navigate', index: 6 })
+  assert.deepEqual(matchShortcut('windows', key({ altKey: true, key: '8', code: 'Numpad8' })), { kind: 'navigate', index: 7 })
   assert.deepEqual(matchShortcut('windows', key({ altKey: true, key: 'ArrowLeft', code: 'ArrowLeft' })), { kind: 'back' })
 })
 
-test('mac: ⌘K opens the palette, ⌘1..7 (digit row or numpad) navigate, ⌘[ goes back', () => {
+test('mac: ⌘K opens the palette, ⌘1..8 (digit row or numpad) navigate, ⌘[ goes back', () => {
   assert.deepEqual(matchShortcut('mac', key({ metaKey: true, key: 'k', code: 'KeyK' })), { kind: 'palette' })
   assert.deepEqual(matchShortcut('mac', key({ metaKey: true, key: '1', code: 'Digit1' })), { kind: 'navigate', index: 0 })
-  assert.deepEqual(matchShortcut('mac', key({ metaKey: true, key: '7', code: 'Numpad7' })), { kind: 'navigate', index: 6 })
+  assert.deepEqual(matchShortcut('mac', key({ metaKey: true, key: '8', code: 'Numpad8' })), { kind: 'navigate', index: 7 })
   assert.deepEqual(matchShortcut('mac', key({ metaKey: true, key: '[', code: 'BracketLeft' })), { kind: 'back' })
 })
 
