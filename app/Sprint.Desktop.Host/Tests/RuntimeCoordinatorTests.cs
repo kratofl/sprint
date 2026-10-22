@@ -6,6 +6,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -67,6 +68,46 @@ public sealed class RuntimeCoordinatorTests
             DesktopRuntime reloaded = new(dataRoot, PresetRoot);
             Assert.Equal("Ada Lovelace", reloaded.Settings.DriverName);
             Assert.True(reloaded.Settings.SidebarCollapsed);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CloudConfigure_RecordsTheFirstRunAnswerAndPersistsIt()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(runtime.Settings.Cloud.SetupDone);
+
+            bool ok = coordinator.Execute(Command("""{"type":"cloud.configure","server":"SelfHosted","storage":"Both"}"""), out string error);
+
+            Assert.True(ok, error);
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.True(reloaded.Settings.Cloud.SetupDone);
+            Assert.Equal(CloudServerChoice.SelfHosted, reloaded.Settings.Cloud.Server);
+            Assert.Equal(CloudStorageMode.Both, reloaded.Settings.Cloud.Storage);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CloudConfigure_RejectsAnUnknownStorageMode()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command("""{"type":"cloud.configure","storage":"Everywhere"}"""), out string error);
+
+            Assert.False(ok);
+            Assert.Contains("storage", error);
+            Assert.False(runtime.Settings.Cloud.SetupDone);
         }
         finally
         {

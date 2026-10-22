@@ -186,7 +186,7 @@ public class LapShareServiceTests
     {
         var db = TestFactory.NewDb();
         var tokens = new JwtTokenService(JwtTokenService.KeyFromSecret("test-secret-long-enough-for-hs256-aaaaaa"));
-        var users = new UserService(db, new PasswordHasher(), tokens);
+        var users = new UserService(db, new PasswordHasher(), tokens, new ServerSettingsService(db));
         var registered = await users.RegisterAsync(new AuthRequest { Email = "a@b.c", Password = "pw123456" });
         var id = tokens.ValidateAndGetUserId(registered.Token)!;
 

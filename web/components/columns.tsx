@@ -1,10 +1,11 @@
-import type { SessionSummary, SetupSummary } from '@/lib/gql/generated'
+import type { Session, Setup } from '@/lib/records'
+import { drivenAt } from '@/lib/overview'
 import { formatDay } from '@/lib/period'
 import type { Column } from './Table'
 
-// Session table columns, straight from the API's SessionSummary.
-export const sessionColumns: readonly Column<SessionSummary>[] = [
-  { header: 'Date', cell: (row) => <span className="cell-muted">{formatDay(row.createdAt)}</span> },
+// Session table columns, straight from the fields sessions.graphql selects.
+export const sessionColumns: readonly Column<Session>[] = [
+  { header: 'Date', cell: (row) => <span className="cell-muted">{formatDay(drivenAt(row))}</span> },
   { header: 'Track', cell: (row) => <span className="cell-strong">{row.track}</span> },
   { header: 'Car', cell: (row) => row.car },
   { header: 'Type', cell: (row) => row.sessionType },
@@ -12,10 +13,10 @@ export const sessionColumns: readonly Column<SessionSummary>[] = [
 ]
 export const sessionTemplate = '64px minmax(0, 1.6fr) minmax(0, 1.4fr) minmax(0, 1fr) 80px'
 
-export const sessionText = (row: SessionSummary) => [row.track, row.car, row.sessionType, row.game]
+export const sessionText = (row: Session) => [row.track, row.car, row.sessionType, row.game]
 
-// Setup table columns, straight from the API's SetupSummary.
-export const setupColumns: readonly Column<SetupSummary>[] = [
+// Setup table columns, straight from the fields setups.graphql selects.
+export const setupColumns: readonly Column<Setup>[] = [
   { header: 'Name', cell: (row) => <span className="cell-strong">{row.name}</span> },
   { header: 'Car', cell: (row) => row.car },
   { header: 'Track', cell: (row) => row.track },
@@ -24,4 +25,4 @@ export const setupColumns: readonly Column<SetupSummary>[] = [
 ]
 export const setupTemplate = 'minmax(0, 1.6fr) minmax(0, 1.4fr) minmax(0, 1.2fr) 80px 72px'
 
-export const setupText = (row: SetupSummary) => [row.name, row.car, row.track, row.game]
+export const setupText = (row: Setup) => [row.name, row.car, row.track, row.game]

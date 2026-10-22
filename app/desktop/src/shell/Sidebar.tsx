@@ -3,7 +3,7 @@ import { Menu, PanelLeft } from 'lucide-react'
 import { platform } from '../platform'
 import { footerNav, primaryNav, type NavItem } from './nav'
 import { AccountRow } from './AccountRow'
-import type { AppView } from '../bridge'
+import type { Account, AppView } from '../bridge'
 
 /** Lucide's default stroke is heavier than Fluent's line icons; 1.6 matches the mockup. */
 const NAV_ICON_STROKE = 1.6
@@ -25,8 +25,8 @@ export function Sidebar({
   onToggleCollapsed,
   toggleRef,
   onSelect,
-  webAppUrl,
-  driverName,
+  account,
+  onOpenAccount,
   updateAvailable,
 }: {
   view: AppView
@@ -34,8 +34,8 @@ export function Sidebar({
   onToggleCollapsed: () => void
   toggleRef: RefObject<HTMLButtonElement | null>
   onSelect: (view: AppView) => void
-  webAppUrl: string | null
-  driverName: string | null
+  account: Account | null
+  onOpenAccount: () => void
   updateAvailable: boolean
 }) {
   const mac = platform === 'mac'
@@ -59,7 +59,7 @@ export function Sidebar({
       {mac ? <div className="navview-band">{toggle}</div> : toggle}
       {primaryNav.map((item) => renderItem(item, view, collapsed, onSelect, false))}
       <div className="navview-spacer" />
-      <AccountRow webAppUrl={webAppUrl} driverName={driverName} collapsed={collapsed} />
+      <AccountRow account={account} collapsed={collapsed} onOpen={onOpenAccount} />
       {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
     </nav>
   )

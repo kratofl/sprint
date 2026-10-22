@@ -10,9 +10,14 @@ namespace Sprint.Api.Services;
 public sealed class UserService(
     IDbContextFactory<SprintDbContext> dbFactory,
     PasswordHasher hasher,
-    JwtTokenService tokens)
+    JwtTokenService tokens,
+    ServerSettingsService settings)
 {
-    /// <summary>Creates a user and returns a signed token. Throws if the email is already registered.</summary>
+    /// <summary>
+    /// Creates a user and returns a signed token. Throws if the email is already registered, or
+    /// when the admin closed registration. The server's first account is always allowed and is
+    /// its admin — a fresh self-hosted server has nobody else to hand that to.
+    /// </summary>
     public async Task<AuthResponse> RegisterAsync(AuthRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
@@ -23,11 +28,16 @@ public sealed class UserService(
         if (await db.Users.AnyAsync(u => u.Email == request.Email, ct))
             throw new GraphQLException("Email already registered.");
 
+        bool first = !await db.Users.AnyAsync(ct);
+        if (!first && !(await settings.GetAsync(ct)).AllowRegistration)
+            throw new GraphQLException("Registration is closed on this server. Ask its admin for an account.");
+
         var user = new UserEntity
         {
             Id = Ids.New(),
             Email = request.Email,
             PasswordHash = hasher.Hash(request.Password),
+            IsAdmin = first,
             CreatedAt = DateTimeOffset.UtcNow
         };
         db.Users.Add(user);
@@ -77,11 +87,29 @@ public sealed class UserService(
         return Profile(user);
     }
 
+    /// <summary>Replaces the password after checking the current one.</summary>
+    public async Task<bool> ChangePasswordAsync(string userId, string currentPassword, string newPassword, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(newPassword) || newPassword.Length < 8)
+            throw new GraphQLException("The new password needs at least 8 characters.");
+
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
+        UserEntity user = await db.Users.FindAsync([userId], ct)
+            ?? throw new GraphQLException("That user no longer exists.");
+        if (!hasher.Verify(currentPassword ?? "", user.PasswordHash))
+            throw new GraphQLException("The current password is not right.");
+
+        user.PasswordHash = hasher.Hash(newPassword);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
     private static UserProfile Profile(UserEntity user) => new()
     {
         Id = user.Id,
         Email = user.Email,
         DisplayName = user.DisplayName,
+        IsAdmin = user.IsAdmin,
         CreatedAt = user.CreatedAt,
     };
 }

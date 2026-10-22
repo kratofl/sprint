@@ -53,6 +53,36 @@ export type PlanContextChoices = {
   byGame: PlanGameChoices[]
 }
 
+/** Who the desktop is signed in to Sprint as. `serverUrl` outlives sign-out, to prefill the next sign-in. */
+export type Account =
+  | { signedIn: true; serverUrl: string; email: string; displayName: string }
+  | { signedIn: false; serverUrl: string }
+
+export type SignInResult = { ok: true } | { ok: false; error: string }
+
+export type CloudServerChoice = 'None' | 'Official' | 'SelfHosted'
+export type CloudStorageMode = 'Local' | 'Both' | 'Remote'
+export type SyncDirection = 'upload' | 'download'
+
+/** What a sync did. A failed one still reports what it got through before stopping. */
+export type SyncReport = { uploaded: number; downloaded: number; conflicts: number; removedLocally: number } & ({ ok: true } | { ok: false; error: string })
+
+/**
+ * The first-run answer and where data lives (`AppSettings.Cloud` on the host), plus the
+ * official server's shipped address (null while there is none) and any running sync.
+ */
+export type CloudState = {
+  setupDone: boolean
+  server: CloudServerChoice
+  storage: CloudStorageMode
+  officialServerUrl: string | null
+  progress: { direction: SyncDirection; done: number; total: number } | null
+  lastSync: { at: string; direction: SyncDirection; report: SyncReport } | null
+}
+
+/** A Sprint server that answered on the local network. */
+export type DiscoveredServer = { url: string; version: string }
+
 export type SprintState = {
   /** `frame` is already converted from the host's C# shape to the dash renderer's (`telemetryFrame.ts`). */
   telemetry: { frame: TelemetryFrame | null; link: TelemetryLink; hz: number }
@@ -63,6 +93,8 @@ export type SprintState = {
   engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
   plans: Array<Record<string, unknown>>; lapHistory: Array<Record<string, unknown>>
   resultsImport: ResultsImportSource
+  account: Account
+  cloud: CloudState
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
@@ -94,6 +126,11 @@ export type SprintBridge = {
   resultsImportDecline(entries: readonly string[]): Promise<void>
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<UpdateInstallResult>
+  signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<SignInResult>
+  signOut(): Promise<void>
+  discoverServers(): Promise<DiscoveredServer[]>
+  syncUp(): Promise<SyncReport>
+  syncDown(): Promise<SyncReport>
 }
 
 type RawBridge = {
@@ -108,9 +145,15 @@ type RawBridge = {
   resultsImportDecline(entries: readonly string[]): Promise<unknown>
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<unknown>
+  signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown>
+  signOut(): Promise<unknown>
+  discoverServers(): Promise<unknown>
+  syncUp(): Promise<unknown>
+  syncDown(): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), screens: [] })
+const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const noLink = (): TelemetryLink => ({ state: 'Disconnected', sourceName: '', detail: null, lastFrameValid: true, invalidReason: null })
 const isLinkState = (value: unknown): value is TelemetryLinkState =>
@@ -157,6 +200,67 @@ const parseResultsImportResult = (value: unknown): ResultsImportResult => {
   return { outcome: 'failed', error }
 }
 
+/** Narrows the host's `CloudAccountState` once, here. Anything malformed reads as signed out. */
+const parseAccount = (value: unknown): Account => {
+  if (!isRecord(value)) return { signedIn: false, serverUrl: '' }
+  const serverUrl = typeof value.serverUrl === 'string' ? value.serverUrl : ''
+  if (value.signedIn !== true || typeof value.email !== 'string') return { signedIn: false, serverUrl }
+  return { signedIn: true, serverUrl, email: value.email, displayName: typeof value.displayName === 'string' ? value.displayName : '' }
+}
+
+const parseSignInResult = (value: unknown): SignInResult => {
+  if (isRecord(value) && value.ok === true) return { ok: true }
+  const error = isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : 'The host returned an unexpected response.'
+  return { ok: false, error }
+}
+
+const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0)
+
+/** Narrows the host's `SyncReport` once, here. Anything malformed reads as a failed sync. */
+const parseSyncReport = (value: unknown): SyncReport => {
+  if (!isRecord(value)) return { uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'The host returned an unexpected response.' }
+  const counts = { uploaded: count(value.uploaded), downloaded: count(value.downloaded), conflicts: count(value.conflicts), removedLocally: count(value.removedLocally) }
+  return typeof value.error === 'string' && value.error.length > 0 ? { ...counts, ok: false, error: value.error } : { ...counts, ok: true }
+}
+
+/** A sync the host never answered (stopped, timed out) reads as failed, like any other. */
+const syncFailed = (): SyncReport => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'Sprint’s host did not answer. Try again.' })
+
+const isSyncDirection = (value: unknown): value is SyncDirection => value === 'upload' || value === 'download'
+
+/**
+ * Narrows the host's `cloud` state. A host that sends none predates the first-run setup, so it
+ * reads as already set up rather than opening the setup over a working app.
+ */
+const parseCloud = (value: unknown): CloudState => {
+  if (!isRecord(value)) return emptyCloud()
+  const server: CloudServerChoice = value.server === 'Official' || value.server === 'SelfHosted' ? value.server : 'None'
+  const storage: CloudStorageMode = value.storage === 'Both' || value.storage === 'Remote' ? value.storage : 'Local'
+  const progress = isRecord(value.progress) && isSyncDirection(value.progress.direction)
+    ? { direction: value.progress.direction, done: count(value.progress.done), total: count(value.progress.total) }
+    : null
+  const lastSync = isRecord(value.lastSync) && typeof value.lastSync.at === 'string' && isSyncDirection(value.lastSync.direction)
+    ? { at: value.lastSync.at, direction: value.lastSync.direction, report: parseSyncReport(value.lastSync.report) }
+    : null
+  return {
+    setupDone: value.setupDone !== false,
+    server,
+    storage,
+    officialServerUrl: optionalString(value.officialServerUrl),
+    progress,
+    lastSync,
+  }
+}
+
+const parseDiscovered = (value: unknown): DiscoveredServer[] =>
+  isRecord(value) && Array.isArray(value.servers)
+    ? value.servers.flatMap((server: unknown) =>
+        isRecord(server) && typeof server.url === 'string' && server.url.length > 0
+          ? [{ url: server.url, version: typeof server.version === 'string' ? server.version : '' }]
+          : [],
+      )
+    : []
+
 const emptyPlanContext = (): PlanContextChoices => ({ prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [] })
 
 /** Narrows the host's `PlanContextChoices` once, here. */
@@ -187,6 +291,8 @@ const parseState = (value: unknown): SprintState => {
     hz: typeof telemetry.hz === 'number' && Number.isFinite(telemetry.hz) ? telemetry.hz : 0,
   }
   parsed.resultsImport = parseResultsImportSource(value.resultsImport)
+  parsed.account = parseAccount(value.account)
+  parsed.cloud = parseCloud(value.cloud)
   return parsed
 }
 /** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
@@ -226,6 +332,11 @@ export const bridge: SprintBridge = raw
       resultsImportDecline: async (entries) => { await raw.resultsImportDecline(entries) },
       checkUpdates: (force) => raw.checkUpdates(force),
       installUpdate: async () => parseUpdateInstallResult(await raw.installUpdate()),
+      signIn: async (serverUrl, email, password, createAccount) => parseSignInResult(await raw.signIn(serverUrl, email, password, createAccount)),
+      signOut: async () => { await raw.signOut() },
+      discoverServers: async () => parseDiscovered(await raw.discoverServers()),
+      syncUp: () => raw.syncUp().then(parseSyncReport, syncFailed),
+      syncDown: () => raw.syncDown().then(parseSyncReport, syncFailed),
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
@@ -240,4 +351,9 @@ export const bridge: SprintBridge = raw
       resultsImportDecline: async () => undefined,
       checkUpdates: async () => null,
       installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+      signIn: async () => ({ ok: false, error: 'There is no Sprint host to sign in from.' }),
+      signOut: async () => undefined,
+      discoverServers: async () => [],
+      syncUp: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
+      syncDown: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
     }

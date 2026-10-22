@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('sprint', {
   resultsImportDecline: (ids: readonly string[]): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-decline', ids),
   checkUpdates: (force: boolean): Promise<unknown> => ipcRenderer.invoke('sprint:updates-check', force),
   installUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-install'),
+  signIn: (serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> =>
+    ipcRenderer.invoke('sprint:account-sign-in', serverUrl, email, password, createAccount),
+  signOut: (): Promise<unknown> => ipcRenderer.invoke('sprint:account-sign-out'),
+  discoverServers: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-discover'),
+  syncUp: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-push'),
+  syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
   subscribe: (listener: (state: unknown) => void): (() => void) => {
     const onState = (_event: Electron.IpcRendererEvent, state: unknown): void => listener(state)
     ipcRenderer.on('sprint:state', onState)

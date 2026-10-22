@@ -130,6 +130,18 @@ ipcMain.handle('sprint:results-import-decline', (_event: IpcMainInvokeEvent, ids
   return nativeHost.resultsImportDecline(readEntryIds(ids))
 })
 
+ipcMain.handle('sprint:account-sign-in', (_event: IpcMainInvokeEvent, serverUrl: unknown, email: unknown, password: unknown, createAccount: unknown) => {
+  if (typeof serverUrl !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+    throw new Error('A server address, email and password are required.')
+  }
+  return nativeHost.accountSignIn(serverUrl, email, password, createAccount === true)
+})
+
+ipcMain.handle('sprint:account-sign-out', () => nativeHost.accountSignOut())
+ipcMain.handle('sprint:cloud-discover', () => nativeHost.cloudDiscover())
+ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
+ipcMain.handle('sprint:cloud-pull', () => nativeHost.cloudPull())
+
 ipcMain.handle('sprint:updates-check', (_event: IpcMainInvokeEvent, force: unknown) => {
   return nativeHost.checkUpdates(force === true)
 })
@@ -173,15 +185,39 @@ ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
   subscribers.delete(event.sender)
 })
 
-const look = windowLook(process.platform)
+const isMac = process.platform === 'darwin'
+/** The look the main window wears. Follows the OS, except after the dev toggle (`toggleLook`). */
+let look = windowLook(process.platform)
 const micaSupported = supportsMica(process.platform, os.release())
+let mainWindow: BrowserWindow | undefined
 
 function currentChrome(): WindowChrome {
   const dark = nativeTheme.shouldUseDarkColors
   const reducedTransparency = nativeTheme.prefersReducedTransparency
   return look === 'mac'
-    ? windowChrome({ look, dark, reducedTransparency })
+    ? windowChrome({ look, dark, reducedTransparency, vibrancySupported: isMac })
     : windowChrome({ look, dark, reducedTransparency, micaSupported })
+}
+
+/**
+ * Dev only: reopen the main window in the other OS look, so both can be checked on
+ * one machine. A reopen rather than a restyle, because the caption buttons, traffic
+ * lights and backdrop are fixed when a window is created. The new window opens
+ * before the old one closes, so `window-all-closed` never stops the host.
+ */
+function toggleLook(): void {
+  const previous = mainWindow
+  look = look === 'mac' ? 'windows' : 'mac'
+  const next = createWindow()
+  if (previous) {
+    next.setBounds(previous.getBounds())
+    previous.destroy()
+  }
+}
+
+/** ⌘⌥⇧L on macOS, Ctrl+Alt+Shift+L elsewhere: `TOGGLE_LOOK_ACCELERATOR` in appMenu.ts. */
+function isToggleLookKey(input: Electron.Input): boolean {
+  return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
 /** Height of the renderer's title bar (styles.css `.titlebar`); the caption buttons fill it. */
@@ -239,7 +275,8 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
       const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
       if (micaSupported) window.setBackgroundMaterial(chrome.kind === 'mica' ? 'mica' : 'none')
       window.setBackgroundColor(background)
-      window.setTitleBarOverlay({ color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+      // Windows/Linux only; macOS reaches this in the dev look toggle.
+      if (!isMac) window.setTitleBarOverlay({ color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
       return
     }
     case 'vibrancy':
@@ -247,7 +284,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
       window.setBackgroundColor(TRANSPARENT)
       return
     case 'opaque':
-      window.setVibrancy(null)
+      if (isMac) window.setVibrancy(null)
       window.setBackgroundColor(chrome.background)
       return
   }
@@ -270,6 +307,18 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
+  mainWindow = window
+  window.once('closed', () => { if (mainWindow === window) mainWindow = undefined })
+  // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
+  // and icon, so hide them. ⌘W and ⌘Q still close the window.
+  if (isMac && look === 'windows') window.setWindowButtonVisibility(false)
+  if (!app.isPackaged) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (!isToggleLookKey(input)) return
+      event.preventDefault()
+      toggleLook()
+    })
+  }
   // Views link out with plain `target="_blank"` anchors (e.g. Settings/Help's "View
   // release"). Without a handler, Electron opens those in a second frameless Electron
   // window instead of the system browser. Deny every new-window request and hand
@@ -318,11 +367,11 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
   // No OS menu bar on Windows: every command this app has lives in its own UI.
   // macOS needs the standard menu for Quit, Hide, window keys and text editing.
-  Menu.setApplicationMenu(look === 'mac' ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged })) : null)
+  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook })) : null)
   // A packaged build gets its icon from the bundle. A dev run may be Electron's own
   // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
   // the version already shaped and inset to Apple's icon grid.
-  if (look === 'mac' && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
+  if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
   await startNativeHost()
   offscreen = new OffscreenOutputs(
     rendererBaseUrl(),

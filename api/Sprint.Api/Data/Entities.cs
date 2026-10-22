@@ -20,7 +20,22 @@ public sealed class UserEntity
     /// </summary>
     public string DisplayName { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+
+    /// <summary>May change the server settings. The first account on a server is the admin.</summary>
+    public bool IsAdmin { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>The one row of server-wide settings, keyed <see cref="SingletonId"/>. Absent until an admin first saves.</summary>
+public sealed class ServerSettingsEntity
+{
+    public const string SingletonId = "server";
+
+    [Key]
+    public string Id { get; set; } = SingletonId;
+    public string InstanceName { get; set; } = "Sprint";
+    public bool AllowRegistration { get; set; } = true;
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 /// <summary>
@@ -83,6 +98,8 @@ public sealed class SessionEntity
     public string Track { get; set; } = "";
     public string Car { get; set; } = "";
     public string SessionType { get; set; } = "unknown";
+    public DateTimeOffset? StartedAt { get; set; }
+    public string Data { get; set; } = "{}";
     public DateTimeOffset CreatedAt { get; set; }
 }
 

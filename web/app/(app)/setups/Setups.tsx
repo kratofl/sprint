@@ -7,12 +7,12 @@ import SearchField from '@/components/SearchField'
 import Table from '@/components/Table'
 import { Card, EmptyState } from '@/components/Card'
 import { setupColumns, setupTemplate, setupText } from '@/components/columns'
-import { setups } from '@/lib/data'
 import { newestFirst } from '@/lib/overview'
+import type { Setup } from '@/lib/records'
 import { matchesQuery } from '@/lib/search'
 
 // Setup bank: saved car setups in one table, filtered from the toolbar search.
-export default function Setups() {
+export default function Setups({ setups }: { setups: readonly Setup[] }) {
   const [query, setQuery] = useState('')
   const rows = newestFirst(setups, (setup) => setup.updatedAt).filter((setup) => matchesQuery(setupText(setup), query))
 

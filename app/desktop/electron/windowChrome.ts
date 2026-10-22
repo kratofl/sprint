@@ -12,6 +12,10 @@
  * renderer paints its content opaque and leaves the sidebar translucent. With
  * "Reduce transparency" on there is no vibrancy, only the solid sidebar colour.
  * The traffic lights draw their own colours, so there is no `symbol`.
+ *
+ * Vibrancy and Mica only exist on their own OS. Off it (the dev look switch in
+ * `main.ts`) the look falls back to its solid colour, like the accessibility
+ * settings above.
  */
 export type WindowChrome =
   | { kind: 'mica'; symbol: string }
@@ -24,7 +28,7 @@ export type WindowLook = 'windows' | 'mac'
 
 export type ChromeInput =
   | { look: 'windows'; dark: boolean; reducedTransparency: boolean; micaSupported: boolean }
-  | { look: 'mac'; dark: boolean; reducedTransparency: boolean }
+  | { look: 'mac'; dark: boolean; reducedTransparency: boolean; vibrancySupported: boolean }
 
 /** Fully transparent, so the system backdrop shows through the page and the caption buttons. */
 export const TRANSPARENT = '#00000000'
@@ -42,7 +46,7 @@ export function windowLook(platform: string): WindowLook {
  */
 export function windowChrome(input: ChromeInput): WindowChrome {
   if (input.look === 'mac') {
-    if (!input.reducedTransparency) return { kind: 'vibrancy' }
+    if (input.vibrancySupported && !input.reducedTransparency) return { kind: 'vibrancy' }
     return { kind: 'opaque', background: input.dark ? '#28282a' : '#f6f6f8' }
   }
   const symbol = input.dark ? '#ffffff' : '#1a1a1a'

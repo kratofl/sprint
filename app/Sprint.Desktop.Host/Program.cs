@@ -12,6 +12,7 @@ using Sprint.Desktop.Features.Diagnostics;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
 using Sprint.Desktop.Runtime;
@@ -20,6 +21,9 @@ using Sprint.Games;
 const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+// The shipped appsettings.json sits beside the binary; the content root is wherever the host
+// was started from, so it is read from there explicitly.
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true);
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 WebApplication app = builder.Build();
 DesktopState state = new();
@@ -92,6 +96,22 @@ ResultsImports resultsImports = new(
 // unattended install. UpdateCheckSession caches the last result per (version, channel) so
 // repeated polls do not re-hit the network; ?force=true bypasses the cache for an explicit
 // "Check for updates" action.
+// The Sprint account: signing in goes over the network, so it has focused endpoints rather than
+// a command, and /api/state only reports who is signed in. Kept beside the runtime's other data.
+// Discovery and sync share its transport. The official server's address ships in appsettings.json
+// (Sprint:OfficialServerUrl); empty means there is no official server yet.
+SocketsHttpHandler cloudTransport = new() { ConnectTimeout = TimeSpan.FromSeconds(10) };
+CloudAccount cloudAccount = new(new CloudSession(runtime.DataRoot, log), cloudTransport);
+ServerDiscovery serverDiscovery = new(cloudTransport);
+CloudSyncRunner cloudSync = new(
+    cloudAccount,
+    new CloudSync(new RuntimeSyncLocal(runtime, lapHistoryStore, log), new CloudSyncLedger(runtime.DataRoot, log)),
+    runtime,
+    log);
+string officialServerUrl = (builder.Configuration["Sprint:OfficialServerUrl"] ?? "").Trim();
+CancellationTokenSource cloudSyncCts = new();
+Task cloudSyncLoop = cloudSync.RunAsync(cloudSyncCts.Token);
+
 GitHubReleaseSource releaseSource = new();
 UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
 
@@ -209,6 +229,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
     ingestion.Close();
     telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
+    cloudSyncCts.Cancel();
     screenOutputs.Dispose();
 });
 
@@ -279,6 +300,16 @@ app.MapGet("/api/state", () =>
         {
             logLevel = liveLog.MinimumLevel,
             directory = diagnosticsPaths.Root,
+        },
+        account = cloudAccount.State,
+        cloud = new
+        {
+            setupDone = runtime.Settings.Cloud.SetupDone,
+            server = runtime.Settings.Cloud.Server,
+            storage = runtime.Settings.Cloud.Storage,
+            officialServerUrl,
+            progress = cloudSync.Progress,
+            lastSync = cloudSync.Last,
         },
         updates = new
         {
@@ -356,6 +387,46 @@ app.MapPost("/api/results-import/decline", async (ResultsImportRequest body, Can
     }
 
     await resultsImports.DeclineAsync(ids, ct);
+    return Results.NoContent();
+});
+
+app.MapPost("/api/account/sign-in", async (AccountSignInRequest body, CancellationToken ct) =>
+{
+    if (!body.IsComplete)
+    {
+        return Results.BadRequest(new { error = "serverUrl, email and password are required" });
+    }
+
+    CloudSignInResult result = await cloudAccount.SignInAsync(body.ServerUrl ?? "", body.Email ?? "", body.Password ?? "", body.CreateAccount, ct);
+    return Results.Json(result, json);
+});
+
+// Looks for Sprint servers on the local network: this machine, then its /24. A few seconds.
+app.MapPost("/api/cloud/discover", async (CancellationToken ct) =>
+{
+    IReadOnlyList<Uri> candidates = ServerDiscovery.Candidates(ServerDiscovery.LocalInterfaces(), ServerDiscovery.DefaultPort);
+    IReadOnlyList<DiscoveredServer> servers = await serverDiscovery.ScanAsync(candidates, ct);
+    return Results.Json(new { servers }, json);
+});
+
+app.MapPost("/api/cloud/push", async (CancellationToken ct) =>
+{
+    SyncReport report = await cloudSync.PushAsync(ct);
+    // "Web only" may have removed sessions behind Analysis' session list.
+    if (report.RemovedLocally > 0) analysisController.Load();
+    return Results.Json(report, json);
+});
+
+app.MapPost("/api/cloud/pull", async (CancellationToken ct) =>
+{
+    SyncReport report = await cloudSync.PullAsync(ct);
+    if (report.Downloaded > 0) analysisController.Load();
+    return Results.Json(report, json);
+});
+
+app.MapPost("/api/account/sign-out", () =>
+{
+    cloudAccount.SignOut();
     return Results.NoContent();
 });
 

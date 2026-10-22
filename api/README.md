@@ -37,8 +37,10 @@ data using one DTO vocabulary.
 ## Running
 
 ```powershell
-# Local dev (hot reload). Needs Postgres reachable via DATABASE_URL; InfluxDB is
-# optional locally (telemetry writes are a no-op when INFLUXDB_URL is unset).
+# Local dev (hot reload). Starts the compose Postgres first (needs Docker running);
+# InfluxDB is optional locally (telemetry writes are a no-op when INFLUXDB_URL is unset).
+# Runs as Development (Properties/launchSettings.json), which seeds the local sign-in
+# admin@sprint.local / admin (Services/DevSeeder.cs). The container never seeds.
 make dev-api
 
 # Publish

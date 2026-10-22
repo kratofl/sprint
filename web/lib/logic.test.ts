@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { SessionSummary, SetupSummary } from './gql/generated'
+import type { Session, Setup } from './records.ts'
 import { isActive } from './navigation.ts'
 import { formatMonth, shiftMonth } from './period.ts'
 import { matchesQuery } from './search.ts'
@@ -29,8 +29,8 @@ test('search ignores queries shorter than two characters', () => {
   assert.equal(matchesQuery(['Spa', 'Porsche 963'], ' porSCHE '), true)
 })
 
-const session = (id: string, createdAt: string, track: string, car: string): SessionSummary => ({
-  id, createdAt, track, car, game: 'LMU', ownerId: 'me', sessionType: 'Practice',
+const session = (id: string, createdAt: string, track: string, car: string): Session => ({
+  id, createdAt, startedAt: null, track, car, game: 'LMU', sessionType: 'Practice',
 })
 
 test('overview KPIs stay empty until something is synced', () => {
@@ -44,7 +44,7 @@ test('overview KPIs count the selected month only', () => {
     session('b', '2026-09-20T10:00:00Z', 'Spa', 'Ferrari 499P'),
     session('c', '2026-08-30T10:00:00Z', 'Monza', 'Porsche 963'),
   ]
-  const setups: SetupSummary[] = []
+  const setups: Setup[] = []
   const kpis = overviewKpis(sessions, setups, { year: 2026, month: 8 })
   assert.deepEqual(
     kpis.map((kpi) => (kpi.kind === 'value' ? kpi.value : null)),

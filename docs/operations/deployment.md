@@ -50,8 +50,16 @@ nameservers at Cloudflare before continuing.
    The matching DNS records are created automatically.
 
 The `api` hostname is what the desktop client talks to. The browser does not
-need it: `web/next.config.ts` rewrites `/api/*` and `/graphql` to the API from
-the server side, so the web app works over the `sprint` hostname alone.
+need it: the web app calls the API only from its server (`API_URL`, pinned to
+`http://api:8080` in `docker-compose.yml`), so it works over the `sprint`
+hostname alone.
+
+Sign-in runs through Next.js Server Actions, which reject a request whose
+`Origin` host differs from the host the server sees (`x-forwarded-host`, else
+`Host`). The tunnel forwards the public hostname by default, so nothing is
+needed. If you set an **HTTP Host Header** override on the hostname's origin
+settings, sign-in fails until the public hostname (`sprint.your-domain.tld`) is
+listed in `experimental.serverActions.allowedOrigins` in `web/next.config.ts`.
 
 ## 3. Host: get the stack running
 
@@ -141,7 +149,9 @@ git pull
 docker compose --profile tunnel up -d --build
 ```
 
-The API applies its schema on startup, so no separate migration step is needed.
+The API applies its schema on startup (new tables and columns included — see
+[the schema note](../internals/cloud-sync.md#server-schema-upgrades)), so no separate migration
+step is needed.
 
 ## Troubleshooting
 

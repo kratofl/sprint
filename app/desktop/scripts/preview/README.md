@@ -37,6 +37,10 @@ browser launched with `--allow-file-access-from-files`.
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
 | `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. Windows look shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |
+| `account=signed-in` | The desktop is signed in to Sprint; otherwise the account row reads "Sign in" |
+| `setup=first-run` | Sprint web setup has not run yet, so it opens on its welcome step. Any password signs in except `wrong` |
+| `servers=none` | The setup's network scan finds no server; otherwise it finds one at `192.168.1.20` |
+| `storage=Both` / `storage=Remote` | Where data lives (default: this PC only). `Both` also reports a last upload in Settings |
 | `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-list .list-row&click=.command-bar .button.subtle.destructive` selects a device and opens the remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
 
 ## How it works

@@ -13,6 +13,11 @@
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
 //   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Windows look: Home InfoBar; Mac look: toolbar indicator)
+//   account=signed-in     the desktop is signed in to Sprint (the account row shows the name);
+//                         otherwise it is signed out and the row reads "Sign in"
+//   setup=first-run       Sprint web setup not done yet, so the setup opens on its welcome step
+//   servers=none          the network scan finds no server (default: one at 192.168.1.20)
+//   storage=Both|Remote   where data lives (default: This PC only); Both also reports a last upload
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
 //                         repeat the parameter to click several things in order
 ;(() => {
@@ -34,6 +39,24 @@
   }
   // Payloads captured before the results import existed carry no `resultsImport`; preview as LMU does.
   state.resultsImport ??= { available: true, sourceName: 'the Le Mans Ultimate results folder' }
+  state.account =
+    params.get('account') === 'signed-in'
+      ? { signedIn: true, serverUrl: 'http://localhost:8080', email: 'alex@sprint.local', displayName: 'Alex Morgan' }
+      : { signedIn: false, serverUrl: 'http://localhost:8080', email: '', displayName: '' }
+
+  const storage = params.get('storage')
+  state.cloud = {
+    setupDone: params.get('setup') !== 'first-run',
+    server: state.account.signedIn ? 'SelfHosted' : 'None',
+    storage: storage === 'Both' || storage === 'Remote' ? storage : 'Local',
+    officialServerUrl: null,
+    progress: null,
+    lastSync:
+      storage === 'Both'
+        ? { at: '2026-10-06T09:30:00Z', direction: 'upload', report: { uploaded: 14, downloaded: 0, conflicts: 0, removedLocally: 0 } }
+        : null,
+  }
+  const syncReport = (uploaded, downloaded) => ({ uploaded, downloaded, conflicts: 0, removedLocally: 0 })
 
   window.sprint = {
     getState: async () => state,
@@ -80,6 +103,17 @@
         ? { updateAvailable: true, latest: { version: '0.2.0', channel: 'stable', url: 'https://example.invalid/release' } }
         : { updateAvailable: false },
     installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+    // Any password signs in except "wrong", which shows the error.
+    signIn: async (serverUrl, email, password) =>
+      password === 'wrong' ? { ok: false, error: 'Invalid credentials.' } : { ok: true },
+    signOut: async () => null,
+    // Long enough for the scan bar to show; a real sweep takes a few seconds.
+    discoverServers: () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ servers: params.get('servers') === 'none' ? [] : [{ url: 'http://192.168.1.20:8080', version: '0.1.0' }] }), 1200),
+      ),
+    syncUp: async () => syncReport(14, 0),
+    syncDown: async () => syncReport(0, 3),
   }
 
   // Pages are reached through the app's own input paths, so the preview adds

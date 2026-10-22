@@ -1,0 +1,10 @@
+# The signed-in user, for the sidebar footer.
+query Me {
+  me {
+    id
+    email
+    displayName
+    isAdmin
+    createdAt
+  }
+}

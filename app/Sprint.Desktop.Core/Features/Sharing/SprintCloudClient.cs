@@ -84,6 +84,12 @@ public sealed class SprintCloudClient
             ["revokeSharedLap"] = "mutation($c:String!){revokeSharedLap(code:$c){id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
             ["mySharedLaps"] = "{mySharedLaps{id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
             ["sharedLap"] = "query($c:String!){sharedLap(code:$c){shareCode sharedBy game trackCourse carModel lapNumber lapTimeSeconds drivenAt payloadBase64}}",
+            ["saveSession"] = "mutation($i:SaveSessionInput!){saveSession(input:$i){id}}",
+            ["saveSetup"] = "mutation($i:SaveSetupInput!){saveSetup(input:$i){id}}",
+            ["saveLayout"] = "mutation($i:SaveLayoutInput!){saveLayout(input:$i){id}}",
+            ["sessions"] = "{sessions{id game track car sessionType startedAt data createdAt}}",
+            ["setups"] = "{setups{id name data createdAt updatedAt}}",
+            ["layouts"] = "{layouts{id name data createdAt updatedAt}}",
         };
 
     public Task<CloudResult<AuthResponse>> RegisterAsync(string email, string password, CancellationToken ct = default) =>
@@ -109,6 +115,24 @@ public sealed class SprintCloudClient
 
     public Task<CloudResult<SharedLapDto>> FetchLapAsync(string code, CancellationToken ct = default) =>
         CallAsync<SharedLapDto>("sharedLap", new { c = code }, ct);
+
+    public Task<CloudResult<SessionSummary>> SaveSessionAsync(SaveSessionInput input, CancellationToken ct = default) =>
+        CallAsync<SessionSummary>("saveSession", new { i = input }, ct);
+
+    public Task<CloudResult<SetupSummary>> SaveSetupAsync(SaveSetupInput input, CancellationToken ct = default) =>
+        CallAsync<SetupSummary>("saveSetup", new { i = input }, ct);
+
+    public Task<CloudResult<LayoutSummary>> SaveLayoutAsync(SaveLayoutInput input, CancellationToken ct = default) =>
+        CallAsync<LayoutSummary>("saveLayout", new { i = input }, ct);
+
+    public Task<CloudResult<List<SessionSummary>>> SessionsAsync(CancellationToken ct = default) =>
+        CallAsync<List<SessionSummary>>("sessions", null, ct);
+
+    public Task<CloudResult<List<SetupSummary>>> SetupsAsync(CancellationToken ct = default) =>
+        CallAsync<List<SetupSummary>>("setups", null, ct);
+
+    public Task<CloudResult<List<LayoutSummary>>> LayoutsAsync(CancellationToken ct = default) =>
+        CallAsync<List<LayoutSummary>>("layouts", null, ct);
 
     private async Task<CloudResult<T>> CallAsync<T>(
         string field,

@@ -46,6 +46,33 @@ public sealed class CatalogService(IDbContextFactory<SprintDbContext> dbFactory)
         return ToDto(row);
     }
 
+    /// <summary>Creates or updates an uploaded session. An id that belongs to another owner reads as not found.</summary>
+    public async Task<SessionSummary> SaveSessionAsync(string ownerId, SaveSessionInput input, CancellationToken ct = default)
+    {
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
+        SessionEntity row;
+        if (!string.IsNullOrEmpty(input.Id) && await db.Sessions.FindAsync([input.Id], ct) is { } existing)
+        {
+            if (existing.OwnerId != ownerId)
+                throw new GraphQLException("Session not found.");
+            row = existing;
+        }
+        else
+        {
+            row = new SessionEntity { Id = Ids.New(), OwnerId = ownerId, CreatedAt = DateTimeOffset.UtcNow };
+            db.Sessions.Add(row);
+        }
+
+        row.Game = input.Game;
+        row.Track = input.Track;
+        row.Car = input.Car;
+        row.SessionType = string.IsNullOrEmpty(input.SessionType) ? "unknown" : input.SessionType;
+        row.StartedAt = input.StartedAt;
+        row.Data = string.IsNullOrEmpty(input.Data) ? "{}" : input.Data;
+        await db.SaveChangesAsync(ct);
+        return ToDto(row);
+    }
+
     // ── Setups ──────────────────────────────────────────────────────────────
     public async Task<IReadOnlyList<SetupSummary>> ListSetupsAsync(string ownerId, CancellationToken ct = default)
     {
@@ -133,7 +160,7 @@ public sealed class CatalogService(IDbContextFactory<SprintDbContext> dbFactory)
     private static SessionSummary ToDto(SessionEntity e) => new()
     {
         Id = e.Id, OwnerId = e.OwnerId, Game = e.Game, Track = e.Track,
-        Car = e.Car, SessionType = e.SessionType, CreatedAt = e.CreatedAt
+        Car = e.Car, SessionType = e.SessionType, StartedAt = e.StartedAt, Data = e.Data, CreatedAt = e.CreatedAt
     };
 
     private static SetupSummary ToDto(SetupEntity e) => new()

@@ -7,14 +7,14 @@ import SearchField from '@/components/SearchField'
 import Table from '@/components/Table'
 import { Card, EmptyState } from '@/components/Card'
 import { sessionColumns, sessionTemplate, sessionText } from '@/components/columns'
-import { sessions } from '@/lib/data'
-import { newestFirst } from '@/lib/overview'
+import { drivenAt, newestFirst } from '@/lib/overview'
+import type { Session } from '@/lib/records'
 import { matchesQuery } from '@/lib/search'
 
 // Session library: every synced session in one table, filtered from the toolbar search.
-export default function Sessions() {
+export default function Sessions({ sessions }: { sessions: readonly Session[] }) {
   const [query, setQuery] = useState('')
-  const rows = newestFirst(sessions, (session) => session.createdAt).filter((session) => matchesQuery(sessionText(session), query))
+  const rows = newestFirst(sessions, drivenAt).filter((session) => matchesQuery(sessionText(session), query))
 
   return (
     <Page

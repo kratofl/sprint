@@ -53,10 +53,25 @@ public sealed class Mutation
     public Task<UserProfile> SetDisplayName(string displayName, ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>
         users.SetDisplayNameAsync(user.RequireUserId(), displayName, ct);
 
+    /// <summary>Replaces the signed-in user's password after checking the current one.</summary>
+    [Authorize]
+    public Task<bool> ChangePassword(string currentPassword, string newPassword, ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>
+        users.ChangePasswordAsync(user.RequireUserId(), currentPassword, newPassword, ct);
+
+    /// <summary>Admin only: the server's name and whether strangers may register.</summary>
+    [Authorize]
+    public Task<ServerSettingsDto> UpdateServerSettings(UpdateServerSettingsInput input, ClaimsPrincipal user, [Service] ServerSettingsService settings, CancellationToken ct) =>
+        settings.UpdateAsync(user.RequireUserId(), input, ct);
+
     // ── Catalog ────────────────────────────────────────────────────────────────
     [Authorize]
     public Task<SessionSummary> CreateSession(CreateSessionInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
         catalog.CreateSessionAsync(user.RequireUserId(), input, ct);
+
+    /// <summary>Uploads a session from the desktop, or updates one it uploaded before.</summary>
+    [Authorize]
+    public Task<SessionSummary> SaveSession(SaveSessionInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
+        catalog.SaveSessionAsync(user.RequireUserId(), input, ct);
 
     [Authorize]
     public Task<SetupSummary> SaveSetup(SaveSetupInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
