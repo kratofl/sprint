@@ -91,7 +91,7 @@ export function widgetChrome(widget: DashWidget, frame: TelemetryFrame, palette:
   switch (widget.type) {
     case 'input_trace': return framed('INPUTS')
     case 'sector': return framed('SECTORS')
-    case 'lap_time': return framed('LAP TIMES')
+    case 'lap_time': return framed(LAP_TIME_TITLES[lapTimeShow(widget)])
     case 'delta': return framed('DELTA', null, deltaFill(frame, palette))
     case 'fuel': return framed('FUEL', null, fuelFill(frame.car.fuel, palette))
     case 'tc': return framed('TC', dashSettingColors.tc)
@@ -100,7 +100,7 @@ export function widgetChrome(widget: DashWidget, frame: TelemetryFrame, palette:
     case 'brake_bias': return framed('BIAS', dashSettingColors.brakeBias)
     case 'fuel_target': return framed('FUEL TARGET')
     case 'position': return framed('POS')
-    case 'gaps': return framed('GAPS')
+    case 'gaps': return framed(GAP_TITLES[gapSide(widget)])
     case 'predictive_lap': return framed('PREDICTED')
     case 'virtual_energy': case 'ers': return framed('VIRTUAL ENERGY', null, energyFill(virtualEnergyPercent(frame), palette))
     case 'tyre_temp': case 'tyre_pressure': return { kind: 'split' }
@@ -254,12 +254,27 @@ function SectorWidget({ frame, palette, width, height }: WidgetContentProps): Re
   )
 }
 
-function LapTimeWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
+type LapTimeShow = 'all' | 'current' | 'last' | 'best'
+const LAP_TIME_TITLES: Record<LapTimeShow, string> = { all: 'LAP TIMES', current: 'LAP', last: 'LAST', best: 'BEST' }
+
+/** The lap_time widget's "show" config: all three times stacked, or one of them large. */
+function lapTimeShow(widget: DashWidget): LapTimeShow {
+  const show = configString(widget.config, 'show')
+  return show === 'current' || show === 'last' || show === 'best' ? show : 'all'
+}
+
+function LapTimeWidget({ widget, frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const rows = [
-    { label: 'NOW', value: formatLap(frame.lap.currentLapTime), color: palette.neutral },
-    { label: 'LAST', value: formatLap(frame.lap.lastLapTime), color: palette.neutral },
-    { label: 'BEST', value: formatLap(frame.lap.bestLapTime), color: palette.timingFastestOverall },
+    { show: 'current', label: 'NOW', value: formatLap(frame.lap.currentLapTime), color: palette.neutral },
+    { show: 'last', label: 'LAST', value: formatLap(frame.lap.lastLapTime), color: palette.neutral },
+    { show: 'best', label: 'BEST', value: formatLap(frame.lap.bestLapTime), color: palette.timingFastestOverall },
   ]
+  const show = lapTimeShow(widget)
+  const single = rows.find((row) => row.show === show)
+  if (single) {
+    return <BigValue text={single.value} template="0:00.000" width={width} height={height} color={single.color} />
+  }
+
   const rowHeight = height / rows.length
   const labelWidth = width * 0.26
   const size = valueSize('0:00.000', width - labelWidth, rowHeight, 0.78)
@@ -290,10 +305,13 @@ function FuelWidget({ frame, palette, width, height }: WidgetContentProps): Reac
   const fuel = frame.car.fuel
   const perLap = frame.car.fuelPerLap
   const laps = perLap > 0.01 ? (fuel / perLap).toFixed(1) : null
+  // A narrow box keeps the laps large and drops the liters rather than shrinking both.
+  const withLiters = laps !== null && width >= 200
   const value = laps ?? formatFuel(fuel)
-  const unit = laps ? `laps · ${formatFuel(fuel)} L` : 'L'
-  // The value plus its unit, measured in value-sized digits: "00.0" and "laps · 000.0 L" at 0.36.
-  const size = Math.min(height * 0.7, (width * 0.96) / ((4 + 14 * 0.36) * 0.56))
+  const unit = laps ? (withLiters ? `laps · ${formatFuel(fuel)} L` : 'laps') : 'L'
+  // The value plus its unit, measured in value-sized digits: "00.0" and the unit's template at 0.36.
+  const unitChars = laps ? (withLiters ? 14 : 4) : 1
+  const size = Math.min(height * 0.7, (width * 0.96) / ((4 + unitChars * 0.36) * 0.56))
   return <ValueWithUnit value={value} unit={unit} left={width / 2} top={height / 2} size={size} color={palette.foreground} unitColor={palette.secondary} maxWidth={width} />
 }
 
@@ -409,9 +427,24 @@ function PositionWidget({ frame, palette, width, height }: WidgetContentProps): 
   return <ValueWithUnit value={value} unit={unit} left={width / 2} top={height / 2} size={size} color={palette.foreground} unitColor={palette.secondary} maxWidth={width} />
 }
 
-function GapsWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
+type GapSide = 'both' | 'ahead' | 'behind'
+const GAP_TITLES: Record<GapSide, string> = { both: 'GAPS', ahead: 'AHEAD', behind: 'BEHIND' }
+
+/** The gaps widget's "side" config: both gaps, or one of them large. */
+function gapSide(widget: DashWidget): GapSide {
+  const side = configString(widget.config, 'side')
+  return side === 'ahead' || side === 'behind' ? side : 'both'
+}
+
+function GapsWidget({ widget, frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const ahead = formatGap(frame.race.gapAhead)
   const behind = formatGap(frame.race.gapBehind)
+  const side = gapSide(widget)
+  if (side !== 'both') {
+    // One side alone: its title already says which, so the value goes unsigned.
+    return <BigValue text={side === 'ahead' ? ahead : behind} template="00.000" width={width} height={height} color={palette.foreground} />
+  }
+
   const half = width / 2
   const labelTop = height * 0.18
   const size = valueSize('+00.000', half - 6, height * 0.64, 0.9)

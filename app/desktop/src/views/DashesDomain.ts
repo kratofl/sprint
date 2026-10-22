@@ -242,6 +242,35 @@ const TYRE_TEMP_CONFIG: readonly DashConfigField[] = [
   },
 ]
 
+const LAP_TIME_CONFIG: readonly DashConfigField[] = [
+  {
+    key: 'show',
+    label: 'Show',
+    kind: 'select',
+    default: 'all',
+    options: [
+      { value: 'all', label: 'Current, last and best' },
+      { value: 'current', label: 'Current lap' },
+      { value: 'last', label: 'Last lap' },
+      { value: 'best', label: 'Best lap' },
+    ],
+  },
+]
+
+const GAPS_CONFIG: readonly DashConfigField[] = [
+  {
+    key: 'side',
+    label: 'Show',
+    kind: 'select',
+    default: 'both',
+    options: [
+      { value: 'both', label: 'Ahead and behind' },
+      { value: 'ahead', label: 'Car ahead' },
+      { value: 'behind', label: 'Car behind' },
+    ],
+  },
+]
+
 /** UI metadata in catalog order (DashWidgetCatalog.cs — see the section comment above). `idleCapable` hides live-telemetry widgets from the idle-page palette. */
 const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   header: { type: 'header', name: 'Header', idleCapable: true, config: NO_CONFIG },
@@ -250,7 +279,7 @@ const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   gear_speed: { type: 'gear_speed', name: 'Gear + Speed', idleCapable: true, config: ALIGN_CONFIG },
   input_trace: { type: 'input_trace', name: 'Input Trace', idleCapable: false, config: NO_CONFIG },
   sector: { type: 'sector', name: 'Sectors', idleCapable: false, config: NO_CONFIG },
-  lap_time: { type: 'lap_time', name: 'Lap Time', idleCapable: false, config: NO_CONFIG },
+  lap_time: { type: 'lap_time', name: 'Lap Time', idleCapable: false, config: LAP_TIME_CONFIG },
   delta: { type: 'delta', name: 'Delta', idleCapable: false, config: NO_CONFIG },
   fuel: { type: 'fuel', name: 'Fuel', idleCapable: true, config: NO_CONFIG },
   tyre_temp: { type: 'tyre_temp', name: 'Tyre Temperature', idleCapable: true, config: TYRE_TEMP_CONFIG },
@@ -261,7 +290,7 @@ const WIDGET_CATALOG: Readonly<Record<DashWidgetType, DashWidgetDefinition>> = {
   brake_bias: { type: 'brake_bias', name: 'Brake Bias', idleCapable: false, config: NO_CONFIG },
   fuel_target: { type: 'fuel_target', name: 'Fuel Target', idleCapable: false, config: NO_CONFIG },
   position: { type: 'position', name: 'Position', idleCapable: false, config: NO_CONFIG },
-  gaps: { type: 'gaps', name: 'Gaps', idleCapable: false, config: NO_CONFIG },
+  gaps: { type: 'gaps', name: 'Gaps', idleCapable: false, config: GAPS_CONFIG },
   predictive_lap: { type: 'predictive_lap', name: 'Predictive Lap', idleCapable: false, config: NO_CONFIG },
   racelogic_lap_timer: { type: 'racelogic_lap_timer', name: 'RaceLogic Lap Timer', idleCapable: false, config: NO_CONFIG },
   tyre_pressure: { type: 'tyre_pressure', name: 'Tyre Pressure', idleCapable: true, config: NO_CONFIG },

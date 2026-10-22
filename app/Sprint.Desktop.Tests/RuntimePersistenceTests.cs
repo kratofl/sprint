@@ -81,7 +81,7 @@ public sealed class RuntimePersistenceTests
             var layout = runtime.DashLayouts.Single(layout => layout.Id == "default");
             Assert.NotNull(layout.IdlePage);
             Assert.Equal("idle-default", layout.IdlePage.Id);
-            Assert.Equal(3, layout.Alerts.Count);
+            Assert.Equal(5, layout.Alerts.Count);
 
             var idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
             Assert.NotNull(idleName.Config);
@@ -89,7 +89,7 @@ public sealed class RuntimePersistenceTests
 
             var clone = runtime.CreateDashLayout();
             Assert.NotNull(clone.IdlePage);
-            Assert.Equal(3, clone.Alerts.Count);
+            Assert.Equal(5, clone.Alerts.Count);
             Assert.Equal(
                 "profile.driverName",
                 clone.IdlePage.Widgets.Single(widget => widget.Id == "idle-name").Config!["binding"].GetString());
