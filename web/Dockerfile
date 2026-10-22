@@ -64,4 +64,10 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# Every setting (API_URL, SPRINT_PUBLIC_*) is read at runtime, so one image serves
+# any deployment. Any HTTP answer means Next is serving: /api/health reports 503
+# while the API is down, which is not this container's fault.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(()=>process.exit(0),()=>process.exit(1))"]
+
 CMD ["node", "web/server.js"]

@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Sprint.Api;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Data;
 using Sprint.Api.GraphQL;
+using Sprint.Api.Live;
 using Sprint.Api.Services;
 using Sprint.Api.Telemetry;
 using Sprint.Contracts;
@@ -22,6 +24,8 @@ if (!string.IsNullOrWhiteSpace(port))
 var version = Assembly.GetExecutingAssembly()
     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "dev";
 builder.Services.AddSingleton(new ServerInfo(version));
+builder.Services.AddSingleton(PublicUrls.FromConfig(config));
+builder.Services.AddSingleton(TimeProvider.System);
 
 // ── Auth (HS256 JWT, shared key for issuing + validating) ──────────────────────
 var signingKey = JwtTokenService.KeyFromSecret(config["JWT_SECRET"]);
@@ -37,6 +41,12 @@ builder.Services
         options.TokenValidationParameters = jwt.ValidationParameters;
     });
 builder.Services.AddAuthorization();
+
+// ── Discord sign-in (on iff DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are set) ────
+builder.Services.AddSingleton(DiscordOptions.FromConfig(config));
+builder.Services.AddHttpClient(nameof(DiscordHttpClient), client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<IDiscordClient, DiscordHttpClient>();
+builder.Services.AddSingleton<DiscordSignIn>();
 
 // ── Relational store (Postgres) ────────────────────────────────────────────────
 var databaseUrl = config["DATABASE_URL"]
@@ -66,19 +76,17 @@ else
 // ── Domain services ─────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<ServerSettingsService>();
 builder.Services.AddSingleton<UserService>();
-builder.Services.AddSingleton<InviteService>();
 builder.Services.AddSingleton<CatalogService>();
 builder.Services.AddSingleton<LapShareService>();
-builder.Services.AddHostedService<InviteReaper>();
+builder.Services.AddSingleton<EngineerService>();
+builder.Services.AddSingleton(services => new LiveHub(services.GetRequiredService<TimeProvider>(), LiveHub.DefaultReconnectGrace));
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────────
 builder.Services
     .AddGraphQLServer()
     .AddAuthorization()
     .AddQueryType<Query>()
-    .AddMutationType<Mutation>()
-    .AddSubscriptionType<Subscription>()
-    .AddInMemorySubscriptions();
+    .AddMutationType<Mutation>();
 
 var app = builder.Build();
 
@@ -124,6 +132,8 @@ app.MapGet("/api/health", (ServerInfo info) =>
     Results.Ok(new HealthStatus { Status = "ok", Version = info.Version }));
 
 app.MapGraphQL("/graphql");
+app.MapDiscordEndpoints();
+app.MapLiveEndpoints();
 
 app.Run();
 

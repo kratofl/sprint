@@ -189,7 +189,16 @@ public sealed class CloudSync(ICloudSyncLocal local, CloudSyncLedger ledger)
                 SyncSessionInfo info = item.Session ?? new SyncSessionInfo("", "", "", "unknown", DateTimeOffset.UnixEpoch, true);
                 CloudResult<SessionSummary> session = await remote.SaveSessionAsync(new SaveSessionInput
                 {
-                    Id = remoteId, Game = info.Game, Track = info.Track, Car = info.Car, SessionType = info.Type, StartedAt = info.StartedAt, Data = item.Json,
+                    // The local id is the session's key on the server too: its live telemetry and
+                    // its engineer exclusions are filed under it.
+                    Id = remoteId,
+                    SessionKey = item.Id,
+                    Game = info.Game,
+                    Track = info.Track,
+                    Car = info.Car,
+                    SessionType = info.Type,
+                    StartedAt = info.StartedAt,
+                    Data = item.Json,
                 }, ct).ConfigureAwait(false);
                 return IdOf(session, summary => summary.Id);
             case SyncKind.Setup:

@@ -37,7 +37,8 @@ export function AccountDialog({
       }
     >
       <p className="content-dialog-text">
-        Signed in as {accountName(account)} ({account.email}) on {account.serverUrl}.
+        Signed in as {accountName(account)}
+        {account.email ? ` (${account.email})` : ''} on {account.serverUrl}.
       </p>
     </ContentDialog>
   )

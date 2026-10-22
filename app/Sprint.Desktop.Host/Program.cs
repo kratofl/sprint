@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sprint.Contracts;
 using Sprint.Desktop;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Core;
@@ -112,6 +113,15 @@ string officialServerUrl = (builder.Configuration["Sprint:OfficialServerUrl"] ??
 CancellationTokenSource cloudSyncCts = new();
 Task cloudSyncLoop = cloudSync.RunAsync(cloudSyncCts.Token);
 
+// "Continue with Discord": the browser leg comes back to this host's loopback callback
+// (DiscordCallbackPage.Path, the one route without the bearer token), guarded by DiscordSignIn's nonce.
+DiscordSignIn discordSignIn = new(cloudAccount);
+
+// Streams the session being driven to the signed-in server while sync keeps data there. Fed from
+// the telemetry loop below without waiting on it; its own worker owns the WebSocket.
+LiveUplink liveUplink = new(WebSocketLiveConnection.ConnectAsync, log);
+Task liveUplinkLoop = liveUplink.RunAsync(cloudSyncCts.Token);
+
 GitHubReleaseSource releaseSource = new();
 UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
 
@@ -139,7 +149,8 @@ TelemetryIngestionPipeline ingestion = new(
     lapHistoryRecorder,
     planTargets,
     telemetryEngine.RequestPlanReference,
-    log);
+    log,
+    liveUplink);
 
 // Bounds the trace tier's disk use (#194 parity). Off the request/ingest path, once at
 // startup rather than per lap -- mirrors the deleted client's ThreadPool.QueueUserWorkItem
@@ -170,6 +181,7 @@ Task telemetryPublishLoop = Task.Run(async () =>
             // see TelemetryIngestionPipeline. Kept off the HTTP request path: this loop is the
             // only caller, and a bad frame in one consumer never stops the others or this loop.
             ingestion.Poll(snapshot.Frame);
+            liveUplink.Update(cloudAccount.Credentials, runtime.Settings.Cloud.Storage, lapHistoryRecorder.OpenSession);
             // Sources report the raw link; "stale" is derived from frame age, so it
             // only reaches the client if the host evaluates freshness here.
             TelemetryConnectionState effective = TelemetryFreshness.Evaluate(snapshot.Status, DateTimeOffset.UtcNow);
@@ -230,11 +242,19 @@ app.Lifetime.ApplicationStopping.Register(() =>
     telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
     cloudSyncCts.Cancel();
+    discordSignIn.Cancel();
     screenOutputs.Dispose();
 });
 
 app.Use(async (context, next) =>
 {
+    // The browser returning from Discord cannot carry the bearer token; the nonce guards this route instead.
+    if (HttpMethods.IsGet(context.Request.Method) && context.Request.Path.Equals(DiscordCallbackPage.Path, StringComparison.Ordinal))
+    {
+        await next(context);
+        return;
+    }
+
     if (!string.Equals(context.Request.Headers.Authorization.ToString(), $"Bearer {bearer}", StringComparison.Ordinal))
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -310,6 +330,11 @@ app.MapGet("/api/state", () =>
             officialServerUrl,
             progress = cloudSync.Progress,
             lastSync = cloudSync.Last,
+            live = new
+            {
+                status = liveUplink.Status,
+                detail = liveUplink.Detail,
+            },
         },
         updates = new
         {
@@ -399,6 +424,42 @@ app.MapPost("/api/account/sign-in", async (AccountSignInRequest body, Cancellati
 
     CloudSignInResult result = await cloudAccount.SignInAsync(body.ServerUrl ?? "", body.Email ?? "", body.Password ?? "", body.CreateAccount, ct);
     return Results.Json(result, json);
+});
+
+// What the sign-in step needs to know about a server before showing it: whether Discord sign-in is on.
+app.MapPost("/api/cloud/server-info", async (ServerAddressRequest body, CancellationToken ct) =>
+{
+    ServerSettingsDto? settings = await cloudAccount.ServerSettingsAsync(body.ServerUrl ?? "", ct);
+    return settings is null
+        ? Results.Json(new { reachable = false }, json)
+        : Results.Json(new { reachable = true, settings.InstanceName, settings.AllowRegistration, settings.DiscordSignIn }, json);
+});
+
+// Discord sign-in, in three calls from Electron: start (the URL it opens in the system browser),
+// wait (until the browser leg comes back to the callback below, is cancelled or times out), cancel.
+app.MapPost("/api/account/discord/start", (ServerAddressRequest body, HttpContext context) =>
+{
+    Uri callback = new($"http://127.0.0.1:{context.Connection.LocalPort}{DiscordCallbackPage.Path}");
+    DiscordSignInStart start = discordSignIn.Begin(body.ServerUrl ?? "", callback);
+    return start.AuthorizeUrl is { } url
+        ? Results.Json(new { authorizeUrl = url.ToString() }, json)
+        : Results.Json(new DiscordSignInResult(DiscordSignInOutcome.Failed, start.Error), json);
+});
+
+app.MapPost("/api/account/discord/wait", async (CancellationToken ct) =>
+    Results.Json(await discordSignIn.WaitAsync(TimeSpan.FromMinutes(5), ct), json));
+
+app.MapPost("/api/account/discord/cancel", () =>
+{
+    discordSignIn.Cancel();
+    return Results.NoContent();
+});
+
+app.MapGet(DiscordCallbackPage.Path, (HttpRequest request) =>
+{
+    string? error = request.Query["error"];
+    bool taken = discordSignIn.Complete(request.Query["state"], request.Query["ticket"], error);
+    return Results.Content(DiscordCallbackPage.Render(taken, error), "text/html; charset=utf-8", statusCode: taken ? 200 : 400);
 });
 
 // Looks for Sprint servers on the local network: this machine, then its /24. A few seconds.
@@ -584,6 +645,17 @@ PlanContext LastSeenContext()
 try
 {
     await app.RunAsync();
+    // ApplicationStopping cancelled the uplink; give it the moment it needs to send the live
+    // session's `end` (EndTimeout) and close the socket, so engineers see "ended" rather than a drop.
+    try
+    {
+        await liveUplinkLoop.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    catch (TimeoutException)
+    {
+        AppDiagnostics.Log.Warn("Live telemetry did not close before exit");
+    }
+
     AppDiagnostics.Log.Info("Sprint Desktop Host exited normally");
 }
 catch (Exception ex)

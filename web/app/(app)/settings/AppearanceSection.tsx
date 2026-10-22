@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { IconChevronDown } from '@tabler/icons-react'
-import { Card } from '@/components/Card'
+import { FormSelect } from '@/components/app/form-select'
+import { SettingsRow, SettingsSection } from '@/components/app/settings-surface'
 import {
   appearanceStyle,
   glassRange,
@@ -19,6 +19,8 @@ const THEMES: readonly { value: Theme; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 
+const sliderClass = 'h-4 min-w-0 flex-1 accent-brand-500'
+
 // This browser's look: theme, motion and glass. Every change applies to the
 // page at once (so the sliders preview live while dragging) and is stored in
 // the preferences cookie the root layout reads on the next load.
@@ -33,40 +35,23 @@ export default function AppearanceSection({ initial }: { initial: Preferences })
   const replay = () => setPreview((count) => count + 1)
 
   return (
-    <Card title="Appearance" action={<span className="card-meta">Saved in this browser</span>}>
-      <div className="setting">
-        <label className="setting-text" htmlFor="theme">
-          <span className="setting-label">Theme</span>
-          <span className="setting-hint">System follows your device’s light or dark mode.</span>
-        </label>
-        <span className="select">
-          <select
-            id="theme"
-            value={preferences.theme}
-            onChange={(event) => {
-              const theme = THEMES.find((option) => option.value === event.currentTarget.value)
-              if (theme) update({ ...preferences, theme: theme.value })
-            }}
-          >
-            {THEMES.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <IconChevronDown className="select-chevron" size={12} stroke={2.4} aria-hidden />
-        </span>
-      </div>
+    <SettingsSection title="Appearance" aside={<span className="text-footnote text-label-secondary">Saved in this browser</span>}>
+      <SettingsRow title={<label htmlFor="theme">Theme</label>} description="System follows your device’s light or dark mode.">
+        <FormSelect
+          id="theme"
+          className="w-36"
+          value={preferences.theme}
+          options={THEMES}
+          onValueChange={(theme) => update({ ...preferences, theme })}
+        />
+      </SettingsRow>
 
-      <div className="setting setting-divided">
-        <label className="setting-text" htmlFor="motion">
-          <span className="setting-label">Motion</span>
-          <span className="setting-hint">How long animations take. All the way left turns them off.</span>
-        </label>
-        <div className="slider-control">
+      <SettingsRow title={<label htmlFor="motion">Motion</label>} description="How long animations take. All the way left turns them off.">
+        <div className="flex w-72 flex-wrap items-center gap-x-2.5 gap-y-2">
           <input
             id="motion"
             type="range"
+            className={sliderClass}
             min={motionRange.min}
             max={motionRange.max}
             step={motionRange.step}
@@ -76,27 +61,28 @@ export default function AppearanceSection({ initial }: { initial: Preferences })
             onPointerUp={replay}
             onKeyUp={replay}
           />
-          <output htmlFor="motion" className="slider-value">
+          <output htmlFor="motion" className="min-w-12 text-right text-label-secondary tabular-nums">
             {motionText(preferences.motion)}
           </output>
-          <span className="motion-preview" aria-hidden>
-            <span key={preview} className="motion-preview-dot" />
+          {/* A dot that glides across once at the chosen motion length when the slider is released. */}
+          <span aria-hidden className="relative h-2 basis-full before:absolute before:inset-x-0 before:top-[3px] before:h-0.5 before:rounded-full before:bg-fill-strong">
+            <span
+              key={preview}
+              className="absolute top-0 left-[calc(100%-8px)] size-2 rounded-full bg-brand-500 [animation:glide_calc(var(--motion)*2)_var(--ease-out)_both]"
+            />
           </span>
         </div>
-      </div>
+      </SettingsRow>
 
-      <div className="setting setting-divided">
-        <label className="setting-text" htmlFor="glass">
-          <span className="setting-label">Glass</span>
-          <span className="setting-hint">How much the sidebar and toolbar let through what’s behind them.</span>
-        </label>
-        <div className="slider-control">
-          <span className="slider-end" aria-hidden>
+      <SettingsRow title={<label htmlFor="glass">Glass</label>} description="How much the sidebar and toolbar let through what’s behind them.">
+        <div className="flex w-72 items-center gap-2.5">
+          <span aria-hidden className="text-footnote text-label-secondary">
             Clear
           </span>
           <input
             id="glass"
             type="range"
+            className={sliderClass}
             min={glassRange.min}
             max={glassRange.max}
             step={glassRange.step}
@@ -104,12 +90,12 @@ export default function AppearanceSection({ initial }: { initial: Preferences })
             aria-valuetext={`${preferences.glass}% opaque`}
             onChange={(event) => update({ ...preferences, glass: event.currentTarget.valueAsNumber })}
           />
-          <span className="slider-end" aria-hidden>
+          <span aria-hidden className="text-footnote text-label-secondary">
             Tinted
           </span>
         </div>
-      </div>
-    </Card>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 

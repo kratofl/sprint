@@ -12,6 +12,13 @@ public sealed record ServerSettingsDto
     /// <summary>Whether strangers may create accounts. The first account is always allowed.</summary>
     [JsonPropertyName("allowRegistration")]
     public bool AllowRegistration { get; init; } = true;
+
+    /// <summary>
+    /// Whether "Sign in with Discord" works on this server: true when the operator configured
+    /// <c>DISCORD_CLIENT_ID</c> and <c>DISCORD_CLIENT_SECRET</c>. Not an admin setting.
+    /// </summary>
+    [JsonPropertyName("discordSignIn")]
+    public bool DiscordSignIn { get; init; }
 }
 
 /// <summary>Input for the admin-only <c>updateServerSettings</c> mutation.</summary>

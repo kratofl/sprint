@@ -6,6 +6,8 @@ query Settings {
     email
     displayName
     isAdmin
+    hasPassword
+    discordLinked
   }
   serverSettings {
     instanceName

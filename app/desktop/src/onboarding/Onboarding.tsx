@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { ArrowLeft, Check, Cloud, HardDrive, Layers, Monitor, Server, X } from 'lucide-react'
-import type { Account, CloudServerChoice, CloudState, CloudStorageMode, DiscoveredServer, SignInResult, SprintCommand, SyncReport } from '../bridge'
+import type { Account, CloudServerChoice, CloudState, CloudStorageMode, DiscordSignInResult, DiscoveredServer, ServerInfo, SignInResult, SprintCommand, SyncReport } from '../bridge'
 import sprintMark from '../assets/sprint-mark.svg'
 import { accountName } from '../shell/account'
 import { back, begin, next } from './flow'
@@ -13,6 +13,9 @@ type Actions = {
   send: (command: SprintCommand) => Promise<void>
   discover: () => Promise<DiscoveredServer[]>
   signIn: (serverUrl: string, email: string, password: string, createAccount: boolean) => Promise<SignInResult>
+  signInWithDiscord: (serverUrl: string) => Promise<DiscordSignInResult>
+  cancelDiscordSignIn: () => Promise<void>
+  serverInfo: (serverUrl: string) => Promise<ServerInfo>
   upload: () => Promise<SyncReport>
 }
 
@@ -157,7 +160,7 @@ function StepView({
     case 'address':
       return <Address step={step} emit={emit} />
     case 'account':
-      return <AccountStep step={step} account={account} signIn={actions.signIn} emit={emit} />
+      return <AccountStep step={step} account={account} actions={actions} emit={emit} />
     case 'storage':
       return (
         <Panel title="Where should your data live?" lead="Sessions, setups and dashes. You can change this any time in Settings.">
@@ -333,24 +336,70 @@ function Address({ step, emit }: { step: Extract<Step, { step: 'address' }>; emi
   )
 }
 
-type AccountForm = { phase: 'editing'; error: string | null } | { phase: 'working' }
+/**
+ * The sign-in step's state. `browser` is a Discord sign-in waiting on the system browser;
+ * a cancelled one comes back to `editing` with a note, a failed one with an error.
+ */
+type AccountForm =
+  | { phase: 'editing'; message: { tone: 'error' | 'note'; text: string } | null }
+  | { phase: 'working' }
+  | { phase: 'browser' }
+
+/** Whether the server offers Discord sign-in. Asked once per step; `checking` only until the answer (or a short cap). */
+type DiscordOffer = 'checking' | 'offered' | 'not-offered'
+
+/** How long the step waits for the server's answer before showing the email form alone. */
+const SERVER_INFO_WAIT_MS = 1500
 
 function AccountStep({
   step,
   account,
-  signIn,
+  actions,
   emit,
 }: {
   step: Extract<Step, { step: 'account' }>
   account: Account
-  signIn: Actions['signIn']
+  actions: Actions
   emit: (event: FlowEvent) => void
 }) {
   const alreadyHere = account.signedIn && sameServer(account.serverUrl, step.serverUrl)
   const [useOther, setUseOther] = useState(false)
   const [create, setCreate] = useState(false)
-  const [form, setForm] = useState<AccountForm>({ phase: 'editing', error: null })
-  const busy = form.phase === 'working'
+  const [form, setForm] = useState<AccountForm>({ phase: 'editing', message: null })
+  const [discord, setDiscord] = useState<DiscordOffer>('checking')
+  const busy = form.phase !== 'editing'
+  const { serverInfo, cancelDiscordSignIn } = actions
+
+  // Leaving the step (Back, or closing the setup) while the browser leg is open cancels it on the
+  // host, so a sign-in finished later in the browser does not land behind the driver's back.
+  const waitingOnBrowser = useRef(false)
+  useEffect(() => {
+    waitingOnBrowser.current = form.phase === 'browser'
+  }, [form.phase])
+  useEffect(
+    () => () => {
+      if (waitingOnBrowser.current) void cancelDiscordSignIn()
+    },
+    [cancelDiscordSignIn],
+  )
+
+  useEffect(() => {
+    let live = true
+    const cap = setTimeout(() => {
+      if (live) setDiscord((current) => (current === 'checking' ? 'not-offered' : current))
+    }, SERVER_INFO_WAIT_MS)
+    serverInfo(step.serverUrl)
+      .then((info) => {
+        if (live) setDiscord(info.reachable && info.discordSignIn ? 'offered' : 'not-offered')
+      })
+      .catch(() => {
+        if (live) setDiscord('not-offered')
+      })
+    return () => {
+      live = false
+      clearTimeout(cap)
+    }
+  }, [serverInfo, step.serverUrl])
 
   if (alreadyHere && !useOther) {
     return (
@@ -371,6 +420,39 @@ function AccountStep({
     )
   }
 
+  const continueWithDiscord = () => {
+    if (busy) return
+    setForm({ phase: 'browser' })
+    actions
+      .signInWithDiscord(step.serverUrl)
+      .then((result) => {
+        switch (result.outcome) {
+          case 'signedIn':
+            return emit({ type: 'signedIn' })
+          case 'cancelled':
+            return setForm({ phase: 'editing', message: { tone: 'note', text: 'Discord sign-in was cancelled.' } })
+          case 'failed':
+            return setForm({ phase: 'editing', message: { tone: 'error', text: result.error } })
+        }
+      })
+      .catch(() => setForm({ phase: 'editing', message: { tone: 'error', text: 'Discord sign-in did not finish. Try again.' } }))
+  }
+
+  if (form.phase === 'browser') {
+    return (
+      <Panel
+        hero={<DiscordMark className="onboarding-mark onboarding-discord-mark" />}
+        title="Continue in your browser"
+        lead="Sprint opened Discord in your browser. Approve the sign-in there and Sprint continues by itself."
+        footer={
+          <button type="button" className="button" autoFocus onClick={() => void actions.cancelDiscordSignIn()}>
+            Cancel
+          </button>
+        }
+      />
+    )
+  }
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
@@ -378,42 +460,71 @@ function AccountStep({
     const email = data.get('email')
     const password = data.get('password')
     setForm({ phase: 'working' })
-    signIn(step.serverUrl, typeof email === 'string' ? email.trim() : '', typeof password === 'string' ? password : '', create)
-      .then((result) => (result.ok ? emit({ type: 'signedIn' }) : setForm({ phase: 'editing', error: result.error })))
-      .catch(() => setForm({ phase: 'editing', error: 'Enter your email and password.' }))
+    actions
+      .signIn(step.serverUrl, typeof email === 'string' ? email.trim() : '', typeof password === 'string' ? password : '', create)
+      .then((result) => (result.ok ? emit({ type: 'signedIn' }) : setForm({ phase: 'editing', message: { tone: 'error', text: result.error } })))
+      .catch(() => setForm({ phase: 'editing', message: { tone: 'error', text: 'Enter your email and password.' } }))
   }
 
+  // With Discord on the server, it is the primary way in and email/password the fallback below it.
+  const offered = discord === 'offered'
   return (
     <form className="onboarding-form" onSubmit={submit}>
       <Panel
         title={create ? 'Create your Sprint account' : 'Sign in to Sprint'}
         lead={`On ${step.serverUrl}.`}
         footer={
-          <>
-            <button type="button" className="button subtle" disabled={busy} onClick={() => setCreate(!create)}>
-              {create ? 'I have an account' : 'Create an account'}
-            </button>
-            <button type="submit" className="button primary" disabled={busy}>
-              {busy ? (create ? 'Creating…' : 'Signing in…') : create ? 'Create account' : 'Sign in'}
-            </button>
-          </>
+          discord === 'checking' ? undefined : (
+            <>
+              <button type="button" className="button subtle" disabled={busy} onClick={() => setCreate(!create)}>
+                {create ? 'I have an account' : 'Create an account'}
+              </button>
+              <button type="submit" className={offered ? 'button' : 'button primary'} disabled={busy}>
+                {busy ? (create ? 'Creating…' : 'Signing in…') : create ? 'Create account' : 'Sign in'}
+              </button>
+            </>
+          )
         }
       >
-        <label className="field">
-          <span>Email</span>
-          <input name="email" type="email" autoComplete="username" required autoFocus disabled={busy} />
-        </label>
-        <label className="field">
-          <span>Password</span>
-          <input name="password" type="password" autoComplete={create ? 'new-password' : 'current-password'} required disabled={busy} />
-        </label>
-        {form.phase === 'editing' && form.error ? (
-          <p className="field-error onboarding-error" role="alert">
-            {form.error}
+        {offered ? (
+          <>
+            <button type="button" className="button primary onboarding-discord" autoFocus disabled={busy} onClick={continueWithDiscord}>
+              <DiscordMark />
+              Continue with Discord
+            </button>
+            <p className="onboarding-divider" role="separator">
+              <span>{create ? 'or create one with your email' : 'or use your email'}</span>
+            </p>
+          </>
+        ) : null}
+        {discord === 'checking' ? null : (
+          <>
+            <label className="field">
+              <span>Email</span>
+              <input name="email" type="email" autoComplete="username" required autoFocus={!offered} disabled={busy} />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input name="password" type="password" autoComplete={create ? 'new-password' : 'current-password'} required disabled={busy} />
+            </label>
+          </>
+        )}
+        {form.phase === 'editing' && form.message ? (
+          <p className={form.message.tone === 'error' ? 'field-error onboarding-error' : 'onboarding-note'} role={form.message.tone === 'error' ? 'alert' : 'status'}>
+            {form.message.text}
           </p>
         ) : null}
       </Panel>
     </form>
+  )
+}
+
+/** Discord's mark, in the current text colour. Brand artwork, not an icon from the set. */
+function DiscordMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor">
+      <path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.028C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.128 12.3 12.3 0 0 1-1.873.891.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.029 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.029ZM8.02 15.331c-1.182 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z" />
+    </svg>
   )
 }
 

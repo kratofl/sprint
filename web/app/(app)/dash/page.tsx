@@ -9,8 +9,9 @@ import {
   IconTrafficLights,
   type Icon,
 } from '@tabler/icons-react'
-import Page from '@/components/Page'
-import { Card, EmptyState } from '@/components/Card'
+import { CardHead, Group, IconTile, Row, RowText, listCardClass } from '@/components/app/grouped'
+import { PageHeader } from '@/components/app/page-header'
+import { EmptyState } from '@/components/app/states'
 
 const WIDGETS: readonly { label: string; icon: Icon }[] = [
   { label: 'Lap delta', icon: IconStopwatch },
@@ -25,33 +26,33 @@ const WIDGETS: readonly { label: string; icon: Icon }[] = [
 // to the web yet, so the canvas and properties show their empty states.
 export default function DashEditor() {
   return (
-    <Page title="Dash editor">
-      <div className="dash-grid">
-        <Card title="Widgets">
-          {WIDGETS.map(({ label, icon: WidgetIcon }) => (
-            <div key={label} className="list-row">
-              <WidgetIcon className="nav-icon" size={16} stroke={1.8} aria-hidden />
-              <span className="list-row-text">{label}</span>
-            </div>
+    <>
+      <PageHeader title="Dash editor" />
+      <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
+        <Group title="Widgets">
+          {WIDGETS.map(({ label, icon }) => (
+            <Row key={label}>
+              <IconTile icon={icon} tone="brand" size={26} />
+              <RowText title={label} />
+            </Row>
           ))}
-        </Card>
-        <Card title="Canvas">
-          <div className="dash-canvas">
+        </Group>
+        <section className={`${listCardClass} flex flex-col`} aria-label="Canvas">
+          <CardHead title="Canvas" />
+          {/* The wheel display is 5:3; the empty canvas keeps that frame. */}
+          <div className="mx-4 mb-4 flex aspect-[5/3] rounded-md border border-separator bg-bg">
             <EmptyState
               icon={IconLayoutDashboard}
               title="No layout open"
               body="Dash layouts are built in the Sprint desktop app and pushed to your wheel from there."
             />
           </div>
-        </Card>
-        <Card title="Properties">
-          <EmptyState
-            icon={IconAdjustments}
-            title="Nothing selected"
-            body="Properties appear here when a layout is open."
-          />
-        </Card>
+        </section>
+        <section className={`${listCardClass} flex flex-col`} aria-label="Properties">
+          <CardHead title="Properties" />
+          <EmptyState icon={IconAdjustments} title="Nothing selected" body="Properties appear here when a layout is open." />
+        </section>
       </div>
-    </Page>
+    </>
   )
 }

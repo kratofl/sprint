@@ -82,8 +82,8 @@ also the home of the shared-lap library and the target picker.
   artifacts.
 - Per-lap share codes, no friend graph: an unguessable code pulls one lap and the owner can revoke it.
   A friend graph can layer on later without touching traces or the HUD.
-- A share code is its own entity, not the engineer `InviteCode`: invites die with a live session, a lap
-  code must outlive every session.
+- A share code is its own entity, not an engineer invite link: an invite links two accounts once, a lap
+  code pulls one lap and must outlive every session.
 - Only explicitly shared laps leave the machine; the corpus stays local.
 - Storage is a compressed blob on Postgres `LapTraceEntity` with game, track, car, lap time, owner and
   code as indexed columns. Not InfluxDB: the x-axis is track position and the trace is fetched whole.

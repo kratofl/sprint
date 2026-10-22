@@ -1,3 +1,5 @@
+# Build-from-source stack for development and for running a checkout on a server.
+# The prebuilt-image stack (Komodo / any Docker host) is deploy/komodo/compose.yaml.
 services:
   db:
     image: postgres:17-alpine
@@ -43,17 +45,22 @@ services:
       dockerfile: api/Dockerfile
     restart: unless-stopped
     environment:
-      PORT: ${PORT:-8080}
+      # The container always listens on 8080; PORT only picks the host port below.
+      PORT: 8080
       DATABASE_URL: ${DATABASE_URL:-postgres://sprint:changeme@db:5432/sprint?sslmode=disable}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
       INFLUXDB_URL: ${INFLUXDB_URL:-http://influxdb:8086}
       INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:?INFLUXDB_TOKEN must be set in .env}
       INFLUXDB_ORG: ${INFLUXDB_ORG:-sprint}
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-telemetry}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      SPRINT_PUBLIC_API_URL: ${SPRINT_PUBLIC_API_URL:-http://localhost:8080}
+      SPRINT_PUBLIC_WEB_URL: ${SPRINT_PUBLIC_WEB_URL:-http://localhost:3000}
     ports:
       - "${PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,11 +77,13 @@ services:
     restart: unless-stopped
     environment:
       API_URL: http://api:8080
-      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      SPRINT_PUBLIC_API_URL: ${SPRINT_PUBLIC_API_URL:-http://localhost:8080}
+      SPRINT_PUBLIC_WEB_URL: ${SPRINT_PUBLIC_WEB_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   # Publishes web + api through Cloudflare Tunnel: cloudflared dials out to the
   # Cloudflare edge, so the host needs no public IP, no port forwarding, and no
@@ -88,7 +97,9 @@ services:
     # Soft default on purpose: a `:?` guard here would fail every compose command,
     # including runs that leave this profile out. Set the token in .env before
     # enabling the profile.
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - api
       - web

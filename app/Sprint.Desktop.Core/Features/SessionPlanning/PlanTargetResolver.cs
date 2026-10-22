@@ -341,15 +341,15 @@ public static class PlanTargetResolver
         PlanTargetScope scope,
         string? programType,
         IReadOnlyList<LapHistorySession> sessions) => scope switch
-    {
-        // The timestamp is part of the label, not a tooltip: "should be the one right before
-        // the race" is only verifiable if the driver can see which session it is.
-        PlanTargetScope.CurrentQualifying => $"Current Quali · {FormatSessionTime(sessions[0].StartedAt)}",
-        PlanTargetScope.Qualifying => "Quali",
-        PlanTargetScope.Practice => "Practice",
-        PlanTargetScope.PracticeProgram => $"Practice program · {programType}",
-        _ => "Manual",
-    };
+        {
+            // The timestamp is part of the label, not a tooltip: "should be the one right before
+            // the race" is only verifiable if the driver can see which session it is.
+            PlanTargetScope.CurrentQualifying => $"Current Quali · {FormatSessionTime(sessions[0].StartedAt)}",
+            PlanTargetScope.Qualifying => "Quali",
+            PlanTargetScope.Practice => "Practice",
+            PlanTargetScope.PracticeProgram => $"Practice program · {programType}",
+            _ => "Manual",
+        };
 
     private static string StatisticLabel(PlanTargetStatistic statistic) => statistic switch
     {

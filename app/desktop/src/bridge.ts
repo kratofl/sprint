@@ -53,12 +53,31 @@ export type PlanContextChoices = {
   byGame: PlanGameChoices[]
 }
 
-/** Who the desktop is signed in to Sprint as. `serverUrl` outlives sign-out, to prefill the next sign-in. */
+/**
+ * Who the desktop is signed in to Sprint as. `serverUrl` outlives sign-out, to prefill the next sign-in.
+ * `email` is empty for a Discord account.
+ */
 export type Account =
   | { signedIn: true; serverUrl: string; email: string; displayName: string }
   | { signedIn: false; serverUrl: string }
 
 export type SignInResult = { ok: true } | { ok: false; error: string }
+
+/** How a Discord sign-in ended (host: `DiscordSignInResult`). A timeout reads as failed, with its own message. */
+export type DiscordSignInResult = { outcome: 'signedIn' } | { outcome: 'cancelled' } | { outcome: 'failed'; error: string }
+
+/** A server's public settings (host: `POST /api/cloud/server-info`), or that it could not be read. */
+export type ServerInfo =
+  | { reachable: true; instanceName: string; allowRegistration: boolean; discordSignIn: boolean }
+  | { reachable: false }
+
+/** Mirrors `LiveUplinkStatus` in Sprint.Desktop.Core; the host sends enum names. */
+export type LiveUplinkStatus = 'Off' | 'WaitingForGame' | 'Connecting' | 'Streaming' | 'Reconnecting'
+
+const liveUplinkStatuses: readonly LiveUplinkStatus[] = ['Off', 'WaitingForGame', 'Connecting', 'Streaming', 'Reconnecting']
+
+/** The live telemetry uplink: what it is doing and, while reconnecting, why. */
+export type LiveUplink = { status: LiveUplinkStatus; detail: string | null }
 
 export type CloudServerChoice = 'None' | 'Official' | 'SelfHosted'
 export type CloudStorageMode = 'Local' | 'Both' | 'Remote'
@@ -78,6 +97,7 @@ export type CloudState = {
   officialServerUrl: string | null
   progress: { direction: SyncDirection; done: number; total: number } | null
   lastSync: { at: string; direction: SyncDirection; report: SyncReport } | null
+  live: LiveUplink
 }
 
 /** A Sprint server that answered on the local network. */
@@ -127,6 +147,10 @@ export type SprintBridge = {
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<UpdateInstallResult>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<SignInResult>
+  /** Opens Discord in the system browser and resolves once the sign-in came back, was cancelled or timed out. */
+  signInWithDiscord(serverUrl: string): Promise<DiscordSignInResult>
+  cancelDiscordSignIn(): Promise<void>
+  serverInfo(serverUrl: string): Promise<ServerInfo>
   signOut(): Promise<void>
   discoverServers(): Promise<DiscoveredServer[]>
   syncUp(): Promise<SyncReport>
@@ -146,6 +170,9 @@ type RawBridge = {
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<unknown>
   signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown>
+  signInWithDiscord(serverUrl: string): Promise<unknown>
+  cancelDiscordSignIn(): Promise<unknown>
+  serverInfo(serverUrl: string): Promise<unknown>
   signOut(): Promise<unknown>
   discoverServers(): Promise<unknown>
   syncUp(): Promise<unknown>
@@ -153,7 +180,8 @@ type RawBridge = {
 }
 declare global { interface Window { sprint?: RawBridge } }
 const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), screens: [] })
-const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null })
+const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
+const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const noLink = (): TelemetryLink => ({ state: 'Disconnected', sourceName: '', detail: null, lastFrameValid: true, invalidReason: null })
 const isLinkState = (value: unknown): value is TelemetryLinkState =>
@@ -214,6 +242,42 @@ const parseSignInResult = (value: unknown): SignInResult => {
   return { ok: false, error }
 }
 
+const unexpected = 'The host returned an unexpected response.'
+
+/** Narrows the host's `DiscordSignInResult` once, here. */
+const parseDiscordSignInResult = (value: unknown): DiscordSignInResult => {
+  if (!isRecord(value)) return { outcome: 'failed', error: unexpected }
+  switch (value.outcome) {
+    case 'SignedIn':
+      return { outcome: 'signedIn' }
+    case 'Cancelled':
+      return { outcome: 'cancelled' }
+    case 'TimedOut':
+      return { outcome: 'failed', error: 'Nothing came back from the browser. Try again.' }
+    default:
+      return { outcome: 'failed', error: typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+  }
+}
+
+/** A Discord sign-in the host never answered (stopped, timed out) reads as failed, like any other. */
+const discordFailed = (): DiscordSignInResult => ({ outcome: 'failed', error: 'Sprint’s host did not answer. Try again.' })
+
+const parseServerInfo = (value: unknown): ServerInfo =>
+  isRecord(value) && value.reachable === true
+    ? {
+        reachable: true,
+        instanceName: typeof value.instanceName === 'string' && value.instanceName.length > 0 ? value.instanceName : 'Sprint',
+        allowRegistration: value.allowRegistration !== false,
+        discordSignIn: value.discordSignIn === true,
+      }
+    : { reachable: false }
+
+const isLiveUplinkStatus = (value: unknown): value is LiveUplinkStatus =>
+  typeof value === 'string' && liveUplinkStatuses.some((status) => status === value)
+
+const parseLive = (value: unknown): LiveUplink =>
+  isRecord(value) && isLiveUplinkStatus(value.status) ? { status: value.status, detail: optionalString(value.detail) } : liveOff()
+
 const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0)
 
 /** Narrows the host's `SyncReport` once, here. Anything malformed reads as a failed sync. */
@@ -249,6 +313,7 @@ const parseCloud = (value: unknown): CloudState => {
     officialServerUrl: optionalString(value.officialServerUrl),
     progress,
     lastSync,
+    live: parseLive(value.live),
   }
 }
 
@@ -333,6 +398,9 @@ export const bridge: SprintBridge = raw
       checkUpdates: (force) => raw.checkUpdates(force),
       installUpdate: async () => parseUpdateInstallResult(await raw.installUpdate()),
       signIn: async (serverUrl, email, password, createAccount) => parseSignInResult(await raw.signIn(serverUrl, email, password, createAccount)),
+      signInWithDiscord: (serverUrl) => raw.signInWithDiscord(serverUrl).then(parseDiscordSignInResult, discordFailed),
+      cancelDiscordSignIn: async () => { await raw.cancelDiscordSignIn() },
+      serverInfo: (serverUrl) => raw.serverInfo(serverUrl).then(parseServerInfo, () => ({ reachable: false })),
       signOut: async () => { await raw.signOut() },
       discoverServers: async () => parseDiscovered(await raw.discoverServers()),
       syncUp: () => raw.syncUp().then(parseSyncReport, syncFailed),
@@ -352,6 +420,9 @@ export const bridge: SprintBridge = raw
       checkUpdates: async () => null,
       installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
       signIn: async () => ({ ok: false, error: 'There is no Sprint host to sign in from.' }),
+      signInWithDiscord: async () => ({ outcome: 'failed', error: 'There is no Sprint host to sign in from.' }),
+      cancelDiscordSignIn: async () => undefined,
+      serverInfo: async () => ({ reachable: false }),
       signOut: async () => undefined,
       discoverServers: async () => [],
       syncUp: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),

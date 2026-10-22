@@ -1,5 +1,6 @@
 using HotChocolate;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Services;
 using Sprint.Contracts;
 using Xunit;
@@ -12,7 +13,7 @@ public class UserServiceTests
     {
         tokens = new JwtTokenService(JwtTokenService.KeyFromSecret("test-secret-long-enough-for-hs256-aaaaaa"));
         var db = TestFactory.NewDb();
-        return new UserService(db, new PasswordHasher(), tokens, new ServerSettingsService(db));
+        return new UserService(db, new PasswordHasher(), tokens, new ServerSettingsService(db, DiscordOptions.Disabled));
     }
 
     [Fact]

@@ -3,8 +3,8 @@
 Releases are cut by pushing a `v*` tag. `.github/workflows/desktop-release.yml` builds Windows and
 Linux packages the same way `make build-app` does and attaches
 `sprint-<tag>-windows-amd64.zip` / `sprint-<tag>-linux-amd64.tar.gz` to one GitHub Release. Tags with
-a pre-release suffix are marked pre-release. The API ships as a container (see
-[deployment](deployment.md)), not through this workflow.
+a pre-release suffix are marked pre-release. The same tag publishes the server images (see
+[below](#server-images)).
 
 Pushing a tag publishes to users. Only do it when the maintainer asks for that exact version.
 
@@ -19,6 +19,21 @@ v<major>.<minor>.<patch>-rc.<n>       release candidate
 
 The tag minus its `v` is stamped through `-p:InformationalVersion=…`; `BuildInfo.Version` reads it
 back.
+
+## Server images
+
+`.github/workflows/images.yml` builds `ghcr.io/<owner>/sprint-api` and `sprint-web` for
+linux/amd64 and linux/arm64 on native runners and merges them into one multi-arch tag:
+
+| Trigger | Tags |
+| --- | --- |
+| `v1.2.0` | `v1.2.0`, `stable` |
+| `v1.2.0-beta.1` (any `-` suffix) | `v1.2.0-beta.1`, `unstable` |
+| push to `main` touching server code | `edge` |
+
+A Komodo stack following a channel (`unstable` by default) picks the release up on its next
+deploy ([deployment](deployment.md#komodo)). The images take every setting from runtime env, so
+nothing deployment-specific may be baked in at build time — no `NEXT_PUBLIC_*` in the web app.
 
 ## Gate before tagging
 

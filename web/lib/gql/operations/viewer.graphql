@@ -1,9 +1,10 @@
-# The signed-in user, for the sidebar footer.
+# The signed-in user, for the sidebar footer. `email` is "" for a Discord account.
 query Me {
   me {
     id
     email
     displayName
+    avatarUrl
     isAdmin
     createdAt
   }

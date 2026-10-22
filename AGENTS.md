@@ -240,8 +240,12 @@ type-checks both desktop TypeScript packages.
   `<html data-platform>`. Mac-only shapes go in `app/desktop/src/styles.mac.css`,
   each rule under `:where([data-platform="mac"])`; views stay platform-neutral
   (on macOS the shell moves a `PageHeader`'s actions into the toolbar).
-- The web app follows the web CI (Apple look, glass only on chrome) with
-  `@sprint/tokens/web.css`.
+- The web app uses its own design system (`docs/design/DESIGN.md` → Web app):
+  `@sprint/tokens/web.css` mapped to Tailwind in `web/app/globals.css`, shadcn/ui
+  primitives in `web/components/ui/` and the shared patterns in
+  `web/components/app/` (`PageHeader`, `useToast`, sheets, `MetricStrip`,
+  `DataTable`, charts). Pages compose those; the sign-in page and the light-trails
+  backdrop keep their own look.
 - Only brand and status colors carry across platforms. Brand `#ff6a00` is
   `--brand-500`: the one primary button per view, the selection indicator,
   progress. Text on it is the dark `--on-brand`, never white. Buttons never glow.
@@ -273,7 +277,8 @@ second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
   `--font-display`): Segoe UI Variable from `windows.css`, SF from `macos.css`.
   13px/20px base, 24px Display page titles, 14px semibold card titles, 12px
   captions; on macOS the 17px toolbar title names the page and captions are 11px.
-- Web UI uses the system stack from `web.css`.
+- Web UI is the bundled Figtree on every platform (`--font-sans` in
+  `web/app/globals.css`); the sign-in page keeps its own stack.
 - Inter is **not** an app UI face. The desktop bundles and declares it in
   `app/desktop/src/styles.css` only because the dash renderer names it for
   wheel labels.

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import Page from '@/components/Page'
-import Unavailable from '@/components/Unavailable'
+import { SettingsSurface } from '@/components/app/settings-surface'
+import { Unavailable } from '@/components/app/unavailable'
 import { getPreferences, loadSettings } from '@/lib/server/data'
 import AccountSection from './AccountSection'
 import AppearanceSection from './AppearanceSection'
@@ -18,12 +18,10 @@ export default async function SettingsPage() {
   }
   const { account, server } = settings.data
   return (
-    <Page title="Settings">
-      <div className="settings">
-        <AccountSection account={account} />
-        <AppearanceSection initial={preferences} />
-        {server.kind === 'admin' && <ServerSection settings={server.settings} />}
-      </div>
-    </Page>
+    <SettingsSurface title="Settings" description="Your account, this browser’s look and the server">
+      <AccountSection account={account} />
+      <AppearanceSection initial={preferences} />
+      {server.kind === 'admin' && <ServerSection settings={server.settings} />}
+    </SettingsSurface>
   )
 }

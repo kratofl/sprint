@@ -3,5 +3,6 @@ query ServerSettings {
   serverSettings {
     instanceName
     allowRegistration
+    discordSignIn
   }
 }

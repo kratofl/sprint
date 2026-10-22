@@ -214,7 +214,15 @@ export function App() {
     if (!runtime.sprint.cloud.setupDone) setSetup('first-run')
   }, [runtime])
   const onboardingActions = useMemo(
-    () => ({ send, discover: bridge.discoverServers, signIn: bridge.signIn, upload: bridge.syncUp }),
+    () => ({
+      send,
+      discover: bridge.discoverServers,
+      signIn: bridge.signIn,
+      signInWithDiscord: bridge.signInWithDiscord,
+      cancelDiscordSignIn: bridge.cancelDiscordSignIn,
+      serverInfo: bridge.serverInfo,
+      upload: bridge.syncUp,
+    }),
     [send],
   )
   const openSetup = useCallback(() => {

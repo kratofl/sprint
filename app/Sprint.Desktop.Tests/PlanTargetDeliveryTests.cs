@@ -169,17 +169,17 @@ public sealed class PlanTargetDeliveryTests
         SessionType sessionType = SessionType.Race,
         bool inCar = true,
         string track = Track) => new()
-    {
-        Session = new SessionInfo
         {
-            Game = Game,
-            Track = track,
-            Car = Car,
-            SessionType = sessionType,
-            InCar = inCar,
-        },
-        Lap = new LapState { CurrentLap = lap },
-    };
+            Session = new SessionInfo
+            {
+                Game = Game,
+                Track = track,
+                Car = Car,
+                SessionType = sessionType,
+                InCar = inCar,
+            },
+            Lap = new LapState { CurrentLap = lap },
+        };
 
     private static PlanTarget RaceTarget(bool hasReferenceCurve = true) => new()
     {

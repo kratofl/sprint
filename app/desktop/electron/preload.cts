@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld('sprint', {
   installUpdate: (): Promise<unknown> => ipcRenderer.invoke('sprint:updates-install'),
   signIn: (serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> =>
     ipcRenderer.invoke('sprint:account-sign-in', serverUrl, email, password, createAccount),
+  signInWithDiscord: (serverUrl: string): Promise<unknown> => ipcRenderer.invoke('sprint:account-discord', serverUrl),
+  cancelDiscordSignIn: (): Promise<unknown> => ipcRenderer.invoke('sprint:account-discord-cancel'),
+  serverInfo: (serverUrl: string): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-server-info', serverUrl),
   signOut: (): Promise<unknown> => ipcRenderer.invoke('sprint:account-sign-out'),
   discoverServers: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-discover'),
   syncUp: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-push'),

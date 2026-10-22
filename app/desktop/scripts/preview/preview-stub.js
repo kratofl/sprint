@@ -18,6 +18,10 @@
 //   setup=first-run       Sprint web setup not done yet, so the setup opens on its welcome step
 //   servers=none          the network scan finds no server (default: one at 192.168.1.20)
 //   storage=Both|Remote   where data lives (default: This PC only); Both also reports a last upload
+//   live=<status>         the live uplink's status (Off, WaitingForGame, Connecting, Streaming, Reconnecting);
+//                         default: WaitingForGame when signed in with storage Both/Remote, otherwise Off
+//   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
+//                         Cancel (1) or fails at once with a server error (fail)
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
 //                         repeat the parameter to click several things in order
 ;(() => {
@@ -56,6 +60,14 @@
         ? { at: '2026-10-06T09:30:00Z', direction: 'upload', report: { uploaded: 14, downloaded: 0, conflicts: 0, removedLocally: 0 } }
         : null,
   }
+  const liveDefault = state.account.signedIn && state.cloud.storage !== 'Local' ? 'WaitingForGame' : 'Off'
+  const live = params.get('live') ?? liveDefault
+  state.cloud.live = {
+    status: live,
+    detail: live === 'Reconnecting' ? 'Could not reach Sprint web.' : null,
+  }
+  const discord = params.get('discord')
+  let pendingDiscord = null
   const syncReport = (uploaded, downloaded) => ({ uploaded, downloaded, conflicts: 0, removedLocally: 0 })
 
   window.sprint = {
@@ -106,6 +118,17 @@
     // Any password signs in except "wrong", which shows the error.
     signIn: async (serverUrl, email, password) =>
       password === 'wrong' ? { ok: false, error: 'Invalid credentials.' } : { ok: true },
+    signInWithDiscord: () =>
+      discord === 'fail'
+        ? Promise.resolve({ outcome: 'Failed', error: 'Registration is closed on this server.' })
+        : new Promise((resolve) => {
+            pendingDiscord = resolve
+          }),
+    cancelDiscordSignIn: async () => {
+      pendingDiscord?.({ outcome: 'Cancelled', error: '' })
+      pendingDiscord = null
+    },
+    serverInfo: async () => ({ reachable: true, instanceName: 'Sprint', allowRegistration: true, discordSignIn: discord === '1' || discord === 'fail' }),
     signOut: async () => null,
     // Long enough for the scan bar to show; a real sweep takes a few seconds.
     discoverServers: () =>

@@ -18,7 +18,8 @@ export type Preferences = {
 export const preferencesCookieName = 'sprint_prefs'
 
 // Slider bounds. The glass default (72 %) and its 20px blur match the
-// toolbar-bg / toolbar-blur tokens, so an untouched browser looks as designed.
+// --chrome-opacity / --chrome-backdrop defaults in app/globals.css, so an
+// untouched browser looks as designed.
 export const motionRange = { min: 0, max: 600, step: 20 } as const
 export const glassRange = { min: 15, max: 100, step: 1 } as const
 

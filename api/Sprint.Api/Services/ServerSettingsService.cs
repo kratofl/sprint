@@ -1,19 +1,20 @@
 using HotChocolate;
 using Microsoft.EntityFrameworkCore;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Data;
 using Sprint.Contracts;
 
 namespace Sprint.Api.Services;
 
-/// <summary>Server-wide settings: read by anyone, changed only by an admin.</summary>
-public sealed class ServerSettingsService(IDbContextFactory<SprintDbContext> dbFactory)
+/// <summary>Server-wide settings: read by anyone, changed only by an admin. Whether Discord sign-in works comes from the environment.</summary>
+public sealed class ServerSettingsService(IDbContextFactory<SprintDbContext> dbFactory, DiscordOptions discord)
 {
     /// <summary>The saved settings, or the defaults when an admin never saved any.</summary>
     public async Task<ServerSettingsDto> GetAsync(CancellationToken ct = default)
     {
         await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
         ServerSettingsEntity? row = await db.ServerSettings.FindAsync([ServerSettingsEntity.SingletonId], ct);
-        return row is null ? new ServerSettingsDto() : ToDto(row);
+        return row is null ? new ServerSettingsDto { DiscordSignIn = discord.Enabled } : this.ToDto(row);
     }
 
     /// <summary>Saves the settings. Throws unless <paramref name="userId"/> is an admin.</summary>
@@ -39,9 +40,9 @@ public sealed class ServerSettingsService(IDbContextFactory<SprintDbContext> dbF
         row.AllowRegistration = input.AllowRegistration;
         row.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        return ToDto(row);
+        return this.ToDto(row);
     }
 
-    private static ServerSettingsDto ToDto(ServerSettingsEntity row) =>
-        new() { InstanceName = row.InstanceName, AllowRegistration = row.AllowRegistration };
+    private ServerSettingsDto ToDto(ServerSettingsEntity row) =>
+        new() { InstanceName = row.InstanceName, AllowRegistration = row.AllowRegistration, DiscordSignIn = discord.Enabled };
 }

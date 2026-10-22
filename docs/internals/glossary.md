@@ -52,8 +52,15 @@ splits searches and confuses the next agent.
 
 ## Race engineer
 
-- **Engineer** — a remote person viewing live data and sending commands; the driver's app stays
-  authoritative and applies or rejects them.
+- **Engineer** — an account a driver linked through an **invite link**; sees all the driver's sessions,
+  live and past, minus **exclusions**. The driver's app stays authoritative.
+- **Invite link** — single-use, 7-day, revocable link that makes whoever accepts it the driver's
+  engineer.
+- **Exclusion** — the driver hid one session from one engineer.
+- **Session key** — the desktop's own session id; joins a session's live stream, InfluxDB data, synced
+  row and exclusions.
+- **Live session** — a session the desktop is streaming right now; viewers get it over SSE.
+- **Sign-in ticket** — the single-use code a Discord sign-in ends with, traded for a JWT.
 - **Staged change** — an engineer edit not yet pushed; **push** sends staged changes to the car.
 
 ## Design

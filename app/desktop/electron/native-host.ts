@@ -96,6 +96,25 @@ export class NativeHost {
     )
   }
 
+  /** The server's public settings (is Discord sign-in on?); waits on the Sprint server. */
+  async serverInfo(serverUrl: string): Promise<unknown> {
+    return this.json('/api/cloud/server-info', { method: 'POST', body: JSON.stringify({ serverUrl }), headers: { 'content-type': 'application/json' } }, 15_000)
+  }
+
+  /** Starts a Discord sign-in: the host answers with the URL to open in the system browser, or a failed result. */
+  async discordStart(serverUrl: string): Promise<unknown> {
+    return this.json('/api/account/discord/start', { method: 'POST', body: JSON.stringify({ serverUrl }), headers: { 'content-type': 'application/json' } })
+  }
+
+  /** Waits for the browser leg; the host gives up after 5 minutes, so this is bounded just above that. */
+  async discordWait(): Promise<unknown> {
+    return this.json('/api/account/discord/wait', { method: 'POST' }, 6 * 60_000)
+  }
+
+  async discordCancel(): Promise<void> {
+    await this.request('/api/account/discord/cancel', { method: 'POST' })
+  }
+
   /** Sweeps the local network for Sprint servers; a few seconds, bounded well above that. */
   async cloudDiscover(): Promise<unknown> {
     return this.json('/api/cloud/discover', { method: 'POST' }, 60_000)

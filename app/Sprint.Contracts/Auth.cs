@@ -17,7 +17,7 @@ public sealed record AuthRequest
     public string Password { get; init; } = "";
 }
 
-/// <summary>A signed JWT returned after a successful register/login.</summary>
+/// <summary>A signed JWT returned after a successful register/login/redeemSignInTicket.</summary>
 public sealed record AuthResponse
 {
     [JsonPropertyName("token")]
@@ -44,6 +44,22 @@ public sealed record UserProfile
     /// <summary>Whether this account may change the server settings. The server's first account is.</summary>
     [JsonPropertyName("isAdmin")]
     public bool IsAdmin { get; init; }
+
+    /// <summary>The Discord avatar, refreshed on every Discord sign-in. Null when the account has none.</summary>
+    [JsonPropertyName("avatarUrl")]
+    public string? AvatarUrl { get; init; }
+
+    /// <summary>
+    /// False for an account created through Discord that never set a password. Such an account
+    /// signs in with Discord only; <c>changePassword</c> sets its first password without asking
+    /// for a current one.
+    /// </summary>
+    [JsonPropertyName("hasPassword")]
+    public bool HasPassword { get; init; }
+
+    /// <summary>Whether a Discord account is linked, so Discord sign-in reaches this account.</summary>
+    [JsonPropertyName("discordLinked")]
+    public bool DiscordLinked { get; init; }
 
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; init; }

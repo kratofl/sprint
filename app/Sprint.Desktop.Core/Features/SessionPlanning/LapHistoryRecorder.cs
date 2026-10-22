@@ -32,6 +32,11 @@ public sealed class LapHistoryRecorder
     // Strictly-forward guard for the trace, so it stays a function of position.
     private const double PositionEpsilon = 1e-6;
 
+    // How far apart the two halves of a start/finish crossing can land. LMU's lap number comes
+    // from the telemetry buffer and the lap time from scoring, which the game refreshes about
+    // five times a second, so at the line either one can be a frame or two ahead of the other.
+    private static readonly TimeSpan CrossingSkew = TimeSpan.FromSeconds(1);
+
     // The in-progress lap's observed samples. Held in memory and resampled once, at the
     // crossing, so a lap's shape costs one list append per frame and nothing on the disk path
     // mid-lap. Both stored tiers come out of this one buffer: the position→time reference
@@ -44,6 +49,14 @@ public sealed class LapHistoryRecorder
     private int _sampledLap;
     private double? _fuelAtLastCrossing;
     private double? _energyAtLastCrossing;
+
+    // The lap time the previous in-car frame reported, and when it last changed to a new one.
+    // A change is the game saying "a lap was timed", which is what a crossing waits for.
+    private double? _lastLapTimeSeen;
+    private DateTimeOffset? _lapTimeChangedAt;
+
+    // A crossing whose lap time has not arrived from scoring yet.
+    private PendingLap? _pending;
 
     public LapHistoryRecorder(
         ILapHistoryStore store,
@@ -72,90 +85,72 @@ public sealed class LapHistoryRecorder
 
     /// <summary>
     /// Folds a live frame into the corpus. Opens a session the first time a usable context
-    /// appears, appends a record on each lap crossing, and starts a new session when the
-    /// context or session kind changes.
+    /// appears, appends a record on each lap crossing once the game has timed the lap, and
+    /// starts a new session when the context or session kind changes.
     /// </summary>
     public void Ingest(TelemetryFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
 
-        var context = ContextOf(frame.Session);
+        LapHistoryContext? context = ContextOf(frame.Session);
         if (context is null)
         {
             return;
         }
 
-        var kind = MapKind(frame.Session.SessionType);
-        if (_session is not null && !SameRun(_session, context, kind))
+        HistorySessionKind kind = MapKind(frame.Session.SessionType);
+        if (this._session is not null && !SameRun(this._session, context, kind))
         {
-            Close();
+            this.Close();
         }
 
-        _session ??= OpenNew(context, kind);
+        LapHistorySession session = this._session ??= this.OpenNew(context, kind);
         // Conditions can change while a session runs (a track dries, grip builds), and the
         // reading that matters is the one in force as laps are being filed.
-        _session.Conditions = MapConditions(frame.Conditions);
+        session.Conditions = MapConditions(frame.Conditions);
 
-        LapChannelTrace? trace = null;
-        var completed = CompletedLap(frame);
-        if (completed is not null)
+        if (this.CompletedLap(frame) is { } completed)
         {
-            // The finished lap is resampled before this frame is sampled: at the line the
-            // position has already wrapped and the lap timer has reseeded, so this frame's
-            // sample belongs to the lap that is starting, not the one that just ended.
-            completed.ReferenceCurve = LapReferenceCurve.FromSamples(
-                [.. _samples.Select(sample => (sample.Position, sample.ElapsedSeconds))],
-                completed.LapTimeSeconds);
-
-            if (_traces is not null)
-            {
-                trace = LapChannelTrace.FromSamples(
-                    _samples,
-                    completed.LapTimeSeconds,
-                    _session.Context.TrackLengthMeters);
-                if (trace is not null)
-                {
-                    completed.TraceId = LapTraceId.For(_session.Id, completed.LapNumber);
-                }
-            }
+            // The finished lap's samples are taken before this frame is sampled: at the line
+            // the position has already wrapped and the lap timer has reseeded, so this frame's
+            // sample belongs to the lap that is starting, not the one that just ended. A
+            // crossing still waiting from the lap before never got a time, and is replaced.
+            this._pending = new PendingLap(completed, [.. this._samples], frame.Timestamp);
         }
 
-        Sample(frame);
-
-        if (completed is null)
-        {
-            return;
-        }
-
-        _session.Laps.Add(completed);
-        if (trace is not null && completed.TraceId is { } traceId)
-        {
-            PersistTrace(traceId, trace);
-        }
-
-        Persist(_session);
+        this.ObserveLapTime(frame);
+        this.SettlePendingLap(session, frame);
+        this.Sample(frame);
     }
 
     /// <summary>Ends the open session, stamping when it finished. Safe to call repeatedly.</summary>
     public void Close()
     {
-        if (_session is null)
+        if (this._session is null)
         {
             return;
         }
 
-        var finished = _session;
-        finished.EndedAt = _clock();
-        _session = null;
+        LapHistorySession finished = this._session;
+        finished.EndedAt = this._clock();
+        this._session = null;
         this._lastSeenLap = 0;
         this._lastSeenLapIsValid = true;
         this._sampledLap = 0;
         this._samples.Clear();
+        // Measured against the next session's own first crossing, never this one's: a new
+        // session can start on less fuel than this one ended on, which would read as usage.
+        this._fuelAtLastCrossing = null;
+        this._energyAtLastCrossing = null;
+        this._lastLapTimeSeen = null;
+        this._lapTimeChangedAt = null;
+        // A crossing the game never timed has nothing to file.
+        this._pending = null;
 
         // A session with no completed laps carries nothing a reader could use.
         if (finished.Laps.Count > 0)
         {
-            Persist(finished);
+            this.Persist(finished);
         }
     }
 
@@ -225,9 +220,10 @@ public sealed class LapHistoryRecorder
     };
 
     /// <summary>
-    /// The lap that just finished, or null when this frame is not a crossing. A crossing
-    /// needs both a lap-number increment and a completed lap time, so a phantom lap 0 is
-    /// never recorded.
+    /// The lap that just finished, or null when this frame is not a crossing. A crossing is a
+    /// lap-number increment, so a phantom lap 0 is never recorded. The record has no time or
+    /// sectors yet: those come from scoring, which can lag the lap number at the line, and
+    /// <see cref="SettlePendingLap"/> fills them in once the game has timed the lap.
     /// </summary>
     private LapHistoryRecord? CompletedLap(TelemetryFrame frame)
     {
@@ -239,7 +235,7 @@ public sealed class LapHistoryRecorder
             return null;
         }
 
-        if (currentLap <= this._lastSeenLap || frame.Lap.LastLapTime <= 0)
+        if (currentLap <= this._lastSeenLap)
         {
             this._lastSeenLap = Math.Max(this._lastSeenLap, currentLap);
             this._lastSeenLapIsValid = frame.Lap.IsValid;
@@ -260,8 +256,6 @@ public sealed class LapHistoryRecorder
             // countable yet, so the completed lap keeps the last validity observed before
             // the lap number changed.
             IsValid = finishedIsValid,
-            LapTimeSeconds = frame.Lap.LastLapTime,
-            SectorsSeconds = [.. frame.Lap.LastLapSectorsSeconds],
             FuelRemainingLiters = fuel,
             FuelUsedLiters = Consumed(this._fuelAtLastCrossing, fuel),
             VirtualEnergyRemaining = energy,
@@ -275,6 +269,84 @@ public sealed class LapHistoryRecorder
         this._fuelAtLastCrossing = fuel;
         this._energyAtLastCrossing = energy;
         return record;
+    }
+
+    /// <summary>
+    /// Notes when the game reports a new lap time. Only in-car frames count: out of the car
+    /// the frame carries no lap time at all, and getting back in would read as a new one.
+    /// </summary>
+    private void ObserveLapTime(TelemetryFrame frame)
+    {
+        if (!frame.Session.InCar)
+        {
+            return;
+        }
+
+        double lapTime = frame.Lap.LastLapTime;
+        if (this._lastLapTimeSeen is { } seen && lapTime > 0 && lapTime != seen)
+        {
+            this._lapTimeChangedAt = frame.Timestamp;
+        }
+
+        this._lastLapTimeSeen = lapTime;
+    }
+
+    /// <summary>
+    /// Files the waiting crossing once its lap time has arrived: a new time reported within
+    /// <see cref="CrossingSkew"/> of the line, before or after it. The frame on the crossing
+    /// itself can still carry the lap before's time, and filing that would give every lap its
+    /// predecessor's time. A crossing that gets no new time in that window was not timed (an
+    /// out lap, say) and is dropped rather than filed under a guess.
+    /// </summary>
+    private void SettlePendingLap(LapHistorySession session, TelemetryFrame frame)
+    {
+        if (this._pending is not { } pending)
+        {
+            return;
+        }
+
+        bool timed = this._lapTimeChangedAt is { } changedAt
+            && changedAt >= pending.CrossedAt - CrossingSkew
+            && frame.Lap.LastLapTime > 0;
+        if (timed)
+        {
+            this._pending = null;
+            this._lapTimeChangedAt = null;
+            this.FileLap(session, pending, frame.Lap);
+        }
+        else if (frame.Timestamp - pending.CrossedAt > CrossingSkew)
+        {
+            this._pending = null;
+        }
+    }
+
+    /// <summary>Completes a crossing with the time and sectors scoring reported for it, and files it.</summary>
+    private void FileLap(LapHistorySession session, PendingLap pending, LapState lap)
+    {
+        LapHistoryRecord record = pending.Record;
+        record.LapTimeSeconds = lap.LastLapTime;
+        record.SectorsSeconds = [.. lap.LastLapSectorsSeconds];
+        record.ReferenceCurve = LapReferenceCurve.FromSamples(
+            [.. pending.Samples.Select(sample => (sample.Position, sample.ElapsedSeconds))],
+            record.LapTimeSeconds);
+
+        LapChannelTrace? trace = null;
+        if (this._traces is not null)
+        {
+            trace = LapChannelTrace.FromSamples(pending.Samples, record.LapTimeSeconds, session.Context.TrackLengthMeters);
+            if (trace is not null)
+            {
+                record.TraceId = LapTraceId.For(session.Id, record.LapNumber);
+            }
+        }
+
+        session.Laps.Add(record);
+        if (trace is not null && record.TraceId is { } traceId)
+        {
+            this.PersistTrace(traceId, trace);
+        }
+
+        this.Persist(session);
     }
 
     /// <summary>
@@ -382,4 +454,7 @@ public sealed class LapHistoryRecorder
             _log.Warn($"Failed to persist lap-history session '{session.Id}'", ex);
         }
     });
+
+    /// <summary>A finished lap waiting for its time, with the samples it was driven through.</summary>
+    private sealed record PendingLap(LapHistoryRecord Record, LapTraceSample[] Samples, DateTimeOffset CrossedAt);
 }

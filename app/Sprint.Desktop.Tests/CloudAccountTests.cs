@@ -68,6 +68,40 @@ public sealed class CloudAccountTests : IDisposable
         Assert.Equal(new CloudAccountState(false, "http://localhost:8080", "", ""), restarted);
     }
 
+    [Fact]
+    public async Task ASignInTicketSignsTheDesktopInAsTheAccountItWasIssuedFor()
+    {
+        CloudAccount account = this.Account(FakeServer.Redeeming(email: "", displayName: "Ada"));
+
+        CloudSignInResult result = await account.SignInWithTicketAsync("http://localhost:8080", "ticket-1");
+
+        Assert.True(result.Ok);
+        Assert.Equal(new CloudAccountState(true, "http://localhost:8080", "", "Ada"), account.State);
+        // A Discord account may have no email, so the sync ledger is keyed by the account's id instead.
+        Assert.Equal("http://localhost:8080|id:u1", account.AccountKey);
+    }
+
+    [Fact]
+    public async Task AnExpiredSignInTicketLeavesTheDesktopSignedOutAndSaysWhy()
+    {
+        CloudAccount account = this.Account(FakeServer.Rejecting("This sign-in link has expired. Sign in again."));
+
+        CloudSignInResult result = await account.SignInWithTicketAsync("http://localhost:8080", "used");
+
+        Assert.Equal(CloudSignInResult.Failed("This sign-in link has expired. Sign in again."), result);
+        Assert.False(account.State.SignedIn);
+    }
+
+    [Fact]
+    public async Task AnAccountWithAnEmailKeepsItsSyncLedgerKey()
+    {
+        CloudAccount account = this.Account(FakeServer.Accepting("ada@sprint.gg", "Ada"));
+
+        await account.SignInAsync("http://localhost:8080", "ada@sprint.gg", "pw");
+
+        Assert.Equal("http://localhost:8080|ada@sprint.gg", account.AccountKey);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("localhost:8080")]
@@ -89,6 +123,10 @@ public sealed class CloudAccountTests : IDisposable
     {
         public static FakeServer Accepting(string email, string displayName) => new(body => body.Contains("login(", StringComparison.Ordinal)
             ? """{"data":{"login":{"token":"tok"}}}"""
+            : """{"data":{"me":{"id":"u1","email":""" + Quote(email) + ""","displayName":""" + Quote(displayName) + ""","createdAt":"2026-01-01T00:00:00Z"}}}""");
+
+        public static FakeServer Redeeming(string email, string displayName) => new(body => body.Contains("redeemSignInTicket(", StringComparison.Ordinal)
+            ? """{"data":{"redeemSignInTicket":{"token":"tok"}}}"""
             : """{"data":{"me":{"id":"u1","email":""" + Quote(email) + ""","displayName":""" + Quote(displayName) + ""","createdAt":"2026-01-01T00:00:00Z"}}}""");
 
         public static FakeServer Rejecting(string message) =>

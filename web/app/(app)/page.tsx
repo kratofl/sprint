@@ -1,4 +1,4 @@
-import Unavailable from '@/components/Unavailable'
+import { Unavailable } from '@/components/app/unavailable'
 import { monthOf } from '@/lib/period'
 import { loadOverview } from '@/lib/server/data'
 import Overview from './Overview'

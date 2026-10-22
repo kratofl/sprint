@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { appearanceStyle, parsePreferences, preferencesCookie, themeAttribute } from './preferences.ts'
 
-test('a browser without the cookie gets the system theme, 220 ms motion and the toolbar-token glass', () => {
+test('a browser without the cookie gets the system theme, 220 ms motion and the default chrome glass', () => {
   assert.deepEqual(parsePreferences(undefined), { theme: 'system', motion: 220, glass: 72 })
 })
 

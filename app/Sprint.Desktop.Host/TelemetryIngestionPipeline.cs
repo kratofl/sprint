@@ -2,6 +2,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Sharing;
 
 namespace Sprint.Desktop.Host;
 
@@ -12,7 +13,8 @@ namespace Sprint.Desktop.Host;
 /// the always-on lap-history recorder (<see cref="LapHistoryRecorder"/>), and the plan's lap-time
 /// target latch (<see cref="PlanTargetDelivery"/>) — in that order, which the deleted window's own
 /// comment called deliberate: the plan and the corpus must consume a lap's last frame before the
-/// target latch fires for the lap that is starting.
+/// target latch fires for the lap that is starting. Last, when given, the live uplink
+/// (<see cref="LiveUplink"/>) samples the frame for streaming.
 /// <para>
 /// <b>Exactly-once ingestion.</b> The host's publish loop polls <c>TelemetryEngine.Snapshot</c>
 /// on a fixed timer, independently of how often the engine's reader thread actually reads a new
@@ -45,6 +47,7 @@ public sealed class TelemetryIngestionPipeline
     private readonly PlanTargetDelivery _planTargets;
     private readonly Action<DeltaReference?> _requestPlanReference;
     private readonly ILog _log;
+    private readonly LiveUplink? _liveUplink;
     private TelemetryFrame? _lastPolled;
 
     public TelemetryIngestionPipeline(
@@ -53,7 +56,8 @@ public sealed class TelemetryIngestionPipeline
         LapHistoryRecorder lapHistory,
         PlanTargetDelivery planTargets,
         Action<DeltaReference?> requestPlanReference,
-        ILog? log = null)
+        ILog? log = null,
+        LiveUplink? liveUplink = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? throw new ArgumentNullException(nameof(planner));
@@ -61,6 +65,7 @@ public sealed class TelemetryIngestionPipeline
         this._planTargets = planTargets ?? throw new ArgumentNullException(nameof(planTargets));
         this._requestPlanReference = requestPlanReference ?? throw new ArgumentNullException(nameof(requestPlanReference));
         this._log = log ?? NullLog.Instance;
+        this._liveUplink = liveUplink;
     }
 
     /// <summary>How many times <see cref="Ingest"/> actually ran. A test seam for the
@@ -102,6 +107,10 @@ public sealed class TelemetryIngestionPipeline
                 this._requestPlanReference(this._planTargets.Reference);
             }
         });
+        if (this._liveUplink is { } live)
+        {
+            this.SafeRun("live uplink", () => live.Observe(frame));
+        }
     }
 
     /// <summary>Ends the open lap-history session cleanly. Call once, on host shutdown, so an
