@@ -234,8 +234,17 @@ function FlagOverlay({ frame, palette, canvasWidth, canvasHeight }: { frame: Tel
   )
 }
 
-/** A transient parameter-change banner over the grid, from `DashAlertTracker.evaluate`. */
+/**
+ * A setting change, from `DashAlertTracker.evaluate`. Full screen (the default) fills the whole
+ * dash with the setting's color: its name and the old value on the left, the new value huge on
+ * the right, so the driver reads which knob moved before the number. Inverted, it turns dark
+ * with the color on the text. A centered popup sits in the alert's own grid rect instead.
+ */
 function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: DashAlertBanner; palette: DashPaletteColors; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
+  if (banner.fullScreen) {
+    return <FullScreenSettingPopup banner={banner} palette={palette} width={canvasWidth} height={canvasHeight} />
+  }
+
   const panel = alertPanelRect(canvasWidth, canvasHeight, banner)
   if (panel.width < 4 || panel.height < 4) {
     return null
@@ -262,6 +271,31 @@ function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: D
     >
       <TextLine text={banner.title} left={panel.width / 2} top={panel.height * 0.25} size={panel.height * 0.13} color={titleColor} align="center" maxWidth={panel.width * 0.86} weight="labelBold" sizing="fit" />
       <TextLine text={banner.value} left={panel.width / 2} top={panel.height * 0.64} size={panel.height * 0.52} color={valueColor} align="center" maxWidth={panel.width * 0.84} weight="value" />
+    </div>
+  )
+}
+
+function FullScreenSettingPopup({ banner, palette, width, height }: { banner: DashAlertBanner; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
+  const ink = banner.invertColors ? banner.color : palette.background
+  const pad = Math.min(width, height) * 0.055
+  // The value takes up to 55% of the width; its size comes from the setting's widest value ("00" or "00.0").
+  const valueWidth = width * 0.55
+  const valueSize = Math.min(height * 0.78, valueWidth / (Math.max(2, banner.value.length) * 0.56))
+  const nameWidth = width - valueWidth - pad * 2
+  const was = banner.max !== null ? `WAS ${banner.previous} · OF ${banner.max}` : `WAS ${banner.previous}`
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: banner.invertColors ? palette.background : banner.color,
+        border: banner.invertColors ? `${Math.max(2, height * 0.01)}px solid ${banner.color}` : undefined,
+        boxSizing: 'border-box',
+      }}
+    >
+      <TextLine text={banner.title} left={pad} top={height * 0.46} size={height * 0.27} color={ink} align="start" maxWidth={nameWidth} weight="value" sizing="fit" />
+      <TextLine text={was} left={pad} top={height * 0.66} size={height * 0.05} color={ink} align="start" maxWidth={nameWidth} weight="labelBold" sizing="fit" />
+      <TextLine text={banner.value} left={width - pad} top={height / 2} size={valueSize} color={ink} align="end" maxWidth={valueWidth} weight="value" />
     </div>
   )
 }

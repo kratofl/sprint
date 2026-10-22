@@ -1,12 +1,13 @@
 // Stateful parameter-change alert detection, ported from the desktop client's
 // `Features/Dashes/DashAlertTracker.cs` and `DashAttention.cs`. Compares each frame to the
-// previous one for the alert types configured on the layout (tc/abs/engine-map) and produces
-// a transient banner that expires after a fixed duration. There is no internal clock: callers
-// drive time explicitly via `advanceTo`, which is what makes expiry deterministic to test.
+// previous one for the alert types configured on the layout (tc/abs/brake bias/engine map) and
+// produces a transient popup that expires after a fixed duration. There is no internal clock:
+// callers drive time explicitly via `advanceTo`, which is what makes expiry deterministic to test.
 
 import type { TelemetryFrame } from '@sprint/types'
 import type { DashAlert, DashLayout } from './index'
-import { canonicalAlertColorToken, findPresetByAlertColorToken, presetSwatchColor, type DashPaletteColors } from './palette'
+import { canonicalAlertColorToken, dashSettingColors, findPresetByAlertColorToken, presetSwatchColor, type DashPaletteColors } from './palette'
+import { formatBrakeBias } from './format'
 
 export type DashCondition =
   | 'neutral'
@@ -23,15 +24,24 @@ export type DashCondition =
  * string because it arrives from stored JSON, but this is the authoritative set —
  * consumers that offer alert types to a user should build their list from it.
  */
-export type DashAlertType = 'tc_change' | 'abs_change' | 'enginemap_change'
+export type DashAlertType = 'tc_change' | 'abs_change' | 'bias_change' | 'enginemap_change'
 
-export const dashAlertTypes: readonly DashAlertType[] = ['tc_change', 'abs_change', 'enginemap_change']
+export const dashAlertTypes: readonly DashAlertType[] = ['tc_change', 'abs_change', 'bias_change', 'enginemap_change']
 
-/** A transient dash alert (parameter change), produced by DashAlertTracker.evaluate. */
+/**
+ * A transient setting-change popup, produced by DashAlertTracker.evaluate. `fullScreen`
+ * popups cover the whole dash in the setting's color; otherwise the popup sits in the
+ * alert's own grid rect.
+ */
 export interface DashAlertBanner {
   title: string
   value: string
+  /** The value before the change, shown small beside the new one. */
+  previous: string
+  /** The setting's highest step when the game reports one, for "of 9". */
+  max: number | null
   color: string
+  fullScreen: boolean
   col: number
   row: number
   colSpan: number
@@ -39,16 +49,17 @@ export interface DashAlertBanner {
   gridCols: number
   gridRows: number
   invertColors: boolean
-  condition: DashCondition
 }
 
 interface ResolvedAlertConfig {
+  fullScreen: boolean
   durationSeconds: number
   invertColors: boolean
   colorToken: string
 }
 
 const DEFAULT_ALERT_CONFIG: ResolvedAlertConfig = {
+  fullScreen: true,
   durationSeconds: 1.5,
   invertColors: false,
   colorToken: 'auto',
@@ -58,6 +69,7 @@ const DEFAULT_ALERT_CONFIG: ResolvedAlertConfig = {
 function readAlertConfig(raw: Record<string, unknown> | undefined): ResolvedAlertConfig {
   if (!raw) return DEFAULT_ALERT_CONFIG
   return {
+    fullScreen: raw.displayMode !== 'center',
     durationSeconds: typeof raw.durationSeconds === 'number' ? raw.durationSeconds : DEFAULT_ALERT_CONFIG.durationSeconds,
     invertColors: typeof raw.invertColors === 'boolean' ? raw.invertColors : DEFAULT_ALERT_CONFIG.invertColors,
     colorToken: typeof raw.colorToken === 'string' ? raw.colorToken : DEFAULT_ALERT_CONFIG.colorToken,
@@ -68,39 +80,25 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function resolveAlertColor(token: string | undefined, fallback: string, palette: DashPaletteColors): string {
+/** "auto" is the setting's own identity color; a named token overrides it with that preset's swatch. */
+function resolveAlertColor(token: string | undefined, settingColor: string, palette: DashPaletteColors): string {
   const preset = findPresetByAlertColorToken(token)
   if (preset && preset.alertColorToken.toLowerCase() !== 'auto') {
     return presetSwatchColor(preset)
   }
 
-  return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : fallback
+  return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : settingColor
 }
 
-function createBanner(
-  title: string,
-  value: string,
-  alert: DashAlert,
-  fallbackColor: string,
-  condition: DashCondition,
-  config: ResolvedAlertConfig,
-  layout: DashLayout,
-  palette: DashPaletteColors,
-): DashAlertBanner {
-  return {
-    title,
-    value,
-    color: resolveAlertColor(alert.colorToken ?? config.colorToken, fallbackColor, palette),
-    col: alert.col,
-    row: alert.row,
-    colSpan: alert.colSpan,
-    rowSpan: alert.rowSpan,
-    gridCols: layout.gridCols,
-    gridRows: layout.gridRows,
-    invertColors: alert.invertColors ?? config.invertColors,
-    condition,
-  }
+/** How each setting reads, prints and colors itself. Changes are detected on the printed value, so sensor noise below the display precision never fires. */
+const SETTINGS: Record<DashAlertType, { title: string; color: string; value: (frame: TelemetryFrame) => string; max: (frame: TelemetryFrame) => number }> = {
+  tc_change: { title: 'TC', color: dashSettingColors.tc, value: (frame) => String(Math.trunc(frame.electronics.tc)), max: (frame) => frame.electronics.tcMax },
+  abs_change: { title: 'ABS', color: dashSettingColors.abs, value: (frame) => String(Math.trunc(frame.electronics.abs)), max: (frame) => frame.electronics.absMax },
+  bias_change: { title: 'BIAS', color: dashSettingColors.brakeBias, value: (frame) => formatBrakeBias(frame.car.brakeBiasRear), max: () => 0 },
+  enginemap_change: { title: 'MAP', color: dashSettingColors.engineMap, value: (frame) => String(Math.trunc(frame.electronics.motorMap)), max: (frame) => frame.electronics.motorMapMax },
 }
+
+const isDashAlertType = (type: string): type is DashAlertType => (dashAlertTypes as readonly string[]).includes(type)
 
 function detectCandidate(
   alert: DashAlert,
@@ -110,26 +108,32 @@ function detectCandidate(
   layout: DashLayout,
   palette: DashPaletteColors,
 ): DashAlertBanner | null {
-  switch (alert.type) {
-    case 'tc_change':
-      return frame.electronics.tc !== prev.electronics.tc
-        ? createBanner('TRACTION CONTROL', String(frame.electronics.tc), alert, palette.assistActive, 'assistActive', config, layout, palette)
-        : null
-    case 'abs_change':
-      return frame.electronics.abs !== prev.electronics.abs
-        ? createBanner('ABS', String(frame.electronics.abs), alert, palette.warning, 'warning', config, layout, palette)
-        : null
-    case 'enginemap_change':
-      return frame.electronics.motorMap !== prev.electronics.motorMap
-        ? createBanner('ENGINE MAP', String(frame.electronics.motorMap), alert, palette.primary, 'neutral', config, layout, palette)
-        : null
-    default:
-      return null
+  if (!isDashAlertType(alert.type)) return null
+  const setting = SETTINGS[alert.type]
+  const value = setting.value(frame)
+  const previous = setting.value(prev)
+  if (value === previous) return null
+
+  const max = setting.max(frame)
+  return {
+    title: setting.title,
+    value,
+    previous,
+    max: max > 0 ? max : null,
+    color: resolveAlertColor(alert.colorToken ?? config.colorToken, setting.color, palette),
+    fullScreen: config.fullScreen,
+    col: alert.col,
+    row: alert.row,
+    colSpan: alert.colSpan,
+    rowSpan: alert.rowSpan,
+    gridCols: layout.gridCols,
+    gridRows: layout.gridRows,
+    invertColors: alert.invertColors ?? config.invertColors,
   }
 }
 
 /**
- * Feeds frames through the tc/abs/engine-map change detectors and holds the resulting banner
+ * Feeds frames through the setting change detectors and holds the resulting banner
  * for its configured duration. Time is supplied explicitly via `advanceTo` (epoch
  * milliseconds) rather than read from a real clock, so expiry is exercised deterministically.
  */

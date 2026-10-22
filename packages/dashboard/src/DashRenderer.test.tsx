@@ -69,7 +69,10 @@ test('an alert banner renders its title and value when one is supplied', () => {
   const banner: DashAlertBanner = {
     title: 'TRACTION CONTROL',
     value: '5',
+    previous: '4',
+    max: 9,
     color: '#4F9CFF',
+    fullScreen: false,
     col: 6,
     row: 3,
     colSpan: 8,
@@ -77,12 +80,18 @@ test('an alert banner renders its title and value when one is supplied', () => {
     gridCols: 20,
     gridRows: 12,
     invertColors: false,
-    condition: 'assistActive',
   }
   const withBanner = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page()] })} frame={frame()} width={800} height={480} alertBanner={banner} />)
   const withoutBanner = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page()] })} frame={frame()} width={800} height={480} alertBanner={null} />)
   assert.ok(withBanner.includes('TRACTION CONTROL'), withBanner)
   assert.ok(!withoutBanner.includes('TRACTION CONTROL'), withoutBanner)
+})
+
+test('a full-screen setting popup covers the whole dash in the setting color, with the old value beside the new one', () => {
+  const banner: DashAlertBanner = { title: 'ABS', value: '2', previous: '3', max: 9, color: '#A06BFF', fullScreen: true, col: 6, row: 3, colSpan: 8, rowSpan: 6, gridCols: 20, gridRows: 12, invertColors: false }
+  const html = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page()] })} frame={frame()} width={800} height={480} alertBanner={banner} />)
+  assert.match(html, /inset:0;background:#A06BFF/i)
+  assert.ok(html.includes('WAS 3 · OF 9'), html)
 })
 
 test('the idle page renders instead of the first page when idle is requested', () => {

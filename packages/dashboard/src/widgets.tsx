@@ -13,6 +13,7 @@ import { TirePosition, type AppSettings, type TelemetryFrame, type TireState } f
 import type { DashWidget } from './index'
 import { resolveBinding, type DashTargets } from './bindings'
 import {
+  formatBrakeBias,
   formatDelta,
   formatFuel,
   formatFuelPerLap,
@@ -392,17 +393,8 @@ function EngineMapWidget({ frame, palette, width, height }: WidgetContentProps):
   return <BigValue text={String(Math.trunc(frame.electronics.motorMap))} template="00" width={width} height={height} color={palette.neutral} />
 }
 
-/**
- * Discrepancy carried from bindings.ts: CarState.brakeBiasRear is a 0-1 fraction here, a
- * percentage in the desktop model, so it is scaled to keep this readout consistent with the
- * "car.brakeBiasRear" text binding. Shared with the bias-change popup.
- */
-export function formatBrakeBias(frame: TelemetryFrame): string {
-  return (frame.car.brakeBiasRear * 100).toFixed(1)
-}
-
 function BrakeBiasWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <BigValue text={formatBrakeBias(frame)} template="00.0" width={width} height={height} color={palette.neutral} />
+  return <BigValue text={formatBrakeBias(frame.car.brakeBiasRear)} template="00.0" width={width} height={height} color={palette.neutral} />
 }
 
 function FuelTargetWidget({ targets, palette, width, height }: WidgetContentProps): React.ReactElement {

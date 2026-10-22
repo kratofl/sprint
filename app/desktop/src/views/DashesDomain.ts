@@ -295,6 +295,7 @@ export type AlertTypeId = DashAlertType
 const ALERT_TYPE_LABELS: Record<AlertTypeId, string> = {
   tc_change: 'Traction control change',
   abs_change: 'ABS change',
+  bias_change: 'Brake bias change',
   enginemap_change: 'Engine map change',
 }
 

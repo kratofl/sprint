@@ -1545,7 +1545,7 @@ function AlertsEditor({
           <label className="field">
             <span>Display</span>
             <select value={global.displayMode} onChange={(event) => apply((current) => setGlobalAlertConfig(current, { displayMode: event.target.value === 'center' ? 'center' : 'full' }))}>
-              <option value="full">Full width</option>
+              <option value="full">Full screen</option>
               <option value="center">Centered</option>
             </select>
           </label>
@@ -1593,6 +1593,7 @@ function AlertsEditor({
             draft={draft}
             type={selected.type}
             label={selected.label}
+            fullScreen={global.displayMode === 'full'}
             apply={apply}
             frame={frame}
             activePageId={activePageId}
@@ -1610,6 +1611,7 @@ function AlertDetail({
   draft,
   type,
   label,
+  fullScreen,
   apply,
   frame,
   activePageId,
@@ -1620,6 +1622,8 @@ function AlertDetail({
   draft: DashLayout
   type: AlertTypeId
   label: string
+  /** Full-screen popups cover the whole dash, so there is nothing to place. */
+  fullScreen: boolean
   apply: Apply
   frame: TelemetryFrame | null
   activePageId: string
@@ -1644,10 +1648,16 @@ function AlertDetail({
 
       {enabled && alert ? (
         <>
-          <div className="dash-editor-alert-well">
-            <AlertCanvas draft={draft} alert={alert} frame={frame} pageId={activePageId} isIdlePage={isIdlePage} canvasWidth={canvasWidth} canvasHeight={canvasHeight} onChange={onGeometryChange} />
-          </div>
-          <GeometryFields rect={alert} onChange={onGeometryChange} />
+          {fullScreen ? (
+            <p className="field-hint">Shows full screen in the setting's color. Set Display to Centered in the alert defaults to place it on the dash instead.</p>
+          ) : (
+            <>
+              <div className="dash-editor-alert-well">
+                <AlertCanvas draft={draft} alert={alert} frame={frame} pageId={activePageId} isIdlePage={isIdlePage} canvasWidth={canvasWidth} canvasHeight={canvasHeight} onChange={onGeometryChange} />
+              </div>
+              <GeometryFields rect={alert} onChange={onGeometryChange} />
+            </>
+          )}
 
           <label className="dash-editor-check">
             <input type="checkbox" checked={!usesGlobal} onChange={(event) => apply((current) => setAlertUseGlobal(current, type, !event.target.checked))} />

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TirePosition, type TelemetryFrame } from '@sprint/types'
 import { DashAlertTracker, isAttentionInverted } from './alerts'
-import { defaultDashPalette, findPresetByAlertColorToken, presetSwatchColor } from './palette'
+import { dashSettingColors, defaultDashPalette, findPresetByAlertColorToken, presetSwatchColor } from './palette'
 import type { DashAlert, DashLayout } from './index'
 
 function assertDefined<T>(value: T | null | undefined): asserts value is T {
@@ -48,10 +48,32 @@ test('a tc_change fires once the value differs from the previous frame', () => {
   tracker.evaluate(layout([alert()]), frame({ tc: 0 }), defaultDashPalette)
   const banner = tracker.evaluate(layout([alert()]), frame({ tc: 5 }), defaultDashPalette)
   assertDefined(banner)
-  assert.equal(banner.title, 'TRACTION CONTROL')
+  assert.equal(banner.title, 'TC')
   assert.equal(banner.value, '5')
-  assert.equal(banner.color, defaultDashPalette.assistActive)
-  assert.equal(banner.condition, 'assistActive')
+  assert.equal(banner.previous, '0')
+  assert.equal(banner.max, 9)
+  assert.equal(banner.color, dashSettingColors.tc)
+  assert.equal(banner.fullScreen, true, 'full screen unless the layout asks for a centered popup')
+})
+
+test('a brake bias change fires on the shown value, so noise below one decimal stays quiet', () => {
+  const bias = (rear: number): TelemetryFrame => ({ ...frame(), car: { ...frame().car, brakeBiasRear: rear } })
+  const tracker = new DashAlertTracker()
+  const alerts = [alert({ type: 'bias_change' })]
+  tracker.evaluate(layout(alerts), bias(0.462), defaultDashPalette)
+  assert.equal(tracker.evaluate(layout(alerts), bias(0.46201), defaultDashPalette), null)
+  const banner = tracker.evaluate(layout(alerts), bias(0.465), defaultDashPalette)
+  assert.equal(banner?.title, 'BIAS')
+  assert.equal(banner?.value, '46.5')
+  assert.equal(banner?.max, null)
+  assert.equal(banner?.color, dashSettingColors.brakeBias)
+})
+
+test('displayMode "center" keeps the popup in the alert rect', () => {
+  const tracker = new DashAlertTracker()
+  const centered = layout([alert()], { alertConfig: { displayMode: 'center' } })
+  tracker.evaluate(centered, frame({ tc: 0 }), defaultDashPalette)
+  assert.equal(tracker.evaluate(centered, frame({ tc: 5 }), defaultDashPalette)?.fullScreen, false)
 })
 
 test('a disabled alert never fires', () => {
@@ -108,11 +130,11 @@ test("a named color token resolves to that theme preset's swatch, overriding the
   tracker.evaluate(layout([alert({ colorToken: 'green' })]), frame({ tc: 0 }), defaultDashPalette)
   const banner = tracker.evaluate(layout([alert({ colorToken: 'green' })]), frame({ tc: 5 }), defaultDashPalette)
   // "green" canonicalizes to the Viper preset, whose primary swatch is the dash green —
-  // not palette.assistActive, which is what tc_change would otherwise fall back to.
+  // not TC's own blue, which is what tc_change would otherwise use.
   const viper = findPresetByAlertColorToken('green')
   assertDefined(viper)
   assert.equal(banner?.color, presetSwatchColor(viper))
-  assert.notEqual(banner?.color, defaultDashPalette.assistActive)
+  assert.notEqual(banner?.color, dashSettingColors.tc)
 })
 
 test('isAttentionInverted only blinks for the critical condition, and only when requested', () => {
