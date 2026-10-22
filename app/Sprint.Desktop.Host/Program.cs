@@ -12,6 +12,7 @@ using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
@@ -23,8 +24,10 @@ const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // The shipped appsettings.json sits beside the binary; the content root is wherever the host
-// was started from, so it is read from there explicitly.
+// was started from, so it is read from there explicitly. Environment variables go back on top, so
+// they still override it (e.g. Sprint__Features__SprintWeb=true for a dev run).
 builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true);
+builder.Configuration.AddEnvironmentVariables();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 WebApplication app = builder.Build();
 DesktopState state = new();
@@ -78,7 +81,12 @@ ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataR
 // visible on the next poll without the two paths needing to share one instance.
 SessionPlannerService plannerService = new(planStore, log);
 AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore));
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle);
+// The live link: this PC's telemetry straight to an engineer's desktop, no server in between.
+// The link.* commands drive it, the telemetry loop below feeds it, its own worker owns the socket.
+PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
+CancellationTokenSource peerLinkCts = new();
+Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -110,8 +118,12 @@ CloudSyncRunner cloudSync = new(
     runtime,
     log);
 string officialServerUrl = (builder.Configuration["Sprint:OfficialServerUrl"] ?? "").Trim();
+// Sprint web (accounts, sync, the server live stream) is behind a feature flag, off in the shipped
+// appsettings.json until the server side is ready. Off, nothing talks to a server even if a sign-in
+// is left over, and the UI hides every Sprint web surface. Sprint__Features__SprintWeb=true turns it on.
+bool sprintWeb = builder.Configuration.GetValue<bool>("Sprint:Features:SprintWeb");
 CancellationTokenSource cloudSyncCts = new();
-Task cloudSyncLoop = cloudSync.RunAsync(cloudSyncCts.Token);
+Task cloudSyncLoop = sprintWeb ? cloudSync.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
 
 // "Continue with Discord": the browser leg comes back to this host's loopback callback
 // (DiscordCallbackPage.Path, the one route without the bearer token), guarded by DiscordSignIn's nonce.
@@ -120,7 +132,7 @@ DiscordSignIn discordSignIn = new(cloudAccount);
 // Streams the session being driven to the signed-in server while sync keeps data there. Fed from
 // the telemetry loop below without waiting on it; its own worker owns the WebSocket.
 LiveUplink liveUplink = new(WebSocketLiveConnection.ConnectAsync, log);
-Task liveUplinkLoop = liveUplink.RunAsync(cloudSyncCts.Token);
+Task liveUplinkLoop = sprintWeb ? liveUplink.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
 
 GitHubReleaseSource releaseSource = new();
 UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
@@ -150,7 +162,8 @@ TelemetryIngestionPipeline ingestion = new(
     planTargets,
     telemetryEngine.RequestPlanReference,
     log,
-    liveUplink);
+    liveUplink,
+    peerLink);
 
 // Bounds the trace tier's disk use (#194 parity). Off the request/ingest path, once at
 // startup rather than per lap -- mirrors the deleted client's ThreadPool.QueueUserWorkItem
@@ -182,6 +195,7 @@ Task telemetryPublishLoop = Task.Run(async () =>
             // only caller, and a bad frame in one consumer never stops the others or this loop.
             ingestion.Poll(snapshot.Frame);
             liveUplink.Update(cloudAccount.Credentials, runtime.Settings.Cloud.Storage, lapHistoryRecorder.OpenSession);
+            peerLink.Update(lapHistoryRecorder.OpenSession);
             // Sources report the raw link; "stale" is derived from frame age, so it
             // only reaches the client if the host evaluates freshness here.
             TelemetryConnectionState effective = TelemetryFreshness.Evaluate(snapshot.Status, DateTimeOffset.UtcNow);
@@ -242,6 +256,7 @@ app.Lifetime.ApplicationStopping.Register(() =>
     telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
     cloudSyncCts.Cancel();
+    peerLinkCts.Cancel();
     discordSignIn.Cancel();
     screenOutputs.Dispose();
 });
@@ -336,6 +351,8 @@ app.MapGet("/api/state", () =>
                 detail = liveUplink.Detail,
             },
         },
+        link = peerLink.State,
+        features = new { sprintWeb },
         updates = new
         {
             version = BuildInfo.Version,
@@ -654,6 +671,16 @@ try
     catch (TimeoutException)
     {
         AppDiagnostics.Log.Warn("Live telemetry did not close before exit");
+    }
+
+    // Likewise the live link's bye, so the engineer sees "ended" rather than a dropped connection.
+    try
+    {
+        await peerLinkLoop.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+    catch (TimeoutException)
+    {
+        AppDiagnostics.Log.Warn("Live link did not close before exit");
     }
 
     AppDiagnostics.Log.Info("Sprint Desktop Host exited normally");

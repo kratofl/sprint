@@ -11,7 +11,7 @@ const noopContext = () => ({
   checkForUpdates: () => undefined,
 })
 
-test('the first seven commands are navigation, one per primaryNav entry in order, with Alt+1..7 shortcuts', () => {
+test('the first commands are navigation, one per primaryNav entry in order, with Alt+1..8 shortcuts', () => {
   const commands = buildShellCommands(noopContext())
   const navCommands = commands.slice(0, primaryNav.length)
   assert.deepEqual(
@@ -24,7 +24,7 @@ test('the first seven commands are navigation, one per primaryNav entry in order
   )
 })
 
-test('on mac the navigation shortcuts read ⌘1..7', () => {
+test('on mac the navigation shortcuts read ⌘1..8', () => {
   const commands = buildShellCommands({ ...noopContext(), platform: 'mac' })
   assert.deepEqual(
     commands.slice(0, primaryNav.length).map((command) => command.shortcut),

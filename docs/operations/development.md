@@ -12,6 +12,9 @@ verify work and the traps that are not visible from the source.
 - A stale `testhost` holding DLLs breaks the next build; find the one your run started and stop it.
 - `make build-app` publishes for this machine's RID (`scripts/make-tasks.mjs rid`): `win-x64`,
   `osx-arm64`/`osx-x64`, `linux-x64`. An x64 Node under Rosetta yields `osx-x64`; pass `RID=` then.
+- Sprint web (accounts, sync, the server live stream) is off by default behind a feature flag. Turn
+  it on for a dev run with the environment variable `Sprint__Features__SprintWeb=true`; Electron
+  passes it to the host.
 
 ## Developing on macOS
 
