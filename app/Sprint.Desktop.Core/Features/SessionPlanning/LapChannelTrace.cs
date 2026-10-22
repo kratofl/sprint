@@ -2,6 +2,7 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>One observed instant of a lap, as the recorder saw it.</summary>
 /// <param name="Position">Track position, 0–1.</param>
+/// <param name="World">Where the car was, in <c>CarPose</c>'s frame. Null when the game did not say.</param>
 public readonly record struct LapTraceSample(
     double Position,
     float SpeedKph,
@@ -9,7 +10,11 @@ public readonly record struct LapTraceSample(
     float Brake,
     float Steering,
     int Gear,
-    double ElapsedSeconds);
+    double ElapsedSeconds,
+    LapTraceWorld? World = null);
+
+/// <summary>A world position in metres, in <c>CarPose</c>'s right-handed, Y-up frame.</summary>
+public readonly record struct LapTraceWorld(float X, float Y, float Z);
 
 /// <summary>
 /// The channel names a trace carries. Names rather than fields so a later feature can add a
@@ -25,7 +30,16 @@ public static class LapTraceChannels
     public const string Gear = "gear";
     public const string ElapsedSeconds = "elapsedSeconds";
 
-    /// <summary>What the recorder writes today.</summary>
+    /// <summary>
+    /// Where the car was, so the driving guide can draw the lap into the world. Written only
+    /// when every sample of the lap had a position: a line with holes filled by a held value
+    /// would cut corners nobody drove.
+    /// </summary>
+    public const string WorldX = "worldX";
+    public const string WorldY = "worldY";
+    public const string WorldZ = "worldZ";
+
+    /// <summary>What the recorder always writes. The world channels come on top when the game reports a pose.</summary>
     public static IReadOnlyList<string> Default { get; } =
         [SpeedKph, Throttle, Brake, Steering, Gear, ElapsedSeconds];
 }
@@ -196,6 +210,10 @@ public sealed class LapChannelTrace
         var steering = new float[count];
         var gear = new float[count];
         var elapsed = new float[count];
+        bool hasWorld = samples.All(sample => sample.World is not null);
+        float[] worldX = hasWorld ? new float[count] : [];
+        float[] worldY = hasWorld ? new float[count] : [];
+        float[] worldZ = hasWorld ? new float[count] : [];
 
         var index = 0;
         for (var i = 0; i < count; i++)
@@ -237,6 +255,28 @@ public sealed class LapChannelTrace
             // would draw a ratio the car does not have. Hold the gear that was engaged.
             gear[i] = start.Gear;
             elapsed[i] = (float)(start.ElapsedSeconds + ((end.ElapsedSeconds - start.ElapsedSeconds) * t));
+            if (hasWorld && start.World is { } from && end.World is { } to)
+            {
+                worldX[i] = Lerp(from.X, to.X, t);
+                worldY[i] = Lerp(from.Y, to.Y, t);
+                worldZ[i] = Lerp(from.Z, to.Z, t);
+            }
+        }
+
+        Dictionary<string, float[]> channels = new(StringComparer.Ordinal)
+        {
+            [LapTraceChannels.SpeedKph] = speed,
+            [LapTraceChannels.Throttle] = throttle,
+            [LapTraceChannels.Brake] = brake,
+            [LapTraceChannels.Steering] = steering,
+            [LapTraceChannels.Gear] = gear,
+            [LapTraceChannels.ElapsedSeconds] = elapsed,
+        };
+        if (hasWorld)
+        {
+            channels[LapTraceChannels.WorldX] = worldX;
+            channels[LapTraceChannels.WorldY] = worldY;
+            channels[LapTraceChannels.WorldZ] = worldZ;
         }
 
         return new LapChannelTrace
@@ -244,15 +284,7 @@ public sealed class LapChannelTrace
             Version = FormatVersion,
             PositionStep = step,
             TrackLengthMeters = trackLengthMeters,
-            Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
-            {
-                [LapTraceChannels.SpeedKph] = speed,
-                [LapTraceChannels.Throttle] = throttle,
-                [LapTraceChannels.Brake] = brake,
-                [LapTraceChannels.Steering] = steering,
-                [LapTraceChannels.Gear] = gear,
-                [LapTraceChannels.ElapsedSeconds] = elapsed,
-            },
+            Channels = channels,
         };
 
         void Write(int i, LapTraceSample sample, double elapsedSeconds)
@@ -263,6 +295,12 @@ public sealed class LapChannelTrace
             steering[i] = sample.Steering;
             gear[i] = sample.Gear;
             elapsed[i] = (float)elapsedSeconds;
+            if (hasWorld && sample.World is { } world)
+            {
+                worldX[i] = world.X;
+                worldY[i] = world.Y;
+                worldZ[i] = world.Z;
+            }
         }
     }
 

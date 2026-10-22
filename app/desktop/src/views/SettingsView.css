@@ -89,6 +89,20 @@
   width: 96px;
 }
 
+/* Driving guide calibration: each number carries its own short label. */
+.settings-guide-number {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.settings-guide-number .settings-input-narrow {
+  width: 72px;
+}
+
 /* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
 
 .settings-switch-field {

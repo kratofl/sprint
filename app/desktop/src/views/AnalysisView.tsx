@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, ChevronLeft, Download, RefreshCw, X } from 'lucide-react'
+import { BarChart3, ChevronLeft, Download, FileDown, FolderOpen, RefreshCw, X } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { SprintCommand } from '../bridge'
+import type { LapExportResult, LapImportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
 import { Status } from '../shell/Status'
@@ -69,6 +69,7 @@ export function AnalysisView({
   const [lapSort, setLapSort] = useState<AnalysisLapSort>('Fastest')
   const [panelIds, setPanelIds] = useState<string[]>(ANALYSIS_DEFAULT_PANELS.map((panel) => panel.id))
   const [actionError, setActionError] = useState<string | null>(null)
+  const [lapFileNotice, setLapFileNotice] = useState<LapFileNotice | null>(null)
   const primaryTrace = useLapTrace(analysis.primary)
   const comparisonTrace = useLapTrace(analysis.comparison)
 
@@ -93,6 +94,13 @@ export function AnalysisView({
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
     }
+  }
+
+  const exportLap = async (lap: CorpusLap) => {
+    setLapFileNotice(exportNotice(await bridge.exportLap(lap.sessionId, lap.lapNumber)))
+  }
+  const importLap = async () => {
+    setLapFileNotice(importNotice(await bridge.importLap()))
   }
 
   const { filter, session, primary, comparison } = analysis
@@ -145,6 +153,9 @@ export function AnalysisView({
         <button type="button" className="button subtle" onClick={() => void runAction(buildAnalysisRefresh())}>
           <RefreshCw /> Refresh
         </button>
+        <button type="button" className="button subtle" onClick={() => void importLap()}>
+          <FolderOpen /> Open lap file
+        </button>
         {onImportResults && (
           <button type="button" className="button subtle" onClick={onImportResults}>
             <Download /> Import results
@@ -158,6 +169,17 @@ export function AnalysisView({
           <strong className="infobar-title">Not applied</strong>
           <span className="infobar-message">{actionError}</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {lapFileNotice && (
+        <div className={`infobar ${lapFileNotice.tone}`} role={lapFileNotice.tone === 'error' ? 'alert' : 'status'}>
+          <span className="infobar-icon">{lapFileNotice.tone === 'error' || lapFileNotice.tone === 'warning' ? '!' : 'i'}</span>
+          <strong className="infobar-title">{lapFileNotice.title}</strong>
+          <span className="infobar-message">{lapFileNotice.message}</span>
+          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setLapFileNotice(null)}>
             <X size={12} />
           </button>
         </div>
@@ -190,6 +212,7 @@ export function AnalysisView({
             lapFilter={lapFilter}
             lapSort={lapSort}
             onSelect={(role, lapNumber) => void runAction(buildAnalysisSelectLap(role, lapNumber))}
+            onExport={(lap) => void exportLap(lap)}
           />
         </>
       ) : corpusEmpty ? (
@@ -401,6 +424,7 @@ function LapList({
   lapFilter,
   lapSort,
   onSelect,
+  onExport,
 }: {
   laps: readonly CorpusLap[]
   primary: CorpusLap | null
@@ -408,6 +432,8 @@ function LapList({
   lapFilter: AnalysisLapFilter
   lapSort: AnalysisLapSort
   onSelect: (role: 'primary' | 'comparison', lapNumber: number | null) => void
+  /** Saves the lap as a .sprintlap. Offered only on laps with channels: a time alone has nothing to share. */
+  onExport: (lap: CorpusLap) => void
 }) {
   const rows = applyLapListFilter(laps, lapFilter, lapSort)
   const best = lapTimeStats(laps).best
@@ -450,6 +476,11 @@ function LapList({
                   {lap.hasChannels ? 'Channels' : 'Time only'}
                 </Status>
                 <span className="analysis-lap-actions">
+                  {lap.hasChannels && (
+                    <button type="button" className="icon-button" aria-label={`Save ${lap.label} as a lap file`} title="Save as a lap file" onClick={() => onExport(lap)}>
+                      <FileDown size={16} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="button small analysis-pick role-primary"
@@ -474,6 +505,44 @@ function LapList({
       )}
     </section>
   )
+}
+
+// ── Lap files ──────────────────────────────────────────────────────────────
+
+type LapFileNotice = { tone: 'success' | 'info' | 'warning' | 'error'; title: string; message: string }
+
+const exportNotice = (result: LapExportResult): LapFileNotice | null => {
+  switch (result.outcome) {
+    case 'cancelled':
+      return null
+    case 'failed':
+      return { tone: 'error', title: 'Lap not saved', message: result.error }
+    case 'saved':
+      return result.hasPositions
+        ? { tone: 'success', title: 'Lap saved', message: `${result.fileName}. Send it on; it opens with Open lap file in Analysis.` }
+        : {
+            tone: 'warning',
+            title: 'Lap saved without positions',
+            message: `${result.fileName} compares fine, but it was recorded before Sprint kept positions, so it cannot be a driving guide.`,
+          }
+  }
+}
+
+const importNotice = (result: LapImportResult): LapFileNotice | null => {
+  switch (result.outcome) {
+    case 'cancelled':
+      return null
+    case 'failed':
+      return { tone: 'error', title: 'Lap file not opened', message: result.error }
+    case 'alreadyPresent':
+      return { tone: 'info', title: 'Already added', message: `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} is already in your laps.` }
+    case 'imported': {
+      const lap = `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} in the ${result.car}`
+      return result.hasPositions
+        ? { tone: 'success', title: 'Lap added', message: `${lap}. It is under ${result.track}, and it can be your driving guide there.` }
+        : { tone: 'warning', title: 'Lap added without positions', message: `${lap}. It compares fine, but it cannot be a driving guide.` }
+    }
+  }
 }
 
 // ── Lap comparison chart card ──────────────────────────────────────────────

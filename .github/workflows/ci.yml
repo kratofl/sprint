@@ -77,3 +77,18 @@ jobs:
 
       - name: Test desktop app
         run: dotnet test app/Sprint.Desktop.slnx --no-build
+
+  xr-layer:
+    name: OpenXR layer (C++)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure
+        run: cmake -S app/Sprint.OpenXrLayer -B app/Sprint.OpenXrLayer/build -A x64
+
+      - name: Build
+        run: cmake --build app/Sprint.OpenXrLayer/build --config Release
+
+      - name: Test
+        run: ctest --test-dir app/Sprint.OpenXrLayer/build -C Release --output-on-failure

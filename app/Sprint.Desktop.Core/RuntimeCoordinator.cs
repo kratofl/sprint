@@ -67,6 +67,7 @@ public sealed class RuntimeCoordinator
             case "settings.save": _runtime.SaveSettings(); return true;
             case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
             case "settings.update": return UpdateSettings(command, out error);
+            case "guide.update": return this.UpdateDrivingGuide(command, out error);
             case "cloud.configure": return ConfigureCloud(command, out error);
             case "controls.save": _runtime.SaveControls(); return true;
             case "controls.update": return UpdateControls(command, out error);
@@ -163,6 +164,75 @@ public sealed class RuntimeCoordinator
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
             _runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Patches the driving guide's settings. Every field is optional; a number outside its range
+    /// is refused whole rather than clamped, so the UI never shows a value that was not stored.
+    /// </summary>
+    private bool UpdateDrivingGuide(JsonElement command, out string error)
+    {
+        error = "";
+        lock (this._runtime.SettingsGate)
+        {
+            DrivingGuideSettings guide = this._runtime.Settings.DrivingGuide;
+            DrivingGuideSettings next = new()
+            {
+                ShowLine = guide.ShowLine,
+                ShowBoards = guide.ShowBoards,
+                MonitorOverlay = guide.MonitorOverlay,
+                VrHeadset = guide.VrHeadset,
+                EyeRightMeters = guide.EyeRightMeters,
+                EyeUpMeters = guide.EyeUpMeters,
+                EyeForwardMeters = guide.EyeForwardMeters,
+                YawOffsetDegrees = guide.YawOffsetDegrees,
+                PitchOffsetDegrees = guide.PitchOffsetDegrees,
+                MonitorFovDegrees = guide.MonitorFovDegrees,
+                MetersAhead = guide.MetersAhead,
+            };
+            bool applied = false;
+
+            if (TryBool(command, "showLine", out bool showLine)) { next.ShowLine = showLine; applied = true; }
+            if (TryBool(command, "showBoards", out bool showBoards)) { next.ShowBoards = showBoards; applied = true; }
+            if (TryBool(command, "monitorOverlay", out bool monitorOverlay)) { next.MonitorOverlay = monitorOverlay; applied = true; }
+            if (TryBool(command, "vrHeadset", out bool vrHeadset)) { next.VrHeadset = vrHeadset; applied = true; }
+
+            (string Field, double Min, double Max, Action<double> Apply)[] numbers =
+            [
+                ("eyeRightMeters", -3, 3, value => next.EyeRightMeters = value),
+                ("eyeUpMeters", -3, 3, value => next.EyeUpMeters = value),
+                ("eyeForwardMeters", -3, 3, value => next.EyeForwardMeters = value),
+                ("yawOffsetDegrees", -20, 20, value => next.YawOffsetDegrees = value),
+                ("pitchOffsetDegrees", -20, 20, value => next.PitchOffsetDegrees = value),
+                ("monitorFovDegrees", 10, 150, value => next.MonitorFovDegrees = value),
+                ("metersAhead", 50, 600, value => next.MetersAhead = value),
+            ];
+            foreach ((string field, double min, double max, Action<double> apply) in numbers)
+            {
+                if (!command.TryGetProperty(field, out JsonElement _))
+                {
+                    continue;
+                }
+
+                if (!TryDouble(command, field, out double value) || !double.IsFinite(value) || value < min || value > max)
+                {
+                    error = $"{field} must be a number from {min} to {max}";
+                    return false;
+                }
+
+                apply(value);
+                applied = true;
+            }
+
+            if (!applied) { error = "no recognized driving guide fields were provided"; return false; }
+
+            // Replaced whole: the guide feed reads these off the telemetry thread without the
+            // gate, and must never see half of an update.
+            this._runtime.Settings.DrivingGuide = next;
+            this._runtime.SaveSettings();
         }
 
         return true;

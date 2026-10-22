@@ -103,7 +103,8 @@ internal sealed class LmuTelemetryMapper
                 PositionX = ToF32(telemetry.Position.X),
                 PositionY = ToF32(telemetry.Position.Y),
                 PositionZ = ToF32(telemetry.Position.Z),
-                BrakeBiasRear = ToF32(telemetry.RearBrakeBias)
+                BrakeBiasRear = ToF32(telemetry.RearBrakeBias),
+                Pose = MapPose(telemetry)
             },
             Tires = MapTires(telemetry.Wheels, frontCompound, rearCompound),
             Lap = new LapState
@@ -477,6 +478,119 @@ internal sealed class LmuTelemetryMapper
     {
         var speed = Math.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y + velocity.Z * velocity.Z);
         return ToF32(speed);
+    }
+
+    /// <summary>
+    /// The car's pose in the contract's convention. LMU is left-handed with +X left and +Z back;
+    /// the contract is right-handed with +X right, so X is mirrored on both the world and the
+    /// body frame (R = F·Rₗ·F, F = diag(-1, 1, 1)). Angular velocity is a pseudovector, so it
+    /// picks up the mirror's determinant as well: ω = -F·ωₗ. Null when the matrix is not a
+    /// rotation, which is how a car that has not spawned yet reads.
+    /// </summary>
+    private static CarPose? MapPose(LmuVehicleTelemetry telemetry)
+    {
+        LmuVector3 x = telemetry.OrientationRowX;
+        LmuVector3 y = telemetry.OrientationRowY;
+        LmuVector3 z = telemetry.OrientationRowZ;
+        double[,] r =
+        {
+            { x.X, -x.Y, -x.Z },
+            { -y.X, y.Y, y.Z },
+            { -z.X, z.Y, z.Z },
+        };
+
+        if (!TryQuaternion(r, out double qx, out double qy, out double qz, out double qw))
+        {
+            return null;
+        }
+
+        LmuVector3 position = telemetry.Position;
+        LmuVector3 velocity = telemetry.LocalVelocity;
+        LmuVector3 rotation = telemetry.LocalRotation;
+        return new CarPose
+        {
+            PositionX = -position.X,
+            PositionY = position.Y,
+            PositionZ = position.Z,
+            OrientationX = (float)qx,
+            OrientationY = (float)qy,
+            OrientationZ = (float)qz,
+            OrientationW = (float)qw,
+            VelocityX = ToF32(-velocity.X),
+            VelocityY = ToF32(velocity.Y),
+            VelocityZ = ToF32(velocity.Z),
+            AngularVelocityX = ToF32(rotation.X),
+            AngularVelocityY = ToF32(-rotation.Y),
+            AngularVelocityZ = ToF32(-rotation.Z),
+        };
+    }
+
+    /// <summary>
+    /// A unit quaternion from a rotation matrix (world = r · body), branching on the largest
+    /// diagonal term so the square root never runs near zero. False for a matrix that is not
+    /// close to a rotation.
+    /// </summary>
+    private static bool TryQuaternion(double[,] r, out double x, out double y, out double z, out double w)
+    {
+        x = y = z = 0;
+        w = 1;
+        foreach (double value in r)
+        {
+            if (!double.IsFinite(value))
+            {
+                return false;
+            }
+        }
+
+        double determinant =
+            r[0, 0] * ((r[1, 1] * r[2, 2]) - (r[1, 2] * r[2, 1]))
+            - r[0, 1] * ((r[1, 0] * r[2, 2]) - (r[1, 2] * r[2, 0]))
+            + r[0, 2] * ((r[1, 0] * r[2, 1]) - (r[1, 1] * r[2, 0]));
+        if (Math.Abs(determinant - 1) > 0.1)
+        {
+            return false;
+        }
+
+        double trace = r[0, 0] + r[1, 1] + r[2, 2];
+        if (trace > 0)
+        {
+            double s = Math.Sqrt(trace + 1) * 2;
+            w = 0.25 * s;
+            x = (r[2, 1] - r[1, 2]) / s;
+            y = (r[0, 2] - r[2, 0]) / s;
+            z = (r[1, 0] - r[0, 1]) / s;
+        }
+        else if (r[0, 0] > r[1, 1] && r[0, 0] > r[2, 2])
+        {
+            double s = Math.Sqrt(1 + r[0, 0] - r[1, 1] - r[2, 2]) * 2;
+            w = (r[2, 1] - r[1, 2]) / s;
+            x = 0.25 * s;
+            y = (r[0, 1] + r[1, 0]) / s;
+            z = (r[0, 2] + r[2, 0]) / s;
+        }
+        else if (r[1, 1] > r[2, 2])
+        {
+            double s = Math.Sqrt(1 + r[1, 1] - r[0, 0] - r[2, 2]) * 2;
+            w = (r[0, 2] - r[2, 0]) / s;
+            x = (r[0, 1] + r[1, 0]) / s;
+            y = 0.25 * s;
+            z = (r[1, 2] + r[2, 1]) / s;
+        }
+        else
+        {
+            double s = Math.Sqrt(1 + r[2, 2] - r[0, 0] - r[1, 1]) * 2;
+            w = (r[1, 0] - r[0, 1]) / s;
+            x = (r[0, 2] + r[2, 0]) / s;
+            y = (r[1, 2] + r[2, 1]) / s;
+            z = 0.25 * s;
+        }
+
+        double length = Math.Sqrt((x * x) + (y * y) + (z * z) + (w * w));
+        x /= length;
+        y /= length;
+        z /= length;
+        w /= length;
+        return true;
     }
 
     private static float TrackPosition(double lapDistance, double trackLapDistance)
