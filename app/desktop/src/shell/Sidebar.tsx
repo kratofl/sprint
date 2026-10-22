@@ -15,7 +15,8 @@ const NAV_ICON_STROKE = 1.6
  * rail of icons (the persisted `sidebarCollapsed` setting): labels leave, and each
  * item keeps its name as tooltip and accessible name. The selected item gets the
  * strong fill and the brand icon. The footer holds Settings (with a dot when an
- * update is available) and Help, then the account row under a hairline.
+ * update is available) and Help, then the account row under a hairline (absent
+ * while Sprint web is off).
  *
  * On macOS (styles.mac.css) the band has no mark: the traffic lights sit in its
  * first 80px, with the toggle on the right, and collapsing hides the sidebar
@@ -27,8 +28,7 @@ export function Sidebar({
   onToggleCollapsed,
   toggleRef,
   onSelect,
-  account,
-  onOpenAccount,
+  accountRow,
   updateAvailable,
 }: {
   view: AppView
@@ -36,8 +36,8 @@ export function Sidebar({
   onToggleCollapsed: () => void
   toggleRef: RefObject<HTMLButtonElement | null>
   onSelect: (view: AppView) => void
-  account: Account | null
-  onOpenAccount: () => void
+  /** Null hides the row: Sprint web is off. */
+  accountRow: { account: Account | null; onOpen: () => void } | null
   updateAvailable: boolean
 }) {
   return (
@@ -63,7 +63,7 @@ export function Sidebar({
       </div>
       {primaryNav.map((item) => renderItem(item, view, collapsed, onSelect, false))}
       <div className="navview-spacer" />
-      <AccountRow account={account} collapsed={collapsed} onOpen={onOpenAccount} />
+      {accountRow && <AccountRow account={accountRow.account} collapsed={collapsed} onOpen={accountRow.onOpen} />}
       {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
     </nav>
   )

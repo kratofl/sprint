@@ -92,6 +92,22 @@ a:hover {
   color: var(--label);
 }
 
+/* The driving guide over the game (guide/GuideOverlay.tsx): nothing but the guide is painted. */
+[data-surface="guide-overlay"],
+[data-surface="guide-overlay"] body,
+[data-surface="guide-overlay"] #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.guide-overlay {
+  display: block;
+  pointer-events: none;
+}
+
 /* Pane width is restored from persisted settings after the first state load
    (App.tsx); staying invisible until then avoids painting the wrong width and
    snapping to the right one a moment later. */

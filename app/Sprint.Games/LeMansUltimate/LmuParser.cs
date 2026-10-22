@@ -120,6 +120,11 @@ internal static class LmuParser
             VehicleName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 32, 64)),
             Position = ParseVector3(bytes, 160),
             LocalVelocity = ParseVector3(bytes, 184),
+            // mLocalAccel@208 sits between; mOri is three rows of 24 bytes, then mLocalRot.
+            OrientationRowX = ParseVector3(bytes, 232),
+            OrientationRowY = ParseVector3(bytes, 256),
+            OrientationRowZ = ParseVector3(bytes, 280),
+            LocalRotation = ParseVector3(bytes, 304),
             Gear = LmuBinary.ReadInt32(bytes, 352),
             EngineRpm = LmuBinary.ReadDouble(bytes, 356),
             UnfilteredThrottle = LmuBinary.ReadDouble(bytes, 388),

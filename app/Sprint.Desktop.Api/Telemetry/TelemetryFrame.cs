@@ -119,10 +119,44 @@ public sealed record CarState
     public float Steering { get; init; }
     public float FuelLiters { get; init; }
     public float FuelPerLapLiters { get; init; }
+    /// <summary>World position in the game's own frame, for track maps. <see cref="Pose"/> is the frame-neutral one.</summary>
     public float PositionX { get; init; }
     public float PositionY { get; init; }
     public float PositionZ { get; init; }
     public float BrakeBiasRear { get; init; }
+
+    /// <summary>Where the car is and how it is moving, for drawing into the driver's view. Null when the game does not say.</summary>
+    public CarPose? Pose { get; init; }
+}
+
+/// <summary>
+/// The car's rigid-body state in one convention every consumer shares, whatever the game uses:
+/// right-handed, +Y up; the body frame is +X right, +Y up, -Z forward (OpenXR's), and
+/// <see cref="Orientation"/> rotates body vectors into world vectors. A game adapter converts
+/// into this at the edge, so the driving guide's renderers never learn a game's axes.
+/// </summary>
+public sealed record CarPose
+{
+    /// <summary>World position in metres. Double, because a track spans kilometres from its origin.</summary>
+    public double PositionX { get; init; }
+    public double PositionY { get; init; }
+    public double PositionZ { get; init; }
+
+    /// <summary>Unit quaternion, body to world.</summary>
+    public float OrientationX { get; init; }
+    public float OrientationY { get; init; }
+    public float OrientationZ { get; init; }
+    public float OrientationW { get; init; } = 1;
+
+    /// <summary>Velocity in the body frame, m/s.</summary>
+    public float VelocityX { get; init; }
+    public float VelocityY { get; init; }
+    public float VelocityZ { get; init; }
+
+    /// <summary>Angular velocity in the body frame, rad/s.</summary>
+    public float AngularVelocityX { get; init; }
+    public float AngularVelocityY { get; init; }
+    public float AngularVelocityZ { get; init; }
 }
 
 public enum TirePosition

@@ -392,7 +392,10 @@ public sealed class LapHistoryRecorder
                 frame.Car.Brake,
                 frame.Car.Steering,
                 frame.Car.Gear,
-                Math.Max(frame.Lap.CurrentLapTime, 0)));
+                Math.Max(frame.Lap.CurrentLapTime, 0),
+                frame.Car.Pose is { } pose
+                    ? new LapTraceWorld((float)pose.PositionX, (float)pose.PositionY, (float)pose.PositionZ)
+                    : null));
         }
     }
 

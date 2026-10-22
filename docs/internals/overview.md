@@ -73,7 +73,7 @@ serves both.
   the sidebar band reserves (and the toolbar pads for while the sidebar is hidden). Change one side,
   change the other.
 - macOS keeps a standard app menu ([`electron/appMenu.ts`](../../app/desktop/electron/appMenu.ts)):
-  Quit, Hide and copy/paste in text fields route through it. The app's own shortcuts (⌘K, ⌘1…7, ⌘[)
+  Quit, Hide and copy/paste in text fields route through it. The app's own shortcuts (⌘K, ⌘1…8, ⌘[)
   stay in the renderer (`shell/shortcuts.ts`) and must not become menu accelerators.
 - Page actions reach the toolbar through one seam: `TitleBar` hands up a slot and a function
   that measures the toolbar's room on the spot, `App` provides both as `ToolbarActionsContext`, and

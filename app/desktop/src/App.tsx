@@ -173,7 +173,7 @@ export function App() {
   const openImport = useCallback(() => setImportDialog({ offered: null }), [])
   const importResults = importSource?.available ? openImport : undefined
 
-  // The palette, page and back shortcuts (Ctrl+K / Alt+1..7 / Alt+Left on Windows, ⌘K / ⌘1..7 /
+  // The palette, page and back shortcuts (Ctrl+K / Alt+1..8 / Alt+Left on Windows, ⌘K / ⌘1..8 /
   // ⌘[ on macOS; shell/shortcuts.ts), and Escape for the topmost transient surface (palette, then
   // the newest toast). Views own their own dialogs, so Escape never reaches into ViewRouter's children.
   useEffect(() => {
@@ -208,12 +208,14 @@ export function App() {
   }, [paletteOpen, toasts, dismissToast, navigate, back])
 
   const account = runtime.kind === 'ready' ? runtime.sprint.account : null
+  // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
+  const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
 
   // Asked once, on the first state that says the setup was never answered.
   useEffect(() => {
     if (runtime.kind !== 'ready' || firstRunChecked.current) return
     firstRunChecked.current = true
-    if (!runtime.sprint.cloud.setupDone) setSetup('first-run')
+    if (runtime.sprint.features.sprintWeb && !runtime.sprint.cloud.setupDone) setSetup('first-run')
   }, [runtime])
   const onboardingActions = useMemo(
     () => ({
@@ -274,8 +276,7 @@ export function App() {
           onToggleCollapsed={toggleSidebarFromButton}
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
-          account={account}
-          onOpenAccount={() => (account?.signedIn ? setAccountOpen(true) : openSetup())}
+          accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
           updateAvailable={updateRelease !== null}
         />
         <main className="content">
@@ -304,10 +305,10 @@ export function App() {
           onClose={() => setImportDialog(null)}
         />
       ) : null}
-      {accountOpen && account?.signedIn ? (
+      {sprintWeb && accountOpen && account?.signedIn ? (
         <AccountDialog account={account} signOut={bridge.signOut} onChangeServer={openSetup} onClose={() => setAccountOpen(false)} />
       ) : null}
-      {setup && runtime.kind === 'ready' ? (
+      {sprintWeb && setup && runtime.kind === 'ready' ? (
         <Onboarding
           entry={setup}
           cloud={runtime.sprint.cloud}

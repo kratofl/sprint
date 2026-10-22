@@ -533,12 +533,14 @@ export const buildAddCustomDevice = (fields: CustomWheelFields): SprintCommand =
 /**
  * `native-host.ts` throws `Error("Runtime ${status}: ${body}")` for a rejected command, where
  * `body` is the host's `{ error }` JSON (see RuntimeCoordinator's callers in Program.cs),
- * truncated to 500 characters. Unwraps that down to the host's own message so a validation
- * failure like "Enter a name for the wheel." shows inline instead of the raw HTTP wrapper.
+ * truncated to 500 characters. Crossing IPC, Electron prefixes it with "Error invoking remote
+ * method '…': Error: ", so the wrapper is looked for anywhere in the message. Unwraps that down
+ * to the host's own message so a validation failure like "Enter a name for the wheel." shows
+ * inline instead of the raw HTTP wrapper.
  */
 export const commandErrorMessage = (error: unknown, fallback: string): string => {
   if (!(error instanceof Error)) return fallback
-  const wrapped = /^Runtime \d+: ([\s\S]+)$/.exec(error.message)
+  const wrapped = /Runtime \d+: ([\s\S]+)$/.exec(error.message)
   if (!wrapped) return error.message || fallback
   try {
     const body: unknown = JSON.parse(wrapped[1])

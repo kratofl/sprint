@@ -1,7 +1,8 @@
 import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from './telemetryFrame'
+import { defaultGuideSettings, parseGuideMessage, parseGuideState, type GuideMessage, type GuideState } from './guide/guideModel'
 
-export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'Settings' | 'Help'
+export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
 export type TelemetryLinkState =
   | 'Disconnected' | 'Connecting' | 'WaitingForGame' | 'Connected'
@@ -79,6 +80,60 @@ const liveUplinkStatuses: readonly LiveUplinkStatus[] = ['Off', 'WaitingForGame'
 /** The live telemetry uplink: what it is doing and, while reconnecting, why. */
 export type LiveUplink = { status: LiveUplinkStatus; detail: string | null }
 
+/** Mirrors `PeerRole` in Sprint.Desktop.Core; the host sends enum names. */
+export type LinkRole = 'Driver' | 'Engineer'
+/** Mirrors `PeerPath`: how a connected link's packets travel. */
+export type LinkPath = 'LocalNetwork' | 'Ipv4' | 'Ipv6'
+/** Mirrors `PeerReachability`: what STUN said about this PC's router. */
+export type LinkReachability = 'Unknown' | 'Open' | 'Strict' | 'LocalOnly'
+
+const linkPaths: readonly LinkPath[] = ['LocalNetwork', 'Ipv4', 'Ipv6']
+const linkReachabilities: readonly LinkReachability[] = ['Unknown', 'Open', 'Strict', 'LocalOnly']
+
+/** The session the driver is on track in (host: `LiveTarget`). */
+export type LinkSession = { game: string; track: string; car: string; sessionType: string }
+
+/** Four corners, front left first. */
+export type Corners = readonly [number, number, number, number]
+
+/** The newest telemetry sample from the driver (host: `LiveSample`), narrowed to what the page shows. */
+export type LinkSample = {
+  lap: number
+  position: number
+  lastLapTime: number
+  bestLapTime: number
+  delta: number
+  lapValid: boolean
+  speedKph: number
+  gear: number
+  fuel: number
+  tyreTemps: Corners
+  tyreWear: Corners
+}
+
+/** How a connected link is doing over the last second (host: `PeerLinkHealth`). */
+export type LinkHealth = { path: LinkPath; roundTripMs: number | null; sampleRate: number; lossPercent: number | null }
+
+/**
+ * The live link to an engineer's or a driver's desktop (host: `PeerLinkState`), one shape per
+ * phase. Only the driver invites and only the engineer joins, so those phases fix the role.
+ */
+export type LiveLink =
+  | { phase: 'Off' }
+  | { phase: 'Preparing'; role: LinkRole }
+  | { phase: 'Inviting'; role: 'Driver'; code: string; reachability: LinkReachability }
+  | { phase: 'Joining'; role: 'Engineer'; code: string; reachability: LinkReachability }
+  | { phase: 'Connecting'; role: 'Driver'; reachability: LinkReachability }
+  | {
+      phase: 'Connected' | 'Interrupted'
+      role: LinkRole
+      reachability: LinkReachability
+      health: LinkHealth
+      session: LinkSession | null
+      latest: LinkSample | null
+    }
+  | { phase: 'Failed' | 'Ended'; role: LinkRole; detail: string }
+
 export type CloudServerChoice = 'None' | 'Official' | 'SelfHosted'
 export type CloudStorageMode = 'Local' | 'Both' | 'Remote'
 export type SyncDirection = 'upload' | 'download'
@@ -115,9 +170,26 @@ export type SprintState = {
   resultsImport: ResultsImportSource
   account: Account
   cloud: CloudState
+  link: LiveLink
+  /** Feature flags from the host's appsettings.json. `sprintWeb` off hides every account, sync and setup surface. */
+  features: { sprintWeb: boolean }
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
+  /** The driving guide: its settings (`settings.drivingGuide`), the lap it draws and the VR layer. */
+  guide: GuideState
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
+
+/** Saving a lap as a `.sprintlap` (`sprint:lap-export`). `hasPositions` says whether it can be a driving guide. */
+export type LapExportResult =
+  | { outcome: 'saved'; fileName: string; hasPositions: boolean }
+  | { outcome: 'cancelled' }
+  | { outcome: 'failed'; error: string }
+
+/** Opening a `.sprintlap` (`sprint:lap-import`, host `POST /api/laps/import`). */
+export type LapImportResult =
+  | { outcome: 'imported' | 'alreadyPresent'; sharedBy: string; track: string; car: string; lapTimeSeconds: number; hasPositions: boolean }
+  | { outcome: 'cancelled' }
+  | { outcome: 'failed'; error: string }
 
 /**
  * Result of one self-replacing install attempt (host: `POST /api/updates/install`,
@@ -135,8 +207,14 @@ export type SprintBridge = {
   getState(): Promise<SprintState>
   sendCommand(command: SprintCommand): Promise<void>
   subscribe(listener: (state: SprintState) => void): () => void
+  /** The monitor overlay's feed (`/api/guide/stream`). Only the overlay window receives it. */
+  subscribeGuide(listener: (message: GuideMessage) => void): () => void
   /** Lap traces are too large for the polled state, so they are fetched on demand. */
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
+  /** Opens a save dialog and writes the lap as a `.sprintlap`. */
+  exportLap(sessionId: string, lapNumber: number): Promise<LapExportResult>
+  /** Opens a file dialog and files the chosen `.sprintlap` into the corpus. */
+  importLap(): Promise<LapImportResult>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   /** Fetched when the New plan dialog opens: building it reads every lap-history file. */
   planContext(): Promise<PlanContextChoices>
@@ -161,7 +239,12 @@ type RawBridge = {
   getState(): Promise<unknown>
   sendCommand(command: unknown): Promise<unknown>
   subscribe(listener: (state: unknown) => void): () => void
+  /** Absent in the preview harness's stub. */
+  subscribeGuide?(listener: (message: unknown) => void): () => void
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
+  /** Both absent in the preview harness's stub. */
+  exportLap?(sessionId: string, lapNumber: number): Promise<unknown>
+  importLap?(): Promise<unknown>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   planContext(): Promise<unknown>
   resultsImportScan(includeDeclined: boolean): Promise<unknown>
@@ -179,7 +262,8 @@ type RawBridge = {
   syncDown(): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, screens: [], guide: emptyGuide() })
+const emptyGuide = (): GuideState => ({ settings: defaultGuideSettings(), status: 'Idle', lap: null, boards: 0, vr: { available: false, registered: false, detail: null } })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -317,6 +401,70 @@ const parseCloud = (value: unknown): CloudState => {
   }
 }
 
+const finite = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+const isLinkPath = (value: unknown): value is LinkPath => typeof value === 'string' && linkPaths.some((path) => path === value)
+const isLinkReachability = (value: unknown): value is LinkReachability =>
+  typeof value === 'string' && linkReachabilities.some((reachability) => reachability === value)
+
+const parseLinkSession = (value: unknown): LinkSession | null =>
+  isRecord(value) ? { game: text(value.game), track: text(value.track), car: text(value.car), sessionType: text(value.sessionType) } : null
+
+const parseLinkSample = (value: unknown): LinkSample | null => {
+  if (!isRecord(value)) return null
+  return {
+    lap: finite(value.lap),
+    position: finite(value.position),
+    lastLapTime: finite(value.lastLapTime),
+    bestLapTime: finite(value.bestLapTime),
+    delta: finite(value.delta),
+    lapValid: value.lapValid !== false,
+    speedKph: finite(value.speedKph),
+    gear: finite(value.gear),
+    fuel: finite(value.fuel),
+    tyreTemps: [finite(value.tyreTempFl), finite(value.tyreTempFr), finite(value.tyreTempRl), finite(value.tyreTempRr)],
+    tyreWear: [finite(value.tyreWearFl), finite(value.tyreWearFr), finite(value.tyreWearRl), finite(value.tyreWearRr)],
+  }
+}
+
+const optionalNumber = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+/** Narrows the host's `PeerLinkState` once, here. A phase missing what it needs reads as off. */
+const parseLiveLink = (value: unknown): LiveLink => {
+  if (!isRecord(value)) return { phase: 'Off' }
+  const role: LinkRole | null = value.role === 'Driver' || value.role === 'Engineer' ? value.role : null
+  const reachability = isLinkReachability(value.reachability) ? value.reachability : 'Unknown'
+  const code = optionalString(value.code)
+  switch (value.phase) {
+    case 'Preparing':
+      return role ? { phase: 'Preparing', role } : { phase: 'Off' }
+    case 'Inviting':
+      return code ? { phase: 'Inviting', role: 'Driver', code, reachability } : { phase: 'Off' }
+    case 'Joining':
+      return code ? { phase: 'Joining', role: 'Engineer', code, reachability } : { phase: 'Off' }
+    case 'Connecting':
+      return { phase: 'Connecting', role: 'Driver', reachability }
+    case 'Connected':
+    case 'Interrupted': {
+      const health = isRecord(value.health) ? value.health : null
+      if (!role || !health || !isLinkPath(health.path)) return { phase: 'Off' }
+      return {
+        phase: value.phase,
+        role,
+        reachability,
+        health: { path: health.path, roundTripMs: optionalNumber(health.roundTripMs), sampleRate: finite(health.sampleRate), lossPercent: optionalNumber(health.lossPercent) },
+        session: parseLinkSession(value.session),
+        latest: parseLinkSample(value.latest),
+      }
+    }
+    case 'Failed':
+    case 'Ended':
+      return role ? { phase: value.phase, role, detail: optionalString(value.detail) ?? 'The link closed.' } : { phase: 'Off' }
+    default:
+      return { phase: 'Off' }
+  }
+}
+
 const parseDiscovered = (value: unknown): DiscoveredServer[] =>
   isRecord(value) && Array.isArray(value.servers)
     ? value.servers.flatMap((server: unknown) =>
@@ -358,6 +506,9 @@ const parseState = (value: unknown): SprintState => {
   parsed.resultsImport = parseResultsImportSource(value.resultsImport)
   parsed.account = parseAccount(value.account)
   parsed.cloud = parseCloud(value.cloud)
+  parsed.link = parseLiveLink(value.link)
+  parsed.features = { sprintWeb: isRecord(value.features) && value.features.sprintWeb === true }
+  parsed.guide = parseGuideState(isRecord(value.settings) ? value.settings.drivingGuide : undefined, value.guide)
   return parsed
 }
 /** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
@@ -383,13 +534,45 @@ const parseUpdateInstallResult = (value: unknown): UpdateInstallResult => {
   }
 }
 
+const parseLapExportResult = (value: unknown): LapExportResult => {
+  if (isRecord(value) && value.outcome === 'saved' && typeof value.fileName === 'string') {
+    return { outcome: 'saved', fileName: value.fileName, hasPositions: value.hasPositions === true }
+  }
+  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
+  return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+}
+
+const parseLapImportResult = (value: unknown): LapImportResult => {
+  if (isRecord(value) && (value.outcome === 'Imported' || value.outcome === 'AlreadyPresent') && typeof value.lapTimeSeconds === 'number') {
+    return {
+      outcome: value.outcome === 'Imported' ? 'imported' : 'alreadyPresent',
+      sharedBy: typeof value.sharedBy === 'string' ? value.sharedBy : 'Unknown driver',
+      track: typeof value.track === 'string' ? value.track : '',
+      car: typeof value.car === 'string' ? value.car : '',
+      lapTimeSeconds: value.lapTimeSeconds,
+      hasPositions: value.hasPositions === true,
+    }
+  }
+  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
+  return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+}
+
+const noLapFiles = 'Lap files need the Sprint app.'
+
 const raw = window.sprint
 export const bridge: SprintBridge = raw
   ? {
       getState: async () => parseState(await raw.getState()),
       sendCommand: async (command) => { await raw.sendCommand(command) },
       subscribe: (listener) => raw.subscribe((state) => listener(parseState(state))),
+      subscribeGuide: (listener) => raw.subscribeGuide?.((message) => {
+        const parsed = parseGuideMessage(message)
+        if (parsed) listener(parsed)
+      }) ?? (() => undefined),
       analysisTrace: (sessionId, lapNumber) => raw.analysisTrace(sessionId, lapNumber),
+      exportLap: async (sessionId, lapNumber) =>
+        raw.exportLap ? parseLapExportResult(await raw.exportLap(sessionId, lapNumber).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
+      importLap: async () => (raw.importLap ? parseLapImportResult(await raw.importLap().catch(() => null)) : { outcome: 'failed', error: noLapFiles }),
       diagnosticsLogs: (minLevel, text) => raw.diagnosticsLogs(minLevel, text),
       planContext: async () => parsePlanContext(await raw.planContext()),
       resultsImportScan: async (includeDeclined) => parseResultsImportOffer(await raw.resultsImportScan(includeDeclined)),
@@ -411,7 +594,10 @@ export const bridge: SprintBridge = raw
       getState: async () => emptyState(),
       sendCommand: async () => undefined,
       subscribe: () => () => undefined,
+      subscribeGuide: () => () => undefined,
       analysisTrace: async () => null,
+      exportLap: async () => ({ outcome: 'failed', error: noLapFiles }),
+      importLap: async () => ({ outcome: 'failed', error: noLapFiles }),
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),
       resultsImportScan: async () => ({ entries: [], counts: [] }),

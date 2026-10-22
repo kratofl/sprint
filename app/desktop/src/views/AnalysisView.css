@@ -77,8 +77,9 @@
 .analysis-lap-columns {
   display: grid;
   /* Fixed action column: a pressed toggle grows by its series square, and every row (and the
-     header) must keep the same column edges. */
-  grid-template-columns: 80px 88px 88px minmax(0, 1fr) 172px;
+     header) must keep the same column edges. The save button sits leftmost, so a lap without
+     one keeps Primary and Compare where every other row has them. */
+  grid-template-columns: 80px 88px 88px minmax(0, 1fr) 204px;
   gap: 12px;
 }
 

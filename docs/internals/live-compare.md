@@ -51,7 +51,8 @@ against a real server.
   useful because each reading sits where the eyes already are, which one stacked window cannot do.
   Single-channel windows are not filled; the combined pedals panel with fills stays in Analysis.
 - No injection into the game: injection is a large dependency, an anti-cheat risk on an online sim, and
-  per-game maintenance.
+  per-game maintenance. The driving guide's VR layer is the one exception, because nothing outside the
+  game's process can draw into a headset ([driving-guide.md](driving-guide.md)).
 - The game must run borderless or windowed. Exclusive fullscreen hides the HUD; the app detects that and
   says so (`HudInterop.IsExclusiveFullscreenActive`). A HUD that silently shows nothing is the worst outcome.
 - Unlocked, windows are draggable and resizable. Locked sets `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` so

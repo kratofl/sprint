@@ -6,6 +6,11 @@ setup flow is `app/desktop/src/onboarding/flow.ts`. The sync is
 
 ## Setup
 
+- All of Sprint web on the desktop sits behind one feature flag, `Sprint:Features:SprintWeb` in
+  `app/Sprint.Desktop.Host/appsettings.json`, shipped `false` until the server side is ready. Off,
+  the host starts neither the sync nor the live uplink, so a sign-in left over from an earlier build
+  sends nothing, and the renderer hides the setup, the account row and the Settings group. The live
+  link to an engineer ([live-link.md](live-link.md)) needs no server and is not behind it.
 - First launch opens the setup once. `AppSettings.Cloud.SetupDone` records the answer, including
   "only this PC". A host that sends no `cloud` state reads as set up, so an older host never
   traps the UI in the setup.

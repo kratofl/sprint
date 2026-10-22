@@ -827,6 +827,49 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
+    [Fact]
+    public void GuideUpdate_PersistsAPartialPatchAsANewSettingsObject()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DrivingGuideSettings before = runtime.Settings.DrivingGuide;
+
+            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"eyeUpMeters":0.85}"""), out string error);
+
+            Assert.True(ok, error);
+            DrivingGuideSettings after = runtime.Settings.DrivingGuide;
+            // Replaced, not mutated: the feed reads it off-thread and compares by reference.
+            Assert.NotSame(before, after);
+            Assert.True(after.ShowLine);
+            Assert.Equal(0.85, after.EyeUpMeters);
+            Assert.Equal(before.MetersAhead, after.MetersAhead);
+            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.DrivingGuide.ShowLine);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GuideUpdate_RefusesAnOutOfRangeNumberWithoutApplyingAnything()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"yawOffsetDegrees":45}"""), out string error);
+
+            Assert.False(ok);
+            Assert.Equal("yawOffsetDegrees must be a number from -20 to 20", error);
+            Assert.False(runtime.Settings.DrivingGuide.ShowLine);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
     private static JsonElement Command(string json) => JsonDocument.Parse(json).RootElement;
 
     private static RuntimeCoordinator NewCoordinator(

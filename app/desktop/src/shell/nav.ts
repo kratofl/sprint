@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Cable,
   CircleHelp,
   Cpu,
   Home,
@@ -16,7 +17,7 @@ export type NavIcon = typeof Home
 export type NavItem = { view: AppView; label: string; icon: NavIcon }
 
 // Primary rail order. Mirrors the AppView union in bridge.ts, which is the
-// current contract for this shell (nine views); Settings and Help are pinned
+// current contract for this shell (ten views); Settings and Help are pinned
 // to the bottom of the rail separately as a dedicated footer group.
 export const primaryNav: NavItem[] = [
   { view: 'Home', label: 'Overview', icon: Home },
@@ -26,6 +27,7 @@ export const primaryNav: NavItem[] = [
   { view: 'Devices', label: 'Devices', icon: Cpu },
   { view: 'Setups', label: 'Setups', icon: SlidersHorizontal },
   { view: 'RaceEngineer', label: 'Race engineer', icon: Radio },
+  { view: 'LiveLink', label: 'Live link', icon: Cable },
 ]
 
 export const footerNav: NavItem[] = [

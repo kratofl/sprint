@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('sprint', {
   getState: (): Promise<unknown> => ipcRenderer.invoke('sprint:get-state'),
   sendCommand: (command: unknown): Promise<unknown> => ipcRenderer.invoke('sprint:send-command', command),
   analysisTrace: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:analysis-trace', sessionId, lapNumber),
+  exportLap: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:lap-export', sessionId, lapNumber),
+  importLap: (): Promise<unknown> => ipcRenderer.invoke('sprint:lap-import'),
   diagnosticsLogs: (minLevel: string, text: string): Promise<unknown> => ipcRenderer.invoke('sprint:diagnostics-logs', minLevel, text),
   planContext: (): Promise<unknown> => ipcRenderer.invoke('sprint:plan-context'),
   resultsImportScan: (includeDeclined: boolean): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-scan', includeDeclined),
@@ -25,6 +27,14 @@ contextBridge.exposeInMainWorld('sprint', {
   discoverServers: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-discover'),
   syncUp: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-push'),
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
+  /** Pushed by the main process to the guide overlay window only. */
+  subscribeGuide: (listener: (message: unknown) => void): (() => void) => {
+    const onMessage = (_event: Electron.IpcRendererEvent, message: unknown): void => listener(message)
+    ipcRenderer.on('sprint:guide', onMessage)
+    return () => {
+      ipcRenderer.removeListener('sprint:guide', onMessage)
+    }
+  },
   subscribe: (listener: (state: unknown) => void): (() => void) => {
     const onState = (_event: Electron.IpcRendererEvent, state: unknown): void => listener(state)
     ipcRenderer.on('sprint:state', onState)

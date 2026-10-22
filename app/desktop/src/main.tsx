@@ -6,16 +6,21 @@ import './styles.mac.css'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { DashOutput, dashDeviceId } from './DashOutput'
+import { GuideOverlay, isGuideOverlay } from './guide/GuideOverlay'
 import { platform } from './platform'
 
 // One bundle serves both surfaces: the app shell, and the offscreen dashboard
 // windows Electron opens per screen. The query string picks which one mounts.
 const deviceId = dashDeviceId(window.location.search)
+const guideOverlay = isGuideOverlay(window.location.search)
 
 // Dash output is captured and pushed to wheel hardware, so its page background
 // must stay dark whatever the OS theme is: a light window body behind an idle
 // (blank) dash would light up the driver's screen.
 if (deviceId) document.documentElement.dataset.theme = 'dark'
+
+// The guide overlay paints over the game, so its page must stay see-through.
+if (guideOverlay) document.documentElement.dataset.surface = 'guide-overlay'
 
 // Picks the token set (desktop.css or the macos.css overlay) and the Mac shapes in styles.mac.css.
 document.documentElement.dataset.platform = platform
@@ -27,5 +32,5 @@ if (!deviceId && new URLSearchParams(window.location.search).get('backdrop') ===
 }
 
 createRoot(document.getElementById('root')!).render(
-  deviceId ? <DashOutput deviceId={deviceId} /> : <App />,
+  deviceId ? <DashOutput deviceId={deviceId} /> : guideOverlay ? <GuideOverlay /> : <App />,
 )
