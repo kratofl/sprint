@@ -8,8 +8,8 @@ export type ShortcutKey = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'meta
 
 // Physical keys, so both the digit row and the numpad work (old app:
 // `TryProductionShortcutView` supported both).
-const DIGIT_CODES = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7']
-const NUMPAD_CODES = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7']
+const DIGIT_CODES = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8']
+const NUMPAD_CODES = ['Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8']
 
 const digitIndex = (code: string): number => {
   const index = DIGIT_CODES.indexOf(code)
@@ -31,7 +31,7 @@ function matchMac(event: ShortcutKey): ShellShortcut | null {
   return index >= 0 ? { kind: 'navigate', index } : null
 }
 
-// Ctrl+K (Meta is accepted too, as before), Alt+1..7, Alt+Left — the Windows shell's bindings.
+// Ctrl+K (Meta is accepted too, as before), Alt+1..8, Alt+Left — the Windows shell's bindings.
 function matchWindows(event: ShortcutKey): ShellShortcut | null {
   if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'k') {
     return { kind: 'palette' }

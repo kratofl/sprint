@@ -1,6 +1,7 @@
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 
@@ -14,7 +15,8 @@ namespace Sprint.Desktop.Host;
 /// target latch (<see cref="PlanTargetDelivery"/>) — in that order, which the deleted window's own
 /// comment called deliberate: the plan and the corpus must consume a lap's last frame before the
 /// target latch fires for the lap that is starting. Last, when given, the live uplink
-/// (<see cref="LiveUplink"/>) samples the frame for streaming.
+/// (<see cref="LiveUplink"/>) and the live link to an engineer (<see cref="PeerLink"/>) sample
+/// the frame for streaming.
 /// <para>
 /// <b>Exactly-once ingestion.</b> The host's publish loop polls <c>TelemetryEngine.Snapshot</c>
 /// on a fixed timer, independently of how often the engine's reader thread actually reads a new
@@ -48,6 +50,7 @@ public sealed class TelemetryIngestionPipeline
     private readonly Action<DeltaReference?> _requestPlanReference;
     private readonly ILog _log;
     private readonly LiveUplink? _liveUplink;
+    private readonly PeerLink? _peerLink;
     private TelemetryFrame? _lastPolled;
 
     public TelemetryIngestionPipeline(
@@ -57,7 +60,8 @@ public sealed class TelemetryIngestionPipeline
         PlanTargetDelivery planTargets,
         Action<DeltaReference?> requestPlanReference,
         ILog? log = null,
-        LiveUplink? liveUplink = null)
+        LiveUplink? liveUplink = null,
+        PeerLink? peerLink = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? throw new ArgumentNullException(nameof(planner));
@@ -66,6 +70,7 @@ public sealed class TelemetryIngestionPipeline
         this._requestPlanReference = requestPlanReference ?? throw new ArgumentNullException(nameof(requestPlanReference));
         this._log = log ?? NullLog.Instance;
         this._liveUplink = liveUplink;
+        this._peerLink = peerLink;
     }
 
     /// <summary>How many times <see cref="Ingest"/> actually ran. A test seam for the
@@ -110,6 +115,11 @@ public sealed class TelemetryIngestionPipeline
         if (this._liveUplink is { } live)
         {
             this.SafeRun("live uplink", () => live.Observe(frame));
+        }
+
+        if (this._peerLink is { } link)
+        {
+            this.SafeRun("live link", () => link.Observe(frame));
         }
     }
 

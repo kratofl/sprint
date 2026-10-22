@@ -6,6 +6,7 @@ using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
@@ -31,6 +32,7 @@ public sealed class RuntimeCoordinator
     private readonly AnalysisController _analysis;
     private readonly LiveLogStore _diagnosticsLog;
     private readonly DashPageCycle _pageCycle;
+    private readonly PeerLink? _link;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -40,13 +42,15 @@ public sealed class RuntimeCoordinator
     /// instances explicitly so command writes and <c>/api/state</c> reads agree -- <paramref
     /// name="pageCycle"/> in particular has to be the very instance <c>ScreenOutputs.Describe</c>
     /// reads, or a <c>dash.page.next</c> command would never be visible in <c>screens[]</c>.
+    /// Without <paramref name="link"/> the <c>link.*</c> commands are refused.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
         SessionPlannerService? planner = null,
         AnalysisController? analysis = null,
         LiveLogStore? diagnosticsLog = null,
-        DashPageCycle? pageCycle = null)
+        DashPageCycle? pageCycle = null,
+        PeerLink? link = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -55,6 +59,7 @@ public sealed class RuntimeCoordinator
             new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))));
         this._diagnosticsLog = diagnosticsLog ?? new LiveLogStore();
         this._pageCycle = pageCycle ?? new DashPageCycle();
+        this._link = link;
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -108,9 +113,49 @@ public sealed class RuntimeCoordinator
             case "analysis.filter": return FilterAnalysis(command, out error);
             case "analysis.selectLap": return SelectAnalysisLap(command, out error);
             case "diagnostics.setLogLevel": return SetLogLevel(command, out error);
+            case "link.invite": return this.LinkInvite(out error);
+            case "link.join": return this.LinkJoin(command, out error);
+            case "link.complete": return this.LinkComplete(command, out error);
+            case "link.close": return this.LinkClose(out error);
             default: error = $"unknown command type: {type}"; return false;
         }
     }
+
+    // ── Live link (driver to engineer, no server) ─────────────────────────────
+
+    private bool LinkInvite(out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        link.Invite();
+        error = "";
+        return true;
+    }
+
+    /// <summary>The engineer pastes the driver's invite. The code is checked here, so a bad paste fails the command.</summary>
+    private bool LinkJoin(JsonElement command, out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        if (!TryString(command, "code", out string code)) { error = "code is required"; return false; }
+        return link.TryJoin(code, out error);
+    }
+
+    /// <summary>The driver pastes the engineer's reply to the invite that is open.</summary>
+    private bool LinkComplete(JsonElement command, out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        if (!TryString(command, "code", out string code)) { error = "code is required"; return false; }
+        return link.TryComplete(code, out error);
+    }
+
+    private bool LinkClose(out string error)
+    {
+        if (this._link is not { } link) { error = LinkUnavailable; return false; }
+        link.Close();
+        error = "";
+        return true;
+    }
+
+    private const string LinkUnavailable = "the live link is not available";
 
     // ── Settings / controls (validated patch, never a whole-object overwrite) ──
 

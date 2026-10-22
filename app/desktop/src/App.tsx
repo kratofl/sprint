@@ -171,7 +171,7 @@ export function App() {
   const openImport = useCallback(() => setImportDialog({ offered: null }), [])
   const importResults = importSource?.available ? openImport : undefined
 
-  // The palette, page and back shortcuts (Ctrl+K / Alt+1..7 / Alt+Left on Windows, ⌘K / ⌘1..7 /
+  // The palette, page and back shortcuts (Ctrl+K / Alt+1..8 / Alt+Left on Windows, ⌘K / ⌘1..8 /
   // ⌘[ on macOS; shell/shortcuts.ts), and Escape for the topmost transient surface (palette, then
   // the newest toast). Views own their own dialogs, so Escape never reaches into ViewRouter's children.
   useEffect(() => {
