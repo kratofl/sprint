@@ -1,8 +1,8 @@
-/* Session planner (SessionPlannerView.tsx). Composes the shared Fluent primitives from
+/* Session planner (SessionPlannerView.tsx). Composes the shared primitives from
    styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .segmented,
    .field, .content-dialog); this file only lays them out and adds what the page owns: the
    plan/segment column grids, the lap strip and the step indicator. Tokens come from
-   @sprint/tokens/windows.css only. */
+   @sprint/tokens/desktop.css only. */
 
 .planner-page {
   display: flex;
@@ -292,7 +292,7 @@
   width: 20px;
   height: 20px;
   flex: none;
-  border: 1px solid var(--control-stroke-bottom);
+  border: 1px solid var(--control-stroke);
   border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 600;

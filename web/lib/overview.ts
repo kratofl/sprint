@@ -1,5 +1,9 @@
-import type { SessionSummary, SetupSummary } from './gql/generated'
+import type { Session, Setup } from './records'
 import { formatMonth, isInMonth, type Month } from './period.ts'
+
+// When a session was driven: its start time for desktop uploads, else when it
+// was created. Session lists show and sort by this.
+export const drivenAt = (session: Session): string => session.startedAt ?? session.createdAt
 
 // One headline number on the overview. `empty` means nothing has been synced
 // yet, so there is no honest number to show (DESIGN.md: never invent figures).
@@ -8,12 +12,14 @@ export type Kpi =
   | { kind: 'empty'; label: string; caption: string }
 
 // The four overview KPIs for a month: sessions driven, distinct tracks and
-// cars in that month, and the size of the setup bank.
+// cars in that month, and the size of the setup bank. Only the viewer's own
+// sessions count; the ones they engineer for are someone else's driving.
 export function overviewKpis(
-  sessions: readonly SessionSummary[],
-  setups: readonly SetupSummary[],
+  visible: readonly Session[],
+  setups: readonly Setup[],
   month: Month,
 ): readonly Kpi[] {
+  const sessions = visible.filter((session) => session.isMine)
   const period = `in ${formatMonth(month)}`
 
   const sessionKpis = (): Kpi[] => {
@@ -26,7 +32,7 @@ export function overviewKpis(
       ]
     }
     const inMonth = sessions.filter((session) => isInMonth(session.createdAt, month))
-    const distinct = (pick: (session: SessionSummary) => string) => String(new Set(inMonth.map(pick)).size)
+    const distinct = (pick: (session: Session) => string) => String(new Set(inMonth.map(pick)).size)
     return [
       { kind: 'value', label: 'Sessions', value: String(inMonth.length), caption: period },
       { kind: 'value', label: 'Tracks', value: distinct((session) => session.track), caption: period },
@@ -45,8 +51,8 @@ export function overviewKpis(
 // One bar of the session-activity chart: a 7-day slice of the month.
 export type WeekBar = { label: string; count: number }
 
-// Sessions per 7-day slice of a month (1–7, 8–14, …, 29–end), for the chart.
-export function sessionsPerWeek(sessions: readonly SessionSummary[], month: Month): readonly WeekBar[] {
+// The viewer's own sessions per 7-day slice of a month (1–7, 8–14, …, 29–end), for the chart.
+export function sessionsPerWeek(sessions: readonly Session[], month: Month): readonly WeekBar[] {
   const daysInMonth = new Date(Date.UTC(month.year, month.month + 1, 0)).getUTCDate()
   const bars: WeekBar[] = []
   for (let first = 1; first <= daysInMonth; first += 7) {
@@ -54,7 +60,7 @@ export function sessionsPerWeek(sessions: readonly SessionSummary[], month: Mont
     bars.push({ label: first === last ? `${first}` : `${first}–${last}`, count: 0 })
   }
   for (const session of sessions) {
-    if (!isInMonth(session.createdAt, month)) continue
+    if (!session.isMine || !isInMonth(session.createdAt, month)) continue
     const day = new Date(session.createdAt).getUTCDate()
     bars[Math.floor((day - 1) / 7)].count += 1
   }

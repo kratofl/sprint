@@ -1,14 +1,16 @@
-import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import os from 'node:os'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isRecord, readScreenOutputs } from './frames.js'
+import { guideRoute, readGuideOverlayWanted } from './guideFeed.js'
+import { GuideOverlay } from './guideOverlay.js'
 import { NativeHost } from './native-host.js'
 import { OffscreenOutputs } from './offscreen.js'
 import { macMenuTemplate } from './appMenu.js'
-import { supportsMica, TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
+import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -51,6 +53,8 @@ function shutdown(): Promise<void> {
     if (pollTimer !== undefined) { clearTimeout(pollTimer); pollTimer = undefined }
     offscreen?.closeAll()
     offscreen = undefined
+    guideOverlay?.close()
+    guideOverlay = undefined
     shutdownPromise = nativeHost.stop().catch((error: unknown) => {
       console.error('[sprint] native host stop failed:', error)
     })
@@ -64,6 +68,7 @@ const subscribers = new Set<WebContents>()
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
 let offscreen: OffscreenOutputs | undefined
+let guideOverlay: GuideOverlay | undefined
 
 function rendererBaseUrl(): string {
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
@@ -85,6 +90,7 @@ async function pollTick(): Promise<void> {
     // Dashboard output is driven from the same poll rather than from a renderer
     // subscription, so screens keep painting with the main window hidden.
     offscreen?.reconcile(readScreenOutputs(state))
+    guideOverlay?.reconcile(mainWindow !== undefined && readGuideOverlayWanted(state))
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -130,6 +136,50 @@ ipcMain.handle('sprint:results-import-decline', (_event: IpcMainInvokeEvent, ids
   return nativeHost.resultsImportDecline(readEntryIds(ids))
 })
 
+ipcMain.handle('sprint:account-sign-in', (_event: IpcMainInvokeEvent, serverUrl: unknown, email: unknown, password: unknown, createAccount: unknown) => {
+  if (typeof serverUrl !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
+    throw new Error('A server address, email and password are required.')
+  }
+  return nativeHost.accountSignIn(serverUrl, email, password, createAccount === true)
+})
+
+ipcMain.handle('sprint:cloud-server-info', (_event: IpcMainInvokeEvent, serverUrl: unknown) => {
+  if (typeof serverUrl !== 'string') throw new Error('A server address is required.')
+  return nativeHost.serverInfo(serverUrl)
+})
+
+/**
+ * Discord sign-in: the host builds the server's Discord URL (with its own loopback callback and a
+ * nonce), this process opens it in the system browser — never in an Electron window, so the driver
+ * signs in where their Discord session already is — and then waits for the host to report how it
+ * ended. Sprint comes back to the front once signed in.
+ */
+ipcMain.handle('sprint:account-discord', async (_event: IpcMainInvokeEvent, serverUrl: unknown) => {
+  if (typeof serverUrl !== 'string') throw new Error('A server address is required.')
+  const started = await nativeHost.discordStart(serverUrl)
+  if (!isRecord(started) || typeof started.authorizeUrl !== 'string') return started
+  const url = new URL(started.authorizeUrl)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    await nativeHost.discordCancel()
+    return { outcome: 'Failed', error: 'The server returned an unexpected sign-in address.' }
+  }
+  try {
+    await shell.openExternal(url.href)
+  } catch {
+    await nativeHost.discordCancel()
+    return { outcome: 'Failed', error: 'Sprint could not open your browser.' }
+  }
+  const result = await nativeHost.discordWait()
+  if (isRecord(result) && result.outcome === 'SignedIn') bringToFront()
+  return result
+})
+
+ipcMain.handle('sprint:account-discord-cancel', () => nativeHost.discordCancel())
+ipcMain.handle('sprint:account-sign-out', () => nativeHost.accountSignOut())
+ipcMain.handle('sprint:cloud-discover', () => nativeHost.cloudDiscover())
+ipcMain.handle('sprint:cloud-push', () => nativeHost.cloudPush())
+ipcMain.handle('sprint:cloud-pull', () => nativeHost.cloudPull())
+
 ipcMain.handle('sprint:updates-check', (_event: IpcMainInvokeEvent, force: unknown) => {
   return nativeHost.checkUpdates(force === true)
 })
@@ -158,6 +208,48 @@ ipcMain.handle('sprint:updates-install', async () => {
   return result
 })
 
+/** The lap file filter for both dialogs. The extension matches `SharedLapFile.Extension`. */
+const LAP_FILE_FILTERS = [{ name: 'Sprint lap', extensions: ['sprintlap'] }]
+const MAX_LAP_FILE_BYTES = 32 * 1024 * 1024
+
+/** Saves a lap as a .sprintlap wherever the driver picks; the host only produces the bytes. */
+ipcMain.handle('sprint:lap-export', async (event: IpcMainInvokeEvent, sessionId: unknown, lapNumber: unknown) => {
+  if (typeof sessionId !== 'string' || typeof lapNumber !== 'number' || !Number.isInteger(lapNumber)) {
+    throw new Error('A session id and lap number are required.')
+  }
+  const file = await nativeHost.lapFile(sessionId, lapNumber)
+  if (!file.ok) return { outcome: 'failed', error: file.error }
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = {
+    // The host's suggestion is a name only, never a path.
+    defaultPath: path.join(app.getPath('downloads'), path.basename(file.fileName)),
+    filters: LAP_FILE_FILTERS,
+  }
+  const choice = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+  if (choice.canceled || !choice.filePath) return { outcome: 'cancelled' }
+  try {
+    await writeFile(choice.filePath, file.bytes)
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be written.' }
+  }
+  return { outcome: 'saved', fileName: path.basename(choice.filePath), hasPositions: file.hasPositions }
+})
+
+/** Opens a .sprintlap a friend sent and files it into the corpus. */
+ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = { properties: ['openFile' as const], filters: LAP_FILE_FILTERS }
+  const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+  const filePath = choice.filePaths[0]
+  if (choice.canceled || !filePath) return { outcome: 'cancelled' }
+  try {
+    if ((await stat(filePath)).size > MAX_LAP_FILE_BYTES) return { outcome: 'failed', error: 'That file is far too large to be a Sprint lap file.' }
+    return await nativeHost.importLap(Uint8Array.from(await readFile(filePath)))
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be read.' }
+  }
+})
+
 ipcMain.handle('sprint:send-command', (_event: IpcMainInvokeEvent, command: unknown) => {
   if (!isRecord(command)) throw new Error('A command object is required.')
   return nativeHost.command(command)
@@ -173,18 +265,50 @@ ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
   subscribers.delete(event.sender)
 })
 
-const look = windowLook(process.platform)
-const micaSupported = supportsMica(process.platform, os.release())
+const isMac = process.platform === 'darwin'
+/** The look the main window wears. Follows the OS, except after the dev toggle (`toggleLook`). */
+let look = windowLook(process.platform)
+let mainWindow: BrowserWindow | undefined
+
+/** After a browser sign-in: the browser has focus, and the result is in Sprint. */
+function bringToFront(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  if (isMac) app.focus({ steal: true })
+}
 
 function currentChrome(): WindowChrome {
   const dark = nativeTheme.shouldUseDarkColors
   const reducedTransparency = nativeTheme.prefersReducedTransparency
   return look === 'mac'
-    ? windowChrome({ look, dark, reducedTransparency })
-    : windowChrome({ look, dark, reducedTransparency, micaSupported })
+    ? windowChrome({ look, dark, reducedTransparency, vibrancySupported: isMac })
+    : windowChrome({ look, dark })
 }
 
-/** Height of the renderer's title bar (styles.css `.titlebar`); the caption buttons fill it. */
+/**
+ * Dev only: reopen the main window in the other look (brand or macOS), so both can be checked on
+ * one machine. A reopen rather than a restyle, because the caption buttons, traffic
+ * lights and backdrop are fixed when a window is created. The new window opens
+ * before the old one closes, so `window-all-closed` never stops the host.
+ */
+function toggleLook(): void {
+  const previous = mainWindow
+  look = look === 'mac' ? 'windows' : 'mac'
+  const next = createWindow()
+  if (previous) {
+    next.setBounds(previous.getBounds())
+    previous.destroy()
+  }
+}
+
+/** ⌘⌥⇧L on macOS, Ctrl+Alt+Shift+L elsewhere: `TOGGLE_LOOK_ACCELERATOR` in appMenu.ts. */
+function isToggleLookKey(input: Electron.Input): boolean {
+  return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
+}
+
+/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar; the caption buttons fill it. */
 const TITLE_BAR_HEIGHT = 48
 
 /**
@@ -196,25 +320,20 @@ const TITLE_BAR_HEIGHT = 48
  */
 const TRAFFIC_LIGHT_POSITION = { x: 16, y: 19 }
 
-/** BrowserWindow options that differ between the Windows and macOS looks. */
+/** BrowserWindow options that differ between the brand and macOS looks. */
 function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
   switch (chrome.kind) {
-    case 'mica':
-    case 'solid': {
-      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
+    case 'solid':
       return {
-        // The renderer leaves its window background transparent (see main.tsx), so the
-        // title bar and navigation pane show whatever is drawn here: Mica, or its solid colour.
-        backgroundColor: background,
-        ...(micaSupported ? { backgroundMaterial: chrome.kind === 'mica' ? ('mica' as const) : ('none' as const) } : {}),
-        // The app's 48px title bar is the window title bar. Hiding the OS one but keeping
+        // The brand background, so nothing flashes before the renderer paints the same colour.
+        backgroundColor: chrome.background,
+        // The app's 48px toolbar is the window title bar. Hiding the OS one but keeping
         // its caption buttons as an overlay retains the real Windows minimise,
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
       }
-    }
     case 'vibrancy':
     case 'opaque':
       return {
@@ -234,20 +353,17 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
 /** Live counterpart of `chromeOptions` for an already open window. */
 function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
   switch (chrome.kind) {
-    case 'mica':
-    case 'solid': {
-      const background = chrome.kind === 'mica' ? TRANSPARENT : chrome.background
-      if (micaSupported) window.setBackgroundMaterial(chrome.kind === 'mica' ? 'mica' : 'none')
-      window.setBackgroundColor(background)
-      window.setTitleBarOverlay({ color: background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+    case 'solid':
+      window.setBackgroundColor(chrome.background)
+      // Windows/Linux only; macOS reaches this in the dev look toggle.
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
       return
-    }
     case 'vibrancy':
       window.setVibrancy('sidebar')
       window.setBackgroundColor(TRANSPARENT)
       return
     case 'opaque':
-      window.setVibrancy(null)
+      if (isMac) window.setVibrancy(null)
       window.setBackgroundColor(chrome.background)
       return
   }
@@ -270,6 +386,23 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
+  mainWindow = window
+  window.once('closed', () => {
+    if (mainWindow !== window) return
+    mainWindow = undefined
+    // The overlay is click-through and has no controls; without the main window nothing could turn it off.
+    guideOverlay?.close()
+  })
+  // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
+  // and icon, so hide them. ⌘W and ⌘Q still close the window.
+  if (isMac && look === 'windows') window.setWindowButtonVisibility(false)
+  if (!app.isPackaged) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (!isToggleLookKey(input)) return
+      event.preventDefault()
+      toggleLook()
+    })
+  }
   // Views link out with plain `target="_blank"` anchors (e.g. Settings/Help's "View
   // release"). Without a handler, Electron opens those in a second frameless Electron
   // window instead of the system browser. Deny every new-window request and hand
@@ -288,8 +421,8 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  // The backdrop and caption buttons follow the OS light/dark switch and the
-  // Windows "Transparency effects" / macOS "Reduce transparency" setting live.
+  // The background and caption buttons follow the OS light/dark switch, and the macOS
+  // vibrancy follows "Reduce transparency", live.
   const onThemeUpdated = (): void => applyChrome(window, currentChrome())
   nativeTheme.on('updated', onThemeUpdated)
   window.once('closed', () => nativeTheme.off('updated', onThemeUpdated))
@@ -318,16 +451,21 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
   // No OS menu bar on Windows: every command this app has lives in its own UI.
   // macOS needs the standard menu for Quit, Hide, window keys and text editing.
-  Menu.setApplicationMenu(look === 'mac' ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged })) : null)
+  Menu.setApplicationMenu(isMac ? Menu.buildFromTemplate(macMenuTemplate({ packaged: app.isPackaged, onToggleLook: toggleLook })) : null)
   // A packaged build gets its icon from the bundle. A dev run may be Electron's own
   // bundle (`pnpm start`), so set it here; the Dock shows this image unmasked, hence
   // the version already shaped and inset to Apple's icon grid.
-  if (look === 'mac' && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
+  if (isMac && !app.isPackaged) app.dock?.setIcon(path.join(desktopRoot, 'resources', 'icon-mac.png'))
   await startNativeHost()
   offscreen = new OffscreenOutputs(
     rendererBaseUrl(),
     (deviceId, frame, signal) => nativeHost.frame(deviceId, frame, signal),
     (deviceId, error) => { console.error(`[sprint] frame delivery failed for ${deviceId}:`, error) },
+  )
+  guideOverlay = new GuideOverlay(
+    guideRoute(rendererBaseUrl()),
+    path.join(__dirname, 'preload.cjs'),
+    (signal) => nativeHost.guideStream(signal),
   )
   polling = true
   ensurePolling()

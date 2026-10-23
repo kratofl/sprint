@@ -1,15 +1,19 @@
-// One React component per dash widget type. Each component receives the widget's already-inset
-// content box in pixels (`width`/`height`) and lays itself out from fractions of that box.
+// One React component per dash widget type, plus `widgetChrome`, which says how each type is
+// framed. A framed widget's title, knob color and condition fill come from its chrome (see
+// chrome.tsx); its component receives only the content box below the title, in pixels
+// (`width`/`height`), and draws values laid out from fractions of that box.
 //
 // Static labels that must shrink to fit rather than clip use `TextLine`'s `sizing="fit"` — see
 // `primitives.tsx` for the measurement-free SVG implementation. Everything else stays "stable"
-// (authored size, clipped, no shrink), which is the default.
+// (authored size, clipped, no shrink), which is the default. Values size from a template of
+// the widest text they can show (`valueSize`), so they never clip and never resize.
 
 import React from 'react'
 import { TirePosition, type AppSettings, type TelemetryFrame, type TireState } from '@sprint/types'
 import type { DashWidget } from './index'
 import { resolveBinding, type DashTargets } from './bindings'
 import {
+  formatFrontBrakeBias,
   formatDelta,
   formatFuel,
   formatFuelPerLap,
@@ -22,8 +26,9 @@ import {
   formatSpeedKph,
   formatTemp,
 } from './format'
-import { resolveTyreColor, withAlpha, type DashPaletteColors } from './palette'
-import { DeltaBar, Dot, HBar, SimpleValue, TextLine, VerticalSegBar, type TextAlign } from './primitives'
+import { dashSettingColors, resolveTyreColor, type DashPaletteColors } from './palette'
+import { BigValue, Dot, HBar, TextLine, ValueWithUnit, VerticalSegBar, valueSize, type TextAlign } from './primitives'
+import { WidgetFrame, type ChromeContext } from './chrome'
 
 export interface WidgetContentProps {
   widget: DashWidget
@@ -33,7 +38,23 @@ export interface WidgetContentProps {
   height: number
   targets: DashTargets | null
   settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
+  /** The dash style, for `split` widgets that draw their own frames. */
+  chrome: ChromeContext
 }
+
+/**
+ * How a widget type is framed:
+ * - `framed`: one frame with a title; `accent` is a knob's identity color and `fill` a
+ *   condition color covering the frame (values then draw in ink).
+ * - `bare`: no frame or title (gear, header, text, RPM, flag), just the same margin.
+ * - `split`: the widget fills its whole cell with several frames of its own (the four tyres).
+ */
+export type WidgetChrome =
+  | { kind: 'framed'; title: string; accent: string | null; fill: string | null }
+  | { kind: 'bare' }
+  | { kind: 'split' }
+
+const framed = (title: string, accent: string | null = null, fill: string | null = null): WidgetChrome => ({ kind: 'framed', title, accent, fill })
 
 /** Reads a string config value by key, or `undefined` when absent/not a string. */
 function configString(config: Record<string, unknown> | undefined, key: string): string | undefined {
@@ -63,6 +84,43 @@ function rpmStageColor(phase: number, palette: DashPaletteColors): string {
   if (phase < 0.78) return palette.rpmNormal
   if (phase < 0.93) return palette.rpmNearLimit
   return palette.rpmShift
+}
+
+/** The frame a widget wears this frame: its title, knob color and any condition fill. */
+export function widgetChrome(widget: DashWidget, frame: TelemetryFrame, palette: DashPaletteColors): WidgetChrome {
+  switch (widget.type) {
+    case 'input_trace': return framed('INPUTS')
+    case 'sector': return framed('SECTORS')
+    case 'lap_time': return framed(LAP_TIME_TITLES[lapTimeShow(widget)])
+    case 'delta': return framed('DELTA', null, deltaFill(frame, palette))
+    case 'fuel': return framed('FUEL', null, fuelFill(frame.car.fuel, palette))
+    case 'tc': return framed('TC', dashSettingColors.tc)
+    case 'abs': return framed('ABS', dashSettingColors.abs)
+    case 'engine_map': return framed('MAP', dashSettingColors.engineMap)
+    case 'brake_bias': return framed('BIAS', dashSettingColors.brakeBias)
+    case 'fuel_target': return framed('FUEL TARGET')
+    case 'position': return framed('POS')
+    case 'gaps': return framed(GAP_TITLES[gapSide(widget)])
+    case 'predictive_lap': return framed('PREDICTED')
+    case 'virtual_energy': case 'ers': return framed('VIRTUAL ENERGY', null, energyFill(virtualEnergyPercent(frame), palette))
+    case 'tyre_temp': case 'tyre_pressure': return { kind: 'split' }
+    default: return { kind: 'bare' }
+  }
+}
+
+/** Green while the lap is gaining on the target; no fill otherwise. A slower lap is never colored just for being slower. */
+function deltaFill(frame: TelemetryFrame, palette: DashPaletteColors): string | null {
+  return frame.lap.targetLapTime > 0 && frame.lap.delta < -0.0005 ? palette.timingPersonalBest : null
+}
+
+function fuelFill(liters: number, palette: DashPaletteColors): string | null {
+  if (liters <= 0 || liters >= 5) return null
+  return liters < 2 ? palette.critical : palette.warning
+}
+
+function energyFill(pct: number, palette: DashPaletteColors): string | null {
+  if (pct <= 0 || pct >= 15) return null
+  return pct < 5 ? palette.critical : palette.warning
 }
 
 function HeaderWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
@@ -155,19 +213,18 @@ function InputTraceWidget({ frame, palette, width, height }: WidgetContentProps)
     { label: 'CLU', value: frame.car.clutch, color: palette.secondary, centered: false },
     { label: 'STR', value: (frame.car.steering + 1) / 2, color: palette.secondary, centered: true },
   ]
-  const barXFrac = 0.24
-  const barWFrac = 0.72
-  const barHFrac = 0.13
+  const rowHeight = height / rows.length
+  const barLeft = width * 0.24
   return (
     <>
       {rows.map((row, i) => {
-        const cy = (0.16 + i * 0.24) * height
-        const barH = barHFrac * height
+        const cy = rowHeight * (i + 0.5)
+        const barH = Math.min(rowHeight * 0.55, 14)
         const pct = row.centered ? row.value * 2 - 1 : row.value
         return (
           <React.Fragment key={row.label}>
-            <TextLine text={row.label} left={width * (barXFrac - 0.02)} top={cy} size={height * 0.11} color={palette.muted} align="end" maxWidth={width * barXFrac} weight="label" sizing="fit" />
-            <HBar x={barXFrac * width} y={cy - barH / 2} w={barWFrac * width} h={barH} pct={pct} color={row.color} centered={row.centered} />
+            <TextLine text={row.label} left={0} top={cy} size={Math.min(rowHeight * 0.6, 12)} color={palette.muted} align="start" maxWidth={barLeft - 4} weight="label" sizing="fit" />
+            <HBar x={barLeft} y={cy - barH / 2} w={width - barLeft} h={barH} pct={pct} color={row.color} centered={row.centered} />
           </React.Fragment>
         )
       })}
@@ -177,45 +234,58 @@ function InputTraceWidget({ frame, palette, width, height }: WidgetContentProps)
 
 function SectorWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const current = Math.max(1, Math.min(3, frame.lap.sector))
-  const pipW = width / 3.2
-  const pipH = height * 0.3
-  const pipY = height * 0.42
+  const gap = 6
+  const pipW = Math.max(0, (width - gap * 2) / 3)
+  const pipH = height * 0.36
   return (
     <>
-      <TextLine text="SECTORS" left={8} top={height * 0.18} size={height * 0.16} color={palette.muted} align="start" maxWidth={width * 0.6} weight="label" sizing="fit" />
       {[1, 2, 3].map((s) => {
-        const px = 8 + (s - 1) * (pipW + 6)
+        const px = (s - 1) * (pipW + gap)
         const active = s === current && frame.lap.sector > 0
         return (
           <React.Fragment key={s}>
-            <TextLine text={`S${s}`} left={px + pipW / 2} top={pipY + pipH / 2} size={pipH * 0.6} color={active ? palette.primary : palette.muted} align="center" maxWidth={pipW} weight="labelBold" sizing="fit" />
-            {active && <div style={{ position: 'absolute', left: px + pipW * 0.2, top: pipY + pipH + 3, width: pipW * 0.6, height: 3, borderRadius: 1.5, background: palette.primary }} />}
+            <TextLine text={`S${s}`} left={px + pipW / 2} top={pipH * 0.45} size={pipH * 0.62} color={active ? palette.primary : palette.muted} align="center" maxWidth={pipW} weight="labelBold" sizing="fit" />
+            {active && <div style={{ position: 'absolute', left: px + pipW * 0.2, top: pipH * 0.92, width: pipW * 0.6, height: 3, borderRadius: 1.5, background: palette.primary }} />}
           </React.Fragment>
         )
       })}
-      <TextLine text={formatLap(frame.lap.currentLapTime)} left={width - 8} top={height - height * 0.16} size={height * 0.22} color={palette.neutral} align="end" maxWidth={width * 0.6} weight="value" />
+      <TextLine text={formatLap(frame.lap.currentLapTime)} left={width / 2} top={pipH + (height - pipH) / 2} size={valueSize('0:00.000', width, height - pipH)} color={palette.neutral} align="center" maxWidth={width} weight="value" />
     </>
   )
 }
 
-function LapTimeWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  const titleSize = Math.min(26, height * 0.09)
-  const labelSize = Math.min(22, height * 0.085)
-  const valueSize = Math.min(32, height * 0.115)
+type LapTimeShow = 'all' | 'current' | 'last' | 'best'
+const LAP_TIME_TITLES: Record<LapTimeShow, string> = { all: 'LAP TIMES', current: 'LAP', last: 'LAST', best: 'BEST' }
+
+/** The lap_time widget's "show" config: all three times stacked, or one of them large. */
+function lapTimeShow(widget: DashWidget): LapTimeShow {
+  const show = configString(widget.config, 'show')
+  return show === 'current' || show === 'last' || show === 'best' ? show : 'all'
+}
+
+function LapTimeWidget({ widget, frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const rows = [
-    { label: 'NOW', value: formatLap(frame.lap.currentLapTime), color: palette.neutral },
-    { label: 'LAST', value: formatLap(frame.lap.lastLapTime), color: palette.neutral },
-    { label: 'BEST', value: formatLap(frame.lap.bestLapTime), color: palette.timingFastestOverall },
+    { show: 'current', label: 'NOW', value: formatLap(frame.lap.currentLapTime), color: palette.neutral },
+    { show: 'last', label: 'LAST', value: formatLap(frame.lap.lastLapTime), color: palette.neutral },
+    { show: 'best', label: 'BEST', value: formatLap(frame.lap.bestLapTime), color: palette.timingFastestOverall },
   ]
+  const show = lapTimeShow(widget)
+  const single = rows.find((row) => row.show === show)
+  if (single) {
+    return <BigValue text={single.value} template="0:00.000" width={width} height={height} color={single.color} />
+  }
+
+  const rowHeight = height / rows.length
+  const labelWidth = width * 0.26
+  const size = valueSize('0:00.000', width - labelWidth, rowHeight, 0.78)
   return (
     <>
-      <TextLine text="LAP TIMES" left={10} top={height * 0.12} size={titleSize} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
       {rows.map((row, i) => {
-        const cy = height * (0.38 + i * 0.24)
+        const cy = rowHeight * (i + 0.5)
         return (
           <React.Fragment key={row.label}>
-            <TextLine text={row.label} left={10} top={cy} size={labelSize} color={palette.secondary} align="start" maxWidth={width * 0.34} weight="label" sizing="fit" />
-            <TextLine text={row.value} left={width - 10} top={cy} size={valueSize} color={row.color} align="end" maxWidth={width * 0.6} weight="value" />
+            <TextLine text={row.label} left={0} top={cy} size={Math.min(size * 0.42, 14)} color={palette.secondary} align="start" maxWidth={labelWidth} weight="label" sizing="fit" />
+            <TextLine text={row.value} left={width} top={cy} size={size} color={row.color} align="end" maxWidth={width - labelWidth} weight="value" />
           </React.Fragment>
         )
       })}
@@ -225,46 +295,24 @@ function LapTimeWidget({ frame, palette, width, height }: WidgetContentProps): R
 
 function DeltaWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   if (frame.lap.targetLapTime <= 0) {
-    return <TextLine text="NO TARGET" left={width / 2} top={height / 2} size={height * 0.4} color={palette.muted} align="center" maxWidth={width * 0.9} weight="label" sizing="fit" />
+    return <TextLine text="NO TARGET" left={width / 2} top={height / 2} size={Math.min(height * 0.4, 20)} color={palette.muted} align="center" maxWidth={width * 0.9} weight="label" sizing="fit" />
   }
 
-  const color = frame.lap.delta < -0.0005 ? palette.timingPersonalBest : palette.neutral
-  return (
-    <>
-      <TextLine text="DELTA" left={10} top={height / 2} size={height * 0.24} color={palette.muted} align="start" maxWidth={width * 0.2} weight="label" sizing="fit" />
-      <TextLine text={formatDelta(frame.lap.delta)} left={width - 10} top={height / 2} size={height * 0.42} color={color} align="end" maxWidth={width * 0.34} weight="value" />
-      <DeltaBar x={width * 0.25} y={height / 2 - height * 0.1} w={width * 0.3} h={height * 0.2} delta={frame.lap.delta} palette={palette} />
-    </>
-  )
+  return <BigValue text={formatDelta(frame.lap.delta)} template="-00.000" width={width} height={height} color={palette.neutral} />
 }
 
 function FuelWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const fuel = frame.car.fuel
   const perLap = frame.car.fuelPerLap
-  const tint = fuel > 0 && fuel < 5 ? withAlpha(fuel < 2 ? palette.critical : palette.warning, fuel < 2 ? 51 / 255 : 31 / 255) : null
-  const tintLayer = tint ? <div style={{ position: 'absolute', inset: 0, background: tint }} /> : null
-
-  if (height < 150 && width < 200) {
-    return (
-      <>
-        {tintLayer}
-        <TextLine text="FUEL" left={8} top={height * 0.2} size={height * 0.12} color={palette.muted} align="start" maxWidth={width * 0.35} weight="label" sizing="fit" />
-        <TextLine text={`${formatFuelPerLap(perLap)} L/lap`} left={width - 8} top={height * 0.2} size={height * 0.11} color={palette.secondary} align="end" maxWidth={width * 0.58} weight="label" />
-        <TextLine text={`${formatFuel(fuel)} L`} left={width / 2} top={height * 0.63} size={height * 0.34} color={palette.foreground} align="center" maxWidth={width * 0.9} weight="value" />
-      </>
-    )
-  }
-
-  const laps = perLap > 0.01 ? `~${formatInt(fuel / perLap)} laps` : '~-- laps'
-  return (
-    <>
-      {tintLayer}
-      <TextLine text="FUEL" left={10} top={height * 0.16} size={height * 0.12} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
-      <TextLine text={`${formatFuel(fuel)} L`} left={10} top={height * 0.52} size={height * 0.34} color={palette.foreground} align="start" maxWidth={width * 0.6} weight="value" />
-      <TextLine text={`${formatFuelPerLap(perLap)} L/lap`} left={width - 10} top={height * 0.3} size={height * 0.18} color={palette.secondary} align="end" maxWidth={width * 0.55} weight="value" />
-      <TextLine text={laps} left={width - 10} top={height * 0.78} size={height * 0.16} color={palette.muted} align="end" maxWidth={width * 0.55} weight="label" />
-    </>
-  )
+  const laps = perLap > 0.01 ? (fuel / perLap).toFixed(1) : null
+  // A narrow box keeps the laps large and drops the liters rather than shrinking both.
+  const withLiters = laps !== null && width >= 200
+  const value = laps ?? formatFuel(fuel)
+  const unit = laps ? (withLiters ? `laps · ${formatFuel(fuel)} L` : 'laps') : 'L'
+  // The value plus its unit, measured in value-sized digits: "00.0" and the unit's template at 0.36.
+  const unitChars = laps ? (withLiters ? 14 : 4) : 1
+  const size = Math.min(height * 0.7, (width * 0.96) / ((4 + unitChars * 0.36) * 0.56))
+  return <ValueWithUnit value={value} unit={unit} left={width / 2} top={height / 2} size={size} color={palette.foreground} unitColor={palette.secondary} maxWidth={width} />
 }
 
 const TIRE_CORNERS: { label: string; position: TirePosition }[] = [
@@ -282,53 +330,50 @@ function tyreTemperature(tire: TireState, useCore: boolean): number {
   return readings.length === 0 ? 0 : readings.reduce((sum, value) => sum + value, 0) / readings.length
 }
 
-function TyreTempWidget({ widget, frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  const useCore = configString(widget.config, 'channel') === 'core'
+/** Four tyre corners in car order, each its own frame in the dash style, splitting the widget's cell 2x2. */
+function TyreCorners({ chrome, palette, width, height, corner }: { chrome: ChromeContext; palette: DashPaletteColors; width: number; height: number; corner: (position: TirePosition) => { title: string; value: string; template: string; fill: string | null } }): React.ReactElement {
   const cellW = width / 2
-  const cellH = (height - height * 0.18) / 2
-  const gridTop = height * 0.18
+  const cellH = height / 2
   return (
     <>
-      <TextLine text={useCore ? 'TYRE CORE' : 'TYRE TEMPS'} left={10} top={height * 0.12} size={height * 0.1} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
-      {TIRE_CORNERS.map((corner, i) => {
-        const col = i % 2
-        const row = Math.floor(i / 2)
-        const cx = col * cellW
-        const cy = gridTop + row * cellH
-        const temp = tyreTemperature(frame.tires[corner.position], useCore)
-        const text = temp > 0 ? `${formatTemp(temp)}°` : '--'
+      {TIRE_CORNERS.map((entry, i) => {
+        const { title, value, template, fill } = corner(entry.position)
+        const rect = { left: (i % 2) * cellW, top: Math.floor(i / 2) * cellH, width: cellW, height: cellH }
         return (
-          <React.Fragment key={corner.label}>
-            <TextLine text={corner.label} left={cx + 8} top={cy + cellH * 0.4} size={cellH * 0.26} color={palette.muted} align="start" maxWidth={cellW * 0.4} weight="label" sizing="fit" />
-            <TextLine text={text} left={cx + cellW - 8} top={cy + cellH * 0.5} size={cellH * 0.42} color={resolveTyreColor(temp, palette)} align="end" maxWidth={cellW * 0.7} weight="value" />
-          </React.Fragment>
+          <WidgetFrame key={entry.label} ctx={chrome} rect={rect} title={`${entry.label}${title}`} accent={null} fill={fill} palette={palette}>
+            {(content, contentPalette) => <BigValue text={value} template={template} width={content.width} height={content.height} color={contentPalette.foreground} />}
+          </WidgetFrame>
         )
       })}
     </>
   )
 }
 
-function TyrePressureWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  const cellW = width / 2
-  const cellH = (height - height * 0.18) / 2
-  const gridTop = height * 0.18
+function TyreTempWidget({ widget, frame, palette, width, height, chrome }: WidgetContentProps): React.ReactElement {
+  const useCore = configString(widget.config, 'channel') === 'core'
   return (
-    <>
-      <TextLine text="TYRE PRESSURE" left={10} top={height * 0.12} size={height * 0.1} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
-      {TIRE_CORNERS.map((corner, i) => {
-        const col = i % 2
-        const row = Math.floor(i / 2)
-        const cx = col * cellW
-        const cy = gridTop + row * cellH
-        const tire = frame.tires[corner.position]
-        return (
-          <React.Fragment key={corner.label}>
-            <TextLine text={corner.label} left={cx + 8} top={cy + cellH * 0.28} size={cellH * 0.2} color={palette.muted} align="start" maxWidth={cellW * 0.4} weight="label" sizing="fit" />
-            <TextLine text={formatPressure(tire.pressureKPa)} left={cx + cellW - 8} top={cy + cellH * 0.66} size={cellH * 0.34} color={palette.foreground} align="end" maxWidth={cellW * 0.82} weight="value" />
-          </React.Fragment>
-        )
-      })}
-    </>
+    <TyreCorners
+      chrome={chrome}
+      palette={palette}
+      width={width}
+      height={height}
+      corner={(position) => {
+        const temp = tyreTemperature(frame.tires[position], useCore)
+        return { title: useCore ? ' CORE' : '', value: temp > 0 ? `${formatTemp(temp)}°` : '--', template: '000°', fill: temp > 0 ? resolveTyreColor(temp, palette) : null }
+      }}
+    />
+  )
+}
+
+function TyrePressureWidget({ frame, palette, width, height, chrome }: WidgetContentProps): React.ReactElement {
+  return (
+    <TyreCorners
+      chrome={chrome}
+      palette={palette}
+      width={width}
+      height={height}
+      corner={(position) => ({ title: ' KPA', value: formatPressure(frame.tires[position].pressureKPa), template: '000.0', fill: null })}
+    />
   )
 }
 
@@ -355,118 +400,72 @@ function FlagWidget({ frame, palette, width, height }: WidgetContentProps): Reac
 
 function TcWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const color = frame.electronics.tcActive ? palette.assistActive : palette.neutral
-  return (
-    <>
-      <TextLine text="TC1" left={6} top={height * 0.2} size={height * 0.16} color={palette.muted} align="start" maxWidth={width * 0.6} weight="label" sizing="fit" />
-      <TextLine text={String(Math.trunc(frame.electronics.tc))} left={width / 2} top={height * 0.58} size={height * 0.5} color={color} align="center" maxWidth={width * 0.9} weight="value" />
-    </>
-  )
+  return <BigValue text={String(Math.trunc(frame.electronics.tc))} template="00" width={width} height={height} color={color} />
 }
 
 function AbsWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <SimpleValue width={width} height={height} label="ABS" value={String(Math.trunc(frame.electronics.abs))} palette={palette} />
+  return <BigValue text={String(Math.trunc(frame.electronics.abs))} template="00" width={width} height={height} color={palette.neutral} />
 }
 
 function EngineMapWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <SimpleValue width={width} height={height} label="MAP" value={String(Math.trunc(frame.electronics.motorMap))} palette={palette} />
+  return <BigValue text={String(Math.trunc(frame.electronics.motorMap))} template="00" width={width} height={height} color={palette.neutral} />
 }
 
 function BrakeBiasWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  // Discrepancy carried from bindings.ts: CarState.brakeBiasRear is a 0-1 fraction here, a
-  // percentage in the desktop model, so it is scaled to keep this widget's display consistent
-  // with the "car.brakeBiasRear" text binding.
-  return <SimpleValue width={width} height={height} label="BRAKE BIAS" value={`${(frame.car.brakeBiasRear * 100).toFixed(1)}%`} palette={palette} />
+  return <BigValue text={formatFrontBrakeBias(frame.car.brakeBiasRear)} template="00.0" width={width} height={height} color={palette.neutral} />
 }
 
 function FuelTargetWidget({ targets, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <SimpleValue width={width} height={height} label="FUEL TARGET" value={`${formatFuelPerLapTarget(targets?.fuelPerLapLiters ?? null)} L/lap`} palette={palette} />
+  const size = Math.min(height * 0.7, (width * 0.96) / ((4 + 5 * 0.36) * 0.56))
+  return <ValueWithUnit value={formatFuelPerLapTarget(targets?.fuelPerLapLiters ?? null)} unit="L/lap" left={width / 2} top={height / 2} size={size} color={palette.foreground} unitColor={palette.secondary} maxWidth={width} />
 }
 
 function PositionWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  const value = frame.race.totalPositions > 0 ? `P${frame.race.position} / ${frame.race.totalPositions}` : frame.race.position > 0 ? `P${frame.race.position}` : 'P--'
-  return <SimpleValue width={width} height={height} label="POSITION" value={value} palette={palette} />
+  const value = frame.race.position > 0 ? `P${frame.race.position}` : 'P--'
+  const unit = frame.race.totalPositions > 0 ? `/${frame.race.totalPositions}` : ''
+  const size = Math.min(height * 0.7, (width * 0.96) / ((3 + 3 * 0.36) * 0.56))
+  return <ValueWithUnit value={value} unit={unit} left={width / 2} top={height / 2} size={size} color={palette.foreground} unitColor={palette.secondary} maxWidth={width} />
 }
 
-function GapsWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
+type GapSide = 'both' | 'ahead' | 'behind'
+const GAP_TITLES: Record<GapSide, string> = { both: 'GAPS', ahead: 'AHEAD', behind: 'BEHIND' }
+
+/** The gaps widget's "side" config: both gaps, or one of them large. */
+function gapSide(widget: DashWidget): GapSide {
+  const side = configString(widget.config, 'side')
+  return side === 'ahead' || side === 'behind' ? side : 'both'
+}
+
+function GapsWidget({ widget, frame, palette, width, height }: WidgetContentProps): React.ReactElement {
   const ahead = formatGap(frame.race.gapAhead)
   const behind = formatGap(frame.race.gapBehind)
+  const side = gapSide(widget)
+  if (side !== 'both') {
+    // One side alone: its title already says which, so the value goes unsigned.
+    return <BigValue text={side === 'ahead' ? ahead : behind} template="00.000" width={width} height={height} color={palette.foreground} />
+  }
+
+  const half = width / 2
+  const labelTop = height * 0.18
+  const size = valueSize('+00.000', half - 6, height * 0.64, 0.9)
   return (
     <>
-      <TextLine text="GAPS" left={8} top={height * 0.16} size={height * 0.12} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
-      <TextLine text="AHEAD" left={10} top={height * 0.5} size={height * 0.13} color={palette.secondary} align="start" maxWidth={width * 0.45} weight="label" sizing="fit" />
-      <TextLine text={ahead === '--' ? '--' : `-${ahead}`} left={10} top={height * 0.78} size={height * 0.2} color={palette.foreground} align="start" maxWidth={width * 0.45} weight="value" />
-      <TextLine text="BEHIND" left={width - 10} top={height * 0.5} size={height * 0.13} color={palette.secondary} align="end" maxWidth={width * 0.45} weight="label" sizing="fit" />
-      <TextLine text={behind === '--' ? '--' : `+${behind}`} left={width - 10} top={height * 0.78} size={height * 0.2} color={palette.foreground} align="end" maxWidth={width * 0.45} weight="value" />
+      <TextLine text="AHEAD" left={0} top={labelTop} size={Math.min(height * 0.26, 12)} color={palette.secondary} align="start" maxWidth={half - 6} weight="label" sizing="fit" />
+      <TextLine text={ahead === '--' ? '--' : `-${ahead}`} left={0} top={height * 0.66} size={size} color={palette.foreground} align="start" maxWidth={half - 6} weight="value" />
+      <TextLine text="BEHIND" left={width} top={labelTop} size={Math.min(height * 0.26, 12)} color={palette.secondary} align="end" maxWidth={half - 6} weight="label" sizing="fit" />
+      <TextLine text={behind === '--' ? '--' : `+${behind}`} left={width} top={height * 0.66} size={size} color={palette.foreground} align="end" maxWidth={half - 6} weight="value" />
     </>
   )
 }
 
 function PredictiveLapWidget({ frame, palette, width, height }: WidgetContentProps): React.ReactElement {
-  return <SimpleValue width={width} height={height} label="PREDICTED" value={formatLap(frame.lap.targetLapTime)} palette={palette} />
+  return <BigValue text={formatLap(frame.lap.targetLapTime)} template="0:00.000" width={width} height={height} color={palette.foreground} />
 }
 
-function VirtualEnergyPercent({ pct, palette, width, height }: { pct: number; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
-  const barColor = pct < 5 ? palette.critical : pct < 15 ? palette.warning : palette.neutral
-  return (
-    <>
-      <TextLine text="VIRTUAL ENERGY" left={8} top={height * 0.18} size={height * 0.13} color={palette.muted} align="start" maxWidth={width * 0.9} weight="label" sizing="fit" />
-      <TextLine text={pct > 0 ? `${pct.toFixed(0)}%` : '--'} left={width / 2} top={height * 0.58} size={height * 0.4} color={palette.neutral} align="center" maxWidth={width * 0.9} weight="value" />
-      <HBar x={width * 0.08} y={height - height * 0.16} w={width * 0.84} h={height * 0.08} pct={pct / 100} color={barColor} centered={false} />
-    </>
-  )
-}
-
-function VirtualEnergyPower({ pct, frame, palette, width, height }: { pct: number; frame: TelemetryFrame; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
-  const deploy = frame.energy.deployPower
-  const regen = frame.energy.regenPower
-  return (
-    <>
-      <TextLine text="VIRTUAL ENERGY" left={8} top={height * 0.2} size={height * 0.14} color={palette.muted} align="start" maxWidth={width * 0.9} weight="label" sizing="fit" />
-      <TextLine text={pct > 0 ? `${pct.toFixed(0)}%` : '--'} left={8} top={height * 0.62} size={height * 0.38} color={palette.neutral} align="start" maxWidth={width * 0.6} weight="value" />
-      <TextLine text={deploy > 0 ? `DEP ${formatInt(deploy)} kW` : 'DEP -- kW'} left={width - 8} top={height * 0.42} size={height * 0.15} color={palette.secondary} align="end" maxWidth={width * 0.55} weight="value" />
-      <TextLine text={regen > 0 ? `REGEN ${formatInt(regen)} kW` : 'REGEN -- kW'} left={width - 8} top={height * 0.82} size={height * 0.15} color={palette.secondary} align="end" maxWidth={width * 0.6} weight="value" />
-    </>
-  )
-}
-
-function VirtualEnergyBudget({
-  pct,
-  perLapPct,
-  rawLevel,
-  rawPerLap,
-  palette,
-  width,
-  height,
-}: {
-  pct: number
-  perLapPct: number
-  rawLevel: number
-  rawPerLap: number
-  palette: DashPaletteColors
-  width: number
-  height: number
-}): React.ReactElement {
-  const laps = rawPerLap > 0.0001 ? `~${formatInt(rawLevel / rawPerLap)} laps` : '~-- laps'
-  const perLapText = perLapPct > 0.0001 ? `${perLapPct.toFixed(1)} %/lap` : '-- %/lap'
-
-  if (height < 150 && width < 200) {
-    return (
-      <>
-        <TextLine text="V-ENERGY" left={8} top={height * 0.2} size={height * 0.12} color={palette.muted} align="start" maxWidth={width * 0.4} weight="label" sizing="fit" />
-        <TextLine text={perLapText} left={width - 8} top={height * 0.2} size={height * 0.11} color={palette.secondary} align="end" maxWidth={width * 0.55} weight="label" />
-        <TextLine text={pct > 0 ? `${pct.toFixed(0)}%` : '--'} left={width / 2} top={height * 0.63} size={height * 0.34} color={palette.neutral} align="center" maxWidth={width * 0.9} weight="value" />
-      </>
-    )
-  }
-
-  return (
-    <>
-      <TextLine text="VIRTUAL ENERGY" left={10} top={height * 0.16} size={height * 0.12} color={palette.muted} align="start" maxWidth={width} weight="label" sizing="fit" />
-      <TextLine text={pct > 0 ? `${pct.toFixed(0)}%` : '--'} left={10} top={height * 0.52} size={height * 0.34} color={palette.neutral} align="start" maxWidth={width * 0.6} weight="value" />
-      <TextLine text={perLapText} left={width - 10} top={height * 0.3} size={height * 0.18} color={palette.secondary} align="end" maxWidth={width * 0.55} weight="value" />
-      <TextLine text={laps} left={width - 10} top={height * 0.78} size={height * 0.16} color={palette.muted} align="end" maxWidth={width * 0.55} weight="label" />
-    </>
-  )
+/** The virtual-energy level as a percentage, tolerating a 0..1 or a 0..100 source scale. */
+function virtualEnergyPercent(frame: TelemetryFrame): number {
+  const raw = frame.energy.virtualEnergy
+  return raw > 0 && raw <= 1 ? raw * 100 : raw
 }
 
 /**
@@ -479,18 +478,31 @@ function VirtualEnergyWidget({ widget, frame, palette, width, height }: WidgetCo
   const scale = raw > 0 && raw <= 1 ? 100 : 1
   const pct = raw * scale
   const mode = configString(widget.config, 'mode') === 'percent' ? 'percent' : configString(widget.config, 'mode') === 'power' ? 'power' : 'budget'
-  const tint = pct > 0 && pct < 15 ? withAlpha(pct < 5 ? palette.critical : palette.warning, pct < 5 ? 51 / 255 : 31 / 255) : null
+  const level = pct > 0 ? `${pct.toFixed(1)}` : '--'
 
+  if (mode === 'percent') {
+    const barH = Math.min(height * 0.14, 10)
+    const barColor = pct < 5 ? palette.critical : pct < 15 ? palette.warning : palette.neutral
+    const size = Math.min((height - barH - 6) * 0.8, (width * 0.96) / ((4 + 1 * 0.36) * 0.56))
+    return (
+      <>
+        <ValueWithUnit value={level} unit="%" left={width / 2} top={(height - barH - 6) / 2} size={size} color={palette.neutral} unitColor={palette.secondary} maxWidth={width} />
+        <HBar x={0} y={height - barH} w={width} h={barH} pct={pct / 100} color={barColor} centered={false} />
+      </>
+    )
+  }
+
+  const left = width * 0.55
+  const size = Math.min(height * 0.7, (left * 0.96) / ((4 + 1 * 0.36) * 0.56))
+  const side = Math.min(height * 0.24, 16)
+  const lines = mode === 'power'
+    ? [frame.energy.deployPower > 0 ? `DEP ${formatInt(frame.energy.deployPower)} kW` : 'DEP -- kW', frame.energy.regenPower > 0 ? `REGEN ${formatInt(frame.energy.regenPower)} kW` : 'REGEN -- kW']
+    : [frame.energy.virtualEnergyPerLap * scale > 0.0001 ? `${(frame.energy.virtualEnergyPerLap * scale).toFixed(1)} %/lap` : '-- %/lap', frame.energy.virtualEnergyPerLap > 0.0001 ? `~${formatInt(raw / frame.energy.virtualEnergyPerLap)} laps` : '~-- laps']
   return (
     <>
-      {tint && <div style={{ position: 'absolute', inset: 0, background: tint }} />}
-      {mode === 'percent' ? (
-        <VirtualEnergyPercent pct={pct} palette={palette} width={width} height={height} />
-      ) : mode === 'power' ? (
-        <VirtualEnergyPower pct={pct} frame={frame} palette={palette} width={width} height={height} />
-      ) : (
-        <VirtualEnergyBudget pct={pct} perLapPct={frame.energy.virtualEnergyPerLap * scale} rawLevel={raw} rawPerLap={frame.energy.virtualEnergyPerLap} palette={palette} width={width} height={height} />
-      )}
+      <ValueWithUnit value={level} unit="%" left={0} top={height / 2} size={size} color={palette.neutral} unitColor={palette.secondary} align="start" maxWidth={left} />
+      <TextLine text={lines[0]} left={width} top={height * 0.3} size={side} color={palette.secondary} align="end" maxWidth={width - left} weight="value" />
+      <TextLine text={lines[1]} left={width} top={height * 0.72} size={side} color={palette.muted} align="end" maxWidth={width - left} weight="label" />
     </>
   )
 }

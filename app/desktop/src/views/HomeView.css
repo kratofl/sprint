@@ -1,6 +1,6 @@
 /* Overview (HomeView.tsx). Composed from the shared primitives in styles.css
    (.kpi, .card.list-card, .list-header, .list-row, .status, .infobar, .skeleton);
-   this file only lays them out the way the Windows mockup's dashboard does:
+   this file only lays them out as a dashboard:
    12px gaps, a 4-up KPI row, list cards, and the card-header text link. */
 
 .overview {
@@ -13,11 +13,6 @@
 /* The page header's own bottom margin is replaced by the 12px column gap. */
 .overview > .page-header {
   margin-bottom: 0;
-}
-
-/* The quiet telemetry status at the end of the CommandBar. */
-.overview-status {
-  padding: 0 8px;
 }
 
 /* ── KPI row ──────────────────────────────────────────────────────────────── */

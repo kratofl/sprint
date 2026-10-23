@@ -1,30 +1,24 @@
-using Sprint.Desktop.Api.Telemetry;
+using Sprint.Contracts;
 
 namespace Sprint.Api.Telemetry;
 
 /// <summary>
-/// Time-series persistence for telemetry frames. Backed by InfluxDB in production
-/// (<see cref="InfluxTelemetryStore"/>); a no-op (<see cref="NullTelemetryStore"/>)
-/// is used when InfluxDB is not configured and in tests.
+/// Where live samples are kept for afterwards. InfluxDB in production
+/// (<see cref="InfluxTelemetryStore"/>); a no-op (<see cref="NullTelemetryStore"/>) when InfluxDB is
+/// not configured. Sessions are addressed by driver and session key, never by key alone: keys
+/// come from clients, so only the pair is guaranteed unique.
 /// </summary>
 public interface ITelemetryStore
 {
-    /// <summary>Persists one frame under a relay channel key (the invite code / session id).</summary>
-    Task WriteFrameAsync(string channelKey, string driverId, TelemetryFrame frame, CancellationToken ct = default);
+    /// <summary>Queues samples for writing and returns at once; the live path never waits on storage.</summary>
+    void WriteSamples(string driverId, string sessionKey, IReadOnlyList<LiveSample> samples);
 
-    /// <summary>Returns the most recent samples for a channel, newest first.</summary>
-    Task<IReadOnlyList<TelemetrySample>> GetRecentSamplesAsync(string channelKey, int limit, CancellationToken ct = default);
-}
+    /// <summary>Queues a completed lap for writing and returns at once.</summary>
+    void WriteLaps(string driverId, string sessionKey, IReadOnlyList<LiveLap> laps);
 
-/// <summary>A lightweight, flattened view of a stored telemetry point for history queries.</summary>
-public sealed record TelemetrySample
-{
-    public DateTimeOffset Timestamp { get; init; }
-    public double Speed { get; init; }
-    public double Rpm { get; init; }
-    public int Gear { get; init; }
-    public int Lap { get; init; }
-    public double LapTime { get; init; }
-    public double Throttle { get; init; }
-    public double Brake { get; init; }
+    /// <summary>The session's samples since <paramref name="from"/>, downsampled to at most <paramref name="maxPoints"/>, oldest first.</summary>
+    Task<IReadOnlyList<LiveSample>> ReadSamplesAsync(string driverId, string sessionKey, DateTimeOffset from, int maxPoints, CancellationToken ct);
+
+    /// <summary>The session's completed laps since <paramref name="from"/>, in order.</summary>
+    Task<IReadOnlyList<LiveLap>> ReadLapsAsync(string driverId, string sessionKey, DateTimeOffset from, CancellationToken ct);
 }

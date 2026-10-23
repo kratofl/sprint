@@ -1,6 +1,7 @@
 using HotChocolate;
 using Microsoft.EntityFrameworkCore;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Data;
 using Sprint.Api.Services;
 using Sprint.Contracts;
@@ -186,7 +187,7 @@ public class LapShareServiceTests
     {
         var db = TestFactory.NewDb();
         var tokens = new JwtTokenService(JwtTokenService.KeyFromSecret("test-secret-long-enough-for-hs256-aaaaaa"));
-        var users = new UserService(db, new PasswordHasher(), tokens);
+        UserService users = new(db, new PasswordHasher(), tokens, new ServerSettingsService(db, DiscordOptions.Disabled));
         var registered = await users.RegisterAsync(new AuthRequest { Email = "a@b.c", Password = "pw123456" });
         var id = tokens.ValidateAndGetUserId(registered.Token)!;
 

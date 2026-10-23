@@ -6,6 +6,7 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -67,6 +68,46 @@ public sealed class RuntimeCoordinatorTests
             DesktopRuntime reloaded = new(dataRoot, PresetRoot);
             Assert.Equal("Ada Lovelace", reloaded.Settings.DriverName);
             Assert.True(reloaded.Settings.SidebarCollapsed);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CloudConfigure_RecordsTheFirstRunAnswerAndPersistsIt()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(runtime.Settings.Cloud.SetupDone);
+
+            bool ok = coordinator.Execute(Command("""{"type":"cloud.configure","server":"SelfHosted","storage":"Both"}"""), out string error);
+
+            Assert.True(ok, error);
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.True(reloaded.Settings.Cloud.SetupDone);
+            Assert.Equal(CloudServerChoice.SelfHosted, reloaded.Settings.Cloud.Server);
+            Assert.Equal(CloudStorageMode.Both, reloaded.Settings.Cloud.Storage);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CloudConfigure_RejectsAnUnknownStorageMode()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command("""{"type":"cloud.configure","storage":"Everywhere"}"""), out string error);
+
+            Assert.False(ok);
+            Assert.Contains("storage", error);
+            Assert.False(runtime.Settings.Cloud.SetupDone);
         }
         finally
         {
@@ -779,6 +820,49 @@ public sealed class RuntimeCoordinatorTests
 
             Assert.True(ok, error);
             Assert.Equal(LogLevel.Warn, diagnosticsLog.MinimumLevel);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GuideUpdate_PersistsAPartialPatchAsANewSettingsObject()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DrivingGuideSettings before = runtime.Settings.DrivingGuide;
+
+            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"eyeUpMeters":0.85}"""), out string error);
+
+            Assert.True(ok, error);
+            DrivingGuideSettings after = runtime.Settings.DrivingGuide;
+            // Replaced, not mutated: the feed reads it off-thread and compares by reference.
+            Assert.NotSame(before, after);
+            Assert.True(after.ShowLine);
+            Assert.Equal(0.85, after.EyeUpMeters);
+            Assert.Equal(before.MetersAhead, after.MetersAhead);
+            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.DrivingGuide.ShowLine);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GuideUpdate_RefusesAnOutOfRangeNumberWithoutApplyingAnything()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"yawOffsetDegrees":45}"""), out string error);
+
+            Assert.False(ok);
+            Assert.Equal("yawOffsetDegrees must be a number from -20 to 20", error);
+            Assert.False(runtime.Settings.DrivingGuide.ShowLine);
         }
         finally
         {

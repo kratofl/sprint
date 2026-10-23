@@ -62,7 +62,6 @@ public static class DevicePurposeLayouts
                         Row = 0,
                         ColSpan = 20,
                         RowSpan = 12,
-                        Style = new DashWidgetStyle { Border = false },
                     },
                 ],
             },

@@ -780,6 +780,70 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(3.75f, thirdLap.Energy.VirtualEnergyPerLap, precision: 3);
     }
 
+    [Fact]
+    public void Lmu_parser_reads_the_orientation_rows_and_rotation_rate()
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        WriteDouble(buffer, telemetry + 232, 0.1);
+        WriteDouble(buffer, telemetry + 264, 0.2);
+        WriteDouble(buffer, telemetry + 296, 0.3);
+        WriteDouble(buffer, telemetry + 312, 0.4);
+
+        LmuVehicleTelemetry parsed = LmuParser.Parse(buffer).Telemetry!;
+
+        Assert.Equal(0.1, parsed.OrientationRowX.X);
+        Assert.Equal(0.2, parsed.OrientationRowY.Y);
+        Assert.Equal(0.3, parsed.OrientationRowZ.Z);
+        Assert.Equal(0.4, parsed.LocalRotation.Y);
+    }
+
+    [Fact]
+    public void Lmu_pose_points_the_car_where_lmu_says_it_drives()
+    {
+        // LMU is left-handed: +X left, +Z back. A car yawed to drive along LMU's +X (world = rows · local,
+        // so the local forward (0, 0, -1) maps to (1, 0, 0)) and moving forward at 20 m/s.
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3);
+        LmuParsedFrame turned = parsed with
+        {
+            Telemetry = parsed.Telemetry! with
+            {
+                Position = new LmuVector3(100, 5, 50),
+                OrientationRowX = new LmuVector3(0, 0, -1),
+                OrientationRowY = new LmuVector3(0, 1, 0),
+                OrientationRowZ = new LmuVector3(1, 0, 0),
+                LocalVelocity = new LmuVector3(0, 0, -20),
+                // Turning right: with LMU's component cross product, +Y spins forward toward its -X.
+                LocalRotation = new LmuVector3(0, 0.5, 0),
+            },
+        };
+
+        CarPose pose = mapper.Map(turned).Car.Pose!;
+        System.Numerics.Quaternion q = new(pose.OrientationX, pose.OrientationY, pose.OrientationZ, pose.OrientationW);
+        System.Numerics.Vector3 forward = System.Numerics.Vector3.Transform(-System.Numerics.Vector3.UnitZ, q);
+        System.Numerics.Vector3 travel = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(pose.VelocityX, pose.VelocityY, pose.VelocityZ), q);
+
+        // Mirrored X: LMU's +X is the contract's -X, for the position and the heading alike.
+        Assert.Equal(-100, pose.PositionX);
+        Assert.Equal(-1, forward.X, precision: 4);
+        Assert.Equal(0, forward.Z, precision: 4);
+        Assert.Equal(-20, travel.X, precision: 3);
+        Assert.Equal(-0.5f, pose.AngularVelocityY);
+    }
+
+    [Fact]
+    public void Lmu_pose_is_absent_until_the_orientation_is_a_rotation()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+
+        TelemetryFrame frame = mapper.Map(CreateInCarParsedFrame(lapNumber: 3));
+
+        Assert.Null(frame.Car.Pose);
+    }
+
     private static LmuParsedFrame CreateInCarParsedFrame(
         int lapNumber,
         double elapsedTime = 200.5,

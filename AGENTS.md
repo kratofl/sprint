@@ -78,14 +78,17 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   hardware/USB, input, diagnostics, updates.
 - `app/Sprint.Desktop.Api`, `app/Sprint.Contracts`, `app/Sprint.Games`: shared
   contracts and game adapters (see Source Of Truth).
+- `app/Sprint.OpenXrLayer/`: the driving guide's OpenXR API layer, a native
+  Windows DLL that draws into the headset. Reads the host's shared memory
+  (`docs/internals/driving-guide.md`).
 - There is no native desktop UI. The Avalonia app and the Go/Wails app before it
   are both retired — do not reintroduce either.
 - `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
   Postgres (relational) and InfluxDB (time-series telemetry).
 - `web/`: Next.js frontend.
 - `packages/types/`: shared TypeScript contracts.
-- `packages/tokens/`: design tokens — `windows.css` (desktop), `macos.css` (desktop
-  on macOS, overlaid on `windows.css`) and `web.css` (web).
+- `packages/tokens/`: design tokens — `desktop.css` (desktop, the brand look),
+  `macos.css` (desktop on macOS, overlaid on `desktop.css`) and `web.css` (web).
 - `packages/dashboard/`: the HTML/CSS/SVG dash renderer. One component drives
   the editor preview, the on-screen display, and the USB panel output.
 
@@ -96,7 +99,7 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   both the API server and the desktop client; references `Sprint.Desktop.Api`.
 - `app/Sprint.Games`: game adapter implementations against the desktop contract.
 - `packages/types`: shared TypeScript contracts (desktop-mirror telemetry/engineer types).
-- `packages/tokens`: design tokens (`windows.css`, `macos.css`, `web.css`).
+- `packages/tokens`: design tokens (`desktop.css`, `macos.css`, `web.css`).
 - `api/Sprint.Api/Data` (`SprintDbContext`) + `api/Sprint.Api/Services`: API
   persistence ownership (Postgres relational; InfluxDB time-series).
 - `web/schema.graphql`: committed GraphQL schema; source for web codegen (`make schema`).
@@ -229,30 +232,39 @@ type-checks both desktop TypeScript packages.
 
 - `docs/design/DESIGN.md` is the product design system; its MUST/NEVER rules
   are binding. The wheel dash rules are in `docs/internals/dash-rendering.md`.
-- The desktop app wears the look of the OS it runs on. Windows (and Linux):
-  Fluent (Mica window, 48px title bar, NavigationView, content layer,
-  CommandBar, ContentDialog, acrylic flyouts; 4px controls, 8px cards), tokens
-  `@sprint/tokens/windows.css`. macOS (macOS 27 HIG): full-height translucent
-  sidebar, 52px toolbar carrying the page title and actions, 8px buttons, 14px
-  cards, tokens `@sprint/tokens/macos.css` overlaid on `windows.css` under the
-  same names. References: the Windows and macOS mockups in `docs/design/mockups/`.
+- On Windows and Linux the desktop app wears the Sprint brand look, the web
+  app's system: full-height 224px sidebar with the Sprint mark (a 56px icon rail
+  when collapsed), a 48px toolbar
+  carrying the page title and actions (the OS caption buttons at its right end),
+  hairline-edged cards on a calm canvas, flat fills, glass only on small floating
+  layers, 6px controls, 10px cards, bundled Figtree; tokens
+  `@sprint/tokens/desktop.css`. On macOS it wears the native look (macOS 27
+  HIG): the same layout on a translucent sidebar, a 52px toolbar, 8px buttons,
+  14px cards, tokens `@sprint/tokens/macos.css` overlaid on `desktop.css` under
+  the same names. Reference for macOS: the mockups in `docs/design/mockups/`.
 - Electron passes the look as `?platform=mac|windows`; the renderer sets
-  `<html data-platform>`. Mac-only shapes go in `app/desktop/src/styles.mac.css`,
-  each rule under `:where([data-platform="mac"])`; views stay platform-neutral
-  (on macOS the shell moves a `PageHeader`'s actions into the toolbar).
-- The web app follows the web CI (Apple look, glass only on chrome) with
-  `@sprint/tokens/web.css`.
+  `<html data-platform>`. The shell layout and the brand shapes live in
+  `app/desktop/src/styles.css`; Mac-only shapes go in
+  `app/desktop/src/styles.mac.css`, each rule under
+  `:where([data-platform="mac"])`; views stay platform-neutral (the shell moves a
+  `PageHeader`'s actions into the toolbar on both).
+- The web app uses its own design system (`docs/design/DESIGN.md` → Web app):
+  `@sprint/tokens/web.css` mapped to Tailwind in `web/app/globals.css`, shadcn/ui
+  primitives in `web/components/ui/` and the shared patterns in
+  `web/components/app/` (`PageHeader`, `useToast`, sheets, `MetricStrip`,
+  `DataTable`, charts). Pages compose those; the sign-in page and the light-trails
+  backdrop keep their own look.
 - Only brand and status colors carry across platforms. Brand `#ff6a00` is
   `--brand-500`: the one primary button per view, the selection indicator,
   progress. Text on it is the dark `--on-brand`, never white. Buttons never glow.
 - Light **and** dark ship everywhere and follow the OS (`prefers-color-scheme`,
   or `data-theme` on `<html>`).
-- Use only the token custom properties (`--mica`, `--layer`, `--surface`,
+- Use only the token custom properties (`--window`, `--layer`, `--surface`,
   `--label*`, `--control-*`, `--brand-500`, …). Do not hardcode hex in
   `app/desktop` or `packages/dashboard`; a missing token goes into the token
-  file for both themes, in `windows.css` and `macos.css` alike
+  file for both themes, in `desktop.css` and `macos.css` alike
   (`app/desktop/src/macTokens.test.ts` enforces parity). The Electron main
-  process cannot read CSS, so it repeats `--mica`/`--label` (Windows caption
+  process cannot read CSS, so it repeats `--window`/`--label` (Windows caption
   buttons) and the solid `--sidebar` (macOS Reduce Transparency) in
   `app/desktop/electron/windowChrome.ts`.
 - Desktop views use the shared primitives in `app/desktop/src/styles.css`
@@ -269,11 +281,13 @@ type-checks both desktop TypeScript packages.
 `docs/design/DESIGN.md` is the authority here; this is a summary of it, not a
 second opinion. If the two ever disagree, `docs/design/DESIGN.md` wins.
 
-- Desktop UI is the OS system font, nothing bundled (`--font-text`,
-  `--font-display`): Segoe UI Variable from `windows.css`, SF from `macos.css`.
-  13px/20px base, 24px Display page titles, 14px semibold card titles, 12px
-  captions; on macOS the 17px toolbar title names the page and captions are 11px.
-- Web UI uses the system stack from `web.css`.
+- Desktop UI on Windows and Linux is the bundled Figtree, the web's face
+  (`--font-text`, `--font-display` in `desktop.css`; the font file is in
+  `app/desktop/src/fonts/`). On macOS it is SF, the system font (`macos.css`).
+  13px/20px base, the 17px toolbar title names the page, 14px semibold card
+  titles, 11px semibold column heads.
+- Web UI is the bundled Figtree on every platform (`--font-sans` in
+  `web/app/globals.css`); the sign-in page keeps its own stack.
 - Inter is **not** an app UI face. The desktop bundles and declares it in
   `app/desktop/src/styles.css` only because the dash renderer names it for
   wheel labels.

@@ -7,6 +7,7 @@ import { DashesView } from '../views/DashesView'
 import { DevicesView } from '../views/DevicesView'
 import { SetupsView } from '../views/SetupsView'
 import { RaceEngineerView } from '../views/RaceEngineerView'
+import { LiveLinkView } from '../views/LiveLinkView'
 import { SettingsView } from '../views/SettingsView'
 import { HelpView } from '../views/HelpView'
 
@@ -25,6 +26,7 @@ export type NavigationTarget =
   | { view: 'Devices'; deviceId?: string }
   | { view: 'Setups' }
   | { view: 'RaceEngineer' }
+  | { view: 'LiveLink' }
   | { view: 'Settings' }
   | { view: 'Help' }
 
@@ -43,6 +45,7 @@ export function ViewRouter({
   onNavigate,
   onOpenItem,
   onImportResults,
+  onSetUpCloud,
 }: {
   view: AppView
   focus: NavigationTarget | null
@@ -51,6 +54,8 @@ export function ViewRouter({
   onNavigate: (view: AppView) => void
   onOpenItem: (target: NavigationTarget) => void
   onImportResults?: () => void
+  /** Opens the Sprint web setup (Settings' "Set up Sprint web"). */
+  onSetUpCloud: () => void
 }) {
   switch (view) {
     case 'Home':
@@ -74,8 +79,10 @@ export function ViewRouter({
       return <SetupsView runtime={runtime} send={send} />
     case 'RaceEngineer':
       return <RaceEngineerView runtime={runtime} send={send} />
+    case 'LiveLink':
+      return <LiveLinkView runtime={runtime} send={send} />
     case 'Settings':
-      return <SettingsView runtime={runtime} send={send} />
+      return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
     case 'Help':
       return <HelpView runtime={runtime} send={send} />
   }

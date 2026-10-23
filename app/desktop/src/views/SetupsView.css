@@ -1,7 +1,7 @@
 /* Setups: PageHeader + CommandBar, then the setups table card beside the selected
    setup's parameter cards. Builds on the shared primitives in styles.css
    (.card.list-card, .list-header, .list-row, .infobar, .chip, .icon-button) and only
-   lays them out. Tokens come from @sprint/tokens/windows.css only. */
+   lays them out. Tokens come from @sprint/tokens/desktop.css only. */
 
 .setups {
   display: flex;

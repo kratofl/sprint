@@ -87,6 +87,52 @@ export class NativeHost {
     )
   }
 
+  /** Signing in waits on the Sprint server, not just the host, so it gets longer than the 5s bound. */
+  async accountSignIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown> {
+    return this.json(
+      '/api/account/sign-in',
+      { method: 'POST', body: JSON.stringify({ serverUrl, email, password, createAccount }), headers: { 'content-type': 'application/json' } },
+      30_000,
+    )
+  }
+
+  /** The server's public settings (is Discord sign-in on?); waits on the Sprint server. */
+  async serverInfo(serverUrl: string): Promise<unknown> {
+    return this.json('/api/cloud/server-info', { method: 'POST', body: JSON.stringify({ serverUrl }), headers: { 'content-type': 'application/json' } }, 15_000)
+  }
+
+  /** Starts a Discord sign-in: the host answers with the URL to open in the system browser, or a failed result. */
+  async discordStart(serverUrl: string): Promise<unknown> {
+    return this.json('/api/account/discord/start', { method: 'POST', body: JSON.stringify({ serverUrl }), headers: { 'content-type': 'application/json' } })
+  }
+
+  /** Waits for the browser leg; the host gives up after 5 minutes, so this is bounded just above that. */
+  async discordWait(): Promise<unknown> {
+    return this.json('/api/account/discord/wait', { method: 'POST' }, 6 * 60_000)
+  }
+
+  async discordCancel(): Promise<void> {
+    await this.request('/api/account/discord/cancel', { method: 'POST' })
+  }
+
+  /** Sweeps the local network for Sprint servers; a few seconds, bounded well above that. */
+  async cloudDiscover(): Promise<unknown> {
+    return this.json('/api/cloud/discover', { method: 'POST' }, 60_000)
+  }
+
+  /** A first upload or download can carry a driver's whole history, so it gets minutes. */
+  async cloudPush(): Promise<unknown> {
+    return this.json('/api/cloud/push', { method: 'POST' }, 10 * 60_000)
+  }
+
+  async cloudPull(): Promise<unknown> {
+    return this.json('/api/cloud/pull', { method: 'POST' }, 10 * 60_000)
+  }
+
+  async accountSignOut(): Promise<void> {
+    await this.request('/api/account/sign-out', { method: 'POST' })
+  }
+
   async checkUpdates(force: boolean): Promise<unknown> {
     return this.json(`/api/updates/check?force=${force ? 'true' : 'false'}`, { method: 'POST' })
   }
@@ -105,6 +151,17 @@ export class NativeHost {
     )
   }
   async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
+
+  /**
+   * The driving guide's pose feed: newline-delimited JSON for as long as `signal` stays open.
+   * No timeout; the caller owns the stream's lifetime.
+   */
+  async guideStream(signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+    if (!this.address) throw new Error('Native runtime is not ready.')
+    const response = await fetch(`${this.address}/api/guide/stream`, { headers: { authorization: `Bearer ${this.token}` }, signal })
+    if (!response.ok || !response.body) throw new Error(`Runtime ${response.status} on the guide stream.`)
+    return response.body
+  }
   async command(command: unknown): Promise<unknown> {
     if (!isRecord(command) || typeof command.type !== 'string') throw new Error('A typed command is required.')
     return this.json('/api/commands', { method: 'POST', body: JSON.stringify(command), headers: { 'content-type': 'application/json' } })
@@ -119,6 +176,33 @@ export class NativeHost {
         'x-frame-sequence': String(frame.sequence),
       },
     })
+  }
+
+  /**
+   * A lap as `.sprintlap` bytes, or the host's reason it cannot be shared (a lap with only a
+   * time, one that was deleted). The filename is a suggestion for the save dialog.
+   */
+  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string; hasPositions: boolean } | { ok: false; error: string }> {
+    if (!this.address) throw new Error('Native runtime is not ready.')
+    const response = await fetch(`${this.address}/api/laps/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}/file`, {
+      headers: { authorization: `Bearer ${this.token}` },
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null)
+      return { ok: false, error: isRecord(body) && typeof body.error === 'string' ? body.error : `Runtime ${response.status}` }
+    }
+    return {
+      ok: true,
+      bytes: new Uint8Array(await response.arrayBuffer()),
+      fileName: decodeURIComponent(response.headers.get('x-lap-filename') ?? 'lap.sprintlap'),
+      hasPositions: response.headers.get('x-lap-has-positions') === 'true',
+    }
+  }
+
+  /** Files a `.sprintlap` into the corpus; the host answers with what it was, or why not. */
+  async importLap(bytes: Uint8Array<ArrayBuffer>): Promise<unknown> {
+    return this.json('/api/laps/import', { method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' } }, 60_000)
   }
 
   async stop(): Promise<void> {

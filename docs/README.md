@@ -9,6 +9,10 @@ note for the area you are changing before you change it.
 - [Glossary](internals/glossary.md)
 - [Session planner and lap-history corpus](internals/session-planner.md)
 - [Live Compare: traces, HUD, analysis, sharing](internals/live-compare.md)
+- [Driving guide: AR line and brake boards, monitor and VR](internals/driving-guide.md)
+- [Sprint web: setup, sync and the server schema](internals/cloud-sync.md)
+- [Discord sign-in, live telemetry and race engineers](internals/live-telemetry.md)
+- [Live link: driver to engineer, no server](internals/live-link.md)
 - [Dash rendering](internals/dash-rendering.md) · [color research behind it](internals/dash-color-research.md)
 - [Screen protocols (VoCore, USBD480, WinUSB)](internals/screen-protocols.md)
 - Research: [RACELOGIC-style lap timer](internals/racelogic-lap-timer.md) ·

@@ -7,12 +7,15 @@ import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
 import { CommandPalette } from './shell/CommandPalette'
 import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
+import { AccountDialog } from './shell/AccountDialog'
+import { Onboarding } from './onboarding/Onboarding'
+import { localCounts } from './onboarding/summary'
 import { useToasts } from './shell/useToasts'
 import { buildShellCommands } from './shell/commands'
 import { primaryNav, viewLabel } from './shell/nav'
 import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
-import { readDriverName, readSidebarCollapsed, readWebAppUrl } from './shell/settings'
+import { readSidebarCollapsed } from './shell/settings'
 import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
 import { canGoBack, goBack, initialHistory, navigateTo } from './shell/history'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
@@ -34,6 +37,10 @@ export function App() {
   const [collapsed, setCollapsed] = useState<boolean | null>(null)
   const [runtime, setRuntime] = useState<RuntimeState>({ kind: 'loading' })
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  // The Sprint web setup: on the first launch, or to connect later (Settings, the account row).
+  const [setup, setSetup] = useState<'first-run' | 'connect' | null>(null)
+  const firstRunChecked = useRef(false)
   const [updateRelease, setUpdateRelease] = useState<UpdateRelease | null>(null)
   // The results import dialog (#185). `offered` is the startup scan's proposal; null means the
   // dialog was opened by hand and searches for itself.
@@ -96,6 +103,8 @@ export function App() {
   // Pressing a sidebar toggle hands keyboard focus to the toggle that is visible
   // afterwards: on macOS hiding the sidebar hides the pressed button, and the
   // toolbar's "Show sidebar" unmounts once pressed, so focus would fall to <body>.
+  // The toolbar button only exists while the Mac sidebar is hidden; otherwise (and
+  // always on the brand look's rail) focus stays on the sidebar's own toggle.
   const sidebarToggleRef = useRef<HTMLButtonElement>(null)
   const showSidebarRef = useRef<HTMLButtonElement>(null)
   const refocusSidebarToggle = useRef(false)
@@ -106,7 +115,7 @@ export function App() {
   useEffect(() => {
     if (!refocusSidebarToggle.current) return
     refocusSidebarToggle.current = false
-    ;(collapsed ? showSidebarRef : sidebarToggleRef).current?.focus()
+    ;(showSidebarRef.current ?? sidebarToggleRef.current)?.focus()
   }, [collapsed])
 
   // Shared by the startup check and the palette's manual "Check for updates"
@@ -164,7 +173,7 @@ export function App() {
   const openImport = useCallback(() => setImportDialog({ offered: null }), [])
   const importResults = importSource?.available ? openImport : undefined
 
-  // The palette, page and back shortcuts (Ctrl+K / Alt+1..7 / Alt+Left on Windows, ⌘K / ⌘1..7 /
+  // The palette, page and back shortcuts (Ctrl+K / Alt+1..8 / Alt+Left on Windows, ⌘K / ⌘1..8 /
   // ⌘[ on macOS; shell/shortcuts.ts), and Escape for the topmost transient surface (palette, then
   // the newest toast). Views own their own dialogs, so Escape never reaches into ViewRouter's children.
   useEffect(() => {
@@ -198,8 +207,32 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [paletteOpen, toasts, dismissToast, navigate, back])
 
-  const webAppUrl = runtime.kind === 'ready' ? readWebAppUrl(runtime.sprint.settings) : null
-  const driverName = runtime.kind === 'ready' ? readDriverName(runtime.sprint.settings) : null
+  const account = runtime.kind === 'ready' ? runtime.sprint.account : null
+  // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
+  const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
+
+  // Asked once, on the first state that says the setup was never answered.
+  useEffect(() => {
+    if (runtime.kind !== 'ready' || firstRunChecked.current) return
+    firstRunChecked.current = true
+    if (runtime.sprint.features.sprintWeb && !runtime.sprint.cloud.setupDone) setSetup('first-run')
+  }, [runtime])
+  const onboardingActions = useMemo(
+    () => ({
+      send,
+      discover: bridge.discoverServers,
+      signIn: bridge.signIn,
+      signInWithDiscord: bridge.signInWithDiscord,
+      cancelDiscordSignIn: bridge.cancelDiscordSignIn,
+      serverInfo: bridge.serverInfo,
+      upload: bridge.syncUp,
+    }),
+    [send],
+  )
+  const openSetup = useCallback(() => {
+    setAccountOpen(false)
+    setSetup('connect')
+  }, [])
   const commands = buildShellCommands({
     platform,
     navigate,
@@ -209,8 +242,8 @@ export function App() {
     importResults,
   })
 
-  // macOS: the toolbar slot the page's actions render into, and the room it has for them.
-  // Windows never mounts the slot, so the context stays null and PageHeader keeps its CommandBar.
+  // The toolbar slot the page's actions render into, and the room it has for them. Null until
+  // the toolbar mounts, so PageHeader keeps its CommandBar in the content until then.
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null)
   const [actionsRoom, setActionsRoom] = useState<{ measure: () => number } | null>(null)
   const toolbarActions = useMemo<ToolbarActions | null>(
@@ -243,8 +276,7 @@ export function App() {
           onToggleCollapsed={toggleSidebarFromButton}
           toggleRef={sidebarToggleRef}
           onSelect={navigate}
-          webAppUrl={webAppUrl}
-          driverName={driverName}
+          accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
           updateAvailable={updateRelease !== null}
         />
         <main className="content">
@@ -257,6 +289,7 @@ export function App() {
               onNavigate={navigate}
               onOpenItem={openItem}
               onImportResults={importResults}
+              onSetUpCloud={openSetup}
             />
           </ToolbarActionsContext>
         </main>
@@ -270,6 +303,19 @@ export function App() {
           runImport={bridge.resultsImport}
           decline={bridge.resultsImportDecline}
           onClose={() => setImportDialog(null)}
+        />
+      ) : null}
+      {sprintWeb && accountOpen && account?.signedIn ? (
+        <AccountDialog account={account} signOut={bridge.signOut} onChangeServer={openSetup} onClose={() => setAccountOpen(false)} />
+      ) : null}
+      {sprintWeb && setup && runtime.kind === 'ready' ? (
+        <Onboarding
+          entry={setup}
+          cloud={runtime.sprint.cloud}
+          account={runtime.sprint.account}
+          counts={localCounts(runtime.sprint)}
+          actions={onboardingActions}
+          onClose={() => setSetup(null)}
         />
       ) : null}
       <ToastHost toasts={toasts} leaving={leaving} onDismiss={dismissToast} />

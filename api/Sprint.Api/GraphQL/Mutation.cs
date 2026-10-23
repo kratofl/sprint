@@ -1,14 +1,10 @@
 using System.Security.Claims;
-using System.Text.Json;
 using HotChocolate;
 using HotChocolate.Authorization;
-using HotChocolate.Subscriptions;
 using Sprint.Api.Auth;
+using Sprint.Api.Auth.Discord;
 using Sprint.Api.Services;
-using Sprint.Api.Telemetry;
 using Sprint.Contracts;
-using Sprint.Desktop.Api.Engineer;
-using Sprint.Desktop.Api.Telemetry;
 
 namespace Sprint.Api.GraphQL;
 
@@ -21,21 +17,9 @@ public sealed class Mutation
     public Task<AuthResponse> Login(AuthRequest input, [Service] UserService users, CancellationToken ct) =>
         users.LoginAsync(input, ct);
 
-    // ── Invite codes ─────────────────────────────────────────────────────────
-    [Authorize]
-    public Task<InviteCodeDto> CreateInviteCode(string? sessionId, ClaimsPrincipal user, [Service] InviteService invites, CancellationToken ct) =>
-        invites.CreateAsync(user.RequireUserId(), sessionId, ct);
-
-    /// <summary>Marks the driver as connected on a code (one-time; rejects a second driver — anti-hijack).</summary>
-    [Authorize]
-    public async Task<bool> JoinAsDriver(string code, ClaimsPrincipal user, [Service] InviteService invites, CancellationToken ct)
-    {
-        var invite = await invites.ValidateAsync(code, ct);
-        if (invite.DriverId != user.RequireUserId())
-            throw new GraphQLException("Not the driver for this invite.");
-        await invites.MarkDriverJoinedAsync(code, ct);
-        return true;
-    }
+    /// <summary>Trades the single-use ticket a Discord sign-in ended with for a JWT. Anonymous.</summary>
+    public Task<AuthResponse> RedeemSignInTicket(string ticket, [Service] DiscordSignIn discord, CancellationToken ct) =>
+        discord.RedeemAsync(ticket, ct);
 
     // ── Shared laps (#197) ─────────────────────────────────────────────────────
     /// <summary>Mints an unguessable code for one lap. Only laps shared here ever leave a machine.</summary>
@@ -53,10 +37,25 @@ public sealed class Mutation
     public Task<UserProfile> SetDisplayName(string displayName, ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>
         users.SetDisplayNameAsync(user.RequireUserId(), displayName, ct);
 
+    /// <summary>Replaces the signed-in user's password after checking the current one.</summary>
+    [Authorize]
+    public Task<bool> ChangePassword(string currentPassword, string newPassword, ClaimsPrincipal user, [Service] UserService users, CancellationToken ct) =>
+        users.ChangePasswordAsync(user.RequireUserId(), currentPassword, newPassword, ct);
+
+    /// <summary>Admin only: the server's name and whether strangers may register.</summary>
+    [Authorize]
+    public Task<ServerSettingsDto> UpdateServerSettings(UpdateServerSettingsInput input, ClaimsPrincipal user, [Service] ServerSettingsService settings, CancellationToken ct) =>
+        settings.UpdateAsync(user.RequireUserId(), input, ct);
+
     // ── Catalog ────────────────────────────────────────────────────────────────
     [Authorize]
     public Task<SessionSummary> CreateSession(CreateSessionInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
         catalog.CreateSessionAsync(user.RequireUserId(), input, ct);
+
+    /// <summary>Uploads a session from the desktop, or updates one it uploaded before.</summary>
+    [Authorize]
+    public Task<SessionSummary> SaveSession(SaveSessionInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
+        catalog.SaveSessionAsync(user.RequireUserId(), input, ct);
 
     [Authorize]
     public Task<SetupSummary> SaveSetup(SaveSetupInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
@@ -66,61 +65,39 @@ public sealed class Mutation
     public Task<LayoutSummary> SaveLayout(SaveLayoutInput input, ClaimsPrincipal user, [Service] CatalogService catalog, CancellationToken ct) =>
         catalog.SaveLayoutAsync(user.RequireUserId(), input, ct);
 
-    // ── Engineer relay ─────────────────────────────────────────────────────────
-    /// <summary>
-    /// Driver → engineers. Only the invite's driver may publish. <c>telemetry_frame</c>
-    /// events are also persisted to the time-series store.
-    /// </summary>
+    // ── Race engineers ─────────────────────────────────────────────────────────
+    /// <summary>A single-use link (7 days) that makes whoever opens it the caller's race engineer.</summary>
     [Authorize]
-    public async Task<bool> PublishEngineerEvent(
-        string code,
-        EngineerEventMessage message,
-        ClaimsPrincipal user,
-        [Service] InviteService invites,
-        [Service] ITelemetryStore telemetry,
-        [Service] ITopicEventSender sender,
-        CancellationToken ct)
-    {
-        var invite = await invites.ValidateAsync(code, ct);
-        if (invite.DriverId != user.RequireUserId())
-            throw new GraphQLException("Not the driver for this invite.");
+    public Task<EngineerInviteDto> CreateEngineerInvite(ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.CreateInviteAsync(user.RequireUserId(), ct);
 
-        if (message.Type == EngineerEventType.TelemetryFrame && message.Payload is { Length: > 0 } json)
-        {
-            var frame = TryDeserialize<TelemetryFrame>(json);
-            if (frame is not null)
-                await telemetry.WriteFrameAsync(code, invite.DriverId, frame, ct);
-        }
-
-        await sender.SendAsync(RelayTopics.Events(code), message, ct);
-        return true;
-    }
-
-    /// <summary>Engineer → driver. Any authenticated holder of a valid code may send a command.</summary>
+    /// <summary>Withdraws one of the caller's unused invite links.</summary>
     [Authorize]
-    public async Task<bool> SendEngineerCommand(
-        string code,
-        EngineerCommandMessage message,
-        [Service] InviteService invites,
-        [Service] ITopicEventSender sender,
-        CancellationToken ct)
-    {
-        await invites.ValidateAsync(code, ct);
-        await sender.SendAsync(RelayTopics.Commands(code), message, ct);
-        return true;
-    }
+    public Task<bool> RevokeEngineerInvite(string token, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.RevokeInviteAsync(user.RequireUserId(), token, ct);
 
-    private static T? TryDeserialize<T>(string json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, JsonOptions);
-        }
-        catch (JsonException)
-        {
-            return default;
-        }
-    }
+    /// <summary>Makes the caller the race engineer of the link's driver.</summary>
+    [Authorize]
+    public Task<EngineerLinkDto> AcceptEngineerInvite(string token, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.AcceptInviteAsync(user.RequireUserId(), token, ct);
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    /// <summary>The caller (a driver) drops one of their engineers. Live streams close at once.</summary>
+    [Authorize]
+    public Task<bool> RemoveEngineer(string engineerId, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.RemoveEngineerAsync(user.RequireUserId(), engineerId, ct);
+
+    /// <summary>The caller (an engineer) stops engineering for a driver.</summary>
+    [Authorize]
+    public Task<bool> LeaveDriver(string driverId, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.LeaveDriverAsync(user.RequireUserId(), driverId, ct);
+
+    /// <summary>Hides one of the caller's sessions from one of their engineers, live stream included, at once.</summary>
+    [Authorize]
+    public Task<bool> ExcludeEngineerFromSession(string sessionId, string engineerId, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.SetSessionAccessAsync(user.RequireUserId(), sessionId, engineerId, hasAccess: false, ct);
+
+    /// <summary>Shows a session to an engineer again.</summary>
+    [Authorize]
+    public Task<bool> IncludeEngineerInSession(string sessionId, string engineerId, ClaimsPrincipal user, [Service] EngineerService engineers, CancellationToken ct) =>
+        engineers.SetSessionAccessAsync(user.RequireUserId(), sessionId, engineerId, hasAccess: true, ct);
 }

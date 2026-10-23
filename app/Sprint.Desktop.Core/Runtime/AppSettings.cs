@@ -58,28 +58,115 @@ public sealed class AppSettings
     /// <summary>Where this Sprint's cloud lives (#197).</summary>
     [JsonPropertyName("cloud")]
     public CloudSettings Cloud { get; set; } = new();
+
+    /// <summary>The AR driving line and brake boards (docs/internals/driving-guide.md).</summary>
+    [JsonPropertyName("drivingGuide")]
+    public DrivingGuideSettings DrivingGuide { get; set; } = new();
 }
 
 /// <summary>
-/// Which Sprint server this desktop belongs to.
-/// <para>
-/// Both addresses are settings, not constants: Sprint is self-hosted, so there is no single
-/// sprint.gg to point at. The defaults are the docker-compose ports, which is what a driver
-/// running the stack on their own machine will have.
-/// </para>
+/// What the driving guide draws, where, and the seat calibration that lines it up with the
+/// game's camera. Everything is off by default: an overlay over a game is never a surprise.
+/// </summary>
+public sealed class DrivingGuideSettings
+{
+    [JsonPropertyName("showLine")]
+    public bool ShowLine { get; set; }
+
+    [JsonPropertyName("showBoards")]
+    public bool ShowBoards { get; set; }
+
+    /// <summary>A click-through window over the primary display.</summary>
+    [JsonPropertyName("monitorOverlay")]
+    public bool MonitorOverlay { get; set; }
+
+    /// <summary>The OpenXR layer. The host registers or unregisters it to match.</summary>
+    [JsonPropertyName("vrHeadset")]
+    public bool VrHeadset { get; set; }
+
+    /// <summary>
+    /// Where the driver's eye sits relative to the car's reference point, in metres. Up is
+    /// measured as if the line were on the road, so it is roughly the eye's height above the
+    /// tarmac; the default suits a GT or prototype seat until it is calibrated.
+    /// </summary>
+    [JsonPropertyName("eyeRightMeters")]
+    public double EyeRightMeters { get; set; }
+
+    [JsonPropertyName("eyeUpMeters")]
+    public double EyeUpMeters { get; set; } = 1.0;
+
+    [JsonPropertyName("eyeForwardMeters")]
+    public double EyeForwardMeters { get; set; }
+
+    /// <summary>Positive turns the guide right.</summary>
+    [JsonPropertyName("yawOffsetDegrees")]
+    public double YawOffsetDegrees { get; set; }
+
+    /// <summary>Positive raises the guide.</summary>
+    [JsonPropertyName("pitchOffsetDegrees")]
+    public double PitchOffsetDegrees { get; set; }
+
+    /// <summary>The game's vertical field of view. Only the monitor overlay needs it; VR uses the headset's.</summary>
+    [JsonPropertyName("monitorFovDegrees")]
+    public double MonitorFovDegrees { get; set; } = 50;
+
+    /// <summary>How much of the line is drawn ahead of the car.</summary>
+    [JsonPropertyName("metersAhead")]
+    public double MetersAhead { get; set; } = 250;
+
+    /// <summary>Whether any output would show anything, which is when the guide is worth computing.</summary>
+    [JsonIgnore]
+    public bool Wanted => (this.ShowLine || this.ShowBoards) && (this.MonitorOverlay || this.VrHeadset);
+}
+
+/// <summary>
+/// Whether this desktop uses a Sprint server, and where its data lives. Answered once by the
+/// first-run setup (<see cref="SetupDone"/>), changeable later in Settings. The server address
+/// and the signed-in account live in <c>cloud-session.json</c> (CloudSession), not here:
+/// settings get copied between machines, a session token must not.
 /// </summary>
 public sealed class CloudSettings
 {
-    /// <summary>
-    /// The web app. Accounts live there, so the desktop opens a browser rather than carrying a
-    /// second sign-in form that would have to be kept in step with it.
-    /// </summary>
-    [JsonPropertyName("webAppUrl")]
-    public string WebAppUrl { get; set; } = "http://localhost:3000";
+    /// <summary>The first-run setup was answered — whatever the answer — so it is not shown again.</summary>
+    [JsonPropertyName("setupDone")]
+    public bool SetupDone { get; set; }
 
-    /// <summary>The GraphQL API, for lap sharing.</summary>
-    [JsonPropertyName("apiUrl")]
-    public string ApiUrl { get; set; } = "http://localhost:8080";
+    [JsonPropertyName("server")]
+    public CloudServerChoice Server { get; set; } = CloudServerChoice.None;
+
+    [JsonPropertyName("storage")]
+    public CloudStorageMode Storage { get; set; } = CloudStorageMode.Local;
+}
+
+/// <summary>Which Sprint server the driver chose. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<CloudServerChoice>))]
+public enum CloudServerChoice
+{
+    /// <summary>Sprint on this PC only.</summary>
+    None,
+
+    /// <summary>The official server, at the address the build ships in the host's appsettings.json.</summary>
+    Official,
+
+    /// <summary>A server the driver runs, found on the network or typed in.</summary>
+    SelfHosted,
+}
+
+/// <summary>Where sessions, setups and dashes are kept once a server is connected. Stored by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<CloudStorageMode>))]
+public enum CloudStorageMode
+{
+    /// <summary>Only on this PC; nothing is uploaded.</summary>
+    Local,
+
+    /// <summary>On this PC and on the server, kept in step.</summary>
+    Both,
+
+    /// <summary>
+    /// On the server. Finished sessions are removed from this PC once the server holds them;
+    /// dashes and setups stay, because driving needs them.
+    /// </summary>
+    Remote,
 }
 
 /// <summary>

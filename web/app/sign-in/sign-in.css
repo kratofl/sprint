@@ -1,0 +1,264 @@
+/* The sign-in page: one dialog-glass card over the vivid light trails, outside the app shell.
+   Its look is deliberately frozen and does not follow the app's design system: everything here is
+   scoped to .auth-page, sizes are written out, and the colours that differ from the app's come
+   from the --signin-* tokens (packages/tokens/web.css). */
+
+.auth-page {
+  /* Error tint: -100 background, -700 icon, -900 text in light; the -500 at 20 % in dark. */
+  --auth-danger-bg: var(--red-100);
+  --auth-danger-text: var(--red-900);
+  /* The neutrals stay the ones this page was drawn with, whatever the app's become. */
+  --surface: var(--signin-surface);
+  --fill: var(--signin-fill);
+  --fill-strong: var(--signin-fill-strong);
+  --separator: var(--signin-separator);
+  --border: var(--signin-border);
+  --label: var(--signin-label);
+  --label-secondary: var(--signin-label-secondary);
+  --label-disabled: var(--signin-label-disabled);
+
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--signin-bg);
+  color: var(--label);
+  font: 400 13px -apple-system, BlinkMacSystemFont, 'SF Pro Text', Figtree, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme='dark'] .auth-page {
+  --auth-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
+  --auth-danger-text: var(--danger-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .auth-page {
+    --auth-danger-bg: color-mix(in srgb, var(--red-500) 20%, transparent);
+    --auth-danger-text: var(--danger-text);
+  }
+}
+
+.auth-page button:not(:disabled) {
+  cursor: pointer;
+}
+
+/* The panel only slides: an ancestor below full opacity cuts the card's backdrop-filter
+   off from the trails, so a fade here would show it unblurred until the fade ends. The
+   card's contents fade instead. */
+.auth-panel {
+  animation: slide-up calc(var(--motion) * 1.5) var(--ease-out) both;
+}
+
+.auth-card > * {
+  animation: fade-in calc(var(--motion) * 1.5) var(--ease-out) both;
+}
+
+/* The round Sprint mark heads the card, the title centred under it. The card floats over the
+   light trails like a dialog, so it is dialog glass. */
+.auth-page .auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 340px;
+  min-width: 0;
+  padding: 24px 20px 20px;
+  border: 1px solid var(--signin-glass-border);
+  border-radius: 16px;
+  background: var(--signin-glass-bg);
+  box-shadow: var(--signin-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--signin-glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--signin-glass-blur)) saturate(180%);
+}
+
+.auth-mark {
+  align-self: center;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--signin-glass-highlight);
+}
+
+.auth-title {
+  margin: 0;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-page .field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* Pill fields, glass on the glass card. No blur of their own: the card's blur already sits
+   behind them, and a nested backdrop-filter would only blur the card. */
+.auth-page .field input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--signin-glass-bg);
+  box-shadow: inset 0 1px 0 var(--signin-glass-highlight);
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+/* Only the resting edge is glass; focus and error keep their own colours. */
+.auth-page .field input:not(:focus, [aria-invalid='true']) {
+  border-color: var(--signin-glass-border);
+}
+
+.auth-page .field input::placeholder {
+  color: var(--label-disabled);
+}
+
+.auth-page .field input:focus {
+  border-color: var(--focus-ring);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+.auth-page .field input[aria-invalid='true'] {
+  border-color: var(--red-500);
+}
+
+.auth-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.auth-page .btn-primary {
+  background: var(--brand-500);
+  color: var(--on-brand);
+  font-weight: 600;
+}
+
+.auth-page .btn:disabled {
+  background: var(--fill);
+  color: var(--label-disabled);
+}
+
+.auth-page .btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* With Discord sign-in on, "Continue with Discord" is the primary button and the email form's
+   submit steps back to a fill button. */
+.auth-page .btn-secondary {
+  background: var(--fill);
+  color: var(--label);
+}
+
+.auth-page .btn-secondary:hover:not(:disabled) {
+  background: var(--fill-strong);
+}
+
+.auth-page .auth-discord {
+  margin-top: 0;
+  text-decoration: none;
+}
+
+.auth-page .auth-discord svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* "or with email" between Discord and the email form, on a hairline. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--separator);
+}
+
+/* Inline text action: "Create an account". */
+.auth-page .text-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font-weight: 500;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+
+.auth-page .text-button:hover {
+  color: var(--brand-700);
+}
+
+.auth-page .alert {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--auth-danger-bg);
+  color: var(--auth-danger-text);
+  line-height: 18px;
+}
+
+.auth-switch {
+  margin: 0;
+  text-align: center;
+  color: var(--label-secondary);
+}
+
+/* Flat fallback: a solid card and solid fields. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .auth-page .auth-card { border-color: var(--border); background: var(--surface); box-shadow: none; }
+  .auth-page .field input { border-color: var(--border); background: var(--surface); box-shadow: none; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .auth-page .auth-card {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .auth-page .field input {
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: none;
+  }
+}

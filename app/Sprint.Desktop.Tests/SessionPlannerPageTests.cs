@@ -826,15 +826,15 @@ public sealed class SessionPlannerPageTests
         string game = "Le Mans Ultimate",
         string car = "Porsche 963",
         string track = "Spa-Francorchamps") => new()
-    {
-        Name = name,
-        Game = game,
-        Car = car,
-        Track = track,
-        QualifyingIncluded = qualifyingIncluded,
-        RaceLengthFormat = RaceLengthFormat.TimeBased,
-        RaceLengthValue = 60,
-    };
+        {
+            Name = name,
+            Game = game,
+            Car = car,
+            Track = track,
+            QualifyingIncluded = qualifyingIncluded,
+            RaceLengthFormat = RaceLengthFormat.TimeBased,
+            RaceLengthValue = 60,
+        };
 
     private static void Run(Action<SessionPlannerController, SessionPlannerService> body)
     {

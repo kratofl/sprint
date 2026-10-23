@@ -8,23 +8,22 @@ import { TirePosition, type AppSettings, type TelemetryFrame } from '@sprint/typ
 import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
 import {
   alertPanelRect,
-  contentRect,
   gridRect,
   pageHasRaceLogicLapTimer,
   raceLogicPanelBounds,
   selectLayer,
   selectPage,
   subRect,
-  usesInstrumentFrame,
   type PixelRect,
 } from './grid'
+import { bareContent, CHROME_CELL_PX, GridOuterFrame, WidgetFrame, type ChromeContext } from './chrome'
 import { effectiveColorSystem, resolveDashPalette, resolveStyleColor, withAlpha, type DashPaletteColors } from './palette'
-import type { DashAlertBanner } from './alerts'
-import type { DashTargets } from './bindings'
-import { formatLap } from './format'
-import { Dot, PanelBorder, TextLine } from './primitives'
+import type { DashAlertBanner, DashLapSummaryPopup, DashSettingPopup } from './alerts'
+import { narrowDashTargets, type DashTargets } from './bindings'
+import { formatDelta, formatLap, formatSignedLiters } from './format'
+import { Dot, TextLine, ValueWithUnit } from './primitives'
 import { RaceLogicLapTimerPresenter } from './raceLogicLapTimer'
-import { WidgetContent } from './widgets'
+import { WidgetContent, widgetChrome } from './widgets'
 
 export interface DashRendererProps {
   layout: DashLayout
@@ -73,14 +72,6 @@ function narrowSettings(raw: Record<string, unknown> | undefined): Pick<AppSetti
   }
 }
 
-function narrowTargets(raw: Record<string, unknown> | undefined): DashTargets | null {
-  if (!raw) return null
-  return {
-    lapTimeSeconds: typeof raw.lapTimeSeconds === 'number' ? raw.lapTimeSeconds : null,
-    fuelPerLapLiters: typeof raw.fuelPerLapLiters === 'number' ? raw.fuelPerLapLiters : null,
-  }
-}
-
 /** The base palette with a widget's own text/label color overrides applied. */
 function stylePalette(base: DashPaletteColors, style: DashWidget['style']): DashPaletteColors {
   if (!style || (!style.textColor && !style.labelColor)) {
@@ -99,24 +90,46 @@ interface WidgetTileProps {
   settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
   targets: DashTargets | null
   palette: DashPaletteColors
+  chrome: ChromeContext
   selected: boolean
   onSelect?: (widget: DashWidget) => void
 }
 
 /**
- * One widget's outer cell: an optional instrument-frame border, then its type-specific content
- * inset inside it. The RaceLogic lap timer draws nothing here — it ignores its assigned grid
- * cell entirely and renders as a full-canvas overlay instead — see `RaceLogicLapTimerOverlay`
- * below.
+ * One widget's cell: its frame and title in the layout's dash style (see `widgetChrome`), then
+ * its type-specific values in the content box. The RaceLogic lap timer draws nothing here — it
+ * ignores its assigned grid cell entirely and renders as a full-canvas overlay instead — see
+ * `RaceLogicLapTimerOverlay` below.
  */
-function WidgetTile({ widget, rect, frame, settings, targets, palette, selected, onSelect }: WidgetTileProps): React.ReactElement | null {
+function WidgetTile({ widget, rect, frame, settings, targets, palette, chrome, selected, onSelect }: WidgetTileProps): React.ReactElement | null {
   if (rect.width < 1 || rect.height < 1) {
     return null
   }
 
-  const showBorder = widget.style?.border ?? usesInstrumentFrame(widget.type)
-  const inset = contentRect(rect, widget.type)
   const tilePalette = stylePalette(palette, widget.style)
+  const spec = widgetChrome(widget, frame, tilePalette)
+  const content = (box: { width: number; height: number }, contentPalette: DashPaletteColors): React.ReactNode => (
+    <WidgetContent widget={widget} frame={frame} settings={settings} targets={targets} palette={contentPalette} width={box.width} height={box.height} chrome={chrome} />
+  )
+  const cell = { left: 0, top: 0, width: rect.width, height: rect.height }
+
+  let body: React.ReactNode
+  if (spec.kind === 'framed') {
+    body = (
+      <WidgetFrame ctx={chrome} rect={cell} title={spec.title} accent={spec.accent} fill={spec.fill} titleColor={resolveStyleColor(widget.style?.labelColor, palette)} palette={tilePalette}>
+        {content}
+      </WidgetFrame>
+    )
+  } else if (spec.kind === 'split') {
+    body = content(cell, tilePalette)
+  } else if (chrome.style === 'grid') {
+    // The grid rules every cell, so an unframed widget still sits inside its lines.
+    body = <WidgetFrame ctx={chrome} rect={cell} title={null} accent={null} fill={null} palette={tilePalette}>{content}</WidgetFrame>
+  } else {
+    const inset = bareContent(chrome, rect.width, rect.height)
+    body = <div style={{ position: 'absolute', left: inset.left, top: inset.top, width: inset.width, height: inset.height }}>{content(inset, tilePalette)}</div>
+  }
+
   return (
     <div
       className={`dash-widget-tile dash-widget-${widget.type}${selected ? ' is-selected' : ''}`}
@@ -131,10 +144,7 @@ function WidgetTile({ widget, rect, frame, settings, targets, palette, selected,
       }}
       onClick={onSelect ? () => onSelect(widget) : undefined}
     >
-      {showBorder && <PanelBorder width={rect.width} height={rect.height} color={tilePalette.border} />}
-      <div style={{ position: 'absolute', left: inset.left - rect.left, top: inset.top - rect.top, width: Math.max(0, inset.width), height: Math.max(0, inset.height) }}>
-        <WidgetContent widget={widget} frame={frame} settings={settings} targets={targets} palette={tilePalette} width={Math.max(0, inset.width)} height={Math.max(0, inset.height)} />
-      </div>
+      {body}
     </div>
   )
 }
@@ -149,12 +159,13 @@ interface WidgetStackTileProps {
   settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
   targets: DashTargets | null
   palette: DashPaletteColors
+  chrome: ChromeContext
   selectedId?: string
   onWidgetSelect?: (widget: DashWidget) => void
 }
 
 /** Renders a widget stack's selected layer, laid out in the stack's own local sub-grid. */
-function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, settings, targets, palette, selectedId, onWidgetSelect }: WidgetStackTileProps): React.ReactElement | null {
+function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, settings, targets, palette, chrome, selectedId, onWidgetSelect }: WidgetStackTileProps): React.ReactElement | null {
   const outerRect = gridRect(canvasWidth, canvasHeight, cols, rows, { col: stack.col, row: stack.row, colSpan: Math.max(1, stack.colSpan), rowSpan: Math.max(1, stack.rowSpan) })
   if (outerRect.width < 1 || outerRect.height < 1) {
     return null
@@ -178,6 +189,7 @@ function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, 
           settings={settings}
           targets={targets}
           palette={palette}
+          chrome={chrome}
           selected={selectedId === widget.id}
           onSelect={onWidgetSelect}
         />
@@ -214,8 +226,21 @@ function FlagOverlay({ frame, palette, canvasWidth, canvasHeight }: { frame: Tel
   )
 }
 
-/** A transient parameter-change banner over the grid, from `DashAlertTracker.evaluate`. */
-function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: DashAlertBanner; palette: DashPaletteColors; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
+/**
+ * A setting change, from `DashAlertTracker.evaluate`. Full screen (the default) fills the whole
+ * dash with the setting's color: its name and the old value on the left, the new value huge on
+ * the right, so the driver reads which knob moved before the number. Inverted, it turns dark
+ * with the color on the text. A centered popup sits in the alert's own grid rect instead.
+ */
+function AlertBanner({ banner, frame, palette, chrome, canvasWidth, canvasHeight }: { banner: DashAlertBanner; frame: TelemetryFrame; palette: DashPaletteColors; chrome: ChromeContext; canvasWidth: number; canvasHeight: number }): React.ReactElement | null {
+  if (banner.kind === 'lapSummary') {
+    return <LapSummaryScreen summary={banner} frame={frame} palette={palette} chrome={chrome} width={canvasWidth} height={canvasHeight} />
+  }
+
+  if (banner.fullScreen) {
+    return <FullScreenSettingPopup banner={banner} palette={palette} width={canvasWidth} height={canvasHeight} />
+  }
+
   const panel = alertPanelRect(canvasWidth, canvasHeight, banner)
   if (panel.width < 4 || panel.height < 4) {
     return null
@@ -245,6 +270,95 @@ function AlertBanner({ banner, palette, canvasWidth, canvasHeight }: { banner: D
     </div>
   )
 }
+
+function FullScreenSettingPopup({ banner, palette, width, height }: { banner: DashSettingPopup; palette: DashPaletteColors; width: number; height: number }): React.ReactElement {
+  const ink = banner.invertColors ? banner.color : palette.background
+  const pad = Math.min(width, height) * 0.055
+  // The value takes up to 55% of the width; its size comes from the setting's widest value ("00" or "00.0").
+  const valueWidth = width * 0.55
+  const valueSize = Math.min(height * 0.78, valueWidth / (Math.max(2, banner.value.length) * 0.56))
+  const nameWidth = width - valueWidth - pad * 2
+  const was = banner.max !== null ? `WAS ${banner.previous} · OF ${banner.max}` : `WAS ${banner.previous}`
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: banner.invertColors ? palette.background : banner.color,
+        border: banner.invertColors ? `${Math.max(2, height * 0.01)}px solid ${banner.color}` : undefined,
+        boxSizing: 'border-box',
+      }}
+    >
+      <TextLine text={banner.title} left={pad} top={height * 0.46} size={height * 0.27} color={ink} align="start" maxWidth={nameWidth} weight="value" sizing="fit" />
+      <TextLine text={was} left={pad} top={height * 0.66} size={height * 0.05} color={ink} align="start" maxWidth={nameWidth} weight="labelBold" sizing="fit" />
+      <TextLine text={banner.value} left={width - pad} top={height / 2} size={valueSize} color={ink} align="end" maxWidth={valueWidth} weight="value" />
+    </div>
+  )
+}
+
+/** One number of the lap summary: its value, unit and a short verdict, on a condition fill when there is one. */
+interface SummaryBlock {
+  title: string
+  value: string
+  unit: string
+  note: string
+  fill: string | null
+}
+
+function lapBlock(summary: DashLapSummaryPopup, palette: DashPaletteColors): SummaryBlock {
+  if (summary.lapDelta === null) return { title: 'LAP Δ', value: '--', unit: '', note: summary.valid ? 'NO BEST YET' : 'INVALID', fill: null }
+  const best = summary.valid && summary.lapDelta < 0
+  return { title: 'LAP Δ', value: formatDelta(summary.lapDelta), unit: '', note: !summary.valid ? 'INVALID' : best ? 'NEW BEST' : 'VS BEST', fill: best ? palette.timingPersonalBest : null }
+}
+
+function fuelBlock(summary: DashLapSummaryPopup, palette: DashPaletteColors): SummaryBlock {
+  if (summary.fuelDelta !== null) {
+    const over = summary.fuelDelta > 0
+    return { title: 'FUEL Δ', value: formatSignedLiters(summary.fuelDelta), unit: 'L', note: over ? `SAVE ${summary.fuelDelta.toFixed(2)} L` : 'ON TARGET', fill: over ? palette.warning : palette.goodOnTarget }
+  }
+  if (summary.fuelUsed !== null) return { title: 'FUEL USED', value: summary.fuelUsed.toFixed(2), unit: 'L', note: 'NO TARGET SET', fill: null }
+  return { title: 'FUEL USED', value: '--', unit: '', note: 'NOT MEASURED', fill: null }
+}
+
+/**
+ * The lap summary, shown for a few seconds after each lap: the lap time, its delta to the
+ * best before it, and the fuel the lap used against the plan's target. The gear stays in its
+ * own column on the right, because the driver is still at speed. The two numbers wear the
+ * layout's dash style, so the summary looks like the rest of the dash.
+ */
+function LapSummaryScreen({ summary, frame, palette, chrome, width, height }: { summary: DashLapSummaryPopup; frame: TelemetryFrame; palette: DashPaletteColors; chrome: ChromeContext; width: number; height: number }): React.ReactElement {
+  const gearWidth = width * 0.19
+  const gearHeight = Math.min(height, gearWidth * 2.3)
+  const mainWidth = width - gearWidth
+  const headHeight = height * 0.2
+  const pad = 12 * chrome.scale
+  const blocks = [lapBlock(summary, palette), fuelBlock(summary, palette)]
+  const blockWidth = mainWidth / blocks.length
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: palette.background }}>
+      <TextLine text={`LAP ${summary.lap}`} left={pad} top={headHeight / 2} size={18 * chrome.scale} color={palette.secondary} align="start" maxWidth={mainWidth * 0.35} weight="labelBold" sizing="fit" />
+      <TextLine text={formatLap(summary.lapTime)} left={mainWidth - pad} top={headHeight / 2} size={Math.min(headHeight * 0.72, mainWidth * 0.55 / (8 * 0.56))} color={palette.foreground} align="end" maxWidth={mainWidth * 0.6} weight="value" />
+      {blocks.map((block, i) => (
+        <WidgetFrame key={block.title} ctx={chrome} rect={{ left: i * blockWidth, top: headHeight, width: blockWidth, height: height - headHeight }} title={block.title} accent={null} fill={block.fill} palette={palette}>
+          {(content, blockPalette) => (
+            <>
+              <ValueWithUnit value={block.value} unit={block.unit} left={content.width / 2} top={content.height * 0.44} size={Math.min(content.height * 0.5, (content.width * 0.96) / ((6 + 0.36) * 0.56))} color={blockPalette.foreground} unitColor={blockPalette.secondary} maxWidth={content.width} />
+              <TextLine text={block.note} left={content.width / 2} top={content.height * 0.86} size={Math.min(content.height * 0.08, 16 * chrome.scale)} color={blockPalette.secondary} align="center" maxWidth={content.width} weight="labelBold" sizing="fit" />
+            </>
+          )}
+        </WidgetFrame>
+      ))}
+      <div style={{ position: 'absolute', left: mainWidth, top: 0, width: gearWidth, height, borderLeft: `2px solid ${palette.border}`, boxSizing: 'border-box' }}>
+        {/* The gear widget sizes its text from its height, so a narrow column gets a box no taller than the speed can fit across. */}
+        <div style={{ position: 'absolute', left: 0, top: (height - gearHeight) / 2, width: gearWidth, height: gearHeight }}>
+          <WidgetContent widget={SUMMARY_GEAR} frame={frame} palette={palette} width={gearWidth} height={gearHeight} targets={null} chrome={chrome} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const SUMMARY_GEAR: DashWidget = { id: 'lap-summary-gear', type: 'gear_speed', col: 0, row: 0, colSpan: 1, rowSpan: 1 }
 
 /**
  * The RaceLogic-style purpose display: a fixed 4:1 island centered on the whole canvas,
@@ -303,16 +417,20 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
   const cols = layout.gridCols > 0 ? layout.gridCols : 20
   const rows = layout.gridRows > 0 ? layout.gridRows : 12
   const resolvedSettings = narrowSettings(settings)
-  const resolvedTargets = narrowTargets(targets)
+  const resolvedTargets = narrowDashTargets(targets)
   const telemetry = frame ?? EMPTY_TELEMETRY_FRAME
 
   // Focused purpose screens (currently only the RaceLogic lap timer) own their entire visual
   // language: the outer panel stays pure black and the flag overlay never covers it.
   const focusedLapTimer = layout.id === 'purpose-lap-times'
   const background = focusedLapTimer ? '#000000' : palette.background
+  const chrome: ChromeContext = { style: layout.dashStyle ?? 'panels', scale: Math.min(width / cols, height / rows) / CHROME_CELL_PX }
+  // The grid style rounds the whole canvas, so corner cells clip to its outer frame.
+  const ruled = chrome.style === 'grid' && !focusedLapTimer
 
   return (
     <div className={`dash-canvas ${className ?? ''}`} style={{ position: 'relative', width, height, background, overflow: 'hidden', boxSizing: 'border-box' }}>
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: ruled ? 14 * chrome.scale : undefined }}>
       {page?.widgets.map((widget) => (
         <WidgetTile
           key={widget.id}
@@ -322,6 +440,7 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
           settings={resolvedSettings}
           targets={resolvedTargets}
           palette={palette}
+          chrome={chrome}
           selected={selectedId === widget.id}
           onSelect={onWidgetSelect}
         />
@@ -338,12 +457,15 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
           settings={resolvedSettings}
           targets={resolvedTargets}
           palette={palette}
+          chrome={chrome}
           selectedId={selectedId}
           onWidgetSelect={onWidgetSelect}
         />
       ))}
+      </div>
+      {ruled && <GridOuterFrame ctx={chrome} width={width} height={height} palette={palette} />}
       {pageHasRaceLogicLapTimer(page) && <RaceLogicLapTimerOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
-      {alertBanner && <AlertBanner banner={alertBanner} palette={palette} canvasWidth={width} canvasHeight={height} />}
+      {alertBanner && <AlertBanner banner={alertBanner} frame={telemetry} palette={palette} chrome={chrome} canvasWidth={width} canvasHeight={height} />}
       {!focusedLapTimer && <FlagOverlay frame={telemetry} palette={palette} canvasWidth={width} canvasHeight={height} />}
     </div>
   )

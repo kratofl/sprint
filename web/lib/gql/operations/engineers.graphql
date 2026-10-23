@@ -1,0 +1,72 @@
+# Race engineers: who engineers for the signed-in user, whom they engineer for,
+# and their open invite links. `me` says whether the user has a display name yet:
+# without one, the people on this page see them under a placeholder.
+query Engineers {
+  me {
+    displayName
+  }
+  myEngineers {
+    engineer {
+      id
+      displayName
+      avatarUrl
+    }
+    createdAt
+  }
+  myDrivers {
+    driver {
+      id
+      displayName
+      avatarUrl
+    }
+    createdAt
+  }
+  myEngineerInvites {
+    token
+    url
+    status
+    createdAt
+    expiresAt
+  }
+}
+
+# What an invite link is: who sent it and whether it can still be accepted (anonymous).
+query EngineerInvite($token: String!) {
+  engineerInvite(token: $token) {
+    status
+    driver {
+      id
+      displayName
+      avatarUrl
+    }
+    expiresAt
+  }
+}
+
+mutation CreateEngineerInvite {
+  createEngineerInvite {
+    token
+    url
+  }
+}
+
+mutation RevokeEngineerInvite($token: String!) {
+  revokeEngineerInvite(token: $token)
+}
+
+mutation AcceptEngineerInvite($token: String!) {
+  acceptEngineerInvite(token: $token) {
+    driver {
+      id
+      displayName
+    }
+  }
+}
+
+mutation RemoveEngineer($engineerId: String!) {
+  removeEngineer(engineerId: $engineerId)
+}
+
+mutation LeaveDriver($driverId: String!) {
+  leaveDriver(driverId: $driverId)
+}

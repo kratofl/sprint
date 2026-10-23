@@ -14,8 +14,13 @@ public sealed class CloudSessionState
     [JsonPropertyName("token")]
     public string Token { get; set; } = "";
 
+    /// <summary>Empty for a Discord account.</summary>
     [JsonPropertyName("email")]
     public string Email { get; set; } = "";
+
+    /// <summary>The server's id for the account. Empty in a session saved before it was kept.</summary>
+    [JsonPropertyName("userId")]
+    public string UserId { get; set; } = "";
 
     [JsonPropertyName("displayName")]
     public string DisplayName { get; set; } = "";
@@ -50,63 +55,71 @@ public sealed class CloudSession
     public CloudSession(string dataRoot, ILog? log = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(dataRoot);
-        _path = Path.Combine(dataRoot, FileName);
-        _log = log ?? NullLog.Instance;
-        State = Load();
+        this._path = Path.Combine(dataRoot, FileName);
+        this._log = log ?? NullLog.Instance;
+        this.State = this.Load();
     }
 
     public CloudSessionState State { get; private set; }
 
-    public bool IsSignedIn => State.Token.Length > 0 && State.ServerUrl.Length > 0;
+    public bool IsSignedIn => this.State.Token.Length > 0 && this.State.ServerUrl.Length > 0;
 
     /// <summary>How the driver is credited on a lap they share.</summary>
-    public string Attribution => State.DisplayName is { Length: > 0 } name ? name : "Unknown driver";
+    public string Attribution => this.State.DisplayName is { Length: > 0 } name ? name : "Unknown driver";
 
     public void SignIn(string serverUrl, string token, string email)
     {
-        State.ServerUrl = serverUrl.TrimEnd('/');
-        State.Token = token;
-        State.Email = email;
-        Save();
+        this.State.ServerUrl = serverUrl.TrimEnd('/');
+        this.State.Token = token;
+        this.State.Email = email;
+        this.Save();
     }
 
     public void SetDisplayName(string displayName)
     {
-        State.DisplayName = displayName;
-        Save();
+        this.State.DisplayName = displayName;
+        this.Save();
+    }
+
+    /// <summary>Remembers who the server says the token belongs to.</summary>
+    public void SetProfile(string userId, string displayName)
+    {
+        this.State.UserId = userId;
+        this.State.DisplayName = displayName;
+        this.Save();
     }
 
     /// <summary>Forgets the token. The file is removed rather than blanked.</summary>
     public void SignOut()
     {
-        State = new CloudSessionState { ServerUrl = State.ServerUrl };
+        this.State = new CloudSessionState { ServerUrl = this.State.ServerUrl };
         try
         {
-            if (File.Exists(_path))
+            if (File.Exists(this._path))
             {
-                File.Delete(_path);
+                File.Delete(this._path);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Warn("Could not remove the stored cloud session", ex);
+            this._log.Warn("Could not remove the stored cloud session", ex);
         }
 
-        Save();
+        this.Save();
     }
 
     private CloudSessionState Load()
     {
         try
         {
-            return File.Exists(_path)
-                ? JsonSerializer.Deserialize<CloudSessionState>(File.ReadAllText(_path), Json) ?? new()
+            return File.Exists(this._path)
+                ? JsonSerializer.Deserialize<CloudSessionState>(File.ReadAllText(this._path), Json) ?? new()
                 : new();
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             // A corrupt session file means signed out, never a failure to start.
-            _log.Warn("Ignoring an unreadable cloud session file", ex);
+            this._log.Warn("Ignoring an unreadable cloud session file", ex);
             return new();
         }
     }
@@ -115,11 +128,11 @@ public sealed class CloudSession
     {
         try
         {
-            File.WriteAllText(_path, JsonSerializer.Serialize(State, Json));
+            File.WriteAllText(this._path, JsonSerializer.Serialize(this.State, Json));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Warn("Could not persist the cloud session", ex);
+            this._log.Warn("Could not persist the cloud session", ex);
         }
     }
 }

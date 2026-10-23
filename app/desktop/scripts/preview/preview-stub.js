@@ -13,10 +13,61 @@
 //   import=offer          the startup results scan finds sessions (opens the import prompt);
 //                         otherwise every scan finds nothing new
 //   telemetry=unsupported the Windows-only LMU source as a Mac reports it (Windows look: Home InfoBar; Mac look: toolbar indicator)
+//   sprintWeb=1           the Sprint web feature flag is on (accounts, setup, sync). Off by default, as
+//                         shipped; any of account/setup/servers/storage/live/discord turns it on too
+//   account=signed-in     the desktop is signed in to Sprint (the account row shows the name);
+//                         otherwise it is signed out and the row reads "Sign in"
+//   setup=first-run       Sprint web setup not done yet, so the setup opens on its welcome step
+//   servers=none          the network scan finds no server (default: one at 192.168.1.20)
+//   storage=Both|Remote   where data lives (default: This PC only); Both also reports a last upload
+//   live=<status>         the live uplink's status (Off, WaitingForGame, Connecting, Streaming, Reconnecting);
+//                         default: WaitingForGame when signed in with storage Both/Remote, otherwise Off
+//   link=<phase>          the live link's phase (Off, Preparing, Inviting, Joining, Connecting, Connected,
+//                         Interrupted, Failed, Ended); linkRole=Engineer shows the engineer's side of
+//                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off
+//   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
+//                         Cancel (1) or fails at once with a server error (fail)
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
 //                         repeat the parameter to click several things in order
 ;(() => {
   const params = new URLSearchParams(window.location.search)
+
+  // The host's `link` state (PeerLinkState) for one phase. Inviting is always the driver, Joining the engineer.
+  const previewLink = (phase, role) => {
+    const code =
+      'SPRINT-INVITE-AQH-ZsIo9Kx2LwQEkS7d0bLrP1x8cPTPvcN3Hk-1o1fJYTz0hk2Ww2oL6vVtH4gbqZK9x3Wn1sD7kUu8YBjtP0cJsmV5AxPGM2RkdAEBwKgBFNIr'
+    const latest = {
+      lap: 14, position: 3, lastLapTime: 138.412, bestLapTime: 137.905, delta: -0.214, lapValid: true,
+      speedKph: 287.4, gear: 6, fuel: 41.6,
+      tyreTempFl: 88.2, tyreTempFr: 91.6, tyreTempRl: 84.9, tyreTempRr: 86.3,
+      tyreWearFl: 18.4, tyreWearFr: 22.1, tyreWearRl: 12.7, tyreWearRr: 14.0,
+    }
+    const session = { sessionKey: 's1', game: 'Le Mans Ultimate', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', sessionType: 'Race' }
+    switch (phase) {
+      case 'Preparing':
+        return { phase, role, reachability: 'Unknown' }
+      case 'Inviting':
+        return { phase, role: 'Driver', code, reachability: 'Open' }
+      case 'Joining':
+        return { phase, role: 'Engineer', code: code.replace('INVITE', 'REPLY'), reachability: 'Open' }
+      case 'Connecting':
+        return { phase, role: 'Driver', reachability: 'Strict' }
+      case 'Connected':
+      case 'Interrupted':
+        return {
+          phase, role, reachability: 'Open',
+          health: { path: 'Ipv4', roundTripMs: phase === 'Connected' ? 38 : null, sampleRate: phase === 'Connected' ? 20 : 0, lossPercent: phase === 'Connected' ? 0.5 : null },
+          session,
+          latest: role === 'Engineer' ? latest : null,
+        }
+      case 'Failed':
+        return { phase, role, reachability: 'Strict', detail: 'No direct path between your PCs. One of your networks blocks it, or the reply went stale. Try again with fresh codes.' }
+      case 'Ended':
+        return { phase, role, reachability: 'Open', detail: role === 'Driver' ? 'Your engineer disconnected.' : 'The driver ended the link.' }
+      default:
+        return { phase: 'Off', reachability: 'Unknown' }
+    }
+  }
 
   const theme = params.get('theme')
   if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
@@ -34,6 +85,35 @@
   }
   // Payloads captured before the results import existed carry no `resultsImport`; preview as LMU does.
   state.resultsImport ??= { available: true, sourceName: 'the Le Mans Ultimate results folder' }
+  state.account =
+    params.get('account') === 'signed-in'
+      ? { signedIn: true, serverUrl: 'http://localhost:8080', email: 'alex@sprint.local', displayName: 'Alex Morgan' }
+      : { signedIn: false, serverUrl: 'http://localhost:8080', email: '', displayName: '' }
+
+  const storage = params.get('storage')
+  state.cloud = {
+    setupDone: params.get('setup') !== 'first-run',
+    server: state.account.signedIn ? 'SelfHosted' : 'None',
+    storage: storage === 'Both' || storage === 'Remote' ? storage : 'Local',
+    officialServerUrl: null,
+    progress: null,
+    lastSync:
+      storage === 'Both'
+        ? { at: '2026-10-06T09:30:00Z', direction: 'upload', report: { uploaded: 14, downloaded: 0, conflicts: 0, removedLocally: 0 } }
+        : null,
+  }
+  const liveDefault = state.account.signedIn && state.cloud.storage !== 'Local' ? 'WaitingForGame' : 'Off'
+  const live = params.get('live') ?? liveDefault
+  state.cloud.live = {
+    status: live,
+    detail: live === 'Reconnecting' ? 'Could not reach Sprint web.' : null,
+  }
+  state.link = previewLink(params.get('link'), params.get('linkRole') === 'Engineer' ? 'Engineer' : 'Driver')
+  const sprintWebParams = ['sprintWeb', 'account', 'setup', 'servers', 'storage', 'live', 'discord']
+  state.features = { sprintWeb: sprintWebParams.some((name) => params.has(name)) && params.get('sprintWeb') !== '0' }
+  const discord = params.get('discord')
+  let pendingDiscord = null
+  const syncReport = (uploaded, downloaded) => ({ uploaded, downloaded, conflicts: 0, removedLocally: 0 })
 
   window.sprint = {
     getState: async () => state,
@@ -80,12 +160,34 @@
         ? { updateAvailable: true, latest: { version: '0.2.0', channel: 'stable', url: 'https://example.invalid/release' } }
         : { updateAvailable: false },
     installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+    // Any password signs in except "wrong", which shows the error.
+    signIn: async (serverUrl, email, password) =>
+      password === 'wrong' ? { ok: false, error: 'Invalid credentials.' } : { ok: true },
+    signInWithDiscord: () =>
+      discord === 'fail'
+        ? Promise.resolve({ outcome: 'Failed', error: 'Registration is closed on this server.' })
+        : new Promise((resolve) => {
+            pendingDiscord = resolve
+          }),
+    cancelDiscordSignIn: async () => {
+      pendingDiscord?.({ outcome: 'Cancelled', error: '' })
+      pendingDiscord = null
+    },
+    serverInfo: async () => ({ reachable: true, instanceName: 'Sprint', allowRegistration: true, discordSignIn: discord === '1' || discord === 'fail' }),
+    signOut: async () => null,
+    // Long enough for the scan bar to show; a real sweep takes a few seconds.
+    discoverServers: () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ servers: params.get('servers') === 'none' ? [] : [{ url: 'http://192.168.1.20:8080', version: '0.1.0' }] }), 1200),
+      ),
+    syncUp: async () => syncReport(14, 0),
+    syncDown: async () => syncReport(0, 3),
   }
 
   // Pages are reached through the app's own input paths, so the preview adds
-  // nothing to production code: Alt+1..7 (⌘1..7 with platform=mac) for the
+  // nothing to production code: Alt+1..8 (⌘1..8 with platform=mac) for the
   // primary pages (shell/nav.ts order), a click on the pane item for the footer pages.
-  const primaryOrder = ['Home', 'SessionPlanner', 'Analysis', 'Dashes', 'Devices', 'Setups', 'RaceEngineer']
+  const primaryOrder = ['Home', 'SessionPlanner', 'Analysis', 'Dashes', 'Devices', 'Setups', 'RaceEngineer', 'LiveLink']
   const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
   // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
   const mac = params.get('platform') === 'mac'

@@ -3,14 +3,13 @@ import { createPortal } from 'react-dom'
 import { useActionsPlacement, useIconButtonTitles, useToolbarActions } from './toolbarActions'
 
 /**
- * The Fluent page header every view starts with: a 24px Display title and,
- * when the page has actions, a 36px CommandBar row underneath.
+ * The page header every view starts with: the page title and, when the page has
+ * actions, its CommandBar.
  *
  * Children are the CommandBar's contents, left to right: at most one
- * `.button.primary`, standard/subtle `.button`s, a `<select>` for view options
- * (Windows prefers a select over a segmented control here), `<CommandDivider />`
- * between groups, then `<span className="command-spacer" />` and trailing
- * `.icon-button`s (e.g. the "More options" …).
+ * `.button.primary`, standard/subtle `.button`s, a `<select>` for view options,
+ * `<CommandDivider />` between groups, then `<span className="command-spacer" />`
+ * and trailing `.icon-button`s (e.g. the "More options" …).
  *
  *   <PageHeader title="Devices">
  *     <button type="button" className="button primary"><Plus />Add device</button>
@@ -20,9 +19,9 @@ import { useActionsPlacement, useIconButtonTitles, useToolbarActions } from './t
  *     <button type="button" className="icon-button" aria-label="More options"><MoreHorizontal /></button>
  *   </PageHeader>
  *
- * On macOS the toolbar names the page, so the in-content title is for screen readers only, and
- * the CommandBar moves into the toolbar's trailing slot (the shell provides it through
- * `ToolbarActionsContext`), drawn as toolbar items (`.toolbar-items` in styles.mac.css). When the
+ * The toolbar names the page, so the in-content title is for screen readers only, and the
+ * CommandBar moves into the toolbar's trailing slot (the shell provides it through
+ * `ToolbarActionsContext`), drawn as toolbar items (`.toolbar-items` in styles.css). When the
  * toolbar is too narrow for it, the same items fall back to a row at the top of the content
  * (`useActionsPlacement`).
  *
@@ -50,7 +49,7 @@ export function PageHeader({ title, detail = false, children }: { title: string;
   )
 }
 
-/** 1×16px separator between CommandBar groups. */
+/** Fixed space between CommandBar groups. */
 export function CommandDivider() {
   return <span className="command-divider" role="separator" aria-orientation="vertical" />
 }

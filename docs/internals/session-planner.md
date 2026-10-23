@@ -52,7 +52,12 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
   never stalls the telemetry read, and a store failure is logged, not propagated.
 - Every qualifier (conditions, fuel, energy, tyres, program tags) is nullable. Imports can never supply
   them, so filtering on them would discard imported laps. Usage is measured between crossings: the
-  first lap has none and a refuel yields `null`, never a negative.
+  first lap of each session has none and a refuel yields `null`, never a negative.
+- **A crossing waits for its lap time.** LMU's lap number (telemetry) and lap time (scoring, ~5 Hz)
+  can tick over a frame apart at the line, either way round, so the crossing frame can still carry the
+  lap before's time. The recorder files a lap only once a new time arrives within a second of the
+  line, and drops a crossing that gets none (an out lap). Filing on the crossing frame gives every lap
+  its predecessor's time.
 - Virtual energy is recorded beside fuel: an LMU hypercar stint is energy-limited as much as
   fuel-limited.
 - The recorder, the importer and the planner share one store instance (host composition), so a

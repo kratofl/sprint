@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import type { SessionSummary, SetupSummary } from './gql/generated'
+import type { Session, Setup } from './records.ts'
 import { isActive } from './navigation.ts'
 import { formatMonth, shiftMonth } from './period.ts'
 import { matchesQuery } from './search.ts'
@@ -29,8 +29,10 @@ test('search ignores queries shorter than two characters', () => {
   assert.equal(matchesQuery(['Spa', 'Porsche 963'], ' porSCHE '), true)
 })
 
-const session = (id: string, createdAt: string, track: string, car: string): SessionSummary => ({
-  id, createdAt, track, car, game: 'LMU', ownerId: 'me', sessionType: 'Practice',
+const me = { id: 'me', displayName: 'Alex Morgan', avatarUrl: null }
+const session = (id: string, createdAt: string, track: string, car: string, isMine = true): Session => ({
+  id, sessionKey: id, createdAt, startedAt: null, track, car, game: 'LMU', sessionType: 'Practice',
+  isMine, isLive: false, driver: isMine ? me : { id: 'other', displayName: 'Sam Reed', avatarUrl: null },
 })
 
 test('overview KPIs stay empty until something is synced', () => {
@@ -44,12 +46,24 @@ test('overview KPIs count the selected month only', () => {
     session('b', '2026-09-20T10:00:00Z', 'Spa', 'Ferrari 499P'),
     session('c', '2026-08-30T10:00:00Z', 'Monza', 'Porsche 963'),
   ]
-  const setups: SetupSummary[] = []
+  const setups: Setup[] = []
   const kpis = overviewKpis(sessions, setups, { year: 2026, month: 8 })
   assert.deepEqual(
     kpis.map((kpi) => (kpi.kind === 'value' ? kpi.value : null)),
     ['2', '1', '2', null],
   )
+})
+
+test('the overview counts only the viewer’s own sessions, not the ones they engineer', () => {
+  const month = { year: 2026, month: 8 }
+  const sessions = [session('a', '2026-09-03T10:00:00Z', 'Spa', 'Porsche 963'), session('b', '2026-09-04T10:00:00Z', 'Monza', 'Ferrari 499P', false)]
+  assert.deepEqual(
+    overviewKpis(sessions, [], month).map((kpi) => (kpi.kind === 'value' ? kpi.value : null)),
+    ['1', '1', '1', null],
+  )
+  assert.equal(sessionsPerWeek(sessions, month)[0].count, 1)
+  // Only engineered sessions: nothing of one's own has synced yet.
+  assert.equal(overviewKpis([sessions[1]], [], month)[0].kind, 'empty')
 })
 
 test('session chart buckets a month into 7-day slices', () => {

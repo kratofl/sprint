@@ -51,7 +51,8 @@ against a real server.
   useful because each reading sits where the eyes already are, which one stacked window cannot do.
   Single-channel windows are not filled; the combined pedals panel with fills stays in Analysis.
 - No injection into the game: injection is a large dependency, an anti-cheat risk on an online sim, and
-  per-game maintenance.
+  per-game maintenance. The driving guide's VR layer is the one exception, because nothing outside the
+  game's process can draw into a headset ([driving-guide.md](driving-guide.md)).
 - The game must run borderless or windowed. Exclusive fullscreen hides the HUD; the app detects that and
   says so (`HudInterop.IsExclusiveFullscreenActive`). A HUD that silently shows nothing is the worst outcome.
 - Unlocked, windows are draggable and resizable. Locked sets `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` so
@@ -82,8 +83,8 @@ also the home of the shared-lap library and the target picker.
   artifacts.
 - Per-lap share codes, no friend graph: an unguessable code pulls one lap and the owner can revoke it.
   A friend graph can layer on later without touching traces or the HUD.
-- A share code is its own entity, not the engineer `InviteCode`: invites die with a live session, a lap
-  code must outlive every session.
+- A share code is its own entity, not an engineer invite link: an invite links two accounts once, a lap
+  code pulls one lap and must outlive every session.
 - Only explicitly shared laps leave the machine; the corpus stays local.
 - Storage is a compressed blob on Postgres `LapTraceEntity` with game, track, car, lap time, owner and
   code as indexed columns. Not InfluxDB: the x-axis is track position and the trace is fetched whole.

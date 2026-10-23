@@ -44,7 +44,9 @@ export interface DashPaletteColors {
 const dashColor = {
   background: '#08080A',
   surface: '#1B1B1E',
-  border: 'rgba(255,255,255,.12)',
+  // A solid mid-grey, not a translucent white: USB wheel panels wash out near-black, and a
+  // faint hairline disappears on them entirely.
+  border: '#3F3F46',
   text: '#F5F5F7',
   text2: '#A1A1AA',
   text3: '#6F6F78',
@@ -58,6 +60,19 @@ const dashColor = {
   suzukiAccent: '#B15CFF',
   monoPrimary: '#F6F6F6',
   monoAccent: '#7A7A7A',
+} as const
+
+/**
+ * Each driver-adjustable setting's identity color. A knob widget carries it in its frame and
+ * its change popup fills the screen with it, so the driver knows which knob they turned
+ * before reading the value. Identity, not a condition: it never colors a value at rest, and
+ * it stays fixed across themes so a popup reads the same on every dash.
+ */
+export const dashSettingColors = {
+  tc: dashColor.blue,
+  abs: dashColor.purple,
+  brakeBias: dashColor.text,
+  engineMap: dashColor.green,
 } as const
 
 export const defaultDashPalette: DashPaletteColors = {

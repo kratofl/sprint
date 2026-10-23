@@ -1,3 +1,4 @@
+using Sprint.Desktop.Features.DrivingGuide;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Xunit;
@@ -195,6 +196,95 @@ public sealed class SharedLapTests
         Assert.True(lap.HasChannels);
         Assert.Equal(LapTargetTier.FullTrace, lap.Tier);
         Assert.Contains("Shared by Ada", lap.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnExportedLapWithPositionsBecomesTheFriendsDrivingGuide()
+    {
+        (FakeHistory mine, FakeTraces myTraces, SharedLapImporter _) = Corpus();
+        LapChannelTrace driven = Trace();
+        AddWorldChannels(driven);
+        myTraces.Save("trace-4", driven);
+        mine.Save(Recorded("mine", lapNumber: 4, traceId: "trace-4"));
+
+        SharedLapExportResult export = SharedLapExport.Build(mine, myTraces, "mine", 4, " Alex Morgan ", Now);
+
+        Assert.True(export.HasPositions);
+        Assert.NotNull(export.Lap);
+        Assert.Equal("Alex Morgan", export.Lap.Provenance.SharedBy);
+        SharedLapReadResult read = SharedLapFile.Read(Written(export.Lap));
+        Assert.NotNull(read.Lap);
+        (FakeHistory friend, FakeTraces friendTraces, SharedLapImporter friendImporter) = Corpus();
+        Assert.True(friendImporter.Import(read.Lap).Added);
+
+        (DrivingGuideLap Lap, DrivingGuideGeometry Geometry)? guide =
+            new DrivingGuideLapPicker(friend, friendTraces).Pick("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963");
+
+        Assert.NotNull(guide);
+        Assert.Equal(101.5, guide.Value.Lap.LapTimeSeconds);
+    }
+
+    [Fact]
+    public void ALapWithoutChannelsOrNoLongerInHistoryCannotBeExported()
+    {
+        (FakeHistory history, FakeTraces traces, SharedLapImporter _) = Corpus();
+        history.Save(Recorded("mine", lapNumber: 4, traceId: null));
+
+        SharedLapExportResult timeOnly = SharedLapExport.Build(history, traces, "mine", 4, "Alex Morgan", Now);
+        SharedLapExportResult gone = SharedLapExport.Build(history, traces, "mine", 9, "Alex Morgan", Now);
+
+        Assert.Null(timeOnly.Lap);
+        Assert.Contains("only a time", timeOnly.Error);
+        Assert.Null(gone.Lap);
+        Assert.Contains("no longer", gone.Error);
+    }
+
+    [Fact]
+    public void PassingOnASharedLapKeepsItsOriginalDriver()
+    {
+        (FakeHistory history, FakeTraces traces, SharedLapImporter importer) = Corpus();
+        SharedLapImportResult imported = importer.Import(Lap());
+        int lapNumber = Assert.Single(Assert.Single(history.Saved).Laps).LapNumber;
+
+        SharedLapExportResult export = SharedLapExport.Build(history, traces, imported.SessionId, lapNumber, "Alex Morgan", Now);
+
+        Assert.Equal("Ada", export.Lap?.Provenance.SharedBy);
+        Assert.False(export.HasPositions);
+    }
+
+    private static LapHistorySession Recorded(string id, int lapNumber, string? traceId) => new()
+    {
+        Id = id,
+        Context = Lap().Context,
+        StartedAt = Now.AddDays(-1),
+        Laps = [new LapHistoryRecord { LapNumber = lapNumber, LapTimeSeconds = 101.5, TraceId = traceId }],
+    };
+
+    /// <summary>A circular track with the pedals a guide needs: one braking zone, throttle elsewhere.</summary>
+    private static void AddWorldChannels(LapChannelTrace trace)
+    {
+        int count = trace.SampleCount;
+        double radius = TrackLength / (2 * Math.PI);
+        float[] xs = new float[count];
+        float[] ys = new float[count];
+        float[] zs = new float[count];
+        float[] brake = new float[count];
+        float[] throttle = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            double angle = 2 * Math.PI * i / (count - 1);
+            xs[i] = (float)(radius * Math.Cos(angle));
+            zs[i] = (float)(radius * Math.Sin(angle));
+            bool braking = i is >= 200 and < 220;
+            brake[i] = braking ? 0.8f : 0f;
+            throttle[i] = braking ? 0f : 1f;
+        }
+
+        trace.Channels[LapTraceChannels.WorldX] = xs;
+        trace.Channels[LapTraceChannels.WorldY] = ys;
+        trace.Channels[LapTraceChannels.WorldZ] = zs;
+        trace.Channels[LapTraceChannels.Brake] = brake;
+        trace.Channels[LapTraceChannels.Throttle] = throttle;
     }
 
     private static (FakeHistory History, FakeTraces Traces, SharedLapImporter Importer) Corpus()

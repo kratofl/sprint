@@ -1,19 +1,19 @@
 /* Sprint – macOS platform tokens for the desktop app.
    Source: the "Haushalt macOS" light/dark mockups in docs/design/mockups/macos-light.html and
    macos-dark.html (their shell, materials and geometry; the screens are a sample app).
-   An overlay on windows.css, not a standalone file: the desktop imports windows.css first, then this,
+   An overlay on desktop.css, not a standalone file: the desktop imports desktop.css first, then this,
    and the renderer marks a Mac window with <html data-platform="mac"> (app/desktop/src/platform.ts).
-   It redefines every custom property windows.css defines, under the same names, so styles.css reads
+   It redefines every custom property desktop.css defines, under the same names, so styles.css reads
    the Mac values without knowing about them. Only the brand and status scales are not repeated:
-   they are shared across every platform (docs/design/DESIGN.md) and come from windows.css.
+   they are shared across every platform (docs/design/DESIGN.md) and come from desktop.css.
    app/desktop/src/macTokens.test.ts keeps the two files' names in step.
 
-   Specificity: :root[data-platform="mac"] (0,2,0) beats windows.css's :root / [data-theme] blocks,
+   Specificity: :root[data-platform="mac"] (0,2,0) beats desktop.css's :root / [data-theme] blocks,
    and the dark blocks below add a third attribute so they beat this light one. */
 
 :root[data-platform="mac"] {
   /* Window materials */
-  --mica: #ececef;              /* window background; the dialog footer and colour-mix() base */
+  --window: #ececef;            /* window background; the colour-mix() base */
   --layer: #ececef;             /* content area: opaque, the vibrancy shows only behind the sidebar */
   --layer-stroke: rgba(0, 0, 0, 0.08);  /* toolbar bottom edge */
   --sidebar: rgba(246, 246, 248, 0.85); /* sidebar where the window draws no vibrancy (browser preview) */
@@ -22,11 +22,10 @@
   --card-stroke: #e5e5ea;
   --divider: #e5e5ea;           /* table header/rule lines */
   --track: #f0f0f2;             /* progress/meter track */
-  --command-divider: rgba(0, 0, 0, 0.1);
 
   /* Text */
   --label: #1d1d1f;
-  --label-secondary: #6a6a6f;          /* mockup #6e6e73 is 4.3:1 on --mica; this is 4.56:1 */
+  --label-secondary: #6a6a6f;          /* mockup #6e6e73 is 4.3:1 on --window; this is 4.56:1 */
   --label-tertiary: #8e8e93;
   --label-disabled: rgba(0, 0, 0, 0.3);
   --on-brand: #1d1d1f;          /* text on brand-500 – never white */
@@ -46,12 +45,8 @@
   --control-fill-disabled: rgba(0, 0, 0, 0.03);
   --segmented-selected: #ffffff;  /* mockup's selected segment on the --track trough */
   --control-stroke: transparent;
-  --control-stroke-top: transparent;
-  --control-stroke-bottom: transparent;
-  --input-stroke-bottom: transparent;
-  --accent-stroke: transparent;
-  --accent-stroke-bottom: transparent;
-  --titlebar-search: rgba(0, 0, 0, 0.05);
+  --input-fill: rgba(0, 0, 0, 0.05);  /* text boxes and selects: the same borderless fill */
+  --input-stroke: transparent;
 
   /* Glass (menus, notifications, command palette, dialogs) */
   --acrylic: rgba(255, 255, 255, 0.55);
@@ -66,7 +61,6 @@
   --infobar-error: #fde0e4;    --infobar-error-icon: #b3182f;    --infobar-error-text: #5c0c18;
   --infobar-success: #dcf5e8;  --infobar-success-icon: #0c7a43;  --infobar-success-text: #06401f;
   --infobar-info: #dcebfc;     --infobar-info-icon: #154c8a;     --infobar-info-text: #0b2a4d;
-  --infobar-stroke: rgba(0, 0, 0, 0.06);
   --on-status: #ffffff;
 
   /* Avatar */
@@ -75,7 +69,6 @@
 
   /* macOS focus ring: a soft accent halo hugging the control (styles.mac.css). */
   --focus-ring: rgba(255, 106, 0, 0.5);  /* brand-500 at 50% */
-  --focus-ring-inner: transparent;
   color-scheme: light;
 
   /* macOS geometry (component sheet: Control M 8px, Control S 6px, 14px cards) */
@@ -98,7 +91,7 @@
 }
 
 :root[data-platform="mac"][data-theme="dark"] {
-  --mica: #1e1e1e;
+  --window: #1e1e1e;
   --layer: #1e1e1e;
   --layer-stroke: rgba(255, 255, 255, 0.08);
   --sidebar: rgba(40, 40, 42, 0.85);
@@ -107,7 +100,6 @@
   --card-stroke: #333335;
   --divider: #3a3a3c;
   --track: #3a3a3c;
-  --command-divider: rgba(255, 255, 255, 0.1);
   --label: #f5f5f7;
   --label-secondary: #98989d;
   --label-tertiary: #7c7c80;
@@ -125,12 +117,8 @@
   --control-fill-disabled: rgba(255, 255, 255, 0.04);
   --segmented-selected: #636366;
   --control-stroke: transparent;
-  --control-stroke-top: transparent;
-  --control-stroke-bottom: transparent;
-  --input-stroke-bottom: transparent;
-  --accent-stroke: transparent;
-  --accent-stroke-bottom: transparent;
-  --titlebar-search: rgba(255, 255, 255, 0.08);
+  --input-fill: rgba(255, 255, 255, 0.08);
+  --input-stroke: transparent;
   --acrylic: rgba(58, 58, 60, 0.55);
   --acrylic-stroke: rgba(0, 0, 0, 0.6);
   --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
@@ -141,26 +129,22 @@
   --infobar-error: #3d2327;    --infobar-error-icon: #ff7a8a;    --infobar-error-text: #f78b9a;
   --infobar-success: #1d3527;  --infobar-success-icon: #4ade80;  --infobar-success-text: #7fd9ab;
   --infobar-info: #1c2b3d;     --infobar-info-icon: #86b9f2;     --infobar-info-text: #86b9f2;
-  --infobar-stroke: rgba(255, 255, 255, 0.06);
   --on-status: #1d1d1f;
   --avatar-bg: #3a3366;
   --avatar-text: #d9d3ff;
   --focus-ring: rgba(255, 106, 0, 0.6);
-  --focus-ring-inner: transparent;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root[data-platform="mac"]:not([data-theme="light"]) {
-    --mica: #1e1e1e; --layer: #1e1e1e; --layer-stroke: rgba(255, 255, 255, 0.08); --sidebar: rgba(40, 40, 42, 0.85); --toolbar: #1e1e1e;
-    --surface: #2a2a2c; --card-stroke: #333335; --divider: #3a3a3c; --track: #3a3a3c; --command-divider: rgba(255, 255, 255, 0.1);
+    --window: #1e1e1e; --layer: #1e1e1e; --layer-stroke: rgba(255, 255, 255, 0.08); --sidebar: rgba(40, 40, 42, 0.85); --toolbar: #1e1e1e;
+    --surface: #2a2a2c; --card-stroke: #333335; --divider: #3a3a3c; --track: #3a3a3c;
     --label: #f5f5f7; --label-secondary: #98989d; --label-tertiary: #7c7c80; --label-disabled: rgba(255, 255, 255, 0.3);
     --on-brand: #1d1d1f; --link: #ff9a4d; --link-hover: #ffb57f; --success-text: #4ade80; --danger-text: #ff7a8a;
     --subtle-hover: rgba(255, 255, 255, 0.06); --subtle-selected: rgba(255, 255, 255, 0.1); --subtle-pressed: rgba(255, 255, 255, 0.14);
     --control-fill: rgba(255, 255, 255, 0.08); --control-fill-hover: rgba(255, 255, 255, 0.12); --control-fill-disabled: rgba(255, 255, 255, 0.04); --segmented-selected: #636366;
-    --control-stroke: transparent; --control-stroke-top: transparent; --control-stroke-bottom: transparent;
-    --input-stroke-bottom: transparent; --accent-stroke: transparent; --accent-stroke-bottom: transparent;
-    --titlebar-search: rgba(255, 255, 255, 0.08);
+    --control-stroke: transparent; --input-fill: rgba(255, 255, 255, 0.08); --input-stroke: transparent;
     --acrylic: rgba(58, 58, 60, 0.55); --acrylic-stroke: rgba(0, 0, 0, 0.6);
     --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
     --shadow-dialog: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 30px 80px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -168,13 +152,13 @@
     --infobar-warning: #3a3220; --infobar-warning-icon: #eec766; --infobar-error: #3d2327; --infobar-error-icon: #ff7a8a;
     --infobar-success: #1d3527; --infobar-success-icon: #4ade80; --infobar-info: #1c2b3d; --infobar-info-icon: #86b9f2;
     --infobar-warning-text: #eec766; --infobar-error-text: #f78b9a; --infobar-success-text: #7fd9ab; --infobar-info-text: #86b9f2;
-    --infobar-stroke: rgba(255, 255, 255, 0.06); --on-status: #1d1d1f;
-    --avatar-bg: #3a3366; --avatar-text: #d9d3ff; --focus-ring: rgba(255, 106, 0, 0.6); --focus-ring-inner: transparent;
+    --on-status: #1d1d1f;
+    --avatar-bg: #3a3366; --avatar-text: #d9d3ff; --focus-ring: rgba(255, 106, 0, 0.6);
     color-scheme: dark;
   }
 }
 
-/* macOS "Reduce motion": state changes land instantly (same contract as windows.css). */
+/* macOS "Reduce motion": state changes land instantly (same contract as desktop.css). */
 @media (prefers-reduced-motion: reduce) {
   :root[data-platform="mac"] {
     --motion-fast: 0ms;

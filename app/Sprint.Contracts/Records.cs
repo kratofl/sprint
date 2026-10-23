@@ -15,6 +15,14 @@ public sealed record SessionSummary
     [JsonPropertyName("ownerId")]
     public string OwnerId { get; init; } = "";
 
+    /// <summary>
+    /// The session's identity across the server: the desktop's own session id for a session
+    /// recorded there (the same key its live telemetry and engineer exclusions use), otherwise
+    /// <see cref="Id"/>. Never changes once the session exists.
+    /// </summary>
+    [JsonPropertyName("sessionKey")]
+    public string SessionKey { get; init; } = "";
+
     [JsonPropertyName("game")]
     public string Game { get; init; } = "";
 
@@ -26,6 +34,14 @@ public sealed record SessionSummary
 
     [JsonPropertyName("sessionType")]
     public string SessionType { get; init; } = "unknown";
+
+    /// <summary>When it was driven, for a session uploaded from the desktop; null for one created here.</summary>
+    [JsonPropertyName("startedAt")]
+    public DateTimeOffset? StartedAt { get; init; }
+
+    /// <summary>Opaque session payload (JSON): the desktop's lap history for an uploaded session.</summary>
+    [JsonPropertyName("data")]
+    public string Data { get; init; } = "{}";
 
     [JsonPropertyName("createdAt")]
     public DateTimeOffset CreatedAt { get; init; }
@@ -45,6 +61,42 @@ public sealed record CreateSessionInput
 
     [JsonPropertyName("sessionType")]
     public string SessionType { get; init; } = "unknown";
+}
+
+/// <summary>
+/// Input for the <c>saveSession</c> mutation (desktop upload). A known <see cref="Id"/> updates
+/// that session; otherwise a session of this owner with the same <see cref="SessionKey"/> is
+/// updated (live telemetry may have created it already); otherwise a new one is created.
+/// </summary>
+public sealed record SaveSessionInput
+{
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    /// <summary>
+    /// The desktop's own session id. When null, the server reads the <c>id</c> property of
+    /// <see cref="Data"/>, which is what desktops before this field uploaded.
+    /// </summary>
+    [JsonPropertyName("sessionKey")]
+    public string? SessionKey { get; init; }
+
+    [JsonPropertyName("game")]
+    public string Game { get; init; } = "";
+
+    [JsonPropertyName("track")]
+    public string Track { get; init; } = "";
+
+    [JsonPropertyName("car")]
+    public string Car { get; init; } = "";
+
+    [JsonPropertyName("sessionType")]
+    public string SessionType { get; init; } = "unknown";
+
+    [JsonPropertyName("startedAt")]
+    public DateTimeOffset? StartedAt { get; init; }
+
+    [JsonPropertyName("data")]
+    public string Data { get; init; } = "{}";
 }
 
 /// <summary>A saved car setup.</summary>

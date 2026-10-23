@@ -1,0 +1,11 @@
+{
+  "file_format_version": "1.0.0",
+  "api_layer": {
+    "name": "@SPRINT_XR_LAYER_NAME@",
+    "library_path": ".\\@SPRINT_XR_LAYER_LIBRARY@",
+    "api_version": "1.0",
+    "implementation_version": "@PROJECT_VERSION_MAJOR@",
+    "description": "Sprint driving guide: draws the reference line and brake boards into the headset view.",
+    "disable_environment": "SPRINT_XR_LAYER_DISABLE"
+  }
+}

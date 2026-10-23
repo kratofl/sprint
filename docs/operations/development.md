@@ -12,6 +12,9 @@ verify work and the traps that are not visible from the source.
 - A stale `testhost` holding DLLs breaks the next build; find the one your run started and stop it.
 - `make build-app` publishes for this machine's RID (`scripts/make-tasks.mjs rid`): `win-x64`,
   `osx-arm64`/`osx-x64`, `linux-x64`. An x64 Node under Rosetta yields `osx-x64`; pass `RID=` then.
+- Sprint web (accounts, sync, the server live stream) is off by default behind a feature flag. Turn
+  it on for a dev run with the environment variable `Sprint__Features__SprintWeb=true`; Electron
+  passes it to the host.
 
 ## Developing on macOS
 
@@ -38,9 +41,10 @@ integration is Windows-only, and each piece degrades instead of failing:
 
 1. **Preview harness** (fast, no app, no host) — `app/desktop/scripts/preview/README.md`.
    Renders any view light or dark from real or sample state and screenshots it with Electron.
-   Compare against `docs/design/mockups/win.png` / `win-dark.png`, and the macOS look
-   (`--query platform=mac`) against `macos-light.html` / `macos-dark.html`. A shell or primitive
-   change is checked in both looks.
+   Check the brand look against `docs/design/DESIGN.md` (it is the web app's system), and the
+   macOS look (`--query platform=mac`) against `macos-light.html` / `macos-dark.html`. A shell or
+   primitive change is checked in both looks: the Mac look inherits every shared rule it does not
+   override.
 2. **Real Electron** at least once per change that touches the bridge, preload or main process. The
    preview stubs `window.sprint`, so it cannot catch a broken bridge.
 
@@ -56,6 +60,9 @@ Running the real app:
   over CDP.
 - `make dev-app` starts Vite, Electron and the host. Say so before running it, and make sure all three
   are gone afterwards.
+- In a dev run, ⌘⌥⇧L / Ctrl+Alt+Shift+L reopens the main window in the other look, brand or macOS (macOS:
+  Developer menu). Off its own OS a look has no vibrancy and no native caption buttons, so it matches
+  the real chrome only on that OS.
 
 ## Electron traps
 
@@ -71,8 +78,11 @@ Running the real app:
 From `packages/dashboard`:
 
 ```sh
-pnpm exec tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html>
+pnpm exec tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html> [pageId] [panels|grid|bars]
 ```
+
+The page defaults to the preset's first; the dash style overrides the preset's own, so one layout
+can be checked in every style.
 
 Presets are in `app/Sprint.Desktop.Host/presets/dash/`; fonts in `app/desktop/src/fonts/`. Open the
 HTML at the panel size in a browser and screenshot it (Playwright MCP, or headless Edge on Windows);

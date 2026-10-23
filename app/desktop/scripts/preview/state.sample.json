@@ -155,6 +155,19 @@
     "isEmpty": false
   },
   "settings": {
+    "drivingGuide": {
+      "showLine": true,
+      "showBoards": true,
+      "monitorOverlay": false,
+      "vrHeadset": true,
+      "eyeRightMeters": 0.35,
+      "eyeUpMeters": 0.95,
+      "eyeForwardMeters": 0,
+      "yawOffsetDegrees": 0,
+      "pitchOffsetDegrees": -0.5,
+      "monitorFovDegrees": 50,
+      "metersAhead": 250
+    },
     "sidebarCollapsed": false,
     "updateChannel": "stable",
     "driverName": "Alex Driver",
@@ -3327,6 +3340,12 @@
   "updates": {
     "version": "0.1.0",
     "channel": "stable"
+  },
+  "guide": {
+    "status": "Ready",
+    "lap": { "sessionId": "preview", "lapNumber": 6, "lapTimeSeconds": 123.412, "car": "Peugeot 9X8", "recordedAt": "2026-10-18T19:20:00Z", "sameCar": true },
+    "boards": 14,
+    "vr": { "available": true, "registered": true, "detail": null }
   },
   "screens": [
     {

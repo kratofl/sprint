@@ -1,9 +1,9 @@
 # Desktop preview harness
 
 Renders any desktop view without the app or the native host, light or dark, in
-the Windows or the macOS look, so a UI change can be screenshotted and compared
-against the mockups: `docs/design/mockups/win.png` / `win-dark.png` for Windows,
-`macos-light.html` / `macos-dark.html` for macOS. Works the same on Windows and
+the brand look (Windows and Linux) or the macOS look, so a UI change can be
+screenshotted and checked against `docs/design/DESIGN.md` and, for macOS, the
+`macos-light.html` / `macos-dark.html` mockups. Works the same on Windows and
 macOS.
 
 Run everything from `app/desktop`. The commands are the same in PowerShell and sh;
@@ -28,15 +28,23 @@ browser launched with `--allow-file-access-from-files`.
 
 | Parameter | Effect |
 | --- | --- |
-| `view=<AppView>` | `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`, `RaceEngineer`, `Settings`, `Help` |
+| `view=<AppView>` | `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`, `RaceEngineer`, `LiveLink`, `Settings`, `Help` |
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
-| `platform=mac\|windows` | The look Electron would pick on that OS; omitted is Windows. Linux has no look of its own |
-| `collapsed=1` | Navigation pane in compact (48px) mode; with `platform=mac` the sidebar is hidden |
+| `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
+| `collapsed=1` | The sidebar collapsed to its 56px icon rail; with `platform=mac` it is hidden |
 | `palette=1` | Opens the command palette |
 | `update=1` | Reports an available update (Settings dot + notification) |
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
-| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. Windows look shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
+| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. The brand look also shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |
+| `sprintWeb=1` | Turns the Sprint web feature flag on: the account row, the setup and the Sprint web group in Settings. Off by default, as the app ships. Any of `account`, `setup`, `servers`, `storage`, `live` or `discord` turns it on as well |
+| `account=signed-in` | The desktop is signed in to Sprint; otherwise the account row reads "Sign in" |
+| `setup=first-run` | Sprint web setup has not run yet, so it opens on its welcome step. Any password signs in except `wrong` |
+| `servers=none` | The setup's network scan finds no server; otherwise it finds one at `192.168.1.20` |
+| `storage=Both` / `storage=Remote` | Where data lives (default: this PC only). `Both` also reports a last upload in Settings |
+| `live=<status>` | The live uplink's status in Settings: `Off`, `WaitingForGame`, `Connecting`, `Streaming`, `Reconnecting`. Default: `WaitingForGame` when signed in with `storage=Both`/`Remote`, otherwise `Off` |
+| `link=<phase>` | The live link's phase on the Live link page: `Off`, `Preparing`, `Inviting`, `Joining`, `Connecting`, `Connected`, `Interrupted`, `Failed`, `Ended`. `linkRole=Engineer` shows the engineer's side where both exist (default: the driver's) |
+| `discord=1` / `discord=fail` | The server offers Discord sign-in. "Continue with Discord" then waits for the browser until Cancel (`1`), or fails at once with a server error (`fail`) |
 | `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-list .list-row&click=.command-bar .button.subtle.destructive` selects a device and opens the remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
 
 ## How it works
@@ -44,7 +52,7 @@ browser launched with `--allow-file-access-from-files`.
 - `preview-stub.js` defines `window.sprint` (the same surface `electron/preload.ts`
   exposes) from a static payload, before the app bundle loads. Commands are
   logged to the console and otherwise ignored; nothing updates live.
-- Pages are opened through the app's own inputs (Alt+1…7, ⌘1…7 with
+- Pages are opened through the app's own inputs (Alt+1…8, ⌘1…8 with
   `platform=mac`, or a click on the pane item for Settings/Help), so production
   code has no preview-only paths. `palette=1` presses Ctrl+K or ⌘K the same way.
 - `screenshot.mjs` starts Electron on `screenshot-electron.mjs`, which loads the
@@ -55,9 +63,9 @@ browser launched with `--allow-file-access-from-files`.
   `scripts/process-tree.mjs` — never by name.
 - `screenshot.mjs` (like `dev.mjs`) drops `ELECTRON_RUN_AS_NODE` from Electron's
   environment; agent shells set it, and Electron would then start as plain Node.
-- The preview has no window backdrop, so neither Mica nor macOS vibrancy shows:
-  the title bar and sidebar draw their token colour instead (`--mica`; `--sidebar`
-  on macOS).
+- The preview has no window backdrop, so macOS vibrancy does not show: the sidebar
+  draws its `--sidebar` token colour instead. The OS caption buttons are missing
+  too; in Electron they sit at the right end of the toolbar.
 
 ## State payloads
 

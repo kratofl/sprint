@@ -1,0 +1,85 @@
+/* Live link: PageHeader with the link's status, then one card per phase (start, codes,
+   connecting), and once connected a row of health chips with the driver's sharing card or
+   the engineer's KPIs and tyres. Builds on the shared primitives in styles.css (.card,
+   .kpi, .chip, .field, .infobar) and only lays them out. */
+
+.live-link {
+  display: flex;
+  flex-direction: column;
+}
+
+.live-link-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 960px;
+}
+
+.live-link-skeleton {
+  min-height: 160px;
+}
+
+.live-link-start {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.live-link-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.live-link-text {
+  margin: 0;
+  color: var(--label-secondary);
+}
+
+/* A code and its button side by side; the code wraps, it has no spaces. */
+.live-link-code {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.live-link-code-text {
+  flex: 1;
+  word-break: break-all;
+  resize: none;
+}
+
+.live-link-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.live-link-session {
+  margin: 0;
+  color: var(--label);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.live-link-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.live-link-tyres {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 12px;
+}
+
+.live-link-tyre {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

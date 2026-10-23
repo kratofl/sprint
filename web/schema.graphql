@@ -1,11 +1,11 @@
 schema {
   query: Query
   mutation: Mutation
-  subscription: Subscription
 }
 
 type Query {
   health: HealthStatus!
+  serverSettings: ServerSettingsDto! @cost(weight: "10")
   me: UserProfile @authorize @cost(weight: "10")
   sessions: [SessionSummary!]! @authorize @cost(weight: "10")
   session(id: String!): SessionSummary @authorize @cost(weight: "10")
@@ -15,7 +15,14 @@ type Query {
   layout(id: String!): LayoutSummary @authorize @cost(weight: "10")
   sharedLap(code: String!): SharedLapDto! @authorize @cost(weight: "10")
   mySharedLaps: [SharedLapSummary!]! @authorize @cost(weight: "10")
-  recentTelemetry(code: String!, limit: Int!): [TelemetrySample!]!
+  engineerInvite(token: String!): EngineerInvitePreview! @cost(weight: "10")
+  myEngineerInvites: [EngineerInviteDto!]! @authorize @cost(weight: "10")
+  myEngineers: [EngineerLinkDto!]! @authorize @cost(weight: "10")
+  myDrivers: [EngineerLinkDto!]! @authorize @cost(weight: "10")
+  visibleSessions: [VisibleSession!]! @authorize @cost(weight: "10")
+  visibleSession(id: String!): VisibleSession @authorize @cost(weight: "10")
+  liveSessions: [LiveSessionDto!]! @authorize @cost(weight: "10")
+  sessionTelemetry(sessionId: String!, maxPoints: Int! = 600): SessionTelemetry!
     @authorize
     @cost(weight: "10")
 }
@@ -23,10 +30,7 @@ type Query {
 type Mutation {
   register(input: AuthRequestInput!): AuthResponse! @cost(weight: "10")
   login(input: AuthRequestInput!): AuthResponse! @cost(weight: "10")
-  createInviteCode(sessionId: String): InviteCodeDto!
-    @authorize
-    @cost(weight: "10")
-  joinAsDriver(code: String!): Boolean! @authorize @cost(weight: "10")
+  redeemSignInTicket(ticket: String!): AuthResponse! @cost(weight: "10")
   shareLap(input: ShareLapInput!): SharedLapSummary!
     @authorize
     @cost(weight: "10")
@@ -36,7 +40,16 @@ type Mutation {
   setDisplayName(displayName: String!): UserProfile!
     @authorize
     @cost(weight: "10")
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
+    @authorize
+    @cost(weight: "10")
+  updateServerSettings(input: UpdateServerSettingsInput!): ServerSettingsDto!
+    @authorize
+    @cost(weight: "10")
   createSession(input: CreateSessionInput!): SessionSummary!
+    @authorize
+    @cost(weight: "10")
+  saveSession(input: SaveSessionInput!): SessionSummary!
     @authorize
     @cost(weight: "10")
   saveSetup(input: SaveSetupInput!): SetupSummary!
@@ -45,49 +58,55 @@ type Mutation {
   saveLayout(input: SaveLayoutInput!): LayoutSummary!
     @authorize
     @cost(weight: "10")
-  publishEngineerEvent(code: String!, message: EngineerEventMessageInput!): Boolean!
+  createEngineerInvite: EngineerInviteDto! @authorize @cost(weight: "10")
+  revokeEngineerInvite(token: String!): Boolean! @authorize @cost(weight: "10")
+  acceptEngineerInvite(token: String!): EngineerLinkDto!
     @authorize
     @cost(weight: "10")
-  sendEngineerCommand(code: String!, message: EngineerCommandMessageInput!): Boolean!
+  removeEngineer(engineerId: String!): Boolean! @authorize @cost(weight: "10")
+  leaveDriver(driverId: String!): Boolean! @authorize @cost(weight: "10")
+  excludeEngineerFromSession(sessionId: String!, engineerId: String!): Boolean!
+    @authorize
+    @cost(weight: "10")
+  includeEngineerInSession(sessionId: String!, engineerId: String!): Boolean!
     @authorize
     @cost(weight: "10")
 }
 
-type Subscription {
-  engineerEvents(token: String!, code: String!): EngineerEventMessage!
-  engineerCommands(token: String!, code: String!): EngineerCommandMessage!
+type AccountSummary {
+  id: String!
+  displayName: String!
+  avatarUrl: String
 }
 
 type AuthResponse {
   token: String!
 }
 
-type EngineerCommandMessage {
-  id: String!
-  type: EngineerCommandType!
-  payload: String
-  timestamp: Long!
-  from: String!
+type EngineerInviteDto {
+  token: String!
+  url: String!
+  status: EngineerInviteStatus!
+  createdAt: DateTime!
+  expiresAt: DateTime!
 }
 
-type EngineerEventMessage {
-  type: EngineerEventType!
-  payload: String
-  timestamp: Long!
+type EngineerInvitePreview {
+  status: EngineerInviteStatus!
+  driver: AccountSummary
+  expiresAt: DateTime
+}
+
+type EngineerLinkDto {
+  driver: AccountSummary!
+  engineer: AccountSummary!
+  createdAt: DateTime!
 }
 
 type HealthStatus {
   status: String!
+  service: String!
   version: String!
-}
-
-type InviteCodeDto {
-  value: String!
-  driverId: String!
-  sessionId: String
-  createdAt: DateTime!
-  expiresAt: DateTime!
-  driverJoined: Boolean!
 }
 
 type LayoutSummary {
@@ -99,14 +118,83 @@ type LayoutSummary {
   updatedAt: DateTime!
 }
 
-type SessionSummary {
-  id: String!
-  ownerId: String!
+type LiveLap {
+  lap: Int!
+  lapTime: Float!
+  valid: Boolean!
+  completedAt: Long!
+}
+
+type LiveSample {
+  timestamp: Long!
+  lap: Int!
+  sector: Int!
+  currentLapTime: Float!
+  lastLapTime: Float!
+  bestLapTime: Float!
+  delta: Float!
+  lapValid: Boolean!
+  position: Int!
+  speedKph: Float!
+  rpm: Float!
+  maxRpm: Float!
+  gear: Int!
+  throttle: Float!
+  brake: Float!
+  steering: Float!
+  fuel: Float!
+  trackPosition: Float!
+  tyreTempFl: Float!
+  tyreTempFr: Float!
+  tyreTempRl: Float!
+  tyreTempRr: Float!
+  tyreWearFl: Float!
+  tyreWearFr: Float!
+  tyreWearRl: Float!
+  tyreWearRr: Float!
+}
+
+type LiveSessionDto {
+  sessionId: String!
+  sessionKey: String!
+  driver: AccountSummary!
   game: String!
   track: String!
   car: String!
   sessionType: String!
+  startedAt: DateTime!
+  connected: Boolean!
+}
+
+type ServerSettingsDto {
+  instanceName: String!
+  allowRegistration: Boolean!
+  discordSignIn: Boolean!
+}
+
+type SessionEngineerAccess {
+  engineer: AccountSummary!
+  hasAccess: Boolean!
+}
+
+type SessionSummary {
+  id: String!
+  ownerId: String!
+  sessionKey: String!
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+  startedAt: DateTime
+  data: String!
   createdAt: DateTime!
+}
+
+type SessionTelemetry {
+  sessionId: String!
+  sessionKey: String!
+  samples: [LiveSample!]!
+  laps: [LiveLap!]!
 }
 
 type SetupSummary {
@@ -145,22 +233,31 @@ type SharedLapSummary {
   createdAt: DateTime!
 }
 
-type TelemetrySample {
-  timestamp: DateTime!
-  speed: Float!
-  rpm: Float!
-  gear: Int!
-  lap: Int!
-  lapTime: Float!
-  throttle: Float!
-  brake: Float!
-}
-
 type UserProfile {
   id: String!
   email: String!
   displayName: String!
+  isAdmin: Boolean!
+  avatarUrl: String
+  hasPassword: Boolean!
+  discordLinked: Boolean!
   createdAt: DateTime!
+}
+
+type VisibleSession {
+  id: String!
+  sessionKey: String!
+  driver: AccountSummary!
+  isMine: Boolean!
+  isLive: Boolean!
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+  startedAt: DateTime
+  createdAt: DateTime!
+  data: String!
+  engineerAccess: [SessionEngineerAccess!]!
 }
 
 input AuthRequestInput {
@@ -175,23 +272,20 @@ input CreateSessionInput {
   sessionType: String!
 }
 
-input EngineerCommandMessageInput {
-  id: String!
-  type: EngineerCommandType!
-  payload: String
-  timestamp: Long!
-  from: String!
-}
-
-input EngineerEventMessageInput {
-  type: EngineerEventType!
-  payload: String
-  timestamp: Long!
-}
-
 input SaveLayoutInput {
   id: String
   name: String!
+  data: String!
+}
+
+input SaveSessionInput {
+  id: String
+  sessionKey: String
+  game: String!
+  track: String!
+  car: String!
+  sessionType: String!
+  startedAt: DateTime
   data: String!
 }
 
@@ -214,6 +308,11 @@ input ShareLapInput {
   payloadBase64: String!
 }
 
+input UpdateServerSettingsInput {
+  instanceName: String!
+  allowRegistration: Boolean!
+}
+
 "Defines when a policy shall be executed."
 enum ApplyPolicy {
   "Before the resolver was executed."
@@ -224,17 +323,12 @@ enum ApplyPolicy {
   VALIDATION
 }
 
-enum EngineerCommandType {
-  SET_TARGET_LAP
-  SEND_NOTE
-  REQUEST_SYNC
-}
-
-enum EngineerEventType {
-  TELEMETRY_FRAME
-  TARGET_CHANGED
-  LAP_COMPLETED
-  SESSION_CHANGED
+enum EngineerInviteStatus {
+  VALID
+  EXPIRED
+  USED
+  REVOKED
+  NOT_FOUND
 }
 
 "The `DateTime` scalar type represents a date and time with time zone offset information."

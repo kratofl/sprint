@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Sprint.Contracts;
 using Sprint.Desktop;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Core;
@@ -9,17 +10,26 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.DrivingGuide;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
+using Sprint.Desktop.Host.DrivingGuide;
 using Sprint.Desktop.Runtime;
 using Sprint.Games;
 
 const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+// The shipped appsettings.json sits beside the binary; the content root is wherever the host
+// was started from, so it is read from there explicitly. Environment variables go back on top, so
+// they still override it (e.g. Sprint__Features__SprintWeb=true for a dev run).
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true);
+builder.Configuration.AddEnvironmentVariables();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
 WebApplication app = builder.Build();
 DesktopState state = new();
@@ -73,7 +83,12 @@ ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataR
 // visible on the next poll without the two paths needing to share one instance.
 SessionPlannerService plannerService = new(planStore, log);
 AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore));
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle);
+// The live link: this PC's telemetry straight to an engineer's desktop, no server in between.
+// The link.* commands drive it, the telemetry loop below feeds it, its own worker owns the socket.
+PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
+CancellationTokenSource peerLinkCts = new();
+Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -92,6 +107,35 @@ ResultsImports resultsImports = new(
 // unattended install. UpdateCheckSession caches the last result per (version, channel) so
 // repeated polls do not re-hit the network; ?force=true bypasses the cache for an explicit
 // "Check for updates" action.
+// The Sprint account: signing in goes over the network, so it has focused endpoints rather than
+// a command, and /api/state only reports who is signed in. Kept beside the runtime's other data.
+// Discovery and sync share its transport. The official server's address ships in appsettings.json
+// (Sprint:OfficialServerUrl); empty means there is no official server yet.
+SocketsHttpHandler cloudTransport = new() { ConnectTimeout = TimeSpan.FromSeconds(10) };
+CloudAccount cloudAccount = new(new CloudSession(runtime.DataRoot, log), cloudTransport);
+ServerDiscovery serverDiscovery = new(cloudTransport);
+CloudSyncRunner cloudSync = new(
+    cloudAccount,
+    new CloudSync(new RuntimeSyncLocal(runtime, lapHistoryStore, log), new CloudSyncLedger(runtime.DataRoot, log)),
+    runtime,
+    log);
+string officialServerUrl = (builder.Configuration["Sprint:OfficialServerUrl"] ?? "").Trim();
+// Sprint web (accounts, sync, the server live stream) is behind a feature flag, off in the shipped
+// appsettings.json until the server side is ready. Off, nothing talks to a server even if a sign-in
+// is left over, and the UI hides every Sprint web surface. Sprint__Features__SprintWeb=true turns it on.
+bool sprintWeb = builder.Configuration.GetValue<bool>("Sprint:Features:SprintWeb");
+CancellationTokenSource cloudSyncCts = new();
+Task cloudSyncLoop = sprintWeb ? cloudSync.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
+
+// "Continue with Discord": the browser leg comes back to this host's loopback callback
+// (DiscordCallbackPage.Path, the one route without the bearer token), guarded by DiscordSignIn's nonce.
+DiscordSignIn discordSignIn = new(cloudAccount);
+
+// Streams the session being driven to the signed-in server while sync keeps data there. Fed from
+// the telemetry loop below without waiting on it; its own worker owns the WebSocket.
+LiveUplink liveUplink = new(WebSocketLiveConnection.ConnectAsync, log);
+Task liveUplinkLoop = sprintWeb ? liveUplink.RunAsync(cloudSyncCts.Token) : Task.CompletedTask;
+
 GitHubReleaseSource releaseSource = new();
 UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubReleaseSource.DefaultRepo, ct));
 
@@ -101,7 +145,39 @@ UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubRele
 // throw (contracted on ITelemetrySource/TelemetryEngine), so "no game running" surfaces
 // as a clean disconnected/waiting status rather than an exception.
 ITelemetrySource telemetrySource = GameProviders.Default.CreateTelemetrySource();
-TelemetryEngine telemetryEngine = new(telemetrySource);
+
+// The AR driving line and brake boards (docs/internals/driving-guide.md). The pose leaves on the
+// telemetry reader thread, at the game's rate: the OpenXR layer reads it from shared memory, the
+// monitor overlay from /api/guide/stream. Settings and the lap's geometry follow from the
+// publish loop below.
+DrivingGuideService drivingGuide = new(
+    new DrivingGuideLapPicker(lapHistoryStore, lapTraceStore),
+    () => runtime.Settings.DrivingGuide.Wanted,
+    log: log);
+DrivingGuideFeed? drivingGuideFeed = null;
+try
+{
+    drivingGuideFeed = DrivingGuideFeed.TryCreateNamed();
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    log.Warn("Driving guide: the shared memory for the VR layer could not be created", ex);
+}
+
+DrivingGuideStream drivingGuideStream = new();
+PoseConventionCheck poseCheck = new(log);
+OpenXrLayerRegistration openXrLayer = new(log);
+openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
+
+TelemetryEngine telemetryEngine = new(telemetrySource)
+{
+    FrameRead = frame =>
+    {
+        drivingGuideFeed?.WritePose(frame);
+        drivingGuideStream.Offer(frame);
+        poseCheck.Observe(frame);
+    },
+};
 telemetryEngine.Start();
 
 // The background wiring the deleted Avalonia MainWindow did for every telemetry frame
@@ -119,7 +195,9 @@ TelemetryIngestionPipeline ingestion = new(
     lapHistoryRecorder,
     planTargets,
     telemetryEngine.RequestPlanReference,
-    log);
+    log,
+    liveUplink,
+    peerLink);
 
 // Bounds the trace tier's disk use (#194 parity). Off the request/ingest path, once at
 // startup rather than per lap -- mirrors the deleted client's ThreadPool.QueueUserWorkItem
@@ -150,6 +228,11 @@ Task telemetryPublishLoop = Task.Run(async () =>
             // see TelemetryIngestionPipeline. Kept off the HTTP request path: this loop is the
             // only caller, and a bad frame in one consumer never stops the others or this loop.
             ingestion.Poll(snapshot.Frame);
+            drivingGuide.Observe(snapshot.Frame);
+            drivingGuideFeed?.WriteSettings(runtime.Settings.DrivingGuide);
+            drivingGuideFeed?.WriteGeometry(drivingGuide.State);
+            liveUplink.Update(cloudAccount.Credentials, runtime.Settings.Cloud.Storage, lapHistoryRecorder.OpenSession);
+            peerLink.Update(lapHistoryRecorder.OpenSession);
             // Sources report the raw link; "stale" is derived from frame age, so it
             // only reaches the client if the host evaluates freshness here.
             TelemetryConnectionState effective = TelemetryFreshness.Evaluate(snapshot.Status, DateTimeOffset.UtcNow);
@@ -209,11 +292,22 @@ app.Lifetime.ApplicationStopping.Register(() =>
     ingestion.Close();
     telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
+    cloudSyncCts.Cancel();
+    peerLinkCts.Cancel();
+    discordSignIn.Cancel();
     screenOutputs.Dispose();
+    drivingGuideFeed?.Dispose();
 });
 
 app.Use(async (context, next) =>
 {
+    // The browser returning from Discord cannot carry the bearer token; the nonce guards this route instead.
+    if (HttpMethods.IsGet(context.Request.Method) && context.Request.Path.Equals(DiscordCallbackPage.Path, StringComparison.Ordinal))
+    {
+        await next(context);
+        return;
+    }
+
     if (!string.Equals(context.Request.Headers.Authorization.ToString(), $"Bearer {bearer}", StringComparison.Ordinal))
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -280,16 +374,45 @@ app.MapGet("/api/state", () =>
             logLevel = liveLog.MinimumLevel,
             directory = diagnosticsPaths.Root,
         },
+        account = cloudAccount.State,
+        cloud = new
+        {
+            setupDone = runtime.Settings.Cloud.SetupDone,
+            server = runtime.Settings.Cloud.Server,
+            storage = runtime.Settings.Cloud.Storage,
+            officialServerUrl,
+            progress = cloudSync.Progress,
+            lastSync = cloudSync.Last,
+            live = new
+            {
+                status = liveUplink.Status,
+                detail = liveUplink.Detail,
+            },
+        },
+        link = peerLink.State,
+        features = new { sprintWeb },
         updates = new
         {
             version = BuildInfo.Version,
             channel = runtime.Settings.UpdateChannel,
+        },
+        guide = new
+        {
+            status = drivingGuide.State.Status,
+            lap = drivingGuide.State.Lap,
+            boards = drivingGuide.State.Geometry?.Boards.Count ?? 0,
+            vr = openXrLayer.State,
         },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, frames, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
 });
 
 app.MapGet("/api/telemetry", () => Results.Json(state.Telemetry, json));
+app.MapGet("/api/guide/stream", (HttpContext context) => drivingGuideStream.ServeAsync(
+    context.Response,
+    () => runtime.Settings.DrivingGuide,
+    () => drivingGuide.State,
+    context.RequestAborted));
 app.MapPost("/api/shutdown", () =>
 {
     app.Lifetime.StopApplication();
@@ -305,6 +428,7 @@ app.MapPost("/api/commands", async (HttpRequest request) =>
         return Results.BadRequest(new { error = "command type is required" });
     }
     if (!coordinator.Execute(document.RootElement, out string error)) return Results.BadRequest(new { error });
+    if (type.GetString() == "guide.update") openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
     return Results.Ok(new { accepted = true, type = type.GetString() });
 });
 
@@ -318,6 +442,58 @@ app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId,
 
 // Focused endpoint: building the choices reads every lap-history file's context, which is far too
 // much work for the 4 Hz state poll, so the New plan dialog fetches it once when it opens.
+// Lap files (#198): a lap with channels as a .sprintlap, and back. Electron owns the file
+// dialogs and the disk; these only turn a lap into bytes and bytes into a corpus entry.
+const long MaxLapFileBytes = 32 * 1024 * 1024;
+SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log);
+app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int lapNumber, HttpContext context) =>
+{
+    SharedLapExportResult export = SharedLapExport.Build(lapHistoryStore, lapTraceStore, sessionId, lapNumber, runtime.Settings.DriverName, DateTimeOffset.UtcNow);
+    if (export.Lap is not { } lap)
+    {
+        return Results.NotFound(new { error = export.Error });
+    }
+
+    using MemoryStream buffer = new();
+    SharedLapFile.Write(buffer, lap);
+    context.Response.Headers["x-lap-filename"] = Uri.EscapeDataString(SharedLapFile.SuggestedFileName(lap));
+    context.Response.Headers["x-lap-has-positions"] = export.HasPositions ? "true" : "false";
+    return Results.Bytes(buffer.ToArray(), "application/octet-stream");
+});
+app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct) =>
+{
+    if (request.ContentLength is > MaxLapFileBytes)
+    {
+        return Results.Json(new { outcome = "Failed", error = "That file is far too large to be a Sprint lap file." }, json);
+    }
+
+    using MemoryStream body = new();
+    await request.Body.CopyToAsync(body, ct);
+    body.Position = 0;
+    SharedLapReadResult read = SharedLapFile.Read(body);
+    if (read.Lap is not { } lap)
+    {
+        return Results.Json(new { outcome = "Failed", error = read.Message }, json);
+    }
+
+    SharedLapImportResult imported = sharedLapImporter.Import(lap);
+    if (imported.Added)
+    {
+        // The corpus grew behind Analysis' session filter, which is only rebuilt on a load.
+        analysisController.Load();
+    }
+
+    return Results.Json(new
+    {
+        outcome = imported.Added ? "Imported" : "AlreadyPresent",
+        sharedBy = lap.Attribution,
+        track = lap.Context.TrackCourse,
+        car = lap.Context.CarModel,
+        lapTimeSeconds = lap.LapTimeSeconds,
+        hasPositions = lap.Trace.TryGetChannel(LapTraceChannels.WorldX, out float[] _),
+    }, json);
+});
+
 app.MapGet("/api/planner/context", async (CancellationToken ct) =>
 {
     PlanContextChoices choices = await Task.Run(() => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions()), ct);
@@ -356,6 +532,82 @@ app.MapPost("/api/results-import/decline", async (ResultsImportRequest body, Can
     }
 
     await resultsImports.DeclineAsync(ids, ct);
+    return Results.NoContent();
+});
+
+app.MapPost("/api/account/sign-in", async (AccountSignInRequest body, CancellationToken ct) =>
+{
+    if (!body.IsComplete)
+    {
+        return Results.BadRequest(new { error = "serverUrl, email and password are required" });
+    }
+
+    CloudSignInResult result = await cloudAccount.SignInAsync(body.ServerUrl ?? "", body.Email ?? "", body.Password ?? "", body.CreateAccount, ct);
+    return Results.Json(result, json);
+});
+
+// What the sign-in step needs to know about a server before showing it: whether Discord sign-in is on.
+app.MapPost("/api/cloud/server-info", async (ServerAddressRequest body, CancellationToken ct) =>
+{
+    ServerSettingsDto? settings = await cloudAccount.ServerSettingsAsync(body.ServerUrl ?? "", ct);
+    return settings is null
+        ? Results.Json(new { reachable = false }, json)
+        : Results.Json(new { reachable = true, settings.InstanceName, settings.AllowRegistration, settings.DiscordSignIn }, json);
+});
+
+// Discord sign-in, in three calls from Electron: start (the URL it opens in the system browser),
+// wait (until the browser leg comes back to the callback below, is cancelled or times out), cancel.
+app.MapPost("/api/account/discord/start", (ServerAddressRequest body, HttpContext context) =>
+{
+    Uri callback = new($"http://127.0.0.1:{context.Connection.LocalPort}{DiscordCallbackPage.Path}");
+    DiscordSignInStart start = discordSignIn.Begin(body.ServerUrl ?? "", callback);
+    return start.AuthorizeUrl is { } url
+        ? Results.Json(new { authorizeUrl = url.ToString() }, json)
+        : Results.Json(new DiscordSignInResult(DiscordSignInOutcome.Failed, start.Error), json);
+});
+
+app.MapPost("/api/account/discord/wait", async (CancellationToken ct) =>
+    Results.Json(await discordSignIn.WaitAsync(TimeSpan.FromMinutes(5), ct), json));
+
+app.MapPost("/api/account/discord/cancel", () =>
+{
+    discordSignIn.Cancel();
+    return Results.NoContent();
+});
+
+app.MapGet(DiscordCallbackPage.Path, (HttpRequest request) =>
+{
+    string? error = request.Query["error"];
+    bool taken = discordSignIn.Complete(request.Query["state"], request.Query["ticket"], error);
+    return Results.Content(DiscordCallbackPage.Render(taken, error), "text/html; charset=utf-8", statusCode: taken ? 200 : 400);
+});
+
+// Looks for Sprint servers on the local network: this machine, then its /24. A few seconds.
+app.MapPost("/api/cloud/discover", async (CancellationToken ct) =>
+{
+    IReadOnlyList<Uri> candidates = ServerDiscovery.Candidates(ServerDiscovery.LocalInterfaces(), ServerDiscovery.DefaultPort);
+    IReadOnlyList<DiscoveredServer> servers = await serverDiscovery.ScanAsync(candidates, ct);
+    return Results.Json(new { servers }, json);
+});
+
+app.MapPost("/api/cloud/push", async (CancellationToken ct) =>
+{
+    SyncReport report = await cloudSync.PushAsync(ct);
+    // "Web only" may have removed sessions behind Analysis' session list.
+    if (report.RemovedLocally > 0) analysisController.Load();
+    return Results.Json(report, json);
+});
+
+app.MapPost("/api/cloud/pull", async (CancellationToken ct) =>
+{
+    SyncReport report = await cloudSync.PullAsync(ct);
+    if (report.Downloaded > 0) analysisController.Load();
+    return Results.Json(report, json);
+});
+
+app.MapPost("/api/account/sign-out", () =>
+{
+    cloudAccount.SignOut();
     return Results.NoContent();
 });
 
@@ -513,6 +765,27 @@ PlanContext LastSeenContext()
 try
 {
     await app.RunAsync();
+    // ApplicationStopping cancelled the uplink; give it the moment it needs to send the live
+    // session's `end` (EndTimeout) and close the socket, so engineers see "ended" rather than a drop.
+    try
+    {
+        await liveUplinkLoop.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    catch (TimeoutException)
+    {
+        AppDiagnostics.Log.Warn("Live telemetry did not close before exit");
+    }
+
+    // Likewise the live link's bye, so the engineer sees "ended" rather than a dropped connection.
+    try
+    {
+        await peerLinkLoop.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+    catch (TimeoutException)
+    {
+        AppDiagnostics.Log.Warn("Live link did not close before exit");
+    }
+
     AppDiagnostics.Log.Info("Sprint Desktop Host exited normally");
 }
 catch (Exception ex)

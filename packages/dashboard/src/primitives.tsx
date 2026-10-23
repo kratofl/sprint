@@ -1,6 +1,6 @@
 // Low-level presentational pieces shared by every widget: text, a horizontal bar, a vertical
-// segment bar, a delta bar, a dot, and the instrument-frame panel border. Each takes explicit
-// pixel geometry — no widget-specific telemetry knowledge lives here.
+// segment bar, a dot, and sized values. Each takes explicit pixel geometry — no
+// widget-specific telemetry knowledge lives here. Frames and titles are in chrome.tsx.
 
 import React from 'react'
 import { dimColor, type DashPaletteColors } from './palette'
@@ -234,53 +234,44 @@ export function VerticalSegBar({ rect, pct, stageColor }: { rect: PixelRect; pct
   return <>{bars}</>
 }
 
+// Saira Semi Condensed Bold's tabular digit advance, as a fraction of font size, rounded up
+// from the bundled font so a value sized against it never clips. Wider than the ASCII average
+// in AVG_ADVANCE_RATIO because dash values are mostly digits.
+const VALUE_DIGIT_ADVANCE = 0.56
+
 /**
- * A bidirectional delta bar: a neutral track, filled from the midpoint toward whichever side
- * the sign points, or left bare when the delta rounds to zero.
+ * A value's font size: `share` of the box height, capped so `template` (the widest text the
+ * value can show, e.g. "0:00.000") still fits the width. Sized from the template, never the
+ * live text, so a changing readout keeps one size.
  */
-export function DeltaBar({ x, y, w, h, delta, palette, maxDelta = 2.0 }: { x: number; y: number; w: number; h: number; delta: number; palette: DashPaletteColors; maxDelta?: number }): React.ReactElement {
-  const pct = Math.max(-1, Math.min(1, delta / maxDelta))
-  const mid = x + w / 2
-  const fillW = (Math.abs(pct) * w) / 2
-  const radius = Math.min(3, h / 2)
-  const track = <div key="track" style={{ position: 'absolute', left: x, top: y, width: Math.max(0, w), height: Math.max(0, h), borderRadius: radius, background: palette.surface }} />
-  if (Math.abs(delta) < 0.001) {
-    return track
+export function valueSize(template: string, width: number, height: number, share = 0.7): number {
+  return Math.max(0, Math.min(height * share, (width * 0.96) / (Math.max(1, template.length) * VALUE_DIGIT_ADVANCE)))
+}
+
+/** One large value centered in its box, sized from `template`. */
+export function BigValue({ text, template, width, height, color, share }: { text: string; template: string; width: number; height: number; color: string; share?: number }): React.ReactElement {
+  return <TextLine text={text} left={width / 2} top={height / 2} size={valueSize(template, width, height, share)} color={color} align="center" maxWidth={width} weight="value" />
+}
+
+/**
+ * A value with a smaller trailing unit on one baseline ("13.5 laps", "P4 /38"), anchored at
+ * `left` per `align`, vertically centered on `top`, and clipped to `maxWidth` on the side away
+ * from the anchor like a stable `TextLine`.
+ */
+export function ValueWithUnit({ value, unit, left, top, size, color, unitColor, align = 'center', maxWidth }: { value: string; unit: string; left: number; top: number; size: number; color: string; unitColor: string; align?: TextAlign; maxWidth: number }): React.ReactElement | null {
+  if (size <= 0 || maxWidth <= 0) {
+    return null
   }
 
-  const color = delta > 0 ? palette.neutral : palette.timingPersonalBest
-  const fill = delta > 0
-    ? <div key="fill" style={{ position: 'absolute', left: mid, top: y + 1, width: fillW, height: Math.max(0, h - 2), borderRadius: 2, background: color }} />
-    : <div key="fill" style={{ position: 'absolute', left: mid - fillW, top: y + 1, width: fillW, height: Math.max(0, h - 2), borderRadius: 2, background: color }} />
-  return <>{track}{fill}</>
-}
-
-/** The rounded-rect instrument outline drawn around a widget's assigned cell. */
-export function PanelBorder({ width, height, color }: { width: number; height: number; color: string }): React.ReactElement {
-  const radius = Math.max(6, Math.min(10, Math.min(width, height) * 0.08))
+  const clipLeft = align === 'start' ? left : align === 'end' ? left - maxWidth : left - maxWidth / 2
+  const justify = align === 'start' ? 'flex-start' : align === 'end' ? 'flex-end' : 'center'
+  const boxHeight = size * 1.4
   return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 2.5,
-        top: 2.5,
-        width: Math.max(0, width - 5),
-        height: Math.max(0, height - 5),
-        border: '1.5px solid',
-        borderColor: color,
-        borderRadius: radius,
-        boxSizing: 'border-box',
-      }}
-    />
-  )
-}
-
-/** A muted label over a large centered value, filling the widget. */
-export function SimpleValue({ width, height, label, value, palette }: { width: number; height: number; label: string; value: string; palette: DashPaletteColors }): React.ReactElement {
-  return (
-    <>
-      <TextLine text={label} left={8} top={height * 0.2} size={height * 0.14} color={palette.muted} align="start" maxWidth={width * 0.8} weight="label" sizing="fit" />
-      <TextLine text={value} left={width / 2} top={height * 0.58} size={height * 0.42} color={palette.foreground} align="center" maxWidth={width * 0.92} weight="value" />
-    </>
+    <span style={{ position: 'absolute', left: clipLeft, top, width: maxWidth, height: boxHeight, overflow: 'hidden', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', justifyContent: justify }}>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: size * 0.12, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        <span style={{ fontFamily: WEIGHT_TO_FONT.value, fontWeight: WEIGHT_TO_CSS_WEIGHT.value, fontSize: size, color }}>{value}</span>
+        {unit && <span style={{ fontFamily: WEIGHT_TO_FONT.value, fontWeight: WEIGHT_TO_CSS_WEIGHT.valueRegular, fontSize: size * 0.36, color: unitColor }}>{unit}</span>}
+      </span>
+    </span>
   )
 }

@@ -1,7 +1,8 @@
 import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from './telemetryFrame'
+import { defaultGuideSettings, parseGuideMessage, parseGuideState, type GuideMessage, type GuideState } from './guide/guideModel'
 
-export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'Settings' | 'Help'
+export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
 export type TelemetryLinkState =
   | 'Disconnected' | 'Connecting' | 'WaitingForGame' | 'Connected'
@@ -53,6 +54,110 @@ export type PlanContextChoices = {
   byGame: PlanGameChoices[]
 }
 
+/**
+ * Who the desktop is signed in to Sprint as. `serverUrl` outlives sign-out, to prefill the next sign-in.
+ * `email` is empty for a Discord account.
+ */
+export type Account =
+  | { signedIn: true; serverUrl: string; email: string; displayName: string }
+  | { signedIn: false; serverUrl: string }
+
+export type SignInResult = { ok: true } | { ok: false; error: string }
+
+/** How a Discord sign-in ended (host: `DiscordSignInResult`). A timeout reads as failed, with its own message. */
+export type DiscordSignInResult = { outcome: 'signedIn' } | { outcome: 'cancelled' } | { outcome: 'failed'; error: string }
+
+/** A server's public settings (host: `POST /api/cloud/server-info`), or that it could not be read. */
+export type ServerInfo =
+  | { reachable: true; instanceName: string; allowRegistration: boolean; discordSignIn: boolean }
+  | { reachable: false }
+
+/** Mirrors `LiveUplinkStatus` in Sprint.Desktop.Core; the host sends enum names. */
+export type LiveUplinkStatus = 'Off' | 'WaitingForGame' | 'Connecting' | 'Streaming' | 'Reconnecting'
+
+const liveUplinkStatuses: readonly LiveUplinkStatus[] = ['Off', 'WaitingForGame', 'Connecting', 'Streaming', 'Reconnecting']
+
+/** The live telemetry uplink: what it is doing and, while reconnecting, why. */
+export type LiveUplink = { status: LiveUplinkStatus; detail: string | null }
+
+/** Mirrors `PeerRole` in Sprint.Desktop.Core; the host sends enum names. */
+export type LinkRole = 'Driver' | 'Engineer'
+/** Mirrors `PeerPath`: how a connected link's packets travel. */
+export type LinkPath = 'LocalNetwork' | 'Ipv4' | 'Ipv6'
+/** Mirrors `PeerReachability`: what STUN said about this PC's router. */
+export type LinkReachability = 'Unknown' | 'Open' | 'Strict' | 'LocalOnly'
+
+const linkPaths: readonly LinkPath[] = ['LocalNetwork', 'Ipv4', 'Ipv6']
+const linkReachabilities: readonly LinkReachability[] = ['Unknown', 'Open', 'Strict', 'LocalOnly']
+
+/** The session the driver is on track in (host: `LiveTarget`). */
+export type LinkSession = { game: string; track: string; car: string; sessionType: string }
+
+/** Four corners, front left first. */
+export type Corners = readonly [number, number, number, number]
+
+/** The newest telemetry sample from the driver (host: `LiveSample`), narrowed to what the page shows. */
+export type LinkSample = {
+  lap: number
+  position: number
+  lastLapTime: number
+  bestLapTime: number
+  delta: number
+  lapValid: boolean
+  speedKph: number
+  gear: number
+  fuel: number
+  tyreTemps: Corners
+  tyreWear: Corners
+}
+
+/** How a connected link is doing over the last second (host: `PeerLinkHealth`). */
+export type LinkHealth = { path: LinkPath; roundTripMs: number | null; sampleRate: number; lossPercent: number | null }
+
+/**
+ * The live link to an engineer's or a driver's desktop (host: `PeerLinkState`), one shape per
+ * phase. Only the driver invites and only the engineer joins, so those phases fix the role.
+ */
+export type LiveLink =
+  | { phase: 'Off' }
+  | { phase: 'Preparing'; role: LinkRole }
+  | { phase: 'Inviting'; role: 'Driver'; code: string; reachability: LinkReachability }
+  | { phase: 'Joining'; role: 'Engineer'; code: string; reachability: LinkReachability }
+  | { phase: 'Connecting'; role: 'Driver'; reachability: LinkReachability }
+  | {
+      phase: 'Connected' | 'Interrupted'
+      role: LinkRole
+      reachability: LinkReachability
+      health: LinkHealth
+      session: LinkSession | null
+      latest: LinkSample | null
+    }
+  | { phase: 'Failed' | 'Ended'; role: LinkRole; detail: string }
+
+export type CloudServerChoice = 'None' | 'Official' | 'SelfHosted'
+export type CloudStorageMode = 'Local' | 'Both' | 'Remote'
+export type SyncDirection = 'upload' | 'download'
+
+/** What a sync did. A failed one still reports what it got through before stopping. */
+export type SyncReport = { uploaded: number; downloaded: number; conflicts: number; removedLocally: number } & ({ ok: true } | { ok: false; error: string })
+
+/**
+ * The first-run answer and where data lives (`AppSettings.Cloud` on the host), plus the
+ * official server's shipped address (null while there is none) and any running sync.
+ */
+export type CloudState = {
+  setupDone: boolean
+  server: CloudServerChoice
+  storage: CloudStorageMode
+  officialServerUrl: string | null
+  progress: { direction: SyncDirection; done: number; total: number } | null
+  lastSync: { at: string; direction: SyncDirection; report: SyncReport } | null
+  live: LiveUplink
+}
+
+/** A Sprint server that answered on the local network. */
+export type DiscoveredServer = { url: string; version: string }
+
 export type SprintState = {
   /** `frame` is already converted from the host's C# shape to the dash renderer's (`telemetryFrame.ts`). */
   telemetry: { frame: TelemetryFrame | null; link: TelemetryLink; hz: number }
@@ -63,9 +168,28 @@ export type SprintState = {
   engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
   plans: Array<Record<string, unknown>>; lapHistory: Array<Record<string, unknown>>
   resultsImport: ResultsImportSource
+  account: Account
+  cloud: CloudState
+  link: LiveLink
+  /** Feature flags from the host's appsettings.json. `sprintWeb` off hides every account, sync and setup surface. */
+  features: { sprintWeb: boolean }
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
+  /** The driving guide: its settings (`settings.drivingGuide`), the lap it draws and the VR layer. */
+  guide: GuideState
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
+
+/** Saving a lap as a `.sprintlap` (`sprint:lap-export`). `hasPositions` says whether it can be a driving guide. */
+export type LapExportResult =
+  | { outcome: 'saved'; fileName: string; hasPositions: boolean }
+  | { outcome: 'cancelled' }
+  | { outcome: 'failed'; error: string }
+
+/** Opening a `.sprintlap` (`sprint:lap-import`, host `POST /api/laps/import`). */
+export type LapImportResult =
+  | { outcome: 'imported' | 'alreadyPresent'; sharedBy: string; track: string; car: string; lapTimeSeconds: number; hasPositions: boolean }
+  | { outcome: 'cancelled' }
+  | { outcome: 'failed'; error: string }
 
 /**
  * Result of one self-replacing install attempt (host: `POST /api/updates/install`,
@@ -83,8 +207,14 @@ export type SprintBridge = {
   getState(): Promise<SprintState>
   sendCommand(command: SprintCommand): Promise<void>
   subscribe(listener: (state: SprintState) => void): () => void
+  /** The monitor overlay's feed (`/api/guide/stream`). Only the overlay window receives it. */
+  subscribeGuide(listener: (message: GuideMessage) => void): () => void
   /** Lap traces are too large for the polled state, so they are fetched on demand. */
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
+  /** Opens a save dialog and writes the lap as a `.sprintlap`. */
+  exportLap(sessionId: string, lapNumber: number): Promise<LapExportResult>
+  /** Opens a file dialog and files the chosen `.sprintlap` into the corpus. */
+  importLap(): Promise<LapImportResult>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   /** Fetched when the New plan dialog opens: building it reads every lap-history file. */
   planContext(): Promise<PlanContextChoices>
@@ -94,13 +224,27 @@ export type SprintBridge = {
   resultsImportDecline(entries: readonly string[]): Promise<void>
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<UpdateInstallResult>
+  signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<SignInResult>
+  /** Opens Discord in the system browser and resolves once the sign-in came back, was cancelled or timed out. */
+  signInWithDiscord(serverUrl: string): Promise<DiscordSignInResult>
+  cancelDiscordSignIn(): Promise<void>
+  serverInfo(serverUrl: string): Promise<ServerInfo>
+  signOut(): Promise<void>
+  discoverServers(): Promise<DiscoveredServer[]>
+  syncUp(): Promise<SyncReport>
+  syncDown(): Promise<SyncReport>
 }
 
 type RawBridge = {
   getState(): Promise<unknown>
   sendCommand(command: unknown): Promise<unknown>
   subscribe(listener: (state: unknown) => void): () => void
+  /** Absent in the preview harness's stub. */
+  subscribeGuide?(listener: (message: unknown) => void): () => void
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
+  /** Both absent in the preview harness's stub. */
+  exportLap?(sessionId: string, lapNumber: number): Promise<unknown>
+  importLap?(): Promise<unknown>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   planContext(): Promise<unknown>
   resultsImportScan(includeDeclined: boolean): Promise<unknown>
@@ -108,9 +252,20 @@ type RawBridge = {
   resultsImportDecline(entries: readonly string[]): Promise<unknown>
   checkUpdates(force: boolean): Promise<unknown>
   installUpdate(): Promise<unknown>
+  signIn(serverUrl: string, email: string, password: string, createAccount: boolean): Promise<unknown>
+  signInWithDiscord(serverUrl: string): Promise<unknown>
+  cancelDiscordSignIn(): Promise<unknown>
+  serverInfo(serverUrl: string): Promise<unknown>
+  signOut(): Promise<unknown>
+  discoverServers(): Promise<unknown>
+  syncUp(): Promise<unknown>
+  syncDown(): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, screens: [], guide: emptyGuide() })
+const emptyGuide = (): GuideState => ({ settings: defaultGuideSettings(), status: 'Idle', lap: null, boards: 0, vr: { available: false, registered: false, detail: null } })
+const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
+const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const noLink = (): TelemetryLink => ({ state: 'Disconnected', sourceName: '', detail: null, lastFrameValid: true, invalidReason: null })
 const isLinkState = (value: unknown): value is TelemetryLinkState =>
@@ -157,6 +312,168 @@ const parseResultsImportResult = (value: unknown): ResultsImportResult => {
   return { outcome: 'failed', error }
 }
 
+/** Narrows the host's `CloudAccountState` once, here. Anything malformed reads as signed out. */
+const parseAccount = (value: unknown): Account => {
+  if (!isRecord(value)) return { signedIn: false, serverUrl: '' }
+  const serverUrl = typeof value.serverUrl === 'string' ? value.serverUrl : ''
+  if (value.signedIn !== true || typeof value.email !== 'string') return { signedIn: false, serverUrl }
+  return { signedIn: true, serverUrl, email: value.email, displayName: typeof value.displayName === 'string' ? value.displayName : '' }
+}
+
+const parseSignInResult = (value: unknown): SignInResult => {
+  if (isRecord(value) && value.ok === true) return { ok: true }
+  const error = isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : 'The host returned an unexpected response.'
+  return { ok: false, error }
+}
+
+const unexpected = 'The host returned an unexpected response.'
+
+/** Narrows the host's `DiscordSignInResult` once, here. */
+const parseDiscordSignInResult = (value: unknown): DiscordSignInResult => {
+  if (!isRecord(value)) return { outcome: 'failed', error: unexpected }
+  switch (value.outcome) {
+    case 'SignedIn':
+      return { outcome: 'signedIn' }
+    case 'Cancelled':
+      return { outcome: 'cancelled' }
+    case 'TimedOut':
+      return { outcome: 'failed', error: 'Nothing came back from the browser. Try again.' }
+    default:
+      return { outcome: 'failed', error: typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+  }
+}
+
+/** A Discord sign-in the host never answered (stopped, timed out) reads as failed, like any other. */
+const discordFailed = (): DiscordSignInResult => ({ outcome: 'failed', error: 'Sprint’s host did not answer. Try again.' })
+
+const parseServerInfo = (value: unknown): ServerInfo =>
+  isRecord(value) && value.reachable === true
+    ? {
+        reachable: true,
+        instanceName: typeof value.instanceName === 'string' && value.instanceName.length > 0 ? value.instanceName : 'Sprint',
+        allowRegistration: value.allowRegistration !== false,
+        discordSignIn: value.discordSignIn === true,
+      }
+    : { reachable: false }
+
+const isLiveUplinkStatus = (value: unknown): value is LiveUplinkStatus =>
+  typeof value === 'string' && liveUplinkStatuses.some((status) => status === value)
+
+const parseLive = (value: unknown): LiveUplink =>
+  isRecord(value) && isLiveUplinkStatus(value.status) ? { status: value.status, detail: optionalString(value.detail) } : liveOff()
+
+const count = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0)
+
+/** Narrows the host's `SyncReport` once, here. Anything malformed reads as a failed sync. */
+const parseSyncReport = (value: unknown): SyncReport => {
+  if (!isRecord(value)) return { uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'The host returned an unexpected response.' }
+  const counts = { uploaded: count(value.uploaded), downloaded: count(value.downloaded), conflicts: count(value.conflicts), removedLocally: count(value.removedLocally) }
+  return typeof value.error === 'string' && value.error.length > 0 ? { ...counts, ok: false, error: value.error } : { ...counts, ok: true }
+}
+
+/** A sync the host never answered (stopped, timed out) reads as failed, like any other. */
+const syncFailed = (): SyncReport => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'Sprint’s host did not answer. Try again.' })
+
+const isSyncDirection = (value: unknown): value is SyncDirection => value === 'upload' || value === 'download'
+
+/**
+ * Narrows the host's `cloud` state. A host that sends none predates the first-run setup, so it
+ * reads as already set up rather than opening the setup over a working app.
+ */
+const parseCloud = (value: unknown): CloudState => {
+  if (!isRecord(value)) return emptyCloud()
+  const server: CloudServerChoice = value.server === 'Official' || value.server === 'SelfHosted' ? value.server : 'None'
+  const storage: CloudStorageMode = value.storage === 'Both' || value.storage === 'Remote' ? value.storage : 'Local'
+  const progress = isRecord(value.progress) && isSyncDirection(value.progress.direction)
+    ? { direction: value.progress.direction, done: count(value.progress.done), total: count(value.progress.total) }
+    : null
+  const lastSync = isRecord(value.lastSync) && typeof value.lastSync.at === 'string' && isSyncDirection(value.lastSync.direction)
+    ? { at: value.lastSync.at, direction: value.lastSync.direction, report: parseSyncReport(value.lastSync.report) }
+    : null
+  return {
+    setupDone: value.setupDone !== false,
+    server,
+    storage,
+    officialServerUrl: optionalString(value.officialServerUrl),
+    progress,
+    lastSync,
+    live: parseLive(value.live),
+  }
+}
+
+const finite = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0)
+const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+const isLinkPath = (value: unknown): value is LinkPath => typeof value === 'string' && linkPaths.some((path) => path === value)
+const isLinkReachability = (value: unknown): value is LinkReachability =>
+  typeof value === 'string' && linkReachabilities.some((reachability) => reachability === value)
+
+const parseLinkSession = (value: unknown): LinkSession | null =>
+  isRecord(value) ? { game: text(value.game), track: text(value.track), car: text(value.car), sessionType: text(value.sessionType) } : null
+
+const parseLinkSample = (value: unknown): LinkSample | null => {
+  if (!isRecord(value)) return null
+  return {
+    lap: finite(value.lap),
+    position: finite(value.position),
+    lastLapTime: finite(value.lastLapTime),
+    bestLapTime: finite(value.bestLapTime),
+    delta: finite(value.delta),
+    lapValid: value.lapValid !== false,
+    speedKph: finite(value.speedKph),
+    gear: finite(value.gear),
+    fuel: finite(value.fuel),
+    tyreTemps: [finite(value.tyreTempFl), finite(value.tyreTempFr), finite(value.tyreTempRl), finite(value.tyreTempRr)],
+    tyreWear: [finite(value.tyreWearFl), finite(value.tyreWearFr), finite(value.tyreWearRl), finite(value.tyreWearRr)],
+  }
+}
+
+const optionalNumber = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+/** Narrows the host's `PeerLinkState` once, here. A phase missing what it needs reads as off. */
+const parseLiveLink = (value: unknown): LiveLink => {
+  if (!isRecord(value)) return { phase: 'Off' }
+  const role: LinkRole | null = value.role === 'Driver' || value.role === 'Engineer' ? value.role : null
+  const reachability = isLinkReachability(value.reachability) ? value.reachability : 'Unknown'
+  const code = optionalString(value.code)
+  switch (value.phase) {
+    case 'Preparing':
+      return role ? { phase: 'Preparing', role } : { phase: 'Off' }
+    case 'Inviting':
+      return code ? { phase: 'Inviting', role: 'Driver', code, reachability } : { phase: 'Off' }
+    case 'Joining':
+      return code ? { phase: 'Joining', role: 'Engineer', code, reachability } : { phase: 'Off' }
+    case 'Connecting':
+      return { phase: 'Connecting', role: 'Driver', reachability }
+    case 'Connected':
+    case 'Interrupted': {
+      const health = isRecord(value.health) ? value.health : null
+      if (!role || !health || !isLinkPath(health.path)) return { phase: 'Off' }
+      return {
+        phase: value.phase,
+        role,
+        reachability,
+        health: { path: health.path, roundTripMs: optionalNumber(health.roundTripMs), sampleRate: finite(health.sampleRate), lossPercent: optionalNumber(health.lossPercent) },
+        session: parseLinkSession(value.session),
+        latest: parseLinkSample(value.latest),
+      }
+    }
+    case 'Failed':
+    case 'Ended':
+      return role ? { phase: value.phase, role, detail: optionalString(value.detail) ?? 'The link closed.' } : { phase: 'Off' }
+    default:
+      return { phase: 'Off' }
+  }
+}
+
+const parseDiscovered = (value: unknown): DiscoveredServer[] =>
+  isRecord(value) && Array.isArray(value.servers)
+    ? value.servers.flatMap((server: unknown) =>
+        isRecord(server) && typeof server.url === 'string' && server.url.length > 0
+          ? [{ url: server.url, version: typeof server.version === 'string' ? server.version : '' }]
+          : [],
+      )
+    : []
+
 const emptyPlanContext = (): PlanContextChoices => ({ prefill: { game: '', car: '', track: '' }, games: [], tracks: [], cars: [], byGame: [] })
 
 /** Narrows the host's `PlanContextChoices` once, here. */
@@ -187,6 +504,11 @@ const parseState = (value: unknown): SprintState => {
     hz: typeof telemetry.hz === 'number' && Number.isFinite(telemetry.hz) ? telemetry.hz : 0,
   }
   parsed.resultsImport = parseResultsImportSource(value.resultsImport)
+  parsed.account = parseAccount(value.account)
+  parsed.cloud = parseCloud(value.cloud)
+  parsed.link = parseLiveLink(value.link)
+  parsed.features = { sprintWeb: isRecord(value.features) && value.features.sprintWeb === true }
+  parsed.guide = parseGuideState(isRecord(value.settings) ? value.settings.drivingGuide : undefined, value.guide)
   return parsed
 }
 /** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
@@ -212,13 +534,45 @@ const parseUpdateInstallResult = (value: unknown): UpdateInstallResult => {
   }
 }
 
+const parseLapExportResult = (value: unknown): LapExportResult => {
+  if (isRecord(value) && value.outcome === 'saved' && typeof value.fileName === 'string') {
+    return { outcome: 'saved', fileName: value.fileName, hasPositions: value.hasPositions === true }
+  }
+  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
+  return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+}
+
+const parseLapImportResult = (value: unknown): LapImportResult => {
+  if (isRecord(value) && (value.outcome === 'Imported' || value.outcome === 'AlreadyPresent') && typeof value.lapTimeSeconds === 'number') {
+    return {
+      outcome: value.outcome === 'Imported' ? 'imported' : 'alreadyPresent',
+      sharedBy: typeof value.sharedBy === 'string' ? value.sharedBy : 'Unknown driver',
+      track: typeof value.track === 'string' ? value.track : '',
+      car: typeof value.car === 'string' ? value.car : '',
+      lapTimeSeconds: value.lapTimeSeconds,
+      hasPositions: value.hasPositions === true,
+    }
+  }
+  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
+  return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+}
+
+const noLapFiles = 'Lap files need the Sprint app.'
+
 const raw = window.sprint
 export const bridge: SprintBridge = raw
   ? {
       getState: async () => parseState(await raw.getState()),
       sendCommand: async (command) => { await raw.sendCommand(command) },
       subscribe: (listener) => raw.subscribe((state) => listener(parseState(state))),
+      subscribeGuide: (listener) => raw.subscribeGuide?.((message) => {
+        const parsed = parseGuideMessage(message)
+        if (parsed) listener(parsed)
+      }) ?? (() => undefined),
       analysisTrace: (sessionId, lapNumber) => raw.analysisTrace(sessionId, lapNumber),
+      exportLap: async (sessionId, lapNumber) =>
+        raw.exportLap ? parseLapExportResult(await raw.exportLap(sessionId, lapNumber).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
+      importLap: async () => (raw.importLap ? parseLapImportResult(await raw.importLap().catch(() => null)) : { outcome: 'failed', error: noLapFiles }),
       diagnosticsLogs: (minLevel, text) => raw.diagnosticsLogs(minLevel, text),
       planContext: async () => parsePlanContext(await raw.planContext()),
       resultsImportScan: async (includeDeclined) => parseResultsImportOffer(await raw.resultsImportScan(includeDeclined)),
@@ -226,13 +580,24 @@ export const bridge: SprintBridge = raw
       resultsImportDecline: async (entries) => { await raw.resultsImportDecline(entries) },
       checkUpdates: (force) => raw.checkUpdates(force),
       installUpdate: async () => parseUpdateInstallResult(await raw.installUpdate()),
+      signIn: async (serverUrl, email, password, createAccount) => parseSignInResult(await raw.signIn(serverUrl, email, password, createAccount)),
+      signInWithDiscord: (serverUrl) => raw.signInWithDiscord(serverUrl).then(parseDiscordSignInResult, discordFailed),
+      cancelDiscordSignIn: async () => { await raw.cancelDiscordSignIn() },
+      serverInfo: (serverUrl) => raw.serverInfo(serverUrl).then(parseServerInfo, () => ({ reachable: false })),
+      signOut: async () => { await raw.signOut() },
+      discoverServers: async () => parseDiscovered(await raw.discoverServers()),
+      syncUp: () => raw.syncUp().then(parseSyncReport, syncFailed),
+      syncDown: () => raw.syncDown().then(parseSyncReport, syncFailed),
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
       getState: async () => emptyState(),
       sendCommand: async () => undefined,
       subscribe: () => () => undefined,
+      subscribeGuide: () => () => undefined,
       analysisTrace: async () => null,
+      exportLap: async () => ({ outcome: 'failed', error: noLapFiles }),
+      importLap: async () => ({ outcome: 'failed', error: noLapFiles }),
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),
       resultsImportScan: async () => ({ entries: [], counts: [] }),
@@ -240,4 +605,12 @@ export const bridge: SprintBridge = raw
       resultsImportDecline: async () => undefined,
       checkUpdates: async () => null,
       installUpdate: async () => ({ outcome: 'unavailable-in-dev' }),
+      signIn: async () => ({ ok: false, error: 'There is no Sprint host to sign in from.' }),
+      signInWithDiscord: async () => ({ outcome: 'failed', error: 'There is no Sprint host to sign in from.' }),
+      cancelDiscordSignIn: async () => undefined,
+      serverInfo: async () => ({ reachable: false }),
+      signOut: async () => undefined,
+      discoverServers: async () => [],
+      syncUp: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
+      syncDown: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
     }

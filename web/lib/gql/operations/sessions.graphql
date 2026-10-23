@@ -1,0 +1,125 @@
+# Every session the signed-in user may see: their own and the ones of drivers they
+# engineer for, newest first. `data` (the lap history) is not selected for lists.
+query Sessions {
+  visibleSessions {
+    id
+    sessionKey
+    driver {
+      id
+      displayName
+      avatarUrl
+    }
+    isMine
+    isLive
+    game
+    track
+    car
+    sessionType
+    startedAt
+    createdAt
+  }
+}
+
+# Sessions someone is streaming right now that the signed-in user may watch.
+query LiveSessions {
+  liveSessions {
+    sessionId
+    sessionKey
+    driver {
+      id
+      displayName
+      avatarUrl
+    }
+    game
+    track
+    car
+    sessionType
+    startedAt
+    connected
+  }
+}
+
+# One session for its detail and live pages. Null when it does not exist or the
+# signed-in user may not see it. `engineerAccess` is only filled for one's own.
+query SessionDetail($id: String!) {
+  visibleSession(id: $id) {
+    id
+    sessionKey
+    driver {
+      id
+      displayName
+      avatarUrl
+    }
+    isMine
+    isLive
+    game
+    track
+    car
+    sessionType
+    startedAt
+    createdAt
+    data
+    engineerAccess {
+      engineer {
+        id
+        displayName
+        avatarUrl
+      }
+      hasAccess
+    }
+  }
+}
+
+# A session's recorded telemetry, downsampled by the API to at most `maxPoints`,
+# and the laps it detected. Every LiveSample field is selected: the live stream
+# sends the same shape, and lib/live.ts parses it against this type.
+query SessionTelemetry($sessionId: String!, $maxPoints: Int!) {
+  sessionTelemetry(sessionId: $sessionId, maxPoints: $maxPoints) {
+    sessionId
+    sessionKey
+    samples {
+      timestamp
+      lap
+      sector
+      currentLapTime
+      lastLapTime
+      bestLapTime
+      delta
+      lapValid
+      position
+      speedKph
+      rpm
+      maxRpm
+      gear
+      throttle
+      brake
+      steering
+      fuel
+      trackPosition
+      tyreTempFl
+      tyreTempFr
+      tyreTempRl
+      tyreTempRr
+      tyreWearFl
+      tyreWearFr
+      tyreWearRl
+      tyreWearRr
+    }
+    laps {
+      lap
+      lapTime
+      valid
+      completedAt
+    }
+  }
+}
+
+# Hides one of the signed-in driver's sessions from one of their engineers, or
+# shows it again. Takes effect on live streams at once.
+mutation ExcludeEngineerFromSession($sessionId: String!, $engineerId: String!) {
+  excludeEngineerFromSession(sessionId: $sessionId, engineerId: $engineerId)
+}
+
+mutation IncludeEngineerInSession($sessionId: String!, $engineerId: String!) {
+  includeEngineerInSession(sessionId: $sessionId, engineerId: $engineerId)
+}

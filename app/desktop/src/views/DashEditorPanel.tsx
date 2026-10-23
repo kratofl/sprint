@@ -1,8 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import { ArrowLeft, Check, Grid2x2, GripVertical, Layers, Minus, Plus, RotateCcw, Save, Star, Trash2, Undo2, X, ZoomIn, ZoomOut } from 'lucide-react'
-import { DashRenderer, dashPreviewStates, dashThemePresets, gridRect, isDashWidgetType, matchLayoutThemeName, presetSwatchColor, resolvePreviewFrame } from '@sprint/dashboard'
-import type { DashLayout, DashPage, DashWidget, DashWidgetStack, DashWidgetType, PixelRect } from '@sprint/dashboard'
+import { DashRenderer, LAP_SUMMARY_SECONDS, dashPreviewStates, dashStyles, dashThemePresets, gridRect, isDashWidgetType, matchLayoutThemeName, presetSwatchColor, resolvePreviewFrame } from '@sprint/dashboard'
+import type { DashLayout, DashPage, DashStyle, DashWidget, DashWidgetStack, DashWidgetType, PixelRect } from '@sprint/dashboard'
 import type { DashPreviewState } from '@sprint/dashboard'
 import type { TelemetryFrame } from '@sprint/types'
 import type { SprintCommand } from '../bridge'
@@ -58,6 +58,7 @@ import {
   setWidgetConfig,
   setWidgetGeometry,
   setWidgetStackGeometry,
+  setDashStyle,
   setWidgetStyle,
   widgetDefinition,
   widgetDisplayName,
@@ -470,7 +471,12 @@ export function DashEditorPanel({
 
         {section === 'alerts' && <AlertsEditor draft={draft} apply={apply} frame={previewFrame} activePageId={activePageId} isIdlePage={isIdlePage} canvasWidth={canvasWidth} canvasHeight={canvasHeight} />}
 
-        {section === 'theme' && <ThemePanel draft={draft} profile={profile} apply={apply} frame={previewFrame} activePageId={activePageId} isIdlePage={isIdlePage} />}
+        {section === 'theme' && (
+          <div className="dash-editor-theme">
+            <DashStylePanel draft={draft} profile={profile} apply={apply} frame={previewFrame} activePageId={activePageId} isIdlePage={isIdlePage} />
+            <ThemePanel draft={draft} profile={profile} apply={apply} frame={previewFrame} activePageId={activePageId} isIdlePage={isIdlePage} />
+          </div>
+        )}
       </div>
 
       {confirmingReset && (
@@ -1316,20 +1322,6 @@ function WidgetInspector({
             ))}
           </select>
         </label>
-        <label className="field">
-          <span>Border</span>
-          <select
-            value={widget.style?.border === undefined ? 'default' : widget.style.border ? 'on' : 'off'}
-            onChange={(event) => {
-              const next = event.target.value
-              apply((current) => setWidgetStyle(current, location, widget.id, { border: next === 'default' ? undefined : next === 'on' }))
-            }}
-          >
-            <option value="default">Default</option>
-            <option value="on">On</option>
-            <option value="off">Off</option>
-          </select>
-        </label>
       </div>
 
       <button
@@ -1553,7 +1545,7 @@ function AlertsEditor({
           <label className="field">
             <span>Display</span>
             <select value={global.displayMode} onChange={(event) => apply((current) => setGlobalAlertConfig(current, { displayMode: event.target.value === 'center' ? 'center' : 'full' }))}>
-              <option value="full">Full width</option>
+              <option value="full">Full screen</option>
               <option value="center">Centered</option>
             </select>
           </label>
@@ -1601,6 +1593,7 @@ function AlertsEditor({
             draft={draft}
             type={selected.type}
             label={selected.label}
+            fullScreen={global.displayMode === 'full'}
             apply={apply}
             frame={frame}
             activePageId={activePageId}
@@ -1618,6 +1611,7 @@ function AlertDetail({
   draft,
   type,
   label,
+  fullScreen,
   apply,
   frame,
   activePageId,
@@ -1628,6 +1622,8 @@ function AlertDetail({
   draft: DashLayout
   type: AlertTypeId
   label: string
+  /** Full-screen popups cover the whole dash, so there is nothing to place. */
+  fullScreen: boolean
   apply: Apply
   frame: TelemetryFrame | null
   activePageId: string
@@ -1650,12 +1646,25 @@ function AlertDetail({
         Show on the dash
       </label>
 
-      {enabled && alert ? (
+      {enabled && alert && type === 'lap_summary' ? (
         <>
-          <div className="dash-editor-alert-well">
-            <AlertCanvas draft={draft} alert={alert} frame={frame} pageId={activePageId} isIdlePage={isIdlePage} canvasWidth={canvasWidth} canvasHeight={canvasHeight} onChange={onGeometryChange} />
+          <p className="field-hint">Shows full screen after each timed lap: the lap time against your best before it, and the fuel the lap used against the session plan's fuel target. The gear stays visible.</p>
+          <div className="dash-editor-field-row">
+            <DurationStepper seconds={alert.durationSeconds ?? LAP_SUMMARY_SECONDS} onChange={(durationSeconds) => apply((current) => setAlertOverride(current, type, { durationSeconds }))} />
           </div>
-          <GeometryFields rect={alert} onChange={onGeometryChange} />
+        </>
+      ) : enabled && alert ? (
+        <>
+          {fullScreen ? (
+            <p className="field-hint">Shows full screen in the setting's color. Set Display to Centered in the alert defaults to place it on the dash instead.</p>
+          ) : (
+            <>
+              <div className="dash-editor-alert-well">
+                <AlertCanvas draft={draft} alert={alert} frame={frame} pageId={activePageId} isIdlePage={isIdlePage} canvasWidth={canvasWidth} canvasHeight={canvasHeight} onChange={onGeometryChange} />
+              </div>
+              <GeometryFields rect={alert} onChange={onGeometryChange} />
+            </>
+          )}
 
           <label className="dash-editor-check">
             <input type="checkbox" checked={!usesGlobal} onChange={(event) => apply((current) => setAlertUseGlobal(current, type, !event.target.checked))} />
@@ -1683,8 +1692,63 @@ function AlertDetail({
           )}
         </>
       ) : (
-        <p className="field-hint">Turn the alert on to place it on the dash and set its look.</p>
+        <p className="field-hint">Turn the alert on to show it on the dash and set its look.</p>
       )}
+    </section>
+  )
+}
+
+// ── Dash style ───────────────────────────────────────────────────────────
+
+const DASH_STYLE_LABELS: Record<DashStyle, string> = { panels: 'Panels', grid: 'Grid', bars: 'Label bars' }
+
+/** The widget chrome picker: the dash's own page rendered in each style, like the theme presets below it. */
+function DashStylePanel({
+  draft,
+  profile,
+  apply,
+  frame,
+  activePageId,
+  isIdlePage,
+}: {
+  draft: DashLayout
+  profile: ScreenProfile
+  apply: Apply
+  frame: TelemetryFrame | null
+  activePageId: string
+  isIdlePage: boolean
+}) {
+  const active = draft.dashStyle ?? 'panels'
+  const preview = fitScreenSize(profile, THEME_PREVIEW_MAX_WIDTH, THEME_PREVIEW_MAX_HEIGHT)
+
+  return (
+    <section className="card dash-editor-card" aria-label="Dash style">
+      <div className="dash-editor-card-head">
+        <h2 className="card-title">Dash style</h2>
+      </div>
+      <p className="field-hint">How every widget is framed and titled. Positions, sizes and colors stay the same.</p>
+      <div className="dash-editor-theme-grid">
+        {dashStyles.map((dashStyle) => {
+          const selected = dashStyle === active
+          return (
+            <button
+              key={dashStyle}
+              type="button"
+              className={selected ? 'dash-editor-theme-item selected' : 'dash-editor-theme-item'}
+              aria-pressed={selected}
+              onClick={() => apply((current) => setDashStyle(current, dashStyle))}
+            >
+              <span className="dash-editor-theme-preview">
+                <DashRenderer layout={{ ...draft, dashStyle }} frame={frame} width={preview.width} height={preview.height} pageId={activePageId} idle={isIdlePage} />
+              </span>
+              <span className="dash-editor-theme-label">
+                <span className="dash-editor-row-label">{DASH_STYLE_LABELS[dashStyle]}</span>
+                {selected && <Check size={14} className="dash-editor-theme-check" aria-label="Selected" />}
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </section>
   )
 }

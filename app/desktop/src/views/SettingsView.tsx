@@ -1,11 +1,16 @@
 import { useId, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Download, FlaskConical, Hash, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Compass, Crosshair, Download, Flag, FlaskConical, Glasses, HardDrive, Hash, Monitor, Radio, RefreshCw, RotateCcw, Route, Ruler, ScanEye, Signpost, UserRound, type LucideIcon } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { SprintCommand } from '../bridge'
+import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport } from '../bridge'
+import { syncReportText } from '../onboarding/summary'
+import { accountName, accountWhere } from '../shell/account'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
+import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
+import type { GuideSettings, GuideState } from '../guide/guideModel'
+import { formatLapSeconds } from './AnalysisDomain'
 import { CHANNELS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { parseUpdatesInfo, useUpdateCheck, useUpdateInstall } from './SettingsUpdates'
@@ -21,7 +26,7 @@ type Send = (command: SprintCommand) => Promise<void>
  * risky changes — opting into pre-release builds, installing an update,
  * resetting preferences — confirm in a ContentDialog first.
  */
-export function SettingsView({ runtime, send }: { runtime: RuntimeState; send: Send }) {
+export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: RuntimeState; send: Send; onSetUpCloud: () => void }) {
   if (runtime.kind === 'loading') {
     return (
       <div className="settings">
@@ -43,6 +48,10 @@ export function SettingsView({ runtime, send }: { runtime: RuntimeState; send: S
       <PageHeader title="Settings" />
       {/* Keyed on the saved values so a reset (or any host-side change) refreshes the drafts. */}
       <ProfileGroup key={`${settings.driverName}\u0000${settings.driverNumber}`} settings={settings} send={send} />
+      {runtime.sprint.features.sprintWeb && (
+        <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
+      )}
+      <GuideGroup guide={runtime.sprint.guide} send={send} />
       <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
       <ResetGroup send={send} />
     </div>
@@ -99,6 +108,170 @@ const blurOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
   if (event.key === 'Enter') event.currentTarget.blur()
 }
 
+const STORAGE_OPTIONS: Array<{ id: CloudStorageMode; label: string }> = [
+  { id: 'Local', label: 'This PC' },
+  { id: 'Both', label: 'Both' },
+  { id: 'Remote', label: 'Web only' },
+]
+
+const STORAGE_DESCRIPTIONS: Record<CloudStorageMode, string> = {
+  Local: 'Sessions, setups and dashes stay on this PC. Nothing uploads by itself.',
+  Both: 'Everything stays here and is copied to Sprint web every few minutes.',
+  Remote: 'Finished sessions move to Sprint web once uploaded. Setups and dashes stay here too.',
+}
+
+const LIVE_STATUS: Record<LiveUplinkStatus, { label: string; tone: StatusTone }> = {
+  Off: { label: 'Off', tone: 'neutral' },
+  WaitingForGame: { label: 'Waiting for game', tone: 'neutral' },
+  Connecting: { label: 'Connecting', tone: 'info' },
+  Streaming: { label: 'Streaming', tone: 'success' },
+  Reconnecting: { label: 'Reconnecting', tone: 'warning' },
+}
+
+/** What the live uplink is doing, in a sentence: why it is off, what it waits for, or why it reconnects. */
+const liveDescription = (live: LiveUplink, storage: CloudStorageMode): string => {
+  switch (live.status) {
+    case 'Off':
+      return storage === 'Local'
+        ? 'Streams your sessions while you drive once data is kept on the web too.'
+        : 'Streams your sessions to Sprint web while you drive.'
+    case 'WaitingForGame':
+      return 'Starts streaming when a game sends telemetry for a session.'
+    case 'Connecting':
+      return 'Connecting to Sprint web…'
+    case 'Streaming':
+      return 'Your session is live on Sprint web for you and your race engineers.'
+    case 'Reconnecting':
+      return `${live.detail ?? 'The connection dropped.'} Retrying by itself; live data is skipped until it is back.`
+  }
+}
+
+/**
+ * Sprint web: where this PC is connected, where data lives, and manual upload/download.
+ * Connecting (or changing server) runs the setup flow; the rows below only appear once signed in.
+ */
+function CloudGroup({ account, cloud, send, onSetUp }: { account: Account; cloud: CloudState; send: Send; onSetUp: () => void }) {
+  const [confirmRemote, setConfirmRemote] = useState(false)
+  const [busy, setBusy] = useState<SyncDirection | null>(null)
+  const [result, setResult] = useState<{ direction: SyncDirection; report: SyncReport } | null>(null)
+
+  const sync = async (direction: SyncDirection) => {
+    setBusy(direction)
+    const report = await (direction === 'upload' ? bridge.syncUp() : bridge.syncDown())
+    setResult({ direction, report })
+    setBusy(null)
+  }
+
+  const setStorage = (storage: CloudStorageMode) => {
+    if (storage === cloud.storage) return
+    if (storage === 'Remote') setConfirmRemote(true)
+    else void send({ type: 'cloud.configure', storage })
+  }
+
+  // This session's own result first; otherwise what the host last did (the background upload included).
+  const shown = result ?? cloud.lastSync
+  const progress = cloud.progress
+
+  return (
+    <SettingsGroup title="Sprint web">
+      <SettingRow
+        id="settings-cloud-server"
+        icon={Cloud}
+        title={account.signedIn ? `Signed in as ${accountName(account)}` : 'Not connected'}
+        description={account.signedIn ? accountWhere(account) : 'Keep sessions, setups and dashes on your Sprint web server too.'}
+      >
+        {(labels) =>
+          account.signedIn ? (
+            <>
+              <button type="button" className="button" aria-describedby={labels['aria-describedby']} onClick={onSetUp}>
+                Change server…
+              </button>
+              <button type="button" className="button subtle" onClick={() => void bridge.signOut()}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button type="button" className="button primary" aria-describedby={labels['aria-describedby']} onClick={onSetUp}>
+              Set up Sprint web…
+            </button>
+          )
+        }
+      </SettingRow>
+
+      {account.signedIn && (
+        <>
+          <SettingRow id="settings-cloud-storage" icon={HardDrive} title="Keep data on" description={STORAGE_DESCRIPTIONS[cloud.storage]}>
+            {(labels) => (
+              <div className="segmented" role="radiogroup" {...labels}>
+                {STORAGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={cloud.storage === option.id}
+                    className="segmented-item"
+                    onClick={() => setStorage(option.id)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            id="settings-cloud-sync"
+            icon={shown && !shown.report.ok ? AlertTriangle : CloudUpload}
+            iconTone={shown && !shown.report.ok ? 'danger' : null}
+            title={progress ? `${progress.direction === 'upload' ? 'Uploading' : 'Downloading'} ${progress.done} of ${progress.total}…` : 'Sync now'}
+            description={shown ? syncReportText(shown.direction, shown.report) : 'Upload what changed here, or download what is only on the web.'}
+          >
+            {(labels) => (
+              <>
+                <button type="button" className="button" aria-describedby={labels['aria-describedby']} disabled={busy !== null} onClick={() => void sync('download')}>
+                  <CloudDownload />
+                  {busy === 'download' ? 'Downloading…' : 'Download'}
+                </button>
+                <button type="button" className="button" aria-describedby={labels['aria-describedby']} disabled={busy !== null} onClick={() => void sync('upload')}>
+                  <CloudUpload />
+                  {busy === 'upload' ? 'Uploading…' : 'Upload'}
+                </button>
+              </>
+            )}
+          </SettingRow>
+
+          <SettingRow
+            id="settings-cloud-live"
+            icon={Radio}
+            title="Live telemetry"
+            description={liveDescription(cloud.live, cloud.storage)}
+          >
+            {() => (
+              <Status tone={LIVE_STATUS[cloud.live.status].tone} role="status">
+                {LIVE_STATUS[cloud.live.status].label}
+              </Status>
+            )}
+          </SettingRow>
+        </>
+      )}
+
+      {confirmRemote && (
+        <ConfirmDialog
+          title="Keep sessions on the web only?"
+          message="After each upload, finished sessions are removed from this PC. Download brings them back at any time. Setups and dashes stay here."
+          confirmLabel="Web only"
+          initialFocus="cancel"
+          onConfirm={() => {
+            void send({ type: 'cloud.configure', storage: 'Remote' })
+            setConfirmRemote(false)
+          }}
+          onCancel={() => setConfirmRemote(false)}
+        />
+      )}
+    </SettingsGroup>
+  )
+}
+
 const UPDATE_HEADLINES: Record<UpdateCheckState['status'], string> = {
   idle: 'Check for updates',
   checking: 'Checking for updates…',
@@ -113,6 +286,134 @@ const UPDATE_ICONS: Record<UpdateCheckState['status'], LucideIcon> = {
   'up-to-date': CheckCircle2,
   available: Download,
   failed: AlertTriangle,
+}
+
+/** What the guide is drawing from, in a sentence. */
+const guideLapText = (guide: GuideState): string => {
+  switch (guide.status) {
+    case 'Idle':
+      return 'Picked when you drive: your fastest valid lap on that track and car.'
+    case 'Searching':
+      return 'Looking for your fastest lap on this track…'
+    case 'NoLap':
+      return 'No lap here has positions yet. Drive one full valid lap and it becomes the guide.'
+    case 'Ready': {
+      if (!guide.lap) return 'Ready.'
+      const date = guide.lap.recordedAt ? new Date(guide.lap.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
+      const car = guide.lap.sameCar ? guide.lap.car : `${guide.lap.car}, no lap in this car yet`
+      const boards = guide.boards === 1 ? '1 brake board' : `${guide.boards} brake boards`
+      return [formatLapSeconds(guide.lap.lapTimeSeconds), car, date, boards].filter(Boolean).join(' · ')
+    }
+  }
+}
+
+type GuideNumber = 'eyeRightMeters' | 'eyeUpMeters' | 'eyeForwardMeters' | 'yawOffsetDegrees' | 'pitchOffsetDegrees' | 'monitorFovDegrees' | 'metersAhead'
+
+/**
+ * The AR driving line and brake boards (docs/internals/driving-guide.md): what to draw, where,
+ * and the seat calibration that puts it on the road. Toggles apply at once, numbers on commit.
+ */
+function GuideGroup({ guide, send }: { guide: GuideState; send: Send }) {
+  const { settings, vr } = guide
+  const update = (patch: Partial<GuideSettings>) => void send({ type: 'guide.update', ...patch })
+  const number = (field: GuideNumber, label: string, step: number) => (
+    <GuideNumberField
+      key={`${field}:${settings[field]}`}
+      label={label}
+      value={settings[field]}
+      step={step}
+      onCommit={(value) => update({ [field]: value })}
+    />
+  )
+
+  return (
+    <SettingsGroup title="Driving guide">
+      <SettingRow id="settings-guide-line" icon={Route} title="Racing line" description="A ribbon on the road from your best lap: green on throttle, amber lifting, red braking.">
+        {(labels) => <Switch {...labels} checked={settings.showLine} onChange={(showLine) => update({ showLine })} />}
+      </SettingRow>
+      <SettingRow id="settings-guide-boards" icon={Signpost} title="Brake boards" description="A board beside the track where that lap started braking.">
+        {(labels) => <Switch {...labels} checked={settings.showBoards} onChange={(showBoards) => update({ showBoards })} />}
+      </SettingRow>
+      <SettingRow
+        id="settings-guide-monitor"
+        icon={Monitor}
+        title="On this monitor"
+        description="Draws over the game on your main display. Run the game borderless, with look to apex and head movement off."
+      >
+        {(labels) => <Switch {...labels} checked={settings.monitorOverlay} onChange={(monitorOverlay) => update({ monitorOverlay })} />}
+      </SettingRow>
+      <SettingRow
+        id="settings-guide-vr"
+        icon={Glasses}
+        title="In VR"
+        description={vr.detail ?? (settings.vrHeadset && !vr.registered
+          ? 'Sprint could not register its OpenXR layer. Check the log in Help.'
+          : 'Adds the guide to your headset through OpenXR. Takes effect the next time the game starts.')}
+      >
+        {(labels) => (vr.available
+          ? <Switch {...labels} checked={settings.vrHeadset} onChange={(vrHeadset) => update({ vrHeadset })} />
+          : <Status tone="neutral" quiet>Unavailable</Status>)}
+      </SettingRow>
+      <SettingRow id="settings-guide-lap" icon={Flag} title="Reference lap" description={guideLapText(guide)}>
+        {() => null}
+      </SettingRow>
+      <SettingRow
+        id="settings-guide-eye"
+        icon={Crosshair}
+        title="Eye position"
+        description="Where your eyes sit in the car, in metres. Adjust until the line lies on the road."
+      >
+        {() => (
+          <>
+            {number('eyeRightMeters', 'Right', 0.05)}
+            {number('eyeUpMeters', 'Up', 0.05)}
+            {number('eyeForwardMeters', 'Forward', 0.05)}
+          </>
+        )}
+      </SettingRow>
+      <SettingRow id="settings-guide-align" icon={Compass} title="Alignment" description="Turns the guide right and raises it, in degrees.">
+        {() => (
+          <>
+            {number('yawOffsetDegrees', 'Turn', 0.5)}
+            {number('pitchOffsetDegrees', 'Raise', 0.5)}
+          </>
+        )}
+      </SettingRow>
+      <SettingRow id="settings-guide-fov" icon={ScanEye} title="Field of view" description="Your in-game vertical field of view, in degrees. Only the monitor overlay uses it.">
+        {() => number('monitorFovDegrees', 'Degrees', 1)}
+      </SettingRow>
+      <SettingRow id="settings-guide-ahead" icon={Ruler} title="Distance ahead" description="How much of the line is drawn in front of the car, in metres.">
+        {() => number('metersAhead', 'Metres', 10)}
+      </SettingRow>
+    </SettingsGroup>
+  )
+}
+
+/** A labelled number that saves on blur or Enter. A blank or unchanged field saves nothing. */
+function GuideNumberField({ label, value, step, onCommit }: { label: string; value: number; step: number; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value))
+  const commit = () => {
+    const parsed = Number(draft)
+    if (draft.trim() === '' || !Number.isFinite(parsed)) {
+      setDraft(String(value))
+      return
+    }
+    if (parsed !== value) onCommit(parsed)
+  }
+  return (
+    <label className="settings-guide-number">
+      <span>{label}</span>
+      <input
+        type="number"
+        className="settings-input-narrow tabular"
+        value={draft}
+        step={step}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={blurOnEnter}
+      />
+    </label>
+  )
 }
 
 function UpdatesGroup({ channel, version, send }: { channel: UpdateChannel; version: string | null; send: Send }) {

@@ -1,9 +1,9 @@
-/* Analysis (AnalysisView.tsx, AnalysisChart.tsx). Composes the shared Fluent primitives from
+/* Analysis (AnalysisView.tsx, AnalysisChart.tsx). Composes the shared primitives from
    styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .chip); this file lays them out
    and adds what the page owns: column grids, the comparison-row indicator, the lap pick
    toggles and the chart card. Primary/current = brand-500, comparison = blue-500, everywhere
    on this page, so a legend square, a row indicator and a line always agree. Tokens come from
-   @sprint/tokens/windows.css only. */
+   @sprint/tokens/desktop.css only. */
 
 .analysis-page {
   display: flex;
@@ -77,8 +77,9 @@
 .analysis-lap-columns {
   display: grid;
   /* Fixed action column: a pressed toggle grows by its series square, and every row (and the
-     header) must keep the same column edges. */
-  grid-template-columns: 80px 88px 88px minmax(0, 1fr) 172px;
+     header) must keep the same column edges. The save button sits leftmost, so a lap without
+     one keeps Primary and Compare where every other row has them. */
+  grid-template-columns: 80px 88px 88px minmax(0, 1fr) 204px;
   gap: 12px;
 }
 

@@ -21,17 +21,17 @@ public sealed class DeltaTrackerTests
         bool inCar = true,
         string track = "Spa",
         SessionType session = SessionType.Race) => new()
-    {
-        Session = new SessionInfo { Track = track, SessionType = session, InCar = inCar },
-        Lap = new LapState
         {
-            TrackPosition = (float)pos,
-            CurrentLapTime = lapTime,
-            CurrentLap = lap,
-            LastLapTime = lastLap,
-            IsValid = valid
-        }
-    };
+            Session = new SessionInfo { Track = track, SessionType = session, InCar = inCar },
+            Lap = new LapState
+            {
+                TrackPosition = (float)pos,
+                CurrentLapTime = lapTime,
+                CurrentLap = lap,
+                LastLapTime = lastLap,
+                IsValid = valid
+            }
+        };
 
     // Drive a whole lap's worth of samples (positions strictly increasing 0→~1) at a
     // constant pace so CurrentLapTime == pos * pace, then return the tracker.

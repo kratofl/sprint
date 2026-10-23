@@ -303,6 +303,80 @@ public sealed class LapHistoryTests
     }
 
     [Fact]
+    public void ALapTimeThatReachesScoringAfterTheLineIsStillTheOneFiled()
+    {
+        CollectingLapHistoryStore store = new();
+        LapHistoryRecorder recorder = NewRecorder(store);
+
+        recorder.Ingest(At(0, Frame(SessionType.Practice, lap: 1)));
+        recorder.Ingest(At(1, Frame(SessionType.Practice, lap: 2, lastLapTime: 131.0)));
+        // The lap number ticks over while scoring still shows the lap before's time.
+        recorder.Ingest(At(132, Frame(SessionType.Practice, lap: 3, lastLapTime: 131.0)));
+        recorder.Ingest(At(132.2, Frame(SessionType.Practice, lap: 3, lastLapTime: 128.5)));
+
+        List<LapHistoryRecord> laps = Assert.Single(store.Sessions).Laps;
+        Assert.Equal([1, 2], laps.Select(lap => lap.LapNumber));
+        Assert.Equal(128.5, laps[1].LapTimeSeconds);
+    }
+
+    [Fact]
+    public void ALapTimeThatReachesScoringBeforeTheLineIsFiledAtTheLine()
+    {
+        CollectingLapHistoryStore store = new();
+        LapHistoryRecorder recorder = NewRecorder(store);
+
+        recorder.Ingest(At(0, Frame(SessionType.Practice, lap: 1)));
+        recorder.Ingest(At(130.9, Frame(SessionType.Practice, lap: 1, lastLapTime: 131.0)));
+        recorder.Ingest(At(131, Frame(SessionType.Practice, lap: 2, lastLapTime: 131.0)));
+
+        LapHistoryRecord lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Equal(1, lap.LapNumber);
+        Assert.Equal(131.0, lap.LapTimeSeconds);
+    }
+
+    [Fact]
+    public void ACrossingTheGameNeverTimesIsDroppedRatherThanFiledWithTheLapBeforesTime()
+    {
+        CollectingLapHistoryStore store = new();
+        LapHistoryRecorder recorder = NewRecorder(store);
+
+        // Joined with an earlier stint's time still on scoring; the out lap gets none.
+        recorder.Ingest(At(0, Frame(SessionType.Practice, lap: 1, lastLapTime: 131.0)));
+        recorder.Ingest(At(60, Frame(SessionType.Practice, lap: 2, lastLapTime: 131.0)));
+        recorder.Ingest(At(62, Frame(SessionType.Practice, lap: 2, lastLapTime: 131.0)));
+
+        // A session is only written once it has a lap to keep.
+        Assert.Empty(store.Sessions);
+
+        recorder.Ingest(At(190, Frame(SessionType.Practice, lap: 3, lastLapTime: 130.0)));
+
+        LapHistoryRecord lap = Assert.Single(Assert.Single(store.Sessions).Laps);
+        Assert.Equal(2, lap.LapNumber);
+        Assert.Equal(130.0, lap.LapTimeSeconds);
+    }
+
+    [Fact]
+    public void FuelUsedIsNotMeasuredAcrossTwoSessions()
+    {
+        CollectingLapHistoryStore store = new();
+        LapHistoryRecorder recorder = NewRecorder(store);
+
+        recorder.Ingest(RichFrame(lap: 1, fuel: 50f, virtualEnergy: 60f));
+        recorder.Ingest(RichFrame(lap: 2, fuel: 40f, virtualEnergy: 50f, lastLapTime: 131.0));
+        // Qualifying starts on less fuel than the race session ended on.
+        recorder.Ingest(Qualifying(RichFrame(lap: 1, fuel: 30f, virtualEnergy: 40f)));
+        recorder.Ingest(Qualifying(RichFrame(lap: 2, fuel: 27f, virtualEnergy: 37f, lastLapTime: 129.0)));
+
+        LapHistorySession qualifying = Assert.Single(store.Sessions, session => session.Kind == HistorySessionKind.Qualifying);
+        LapHistoryRecord lap = Assert.Single(qualifying.Laps);
+        Assert.Null(lap.FuelUsedLiters);
+        Assert.Null(lap.VirtualEnergyUsed);
+
+        static TelemetryFrame Qualifying(TelemetryFrame frame) =>
+            frame with { Session = frame.Session with { SessionType = SessionType.Qualify } };
+    }
+
+    [Fact]
     public void TheConditionsASessionWasDrivenInAreRecordedAndStayNullWhenUnreported()
     {
         var store = new CollectingLapHistoryStore();
@@ -850,6 +924,10 @@ public sealed class LapHistoryTests
             ],
         };
     }
+
+    /// <summary>Stamps a frame <paramref name="seconds"/> into the run, for tests where the gap between frames matters.</summary>
+    private static TelemetryFrame At(double seconds, TelemetryFrame frame) =>
+        frame with { Timestamp = Now.AddSeconds(seconds) };
 
     private static TireState Tire(TirePosition position, float wear, float temp) => new()
     {

@@ -43,7 +43,7 @@ public sealed record CloudResult<T>(T? Value, CloudFailure Failure, string Messa
 /// The desktop's first cloud client (#197). Before this, the only outbound HTTP in the app was
 /// the GitHub release check.
 /// <para>
-/// A hand-rolled GraphQL POST rather than a client library: there are six operations, the
+/// A hand-rolled GraphQL POST rather than a client library: there are a handful of operations, the
 /// contracts are already shared through <c>Sprint.Contracts</c>, and a codegen pipeline for the
 /// desktop would be a build dependency earning almost nothing.
 /// </para>
@@ -61,8 +61,8 @@ public sealed class SprintCloudClient
 
     public SprintCloudClient(HttpClient http, Func<string?> token)
     {
-        _http = http ?? throw new ArgumentNullException(nameof(http));
-        _token = token ?? throw new ArgumentNullException(nameof(token));
+        this._http = http ?? throw new ArgumentNullException(nameof(http));
+        this._token = token ?? throw new ArgumentNullException(nameof(token));
     }
 
     /// <summary>
@@ -78,45 +78,79 @@ public sealed class SprintCloudClient
         {
             ["register"] = "mutation($e:String!,$p:String!){register(input:{email:$e,password:$p}){token}}",
             ["login"] = "mutation($e:String!,$p:String!){login(input:{email:$e,password:$p}){token}}",
+            ["redeemSignInTicket"] = "mutation($t:String!){redeemSignInTicket(ticket:$t){token}}",
+            ["serverSettings"] = "{serverSettings{instanceName allowRegistration discordSignIn}}",
             ["me"] = "{me{id email displayName createdAt}}",
             ["setDisplayName"] = "mutation($n:String!){setDisplayName(displayName:$n){id email displayName createdAt}}",
             ["shareLap"] = "mutation($i:ShareLapInput!){shareLap(input:$i){id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
             ["revokeSharedLap"] = "mutation($c:String!){revokeSharedLap(code:$c){id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
             ["mySharedLaps"] = "{mySharedLaps{id shareCode game trackCourse carModel lapNumber lapTimeSeconds revoked createdAt}}",
             ["sharedLap"] = "query($c:String!){sharedLap(code:$c){shareCode sharedBy game trackCourse carModel lapNumber lapTimeSeconds drivenAt payloadBase64}}",
+            ["saveSession"] = "mutation($i:SaveSessionInput!){saveSession(input:$i){id}}",
+            ["saveSetup"] = "mutation($i:SaveSetupInput!){saveSetup(input:$i){id}}",
+            ["saveLayout"] = "mutation($i:SaveLayoutInput!){saveLayout(input:$i){id}}",
+            ["sessions"] = "{sessions{id game track car sessionType startedAt data createdAt}}",
+            ["setups"] = "{setups{id name data createdAt updatedAt}}",
+            ["layouts"] = "{layouts{id name data createdAt updatedAt}}",
         };
 
     public Task<CloudResult<AuthResponse>> RegisterAsync(string email, string password, CancellationToken ct = default) =>
-        CallAsync<AuthResponse>("register", new { e = email, p = password }, ct);
+        this.CallAsync<AuthResponse>("register", new { e = email, p = password }, ct);
 
     public Task<CloudResult<AuthResponse>> SignInAsync(string email, string password, CancellationToken ct = default) =>
-        CallAsync<AuthResponse>("login", new { e = email, p = password }, ct);
+        this.CallAsync<AuthResponse>("login", new { e = email, p = password }, ct);
+
+    /// <summary>Trades a browser sign-in's single-use ticket for a token.</summary>
+    public Task<CloudResult<AuthResponse>> RedeemSignInTicketAsync(string ticket, CancellationToken ct = default) =>
+        this.CallAsync<AuthResponse>("redeemSignInTicket", new { t = ticket }, ct);
+
+    /// <summary>The server's public settings; needs no sign-in.</summary>
+    public Task<CloudResult<ServerSettingsDto>> ServerSettingsAsync(CancellationToken ct = default) =>
+        this.CallAsync<ServerSettingsDto>("serverSettings", null, ct);
 
     public Task<CloudResult<UserProfile>> MeAsync(CancellationToken ct = default) =>
-        CallAsync<UserProfile>("me", null, ct);
+        this.CallAsync<UserProfile>("me", null, ct);
 
     public Task<CloudResult<UserProfile>> SetDisplayNameAsync(string name, CancellationToken ct = default) =>
-        CallAsync<UserProfile>("setDisplayName", new { n = name }, ct);
+        this.CallAsync<UserProfile>("setDisplayName", new { n = name }, ct);
 
     public Task<CloudResult<SharedLapSummary>> ShareLapAsync(ShareLapInput input, CancellationToken ct = default) =>
-        CallAsync<SharedLapSummary>("shareLap", new { i = input }, ct);
+        this.CallAsync<SharedLapSummary>("shareLap", new { i = input }, ct);
 
     public Task<CloudResult<SharedLapSummary>> RevokeAsync(string code, CancellationToken ct = default) =>
-        CallAsync<SharedLapSummary>("revokeSharedLap", new { c = code }, ct);
+        this.CallAsync<SharedLapSummary>("revokeSharedLap", new { c = code }, ct);
 
     public Task<CloudResult<List<SharedLapSummary>>> MySharedLapsAsync(CancellationToken ct = default) =>
-        CallAsync<List<SharedLapSummary>>("mySharedLaps", null, ct);
+        this.CallAsync<List<SharedLapSummary>>("mySharedLaps", null, ct);
 
     public Task<CloudResult<SharedLapDto>> FetchLapAsync(string code, CancellationToken ct = default) =>
-        CallAsync<SharedLapDto>("sharedLap", new { c = code }, ct);
+        this.CallAsync<SharedLapDto>("sharedLap", new { c = code }, ct);
+
+    public Task<CloudResult<SessionSummary>> SaveSessionAsync(SaveSessionInput input, CancellationToken ct = default) =>
+        this.CallAsync<SessionSummary>("saveSession", new { i = input }, ct);
+
+    public Task<CloudResult<SetupSummary>> SaveSetupAsync(SaveSetupInput input, CancellationToken ct = default) =>
+        this.CallAsync<SetupSummary>("saveSetup", new { i = input }, ct);
+
+    public Task<CloudResult<LayoutSummary>> SaveLayoutAsync(SaveLayoutInput input, CancellationToken ct = default) =>
+        this.CallAsync<LayoutSummary>("saveLayout", new { i = input }, ct);
+
+    public Task<CloudResult<List<SessionSummary>>> SessionsAsync(CancellationToken ct = default) =>
+        this.CallAsync<List<SessionSummary>>("sessions", null, ct);
+
+    public Task<CloudResult<List<SetupSummary>>> SetupsAsync(CancellationToken ct = default) =>
+        this.CallAsync<List<SetupSummary>>("setups", null, ct);
+
+    public Task<CloudResult<List<LayoutSummary>>> LayoutsAsync(CancellationToken ct = default) =>
+        this.CallAsync<List<LayoutSummary>>("layouts", null, ct);
 
     private async Task<CloudResult<T>> CallAsync<T>(
         string field,
         object? variables,
         CancellationToken ct)
     {
-        var query = Operations[field];
-        using var request = new HttpRequestMessage(HttpMethod.Post, "graphql")
+        string query = Operations[field];
+        using HttpRequestMessage request = new(HttpMethod.Post, "graphql")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new { query, variables }, Json),
@@ -124,7 +158,7 @@ public sealed class SprintCloudClient
                 "application/json"),
         };
 
-        if (_token() is { Length: > 0 } token)
+        if (this._token() is { Length: > 0 } token)
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
@@ -132,7 +166,7 @@ public sealed class SprintCloudClient
         string body;
         try
         {
-            using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+            using HttpResponseMessage response = await this._http.SendAsync(request, ct).ConfigureAwait(false);
             body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized
@@ -165,7 +199,7 @@ public sealed class SprintCloudClient
             return CloudResult<T>.Failed(Classify(errors[0].Message), errors[0].Message);
         }
 
-        var value = parsed?.Data is { } data && data.TryGetValue(field, out var element)
+        T? value = parsed?.Data is { } data && data.TryGetValue(field, out JsonElement element)
             ? element.Deserialize<T>(Json)
             : default;
 
