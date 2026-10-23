@@ -381,7 +381,16 @@ public sealed class LapHistoryRecorder
             return;
         }
 
+        // A trace never starts past the point a lap could still pass the completeness guard.
+        // That also covers the line skew: the lap number (telemetry) usually ticks over a few
+        // frames before the position (scoring) wraps, and a trace seeded with the old lap's
+        // ~0.99 would reject every position of the new lap as backwards.
         var position = Math.Clamp((double)frame.Lap.TrackPosition, 0, 1);
+        if (_samples.Count == 0 && position > LapCompleteness.StartMax)
+        {
+            return;
+        }
+
         if (_samples.Count == 0 || position > _samples[^1].Position + PositionEpsilon)
         {
             _samples.Add(new LapTraceSample(

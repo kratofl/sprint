@@ -29,7 +29,7 @@ public sealed record CorpusLap(
     {
         LapTargetTier.FullTrace => null,
         LapTargetTier.ReferenceCurve => "No channels — recorded before traces, or pruned to stay inside the disk budget.",
-        _ => "Lap time only — imported laps carry no shape.",
+        _ => "Lap time only — imported, or only part of the lap was seen.",
     };
 }
 
