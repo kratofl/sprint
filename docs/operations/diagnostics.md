@@ -12,7 +12,8 @@ installed by `AppDiagnostics.Install()` at the top of `app/Sprint.Desktop.Host/P
 ```
 
 On macOS the root is `~/.config/Sprint`. A host started with `SPRINT_DESKTOP_DATA_ROOT` set writes
-under that root instead. Tests and agent
+under that root instead; `make dev-app` and `make dev-host` set it to the checkout's
+`app/desktop/.dev/data`. Tests and agent
 runs use this so the user's real AppData is never touched — run the host against a copy of the data,
 never the live folder.
 

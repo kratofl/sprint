@@ -1,309 +1,454 @@
-/* Devices: PageHeader + CommandBar, then the device list card beside the selected
-   device's detail cards. Builds on the shared primitives in styles.css (.card.list-card,
-   .list-row, .list-header, .status, .infobar, .content-dialog, .tabs, .field, …) and
-   only lays them out. Tokens come from @sprint/tokens/desktop.css only. */
+/* Devices (DevicesView.tsx), one device's page (DeviceDetail.tsx) and Add device
+   (DevicesAddDialog.tsx). Builds on the shared primitives in styles.css (.card, .list-card,
+   .list-row, .segmented, .tabs, .status, .infobar, .content-dialog, …) and SettingsLayout's
+   setting cards; this file only lays them out. Tokens come from @sprint/tokens/desktop.css only. */
 
-.devices {
+.devices,
+.device-detail {
   display: flex;
   flex-direction: column;
 }
 
-.devices .command-bar select {
-  width: 120px;
+/* ── Overview ─────────────────────────────────────────────────────────────── */
+
+.devices-layout .segmented-item {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  padding: 0;
 }
 
-.devices-split {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+.devices-filter {
+  margin-bottom: 16px;
 }
 
-/* ── Device list card ─────────────────────────────────────────────────────── */
-
-.devices-list {
-  width: 300px;
-  flex: none;
+.devices-filter-count {
+  margin-left: 4px;
+  color: var(--label-secondary);
+  font-weight: 400;
 }
 
-.devices-list.skeleton {
-  height: 320px;
-}
-
-/* Gallery mode has no column header; a rule separates the tiles from the title row. */
-.devices-gallery {
-  border-top: 1px solid var(--divider);
-}
-
-/* List mode: 32px rows, name | status, header and rows share the columns. */
-.devices-list-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-}
-
-.list-row.devices-list-columns {
-  height: 32px;
-}
-
-.devices-row-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.devices-row-name {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.devices-row-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.devices-row-status {
-  display: flex;
-  flex: none;
-  justify-content: flex-end;
-}
-
-/* Gallery mode: a tile per device — the native-shape preview, then name, driver ·
-   resolution and status. Same row primitive, so hover/selected match list mode. */
-.devices-tile {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'preview preview'
-    'text status';
-  align-items: start;
-  gap: 8px 12px;
-  padding: 8px 12px 6px;
-}
-
-.devices-tile .devices-tile-preview {
-  grid-area: preview;
-  display: flex;
-  justify-content: center;
-}
-
-.devices-tile .devices-row-text {
-  grid-area: text;
-}
-
-.devices-tile .devices-row-status {
-  grid-area: status;
-}
-
-/* ── Detail pane ──────────────────────────────────────────────────────────── */
-
-.devices-detail {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.devices-detail > .muted {
+.devices-none {
   margin: 0;
 }
 
-.devices-detail-empty,
-.devices-detail-skeleton {
-  flex: 1;
-  min-width: 0;
+.devices-group + .devices-group {
+  margin-top: 20px;
 }
 
-.devices-detail-skeleton {
-  height: 320px;
-}
-
-.devices-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  align-items: start;
-  gap: 12px;
-}
-
-.devices-card {
+.devices-group-title {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-
-.devices-card-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.devices-preview-stage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 236px;
-}
-
-/* Label/control rows, divider between rows. */
-.devices-settings {
-  display: flex;
-  flex-direction: column;
-}
-
-.devices-setting {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 6px 0;
-}
-
-.devices-setting + .devices-setting {
-  border-top: 1px solid var(--divider);
-}
-
-.devices-setting-label {
-  align-self: start;
-  padding-top: 6px;
-}
-
-.devices-setting-control {
-  display: flex;
-  min-width: 0;
-}
-
-.devices-setting-control > input,
-.devices-setting-control > select {
-  width: 100%;
-}
-
-.devices-control-stack,
-.devices-status-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  min-width: 0;
-}
-
-.devices-status-cell {
-  padding-top: 4px;
-}
-
-.devices-control-stack > select {
-  width: 100%;
-}
-
-.devices-stepper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.devices-stepper-value {
-  min-width: 64px;
-  text-align: center;
-}
-
-.devices-capture-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
-}
-
-.devices-capture-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* ── Screen performance ───────────────────────────────────────────────────── */
-
-.devices-performance {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.devices-performance-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: 12px;
-}
-
-.devices-performance-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.devices-performance-value {
+  margin: 0 0 8px;
   font-size: 14px;
   font-weight: 600;
   line-height: 20px;
 }
 
-/* ── Live dash preview (detail card + gallery tile) ───────────────────────── */
-/* The frame is the device's native panel shape; the dash inside keeps its own
-   colours in both app themes (it is the hardware output, not app UI). */
-.devices-preview-frame {
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.devices-tile-skeleton {
+  height: 240px;
+}
+
+.devices-name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devices-line {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A device's picture on its stage; `dim` greys out one that is off or not answering. */
+.device-image {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  border: 1px solid var(--card-stroke);
-  border-radius: var(--radius-control);
-  background: var(--subtle-selected);
-}
-
-.devices-preview-canvas {
-  border-radius: 2px;
-}
-
-.devices-preview-empty {
-  flex-direction: column;
-  gap: 4px;
   color: var(--label-tertiary);
 }
 
-/* ── Add device dialog ─────────────────────────────────────────────────────── */
-
-/* The tabs sit flush under the title. */
-.devices-catalog-dialog .tabs {
-  margin: -4px 0 0 -12px;
+.device-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
-.devices-catalog-list {
+.device-image.dim img {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* Tile: the whole card opens the device. */
+.devices-tile {
   display: flex;
   flex-direction: column;
-  margin: 0 -16px;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.devices-tile:hover {
+  border-color: var(--control-stroke);
+  background: var(--subtle-hover);
+}
+
+.devices-tile-image {
+  height: 170px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--card-stroke);
+  background: var(--layer);
+}
+
+.devices-tile-image svg {
+  width: 28px;
+  height: 28px;
+}
+
+.devices-tile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 16px 14px;
+}
+
+.devices-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.devices-tile-head .devices-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* List: picture | name | screen | status | chevron, header and rows share the columns. */
+.devices-columns {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1.6fr) minmax(0, 1fr) 160px 16px;
+  align-items: center;
+  gap: 16px;
+}
+
+.list-row.devices-row {
+  min-height: 52px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.devices-thumb {
+  width: 56px;
+  height: 40px;
+  padding: 2px;
+  border-radius: var(--radius-control-small);
+  background: var(--layer);
+}
+
+.devices-thumb svg {
+  width: 16px;
+  height: 16px;
+}
+
+.devices-chevron {
+  color: var(--label-tertiary);
+}
+
+/* ── One device ───────────────────────────────────────────────────────────── */
+
+.device-back {
+  align-self: flex-start;
+  margin: 0 0 12px -8px;
+}
+
+.device-head {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.device-head-image {
+  height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.device-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* The name and its pen, or the rename input and its save button: one 32px line either way, so
+   the header does not shift when it swaps. */
+.device-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.device-name-button {
+  color: var(--label-secondary);
+}
+
+.device-head-name {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The heading's type in a text box; the border and padding sit outside the text so the name
+   stays where the heading had it. */
+.device-name-input {
+  width: min(100%, 420px);
+  height: 32px;
+  margin-left: -9px;
+  padding: 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.device-head-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.device-detail > .infobar {
+  margin-bottom: 16px;
+}
+
+.device-tabs {
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.device-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 860px;
+}
+
+/* A pixel field: label, number, unit, drawn as one text box. */
+.device-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.device-pixel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  background: var(--input-fill);
+}
+
+.device-pixel:focus-within {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.device-pixel input {
+  width: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--label);
+  text-align: right;
+  outline: none;
+}
+
+.device-capture {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.device-capture input {
+  width: 84px;
+}
+
+/* ── Add device dialog (DevicesAddDialog.tsx) ─────────────────────────────── */
+
+/* Wide enough for three picture cards; the results keep a floor so filtering does not make
+   the dialog jump in height. */
+.devices-add-dialog {
+  width: min(720px, 100%);
+}
+
+.devices-add-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.devices-add-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 360px;
+}
+
+.devices-add-section {
+  margin: 0 0 6px;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.devices-add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.devices-add-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.devices-add-card:hover {
+  border-color: var(--control-stroke);
+  background: var(--subtle-hover);
+}
+
+.devices-add-card-image {
+  height: 108px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--card-stroke);
+  background: var(--layer);
+}
+
+.devices-add-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 8px 12px 10px;
+}
+
+.devices-found-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.devices-catalog-row {
-  justify-content: space-between;
-  min-height: 48px;
-  padding: 6px 12px;
+.devices-found {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px 8px 8px;
 }
 
-.devices-custom-wheel {
+.devices-found .devices-add-text {
+  padding: 0;
+}
+
+.devices-found-image {
+  height: 68px;
+  padding: 4px 6px;
+  border-radius: var(--radius-control);
+  background: var(--layer);
+}
+
+.devices-add-none {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
 }
 
-.devices-check {
+.devices-add-none p {
+  margin: 0;
+}
+
+/* Your own wheel: its picture beside the form. */
+.devices-own {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.devices-own-image {
+  height: 120px;
+  padding: 10px;
+  border-radius: var(--radius-card);
+  background: var(--layer);
+}
+
+.devices-own-fields {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.devices-own-fields .segmented {
+  align-self: flex-start;
+}
+
+.devices-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+}
+
+.devices-link:hover {
+  color: var(--link-hover);
+  text-decoration: underline;
 }
 
 .devices-field-pair {

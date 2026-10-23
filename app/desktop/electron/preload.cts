@@ -27,14 +27,15 @@ contextBridge.exposeInMainWorld('sprint', {
   discoverServers: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-discover'),
   syncUp: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-push'),
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
-  /** Pushed by the main process to the guide overlay window only. */
-  subscribeGuide: (listener: (message: unknown) => void): (() => void) => {
+  /** A training HUD window's feed (electron/hud.ts): its own part of each frame. */
+  subscribeHud: (listener: (message: unknown) => void): (() => void) => {
     const onMessage = (_event: Electron.IpcRendererEvent, message: unknown): void => listener(message)
-    ipcRenderer.on('sprint:guide', onMessage)
-    return () => {
-      ipcRenderer.removeListener('sprint:guide', onMessage)
-    }
+    ipcRenderer.on('sprint:hud', onMessage)
+    ipcRenderer.send('sprint:hud-subscribe')
+    return () => { ipcRenderer.removeListener('sprint:hud', onMessage) }
   },
+  /** A HUD window's corner grip: the size it wants, and whether the drag has ended. */
+  resizeHud: (width: number, height: number, done: boolean): void => ipcRenderer.send('sprint:hud-resize', width, height, done),
   subscribe: (listener: (state: unknown) => void): (() => void) => {
     const onState = (_event: Electron.IpcRendererEvent, state: unknown): void => listener(state)
     ipcRenderer.on('sprint:state', onState)

@@ -15,6 +15,18 @@ public sealed class CatalogDevice
     [JsonPropertyName("description")]
     public string Description { get; set; } = "";
 
+    /// <summary>Who makes it, for the Add device dialog's brand filter.</summary>
+    [JsonPropertyName("brand")]
+    public string Brand { get; set; } = "";
+
+    /// <summary>
+    /// The USB devices that, plugged in together, are this entry: a bare screen is its panel,
+    /// the Omega is its VoCore panel plus its button box. Read by <see cref="DeviceDetection"/>;
+    /// empty means it is never offered as plugged in.
+    /// </summary>
+    [JsonPropertyName("detect")]
+    public List<UsbIdPattern> Detect { get; set; } = [];
+
     [JsonPropertyName("type")]
     public string Type { get; set; } = "screen";
 
@@ -66,6 +78,14 @@ public sealed class SavedDevice
 
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>
+    /// The catalog entry the device was added from (a preset id, or a custom wheel's slug). The
+    /// desktop picks the device's picture by it: USB ids cannot tell presets apart, since every
+    /// VoCore panel reports the same VID/PID. Empty for devices saved before it existed.
+    /// </summary>
+    public string PresetId { get; set; } = "";
+
     public string Driver { get; set; } = "";
     public string Type { get; set; } = "screen";
     public ushort Vid { get; set; }

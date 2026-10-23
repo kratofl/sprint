@@ -2,10 +2,10 @@
 # Usage: make <target>
 # Run `make help` to list all available targets.
 
-.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build-xr-layer build \
+.PHONY: help setup types dev-app dev-host dev-db dev-api dev-web dev-cloud build-api build-web build-app build \
         test test-api test-app lint lint-app lint-api fmt schema \
         docker-build docker-up docker-down docker-logs \
-        clean
+        clean reset-dev-data
 
 # Recipes are written to run unchanged under PowerShell (Windows) and sh
 # (macOS/Linux). Anything shell-specific goes through scripts/make-tasks.mjs.
@@ -60,7 +60,7 @@ dev-app: types ## Run the desktop app in dev mode (Vite + Electron + native host
 	pnpm --filter @sprint/desktop dev
 
 dev-host: ## Run only the native desktop host (loopback HTTP, no UI)
-	dotnet watch --project $(APP_HOST_PROJECT)
+	$(TASKS) dev-host
 
 # Compose interpolates the whole file, and the prod services require .env secrets,
 # so without a .env the dev database comes up with the .env.example defaults.
@@ -91,9 +91,6 @@ build-app: types ## Package the desktop app -> app/build/bin (RID=win-x64|osx-ar
 	dotnet publish $(APP_HOST_PROJECT) -c Release -r $(RID) -p:PublishSingleFile=true -p:InformationalVersion=$(VERSION) -o $(APP_DESKTOP_DIR)/resources/host
 	pnpm --filter @sprint/desktop build
 	pnpm --filter @sprint/desktop package
-
-build-xr-layer: ## Build the OpenXR driving-guide layer -> app/desktop/resources/openxr-layer (Windows only)
-	$(TASKS) build-xr-layer
 
 build: build-api build-web ## Build all (API + web)
 
@@ -147,3 +144,6 @@ docker-logs: ## Tail logs from all running services
 
 clean: ## Remove build artifacts
 	$(TASKS) clean
+
+reset-dev-data: ## Delete this checkout's dev app data (settings, laps, logs); the installed app is untouched
+	$(TASKS) reset-dev-data

@@ -124,7 +124,7 @@ function parseSession(value: unknown): CorpusSession | null {
   }
 }
 
-function parseLap(value: unknown): CorpusLap | null {
+export function parseCorpusLap(value: unknown): CorpusLap | null {
   if (!isRecord(value) || typeof value.sessionId !== 'string' || typeof value.lapNumber !== 'number') return null
   return {
     sessionId: value.sessionId,
@@ -187,9 +187,9 @@ export function parseAnalysisState(sprint: SprintState): AnalysisState {
   return {
     filter: parseFilter(analysis.filter),
     session: parseSession(analysis.session),
-    laps: Array.isArray(analysis.laps) ? analysis.laps.map(parseLap).filter((lap): lap is CorpusLap => lap !== null) : [],
-    primary: parseLap(analysis.primary),
-    comparison: parseLap(analysis.comparison),
+    laps: Array.isArray(analysis.laps) ? analysis.laps.map(parseCorpusLap).filter((lap): lap is CorpusLap => lap !== null) : [],
+    primary: parseCorpusLap(analysis.primary),
+    comparison: parseCorpusLap(analysis.comparison),
     notice: stringOrNull(analysis.notice),
   }
 }

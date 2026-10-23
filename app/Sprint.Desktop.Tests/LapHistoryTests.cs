@@ -597,6 +597,30 @@ public sealed class LapHistoryTests
     }
 
     [Fact]
+    public void ALapNumberThatTicksOverBeforeThePositionWrapsStillGivesTheNextLapItsCurve()
+    {
+        var store = new CollectingLapHistoryStore();
+        var traces = new CollectingLapTraceStore();
+        var recorder = NewRecorder(store, traces);
+
+        // LMU's lap number comes from telemetry and its track position from scoring, which
+        // refreshes about five times a second. At the line the lap number usually leads: a few
+        // frames of the new lap still read the old lap's position, just short of the line.
+        DriveLap(recorder, lap: 1, lapTimeSeconds: 120.0);
+        recorder.Ingest(LapFrame(lap: 2, position: 0.999, lapTime: 0, lastLapTime: 120.0));
+        recorder.Ingest(LapFrame(lap: 2, position: 0.999, lapTime: 0.05, lastLapTime: 120.0));
+        DriveLap(recorder, lap: 2, lapTimeSeconds: 110.0);
+        recorder.Ingest(LapFrame(lap: 3, position: 0.999, lapTime: 0, lastLapTime: 110.0));
+        recorder.Ingest(Crossing(lap: 3, lastLapTime: 110.0));
+
+        var laps = Assert.Single(store.Sessions).Laps;
+        Assert.Equal([1, 2], laps.Select(lap => lap.LapNumber));
+        Assert.All(laps, lap => Assert.True(lap.HasReferenceCurve));
+        Assert.All(laps, lap => Assert.True(lap.HasChannelTrace));
+        Assert.Equal(55.0, laps[1].ReferenceCurve!.TimesSeconds[100], precision: 3);
+    }
+
+    [Fact]
     public void ARecordedCurveRoundTripsThroughTheLocalStore()
     {
         WithStore((store, root) =>

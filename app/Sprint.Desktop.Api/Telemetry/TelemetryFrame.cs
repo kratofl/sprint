@@ -125,15 +125,15 @@ public sealed record CarState
     public float PositionZ { get; init; }
     public float BrakeBiasRear { get; init; }
 
-    /// <summary>Where the car is and how it is moving, for drawing into the driver's view. Null when the game does not say.</summary>
+    /// <summary>Where the car is and how it is moving. Null when the game does not say.</summary>
     public CarPose? Pose { get; init; }
 }
 
 /// <summary>
 /// The car's rigid-body state in one convention every consumer shares, whatever the game uses:
-/// right-handed, +Y up; the body frame is +X right, +Y up, -Z forward (OpenXR's), and
+/// right-handed, +Y up; the body frame is +X right, +Y up, -Z forward (as OpenXR), and
 /// <see cref="Orientation"/> rotates body vectors into world vectors. A game adapter converts
-/// into this at the edge, so the driving guide's renderers never learn a game's axes.
+/// into this at the edge, so no consumer ever learns a game's axes.
 /// </summary>
 public sealed record CarPose
 {

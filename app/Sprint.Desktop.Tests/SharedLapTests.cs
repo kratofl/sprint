@@ -1,4 +1,3 @@
-using Sprint.Desktop.Features.DrivingGuide;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Xunit;
@@ -199,7 +198,7 @@ public sealed class SharedLapTests
     }
 
     [Fact]
-    public void AnExportedLapWithPositionsBecomesTheFriendsDrivingGuide()
+    public void AnExportedLapCarriesItsPositionsIntoTheFriendsCorpus()
     {
         (FakeHistory mine, FakeTraces myTraces, SharedLapImporter _) = Corpus();
         LapChannelTrace driven = Trace();
@@ -217,11 +216,11 @@ public sealed class SharedLapTests
         (FakeHistory friend, FakeTraces friendTraces, SharedLapImporter friendImporter) = Corpus();
         Assert.True(friendImporter.Import(read.Lap).Added);
 
-        (DrivingGuideLap Lap, DrivingGuideGeometry Geometry)? guide =
-            new DrivingGuideLapPicker(friend, friendTraces).Pick("Le Mans Ultimate", "Spa-Francorchamps", "Porsche 963");
-
-        Assert.NotNull(guide);
-        Assert.Equal(101.5, guide.Value.Lap.LapTimeSeconds);
+        LapTraceInfo imported = Assert.Single(friendTraces.List());
+        LapChannelTrace? trace = friendTraces.Load(imported.TraceId);
+        Assert.NotNull(trace);
+        Assert.True(trace.TryGetChannel(LapTraceChannels.WorldX, out float[] _));
+        Assert.Equal(101.5, Assert.Single(Assert.Single(friend.Saved).Laps).LapTimeSeconds);
     }
 
     [Fact]
@@ -260,7 +259,7 @@ public sealed class SharedLapTests
         Laps = [new LapHistoryRecord { LapNumber = lapNumber, LapTimeSeconds = 101.5, TraceId = traceId }],
     };
 
-    /// <summary>A circular track with the pedals a guide needs: one braking zone, throttle elsewhere.</summary>
+    /// <summary>A circular track with one braking zone and throttle elsewhere.</summary>
     private static void AddWorldChannels(LapChannelTrace trace)
     {
         int count = trace.SampleCount;

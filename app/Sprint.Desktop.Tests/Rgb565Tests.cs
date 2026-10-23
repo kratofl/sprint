@@ -180,7 +180,7 @@ public sealed class Rgb565Tests
             (Margin: 1, OffsetX: 0, OffsetY: 2),
             (Margin: 3, OffsetX: 0, OffsetY: 0),
             (Margin: 0, OffsetX: 99, OffsetY: 99),
-            (Margin: -1, OffsetX: -2, OffsetY: -3),
+            (Margin: -1, OffsetX: 2, OffsetY: 3),
         };
 
         foreach (var native in nativeSizes)
@@ -219,6 +219,34 @@ public sealed class Rgb565Tests
 
                     Assert.Equal(expected, actual);
                 }
+            }
+        }
+    }
+
+    [Fact]
+    public void NegativeOffsetsShiftTheImageLeftAndUp()
+    {
+        const int width = 5;
+        const int height = 3;
+        DeviceOrientationTransform transform = Enum.GetValues<DeviceOrientation>()
+            .Select(orientation => DeviceOrientations.Transform(width, height, orientation))
+            .First(candidate => candidate.PixelRotation == PixelRotation.None);
+        byte[] bgra = Pattern(transform.LogicalWidth, transform.LogicalHeight);
+        byte[] centred = new byte[width * height * 2];
+        byte[] shifted = new byte[centred.Length];
+
+        Rgb565.ComposeFromBgra(bgra, width, height, transform, margin: 0, offsetX: 0, offsetY: 0, centred);
+        Rgb565.ComposeFromBgra(bgra, width, height, transform, margin: 0, offsetX: -1, offsetY: -1, shifted);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int at = (y * width + x) * 2;
+                bool pushedOff = x == width - 1 || y == height - 1;
+                int from = ((y + 1) * width + x + 1) * 2;
+                Assert.Equal(pushedOff ? (byte)0 : centred[from], shifted[at]);
+                Assert.Equal(pushedOff ? (byte)0 : centred[from + 1], shifted[at + 1]);
             }
         }
     }

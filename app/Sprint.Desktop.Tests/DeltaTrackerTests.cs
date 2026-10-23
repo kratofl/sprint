@@ -277,6 +277,23 @@ public sealed class DeltaTrackerTests
     }
 
     [Fact]
+    public void Lap_increment_before_the_position_wraps_still_lets_the_next_lap_become_the_reference()
+    {
+        var tracker = new DeltaTracker();
+        DriveLap(tracker, lap: 1, pace: 100);
+
+        // The usual LMU order at the line: the lap number (telemetry) ticks over while the
+        // position (scoring, ~5 Hz) still reads the old lap, just short of the line.
+        tracker.Augment(Frame(pos: 0.999, lapTime: 0.0, lap: 2, lastLap: 100));
+        tracker.Augment(Frame(pos: 0.999, lapTime: 0.05, lap: 2, lastLap: 100));
+        DriveLap(tracker, lap: 2, pace: 90);
+        tracker.Augment(Frame(pos: 0.999, lapTime: 0.0, lap: 3, lastLap: 90));
+
+        // The faster lap 2 was traced from the line and replaced lap 1 as the reference.
+        Assert.Equal(90, tracker.Augment(Frame(0.5, 45, 3)).Lap.TargetLapTime, precision: 6);
+    }
+
+    [Fact]
     public void Manual_reference_pins_the_target_against_a_faster_lap()
     {
         var tracker = new DeltaTracker();

@@ -1,8 +1,9 @@
 import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from './telemetryFrame'
-import { defaultGuideSettings, parseGuideMessage, parseGuideState, type GuideMessage, type GuideState } from './guide/guideModel'
+import { parseHudMessage } from './hud/hudModel'
+import type { HudMessage } from './hud/hudModel'
 
-export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
+export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
 export type TelemetryLinkState =
   | 'Disconnected' | 'Connecting' | 'WaitingForGame' | 'Connected'
@@ -173,21 +174,21 @@ export type SprintState = {
   link: LiveLink
   /** Feature flags from the host's appsettings.json. `sprintWeb` off hides every account, sync and setup surface. */
   features: { sprintWeb: boolean }
+  /** Catalog ids plugged into USB but not added yet, one per device (`DeviceDetection` on the host). */
+  foundDevices: string[]
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
-  /** The driving guide: its settings (`settings.drivingGuide`), the lap it draws and the VR layer. */
-  guide: GuideState
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
 
-/** Saving a lap as a `.sprintlap` (`sprint:lap-export`). `hasPositions` says whether it can be a driving guide. */
+/** Saving a lap as a `.sprintlap` (`sprint:lap-export`). */
 export type LapExportResult =
-  | { outcome: 'saved'; fileName: string; hasPositions: boolean }
+  | { outcome: 'saved'; fileName: string }
   | { outcome: 'cancelled' }
   | { outcome: 'failed'; error: string }
 
 /** Opening a `.sprintlap` (`sprint:lap-import`, host `POST /api/laps/import`). */
 export type LapImportResult =
-  | { outcome: 'imported' | 'alreadyPresent'; sharedBy: string; track: string; car: string; lapTimeSeconds: number; hasPositions: boolean }
+  | { outcome: 'imported' | 'alreadyPresent'; sharedBy: string; track: string; car: string; lapTimeSeconds: number }
   | { outcome: 'cancelled' }
   | { outcome: 'failed'; error: string }
 
@@ -207,8 +208,6 @@ export type SprintBridge = {
   getState(): Promise<SprintState>
   sendCommand(command: SprintCommand): Promise<void>
   subscribe(listener: (state: SprintState) => void): () => void
-  /** The monitor overlay's feed (`/api/guide/stream`). Only the overlay window receives it. */
-  subscribeGuide(listener: (message: GuideMessage) => void): () => void
   /** Lap traces are too large for the polled state, so they are fetched on demand. */
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
   /** Opens a save dialog and writes the lap as a `.sprintlap`. */
@@ -233,14 +232,16 @@ export type SprintBridge = {
   discoverServers(): Promise<DiscoveredServer[]>
   syncUp(): Promise<SyncReport>
   syncDown(): Promise<SyncReport>
+  /** A training HUD window's own feed (electron/hud.ts), narrowed here. */
+  subscribeHud(listener: (message: HudMessage) => void): () => void
+  /** A HUD window's corner grip: the size it wants, and whether the drag has ended. */
+  resizeHud(width: number, height: number, done: boolean): void
 }
 
 type RawBridge = {
   getState(): Promise<unknown>
   sendCommand(command: unknown): Promise<unknown>
   subscribe(listener: (state: unknown) => void): () => void
-  /** Absent in the preview harness's stub. */
-  subscribeGuide?(listener: (message: unknown) => void): () => void
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
   /** Both absent in the preview harness's stub. */
   exportLap?(sessionId: string, lapNumber: number): Promise<unknown>
@@ -260,10 +261,12 @@ type RawBridge = {
   discoverServers(): Promise<unknown>
   syncUp(): Promise<unknown>
   syncDown(): Promise<unknown>
+  /** Both absent in the preview harness's stub. */
+  subscribeHud?(listener: (message: unknown) => void): () => void
+  resizeHud?(width: number, height: number, done: boolean): void
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, screens: [], guide: emptyGuide() })
-const emptyGuide = (): GuideState => ({ settings: defaultGuideSettings(), status: 'Idle', lap: null, boards: 0, vr: { available: false, registered: false, detail: null } })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, foundDevices: [], screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -508,7 +511,7 @@ const parseState = (value: unknown): SprintState => {
   parsed.cloud = parseCloud(value.cloud)
   parsed.link = parseLiveLink(value.link)
   parsed.features = { sprintWeb: isRecord(value.features) && value.features.sprintWeb === true }
-  parsed.guide = parseGuideState(isRecord(value.settings) ? value.settings.drivingGuide : undefined, value.guide)
+  parsed.foundDevices = stringList(value.foundDevices)
   return parsed
 }
 /** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
@@ -536,7 +539,7 @@ const parseUpdateInstallResult = (value: unknown): UpdateInstallResult => {
 
 const parseLapExportResult = (value: unknown): LapExportResult => {
   if (isRecord(value) && value.outcome === 'saved' && typeof value.fileName === 'string') {
-    return { outcome: 'saved', fileName: value.fileName, hasPositions: value.hasPositions === true }
+    return { outcome: 'saved', fileName: value.fileName }
   }
   if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
   return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
@@ -550,7 +553,6 @@ const parseLapImportResult = (value: unknown): LapImportResult => {
       track: typeof value.track === 'string' ? value.track : '',
       car: typeof value.car === 'string' ? value.car : '',
       lapTimeSeconds: value.lapTimeSeconds,
-      hasPositions: value.hasPositions === true,
     }
   }
   if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
@@ -565,10 +567,6 @@ export const bridge: SprintBridge = raw
       getState: async () => parseState(await raw.getState()),
       sendCommand: async (command) => { await raw.sendCommand(command) },
       subscribe: (listener) => raw.subscribe((state) => listener(parseState(state))),
-      subscribeGuide: (listener) => raw.subscribeGuide?.((message) => {
-        const parsed = parseGuideMessage(message)
-        if (parsed) listener(parsed)
-      }) ?? (() => undefined),
       analysisTrace: (sessionId, lapNumber) => raw.analysisTrace(sessionId, lapNumber),
       exportLap: async (sessionId, lapNumber) =>
         raw.exportLap ? parseLapExportResult(await raw.exportLap(sessionId, lapNumber).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
@@ -588,13 +586,20 @@ export const bridge: SprintBridge = raw
       discoverServers: async () => parseDiscovered(await raw.discoverServers()),
       syncUp: () => raw.syncUp().then(parseSyncReport, syncFailed),
       syncDown: () => raw.syncDown().then(parseSyncReport, syncFailed),
+      subscribeHud: (listener) =>
+        raw.subscribeHud
+          ? raw.subscribeHud((message) => {
+              const parsed = parseHudMessage(message)
+              if (parsed) listener(parsed)
+            })
+          : () => undefined,
+      resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
       getState: async () => emptyState(),
       sendCommand: async () => undefined,
       subscribe: () => () => undefined,
-      subscribeGuide: () => () => undefined,
       analysisTrace: async () => null,
       exportLap: async () => ({ outcome: 'failed', error: noLapFiles }),
       importLap: async () => ({ outcome: 'failed', error: noLapFiles }),
@@ -613,4 +618,6 @@ export const bridge: SprintBridge = raw
       discoverServers: async () => [],
       syncUp: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
       syncDown: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
+      subscribeHud: () => () => undefined,
+      resizeHud: () => undefined,
     }

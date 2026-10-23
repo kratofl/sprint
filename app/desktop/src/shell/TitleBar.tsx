@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react'
-import { ArrowLeft, ChevronLeft, PanelLeft, Search } from 'lucide-react'
+import { PanelLeft, Search } from 'lucide-react'
 import { platform } from '../platform'
 import type { RuntimeState } from './runtime'
 import { shortcutAria, shortcutLabel } from './shortcuts'
@@ -7,8 +7,6 @@ import { Status } from './Status'
 import { TelemetryBadge } from './TelemetryBadge'
 
 type TitleBarProps = {
-  canGoBack: boolean
-  onBack: () => void
   runtime: RuntimeState
   onOpenPalette: () => void
   /** The current page's navigation label, shown as the page title. */
@@ -30,7 +28,8 @@ type TitleBarProps = {
 
 /**
  * The window's toolbar, right of the sidebar, in three zones (styles.css lays them out as
- * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), back, the page title.
+ * one grid). Leading: (macOS: sidebar toggle while the sidebar is hidden), the page title. There
+ * is no back button: a deeper page carries its own way up, and Alt+Left / ⌘[ goes up a level (App.tsx).
  * Centre: the telemetry indicator. Trailing: the page's actions (PageHeader portals them into
  * the slot), then a search field that opens the palette.
  *
@@ -42,8 +41,6 @@ type TitleBarProps = {
  * (or over the toolbar's left inset while the sidebar is hidden).
  */
 export function TitleBar({
-  canGoBack,
-  onBack,
   runtime,
   onOpenPalette,
   title,
@@ -102,7 +99,6 @@ export function TitleBar({
             <PanelLeft size={16} strokeWidth={1.7} />
           </button>
         ) : null}
-        <BackButton canGoBack={canGoBack} onBack={onBack} />
         {/* The page's own <h1> (visually hidden) stays the accessible title. */}
         <span className="titlebar-title" aria-hidden="true">
           {title}
@@ -120,23 +116,6 @@ export function TitleBar({
         <SearchButton ref={searchRef} onOpenPalette={onOpenPalette} />
       </div>
     </header>
-  )
-}
-
-function BackButton({ canGoBack, onBack }: { canGoBack: boolean; onBack: () => void }) {
-  const mac = platform === 'mac'
-  return (
-    <button
-      type="button"
-      className="titlebar-back"
-      onClick={onBack}
-      disabled={!canGoBack}
-      aria-label="Back"
-      aria-keyshortcuts={shortcutAria(platform, { kind: 'back' })}
-      title={`Back (${shortcutLabel(platform, { kind: 'back' })})`}
-    >
-      {mac ? <ChevronLeft size={18} strokeWidth={1.8} /> : <ArrowLeft size={16} strokeWidth={1.7} />}
-    </button>
   )
 }
 

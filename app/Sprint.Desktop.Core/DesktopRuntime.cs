@@ -214,6 +214,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             {
                 Id = id,
                 Name = catalog.Name,
+                PresetId = catalog.Id,
                 Driver = catalog.Driver,
                 Type = catalog.Type,
                 Vid = catalog.Vid,
@@ -630,8 +631,10 @@ public sealed class DesktopRuntime : IDesktopRuntime
             yield return new CatalogDevice
             {
                 Id = "generic-vocore",
-                Name = "Generic VoCore Screen",
+                Name = "VoCore screen",
                 Description = "Any VoCore display",
+                Brand = "VoCore",
+                Detect = [new UsbIdPattern { Vid = 0xC872 }],
                 Driver = "vocore"
             };
         }

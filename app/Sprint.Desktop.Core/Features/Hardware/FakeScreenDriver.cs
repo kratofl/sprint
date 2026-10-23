@@ -43,10 +43,19 @@ public sealed class FakeScreenDriver : IScreenDriver
         return _status.IsConnected;
     }
 
+    /// <summary>Pulls the cable: every send fails and drops the link, as a real panel's transfer does.</summary>
+    public bool Unplugged { get; set; }
+
     public bool TrySendFrame(byte[] rgb565)
     {
         if (!_status.IsConnected)
         {
+            return false;
+        }
+
+        if (this.Unplugged)
+        {
+            this._status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = "unplugged" };
             return false;
         }
 

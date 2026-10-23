@@ -5,6 +5,7 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Runtime;
 using Xunit;
@@ -828,23 +829,19 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void GuideUpdate_PersistsAPartialPatchAsANewSettingsObject()
+    public void CompareReadings_RefuseAnUnknownReadingAndAnEmptyHud()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DrivingGuideSettings before = runtime.Settings.DrivingGuide;
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":["boost"],"showDelta":true}"""), out string unknown));
+            Assert.Equal("unknown reading: boost", unknown);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":[],"showDelta":false}"""), out string empty));
+            Assert.Equal("Keep at least one reading on the HUD.", empty);
 
-            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"eyeUpMeters":0.85}"""), out string error);
-
-            Assert.True(ok, error);
-            DrivingGuideSettings after = runtime.Settings.DrivingGuide;
-            // Replaced, not mutated: the feed reads it off-thread and compares by reference.
-            Assert.NotSame(before, after);
-            Assert.True(after.ShowLine);
-            Assert.Equal(0.85, after.EyeUpMeters);
-            Assert.Equal(before.MetersAhead, after.MetersAhead);
-            Assert.True(new DesktopRuntime(dataRoot, PresetRoot).Settings.DrivingGuide.ShowLine);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.readings","panelIds":["steering","brake"],"showDelta":false}"""), out string error), error);
+            Assert.Equal(["steering", "brake"], runtime.Settings.LiveCompare.PanelIds);
+            Assert.False(runtime.Settings.LiveCompare.ShowDelta);
         }
         finally
         {
@@ -853,16 +850,34 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void GuideUpdate_RefusesAnOutOfRangeNumberWithoutApplyingAnything()
+    public void CompareHudLayout_RemembersAWindowPerMonitor()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            bool ok = coordinator.Execute(Command("""{"type":"guide.update","showLine":true,"yawOffsetDegrees":45}"""), out string error);
+            bool ok = coordinator.Execute(
+                Command("""{"type":"compare.hud.layout","windowId":"brake","screen":{"x":0,"y":0,"width":2560,"height":1440},"x":40,"y":60,"width":400,"height":170}"""),
+                out string error);
 
-            Assert.False(ok);
-            Assert.Equal("yawOffsetDegrees must be a number from -20 to 20", error);
-            Assert.False(runtime.Settings.DrivingGuide.ShowLine);
+            Assert.True(ok, error);
+            HudWindowLayout layout = Assert.Single(runtime.Settings.LiveCompare.Layouts);
+            Assert.Equal(HudLayoutStore.KeyFor("brake", new HudScreen(0, 0, 2560, 1440)), layout.Key);
+            Assert.Equal((40, 60, 400, 170), (layout.X, layout.Y, layout.Width, layout.Height));
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareHudToggle_NeedsALapToTrainAgainst()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.hud.toggle"}"""), out string error));
+            Assert.Equal("Pick a lap to train against first.", error);
         }
         finally
         {

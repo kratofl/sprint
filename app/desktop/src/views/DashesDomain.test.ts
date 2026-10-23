@@ -6,6 +6,7 @@ import {
   applyThemePreset,
   canPlaceNewWidget,
   canPlaceWidgetAt,
+  editorShouldLoad,
   fitScreenSize,
   parseDashLayout,
   previewMoveRect,
@@ -31,6 +32,18 @@ function layout(page: DashPage, overrides: Partial<DashLayout> = {}): DashLayout
 function pageWithWidgets(...widgets: DashWidget[]): DashPage {
   return { id: 'page-1', name: 'Page 1', widgets }
 }
+
+// ── editorShouldLoad ─────────────────────────────────────────────────────
+
+test('editorShouldLoad picks up a reset of the open dash once its new content arrives', () => {
+  const before = layout(pageWithWidgets(widget('rpm', 0, 0, 20, 1)))
+  const preset = layout(pageWithWidgets(widget('gear', 8, 4, 4, 4)))
+
+  assert.equal(editorShouldLoad('dash-1', null, preset), false, 'a state update alone never replaces the draft')
+  assert.equal(editorShouldLoad('dash-1', JSON.stringify(before), before), false, 'the reset has not arrived yet')
+  assert.equal(editorShouldLoad('dash-1', JSON.stringify(before), preset), true)
+  assert.equal(editorShouldLoad('dash-2', null, before), true, 'another dash opened')
+})
 
 // ── canPlaceNewWidget ────────────────────────────────────────────────────
 

@@ -70,6 +70,14 @@ Runtime behavior:
 - Two saved entries targeting the same physical USB identity do not start competing
   publishers. The less-specific duplicate reports `Duplicate target`.
 - Disabling a saved screen stops its publisher and releases the USB handle.
+- An unchanged frame is skipped, but resent once a second: only a failed transfer
+  shows that a panel was unplugged, so a screen on a still picture (the idle page
+  with no game running) would otherwise read Connected forever.
+- Add device's "Plugged in now" lists USB devices every 3 seconds without opening
+  any (`UsbPresence`) and matches each preset's `detect` ids (`DeviceDetection`).
+  A preset without `detect` is never offered. Every VoCore panel reports the same
+  id, so the Omega also lists its button box (`16D0:127A`); entries with more ids
+  claim first, and saved devices claim their hardware before any entry does.
 - Sprint reuses the compatible Windows USB binding already configured for the
   screen (including a working SimHub setup); it does not require a separate
   per-use driver installation step.

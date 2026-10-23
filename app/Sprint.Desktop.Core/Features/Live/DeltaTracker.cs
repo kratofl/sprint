@@ -42,11 +42,11 @@ public sealed record DeltaReference
 /// marshalled onto the reader thread by the engine, never invoked cross-thread.</para>
 ///
 /// <para><b>Lap boundary.</b> The authoritative boundary is a <em>lap-number
-/// increment</em> (an integer, jitter-free) — both the LMU adapter and the demo
-/// increment it exactly when the start/finish line is crossed, which coincides with
-/// the track-position wrap. We deliberately do not also key off the float
-/// track-position wrap, which would risk a double-finalize across the one/two frames
-/// where the int and float fields tick at slightly different instants.</para>
+/// increment</em> (an integer, jitter-free). In LMU it comes from telemetry while the
+/// track position comes from scoring (~5 Hz), so the two disagree for a frame or two at
+/// the line, usually with the lap number first. We deliberately do not also key off the
+/// float track-position wrap, which would risk a double-finalize across that window;
+/// instead a new lap's trace waits for the position to reach the start of the lap.</para>
 ///
 /// <para><b>Reference total.</b> On the boundary frame the adapter has already
 /// reseeded <see cref="LapState.CurrentLapTime"/> to the <em>new</em> lap's small
@@ -163,13 +163,17 @@ public sealed class DeltaTracker
 
         // Accumulate the in-progress lap. Append only on strictly-forward progress so
         // the reference stays a function of position (no duplicate/again-backwards pos).
+        // A trace never starts past CompleteStartMax: such a lap could not be adopted
+        // anyway, and it keeps the old lap's ~0.99 position — still showing after the lap
+        // number has ticked over — from seeding a trace that rejects the whole new lap.
         _maxTime = Math.Max(_maxTime, NonNegative(lap.CurrentLapTime));
         if (!lap.IsValid)
         {
             _lapValid = false;
         }
 
-        if (_current.Count == 0 || pos > _current[^1].Pos + PosEpsilon)
+        var startsTrace = _current.Count == 0 && pos <= CompleteStartMax;
+        if (startsTrace || (_current.Count > 0 && pos > _current[^1].Pos + PosEpsilon))
         {
             _current.Add((pos, NonNegative(lap.CurrentLapTime)));
         }

@@ -75,8 +75,8 @@ public static class Rgb565
                 nameof(transform));
         }
 
-        offsetX = Math.Max(0, offsetX);
-        offsetY = Math.Max(0, offsetY);
+        // Offsets are signed: a negative one moves the image left or up. The per-pixel bounds
+        // checks below drop whatever is pushed off the panel either way.
         ResolveNativeOffsets(
             transform.PixelRotation,
             offsetX,

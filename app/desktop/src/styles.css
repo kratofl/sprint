@@ -40,10 +40,53 @@ body {
   min-width: 900px;
 }
 
+/* A wheel screen (DashOutput) is the panel's exact size: no app minimum width, no scrollbar. */
+[data-surface="dash"],
+[data-surface="dash"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* A training HUD window (hud/HudWindow.tsx) is as small as its reading and transparent around its panel. */
+[data-surface="hud"],
+[data-surface="hud"] body {
+  min-width: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
 body {
   font: 400 13px/20px var(--font-text);
   color: var(--label);
   background: var(--window);
+}
+
+/* Scrollbars are chrome, so they stay as quiet as a card's hairline edge: a rounded thumb in the
+   outline tone on no track, darkening under the pointer. The 2px transparent border insets the
+   thumb inside its 10px gutter. macOS keeps its native overlay scrollbars. */
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-track,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-track,
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-corner,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-thumb,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--control-stroke) padding-box;
+}
+
+:where(html:not([data-platform="mac"]))::-webkit-scrollbar-thumb:hover,
+:where(html:not([data-platform="mac"])) ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--label-tertiary);
 }
 
 /* Desktop controls keep the arrow cursor; only links get the hand. */
@@ -90,22 +133,6 @@ a:hover {
   overflow: hidden;
   background: var(--window);
   color: var(--label);
-}
-
-/* The driving guide over the game (guide/GuideOverlay.tsx): nothing but the guide is painted. */
-[data-surface="guide-overlay"],
-[data-surface="guide-overlay"] body,
-[data-surface="guide-overlay"] #root {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
-.guide-overlay {
-  display: block;
-  pointer-events: none;
 }
 
 /* Pane width is restored from persisted settings after the first state load
@@ -170,8 +197,7 @@ a:hover {
   min-width: max-content;
 }
 
-.titlebar-sidebar-toggle,
-.titlebar-back {
+.titlebar-sidebar-toggle {
   display: grid;
   place-items: center;
   width: 28px;
@@ -184,20 +210,13 @@ a:hover {
   color: var(--label-secondary);
 }
 
-.titlebar-sidebar-toggle:hover,
-.titlebar-back:hover:not(:disabled) {
+.titlebar-sidebar-toggle:hover {
   background: var(--subtle-hover);
   color: var(--label);
 }
 
-.titlebar-sidebar-toggle:active,
-.titlebar-back:active:not(:disabled) {
+.titlebar-sidebar-toggle:active {
   background: var(--subtle-pressed);
-}
-
-.titlebar-back:disabled {
-  background: transparent;
-  color: var(--label-disabled);
 }
 
 .titlebar-title {
@@ -374,6 +393,7 @@ a:hover {
 }
 
 .navview-toggle {
+  position: relative;
   display: grid;
   place-items: center;
   width: 28px;
@@ -391,15 +411,59 @@ a:hover {
   flex: 1;
 }
 
+/* The build tag beside the name keeps a tag's weight, not the name's. */
+.navview-brand .chip {
+  font-weight: 600;
+}
+
+/* The running build under Help: a dev run's branch, else the version (Sidebar.tsx). */
+.navview-build {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-width: 0;
+  padding: 6px 8px 2px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.navview-build-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsed, the tag becomes a dot on the toggle's corner. */
+.navview-build-dot {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+}
+
+.navview-build-dot.development { background: var(--yellow-500); }
+.navview-build-dot.pre-release { background: var(--blue-500); }
+
 .navview.collapsed .navview-band {
   justify-content: center;
   padding: 0;
 }
 
 .navview.collapsed .navview-brand,
+.navview.collapsed .navview-build,
 .navview.collapsed .nav-item-label,
 .navview.collapsed .account-name {
   display: none;
+}
+
+.navview.collapsed .navview-build-dot {
+  display: block;
 }
 
 .navview.collapsed .nav-item {
@@ -469,6 +533,31 @@ a:hover {
 .nav-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A section heading over a run of rows (shell/nav.ts `NavGroup`): a column-head label, quieter than the rows. */
+.nav-group {
+  flex: none;
+  padding: 12px 8px 4px;
+}
+
+.nav-group-label {
+  display: block;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* The rail has no room for words: the heading becomes a hairline between the runs. */
+.navview.collapsed .nav-group {
+  margin: 6px 12px;
+  padding: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.navview.collapsed .nav-group-label {
+  display: none;
 }
 
 /* Update-available dot on the Settings item. */
@@ -948,7 +1037,7 @@ a:hover {
 }
 
 :where(input, select, textarea):disabled {
-  border-color: var(--control-stroke);
+  border-color: var(--input-stroke);
   background-color: var(--control-fill-disabled);
   color: var(--label-disabled);
 }
@@ -1033,6 +1122,19 @@ a:hover {
 .chip-muted {
   background: transparent;
   color: var(--label-secondary);
+}
+
+/* Build tags in the sidebar: a development build, a pre-release. */
+.chip-warning {
+  border-color: transparent;
+  background: var(--infobar-warning);
+  color: var(--infobar-warning-text);
+}
+
+.chip-info {
+  border-color: transparent;
+  background: var(--infobar-info);
+  color: var(--infobar-info-text);
 }
 
 /* The default/active item among several (e.g. the default dash). */
@@ -1479,9 +1581,21 @@ a:hover {
   overflow-y: auto;
 }
 
+.content-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .content-dialog-title {
   margin: 0;
   font: 600 17px/22px var(--font-display);
+}
+
+/* A second step's way back sits in the title's line, its arrow on the title's left edge. */
+.content-dialog-back {
+  margin-left: -8px;
+  color: var(--label-secondary);
 }
 
 /* The dialog itself takes focus when no control asked for it; it shows no focus ring. */

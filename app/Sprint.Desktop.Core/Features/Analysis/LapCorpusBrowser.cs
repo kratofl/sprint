@@ -29,7 +29,7 @@ public sealed record CorpusLap(
     {
         LapTargetTier.FullTrace => null,
         LapTargetTier.ReferenceCurve => "No channels — recorded before traces, or pruned to stay inside the disk budget.",
-        _ => "Lap time only — imported laps carry no shape.",
+        _ => "Lap time only — imported, or only part of the lap was seen.",
     };
 }
 
@@ -119,6 +119,35 @@ public sealed class LapCorpusBrowser
                 .Where(lap => Usable(stored, lap, all))
                 .Select(lap => Describe(stored, lap))
                 .OrderBy(lap => lap.LapTimeSeconds)];
+    }
+
+    /// <summary>One valid lap by its identity, or null when it is gone or was never valid.</summary>
+    public CorpusLap? Find(string sessionId, int lapNumber)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        LapHistorySession? session = stored
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
+        LapHistoryRecord? lap = session?.Laps
+            .FirstOrDefault(candidate => candidate.LapNumber == lapNumber && Usable(session, candidate, stored));
+        return session is null || lap is null ? null : Describe(session, lap);
+    }
+
+    /// <summary>
+    /// Every valid lap on one course (game, track layout, car) across all sessions, fastest
+    /// first — the Live Compare picker's list. One read of the corpus, not one per session.
+    /// </summary>
+    public IReadOnlyList<CorpusLap> LapsOn(string game, string trackCourse, string carModel)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        return [.. stored
+            .Where(session => string.Equals(session.Context.Game, game, StringComparison.Ordinal)
+                && string.Equals(session.Context.TrackCourse, trackCourse, StringComparison.Ordinal)
+                && string.Equals(session.Context.CarModel, carModel, StringComparison.Ordinal)
+                && !LapHistoryImportService.HasRecordedEquivalent(session, stored))
+            .SelectMany(session => session.Laps
+                .Where(lap => Usable(session, lap, stored))
+                .Select(lap => Describe(session, lap)))
+            .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
     private static bool Usable(

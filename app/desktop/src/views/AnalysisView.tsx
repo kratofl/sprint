@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, ChevronLeft, Download, FileDown, FolderOpen, RefreshCw, X } from 'lucide-react'
+import { BarChart3, ChevronLeft, Crosshair, Download, FileDown, FolderOpen, RefreshCw, X } from 'lucide-react'
 import { bridge } from '../bridge'
 import type { LapExportResult, LapImportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
 import {
   ALL_LAP_CHART_PANELS,
@@ -35,14 +36,15 @@ import type {
   LapTraceSeriesSource,
 } from './AnalysisDomain'
 import { LapTraceChartStack } from './AnalysisChart'
+import { buildSetTarget } from './OnTrackDomain'
 import './AnalysisView.css'
 
 /**
  * Analysis: browse the recorded/imported/shared lap corpus, pick a primary and a comparison
  * lap — even across two different sessions — and overlay their traces (docs/internals/live-compare.md
- * "Analysis view"; the target-picker half is not
- * built here). All narrowing and lap-picking state lives server-side in `AnalysisController`;
- * this view only renders `state.analysis` and sends `analysis.*` commands.
+ * "Analysis view"). Any lap with channels can also become the On track page's training target
+ * (`compare.target.set`). All narrowing and lap-picking state lives server-side in
+ * `AnalysisController`; this view only renders `state.analysis` and sends `analysis.*` commands.
  *
  * Layout: the CommandBar holds the view options as selects (corpus filters on the session list,
  * lap filter + sort inside a session) and Refresh. The page has no primary action — browsing
@@ -73,6 +75,17 @@ export function AnalysisView({
   const primaryTrace = useLapTrace(analysis.primary)
   const comparisonTrace = useLapTrace(analysis.comparison)
 
+  const runAction = async (command: SprintCommand) => {
+    setActionError(null)
+    try {
+      await send(command)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
+    }
+  }
+
+  usePageUp(analysis.session ? 'All sessions' : null, () => void runAction(buildAnalysisSelectSession(null)))
+
   if (runtime.kind === 'loading') {
     return (
       <div className="analysis-page">
@@ -87,20 +100,20 @@ export function AnalysisView({
     )
   }
 
-  const runAction = async (command: SprintCommand) => {
-    setActionError(null)
-    try {
-      await send(command)
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
-    }
-  }
-
   const exportLap = async (lap: CorpusLap) => {
     setLapFileNotice(exportNotice(await bridge.exportLap(lap.sessionId, lap.lapNumber)))
   }
   const importLap = async () => {
     setLapFileNotice(importNotice(await bridge.importLap()))
+  }
+  const trainAgainst = async (lap: CorpusLap) => {
+    setActionError(null)
+    try {
+      await send(buildSetTarget(lap))
+      setLapFileNotice({ tone: 'success', title: 'Training lap set', message: `${lap.label}. Start training from On track.` })
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That lap could not be set.')
+    }
   }
 
   const { filter, session, primary, comparison } = analysis
@@ -176,7 +189,7 @@ export function AnalysisView({
 
       {lapFileNotice && (
         <div className={`infobar ${lapFileNotice.tone}`} role={lapFileNotice.tone === 'error' ? 'alert' : 'status'}>
-          <span className="infobar-icon">{lapFileNotice.tone === 'error' || lapFileNotice.tone === 'warning' ? '!' : 'i'}</span>
+          <span className="infobar-icon">{lapFileNotice.tone === 'error' ? '!' : 'i'}</span>
           <strong className="infobar-title">{lapFileNotice.title}</strong>
           <span className="infobar-message">{lapFileNotice.message}</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setLapFileNotice(null)}>
@@ -213,6 +226,7 @@ export function AnalysisView({
             lapSort={lapSort}
             onSelect={(role, lapNumber) => void runAction(buildAnalysisSelectLap(role, lapNumber))}
             onExport={(lap) => void exportLap(lap)}
+            onTrain={(lap) => void trainAgainst(lap)}
           />
         </>
       ) : corpusEmpty ? (
@@ -425,6 +439,7 @@ function LapList({
   lapSort,
   onSelect,
   onExport,
+  onTrain,
 }: {
   laps: readonly CorpusLap[]
   primary: CorpusLap | null
@@ -434,6 +449,8 @@ function LapList({
   onSelect: (role: 'primary' | 'comparison', lapNumber: number | null) => void
   /** Saves the lap as a .sprintlap. Offered only on laps with channels: a time alone has nothing to share. */
   onExport: (lap: CorpusLap) => void
+  /** Makes the lap the On track page's training target. Laps with channels only: the HUD draws them. */
+  onTrain: (lap: CorpusLap) => void
 }) {
   const rows = applyLapListFilter(laps, lapFilter, lapSort)
   const best = lapTimeStats(laps).best
@@ -477,9 +494,14 @@ function LapList({
                 </Status>
                 <span className="analysis-lap-actions">
                   {lap.hasChannels && (
-                    <button type="button" className="icon-button" aria-label={`Save ${lap.label} as a lap file`} title="Save as a lap file" onClick={() => onExport(lap)}>
-                      <FileDown size={16} />
-                    </button>
+                    <>
+                      <button type="button" className="icon-button" aria-label={`Train against ${lap.label}`} title="Train against this lap" onClick={() => onTrain(lap)}>
+                        <Crosshair size={16} />
+                      </button>
+                      <button type="button" className="icon-button" aria-label={`Save ${lap.label} as a lap file`} title="Save as a lap file" onClick={() => onExport(lap)}>
+                        <FileDown size={16} />
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
@@ -509,7 +531,7 @@ function LapList({
 
 // ── Lap files ──────────────────────────────────────────────────────────────
 
-type LapFileNotice = { tone: 'success' | 'info' | 'warning' | 'error'; title: string; message: string }
+type LapFileNotice = { tone: 'success' | 'info' | 'error'; title: string; message: string }
 
 const exportNotice = (result: LapExportResult): LapFileNotice | null => {
   switch (result.outcome) {
@@ -518,13 +540,7 @@ const exportNotice = (result: LapExportResult): LapFileNotice | null => {
     case 'failed':
       return { tone: 'error', title: 'Lap not saved', message: result.error }
     case 'saved':
-      return result.hasPositions
-        ? { tone: 'success', title: 'Lap saved', message: `${result.fileName}. Send it on; it opens with Open lap file in Analysis.` }
-        : {
-            tone: 'warning',
-            title: 'Lap saved without positions',
-            message: `${result.fileName} compares fine, but it was recorded before Sprint kept positions, so it cannot be a driving guide.`,
-          }
+      return { tone: 'success', title: 'Lap saved', message: `${result.fileName}. Send it on; it opens with Open lap file in Analysis.` }
   }
 }
 
@@ -538,9 +554,7 @@ const importNotice = (result: LapImportResult): LapFileNotice | null => {
       return { tone: 'info', title: 'Already added', message: `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} is already in your laps.` }
     case 'imported': {
       const lap = `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} in the ${result.car}`
-      return result.hasPositions
-        ? { tone: 'success', title: 'Lap added', message: `${lap}. It is under ${result.track}, and it can be your driving guide there.` }
-        : { tone: 'warning', title: 'Lap added without positions', message: `${lap}. It compares fine, but it cannot be a driving guide.` }
+      return { tone: 'success', title: 'Lap added', message: `${lap}. It is under ${result.track}.` }
     }
   }
 }

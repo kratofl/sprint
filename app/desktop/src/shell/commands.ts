@@ -24,12 +24,12 @@ export type ShellCommandContext = {
 }
 
 /**
- * Ported from the old Avalonia app's `CreateShellCommands` (14 entries). Two of the
- * originals are dropped because their target doesn't exist in this shell:
- * - `compare.hud` toggled a Live Compare overlay that was never rebuilt here.
+ * Ported from the old Avalonia app's `CreateShellCommands` (14 entries). One of the
+ * originals is dropped because its target doesn't exist in this shell:
  * - `device.add` opened a device-catalog dialog; DevicesView owns its own dialogs now
  *   and the shell doesn't reach into view-owned UI, so only navigating to Devices
  *   (already covered by `nav.devices`) is reachable from here.
+ * `compare.hud` starts or stops training; with no lap picked yet it opens On track instead.
  * `nav.engineer` is new: the Race Engineer view didn't exist when the old palette
  * was written. `results.import` is the palette's copy of the planner/analysis
  * "Import results" action, listed only when the game has a results archive.
@@ -70,6 +70,14 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
       run: () => {
         void context.send({ type: 'dash.create' })
         context.navigate('Dashes')
+      },
+    },
+    {
+      id: 'compare.hud',
+      label: 'Start or stop training',
+      keywords: 'hud overlay live compare on track target lap',
+      run: () => {
+        void context.send({ type: 'compare.hud.toggle' }).catch(() => context.navigate('OnTrack'))
       },
     },
     {

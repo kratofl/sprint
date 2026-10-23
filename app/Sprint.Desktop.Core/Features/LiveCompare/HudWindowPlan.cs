@@ -30,7 +30,7 @@ public sealed record HudWindowSpec(
 /// one size and one aspect ratio. Splitting them costs a manager and a per-window layout key,
 /// and buys placement that a stack cannot express at any size.
 /// </para>
-/// <para>Avalonia-free, so the composition rules are unit tests rather than a screenshot.</para>
+/// <para>Free of any UI, so the composition rules are unit tests rather than a screenshot.</para>
 /// </summary>
 public static class HudWindowPlan
 {
@@ -46,8 +46,8 @@ public static class HudWindowPlan
     private const int ChartHeight = 160;
 
     /// <summary>
-    /// Below this a chart stops being drawn honestly — <c>ChartStackLayout</c> reports no room
-    /// once padding, the title row and the axis band have taken the surface.
+    /// Below this a chart stops being readable: once padding and the title row have taken
+    /// their share, too little plot is left to tell a braking point from the one beside it.
     /// </summary>
     private const int ChartMinWidth = 240;
     private const int ChartMinHeight = 118;

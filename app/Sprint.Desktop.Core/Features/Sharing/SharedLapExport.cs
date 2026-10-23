@@ -3,7 +3,7 @@ using Sprint.Desktop.Features.SessionPlanning;
 namespace Sprint.Desktop.Features.Sharing;
 
 /// <summary>A lap ready to write to a file, or why it cannot be shared.</summary>
-/// <param name="HasPositions">Whether it carries world positions, so it can be somebody's driving guide.</param>
+/// <param name="HasPositions">Whether it carries world positions (the lap's line on the track).</param>
 public sealed record SharedLapExportResult(SharedLap? Lap, string? Error, bool HasPositions);
 
 /// <summary>

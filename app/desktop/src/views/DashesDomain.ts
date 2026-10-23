@@ -886,6 +886,14 @@ export const buildDashSave = (dashId: string, layout: DashLayout): SprintCommand
 
 export const buildDashReset = (dashId: string): SprintCommand => ({ type: 'dash.reset', dashId })
 
+/**
+ * Whether the editor loads `layout` into its draft: another dash opened, or a reset arrived.
+ * A reset keeps the id, so it shows as the first layout that differs from `resetFrom`, the
+ * dash (as JSON) when the reset was sent; null while no reset is pending.
+ */
+export const editorShouldLoad = (loadedId: string, resetFrom: string | null, layout: DashLayout): boolean =>
+  loadedId !== layout.id || (resetFrom !== null && JSON.stringify(layout) !== resetFrom)
+
 export const buildDashSetDefault = (dashId: string): SprintCommand => ({ type: 'dash.setDefault', dashId })
 
 export const buildDashDelete = (dashId: string): SprintCommand => ({ type: 'dash.delete', dashId })
