@@ -28,7 +28,7 @@ browser launched with `--allow-file-access-from-files`.
 
 | Parameter | Effect |
 | --- | --- |
-| `view=<AppView>` | `Home`, `SessionPlanner`, `Analysis`, `Dashes`, `Devices`, `Setups`, `RaceEngineer`, `LiveLink`, `Settings`, `Help` |
+| `view=<AppView>` | `Home`, `SessionPlanner`, `OnTrack`, `Analysis`, `Setups`, `Dashes`, `Devices`, `RaceEngineer`, `LiveLink`, `Settings`, `Help` |
 | `theme=light\|dark` | Forces a theme; omitted follows the OS |
 | `platform=mac\|windows` | The look Electron would pick on that OS; omitted is the brand look (`windows`), which Linux wears too |
 | `collapsed=1` | The sidebar collapsed to its 56px icon rail; with `platform=mac` it is hidden |

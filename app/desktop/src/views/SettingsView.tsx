@@ -1,6 +1,5 @@
-import { useId, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Compass, Crosshair, Download, Flag, FlaskConical, Glasses, HardDrive, Hash, Monitor, Radio, RefreshCw, RotateCcw, Route, Ruler, ScanEye, Signpost, UserRound, type LucideIcon } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, CheckCircle2, Cloud, CloudDownload, CloudUpload, Download, FlaskConical, HardDrive, Hash, Radio, RefreshCw, RotateCcw, UserRound, type LucideIcon } from 'lucide-react'
 import { bridge } from '../bridge'
 import type { Account, CloudState, CloudStorageMode, LiveUplink, LiveUplinkStatus, SprintCommand, SyncDirection, SyncReport } from '../bridge'
 import { syncReportText } from '../onboarding/summary'
@@ -9,13 +8,11 @@ import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
 import { Status, type StatusTone } from '../shell/Status'
 import type { RuntimeState } from '../shell/runtime'
-import type { GuideSettings, GuideState } from '../guide/guideModel'
-import { formatLapSeconds } from './AnalysisDomain'
 import { CHANNELS, parseSettings } from './SettingsDomain'
 import type { AppSettings, UpdateChannel } from './SettingsDomain'
 import { parseUpdatesInfo, useUpdateCheck, useUpdateInstall } from './SettingsUpdates'
 import type { UpdateCheckState } from './SettingsUpdates'
-import './SettingsView.css'
+import { blurOnEnter, SettingRow, SettingsGroup, Switch } from './SettingsLayout'
 
 type Send = (command: SprintCommand) => Promise<void>
 
@@ -51,7 +48,6 @@ export function SettingsView({ runtime, send, onSetUpCloud }: { runtime: Runtime
       {runtime.sprint.features.sprintWeb && (
         <CloudGroup account={runtime.sprint.account} cloud={runtime.sprint.cloud} send={send} onSetUp={onSetUpCloud} />
       )}
-      <GuideGroup guide={runtime.sprint.guide} send={send} />
       <UpdatesGroup channel={settings.updateChannel} version={updatesInfo?.version ?? null} send={send} />
       <ResetGroup send={send} />
     </div>
@@ -102,10 +98,6 @@ function ProfileGroup({ settings, send }: { settings: AppSettings; send: Send })
       </SettingRow>
     </SettingsGroup>
   )
-}
-
-const blurOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
-  if (event.key === 'Enter') event.currentTarget.blur()
 }
 
 const STORAGE_OPTIONS: Array<{ id: CloudStorageMode; label: string }> = [
@@ -288,134 +280,6 @@ const UPDATE_ICONS: Record<UpdateCheckState['status'], LucideIcon> = {
   failed: AlertTriangle,
 }
 
-/** What the guide is drawing from, in a sentence. */
-const guideLapText = (guide: GuideState): string => {
-  switch (guide.status) {
-    case 'Idle':
-      return 'Picked when you drive: your fastest valid lap on that track and car.'
-    case 'Searching':
-      return 'Looking for your fastest lap on this track…'
-    case 'NoLap':
-      return 'No lap here has positions yet. Drive one full valid lap and it becomes the guide.'
-    case 'Ready': {
-      if (!guide.lap) return 'Ready.'
-      const date = guide.lap.recordedAt ? new Date(guide.lap.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
-      const car = guide.lap.sameCar ? guide.lap.car : `${guide.lap.car}, no lap in this car yet`
-      const boards = guide.boards === 1 ? '1 brake board' : `${guide.boards} brake boards`
-      return [formatLapSeconds(guide.lap.lapTimeSeconds), car, date, boards].filter(Boolean).join(' · ')
-    }
-  }
-}
-
-type GuideNumber = 'eyeRightMeters' | 'eyeUpMeters' | 'eyeForwardMeters' | 'yawOffsetDegrees' | 'pitchOffsetDegrees' | 'monitorFovDegrees' | 'metersAhead'
-
-/**
- * The AR driving line and brake boards (docs/internals/driving-guide.md): what to draw, where,
- * and the seat calibration that puts it on the road. Toggles apply at once, numbers on commit.
- */
-function GuideGroup({ guide, send }: { guide: GuideState; send: Send }) {
-  const { settings, vr } = guide
-  const update = (patch: Partial<GuideSettings>) => void send({ type: 'guide.update', ...patch })
-  const number = (field: GuideNumber, label: string, step: number) => (
-    <GuideNumberField
-      key={`${field}:${settings[field]}`}
-      label={label}
-      value={settings[field]}
-      step={step}
-      onCommit={(value) => update({ [field]: value })}
-    />
-  )
-
-  return (
-    <SettingsGroup title="Driving guide">
-      <SettingRow id="settings-guide-line" icon={Route} title="Racing line" description="A ribbon on the road from your best lap: green on throttle, amber lifting, red braking.">
-        {(labels) => <Switch {...labels} checked={settings.showLine} onChange={(showLine) => update({ showLine })} />}
-      </SettingRow>
-      <SettingRow id="settings-guide-boards" icon={Signpost} title="Brake boards" description="A board beside the track where that lap started braking.">
-        {(labels) => <Switch {...labels} checked={settings.showBoards} onChange={(showBoards) => update({ showBoards })} />}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-monitor"
-        icon={Monitor}
-        title="On this monitor"
-        description="Draws over the game on your main display. Run the game borderless, with look to apex and head movement off."
-      >
-        {(labels) => <Switch {...labels} checked={settings.monitorOverlay} onChange={(monitorOverlay) => update({ monitorOverlay })} />}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-vr"
-        icon={Glasses}
-        title="In VR"
-        description={vr.detail ?? (settings.vrHeadset && !vr.registered
-          ? 'Sprint could not register its OpenXR layer. Check the log in Help.'
-          : 'Adds the guide to your headset through OpenXR. Takes effect the next time the game starts.')}
-      >
-        {(labels) => (vr.available
-          ? <Switch {...labels} checked={settings.vrHeadset} onChange={(vrHeadset) => update({ vrHeadset })} />
-          : <Status tone="neutral" quiet>Unavailable</Status>)}
-      </SettingRow>
-      <SettingRow id="settings-guide-lap" icon={Flag} title="Reference lap" description={guideLapText(guide)}>
-        {() => null}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-eye"
-        icon={Crosshair}
-        title="Eye position"
-        description="Where your eyes sit in the car, in metres. Adjust until the line lies on the road."
-      >
-        {() => (
-          <>
-            {number('eyeRightMeters', 'Right', 0.05)}
-            {number('eyeUpMeters', 'Up', 0.05)}
-            {number('eyeForwardMeters', 'Forward', 0.05)}
-          </>
-        )}
-      </SettingRow>
-      <SettingRow id="settings-guide-align" icon={Compass} title="Alignment" description="Turns the guide right and raises it, in degrees.">
-        {() => (
-          <>
-            {number('yawOffsetDegrees', 'Turn', 0.5)}
-            {number('pitchOffsetDegrees', 'Raise', 0.5)}
-          </>
-        )}
-      </SettingRow>
-      <SettingRow id="settings-guide-fov" icon={ScanEye} title="Field of view" description="Your in-game vertical field of view, in degrees. Only the monitor overlay uses it.">
-        {() => number('monitorFovDegrees', 'Degrees', 1)}
-      </SettingRow>
-      <SettingRow id="settings-guide-ahead" icon={Ruler} title="Distance ahead" description="How much of the line is drawn in front of the car, in metres.">
-        {() => number('metersAhead', 'Metres', 10)}
-      </SettingRow>
-    </SettingsGroup>
-  )
-}
-
-/** A labelled number that saves on blur or Enter. A blank or unchanged field saves nothing. */
-function GuideNumberField({ label, value, step, onCommit }: { label: string; value: number; step: number; onCommit: (value: number) => void }) {
-  const [draft, setDraft] = useState(String(value))
-  const commit = () => {
-    const parsed = Number(draft)
-    if (draft.trim() === '' || !Number.isFinite(parsed)) {
-      setDraft(String(value))
-      return
-    }
-    if (parsed !== value) onCommit(parsed)
-  }
-  return (
-    <label className="settings-guide-number">
-      <span>{label}</span>
-      <input
-        type="number"
-        className="settings-input-narrow tabular"
-        value={draft}
-        step={step}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={blurOnEnter}
-      />
-    </label>
-  )
-}
-
 function UpdatesGroup({ channel, version, send }: { channel: UpdateChannel; version: string | null; send: Send }) {
   const [confirmPreRelease, setConfirmPreRelease] = useState(false)
   const { state: updateState, check: checkUpdates } = useUpdateCheck(bridge.checkUpdates)
@@ -573,69 +437,3 @@ function ResetGroup({ send }: { send: Send }) {
   )
 }
 
-// ── Layout pieces ──────────────────────────────────────────────────────────
-
-function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId()
-  return (
-    <section className="settings-group" aria-labelledby={id}>
-      <h2 id={id} className="settings-group-title">
-        {title}
-      </h2>
-      {children}
-    </section>
-  )
-}
-
-type ControlLabels = { 'aria-labelledby': string; 'aria-describedby': string }
-
-/**
- * One Windows 11 setting card. The control is a render prop so it can point
- * its accessible name and description at the card's own title and text.
- */
-function SettingRow({
-  id,
-  icon: Icon,
-  iconTone = null,
-  title,
-  description,
-  children,
-}: {
-  id: string
-  icon: LucideIcon
-  iconTone?: 'success' | 'danger' | null
-  title: string
-  description: ReactNode
-  children: (labels: ControlLabels) => ReactNode
-}) {
-  const titleId = `${id}-title`
-  const descriptionId = `${id}-description`
-  return (
-    <div className="card settings-row">
-      <Icon className={`settings-row-icon${iconTone ? ` tone-${iconTone}` : ''}`} aria-hidden="true" />
-      <div className="settings-row-text">
-        <span id={titleId} className="settings-row-title">
-          {title}
-        </span>
-        <span id={descriptionId} className="settings-row-description">
-          {description}
-        </span>
-      </div>
-      <div className="settings-row-control">{children({ 'aria-labelledby': titleId, 'aria-describedby': descriptionId })}</div>
-    </div>
-  )
-}
-
-/** Fluent ToggleSwitch: "On"/"Off" to its left, applies immediately. */
-function Switch({ checked, onChange, ...labels }: ControlLabels & { checked: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <span className="settings-switch-field">
-      <span className="settings-switch-state" aria-hidden="true">
-        {checked ? 'On' : 'Off'}
-      </span>
-      <button type="button" role="switch" aria-checked={checked} className="settings-switch" onClick={() => onChange(!checked)} {...labels}>
-        <span className="settings-switch-knob" />
-      </button>
-    </span>
-  )
-}

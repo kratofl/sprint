@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import { Fragment, type RefObject } from 'react'
 import { PanelLeft } from 'lucide-react'
 import sprintMark from '../assets/sprint-mark.svg'
 import { platform } from '../platform'
@@ -14,7 +14,7 @@ const NAV_ICON_STROKE = 1.6
  * Sprint mark and name, then the toggle, which collapses the sidebar to a 56px
  * rail of icons (the persisted `sidebarCollapsed` setting): labels leave, and each
  * item keeps its name as tooltip and accessible name. The selected item gets the
- * strong fill and the brand icon. The footer holds Settings (with a dot when an
+ * strong fill and the brand icon. Rows sit under quiet section headings (`NavGroup`). The footer holds Settings (with a dot when an
  * update is available) and Help, then the account row under a hairline (absent
  * while Sprint web is off).
  *
@@ -61,7 +61,17 @@ export function Sidebar({
           <PanelLeft size={16} strokeWidth={NAV_ICON_STROKE} />
         </button>
       </div>
-      {primaryNav.map((item) => renderItem(item, view, collapsed, onSelect, false))}
+      {primaryNav.map((item, index) => (
+        <Fragment key={item.view}>
+          {item.group && item.group !== primaryNav[index - 1]?.group ? (
+            // Collapsed, the heading is a hairline: the rail has no room for words.
+            <div className="nav-group" role="presentation">
+              <span className="nav-group-label">{item.group}</span>
+            </div>
+          ) : null}
+          {renderItem(item, view, collapsed, onSelect, false)}
+        </Fragment>
+      ))}
       <div className="navview-spacer" />
       {accountRow && <AccountRow account={accountRow.account} collapsed={collapsed} onOpen={accountRow.onOpen} />}
       {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
@@ -70,7 +80,7 @@ export function Sidebar({
 }
 
 function renderItem(item: NavItem, activeView: AppView, collapsed: boolean, onSelect: (view: AppView) => void, badge: boolean) {
-  const isActive = item.view === activeView
+  const isActive = item.view === activeView || (item.also?.includes(activeView) ?? false)
   const Icon = item.icon
   const label = badge ? `${item.label} — update available` : item.label
   return (

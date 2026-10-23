@@ -471,6 +471,31 @@ a:hover {
   text-overflow: ellipsis;
 }
 
+/* A section heading over a run of rows (shell/nav.ts `NavGroup`): a column-head label, quieter than the rows. */
+.nav-group {
+  flex: none;
+  padding: 12px 8px 4px;
+}
+
+.nav-group-label {
+  display: block;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* The rail has no room for words: the heading becomes a hairline between the runs. */
+.navview.collapsed .nav-group {
+  margin: 6px 12px;
+  padding: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.navview.collapsed .nav-group-label {
+  display: none;
+}
+
 /* Update-available dot on the Settings item. */
 .nav-item-badge {
   width: 6px;

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Minus, Plus, RotateCcw, Send, X } from 'lucide-react'
-import type { SprintCommand } from '../bridge'
+import type { AppView, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { EngineerTabs } from './EngineerTabs'
 import { Status } from '../shell/Status'
 import type { StatusTone } from '../shell/Status'
 import { describeTelemetry, type TelemetryTone } from '../shell/telemetry'
@@ -114,9 +115,11 @@ const TELEMETRY_INFOBAR: Record<TelemetryTone, 'info' | 'warning' | 'error' | nu
 export function RaceEngineerView({
   runtime,
   send,
+  onNavigate,
 }: {
   runtime: RuntimeState
   send: (command: SprintCommand) => Promise<void>
+  onNavigate: (view: AppView) => void
 }) {
   // Optimistic staged-value overrides so a stepper click reflects instantly
   // instead of waiting on the next 250ms state poll; cleared per-key once the
@@ -226,6 +229,7 @@ export function RaceEngineerView({
     return (
       <div className="engineer">
         <PageHeader title="Race engineer">{commands}</PageHeader>
+        <EngineerTabs current="RaceEngineer" onNavigate={onNavigate} />
         <div className="engineer-grid">
           <div className="card skeleton engineer-skeleton-tall" />
           <div className="engineer-side">
@@ -251,6 +255,7 @@ export function RaceEngineerView({
         <span className="command-spacer" />
         <Status tone={pushStatus.tone}>{pushStatus.label}</Status>
       </PageHeader>
+      <EngineerTabs current="RaceEngineer" onNavigate={onNavigate} />
 
       <div className="engineer-body">
         {telemetry && telemetryBar && (

@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Copy } from 'lucide-react'
-import type { LinkReachability, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
+import type { AppView, LinkReachability, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { PageHeader } from '../shell/PageHeader'
+import { EngineerTabs } from './EngineerTabs'
 import { Status } from '../shell/Status'
 import { commandErrorMessage } from './DevicesDomain'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
@@ -14,7 +15,15 @@ import './LiveLinkView.css'
  * pasted codes. Renders the host's `link` state and sends `link.*` commands; the host owns
  * every phase change. Local state is only the paste fields and their errors.
  */
-export function LiveLinkView({ runtime, send }: { runtime: RuntimeState; send: (command: SprintCommand) => Promise<void> }) {
+export function LiveLinkView({
+  runtime,
+  send,
+  onNavigate,
+}: {
+  runtime: RuntimeState
+  send: (command: SprintCommand) => Promise<void>
+  onNavigate: (view: AppView) => void
+}) {
   const link: LiveLink = runtime.kind === 'ready' ? runtime.sprint.link : { phase: 'Off' }
   const status = linkStatus(link)
   const close = () => void send({ type: 'link.close' })
@@ -37,6 +46,7 @@ export function LiveLinkView({ runtime, send }: { runtime: RuntimeState; send: (
         <span className="command-spacer" />
         <Status tone={status.tone}>{status.label}</Status>
       </PageHeader>
+      <EngineerTabs current="LiveLink" onNavigate={onNavigate} />
       <div className="live-link-body">
         {runtime.kind === 'loading' ? <div className="card skeleton live-link-skeleton" /> : <LinkBody link={link} send={send} />}
       </div>

@@ -8,6 +8,7 @@ import { DevicesView } from '../views/DevicesView'
 import { SetupsView } from '../views/SetupsView'
 import { RaceEngineerView } from '../views/RaceEngineerView'
 import { LiveLinkView } from '../views/LiveLinkView'
+import { OnTrackView } from '../views/OnTrackView'
 import { SettingsView } from '../views/SettingsView'
 import { HelpView } from '../views/HelpView'
 
@@ -21,6 +22,7 @@ import { HelpView } from '../views/HelpView'
 export type NavigationTarget =
   | { view: 'Home' }
   | { view: 'SessionPlanner'; planId?: string }
+  | { view: 'OnTrack' }
   | { view: 'Analysis' }
   | { view: 'Dashes'; dashId?: string }
   | { view: 'Devices'; deviceId?: string }
@@ -69,6 +71,8 @@ export function ViewRouter({
           onImportResults={onImportResults}
         />
       )
+    case 'OnTrack':
+      return <OnTrackView runtime={runtime} send={send} />
     case 'Analysis':
       return <AnalysisView runtime={runtime} send={send} onImportResults={onImportResults} />
     case 'Dashes':
@@ -78,9 +82,9 @@ export function ViewRouter({
     case 'Setups':
       return <SetupsView runtime={runtime} send={send} />
     case 'RaceEngineer':
-      return <RaceEngineerView runtime={runtime} send={send} />
+      return <RaceEngineerView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'LiveLink':
-      return <LiveLinkView runtime={runtime} send={send} />
+      return <LiveLinkView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'Settings':
       return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
     case 'Help':

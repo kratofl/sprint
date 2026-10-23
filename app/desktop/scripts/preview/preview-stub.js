@@ -186,13 +186,25 @@
 
   // Pages are reached through the app's own input paths, so the preview adds
   // nothing to production code: Alt+1..8 (⌘1..8 with platform=mac) for the
-  // primary pages (shell/nav.ts order), a click on the pane item for the footer pages.
-  const primaryOrder = ['Home', 'SessionPlanner', 'Analysis', 'Dashes', 'Devices', 'Setups', 'RaceEngineer', 'LiveLink']
+  // primary pages (shell/nav.ts order), a click on the pane item for the footer pages, and a
+  // click on its tab for a page that shares a row (Live link is a tab of Race engineer).
+  const primaryOrder = ['Home', 'SessionPlanner', 'OnTrack', 'Analysis', 'Setups', 'Dashes', 'Devices', 'RaceEngineer']
+  const tabbed = { LiveLink: { host: 'RaceEngineer', tab: 'Live link' } }
   const footerLabels = { Settings: 'Settings', Help: 'Help & diagnostics' }
   // The modifier the shell listens for (shell/shortcuts.ts): Command on mac, Alt/Ctrl elsewhere.
   const mac = params.get('platform') === 'mac'
 
   const openView = (view) => {
+    const shared = tabbed[view]
+    if (shared) {
+      openView(shared.host)
+      setTimeout(() => {
+        const tab = [...document.querySelectorAll('[role="tab"]')].find((element) => element.textContent?.trim() === shared.tab)
+        if (tab instanceof HTMLElement) tab.click()
+        else console.warn(`[preview] no "${shared.tab}" tab`)
+      }, 100)
+      return
+    }
     const index = primaryOrder.indexOf(view)
     if (index >= 0) {
       window.dispatchEvent(new KeyboardEvent('keydown', { [mac ? 'metaKey' : 'altKey']: true, code: `Digit${index + 1}`, key: String(index + 1), bubbles: true }))

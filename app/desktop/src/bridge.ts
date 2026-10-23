@@ -2,7 +2,7 @@ import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from './telemetryFrame'
 import { defaultGuideSettings, parseGuideMessage, parseGuideState, type GuideMessage, type GuideState } from './guide/guideModel'
 
-export type AppView = 'Home' | 'SessionPlanner' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
+export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
 export type TelemetryLinkState =
   | 'Disconnected' | 'Connecting' | 'WaitingForGame' | 'Connected'
