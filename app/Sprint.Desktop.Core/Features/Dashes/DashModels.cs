@@ -21,6 +21,39 @@ public sealed class DashColorSystemJsonConverter : JsonConverter<DashColorSystem
         writer.WriteStringValue(value == DashColorSystem.Styled ? "styled" : "functional");
 }
 
+/// <summary>
+/// How every widget on a dash is framed and titled: separate rounded panels, one ruled
+/// grid, or panels with a title bar. Independent of layout: switching it never moves or
+/// resizes a widget. Drawn by <c>chrome.tsx</c> in <c>packages/dashboard</c>.
+/// </summary>
+[JsonConverter(typeof(DashStyleJsonConverter))]
+public enum DashStyle
+{
+    Panels,
+    Grid,
+    Bars,
+}
+
+/// <summary>Reads leniently: a missing, unknown or future style name falls back to panels instead of rejecting the layout.</summary>
+public sealed class DashStyleJsonConverter : JsonConverter<DashStyle>
+{
+    public override DashStyle Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString()?.ToLowerInvariant() switch
+        {
+            "grid" => DashStyle.Grid,
+            "bars" => DashStyle.Bars,
+            _ => DashStyle.Panels,
+        };
+
+    public override void Write(Utf8JsonWriter writer, DashStyle value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            DashStyle.Grid => "grid",
+            DashStyle.Bars => "bars",
+            _ => "panels",
+        });
+}
+
 public sealed class DashLayout
 {
     [JsonPropertyName("id")]
@@ -37,6 +70,9 @@ public sealed class DashLayout
 
     [JsonPropertyName("colorSystem")]
     public DashColorSystem? ColorSystem { get; set; }
+
+    [JsonPropertyName("dashStyle")]
+    public DashStyle DashStyle { get; set; } = DashStyle.Panels;
 
     [JsonIgnore]
     public DashColorSystem EffectiveColorSystem => ColorSystem ??
@@ -315,9 +351,8 @@ public sealed class DashWidget
 /// Per-widget appearance overrides applied on top of the layout theme by the
 /// painter (WS6 per-widget style inspector). Colours are dash style-color token
 /// names (see <c>resolveStyleColor</c> in <c>packages/dashboard/src/palette.ts</c>)
-/// rather than raw hex so widgets stay on-brand; <see cref="Border"/> is a
-/// tri-state override of the type's default outline (null = default, true =
-/// force on, false = force off).
+/// rather than raw hex so widgets stay on-brand. A widget's frame is not a
+/// per-widget choice: the layout's <see cref="DashLayout.DashStyle"/> draws it.
 /// </summary>
 public sealed class DashWidgetStyle
 {
@@ -327,11 +362,8 @@ public sealed class DashWidgetStyle
     [JsonPropertyName("labelColor")]
     public string? LabelColor { get; set; }
 
-    [JsonPropertyName("border")]
-    public bool? Border { get; set; }
-
     [JsonIgnore]
-    public bool IsEmpty => string.IsNullOrEmpty(TextColor) && string.IsNullOrEmpty(LabelColor) && Border is null;
+    public bool IsEmpty => string.IsNullOrEmpty(this.TextColor) && string.IsNullOrEmpty(this.LabelColor);
 }
 
 public sealed class DashAlert

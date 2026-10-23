@@ -3,6 +3,7 @@
   "name": "Driver Focus",
   "default": true,
   "mode": "basic",
+  "dashStyle": "panels",
   "gridCols": 20,
   "gridRows": 12,
   "idlePage": {
@@ -15,77 +16,75 @@
   },
   "pages": [
     {
-      "id": "driving-default",
-      "name": "Driving",
+      "id": "race-default",
+      "name": "Race",
       "widgets": [
-        {"id": "driving-rpm",      "type": "rpm_bar",     "col":  0, "row":  0, "colSpan": 20, "rowSpan": 1},
-        {"id": "driving-tc",       "type": "tc",          "col":  0, "row":  1, "colSpan":  3, "rowSpan": 2},
-        {"id": "driving-abs",      "type": "abs",         "col":  3, "row":  1, "colSpan":  3, "rowSpan": 2},
-        {"id": "driving-bias",     "type": "brake_bias",  "col":  6, "row":  1, "colSpan":  4, "rowSpan": 2},
-        {"id": "driving-map",      "type": "engine_map",  "col": 10, "row":  1, "colSpan":  3, "rowSpan": 2},
-        {"id": "driving-fuel",     "type": "fuel",        "col": 13, "row":  1, "colSpan":  4, "rowSpan": 2, "style": {"border": false}},
-        {"id": "driving-position", "type": "position",    "col": 17, "row":  1, "colSpan":  3, "rowSpan": 2},
-        {"id": "driving-laps",     "type": "lap_time",    "col":  0, "row":  3, "colSpan":  5, "rowSpan": 6, "style": {"border": false}},
-        {"id": "driving-delta",    "type": "delta",       "col":  0, "row":  9, "colSpan":  5, "rowSpan": 3},
-        {"id": "driving-gear",     "type": "gear_speed",  "col":  5, "row":  3, "colSpan": 10, "rowSpan": 9, "style": {"border": false}},
-        {"id": "driving-sectors",  "type": "sector",      "col": 15, "row":  3, "colSpan":  5, "rowSpan": 6, "style": {"border": false}},
-        {"id": "driving-inputs",   "type": "input_trace", "col": 15, "row":  9, "colSpan":  5, "rowSpan": 3, "style": {"border": false}}
+        {"id": "race-last", "type": "lap_time", "col": 0, "row": 0, "colSpan": 6, "rowSpan": 3, "config": {"show": "last"}},
+        {"id": "race-delta", "type": "delta", "col": 6, "row": 0, "colSpan": 8, "rowSpan": 3},
+        {"id": "race-best", "type": "lap_time", "col": 14, "row": 0, "colSpan": 6, "rowSpan": 3, "config": {"show": "best"}},
+        {"id": "race-tyres", "type": "tyre_temp", "col": 0, "row": 3, "colSpan": 6, "rowSpan": 6},
+        {"id": "race-gear", "type": "gear_speed", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
+        {"id": "race-tc", "type": "tc", "col": 14, "row": 3, "colSpan": 3, "rowSpan": 3},
+        {"id": "race-abs", "type": "abs", "col": 17, "row": 3, "colSpan": 3, "rowSpan": 3},
+        {"id": "race-bias", "type": "brake_bias", "col": 14, "row": 6, "colSpan": 3, "rowSpan": 3},
+        {"id": "race-map", "type": "engine_map", "col": 17, "row": 6, "colSpan": 3, "rowSpan": 3},
+        {"id": "race-ahead", "type": "gaps", "col": 0, "row": 9, "colSpan": 6, "rowSpan": 3, "config": {"side": "ahead"}},
+        {"id": "race-fuel", "type": "fuel", "col": 6, "row": 9, "colSpan": 8, "rowSpan": 3},
+        {"id": "race-behind", "type": "gaps", "col": 14, "row": 9, "colSpan": 6, "rowSpan": 3, "config": {"side": "behind"}}
       ]
     },
     {
       "id": "endurance-default",
       "name": "Endurance",
       "widgets": [
-        {"id": "endurance-rpm",       "type": "rpm_bar",       "col":  0, "row":  0, "colSpan": 20, "rowSpan": 1},
-        {"id": "endurance-gear",      "type": "gear_speed",    "col":  0, "row":  1, "colSpan":  7, "rowSpan": 7, "style": {"border": false}},
-        {"id": "endurance-fuel",      "type": "fuel",          "col":  7, "row":  1, "colSpan":  7, "rowSpan": 5, "style": {"border": false}},
-        {"id": "endurance-ers",       "type": "virtual_energy", "col": 14, "row":  1, "colSpan":  6, "rowSpan": 5, "config": {"mode": "budget"}},
-        {"id": "endurance-temps",     "type": "tyre_temp",     "col":  7, "row":  6, "colSpan":  7, "rowSpan": 6, "style": {"border": false}},
-        {"id": "endurance-pressures", "type": "tyre_pressure", "col": 14, "row":  6, "colSpan":  6, "rowSpan": 6, "style": {"border": false}},
-        {"id": "endurance-position",  "type": "position",      "col":  0, "row":  8, "colSpan":  3, "rowSpan": 2},
-        {"id": "endurance-bias",      "type": "brake_bias",    "col":  3, "row":  8, "colSpan":  4, "rowSpan": 2},
-        {"id": "endurance-tc",        "type": "tc",            "col":  0, "row": 10, "colSpan":  3, "rowSpan": 2},
-        {"id": "endurance-abs",       "type": "abs",           "col":  3, "row": 10, "colSpan":  4, "rowSpan": 2}
+        {"id": "endurance-energy", "type": "virtual_energy", "col": 0, "row": 0, "colSpan": 7, "rowSpan": 3, "config": {"mode": "budget"}},
+        {"id": "endurance-fuel", "type": "fuel", "col": 7, "row": 0, "colSpan": 7, "rowSpan": 3},
+        {"id": "endurance-fuel-target", "type": "fuel_target", "col": 14, "row": 0, "colSpan": 6, "rowSpan": 3},
+        {"id": "endurance-position", "type": "position", "col": 0, "row": 3, "colSpan": 6, "rowSpan": 3},
+        {"id": "endurance-gaps", "type": "gaps", "col": 0, "row": 6, "colSpan": 6, "rowSpan": 3},
+        {"id": "endurance-gear", "type": "gear_speed", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
+        {"id": "endurance-delta", "type": "delta", "col": 14, "row": 3, "colSpan": 6, "rowSpan": 3},
+        {"id": "endurance-last", "type": "lap_time", "col": 14, "row": 6, "colSpan": 6, "rowSpan": 3, "config": {"show": "last"}},
+        {"id": "endurance-tc", "type": "tc", "col": 0, "row": 9, "colSpan": 5, "rowSpan": 3},
+        {"id": "endurance-abs", "type": "abs", "col": 5, "row": 9, "colSpan": 5, "rowSpan": 3},
+        {"id": "endurance-bias", "type": "brake_bias", "col": 10, "row": 9, "colSpan": 5, "rowSpan": 3},
+        {"id": "endurance-map", "type": "engine_map", "col": 15, "row": 9, "colSpan": 5, "rowSpan": 3}
       ]
     },
     {
-      "id": "timing-default",
-      "name": "Timing",
+      "id": "tyres-default",
+      "name": "Tyres",
       "widgets": [
-        {"id": "timing-rpm",       "type": "rpm_bar",        "col":  0, "row":  0, "colSpan": 20, "rowSpan": 1},
-        {"id": "timing-laps",      "type": "lap_time",       "col":  0, "row":  1, "colSpan":  7, "rowSpan": 9, "style": {"border": false}},
-        {"id": "timing-gear",      "type": "gear_speed",     "col":  7, "row":  1, "colSpan":  6, "rowSpan": 7, "style": {"border": false}},
-        {"id": "timing-sectors",   "type": "sector",         "col": 13, "row":  1, "colSpan":  7, "rowSpan": 9, "style": {"border": false}},
-        {"id": "timing-delta",     "type": "delta",          "col":  7, "row":  8, "colSpan":  6, "rowSpan": 2},
-        {"id": "timing-position",  "type": "position",       "col":  0, "row": 10, "colSpan":  3, "rowSpan": 2},
-        {"id": "timing-gaps",      "type": "gaps",           "col":  3, "row": 10, "colSpan":  9, "rowSpan": 2, "style": {"border": false}},
-        {"id": "timing-predicted", "type": "predictive_lap", "col": 12, "row": 10, "colSpan":  8, "rowSpan": 2}
+        {"id": "tyres-temps", "type": "tyre_temp", "col": 0, "row": 0, "colSpan": 8, "rowSpan": 9},
+        {"id": "tyres-gear", "type": "gear_speed", "col": 8, "row": 0, "colSpan": 4, "rowSpan": 9},
+        {"id": "tyres-pressures", "type": "tyre_pressure", "col": 12, "row": 0, "colSpan": 8, "rowSpan": 9},
+        {"id": "tyres-tc", "type": "tc", "col": 0, "row": 9, "colSpan": 4, "rowSpan": 3},
+        {"id": "tyres-abs", "type": "abs", "col": 4, "row": 9, "colSpan": 4, "rowSpan": 3},
+        {"id": "tyres-bias", "type": "brake_bias", "col": 8, "row": 9, "colSpan": 4, "rowSpan": 3},
+        {"id": "tyres-fuel", "type": "fuel", "col": 12, "row": 9, "colSpan": 4, "rowSpan": 3},
+        {"id": "tyres-delta", "type": "delta", "col": 16, "row": 9, "colSpan": 4, "rowSpan": 3}
       ]
     },
     {
-      "id": "vehicle-default",
-      "name": "Vehicle",
+      "id": "qualifying-default",
+      "name": "Qualifying",
       "widgets": [
-        {"id": "vehicle-rpm",       "type": "rpm_bar",       "col":  0, "row": 0, "colSpan": 20, "rowSpan": 1},
-        {"id": "vehicle-gear",      "type": "gear_speed",    "col":  0, "row": 1, "colSpan":  6, "rowSpan": 7, "style": {"border": false}},
-        {"id": "vehicle-temps",     "type": "tyre_temp",     "col":  6, "row": 1, "colSpan":  7, "rowSpan": 6, "style": {"border": false}},
-        {"id": "vehicle-pressures", "type": "tyre_pressure", "col": 13, "row": 1, "colSpan":  7, "rowSpan": 6, "style": {"border": false}},
-        {"id": "vehicle-position",  "type": "position",      "col":  0, "row": 8, "colSpan":  3, "rowSpan": 2},
-        {"id": "vehicle-bias",      "type": "brake_bias",    "col":  3, "row": 8, "colSpan":  3, "rowSpan": 2},
-        {"id": "vehicle-tc",        "type": "tc",            "col":  6, "row": 7, "colSpan":  3, "rowSpan": 2},
-        {"id": "vehicle-abs",       "type": "abs",           "col":  9, "row": 7, "colSpan":  3, "rowSpan": 2},
-        {"id": "vehicle-map",       "type": "engine_map",    "col": 12, "row": 7, "colSpan":  3, "rowSpan": 2},
-        {"id": "vehicle-fuel",      "type": "fuel",          "col": 15, "row": 7, "colSpan":  5, "rowSpan": 2, "style": {"border": false}},
-        {"id": "vehicle-inputs",    "type": "input_trace",   "col":  6, "row": 9, "colSpan":  7, "rowSpan": 3, "style": {"border": false}},
-        {"id": "vehicle-ers",       "type": "virtual_energy", "col": 13, "row": 9, "colSpan":  7, "rowSpan": 3, "config": {"mode": "power"}},
-        {"id": "vehicle-fuel-target","type": "fuel_target",   "col":  0, "row":10, "colSpan":  6, "rowSpan": 2}
+        {"id": "qualifying-delta", "type": "delta", "col": 0, "row": 0, "colSpan": 20, "rowSpan": 3},
+        {"id": "qualifying-gear", "type": "gear_speed", "col": 0, "row": 3, "colSpan": 5, "rowSpan": 6},
+        {"id": "qualifying-predicted", "type": "predictive_lap", "col": 5, "row": 3, "colSpan": 8, "rowSpan": 6},
+        {"id": "qualifying-tyres", "type": "tyre_temp", "col": 13, "row": 3, "colSpan": 7, "rowSpan": 6},
+        {"id": "qualifying-sectors", "type": "sector", "col": 0, "row": 9, "colSpan": 10, "rowSpan": 3},
+        {"id": "qualifying-last", "type": "lap_time", "col": 10, "row": 9, "colSpan": 5, "rowSpan": 3, "config": {"show": "last"}},
+        {"id": "qualifying-best", "type": "lap_time", "col": 15, "row": 9, "colSpan": 5, "rowSpan": 3, "config": {"show": "best"}}
       ]
     }
   ],
   "alerts": [
     {"id": "alert-tc", "type": "tc_change", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
     {"id": "alert-abs", "type": "abs_change", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
-    {"id": "alert-engine-map", "type": "enginemap_change", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6}
+    {"id": "alert-bias", "type": "bias_change", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
+    {"id": "alert-engine-map", "type": "enginemap_change", "col": 6, "row": 3, "colSpan": 8, "rowSpan": 6},
+    {"id": "alert-lap-summary", "type": "lap_summary", "col": 0, "row": 0, "colSpan": 20, "rowSpan": 12}
   ],
   "alertConfig": {
     "displayMode": "full",

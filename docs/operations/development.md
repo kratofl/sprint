@@ -78,8 +78,11 @@ Running the real app:
 From `packages/dashboard`:
 
 ```sh
-pnpm exec tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html>
+pnpm exec tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html> [pageId] [panels|grid|bars]
 ```
+
+The page defaults to the preset's first; the dash style overrides the preset's own, so one layout
+can be checked in every style.
 
 Presets are in `app/Sprint.Desktop.Host/presets/dash/`; fonts in `app/desktop/src/fonts/`. Open the
 HTML at the panel size in a browser and screenshot it (Playwright MCP, or headless Edge on Windows);
