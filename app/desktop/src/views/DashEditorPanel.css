@@ -467,7 +467,16 @@
   cursor: nwse-resize;
 }
 
-/* ── Theme presets (GridView, selected = 2px brand stroke) ─────────────── */
+/* ── Dash style + theme presets (GridView, selected = 2px brand stroke) ── */
+
+.dash-editor-theme {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 .dash-editor-theme-grid {
   display: grid;

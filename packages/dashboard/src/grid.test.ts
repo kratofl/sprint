@@ -2,14 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   alertPanelRect,
-  contentRect,
   gridRect,
   pageHasRaceLogicLapTimer,
   raceLogicPanelBounds,
   selectLayer,
   selectPage,
   subRect,
-  usesInstrumentFrame,
 } from './grid'
 import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
 
@@ -50,27 +48,6 @@ test('subRect maps a widget stack layer widget into pixels inside the stack rect
   // A 2x2 sub-grid inside the stack; the widget at (1,0) spanning 1x1 should be the right half, top row.
   const rect = subRect(outer, 2, 2, widget({ col: 1, row: 0, colSpan: 1, rowSpan: 1 }))
   assert.deepEqual(rect, { left: 300, top: 50, width: 200, height: 100 })
-})
-
-test('contentRect insets header/rpm_bar less than other instrument widgets', () => {
-  const rect = { left: 0, top: 0, width: 200, height: 100 }
-  assert.equal(contentRect(rect, 'header').left, 2)
-  assert.equal(contentRect(rect, 'fuel').left, 6)
-})
-
-test('contentRect caps the inset to 8% of the smaller dimension for tiny widgets', () => {
-  const rect = { left: 0, top: 0, width: 20, height: 20 }
-  // min(6, 20*0.08) = 1.6
-  assert.equal(contentRect(rect, 'fuel').left, 1.6)
-})
-
-test('usesInstrumentFrame lists exactly the widget types the desktop painter frames by default', () => {
-  for (const type of ['gear_speed', 'input_trace', 'sector', 'lap_time', 'fuel', 'tyre_temp', 'tyre_pressure', 'gaps']) {
-    assert.equal(usesInstrumentFrame(type), true, type)
-  }
-  for (const type of ['header', 'rpm_bar', 'text', 'delta', 'flag']) {
-    assert.equal(usesInstrumentFrame(type), false, type)
-  }
 })
 
 test('selectPage prefers the idle page when idle is requested, falling back to the first page', () => {

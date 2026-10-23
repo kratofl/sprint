@@ -314,9 +314,6 @@ public sealed class DashEditorController
     /// <summary>Override the selected widget's label/caption colour (style-color token, or null to inherit).</summary>
     public bool SetSelectedLabelColor(string? token) => PatchStyle(style => style.LabelColor = Blank(token));
 
-    /// <summary>Tri-state override of the selected widget's outline (null = default, true = on, false = off).</summary>
-    public bool SetSelectedBorder(bool? show) => PatchStyle(style => style.Border = show);
-
     private bool PatchStyle(Action<DashWidgetStyle> patch)
     {
         if (SelectedWidget is not { } widget)
@@ -578,6 +575,21 @@ public sealed class DashEditorController
         Layout.Theme = preset.IsEmpty ? null : preset.Clone();
         Layout.ColorSystem = preset.IsEmpty ? DashColorSystem.Functional : DashColorSystem.Styled;
         Persist();
+    }
+
+    // ── Dash style (layout-level widget chrome) ───────────────────────────────
+
+    /// <summary>Sets how every widget is framed; the layout itself does not change. False when the style is already in effect.</summary>
+    public bool SetDashStyle(DashStyle style)
+    {
+        if (this.Layout.DashStyle == style)
+        {
+            return false;
+        }
+
+        this.Layout.DashStyle = style;
+        this.Persist();
+        return true;
     }
 
     // ── Widget stacks ─────────────────────────────────────────────────────────

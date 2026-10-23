@@ -100,7 +100,7 @@ public static class DashPreviewFrames
             Brake = 0f,
             FuelLiters = 42f,
             FuelPerLapLiters = 2.6f,
-            BrakeBiasRear = 43.5f,
+            BrakeBiasRear = 0.435f,
         },
         Lap = new LapState
         {

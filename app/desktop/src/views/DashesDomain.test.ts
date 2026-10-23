@@ -7,8 +7,10 @@ import {
   canPlaceNewWidget,
   canPlaceWidgetAt,
   fitScreenSize,
+  parseDashLayout,
   previewMoveRect,
   previewResizeRect,
+  setDashStyle,
   type GridRect,
   type ResizeHandle,
   type WidgetLocation,
@@ -209,6 +211,23 @@ test('applyThemePreset resets to Graphite (empty theme, functional system)', () 
 
   assert.deepEqual(graphite.theme, {})
   assert.equal(graphite.colorSystem, 'functional')
+})
+
+// ── Dash style ───────────────────────────────────────────────────────────
+
+test('a stored dash style survives parsing; a missing or unknown one is left unset (panels)', () => {
+  const row = { id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [] }
+  assert.equal(parseDashLayout({ ...row, dashStyle: 'bars' })?.dashStyle, 'bars')
+  assert.equal(parseDashLayout({ ...row, dashStyle: 'chrome' })?.dashStyle, undefined)
+  assert.equal(parseDashLayout(row)?.dashStyle, undefined)
+})
+
+test('setDashStyle changes only the style, and is a no-op for the style already in effect', () => {
+  const dash = layout(pageWithWidgets(widget('a', 0, 0, 4, 2)))
+  const grid = setDashStyle(dash, 'grid')
+  assert.equal(grid?.dashStyle, 'grid')
+  assert.deepEqual(grid?.pages, dash.pages)
+  assert.equal(setDashStyle(dash, 'panels'), null, 'an unset style already means panels')
 })
 
 // ── fitScreenSize ────────────────────────────────────────────────────────
