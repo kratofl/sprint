@@ -4,6 +4,7 @@ import { bridge } from '../bridge'
 import type { LapExportResult, LapImportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
 import {
   ALL_LAP_CHART_PANELS,
@@ -73,6 +74,17 @@ export function AnalysisView({
   const primaryTrace = useLapTrace(analysis.primary)
   const comparisonTrace = useLapTrace(analysis.comparison)
 
+  const runAction = async (command: SprintCommand) => {
+    setActionError(null)
+    try {
+      await send(command)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
+    }
+  }
+
+  usePageUp(analysis.session ? 'All sessions' : null, () => void runAction(buildAnalysisSelectSession(null)))
+
   if (runtime.kind === 'loading') {
     return (
       <div className="analysis-page">
@@ -85,15 +97,6 @@ export function AnalysisView({
         <div className="card skeleton analysis-card-skeleton" />
       </div>
     )
-  }
-
-  const runAction = async (command: SprintCommand) => {
-    setActionError(null)
-    try {
-      await send(command)
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
-    }
   }
 
   const exportLap = async (lap: CorpusLap) => {

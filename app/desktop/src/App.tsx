@@ -17,15 +17,16 @@ import { matchShortcut } from './shell/shortcuts'
 import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
 import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
-import { canGoBack, goBack, initialHistory, navigateTo } from './shell/history'
+import { PageUpContext, type PageUp } from './shell/pageUp'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
 
 export function App() {
-  // Current page plus the pages visited before it (title-bar back, Alt+Left / ⌘[).
-  const [history, setHistory] = useState(() => initialHistory('Home'))
-  const view = history.view
+  const [view, setView] = useState<AppView>('Home')
+  // The page above the current one, registered by the view (shell/pageUp.ts): where the
+  // title-bar back button and Alt+Left / ⌘[ go. Null on a top-level page.
+  const [up, setUp] = useState<PageUp | null>(null)
   // A pending "open this specific item" request from Home (dash card, device
   // row, plan tile). Cleared right after being handed to the target view
   // (below) so it is applied exactly once: the view consumes it on mount to
@@ -47,9 +48,7 @@ export function App() {
   const [importDialog, setImportDialog] = useState<{ offered: ResultsImportOffer | null } | null>(null)
   const { toasts, leaving, show: showToast, dismiss: dismissToast } = useToasts()
 
-  // Every page change goes through here so the back stack stays complete.
-  const navigate = useCallback((next: AppView) => setHistory((current) => navigateTo(current, next)), [])
-  const back = useCallback(() => setHistory(goBack), [])
+  const navigate = useCallback((next: AppView) => setView(next), [])
 
   useEffect(() => {
     bridge
@@ -194,7 +193,7 @@ export function App() {
         setPaletteOpen(true)
       } else if (shortcut.kind === 'back') {
         event.preventDefault()
-        back()
+        up?.go()
       } else {
         const target = primaryNav[shortcut.index]
         if (target) {
@@ -205,7 +204,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [paletteOpen, toasts, dismissToast, navigate, back])
+  }, [paletteOpen, toasts, dismissToast, navigate, up])
 
   const account = runtime.kind === 'ready' ? runtime.sprint.account : null
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
@@ -257,8 +256,7 @@ export function App() {
   return (
     <div className={appClassName}>
       <TitleBar
-        canGoBack={canGoBack(history)}
-        onBack={back}
+        up={up}
         runtime={runtime}
         onOpenPalette={() => setPaletteOpen(true)}
         title={viewLabel(view)}
@@ -281,16 +279,18 @@ export function App() {
         />
         <main className="content">
           <ToolbarActionsContext value={toolbarActions}>
-            <ViewRouter
-              view={view}
-              focus={focus}
-              runtime={runtime}
-              send={send}
-              onNavigate={navigate}
-              onOpenItem={openItem}
-              onImportResults={importResults}
-              onSetUpCloud={openSetup}
-            />
+            <PageUpContext value={setUp}>
+              <ViewRouter
+                view={view}
+                focus={focus}
+                runtime={runtime}
+                send={send}
+                onNavigate={navigate}
+                onOpenItem={openItem}
+                onImportResults={importResults}
+                onSetUpCloud={openSetup}
+              />
+            </PageUpContext>
           </ToolbarActionsContext>
         </main>
       </div>

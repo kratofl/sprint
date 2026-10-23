@@ -8,6 +8,7 @@ import type { TelemetryFrame } from '@sprint/types'
 import type { SprintCommand } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
 import {
   ALERT_COLOR_TOKENS,
@@ -269,6 +270,7 @@ export function DashEditorPanel({
     if (dirty) setConfirmingClose(true)
     else onClose()
   }
+  usePageUp('Dashes', requestClose)
 
   const activePage = findPage(draft, activePageId)
   const profile = layoutScreenProfile(draft)

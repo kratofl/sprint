@@ -5,6 +5,7 @@ import type { PlanContextChoices, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import { Status } from '../shell/Status'
 import { SuggestBox } from '../shell/SuggestBox'
 import {
@@ -80,6 +81,9 @@ export function SessionPlannerView({
     if (focusPlanId && plans.some((plan) => plan.id === focusPlanId)) setOpenId(focusPlanId)
   }, [focusPlanId, plans])
 
+  const opened = openId ? (plans.find((plan) => plan.id === openId) ?? null) : null
+  usePageUp(opened ? 'All plans' : null, () => setOpenId(null))
+
   if (runtime.kind === 'loading') {
     return (
       <div className="planner-page">
@@ -117,7 +121,6 @@ export function SessionPlannerView({
   }
 
   const active = activePlan(plans)
-  const opened = openId ? (plans.find((plan) => plan.id === openId) ?? null) : null
   const editing = form?.kind === 'edit' ? (plans.find((plan) => plan.id === form.planId) ?? null) : null
   const blockedBy = opened && active && active.id !== opened.id ? active : null
 
