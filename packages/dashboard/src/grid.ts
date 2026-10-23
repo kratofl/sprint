@@ -79,27 +79,6 @@ export function subRect(rect: PixelRect, cols: number, rows: number, widget: Gri
   return { left, top, width: right - left, height: bottom - top }
 }
 
-/** The inset content rectangle inside a widget's outer rect, after its instrument-frame border. */
-export function contentRect(rect: PixelRect, type: string): PixelRect {
-  const maxInset = type === 'rpm_bar' || type === 'header' ? 2 : 6
-  const inset = Math.min(maxInset, Math.min(rect.width, rect.height) * 0.08)
-  return { left: rect.left + inset, top: rect.top + inset, width: rect.width - inset * 2, height: rect.height - inset * 2 }
-}
-
-/** Widget types that draw the compact outlined instrument frame unless a widget explicitly overrides it. */
-export function usesInstrumentFrame(type: string): boolean {
-  return (
-    type === 'gear_speed' ||
-    type === 'input_trace' ||
-    type === 'sector' ||
-    type === 'lap_time' ||
-    type === 'fuel' ||
-    type === 'tyre_temp' ||
-    type === 'tyre_pressure' ||
-    type === 'gaps'
-  )
-}
-
 /**
  * The bounds of the compact RaceLogic-inspired information island: a panel that
  * stays 4:1 in every orientation, centered on the canvas, leaving the rest of

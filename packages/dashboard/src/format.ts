@@ -110,3 +110,18 @@ export function formatFuelPerLap(liters: number): string {
 export function formatFuelPerLapTarget(liters: number | null): string {
   return liters !== null && Number.isFinite(liters) ? formatFuelPerLap(liters) : '--'
 }
+
+/**
+ * Front brake bias as a percentage with one decimal, from the frame's rear 0-1 fraction.
+ * Drivers set and read bias by its front share, so the widget and its change popup show that.
+ * The "car.brakeBiasRear" text binding stays the rear share.
+ */
+export function formatFrontBrakeBias(rearFraction: number): string {
+  return ((1 - rearFraction) * 100).toFixed(1)
+}
+
+/** Signed liters -> `+0.10` / `-0.05` / `0.00`, for fuel against a target. */
+export function formatSignedLiters(liters: number): string {
+  const fixed = liters.toFixed(2)
+  return liters > 0 && fixed !== '0.00' ? `+${fixed}` : fixed === '-0.00' ? '0.00' : fixed
+}

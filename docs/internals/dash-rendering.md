@@ -39,6 +39,31 @@ Conditions are modeled separately from the colors that render them:
 - Yellow race-control signals stay literal yellow and are separate from orange Warning.
 - Color is always paired with a non-color cue: stable position, text, icon or threshold
   direction.
+- A condition may fill a widget's whole frame (delta gaining, tyre temperature, low fuel)
+  because a fill reads at a glance on washed-out USB panels. Values on a fill turn to the
+  dark canvas color. A neutral value never gets a fill.
+
+## Setting identity colors
+
+The one exception to "color means a condition". Each driver-adjustable setting has a fixed
+identity color (`dashSettingColors` in `palette.ts`): TC blue, ABS purple, brake bias
+white, engine map green. A knob widget carries it in its chrome only (border, grid tab or
+title bar), never on its value at rest, and its change popup fills the screen with it, so
+the driver knows which knob moved before reading the number. Identity colors stay fixed
+across themes. They share hues with conditions (TC blue with AssistActive, ABS purple with
+session-fastest timing) but never share a surface: identity lives in a knob's chrome,
+conditions live on values and fills.
+
+## Dash style
+
+A layout's `dashStyle` decides how every widget is framed and titled: `panels` (separate
+rounded boxes, the default), `grid` (one ruled frame, cells share their lines) or `bars`
+(boxes with a title bar). It is chrome only. Positions, sizes, values and colors are the
+same in each, so switching it never breaks a layout. Frames are therefore not a per-widget
+choice: a widget's type says whether it is framed, bare (gear, header, text, RPM, flag) or
+split into several frames of its own (the four tyres), and `chrome.tsx` draws the style.
+Widgets render only their values; the title belongs to the chrome so every style can place
+it (inside the frame, or in the bar).
 
 ## Functional and Styled
 

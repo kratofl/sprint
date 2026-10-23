@@ -3,7 +3,11 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { TirePosition, type TelemetryFrame } from '@sprint/types'
 import { DashRenderer } from '../src/DashRenderer'
-import { parseDashRenderInput } from '../src/index'
+import { isDashStyle, parseDashRenderInput } from '../src/index'
+
+// Usage: tsx scripts/render-check.tsx <preset.json> <fonts-dir> <out.html> [pageId] [panels|grid|bars]
+// Renders one page of a preset at 800x480 against a fixed race frame. The optional dash style
+// overrides the preset's own, so one layout can be checked in every style.
 
 const tire = (position: TirePosition, t: number, p: number) => ({
   position, tempInner: t + 6, tempMiddle: t, tempOuter: t - 4, tempSurface: t, tempCore: t - 2,
@@ -26,9 +30,11 @@ const frame: TelemetryFrame = {
 
 const preset = JSON.parse(readFileSync(process.argv[2], 'utf8'))
 const { layout } = parseDashRenderInput({ layout: preset })
+const [pageId, style] = [process.argv[5], process.argv[6]]
+if (isDashStyle(style)) layout.dashStyle = style
 const W = 800, H = 480
 
-const body = renderToStaticMarkup(<DashRenderer layout={layout} frame={frame} width={W} height={H} />)
+const body = renderToStaticMarkup(<DashRenderer layout={layout} frame={frame} width={W} height={H} pageId={pageId} targets={{ lapTimeSeconds: 209, fuelPerLapLiters: 4.42 }} />)
 const css = readFileSync('src/styles.css', 'utf8')
 const fonts = process.argv[3]
 

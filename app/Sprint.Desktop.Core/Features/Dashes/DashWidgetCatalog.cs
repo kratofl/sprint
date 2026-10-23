@@ -82,6 +82,30 @@ public static class DashWidgetCatalog
         ]),
     ];
 
+    // The lap_time widget reads config["show"]: all three times stacked, or one of them
+    // large so a layout can give the last and best laps their own boxes.
+    private static readonly IReadOnlyList<DashConfigDef> LapTimeConfig =
+    [
+        new DashConfigDef("show", "Show", DashConfigKind.Select, Default: "all", Options:
+        [
+            new DashConfigOption("all", "Current, last and best"),
+            new DashConfigOption("current", "Current lap"),
+            new DashConfigOption("last", "Last lap"),
+            new DashConfigOption("best", "Best lap"),
+        ]),
+    ];
+
+    // The gaps widget reads config["side"]: both gaps, or one of them large.
+    private static readonly IReadOnlyList<DashConfigDef> GapsConfig =
+    [
+        new DashConfigDef("side", "Show", DashConfigKind.Select, Default: "both", Options:
+        [
+            new DashConfigOption("both", "Ahead and behind"),
+            new DashConfigOption("ahead", "Car ahead"),
+            new DashConfigOption("behind", "Car behind"),
+        ]),
+    ];
+
     // IdleCapable marks widgets meaningful on the idle (parked/pre-session) page.
     // Live-timing/telemetry widgets are hidden from the idle palette.
     private static readonly IReadOnlyDictionary<string, DashWidgetDefinition> Definitions =
@@ -93,7 +117,7 @@ public static class DashWidgetCatalog
             ["gear_speed"] = Definition("gear_speed", "Gear + Speed", idleCapable: true, AlignConfig, "car.gear", "car.speed"),
             ["input_trace"] = Definition("input_trace", "Input Trace", idleCapable: false, "inputs.throttle", "inputs.brake", "inputs.clutch", "inputs.steering"),
             ["sector"] = Definition("sector", "Sectors", idleCapable: false, "lap.sector", "lap.current", "lap.best"),
-            ["lap_time"] = Definition("lap_time", "Lap Time", idleCapable: false, "lap.current", "lap.last", "lap.best"),
+            ["lap_time"] = Definition("lap_time", "Lap Time", idleCapable: false, LapTimeConfig, "lap.current", "lap.last", "lap.best"),
             ["delta"] = Definition("delta", "Delta", idleCapable: false, "lap.delta", "lap.target"),
             ["fuel"] = Definition("fuel", "Fuel", idleCapable: true, "car.fuelLiters", "car.fuelPerLapLiters"),
             ["tyre_temp"] = Definition("tyre_temp", "Tyre Temperature", idleCapable: true, TyreTempConfig, "tires.fl", "tires.fr", "tires.rl", "tires.rr"),
@@ -108,7 +132,7 @@ public static class DashWidgetCatalog
             // Race-context and hybrid readouts real dashboards expose (US30). Each binds to
             // the unified TelemetryFrame and degrades to "--" when its channel is absent.
             ["position"] = Definition("position", "Position", idleCapable: false, "race.position", "race.totalPositions"),
-            ["gaps"] = Definition("gaps", "Gaps", idleCapable: false, "race.gapAhead", "race.gapBehind"),
+            ["gaps"] = Definition("gaps", "Gaps", idleCapable: false, GapsConfig, "race.gapAhead", "race.gapBehind"),
             ["predictive_lap"] = Definition("predictive_lap", "Predictive Lap", idleCapable: false, "lap.target", "lap.best"),
             ["racelogic_lap_timer"] = Definition(
                 "racelogic_lap_timer",

@@ -46,6 +46,30 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void DashStyleSurvivesSaveAndReloadAsALowercaseName()
+    {
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout layout = runtime.DashLayouts.Single(candidate => candidate.Id == "default");
+            Assert.Equal(DashStyle.Panels, layout.DashStyle);
+
+            layout.DashStyle = DashStyle.Bars;
+            runtime.SaveDashLayout(layout);
+            Assert.Contains("\"dashStyle\":\"bars\"", JsonSerializer.Serialize(layout));
+
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            Assert.Equal(DashStyle.Bars, reloaded.DashLayouts.Single(candidate => candidate.Id == "default").DashStyle);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DashLayoutPresetKeepsIdlePageAlertsAndWidgetConfig()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
@@ -57,7 +81,7 @@ public sealed class RuntimePersistenceTests
             var layout = runtime.DashLayouts.Single(layout => layout.Id == "default");
             Assert.NotNull(layout.IdlePage);
             Assert.Equal("idle-default", layout.IdlePage.Id);
-            Assert.Equal(3, layout.Alerts.Count);
+            Assert.Equal(5, layout.Alerts.Count);
 
             var idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
             Assert.NotNull(idleName.Config);
@@ -65,7 +89,7 @@ public sealed class RuntimePersistenceTests
 
             var clone = runtime.CreateDashLayout();
             Assert.NotNull(clone.IdlePage);
-            Assert.Equal(3, clone.Alerts.Count);
+            Assert.Equal(5, clone.Alerts.Count);
             Assert.Equal(
                 "profile.driverName",
                 clone.IdlePage.Widgets.Single(widget => widget.Id == "idle-name").Config!["binding"].GetString());
@@ -585,7 +609,7 @@ public sealed class RuntimePersistenceTests
                           "row": 1,
                           "colSpan": 4,
                           "rowSpan": 4,
-                          "style": { "border": false },
+                          "style": { "textColor": "red", "border": false },
                           "legacyWidgetField": 7
                         }
                       ]
@@ -620,8 +644,9 @@ public sealed class RuntimePersistenceTests
             Assert.True(layout.AlertConfig.InvertColors);
             Assert.Equal("blue", layout.AlertConfig.ColorToken);
             // "style" is now a first-class property: it deserializes into Style (not ExtensionData).
-            Assert.NotNull(layout.Pages[0].Widgets[0].Style);
-            Assert.False(layout.Pages[0].Widgets[0].Style!.Border);
+            // The retired per-widget "border" flag is ignored; the layout's dash style draws frames now.
+            Assert.Equal("red", layout.Pages[0].Widgets[0].Style!.TextColor);
+            Assert.Equal(DashStyle.Panels, layout.DashStyle);
             // Genuinely-unknown widget fields still round-trip through the extension-data catch-all.
             Assert.NotNull(layout.Pages[0].Widgets[0].ExtensionData);
             Assert.True(layout.Pages[0].Widgets[0].ExtensionData!.ContainsKey("legacyWidgetField"));

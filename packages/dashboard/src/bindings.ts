@@ -16,6 +16,15 @@ export interface DashTargets {
   fuelPerLapLiters: number | null
 }
 
+/** Narrows an untyped `targets` bag (as the host sends it) to the fields a dash reads, or null when absent. */
+export function narrowDashTargets(raw: Record<string, unknown> | undefined): DashTargets | null {
+  if (!raw) return null
+  return {
+    lapTimeSeconds: typeof raw.lapTimeSeconds === 'number' ? raw.lapTimeSeconds : null,
+    fuelPerLapLiters: typeof raw.fuelPerLapLiters === 'number' ? raw.fuelPerLapLiters : null,
+  }
+}
+
 /** Nothing planned — every `target.*` binding resolves to `null`. */
 export const noDashTargets: DashTargets = { lapTimeSeconds: null, fuelPerLapLiters: null }
 
