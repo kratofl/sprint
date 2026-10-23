@@ -64,13 +64,18 @@ export function SettingRow({
 }
 
 /** Fluent ToggleSwitch: "On"/"Off" to its left, applies immediately. */
-export function Switch({ checked, onChange, ...labels }: ControlLabels & { checked: boolean; onChange: (next: boolean) => void }) {
+export function Switch({
+  checked,
+  onChange,
+  disabled = false,
+  ...labels
+}: ControlLabels & { checked: boolean; onChange: (next: boolean) => void; disabled?: boolean }) {
   return (
     <span className="settings-switch-field">
       <span className="settings-switch-state" aria-hidden="true">
         {checked ? 'On' : 'Off'}
       </span>
-      <button type="button" role="switch" aria-checked={checked} className="settings-switch" onClick={() => onChange(!checked)} {...labels}>
+      <button type="button" role="switch" aria-checked={checked} className="settings-switch" disabled={disabled} onClick={() => onChange(!checked)} {...labels}>
         <span className="settings-switch-knob" />
       </button>
     </span>

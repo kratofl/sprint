@@ -31,7 +31,7 @@ public static class LapTraceChannels
     public const string ElapsedSeconds = "elapsedSeconds";
 
     /// <summary>
-    /// Where the car was, so the driving guide can draw the lap into the world. Written only
+    /// Where the car was: the lap's line on the track, in the game's world. Written only
     /// when every sample of the lap had a position: a line with holes filled by a held value
     /// would cut corners nobody drove.
     /// </summary>

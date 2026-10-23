@@ -87,13 +87,6 @@ public sealed class TelemetryEngine : IDisposable
         _snapshot = new EngineSnapshot { Frame = _lastAugmented, Status = source.Status, Hz = 0 };
     }
 
-    /// <summary>
-    /// Called on the reader thread with every frame read, at the source's own rate rather than
-    /// the 30Hz handoff. For the driving guide's pose feed, which goes stale in milliseconds.
-    /// Must be cheap; an exception is logged nowhere and swallowed, so it cannot fault the link.
-    /// </summary>
-    public Action<TelemetryFrame>? FrameRead { get; init; }
-
     /// <summary>The wrapped source's display name.</summary>
     public string SourceName => _source.Name;
 
@@ -256,7 +249,6 @@ public sealed class TelemetryEngine : IDisposable
                 _rate.Sample(now);
                 _lastAugmented = _delta.Augment(frame);
                 Publish(_lastAugmented, _source.Status, _rate.Hz);
-                this.NotifyFrameRead(_lastAugmented);
                 return StepOutcome.ReadFrame;
             }
 
@@ -300,18 +292,6 @@ public sealed class TelemetryEngine : IDisposable
 
         Publish(_lastAugmented, after, 0);
         return StepOutcome.Reconnecting;
-    }
-
-    private void NotifyFrameRead(TelemetryFrame frame)
-    {
-        try
-        {
-            this.FrameRead?.Invoke(frame);
-        }
-        catch
-        {
-            // A consumer's failure is its own; the link keeps reading.
-        }
     }
 
     private void SafeConnect()

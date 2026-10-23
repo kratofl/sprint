@@ -1,0 +1,111 @@
+/* A training HUD window (HudWindow.tsx): dark glass over the game, one reading per window.
+   The window is transparent; the panel fills it and is the only thing drawn. */
+
+.hud-panel {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 6px 8px 4px;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--acrylic);
+  color: var(--label);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Unlocked: the panel is the drag handle, and its edge says it can be moved. */
+.hud-panel.unlocked {
+  border-color: var(--brand-500);
+  cursor: move;
+  -webkit-app-region: drag;
+}
+
+.hud-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.hud-value {
+  color: var(--label-secondary);
+  font-weight: 500;
+}
+
+.hud-plot {
+  flex: 1;
+  min-height: 0;
+  margin-top: 4px;
+}
+
+.hud-plot svg {
+  display: block;
+}
+
+.hud-line {
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.hud-line.target {
+  stroke: var(--blue-500);
+  stroke-width: 2;
+}
+
+.hud-line.live {
+  stroke: var(--brand-500);
+  stroke-width: 2.4;
+}
+
+.hud-car {
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+}
+
+.hud-delta {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.hud-delta.ahead {
+  color: var(--green-500);
+}
+
+.hud-delta.behind {
+  color: var(--red-500);
+}
+
+.hud-sub {
+  overflow: hidden;
+  color: var(--label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-empty {
+  margin: auto;
+  color: var(--label-secondary);
+  font-size: 11px;
+}
+
+/* Sizes the window; outside the drag region so a press here is not a move. */
+.hud-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid var(--brand-500);
+  border-bottom: 2px solid var(--brand-500);
+  border-bottom-right-radius: var(--radius-card);
+  cursor: nwse-resize;
+  -webkit-app-region: no-drag;
+}

@@ -177,28 +177,25 @@ public sealed class LiveCompareHudTests
     }
 
     [Fact]
-    public void TheFirstColumnStillDoesNotOverlapOnAScaledDisplay()
+    public void OpeningTheSetPutsAPlacedWindowBackAndTheRestInTheFirstColumn()
     {
-        // Avalonia gives a window's position in physical pixels and its size in
-        // device-independent ones. A column laid out without the conversion fits at 100% and
-        // opens with every window on top of the one above it at 150%.
-        var scaled = Primary with { Scaling = 1.5 };
-        var specs = HudWindowPlan.Build(new LiveCompareSettings());
-        var column = HudLayoutStore.DefaultColumn(specs, scaled);
+        LiveCompareSettings settings = new();
+        HudLayoutStore.Save(settings, Brake, Secondary, 2700, 300, 420, 180);
+        IReadOnlyList<HudWindowSpec> specs = HudWindowPlan.Build(settings);
 
-        for (var i = 1; i < column.Count; i++)
+        IReadOnlyList<HudWindowLayout> layouts = HudLayoutStore.Arrange(settings, specs, [Primary, Secondary]);
+        IReadOnlyList<HudWindowLayout> column = HudLayoutStore.DefaultColumn(specs, Primary);
+
+        Assert.Equal(specs.Count, layouts.Count);
+        for (int i = 0; i < specs.Count; i++)
         {
-            Assert.True(
-                column[i].Y >= column[i - 1].Y + column[i - 1].Height,
-                $"window {i} opens on top of window {i - 1} at 150%");
+            (int, int, int, int) expected = specs[i].Id == Brake
+                ? (2700, 300, 420, 180)
+                : (column[i].X, column[i].Y, column[i].Width, column[i].Height);
+            Assert.Equal(expected, (layouts[i].X, layouts[i].Y, layouts[i].Width, layouts[i].Height));
         }
 
-        // Each window covers the same area of glass, which is more pixels.
-        Assert.True(column[1].Width > HudLayoutStore.DefaultColumn(specs, Primary)[1].Width);
-
-        // Scaling is not part of the layout key: the rectangle is stored in physical pixels, so
-        // changing the display scale must not lose a placement the driver chose.
-        Assert.Equal(HudLayoutStore.KeyFor(Brake, Primary), HudLayoutStore.KeyFor(Brake, scaled));
+        Assert.Empty(HudLayoutStore.Arrange(settings, specs, []));
     }
 
     [Fact]

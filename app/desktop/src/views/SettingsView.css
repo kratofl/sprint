@@ -89,20 +89,6 @@
   width: 96px;
 }
 
-/* Driving guide calibration: each number carries its own short label. */
-.settings-guide-number {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--label-secondary);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.settings-guide-number .settings-input-narrow {
-  width: 72px;
-}
-
 /* ── ToggleSwitch (Fluent: 40×20 track, 12px knob, 14px on hover) ─────────── */
 
 .settings-switch-field {
@@ -169,4 +155,15 @@
 
 .settings-switch[aria-checked='true']:hover .settings-switch-knob {
   left: 21px;
+}
+
+/* Disabled, like a disabled primary button: the fill goes quiet, the knob greys out. */
+.settings-switch:disabled,
+.settings-switch:disabled:hover {
+  border-color: var(--subtle-selected);
+  background: var(--subtle-selected);
+}
+
+.settings-switch:disabled .settings-switch-knob {
+  background: var(--label-disabled);
 }

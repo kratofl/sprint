@@ -75,11 +75,6 @@ jobs:
       - name: Build desktop renderer
         run: pnpm --filter @sprint/desktop build
 
-      # The VR driving guide is Windows-only; package.mjs ships resources/openxr-layer when present.
-      - name: Build OpenXR layer
-        if: runner.os == 'Windows'
-        run: node scripts/make-tasks.mjs build-xr-layer
-
       - name: Package desktop app
         run: pnpm --filter @sprint/desktop package
 

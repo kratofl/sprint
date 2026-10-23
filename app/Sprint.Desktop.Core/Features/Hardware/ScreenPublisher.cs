@@ -19,6 +19,13 @@ public sealed record ScreenPublisherOptions
     /// distinct failure such as access denied/device busy.
     /// </summary>
     public TimeSpan ConnectingWarningAfter { get; init; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// An unchanged frame is skipped, but sent again once this long has passed since the last
+    /// transfer: only a failed transfer reveals an unplugged panel, so a screen showing a still
+    /// picture (the idle page while no game runs) would otherwise read Connected forever.
+    /// </summary>
+    public TimeSpan ResendUnchangedAfter { get; init; } = TimeSpan.FromSeconds(1);
 }
 
 /// <summary>The outcome of one <see cref="ScreenPublisher.Step"/> iteration, used to pace the loop.</summary>
@@ -57,6 +64,7 @@ public sealed class ScreenPublisher : IDisposable
     private byte[] _buffer;
     private byte[] _lastSentBuffer;
     private bool _hasSentFrame;
+    private long _lastSentAt;
     private readonly ILog _log;
     private readonly string _deviceId;
     private readonly ScreenPerformanceTracker _performance = new();
@@ -402,7 +410,9 @@ public sealed class ScreenPublisher : IDisposable
     }
 
     private bool IsDuplicate(byte[] buffer) =>
-        _hasSentFrame && buffer.AsSpan().SequenceEqual(_lastSentBuffer);
+        this._hasSentFrame
+        && Stopwatch.GetElapsedTime(this._lastSentAt) < this._options.ResendUnchangedAfter
+        && buffer.AsSpan().SequenceEqual(this._lastSentBuffer);
 
     private void RecordSkipped(RenderedFrame rendered)
     {
@@ -425,8 +435,9 @@ public sealed class ScreenPublisher : IDisposable
 
         if (transfer.Succeeded)
         {
-            rendered.Buffer.CopyTo(_lastSentBuffer, 0);
-            _hasSentFrame = true;
+            rendered.Buffer.CopyTo(this._lastSentBuffer, 0);
+            this._hasSentFrame = true;
+            this._lastSentAt = transfer.CompletedAt;
             _performance.RecordFrame(
                 transfer.CompletedAt,
                 rendered.Timing,

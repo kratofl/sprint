@@ -58,65 +58,6 @@ public sealed class AppSettings
     /// <summary>Where this Sprint's cloud lives (#197).</summary>
     [JsonPropertyName("cloud")]
     public CloudSettings Cloud { get; set; } = new();
-
-    /// <summary>The AR driving line and brake boards (docs/internals/driving-guide.md).</summary>
-    [JsonPropertyName("drivingGuide")]
-    public DrivingGuideSettings DrivingGuide { get; set; } = new();
-}
-
-/// <summary>
-/// What the driving guide draws, where, and the seat calibration that lines it up with the
-/// game's camera. Everything is off by default: an overlay over a game is never a surprise.
-/// </summary>
-public sealed class DrivingGuideSettings
-{
-    [JsonPropertyName("showLine")]
-    public bool ShowLine { get; set; }
-
-    [JsonPropertyName("showBoards")]
-    public bool ShowBoards { get; set; }
-
-    /// <summary>A click-through window over the primary display.</summary>
-    [JsonPropertyName("monitorOverlay")]
-    public bool MonitorOverlay { get; set; }
-
-    /// <summary>The OpenXR layer. The host registers or unregisters it to match.</summary>
-    [JsonPropertyName("vrHeadset")]
-    public bool VrHeadset { get; set; }
-
-    /// <summary>
-    /// Where the driver's eye sits relative to the car's reference point, in metres. Up is
-    /// measured as if the line were on the road, so it is roughly the eye's height above the
-    /// tarmac; the default suits a GT or prototype seat until it is calibrated.
-    /// </summary>
-    [JsonPropertyName("eyeRightMeters")]
-    public double EyeRightMeters { get; set; }
-
-    [JsonPropertyName("eyeUpMeters")]
-    public double EyeUpMeters { get; set; } = 1.0;
-
-    [JsonPropertyName("eyeForwardMeters")]
-    public double EyeForwardMeters { get; set; }
-
-    /// <summary>Positive turns the guide right.</summary>
-    [JsonPropertyName("yawOffsetDegrees")]
-    public double YawOffsetDegrees { get; set; }
-
-    /// <summary>Positive raises the guide.</summary>
-    [JsonPropertyName("pitchOffsetDegrees")]
-    public double PitchOffsetDegrees { get; set; }
-
-    /// <summary>The game's vertical field of view. Only the monitor overlay needs it; VR uses the headset's.</summary>
-    [JsonPropertyName("monitorFovDegrees")]
-    public double MonitorFovDegrees { get; set; } = 50;
-
-    /// <summary>How much of the line is drawn ahead of the car.</summary>
-    [JsonPropertyName("metersAhead")]
-    public double MetersAhead { get; set; } = 250;
-
-    /// <summary>Whether any output would show anything, which is when the guide is worth computing.</summary>
-    [JsonIgnore]
-    public bool Wanted => (this.ShowLine || this.ShowBoards) && (this.MonitorOverlay || this.VrHeadset);
 }
 
 /// <summary>

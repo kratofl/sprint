@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react'
 
 /**
- * The page above the current one — a list above the item opened from it. The title-bar back
- * button and Alt+Left / ⌘[ go here, never to whatever page happened to be visited before:
- * pages are a hierarchy, not a browser history.
+ * The page above the current one — a list above the item opened from it. Alt+Left / ⌘[ goes
+ * here, never to whatever page happened to be visited before: pages are a hierarchy, not a
+ * browser history. The page's own way up ("All sessions") stays the visible control.
  */
 export type PageUp = { label: string; go: () => void }
 

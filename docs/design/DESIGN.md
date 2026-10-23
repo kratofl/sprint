@@ -35,7 +35,7 @@ Where the mockups are silent, the macOS look follows Apple's Human Interface Gui
   (`desktop.css` copies them from `web.css`), Figtree, hairline-edged cards, flat fills and the
   sidebar-plus-toolbar shell. The desktop on macOS wears the native look instead; only the brand and
   status colors carry over to it. NEVER use Material Design patterns (FABs with elevation, ripple,
-  filled text fields, app bars with shadows).
+  underlined text fields with floating labels, app bars with shadows).
 - Desktop views are shared between the two looks, and so is the shell layout; only shapes and
   materials change. Mac shapes live in `app/desktop/src/styles.mac.css`, scoped to
   `[data-platform="mac"]`, so the brand look is untouched by them.
@@ -221,7 +221,7 @@ related actions. The label never changes after a choice. Destructive items go la
 
 ### Search field
 
-Web: a 28px bordered field with the magnifier left, in the toolbar before the primary action
+Web: a 28px flat field with the magnifier left, in the toolbar before the primary action
 (a pill on phones). Desktop: the toolbar's trailing search field opens the command palette — Ctrl+K
 on Windows, ⌘K on macOS.
 
@@ -289,7 +289,9 @@ primary action trailing (see [Web app](#web-app)).
 Desktop: the toolbar has three zones; it is 48px and the window's title bar on Windows (the OS
 caption buttons at its right end), 52px on macOS (the HIG's three zones).
 
-- Leading: the sidebar toggle (macOS only, while the sidebar is hidden), back, the 17px page title.
+- Leading: the sidebar toggle (macOS only, while the sidebar is hidden), the 17px page title. No
+  back button: a deeper page carries its own way up ("All sessions", the editor's back), and
+  Alt+Left / ⌘[ goes up a level.
 - Centre: the telemetry indicator, a capsule that opens Help & diagnostics. When the toolbar gets
   narrow it shrinks to its dot first; the word stays in its tooltip and for screen readers.
 - Trailing: the page's actions, then search. `PageHeader` moves its CommandBar here: secondary
@@ -478,7 +480,8 @@ document.
 - **Buttons** (`ui/button.tsx`): default (primary), secondary, outline, text, ghost,
   destructive; S 24 · M 28 · L 32 · XL 36 pill. One primary per view, never for a destructive
   action; icon-only buttons get an `aria-label`.
-- **Fields:** `Input` and `SelectTrigger` are 28px `surface` fields with a `border-control` edge;
+- **Fields:** `Input` and `SelectTrigger` are flat 28px `fill-strong` fields with no edge at rest;
+  focus lifts them to `surface` under the focus ring (desktop: `--input-fill`, the same step);
   `TextField` adds the label above and validates on blur (message in `danger-text` under the
   field). `FormSelect` for fixed option lists. `Switch` applies at once; `Checkbox` waits for Save.
 - **Segmented** (`components/app/segmented.tsx`): 2–5 text options, 24px segments of at least
@@ -515,10 +518,10 @@ What each token in `packages/tokens/web.css` is for; the values live only there.
 | `surface-floating` | Menus, tooltips, sheets; under glass at 85 %. |
 | `sidebar-bg` | The sidebar's fill, at the Glass setting's opacity. |
 | `fill` | Secondary button, hover, selected row, small icon boxes inside fields. |
-| `fill-strong` | Active sidebar item, segmented track in content, switch off. |
+| `fill-strong` | Text fields, selects and search fields; active sidebar item, segmented track in content, switch off. |
 | `separator` | Hairlines between rows, card borders, sidebar edge, toolbar bottom edge. |
 | `border` | Outlined-button borders. |
-| `border-control` | The edge of inputs, selects, search fields, checkboxes and the off switch (≥ 3:1). |
+| `border-control` | The edge of checkboxes and the off switch (≥ 3:1). |
 | `floating-border` | The 1px edge of every layer at e2 or above. |
 | `meter-track` | The unfilled part of a `brand-500` meter. |
 | `chart-muted`, `chart-muted-strong` | Context series in charts; the still-running value. |

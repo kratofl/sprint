@@ -2,8 +2,8 @@
 
 // The toolbar's period control: ‹ October 2026 ›. Steps one period back or forward;
 // pure presentation, the page decides what a period is and which steps exist.
-// Put it into the toolbar through PageHeader's `scope`. Desktop: a 28px bordered
-// radius-sm control with 26px chevron buttons; phones: a 44px pill across the
+// Put it into the toolbar through PageHeader's `scope`. Desktop: a flat 28px
+// radius-sm control on the toolbar fill with 26px chevron buttons; phones: a 44px pill across the
 // width of the toolbar's second row. The label is announced when it changes.
 
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react'
@@ -31,7 +31,7 @@ export function PeriodStepper({
   nextLabel: string
 }) {
   return (
-    <div className="flex h-7 items-stretch rounded-sm border border-border-control bg-surface max-lg:h-11 max-lg:w-full max-lg:rounded-full">
+    <div className="flex h-7 items-stretch rounded-sm bg-toolbar-fill max-lg:h-11 max-lg:w-full max-lg:rounded-full">
       <button
         type="button"
         onClick={onPrevious}

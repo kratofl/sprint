@@ -52,12 +52,14 @@ Running the real app:
 
 - Agent shells set `ELECTRON_RUN_AS_NODE`, which makes Electron run as plain Node. `dev.mjs` and
   `screenshot.mjs` drop it; unset it yourself when you start Electron any other way.
-- Never point a dev host at the live data folder (`%AppData%\Sprint`, `~/.config/Sprint` on macOS).
-  Copy it to a scratch folder inside the repo
-  (drop `devices.json` so nothing opens a USB screen) and set `SPRINT_DESKTOP_DATA_ROOT`; Electron
-  passes its environment to the host.
-- Give Electron `--user-data-dir=<scratch>` and `--remote-debugging-port=<port>`, then drive the window
-  over CDP.
+- A dev run never uses the installed app's data folder (`%AppData%\Sprint`, `~/.config/Sprint` on
+  macOS). `make dev-app` and `make dev-host` keep everything, the host's data and Electron's profile,
+  in `app/desktop/.dev/data` of the checkout they run from, so worktrees never share state.
+  `make reset-dev-data` deletes it. To run on real data, copy it to a scratch folder inside the repo
+  (drop `devices.json` so nothing opens a USB screen) and set `SPRINT_DESKTOP_DATA_ROOT` to it;
+  Electron moves its profile there too and passes its environment to the host.
+- Started any other way, give Electron `SPRINT_DESKTOP_DATA_ROOT` and
+  `--remote-debugging-port=<port>`, then drive the window over CDP.
 - `make dev-app` starts Vite, Electron and the host. Say so before running it, and make sure all three
   are gone afterwards.
 - In a dev run, ⌘⌥⇧L / Ctrl+Alt+Shift+L reopens the main window in the other look, brand or macOS (macOS:

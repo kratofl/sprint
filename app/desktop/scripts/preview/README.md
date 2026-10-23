@@ -44,8 +44,11 @@ browser launched with `--allow-file-access-from-files`.
 | `storage=Both` / `storage=Remote` | Where data lives (default: this PC only). `Both` also reports a last upload in Settings |
 | `live=<status>` | The live uplink's status in Settings: `Off`, `WaitingForGame`, `Connecting`, `Streaming`, `Reconnecting`. Default: `WaitingForGame` when signed in with `storage=Both`/`Remote`, otherwise `Off` |
 | `link=<phase>` | The live link's phase on the Live link page: `Off`, `Preparing`, `Inviting`, `Joining`, `Connecting`, `Connected`, `Interrupted`, `Failed`, `Ended`. `linkRole=Engineer` shows the engineer's side where both exist (default: the driver's) |
+| `found=<id,id>` | The USB scan finds these catalog ids plugged in and not added yet, so Add device shows them under "Plugged in now", e.g. `found=bavarian-omega-v2-pro`. Default: nothing new |
 | `discord=1` / `discord=fail` | The server offers Discord sign-in. "Continue with Discord" then waits for the browser until Cancel (`1`), or fails at once with a server error (`fail`) |
-| `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-list .list-row&click=.command-bar .button.subtle.destructive` selects a device and opens the remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
+| `training=on` / `training=none` | On track: the HUD is showing and locked (`on`), or no lap was ever recorded (`none`). Default: laps listed, the fastest of yours picked, HUD off. `fullscreen=1` adds the exclusive-fullscreen warning |
+| `hud=<windowId>` | Mounts one training HUD window instead of the app: `delta`, `throttle`, `brake` or `speed`, with a braking zone ahead of the car. `hudLocked=0` shows it unlocked. Screenshot it at its window size: `--size 240,92` for the delta, `--size 380,160` for a chart |
+| `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-tile&click=.command-bar .button.destructive` opens a device and then its remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
 
 ## How it works
 

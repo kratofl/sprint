@@ -8,9 +8,9 @@ Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` (`LapChannelTrace`, `L
 `LocalLapTraceStore`, `LapTraceRetention`), `Features/Charts/`, `Features/LiveCompare/`,
 `Features/Analysis/`, `Features/Sharing/`; API `LapTraceEntity` in `api/Sprint.Api/Data/Entities.cs`.
 
-**State:** traces, retention, the Analysis view, lap files and the cloud client exist. The HUD
-windows were Avalonia and were not rebuilt in Electron; `HudWindowPlan`, `HudLayoutStore`,
-`HudInterop` and `LiveCompareController` are the surviving cores. Cloud sharing has never been run
+**State:** traces, retention, the Analysis view, lap files, the cloud client and the HUD exist. The
+HUD is the On track page plus Electron windows (`app/desktop/electron/hud.ts`) over
+`LiveCompareService`; it has not yet been driven against a real game. Cloud sharing has never been run
 against a real server.
 
 ## Traces: a second tier, not a wider curve
@@ -51,12 +51,15 @@ against a real server.
   useful because each reading sits where the eyes already are, which one stacked window cannot do.
   Single-channel windows are not filled; the combined pedals panel with fills stays in Analysis.
 - No injection into the game: injection is a large dependency, an anti-cheat risk on an online sim, and
-  per-game maintenance. The driving guide's VR layer is the one exception, because nothing outside the
-  game's process can draw into a headset ([driving-guide.md](driving-guide.md)).
+  per-game maintenance.
 - The game must run borderless or windowed. Exclusive fullscreen hides the HUD; the app detects that and
   says so (`HudInterop.IsExclusiveFullscreenActive`). A HUD that silently shows nothing is the worst outcome.
-- Unlocked, windows are draggable and resizable. Locked sets `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` so
-  clicks and focus pass to the game. Layout persists per (monitor, resolution) and per window id.
+- The windows never take focus, so the game keeps the keyboard. Unlocked, a window drags by its body and
+  sizes by a corner grip the page draws (a transparent Electron window does not resize reliably by its
+  edges); locked, every click passes through to the game. Layout persists per (monitor, resolution) and
+  per window id, in device-independent pixels.
+- Electron polls `/api/compare/frame` (~20 Hz) only while the HUD is open and sends each window its own
+  panel, and only when it changed — a car standing still costs no repaint.
 - A rolling distance window around the car (proposed 200 m behind / 600 m ahead). It needs no corner
   detection. Your own line stops at the car; the target extends ahead.
 - `LiveCompareController` keeps its own sample buffer rather than reading the recorder's: "comparing"
@@ -67,15 +70,17 @@ against a real server.
 - Live Compare owns its target and is never linked to the armed plan's. Its main use is practice with no
   plan, and plan targets often resolve to `time only`, which cannot feed a curve.
 - Consequence: the HUD and the wheel delta can chase different laps, so the HUD always names its lap.
-- The picker reuses the planner's vocabulary — scope, statistic, timestamp, sample size, tier.
+- Picked on the On track page from the course being driven (else the newest one with a trace), fastest
+  laps first, or from any lap with channels in Analysis. Only full-trace laps can be targets.
 - One bindable command, `compare.hud.toggle` (capturable, not device-only so the keyboard works).
   Lock and target selection live in the Sprint window only, because a locked HUD is click-through.
+  The HUD closes with the main window for the same reason.
 
 ## Analysis view
 
 A top-level view: pick any two laps (own, imported or shared) and overlay them. Lap comparison is its
 own activity — shared laps and practice belong to no plan, so it does not live inside the planner. It is
-also the home of the shared-lap library and the target picker.
+also the home of the shared-lap library.
 
 ## Sharing
 

@@ -18,14 +18,16 @@ import { platform } from './platform'
 import { readSidebarCollapsed } from './shell/settings'
 import { parseUpdateCheck, displayVersion, type UpdateRelease } from './shell/updates'
 import { PageUpContext, type PageUp } from './shell/pageUp'
+import { describeBuild } from './shell/build'
+import { parseUpdatesInfo } from './views/SettingsUpdates'
 import { ToolbarActionsContext, type ToolbarActions } from './shell/toolbarActions'
 
 export type { RuntimeState }
 
 export function App() {
   const [view, setView] = useState<AppView>('Home')
-  // The page above the current one, registered by the view (shell/pageUp.ts): where the
-  // title-bar back button and Alt+Left / ⌘[ go. Null on a top-level page.
+  // The page above the current one, registered by the view (shell/pageUp.ts): where
+  // Alt+Left / ⌘[ goes. Null on a top-level page.
   const [up, setUp] = useState<PageUp | null>(null)
   // A pending "open this specific item" request from Home (dash card, device
   // row, plan tile). Cleared right after being handed to the target view
@@ -209,6 +211,7 @@ export function App() {
   const account = runtime.kind === 'ready' ? runtime.sprint.account : null
   // Off (the shipped default), Sprint web shows nowhere: no setup, no account row, no Settings group.
   const sprintWeb = runtime.kind === 'ready' && runtime.sprint.features.sprintWeb
+  const build = describeBuild(import.meta.env.DEV, __SPRINT_DEV_BRANCH__, runtime.kind === 'ready' ? parseUpdatesInfo(runtime.sprint)?.version ?? null : null)
 
   // Asked once, on the first state that says the setup was never answered.
   useEffect(() => {
@@ -256,7 +259,6 @@ export function App() {
   return (
     <div className={appClassName}>
       <TitleBar
-        up={up}
         runtime={runtime}
         onOpenPalette={() => setPaletteOpen(true)}
         title={viewLabel(view)}
@@ -276,6 +278,7 @@ export function App() {
           onSelect={navigate}
           accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
           updateAvailable={updateRelease !== null}
+          build={build}
         />
         <main className="content">
           <ToolbarActionsContext value={toolbarActions}>

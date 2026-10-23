@@ -10,15 +10,14 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
-using Sprint.Desktop.Features.DrivingGuide;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
+using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
-using Sprint.Desktop.Host.DrivingGuide;
 using Sprint.Desktop.Runtime;
 using Sprint.Games;
 
@@ -83,12 +82,27 @@ ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataR
 // visible on the next poll without the two paths needing to share one instance.
 SessionPlannerService plannerService = new(planStore, log);
 AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore));
+// Records every lap into the stores above; built here because Live Compare follows its open
+// session to know which course is being driven. Fed by the telemetry loop further down.
+LapHistoryRecorder lapHistoryRecorder = new(lapHistoryStore, lapTraceStore, log: log);
+// Training against an older lap: the commands pick the target and open the HUD, the telemetry
+// loop feeds the live line, and /api/compare/frame is what the HUD windows draw.
+LiveCompareService liveCompare = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore), () => lapHistoryRecorder.OpenSession?.Context);
+lock (runtime.SettingsGate)
+{
+    if (runtime.Settings.LiveCompare.Migrate())
+    {
+        runtime.SaveSettings();
+    }
+
+    liveCompare.Configure(runtime.Settings.LiveCompare);
+}
 // The live link: this PC's telemetry straight to an engineer's desktop, no server in between.
 // The link.* commands drive it, the telemetry loop below feeds it, its own worker owns the socket.
 PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
 CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -146,38 +160,7 @@ UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubRele
 // as a clean disconnected/waiting status rather than an exception.
 ITelemetrySource telemetrySource = GameProviders.Default.CreateTelemetrySource();
 
-// The AR driving line and brake boards (docs/internals/driving-guide.md). The pose leaves on the
-// telemetry reader thread, at the game's rate: the OpenXR layer reads it from shared memory, the
-// monitor overlay from /api/guide/stream. Settings and the lap's geometry follow from the
-// publish loop below.
-DrivingGuideService drivingGuide = new(
-    new DrivingGuideLapPicker(lapHistoryStore, lapTraceStore),
-    () => runtime.Settings.DrivingGuide.Wanted,
-    log: log);
-DrivingGuideFeed? drivingGuideFeed = null;
-try
-{
-    drivingGuideFeed = DrivingGuideFeed.TryCreateNamed();
-}
-catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-{
-    log.Warn("Driving guide: the shared memory for the VR layer could not be created", ex);
-}
-
-DrivingGuideStream drivingGuideStream = new();
-PoseConventionCheck poseCheck = new(log);
-OpenXrLayerRegistration openXrLayer = new(log);
-openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
-
-TelemetryEngine telemetryEngine = new(telemetrySource)
-{
-    FrameRead = frame =>
-    {
-        drivingGuideFeed?.WritePose(frame);
-        drivingGuideStream.Offer(frame);
-        poseCheck.Observe(frame);
-    },
-};
+TelemetryEngine telemetryEngine = new(telemetrySource);
 telemetryEngine.Start();
 
 // The background wiring the deleted Avalonia MainWindow did for every telemetry frame
@@ -187,7 +170,6 @@ telemetryEngine.Start();
 // target onto the delta tracker. Built over the SAME lapHistoryStore/lapTraceStore/plannerService
 // instances above -- not fresh ones -- so a recorded lap or a plan write is visible on the very
 // next /api/state poll and a plan.* command sees exactly what the ingest loop just did.
-LapHistoryRecorder lapHistoryRecorder = new(lapHistoryStore, lapTraceStore, log: log);
 PlanTargetDelivery planTargets = new(() => plannerService.ActivePlan, lapHistoryStore);
 TelemetryIngestionPipeline ingestion = new(
     runtime,
@@ -228,9 +210,7 @@ Task telemetryPublishLoop = Task.Run(async () =>
             // see TelemetryIngestionPipeline. Kept off the HTTP request path: this loop is the
             // only caller, and a bad frame in one consumer never stops the others or this loop.
             ingestion.Poll(snapshot.Frame);
-            drivingGuide.Observe(snapshot.Frame);
-            drivingGuideFeed?.WriteSettings(runtime.Settings.DrivingGuide);
-            drivingGuideFeed?.WriteGeometry(drivingGuide.State);
+            liveCompare.Controller.Ingest(snapshot.Frame);
             liveUplink.Update(cloudAccount.Credentials, runtime.Settings.Cloud.Storage, lapHistoryRecorder.OpenSession);
             peerLink.Update(lapHistoryRecorder.OpenSession);
             // Sources report the raw link; "stale" is derived from frame age, so it
@@ -284,6 +264,35 @@ Task screenReconcileLoop = Task.Run(async () =>
     }
 });
 
+// What is plugged into USB, for the Add device dialog's "Plugged in now" (foundDevices in
+// /api/state, matched by DeviceDetection). A scan only lists devices -- it opens none -- so it
+// never disturbs a screen an output is driving; every few seconds is enough for a dialog.
+IReadOnlyList<UsbId> usbPresent = [];
+CancellationTokenSource usbScanCts = new();
+Task usbScanLoop = Task.Run(async () =>
+{
+    using PeriodicTimer timer = new(TimeSpan.FromSeconds(3));
+    try
+    {
+        do
+        {
+            try
+            {
+                usbPresent = UsbPresence.Scan();
+            }
+            catch (Exception ex)
+            {
+                log.Debug($"USB scan failed: {ex.Message}");
+            }
+        }
+        while (await timer.WaitForNextTickAsync(usbScanCts.Token));
+    }
+    catch (OperationCanceledException)
+    {
+        // Expected on shutdown.
+    }
+});
+
 app.Lifetime.ApplicationStopping.Register(() =>
 {
     telemetryPublishCts.Cancel();
@@ -292,11 +301,11 @@ app.Lifetime.ApplicationStopping.Register(() =>
     ingestion.Close();
     telemetryEngine.Dispose();
     screenReconcileCts.Cancel();
+    usbScanCts.Cancel();
     cloudSyncCts.Cancel();
     peerLinkCts.Cancel();
     discordSignIn.Cancel();
     screenOutputs.Dispose();
-    drivingGuideFeed?.Dispose();
 });
 
 app.Use(async (context, next) =>
@@ -332,6 +341,8 @@ app.MapGet("/api/state", () =>
         controls = runtime.Controls,
         catalog = runtime.Catalog,
         devices = runtime.Devices,
+        // Catalog ids plugged in but not added yet, one per device (the Add device dialog).
+        foundDevices = DeviceDetection.FindNew(runtime.Catalog, runtime.Devices, usbPresent),
         dashLayouts = runtime.DashLayouts,
         setupTemplates = runtime.SetupTemplates,
         setupPrograms = runtime.SetupPrograms,
@@ -390,29 +401,18 @@ app.MapGet("/api/state", () =>
             },
         },
         link = peerLink.State,
+        compare = CompareState(),
         features = new { sprintWeb },
         updates = new
         {
             version = BuildInfo.Version,
             channel = runtime.Settings.UpdateChannel,
         },
-        guide = new
-        {
-            status = drivingGuide.State.Status,
-            lap = drivingGuide.State.Lap,
-            boards = drivingGuide.State.Geometry?.Boards.Count ?? 0,
-            vr = openXrLayer.State,
-        },
         screens = ScreenOutputs.Describe(runtime.Devices, runtime.DashLayouts, frames, state.Telemetry.Status.IsLive, screenOutputs.HardwareFor, dashPageCycle)
     }, json);
 });
 
 app.MapGet("/api/telemetry", () => Results.Json(state.Telemetry, json));
-app.MapGet("/api/guide/stream", (HttpContext context) => drivingGuideStream.ServeAsync(
-    context.Response,
-    () => runtime.Settings.DrivingGuide,
-    () => drivingGuide.State,
-    context.RequestAborted));
 app.MapPost("/api/shutdown", () =>
 {
     app.Lifetime.StopApplication();
@@ -428,7 +428,6 @@ app.MapPost("/api/commands", async (HttpRequest request) =>
         return Results.BadRequest(new { error = "command type is required" });
     }
     if (!coordinator.Execute(document.RootElement, out string error)) return Results.BadRequest(new { error });
-    if (type.GetString() == "guide.update") openXrLayer.Reconcile(runtime.Settings.DrivingGuide);
     return Results.Ok(new { accepted = true, type = type.GetString() });
 });
 
@@ -438,6 +437,53 @@ app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId,
 {
     LapChannelTrace? trace = lapTraceStore.Load(LapTraceId.For(sessionId, lapNumber));
     return trace is null ? Results.NotFound() : Results.Json(trace, json);
+});
+
+// The HUD's feed: Electron polls this while the HUD is open and hands each window its part.
+// A focused endpoint rather than /api/state, because it is resampled per request and wanted
+// several times faster than the state poll. 204 when there is no target to draw.
+app.MapGet("/api/compare/frame", () =>
+{
+    if (liveCompare.Controller.Snapshot() is not { } frame)
+    {
+        return Results.NoContent();
+    }
+
+    return Results.Json(new
+    {
+        targetName = frame.TargetName,
+        deltaSeconds = frame.DeltaSeconds,
+        hasLiveLine = frame.HasLiveLine,
+        carMeters = frame.CarMeters,
+        domain = new { min = frame.Stack.Domain.Min, max = frame.Stack.Domain.Max },
+        panels = frame.PanelIds.Zip(frame.Stack.Charts, (id, chart) => new { id, title = chart.Title, unit = chart.Unit, series = chart.Series }),
+    }, json);
+});
+
+// Where each HUD window opens, given the displays Electron sees (primary first): the place the
+// driver left it on one of them, else the first-run column. The placement rules are Core's.
+app.MapPost("/api/compare/hud/windows", (HudWindowsRequest body) =>
+{
+    List<HudScreen> screens = [.. (body.Screens ?? [])
+        .Where(screen => screen.Width > 0 && screen.Height > 0)
+        .Select(screen => new HudScreen(screen.X, screen.Y, screen.Width, screen.Height))];
+    lock (runtime.SettingsGate)
+    {
+        LiveCompareSettings settings = runtime.Settings.LiveCompare;
+        IReadOnlyList<HudWindowSpec> specs = HudWindowPlan.Build(settings);
+        IReadOnlyList<HudWindowLayout> layouts = HudLayoutStore.Arrange(settings, specs, screens);
+        return Results.Json(specs.Zip(layouts, (spec, layout) => new
+        {
+            id = spec.Id,
+            title = spec.Title,
+            minWidth = spec.MinWidth,
+            minHeight = spec.MinHeight,
+            x = layout.X,
+            y = layout.Y,
+            width = layout.Width,
+            height = layout.Height,
+        }), json);
+    }
 });
 
 // Focused endpoint: building the choices reads every lap-history file's context, which is far too
@@ -756,6 +802,23 @@ async Task<UpdateInstallResult> InstallUpdateAsync(UpdateInstallTarget target, C
 
 // The remembered game/car/track (TelemetryIngestionPipeline keeps it current from every frame),
 // as the planner controller's prefill and its "live" context option.
+// Training against an older lap, for the On track page. `fullscreen` warns that a game in
+// exclusive fullscreen hides every HUD window -- said, rather than left as an empty screen.
+object CompareState()
+{
+    LiveCompareState compare = liveCompare.State();
+    return new
+    {
+        courses = compare.Courses,
+        course = compare.Course,
+        laps = compare.Laps,
+        lapCount = compare.LapCount,
+        target = compare.Target,
+        hudOpen = compare.HudOpen,
+        fullscreen = compare.HudOpen && HudInterop.IsExclusiveFullscreenActive(),
+    };
+}
+
 PlanContext LastSeenContext()
 {
     LastSeenContext seen = runtime.Settings.LastSeenContext;

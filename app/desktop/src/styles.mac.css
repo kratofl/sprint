@@ -104,21 +104,15 @@
   }
 }
 
-:where([data-platform="mac"]) .titlebar-sidebar-toggle,
-:where([data-platform="mac"]) .titlebar-back {
+:where([data-platform="mac"]) .titlebar-sidebar-toggle {
   width: 32px;
   border-radius: var(--radius-pill);
   background: var(--control-fill);
   color: var(--label);
 }
 
-:where([data-platform="mac"]) .titlebar-sidebar-toggle:hover,
-:where([data-platform="mac"]) .titlebar-back:hover:not(:disabled) {
+:where([data-platform="mac"]) .titlebar-sidebar-toggle:hover {
   background: var(--control-fill-hover);
-}
-
-:where([data-platform="mac"]) .titlebar-back:disabled {
-  background: transparent;
 }
 
 :where([data-platform="mac"]) .titlebar-title {

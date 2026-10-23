@@ -5,10 +5,10 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isRecord, readScreenOutputs } from './frames.js'
-import { guideRoute, readGuideOverlayWanted } from './guideFeed.js'
-import { GuideOverlay } from './guideOverlay.js'
 import { NativeHost } from './native-host.js'
 import { OffscreenOutputs } from './offscreen.js'
+import { hudRouteFor, TrainingHud } from './hud.js'
+import { HUD_CLOSED, readHudWanted } from './hudFeed.js'
 import { macMenuTemplate } from './appMenu.js'
 import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 
@@ -53,8 +53,8 @@ function shutdown(): Promise<void> {
     if (pollTimer !== undefined) { clearTimeout(pollTimer); pollTimer = undefined }
     offscreen?.closeAll()
     offscreen = undefined
-    guideOverlay?.close()
-    guideOverlay = undefined
+    hud?.close()
+    hud = undefined
     shutdownPromise = nativeHost.stop().catch((error: unknown) => {
       console.error('[sprint] native host stop failed:', error)
     })
@@ -68,7 +68,7 @@ const subscribers = new Set<WebContents>()
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
 let offscreen: OffscreenOutputs | undefined
-let guideOverlay: GuideOverlay | undefined
+let hud: TrainingHud | undefined
 
 function rendererBaseUrl(): string {
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
@@ -90,7 +90,9 @@ async function pollTick(): Promise<void> {
     // Dashboard output is driven from the same poll rather than from a renderer
     // subscription, so screens keep painting with the main window hidden.
     offscreen?.reconcile(readScreenOutputs(state))
-    guideOverlay?.reconcile(mainWindow !== undefined && readGuideOverlayWanted(state))
+    // The HUD has no controls of its own and is click-through when locked; without the main
+    // window nothing could turn it off, so it only shows while that window exists.
+    hud?.reconcile(mainWindow ? readHudWanted(state) : HUD_CLOSED)
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -232,7 +234,7 @@ ipcMain.handle('sprint:lap-export', async (event: IpcMainInvokeEvent, sessionId:
   } catch (error) {
     return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be written.' }
   }
-  return { outcome: 'saved', fileName: path.basename(choice.filePath), hasPositions: file.hasPositions }
+  return { outcome: 'saved', fileName: path.basename(choice.filePath) }
 })
 
 /** Opens a .sprintlap a friend sent and files it into the corpus. */
@@ -263,6 +265,15 @@ ipcMain.on('sprint:subscribe', (event: IpcMainEvent) => {
 
 ipcMain.on('sprint:unsubscribe', (event: IpcMainEvent) => {
   subscribers.delete(event.sender)
+})
+
+ipcMain.on('sprint:hud-subscribe', (event: IpcMainEvent) => {
+  hud?.resend(event.sender)
+})
+
+ipcMain.on('sprint:hud-resize', (event: IpcMainEvent, width: unknown, height: unknown, done: unknown) => {
+  if (typeof width !== 'number' || typeof height !== 'number' || !Number.isFinite(width) || !Number.isFinite(height)) return
+  hud?.resize(event.sender, width, height, done === true)
 })
 
 const isMac = process.platform === 'darwin'
@@ -308,8 +319,14 @@ function isToggleLookKey(input: Electron.Input): boolean {
   return input.type === 'keyDown' && input.key.toLowerCase() === 'l' && input.alt && input.shift && (isMac ? input.meta : input.control)
 }
 
-/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar; the caption buttons fill it. */
+/** Height of the renderer's toolbar (styles.css `.titlebar`), the window title bar, including its 1px bottom edge. */
 const TITLE_BAR_HEIGHT = 48
+
+/**
+ * Height of the caption buttons' overlay. One pixel short of the toolbar: the overlay paints its own
+ * background over the page, and at full height it would hide the toolbar's bottom edge beneath it.
+ */
+const CAPTION_BUTTONS_HEIGHT = TITLE_BAR_HEIGHT - 1
 
 /**
  * macOS traffic lights, as the top-left of the close button. The renderer's
@@ -332,7 +349,7 @@ function chromeOptions(chrome: WindowChrome): BrowserWindowConstructorOptions {
         // snap/maximise and close — including the Snap Layouts flyout, which a drawn
         // HTML button cannot offer.
         titleBarStyle: 'hidden',
-        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT },
+        titleBarOverlay: { color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT },
       }
     case 'vibrancy':
     case 'opaque':
@@ -356,7 +373,7 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
     case 'solid':
       window.setBackgroundColor(chrome.background)
       // Windows/Linux only; macOS reaches this in the dev look toggle.
-      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: TITLE_BAR_HEIGHT })
+      if (!isMac) window.setTitleBarOverlay({ color: chrome.background, symbolColor: chrome.symbol, height: CAPTION_BUTTONS_HEIGHT })
       return
     case 'vibrancy':
       window.setVibrancy('sidebar')
@@ -390,8 +407,7 @@ function createWindow(): BrowserWindow {
   window.once('closed', () => {
     if (mainWindow !== window) return
     mainWindow = undefined
-    // The overlay is click-through and has no controls; without the main window nothing could turn it off.
-    guideOverlay?.close()
+    hud?.close()
   })
   // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
   // and icon, so hide them. ⌘W and ⌘Q still close the window.
@@ -443,6 +459,10 @@ function createWindow(): BrowserWindow {
 }
 
 app.setName('Sprint')
+// A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
+// away from the installed app's. The host reads the same variable.
+const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
+if (dataRoot) app.setPath('userData', dataRoot)
 // Windows groups taskbar entries and resolves their icon by this id; without it
 // a dev run is filed under Electron's own identity and icon.
 if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
@@ -459,13 +479,19 @@ async function bootstrap(): Promise<void> {
   await startNativeHost()
   offscreen = new OffscreenOutputs(
     rendererBaseUrl(),
+    path.join(__dirname, 'preload.cjs'),
     (deviceId, frame, signal) => nativeHost.frame(deviceId, frame, signal),
     (deviceId, error) => { console.error(`[sprint] frame delivery failed for ${deviceId}:`, error) },
   )
-  guideOverlay = new GuideOverlay(
-    guideRoute(rendererBaseUrl()),
+  const baseUrl = rendererBaseUrl()
+  hud = new TrainingHud(
+    (windowId) => hudRouteFor(baseUrl, windowId),
     path.join(__dirname, 'preload.cjs'),
-    (signal) => nativeHost.guideStream(signal),
+    {
+      windows: (displays) => nativeHost.hudWindows(displays),
+      frame: () => nativeHost.compareFrame(),
+      command: (command) => nativeHost.command(command),
+    },
   )
   polling = true
   ensurePolling()

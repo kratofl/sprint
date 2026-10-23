@@ -49,8 +49,8 @@
   --control-fill-disabled: #f4f4f5;
   --segmented-selected: #ffffff;
   --control-stroke: #dcdce0;    /* quiet outlines (web border) */
-  --input-fill: #ffffff;        /* text boxes and selects sit on surface */
-  --input-stroke: #8a8a92;      /* the edge of inputs and checkboxes: ≥ 3:1 (web border-control) */
+  --input-fill: #e9e9ec;        /* text boxes and selects: flat, a step stronger than a button (web fill-strong) */
+  --input-stroke: transparent;  /* no edge at rest; focus draws --focus-ring */
 
   /* Glass (menus, notifications, command palette) and elevation */
   --acrylic: rgba(255, 255, 255, 0.85);
@@ -101,8 +101,8 @@
   --control-fill-disabled: #1b1b1e;
   --segmented-selected: #333338;
   --control-stroke: #2c2c31;
-  --input-fill: #0f0f11;
-  --input-stroke: #737378;
+  --input-fill: #232327;
+  --input-stroke: transparent;
   --acrylic: rgba(24, 24, 27, 0.85);
   --acrylic-stroke: rgba(255, 255, 255, 0.08);
   --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5);
@@ -129,7 +129,7 @@
     --on-brand: #1d1d1f; --link: #ff9a4d; --link-hover: #ffb27f; --success-text: #4ade80; --danger-text: #ff7a8a;
     --subtle-hover: #1b1b1e; --subtle-selected: #232327; --subtle-pressed: #232327;
     --control-fill: #1b1b1e; --control-fill-hover: #232327; --control-fill-disabled: #1b1b1e; --segmented-selected: #333338;
-    --control-stroke: #2c2c31; --input-fill: #0f0f11; --input-stroke: #737378;
+    --control-stroke: #2c2c31; --input-fill: #232327; --input-stroke: transparent;
     --acrylic: rgba(24, 24, 27, 0.85); --acrylic-stroke: rgba(255, 255, 255, 0.08);
     --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5); --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.6); --smoke: rgba(0, 0, 0, 0.5);
     --infobar-warning: rgba(224, 163, 12, 0.2); --infobar-warning-icon: #e0a30c; --infobar-warning-text: #eec766;

@@ -2,6 +2,8 @@
   "id": "bavarian-omega-v2-pro",
   "name": "BavarianSimTec Omega PRO V2",
   "description": "Integrated wheel with VoCore screen and button inputs",
+  "brand": "BavarianSimTec",
+  "detect": [{ "vid": 51314, "pid": 4100 }, { "vid": 5840, "pid": 4730 }],
   "type": "wheel",
   "vid": 51314,
   "pid": 4100,

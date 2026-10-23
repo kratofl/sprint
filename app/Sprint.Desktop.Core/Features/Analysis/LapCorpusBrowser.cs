@@ -121,6 +121,35 @@ public sealed class LapCorpusBrowser
                 .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
+    /// <summary>One valid lap by its identity, or null when it is gone or was never valid.</summary>
+    public CorpusLap? Find(string sessionId, int lapNumber)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        LapHistorySession? session = stored
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
+        LapHistoryRecord? lap = session?.Laps
+            .FirstOrDefault(candidate => candidate.LapNumber == lapNumber && Usable(session, candidate, stored));
+        return session is null || lap is null ? null : Describe(session, lap);
+    }
+
+    /// <summary>
+    /// Every valid lap on one course (game, track layout, car) across all sessions, fastest
+    /// first — the Live Compare picker's list. One read of the corpus, not one per session.
+    /// </summary>
+    public IReadOnlyList<CorpusLap> LapsOn(string game, string trackCourse, string carModel)
+    {
+        IReadOnlyList<LapHistorySession> stored = this._history.LoadAll();
+        return [.. stored
+            .Where(session => string.Equals(session.Context.Game, game, StringComparison.Ordinal)
+                && string.Equals(session.Context.TrackCourse, trackCourse, StringComparison.Ordinal)
+                && string.Equals(session.Context.CarModel, carModel, StringComparison.Ordinal)
+                && !LapHistoryImportService.HasRecordedEquivalent(session, stored))
+            .SelectMany(session => session.Laps
+                .Where(lap => Usable(session, lap, stored))
+                .Select(lap => Describe(session, lap)))
+            .OrderBy(lap => lap.LapTimeSeconds)];
+    }
+
     private static bool Usable(
         LapHistorySession session,
         LapHistoryRecord lap,

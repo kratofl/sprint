@@ -78,9 +78,6 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
   hardware/USB, input, diagnostics, updates.
 - `app/Sprint.Desktop.Api`, `app/Sprint.Contracts`, `app/Sprint.Games`: shared
   contracts and game adapters (see Source Of Truth).
-- `app/Sprint.OpenXrLayer/`: the driving guide's OpenXR API layer, a native
-  Windows DLL that draws into the headset. Reads the host's shared memory
-  (`docs/internals/driving-guide.md`).
 - There is no native desktop UI. The Avalonia app and the Go/Wails app before it
   are both retired — do not reintroduce either.
 - `api/`: .NET 10 (ASP.NET Core + HotChocolate) GraphQL API server. Persists to
@@ -137,6 +134,8 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Start web: `make dev-web`
 - Start desktop: `make dev-app` (Vite + Electron; Electron launches the native host)
 - Start the native host alone: `make dev-host` (no UI)
+- Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
+  installed app's; wipe it with `make reset-dev-data`
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`

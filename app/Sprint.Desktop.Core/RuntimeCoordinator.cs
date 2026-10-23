@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Sprint.Desktop;
 using Sprint.Desktop.Features.Analysis;
+using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
 using Sprint.Desktop.Features.Input;
+using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
@@ -33,6 +35,7 @@ public sealed class RuntimeCoordinator
     private readonly LiveLogStore _diagnosticsLog;
     private readonly DashPageCycle _pageCycle;
     private readonly PeerLink? _link;
+    private readonly LiveCompareService _liveCompare;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -42,7 +45,8 @@ public sealed class RuntimeCoordinator
     /// instances explicitly so command writes and <c>/api/state</c> reads agree -- <paramref
     /// name="pageCycle"/> in particular has to be the very instance <c>ScreenOutputs.Describe</c>
     /// reads, or a <c>dash.page.next</c> command would never be visible in <c>screens[]</c>.
-    /// Without <paramref name="link"/> the <c>link.*</c> commands are refused.
+    /// Without <paramref name="link"/> the <c>link.*</c> commands are refused. <paramref
+    /// name="liveCompare"/> must be the instance the host's telemetry loop feeds and its HUD reads.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -50,7 +54,8 @@ public sealed class RuntimeCoordinator
         AnalysisController? analysis = null,
         LiveLogStore? diagnosticsLog = null,
         DashPageCycle? pageCycle = null,
-        PeerLink? link = null)
+        PeerLink? link = null,
+        LiveCompareService? liveCompare = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -60,6 +65,11 @@ public sealed class RuntimeCoordinator
         this._diagnosticsLog = diagnosticsLog ?? new LiveLogStore();
         this._pageCycle = pageCycle ?? new DashPageCycle();
         this._link = link;
+        this._liveCompare = liveCompare ?? new LiveCompareService(
+            new LapCorpusBrowser(
+                new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")),
+                new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))),
+            () => null);
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -72,7 +82,6 @@ public sealed class RuntimeCoordinator
             case "settings.save": _runtime.SaveSettings(); return true;
             case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
             case "settings.update": return UpdateSettings(command, out error);
-            case "guide.update": return this.UpdateDrivingGuide(command, out error);
             case "cloud.configure": return ConfigureCloud(command, out error);
             case "controls.save": _runtime.SaveControls(); return true;
             case "controls.update": return UpdateControls(command, out error);
@@ -113,6 +122,13 @@ public sealed class RuntimeCoordinator
             case "analysis.selectSession": return SelectAnalysisSession(command, out error);
             case "analysis.filter": return FilterAnalysis(command, out error);
             case "analysis.selectLap": return SelectAnalysisLap(command, out error);
+            case "compare.course": return this.SelectCompareCourse(command, out error);
+            case "compare.target.set": return this.SetCompareTarget(command, out error);
+            case "compare.target.clear": this._liveCompare.ClearTarget(); return true;
+            case SprintCommands.CompareHudToggle: return this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out error);
+            case "compare.hud.lock": return this.LockCompareHud(command, out error);
+            case "compare.readings": return this.SetCompareReadings(command, out error);
+            case "compare.hud.layout": return this.SaveCompareHudLayout(command, out error);
             case "diagnostics.setLogLevel": return SetLogLevel(command, out error);
             case "link.invite": return this.LinkInvite(out error);
             case "link.join": return this.LinkJoin(command, out error);
@@ -120,6 +136,112 @@ public sealed class RuntimeCoordinator
             case "link.close": return this.LinkClose(out error);
             default: error = $"unknown command type: {type}"; return false;
         }
+    }
+
+    // ── Live Compare: training against an older lap ───────────────────────────
+
+    /// <summary>Lists another course's laps on the On track page; no game/track/car follows the car again.</summary>
+    private bool SelectCompareCourse(JsonElement command, out string error)
+    {
+        error = "";
+        bool hasGame = TryString(command, "game", out string game);
+        bool hasTrack = TryString(command, "track", out string track);
+        bool hasCar = TryString(command, "car", out string car);
+        if (!hasGame && !hasTrack && !hasCar)
+        {
+            this._liveCompare.SelectCourse(null);
+            return true;
+        }
+
+        if (!hasGame || !hasTrack || !hasCar) { error = "game, track and car are required together"; return false; }
+        this._liveCompare.SelectCourse(new LiveCompareCourse(game, track, car));
+        return true;
+    }
+
+    private bool SetCompareTarget(JsonElement command, out string error)
+    {
+        if (!TryString(command, "sessionId", out string sessionId)) { error = "sessionId is required"; return false; }
+        if (!TryInt(command, "lapNumber", out int lapNumber)) { error = "lapNumber is required"; return false; }
+        return this._liveCompare.SetTarget(sessionId, lapNumber, out error);
+    }
+
+    /// <summary>Locked HUD windows let every click through to the game; unlocked they can be moved and sized.</summary>
+    private bool LockCompareHud(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "locked", out bool locked)) { error = "locked is required"; return false; }
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.LiveCompare.Locked = locked;
+            this._runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>Which readings get a HUD window: chart panel ids from the catalogue, plus the delta.</summary>
+    private bool SetCompareReadings(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "showDelta", out bool showDelta)) { error = "showDelta is required"; return false; }
+        if (!command.TryGetProperty("panelIds", out JsonElement idsElement) || idsElement.ValueKind != JsonValueKind.Array)
+        {
+            error = "panelIds is required";
+            return false;
+        }
+
+        List<string> panelIds = [];
+        foreach (JsonElement item in idsElement.EnumerateArray())
+        {
+            string id = item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : "";
+            if (LapChartPanels.ById(id) is null) { error = $"unknown reading: {id}"; return false; }
+            if (!panelIds.Contains(id, StringComparer.Ordinal)) panelIds.Add(id);
+        }
+
+        if (panelIds.Count == 0 && !showDelta) { error = "Keep at least one reading on the HUD."; return false; }
+
+        lock (this._runtime.SettingsGate)
+        {
+            LiveCompareSettings settings = this._runtime.Settings.LiveCompare;
+            settings.PanelIds = panelIds;
+            settings.ShowDelta = showDelta;
+            this._runtime.SaveSettings();
+            this._liveCompare.Configure(settings);
+        }
+
+        return true;
+    }
+
+    /// <summary>Remembers where the driver left one HUD window, keyed by the monitor it is on.</summary>
+    private bool SaveCompareHudLayout(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryString(command, "windowId", out string windowId)) { error = "windowId is required"; return false; }
+        if (windowId != HudWindowPlan.DeltaWindowId && LapChartPanels.ById(windowId) is null) { error = $"unknown HUD window: {windowId}"; return false; }
+        if (!command.TryGetProperty("screen", out JsonElement screenElement) || screenElement.ValueKind != JsonValueKind.Object ||
+            !TryInt(screenElement, "x", out int screenX) || !TryInt(screenElement, "y", out int screenY) ||
+            !TryInt(screenElement, "width", out int screenWidth) || !TryInt(screenElement, "height", out int screenHeight) ||
+            screenWidth <= 0 || screenHeight <= 0)
+        {
+            error = "screen must carry x, y and a positive width and height";
+            return false;
+        }
+
+        if (!TryInt(command, "x", out int x) || !TryInt(command, "y", out int y) ||
+            !TryInt(command, "width", out int width) || !TryInt(command, "height", out int height) ||
+            width <= 0 || height <= 0)
+        {
+            error = "x, y and a positive width and height are required";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            HudLayoutStore.Save(this._runtime.Settings.LiveCompare, windowId, new HudScreen(screenX, screenY, screenWidth, screenHeight), x, y, width, height);
+            this._runtime.SaveSettings();
+        }
+
+        return true;
     }
 
     // ── Live link (driver to engineer, no server) ─────────────────────────────
@@ -209,75 +331,6 @@ public sealed class RuntimeCoordinator
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
             _runtime.SaveSettings();
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Patches the driving guide's settings. Every field is optional; a number outside its range
-    /// is refused whole rather than clamped, so the UI never shows a value that was not stored.
-    /// </summary>
-    private bool UpdateDrivingGuide(JsonElement command, out string error)
-    {
-        error = "";
-        lock (this._runtime.SettingsGate)
-        {
-            DrivingGuideSettings guide = this._runtime.Settings.DrivingGuide;
-            DrivingGuideSettings next = new()
-            {
-                ShowLine = guide.ShowLine,
-                ShowBoards = guide.ShowBoards,
-                MonitorOverlay = guide.MonitorOverlay,
-                VrHeadset = guide.VrHeadset,
-                EyeRightMeters = guide.EyeRightMeters,
-                EyeUpMeters = guide.EyeUpMeters,
-                EyeForwardMeters = guide.EyeForwardMeters,
-                YawOffsetDegrees = guide.YawOffsetDegrees,
-                PitchOffsetDegrees = guide.PitchOffsetDegrees,
-                MonitorFovDegrees = guide.MonitorFovDegrees,
-                MetersAhead = guide.MetersAhead,
-            };
-            bool applied = false;
-
-            if (TryBool(command, "showLine", out bool showLine)) { next.ShowLine = showLine; applied = true; }
-            if (TryBool(command, "showBoards", out bool showBoards)) { next.ShowBoards = showBoards; applied = true; }
-            if (TryBool(command, "monitorOverlay", out bool monitorOverlay)) { next.MonitorOverlay = monitorOverlay; applied = true; }
-            if (TryBool(command, "vrHeadset", out bool vrHeadset)) { next.VrHeadset = vrHeadset; applied = true; }
-
-            (string Field, double Min, double Max, Action<double> Apply)[] numbers =
-            [
-                ("eyeRightMeters", -3, 3, value => next.EyeRightMeters = value),
-                ("eyeUpMeters", -3, 3, value => next.EyeUpMeters = value),
-                ("eyeForwardMeters", -3, 3, value => next.EyeForwardMeters = value),
-                ("yawOffsetDegrees", -20, 20, value => next.YawOffsetDegrees = value),
-                ("pitchOffsetDegrees", -20, 20, value => next.PitchOffsetDegrees = value),
-                ("monitorFovDegrees", 10, 150, value => next.MonitorFovDegrees = value),
-                ("metersAhead", 50, 600, value => next.MetersAhead = value),
-            ];
-            foreach ((string field, double min, double max, Action<double> apply) in numbers)
-            {
-                if (!command.TryGetProperty(field, out JsonElement _))
-                {
-                    continue;
-                }
-
-                if (!TryDouble(command, field, out double value) || !double.IsFinite(value) || value < min || value > max)
-                {
-                    error = $"{field} must be a number from {min} to {max}";
-                    return false;
-                }
-
-                apply(value);
-                applied = true;
-            }
-
-            if (!applied) { error = "no recognized driving guide fields were provided"; return false; }
-
-            // Replaced whole: the guide feed reads these off the telemetry thread without the
-            // gate, and must never see half of an update.
-            this._runtime.Settings.DrivingGuide = next;
-            this._runtime.SaveSettings();
         }
 
         return true;

@@ -75,6 +75,8 @@ export type CaptureRegion = { x: number; y: number; width: number; height: numbe
 export type Device = {
   id: string
   name: string
+  /** The catalog entry it was added from; '' for devices saved before the host recorded it. */
+  presetId: string
   driver: string
   type: string
   vid: number
@@ -97,6 +99,8 @@ export type CatalogEntry = {
   id: string
   name: string
   description: string
+  /** Who makes it ("BavarianSimTec", "VoCore"), for the Add device dialog's brand filter. */
+  brand: string
   type: string
   driver: string
   vid: number
@@ -104,8 +108,6 @@ export type CatalogEntry = {
   width: number
   height: number
 }
-
-export const isGenericCatalogEntry = (entry: CatalogEntry): boolean => entry.vid === 0 && entry.pid === 0
 
 // A device can publish pixels either because it is a standalone screen or a
 // wheel with a known integrated screen transport — DeviceCapabilities.HasScreen.
@@ -171,6 +173,7 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
   return {
     id,
     name: str(row, 'name', id),
+    presetId: str(row, 'presetId'),
     driver: str(row, 'driver'),
     type: str(row, 'type', 'screen'),
     vid: num(row, 'vid'),
@@ -201,6 +204,7 @@ export const parseCatalogEntry = (row: Record<string, unknown>): CatalogEntry | 
     id,
     name: str(row, 'name', id),
     description: str(row, 'description'),
+    brand: str(row, 'brand'),
     type: str(row, 'type', 'screen'),
     driver: str(row, 'driver'),
     vid: num(row, 'vid'),
@@ -238,7 +242,8 @@ export const buildDeviceUpdate = (device: Device, overrides: Partial<DeviceUpdat
   dashId: overrides.dashId ?? device.dashId,
 })
 
-export const OFFSET_MIN = 0
+// Offsets are signed: negative moves the image left or up (Rgb565.ComposeFromBgra).
+export const OFFSET_MIN = -2000
 export const OFFSET_MAX = 2000
 export const MARGIN_MIN = 0
 export const MARGIN_MAX = 400
@@ -436,7 +441,7 @@ const describeScreenStatus = (status: ScreenHardwareStatus): ScreenStatusPresent
 /** Mirrors `DeviceStatusView` (the deleted Avalonia client's `MainWindow.cs`). Only meaningful for `deviceHasScreen(device)`. */
 export const describeDeviceStatus = (device: Device, screen: ScreenOutput | undefined): ScreenStatusPresentation => {
   if (device.disabled) {
-    return { label: 'Disabled', detail: 'This screen is disabled. Enable it to start output.', tone: 'neutral' }
+    return { label: 'Off', detail: "Sprint isn't sending anything to this screen.", tone: 'neutral' }
   }
 
   const purpose = resolvePurpose(device.purpose)
@@ -452,37 +457,9 @@ export const formatFramesPerSecond = (performance: ScreenHardwarePerformance): s
 
 export const formatDurationMs = (ms: number | null): string => (ms === null ? '—' : `${ms.toFixed(ms < 10 ? 2 : 1)} ms`)
 
-// ── Live dash preview (device detail + gallery card) ────────────────────────
-
-export type DevicePreviewSource = { layout: DashLayout; pageId?: string; idle: boolean }
-
-/**
- * The dash a device's live preview should render, matching what the hardware actually shows
- * when known. `screens[]` publishes the host's already-resolved layout/page/idle for an active
- * dash output; a device with no active output (disabled, not yet reconciled) falls back to the
- * locally-assigned dash so the preview still has something to show. Returns `null` only when
- * there is no dash to render at all (an empty runtime).
- */
-export const resolveDevicePreview = (
-  device: Device,
-  screen: ScreenOutput | undefined,
-  dashLayouts: readonly DashLayout[],
-): DevicePreviewSource | null => {
-  if (screen?.layout) {
-    return { layout: screen.layout, pageId: screen.pageId.length > 0 ? screen.pageId : undefined, idle: screen.idle }
-  }
-
-  const assigned = dashLayouts.find((layout) => layout.id === device.dashId)
-  const fallback = assigned ?? dashLayouts.find((layout) => layout.default) ?? dashLayouts[0]
-  return fallback ? { layout: fallback, idle: false } : null
-}
-
-// ── Gallery / list view mode (Settings.DevicesUI.ViewMode) ──────────────────
+// ── Tiles / list (Settings.DevicesUI.ViewMode) ──────────────────────────────
 //
-// `settings.update` (RuntimeCoordinator.cs) has no field to persist this choice — it only
-// accepts sidebarCollapsed/updateChannel/driverName/driverNumber — so the view mode is read
-// once from the published settings snapshot as the initial value and then kept in local state
-// only. See the DevicesView report for the missing command field this would need.
+// Persisted through `settings.update`'s `devicesUiViewMode`; the wire name of tiles is "gallery".
 
 export type DevicesViewMode = 'gallery' | 'list'
 
@@ -491,7 +468,116 @@ export const parseDevicesViewMode = (settings: Record<string, unknown>): Devices
   return isRecord(devicesUI) && devicesUI.viewMode === 'list' ? 'list' : 'gallery'
 }
 
-// ── Custom wheel ("Generic" tab) ─────────────────────────────────────────────
+export const buildDevicesViewMode = (mode: DevicesViewMode): SprintCommand => ({ type: 'settings.update', devicesUiViewMode: mode })
+
+// ── Kinds, pictures and the overview filter ─────────────────────────────────
+
+/** How the overview groups devices: anything sold as a wheel (custom wheels too), or a screen. */
+export type DeviceKind = 'wheel' | 'screen'
+
+export const deviceKind = (device: Pick<Device, 'type'>): DeviceKind => (device.type.toLowerCase() === 'wheel' ? 'wheel' : 'screen')
+
+/** The pictures the app ships (src/assets/devices), named after the preset id they belong to. */
+export type DeviceImageKey = 'bavarian-omega-v2-pro' | 'generic-vocore' | 'generic-usbd480' | 'generic-wheel'
+
+const PRESET_IMAGES: readonly DeviceImageKey[] = ['bavarian-omega-v2-pro']
+const isPresetImage = (id: string): id is DeviceImageKey => PRESET_IMAGES.some((key) => key === id)
+
+/**
+ * The picture a device shows: its preset's own, else the generic one for a wheel or for its
+ * screen driver. A device saved before the host recorded `presetId` counts as its preset while
+ * it still carries the preset's name, type and driver. Null when nothing fits.
+ */
+export const deviceImageKey = (device: Device, catalog: readonly CatalogEntry[]): DeviceImageKey | null =>
+  imageKey(
+    device.presetId ||
+      (catalog.find((entry) => entry.name === device.name && entry.type === device.type && entry.driver === device.driver)?.id ?? ''),
+    device,
+  )
+
+/** The picture a catalog entry shows in the Add device dialog — the one the device gets once added. */
+export const catalogImageKey = (entry: CatalogEntry): DeviceImageKey | null => imageKey(entry.id, entry)
+
+const imageKey = (presetId: string, hardware: Pick<Device, 'type' | 'driver'>): DeviceImageKey | null => {
+  if (isPresetImage(presetId)) return presetId
+  if (deviceKind(hardware) === 'wheel') return 'generic-wheel'
+  const driver = hardware.driver.toLowerCase()
+  if (driver === 'vocore') return 'generic-vocore'
+  if (driver.includes('usbd')) return 'generic-usbd480'
+  return null
+}
+
+/** The overview's filter chips, one at a time. */
+export type DevicesFilter = 'all' | 'wheel' | 'screen' | 'connected' | 'attention'
+
+/**
+ * A screen that should be working and is not (not found, in use, failing, needs setup). A
+ * device turned off, or one without a screen, never needs attention.
+ */
+export const needsAttention = (device: Device, screen: ScreenOutput | undefined): boolean => {
+  if (device.disabled || !deviceHasScreen(device)) return false
+  const tone = describeDeviceStatus(device, screen).tone
+  return tone !== 'success' && tone !== 'info'
+}
+
+export const matchesDevicesFilter = (filter: DevicesFilter, device: Device, screen: ScreenOutput | undefined): boolean => {
+  switch (filter) {
+    case 'all':
+      return true
+    case 'wheel':
+    case 'screen':
+      return deviceKind(device) === filter
+    case 'connected':
+      return screen?.hardware?.status.isConnected === true && !device.disabled
+    case 'attention':
+      return needsAttention(device, screen)
+  }
+}
+
+/** One quiet line about the hardware: "VoCore · 800 × 480 landscape", or "Buttons only". */
+export const deviceSummary = (device: Device): string => {
+  if (!deviceHasScreen(device)) return 'Buttons only'
+  const size = logicalSize(device)
+  return `${driverLabel(device.driver)} · ${size.width} × ${size.height} ${orientationLabel(device.rotation).toLowerCase()}`
+}
+
+const driverLabel = (driver: string): string => (driver.toLowerCase() === 'vocore' ? 'VoCore' : driver.toUpperCase())
+
+// ── Add device dialog ────────────────────────────────────────────────────────
+
+/** The dialog's filters, all applied together. `brand` null means any brand. */
+export type CatalogFilter = { query: string; kind: 'all' | DeviceKind; brand: string | null }
+
+export const NO_CATALOG_FILTER: CatalogFilter = { query: '', kind: 'all', brand: null }
+
+/** The brands the catalog offers, in catalog order. */
+export const catalogBrands = (catalog: readonly CatalogEntry[]): string[] => [...new Set(catalog.map((entry) => entry.brand).filter((brand) => brand !== ''))]
+
+const matchesQuery = (query: string, fields: readonly string[]): boolean => {
+  const needle = query.trim().toLowerCase()
+  return needle === '' || fields.some((field) => field.toLowerCase().includes(needle))
+}
+
+export const matchesCatalogFilter = (filter: CatalogFilter, entry: CatalogEntry): boolean =>
+  (filter.kind === 'all' || deviceKind(entry) === filter.kind) &&
+  (filter.brand === null || entry.brand === filter.brand) &&
+  matchesQuery(filter.query, [entry.name, entry.brand, entry.description])
+
+/** "Your own wheel" is a wheel of no brand, so a brand filter hides it. */
+export const ownWheelMatchesFilter = (filter: CatalogFilter): boolean =>
+  filter.kind !== 'screen' && filter.brand === null && matchesQuery(filter.query, ['Your own wheel', 'custom'])
+
+/** The quiet line under a catalog entry: "VoCore screen · buttons", a screen's size, or that it is read on connect. */
+export const catalogLine = (entry: CatalogEntry): string => {
+  if (deviceKind(entry) === 'wheel') return entry.driver ? `${driverLabel(entry.driver)} screen · buttons` : 'Buttons'
+  return entry.width > 0 && entry.height > 0 ? `${entry.width} × ${entry.height}` : 'Any size, read when it connects'
+}
+
+/** The catalog entries `SprintState.foundDevices` names, once per device plugged in; unknown ids are dropped. */
+export const foundEntries = (found: readonly string[], catalog: readonly CatalogEntry[]): CatalogEntry[] =>
+  found.flatMap((id) => catalog.find((entry) => entry.id === id) ?? [])
+
+// ── Custom wheel ("Your own wheel" in the Add device dialog) ────────────────
 //
 // Hand-mirrored from app/Sprint.Desktop.Core/Features/Devices/CustomWheelBuilder.cs, the same
 // convention as the hardware catalogs above. `devices.addCustom` (RuntimeCoordinator.cs) builds

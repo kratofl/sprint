@@ -36,6 +36,7 @@ import {
   deleteStackLayer,
   deleteWidgetAt,
   deleteWidgetStack,
+  editorShouldLoad,
   findAlert,
   findPage,
   findWidgetAt,
@@ -187,6 +188,8 @@ export function DashEditorPanel({
   const [wellElement, setWellElement] = useState<HTMLDivElement | null>(null)
   const wellWidth = useContentWidth(wellElement)
   const loadedId = useRef(layout.id)
+  // The dash as it was when a reset was sent, while that reset has not shown up in state yet.
+  const resetFrom = useRef<string | null>(null)
   const tabsId = useId()
 
   // A one-shot, non-repeating flash for a rejected drag/resize/drop (AGENTS.md forbids
@@ -198,9 +201,11 @@ export function DashEditorPanel({
     flashTimeout.current = window.setTimeout(() => setFlash(null), 2400)
   }
 
+  // Loads the dash into the draft when another dash opens or a reset arrives (editorShouldLoad).
   useEffect(() => {
-    if (loadedId.current === layout.id) return
+    if (!editorShouldLoad(loadedId.current, resetFrom.current, layout)) return
     loadedId.current = layout.id
+    resetFrom.current = null
     setDraft(layout)
     setDirty(false)
     setSaveError(null)
@@ -259,9 +264,11 @@ export function DashEditorPanel({
   const handleResetToDefaults = async (): Promise<void> => {
     setConfirmingReset(false)
     setSaveError(null)
+    resetFrom.current = JSON.stringify(layout)
     try {
       await send(buildDashReset(draft.id))
     } catch (error) {
+      resetFrom.current = null
       setSaveError(error instanceof Error ? error.message : 'The dash could not be reset.')
     }
   }

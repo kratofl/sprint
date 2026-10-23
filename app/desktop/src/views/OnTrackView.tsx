@@ -1,164 +1,244 @@
 import { useState } from 'react'
-import { Compass, Crosshair, Flag, Glasses, Monitor, Route, Ruler, ScanEye, Signpost } from 'lucide-react'
+import { Lock, Move, Play, Route, Square, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
-import type { GuideSettings, GuideState } from '../guide/guideModel'
 import { PageHeader } from '../shell/PageHeader'
 import type { RuntimeState } from '../shell/runtime'
 import { Status } from '../shell/Status'
-import { formatLapSeconds } from './AnalysisDomain'
-import { blurOnEnter, SettingRow, SettingsGroup, Switch } from './SettingsLayout'
+import { formatGap, formatLapSeconds } from './AnalysisDomain'
+import type { CorpusLap } from './AnalysisDomain'
+import {
+  HUD_CHART_ORDER,
+  HUD_READING_LABELS,
+  buildHudLock,
+  buildHudToggle,
+  buildSelectCourse,
+  buildSetTarget,
+  buildToggleReading,
+  courseKey,
+  courseLabel,
+  isTarget,
+  parseCompareState,
+  parseHudReadings,
+  readingCount,
+} from './OnTrackDomain'
+import type { CompareState, HudReadings } from './OnTrackDomain'
+import { Switch } from './SettingsLayout'
+import './OnTrackView.css'
 
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
- * On track: what Sprint draws over the game while you drive. Today that is the driving guide
- * (docs/internals/driving-guide.md), its reference lap and the seat calibration that puts it on the road.
+ * On track: training against an older lap (docs/internals/live-compare.md). Pick the lap, choose
+ * what the HUD shows, then start — the HUD opens as small windows over the game, the target's
+ * traces in blue running ahead of the car and yours in brand orange up to it. All of it is host
+ * state (`state.compare`, `settings.liveCompare`); this view renders it and sends `compare.*`.
  */
 export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Send }) {
+  const [actionError, setActionError] = useState<string | null>(null)
+
   if (runtime.kind === 'loading') {
     return (
-      <div className="settings">
+      <div className="ontrack-page">
         <PageHeader title="On track" />
-        <div className="settings-group">
-          <div className="card skeleton settings-row-skeleton" />
-          <div className="card skeleton settings-row-skeleton" />
+        <div className="ontrack-grid">
+          <div className="card skeleton ontrack-skeleton" />
+          <div className="card skeleton ontrack-skeleton" />
         </div>
       </div>
     )
   }
 
+  const compare: CompareState = parseCompareState(runtime.sprint)
+  const readings = parseHudReadings(runtime.sprint)
+  const run = async (command: SprintCommand) => {
+    setActionError(null)
+    try {
+      await send(command)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
+    }
+  }
+
   return (
-    <div className="settings">
-      <PageHeader title="On track" />
-      <GuideGroup guide={runtime.sprint.guide} send={send} />
+    <div className="ontrack-page">
+      <PageHeader title="On track">
+        {compare.hudOpen && (
+          <button type="button" className="button subtle" onClick={() => void run(buildHudLock(!readings.locked))}>
+            {readings.locked ? <Move /> : <Lock />} {readings.locked ? 'Unlock HUD layout' : 'Lock HUD layout'}
+          </button>
+        )}
+        <button
+          type="button"
+          className={compare.hudOpen ? 'button' : 'button primary'}
+          disabled={!compare.hudOpen && compare.target === null}
+          title={!compare.hudOpen && compare.target === null ? 'Pick a lap to train against first.' : undefined}
+          onClick={() => void run(buildHudToggle())}
+        >
+          {compare.hudOpen ? <Square /> : <Play />} {compare.hudOpen ? 'Stop training' : 'Start training'}
+        </button>
+      </PageHeader>
+
+      {actionError && (
+        <div className="infobar error" role="alert">
+          <span className="infobar-icon">!</span>
+          <strong className="infobar-title">Not applied</strong>
+          <span className="infobar-message">{actionError}</span>
+          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {compare.fullscreen && (
+        <div className="infobar warning" role="alert">
+          <span className="infobar-icon">!</span>
+          <strong className="infobar-title">The HUD is hidden</strong>
+          <span className="infobar-message">The game is in exclusive fullscreen. Switch it to borderless or windowed to see the HUD.</span>
+        </div>
+      )}
+
+      {compare.courses.length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <Route size={28} strokeWidth={1.5} />
+            <h2>No laps to train against yet</h2>
+            <p>Drive a lap and it appears here. Every valid lap from now on carries the traces the HUD draws.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="ontrack-grid">
+          <TargetCard
+            compare={compare}
+            onCourse={(key) => {
+              const course = compare.courses.find((candidate) => courseKey(candidate) === key)
+              if (course) void run(buildSelectCourse(course))
+            }}
+            onPick={(lap) => void run(buildSetTarget(lap))}
+          />
+          <HudCard readings={readings} hudOpen={compare.hudOpen} onToggle={(id) => void run(buildToggleReading(readings, id))} />
+        </div>
+      )}
     </div>
   )
 }
 
-/** What the guide is drawing from, in a sentence. */
-const guideLapText = (guide: GuideState): string => {
-  switch (guide.status) {
-    case 'Idle':
-      return 'Picked when you drive: your fastest valid lap on that track and car.'
-    case 'Searching':
-      return 'Looking for your fastest lap on this track…'
-    case 'NoLap':
-      return 'No lap here has positions yet. Drive one full valid lap and it becomes the guide.'
-    case 'Ready': {
-      if (!guide.lap) return 'Ready.'
-      const date = guide.lap.recordedAt ? new Date(guide.lap.recordedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
-      const car = guide.lap.sameCar ? guide.lap.car : `${guide.lap.car}, no lap in this car yet`
-      const boards = guide.boards === 1 ? '1 brake board' : `${guide.boards} brake boards`
-      return [formatLapSeconds(guide.lap.lapTimeSeconds), car, date, boards].filter(Boolean).join(' · ')
-    }
-  }
-}
-
-type GuideNumber = 'eyeRightMeters' | 'eyeUpMeters' | 'eyeForwardMeters' | 'yawOffsetDegrees' | 'pitchOffsetDegrees' | 'monitorFovDegrees' | 'metersAhead'
-
-/**
- * The AR driving line and brake boards (docs/internals/driving-guide.md): what to draw, where,
- * and the seat calibration that puts it on the road. Toggles apply at once, numbers on commit.
- */
-function GuideGroup({ guide, send }: { guide: GuideState; send: Send }) {
-  const { settings, vr } = guide
-  const update = (patch: Partial<GuideSettings>) => void send({ type: 'guide.update', ...patch })
-  const number = (field: GuideNumber, label: string, step: number) => (
-    <GuideNumberField
-      key={`${field}:${settings[field]}`}
-      label={label}
-      value={settings[field]}
-      step={step}
-      onCommit={(value) => update({ [field]: value })}
-    />
-  )
-
+/** The laps on one course, fastest first; the one picked is what the HUD chases. */
+function TargetCard({
+  compare,
+  onCourse,
+  onPick,
+}: {
+  compare: CompareState
+  onCourse: (key: string) => void
+  onPick: (lap: CorpusLap) => void
+}) {
+  const best = compare.laps[0] ?? null
   return (
-    <SettingsGroup title="Driving guide">
-      <SettingRow id="settings-guide-line" icon={Route} title="Racing line" description="A ribbon on the road from your best lap: green on throttle, amber lifting, red braking.">
-        {(labels) => <Switch {...labels} checked={settings.showLine} onChange={(showLine) => update({ showLine })} />}
-      </SettingRow>
-      <SettingRow id="settings-guide-boards" icon={Signpost} title="Brake boards" description="A board beside the track where that lap started braking.">
-        {(labels) => <Switch {...labels} checked={settings.showBoards} onChange={(showBoards) => update({ showBoards })} />}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-monitor"
-        icon={Monitor}
-        title="On this monitor"
-        description="Draws over the game on your main display. Run the game borderless, with look to apex and head movement off."
-      >
-        {(labels) => <Switch {...labels} checked={settings.monitorOverlay} onChange={(monitorOverlay) => update({ monitorOverlay })} />}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-vr"
-        icon={Glasses}
-        title="In VR"
-        description={vr.detail ?? (settings.vrHeadset && !vr.registered
-          ? 'Sprint could not register its OpenXR layer. Check the log in Help.'
-          : 'Adds the guide to your headset through OpenXR. Takes effect the next time the game starts.')}
-      >
-        {(labels) => (vr.available
-          ? <Switch {...labels} checked={settings.vrHeadset} onChange={(vrHeadset) => update({ vrHeadset })} />
-          : <Status tone="neutral" quiet>Unavailable</Status>)}
-      </SettingRow>
-      <SettingRow id="settings-guide-lap" icon={Flag} title="Reference lap" description={guideLapText(guide)}>
-        {() => null}
-      </SettingRow>
-      <SettingRow
-        id="settings-guide-eye"
-        icon={Crosshair}
-        title="Eye position"
-        description="Where your eyes sit in the car, in metres. Adjust until the line lies on the road."
-      >
-        {() => (
-          <>
-            {number('eyeRightMeters', 'Right', 0.05)}
-            {number('eyeUpMeters', 'Up', 0.05)}
-            {number('eyeForwardMeters', 'Forward', 0.05)}
-          </>
+    <section className="card list-card" aria-label="Train against">
+      <div className="card-header">
+        <h2 className="card-title">Train against</h2>
+        {compare.course && compare.courses.length > 1 ? (
+          <select aria-label="Track and car" value={courseKey(compare.course)} onChange={(event) => onCourse(event.target.value)}>
+            {compare.courses.map((course) => (
+              <option key={courseKey(course)} value={courseKey(course)}>
+                {courseLabel(course)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          compare.course && <span className="muted">{courseLabel(compare.course)}</span>
         )}
-      </SettingRow>
-      <SettingRow id="settings-guide-align" icon={Compass} title="Alignment" description="Turns the guide right and raises it, in degrees.">
-        {() => (
-          <>
-            {number('yawOffsetDegrees', 'Turn', 0.5)}
-            {number('pitchOffsetDegrees', 'Raise', 0.5)}
-          </>
-        )}
-      </SettingRow>
-      <SettingRow id="settings-guide-fov" icon={ScanEye} title="Field of view" description="Your in-game vertical field of view, in degrees. Only the monitor overlay uses it.">
-        {() => number('monitorFovDegrees', 'Degrees', 1)}
-      </SettingRow>
-      <SettingRow id="settings-guide-ahead" icon={Ruler} title="Distance ahead" description="How much of the line is drawn in front of the car, in metres.">
-        {() => number('metersAhead', 'Metres', 10)}
-      </SettingRow>
-    </SettingsGroup>
+      </div>
+      {compare.laps.length === 0 ? (
+        <p className="list-card-empty">No laps on this track in this car yet. Drive one and it appears here.</p>
+      ) : (
+        <div className="list-rows" role="radiogroup" aria-label="Lap to train against">
+          {compare.laps.map((lap) => {
+            const picked = isTarget(compare.target, lap)
+            return (
+              <label
+                key={`${lap.sessionId}/${lap.lapNumber}`}
+                className={`list-row ontrack-lap${picked ? ' selected' : ''}${lap.hasChannels ? '' : ' unavailable'}`}
+                title={lap.unavailableReason ?? undefined}
+              >
+                <input type="radio" name="ontrack-target" checked={picked} disabled={!lap.hasChannels} onChange={() => onPick(lap)} />
+                <span className="ontrack-lap-time tabular">{formatLapSeconds(lap.lapTimeSeconds)}</span>
+                <span className="ontrack-lap-detail">
+                  {lapWhen(lap)}
+                  {best && (
+                    <span className="muted tabular">
+                      {' · '}
+                      {lap === best ? 'fastest' : formatGap(lap.lapTimeSeconds - best.lapTimeSeconds)}
+                    </span>
+                  )}
+                </span>
+                <Status tone={lap.hasChannels ? 'success' : 'neutral'} quiet>
+                  {lap.hasChannels ? 'Full trace' : 'Time only'}
+                </Status>
+              </label>
+            )
+          })}
+        </div>
+      )}
+      {compare.lapCount > compare.laps.length && (
+        <p className="ontrack-more muted">
+          The {compare.laps.length} fastest of {compare.lapCount} laps. Any other lap can be picked in Analysis.
+        </p>
+      )}
+    </section>
   )
 }
 
-/** A labelled number that saves on blur or Enter. A blank or unchanged field saves nothing. */
-function GuideNumberField({ label, value, step, onCommit }: { label: string; value: number; step: number; onCommit: (value: number) => void }) {
-  const [draft, setDraft] = useState(String(value))
-  const commit = () => {
-    const parsed = Number(draft)
-    if (draft.trim() === '' || !Number.isFinite(parsed)) {
-      setDraft(String(value))
-      return
-    }
-    if (parsed !== value) onCommit(parsed)
-  }
+/** "Lap 5 · Mon, Sep 28", or who shared it. */
+function lapWhen(lap: CorpusLap): string {
+  if (lap.sharedFrom) return `${lap.sharedFrom} · shared lap`
+  if (!lap.sessionStartedAt) return `Lap ${lap.lapNumber}`
+  const day = new Date(lap.sessionStartedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  return `Lap ${lap.lapNumber} · ${day}`
+}
+
+/** Which readings get a HUD window. The last one cannot be turned off: a HUD of nothing is refused. */
+function HudCard({
+  readings,
+  hudOpen,
+  onToggle,
+}: {
+  readings: HudReadings
+  hudOpen: boolean
+  onToggle: (id: 'delta' | (typeof HUD_CHART_ORDER)[number]) => void
+}) {
+  const rows = [
+    { id: 'delta' as const, on: readings.showDelta },
+    ...HUD_CHART_ORDER.map((id) => ({ id, on: readings.panelIds.includes(id) })),
+  ]
+  const last = readingCount(readings) === 1
   return (
-    <label className="settings-guide-number">
-      <span>{label}</span>
-      <input
-        type="number"
-        className="settings-input-narrow tabular"
-        value={draft}
-        step={step}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={blurOnEnter}
-      />
-    </label>
+    <section className="card list-card" aria-label="HUD">
+      <div className="card-header">
+        <h2 className="card-title">HUD</h2>
+        {hudOpen && (
+          <Status tone="success" quiet>
+            {readings.locked ? 'Showing · locked' : 'Showing · drag to place'}
+          </Status>
+        )}
+      </div>
+      <div className="list-rows">
+        {rows.map((row) => (
+          <div key={row.id} className="list-row static ontrack-reading">
+            <span id={`ontrack-reading-${row.id}`}>{HUD_READING_LABELS[row.id]}</span>
+            <Switch
+              checked={row.on}
+              disabled={last && row.on}
+              onChange={() => onToggle(row.id)}
+              aria-labelledby={`ontrack-reading-${row.id}`}
+              aria-describedby="ontrack-hud-note"
+            />
+          </div>
+        ))}
+      </div>
+      <p id="ontrack-hud-note" className="ontrack-more muted">
+        Run the game borderless or windowed: exclusive fullscreen hides the HUD.
+      </p>
+    </section>
   )
 }

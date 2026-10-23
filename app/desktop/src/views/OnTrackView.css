@@ -1,0 +1,64 @@
+/* On track (OnTrackView.tsx): the lap to train against beside the HUD's readings. */
+
+.ontrack-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ontrack-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.ontrack-skeleton {
+  height: 320px;
+}
+
+.ontrack-page .card-header select {
+  max-width: 340px;
+}
+
+/* One lap: radio, time, when, tier. */
+.ontrack-lap {
+  display: grid;
+  grid-template-columns: 16px 72px minmax(0, 1fr) auto;
+  cursor: pointer;
+}
+
+.ontrack-lap-time {
+  font-weight: 600;
+}
+
+.ontrack-lap-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ontrack-lap.unavailable {
+  color: var(--label-disabled);
+  cursor: default;
+}
+
+.ontrack-lap.unavailable:hover {
+  background: transparent;
+}
+
+.ontrack-lap.unavailable .muted {
+  color: inherit;
+}
+
+.ontrack-reading {
+  justify-content: space-between;
+  min-height: 40px;
+}
+
+.ontrack-more {
+  margin: 0;
+  padding: 8px 16px 8px;
+  font-size: 12px;
+  line-height: 16px;
+}

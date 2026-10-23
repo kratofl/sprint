@@ -120,57 +120,75 @@ internal static class WinUsbInterop
         public nint EventHandle;
     }
 
+    // GUID_DEVINTERFACE_USB_DEVICE: the USB hub registers it for every attached device.
+    private static readonly Guid UsbDeviceInterface =
+        new(0xA5DCBF10, 0x6530, 0x11D2, 0x90, 0x1F, 0x00, 0xC0, 0x4F, 0xB9, 0x51, 0xED);
+
+    /// <summary>The interface path of every attached USB device, for <c>UsbPresence</c>. Opens none of them.</summary>
+    internal static IReadOnlyList<string> UsbDevicePaths() => InterfacePaths(UsbDeviceInterface);
+
     /// <summary>
     /// Finds the device path for the first interface under <paramref name="interfaceGuid"/>
     /// whose path contains the given VID/PID. Returns null when no match is present.
     /// </summary>
     internal static string? FindDevicePath(Guid interfaceGuid, ushort vid, ushort pid)
     {
-        var set = SetupDiGetClassDevs(ref interfaceGuid, nint.Zero, nint.Zero, DigcfPresent | DigcfDeviceInterface);
+        ScreenUsbIdentity identity = new(vid, pid);
+        string? interfaceFallback = null;
+        foreach (string path in InterfacePaths(interfaceGuid))
+        {
+            if (!identity.MatchesDevicePath(path))
+            {
+                continue;
+            }
+
+            if (!path.Contains("&mi_", StringComparison.OrdinalIgnoreCase))
+            {
+                return path;
+            }
+
+            interfaceFallback ??= path;
+        }
+
+        return interfaceFallback;
+    }
+
+    /// <summary>The paths of every present interface under <paramref name="interfaceGuid"/>, in SetupAPI order.</summary>
+    private static List<string> InterfacePaths(Guid interfaceGuid)
+    {
+        List<string> paths = [];
+        nint set = SetupDiGetClassDevs(ref interfaceGuid, nint.Zero, nint.Zero, DigcfPresent | DigcfDeviceInterface);
         if (set == InvalidHandle)
         {
-            return null;
+            return paths;
         }
 
         try
         {
-            string? interfaceFallback = null;
-            for (var index = 0; ; index++)
+            for (int index = 0; ; index++)
             {
-                var data = new SpDeviceInterfaceData { CbSize = Marshal.SizeOf<SpDeviceInterfaceData>() };
+                SpDeviceInterfaceData data = new() { CbSize = Marshal.SizeOf<SpDeviceInterfaceData>() };
                 if (!SetupDiEnumDeviceInterfaces(set, nint.Zero, ref interfaceGuid, index, ref data))
                 {
-                    return interfaceFallback; // ERROR_NO_MORE_ITEMS
+                    return paths; // ERROR_NO_MORE_ITEMS
                 }
 
-                SetupDiGetDeviceInterfaceDetail(set, ref data, nint.Zero, 0, out var required, nint.Zero);
+                SetupDiGetDeviceInterfaceDetail(set, ref data, nint.Zero, 0, out int required, nint.Zero);
                 if (required <= 0)
                 {
                     continue;
                 }
 
-                var detail = Marshal.AllocHGlobal(required);
+                nint detail = Marshal.AllocHGlobal(required);
                 try
                 {
                     // SP_DEVICE_INTERFACE_DETAIL_DATA_W.cbSize is 8 on 64-bit, 6 on 32-bit.
                     Marshal.WriteInt32(detail, nint.Size == 8 ? 8 : 6);
-                    if (!SetupDiGetDeviceInterfaceDetail(set, ref data, detail, required, out _, nint.Zero))
+                    if (SetupDiGetDeviceInterfaceDetail(set, ref data, detail, required, out _, nint.Zero)
+                        && Marshal.PtrToStringUni(detail + 4) is { } path)
                     {
-                        continue;
+                        paths.Add(path);
                     }
-
-                    var path = Marshal.PtrToStringUni(detail + 4);
-                    if (path is null || !new ScreenUsbIdentity(vid, pid).MatchesDevicePath(path))
-                    {
-                        continue;
-                    }
-
-                    if (!path.Contains("&mi_", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return path;
-                    }
-
-                    interfaceFallback ??= path;
                 }
                 finally
                 {

@@ -8,13 +8,15 @@ import { LatestFrameSender, type PixelFrame, type ScreenOutput } from './frames.
  * imitation of it.
  *
  * Offscreen windows are independent of the main window, so output continues while
- * the app is hidden or minimized.
+ * the app is hidden or minimized. Each gets the app's preload: without `window.sprint` the
+ * dashboard never receives state and paints only its blank fallback.
  */
 export class OffscreenOutputs {
   private readonly outputs = new Map<string, Output>()
 
   constructor(
     private readonly baseUrl: string,
+    private readonly preload: string,
     private readonly send: (deviceId: string, frame: PixelFrame, signal: AbortSignal) => Promise<void>,
     private readonly failed: (deviceId: string, error: unknown) => void,
   ) {}
@@ -47,6 +49,7 @@ export class OffscreenOutputs {
     return new Output(
       output,
       this.baseUrl,
+      this.preload,
       (frame, signal) => this.send(output.deviceId, frame, signal),
       (error) => this.failed(output.deviceId, error),
     )
@@ -64,6 +67,7 @@ class Output {
   constructor(
     output: ScreenOutput,
     baseUrl: string,
+    preload: string,
     send: (frame: PixelFrame, signal: AbortSignal) => Promise<void>,
     failed: (error: unknown) => void,
   ) {
@@ -83,6 +87,7 @@ class Output {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
+        preload,
       },
     })
     this.window.webContents.setFrameRate(this.refreshHz)

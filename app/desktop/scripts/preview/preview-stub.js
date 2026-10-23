@@ -25,10 +25,16 @@
 //   link=<phase>          the live link's phase (Off, Preparing, Inviting, Joining, Connecting, Connected,
 //                         Interrupted, Failed, Ended); linkRole=Engineer shows the engineer's side of
 //                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off
+//   found=<id,id>         the USB scan finds these catalog ids plugged in and not added yet (Add device's
+//                         "Plugged in now"); default: nothing new
 //   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
 //                         Cancel (1) or fails at once with a server error (fail)
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
 //                         repeat the parameter to click several things in order
+//   training=on|none      On track: the HUD is showing (on), or no lap has ever been recorded (none);
+//                         default: laps listed, the fastest picked, HUD off. fullscreen=1 adds the warning
+//   hud=<windowId>        mount one training HUD window instead of the app: delta, throttle, brake, speed;
+//                         hudLocked=0 shows it unlocked (outline and grip). Screenshot it at its window size
 ;(() => {
   const params = new URLSearchParams(window.location.search)
 
@@ -74,6 +80,7 @@
 
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
+  state.foundDevices = (params.get('found') ?? '').split(',').filter((id) => id !== '')
   if (params.get('frame') === 'none' && state.telemetry) state.telemetry = { ...state.telemetry, frame: null }
   // telemetry=unsupported: what a Mac reports: the LMU source is Windows-only. The Windows look shows the Home InfoBar; the Mac look shows only the toolbar indicator.
   if (params.get('telemetry') === 'unsupported' && state.telemetry) {
@@ -114,6 +121,58 @@
   const discord = params.get('discord')
   let pendingDiscord = null
   const syncReport = (uploaded, downloaded) => ({ uploaded, downloaded, conflicts: 0, removedLocally: 0 })
+
+  // On track (training against an older lap): laps on the sample's course, the fastest picked.
+  const training = params.get('training')
+  const spa = { game: 'LeMansUltimate', trackCourse: 'Circuit de Spa-Francorchamps', carModel: 'Porsche 963' }
+  const lapOn = (sessionId, lapNumber, seconds, startedAt, tier, sharedFrom = null) => ({
+    sessionId, lapNumber, label: `Lap ${lapNumber}`, detail: '', lapTimeSeconds: seconds, tier,
+    context: { ...spa, trackLengthMeters: 6981.6, carClass: 'Hypercar' }, sessionStartedAt: startedAt, sharedFrom,
+    traceId: `${sessionId}/${lapNumber}`, hasChannels: tier === 'FullTrace',
+    unavailableReason: tier === 'FullTrace' ? null : 'Lap time only — imported, or only part of the lap was seen.',
+  })
+  const trainingLaps = [
+    lapOn('shared-ada', 3, 124.88, '2026-10-02T19:10:00+00:00', 'FullTrace', 'Ada'),
+    lapOn('spa-0928', 5, 125.263, '2026-09-28T18:02:00+00:00', 'FullTrace'),
+    lapOn('spa-0928', 1, 125.4, '2026-09-28T18:02:00+00:00', 'FullTrace'),
+    lapOn('spa-0928', 4, 125.912, '2026-09-28T18:02:00+00:00', 'FullTrace'),
+    lapOn('spa-0920', 3, 126.031, '2026-09-20T17:40:00+00:00', 'TimeOnly'),
+  ]
+  state.compare =
+    training === 'none'
+      ? { courses: [], course: null, laps: [], lapCount: 0, target: null, hudOpen: false, fullscreen: false }
+      : {
+          courses: [spa, { game: 'LeMansUltimate', trackCourse: 'Autodromo Nazionale Monza', carModel: 'Porsche 963' }],
+          course: spa,
+          laps: trainingLaps,
+          lapCount: 42,
+          target: { sessionId: 'spa-0928', lapNumber: 5, label: '2:05.3 · Lap 5, Sep 28', lapTimeSeconds: 125.263 },
+          hudOpen: training === 'on',
+          fullscreen: params.get('fullscreen') === '1',
+        }
+  state.settings = { ...state.settings, liveCompare: { version: 3, panelIds: ['throttle', 'brake', 'speed'], showDelta: true, locked: training === 'on', layouts: [] } }
+
+  // One HUD window's message (electron/hudFeed.ts): a braking zone 250 m ahead of the car.
+  const hudMessage = (windowId, locked) => {
+    if (windowId === 'delta') return { kind: 'delta', locked, targetName: '2:05.3 · Lap 5, Sep 28', deltaSeconds: -0.214 }
+    const car = 2000
+    const xs = Array.from({ length: 161 }, (_, index) => 1800 + index * 5)
+    const shapes = {
+      throttle: { title: 'Throttle', unit: '%', target: (x) => (x > 2220 && x < 2380 ? 0 : x >= 2380 && x < 2430 ? (x - 2380) * 2 : 100), live: () => 100 },
+      brake: { title: 'Brake', unit: '%', target: (x) => (x > 2230 && x < 2330 ? Math.max(30, 100 - (x - 2245) * 0.8) : 0), live: () => 0 },
+      speed: { title: 'Speed', unit: 'km/h', target: (x) => (x < 2230 ? 285 : x < 2330 ? 285 - (x - 2230) * 1.4 : 145 + (x - 2330) * 0.25), live: (x) => 281 + (x - 1800) * 0.01 },
+    }
+    const shape = shapes[windowId]
+    if (!shape) return { kind: 'chart', locked, panel: null, domain: null, carMeters: null }
+    const series = (name, role, f, upTo) => ({
+      name, role, interpolation: 'Linear', fillArea: false,
+      samples: xs.filter((x) => x <= upTo).map((x) => ({ x, y: f(x) })),
+    })
+    return {
+      kind: 'chart', locked, domain: { min: 1800, max: 2600 }, carMeters: car,
+      panel: { id: windowId, title: shape.title, unit: shape.unit, series: [series('You', 'Current', shape.live, car), series('Target', 'Comparison', shape.target, Infinity)] },
+    }
+  }
 
   window.sprint = {
     getState: async () => state,
@@ -182,6 +241,12 @@
       ),
     syncUp: async () => syncReport(14, 0),
     syncDown: async () => syncReport(0, 3),
+    subscribeHud: (listener) => {
+      const windowId = params.get('hud')
+      if (windowId) setTimeout(() => listener(hudMessage(windowId, params.get('hudLocked') !== '0')), 0)
+      return () => undefined
+    },
+    resizeHud: () => undefined,
   }
 
   // Pages are reached through the app's own input paths, so the preview adds

@@ -376,6 +376,39 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_lets_go_once_the_game_stops_writing_its_shared_memory()
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        InMemoryLmuSnapshotProvider provider = new(buffer);
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        using LeMansUltimateTelemetrySource source = new(provider, clock: () => now);
+        source.Connect();
+        Assert.True(source.TryRead(out _));
+        DateTimeOffset? lastFrameAt = source.Status.LastFrameAt;
+
+        // The game quit, but its mapping lingers with the last frame in it: no new frame, and
+        // LastFrameAt holds still so the freshness check can call the link stale.
+        now += TimeSpan.FromSeconds(1);
+        Assert.False(source.TryRead(out _));
+        Assert.Equal(lastFrameAt, source.Status.LastFrameAt);
+
+        now += LeMansUltimateTelemetrySource.StoppedWritingAfter;
+        Assert.False(source.TryRead(out _));
+        Assert.Equal(TelemetryConnectionState.WaitingForGame, source.Status.State);
+        Assert.False(provider.IsOpen);
+
+        // Reopening the still-frozen mapping does not pretend the game is back.
+        source.Connect();
+        Assert.Equal(TelemetryConnectionState.WaitingForGame, source.Status.State);
+
+        // The game writes again.
+        WriteInt32(buffer, LmuBinary.ScoringStart + 64, 10);
+        source.Connect();
+        Assert.Equal(TelemetryConnectionState.Connected, source.Status.State);
+        Assert.True(source.TryRead(out _));
+    }
+
+    [Fact]
     public void Lmu_source_dispose_is_terminal()
     {
         using var source = new LeMansUltimateTelemetrySource(new InMemoryLmuSnapshotProvider(EmptyLmuBuffer()));

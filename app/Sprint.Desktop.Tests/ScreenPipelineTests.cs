@@ -324,6 +324,26 @@ public sealed class ScreenPipelineTests
     }
 
     [Fact]
+    public void PublisherNoticesAPanelUnpluggedWhileItShowsAStillPicture()
+    {
+        FakeScreenDriver driver = new() { ConnectResult = ScreenConnectionState.Connected };
+        using ScreenPublisher publisher = new(
+            driver,
+            new ConstantFrameSource(16, 16),
+            () => new TelemetryFrame(),
+            new ScreenPublisherOptions { ResendUnchangedAfter = TimeSpan.Zero });
+
+        Assert.Equal(ScreenStepOutcome.SentFrame, publisher.Step());
+
+        // Only a failed transfer shows the cable is gone, so the unchanged frame goes out again.
+        driver.Unplugged = true;
+        driver.ConnectResult = ScreenConnectionState.Disconnected;
+        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        Assert.Equal(ScreenStepOutcome.Reconnecting, publisher.Step());
+        Assert.NotEqual(ScreenConnectionState.Connected, publisher.Status.State);
+    }
+
+    [Fact]
     public void PublisherReportsActualScreenOutputFpsAndFrameTime()
     {
         var driver = new FakeScreenDriver { ConnectResult = ScreenConnectionState.Connected };

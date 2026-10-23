@@ -152,16 +152,14 @@ export class NativeHost {
   }
   async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
 
-  /**
-   * The driving guide's pose feed: newline-delimited JSON for as long as `signal` stays open.
-   * No timeout; the caller owns the stream's lifetime.
-   */
-  async guideStream(signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
-    if (!this.address) throw new Error('Native runtime is not ready.')
-    const response = await fetch(`${this.address}/api/guide/stream`, { headers: { authorization: `Bearer ${this.token}` }, signal })
-    if (!response.ok || !response.body) throw new Error(`Runtime ${response.status} on the guide stream.`)
-    return response.body
+  /** The training HUD's newest snapshot, or null when there is no lap to train against. */
+  async compareFrame(): Promise<unknown> { return this.json('/api/compare/frame', undefined, 2000) }
+
+  /** Where each training HUD window opens on these displays (primary first). */
+  async hudWindows(displays: readonly { x: number; y: number; width: number; height: number }[]): Promise<unknown> {
+    return this.json('/api/compare/hud/windows', { method: 'POST', body: JSON.stringify({ screens: displays }), headers: { 'content-type': 'application/json' } })
   }
+
   async command(command: unknown): Promise<unknown> {
     if (!isRecord(command) || typeof command.type !== 'string') throw new Error('A typed command is required.')
     return this.json('/api/commands', { method: 'POST', body: JSON.stringify(command), headers: { 'content-type': 'application/json' } })
@@ -182,7 +180,7 @@ export class NativeHost {
    * A lap as `.sprintlap` bytes, or the host's reason it cannot be shared (a lap with only a
    * time, one that was deleted). The filename is a suggestion for the save dialog.
    */
-  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string; hasPositions: boolean } | { ok: false; error: string }> {
+  async lapFile(sessionId: string, lapNumber: number): Promise<{ ok: true; bytes: Uint8Array; fileName: string } | { ok: false; error: string }> {
     if (!this.address) throw new Error('Native runtime is not ready.')
     const response = await fetch(`${this.address}/api/laps/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}/file`, {
       headers: { authorization: `Bearer ${this.token}` },
@@ -196,7 +194,6 @@ export class NativeHost {
       ok: true,
       bytes: new Uint8Array(await response.arrayBuffer()),
       fileName: decodeURIComponent(response.headers.get('x-lap-filename') ?? 'lap.sprintlap'),
-      hasPositions: response.headers.get('x-lap-has-positions') === 'true',
     }
   }
 

@@ -155,19 +155,6 @@
     "isEmpty": false
   },
   "settings": {
-    "drivingGuide": {
-      "showLine": true,
-      "showBoards": true,
-      "monitorOverlay": false,
-      "vrHeadset": true,
-      "eyeRightMeters": 0.35,
-      "eyeUpMeters": 0.95,
-      "eyeForwardMeters": 0,
-      "yawOffsetDegrees": 0,
-      "pitchOffsetDegrees": -0.5,
-      "monitorFovDegrees": 50,
-      "metersAhead": 250
-    },
     "sidebarCollapsed": false,
     "updateChannel": "stable",
     "driverName": "Alex Driver",
@@ -220,6 +207,8 @@
       "id": "bavarian-omega-v2-pro",
       "name": "BavarianSimTec Omega PRO V2",
       "description": "Integrated wheel with VoCore screen and button inputs",
+      "brand": "BavarianSimTec",
+      "detect": [{ "vid": 51314, "pid": 4100 }, { "vid": 5840, "pid": 4730 }],
       "type": "wheel",
       "vid": 51314,
       "pid": 4100,
@@ -234,8 +223,10 @@
     },
     {
       "id": "generic-usbd480",
-      "name": "Generic USBD480 NX Screen",
+      "name": "USBD480 screen",
       "description": "Any USBD480 NX display (NX43, NX50) — Sprint will find the first unregistered device",
+      "brand": "USBD480",
+      "detect": [{ "vid": 5824, "pid": 2215 }],
       "type": "screen",
       "vid": 0,
       "pid": 0,
@@ -250,8 +241,10 @@
     },
     {
       "id": "generic-vocore",
-      "name": "Generic VoCore Screen",
+      "name": "VoCore screen",
       "description": "Any VoCore display — Sprint will find the first unregistered device",
+      "brand": "VoCore",
+      "detect": [{ "vid": 51314, "pid": 0 }],
       "type": "screen",
       "vid": 0,
       "pid": 0,
@@ -3341,12 +3334,7 @@
     "version": "0.1.0",
     "channel": "stable"
   },
-  "guide": {
-    "status": "Ready",
-    "lap": { "sessionId": "preview", "lapNumber": 6, "lapTimeSeconds": 123.412, "car": "Peugeot 9X8", "recordedAt": "2026-10-18T19:20:00Z", "sameCar": true },
-    "boards": 14,
-    "vr": { "available": true, "registered": true, "detail": null }
-  },
+
   "screens": [
     {
       "deviceId": "sample-omega",
