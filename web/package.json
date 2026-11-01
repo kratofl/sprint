@@ -30,7 +30,7 @@
     "@graphql-codegen/cli": "^7.4.6",
     "@graphql-codegen/typescript-operations": "^6.1.10",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.5.4",
