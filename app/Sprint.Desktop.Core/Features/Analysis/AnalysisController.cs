@@ -1,16 +1,32 @@
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Setup;
 
 namespace Sprint.Desktop.Features.Analysis;
+
+/// <summary>
+/// One run of the open session: a drive out of the garage and back, so one setup throughout.
+/// </summary>
+/// <param name="Outing">The stored outing (<see cref="LapHistoryRecord.Outing"/>); 0 for a session that does not know its runs.</param>
+/// <param name="Number">The run's place in the session, from 1, as the driver reads it.</param>
+/// <param name="StartedAt">When the run's first listed lap began; null when no lap says when it ended.</param>
+/// <param name="Setup">The setup the driver put on this run, or null when they have not.</param>
+public sealed record CorpusRun(int Outing, int Number, int Laps, double BestLapSeconds, DateTimeOffset? StartedAt, RunSetup? Setup);
 
 /// <summary>
 /// What the Analysis page shows right now: the picked laps, the stack, and anything the driver
 /// needs told rather than left to infer.
 /// </summary>
+/// <param name="Sessions">Every session in the corpus as it is now, newest first: the sessions list.</param>
+/// <param name="CourseLaps">Every valid lap with the open session's car on its track, from any
+/// session, fastest first: "your best here" and the laps compare can pick. Empty with no session open.</param>
 public sealed record AnalysisState(
     LapCorpusFilter Filter,
+    IReadOnlyList<CorpusSession> Sessions,
     CorpusSession? Session,
     IReadOnlyList<CorpusLap> Laps,
+    IReadOnlyList<CorpusRun> Runs,
+    IReadOnlyList<CorpusLap> CourseLaps,
     CorpusLap? Primary,
     CorpusLap? Comparison,
     ChartStack? Stack,
@@ -24,6 +40,8 @@ public sealed record AnalysisState(
 public sealed class AnalysisController
 {
     private readonly LapCorpusBrowser _browser;
+    private readonly RunSetups? _runSetups;
+    private readonly SetupLibrary? _setups;
 
     private LapCorpusFilter _filter;
     private CorpusSession? _session;
@@ -32,10 +50,16 @@ public sealed class AnalysisController
     private LapChannelTrace? _primaryTrace;
     private LapChannelTrace? _comparisonTrace;
 
-    public AnalysisController(LapCorpusBrowser browser)
+    /// <summary>
+    /// Without <paramref name="runSetups"/> and <paramref name="setups"/> the runs list no setups
+    /// and none can be put on them.
+    /// </summary>
+    public AnalysisController(LapCorpusBrowser browser, RunSetups? runSetups = null, SetupLibrary? setups = null)
     {
-        _browser = browser ?? throw new ArgumentNullException(nameof(browser));
-        _filter = new LapCorpusFilter(_browser.Sessions());
+        this._browser = browser ?? throw new ArgumentNullException(nameof(browser));
+        this._runSetups = runSetups;
+        this._setups = setups;
+        this._filter = new LapCorpusFilter(this._browser.Sessions());
     }
 
     /// <summary>The narrowing cascade: game, track, class, car, optionally day.</summary>
@@ -196,18 +220,114 @@ public sealed class AnalysisController
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// One session of the whole corpus as it is now, or null when there is no such session. The
+    /// sessions list shows every session live, so opening one never waits for a reload.
+    /// </summary>
+    public CorpusSession? FindSession(string id) =>
+        this._browser.Sessions().FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.Ordinal));
+
     public AnalysisState State()
     {
-        var laps = _browser.Laps(_session);
+        IReadOnlyList<CorpusLap> laps = this._browser.Laps(this._session);
+        IReadOnlyList<CorpusLap> courseLaps = this._session is { } session
+            ? this._browser.LapsOn(session.Context.Game, session.Context.TrackCourse, session.Context.CarModel)
+            : [];
 
         return new AnalysisState(
-            _filter,
-            _session,
+            this._filter,
+            this._browser.Sessions(),
+            this._session,
             laps,
-            _primary,
-            _comparison,
-            BuildStack(),
-            Notice(laps));
+            this.Runs(laps),
+            courseLaps,
+            this._primary,
+            this._comparison,
+            this.BuildStack(),
+            this.Notice(laps));
+    }
+
+    /// <summary>
+    /// Puts setup <paramref name="setupId"/> (a Setups list id) on one run of the open session, or
+    /// takes the run's setup off with null. The version kept is the one the file held when the run
+    /// started (<see cref="SetupLibrary.VersionAt"/>).
+    /// </summary>
+    public bool SetRunSetup(int outing, string? setupId, out string error)
+    {
+        error = "";
+        if (this._session is not { } session)
+        {
+            error = "no session is open";
+            return false;
+        }
+
+        if (this._runSetups is not { } runSetups || this._setups is not { } setups)
+        {
+            error = "setups cannot be put on runs here";
+            return false;
+        }
+
+        CorpusRun? run = this.State().Runs.FirstOrDefault(candidate => candidate.Outing == outing);
+        if (run is null)
+        {
+            error = "no such run in the open session";
+            return false;
+        }
+
+        RunSetup? picked = null;
+        if (setupId is not null)
+        {
+            picked = setups.VersionAt(setupId, run.StartedAt ?? session.StartedAt);
+            if (picked is null)
+            {
+                error = "no such setup";
+                return false;
+            }
+        }
+
+        runSetups.Set(session.Id, outing, picked);
+        this.Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>The open session's runs in the order they were driven, each with the setup put on it.</summary>
+    private IReadOnlyList<CorpusRun> Runs(IReadOnlyList<CorpusLap> laps)
+    {
+        if (this._session is null || laps.Count == 0)
+        {
+            return [];
+        }
+
+        IReadOnlyDictionary<int, RunSetup> picked = this._runSetups?.For(this._session.Id) ?? new Dictionary<int, RunSetup>();
+        return
+        [
+            .. laps
+                .GroupBy(lap => lap.Outing)
+                .OrderBy(group => group.Key)
+                .Select((group, index) => new CorpusRun(
+                    group.Key,
+                    index + 1,
+                    group.Count(),
+                    group.Min(lap => lap.LapTimeSeconds),
+                    StartOf(group),
+                    picked.GetValueOrDefault(group.Key)))
+        ];
+    }
+
+    /// <summary>When the earliest of these laps began: its end less its time. Null when none says when it ended.</summary>
+    private static DateTimeOffset? StartOf(IEnumerable<CorpusLap> laps)
+    {
+        DateTimeOffset? start = null;
+        foreach (CorpusLap lap in laps)
+        {
+            if (lap.CompletedAt is { } completed)
+            {
+                DateTimeOffset began = completed.AddSeconds(-lap.LapTimeSeconds);
+                start = start is { } earlier && earlier <= began ? earlier : began;
+            }
+        }
+
+        return start;
     }
 
     private void ClearLaps()

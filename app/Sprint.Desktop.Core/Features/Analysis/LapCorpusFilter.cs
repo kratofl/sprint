@@ -8,6 +8,7 @@ namespace Sprint.Desktop.Features.Analysis;
 /// One recorded session as the picker lists it: enough to recognise "the one I drove yesterday
 /// evening" without loading a single lap.
 /// </summary>
+/// <param name="Runs">How many drives out of the garage its laps came from; 0 when they do not say.</param>
 public sealed record CorpusSession(
     string Id,
     LapHistoryContext Context,
@@ -17,7 +18,8 @@ public sealed record CorpusSession(
     int LapCount,
     int TracedLapCount,
     double? BestLapSeconds,
-    string? SharedFrom)
+    string? SharedFrom,
+    int Runs = 0)
 {
     /// <summary>The local day this session was driven on, which is how a driver remembers it.</summary>
     public DateOnly Day => DateOnly.FromDateTime(StartedAt.ToLocalTime().DateTime);

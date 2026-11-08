@@ -646,6 +646,28 @@ public sealed class AnalysisTests
         Assert.Contains(LapTraceChannels.SpeedKph, LapCorpusBrowser.SharedChannels(Trace(), TraceWithoutGear()));
     }
 
+    [Fact]
+    public void The_list_gets_every_session_with_its_runs_and_an_open_session_gets_every_lap_on_its_course()
+    {
+        LapHistorySession spa = Session("spa", "Spa", "Hypercar", "Porsche 963", Evening);
+        spa.Laps[0].Outing = 1;
+        spa.Laps[1].Outing = 1;
+        spa.Laps[2].Outing = 2;
+        LapHistorySession olderSpa = Session("spa-older", "Spa", "Hypercar", "Porsche 963", Evening.AddDays(-1));
+        LapHistorySession monza = Session("monza", "Monza", "Hypercar", "Porsche 963", Evening.AddDays(-2));
+        AnalysisController controller = Controller(out _, spa, olderSpa, monza);
+
+        AnalysisState state = controller.State();
+
+        Assert.Equal(["spa", "spa-older", "monza"], state.Sessions.Select(session => session.Id));
+        Assert.Equal([2, 0, 0], state.Sessions.Select(session => session.Runs));
+        Assert.Equal("spa", state.Session?.Id);
+        Assert.Equal(6, state.CourseLaps.Count);
+        Assert.All(state.CourseLaps, lap => Assert.Equal("Spa", lap.Context.TrackCourse));
+        Assert.Equal("monza", controller.FindSession("monza")?.Id);
+        Assert.Null(controller.FindSession("gone"));
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static AnalysisController Controller(

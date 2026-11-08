@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   CHART_CURSOR_NONE,
   chartPanelState,
@@ -11,12 +11,12 @@ import {
   formatTrackPositionCursor,
   moveChartCursorByKey,
 } from './AnalysisDomain'
-import type { ChartCursorState, ChartPanel, ChartPanelReadout, ChartSeries, ChartSeriesRole } from './AnalysisDomain'
+import type { ChartCursorState, ChartPanel, ChartPanelReadout, ChartSeries, SeriesStroke, SeriesTone } from './AnalysisDomain'
 
 /**
  * The chart stack `AnalysisDomain.buildLapTraceChartPanels` computes — samples in, lines out
- * (docs/design/DESIGN.md "Color": brand-500 for the current/selected series,
- * blue-500 for comparison, linear interpolation for continuous channels, stepped for discrete
+ * (each channel in its own `--channel-*` colour, the compared-with lap grey and dashed, what the
+ * car got after ABS/TC dotted; linear interpolation for continuous channels, stepped for discrete
  * ones, no decorative smoothing, `--divider` rules, 12px secondary axis labels), plus a shared
  * hover/keyboard crosshair with a per-panel readout,
  * mirroring the old Avalonia `ChartStackView`/`ChartStackController`/`ChartStackPainter`
@@ -34,16 +34,20 @@ import type { ChartCursorState, ChartPanel, ChartPanelReadout, ChartSeries, Char
 /** Width before the first measurement (and the floor below which the plot stops shrinking). */
 const DEFAULT_WIDTH = 640
 const MIN_WIDTH = 240
-const HEIGHT = 148
+const DEFAULT_HEIGHT = 148
 const MARGIN = { top: 10, right: 12, bottom: 8, left: 44 }
-const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const AXIS_HEIGHT = 24
+const MARK_HEIGHT = 18
 const AXIS_TICKS = [0, 0.25, 0.5, 0.75, 1]
 
 const plotWidth = (width: number): number => width - MARGIN.left - MARGIN.right
 const scaleXFor = (width: number) => (x: number) => MARGIN.left + x * plotWidth(width)
 
-const seriesColor = (role: ChartSeriesRole): string => (role === 'Comparison' ? 'var(--blue-500)' : 'var(--brand-500)')
+/** A mark along the lap drawn down every panel, e.g. a corner: where (0–1) and its short label. */
+export type ChartMark = { position: number; label: string }
+
+const toneColor = (tone: SeriesTone): string => (tone === 'neutral' ? 'var(--label)' : `var(--channel-${tone})`)
+const dashFor = (stroke: SeriesStroke): string | undefined => (stroke === 'dashed' ? '5 4' : stroke === 'dotted' ? '1.5 3' : undefined)
 
 function buildLinePath(series: ChartSeries, scaleX: (x: number) => number, scaleY: (y: number) => number): string {
   if (series.samples.length === 0) return ''
@@ -72,17 +76,24 @@ function buildAreaPath(series: ChartSeries, scaleX: (x: number) => number, scale
   return `${line} L${scaleX(last.x).toFixed(2)},${baselineY.toFixed(2)} L${scaleX(first.x).toFixed(2)},${baselineY.toFixed(2)} Z`
 }
 
-/** Series names/roles in series order, first occurrence only. Mirrors `ChartStackPainter.Entries`. */
-function legendEntries(series: readonly ChartSeries[]): { name: string; role: ChartSeriesRole }[] {
-  const entries: { name: string; role: ChartSeriesRole }[] = []
+type LegendEntry = { name: string; tone: SeriesTone; stroke: SeriesStroke }
+
+/** Series names in series order, first occurrence only. Mirrors `ChartStackPainter.Entries`. */
+function legendEntries(series: readonly ChartSeries[]): LegendEntry[] {
+  const entries: LegendEntry[] = []
   for (const item of series) {
-    if (!entries.some((entry) => entry.name === item.name && entry.role === item.role)) entries.push({ name: item.name, role: item.role })
+    if (!entries.some((entry) => entry.name === item.name)) entries.push({ name: item.name, tone: item.tone, stroke: item.stroke })
   }
 
   return entries
 }
 
-/** Identifies which line is which lap — brand for primary, blue for comparison. Mirrors `ChartStackPainter.DrawLegend`. */
+/** A line's key: its colour and its stroke (solid, dashed or dotted), so identity never rests on colour alone. */
+export function LineKey({ tone, stroke }: { tone: SeriesTone; stroke: SeriesStroke }) {
+  return <span className={`analysis-line-key ${stroke}`} style={{ color: toneColor(tone) }} aria-hidden="true" />
+}
+
+/** Names each line of a panel that has more than one. Mirrors `ChartStackPainter.DrawLegend`. */
 function PanelLegend({ series }: { series: readonly ChartSeries[] }) {
   const entries = legendEntries(series)
   if (entries.length <= 1) return null
@@ -90,8 +101,8 @@ function PanelLegend({ series }: { series: readonly ChartSeries[] }) {
   return (
     <div className="analysis-chart-legend">
       {entries.map((entry) => (
-        <span key={`${entry.role}-${entry.name}`} className="analysis-chart-legend-item">
-          <span className="analysis-chart-legend-key" style={{ background: seriesColor(entry.role) }} />
+        <span key={entry.name} className="analysis-chart-legend-item">
+          <LineKey tone={entry.tone} stroke={entry.stroke} />
           {entry.name}
         </span>
       ))}
@@ -102,29 +113,45 @@ function PanelLegend({ series }: { series: readonly ChartSeries[] }) {
 export function LapTraceChartPanel({
   panel,
   width,
+  height,
   cursorPosition,
   readout,
+  marks,
+  note,
+  actions,
+  emptyText,
 }: {
   panel: ChartPanel
   width: number
+  height: number
   cursorPosition: number | null
   readout: ChartPanelReadout | null
+  marks: readonly ChartMark[]
+  /** Quiet text after the legend, e.g. that a channel was not recorded for this lap. */
+  note: string | null
+  /** The panel's own controls (a ⋯ menu), at the right end of its head. */
+  actions: ReactNode
+  emptyText: string
 }) {
   const state = chartPanelState(panel)
 
   return (
     <div className="analysis-chart-panel">
       <div className="analysis-chart-head">
-        <span className="analysis-chart-title">{panel.title}</span>
+        <div className="analysis-chart-head-left">
+          <span className="analysis-chart-title">{panel.title}</span>
+          {state === 'Ready' && <PanelLegend series={panel.series} />}
+          {note && <span className="analysis-chart-note">{note}</span>}
+        </div>
         <div className="analysis-chart-head-right">
           {panel.unit && <span className="analysis-chart-unit">{panel.unit}</span>}
-          {state === 'Ready' && <PanelLegend series={panel.series} />}
+          {actions}
         </div>
       </div>
       {state !== 'Ready' ? (
-        <p className="analysis-chart-empty-panel">{state === 'Empty' ? 'Not recorded on either lap.' : 'Not enough samples to draw a line.'}</p>
+        <p className="analysis-chart-empty-panel">{state === 'Empty' ? emptyText : 'Not enough samples to draw a line.'}</p>
       ) : (
-        <ReadyChart panel={panel} width={width} cursorPosition={cursorPosition} readout={readout} />
+        <ReadyChart panel={panel} width={width} height={height} cursorPosition={cursorPosition} readout={readout} marks={marks} />
       )}
     </div>
   )
@@ -133,21 +160,30 @@ export function LapTraceChartPanel({
 function ReadyChart({
   panel,
   width,
+  height,
   cursorPosition,
   readout,
+  marks,
 }: {
   panel: ChartPanel
   width: number
+  height: number
   cursorPosition: number | null
   readout: ChartPanelReadout | null
+  marks: readonly ChartMark[]
 }) {
+  const plotHeight = height - MARGIN.top - MARGIN.bottom
   const values = panel.series.flatMap((series) => series.samples.map((sample) => sample.y))
-  const scale = chartScaleFor(Math.min(...values), Math.max(...values))
+  // A finer step than the HUD's, so a line fills its panel: 0–300 km/h, not 0–400.
+  const scale = chartScaleFor(Math.min(...values), Math.max(...values), 4)
   const span = scale.max - scale.min || 1
   const scaleX = scaleXFor(width)
-  const scaleY = (y: number) => MARGIN.top + PLOT_HEIGHT - ((y - scale.min) / span) * PLOT_HEIGHT
+  const scaleY = (y: number) => MARGIN.top + plotHeight - ((y - scale.min) / span) * plotHeight
   const baselineY = scaleY(scale.min)
-  const ticks = [scale.max, (scale.min + scale.max) / 2, scale.min]
+  // A gridline at every step, or every other one past five, so each label is a round value.
+  const steps = Math.round((scale.max - scale.min) / scale.step)
+  const every = steps > 4 ? 2 : 1
+  const ticks = Array.from({ length: Math.floor(steps / every) + 1 }, (_, index) => scale.max - index * every * scale.step)
 
   // The readout carries more resolution than the axis: the axis states levels, the cursor
   // states the measurement the reader hovered for. Mirrors `ChartStackPainter.Decimals`.
@@ -156,13 +192,16 @@ function ReadyChart({
   const cursorX = cursorPosition !== null ? scaleX(cursorPosition) : null
   const readoutRows = (readout?.series ?? []).map((series) => ({ ...series, y: series.value !== null ? scaleY(series.value) : null }))
   const presentRow = readoutRows.find((row) => row.y !== null)
-  const anchorY = presentRow?.y ?? MARGIN.top + PLOT_HEIGHT / 2
+  const anchorY = presentRow?.y ?? MARGIN.top + plotHeight / 2
   // Beside the crosshair, flipping to its other side rather than running off the plot.
   const chipOnLeft = cursorPosition !== null && cursorPosition >= 0.5
 
   return (
     <div className="analysis-chart-plot">
-      <svg viewBox={`0 0 ${width} ${HEIGHT}`} className="analysis-chart-svg" role="img" aria-label={`${panel.title} trace`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="analysis-chart-svg" style={{ height }} role="img" aria-label={`${panel.title} trace`}>
+        {marks.map((mark) => (
+          <line key={mark.label} x1={scaleX(mark.position)} x2={scaleX(mark.position)} y1={MARGIN.top} y2={MARGIN.top + plotHeight} className="analysis-chart-mark" />
+        ))}
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={MARGIN.left} x2={width - MARGIN.right} y1={scaleY(tick)} y2={scaleY(tick)} className="analysis-chart-grid" />
@@ -173,26 +212,28 @@ function ReadyChart({
         ))}
         {panel.series.map((series) =>
           series.fillArea ? (
-            <path
-              key={`${series.name}-fill`}
-              d={buildAreaPath(series, scaleX, scaleY, baselineY)}
-              fill={seriesColor(series.role)}
-              fillOpacity={0.16}
-              stroke="none"
-            />
+            <path key={`${series.name}-fill`} d={buildAreaPath(series, scaleX, scaleY, baselineY)} fill={toneColor(series.tone)} fillOpacity={0.16} stroke="none" />
           ) : null,
         )}
         {panel.series.map((series) => (
-          <path key={series.name} d={buildLinePath(series, scaleX, scaleY)} fill="none" stroke={seriesColor(series.role)} strokeWidth={1.5} />
+          <path
+            key={series.name}
+            d={buildLinePath(series, scaleX, scaleY)}
+            fill="none"
+            stroke={toneColor(series.tone)}
+            strokeWidth={series.stroke === 'dotted' ? 2 : 1.5}
+            strokeDasharray={dashFor(series.stroke)}
+            strokeLinecap={series.stroke === 'dotted' ? 'round' : undefined}
+          />
         ))}
         {cursorX !== null && (
           <>
-            <line x1={cursorX} x2={cursorX} y1={MARGIN.top} y2={MARGIN.top + PLOT_HEIGHT} className="analysis-chart-cursor-line" />
+            <line x1={cursorX} x2={cursorX} y1={MARGIN.top} y2={MARGIN.top + plotHeight} className="analysis-chart-cursor-line" />
             {readoutRows.map((row) =>
               row.y !== null ? (
                 <g key={row.name}>
                   <circle cx={cursorX} cy={row.y} r={5} className="analysis-chart-marker-ring" />
-                  <circle cx={cursorX} cy={row.y} r={4} fill={seriesColor(row.role)} />
+                  <circle cx={cursorX} cy={row.y} r={4} fill={toneColor(row.tone)} />
                 </g>
               ) : null,
             )}
@@ -204,13 +245,13 @@ function ReadyChart({
           className="analysis-chart-readout"
           style={{
             left: `${(cursorX / width) * 100}%`,
-            top: `${(anchorY / HEIGHT) * 100}%`,
+            top: `${(anchorY / height) * 100}%`,
             transform: chipOnLeft ? 'translate(calc(-100% - 8px), -50%)' : 'translate(8px, -50%)',
           }}
         >
           {readoutRows.map((row) => (
             <div key={row.name} className="analysis-chart-readout-row">
-              <span className="analysis-chart-readout-key" style={{ background: seriesColor(row.role) }} />
+              <LineKey tone={row.tone} stroke={row.stroke} />
               {/* The value leads and the series name follows: the reader already knows which
                   series they are on and came for the number. */}
               <span className="analysis-chart-readout-value tabular">{row.value !== null ? formatChartReadoutValue(row.value, decimals) : '—'}</span>
@@ -223,11 +264,31 @@ function ReadyChart({
   )
 }
 
+/** Where along the lap: in km when the track's length is known, as a share of the lap otherwise. */
+const positionLabel = (fraction: number, trackLengthMeters: number | null, cursor: boolean): string => {
+  if (trackLengthMeters === null) return cursor ? formatTrackPositionCursor(fraction) : formatTrackPosition(fraction)
+  return `${((fraction * trackLengthMeters) / 1000).toFixed(cursor ? 2 : 1)} km`
+}
+
+/** The corner labels, once above the whole stack, over the marks every panel draws. */
+function MarkRow({ width, marks }: { width: number; marks: readonly ChartMark[] }) {
+  const scaleX = scaleXFor(width)
+  return (
+    <svg viewBox={`0 0 ${width} ${MARK_HEIGHT}`} className="analysis-chart-mark-svg" style={{ height: MARK_HEIGHT }} role="presentation" aria-hidden="true">
+      {marks.map((mark) => (
+        <text key={mark.label} x={scaleX(mark.position)} y={MARK_HEIGHT / 2} className="analysis-chart-mark-label" textAnchor="middle" dominantBaseline="middle">
+          {mark.label}
+        </text>
+      ))}
+    </svg>
+  )
+}
+
 /** The shared X axis, drawn once under the whole stack, in the same coordinate space every panel's crosshair uses. */
-function AxisRow({ width, cursorPosition }: { width: number; cursorPosition: number | null }) {
+function AxisRow({ width, cursorPosition, trackLengthMeters }: { width: number; cursorPosition: number | null; trackLengthMeters: number | null }) {
   const scaleX = scaleXFor(width)
   const cursorX = cursorPosition !== null ? scaleX(cursorPosition) : null
-  const cursorText = cursorPosition !== null ? formatTrackPositionCursor(cursorPosition) : ''
+  const cursorText = cursorPosition !== null ? positionLabel(cursorPosition, trackLengthMeters, true) : ''
   const chipWidth = cursorText.length * 7.5 + 14
   const chipLeft = cursorX !== null ? Math.min(Math.max(cursorX - chipWidth / 2, MARGIN.left), width - MARGIN.right - chipWidth) : 0
 
@@ -242,7 +303,7 @@ function AxisRow({ width, cursorPosition }: { width: number; cursorPosition: num
           textAnchor={fraction <= 0 ? 'start' : fraction >= 1 ? 'end' : 'middle'}
           dominantBaseline="middle"
         >
-          {formatTrackPosition(fraction)}
+          {positionLabel(fraction, trackLengthMeters, false)}
         </text>
       ))}
       {cursorX !== null && (
@@ -257,12 +318,39 @@ function AxisRow({ width, cursorPosition }: { width: number; cursorPosition: num
   )
 }
 
-/** The stack: same X domain (track position) down every panel, one shared cursor, one axis row at the bottom. */
-export function LapTraceChartStack({ panels }: { panels: readonly ChartPanel[] }) {
-  const [cursor, setCursor] = useState<ChartCursorState>(CHART_CURSOR_NONE)
+/**
+ * The stack: same X domain (track position) down every panel, one shared cursor, one axis row at
+ * the bottom. Optional: corner `marks` down every panel, a height, a quiet note and controls per
+ * panel (by index), km on the axis, and `onCursor` for something outside that follows the cursor
+ * (the track map's dot).
+ */
+export function LapTraceChartStack({
+  panels,
+  heights,
+  marks = [],
+  notes,
+  actions,
+  trackLengthMeters = null,
+  emptyText = 'Not recorded on either lap.',
+  onCursor,
+}: {
+  panels: readonly ChartPanel[]
+  heights?: readonly number[]
+  marks?: readonly ChartMark[]
+  notes?: readonly (string | null)[]
+  actions?: (index: number) => ReactNode
+  trackLengthMeters?: number | null
+  emptyText?: string
+  onCursor?: (position: number | null) => void
+}) {
+  const [cursor, setCursorState] = useState<ChartCursorState>(CHART_CURSOR_NONE)
   const width = useMeasuredWidth()
   const cursorPosition = cursor.kind === 'at' ? cursor.position : null
   const readout = cursorPosition !== null ? chartStackReadoutAt(panels, cursorPosition) : null
+  const setCursor = (next: ChartCursorState) => {
+    setCursorState(next)
+    onCursor?.(next.kind === 'at' ? next.position : null)
+  }
 
   const positionFromPointer = (event: ReactPointerEvent<HTMLDivElement>): number => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -277,19 +365,35 @@ export function LapTraceChartStack({ panels }: { panels: readonly ChartPanel[] }
       className="analysis-chart-stack"
       tabIndex={0}
       role="group"
-      aria-label="Lap comparison chart. Hover, or use the arrow keys while focused, to read values at a track position."
-      onPointerMove={(event) => setCursor({ kind: 'at', position: positionFromPointer(event) })}
+      aria-label="Lap chart. Hover, or use the arrow keys while focused, to read values at a track position."
+      onPointerMove={(event) => {
+        // A pointer over a panel's own controls (its ⋯ menu) is not a reading.
+        if (event.target instanceof Element && event.target.closest('.analysis-chart-head')) return
+        setCursor({ kind: 'at', position: positionFromPointer(event) })
+      }}
       onPointerLeave={() => setCursor(CHART_CURSOR_NONE)}
       onKeyDown={(event) => {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
         event.preventDefault()
-        setCursor((current) => moveChartCursorByKey(current, event.key === 'ArrowLeft' ? -1 : 1))
+        setCursor(moveChartCursorByKey(cursor, event.key === 'ArrowLeft' ? -1 : 1))
       }}
     >
+      {marks.length > 0 && <MarkRow width={width.value} marks={marks} />}
       {panels.map((panel, index) => (
-        <LapTraceChartPanel key={panel.title} panel={panel} width={width.value} cursorPosition={cursorPosition} readout={readout?.panels[index] ?? null} />
+        <LapTraceChartPanel
+          key={panel.title}
+          panel={panel}
+          width={width.value}
+          height={heights?.[index] ?? DEFAULT_HEIGHT}
+          cursorPosition={cursorPosition}
+          readout={readout?.panels[index] ?? null}
+          marks={marks}
+          note={notes?.[index] ?? null}
+          actions={actions?.(index)}
+          emptyText={emptyText}
+        />
       ))}
-      <AxisRow width={width.value} cursorPosition={cursorPosition} />
+      <AxisRow width={width.value} cursorPosition={cursorPosition} trackLengthMeters={trackLengthMeters} />
     </div>
   )
 }

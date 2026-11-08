@@ -59,7 +59,7 @@ public static class HudLayoutStore
     /// <para>
     /// A layout is discarded when the monitor it names is gone, and when its rectangle no
     /// longer overlaps that monitor. Restoring either would put a window somewhere the driver
-    /// cannot see or reach — and it is click-through when locked, so an off-screen overlay is
+    /// cannot see or reach — and it is click-through while driving, so an off-screen overlay is
     /// not something they can drag back.
     /// </para>
     /// </summary>

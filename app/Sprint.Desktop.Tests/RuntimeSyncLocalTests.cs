@@ -22,18 +22,19 @@ public sealed class RuntimeSyncLocalTests : IDisposable
     }
 
     [Fact]
-    public void ADownloadedDashNeverBecomesASecondDefault()
+    public void ADownloadedDashKeepsItsCategory_AndAnUnknownOneBecomesACustomCategory()
     {
         RuntimeSyncLocal first = Local(this._first, out DesktopRuntime firstRuntime);
-        DashLayout dash = firstRuntime.CreateDashLayout();
-        firstRuntime.SetDefaultDashLayout(dash);
+        DashLayout dash = firstRuntime.CreateBlankDashLayout(ScreenProfileCatalog.Default, "Wet race", category: null);
+        firstRuntime.CreateDashCategory("Wet");
+        firstRuntime.SetDashCategory(dash, "Wet");
         SyncItem uploaded = first.Items().Single(item => item.Kind == SyncKind.Dash && item.Id == dash.Id);
 
         RuntimeSyncLocal second = Local(this._second, out DesktopRuntime secondRuntime);
         second.Write(SyncKind.Dash, uploaded.Json);
 
-        Assert.Single(secondRuntime.DashLayouts, layout => layout.IsDefault);
-        Assert.Contains(secondRuntime.DashLayouts, layout => layout.Id == dash.Id && !layout.IsDefault);
+        Assert.Equal("Wet", secondRuntime.DashLayouts.Single(layout => layout.Id == dash.Id).Category);
+        Assert.Equal(["Wet"], secondRuntime.Settings.CustomDashCategories);
     }
 
     [Fact]

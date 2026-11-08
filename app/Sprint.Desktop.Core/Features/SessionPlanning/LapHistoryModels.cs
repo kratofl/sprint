@@ -78,9 +78,24 @@ public sealed class LapHistoryContext
     [JsonPropertyName("trackCourse")]
     public string TrackCourse { get; set; } = "";
 
-    /// <summary>The car model (e.g. "Porsche 963"), the field both writers can agree on.</summary>
+    /// <summary>
+    /// The car's name per <see cref="CarNames"/> (e.g. "Hypercar BMW", "LMP2 ELMS"), the field
+    /// both writers can agree on. The game's own name when the car cannot be named — a livery for
+    /// LMU history that predates the rule and could not be matched.
+    /// </summary>
     [JsonPropertyName("carModel")]
     public string CarModel { get; set; } = "";
+
+    /// <summary>The car's model as the game names it (e.g. "Oreca 07"). Detail, not part of the key; null when unknown.</summary>
+    [JsonPropertyName("carType")]
+    public string? CarType { get; set; }
+
+    /// <summary>
+    /// The entry that was driven (e.g. "DKR Engineering #3:ELMS26"), when the game names one apart
+    /// from the model. Detail, not part of the key; null when unknown.
+    /// </summary>
+    [JsonPropertyName("livery")]
+    public string? Livery { get; set; }
 
     /// <summary>
     /// Track length in metres, stored beside the key as a cross-check between writers
@@ -404,6 +419,18 @@ public sealed class LapHistoryRecord
     [JsonPropertyName("tires")]
     public List<LapHistoryTire> Tires { get; set; } = [];
 
+    /// <summary>The front tyres' compound as the game named it, or null when no front corner said.</summary>
+    [JsonIgnore]
+    public string? FrontCompound => this.CompoundOf("FrontLeft", "FrontRight");
+
+    /// <summary>The rear tyres' compound as the game named it, or null when no rear corner said.</summary>
+    [JsonIgnore]
+    public string? RearCompound => this.CompoundOf("RearLeft", "RearRight");
+
+    private string? CompoundOf(string left, string right) =>
+        this.Tires.FirstOrDefault(tire => tire.Position == left && tire.Compound is not null)?.Compound
+        ?? this.Tires.FirstOrDefault(tire => tire.Position == right && tire.Compound is not null)?.Compound;
+
     /// <summary>
     /// How the lap was driven, when a position trace was available. Null otherwise: an
     /// imported lap has none and never will, so it degrades to a scalar target.
@@ -449,6 +476,20 @@ public sealed class LapHistoryRecord
 
     [JsonPropertyName("runId")]
     public string? RunId { get; set; }
+
+    /// <summary>
+    /// Which drive out of the garage the lap belongs to, counted up within its session. A new
+    /// one starts each time the car leaves the garage, the only place its setup can change, so
+    /// every lap of one outing was driven with one setup. Not the practice-program
+    /// <see cref="RunId"/>. Null when the source could not tell (imports, laps recorded before
+    /// outings were): the whole session reads as one.
+    /// </summary>
+    [JsonPropertyName("outing")]
+    public int? Outing { get; set; }
+
+    /// <summary>When the car crossed the line to finish the lap. Null for imported laps.</summary>
+    [JsonPropertyName("completedAt")]
+    public DateTimeOffset? CompletedAt { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

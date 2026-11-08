@@ -80,8 +80,7 @@ serves both.
   `PageHeader` portals its CommandBar into the slot
   ([`shell/toolbarActions.ts`](../../app/desktop/src/shell/toolbarActions.ts)). Whether the actions
   fit is the pure rule in [`shell/actionsPlacement.ts`](../../app/desktop/src/shell/actionsPlacement.ts)
-  (with hysteresis, so a window at the boundary does not bounce them). The room is counted with the
-  telemetry indicator already at its dot, so the indicator shrinks before actions leave. Room and
+  (with hysteresis, so a window at the boundary does not bounce them). Room and
   width are read together before paint on every render and whenever the bar resizes; a stored
   width goes stale after navigation or a label change. The content fallback row is drawn with the
   same toolbar-item styles (`.toolbar-items`), so its width there is its toolbar width.

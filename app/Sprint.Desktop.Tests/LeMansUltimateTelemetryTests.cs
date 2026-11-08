@@ -376,6 +376,66 @@ public sealed class LeMansUltimateTelemetryTests
     }
 
     [Fact]
+    public void Lmu_source_reads_the_car_model_class_championship_and_what_reached_the_car()
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
+        buffer[LmuBinary.PlayerIndexOffset] = 0;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+
+        // Offsets walked through TelemInfoV01 under #pragma pack(4): the walk reproduces every
+        // offset the parser already reads and ends the struct at 1888.
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        WriteString(buffer, telemetry + 32, 64, "DKR Engineering #3:ELMS26");
+        WriteDouble(buffer, telemetry + 420, 0.55);
+        WriteDouble(buffer, telemetry + 428, 0.15);
+        WriteString(buffer, telemetry + 796, 30, "Oreca 07");
+        buffer[telemetry + 826] = 0x02; // IP_VehicleClass::LMP2_ELMS
+        buffer[telemetry + 827] = 0x11; // IP_VehicleChampionship::ELMS_2026
+
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+        Assert.Equal("DKR Engineering #3:ELMS26", frame.Session.Car);
+        Assert.Equal("Oreca 07", frame.Session.CarType);
+        Assert.Equal("ELMS 2026", frame.Session.CarChampionship);
+        // Scoring states no class here, so the telemetry block's class byte fills it.
+        Assert.Equal("LMP2_ELMS", frame.Session.CarClass);
+        Assert.Equal(0.55f, frame.Car.ThrottleApplied);
+        Assert.Equal(0.15f, frame.Car.BrakeApplied);
+    }
+
+    [Fact]
+    public void Lmu_mapper_keeps_the_car_model_when_the_driver_steps_out_to_the_garage_screen()
+    {
+        LmuTelemetryMapper mapper = new();
+        LmuParsedFrame inCar = CreateInCarParsedFrame(lapNumber: 3) with
+        {
+            Telemetry = new LmuVehicleTelemetry
+            {
+                VehicleName = "BMW M Team WRT 2026 #15:LM",
+                VehicleModel = "BMW M Hybrid V8",
+                VehicleChampionship = LmuVehicleChampionship.Wec2026,
+            },
+        };
+        LmuParsedFrame garage = new()
+        {
+            ScoringInfo = inCar.ScoringInfo with { InRealtime = false },
+            PlayerHasVehicle = true,
+            PlayerIndex = 2,
+            PlayerVehicle = new LmuVehicleScoring { VehicleName = "BMW M Team WRT 2026 #15:LM", VehicleClass = "Hyper" },
+        };
+
+        mapper.Map(inCar);
+        TelemetryFrame frame = mapper.Map(garage);
+
+        Assert.False(frame.Session.InCar);
+        Assert.Equal("BMW M Hybrid V8", frame.Session.CarType);
+        Assert.Equal("WEC 2026", frame.Session.CarChampionship);
+    }
+
+    [Fact]
     public void Lmu_source_lets_go_once_the_game_stops_writing_its_shared_memory()
     {
         byte[] buffer = EmptyLmuBuffer();

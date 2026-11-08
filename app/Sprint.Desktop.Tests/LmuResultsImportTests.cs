@@ -12,7 +12,7 @@ namespace Sprint.Desktop.Tests;
 /// Importing Le Mans Ultimate's own results archive into the lap-history corpus (#182). The
 /// archive is an <em>import</em> path only: everything a reader sees afterwards is a Sprint
 /// record, and the two mappings that decide whether imported and recorded laps land in the
-/// same bucket (course, not venue; car type, not class) are pinned here.
+/// same bucket (course, not venue; the car's name, not its model or livery) are pinned here.
 /// </summary>
 public sealed class LmuResultsImportTests : IDisposable
 {
@@ -291,6 +291,17 @@ public sealed class LmuResultsImportTests : IDisposable
     }
 
     [Fact]
+    public void Lists_every_livery_the_archive_names_with_the_car_it_is()
+    {
+        WriteResult("race.xml", RaceXml);
+
+        IReadOnlyList<ResultsCar> cars = new LmuResultsImporter(_dir).ListCars();
+
+        Assert.Contains(new ResultsCar("Test 499P #1", "Ferrari 499P", "Hyper", "WEC 2025"), cars);
+        Assert.Equal(cars.Count, cars.Select(car => car.Livery).Distinct().Count());
+    }
+
+    [Fact]
     public void Writes_an_archived_session_into_the_corpus_as_sprint_records()
     {
         WriteResult("race.xml", RaceXml);
@@ -303,7 +314,10 @@ public sealed class LmuResultsImportTests : IDisposable
         Assert.Equal(HistorySessionKind.Race, session.Kind);
         Assert.Equal("LeMansUltimate", session.Context.Game);
         Assert.Equal("Circuit des 24 Heures", session.Context.TrackCourse);
-        Assert.Equal("Ferrari 499P", session.Context.CarModel);
+        // Named by class and make; the archive's model and the player's livery are kept beside it.
+        Assert.Equal("Hypercar Ferrari", session.Context.CarModel);
+        Assert.Equal("Ferrari 499P", session.Context.CarType);
+        Assert.Equal("Test 499P #1", session.Context.Livery);
         Assert.Equal("Hyper", session.Context.CarClass);
         Assert.Equal(13626.0, session.Context.TrackLengthMeters);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1782240911), session.StartedAt);
@@ -480,8 +494,9 @@ public sealed class LmuResultsImportTests : IDisposable
     {
         // The live context is taken from the game's own telemetry mapping rather than typed out,
         // because that is what the recorder writes. If the importer and the live adapter ever
-        // disagree about the game name, the course or the car model, this is where it shows.
-        var live = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 23, 21, 0, 0, TimeSpan.Zero))
+        // disagree about the game name, the course or the car's name, this is where it shows.
+        // Live, LMU names the livery; the archive names the model. Both must land on one name.
+        TelemetryFrame live = new LmuTelemetryMapper(() => new DateTimeOffset(2026, 6, 23, 21, 0, 0, TimeSpan.Zero))
             .Map(new LmuParsedFrame
             {
                 ScoringInfo = new LmuScoringInfo
@@ -489,22 +504,25 @@ public sealed class LmuResultsImportTests : IDisposable
                     TrackName = "Circuit des 24 Heures",
                     Session = 10, // race
                     LapDistance = 13626.0,
+                    InRealtime = true,
                 },
                 PlayerHasVehicle = true,
                 PlayerIndex = 0,
-                PlayerVehicle = new LmuVehicleScoring
+                Telemetry = new LmuVehicleTelemetry
                 {
-                    VehicleName = "Ferrari 499P",
-                    VehicleClass = "Hyper",
+                    VehicleName = "Ferrari AF Corse 2025 #50:LM",
+                    VehicleModel = "Ferrari 499P",
+                    VehicleChampionship = LmuVehicleChampionship.Wec2025,
                 },
+                Scoring = new LmuVehicleScoring { VehicleClass = "Hyper" },
             });
+        string carName = CarNames.Of(live.Session);
+        Assert.Equal("Hypercar Ferrari", carName);
 
         var store = new RecordingLapHistoryStore();
         var recorder = new LapHistoryRecorder(store, dispatch: work => work());
-        // The mapped frame is the lobby's; the recorder times laps from in-car frames only.
-        SessionInfo driving = live.Session with { InCar = true };
-        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 4 } });
-        recorder.Ingest(live with { Session = driving, Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
+        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 4 } });
+        recorder.Ingest(live with { Lap = new LapState { CurrentLap = 5, LastLapTime = 109.5 } });
 
         WriteResult("race.xml", RaceXml);
         new LapHistoryImportService(store).Import(new LmuResultsImporter(_dir));
@@ -516,7 +534,7 @@ public sealed class LmuResultsImportTests : IDisposable
         {
             Game = live.Session.Game,
             TrackCourse = live.Session.Track,
-            CarModel = live.Session.Car,
+            CarModel = carName,
         });
 
         Assert.NotNull(statistics);
@@ -531,7 +549,7 @@ public sealed class LmuResultsImportTests : IDisposable
         {
             Assert.Equal(live.Session.Game, session.Context.Game);
             Assert.Equal(live.Session.Track, session.Context.TrackCourse);
-            Assert.Equal(live.Session.Car, session.Context.CarModel);
+            Assert.Equal(carName, session.Context.CarModel);
         });
     }
 

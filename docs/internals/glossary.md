@@ -22,7 +22,8 @@ splits searches and confuses the next agent.
 
 - **Dash** — a `DashLayout`: pages of widgets for one screen profile. Not "dashboard" in code.
 - **Page** — one screen of a dash; the **idle page** shows when no session runs.
-- **Widget** — one catalog element on a page. A **widget stack** layers widgets in one cell.
+- **Widget** — one catalog element on a page. A **group** gathers widgets and groups; one that
+  shows "one at a time" is a **widget stack**, each child a **layer** (`packages/dashboard/src/groups.ts`).
 - **Binding** — a named value a widget reads (`lap.delta`, `target.fuelPerLapLiters`).
 - **Preset** — a shipped dash, device or setup template under `app/Sprint.Desktop.Host/presets/`.
 - **Theme preset** — a complete dash color theme. **Functional** is the default condition palette;
@@ -40,7 +41,7 @@ splits searches and confuses the next agent.
 - **Active slot** — the single Armed/Tracking plan.
 - **Quick plan / planned plan** — `PlanMode`; quick plans are built from detection under time pressure.
 - **Corpus** — the lap-history store; every recorded and imported lap.
-- **Context** — the corpus key: game + track course + car model.
+- **Context** — the corpus key: game + track course + car name (`CarNames`: "Hypercar BMW", "LMP2 ELMS").
 - **Tier** — what a lap can drive: `full trace`, `reference curve`, or `time only`.
 - **Reference curve** — position→time per lap (`LapReferenceCurve`), the cheap tier.
 - **Channel trace** — `LapChannelTrace`, named channels on a ~2 m grid, the detailed tier.

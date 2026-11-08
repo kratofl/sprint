@@ -35,10 +35,10 @@ public sealed class LiveCompareHudTests
     }
 
     [Fact]
-    public void OnlyTheToggleIsBindableSoALockedHudNeverBecomesUnreachable()
+    public void OnlyTheToggleIsBindableSoAClickThroughHudNeverBecomesUnreachable()
     {
-        // Lock and target selection live in the Sprint window: a locked HUD is click-through,
-        // so a binding that put them only on the overlay would be a dead end.
+        // Arranging and target selection start in the Sprint window: the HUD is click-through
+        // while driving, so a binding that put them only on the overlay would be a dead end.
         var bus = new CommandBus();
         SprintCommands.RegisterDefaults(bus);
 
@@ -258,7 +258,6 @@ public sealed class LiveCompareHudTests
         // Throttle, brake and speed, one window each — driver feedback 2026-08-07.
         Assert.Equal(["throttle", "brake", "speed"], settings.PanelIds);
         Assert.True(settings.ShowDelta);
-        Assert.False(settings.Locked);
     }
 
     [Fact]

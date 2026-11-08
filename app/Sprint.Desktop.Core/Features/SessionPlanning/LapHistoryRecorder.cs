@@ -32,6 +32,9 @@ public sealed class LapHistoryRecorder
     // Strictly-forward guard for the trace, so it stays a function of position.
     private const double PositionEpsilon = 1e-6;
 
+    // Below this a car in its stall counts as parked there (m/s).
+    private const float StandingStill = 0.5f;
+
     // How far apart the two halves of a start/finish crossing can land. LMU's lap number comes
     // from the telemetry buffer and the lap time from scoring, which the game refreshes about
     // five times a second, so at the line either one can be a frame or two ahead of the other.
@@ -57,6 +60,11 @@ public sealed class LapHistoryRecorder
 
     // A crossing whose lap time has not arrived from scoring yet.
     private PendingLap? _pending;
+
+    // The drive out of the garage in progress (LapHistoryRecord.Outing), and whether the car
+    // has been back in the garage since it started.
+    private int _outing = 1;
+    private bool _garaged;
 
     public LapHistoryRecorder(
         ILapHistoryStore store,
@@ -84,6 +92,12 @@ public sealed class LapHistoryRecorder
     public LapHistorySession? OpenSession => _session;
 
     /// <summary>
+    /// Raised on the telemetry thread when the car drives out of the garage again — the moment
+    /// after which its setup can no longer change. A handler must return quickly.
+    /// </summary>
+    public event Action? OutingStarted;
+
+    /// <summary>
     /// Folds a live frame into the corpus. Opens a session the first time a usable context
     /// appears, appends a record on each lap crossing once the game has timed the lap, and
     /// starts a new session when the context or session kind changes.
@@ -91,6 +105,8 @@ public sealed class LapHistoryRecorder
     public void Ingest(TelemetryFrame frame)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        // Before the context check: in the game's garage screen the frame may not name the car.
+        this.ObserveGarage(frame);
 
         LapHistoryContext? context = ContextOf(frame.Session);
         if (context is null)
@@ -146,6 +162,8 @@ public sealed class LapHistoryRecorder
         this._lapTimeChangedAt = null;
         // A crossing the game never timed has nothing to file.
         this._pending = null;
+        this._outing = 1;
+        this._garaged = false;
 
         // A session with no completed laps carries nothing a reader could use.
         if (finished.Laps.Count > 0)
@@ -168,13 +186,17 @@ public sealed class LapHistoryRecorder
             return null;
         }
 
+        string? carType = string.IsNullOrWhiteSpace(session.CarType) ? null : session.CarType;
         return new LapHistoryContext
         {
             Game = session.Game,
             TrackCourse = session.Track,
-            CarModel = session.Car,
+            CarModel = CarNames.Of(session),
             TrackLengthMeters = session.TrackLengthMeters,
             CarClass = string.IsNullOrWhiteSpace(session.CarClass) ? null : session.CarClass,
+            CarType = carType,
+            // The game's car name is an entry (a livery) only when the game names the model apart from it.
+            Livery = carType is not null && session.Car != carType ? session.Car : null,
         };
     }
 
@@ -252,6 +274,8 @@ public sealed class LapHistoryRecorder
         LapHistoryRecord record = new()
         {
             LapNumber = finished,
+            Outing = this._outing,
+            CompletedAt = frame.Timestamp,
             // The crossing frame already describes the new lap. LMU may not mark that lap
             // countable yet, so the completed lap keeps the last validity observed before
             // the lap number changed.
@@ -269,6 +293,37 @@ public sealed class LapHistoryRecorder
         this._fuelAtLastCrossing = fuel;
         this._energyAtLastCrossing = energy;
         return record;
+    }
+
+    /// <summary>
+    /// Counts drives out of the garage. The car is in the garage while the driver is out of it
+    /// (the game's garage screen, where setups are changed) or while it stands still in its
+    /// stall; a car merely rolling through the pit lane past its stall is not. The first frame
+    /// back on the move starts the next outing.
+    /// </summary>
+    private void ObserveGarage(TelemetryFrame frame)
+    {
+        bool garaged = !frame.Session.InCar
+            || (frame.Car.InGarage == true && frame.Car.SpeedMetersPerSecond < StandingStill);
+        if (garaged)
+        {
+            this._garaged = true;
+            return;
+        }
+
+        if (!this._garaged)
+        {
+            return;
+        }
+
+        this._garaged = false;
+        // Before the first lap there is no earlier outing to tell this one apart from.
+        if (this._session?.Laps.Count > 0 || this._pending is not null)
+        {
+            this._outing++;
+        }
+
+        this.OutingStarted?.Invoke();
     }
 
     /// <summary>
@@ -404,7 +459,9 @@ public sealed class LapHistoryRecorder
                 Math.Max(frame.Lap.CurrentLapTime, 0),
                 frame.Car.Pose is { } pose
                     ? new LapTraceWorld((float)pose.PositionX, (float)pose.PositionY, (float)pose.PositionZ)
-                    : null));
+                    : null,
+                frame.Car.ThrottleApplied,
+                frame.Car.BrakeApplied));
         }
     }
 

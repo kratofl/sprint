@@ -90,6 +90,36 @@ public sealed class LiveCompareServiceTests
         Assert.False(service.HudOpen);
     }
 
+    [Fact]
+    public void AFriendsLapIsListedHoweverManyOfYourOwnAreFaster()
+    {
+        List<LapHistorySession> sessions = [.. Enumerable.Range(0, 11).Select(index =>
+            Session($"spa-{index}", Spa, Monday.AddDays(-index), traced: true, firstLapSeconds: 120 + index))];
+        LapHistorySession shared = Session("ada", Spa, Monday, traced: true, firstLapSeconds: 140);
+        shared.SharedFrom = "Ada";
+        sessions.Add(shared);
+        LiveCompareService service = Service(() => null, [.. sessions]);
+
+        LiveCompareState state = service.State();
+
+        Assert.Equal(36, state.LapCount);
+        Assert.Equal(LiveCompareService.ListedLaps + 3, state.Laps.Count);
+        Assert.All(state.Laps.Skip(LiveCompareService.ListedLaps), lap => Assert.Equal("Ada", lap.SharedFrom));
+    }
+
+    [Fact]
+    public void TheHudCanBeArrangedBeforeAnyLapIsPicked()
+    {
+        LiveCompareService service = Service(() => null, Session("spa", Spa, Monday, traced: true));
+
+        service.SetArranging(true);
+        Assert.True(service.State().Arranging);
+        Assert.False(service.State().HudOpen);
+
+        service.SetArranging(false);
+        Assert.False(service.State().Arranging);
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static LiveCompareService Service(Func<LapHistoryContext?> live, params LapHistorySession[] sessions)

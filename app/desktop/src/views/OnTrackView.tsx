@@ -1,55 +1,61 @@
-import { useState } from 'react'
-import { Lock, Move, Play, Route, Square, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Check, ChevronRight, Crosshair, FolderOpen, GitCompareArrows, Move, Play, Route, Square, X } from 'lucide-react'
+import { bridge } from '../bridge'
 import type { SprintCommand } from '../bridge'
 import { PageHeader } from '../shell/PageHeader'
+import { usePageUp } from '../shell/pageUp'
 import type { RuntimeState } from '../shell/runtime'
-import { Status } from '../shell/Status'
-import { formatGap, formatLapSeconds } from './AnalysisDomain'
-import type { CorpusLap } from './AnalysisDomain'
+import { formatGap, formatLapSeconds, importNotice } from './AnalysisDomain'
+import type { CorpusLap, LapFileNotice } from './AnalysisDomain'
+import { MenuLayer } from './DashesMenus'
+import type { MenuAnchor } from './DashesMenus'
 import {
-  HUD_CHART_ORDER,
-  HUD_READING_LABELS,
-  buildHudLock,
+  buildHudArrange,
   buildHudToggle,
   buildSelectCourse,
   buildSetTarget,
-  buildToggleReading,
+  chasingFacts,
   courseKey,
-  courseLabel,
   isTarget,
+  listedLaps,
+  ownLapCount,
   parseCompareState,
-  parseHudReadings,
-  readingCount,
 } from './OnTrackDomain'
-import type { CompareState, HudReadings } from './OnTrackDomain'
-import { Switch } from './SettingsLayout'
+import type { CompareCourse, CompareState } from './OnTrackDomain'
+import { LIST_PAGE, comparePair, drawableLaps, findLap, lapKeyOf, resolvePage } from './OnTrackLaps'
+import type { LapKey, OnTrackPage } from './OnTrackLaps'
+import { ComparePage, FriendBadge, LapPage, lapWhen, shortDay } from './OnTrackPages'
 import './OnTrackView.css'
 
 type Send = (command: SprintCommand) => Promise<void>
 
 /**
- * On track: training against an older lap (docs/internals/live-compare.md). Pick the lap, choose
- * what the HUD shows, then start — the HUD opens as small windows over the game, the target's
- * traces in blue running ahead of the car and yours in brand orange up to it. All of it is host
- * state (`state.compare`, `settings.liveCompare`); this view renders it and sends `compare.*`.
+ * On track: training against an older lap, yours or a friend's (docs/internals/live-compare.md).
+ * Three pages over the whole content width: the list (the lap being chased, then the laps on this
+ * track in this car), one lap opened from it (Chase this lap is picked there), and two laps
+ * compared (OnTrackPages.tsx). The HUD itself is never drawn here: Arrange HUD puts its windows up
+ * on the monitor, unlocked, where they are moved, sized, added and removed; Start training puts
+ * them up click-through. All of it is host state (`state.compare`); this view renders it and
+ * sends `compare.*`. Which page is open is the only local state.
  */
 export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Send }) {
   const [actionError, setActionError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<LapFileNotice | null>(null)
+  const [opened, setOpened] = useState<OnTrackPage>(LIST_PAGE)
+  const compare: CompareState | null = runtime.kind === 'ready' ? parseCompareState(runtime.sprint) : null
+  const page = compare ? resolvePage(compare, opened) : LIST_PAGE
+  usePageUp(page.kind === 'list' ? null : 'All laps', () => setOpened(LIST_PAGE))
 
-  if (runtime.kind === 'loading') {
+  if (compare === null) {
     return (
       <div className="ontrack-page">
         <PageHeader title="On track" />
-        <div className="ontrack-grid">
-          <div className="card skeleton ontrack-skeleton" />
-          <div className="card skeleton ontrack-skeleton" />
-        </div>
+        <div className="card skeleton ontrack-hero-skeleton" />
+        <div className="card skeleton ontrack-skeleton" />
       </div>
     )
   }
 
-  const compare: CompareState = parseCompareState(runtime.sprint)
-  const readings = parseHudReadings(runtime.sprint)
   const run = async (command: SprintCommand) => {
     setActionError(null)
     try {
@@ -58,33 +64,64 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
       setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
     }
   }
+  const importLap = async () => {
+    setNotice(importNotice(await bridge.importLap()))
+  }
+  const toList = () => setOpened(LIST_PAGE)
+  const openCompare = (from: LapKey | null) => {
+    const opening = comparePair(compare, from)
+    if (opening) setOpened({ kind: 'compare', ...opening })
+  }
+  const canCompare = comparePair(compare) !== null
+  const lap = page.kind === 'lap' ? findLap(compare, page.lap) : null
+  const first = page.kind === 'compare' ? findLap(compare, page.first) : null
+  const second = page.kind === 'compare' ? findLap(compare, page.second) : null
 
   return (
     <div className="ontrack-page">
       <PageHeader title="On track">
-        {compare.hudOpen && (
-          <button type="button" className="button subtle" onClick={() => void run(buildHudLock(!readings.locked))}>
-            {readings.locked ? <Move /> : <Lock />} {readings.locked ? 'Unlock HUD layout' : 'Lock HUD layout'}
-          </button>
+        {page.kind === 'list' && (
+          <>
+            <button type="button" className="button" disabled={!canCompare} onClick={() => openCompare(null)}>
+              <GitCompareArrows /> Compare…
+            </button>
+            {!compare.arranging && (
+              <button type="button" className="button" onClick={() => void run(buildHudArrange(true))}>
+                <Move /> Arrange HUD
+              </button>
+            )}
+            <button
+              type="button"
+              className={compare.hudOpen ? 'button' : 'button primary'}
+              disabled={!compare.hudOpen && compare.target === null}
+              title={!compare.hudOpen && compare.target === null ? 'Open a lap and chase it first.' : undefined}
+              onClick={() => void run(buildHudToggle())}
+            >
+              {compare.hudOpen ? <Square /> : <Play />} {compare.hudOpen ? 'Stop training' : 'Start training'}
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className={compare.hudOpen ? 'button' : 'button primary'}
-          disabled={!compare.hudOpen && compare.target === null}
-          title={!compare.hudOpen && compare.target === null ? 'Pick a lap to train against first.' : undefined}
-          onClick={() => void run(buildHudToggle())}
-        >
-          {compare.hudOpen ? <Square /> : <Play />} {compare.hudOpen ? 'Stop training' : 'Start training'}
-        </button>
+        {lap && (
+          <>
+            <button type="button" className="button" onClick={() => openCompare(lapKeyOf(lap))}>
+              <GitCompareArrows /> Compare with…
+            </button>
+            {!isTarget(compare.target, lap) && (
+              <button type="button" className="button primary" onClick={() => void run(buildSetTarget(lap))}>
+                <Crosshair /> Chase this lap
+              </button>
+            )}
+          </>
+        )}
       </PageHeader>
 
-      {actionError && (
-        <div className="infobar error" role="alert">
-          <span className="infobar-icon">!</span>
-          <strong className="infobar-title">Not applied</strong>
-          <span className="infobar-message">{actionError}</span>
-          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
-            <X size={12} />
+      {compare.arranging && (
+        <div className="infobar info" role="status">
+          <span className="infobar-icon">i</span>
+          <strong className="infobar-title">Arranging the HUD</strong>
+          <span className="infobar-message">Move, resize, add or remove the windows on your monitor.</span>
+          <button type="button" className="button" onClick={() => void run(buildHudArrange(false))}>
+            <Check /> Done arranging
           </button>
         </div>
       )}
@@ -97,148 +134,217 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
         </div>
       )}
 
+      {actionError && (
+        <div className="infobar error" role="alert">
+          <span className="infobar-icon">!</span>
+          <strong className="infobar-title">Not applied</strong>
+          <span className="infobar-message">{actionError}</span>
+          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setActionError(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {notice && (
+        <div className={`infobar ${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>
+          <span className="infobar-icon">{notice.tone === 'error' ? '!' : 'i'}</span>
+          <strong className="infobar-title">{notice.title}</strong>
+          <span className="infobar-message">{notice.message}</span>
+          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setNotice(null)}>
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {compare.courses.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <Route size={28} strokeWidth={1.5} />
-            <h2>No laps to train against yet</h2>
-            <p>Drive a lap and it appears here. Every valid lap from now on carries the traces the HUD draws.</p>
+            <h2>No laps to chase yet</h2>
+            <p>Drive a lap and it appears here, or open a lap a friend sent you.</p>
+            <button type="button" className="button" onClick={() => void importLap()}>
+              <FolderOpen /> Import a friend’s lap…
+            </button>
           </div>
         </div>
+      ) : lap ? (
+        <LapPage key={`${lap.sessionId}/${lap.lapNumber}`} compare={compare} lap={lap} onBack={toList} />
+      ) : first && second ? (
+        <ComparePage
+          laps={drawableLaps(compare)}
+          first={first}
+          second={second}
+          onBack={toList}
+          onPick={(nextFirst, nextSecond) => setOpened({ kind: 'compare', first: nextFirst, second: nextSecond })}
+        />
       ) : (
-        <div className="ontrack-grid">
-          <TargetCard
-            compare={compare}
-            onCourse={(key) => {
-              const course = compare.courses.find((candidate) => courseKey(candidate) === key)
-              if (course) void run(buildSelectCourse(course))
-            }}
-            onPick={(lap) => void run(buildSetTarget(lap))}
-          />
-          <HudCard readings={readings} hudOpen={compare.hudOpen} onToggle={(id) => void run(buildToggleReading(readings, id))} />
-        </div>
+        <>
+          <ChasingCard compare={compare} onCourse={(course) => void run(buildSelectCourse(course))} />
+          <LapsCard compare={compare} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={() => void importLap()} />
+        </>
       )}
     </div>
   )
 }
 
-/** The laps on one course, fastest first; the one picked is what the HUD chases. */
-function TargetCard({
-  compare,
-  onCourse,
-  onPick,
-}: {
-  compare: CompareState
-  onCourse: (key: string) => void
-  onPick: (lap: CorpusLap) => void
-}) {
-  const best = compare.laps[0] ?? null
+/** The lap the HUD chases, big, and the track and car it is on. Change… lists the other courses. */
+function ChasingCard({ compare, onCourse }: { compare: CompareState; onCourse: (course: CompareCourse) => void }) {
+  const [menuAt, setMenuAt] = useState<MenuAnchor | null>(null)
+  const changeButton = useRef<HTMLButtonElement | null>(null)
+  const facts = chasingFacts(compare, lapWhen)
+  const course = compare.course
+  const closeMenu = () => {
+    setMenuAt(null)
+    changeButton.current?.focus()
+  }
+
   return (
-    <section className="card list-card" aria-label="Train against">
-      <div className="card-header">
-        <h2 className="card-title">Train against</h2>
-        {compare.course && compare.courses.length > 1 ? (
-          <select aria-label="Track and car" value={courseKey(compare.course)} onChange={(event) => onCourse(event.target.value)}>
-            {compare.courses.map((course) => (
-              <option key={courseKey(course)} value={courseKey(course)}>
-                {courseLabel(course)}
-              </option>
-            ))}
-          </select>
+    <section className="card ontrack-hero" aria-label="Chasing">
+      <div className="ontrack-hero-main">
+        {facts ? (
+          <>
+            <span className="ontrack-kicker">Chasing</span>
+            <span className="ontrack-hero-time tabular">{formatLapSeconds(facts.lapTimeSeconds)}</span>
+            <span className="ontrack-hero-detail">
+              {facts.friend && <FriendBadge name={facts.friend} />}
+              {[facts.detail, facts.versusBest].filter(Boolean).join(' · ')}
+            </span>
+          </>
         ) : (
-          compare.course && <span className="muted">{courseLabel(compare.course)}</span>
+          <>
+            <span className="ontrack-kicker">Chasing</span>
+            <span className="ontrack-hero-none">No lap picked</span>
+            <span className="ontrack-hero-detail">Open one of the laps below and chase it.</span>
+          </>
         )}
       </div>
-      {compare.laps.length === 0 ? (
-        <p className="list-card-empty">No laps on this track in this car yet. Drive one and it appears here.</p>
-      ) : (
-        <div className="list-rows" role="radiogroup" aria-label="Lap to train against">
-          {compare.laps.map((lap) => {
-            const picked = isTarget(compare.target, lap)
-            return (
-              <label
-                key={`${lap.sessionId}/${lap.lapNumber}`}
-                className={`list-row ontrack-lap${picked ? ' selected' : ''}${lap.hasChannels ? '' : ' unavailable'}`}
-                title={lap.unavailableReason ?? undefined}
-              >
-                <input type="radio" name="ontrack-target" checked={picked} disabled={!lap.hasChannels} onChange={() => onPick(lap)} />
-                <span className="ontrack-lap-time tabular">{formatLapSeconds(lap.lapTimeSeconds)}</span>
-                <span className="ontrack-lap-detail">
-                  {lapWhen(lap)}
-                  {best && (
-                    <span className="muted tabular">
-                      {' · '}
-                      {lap === best ? 'fastest' : formatGap(lap.lapTimeSeconds - best.lapTimeSeconds)}
-                    </span>
-                  )}
-                </span>
-                <Status tone={lap.hasChannels ? 'success' : 'neutral'} quiet>
-                  {lap.hasChannels ? 'Full trace' : 'Time only'}
-                </Status>
-              </label>
-            )
-          })}
+      {course && (
+        <div className="ontrack-hero-course">
+          <span>{course.trackCourse}</span>
+          <span className="ontrack-hero-car">{course.carModel}</span>
+          {compare.courses.length > 1 && (
+            <button
+              ref={changeButton}
+              type="button"
+              className="button subtle"
+              aria-haspopup="menu"
+              aria-expanded={menuAt !== null}
+              onClick={(event) => {
+                const box = event.currentTarget.getBoundingClientRect()
+                setMenuAt({ x: box.right - COURSE_MENU_WIDTH, y: box.bottom + 4 })
+              }}
+            >
+              Change…
+            </button>
+          )}
         </div>
       )}
-      {compare.lapCount > compare.laps.length && (
-        <p className="ontrack-more muted">
-          The {compare.laps.length} fastest of {compare.lapCount} laps. Any other lap can be picked in Analysis.
+      {menuAt && (
+        <MenuLayer anchor={menuAt} label="Track and car" width={COURSE_MENU_WIDTH} onClose={closeMenu}>
+          {compare.courses.map((option) => {
+            const current = course !== null && courseKey(option) === courseKey(course)
+            return (
+              <button
+                key={courseKey(option)}
+                type="button"
+                role="menuitemradio"
+                aria-checked={current}
+                className="menu-item ontrack-course-item"
+                onClick={() => {
+                  closeMenu()
+                  if (!current) onCourse(option)
+                }}
+              >
+                <span className="ontrack-course-check">{current && <Check />}</span>
+                <span className="ontrack-course-name">
+                  {option.trackCourse}
+                  <span className="ontrack-course-car">{option.carModel}</span>
+                </span>
+              </button>
+            )
+          })}
+        </MenuLayer>
+      )}
+    </section>
+  )
+}
+
+const COURSE_MENU_WIDTH = 300
+
+/**
+ * The laps on this course, fastest first: your fastest few and every lap a friend shared, as a
+ * table across the page. A row opens its lap; a lap with only a time has no line to open.
+ */
+function LapsCard({ compare, onOpen, onImport }: { compare: CompareState; onOpen: (lap: CorpusLap) => void; onImport: () => void }) {
+  const laps = listedLaps(compare)
+  const fastest = laps[0] ?? null
+  const own = ownLapCount(compare)
+  const ownListed = laps.filter((lap) => !lap.sharedFrom).length
+
+  return (
+    <section className="card list-card ontrack-laps" aria-label="Laps here">
+      <div className="card-header">
+        <h2 className="card-title">Laps here</h2>
+        <button type="button" className="button subtle" onClick={onImport}>
+          <FolderOpen /> Import a friend’s lap…
+        </button>
+      </div>
+      {laps.length === 0 ? (
+        <p className="list-card-empty">No laps on this track in this car yet. Drive one and it appears here.</p>
+      ) : (
+        <>
+          <div className="ontrack-lap ontrack-table-head" aria-hidden="true">
+            <span>Lap time</span>
+            <span>Driver</span>
+            <span>When</span>
+            <span>Line for the HUD</span>
+            <span className="ontrack-num">Gap</span>
+            <span />
+          </div>
+          <div className="list-rows">
+            {laps.map((lap) => {
+              const chased = isTarget(compare.target, lap)
+              return (
+                <button
+                  key={`${lap.sessionId}/${lap.lapNumber}`}
+                  type="button"
+                  disabled={!lap.hasChannels}
+                  title={lap.unavailableReason ?? undefined}
+                  className={`list-row ontrack-lap${chased ? ' selected' : ''}`}
+                  onClick={() => onOpen(lap)}
+                >
+                  <span className="ontrack-lap-time tabular">{formatLapSeconds(lap.lapTimeSeconds)}</span>
+                  <span className="ontrack-lap-name">
+                    {lap.sharedFrom ? (
+                      <>
+                        <FriendBadge name={lap.sharedFrom} />
+                        {lap.sharedFrom}
+                      </>
+                    ) : (
+                      'You'
+                    )}
+                    {chased && <span className="ontrack-tag">Chasing</span>}
+                  </span>
+                  <span className="ontrack-dim">{lap.sharedFrom ? sharedWhen(lap) : lapWhen(lap)}</span>
+                  <span className="ontrack-dim">{lap.hasChannels ? 'Recorded' : 'Time only'}</span>
+                  <span className="ontrack-num ontrack-dim tabular">
+                    {lap === fastest ? 'fastest' : formatGap(lap.lapTimeSeconds - (fastest?.lapTimeSeconds ?? lap.lapTimeSeconds))}
+                  </span>
+                  <ChevronRight className="ontrack-row-chevron" />
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+      {own > ownListed && (
+        <p className="ontrack-more">
+          Your {ownListed} fastest of {own} laps{laps.length > ownListed ? ' and every lap a friend shared' : ''}. Any other lap can be opened in Analysis.
         </p>
       )}
     </section>
   )
 }
 
-/** "Lap 5 · Mon, Sep 28", or who shared it. */
-function lapWhen(lap: CorpusLap): string {
-  if (lap.sharedFrom) return `${lap.sharedFrom} · shared lap`
-  if (!lap.sessionStartedAt) return `Lap ${lap.lapNumber}`
-  const day = new Date(lap.sessionStartedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-  return `Lap ${lap.lapNumber} · ${day}`
-}
-
-/** Which readings get a HUD window. The last one cannot be turned off: a HUD of nothing is refused. */
-function HudCard({
-  readings,
-  hudOpen,
-  onToggle,
-}: {
-  readings: HudReadings
-  hudOpen: boolean
-  onToggle: (id: 'delta' | (typeof HUD_CHART_ORDER)[number]) => void
-}) {
-  const rows = [
-    { id: 'delta' as const, on: readings.showDelta },
-    ...HUD_CHART_ORDER.map((id) => ({ id, on: readings.panelIds.includes(id) })),
-  ]
-  const last = readingCount(readings) === 1
-  return (
-    <section className="card list-card" aria-label="HUD">
-      <div className="card-header">
-        <h2 className="card-title">HUD</h2>
-        {hudOpen && (
-          <Status tone="success" quiet>
-            {readings.locked ? 'Showing · locked' : 'Showing · drag to place'}
-          </Status>
-        )}
-      </div>
-      <div className="list-rows">
-        {rows.map((row) => (
-          <div key={row.id} className="list-row static ontrack-reading">
-            <span id={`ontrack-reading-${row.id}`}>{HUD_READING_LABELS[row.id]}</span>
-            <Switch
-              checked={row.on}
-              disabled={last && row.on}
-              onChange={() => onToggle(row.id)}
-              aria-labelledby={`ontrack-reading-${row.id}`}
-              aria-describedby="ontrack-hud-note"
-            />
-          </div>
-        ))}
-      </div>
-      <p id="ontrack-hud-note" className="ontrack-more muted">
-        Run the game borderless or windowed: exclusive fullscreen hides the HUD.
-      </p>
-    </section>
-  )
-}
+/** "Driven Fri, Oct 2": when a friend drove their lap. */
+const sharedWhen = (lap: CorpusLap): string => (lap.sessionStartedAt ? `Driven ${shortDay(lap.sessionStartedAt)}` : 'Friend’s lap')

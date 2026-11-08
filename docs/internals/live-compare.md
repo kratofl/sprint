@@ -20,12 +20,17 @@ against a real server.
 - `LapChannelTrace` carries named channels — speed, throttle, brake, steering, gear, elapsed time — on a
   position grid. Named channels let a later feature add one without a format migration. Elapsed time is
   included so a trace can regenerate a delta on its own.
+- Some channels come only from a game that reports them: `worldX/Y/Z` (the line driven) and
+  `throttleApplied`/`brakeApplied` (the pedals after traction control and ABS — LMU's
+  `mFilteredThrottle`/`mFilteredBrake`; `throttle`/`brake` are the driver's). Each is written only when
+  every sample of the lap had it, so older traces and other games simply lack it and a reader copes with
+  absence. All channels on: 44 bytes per sample, ~300 KB for a lap of Le Mans.
 - The step is derived per track from `TrackLengthMeters` to land near **2 m**
   (`LapChannelTrace.TargetSampleMeters`) and stored on the trace. A fixed fraction would mean 68 m at Le
   Mans and 25 m at Zandvoort; a braking zone is read in metres.
 - Traces live outside the session JSON, one compressed file per lap under `lap-traces/`, with
   `LapHistoryRecord` holding only a `TraceId`. The session file is rewritten on every lap crossing, so an
-  embedded ~160 KB trace would make each crossing O(n²).
+  embedded trace of up to ~300 KB would make each crossing O(n²).
 - A trace is written for every valid lap that passes the curve's completeness guards. Skipping is
   unrecoverable; writing is cheap.
 - `LapTraceRetention` prunes oldest-first against a disk budget while protecting the best N per
@@ -54,10 +59,16 @@ against a real server.
   per-game maintenance.
 - The game must run borderless or windowed. Exclusive fullscreen hides the HUD; the app detects that and
   says so (`HudInterop.IsExclusiveFullscreenActive`). A HUD that silently shows nothing is the worst outcome.
-- The windows never take focus, so the game keeps the keyboard. Unlocked, a window drags by its body and
-  sizes by a corner grip the page draws (a transparent Electron window does not resize reliably by its
-  edges); locked, every click passes through to the game. Layout persists per (monitor, resolution) and
-  per window id, in device-independent pixels.
+- The HUD is never drawn in the Sprint window; it is arranged on the monitor itself (driver decision
+  2026-11-03). Arrange HUD puts the windows up unlocked, with or without training and without a target
+  (`compare.hud.arrange`): a window drags by its body, sizes by a corner grip the page draws (a transparent
+  Electron window does not resize reliably by its edges) and leaves by its ×, and a palette along the top
+  adds readings and ends it. Otherwise every click passes through to the game; there is no lock to forget.
+- The windows never take focus, so the game keeps the keyboard. Layout persists per (monitor, resolution)
+  and per window id, in device-independent pixels.
+- Each chart looks ahead: the stretch past the car is lit, Brake marks the target's next brake point and
+  Speed its slowest point, both read off the target's line in the window (`hud/hudModel.ts` `hudMark`).
+  The delta says whether you gained or lost over the last 200 m.
 - Electron polls `/api/compare/frame` (~20 Hz) only while the HUD is open and sends each window its own
   panel, and only when it changed — a car standing still costs no repaint.
 - A rolling distance window around the car (proposed 200 m behind / 600 m ahead). It needs no corner
@@ -70,17 +81,41 @@ against a real server.
 - Live Compare owns its target and is never linked to the armed plan's. Its main use is practice with no
   plan, and plan targets often resolve to `time only`, which cannot feed a curve.
 - Consequence: the HUD and the wheel delta can chase different laps, so the HUD always names its lap.
-- Picked on the On track page from the course being driven (else the newest one with a trace), fastest
-  laps first, or from any lap with channels in Analysis. Only full-trace laps can be targets.
+- Picked with Chase this lap on a lap's own On track page (the list shows the course being driven, else
+  the newest one with a trace, fastest laps first), or from any lap with channels in Analysis. Only
+  full-trace laps open there and only they can be targets. Every lap a friend shared on the course is
+  listed whatever its rank: it is picked to chase their line.
 - One bindable command, `compare.hud.toggle` (capturable, not device-only so the keyboard works).
-  Lock and target selection live in the Sprint window only, because a locked HUD is click-through.
-  The HUD closes with the main window for the same reason.
+  Starting arranging and target selection live in the Sprint window, because the HUD is click-through
+  while driving. The HUD closes with the main window for the same reason.
 
 ## Analysis view
 
-A top-level view: pick any two laps (own, imported or shared) and overlay them. Lap comparison is its
-own activity — shared laps and practice belong to no plan, so it does not live inside the planner. It is
+A top-level view over every lap Sprint recorded, imported or was sent. Lap comparison is its own
+activity — shared laps and practice belong to no plan, so it does not live inside the planner. It is
 also the home of the shared-lap library.
+
+Three pages: the sessions list grouped by car and track, one session (its lap times by run, its laps),
+and one lap. The host sends every session on each state poll (`analysis.sessions`), so the list never
+needs a refresh; search and filters narrow it in the page. The list shows your sessions or the laps
+others shared with you (Mine | Shared), never one list of both: a friend's lap mixed into yours reads
+as your own pace.
+
+A lap opens alone. Comparing is the driver's choice ("Compare with…"), never automatic, and offers only
+laps on the open session's course — any session with that car on that track (`analysis.courseLaps`),
+yours first, then shared ones. Laps from two cars or two tracks are never compared: the lines do not
+share a track position, which is also why cars are matched by their name ("LMP2 ELMS"), not their
+livery (see [session-planner.md](session-planner.md)). The lap page draws the line on a track map
+from `worldX/Z` when the trace has it, and the driver arranges its charts; the arrangement is a
+per-viewer preference in the renderer's local storage, not host state. Traces carry no corner names,
+so corners are found where smoothed speed dips by 25 km/h and are numbered from the start line
+(`AnalysisLapCharts.ts`).
+
+On track keeps its own two-lap compare page (`ComparePage` in `OnTrackPages.tsx`), with its own
+corner finder (`OnTrackLaps.ts`).
+
+The host still serves the older `analysis.filter`, `analysis.selectLap` and `analysis.refresh` commands
+and the primary/comparison laps in state; no page sends or reads them any more.
 
 ## Sharing
 

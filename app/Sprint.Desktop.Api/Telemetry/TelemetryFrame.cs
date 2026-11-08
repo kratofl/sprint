@@ -67,6 +67,19 @@ public sealed record SessionInfo
     /// part of a context key.
     /// </summary>
     public string CarClass { get; init; } = "";
+
+    /// <summary>
+    /// The car's model as the game names it (e.g. "Oreca 07"), empty when unknown.
+    /// <see cref="Car"/> can name an entry — a livery with a team and a number — so this is
+    /// what says which car it actually is.
+    /// </summary>
+    public string CarType { get; init; } = "";
+
+    /// <summary>
+    /// The championship the car is entered in, as the game names it (e.g. "WEC 2026",
+    /// "ELMS 2025"), empty when unknown.
+    /// </summary>
+    public string CarChampionship { get; init; } = "";
     public SessionType SessionType { get; init; } = SessionType.Unknown;
 
     /// <summary>Seconds elapsed in the current session.</summary>
@@ -117,6 +130,18 @@ public sealed record CarState
 
     /// <summary>Driver steering position before steering assists or vehicle-side filtering.</summary>
     public float Steering { get; init; }
+
+    /// <summary>
+    /// The throttle the car actually got, 0–1: <see cref="Throttle"/> after traction control,
+    /// rev and speed limiting. Null when the game does not say.
+    /// </summary>
+    public float? ThrottleApplied { get; init; }
+
+    /// <summary>
+    /// The brake the car actually got, 0–1: <see cref="Brake"/> after ABS. Null when the game
+    /// does not say.
+    /// </summary>
+    public float? BrakeApplied { get; init; }
     public float FuelLiters { get; init; }
     public float FuelPerLapLiters { get; init; }
     /// <summary>World position in the game's own frame, for track maps. <see cref="Pose"/> is the frame-neutral one.</summary>
@@ -124,6 +149,12 @@ public sealed record CarState
     public float PositionY { get; init; }
     public float PositionZ { get; init; }
     public float BrakeBiasRear { get; init; }
+
+    /// <summary>
+    /// Whether the car stands in its own garage stall, the only place its setup can be changed.
+    /// Null when the game does not say.
+    /// </summary>
+    public bool? InGarage { get; init; }
 
     /// <summary>Where the car is and how it is moving. Null when the game does not say.</summary>
     public CarPose? Pose { get; init; }

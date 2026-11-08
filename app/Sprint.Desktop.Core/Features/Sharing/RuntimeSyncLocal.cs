@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Diagnostics;
@@ -13,9 +12,8 @@ namespace Sprint.Desktop.Features.Sharing;
 /// history), the driver's own setups (never the shipped templates) and dashes.
 /// <para>
 /// Everything is exchanged as camelCase JSON, whatever casing a store uses on disk, so the sync
-/// can read every payload's <c>id</c> the same way. A dash's "default" flag belongs to this PC,
-/// not the account: it is left out of what is uploaded and kept as it is here on download, so a
-/// second PC never ends up with two default dashes.
+/// can read every payload's <c>id</c> the same way. A dash travels whole, category included; a
+/// downloaded dash whose category this PC does not know yet adds it as a custom category.
 /// </para>
 /// </summary>
 public sealed class RuntimeSyncLocal(DesktopRuntime runtime, ILapHistoryStore history, ILog? log = null) : ICloudSyncLocal
@@ -41,7 +39,7 @@ public sealed class RuntimeSyncLocal(DesktopRuntime runtime, ILapHistoryStore hi
             items.Add(new SyncItem(SyncKind.Setup, setup.Id, setup.Name, JsonSerializer.Serialize(setup, Json), null));
 
         foreach (DashLayout dash in runtime.DashLayouts.ToList())
-            items.Add(new SyncItem(SyncKind.Dash, dash.Id, dash.Name, WithoutDefaultFlag(dash), null));
+            items.Add(new SyncItem(SyncKind.Dash, dash.Id, dash.Name, JsonSerializer.Serialize(dash, Json), null));
 
         return items;
     }
@@ -90,19 +88,14 @@ public sealed class RuntimeSyncLocal(DesktopRuntime runtime, ILapHistoryStore hi
     private void WriteDash(DashLayout dash)
     {
         int index = runtime.DashLayouts.ToList().FindIndex(layout => layout.Id == dash.Id);
-        dash.IsDefault = index >= 0 && runtime.DashLayouts[index].IsDefault;
+        // A dash uploaded by an older Sprint may still carry widget stacks and old widget types.
+        DashWidgetStackMigration.Apply(dash);
+        DashWidgetTypeMigration.Apply(dash);
+        runtime.AdoptDashCategory(dash);
         runtime.SaveDashLayout(dash);
         if (index >= 0)
             runtime.DashLayouts[index] = dash;
         else
             runtime.DashLayouts.Add(dash);
-    }
-
-    private static string WithoutDefaultFlag(DashLayout dash)
-    {
-        JsonNode node = JsonSerializer.SerializeToNode(dash, Json) ?? new JsonObject();
-        if (node is JsonObject json)
-            json.Remove("default");
-        return node.ToJsonString();
     }
 }

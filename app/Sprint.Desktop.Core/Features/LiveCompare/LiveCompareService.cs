@@ -12,14 +12,18 @@ public sealed record LiveCompareCourse(string Game, string TrackCourse, string C
 }
 
 /// <summary>What the On track page shows: the courses, the laps on the chosen one, the target and the HUD.</summary>
-/// <param name="LapCount">Every valid lap on the course; <see cref="Laps"/> holds the fastest of them.</param>
+/// <param name="Laps">The fastest laps on the course, plus every lap a friend shared on it however slow.</param>
+/// <param name="LapCount">Every valid lap on the course.</param>
+/// <param name="HudOpen">Training: the HUD is up and chasing the target.</param>
+/// <param name="Arranging">The HUD windows are up and unlocked, to be moved, sized, added or removed on the monitor.</param>
 public sealed record LiveCompareState(
     IReadOnlyList<LiveCompareCourse> Courses,
     LiveCompareCourse? Course,
     IReadOnlyList<CorpusLap> Laps,
     int LapCount,
     LiveCompareTarget? Target,
-    bool HudOpen);
+    bool HudOpen,
+    bool Arranging);
 
 /// <summary>
 /// Training against an older lap (#195): which lap the HUD chases, and whether the HUD is up.
@@ -41,6 +45,7 @@ public sealed class LiveCompareService
 
     private LiveCompareCourse? _course;
     private bool _hudOpen;
+    private bool _arranging;
 
     /// <param name="liveContext">The course being driven right now, or null out of the game.</param>
     public LiveCompareService(LapCorpusBrowser browser, Func<LapHistoryContext?> liveContext)
@@ -54,6 +59,15 @@ public sealed class LiveCompareService
     public bool HudOpen
     {
         get { lock (this._gate) { return this._hudOpen; } }
+    }
+
+    /// <summary>
+    /// The HUD is being arranged. Its windows are up and take clicks until the driver is done;
+    /// otherwise they are click-through, so the game keeps every click while driving.
+    /// </summary>
+    public bool Arranging
+    {
+        get { lock (this._gate) { return this._arranging; } }
     }
 
     /// <summary>Applies the driver's HUD preferences: which charts a snapshot carries, and the window around the car.</summary>
@@ -79,10 +93,12 @@ public sealed class LiveCompareService
 
         LiveCompareCourse? course;
         bool hudOpen;
+        bool arranging;
         lock (this._gate)
         {
             course = this._course ?? live ?? courses.FirstOrDefault();
             hudOpen = this._hudOpen;
+            arranging = this._arranging;
         }
 
         IReadOnlyList<CorpusLap> laps = course is null
@@ -92,11 +108,19 @@ public sealed class LiveCompareService
         return new LiveCompareState(
             courses,
             course,
-            [.. laps.Take(ListedLaps)],
+            Listed(laps),
             laps.Count,
             this.Controller.Target,
-            hudOpen);
+            hudOpen,
+            arranging);
     }
+
+    /// <summary>
+    /// The fastest <see cref="ListedLaps"/>, and every shared lap past them: a friend's lap is
+    /// picked to chase their line, not for its rank among yours. <paramref name="laps"/> is fastest first.
+    /// </summary>
+    private static IReadOnlyList<CorpusLap> Listed(IReadOnlyList<CorpusLap> laps) =>
+        [.. laps.Where((lap, index) => index < ListedLaps || lap.SharedFrom is { Length: > 0 })];
 
     /// <summary>Lists another course's laps. Null goes back to following the car.</summary>
     public void SelectCourse(LiveCompareCourse? course)
@@ -165,6 +189,18 @@ public sealed class LiveCompareService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Opens the HUD windows unlocked to arrange them, or locks them again. Needs no target:
+    /// where a window sits does not depend on what it will draw. Done while not training closes them.
+    /// </summary>
+    public void SetArranging(bool arranging)
+    {
+        lock (this._gate)
+        {
+            this._arranging = arranging;
+        }
     }
 
     /// <summary>"2:05.263 · Lap 5, Sep 28" — what the delta window says it is chasing.</summary>

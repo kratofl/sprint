@@ -30,17 +30,21 @@ public sealed class SharedLapImporter
     private readonly ILapTraceStore _traces;
     private readonly Func<DateTimeOffset> _clock;
     private readonly ILog _log;
+    private readonly StoredCarNames? _carNames;
 
+    /// <param name="carNames">Names a lap from an older Sprint, which filed it under the livery. Without it the lap keeps the name it came with.</param>
     public SharedLapImporter(
         ILapHistoryStore history,
         ILapTraceStore traces,
         Func<DateTimeOffset>? clock = null,
-        ILog? log = null)
+        ILog? log = null,
+        StoredCarNames? carNames = null)
     {
         _history = history ?? throw new ArgumentNullException(nameof(history));
         _traces = traces ?? throw new ArgumentNullException(nameof(traces));
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _log = log ?? NullLog.Instance;
+        this._carNames = carNames;
     }
 
     /// <summary>
@@ -98,6 +102,9 @@ public sealed class SharedLapImporter
             ],
         };
 
+        // After the fingerprint: it was taken over the name the lap arrived with, and has to stay
+        // that so the same file imported again is still recognised.
+        this._carNames?.Rename(session.Context, LapHistoryOrigin.Shared);
         _history.Save(session);
         _log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
         return new SharedLapImportResult(true, false, sessionId);

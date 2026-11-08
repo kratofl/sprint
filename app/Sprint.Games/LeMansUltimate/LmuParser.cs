@@ -155,6 +155,11 @@ internal static class LmuParser
             VirtualEnergy = LmuBinary.ReadSingle(bytes, 776),
             GapAhead = LmuBinary.ReadSingle(bytes, 780),
             GapBehind = LmuBinary.ReadSingle(bytes, 784),
+            // After mTimeGapPlaceAhead@788 and mTimeGapPlaceBehind@792; mExpansion[20]@828
+            // then runs up to the wheels at 848.
+            VehicleModel = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 796, 30)),
+            VehicleClass = (LmuVehicleClass)LmuBinary.ReadByte(bytes, 826),
+            VehicleChampionship = (LmuVehicleChampionship)LmuBinary.ReadByte(bytes, 827),
             Wheels = wheels
         };
     }

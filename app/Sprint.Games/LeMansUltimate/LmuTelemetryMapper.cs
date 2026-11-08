@@ -28,6 +28,11 @@ internal sealed class LmuTelemetryMapper
     private int? _energyLap;
     private float? _energyAtLapStart;
 
+    // The model and championship last read in the cockpit. Only the telemetry block carries
+    // them, and it is empty outside the car, so a garage-screen frame for the same entry borrows
+    // them: without that the car's identity would flip every time the driver steps out of it.
+    private LmuCarIdentity? _lastCar;
+
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
     {
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -46,6 +51,7 @@ internal sealed class LmuTelemetryMapper
         _energyLap = null;
         _energyAtLapStart = null;
         _completedLapEnergyDeltas.Clear();
+        this._lastCar = null;
     }
 
     public TelemetryFrame Map(LmuParsedFrame parsed)
@@ -69,6 +75,11 @@ internal sealed class LmuTelemetryMapper
             parsed.ScoringInfo);
         var fuel = ToF32(telemetry.FuelLiters);
         var virtualEnergy = Sanitize(telemetry.VirtualEnergy);
+        LmuCarIdentity car = new(
+            telemetry.VehicleName,
+            telemetry.VehicleModel,
+            ChampionshipName(telemetry.VehicleChampionship));
+        this._lastCar = car;
 
         return new TelemetryFrame
         {
@@ -78,7 +89,13 @@ internal sealed class LmuTelemetryMapper
                 Game = GameName,
                 Track = parsed.ScoringInfo.TrackName,
                 Car = telemetry.VehicleName,
-                CarClass = scoring.VehicleClass,
+                // Scoring's class string and the telemetry block's class byte say the same thing;
+                // the string is what history has always stored, so the byte only fills a gap.
+                CarClass = string.IsNullOrWhiteSpace(scoring.VehicleClass)
+                    ? ClassName(telemetry.VehicleClass)
+                    : scoring.VehicleClass,
+                CarType = car.Model,
+                CarChampionship = car.Championship,
                 TrackLengthMeters = PlausibleTrackLength(parsed.ScoringInfo.LapDistance),
                 SessionType = MapSessionType(parsed.ScoringInfo.Session),
                 SessionTime = ToF64(parsed.ScoringInfo.CurrentElapsedTime),
@@ -98,12 +115,15 @@ internal sealed class LmuTelemetryMapper
                 Brake = ToF32(telemetry.UnfilteredBrake),
                 Clutch = ToF32(telemetry.UnfilteredClutch),
                 Steering = ToF32(telemetry.UnfilteredSteering),
+                ThrottleApplied = Applied(telemetry.FilteredThrottle),
+                BrakeApplied = Applied(telemetry.FilteredBrake),
                 FuelLiters = fuel,
                 FuelPerLapLiters = FuelPerLap(telemetry.LapNumber, fuel),
                 PositionX = ToF32(telemetry.Position.X),
                 PositionY = ToF32(telemetry.Position.Y),
                 PositionZ = ToF32(telemetry.Position.Z),
                 BrakeBiasRear = ToF32(telemetry.RearBrakeBias),
+                InGarage = scoring.InGarageStall,
                 Pose = MapPose(telemetry)
             },
             Tires = MapTires(telemetry.Wheels, frontCompound, rearCompound),
@@ -162,6 +182,10 @@ internal sealed class LmuTelemetryMapper
 
     private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle)
     {
+        string entry = playerVehicle?.VehicleName ?? "";
+        LmuCarIdentity? car = this._lastCar is { } last && entry.Length > 0 && last.VehicleName == entry
+            ? last
+            : null;
         return new TelemetryFrame
         {
             Timestamp = _clock(),
@@ -171,8 +195,10 @@ internal sealed class LmuTelemetryMapper
                 Track = scoringInfo.TrackName,
                 // Scoring knows the driver's selection in the lobby, so prefill and history
                 // lookup work before the cockpit exists.
-                Car = playerVehicle?.VehicleName ?? "",
+                Car = entry,
                 CarClass = playerVehicle?.VehicleClass ?? "",
+                CarType = car?.Model ?? "",
+                CarChampionship = car?.Championship ?? "",
                 TrackLengthMeters = PlausibleTrackLength(scoringInfo.LapDistance),
                 SessionType = MapSessionType(scoringInfo.Session),
                 SessionTime = ToF64(scoringInfo.CurrentElapsedTime),
@@ -200,6 +226,37 @@ internal sealed class LmuTelemetryMapper
     /// <summary>A 0–1 reading, or null when it is not a usable fraction.</summary>
     private static double? Fraction(double value) =>
         double.IsFinite(value) && value is >= 0 and <= 1 ? value : null;
+
+    /// <summary>A filtered pedal (what reached the car), clamped to 0–1; null when the reading is not a number.</summary>
+    private static float? Applied(double value) =>
+        double.IsFinite(value) ? (float)Math.Clamp(value, 0, 1) : null;
+
+    /// <summary>The class byte in scoring's own spelling, the one history already stores; empty for the pace car or an unknown class.</summary>
+    private static string ClassName(LmuVehicleClass vehicleClass) => vehicleClass switch
+    {
+        LmuVehicleClass.Hypercar => "Hyper",
+        LmuVehicleClass.Lmp2Elms => "LMP2_ELMS",
+        LmuVehicleClass.Lmp2 => "LMP2",
+        LmuVehicleClass.Lmp3 => "LMP3",
+        LmuVehicleClass.Gte => "GTE",
+        LmuVehicleClass.Gt3 => "GT3",
+        _ => "",
+    };
+
+    /// <summary>The championship byte spelled as the results archive spells it ("WEC 2026"); empty when unknown.</summary>
+    private static string ChampionshipName(LmuVehicleChampionship championship) => championship switch
+    {
+        LmuVehicleChampionship.Wec2023 => "WEC 2023",
+        LmuVehicleChampionship.Wec2024 => "WEC 2024",
+        LmuVehicleChampionship.Wec2025 => "WEC 2025",
+        LmuVehicleChampionship.Wec2026 => "WEC 2026",
+        LmuVehicleChampionship.Elms2025 => "ELMS 2025",
+        LmuVehicleChampionship.Elms2026 => "ELMS 2026",
+        _ => "",
+    };
+
+    /// <summary>What the cockpit last said about the entry <see cref="VehicleName"/> is.</summary>
+    private sealed record LmuCarIdentity(string VehicleName, string Model, string Championship);
 
     private double MonotonicCurrentLapTime(
         double scoringRaw,

@@ -1,5 +1,5 @@
 import { BrowserWindow, screen, type Rectangle, type WebContents } from 'electron'
-import { HUD_CLOSED, hudMessageFor, readHudPlacements, type HudPlacement, type HudWanted } from './hudFeed.js'
+import { ARRANGE_WINDOW_ID, arrangePlacement, HUD_CLOSED, hudMessageFor, readHudPlacements, readingsKey, type HudPlacement, type HudWanted } from './hudFeed.js'
 
 /** How often an open HUD asks the host for a frame: smooth enough to read a braking zone sliding in. */
 const FRAME_INTERVAL_MS = 50
@@ -20,10 +20,11 @@ type HudEntry = { window: BrowserWindow; placement: HudPlacement; lastSent: stri
  * per reading over the game, fed a frame every `FRAME_INTERVAL_MS` while it is open. Opened and
  * closed from the state poll, like the offscreen dash outputs.
  *
- * The windows never take focus, so the game keeps the keyboard. Locked, every click passes through
- * to the game; unlocked, a window is dragged by its body and sized by its corner grip, and the
- * host remembers where it was left on that monitor. Sizing is drawn by the page and applied here,
- * because a transparent window does not resize reliably by its edges.
+ * The windows never take focus, so the game keeps the keyboard. While driving every click passes
+ * through to the game. While arranging, a window is dragged by its body, sized by its corner grip
+ * and taken off by its ×, a palette along the top adds readings and ends it, and the host
+ * remembers where each window was left on that monitor. Sizing is drawn by the page and applied
+ * here, because a transparent window does not resize reliably by its edges.
  */
 export class TrainingHud {
   private readonly entries = new Map<string, HudEntry>()
@@ -44,12 +45,16 @@ export class TrainingHud {
       if (previous.open) this.close()
       return
     }
-    if (!previous.open || previous.readings !== wanted.readings) {
+    if (!previous.open || readingsKey(previous) !== readingsKey(wanted)) {
       void this.open()
       return
     }
-    if (previous.locked !== wanted.locked) {
-      for (const entry of this.entries.values()) entry.window.setIgnoreMouseEvents(wanted.locked)
+    if (previous.arranging !== wanted.arranging) {
+      for (const [windowId, entry] of this.entries) {
+        if (windowId !== ARRANGE_WINDOW_ID) entry.window.setIgnoreMouseEvents(!wanted.arranging)
+      }
+      if (wanted.arranging) this.openPalette()
+      else this.entries.get(ARRANGE_WINDOW_ID)?.window.destroy()
     }
   }
 
@@ -62,7 +67,7 @@ export class TrainingHud {
   /** The page's corner grip: the size it wants, and whether the drag has ended. */
   resize(sender: WebContents, width: number, height: number, done: boolean): void {
     const entry = this.entryFor(sender)
-    if (!entry || this.wanted.locked) return
+    if (!entry || !this.wanted.arranging || entry.placement.id === ARRANGE_WINDOW_ID) return
     const { minWidth, minHeight } = entry.placement
     entry.window.setSize(Math.max(minWidth, Math.round(width)), Math.max(minHeight, Math.round(height)))
     if (done) this.save(entry)
@@ -98,7 +103,15 @@ export class TrainingHud {
     if (generation !== this.generation) return
 
     for (const placement of placements) this.entries.set(placement.id, this.createWindow(placement))
+    if (this.wanted.arranging) this.openPalette()
     void this.pump(generation)
+  }
+
+  /** The palette along the top of the primary display: add a reading, or finish arranging. */
+  private openPalette(): void {
+    if (this.entries.has(ARRANGE_WINDOW_ID)) return
+    const placement = arrangePlacement(screen.getPrimaryDisplay().workArea)
+    this.entries.set(ARRANGE_WINDOW_ID, this.createWindow(placement))
   }
 
   private createWindow(placement: HudPlacement): HudEntry {
@@ -130,10 +143,11 @@ export class TrainingHud {
     })
     // Above a borderless fullscreen game; 'screen-saver' is the level that stays above it.
     window.setAlwaysOnTop(true, 'screen-saver')
-    window.setIgnoreMouseEvents(this.wanted.locked)
+    const palette = placement.id === ARRANGE_WINDOW_ID
+    window.setIgnoreMouseEvents(!palette && !this.wanted.arranging)
     const entry: HudEntry = { window, placement, lastSent: undefined }
     window.once('ready-to-show', () => window.showInactive())
-    window.on('moved', () => this.save(entry))
+    if (!palette) window.on('moved', () => this.save(entry))
     window.once('closed', () => {
       if (this.entries.get(placement.id) === entry) this.entries.delete(placement.id)
     })
@@ -160,7 +174,7 @@ export class TrainingHud {
   private dispatch(frame: unknown): void {
     for (const [windowId, entry] of this.entries) {
       if (entry.window.isDestroyed()) continue
-      const message = hudMessageFor(windowId, frame, this.wanted.locked)
+      const message = hudMessageFor(windowId, entry.placement.title, frame, this.wanted)
       const text = JSON.stringify(message)
       if (text === entry.lastSent) continue
       entry.lastSent = text

@@ -1,64 +1,475 @@
-/* On track (OnTrackView.tsx): the lap to train against beside the HUD's readings. */
+/* On track (OnTrackView.tsx, OnTrackPages.tsx): the list, one lap, and two laps compared, each
+   across the whole content width. Built on .card, .card.list-card, .list-row, .infobar and
+   .menu-flyout from styles.css; the charts are Analysis's (.analysis-chart-*). */
 
 .ontrack-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  container-type: inline-size;
 }
 
-.ontrack-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
-  gap: 12px;
-  align-items: start;
+.ontrack-page > .page-header {
+  margin-bottom: 0;
+}
+
+.ontrack-hero-skeleton {
+  height: 112px;
 }
 
 .ontrack-skeleton {
-  height: 320px;
+  height: 280px;
 }
 
-.ontrack-page .card-header select {
-  max-width: 340px;
+/* ── Chasing ──────────────────────────────────────────────────────────────── */
+
+.card.ontrack-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
 }
 
-/* One lap: radio, time, when, tier. */
+.ontrack-hero-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ontrack-kicker {
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.ontrack-hero-time {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.ontrack-hero-none {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 40px;
+}
+
+.ontrack-hero-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-hero-course {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 50%;
+  text-align: right;
+}
+
+.ontrack-hero-car {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-hero-course .button {
+  margin-top: 8px;
+}
+
+/* The course menu: a check column, then the track over the car, so each item is two lines tall. */
+.menu-item.ontrack-course-item {
+  height: auto;
+  min-height: 40px;
+  padding-block: 4px;
+}
+
+.ontrack-course-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ontrack-course-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+}
+
+.ontrack-course-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 18px;
+}
+
+.ontrack-course-car {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── Laps ─────────────────────────────────────────────────────────────────── */
+
+.ontrack-laps .list-rows {
+  padding-bottom: 2px;
+}
+
+/* One lap: time, driver, when, whether it has a line, gap to the fastest, the way in. The table
+   head shares the columns so they line up. */
 .ontrack-lap {
   display: grid;
-  grid-template-columns: 16px 72px minmax(0, 1fr) auto;
-  cursor: pointer;
+  grid-template-columns: 96px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) 96px 14px;
+  gap: 12px;
+  align-items: center;
+}
+
+.list-row.ontrack-lap {
+  min-height: 40px;
+  padding: 4px 10px 4px 14px;
+}
+
+.ontrack-table-head {
+  min-height: 28px;
+  margin: 0 6px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--divider);
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+/* The lap being chased: the brand selection bar beside the rounded fill. */
+.list-row.ontrack-lap.selected::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--brand-500);
+  content: '';
 }
 
 .ontrack-lap-time {
   font-weight: 600;
 }
 
-.ontrack-lap-detail {
+.ontrack-lap-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+}
+
+.ontrack-dim {
+  overflow: hidden;
+  color: var(--label-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ontrack-lap.unavailable {
+.ontrack-num {
+  text-align: right;
+}
+
+.ontrack-row-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--label-tertiary);
+}
+
+/* "Chasing" beside the lap the HUD chases. */
+.ontrack-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--radius-control-small);
+  background: var(--subtle-selected);
+  color: var(--brand-500);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* A lap with only a time has no line to open. */
+.list-row.ontrack-lap:disabled {
   color: var(--label-disabled);
   cursor: default;
 }
 
-.ontrack-lap.unavailable:hover {
+.list-row.ontrack-lap:disabled:hover {
   background: transparent;
 }
 
-.ontrack-lap.unavailable .muted {
+.list-row.ontrack-lap:disabled .ontrack-dim,
+.list-row.ontrack-lap:disabled .ontrack-row-chevron {
   color: inherit;
 }
 
-.ontrack-reading {
-  justify-content: space-between;
-  min-height: 40px;
+/* A friend's initial, so their laps read apart from yours. */
+.ontrack-friend {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .ontrack-more {
-  margin: 0;
-  padding: 8px 16px 8px;
+  margin: 4px 0 0;
+  padding: 8px 16px 6px;
+  border-top: 1px solid var(--divider);
+  color: var(--label-secondary);
   font-size: 12px;
   line-height: 16px;
+}
+
+/* ── One lap, compare ─────────────────────────────────────────────────────── */
+
+.button.ontrack-back {
+  align-self: flex-start;
+  margin: 0 0 -4px -8px;
+}
+
+/* A row of facts, each a label over a value over a line. */
+.card.ontrack-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+}
+
+.ontrack-fact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 20px;
+}
+
+.ontrack-fact + .ontrack-fact {
+  border-left: 1px solid var(--divider);
+}
+
+.ontrack-fact-label {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-fact-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.ontrack-fact-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-card-note {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: right;
+}
+
+.ontrack-chart {
+  padding: 0 16px 8px;
+}
+
+.ontrack-chart-skeleton {
+  height: 180px;
+  margin: 0 16px 16px;
+  border-radius: var(--radius-control);
+}
+
+/* The corners where the lap gains most, side by side under the line. */
+.ontrack-gains {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--divider);
+  list-style: none;
+}
+
+.ontrack-gains li {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 12px;
+}
+
+.ontrack-gains li + li {
+  border-left: 1px solid var(--divider);
+}
+
+.ontrack-gains strong {
+  font-weight: 600;
+}
+
+.ontrack-gains span {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-gains-none {
+  margin: 0;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--divider);
+  color: var(--label-secondary);
+}
+
+/* Compare: the two laps, the swap between them, and which is faster at the far end. */
+.ontrack-picks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ontrack-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 320px;
+  min-width: 0;
+  padding: 6px 10px 6px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-control);
+  background: var(--layer);
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ontrack-picker:hover {
+  background: var(--subtle-hover);
+}
+
+.ontrack-picker > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--label-secondary);
+}
+
+.ontrack-picker-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ontrack-picker-text strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ontrack-picker-sub {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ontrack-verdict {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+}
+
+.ontrack-verdict-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.ontrack-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card.ontrack-chart-card {
+  padding: 12px 16px 8px;
+}
+
+.ontrack-chart-card-skeleton {
+  height: 220px;
+}
+
+.ontrack-corners {
+  padding-bottom: 4px;
+}
+
+.ontrack-corner-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: center;
+  min-height: 36px;
+  margin: 0 6px;
+  padding: 0 10px;
+}
+
+.ontrack-corner-row + .ontrack-corner-row {
+  border-top: 1px solid var(--divider);
+}
+
+.ontrack-corner-row.ontrack-table-head {
+  min-height: 28px;
+}
+
+/* A narrow window stacks what sits side by side. */
+@container (max-width: 760px) {
+  .card.ontrack-facts,
+  .ontrack-gains,
+  .ontrack-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ontrack-fact + .ontrack-fact,
+  .ontrack-gains li + li {
+    border-top: 1px solid var(--divider);
+    border-left: 0;
+  }
+
+  .ontrack-lap {
+    grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr) 80px 14px;
+  }
+
+  .ontrack-lap > :nth-child(4) {
+    display: none;
+  }
+
+  .ontrack-picks {
+    flex-wrap: wrap;
+  }
 }

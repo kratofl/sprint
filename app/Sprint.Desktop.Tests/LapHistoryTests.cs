@@ -795,6 +795,66 @@ public sealed class LapHistoryTests
     }
 
     [Fact]
+    public void TheTraceCarriesWhatReachedTheCarOnlyWhenTheGameReportsIt()
+    {
+        CollectingLapTraceStore reported = new();
+        LapHistoryRecorder withApplied = NewRecorder(new CollectingLapHistoryStore(), reported);
+        CollectingLapTraceStore unreported = new();
+        LapHistoryRecorder withoutApplied = NewRecorder(new CollectingLapHistoryStore(), unreported);
+
+        // Traction control halves the throttle and ABS holds the brake at most 0.4.
+        for (double position = 0; position < 1.0; position += 0.003)
+        {
+            TelemetryFrame frame = LapFrame(1, position, position * 120.0);
+            withApplied.Ingest(frame with
+            {
+                Car = frame.Car with
+                {
+                    ThrottleApplied = frame.Car.Throttle / 2,
+                    BrakeApplied = Math.Min(frame.Car.Brake, 0.4f),
+                },
+            });
+            withoutApplied.Ingest(frame);
+        }
+
+        TelemetryFrame crossing = Crossing(lap: 2, lastLapTime: 120.0);
+        withApplied.Ingest(crossing with { Car = crossing.Car with { ThrottleApplied = 0.5f, BrakeApplied = 0f } });
+        withoutApplied.Ingest(crossing);
+
+        LapChannelTrace trace = Assert.Single(reported.All).Value;
+        Assert.Equal(0.25, trace.ValueAt(LapTraceChannels.ThrottleApplied, 0.5)!.Value, 2);
+        Assert.Equal(0.4, trace.ValueAt(LapTraceChannels.BrakeApplied, 0.8)!.Value, 2);
+
+        LapChannelTrace bare = Assert.Single(unreported.All).Value;
+        Assert.False(bare.TryGetChannel(LapTraceChannels.ThrottleApplied, out float[] _));
+        Assert.False(bare.TryGetChannel(LapTraceChannels.BrakeApplied, out float[] _));
+    }
+
+    [Fact]
+    public void TheRecorderNamesTheCarByWhatItIsAndKeepsTheModelAndLivery()
+    {
+        CollectingLapHistoryStore store = new();
+        LapHistoryRecorder recorder = NewRecorder(store);
+        TelemetryFrame frame = Frame(SessionType.Practice, lap: 1);
+
+        recorder.Ingest(frame with
+        {
+            Session = frame.Session with
+            {
+                Car = "DKR Engineering #3:ELMS26",
+                CarClass = "LMP2_ELMS",
+                CarType = "Oreca 07",
+                CarChampionship = "ELMS 2026",
+            },
+        });
+
+        LapHistoryContext context = Assert.IsType<LapHistorySession>(recorder.OpenSession).Context;
+        Assert.Equal("LMP2 ELMS", context.CarModel);
+        Assert.Equal("Oreca 07", context.CarType);
+        Assert.Equal("DKR Engineering #3:ELMS26", context.Livery);
+    }
+
+    [Fact]
     public void TheTraceGridIsSizedFromTheTracksLength()
     {
         var traces = new CollectingLapTraceStore();

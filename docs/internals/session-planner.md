@@ -45,6 +45,21 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
   onto exactly these fields or one real context splits into two buckets that never join. A test runs a
   live frame through the LMU mapper and recorder, imports XML into the same store, and resolves
   statistics over both — keep it passing.
+- **`carModel` is the car's name, not the game's**: class + make ("Hypercar BMW", "LMGT3 Porsche",
+  "LMGTE Ferrari"), and for LMP2 — every car an Oreca 07 — the championship ("LMP2 ELMS", "LMP2 WEC").
+  One rule, `CarNames`; the recorder, the importer and the plan prefill all go through it. LMU names a
+  livery live (`mVehicleName`, "DKR Engineering #3:ELMS26") and a model in its archive (`CarType`), so
+  neither can be the key: a friend's lap in another livery of the same car must match. Live, the name
+  comes from the telemetry block's `mVehicleModel`/`mVehicleClass`/`mVehicleChampionship` (the garage
+  screen has no telemetry block and borrows them from the last cockpit frame of the same livery);
+  imports from the archive's `CarType`/`CarClass`/`Category`. The model (`carType`) and the livery are
+  kept beside the key as detail. A car the rule cannot name keeps the game's name.
+- History filed before that rule is renamed once, at host start (`StoredCarNames`): a stored livery is
+  looked up in the results archive (every entrant's `VehName` → `CarType`/`Category`, ~3 s to parse,
+  only when a livery needs it), LMP2 is named by its class (`LMP2_ELMS` → ELMS, `LMP2` → WEC), an
+  imported session's stored model is named directly. A context that states `carType` or `livery` is
+  never looked at again, matched or not. A shared lap from an older Sprint is named the same way on
+  import; plans saved before keep the livery they were made with.
 - `HistorySessionKind` is an on-disk enum, deliberately not the telemetry contract's `SessionType`, so
   a contract rename cannot change how stored history deserialises.
 - **The recorder is always on**: every session type, practice included, plan or no plan. Not recording
@@ -129,15 +144,30 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
 
 ## Setups
 
-- `.svm` values are the sim's indices, stored verbatim. Rendering "rear wing = 7 clicks" needs vehicle
-  data the file does not carry, so nothing pretends to.
-- `ISetupRepository.WatchRoot` is a path, not a change event: the host owns the one watcher and calls
-  `ListSetups()` again, so repositories stay pure readers.
-- Capture dedupes by content digest. Promotion into the vault is an explicit user action.
-- Association proposes the most recently modified setup matching car and track and shows observed vs
-  stated brake bias; the driver decides. `SetupReference` has three states: `null` (not asked yet),
-  `"unknown"` (asked, unidentifiable — never re-guessed), or a snapshot id.
-- Writing is export only, to a location the user picks; the game directory is never touched.
+- An `.svm` value is `<index>//<readable value>` (`CamberSetting=30//-1.0 deg`), stored verbatim. The
+  Setups pages show the readable part (`ISetupRepository.Describe`); it is only there for the saved
+  index, so another index's value cannot be shown — one reason the pages are view-only.
+- The readable part is in the game's UI language when it saved (`deg`/`Grad`, `N/A`/`N/V`), so two
+  setups are compared by index, not by text.
+- `SetupLibrary` looks at the folder on each request (no watcher), reads only files whose timestamp
+  moved, and keeps every new content as a version. Capture dedupes by content digest.
+- Which setup was driven is never guessed: shared memory does not say (it does name the tyre
+  compounds, which every lap records), so the driver puts a setup on a **run** in Analysis. The
+  game's local web API (`localhost:6397`) would say, but it is not a published interface, so
+  Sprint does not use it.
+- A run is an outing (`LapHistoryRecord.Outing`): the recorder starts a new one each time the car
+  leaves the garage, the only place a setup can change. In the garage means out of the car (the
+  game's garage screen) or standing still in its stall (`CarState.InGarage`); rolling through the
+  pit lane past the stall is not. Laps without an outing (imports, older recordings) are one run.
+- Picks live in `run-setups.json` (`RunSetups`), not in the session files: the recorder rewrites
+  the session it is filling from its own copy on every lap, which would drop a pick made while
+  that session is still being driven.
+- A pick keeps the version the file held when the run started (`SetupLibrary.VersionAt`). Leaving
+  the garage makes the library look at the folder, so that version is kept even if the game
+  overwrites the file before anyone opens Setups.
+- `LapHistorySession.SetupReference` (null / `"unknown"` / a snapshot id) and
+  `SetupAssociationService.Propose` predate runs and are not wired.
+- The game directory is never written.
 
 ## Settings
 

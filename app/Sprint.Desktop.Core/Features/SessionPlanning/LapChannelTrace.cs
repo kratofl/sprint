@@ -3,6 +3,8 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <summary>One observed instant of a lap, as the recorder saw it.</summary>
 /// <param name="Position">Track position, 0–1.</param>
 /// <param name="World">Where the car was, in <c>CarPose</c>'s frame. Null when the game did not say.</param>
+/// <param name="ThrottleApplied">The throttle that reached the car after traction control, 0–1. Null when the game did not say.</param>
+/// <param name="BrakeApplied">The brake that reached the car after ABS, 0–1. Null when the game did not say.</param>
 public readonly record struct LapTraceSample(
     double Position,
     float SpeedKph,
@@ -11,7 +13,9 @@ public readonly record struct LapTraceSample(
     float Steering,
     int Gear,
     double ElapsedSeconds,
-    LapTraceWorld? World = null);
+    LapTraceWorld? World = null,
+    float? ThrottleApplied = null,
+    float? BrakeApplied = null);
 
 /// <summary>A world position in metres, in <c>CarPose</c>'s right-handed, Y-up frame.</summary>
 public readonly record struct LapTraceWorld(float X, float Y, float Z);
@@ -39,7 +43,16 @@ public static class LapTraceChannels
     public const string WorldY = "worldY";
     public const string WorldZ = "worldZ";
 
-    /// <summary>What the recorder always writes. The world channels come on top when the game reports a pose.</summary>
+    /// <summary>
+    /// The throttle and brake that reached the car, 0–1: <see cref="Throttle"/> and
+    /// <see cref="Brake"/> after traction control and ABS, so the gap between the two pairs is
+    /// where the electronics stepped in. Each written only when every sample of the lap had it,
+    /// for the reason the world channels are.
+    /// </summary>
+    public const string ThrottleApplied = "throttleApplied";
+    public const string BrakeApplied = "brakeApplied";
+
+    /// <summary>What the recorder always writes. The world and applied-pedal channels come on top when the game reports them.</summary>
     public static IReadOnlyList<string> Default { get; } =
         [SpeedKph, Throttle, Brake, Steering, Gear, ElapsedSeconds];
 }
@@ -55,9 +68,10 @@ public static class LapTraceChannels
 /// a global one.
 /// </para>
 /// <para>
-/// Values are <see cref="float"/>: 24 bytes per sample across the six default channels, which
-/// is what the storage budget was sized on. Milliseconds and 0.1 km/h are both far inside a
-/// float's precision at these magnitudes.
+/// Values are <see cref="float"/>: 24 bytes per sample across the six default channels, and 44
+/// with the three world and two applied-pedal channels LMU adds — about 300 KB for a lap of
+/// Le Mans, the longest layout, which is what the storage budget was sized on. Milliseconds
+/// and 0.1 km/h are both far inside a float's precision at these magnitudes.
 /// </para>
 /// </summary>
 public sealed class LapChannelTrace
@@ -214,6 +228,10 @@ public sealed class LapChannelTrace
         float[] worldX = hasWorld ? new float[count] : [];
         float[] worldY = hasWorld ? new float[count] : [];
         float[] worldZ = hasWorld ? new float[count] : [];
+        bool hasThrottleApplied = samples.All(sample => sample.ThrottleApplied is not null);
+        bool hasBrakeApplied = samples.All(sample => sample.BrakeApplied is not null);
+        float[] throttleApplied = hasThrottleApplied ? new float[count] : [];
+        float[] brakeApplied = hasBrakeApplied ? new float[count] : [];
 
         var index = 0;
         for (var i = 0; i < count; i++)
@@ -261,6 +279,16 @@ public sealed class LapChannelTrace
                 worldY[i] = Lerp(from.Y, to.Y, t);
                 worldZ[i] = Lerp(from.Z, to.Z, t);
             }
+
+            if (hasThrottleApplied && start.ThrottleApplied is { } throttleFrom && end.ThrottleApplied is { } throttleTo)
+            {
+                throttleApplied[i] = Lerp(throttleFrom, throttleTo, t);
+            }
+
+            if (hasBrakeApplied && start.BrakeApplied is { } brakeFrom && end.BrakeApplied is { } brakeTo)
+            {
+                brakeApplied[i] = Lerp(brakeFrom, brakeTo, t);
+            }
         }
 
         Dictionary<string, float[]> channels = new(StringComparer.Ordinal)
@@ -277,6 +305,16 @@ public sealed class LapChannelTrace
             channels[LapTraceChannels.WorldX] = worldX;
             channels[LapTraceChannels.WorldY] = worldY;
             channels[LapTraceChannels.WorldZ] = worldZ;
+        }
+
+        if (hasThrottleApplied)
+        {
+            channels[LapTraceChannels.ThrottleApplied] = throttleApplied;
+        }
+
+        if (hasBrakeApplied)
+        {
+            channels[LapTraceChannels.BrakeApplied] = brakeApplied;
         }
 
         return new LapChannelTrace
@@ -300,6 +338,16 @@ public sealed class LapChannelTrace
                 worldX[i] = world.X;
                 worldY[i] = world.Y;
                 worldZ[i] = world.Z;
+            }
+
+            if (hasThrottleApplied && sample.ThrottleApplied is { } applied)
+            {
+                throttleApplied[i] = applied;
+            }
+
+            if (hasBrakeApplied && sample.BrakeApplied is { } braked)
+            {
+                brakeApplied[i] = braked;
             }
         }
     }

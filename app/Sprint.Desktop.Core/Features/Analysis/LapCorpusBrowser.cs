@@ -7,6 +7,9 @@ namespace Sprint.Desktop.Features.Analysis;
 /// One lap as the Analysis view lists it: enough to choose between laps without loading a
 /// single trace off disk.
 /// </summary>
+/// <param name="Outing">The run the lap was driven in (<see cref="LapHistoryRecord.Outing"/>), 0 when the source could not tell.</param>
+/// <param name="FrontCompound">The front tyres as the game named them; null when not recorded.</param>
+/// <param name="CompletedAt">When the lap ended; null for imported laps.</param>
 public sealed record CorpusLap(
     string SessionId,
     int LapNumber,
@@ -16,7 +19,12 @@ public sealed record CorpusLap(
     LapTargetTier Tier,
     LapHistoryContext Context,
     DateTimeOffset? SessionStartedAt,
-    string? SharedFrom)
+    string? SharedFrom,
+    int Outing = 0,
+    string? FrontCompound = null,
+    string? RearCompound = null,
+    double? FuelUsedLiters = null,
+    DateTimeOffset? CompletedAt = null)
 {
     /// <summary>Where this lap's channels live, when it has any.</summary>
     public string TraceId => LapTraceId.For(SessionId, LapNumber);
@@ -92,7 +100,8 @@ public sealed class LapCorpusBrowser
                 valid.Count,
                 valid.Count(lap => lap.HasChannelTrace),
                 valid.Min(lap => lap.LapTimeSeconds),
-                session.SharedFrom));
+                session.SharedFrom,
+                valid.Select(lap => lap.Outing ?? 0).Where(outing => outing > 0).Distinct().Count()));
         }
 
         return [.. sessions.OrderByDescending(session => session.StartedAt)];
@@ -208,6 +217,11 @@ public sealed class LapCorpusBrowser
             tier,
             session.Context,
             session.StartedAt,
-            session.SharedFrom);
+            session.SharedFrom,
+            lap.Outing ?? 0,
+            lap.FrontCompound,
+            lap.RearCompound,
+            lap.FuelUsedLiters,
+            lap.CompletedAt);
     }
 }

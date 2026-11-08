@@ -58,7 +58,41 @@ internal sealed record LmuVehicleTelemetry
     public float VirtualEnergy { get; init; }
     public float GapAhead { get; init; }
     public float GapBehind { get; init; }
+
+    /// <summary>mVehicleModel: the car itself (e.g. "Oreca 07"), where <see cref="VehicleName"/> is the livery.</summary>
+    public string VehicleModel { get; init; } = "";
+
+    /// <summary>mVehicleClass.</summary>
+    public LmuVehicleClass VehicleClass { get; init; } = LmuVehicleClass.Unknown;
+
+    /// <summary>mVehicleChampionship.</summary>
+    public LmuVehicleChampionship VehicleChampionship { get; init; } = LmuVehicleChampionship.Unknown;
     public IReadOnlyList<LmuWheel> Wheels { get; init; } = Array.Empty<LmuWheel>();
+}
+
+/// <summary>IP_VehicleClass, as the shared-memory header numbers it (one byte).</summary>
+internal enum LmuVehicleClass : byte
+{
+    Hypercar = 0x00,
+    Lmp2Elms = 0x02,
+    Lmp2 = 0x03,
+    Lmp3 = 0x04,
+    Gte = 0x05,
+    Gt3 = 0x06,
+    PaceCar = 0x08,
+    Unknown = 0xFF,
+}
+
+/// <summary>IP_VehicleChampionship, as the shared-memory header numbers it (one byte).</summary>
+internal enum LmuVehicleChampionship : byte
+{
+    Wec2023 = 0x00,
+    Wec2024 = 0x01,
+    Wec2025 = 0x02,
+    Wec2026 = 0x03,
+    Elms2025 = 0x10,
+    Elms2026 = 0x11,
+    Unknown = 0xFF,
 }
 
 internal sealed record LmuVehicleScoring

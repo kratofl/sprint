@@ -156,7 +156,7 @@ public sealed class LapHistoryImportService
                 || recorded.Kind != kind
                 || !Same(recorded.Context.Game, imported.Game)
                 || !SameTrack(imported.Game, recorded.Context.TrackCourse, imported.TrackCourse)
-                || !SameCar(imported.Game, recorded.Context.CarModel, imported.CarModel)
+                || !SameCar(imported.Game, recorded.Context.CarModel, CarNameOf(imported))
                 || recorded.StartedAt < archiveStart - clockTolerance
                 || recorded.StartedAt > archiveEnd + clockTolerance)
             {
@@ -364,13 +364,19 @@ public sealed class LapHistoryImportService
             {
                 Game = imported.Game,
                 TrackCourse = imported.TrackCourse,
-                CarModel = imported.CarModel,
+                CarModel = CarNameOf(imported),
                 CarClass = imported.CarClass,
+                CarType = imported.CarModel,
+                Livery = imported.Livery,
                 TrackLengthMeters = imported.TrackLengthMeters,
             },
             Laps = laps,
         };
     }
+
+    /// <summary>What the corpus calls the archived car: the archive states its model, not its name.</summary>
+    private static string CarNameOf(ImportedSession imported) =>
+        CarNames.Name(imported.CarClass, imported.Championship, imported.CarModel) ?? imported.CarModel;
 
     private static LapHistoryRecord MapLap(ImportedLap lap) => new()
     {
