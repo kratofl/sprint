@@ -59,6 +59,16 @@ jobs:
       - name: Build web
         run: pnpm --filter @sprint/web build
 
+      - name: Type check and test the dash renderer
+        run: |
+          pnpm --filter @sprint/dashboard type-check
+          pnpm --filter @sprint/dashboard test
+
+      - name: Type check and test the desktop app
+        run: |
+          pnpm --filter @sprint/desktop type-check
+          pnpm --filter @sprint/desktop test
+
   desktop:
     name: Desktop (.NET)
     runs-on: windows-latest
@@ -72,8 +82,13 @@ jobs:
       - name: Restore desktop app
         run: dotnet restore app/Sprint.Desktop.slnx
 
-      - name: Build desktop app
-        run: dotnet build app/Sprint.Desktop.slnx --no-restore
+      # Warnings as errors, as `make lint-app` builds it locally.
+      - name: Build desktop app (warnings as errors)
+        run: dotnet build app/Sprint.Desktop.slnx --no-restore -warnaserror
 
       - name: Test desktop app
         run: dotnet test app/Sprint.Desktop.slnx --no-build
+
+      # The host's command-surface tests are not in the solution.
+      - name: Test native host
+        run: dotnet test app/Sprint.Desktop.Host/Tests/Sprint.Desktop.Host.Tests.csproj -warnaserror
