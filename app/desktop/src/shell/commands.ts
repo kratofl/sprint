@@ -19,6 +19,8 @@ export type ShellCommandContext = {
   send: (command: SprintCommand) => Promise<void>
   toggleSidebar: () => void
   checkForUpdates: () => void
+  /** Opens the Dashes page with its New dash dialog, the same one the page's button opens. */
+  newDash: () => void
   /** Opens the results import dialog; absent when the game has no results archive. */
   importResults?: () => void
 }
@@ -29,6 +31,8 @@ export type ShellCommandContext = {
  * - `device.add` opened a device-catalog dialog; DevicesView owns its own dialogs now
  *   and the shell doesn't reach into view-owned UI, so only navigating to Devices
  *   (already covered by `nav.devices`) is reachable from here.
+ * `dash.create` opens the Dashes page's own New dash dialog through the shell's one-time
+ * "open this" hand-off (`NavigationTarget`), so the palette and the page create dashes the same way.
  * `compare.hud` starts or stops training; with no lap picked yet it opens On track instead.
  * `nav.engineer` is new: the Race Engineer view didn't exist when the old palette
  * was written. `results.import` is the palette's copy of the planner/analysis
@@ -67,10 +71,7 @@ export function buildShellCommands(context: ShellCommandContext): ShellCommand[]
       id: 'dash.create',
       label: 'Create dash',
       keywords: 'new layout dashboard',
-      run: () => {
-        void context.send({ type: 'dash.create' })
-        context.navigate('Dashes')
-      },
+      run: context.newDash,
     },
     {
       id: 'compare.hud',

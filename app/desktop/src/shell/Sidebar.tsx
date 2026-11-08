@@ -4,8 +4,9 @@ import sprintMark from '../assets/sprint-mark.svg'
 import { platform } from '../platform'
 import { footerNav, primaryNav, type NavItem } from './nav'
 import { AccountRow } from './AccountRow'
+import { TelemetryRow } from './TelemetryRow'
 import type { RunningBuild } from './build'
-import type { Account, AppView } from '../bridge'
+import type { Account, AppView, SprintState } from '../bridge'
 
 /** Lucide's default stroke is heavier than the brand's line icons; 1.6 matches the mockups. */
 const NAV_ICON_STROKE = 1.6
@@ -16,7 +17,8 @@ const NAV_ICON_STROKE = 1.6
  * rail of icons (the persisted `sidebarCollapsed` setting): labels leave, and each
  * item keeps its name as tooltip and accessible name. The selected item gets the
  * strong fill and the brand icon. Rows sit under quiet section headings (`NavGroup`).
- * The footer holds Settings (with a dot when an update is available) and Help, the
+ * The footer starts with the game link (TelemetryRow.tsx), under a hairline; then Settings
+ * (with a dot when an update is available) and Help, the
  * running build's version (a dev run's branch), then the account row under a hairline
  * (absent while Sprint web is off).
  *
@@ -37,6 +39,8 @@ export function Sidebar({
   accountRow,
   updateAvailable,
   build,
+  telemetry,
+  onOpenDiagnostics,
 }: {
   view: AppView
   collapsed: boolean
@@ -48,6 +52,10 @@ export function Sidebar({
   updateAvailable: boolean
   /** Null until the host reports the version. */
   build: RunningBuild | null
+  /** Null until the host's first state arrives. */
+  telemetry: SprintState['telemetry'] | null
+  /** The game link row opens Help & diagnostics. */
+  onOpenDiagnostics: () => void
 }) {
   const tag = build ? buildTag(build) : null
   // On macOS the tag sits in the version line, which then has no room for the word "Version".
@@ -87,6 +95,7 @@ export function Sidebar({
         </Fragment>
       ))}
       <div className="navview-spacer" />
+      <TelemetryRow telemetry={telemetry} collapsed={collapsed} onOpen={onOpenDiagnostics} />
       {accountRow && <AccountRow account={accountRow.account} collapsed={collapsed} onOpen={accountRow.onOpen} />}
       {footerNav.map((item) => renderItem(item, view, collapsed, onSelect, item.view === 'Settings' && updateAvailable))}
       {build ? (

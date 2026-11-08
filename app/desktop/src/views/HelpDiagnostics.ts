@@ -1,5 +1,6 @@
 /**
- * Diagnostics domain for the Help view's log viewer.
+ * Diagnostics domain for the Help view: the log viewer, and what a screen's connection state
+ * means for the driver (the Checks list's fix line).
  *
  * `sprint.diagnostics` and the array `bridge.diagnosticsLogs` resolves to are
  * not part of the typed `SprintState`/`SprintBridge` contracts in bridge.ts
@@ -116,4 +117,28 @@ export const screenStatusTone = (state: ScreenConnectionState): ScreenStatusTone
     case 'Faulted':
       return 'fault'
   }
+}
+
+const SCREEN_HINTS: Record<ScreenConnectionState, string | null> = {
+  Connected: null,
+  Connecting: null,
+  Disconnected: 'Not on USB. Plug it in, or turn it off on its device page so Sprint stops looking.',
+  ConfigurationRequired: 'Its settings need a look on its device page.',
+  PermissionDenied: 'Windows refused access. Close other apps that use it, then plug it back in.',
+  DeviceBusy: 'Another app is using it. Close that app and Sprint takes over.',
+  DeviceConflict: 'Two devices claim this screen. Check them on the Devices page.',
+  Unsupported: 'This screen can’t be driven on this computer.',
+  Faulted: 'It stopped answering. Unplug it and plug it back in.',
+}
+
+/**
+ * What to do about a screen that is not connected, for the Checks list. Unplugged (or never
+ * reported) always reads as the plain sentence: the host's reason there is a USB match message,
+ * which the logs keep. Other problems prefer the host's own reason, else a sentence for the state.
+ * Null while it is fine or still connecting.
+ */
+export const screenHint = (status: ScreenStatus | null): string | null => {
+  if (status === null || status.state === 'Disconnected') return SCREEN_HINTS.Disconnected
+  if (SCREEN_HINTS[status.state] === null) return null
+  return status.detail ?? SCREEN_HINTS[status.state]
 }

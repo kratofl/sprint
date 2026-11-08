@@ -14,7 +14,7 @@ import { HelpView } from '../views/HelpView'
 
 /**
  * A navigation intent that also names the specific item to open, so a Home
- * launchpad row (dash card, device row, plan tile) can jump straight into
+ * row (plan, device, recorded session) can jump straight into
  * that item instead of just switching pages. The id can only accompany the
  * view it belongs to — mirrors `AppView`, but only the views with an
  * item-level destination carry an (optional) id.
@@ -23,8 +23,9 @@ export type NavigationTarget =
   | { view: 'Home' }
   | { view: 'SessionPlanner'; planId?: string }
   | { view: 'OnTrack' }
-  | { view: 'Analysis' }
+  | { view: 'Analysis'; sessionId?: string }
   | { view: 'Dashes'; dashId?: string }
+  | { view: 'Dashes'; newDash: true }
   | { view: 'Devices'; deviceId?: string }
   | { view: 'Setups' }
   | { view: 'RaceEngineer' }
@@ -61,7 +62,7 @@ export function ViewRouter({
 }) {
   switch (view) {
     case 'Home':
-      return <HomeView runtime={runtime} onNavigate={onNavigate} onOpenItem={onOpenItem} />
+      return <HomeView runtime={runtime} onNavigate={onNavigate} onOpenItem={onOpenItem} onImportResults={onImportResults} />
     case 'SessionPlanner':
       return (
         <SessionPlannerView
@@ -74,13 +75,20 @@ export function ViewRouter({
     case 'OnTrack':
       return <OnTrackView runtime={runtime} send={send} />
     case 'Analysis':
-      return <AnalysisView runtime={runtime} send={send} onImportResults={onImportResults} />
+      return (
+        <AnalysisView
+          runtime={runtime}
+          send={send}
+          focusSessionId={focus?.view === 'Analysis' ? focus.sessionId : undefined}
+          onImportResults={onImportResults}
+        />
+      )
     case 'Dashes':
-      return <DashesView runtime={runtime} send={send} focusDashId={focus?.view === 'Dashes' ? focus.dashId : undefined} />
+      return <DashesView runtime={runtime} send={send} focusDashId={focus?.view === 'Dashes' && 'dashId' in focus ? focus.dashId : undefined} openNewDash={focus?.view === 'Dashes' && 'newDash' in focus} />
     case 'Devices':
       return <DevicesView runtime={runtime} send={send} focusDeviceId={focus?.view === 'Devices' ? focus.deviceId : undefined} />
     case 'Setups':
-      return <SetupsView runtime={runtime} send={send} />
+      return <SetupsView />
     case 'RaceEngineer':
       return <RaceEngineerView runtime={runtime} send={send} onNavigate={onNavigate} />
     case 'LiveLink':
@@ -88,6 +96,6 @@ export function ViewRouter({
     case 'Settings':
       return <SettingsView runtime={runtime} send={send} onSetUpCloud={onSetUpCloud} />
     case 'Help':
-      return <HelpView runtime={runtime} send={send} />
+      return <HelpView runtime={runtime} send={send} onNavigate={onNavigate} onOpenItem={onOpenItem} />
   }
 }

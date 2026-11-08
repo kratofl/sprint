@@ -9,6 +9,7 @@ const noopContext = () => ({
   send: async () => undefined,
   toggleSidebar: () => undefined,
   checkForUpdates: () => undefined,
+  newDash: () => undefined,
 })
 
 test('the first commands are navigation, one per primaryNav entry in order, with Alt+1..8 shortcuts', () => {
@@ -40,19 +41,21 @@ test('running a nav command navigates to its view', () => {
   assert.deepEqual(navigated, ['Analysis'])
 })
 
-test('dash.create sends the command and navigates to Dashes', () => {
+test('dash.create opens the New dash dialog instead of creating a dash itself', () => {
   const sent: unknown[] = []
-  const navigated: string[] = []
+  let opened = 0
   const commands = buildShellCommands({
     ...noopContext(),
     send: async (command) => {
       sent.push(command)
     },
-    navigate: (view) => navigated.push(view),
+    newDash: () => {
+      opened += 1
+    },
   })
   commands.find((command) => command.id === 'dash.create')?.run()
-  assert.deepEqual(sent, [{ type: 'dash.create' }])
-  assert.deepEqual(navigated, ['Dashes'])
+  assert.equal(opened, 1)
+  assert.deepEqual(sent, [])
 })
 
 test('filterCommands matches on label and keywords, case-insensitively', () => {
