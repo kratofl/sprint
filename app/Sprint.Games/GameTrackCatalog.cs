@@ -203,14 +203,9 @@ public static class GameTrackCatalog
         return null;
     }
 
-    private static IReadOnlyList<CircuitDefinition> KnownCircuits(string? game) => IsLeMansUltimate(game)
+    private static IReadOnlyList<CircuitDefinition> KnownCircuits(string? game) => GameNames.IsLeMansUltimate(game)
         ? LeMansUltimateCircuits
         : [];
-
-    private static bool IsLeMansUltimate(string? game) =>
-        string.Equals(game, "Le Mans Ultimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LeMansUltimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Folds case, separators and accents so "Autódromo José Carlos Pace" and the ASCII spelling

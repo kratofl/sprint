@@ -155,6 +155,30 @@ public sealed class SessionPlannerService
         }
     }
 
+    /// <summary>
+    /// Moves plans filed under a car's former name to its current one (<see cref="StoredCarNames.FormerNames"/>),
+    /// so they keep matching the history they plan against. Returns how many plans it rewrote.
+    /// </summary>
+    public int RenameCars(IReadOnlyDictionary<string, string> currentNames)
+    {
+        ArgumentNullException.ThrowIfNull(currentNames);
+        int renamed = 0;
+        lock (this._gate)
+        {
+            foreach (SessionPlan plan in this._plans)
+            {
+                if (currentNames.TryGetValue(plan.Car, out string? current) && !string.Equals(current, plan.Car, StringComparison.Ordinal))
+                {
+                    plan.Car = current;
+                    this._store.Save(plan);
+                    renamed++;
+                }
+            }
+        }
+
+        return renamed;
+    }
+
     /// <summary>Deletes a plan. If it held the active slot, the slot is cleared.</summary>
     public void DeletePlan(string planId)
     {

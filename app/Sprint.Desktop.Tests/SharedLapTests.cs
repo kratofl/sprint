@@ -124,6 +124,21 @@ public sealed class SharedLapTests
     }
 
     [Fact]
+    public void A_lap_sent_by_an_older_and_a_newer_Sprint_is_filed_once()
+    {
+        // An older Sprint sent the livery as the car; a newer one sends the class name and the livery beside it.
+        (FakeHistory history, _, SharedLapImporter importer) = Corpus();
+        SharedLap older = Lap() with { Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Spa-Francorchamps", CarModel = "Porsche 963:#6 Penske" } };
+        SharedLap newer = Lap() with { Context = new LapHistoryContext { Game = "LeMansUltimate", TrackCourse = "Spa-Francorchamps", CarModel = "Hypercar Porsche", Livery = "Porsche 963:#6 Penske" } };
+        importer.Import(older);
+
+        SharedLapImportResult second = importer.Import(newer);
+
+        Assert.True(second.AlreadyPresent);
+        Assert.Single(history.Saved);
+    }
+
+    [Fact]
     public void ImportingTheSameLapTwiceDoesNotDuplicateIt()
     {
         // The same lap legitimately arrives as a file from one friend and by code from another.

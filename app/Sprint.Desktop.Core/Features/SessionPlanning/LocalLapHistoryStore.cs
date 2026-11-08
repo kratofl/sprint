@@ -70,8 +70,8 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
     {
         try
         {
-            var bytes = File.ReadAllBytes(path);
-            var reader = new Utf8JsonReader(bytes);
+            byte[] bytes = AtomicFile.ReadAllBytes(path);
+            Utf8JsonReader reader = new(bytes);
 
             // Walk the top level only: step into the context object when it appears and skip
             // every other value wholesale, so the lap array is never turned into objects.
@@ -139,8 +139,8 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
     {
         try
         {
-            using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize<LapHistorySession>(stream, JsonOptions);
+            // Through AtomicFile: a save of this session may be replacing the file right now.
+            return JsonSerializer.Deserialize<LapHistorySession>(AtomicFile.ReadAllBytes(path), JsonOptions);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {

@@ -50,6 +50,28 @@ public sealed class StoredCarNames
     }
 
     /// <summary>
+    /// The names sessions filed their car under before the rule, each mapped to the name it carries
+    /// now: a recorded or shared session's livery, an imported session's bare model. What else was
+    /// keyed by the old name (plans, the remembered context) follows through this.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> FormerNames(IEnumerable<LapHistorySession> sessions)
+    {
+        ArgumentNullException.ThrowIfNull(sessions);
+        Dictionary<string, string> names = new(StringComparer.Ordinal);
+        foreach (LapHistorySession session in sessions)
+        {
+            LapHistoryContext context = session.Context;
+            string? former = session.Origin == LapHistoryOrigin.Imported ? context.CarType : context.Livery;
+            if (!string.IsNullOrWhiteSpace(former) && !string.IsNullOrWhiteSpace(context.CarModel))
+            {
+                names.TryAdd(former, context.CarModel);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// Names one context in place, when it predates the rule. Returns whether it changed. A car
     /// that cannot be named keeps its old name; it is still marked as looked at, so it is not
     /// looked up again on every start.

@@ -236,6 +236,26 @@ _ = Task.Run(() =>
             // The cars changed behind Analysis' session filter, which is only rebuilt on a load.
             analysisController.Load();
         }
+
+        // Plans and the remembered context named the car as its sessions did, and follow them.
+        // From every session, not just the ones renamed now: installs renamed before this
+        // existed still have plans under the old names.
+        IReadOnlyDictionary<string, string> currentNames = StoredCarNames.FormerNames(lapHistoryStore.LoadAll());
+        int replanned = plannerService.RenameCars(currentNames);
+        if (replanned > 0)
+        {
+            log.Info($"Named the car of {replanned} session plan(s)");
+        }
+
+        lock (runtime.SettingsGate)
+        {
+            LastSeenContext seen = runtime.Settings.LastSeenContext;
+            if (currentNames.TryGetValue(seen.Car, out string? seenCar) && !string.Equals(seenCar, seen.Car, StringComparison.Ordinal))
+            {
+                seen.Car = seenCar;
+                runtime.SaveSettings();
+            }
+        }
     }
     catch (Exception ex)
     {

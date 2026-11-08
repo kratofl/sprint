@@ -50,6 +50,25 @@ public sealed class CarNamesTests
     }
 
     [Fact]
+    public void Former_names_map_a_recorded_livery_and_an_imported_model_to_the_current_name()
+    {
+        LapHistorySession recorded = new()
+        {
+            Context = new LapHistoryContext { CarModel = "LMP2 ELMS", CarType = "Oreca 07", Livery = "Oreca 07:#22 United Autosports" },
+        };
+        LapHistorySession imported = new()
+        {
+            Origin = LapHistoryOrigin.Imported,
+            Context = new LapHistoryContext { CarModel = "LMP2 ELMS", CarType = "Oreca 07" },
+        };
+
+        IReadOnlyDictionary<string, string> names = StoredCarNames.FormerNames([recorded, imported]);
+
+        Assert.Equal("LMP2 ELMS", names["Oreca 07:#22 United Autosports"]);
+        Assert.Equal("LMP2 ELMS", names["Oreca 07"]);
+    }
+
+    [Fact]
     public void AStoredLmp2IsNamedByItsClassEvenWhenTheArchiveNeverSawItsLivery()
     {
         LapHistorySession session = Recorded("DKR Engineering #3:ELMS26", "LMP2_ELMS");

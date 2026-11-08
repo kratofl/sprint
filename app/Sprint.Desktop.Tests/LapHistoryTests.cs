@@ -1175,6 +1175,25 @@ public sealed class LapHistoryTests
             [.. All.Select(pair => new LapTraceInfo(pair.Key, 0, Now))];
     }
 
+    [Fact]
+    public void An_imported_copy_matches_its_recorded_session_under_the_game_name_writers_stamp()
+    {
+        // Both writers stamp "LeMansUltimate"; the car differs by livery, the track by its venue prefix.
+        LapHistorySession recorded = NewSession("recorded", HistorySessionKind.Practice);
+        recorded.Context.Game = "LeMansUltimate";
+        recorded.Context.CarModel = "Oreca 07:#22 United Autosports";
+        recorded.Context.TrackCourse = "Circuit de Spa-Francorchamps";
+        recorded.Laps.Add(new LapHistoryRecord { LapNumber = 3, LapTimeSeconds = 125.263 });
+        LapHistorySession imported = NewSession("imported", HistorySessionKind.Practice);
+        imported.Origin = LapHistoryOrigin.Imported;
+        imported.Context.Game = "LeMansUltimate";
+        imported.Context.CarModel = "Oreca 07";
+        imported.Context.TrackCourse = "Spa-Francorchamps";
+        imported.Laps.Add(new LapHistoryRecord { LapNumber = 2, LapTimeSeconds = 125.263 });
+
+        Assert.True(LapHistoryImportService.HasRecordedEquivalent(imported, [recorded]));
+    }
+
     private static LapHistorySession NewSession(string id, HistorySessionKind kind) => new()
     {
         Id = id,

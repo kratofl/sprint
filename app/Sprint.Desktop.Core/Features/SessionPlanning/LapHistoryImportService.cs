@@ -1,6 +1,7 @@
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Games;
 
 namespace Sprint.Desktop.Features.SessionPlanning;
 
@@ -261,7 +262,7 @@ public sealed class LapHistoryImportService
             return true;
         }
 
-        return Same(game, "Le Mans Ultimate")
+        return GameNames.IsLeMansUltimate(game)
             && Same(NormalizeLmuTrack(left), NormalizeLmuTrack(right));
     }
 
@@ -272,7 +273,7 @@ public sealed class LapHistoryImportService
             return true;
         }
 
-        return Same(game, "Le Mans Ultimate")
+        return GameNames.IsLeMansUltimate(game)
             && Same(NormalizeLmuCar(left), NormalizeLmuCar(right));
     }
 

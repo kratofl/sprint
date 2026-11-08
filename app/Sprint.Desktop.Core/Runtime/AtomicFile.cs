@@ -59,4 +59,30 @@ public static class AtomicFile
             File.Move(tempPath, fullPath, overwrite: true);
         }
     }
+
+    // ERROR_SHARING_VIOLATION as an HResult.
+    private const int SharingViolation = unchecked((int)0x80070020);
+    private const int ReadAttempts = 10;
+
+    /// <summary>
+    /// Reads a file <see cref="Write"/> may be replacing at that moment. On Windows the rename
+    /// holds the real path for an instant, and a reader landing then fails with a sharing
+    /// violation although the file is fine a moment later; that one error is retried briefly.
+    /// Every other error (missing, denied) is the caller's, at once.
+    /// </summary>
+    public static byte[] ReadAllBytes(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return File.ReadAllBytes(path);
+            }
+            catch (IOException ex) when (ex.HResult == SharingViolation && attempt < ReadAttempts)
+            {
+                Thread.Sleep(20 * attempt);
+            }
+        }
+    }
 }

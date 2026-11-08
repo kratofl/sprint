@@ -59,16 +59,26 @@ public sealed record SharedLap(
     /// same lap. A generated id would let the corpus fill with duplicates that all look
     /// distinct.
     /// </para>
+    /// <para>
+    /// The car is its livery when the lap names one: a Sprint from before cars were named by class
+    /// (<see cref="CarNames"/>) sent the livery as the car, a newer one sends the class name and the
+    /// livery beside it, and both copies of one lap must hash alike.
+    /// </para>
     /// </summary>
-    public string Fingerprint
+    public string Fingerprint => this.Hash(this.Context.Livery ?? this.Context.CarModel);
+
+    /// <summary>
+    /// The fingerprint a newer Sprint took before <see cref="Fingerprint"/> keyed on the livery
+    /// (over the class name). Only for recognising laps already filed under it.
+    /// </summary>
+    public string ClassNameFingerprint => this.Hash(this.Context.CarModel);
+
+    private string Hash(string car)
     {
-        get
-        {
-            var seed = string.Create(
-                CultureInfo.InvariantCulture,
-                $"{Provenance.SharedBy}|{Context.Game}|{Context.TrackCourse}|{Context.CarModel}|{LapNumber}|{LapTimeSeconds:F3}");
-            return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(seed)))[..16];
-        }
+        string seed = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{this.Provenance.SharedBy}|{this.Context.Game}|{this.Context.TrackCourse}|{car}|{this.LapNumber}|{this.LapTimeSeconds:F3}");
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(seed)))[..16];
     }
 
     /// <summary>Who to credit on screen when the sharer left no name.</summary>

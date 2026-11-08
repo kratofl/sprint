@@ -70,14 +70,9 @@ public static partial class GameCarClassCatalog
             || Matches(definition, classId))?.Name
         ?? Humanize(classId);
 
-    private static IReadOnlyList<GameCarClass> KnownClasses(string? game) => IsLeMansUltimate(game)
+    private static IReadOnlyList<GameCarClass> KnownClasses(string? game) => GameNames.IsLeMansUltimate(game)
         ? LeMansUltimateClasses
         : [];
-
-    private static bool IsLeMansUltimate(string? game) =>
-        string.Equals(game, "Le Mans Ultimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LeMansUltimate", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(game, "LMU", StringComparison.OrdinalIgnoreCase);
 
     private static bool Matches(GameCarClass definition, string rawClass) =>
         definition.Aliases.Contains(rawClass, StringComparer.OrdinalIgnoreCase);

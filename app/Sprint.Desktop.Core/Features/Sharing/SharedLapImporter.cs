@@ -56,9 +56,11 @@ public sealed class SharedLapImporter
     {
         ArgumentNullException.ThrowIfNull(lap);
 
-        var fingerprint = lap.Fingerprint;
-        if (_history.LoadAll().FirstOrDefault(session =>
-                string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal))
+        string fingerprint = lap.Fingerprint;
+        string classNameFingerprint = lap.ClassNameFingerprint;
+        if (this._history.LoadAll().FirstOrDefault(session =>
+                string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal)
+                || string.Equals(session.SharedFingerprint, classNameFingerprint, StringComparison.Ordinal))
             is { } existing)
         {
             return SharedLapImportResult.Duplicate(existing.Id);
