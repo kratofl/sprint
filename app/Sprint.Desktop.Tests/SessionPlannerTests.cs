@@ -526,6 +526,47 @@ public sealed class SessionPlannerTests
     }
 
     [Fact]
+    public void ATrackedQualifyingFollowsTheGameIntoTheRaceButNeverBack()
+    {
+        string root = TestEnv.NewTempDataRoot();
+        try
+        {
+            DateTimeOffset now = Now;
+            SessionPlannerService service = NewServiceWithClock(root, () => now);
+            SessionPlan plan = service.CreatePlan(new CreatePlanRequest { Name = "Weekend" });
+            service.Arm(plan.Id);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(2);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+
+            now = Now.AddSeconds(10);
+            service.Ingest(SessionFrame(SessionType.Race));
+            now = Now.AddSeconds(12);
+            service.Ingest(SessionFrame(SessionType.Race));
+
+            Assert.Equal(PlanStatus.Tracking, plan.Status);
+            Assert.Collection(
+                plan.Segments,
+                qualifying => Assert.NotNull(qualifying.ActualEnd),
+                race =>
+                {
+                    Assert.Equal(SegmentKind.Race, race.Kind);
+                    Assert.Equal(SegmentSource.Detected, race.Source);
+                });
+
+            now = Now.AddSeconds(20);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            now = Now.AddSeconds(25);
+            service.Ingest(SessionFrame(SessionType.Qualify));
+            Assert.Equal(2, plan.Segments.Count);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ADraftPlanNeverAutoStarts()
     {
         string root = TestEnv.NewTempDataRoot();

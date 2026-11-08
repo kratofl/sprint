@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('sprint', {
   pickFolder: (title: string): Promise<unknown> => ipcRenderer.invoke('sprint:pick-folder', title),
   diagnosticsLogs: (minLevel: string, text: string): Promise<unknown> => ipcRenderer.invoke('sprint:diagnostics-logs', minLevel, text),
   planContext: (): Promise<unknown> => ipcRenderer.invoke('sprint:plan-context'),
+  planTargets: (planId: string): Promise<unknown> => ipcRenderer.invoke('sprint:plan-targets', planId),
   setups: (): Promise<unknown> => ipcRenderer.invoke('sprint:setups'),
   setupSheet: (id: string, version: string | null): Promise<unknown> => ipcRenderer.invoke('sprint:setup-sheet', id, version),
   setupDriven: (id: string): Promise<unknown> => ipcRenderer.invoke('sprint:setup-driven', id),

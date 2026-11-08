@@ -468,6 +468,32 @@
       return Array.from({ length: item.versions }, (_, index) => ({ versionId: `${id}@${index}`, ...(driven[`${id}@${index}`] ?? none) }))
     },
     diagnosticsLogs: async () => null,
+    // A plan's target choices, resolved over the payload's own lap history the way the host's
+    // PlanTargetResolver does: per session kind, the fastest/median/slowest valid lap and every lap.
+    planTargets: async (planId) => {
+      const plan = (state.plans ?? []).find((candidate) => candidate.id === planId)
+      if (!plan) return { scopes: [] }
+      const sessions = (state.lapHistory ?? []).filter((session) => session.context?.trackCourse === plan.track && session.context?.carModel === plan.car)
+      const scopeOf = { Practice: 'Practice', Qualifying: 'Qualifying' }
+      const scopes = ['Qualifying', 'Practice'].flatMap((kind) => {
+        const laps = sessions
+          .filter((session) => session.kind === kind)
+          .flatMap((session) => (session.laps ?? []).filter((lap) => lap.isValid).map((lap) => ({ session, lap })))
+          .sort((a, b) => a.lap.lapTimeSeconds - b.lap.lapTimeSeconds)
+        if (laps.length === 0) return []
+        const option = ({ session, lap }, statistic) => ({
+          scope: scopeOf[kind], programType: null, statistic, lapTimeSeconds: lap.lapTimeSeconds, sampleSize: laps.length,
+          lapSessionId: session.id, lapNumber: lap.lapNumber, lapSessionStartedAt: session.startedAt, tierNote: 'time only',
+        })
+        const median = laps[Math.floor((laps.length - 1) / 2)]
+        return [{
+          scope: scopeOf[kind], programType: null, label: kind, sampleSize: laps.length,
+          options: [option(laps[0], 'Fastest'), option(median, 'Median'), option(laps[laps.length - 1], 'Slowest')],
+          laps: laps.map((entry) => option(entry, 'Custom')),
+        }]
+      })
+      return { scopes }
+    },
     // The New plan dialog's choices, derived from the payload's own lap history the way the
     // host derives them (distinct, sorted; per game), prefilled from the remembered context.
     planContext: async () => {

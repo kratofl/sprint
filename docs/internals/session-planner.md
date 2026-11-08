@@ -31,8 +31,11 @@ capture. Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` and `Features
   splits the data; a closed list would make planning for an undriven car impossible.
   `ILapHistoryStore.LoadContexts()` reads only the context objects so listing options does not
   materialise every lap's curve.
-- Exactly one primary action: the next step (`SessionPlannerController.NextSegment`). Starting the race
-  while a planned qualifying has not run asks first.
+- The plan follows the game. Armed, it opens qualifying, then the race, once the game has reported
+  that session for a second (`SessionPlannerService.TryAutoStart`); a tracked qualifying moves on to
+  the race the same way, never back. So Arm plan is the page's one primary action; starting a session
+  by hand is the fallback, and starting the race while a planned qualifying has not run asks first.
+  Finishing stays a click: the game leaving the race can also be a disconnect.
 
 ## The lap-history corpus
 
@@ -102,6 +105,8 @@ Two writers (the live recorder, the results importer), one reader. One JSON file
   not exist at planning time). A target is (scope, statistic): scopes `Current Quali` (labelled with its
   session timestamp — no silent recency cutoff), `Quali`, `Practice`, `Practice program`; statistics
   `Fastest`, `Median`, `Slowest`, `Specific`.
+- `plan.setTarget` names the pick (scope, statistic, or a lap) and the host resolves it against the
+  corpus again, so only a lap that was driven can be stored.
 - `Specific` opens a scrollable list of every lap, never a dropdown. There is no typed lap-time entry:
   a lap time is something a car did. Stored `Manual` targets still deserialise.
 

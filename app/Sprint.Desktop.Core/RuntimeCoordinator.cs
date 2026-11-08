@@ -39,6 +39,7 @@ public sealed class RuntimeCoordinator
     private readonly PeerLink? _link;
     private readonly LiveCompareService _liveCompare;
     private readonly GameFolder _gameFolder;
+    private readonly ILapHistoryStore _lapHistory;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -52,6 +53,8 @@ public sealed class RuntimeCoordinator
     /// name="liveCompare"/> must be the instance the host's telemetry loop feeds and its HUD reads.
     /// <paramref name="gameFolder"/> must wrap the provider the host reads setups and results
     /// through; without it <c>game.setFolder</c> points a private provider nobody reads.
+    /// <paramref name="lapHistory"/> is the corpus <c>plan.setTarget</c> resolves a pick against;
+    /// the host passes its one shared store.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -61,7 +64,8 @@ public sealed class RuntimeCoordinator
         DashPageCycle? pageCycle = null,
         PeerLink? link = null,
         LiveCompareService? liveCompare = null,
-        GameFolder? gameFolder = null)
+        GameFolder? gameFolder = null,
+        ILapHistoryStore? lapHistory = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -78,6 +82,7 @@ public sealed class RuntimeCoordinator
                 new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))),
             () => null);
         this._gameFolder = gameFolder ?? new GameFolder(new LeMansUltimateGameProvider());
+        this._lapHistory = lapHistory ?? new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"));
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -130,6 +135,8 @@ public sealed class RuntimeCoordinator
             case "plan.start": return this.StartPlanSegment(command, out error);
             case "plan.stop": return this.StopPlanSegment(command, out error);
             case "plan.releaseActive": return this.ReleaseActivePlan(out error);
+            case "plan.setTarget": return this.SetPlanTarget(command, out error);
+            case "plan.clearTarget": return this.ClearPlanTarget(command, out error);
             case "analysis.refresh": this._analysis.Load(); return true;
             case "analysis.selectSession": return this.SelectAnalysisSession(command, out error);
             case "analysis.filter": return this.FilterAnalysis(command, out error);
@@ -1153,6 +1160,49 @@ public sealed class RuntimeCoordinator
         if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.StopTracking(plan.Id);
         return true;
+    }
+
+    /// <summary>
+    /// Stores a target picked from the plan's choices (<c>GET /api/planner/targets</c>): a scope's
+    /// statistic, or with <c>statistic: "Custom"</c> one of its laps (<c>lapSessionId</c>,
+    /// <c>lapNumber</c>). The pick is resolved against the corpus again, so only a lap that was
+    /// driven can become a target. It latches at the next start/finish line (PlanTargetDelivery).
+    /// </summary>
+    private bool SetPlanTarget(JsonElement command, out string error)
+    {
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!TrySegmentKind(command, out SegmentKind kind, out error)) return false;
+        if (!TryString(command, "scope", out string scopeText) || !Enum.TryParse(scopeText, ignoreCase: true, out PlanTargetScope scope)) { error = "scope is required"; return false; }
+        if (!TryString(command, "statistic", out string statisticText) || !Enum.TryParse(statisticText, ignoreCase: true, out PlanTargetStatistic statistic)) { error = "statistic is required"; return false; }
+        string? programType = TryString(command, "programType", out string program) ? program : null;
+        string? lapSessionId = TryString(command, "lapSessionId", out string session) ? session : null;
+        int? lapNumber = TryInt(command, "lapNumber", out int lap) ? lap : null;
+        if (statistic == PlanTargetStatistic.Custom && (lapSessionId is null || lapNumber is null)) { error = "a specific lap needs lapSessionId and lapNumber"; return false; }
+
+        PlanTargetOption? option = PlanTargetResolver.ForPlan(this._lapHistory, plan).Find(scope, programType, statistic, lapSessionId, lapNumber);
+        if (option is null) { error = "no such lap for this car and track"; return false; }
+
+        plan.SetLapTimeTarget(kind, option.ToTarget(DateTimeOffset.UtcNow));
+        this._planner.UpdatePlan(plan);
+        return true;
+    }
+
+    private bool ClearPlanTarget(JsonElement command, out string error)
+    {
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!TrySegmentKind(command, out SegmentKind kind, out error)) return false;
+        plan.SetLapTimeTarget(kind, null);
+        this._planner.UpdatePlan(plan);
+        return true;
+    }
+
+    private static bool TrySegmentKind(JsonElement command, out SegmentKind kind, out string error)
+    {
+        error = "";
+        kind = SegmentKind.Race;
+        if (TryString(command, "kind", out string text) && Enum.TryParse(text, ignoreCase: true, out kind)) return true;
+        error = "kind must be Qualifying or Race";
+        return false;
     }
 
     private bool ReleaseActivePlan(out string error)

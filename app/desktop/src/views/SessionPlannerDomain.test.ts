@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { choicesForGame, groupPlans, nextSegment, parsePlan, planLapStats, recentLapTimes, startingRaceSkipsQualifying } from './SessionPlannerDomain'
+import {
+  buildPlanSetTarget,
+  choicesForGame,
+  groupPlans,
+  nextSegment,
+  parsePlan,
+  planLapStats,
+  practiceSummary,
+  raceFuelLiters,
+  raceLaps,
+  recentLapTimes,
+  sessionState,
+  startingRaceSkipsQualifying,
+  weekendTimeline,
+} from './SessionPlannerDomain'
+import type { PlanTargetOption } from '../bridge'
 import type { SessionPlan } from './SessionPlannerDomain'
 
 function plan(overrides: Record<string, unknown> = {}): SessionPlan {
@@ -68,4 +83,57 @@ test('a recorded game offers only its own tracks and cars; anything else offers 
   assert.deepEqual(choicesForGame(choices, ' le mans ultimate '), { tracks: ['Monza'], cars: ['Porsche 963'] })
   assert.deepEqual(choicesForGame(choices, 'Automobilista 2'), { tracks: choices.tracks, cars: choices.cars })
   assert.deepEqual(choicesForGame(choices, ''), { tracks: choices.tracks, cars: choices.cars })
+})
+
+test('the timeline sits on the next session, on the live one while tracking, and at the finish when done', () => {
+  assert.deepEqual(weekendTimeline(plan({ qualifyingIncluded: true, status: 'Armed' })), { stops: ['Practice', 'Qualifying', 'Race', 'Finish'], at: 1 })
+  const live = plan({ status: 'Tracking', segments: [{ ...segment('Qualifying'), actualEnd: '2026-10-01T18:20:00Z' }, segment('Race')] })
+  assert.equal(weekendTimeline(live).at, 2)
+  assert.equal(sessionState(live, 'Qualifying'), 'done')
+  assert.equal(sessionState(live, 'Race'), 'live')
+  assert.deepEqual(weekendTimeline(plan({ qualifyingIncluded: false, status: 'Completed' })), { stops: ['Practice', 'Race', 'Finish'], at: 2 })
+  assert.equal(sessionState(plan({ qualifyingIncluded: false }), 'Qualifying'), 'skipped')
+  assert.equal(sessionState(plan({ qualifyingIncluded: true }), 'Race'), 'later')
+})
+
+test('race laps come from minutes over the average lap, and fuel adds the reserve', () => {
+  const sixHours = plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360, avgLapTimeSeconds: 125.6, fuelPerLapLiters: 3.5, fuelReserveLaps: 1 })
+  assert.equal(raceLaps(sixHours), 172)
+  assert.equal(raceFuelLiters(sixHours), 173 * 3.5)
+  assert.equal(raceLaps(plan({ raceLengthFormat: 'TimeBased', raceLengthValue: 360 })), null)
+  assert.equal(raceLaps(plan({ raceLengthFormat: 'LapBased', raceLengthValue: 30 })), 30)
+})
+
+const option = (statistic: PlanTargetOption['statistic'], lapTimeSeconds: number, startedAt: string, lapNumber: number): PlanTargetOption => ({
+  scope: 'Practice',
+  programType: null,
+  statistic,
+  lapTimeSeconds,
+  sampleSize: 3,
+  lapSessionId: `s-${startedAt}`,
+  lapNumber,
+  lapSessionStartedAt: startedAt,
+  tierNote: 'time only',
+})
+
+test('practice reads best and median from the statistics and lists laps oldest first', () => {
+  const laps = [option('Custom', 124.9, '2026-11-12', 6), option('Custom', 125.4, '2026-11-10', 2), option('Custom', 127.2, '2026-11-12', 1)]
+  const summary = practiceSummary([
+    { scope: 'Practice', programType: null, label: 'Practice', sampleSize: 3, options: [option('Fastest', 124.9, '2026-11-12', 6), option('Median', 125.4, '2026-11-10', 2)], laps },
+  ])
+  assert.deepEqual(summary, { laps: 3, best: 124.9, median: 125.4, times: [125.4, 127.2, 124.9] })
+  assert.equal(practiceSummary([]), null)
+})
+
+test('a specific-lap target names its lap; a statistic does not', () => {
+  assert.deepEqual(buildPlanSetTarget('p', 'Race', option('Median', 125.4, 'x', 2)), { type: 'plan.setTarget', planId: 'p', kind: 'Race', scope: 'Practice', statistic: 'Median' })
+  assert.deepEqual(buildPlanSetTarget('p', 'Race', option('Custom', 125.4, 'x', 2)), {
+    type: 'plan.setTarget',
+    planId: 'p',
+    kind: 'Race',
+    scope: 'Practice',
+    statistic: 'Custom',
+    lapSessionId: 's-x',
+    lapNumber: 2,
+  })
 })

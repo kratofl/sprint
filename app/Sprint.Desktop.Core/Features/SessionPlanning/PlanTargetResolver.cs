@@ -122,6 +122,27 @@ public sealed record PlanTargetChoices(IReadOnlyList<PlanTargetScopeGroup> Scope
         this.Scopes.FirstOrDefault(group =>
             group.Scope == scope
             && string.Equals(group.ProgramType, programType, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The option a driver picked: a statistic of a scope, or for <see cref="PlanTargetStatistic.Custom"/>
+    /// one lap of it. Null when the corpus no longer offers it.
+    /// </summary>
+    public PlanTargetOption? Find(
+        PlanTargetScope scope,
+        string? programType,
+        PlanTargetStatistic statistic,
+        string? lapSessionId,
+        int? lapNumber)
+    {
+        if (this.Scope(scope, programType) is not { } group)
+        {
+            return null;
+        }
+
+        return statistic == PlanTargetStatistic.Custom
+            ? group.Laps.FirstOrDefault(lap => lap.LapSessionId == lapSessionId && lap.LapNumber == lapNumber)
+            : group.Option(statistic);
+    }
 }
 
 /// <summary>
@@ -135,6 +156,13 @@ public sealed record PlanTargetChoices(IReadOnlyList<PlanTargetScopeGroup> Scope
 /// </summary>
 public static class PlanTargetResolver
 {
+    /// <summary>The choices for <paramref name="plan"/>'s own game, track and car.</summary>
+    public static PlanTargetChoices ForPlan(ILapHistoryStore store, SessionPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return Choices(store, new LapHistoryContext { Game = plan.Game, TrackCourse = plan.Track, CarModel = plan.Car }, plan.Mode);
+    }
+
     /// <summary>
     /// Every scope with laps behind it, in display order. A scope the corpus cannot fill is
     /// omitted rather than shown empty.

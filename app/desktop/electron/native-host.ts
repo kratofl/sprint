@@ -82,6 +82,11 @@ export class NativeHost {
     return this.json('/api/planner/context', undefined, 30_000)
   }
 
+  /** What a plan's targets can be, from its car and track's lap history; reads every lap-history file. */
+  async planTargets(planId: string): Promise<unknown> {
+    return this.json(`/api/planner/targets?planId=${encodeURIComponent(planId)}`, undefined, 30_000)
+  }
+
   /**
    * Scans the game's results archive. A first run parses every file in it — hundreds of
    * XMLs — so this gets minutes rather than the default 5s request bound.

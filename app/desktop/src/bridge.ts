@@ -57,6 +57,32 @@ export type PlanContextChoices = {
   byGame: PlanGameChoices[]
 }
 
+export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
+export type PlanTargetStatistic = 'Fastest' | 'Median' | 'Slowest' | 'Custom'
+
+/** One lap a plan target can be (host: `PlanTargetOption`): always a lap that was driven. */
+export type PlanTargetOption = {
+  scope: PlanTargetScope
+  programType: string | null
+  statistic: PlanTargetStatistic
+  lapTimeSeconds: number
+  sampleSize: number
+  lapSessionId: string
+  lapNumber: number
+  lapSessionStartedAt: string | null
+  tierNote: string
+}
+
+/** One scope's picks (host: `PlanTargetScopeGroup`): its statistics, and every lap fastest first. */
+export type PlanTargetScopeGroup = {
+  scope: PlanTargetScope
+  programType: string | null
+  label: string
+  sampleSize: number
+  options: PlanTargetOption[]
+  laps: PlanTargetOption[]
+}
+
 /**
  * Who the desktop is signed in to Sprint as. `serverUrl` outlives sign-out, to prefill the next sign-in.
  * `email` is empty for a Discord account.
@@ -241,6 +267,8 @@ export type SprintBridge = {
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   /** Fetched when the New plan dialog opens: building it reads every lap-history file. */
   planContext(): Promise<PlanContextChoices>
+  /** The plan's target choices per scope; empty when nothing was driven or imported for its car and track. */
+  planTargets(planId: string): Promise<PlanTargetScopeGroup[]>
   /** The game's setups, read from its folder on request: too slow and large for the polled state. */
   setups(): Promise<SetupLibrary>
   /** One setup's values as the file holds them now, or as `version` held them; null when there is no such setup. */
@@ -282,6 +310,7 @@ type RawBridge = {
   pickFolder?(title: string): Promise<unknown>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   planContext(): Promise<unknown>
+  planTargets(planId: string): Promise<unknown>
   setups(): Promise<unknown>
   setupSheet(id: string, version: string | null): Promise<unknown>
   setupDriven(id: string): Promise<unknown>
@@ -554,6 +583,51 @@ const parsePlanContext = (value: unknown): PlanContextChoices => {
   }
 }
 
+const PLAN_TARGET_SCOPES: readonly PlanTargetScope[] = ['CurrentQualifying', 'Qualifying', 'Practice', 'PracticeProgram', 'Manual']
+const PLAN_TARGET_STATISTICS: readonly PlanTargetStatistic[] = ['Fastest', 'Median', 'Slowest', 'Custom']
+const planTargetScope = (value: unknown): PlanTargetScope | null => PLAN_TARGET_SCOPES.find((scope) => scope === value) ?? null
+const planTargetStatistic = (value: unknown): PlanTargetStatistic | null => PLAN_TARGET_STATISTICS.find((statistic) => statistic === value) ?? null
+
+const parsePlanTargetOption = (value: unknown): PlanTargetOption[] => {
+  if (!isRecord(value)) return []
+  const scope = planTargetScope(value.scope)
+  const statistic = planTargetStatistic(value.statistic)
+  if (!scope || !statistic || typeof value.lapTimeSeconds !== 'number' || typeof value.lapSessionId !== 'string' || typeof value.lapNumber !== 'number') return []
+  return [
+    {
+      scope,
+      programType: typeof value.programType === 'string' ? value.programType : null,
+      statistic,
+      lapTimeSeconds: value.lapTimeSeconds,
+      sampleSize: typeof value.sampleSize === 'number' ? value.sampleSize : 0,
+      lapSessionId: value.lapSessionId,
+      lapNumber: value.lapNumber,
+      lapSessionStartedAt: typeof value.lapSessionStartedAt === 'string' ? value.lapSessionStartedAt : null,
+      tierNote: typeof value.tierNote === 'string' ? value.tierNote : 'time only',
+    },
+  ]
+}
+
+/** Narrows the host's `PlanTargetChoices` once, here, to its scopes. */
+const parsePlanTargets = (value: unknown): PlanTargetScopeGroup[] =>
+  isRecord(value) && Array.isArray(value.scopes)
+    ? value.scopes.flatMap((group: unknown) => {
+        if (!isRecord(group)) return []
+        const scope = planTargetScope(group.scope)
+        if (!scope) return []
+        return [
+          {
+            scope,
+            programType: typeof group.programType === 'string' ? group.programType : null,
+            label: typeof group.label === 'string' ? group.label : scope,
+            sampleSize: typeof group.sampleSize === 'number' ? group.sampleSize : 0,
+            options: Array.isArray(group.options) ? group.options.flatMap(parsePlanTargetOption) : [],
+            laps: Array.isArray(group.laps) ? group.laps.flatMap(parsePlanTargetOption) : [],
+          },
+        ]
+      })
+    : []
+
 const parseState = (value: unknown): SprintState => {
   if (!isRecord(value)) return emptyState()
   const telemetry = isRecord(value.telemetry) ? value.telemetry : {}
@@ -652,6 +726,7 @@ export const bridge: SprintBridge = raw
       },
       diagnosticsLogs: (minLevel, text) => raw.diagnosticsLogs(minLevel, text),
       planContext: async () => parsePlanContext(await raw.planContext()),
+      planTargets: (planId) => raw.planTargets(planId).then(parsePlanTargets, (): PlanTargetScopeGroup[] => []),
       setups: () => raw.setups().then(parseSetupLibrary, (): SetupLibrary => ({ kind: 'failed' })),
       setupSheet: (id, version) => raw.setupSheet(id, version).then(parseSetupSheet, () => null),
       setupDriven: (id) => raw.setupDriven(id).then(parseSetupDriven, () => null),
@@ -689,6 +764,7 @@ export const bridge: SprintBridge = raw
       pickFolder: async () => null,
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),
+      planTargets: async () => [],
       setups: async () => ({ kind: 'unavailable' }),
       setupSheet: async () => null,
       setupDriven: async () => null,

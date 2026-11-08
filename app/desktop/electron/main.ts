@@ -121,6 +121,7 @@ ipcMain.handle('sprint:diagnostics-logs', (_event: IpcMainInvokeEvent, minLevel:
 })
 
 ipcMain.handle('sprint:plan-context', () => nativeHost.planContext())
+ipcMain.handle('sprint:plan-targets', (_event, planId: unknown) => (typeof planId === 'string' ? nativeHost.planTargets(planId) : null))
 
 ipcMain.handle('sprint:setups', () => nativeHost.setups())
 

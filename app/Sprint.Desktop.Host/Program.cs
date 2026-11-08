@@ -138,7 +138,7 @@ lock (runtime.SettingsGate)
 PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
 CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -654,6 +654,19 @@ app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct
 app.MapGet("/api/planner/context", async (CancellationToken ct) =>
 {
     PlanContextChoices choices = await Task.Run(() => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions()), ct);
+    return Results.Json(choices, json);
+});
+
+// What a plan's targets can be: per scope (this qualifying, qualifying, practice, programs) the
+// fastest/median/slowest lap and every lap, for this plan's car and track. plan.setTarget picks one.
+app.MapGet("/api/planner/targets", async (string planId, CancellationToken ct) =>
+{
+    if (plannerService.Find(planId) is not { } plan)
+    {
+        return Results.NotFound(new { error = "plan not found" });
+    }
+
+    PlanTargetChoices choices = await Task.Run(() => PlanTargetResolver.ForPlan(lapHistoryStore, plan), ct);
     return Results.Json(choices, json);
 });
 

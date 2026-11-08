@@ -1,68 +1,177 @@
 /* Session planner (SessionPlannerView.tsx). Composes the shared primitives from
-   styles.css (.card.list-card, .kpi, .list-header/.list-row, .status, .infobar, .segmented,
+   styles.css (.card.list-card, .list-header/.list-row, .status, .infobar, .segmented,
    .field, .content-dialog); this file only lays them out and adds what the page owns: the
-   plan/segment column grids, the lap strip and the step indicator. Tokens come from
-   @sprint/tokens/desktop.css only. */
+   weekend timeline, the session cards, the plan columns, the lap strip, the target picker
+   and the step indicator. Tokens come from @sprint/tokens/desktop.css only. */
 
 .planner-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-.planner-kpis {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.planner-kpi-skeleton {
-  min-height: 82px;
+.planner-upnext-skeleton {
+  min-height: 92px;
 }
 
 .planner-card-skeleton {
   min-height: 240px;
 }
 
-/* KPI details can be long ("Practice · Fastest · 9 laps · time only"): one line, full text in the title. */
-.planner-kpi-detail {
+.planner-kicker {
+  color: var(--label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.planner-sub {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ── The weekend timeline (the first-run setup's racing line) ──────────── */
+
+.planner-timeline {
+  padding: 6px 8px 0;
+}
+
+.planner-timeline-track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+}
+
+.planner-timeline-done {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--brand-500);
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+.planner-timeline-sector {
+  position: absolute;
+  top: -6px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--label-tertiary);
+}
+
+.planner-timeline-sector.done {
+  background: var(--brand-500);
+}
+
+.planner-timeline-car {
+  position: absolute;
+  top: -6px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border: 3px solid var(--brand-500);
+  border-radius: 50%;
+  background: var(--surface);
+  box-sizing: border-box;
+  transition: left var(--motion-slow) var(--ease-out);
+}
+
+.planner-timeline-labels {
+  position: relative;
+  height: 18px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.planner-timeline-labels li {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  color: var(--label-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.planner-timeline-labels li:first-child { transform: translateX(-8px); }
+.planner-timeline-labels li:last-child { transform: translateX(calc(-100% + 8px)); }
+.planner-timeline-labels li.done { color: var(--label-secondary); }
+.planner-timeline-labels li.current { color: var(--label); }
+
+.planner-timeline.compact {
+  padding: 0 8px;
+}
+
+.planner-timeline.compact .planner-timeline-labels {
+  margin-top: 8px;
+}
+
+/* ── The list: up next, then the plan columns ──────────────────────────── */
+
+.planner-upnext {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 300px) auto auto;
+  align-items: center;
+  gap: 32px;
+  padding: 16px 20px;
+}
+
+.planner-upnext-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner-upnext-name {
   overflow: hidden;
+  font: 600 20px/28px var(--font-display);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ── List cards: plan and segment column grids ──────────────────────────── */
+.planner-upnext-facts {
+  display: flex;
+  gap: 24px;
+}
+
+.planner-upnext-facts > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.planner-upnext-facts b {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
 
 .planner-plan-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) 96px 120px 28px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.5fr) 104px minmax(0, 0.8fr) 72px 128px 16px;
+  align-items: center;
   gap: 12px;
 }
 
-.planner-segment-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 48px 72px;
-  gap: 12px;
-}
-
-.planner-segment-columns > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.planner-num {
-  text-align: right;
-}
-
-/* A row's delete button sits at the right edge of the 28px column. */
 .planner-row {
-  height: 32px;
-  padding-right: 2px;
+  min-height: 44px;
+  cursor: pointer;
 }
 
 .planner-row-plan {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner-row-title {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -88,8 +197,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  line-height: 20px;
 }
 
 .planner-row-laps {
@@ -98,23 +205,24 @@
   gap: 8px;
 }
 
-.planner-row-delete {
-  color: var(--label-secondary);
+.planner-row-chevron {
+  color: var(--label-tertiary);
 }
 
+/* Lap strips: neutral bars, the best lap in full label colour. */
 .planner-strip {
   display: block;
   flex: none;
-  fill: var(--blue-500);
+  fill: var(--label-tertiary);
+}
+
+.planner-strip .best {
+  fill: var(--label);
 }
 
 .planner-strip-empty {
   flex: none;
   color: var(--label-tertiary);
-}
-
-.planner-segment-kind {
-  font-weight: 600;
 }
 
 /* ── An opened plan ─────────────────────────────────────────────────────── */
@@ -142,33 +250,128 @@
   font: 600 20px/28px var(--font-display);
 }
 
-.planner-detail-grid {
+.planner-sessions {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.planner-session {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  align-items: start;
+  padding: 16px;
+}
+
+/* The session coming next stands out by its edge, not by brand colour. */
+.planner-session.next,
+.planner-session.live {
+  border-color: var(--label-tertiary);
+}
+
+.planner-session.skipped {
+  color: var(--label-secondary);
+}
+
+.planner-session-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.planner-session-head h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.planner-session-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+}
+
+.planner-badge {
+  padding: 0 8px;
+  border-radius: 9px;
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.planner-badge.live {
+  color: var(--success-text);
+}
+
+.planner-badge.quiet {
+  color: var(--label-secondary);
+}
+
+.planner-session-figure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 72px;
+}
+
+.planner-session-figure > .muted {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.planner-session-figure .planner-sub {
+  grid-column: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-big {
+  font: 600 32px/40px var(--font-display);
+}
+
+.planner-change {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  align-self: center;
+}
+
+.planner-figure-skeleton {
+  border-radius: var(--radius-control);
+}
+
+.planner-session-empty {
+  min-height: 72px;
+  margin: 0;
 }
 
 .planner-facts {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-
-.planner-facts dl {
-  margin: 0;
+  margin: auto 0 0;
+  border-top: 1px solid var(--divider);
 }
 
 .planner-fact {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 6px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--divider);
 }
 
 .planner-fact:last-child {
+  padding-bottom: 0;
   border-bottom: 0;
 }
 
@@ -178,15 +381,109 @@
 
 .planner-fact dd {
   margin: 0;
-  font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .planner-notes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.planner-notes p {
   margin: 0;
-  color: var(--label-secondary);
   white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .planner-sessions { grid-template-columns: minmax(0, 1fr); }
+  .planner-upnext { grid-template-columns: minmax(0, 1fr) auto; }
+  .planner-upnext .planner-timeline,
+  .planner-upnext-facts { display: none; }
+}
+
+/* ── The target picker ──────────────────────────────────────────────────── */
+
+.planner-target-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.planner-scopes {
+  margin-bottom: 12px;
+}
+
+.planner-picks {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-control);
+}
+
+.planner-picks-laps {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.planner-pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 4px 14px;
+  border: 0;
+  border-top: 1px solid var(--divider);
+  background: transparent;
+  color: var(--label);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-picks > .planner-pick:first-child {
+  border-top: 0;
+}
+
+.planner-pick:hover,
+.planner-pick.picked {
+  background: var(--control-fill);
+}
+
+/* The selection bar, as in On track's lap list. */
+.planner-pick.picked::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+
+.planner-pick-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner-pick-time {
+  font-weight: 600;
+}
+
+.planner-target-foot {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.planner-clear {
+  margin-right: auto;
 }
 
 /* ── Dialogs ────────────────────────────────────────────────────────────── */

@@ -867,6 +867,47 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void PlanSetTarget_StoresADrivenLapAndRefusesOneThatWasNot()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")).Save(new LapHistorySession
+            {
+                Id = "practice-1",
+                Kind = HistorySessionKind.Practice,
+                StartedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                Context = new LapHistoryContext { Game = "LMU", TrackCourse = "Spa", CarModel = "963" },
+                Laps =
+                [
+                    new LapHistoryRecord { LapNumber = 1, IsValid = true, LapTimeSeconds = 126.0 },
+                    new LapHistoryRecord { LapNumber = 2, IsValid = true, LapTimeSeconds = 124.9 },
+                    new LapHistoryRecord { LapNumber = 3, IsValid = true, LapTimeSeconds = 125.4 },
+                ],
+            });
+            Assert.True(coordinator.Execute(Command("""{"type":"plan.create","game":"LMU","car":"963","track":"Spa"}"""), out _));
+            SessionPlanningProbe probe = SessionPlanningProbe.For(runtime.DataRoot);
+            string planId = Assert.Single(probe.Store.LoadAll()).Id;
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Qualifying","scope":"Practice","statistic":"Fastest"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Race","scope":"Practice","statistic":"Custom","lapSessionId":"practice-1","lapNumber":3}"""), out error), error);
+            Assert.False(coordinator.Execute(Command($$"""{"type":"plan.setTarget","planId":"{{planId}}","kind":"Race","scope":"Practice","statistic":"Custom","lapSessionId":"practice-1","lapNumber":9}"""), out error));
+            Assert.Equal("no such lap for this car and track", error);
+
+            SessionPlan stored = Assert.Single(probe.Store.LoadAll());
+            Assert.Equal(124.9, stored.TargetsFor(SegmentKind.Qualifying)?.LapTime?.LapTimeSeconds);
+            Assert.Equal(3, stored.TargetsFor(SegmentKind.Race)?.LapTime?.LapNumber);
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"plan.clearTarget","planId":"{{planId}}","kind":"Race"}"""), out error), error);
+            Assert.Null(Assert.Single(probe.Store.LoadAll()).TargetsFor(SegmentKind.Race)?.LapTime);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void PlanArm_SecondPlan_ReturnsClearError()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

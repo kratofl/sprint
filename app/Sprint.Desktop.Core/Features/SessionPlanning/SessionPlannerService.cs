@@ -368,6 +368,12 @@ public sealed class SessionPlannerService
                 return;
             }
 
+            // Qualifying is over once the game holds the race: follow it, as arming did.
+            if (segment.Kind == SegmentKind.Qualifying && this.TryAutoStart(plan, frame, segment.Kind))
+            {
+                return;
+            }
+
             bool dirty = this.RecordLiveContext(segment, frame);
             dirty |= this.RecordCompletedLap(segment, frame);
             dirty |= this.DetectRaceFormatMismatch(plan, segment, frame);
@@ -382,14 +388,16 @@ public sealed class SessionPlannerService
     // #102 owns the full online-detection ruleset. This is the minimum #100 needs: the
     // reported session type must hold continuously for AutoStartHoldSeconds before a
     // segment opens, so one spurious frame cannot start a session. Confidence stays
-    // Medium — High is reserved for #102's corroborated detection.
-    private bool TryAutoStart(SessionPlan plan, TelemetryFrame frame)
+    // Medium — High is reserved for #102's corroborated detection. With a segment
+    // already open (`current`), only a later session counts: qualifying moves on to the
+    // race, never back.
+    private bool TryAutoStart(SessionPlan plan, TelemetryFrame frame, SegmentKind? current = null)
     {
         SessionType reported = frame.Session.SessionType;
         SegmentKind? kind = reported switch
         {
-            SessionType.Qualify when plan.QualifyingIncluded => SegmentKind.Qualifying,
-            SessionType.Race => SegmentKind.Race,
+            SessionType.Qualify when plan.QualifyingIncluded && current is null => SegmentKind.Qualifying,
+            SessionType.Race when current != SegmentKind.Race => SegmentKind.Race,
             _ => (SegmentKind?)null,
         };
 

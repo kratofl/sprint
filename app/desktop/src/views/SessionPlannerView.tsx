@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Check, ChevronLeft, CircleDot, CircleOff, Download, Flag, ListChecks, Pencil, Play, Plus, Route, Square, Trash2 } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, CircleDot, CircleOff, Download, Flag, ListChecks, NotebookPen, Pencil, Play, Plus, Route, Square, Timer, Trash2 } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { PlanContextChoices, SprintCommand } from '../bridge'
+import type { PlanContextChoices, PlanTargetOption, PlanTargetScopeGroup, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
@@ -12,48 +12,58 @@ import {
   PLAN_STATUS_TONE,
   activePlan,
   buildPlanArm,
+  buildPlanClearTarget,
   buildPlanCreate,
   buildPlanDelete,
   buildPlanDisarm,
   buildPlanReleaseActive,
+  buildPlanSetTarget,
   buildPlanStart,
   buildPlanStop,
   buildPlanUpdate,
   choicesForGame,
-  formatClock,
   formatLapTime,
   groupPlans,
+  headlineTarget,
+  isPickedTarget,
   nextSegment,
+  nextStepLabel,
   openSegment,
   parsePlans,
   planLapStats,
-  raceLengthLabel,
+  practiceSummary,
+  raceFuelLiters,
+  raceLaps,
+  raceLengthShort,
   raceLengthUnit,
   recentLapTimes,
+  sessionState,
   startingRaceSkipsQualifying,
-  targetSourceLabel,
+  targetSummary,
   targetTierNote,
   targetsFor,
+  upNextPlan,
+  weekendTimeline,
 } from './SessionPlannerDomain'
-import type { CreatePlanInput, PlanMode, PlanSegment, PlanStatus, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
+import type { CreatePlanInput, PlanMode, PlanSegment, PlanStatus, PlanTarget, PracticeSummary, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
 import './SessionPlannerView.css'
 
 /**
- * Session planner: create/edit/arm/start/stop a race-weekend plan (docs/internals/
- * session-planner.md).
+ * Session planner: a race weekend's plan (docs/internals/session-planner.md).
  *
- * The page lands on the plan list; a plan opens on an explicit click and "All plans" leads
- * back. Leaving the page closes the plan, because the router remounts the view. The
- * CommandBar carries exactly one primary action: New plan on the list, the plan's next step
- * (arm → start the next segment → stop) inside a plan. Skipping qualifying, taking over the
- * active slot and deleting each go through a ContentDialog.
+ * The page lands on the plan list (the plan that's next on top); a plan opens on an explicit
+ * click and "All plans" leads back. Leaving the page closes the plan, because the router
+ * remounts the view.
  *
- * Plan targets have no write command yet (`RuntimeCoordinator` has no `plan.setTarget`), so
- * they render read-only. Everything else is a real `plan.*` command.
+ * An opened plan is the weekend as a lap: practice → qualifying → race → finish, a card per
+ * session saying what it chases. The plan follows the game: once armed, the host opens
+ * qualifying and then the race as the game reaches them (`SessionPlannerService`), so the one
+ * primary action is Arm plan; starting a session by hand is the quiet fallback. Skipping
+ * qualifying, taking over the active slot and deleting each go through a confirm.
  *
- * The plan list's CommandBar also carries "Import results" (the LMU results archive, #185) when
- * the game has one; the dialog itself is the shell's, because the startup prompt can appear on
- * any page.
+ * Targets are picked from laps that were driven (`GET /api/planner/targets`, `plan.setTarget`),
+ * never typed. The list's CommandBar carries "Import results" when the game has a results archive;
+ * the dialog itself is the shell's, because the startup prompt can appear on any page.
  */
 export function SessionPlannerView({
   runtime,
@@ -88,11 +98,7 @@ export function SessionPlannerView({
     return (
       <div className="planner-page">
         <PageHeader title="Session planner" />
-        <div className="planner-kpis">
-          {[0, 1, 2, 3].map((index) => (
-            <div key={index} className="kpi skeleton planner-kpi-skeleton" />
-          ))}
-        </div>
+        <div className="card skeleton planner-upnext-skeleton" />
         <div className="card skeleton planner-card-skeleton" />
       </div>
     )
@@ -156,7 +162,6 @@ export function SessionPlannerView({
                 : void runAction(buildPlanStart(opened.id, kind))
             }
             onStop={() => void runAction(buildPlanStop(opened.id))}
-            onNew={() => setForm({ kind: 'create' })}
             onEdit={() => setForm({ kind: 'edit', planId: opened.id })}
             onDelete={() => setConfirm({ kind: 'delete', plan: opened })}
           />
@@ -186,17 +191,17 @@ export function SessionPlannerView({
       )}
 
       {opened ? (
-        <PlanDetail plan={opened} blockedBy={blockedBy} onBack={() => setOpenId(null)} />
+        <PlanDetail plan={opened} blockedBy={blockedBy} onBack={() => setOpenId(null)} onCommand={(command) => void runAction(command)} />
       ) : plans.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <ListChecks size={28} strokeWidth={1.5} />
             <h2>No session plans yet</h2>
-            <p>Create a plan to track qualifying and race segments against a fuel and lap-time target.</p>
+            <p>A plan follows a race weekend: what you chase in qualifying and the race, and the fuel it takes.</p>
           </div>
         </div>
       ) : (
-        <PlanLists plans={plans} onOpen={setOpenId} onDelete={(plan) => setConfirm({ kind: 'delete', plan })} />
+        <PlanLists plans={plans} onOpen={setOpenId} />
       )}
 
       {form?.kind === 'create' && (
@@ -244,14 +249,24 @@ type PlannerConfirm =
   | { kind: 'takeOver'; plan: SessionPlan; active: SessionPlan }
   | { kind: 'skipQualifying'; plan: SessionPlan }
 
-// ── Status (dot + word) ────────────────────────────────────────────────────
-
 function PlanStatusLabel({ status }: { status: PlanStatus }) {
   return <Status tone={PLAN_STATUS_TONE[status]}>{status}</Status>
 }
 
+const lower = (kind: SegmentKind) => kind.toLowerCase()
+
+const formatDay = (iso: string): string => {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 // ── Command bar of an opened plan ──────────────────────────────────────────
 
+/**
+ * Arm plan is the one primary action, and only while the plan is not armed: once it is, the
+ * game moves the plan on. Starting the next session by hand and disarming stay as quiet
+ * buttons, finishing a tracked plan as a standard one. Edit and Delete trail them.
+ */
 function PlanCommands({
   plan,
   blockedBy,
@@ -259,7 +274,6 @@ function PlanCommands({
   onDisarm,
   onStart,
   onStop,
-  onNew,
   onEdit,
   onDelete,
 }: {
@@ -269,7 +283,6 @@ function PlanCommands({
   onDisarm: () => void
   onStart: (kind: SegmentKind) => void
   onStop: () => void
-  onNew: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -278,20 +291,14 @@ function PlanCommands({
   return (
     <>
       {plan.status === 'Tracking' ? (
-        <button type="button" className="button primary" onClick={onStop}>
-          <Square /> Stop {openSegment(plan)?.kind.toLowerCase() ?? 'tracking'}
+        <button type="button" className="button" onClick={onStop}>
+          <Square /> Finish plan
         </button>
       ) : plan.status === 'Armed' ? (
         <>
-          <button type="button" className="button primary" onClick={() => onStart(next)}>
-            <Play /> Start {next.toLowerCase()}
+          <button type="button" className="button subtle" onClick={() => onStart(next)}>
+            <Play /> Start {lower(next)} now
           </button>
-          {/* The race is still reachable before qualifying has run — behind a confirm (see onStart). */}
-          {next === 'Qualifying' && (
-            <button type="button" className="button subtle" onClick={() => onStart('Race')}>
-              <Flag /> Start race
-            </button>
-          )}
           <button type="button" className="button subtle" onClick={onDisarm}>
             <CircleOff /> Disarm
           </button>
@@ -305,43 +312,89 @@ function PlanCommands({
       <button type="button" className="button subtle" onClick={onEdit}>
         <Pencil /> Edit
       </button>
-      <button type="button" className="button subtle" onClick={onNew}>
-        <Plus /> New plan
-      </button>
-      <span className="command-spacer" />
-      <button type="button" className="button subtle destructive" onClick={onDelete}>
+      <button type="button" className="button subtle" onClick={onDelete}>
         <Trash2 /> Delete
       </button>
     </>
   )
 }
 
+// ── The weekend as a lap ───────────────────────────────────────────────────
+
+/**
+ * Practice → the plan's sessions → the finish, drawn like the first-run timeline: the line
+ * fills in brand orange up to the dot, which sits on the session being driven or coming next.
+ */
+function WeekendTimeline({ plan, compact = false }: { plan: SessionPlan; compact?: boolean }) {
+  const { stops, at } = weekendTimeline(plan)
+  const position = (index: number) => `${(index / (stops.length - 1)) * 100}%`
+  return (
+    <div className={compact ? 'planner-timeline compact' : 'planner-timeline'} role="img" aria-label={`At ${stops[at]}`}>
+      <div className="planner-timeline-track">
+        <div className="planner-timeline-done" style={{ width: position(at) }} />
+        {stops.slice(0, -1).map((stop, index) => (
+          <span key={stop} className={index <= at ? 'planner-timeline-sector done' : 'planner-timeline-sector'} style={{ left: position(index) }} />
+        ))}
+        <span className="planner-timeline-car" style={{ left: position(at) }} />
+      </div>
+      <ol className="planner-timeline-labels">
+        {stops.map((stop, index) => (
+          <li key={stop} className={index === at ? 'current' : index < at ? 'done' : undefined} style={{ left: position(index) }}>
+            {stop === 'Finish' && <Flag size={12} />}
+            {stop}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 // ── Plan list (the page's landing) ─────────────────────────────────────────
 
-function PlanLists({ plans, onOpen, onDelete }: { plans: readonly SessionPlan[]; onOpen: (planId: string) => void; onDelete: (plan: SessionPlan) => void }) {
+function PlanLists({ plans, onOpen }: { plans: readonly SessionPlan[]; onOpen: (planId: string) => void }) {
   const { open, finished } = groupPlans(plans)
+  const upNext = upNextPlan(plans)
 
   return (
     <>
-      <PlanListCard title="Open plans" plans={open} emptyText="No open plans. Arm a finished plan again, or create a new one." onOpen={onOpen} onDelete={onDelete} />
-      {finished.length > 0 && <PlanListCard title="Completed" plans={finished} onOpen={onOpen} onDelete={onDelete} />}
+      {upNext && <UpNextCard plan={upNext} onOpen={() => onOpen(upNext.id)} />}
+      <PlanListCard title="Open" plans={open} emptyText="No open plans. Arm a finished plan again, or create a new one." onOpen={onOpen} />
+      {finished.length > 0 && <PlanListCard title="Done" plans={finished} onOpen={onOpen} />}
     </>
   )
 }
 
-function PlanListCard({
-  title,
-  plans,
-  emptyText,
-  onOpen,
-  onDelete,
-}: {
-  title: string
-  plans: readonly SessionPlan[]
-  emptyText?: string
-  onOpen: (planId: string) => void
-  onDelete: (plan: SessionPlan) => void
-}) {
+/** The plan that's next: its name, how far along the weekend it is, and what it chases. */
+function UpNextCard({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
+  const target = headlineTarget(plan)
+  const kind = openSegment(plan)?.kind ?? nextSegment(plan)
+  const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
+  return (
+    <section className="card planner-upnext" aria-label="Up next">
+      <div className="planner-upnext-main">
+        <span className="planner-kicker">{plan.status === 'Tracking' ? 'Live' : 'Up next'}</span>
+        <span className="planner-upnext-name">{plan.name}</span>
+        {context && <span className="muted">{context}</span>}
+      </div>
+      <WeekendTimeline plan={plan} compact />
+      <div className="planner-upnext-facts">
+        <span>
+          <span className="muted">{kind} target</span>
+          <b className="tabular">{target ? formatLapTime(target.lapTimeSeconds) : '—'}</b>
+        </span>
+        <span>
+          <span className="muted">Race</span>
+          <b>{raceLengthShort(plan)}</b>
+        </span>
+      </div>
+      <button type="button" className="button" onClick={onOpen}>
+        Open plan <ChevronRight />
+      </button>
+    </section>
+  )
+}
+
+function PlanListCard({ title, plans, emptyText, onOpen }: { title: string; plans: readonly SessionPlan[]; emptyText?: string; onOpen: (planId: string) => void }) {
   return (
     <section className="card list-card" aria-label={title}>
       <div className="card-header">
@@ -352,6 +405,8 @@ function PlanListCard({
         <span>Plan</span>
         <span>Car · Track</span>
         <span>Status</span>
+        <span>Next</span>
+        <span>Target</span>
         <span>Laps</span>
         <span />
       </div>
@@ -360,7 +415,7 @@ function PlanListCard({
       ) : (
         <div className="list-rows">
           {plans.map((plan) => (
-            <PlanRow key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} onDelete={() => onDelete(plan)} />
+            <PlanRow key={plan.id} plan={plan} onOpen={() => onOpen(plan.id)} />
           ))}
         </div>
       )}
@@ -368,62 +423,56 @@ function PlanListCard({
   )
 }
 
-function PlanRow({ plan, onOpen, onDelete }: { plan: SessionPlan; onOpen: () => void; onDelete: () => void }) {
+function PlanRow({ plan, onOpen }: { plan: SessionPlan; onOpen: () => void }) {
   const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
   const { laps } = planLapStats(plan)
+  const target = headlineTarget(plan)
+  const when = plan.endedAt ? `Ended ${formatDay(plan.endedAt)}` : plan.createdAt ? `Made ${formatDay(plan.createdAt)}` : ''
 
   // The whole row opens the plan; the name is its keyboard target (Enter/Space click it, and
-  // the click bubbles here). The delete button stops its own click from opening the plan.
+  // the click bubbles here).
   return (
     <div className="list-row planner-plan-columns planner-row" onClick={onOpen}>
       <span className="planner-row-plan">
-        <button type="button" className="planner-row-name" title={plan.name}>
-          {plan.name}
-        </button>
-        {plan.mode === 'Quick' && <span className="chip chip-muted">Quick</span>}
+        <span className="planner-row-title">
+          <button type="button" className="planner-row-name" title={plan.name}>
+            {plan.name}
+          </button>
+          {plan.mode === 'Quick' && <span className="chip chip-muted">Quick</span>}
+        </span>
+        {when && <span className="planner-sub">{when}</span>}
       </span>
       <span className="planner-row-context" title={context}>
         {context || 'No car or track'}
       </span>
       <PlanStatusLabel status={plan.status} />
+      <span className="muted">{nextStepLabel(plan)}</span>
+      <span className="tabular">{target ? formatLapTime(target.lapTimeSeconds) : '—'}</span>
       <span className="planner-row-laps">
         <LapStrip times={recentLapTimes(plan)} />
         <span className="muted tabular">{laps}</span>
       </span>
-      <button
-        type="button"
-        className="icon-button planner-row-delete"
-        aria-label={`Delete ${plan.name}`}
-        onClick={(event) => {
-          event.stopPropagation()
-          onDelete()
-        }}
-      >
-        <Trash2 size={14} />
-      </button>
+      <ChevronRight size={14} className="planner-row-chevron" />
     </div>
   )
 }
 
-const STRIP_BAR = 3
-const STRIP_GAP = 1
-const STRIP_HEIGHT = 16
-
 /**
- * A plan's recent lap times as a bar strip (oldest → newest, slower = taller, one blue series).
- * A plan with no laps shows the route glyph — an empty plot would read as "all laps were zero".
+ * Lap times as a bar strip (oldest → newest, faster = taller, the best one in full label colour).
+ * Nothing driven shows the route glyph — an empty plot would read as "all laps were zero".
  */
-function LapStrip({ times }: { times: readonly number[] }) {
+function LapStrip({ times, bar = 3, height = 16 }: { times: readonly number[]; bar?: number; height?: number }) {
   if (times.length === 0) return <Route size={14} className="planner-strip-empty" aria-label="No laps recorded" />
 
+  const gap = bar > 4 ? 2 : 1
   const min = Math.min(...times)
   const span = Math.max(...times) - min
-  const width = times.length * (STRIP_BAR + STRIP_GAP) - STRIP_GAP
+  const width = times.length * (bar + gap) - gap
   return (
-    <svg className="planner-strip" width={width} height={STRIP_HEIGHT} viewBox={`0 0 ${width} ${STRIP_HEIGHT}`} role="img" aria-label={`${times.length} recent laps`}>
+    <svg className="planner-strip" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${times.length} laps`}>
       {times.map((time, index) => {
-        const height = span > 0 ? 4 + ((time - min) / span) * (STRIP_HEIGHT - 4) : STRIP_HEIGHT / 2
-        return <rect key={index} x={index * (STRIP_BAR + STRIP_GAP)} y={STRIP_HEIGHT - height} width={STRIP_BAR} height={height} />
+        const tall = span > 0 ? 4 + (1 - (time - min) / span) * (height - 4) : height / 2
+        return <rect key={index} className={time === min ? 'best' : undefined} x={index * (bar + gap)} y={height - tall} width={bar} height={tall} rx={1} />
       })}
     </svg>
   )
@@ -438,12 +487,44 @@ function segmentSummary(segment: PlanSegment): string {
   return validTimes.length > 0 ? `${laps} ${lapWord} · best ${formatLapTime(Math.min(...validTimes))}` : `${laps} ${lapWord}`
 }
 
-function PlanDetail({ plan, blockedBy, onBack }: { plan: SessionPlan; blockedBy: SessionPlan | null; onBack: () => void }) {
-  const context = [plan.game, plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
+/**
+ * The plan's target choices, read when the plan opens and again when it records a lap (a new
+ * lap can be a new fastest). A focused host endpoint: they come from every lap-history file.
+ */
+function usePlanTargets(plan: SessionPlan): PlanTargetScopeGroup[] | null {
+  const [groups, setGroups] = useState<PlanTargetScopeGroup[] | null>(null)
+  const { laps } = planLapStats(plan)
+  useEffect(() => {
+    let live = true
+    void bridge.planTargets(plan.id).then((loaded) => {
+      if (live) setGroups(loaded)
+    })
+    return () => {
+      live = false
+    }
+  }, [plan.id, laps])
+  return groups
+}
+
+function PlanDetail({
+  plan,
+  blockedBy,
+  onBack,
+  onCommand,
+}: {
+  plan: SessionPlan
+  blockedBy: SessionPlan | null
+  onBack: () => void
+  onCommand: (command: SprintCommand) => void
+}) {
+  const context = [plan.car, plan.track].filter((value) => value.length > 0).join(' · ')
   const tracking = openSegment(plan)
   const warning = plan.warnings.length > 0 ? plan.warnings[plan.warnings.length - 1] : null
   const canArm = plan.status !== 'Armed' && plan.status !== 'Tracking'
-  const { laps, bestLapSeconds } = planLapStats(plan)
+  const groups = usePlanTargets(plan)
+  const [picking, setPicking] = useState<SegmentKind | null>(null)
+  const next = nextSegment(plan)
+  const canPick = groups !== null && groups.length > 0
 
   return (
     <>
@@ -459,15 +540,24 @@ function PlanDetail({ plan, blockedBy, onBack }: { plan: SessionPlan; blockedBy:
         {context && <span className="muted">{context}</span>}
       </div>
 
-      {tracking && (
+      {tracking ? (
         <div className="infobar success" role="status">
           <span className="infobar-icon">
             <Check />
           </span>
-          <strong className="infobar-title">Tracking {tracking.kind.toLowerCase()}</strong>
-          <span className="infobar-message">{segmentSummary(tracking)}</span>
+          <strong className="infobar-title">Tracking {lower(tracking.kind)}</strong>
+          <span className="infobar-message">
+            {segmentSummary(tracking)}
+            {tracking.kind === 'Qualifying' && ' · moves on to the race when the game does'}
+          </span>
         </div>
-      )}
+      ) : plan.status === 'Armed' ? (
+        <div className="infobar info" role="status">
+          <span className="infobar-icon">i</span>
+          <strong className="infobar-title">Waiting for {lower(next)}</strong>
+          <span className="infobar-message">The plan starts by itself when the game is in {lower(next)}.</span>
+        </div>
+      ) : null}
 
       {warning && (
         <div className="infobar warning" role="alert">
@@ -485,99 +575,134 @@ function PlanDetail({ plan, blockedBy, onBack }: { plan: SessionPlan; blockedBy:
         </div>
       )}
 
-      <div className="planner-kpis">
-        <div className="kpi">
-          <span className="kpi-label">Race length</span>
-          <span className="kpi-value">{raceLengthLabel(plan)}</span>
-          <span className="kpi-delta">{plan.qualifyingIncluded ? 'Qualifying included' : 'No qualifying'}</span>
-        </div>
-        <TargetKpi plan={plan} kind="Qualifying" />
-        <TargetKpi plan={plan} kind="Race" />
-        <div className="kpi">
-          <span className="kpi-label">Laps recorded</span>
-          <span className="kpi-value">{laps}</span>
-          <span className="kpi-delta">{bestLapSeconds !== null ? `Best ${formatLapTime(bestLapSeconds)}` : 'Nothing recorded yet'}</span>
-        </div>
+      <WeekendTimeline plan={plan} />
+
+      <div className="planner-sessions">
+        <PracticeCard plan={plan} practice={groups === null ? undefined : practiceSummary(groups)} />
+        <SessionCard plan={plan} kind="Qualifying" canPick={canPick} onChange={() => setPicking('Qualifying')} />
+        <SessionCard plan={plan} kind="Race" canPick={canPick} onChange={() => setPicking('Race')} />
       </div>
 
-      <div className="planner-detail-grid">
-        <section className="card list-card" aria-label="Segments">
-          <div className="card-header">
-            <h2 className="card-title">Segments</h2>
-          </div>
-          <div className="list-header planner-segment-columns">
-            <span>Session</span>
-            <span>Started</span>
-            <span>Ended</span>
-            <span className="planner-num">Laps</span>
-            <span className="planner-num">Best</span>
-          </div>
-          {plan.segments.length === 0 ? (
-            <p className="muted list-card-empty">No segments tracked yet. Starting a segment records its laps here.</p>
-          ) : (
-            <div className="list-rows">
-              {plan.segments.map((segment) => (
-                <SegmentRow key={segment.id} segment={segment} />
-              ))}
-            </div>
-          )}
+      {plan.notes && (
+        <section className="card planner-notes" aria-label="Notes">
+          <span className="planner-session-icon">
+            <NotebookPen size={15} />
+          </span>
+          <p>{plan.notes}</p>
         </section>
+      )}
 
-        <section className="card planner-facts" aria-label="Plan">
-          <h2 className="card-title">Plan</h2>
-          <dl>
-            <Fact label="Qualifying">{plan.qualifyingIncluded ? 'Included' : 'Skipped'}</Fact>
-            <Fact label="Race length">{raceLengthLabel(plan)}</Fact>
-            <Fact label="Fuel reserve">
-              {plan.fuelReserveLaps} {plan.fuelReserveLaps === 1 ? 'lap' : 'laps'}
-            </Fact>
-            <Fact label="Avg lap time">{plan.avgLapTimeSeconds !== null ? formatLapTime(plan.avgLapTimeSeconds) : 'Not set'}</Fact>
-            <Fact label="Fuel per lap">{plan.fuelPerLapLiters !== null ? `${plan.fuelPerLapLiters} L` : 'Not set'}</Fact>
-            <Fact label="Created">{formatClock(plan.createdAt || null)}</Fact>
-          </dl>
-          {plan.notes && <p className="planner-notes">{plan.notes}</p>}
-        </section>
-      </div>
+      {picking && groups && (
+        <TargetDialog
+          kind={picking}
+          groups={groups}
+          current={targetsFor(plan, picking)?.lapTime ?? null}
+          fromNextLap={plan.status === 'Tracking'}
+          onPick={(option) => {
+            setPicking(null)
+            onCommand(buildPlanSetTarget(plan.id, picking, option))
+          }}
+          onClear={() => {
+            setPicking(null)
+            onCommand(buildPlanClearTarget(plan.id, picking))
+          }}
+          onCancel={() => setPicking(null)}
+        />
+      )}
     </>
   )
 }
 
-function TargetKpi({ plan, kind }: { plan: SessionPlan; kind: SegmentKind }) {
-  const target = targetsFor(plan, kind)?.lapTime ?? null
-  const skipped = kind === 'Qualifying' && !plan.qualifyingIncluded
-  const detail = target
-    ? `${targetSourceLabel(target)} · ${target.sampleSize} ${target.sampleSize === 1 ? 'lap' : 'laps'} · ${targetTierNote(target)}`
-    : skipped
-      ? 'Not part of this plan'
-      : 'No target set'
-
+/** Practice is never started: every lap at this car and track is recorded, plan or no plan. */
+function PracticeCard({ plan, practice }: { plan: SessionPlan; practice: PracticeSummary | null | undefined }) {
   return (
-    <div className="kpi">
-      <span className="kpi-label">{kind} target</span>
-      <span className="kpi-value">{target ? formatLapTime(target.lapTimeSeconds) : '—'}</span>
-      <span className="kpi-delta planner-kpi-detail" title={detail}>
-        {detail}
-      </span>
-    </div>
+    <section className={practice ? 'card planner-session done' : 'card planner-session'} aria-label="Practice">
+      <div className="planner-session-head">
+        <span className="planner-session-icon">
+          <Route size={16} />
+        </span>
+        <h3>Practice</h3>
+        {practice && <span className="muted tabular">{practice.laps === 1 ? '1 lap' : `${practice.laps} laps`}</span>}
+      </div>
+      {practice === undefined ? (
+        <div className="planner-session-figure planner-figure-skeleton skeleton" />
+      ) : practice === null ? (
+        <p className="muted planner-session-empty">No practice here yet. Every lap you drive with this car at this track shows up here.</p>
+      ) : (
+        <>
+          <div className="planner-session-figure">
+            <span className="muted">Best</span>
+            <span className="planner-big tabular">{formatLapTime(practice.best)}</span>
+            <span className="planner-sub">Median {formatLapTime(practice.median)}</span>
+          </div>
+          <LapStrip times={practice.times.slice(-24)} bar={10} height={28} />
+        </>
+      )}
+      <dl className="planner-facts">
+        <Fact label="Fuel per lap">{plan.fuelPerLapLiters !== null ? `${plan.fuelPerLapLiters.toFixed(2)} L` : 'Not set'}</Fact>
+        <Fact label="Average lap">{plan.avgLapTimeSeconds !== null ? formatLapTime(plan.avgLapTimeSeconds) : 'Not set'}</Fact>
+      </dl>
+    </section>
   )
 }
 
-function SegmentRow({ segment }: { segment: PlanSegment }) {
-  const validTimes = segment.laps.filter((lap) => lap.isValid).map((lap) => lap.lapTimeSeconds)
-  const live = segment.actualStart !== null && segment.actualEnd === null
+const SESSION_BADGE: Record<'live' | 'next' | 'done', { label: string; className: string }> = {
+  live: { label: 'Live', className: 'planner-badge live' },
+  next: { label: 'Next', className: 'planner-badge' },
+  done: { label: 'Done', className: 'planner-badge quiet' },
+}
+
+/** Qualifying or the race: what it chases and where that comes from, then its facts. */
+function SessionCard({ plan, kind, canPick, onChange }: { plan: SessionPlan; kind: SegmentKind; canPick: boolean; onChange: () => void }) {
+  const state = sessionState(plan, kind)
+  const target = targetsFor(plan, kind)?.lapTime ?? null
+  const segment = plan.segments.find((candidate) => candidate.kind === kind) ?? null
+  const badge = state === 'live' || state === 'next' || state === 'done' ? SESSION_BADGE[state] : null
+  const laps = kind === 'Race' ? raceLaps(plan) : null
+  const fuel = kind === 'Race' ? raceFuelLiters(plan) : null
+  const notInPlan = kind === 'Qualifying' && !plan.qualifyingIncluded
 
   return (
-    <div className="list-row planner-segment-columns">
-      <span className="planner-segment-kind">{segment.kind}</span>
-      <span className="muted">{formatClock(segment.actualStart)}</span>
-      {live ? (
-        <Status tone="success">Tracking</Status>
+    <section className={`card planner-session ${state}`} aria-label={kind}>
+      <div className="planner-session-head">
+        <span className="planner-session-icon">{kind === 'Qualifying' ? <Timer size={16} /> : <Flag size={16} />}</span>
+        <h3>{kind}</h3>
+        {badge && <span className={badge.className}>{badge.label}</span>}
+      </div>
+      {notInPlan ? (
+        <p className="muted planner-session-empty">Not in this plan. Edit the plan to add qualifying.</p>
       ) : (
-        <span className="muted">{formatClock(segment.actualEnd)}</span>
+        <div className="planner-session-figure with-action">
+          <span className="muted">Target</span>
+          <span className="planner-big tabular">{target ? formatLapTime(target.lapTimeSeconds) : '—'}</span>
+          <span className="planner-sub" title={target ? targetTierNote(target) : undefined}>
+            {target ? targetSummary(target) : canPick ? 'No target yet' : 'Drive or import laps here to pick one'}
+          </span>
+          {canPick && state !== 'done' && state !== 'skipped' && (
+            <button type="button" className="button subtle planner-change" onClick={onChange}>
+              {target ? 'Change…' : 'Pick…'}
+            </button>
+          )}
+        </div>
       )}
-      <span className="planner-num tabular">{segment.laps.length}</span>
-      <span className="planner-num tabular">{validTimes.length > 0 ? formatLapTime(Math.min(...validTimes)) : '—'}</span>
-    </div>
+      {!notInPlan && (
+        <dl className="planner-facts">
+          {kind === 'Race' && (
+            <>
+              <Fact label="Length">{laps !== null && plan.raceLengthFormat === 'TimeBased' ? `${raceLengthShort(plan)} · ≈${laps} laps` : raceLengthShort(plan)}</Fact>
+              <Fact label="Fuel per lap">
+                {plan.fuelPerLapLiters !== null
+                  ? `${plan.fuelPerLapLiters.toFixed(2)} L + ${plan.fuelReserveLaps} ${plan.fuelReserveLaps === 1 ? 'lap' : 'laps'} reserve`
+                  : 'Not set'}
+              </Fact>
+              <Fact label="Fuel for the race">{fuel !== null ? `≈${Math.ceil(fuel)} L` : '—'}</Fact>
+            </>
+          )}
+          {segment && <Fact label="Driven">{segmentSummary(segment)}</Fact>}
+          {kind === 'Qualifying' && !segment && <Fact label="Starts">When the game is in qualifying</Fact>}
+        </dl>
+      )}
+    </section>
   )
 }
 
@@ -587,6 +712,117 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
+  )
+}
+
+/**
+ * Picks a session's target from laps that were driven: a scope (practice, qualifying, …), then
+ * its fastest, median or slowest lap, or any one of its laps. A pick applies at once (from the
+ * next lap while tracking); there is no typed lap time.
+ */
+function TargetDialog({
+  kind,
+  groups,
+  current,
+  fromNextLap,
+  onPick,
+  onClear,
+  onCancel,
+}: {
+  kind: SegmentKind
+  groups: readonly PlanTargetScopeGroup[]
+  current: PlanTarget | null
+  fromNextLap: boolean
+  onPick: (option: PlanTargetOption) => void
+  onClear: () => void
+  onCancel: () => void
+}) {
+  const initial = groups.findIndex((group) => current !== null && group.scope === current.scope && group.programType === (current.programType ?? null))
+  const [scopeIndex, setScopeIndex] = useState(Math.max(0, initial))
+  const [specific, setSpecific] = useState(current?.statistic === 'Custom')
+  const group = groups[scopeIndex] ?? groups[0]
+
+  const lapSub = (option: PlanTargetOption) =>
+    [option.lapSessionStartedAt ? formatDay(option.lapSessionStartedAt) : null, option.tierNote].filter((part) => part !== null).join(' · ')
+  const row = (option: PlanTargetOption, label: string, sub: string) => {
+    const picked = isPickedTarget(current, option)
+    return (
+      <button
+        key={`${option.statistic}-${option.lapSessionId}-${option.lapNumber}`}
+        type="button"
+        className={picked ? 'planner-pick picked' : 'planner-pick'}
+        aria-pressed={picked}
+        onClick={() => onPick(option)}
+      >
+        <span className="planner-pick-text">
+          <span>{label}</span>
+          <span className="planner-sub">{sub}</span>
+        </span>
+        <span className="tabular planner-pick-time">{formatLapTime(option.lapTimeSeconds)}</span>
+      </button>
+    )
+  }
+
+  return (
+    <ContentDialog
+      title={`${kind} target`}
+      className="planner-target-dialog"
+      closeOnSmokeClick
+      onCancel={onCancel}
+      footer={
+        <>
+          {current && (
+            <button type="button" className="button subtle planner-clear" onClick={onClear}>
+              Clear target
+            </button>
+          )}
+          <button type="button" className="button" onClick={onCancel} autoFocus>
+            Cancel
+          </button>
+        </>
+      }
+    >
+      {groups.length > 1 && (
+        <div className="segmented planner-scopes" role="radiogroup" aria-label="Laps from">
+          {groups.map((candidate, index) => (
+            <button
+              key={`${candidate.scope}-${candidate.programType ?? ''}`}
+              type="button"
+              role="radio"
+              className="segmented-item"
+              aria-checked={index === scopeIndex}
+              onClick={() => {
+                setScopeIndex(index)
+                setSpecific(false)
+              }}
+            >
+              {candidate.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {group && (
+        <div className="planner-picks">
+          {group.options
+            .filter((option) => option.statistic !== 'Custom')
+            .map((option) => row(option, option.statistic, `Lap ${option.lapNumber} · ${lapSub(option)}`))}
+          {specific ? (
+            <div className="planner-picks-laps">{group.laps.map((option) => row(option, `Lap ${option.lapNumber}`, lapSub(option)))}</div>
+          ) : (
+            <button type="button" className="planner-pick" onClick={() => setSpecific(true)}>
+              <span className="planner-pick-text">
+                <span>A specific lap…</span>
+                <span className="planner-sub">
+                  Any of {group.laps.length} {group.label.toLowerCase()} {group.laps.length === 1 ? 'lap' : 'laps'}
+                </span>
+              </span>
+              <ChevronRight size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      <p className="muted planner-target-foot">{fromNextLap ? 'Applies from the next lap.' : 'Your dash measures against this lap.'}</p>
+    </ContentDialog>
   )
 }
 

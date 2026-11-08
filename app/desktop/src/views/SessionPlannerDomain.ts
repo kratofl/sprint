@@ -1,4 +1,4 @@
-import type { PlanContextChoices, SprintCommand } from '../bridge'
+import type { PlanContextChoices, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, SprintCommand } from '../bridge'
 import type { StatusTone } from '../shell/Status'
 
 /**
@@ -8,8 +8,8 @@ import type { StatusTone } from '../shell/Status'
  * `app/Sprint.Desktop.Core/Features/SessionPlanning/SessionPlanModels.cs` and
  * `PlanTargetModels.cs` — the same convention `DashesDomain.ts` uses for the
  * dash model. If those files change, this one must change with them.
- * `RuntimeCoordinator` has no command that writes `PlanTargets`: they are
- * rendered read-only here (see `PlanTarget` below).
+ * Targets are written by `plan.setTarget` / `plan.clearTarget` with a pick from
+ * `GET /api/planner/targets` (the bridge's `planTargets`).
  */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -25,8 +25,7 @@ export type PlanMode = 'Planned' | 'Quick'
 export type RaceLengthFormat = 'Unknown' | 'TimeBased' | 'LapBased'
 export type SegmentSource = 'Planned' | 'Manual' | 'Detected'
 export type DetectionConfidence = 'None' | 'Low' | 'Medium' | 'High'
-export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
-export type PlanTargetStatistic = 'Fastest' | 'Median' | 'Slowest' | 'Custom'
+export type { PlanTargetScope, PlanTargetStatistic }
 
 /** A plan status's dot colour, the same on every page: tracking = live, armed = ready, abandoned = interrupted. */
 export const PLAN_STATUS_TONE: Record<PlanStatus, StatusTone> = {
@@ -357,3 +356,115 @@ export const buildPlanStart = (planId: string, kind: SegmentKind): SprintCommand
 export const buildPlanStop = (planId: string): SprintCommand => ({ type: 'plan.stop', planId })
 
 export const buildPlanReleaseActive = (): SprintCommand => ({ type: 'plan.releaseActive' })
+
+export const buildPlanSetTarget = (planId: string, kind: SegmentKind, option: PlanTargetOption): SprintCommand => ({
+  type: 'plan.setTarget',
+  planId,
+  kind,
+  scope: option.scope,
+  statistic: option.statistic,
+  ...(option.programType !== null ? { programType: option.programType } : {}),
+  ...(option.statistic === 'Custom' ? { lapSessionId: option.lapSessionId, lapNumber: option.lapNumber } : {}),
+})
+
+export const buildPlanClearTarget = (planId: string, kind: SegmentKind): SprintCommand => ({ type: 'plan.clearTarget', planId, kind })
+
+// ── The weekend (the plan page's timeline and session cards) ────────────────
+
+/** A stop on the plan's timeline: practice, the sessions the plan runs, then the finish. */
+export type WeekendStop = 'Practice' | SegmentKind | 'Finish'
+
+/** Where a session stands in the plan: driven, being driven, the one coming, after that, or not in it. */
+export type SessionState = 'done' | 'live' | 'next' | 'later' | 'skipped'
+
+/** The plan's stops in order, and the one it is at: the session being tracked, else the next one; a finished plan is at the finish. */
+export function weekendTimeline(plan: SessionPlan): { stops: WeekendStop[]; at: number } {
+  const stops: WeekendStop[] = plan.qualifyingIncluded ? ['Practice', 'Qualifying', 'Race', 'Finish'] : ['Practice', 'Race', 'Finish']
+  if (plan.status === 'Completed') return { stops, at: stops.length - 1 }
+  const at: WeekendStop = openSegment(plan)?.kind ?? nextSegment(plan)
+  return { stops, at: stops.indexOf(at) }
+}
+
+export function sessionState(plan: SessionPlan, kind: SegmentKind): SessionState {
+  if (kind === 'Qualifying' && !plan.qualifyingIncluded) return 'skipped'
+  const open = openSegment(plan)
+  if (open?.kind === kind) return 'live'
+  if (plan.segments.some((segment) => segment.kind === kind)) return 'done'
+  if (plan.status === 'Completed' || plan.status === 'Abandoned') return 'skipped'
+  return open === null && nextSegment(plan) === kind ? 'next' : 'later'
+}
+
+/** The race in laps: the plan's own count, or its minutes over the average lap (a started lap is driven to the end). */
+export function raceLaps(plan: SessionPlan): number | null {
+  if (plan.raceLengthFormat === 'LapBased' && plan.raceLengthValue > 0) return Math.round(plan.raceLengthValue)
+  if (plan.raceLengthFormat === 'TimeBased' && plan.raceLengthValue > 0 && plan.avgLapTimeSeconds !== null && plan.avgLapTimeSeconds > 0) {
+    return Math.ceil((plan.raceLengthValue * 60) / plan.avgLapTimeSeconds)
+  }
+  return null
+}
+
+/** Fuel for the whole race with the reserve on top, or null without a lap count or a fuel figure. */
+export function raceFuelLiters(plan: SessionPlan): number | null {
+  const laps = raceLaps(plan)
+  return laps !== null && plan.fuelPerLapLiters !== null ? (laps + plan.fuelReserveLaps) * plan.fuelPerLapLiters : null
+}
+
+/** "6 h", "45 min", "30 laps": the race length as a driver says it. */
+export function raceLengthShort(plan: SessionPlan): string {
+  if (plan.raceLengthFormat === 'LapBased') return `${plan.raceLengthValue} laps`
+  if (plan.raceLengthFormat !== 'TimeBased') return 'Not set'
+  const minutes = plan.raceLengthValue
+  return minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`
+}
+
+/** The practice driven at the plan's car and track: count, best, median, and the lap times oldest first. */
+export type PracticeSummary = { laps: number; best: number; median: number; times: number[] }
+
+export function practiceSummary(groups: readonly PlanTargetScopeGroup[]): PracticeSummary | null {
+  const practice = groups.find((group) => group.scope === 'Practice')
+  if (!practice || practice.laps.length === 0) return null
+  const pick = (statistic: PlanTargetStatistic) => practice.options.find((option) => option.statistic === statistic)?.lapTimeSeconds
+  const chronological = [...practice.laps].sort(
+    (a, b) => (a.lapSessionStartedAt ?? '').localeCompare(b.lapSessionStartedAt ?? '') || a.lapNumber - b.lapNumber,
+  )
+  const times = chronological.map((lap) => lap.lapTimeSeconds)
+  return { laps: practice.sampleSize || times.length, best: pick('Fastest') ?? Math.min(...times), median: pick('Median') ?? times[0], times }
+}
+
+/** What the plan does next, as a list row says it. */
+export function nextStepLabel(plan: SessionPlan): string {
+  switch (plan.status) {
+    case 'Draft':
+      return 'Arm'
+    case 'Armed':
+      return nextSegment(plan)
+    case 'Tracking':
+      return `${openSegment(plan)?.kind ?? 'Session'} · live`
+    default:
+      return '—'
+  }
+}
+
+/** The target the plan chases next (the race's, once the plan is over). */
+export function headlineTarget(plan: SessionPlan): PlanTarget | null {
+  const kind: SegmentKind = plan.status === 'Completed' || plan.status === 'Abandoned' ? 'Race' : (openSegment(plan)?.kind ?? nextSegment(plan))
+  return targetsFor(plan, kind)?.lapTime ?? null
+}
+
+/** The plan the list puts on top: the active one, else the newest open plan. */
+export const upNextPlan = (plans: readonly SessionPlan[]): SessionPlan | null => activePlan(plans) ?? groupPlans(plans).open[0] ?? null
+
+/** The one option a stored target points at, so the picker can mark it. */
+export const isPickedTarget = (target: PlanTarget | null, option: PlanTargetOption): boolean =>
+  target !== null &&
+  target.scope === option.scope &&
+  target.statistic === option.statistic &&
+  (target.programType ?? null) === option.programType &&
+  (option.statistic !== 'Custom' || (target.lapSessionId === option.lapSessionId && target.lapNumber === option.lapNumber))
+
+/** Where a stored target came from, in a driver's words: "Fastest of 9 practice laps", "Lap 4 of qualifying". */
+export function targetSummary(target: PlanTarget): string {
+  const scope = (target.scope === 'PracticeProgram' && target.programType ? `${target.programType} practice` : TARGET_SCOPE_LABELS[target.scope]).toLowerCase()
+  if (target.statistic === 'Custom' || target.statistic === null) return target.lapNumber !== null ? `Lap ${target.lapNumber} of ${scope}` : `A ${scope} lap`
+  return `${target.statistic} of ${target.sampleSize} ${scope} ${target.sampleSize === 1 ? 'lap' : 'laps'}`
+}
