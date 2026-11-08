@@ -7,9 +7,11 @@
 //   node scripts/make-tasks.mjs rid               default .NET runtime identifier for this machine
 //   node scripts/make-tasks.mjs clean [--dry-run] delete the fixed list of build outputs below
 //   node scripts/make-tasks.mjs dev-host          run the native host under dotnet watch on this checkout's dev data
+//   node scripts/make-tasks.mjs record-app        run the desktop app, recording every telemetry frame
+//   node scripts/make-tasks.mjs replay-app [file] run the desktop app on a recording instead of the game
 //   node scripts/make-tasks.mjs reset-dev-data    delete this checkout's dev data, so the next dev run starts fresh
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { devDataRoot } from '../app/desktop/scripts/dev-data.mjs'
@@ -109,6 +111,49 @@ function devHost() {
   process.exit(result.status ?? 1)
 }
 
+// Telemetry recordings of this checkout. Beside the dev data, not in it, so `make reset-dev-data`
+// never deletes hours of driving; gitignored with the rest of app/desktop/.dev.
+const recordingsRoot = path.join(repoRoot, 'app', 'desktop', '.dev', 'recordings')
+
+// `make dev-app` with extra environment for the native host Electron starts.
+function devApp(extraEnv) {
+  const result = spawnSync('pnpm', ['--filter', '@sprint/desktop', 'dev'], {
+    cwd: repoRoot,
+    env: { ...process.env, ...extraEnv },
+    stdio: 'inherit',
+    // pnpm is a .cmd shim on Windows, which only a shell can start.
+    shell: process.platform === 'win32',
+  })
+  process.exit(result.status ?? 1)
+}
+
+function recordApp() {
+  console.log(`[sprint] recording telemetry into ${path.relative(repoRoot, recordingsRoot)} (one file per session)`)
+  devApp({ SPRINT_TELEMETRY_RECORD: recordingsRoot })
+}
+
+function replayApp(file) {
+  if (!file) {
+    const recordings = existsSync(recordingsRoot)
+      ? readdirSync(recordingsRoot).filter((name) => name.endsWith('.jsonl.gz')).sort()
+      : []
+    console.error('usage: make replay-app FILE=<recording>')
+    console.error(recordings.length > 0
+      ? `recordings in ${path.relative(repoRoot, recordingsRoot)}:\n  ${recordings.join('\n  ')}`
+      : 'no recordings yet; make record-app makes them')
+    process.exit(1)
+  }
+  // A bare file name means one of this checkout's recordings.
+  const candidates = [path.resolve(file), path.join(recordingsRoot, file)]
+  const recording = candidates.find((candidate) => existsSync(candidate))
+  if (!recording) {
+    console.error(`no recording at ${file}`)
+    process.exit(1)
+  }
+  console.log(`[sprint] replaying ${recording} instead of the game`)
+  devApp({ SPRINT_TELEMETRY_REPLAY: recording })
+}
+
 // Deletes the dev data of this checkout only. The installed app's data is never touched.
 function resetDevData() {
   assertInsideRepo(devDataRoot)
@@ -147,7 +192,13 @@ switch (command) {
   case 'reset-dev-data':
     resetDevData()
     break
+  case 'record-app':
+    recordApp()
+    break
+  case 'replay-app':
+    replayApp(rest[0])
+    break
   default:
-    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|dev-host|reset-dev-data')
+    console.error('usage: node scripts/make-tasks.mjs help|version|rid|clean [--dry-run]|dev-host|record-app|replay-app [file]|reset-dev-data')
     process.exit(1)
 }

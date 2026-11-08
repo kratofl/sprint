@@ -58,6 +58,16 @@ Running the real app:
   `make reset-dev-data` deletes it. To run on real data, copy it to a scratch folder inside the repo
   (drop `devices.json` so nothing opens a USB screen) and set `SPRINT_DESKTOP_DATA_ROOT` to it;
   Electron moves its profile there too and passes its environment to the host.
+- An agent runs the app with `make agent-app` (`app/desktop/scripts/agent-app.mjs`), not
+  `make dev-app`: nothing shows on screen, it starts on a fresh data folder in
+  `app/desktop/.dev/agent-runs/` (`DATA=<dir>` copies one in, `FILE=<recording>` replays telemetry),
+  and it prints the folder and its CDP port. Drive and capture it with `app/desktop/scripts/cdp.mjs`
+  and stop it with `agent-app.mjs stop <folder>`, which ends its whole process tree and deletes the
+  folder. Several runs can go at once; each has its own data folder, because Chromium locks the
+  profile in it.
+- An agent run renders the main window offscreen (`SPRINT_DESKTOP_HIDDEN=1`, dev builds only): a
+  merely hidden window paints nothing and every screenshot hangs. Offscreen there are no OS caption
+  buttons, so a check of the window chrome itself still needs a visible `make dev-app`.
 - Started any other way, give Electron `SPRINT_DESKTOP_DATA_ROOT` and
   `--remote-debugging-port=<port>`, then drive the window over CDP.
 - `make dev-app` starts Vite, Electron and the host. Say so before running it, and make sure all three

@@ -32,9 +32,12 @@ states explain what to do next instead of showing a blank list.
 
 ### 2. Real Electron pass
 
-On a copy of the data (`SPRINT_DESKTOP_DATA_ROOT`, no `devices.json`), driven over CDP:
+Use your own hidden run: `make agent-app` (fresh data; `DATA=<copy>` without `devices.json` for real
+data, `FILE=<recording>` for live telemetry), driven with `app/desktop/scripts/cdp.mjs`
+(`shot`, `click`, `type`, `key`, `eval`, `wait`), stopped with `agent-app.mjs stop <run folder>`
+(`docs/operations/development.md`). A replay is not a real-game pass. Check:
 
-- the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
+- (visible `make dev-app` only, the hidden run has no OS chrome) the window opens with its native chrome — Windows: the 48px toolbar with the caption buttons at its right end; macOS:
   the traffic lights over the sidebar's top band and the 52px toolbar — and telemetry status shows
   the real link state, never fake live data (on macOS that is `Unsupported`);
 - every navigation item and Alt+1…8 (⌘1…8) opens its view; Ctrl+K (⌘K) opens the command palette;

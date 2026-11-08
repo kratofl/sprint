@@ -133,9 +133,16 @@ short, current, and tool-agnostic. Deeper material lives in `docs/` (index:
 - Start API: `make dev-api`
 - Start web: `make dev-web`
 - Start desktop: `make dev-app` (Vite + Electron; Electron launches the native host)
+- An agent's own run of the app, hidden and on fresh data: `make agent-app` (`DATA=<dir>` copies
+  data in, `FILE=<recording>` replays telemetry); drive it with `app/desktop/scripts/cdp.mjs`, stop
+  it with `node app/desktop/scripts/agent-app.mjs stop <run folder>`
 - Start the native host alone: `make dev-host` (no UI)
 - Dev runs keep their data in the checkout's `app/desktop/.dev/data`, never the
   installed app's; wipe it with `make reset-dev-data`
+- Record a driven session: `make record-app` (every telemetry frame, one file per
+  session, into `app/desktop/.dev/recordings`, which `reset-dev-data` keeps). Run
+  the app on one instead of the game, looping: `make replay-app FILE=<recording>`
+  (Debug builds only)
 - Build API: `make build-api`
 - Build web: `make build-web`
 - Build desktop: `make build-app`
@@ -235,8 +242,8 @@ type-checks both desktop TypeScript packages.
   app's system: full-height 224px sidebar with the Sprint mark (a 56px icon rail
   when collapsed), a 48px toolbar
   carrying the page title and actions (the OS caption buttons at its right end),
-  hairline-edged cards on a calm canvas, flat fills, glass only on small floating
-  layers, 6px controls, 10px cards, bundled Figtree; tokens
+  hairline-edged cards on a calm canvas over the web's light trails (glass sidebar and
+  toolbar), flat fills, otherwise glass only on small floating layers, 6px controls, 10px cards, bundled Figtree; tokens
   `@sprint/tokens/desktop.css`. On macOS it wears the native look (macOS 27
   HIG): the same layout on a translucent sidebar, a 52px toolbar, 8px buttons,
   14px cards, tokens `@sprint/tokens/macos.css` overlaid on `desktop.css` under
