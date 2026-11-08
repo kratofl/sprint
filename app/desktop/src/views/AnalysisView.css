@@ -877,3 +877,198 @@
   font-weight: 600;
   fill: var(--label);
 }
+
+/* Pins over the charts: where a car setting changed or a note was left, one row per lap. The
+   compared lap's pins are dashed, like its lines; a pin's thin line runs down every chart. */
+.analysis-pins {
+  position: relative;
+  cursor: default;
+}
+
+.analysis-pin-row {
+  position: relative;
+}
+
+.analysis-pin-row-label {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  overflow: hidden;
+  color: var(--label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.analysis-pin {
+  position: absolute;
+  top: 2px;
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-control-small);
+  background: var(--surface);
+  color: var(--label-secondary);
+  font: 600 11px/14px var(--font-text);
+  white-space: nowrap;
+}
+
+.analysis-pin.other {
+  border-style: dashed;
+  border-color: var(--label-tertiary);
+}
+
+.analysis-pin-text {
+  color: var(--label);
+}
+
+.analysis-pin.note {
+  justify-content: center;
+  padding: 0;
+  color: var(--label);
+  cursor: pointer;
+}
+
+.analysis-pin.note:hover {
+  background: var(--subtle-hover);
+}
+
+/* The note whose bubble is open. */
+.analysis-pin.note.open {
+  border-color: var(--label);
+  background: var(--label);
+  color: var(--surface);
+}
+
+/* Dashed so they never read as the cursor's solid line; the compared lap's dotted. */
+.analysis-pin-line {
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  shape-rendering: crispEdges;
+}
+
+.analysis-pin-line.other {
+  stroke-dasharray: 1 3;
+}
+
+/* A note's bubble or editor, under the pins, over the charts. */
+.analysis-note-layer {
+  position: absolute;
+  z-index: 3;
+  cursor: auto;
+}
+
+.analysis-note-popover {
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--acrylic-stroke);
+  border-radius: var(--radius-card);
+  background: var(--acrylic);
+  box-shadow: var(--shadow-flyout);
+  backdrop-filter: blur(14px);
+}
+
+.analysis-note-popover:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .analysis-note-popover {
+    background: var(--surface);
+    backdrop-filter: none;
+  }
+}
+
+.analysis-note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.analysis-note-head > :first-child {
+  margin-right: auto;
+}
+
+.analysis-note-author {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.analysis-note-close {
+  width: 22px;
+  height: 22px;
+  margin: -2px -4px -2px 0;
+}
+
+.analysis-note-text {
+  margin: 0;
+  color: var(--label);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.analysis-note-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+
+.analysis-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.analysis-note-actions > .analysis-secondary,
+.analysis-note-hint {
+  margin-right: auto;
+}
+
+.analysis-note-hint {
+  color: var(--label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* Car settings: each setting's name over its value as steps along the lap; the compared lap's
+   steps outlined and dashed beneath yours. */
+.analysis-lane-label {
+  fill: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.analysis-lane-run {
+  fill: var(--track);
+}
+
+.analysis-lane-run.other {
+  fill: none;
+  stroke: var(--label-tertiary);
+  stroke-dasharray: 3 3;
+}
+
+.analysis-lane-value {
+  fill: var(--label);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.analysis-lane-value.other {
+  fill: var(--label-secondary);
+  font-weight: 500;
+}

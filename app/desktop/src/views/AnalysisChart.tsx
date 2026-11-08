@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   CHART_CURSOR_NONE,
   chartPanelState,
@@ -36,15 +36,21 @@ const DEFAULT_WIDTH = 640
 const MIN_WIDTH = 240
 const DEFAULT_HEIGHT = 148
 const MARGIN = { top: 10, right: 12, bottom: 8, left: 44 }
+/** Where every panel's plot starts and ends, for what is drawn over the stack. */
+export const CHART_MARGIN = { left: MARGIN.left, right: MARGIN.right }
 const AXIS_HEIGHT = 24
 const MARK_HEIGHT = 18
 const AXIS_TICKS = [0, 0.25, 0.5, 0.75, 1]
 
-const plotWidth = (width: number): number => width - MARGIN.left - MARGIN.right
-const scaleXFor = (width: number) => (x: number) => MARGIN.left + x * plotWidth(width)
+/** The plot's width inside a panel `width` px wide, and where a lap fraction lands on it: so something drawn over the stack lines up. */
+export const plotWidth = (width: number): number => width - MARGIN.left - MARGIN.right
+export const scaleXFor = (width: number) => (x: number) => MARGIN.left + x * plotWidth(width)
 
 /** A mark along the lap drawn down every panel, e.g. a corner: where (0–1) and its short label. */
 export type ChartMark = { position: number; label: string }
+
+/** A thin line down every panel where a pin sits over the stack: solid for this lap, dashed for the lap compared with. */
+export type ChartLine = { key: string; position: number; other: boolean }
 
 const toneColor = (tone: SeriesTone): string => (tone === 'neutral' ? 'var(--label)' : `var(--channel-${tone})`)
 const dashFor = (stroke: SeriesStroke): string | undefined => (stroke === 'dashed' ? '5 4' : stroke === 'dotted' ? '1.5 3' : undefined)
@@ -117,9 +123,11 @@ export function LapTraceChartPanel({
   cursorPosition,
   readout,
   marks,
+  lines,
   note,
   actions,
   emptyText,
+  body,
 }: {
   panel: ChartPanel
   width: number
@@ -127,11 +135,14 @@ export function LapTraceChartPanel({
   cursorPosition: number | null
   readout: ChartPanelReadout | null
   marks: readonly ChartMark[]
+  lines: readonly ChartLine[]
   /** Quiet text after the legend, e.g. that a channel was not recorded for this lap. */
   note: string | null
   /** The panel's own controls (a ⋯ menu), at the right end of its head. */
   actions: ReactNode
   emptyText: string
+  /** Drawn instead of lines, for a panel that is not a line chart (the Car settings lanes). */
+  body: ReactNode
 }) {
   const state = chartPanelState(panel)
 
@@ -148,10 +159,12 @@ export function LapTraceChartPanel({
           {actions}
         </div>
       </div>
-      {state !== 'Ready' ? (
+      {body ? (
+        body
+      ) : state !== 'Ready' ? (
         <p className="analysis-chart-empty-panel">{state === 'Empty' ? emptyText : 'Not enough samples to draw a line.'}</p>
       ) : (
-        <ReadyChart panel={panel} width={width} height={height} cursorPosition={cursorPosition} readout={readout} marks={marks} />
+        <ReadyChart panel={panel} width={width} height={height} cursorPosition={cursorPosition} readout={readout} marks={marks} lines={lines} />
       )}
     </div>
   )
@@ -164,6 +177,7 @@ function ReadyChart({
   cursorPosition,
   readout,
   marks,
+  lines,
 }: {
   panel: ChartPanel
   width: number
@@ -171,6 +185,7 @@ function ReadyChart({
   cursorPosition: number | null
   readout: ChartPanelReadout | null
   marks: readonly ChartMark[]
+  lines: readonly ChartLine[]
 }) {
   const plotHeight = height - MARGIN.top - MARGIN.bottom
   const values = panel.series.flatMap((series) => series.samples.map((sample) => sample.y))
@@ -202,6 +217,7 @@ function ReadyChart({
         {marks.map((mark) => (
           <line key={mark.label} x1={scaleX(mark.position)} x2={scaleX(mark.position)} y1={MARGIN.top} y2={MARGIN.top + plotHeight} className="analysis-chart-mark" />
         ))}
+        <PinLines lines={lines} scaleX={scaleX} top={MARGIN.top} bottom={MARGIN.top + plotHeight} />
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={MARGIN.left} x2={width - MARGIN.right} y1={scaleY(tick)} y2={scaleY(tick)} className="analysis-chart-grid" />
@@ -264,6 +280,17 @@ function ReadyChart({
   )
 }
 
+/** The pins' lines down one panel, from `top` to `bottom` in its SVG. */
+export function PinLines({ lines, scaleX, top, bottom }: { lines: readonly ChartLine[]; scaleX: (x: number) => number; top: number; bottom: number }) {
+  return (
+    <>
+      {lines.map((line) => (
+        <line key={line.key} x1={scaleX(line.position)} x2={scaleX(line.position)} y1={top} y2={bottom} className={line.other ? 'analysis-pin-line other' : 'analysis-pin-line'} />
+      ))}
+    </>
+  )
+}
+
 /** Where along the lap: in km when the track's length is known, as a share of the lap otherwise. */
 const positionLabel = (fraction: number, trackLengthMeters: number | null, cursor: boolean): string => {
   if (trackLengthMeters === null) return cursor ? formatTrackPositionCursor(fraction) : formatTrackPosition(fraction)
@@ -322,7 +349,9 @@ function AxisRow({ width, cursorPosition, trackLengthMeters }: { width: number; 
  * The stack: same X domain (track position) down every panel, one shared cursor, one axis row at
  * the bottom. Optional: corner `marks` down every panel, a height, a quiet note and controls per
  * panel (by index), km on the axis, and `onCursor` for something outside that follows the cursor
- * (the track map's dot).
+ * (the track map's dot). The lap page adds a row over the stack (`top`, its pins), their `lines`
+ * down every panel, a `body` for a panel that is not lines, and `onPick` for a click (or Enter)
+ * at a place on the lap.
  */
 export function LapTraceChartStack({
   panels,
@@ -333,6 +362,10 @@ export function LapTraceChartStack({
   trackLengthMeters = null,
   emptyText = 'Not recorded on either lap.',
   onCursor,
+  top,
+  lines = [],
+  body,
+  onPick,
 }: {
   panels: readonly ChartPanel[]
   heights?: readonly number[]
@@ -342,6 +375,13 @@ export function LapTraceChartStack({
   trackLengthMeters?: number | null
   emptyText?: string
   onCursor?: (position: number | null) => void
+  /** Drawn over the stack, above the corner labels, at the stack's measured width. */
+  top?: (width: number) => ReactNode
+  lines?: readonly ChartLine[]
+  /** A panel's own drawing (by index) in place of its lines; null for a line chart. */
+  body?: (index: number, width: number, cursorPosition: number | null) => ReactNode
+  /** A place on the lap was picked: a click on a plot, or Enter at the keyboard cursor. */
+  onPick?: (position: number) => void
 }) {
   const [cursor, setCursorState] = useState<ChartCursorState>(CHART_CURSOR_NONE)
   const width = useMeasuredWidth()
@@ -352,7 +392,10 @@ export function LapTraceChartStack({
     onCursor?.(next.kind === 'at' ? next.position : null)
   }
 
-  const positionFromPointer = (event: ReactPointerEvent<HTMLDivElement>): number => {
+  // A pointer over a panel's own controls (its ⋯ menu) or over the pins is not a reading.
+  const onControls = (target: EventTarget): boolean => target instanceof Element && target.closest('.analysis-chart-head, .analysis-pins') !== null
+
+  const positionFromPointer = (event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent<HTMLDivElement>): number => {
     const rect = event.currentTarget.getBoundingClientRect()
     if (rect.width <= 0) return 0
     const x = ((event.clientX - rect.left) / rect.width) * width.value
@@ -367,17 +410,27 @@ export function LapTraceChartStack({
       role="group"
       aria-label="Lap chart. Hover, or use the arrow keys while focused, to read values at a track position."
       onPointerMove={(event) => {
-        // A pointer over a panel's own controls (its ⋯ menu) is not a reading.
-        if (event.target instanceof Element && event.target.closest('.analysis-chart-head')) return
+        if (onControls(event.target)) return
         setCursor({ kind: 'at', position: positionFromPointer(event) })
       }}
       onPointerLeave={() => setCursor(CHART_CURSOR_NONE)}
+      onClick={(event) => {
+        if (onPick && !onControls(event.target)) onPick(positionFromPointer(event))
+      }}
       onKeyDown={(event) => {
+        // Keys pressed on a control inside the stack (a pin, a ⋯) belong to that control.
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' && onPick && cursorPosition !== null) {
+          event.preventDefault()
+          onPick(cursorPosition)
+          return
+        }
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
         event.preventDefault()
         setCursor(moveChartCursorByKey(cursor, event.key === 'ArrowLeft' ? -1 : 1))
       }}
     >
+      {top?.(width.value)}
       {marks.length > 0 && <MarkRow width={width.value} marks={marks} />}
       {panels.map((panel, index) => (
         <LapTraceChartPanel
@@ -388,9 +441,11 @@ export function LapTraceChartStack({
           cursorPosition={cursorPosition}
           readout={readout?.panels[index] ?? null}
           marks={marks}
+          lines={lines}
           note={notes?.[index] ?? null}
           actions={actions?.(index)}
           emptyText={emptyText}
+          body={body?.(index, width.value, cursorPosition)}
         />
       ))}
       <AxisRow width={width.value} cursorPosition={cursorPosition} trackLengthMeters={trackLengthMeters} />

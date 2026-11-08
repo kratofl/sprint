@@ -100,6 +100,8 @@ public sealed class SharedLapImporter
                     // drive a position-accurate delta exactly like one of the driver's own. This
                     // is why elapsed time is a stored channel at all (spec §2.1).
                     ReferenceCurve = CurveFrom(lap.Trace),
+                    // Somebody else's words: kept on the record, where they stay read-only.
+                    Notes = [.. lap.Notes],
                 },
             ],
         };

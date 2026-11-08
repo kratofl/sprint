@@ -65,6 +65,17 @@ export function AnalysisView({
       setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
     }
   }
+  // A note's Save waits on this: the editor stays open, text and all, when the host refuses it.
+  const sendNote = async (command: SprintCommand): Promise<boolean> => {
+    setActionError(null)
+    try {
+      await send(command)
+      return true
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'That note could not be saved.')
+      return false
+    }
+  }
   const closeLap = () => {
     setOpenLap(null)
     setCompareWith(null)
@@ -175,6 +186,7 @@ export function AnalysisView({
           onCompare={(picked) => setCompareWith(picked ? lapKeyOf(picked) : null)}
           onBack={closeLap}
           onTrain={(target) => void trainAgainst(target)}
+          onNote={sendNote}
         />
       ) : session ? (
         <>

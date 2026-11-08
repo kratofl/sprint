@@ -221,7 +221,7 @@ public sealed class SharedLapTests
         myTraces.Save("trace-4", driven);
         mine.Save(Recorded("mine", lapNumber: 4, traceId: "trace-4"));
 
-        SharedLapExportResult export = SharedLapExport.Build(mine, myTraces, "mine", 4, " Alex Morgan ", Now);
+        SharedLapExportResult export = SharedLapExport.Build(mine, myTraces, "mine", 4, " Alex Morgan ", Now, []);
 
         Assert.True(export.HasPositions);
         Assert.NotNull(export.Lap);
@@ -244,8 +244,8 @@ public sealed class SharedLapTests
         (FakeHistory history, FakeTraces traces, SharedLapImporter _) = Corpus();
         history.Save(Recorded("mine", lapNumber: 4, traceId: null));
 
-        SharedLapExportResult timeOnly = SharedLapExport.Build(history, traces, "mine", 4, "Alex Morgan", Now);
-        SharedLapExportResult gone = SharedLapExport.Build(history, traces, "mine", 9, "Alex Morgan", Now);
+        SharedLapExportResult timeOnly = SharedLapExport.Build(history, traces, "mine", 4, "Alex Morgan", Now, []);
+        SharedLapExportResult gone = SharedLapExport.Build(history, traces, "mine", 9, "Alex Morgan", Now, []);
 
         Assert.Null(timeOnly.Lap);
         Assert.Contains("only a time", timeOnly.Error);
@@ -260,7 +260,7 @@ public sealed class SharedLapTests
         SharedLapImportResult imported = importer.Import(Lap());
         int lapNumber = Assert.Single(Assert.Single(history.Saved).Laps).LapNumber;
 
-        SharedLapExportResult export = SharedLapExport.Build(history, traces, imported.SessionId, lapNumber, "Alex Morgan", Now);
+        SharedLapExportResult export = SharedLapExport.Build(history, traces, imported.SessionId, lapNumber, "Alex Morgan", Now, []);
 
         Assert.Equal("Ada", export.Lap?.Provenance.SharedBy);
         Assert.False(export.HasPositions);

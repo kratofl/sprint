@@ -91,6 +91,30 @@ export type CorpusLap = {
   fuelUsedLiters: number | null
   /** When the lap ended; null for imported laps. */
   completedAt: string | null
+  /** Notes left on the lap: the driver's own, then any it was shared with. */
+  notes: LapNote[]
+}
+
+/**
+ * A note left at a place on a lap (Features/SessionPlanning/LapHistoryModels.cs `LapNote`, as
+ * `CorpusLapNote`). `mine`: the driver wrote it here and may change it; otherwise it came with a
+ * shared lap and is read-only.
+ */
+export type LapNote = { id: string; distanceMeters: number; text: string; author: string; createdAt: string; mine: boolean }
+
+/** The longest note, in characters. Mirrors `LapNote.MaxTextLength`. */
+export const LAP_NOTE_MAX_LENGTH = 500
+
+function parseLapNote(value: unknown): LapNote | null {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.text !== 'string' || typeof value.distanceMeters !== 'number') return null
+  return {
+    id: value.id,
+    distanceMeters: value.distanceMeters,
+    text: value.text,
+    author: typeof value.author === 'string' ? value.author : '',
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : '',
+    mine: value.mine === true,
+  }
 }
 
 /** The setup version a run was driven with, as the driver picked it (Features/Setup/RunSetups.cs). */
@@ -178,6 +202,7 @@ export function parseCorpusLap(value: unknown): CorpusLap | null {
     rearCompound: stringOrNull(value.rearCompound),
     fuelUsedLiters: numberOrNull(value.fuelUsedLiters),
     completedAt: stringOrNull(value.completedAt),
+    notes: Array.isArray(value.notes) ? value.notes.map(parseLapNote).filter((note): note is LapNote => note !== null) : [],
   }
 }
 
@@ -600,6 +625,25 @@ export const buildAnalysisSelectSession = (sessionId: string | null): SprintComm
 
 /** Puts a setup (its Setups list id) on one run of the open session, or takes it off with null. */
 export const buildSetRunSetup = (outing: number, setupId: string | null): SprintCommand => ({ type: 'analysis.setRunSetup', outing, setupId })
+
+/** A note at a place on a lap, metres from the line. The host signs it with the driver name in Settings. */
+export const buildAddLapNote = (lap: CorpusLap, distanceMeters: number, text: string): SprintCommand => ({
+  type: 'lap.note.add',
+  sessionId: lap.sessionId,
+  lapNumber: lap.lapNumber,
+  distanceMeters,
+  text,
+})
+
+export const buildUpdateLapNote = (lap: CorpusLap, noteId: string, text: string): SprintCommand => ({
+  type: 'lap.note.update',
+  sessionId: lap.sessionId,
+  lapNumber: lap.lapNumber,
+  noteId,
+  text,
+})
+
+export const buildDeleteLapNote = (lap: CorpusLap, noteId: string): SprintCommand => ({ type: 'lap.note.delete', sessionId: lap.sessionId, lapNumber: lap.lapNumber, noteId })
 
 /** What a page says after a lap file was saved or opened. */
 export type LapFileNotice = { tone: 'success' | 'info' | 'error'; title: string; message: string }

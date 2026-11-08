@@ -150,6 +150,7 @@ public static class SharedLapFile
             Context = lap.Context;
             LapNumber = lap.LapNumber;
             LapTimeSeconds = lap.LapTimeSeconds;
+            Notes = [.. lap.Notes];
         }
 
         [JsonPropertyName("provenance")]
@@ -164,7 +165,27 @@ public static class SharedLapFile
         [JsonPropertyName("lapTimeSeconds")]
         public double LapTimeSeconds { get; init; }
 
+        /// <summary>
+        /// The notes left on the lap. Absent from files written before notes were; a Sprint from
+        /// then skips the field, so the container version stays.
+        /// </summary>
+        [JsonPropertyName("notes")]
+        public List<LapNote>? Notes { get; init; }
+
         public SharedLap ToLap(LapChannelTrace trace) =>
-            new(Provenance, Context, LapNumber, LapTimeSeconds, trace);
+            new(Provenance, Context, LapNumber, LapTimeSeconds, trace)
+            {
+                // The JSON is somebody else's: a note with no id, no text or no place is damage,
+                // dropped rather than shown, and a missing author reads as nobody named.
+                Notes =
+                [
+                    .. (Notes ?? [])
+                        .Where(note => note is not null
+                            && !string.IsNullOrEmpty(note.Id)
+                            && !string.IsNullOrWhiteSpace(note.Text)
+                            && double.IsFinite(note.DistanceMeters))
+                        .Select(note => note with { Author = note.Author ?? "" }),
+                ],
+            };
     }
 }

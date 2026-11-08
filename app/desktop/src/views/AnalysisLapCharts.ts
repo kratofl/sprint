@@ -2,6 +2,8 @@ import { LAP_SAMPLE_COUNT, channelTone, traceValueAt } from './AnalysisDomain'
 import type { ChartInterpolation, ChartPanel, ChartSample, ChartSeries, LapChannelTrace, SeriesStroke } from './AnalysisDomain'
 import type { ChartMark } from './AnalysisChart'
 import type { LapChartId, LapLayout } from './AnalysisLapLayout'
+import { carSettingsChart } from './AnalysisLapMarks'
+import type { CarSettingsChart } from './AnalysisLapMarks'
 import { timeGained } from './OnTrackLaps'
 
 /**
@@ -9,7 +11,8 @@ import { timeGained } from './OnTrackLaps'
  * lap's). Pure: samples in, panels out. A lap alone shows each channel in its colour, with what
  * reached the car after ABS/TC dotted beside the pedals; compared, the other lap joins every chart
  * grey and dashed, the time gained leads, and throttle and brake always split so no chart carries
- * four lines.
+ * four lines. The Car settings chart is not lines but lanes of steps (`AnalysisLapMarks.ts`); its
+ * panel carries no series, and the page draws it from `settings`.
  */
 
 /** A panel of the lap page and the chart it belongs to (`delta`, the time gained, is not the driver's to remove). */
@@ -21,6 +24,8 @@ export type LapCharts = {
   owners: LapPanelOf[]
   heights: number[]
   notes: (string | null)[]
+  /** The Car settings chart, when it is on the page and either lap carries settings. */
+  settings: CarSettingsChart | null
 }
 
 export type ComparedLap = { trace: LapChannelTrace; label: string }
@@ -28,8 +33,15 @@ export type ComparedLap = { trace: LapChannelTrace; label: string }
 export const THROTTLE_APPLIED = 'throttleApplied'
 export const BRAKE_APPLIED = 'brakeApplied'
 
-const HEIGHT: Record<LapPanelOf, number> = { delta: 96, speed: 128, pedals: 112, steering: 96, gear: 88 }
+const HEIGHT: Record<Exclude<LapPanelOf, 'settings'>, number> = { delta: 96, speed: 128, pedals: 112, steering: 96, gear: 88 }
 const SPLIT_HEIGHT = 88
+
+/** A Car settings lane: its name over one bar, or over two (yours, then the other lap's) when compared. */
+export const SETTINGS_LANE = { label: 16, bar: 16, between: 3, after: 8 }
+
+/** How tall the Car settings chart draws: its lanes, nothing when every setting folded into its head. */
+export const settingsChartHeight = (chart: CarSettingsChart, compared: boolean): number =>
+  chart.lanes.length * (SETTINGS_LANE.label + SETTINGS_LANE.bar + (compared ? SETTINGS_LANE.between + SETTINGS_LANE.bar : 0) + SETTINGS_LANE.after)
 
 /** Whether the lap recorded what reached the car (older laps, and other games, do not). */
 export const hasAppliedPedals = (trace: LapChannelTrace): boolean => THROTTLE_APPLIED in trace.channels && BRAKE_APPLIED in trace.channels
@@ -84,8 +96,8 @@ const GEAR: Line = { channel: 'gear', scale: 1, name: 'Gear', stroke: 'solid', i
 const NOT_RECORDED = 'ABS & TC not recorded for this lap'
 
 export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: ComparedLap | null): LapCharts {
-  const out: LapCharts = { panels: [], owners: [], heights: [], notes: [] }
-  const push = (owner: LapPanelOf, panel: ChartPanel, height: number = HEIGHT[owner], note: string | null = null) => {
+  const out: LapCharts = { panels: [], owners: [], heights: [], notes: [], settings: null }
+  const push = (owner: LapPanelOf, panel: ChartPanel, height: number, note: string | null = null) => {
     out.panels.push(panel)
     out.owners.push(owner)
     out.heights.push(height)
@@ -104,11 +116,15 @@ export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: Co
   if (compared) {
     const gained = timeGained(lap.trace, compared.trace)
     if (gained) {
-      push('delta', {
-        title: `Time gained on ${compared.label}`,
-        unit: 's',
-        series: [{ name: 'Time gained', samples: gained, interpolation: 'Linear', role: 'Current', fillArea: false, tone: 'neutral', stroke: 'solid' }],
-      })
+      push(
+        'delta',
+        {
+          title: `Time gained on ${compared.label}`,
+          unit: 's',
+          series: [{ name: 'Time gained', samples: gained, interpolation: 'Linear', role: 'Current', fillArea: false, tone: 'neutral', stroke: 'solid' }],
+        },
+        HEIGHT.delta,
+      )
     }
   }
 
@@ -119,14 +135,23 @@ export function buildLapCharts(layout: LapLayout, lap: ComparedLap, compared: Co
   for (const chart of layout.charts) {
     switch (chart) {
       case 'speed':
-        push('speed', { title: 'Speed', unit: 'km/h', series: lines([SPEED], SPEED) })
+        push('speed', { title: 'Speed', unit: 'km/h', series: lines([SPEED], SPEED) }, HEIGHT.speed)
         break
       case 'steering':
-        push('steering', { title: 'Steering', unit: '%', series: lines([STEERING], STEERING) })
+        push('steering', { title: 'Steering', unit: '%', series: lines([STEERING], STEERING) }, HEIGHT.steering)
         break
       case 'gear':
-        push('gear', { title: 'Gear', unit: null, series: lines([GEAR], GEAR) })
+        push('gear', { title: 'Gear', unit: null, series: lines([GEAR], GEAR) }, HEIGHT.gear)
         break
+      case 'settings': {
+        // Older laps carry no settings: no chart rather than an empty one.
+        const settings = carSettingsChart(lap.trace, compared?.trace ?? null)
+        if (settings === null) break
+        out.settings = settings
+        const same = settings.same ? `${compared ? 'Same on both laps' : 'Same all lap'}: ${settings.same}` : null
+        push('settings', { title: 'Car settings', unit: null, series: [] }, settingsChartHeight(settings, compared !== null), same)
+        break
+      }
       case 'pedals':
         if (layout.pedalsSeparate || compared) {
           push('pedals', { title: 'Throttle', unit: '%', series: lines(applied ? [THROTTLE, THROTTLE_GOT] : [THROTTLE], THROTTLE) }, SPLIT_HEIGHT, appliedNote)

@@ -71,3 +71,23 @@ test('the verdict names the faster lap', () => {
   assert.deepEqual(verdict('Lap 5', 125.263, 'Quali lap 3', 124.501), { faster: 'Quali lap 3', gap: 125.263 - 124.501 })
   assert.equal(verdict('Lap 5', 125.263, 'Lap 5 again', 125.263), null)
 })
+
+test('the Car settings chart: a panel of lanes, the unchanged settings in its head, none on an older lap', () => {
+  const withSettings = (tc: number[]): LapChannelTrace => {
+    const lap = trace(false)
+    const count = lap.channels.speedKph.length
+    return { ...lap, channels: { ...lap.channels, tc: Array.from({ length: count }, (_, index) => (index < count / 2 ? tc[0] : tc[tc.length - 1])), motorMap: Array.from({ length: count }, () => 3) } }
+  }
+
+  const alone = buildLapCharts(DEFAULT_LAP_LAYOUT, { trace: withSettings([3, 5]), label: 'Lap 5' }, null)
+  const index = alone.owners.indexOf('settings')
+  assert.equal(alone.panels[index].title, 'Car settings')
+  assert.equal(alone.notes[index], 'Same all lap: Motor map 3')
+  assert.deepEqual(alone.settings?.lanes.map((lane) => lane.setting.channel), ['tc'])
+
+  const compared = buildLapCharts(DEFAULT_LAP_LAYOUT, { trace: withSettings([3, 5]), label: 'Lap 5' }, { trace: withSettings([5]), label: 'Ada' })
+  assert.equal(compared.notes[compared.owners.indexOf('settings')], 'Same on both laps: Motor map 3')
+  assert.ok(compared.heights[compared.owners.indexOf('settings')] > alone.heights[index])
+
+  assert.equal(buildLapCharts(DEFAULT_LAP_LAYOUT, { trace: trace(false), label: 'Lap 5' }, null).owners.includes('settings'), false)
+})

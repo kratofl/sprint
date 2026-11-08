@@ -152,6 +152,79 @@ public sealed class LapChannelTraceTests
         Assert.InRange(bytes, 1, 400_000);
     }
 
+    [Fact]
+    public void SettingsAreStepsWrittenOnlyForWhatTheCarHas()
+    {
+        // TC goes 3 -> 5 at 40 % and is held, never blended; the car has no motor map (max 0).
+        Sprint.Desktop.Api.Telemetry.ElectronicsState Electronics(double position) => new()
+        {
+            TractionControl = (byte)(position < 0.4 ? 3 : 5),
+            TractionControlMax = 11,
+            Abs = 4,
+            AbsMax = 12,
+            MotorMap = 2,
+            MotorMapMax = 0,
+        };
+        List<LapTraceSample> samples = [.. FullLap().Select(sample => sample with { Settings = LapTraceSettings.From(Electronics(sample.Position), 0.46f) })];
+
+        LapChannelTrace? trace = LapChannelTrace.FromSamples(samples, 90.0, 5000.0);
+
+        Assert.NotNull(trace);
+        Assert.True(trace.TryGetChannel(LapTraceChannels.TractionControl, out float[] tc));
+        Assert.Equal([3f, 5f], tc.Distinct());
+        Assert.Equal(3.0, trace.ValueAt(LapTraceChannels.TractionControl, 0.39));
+        Assert.Equal(5.0, trace.ValueAt(LapTraceChannels.TractionControl, 0.41));
+        Assert.Equal(0.46f, trace.Channels[LapTraceChannels.BrakeBiasRear][0]);
+        Assert.True(trace.TryGetChannel(LapTraceChannels.Abs, out float[] _));
+        Assert.False(trace.TryGetChannel(LapTraceChannels.MotorMap, out float[] _));
+        Assert.False(trace.TryGetChannel(LapTraceChannels.Migration, out float[] _));
+    }
+
+    [Fact]
+    public void ALapWithoutSettingsCarriesNoSettingChannels()
+    {
+        LapChannelTrace? trace = LapChannelTrace.FromSamples(FullLap(), 90.0, 5000.0);
+
+        Assert.NotNull(trace);
+        Assert.DoesNotContain(trace.Channels.Keys, name => LapTraceSettings.Channels.Any(setting => setting.Channel == name));
+    }
+
+    [Fact]
+    public void SettingChannelsCostAlmostNothingOnDisk()
+    {
+        // Every setting a hypercar has, each changed once: the stored (deflated) trace may grow by
+        // a few kilobytes at most, at Le Mans, the longest grid.
+        Sprint.Desktop.Api.Telemetry.ElectronicsState Electronics(double position) => new()
+        {
+            TractionControl = (byte)(position < 0.3 ? 3 : 4), TractionControlMax = 11,
+            TractionControlSlip = 2, TractionControlSlipMax = 8,
+            TractionControlCut = 5, TractionControlCutMax = 8,
+            Abs = (byte)(position < 0.6 ? 4 : 3), AbsMax = 12,
+            MotorMap = 3, MotorMapMax = 5,
+            Migration = 2, MigrationMax = 6,
+            FrontAntiRollBar = 3, FrontAntiRollBarMax = 6,
+            RearAntiRollBar = 2, RearAntiRollBarMax = 6,
+        };
+        List<LapTraceSample> withSettings = [.. FullLap().Select(sample => sample with { Settings = LapTraceSettings.From(Electronics(sample.Position), sample.Position < 0.5 ? 0.46f : 0.468f) })];
+
+        long without = Deflated(LapChannelTrace.FromSamples(FullLap(), 90.0, 13_626.0));
+        long with = Deflated(LapChannelTrace.FromSamples(withSettings, 90.0, 13_626.0));
+
+        Assert.InRange(with - without, 1, 4_000);
+    }
+
+    private static long Deflated(LapChannelTrace? trace)
+    {
+        Assert.NotNull(trace);
+        using MemoryStream stream = new();
+        using (System.IO.Compression.DeflateStream deflate = new(stream, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+        {
+            LapTraceCodec.Write(deflate, trace);
+        }
+
+        return stream.Length;
+    }
+
     /// <summary>
     /// One synthetic lap sampled every 0.1 % of the track: speed ramps 100 -> 300, throttle
     /// falls 1 -> 0, brake rises 0 -> 1, steering ramps -1 -> 1, gear climbs 1 -> 8, and

@@ -102,7 +102,9 @@ RunSetups runSetups = new(Path.Combine(runtime.DataRoot, "run-setups.json"), log
 // item 1/2); /api/state keeps reading the stores directly below so a write through the service is
 // visible on the next poll without the two paths needing to share one instance.
 SessionPlannerService plannerService = new(planStore, log);
-AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore), runSetups, setupLibrary);
+// The notes the driver leaves on laps in Analysis; they go with a lap when it is shared.
+LapNotes lapNotes = new(Path.Combine(runtime.DataRoot, "lap-notes.json"), log);
+AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore, lapNotes), runSetups, setupLibrary);
 // Records every lap into the stores above; built here because Live Compare follows its open
 // session to know which course is being driven. Fed by the telemetry loop further down.
 LapHistoryRecorder lapHistoryRecorder = new(lapHistoryStore, lapTraceStore, log: log);
@@ -603,7 +605,7 @@ const long MaxLapFileBytes = 32 * 1024 * 1024;
 SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log, carNames: storedCarNames);
 app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int lapNumber, HttpContext context) =>
 {
-    SharedLapExportResult export = SharedLapExport.Build(lapHistoryStore, lapTraceStore, sessionId, lapNumber, runtime.Settings.DriverName, DateTimeOffset.UtcNow);
+    SharedLapExportResult export = SharedLapExport.Build(lapHistoryStore, lapTraceStore, sessionId, lapNumber, runtime.Settings.DriverName, DateTimeOffset.UtcNow, lapNotes.For(sessionId, lapNumber));
     if (export.Lap is not { } lap)
     {
         return Results.NotFound(new { error = export.Error });

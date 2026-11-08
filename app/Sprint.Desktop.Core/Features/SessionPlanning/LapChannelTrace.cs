@@ -1,3 +1,5 @@
+using Sprint.Desktop.Api.Telemetry;
+
 namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>One observed instant of a lap, as the recorder saw it.</summary>
@@ -5,6 +7,7 @@ namespace Sprint.Desktop.Features.SessionPlanning;
 /// <param name="World">Where the car was, in <c>CarPose</c>'s frame. Null when the game did not say.</param>
 /// <param name="ThrottleApplied">The throttle that reached the car after traction control, 0–1. Null when the game did not say.</param>
 /// <param name="BrakeApplied">The brake that reached the car after ABS, 0–1. Null when the game did not say.</param>
+/// <param name="Settings">The car's in-car settings (TC, ABS, brake bias, …). Null when the game did not say.</param>
 public readonly record struct LapTraceSample(
     double Position,
     float SpeedKph,
@@ -15,7 +18,54 @@ public readonly record struct LapTraceSample(
     double ElapsedSeconds,
     LapTraceWorld? World = null,
     float? ThrottleApplied = null,
-    float? BrakeApplied = null);
+    float? BrakeApplied = null,
+    LapTraceSettings? Settings = null);
+
+/// <summary>
+/// The settings a driver changes from the wheel, at one instant: each null when the car lacks it
+/// (the game reports a max of 0) or the game did not say. Recorded as step channels so Analysis
+/// can show where on the lap one changed.
+/// </summary>
+public readonly record struct LapTraceSettings(
+    float? TractionControl,
+    float? TractionControlSlip,
+    float? TractionControlCut,
+    float? Abs,
+    float? MotorMap,
+    float? Migration,
+    float? FrontAntiRollBar,
+    float? RearAntiRollBar,
+    float? BrakeBiasRear)
+{
+    /// <summary>Each setting's channel and how to read it off a sample.</summary>
+    public static IReadOnlyList<(string Channel, Func<LapTraceSettings, float?> Read)> Channels { get; } =
+    [
+        (LapTraceChannels.TractionControl, settings => settings.TractionControl),
+        (LapTraceChannels.TractionControlSlip, settings => settings.TractionControlSlip),
+        (LapTraceChannels.TractionControlCut, settings => settings.TractionControlCut),
+        (LapTraceChannels.Abs, settings => settings.Abs),
+        (LapTraceChannels.MotorMap, settings => settings.MotorMap),
+        (LapTraceChannels.Migration, settings => settings.Migration),
+        (LapTraceChannels.FrontAntiRollBar, settings => settings.FrontAntiRollBar),
+        (LapTraceChannels.RearAntiRollBar, settings => settings.RearAntiRollBar),
+        (LapTraceChannels.BrakeBiasRear, settings => settings.BrakeBiasRear),
+    ];
+
+    /// <summary>What a frame says about the car's settings; a setting the car lacks stays null.</summary>
+    public static LapTraceSettings From(ElectronicsState electronics, float brakeBiasRear) => new(
+        Setting(electronics.TractionControl, electronics.TractionControlMax),
+        Setting(electronics.TractionControlSlip, electronics.TractionControlSlipMax),
+        Setting(electronics.TractionControlCut, electronics.TractionControlCutMax),
+        Setting(electronics.Abs, electronics.AbsMax),
+        Setting(electronics.MotorMap, electronics.MotorMapMax),
+        Setting(electronics.Migration, electronics.MigrationMax),
+        Setting(electronics.FrontAntiRollBar, electronics.FrontAntiRollBarMax),
+        Setting(electronics.RearAntiRollBar, electronics.RearAntiRollBarMax),
+        // A bias of 0 or 1 would put all the braking on one axle: the game did not say.
+        float.IsFinite(brakeBiasRear) && brakeBiasRear is > 0 and < 1 ? brakeBiasRear : null);
+
+    private static float? Setting(byte value, byte max) => max > 0 ? value : null;
+}
 
 /// <summary>A world position in metres, in <c>CarPose</c>'s right-handed, Y-up frame.</summary>
 public readonly record struct LapTraceWorld(float X, float Y, float Z);
@@ -52,7 +102,24 @@ public static class LapTraceChannels
     public const string ThrottleApplied = "throttleApplied";
     public const string BrakeApplied = "brakeApplied";
 
-    /// <summary>What the recorder always writes. The world and applied-pedal channels come on top when the game reports them.</summary>
+    /// <summary>
+    /// The in-car settings (<see cref="LapTraceSettings"/>) as steps: each holds its value until
+    /// the driver changed it, never a blend. Brake bias is the rear share, 0–1, as the frame has
+    /// it; the rest are the game's steps. Each is written only when the car had the setting on
+    /// every sample of the lap. Analysis derives where one changed from these, so the changes
+    /// travel with a shared lap's trace.
+    /// </summary>
+    public const string TractionControl = "tc";
+    public const string TractionControlSlip = "tcSlip";
+    public const string TractionControlCut = "tcCut";
+    public const string Abs = "abs";
+    public const string MotorMap = "motorMap";
+    public const string Migration = "migration";
+    public const string FrontAntiRollBar = "arbFront";
+    public const string RearAntiRollBar = "arbRear";
+    public const string BrakeBiasRear = "brakeBiasRear";
+
+    /// <summary>What the recorder always writes. The world, applied-pedal and setting channels come on top when the game reports them.</summary>
     public static IReadOnlyList<string> Default { get; } =
         [SpeedKph, Throttle, Brake, Steering, Gear, ElapsedSeconds];
 }
@@ -71,7 +138,9 @@ public static class LapTraceChannels
 /// Values are <see cref="float"/>: 24 bytes per sample across the six default channels, and 44
 /// with the three world and two applied-pedal channels LMU adds — about 300 KB for a lap of
 /// Le Mans, the longest layout, which is what the storage budget was sized on. Milliseconds
-/// and 0.1 km/h are both far inside a float's precision at these magnitudes.
+/// and 0.1 km/h are both far inside a float's precision at these magnitudes. Each setting
+/// channel adds 4 bytes a sample before compression, but a value held for most of a lap
+/// deflates to almost nothing, so on disk the settings cost a few hundred bytes a lap.
 /// </para>
 /// </summary>
 public sealed class LapChannelTrace
@@ -232,6 +301,12 @@ public sealed class LapChannelTrace
         bool hasBrakeApplied = samples.All(sample => sample.BrakeApplied is not null);
         float[] throttleApplied = hasThrottleApplied ? new float[count] : [];
         float[] brakeApplied = hasBrakeApplied ? new float[count] : [];
+        List<(string Channel, Func<LapTraceSettings, float?> Read, float[] Values)> settings =
+        [
+            .. LapTraceSettings.Channels
+                .Where(setting => samples.All(sample => sample.Settings is { } held && setting.Read(held) is not null))
+                .Select(setting => (setting.Channel, setting.Read, new float[count])),
+        ];
 
         var index = 0;
         for (var i = 0; i < count; i++)
@@ -289,6 +364,9 @@ public sealed class LapChannelTrace
             {
                 brakeApplied[i] = Lerp(brakeFrom, brakeTo, t);
             }
+
+            // A setting is a selection, like gear: hold the one in force.
+            WriteSettings(i, start);
         }
 
         Dictionary<string, float[]> channels = new(StringComparer.Ordinal)
@@ -315,6 +393,11 @@ public sealed class LapChannelTrace
         if (hasBrakeApplied)
         {
             channels[LapTraceChannels.BrakeApplied] = brakeApplied;
+        }
+
+        foreach ((string channel, Func<LapTraceSettings, float?> _, float[] values) in settings)
+        {
+            channels[channel] = values;
         }
 
         return new LapChannelTrace
@@ -348,6 +431,19 @@ public sealed class LapChannelTrace
             if (hasBrakeApplied && sample.BrakeApplied is { } braked)
             {
                 brakeApplied[i] = braked;
+            }
+
+            WriteSettings(i, sample);
+        }
+
+        void WriteSettings(int i, LapTraceSample sample)
+        {
+            foreach ((string _, Func<LapTraceSettings, float?> read, float[] values) in settings)
+            {
+                if (sample.Settings is { } held && read(held) is { } value)
+                {
+                    values[i] = value;
+                }
             }
         }
     }

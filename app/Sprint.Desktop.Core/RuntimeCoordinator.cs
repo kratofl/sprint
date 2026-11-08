@@ -67,7 +67,8 @@ public sealed class RuntimeCoordinator
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
         this._analysis = analysis ?? new AnalysisController(new LapCorpusBrowser(
             new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")),
-            new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))));
+            new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces")),
+            new LapNotes(Path.Combine(runtime.DataRoot, "lap-notes.json"))));
         this._diagnosticsLog = diagnosticsLog ?? new LiveLogStore();
         this._pageCycle = pageCycle ?? new DashPageCycle();
         this._link = link;
@@ -134,6 +135,9 @@ public sealed class RuntimeCoordinator
             case "analysis.filter": return FilterAnalysis(command, out error);
             case "analysis.selectLap": return SelectAnalysisLap(command, out error);
             case "analysis.setRunSetup": return this.SetAnalysisRunSetup(command, out error);
+            case "lap.note.add": return this.AddLapNote(command, out error);
+            case "lap.note.update": return this.UpdateLapNote(command, out error);
+            case "lap.note.delete": return this.DeleteLapNote(command, out error);
             case "compare.course": return this.SelectCompareCourse(command, out error);
             case "compare.target.set": return this.SetCompareTarget(command, out error);
             case "compare.target.clear": this._liveCompare.ClearTarget(); return true;
@@ -1283,6 +1287,48 @@ public sealed class RuntimeCoordinator
         string? setupId = setupElement.ValueKind == JsonValueKind.String ? setupElement.GetString() : null;
         if (setupId is { Length: 0 }) { error = "setupId must not be empty"; return false; }
         return this._analysis.SetRunSetup(outing, setupId, out error);
+    }
+
+    // ── Analysis: notes on a lap ─────────────────────────────────────────────
+
+    /// <summary>A note at a place on a lap (metres from the line), signed with the driver name in Settings.</summary>
+    private bool AddLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryDouble(command, "distanceMeters", out double distanceMeters)) { error = "distanceMeters must be a number"; return false; }
+        if (!TryStringField(command, "text", out string text)) { error = "text is required"; return false; }
+
+        string author;
+        lock (this._runtime.SettingsGate)
+        {
+            author = this._runtime.Settings.DriverName;
+        }
+
+        return this._analysis.AddNote(sessionId, lapNumber, distanceMeters, text, author, out error);
+    }
+
+    private bool UpdateLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryString(command, "noteId", out string noteId)) { error = "noteId is required"; return false; }
+        if (!TryStringField(command, "text", out string text)) { error = "text is required"; return false; }
+        return this._analysis.UpdateNote(sessionId, lapNumber, noteId, text, out error);
+    }
+
+    private bool DeleteLapNote(JsonElement command, out string error)
+    {
+        if (!TryLapOf(command, out string sessionId, out int lapNumber, out error)) return false;
+        if (!TryString(command, "noteId", out string noteId)) { error = "noteId is required"; return false; }
+        return this._analysis.DeleteNote(sessionId, lapNumber, noteId, out error);
+    }
+
+    private static bool TryLapOf(JsonElement command, out string sessionId, out int lapNumber, out string error)
+    {
+        error = "";
+        lapNumber = 0;
+        if (!TryString(command, "sessionId", out sessionId)) { error = "sessionId is required"; return false; }
+        if (!TryInt(command, "lapNumber", out lapNumber)) { error = "lapNumber must be a number"; return false; }
+        return true;
     }
 
     // ── Diagnostics ─────────────────────────────────────────────────────────

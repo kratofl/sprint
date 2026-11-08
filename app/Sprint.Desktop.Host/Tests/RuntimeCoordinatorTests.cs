@@ -1010,6 +1010,67 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void LapNotes_RoundTripThroughTheCommandSurfaceSignedWithTheDriverName()
+    {
+        FakeLapHistoryStore history = new();
+        history.Add(FakeLapHistoryStore.Session("session-a", "UnitTestGame", "UnitTestTrack", "UnitTestCar", lapNumber: 5, lapTimeSeconds: 120));
+        string notesPath = Path.Combine(NewTempDataRoot(), "lap-notes.json");
+        LapCorpusBrowser browser = new(history, new FakeLapTraceStore(), new LapNotes(notesPath));
+        AnalysisController analysis = new(browser);
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot, analysis: analysis);
+        try
+        {
+            runtime.Settings.DriverName = "Luca";
+            Assert.True(coordinator.Execute(Command("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":3200,"text":"Lift earlier into C3"}"""), out string addError), addError);
+            CorpusLapNote note = Assert.Single(browser.Find("session-a", 5)?.Notes ?? []);
+            Assert.Equal("Luca", note.Author);
+            Assert.Equal(3200, note.DistanceMeters);
+
+            string update = JsonSerializer.Serialize(new { type = "lap.note.update", sessionId = "session-a", lapNumber = 5, noteId = note.Id, text = "Lift into C3" });
+            Assert.True(coordinator.Execute(Command(update), out string updateError), updateError);
+            Assert.Equal("Lift into C3", Assert.Single(browser.Find("session-a", 5)?.Notes ?? []).Text);
+
+            string delete = JsonSerializer.Serialize(new { type = "lap.note.delete", sessionId = "session-a", lapNumber = 5, noteId = note.Id });
+            Assert.True(coordinator.Execute(Command(delete), out string deleteError), deleteError);
+            Assert.Empty(browser.Find("session-a", 5)?.Notes ?? []);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+            Cleanup(Path.GetDirectoryName(notesPath) ?? notesPath);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"lap.note.add","lapNumber":5,"distanceMeters":10,"text":"x"}""", "sessionId is required")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":"5","distanceMeters":10,"text":"x"}""", "lapNumber must be a number")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"text":"x"}""", "distanceMeters must be a number")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":10}""", "text is required")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":5,"distanceMeters":10,"text":" "}""", "Write something first.")]
+    [InlineData("""{"type":"lap.note.add","sessionId":"session-a","lapNumber":7,"distanceMeters":10,"text":"x"}""", "no such lap")]
+    [InlineData("""{"type":"lap.note.update","sessionId":"session-a","lapNumber":5,"text":"x"}""", "noteId is required")]
+    [InlineData("""{"type":"lap.note.update","sessionId":"session-a","lapNumber":5,"noteId":"nope","text":"x"}""", "no such note on that lap")]
+    [InlineData("""{"type":"lap.note.delete","sessionId":"session-a","lapNumber":5,"noteId":"nope"}""", "no such note on that lap")]
+    public void LapNotes_RefuseWhatThePageCouldNeverSend(string command, string expected)
+    {
+        FakeLapHistoryStore history = new();
+        history.Add(FakeLapHistoryStore.Session("session-a", "UnitTestGame", "UnitTestTrack", "UnitTestCar", lapNumber: 5, lapTimeSeconds: 120));
+        string notesRoot = NewTempDataRoot();
+        AnalysisController analysis = new(new LapCorpusBrowser(history, new FakeLapTraceStore(), new LapNotes(Path.Combine(notesRoot, "lap-notes.json"))));
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot, analysis: analysis);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(command), out string error));
+            Assert.Equal(expected, error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+            Cleanup(notesRoot);
+        }
+    }
+
+    [Fact]
     public void DiagnosticsSetLogLevel_UnknownLevel_ReturnsError()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

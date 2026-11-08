@@ -111,6 +111,15 @@ per-viewer preference in the renderer's local storage, not host state. Traces ca
 so corners are found where smoothed speed dips by 25 km/h and are numbered from the start line
 (`AnalysisLapCharts.ts`).
 
+Pins over the lap's charts mark where a car setting changed and where a note was left. The settings
+(TC, ABS, brake bias, motor map, migration, anti-roll bars) are step channels in the trace, written
+only for what the car has, and the changes are derived from them in the renderer
+(`AnalysisLapMarks.ts`), so they travel with a shared lap without a field of their own; older traces
+simply have none. Notes live in two places on purpose: the driver's own in `lap-notes.json`
+(`LapNotes`), because the recorder rewrites the session it is filling from its own copy and would drop
+a note written mid-session, and those that came with a shared lap on its record, read-only. The lap
+file's header carries both, so a note goes with the lap; a file from before notes reads with none.
+
 On track keeps its own two-lap compare page (`ComparePage` in `OnTrackPages.tsx`), with its own
 corner finder (`OnTrackLaps.ts`).
 

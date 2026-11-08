@@ -26,6 +26,9 @@ public sealed record CorpusLap(
     double? FuelUsedLiters = null,
     DateTimeOffset? CompletedAt = null)
 {
+    /// <summary>The notes left on this lap: the driver's own, then any that came with it when it was shared.</summary>
+    public IReadOnlyList<CorpusLapNote> Notes { get; init; } = [];
+
     /// <summary>Where this lap's channels live, when it has any.</summary>
     public string TraceId => LapTraceId.For(SessionId, LapNumber);
 
@@ -40,6 +43,9 @@ public sealed record CorpusLap(
         _ => "Lap time only — imported, or only part of the lap was seen.",
     };
 }
+
+/// <summary>A note on a lap as Analysis shows it. <paramref name="Mine"/>: the driver wrote it here, so may change it.</summary>
+public sealed record CorpusLapNote(string Id, double DistanceMeters, string Text, string Author, DateTimeOffset CreatedAt, bool Mine);
 
 /// <summary>
 /// Reads the lap-history corpus for the Analysis view and the Live Compare target picker
@@ -59,11 +65,16 @@ public sealed class LapCorpusBrowser
     private readonly ILapHistoryStore _history;
     private readonly ILapTraceStore _traces;
 
-    public LapCorpusBrowser(ILapHistoryStore history, ILapTraceStore traces)
+    /// <param name="notes">The driver's own lap notes. Without it laps carry only the notes they were shared with, and none can be written.</param>
+    public LapCorpusBrowser(ILapHistoryStore history, ILapTraceStore traces, LapNotes? notes = null)
     {
         _history = history ?? throw new ArgumentNullException(nameof(history));
         _traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this.Notes = notes;
     }
+
+    /// <summary>Where the driver's own lap notes are kept, or null when they cannot be kept here.</summary>
+    public LapNotes? Notes { get; }
 
     /// <summary>
     /// Every session that holds at least one valid lap, for the picker to narrow down. Sessions
@@ -194,8 +205,15 @@ public sealed class LapCorpusBrowser
         return [.. left.Channels.Keys.Where(right.Channels.ContainsKey).Order(StringComparer.Ordinal)];
     }
 
-    private static CorpusLap Describe(LapHistorySession session, LapHistoryRecord lap)
+    private CorpusLap Describe(LapHistorySession session, LapHistoryRecord lap)
     {
+        IReadOnlyList<LapNote> own = this.Notes?.For(session.Id, lap.LapNumber) ?? [];
+        CorpusLapNote[] notes =
+        [
+            .. own.Select(note => new CorpusLapNote(note.Id, note.DistanceMeters, note.Text, note.Author, note.CreatedAt, Mine: true)),
+            .. lap.Notes.Select(note => new CorpusLapNote(note.Id, note.DistanceMeters, note.Text, note.Author, note.CreatedAt, Mine: false)),
+        ];
+
         var tier = (lap.HasReferenceCurve, lap.HasChannelTrace) switch
         {
             (true, true) => LapTargetTier.FullTrace,
@@ -222,6 +240,9 @@ public sealed class LapCorpusBrowser
             lap.FrontCompound,
             lap.RearCompound,
             lap.FuelUsedLiters,
-            lap.CompletedAt);
+            lap.CompletedAt)
+        {
+            Notes = notes,
+        };
     }
 }

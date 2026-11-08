@@ -196,6 +196,23 @@ public sealed class LapHistorySession
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
+/// <summary>
+/// A note a driver left at a place on a lap, written afterwards in Analysis. It travels with the
+/// lap when it is shared.
+/// </summary>
+/// <param name="DistanceMeters">Where on the lap, in metres from the line.</param>
+/// <param name="Author">Who wrote it: the driver name in Settings when it was written.</param>
+public sealed record LapNote(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("distanceMeters")] double DistanceMeters,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("author")] string Author,
+    [property: JsonPropertyName("createdAt")] DateTimeOffset CreatedAt)
+{
+    /// <summary>The longest note, in characters: a thought about a corner, not a report.</summary>
+    public const int MaxTextLength = 500;
+}
+
 /// <summary>Per-corner tyre state at the end of a lap. Every value nullable.</summary>
 public sealed class LapHistoryTire
 {
@@ -490,6 +507,14 @@ public sealed class LapHistoryRecord
     /// <summary>When the car crossed the line to finish the lap. Null for imported laps.</summary>
     [JsonPropertyName("completedAt")]
     public DateTimeOffset? CompletedAt { get; set; }
+
+    /// <summary>
+    /// The notes that came with a lap somebody shared, read-only here. The driver's own notes are
+    /// not kept on the record but in <c>LapNotes</c>: the recorder rewrites the session it is
+    /// filling from its own copy, which would drop a note written while it is still being driven.
+    /// </summary>
+    [JsonPropertyName("notes")]
+    public List<LapNote> Notes { get; set; } = [];
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }

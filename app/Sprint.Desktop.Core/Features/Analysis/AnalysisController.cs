@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Sprint.Desktop.Features.Charts;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
@@ -287,6 +288,123 @@ public sealed class AnalysisController
 
         runSetups.Set(session.Id, outing, picked);
         this.Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// Leaves a note at a place on a lap, any lap with a time (a friend's too: the note is yours,
+    /// kept beside their lap). <paramref name="author"/> is the driver name in Settings.
+    /// </summary>
+    public bool AddNote(string sessionId, int lapNumber, double distanceMeters, string text, string author, out string error)
+    {
+        if (!this.NoteTarget(sessionId, lapNumber, out CorpusLap? lap, out LapNotes? notes, out error)
+            || !ValidNoteText(text, out string clean, out error))
+        {
+            return false;
+        }
+
+        // A lap whose length the game never said was laid out on the fallback length.
+        double length = lap.Context.TrackLengthMeters ?? LapChannelTrace.FallbackTrackLengthMeters;
+        if (!double.IsFinite(distanceMeters) || distanceMeters < 0 || distanceMeters > length + 1)
+        {
+            error = "distanceMeters must be a place on the lap";
+            return false;
+        }
+
+        notes.Add(sessionId, lapNumber, Math.Min(distanceMeters, length), clean, author.Trim());
+        this.Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Rewrites one of the driver's own notes. A note that came with a shared lap is not theirs to change.</summary>
+    public bool UpdateNote(string sessionId, int lapNumber, string noteId, string text, out string error)
+    {
+        if (!this.NoteTarget(sessionId, lapNumber, out CorpusLap? lap, out LapNotes? notes, out error)
+            || !ValidNoteText(text, out string clean, out error)
+            || !OwnNote(lap, noteId, out error))
+        {
+            return false;
+        }
+
+        notes.Update(sessionId, lapNumber, noteId, clean);
+        this.Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Removes one of the driver's own notes.</summary>
+    public bool DeleteNote(string sessionId, int lapNumber, string noteId, out string error)
+    {
+        if (!this.NoteTarget(sessionId, lapNumber, out CorpusLap? lap, out LapNotes? notes, out error)
+            || !OwnNote(lap, noteId, out error))
+        {
+            return false;
+        }
+
+        notes.Delete(sessionId, lapNumber, noteId);
+        this.Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    private bool NoteTarget(
+        string sessionId,
+        int lapNumber,
+        [NotNullWhen(true)] out CorpusLap? lap,
+        [NotNullWhen(true)] out LapNotes? notes,
+        out string error)
+    {
+        error = "";
+        notes = this._browser.Notes;
+        lap = this._browser.Find(sessionId, lapNumber);
+        if (notes is null)
+        {
+            error = "notes cannot be kept here";
+            return false;
+        }
+
+        if (lap is null)
+        {
+            error = "no such lap";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ValidNoteText(string text, out string clean, out string error)
+    {
+        error = "";
+        clean = text.Trim();
+        if (clean.Length == 0)
+        {
+            error = "Write something first.";
+            return false;
+        }
+
+        if (clean.Length > LapNote.MaxTextLength)
+        {
+            error = $"Keep a note under {LapNote.MaxTextLength} characters.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool OwnNote(CorpusLap lap, string noteId, out string error)
+    {
+        error = "";
+        CorpusLapNote? note = lap.Notes.FirstOrDefault(candidate => candidate.Id == noteId);
+        if (note is null)
+        {
+            error = "no such note on that lap";
+            return false;
+        }
+
+        if (!note.Mine)
+        {
+            error = "That note came with a shared lap; only its author can change it.";
+            return false;
+        }
+
         return true;
     }
 

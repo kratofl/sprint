@@ -30,7 +30,9 @@
 //   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
 //                         Cancel (1) or fails at once with a server error (fail)
 //   click=<css selector>  after the view opens, click the first match (waits up to 2s for it);
-//                         repeat the parameter to click several things in order
+//                         repeat the parameter to click several things in order. A trailing @0.46
+//                         clicks that far across the element instead of at its left edge (a place
+//                         along a chart)
 //   focus=<css selector>  after the clicks, focus the first match and point at it: what only focus or
 //                         hover shows (the hidden screenshot window never has focus, so it does both)
 //   training=on|arrange|none  On track: training (on), the HUD up to arrange (arrange), or no lap has
@@ -225,9 +227,26 @@
     const throttle = speedKph.map((speed, index) => (index > 0 && speed < speedKph[index - 1] - 0.4 ? 0 : Math.max(0.2, Math.min(1, 0.35 + (speed - 120) / 120))))
     const brake = speedKph.map((speed, index) => (index > 0 && speed < speedKph[index - 1] - 1.5 ? 0.85 : 0))
     const angle = (index) => 2 * Math.PI * index * step
+    // The in-car settings as steps: [[value, from lap fraction], …]. Yours: TC up at C3, brake
+    // bias forward after it, ABS down before the last corner. Ada's (a friend's shared lap): TC 5
+    // and ABS 3 all lap, migration up after C4. The laps of the Quali session carry none (older).
+    const steps = (pairs) => Array.from({ length: count }, (_, index) => pairs.filter(([, from]) => from <= index * step).at(-1)?.[0] ?? pairs[0][0])
+    const ada = Boolean(lap.sharedFrom)
+    const settings = sessionId === 'sample-spa-quali'
+      ? {}
+      : {
+          tc: steps(ada ? [[5, 0]] : [[3, 0], [5, 0.455]]),
+          abs: steps(ada ? [[3, 0]] : [[4, 0], [3, 0.83]]),
+          brakeBiasRear: steps(ada ? [[0.466, 0]] : [[0.46, 0], [0.468, 0.6]]),
+          migration: steps(ada ? [[2, 0], [4, 0.66]] : [[2, 0]]),
+          motorMap: steps([[3, 0]]),
+          arbFront: steps([[3, 0]]),
+          arbRear: steps([[2, 0]]),
+        }
     return {
       version: 2, positionStep: step, trackLengthMeters: 6981.6,
       channels: {
+        ...settings,
         speedKph,
         elapsedSeconds: raw.map((value) => value * scale),
         throttle,
@@ -282,6 +301,13 @@
       rearCompound: 'Medium',
       fuelUsedLiters: lap.lapNumber === 1 ? null : 3 + ((lap.lapNumber * 7) % 15) / 100,
       completedAt: new Date(start + lap.lapNumber * 140_000 + (outingOf(lap.lapNumber) - 1) * 360_000).toISOString(),
+      // Lap 1 carries two of your notes (at C3, and where the bias went forward).
+      notes: lap.lapNumber === 1
+        ? [
+            { id: 'note-c3', distanceMeters: 3190, text: 'Lift earlier into C3, the car rotates better with TC 5', author: 'Luca', createdAt: '2026-09-28T19:30:00Z', mine: true },
+            { id: 'note-bias', distanceMeters: 4250, text: 'Bias forward helps the stop into C4', author: 'Luca', createdAt: '2026-09-28T19:31:00Z', mine: true },
+          ]
+        : [],
     }))
     const picked = { 1: { snapshotId: 'race-v3@0', name: 'Race v3', setupId: 'race-v3' }, 3: { snapshotId: 'quali@0', name: 'Quali', setupId: 'quali' } }
     state.analysis.runs = [1, 2, 3].map((outing, index) => {
@@ -327,6 +353,13 @@
         ...state.analysis.laps[0], sessionId, lapNumber, label: `Lap ${lapNumber}`, lapTimeSeconds, tier: 'FullTrace', hasChannels: true,
         detail: sharedFrom ? `Shared by ${sharedFrom} · 12:00` : 'Qualify · 19:10',
         unavailableReason: null, sharedFrom, traceId: `${sessionId}/${lapNumber}`, outing: 1, sessionStartedAt: sharedFrom ? '2026-09-25T12:00:00+00:00' : '2026-09-28T19:10:00+00:00',
+        // Ada's lap came with her notes, read-only here.
+        notes: sharedFrom
+          ? [
+              { id: 'ada-c1', distanceMeters: 480, text: 'Brake at the 100 board, not before', author: sharedFrom, createdAt: '2026-09-25T12:10:00Z', mine: false },
+              { id: 'ada-c3', distanceMeters: 3180, text: 'TC 5 from here: the rear steps out on exit', author: sharedFrom, createdAt: '2026-09-25T12:11:00Z', mine: false },
+            ]
+          : [],
       })
       state.analysis.courseLaps = [
         ...state.analysis.laps,
@@ -549,15 +582,24 @@
   // Clicks each `click=` selector in order, each once it exists (or gives up on it after 2s),
   // so a screenshot can show a state that needs input: a selected row, an open dialog, a tab.
   const clickInOrder = (selectors) => {
-    const [selector, ...rest] = selectors
-    if (!selector) return
+    const [step, ...rest] = selectors
+    if (!step) return
+    // `selector@0.46`: a click that far across the element, e.g. a place along a chart's SVG.
+    const at = /^(.*)@(\d*\.?\d+)$/.exec(step)
+    const selector = at ? at[1] : step
+    const across = at ? Number(at[2]) : null
     const started = Date.now()
     const timer = setInterval(() => {
+      // Any element (an SVG too), not only an HTMLElement.
       const element = document.querySelector(selector)
-      if (!(element instanceof HTMLElement) && Date.now() - started < 2000) return
+      if (!element && Date.now() - started < 2000) return
       clearInterval(timer)
-      if (element instanceof HTMLElement) element.click()
-      else console.warn(`[preview] nothing matches click selector "${selector}"`)
+      if (!element) console.warn(`[preview] nothing matches click selector "${selector}"`)
+      else if (across === null && element instanceof HTMLElement) element.click()
+      else {
+        const box = element.getBoundingClientRect()
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: box.left + box.width * (across ?? 0.5), clientY: box.top + box.height / 2 }))
+      }
       setTimeout(() => clickInOrder(rest), 50)
     }, 20)
   }

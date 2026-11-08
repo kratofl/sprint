@@ -52,6 +52,12 @@ public sealed record SharedLap(
     LapChannelTrace Trace)
 {
     /// <summary>
+    /// The notes left on the lap, each with its author. Not part of <see cref="Fingerprint"/>: the
+    /// same lap with a note more is still the same lap.
+    /// </summary>
+    public IReadOnlyList<LapNote> Notes { get; init; } = [];
+
+    /// <summary>
     /// The lap's identity, for refusing a second import of the same one.
     /// <para>
     /// Derived from who drove it, where, and how fast rather than from a generated id: the same

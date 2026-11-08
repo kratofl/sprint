@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, MoreHorizontal, Plus, X } from 'lucide-react'
-import { carLine, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
-import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace } from './AnalysisDomain'
+import type { SprintCommand } from '../bridge'
+import { buildAddLapNote, buildDeleteLapNote, buildUpdateLapNote, carLine, formatGap, formatLapSeconds, fuelText, tyreText } from './AnalysisDomain'
+import type { CorpusLap, CorpusRun, CorpusSession, LapChannelTrace, LapNote } from './AnalysisDomain'
 import { LapTraceChartStack, LineKey } from './AnalysisChart'
 import type { ChartMark } from './AnalysisChart'
 import { buildLapCharts, lapCorners, verdict } from './AnalysisLapCharts'
 import type { LapPanelOf } from './AnalysisLapCharts'
-import { LAP_CHART_TITLES, addChart, hiddenCharts, moveChart, removeChart } from './AnalysisLapLayout'
+import { LAP_CHART_TITLES, addChart, hiddenCharts, moveChart, removeChart, storedLapLayout } from './AnalysisLapLayout'
 import type { LapChartId, LapLayout } from './AnalysisLapLayout'
+import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
+import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
+import type { PinRow } from './AnalysisLapPins'
 import { MenuLayer } from './DashesMenus'
 import type { MenuAnchor } from './DashesMenus'
 import { FriendBadge, shortDay } from './OnTrackPages'
@@ -18,7 +22,9 @@ import { useLapTrace } from './useLapTrace'
  * Analysis's third page: one lap, on its own. Where it went on the track (the map) beside its
  * channels, each chart arranged by the driver (its ⋯ menu, "Add chart"). Comparing is a choice:
  * "Compare with…" picks another lap with this car on this track — yours first, then shared ones —
- * and it joins every chart grey and dashed until "Stop comparing".
+ * and it joins every chart grey and dashed until "Stop comparing". Pins over the charts mark where
+ * a car setting changed or a note was left (both laps' when comparing); a click on the charts
+ * leaves a note there (`onNote` sends it and says whether the host took it).
  */
 export function LapPage({
   lap,
@@ -33,6 +39,7 @@ export function LapPage({
   onCompare,
   onBack,
   onTrain,
+  onNote,
 }: {
   lap: CorpusLap
   session: CorpusSession
@@ -47,6 +54,7 @@ export function LapPage({
   onCompare: (lap: CorpusLap | null) => void
   onBack: () => void
   onTrain: (lap: CorpusLap) => void
+  onNote: (command: SprintCommand) => Promise<boolean>
 }) {
   const lapTrace = useLapTrace(lap)
   const otherTrace = useLapTrace(compareWith)
@@ -75,6 +83,8 @@ export function LapPage({
         </div>
       ) : (
         <LapBody
+          lap={lap}
+          onNote={onNote}
           lapLabel={lapName(lap, session)}
           otherLabel={compareWith ? lapName(compareWith, session) : null}
           trace={lapTrace.trace}
@@ -271,6 +281,8 @@ function ComparePicker({
 
 /** The map beside the charts, or the charts alone when the map is off (or the lap has no positions). */
 function LapBody({
+  lap,
+  onNote,
   lapLabel,
   otherLabel,
   trace,
@@ -281,6 +293,8 @@ function LapBody({
   cursor,
   onCursor,
 }: {
+  lap: CorpusLap
+  onNote: (command: SprintCommand) => Promise<boolean>
   lapLabel: string
   otherLabel: string | null
   trace: LapChannelTrace
@@ -298,6 +312,8 @@ function LapBody({
     <div className={showMap ? 'analysis-lap-body with-map' : 'analysis-lap-body'}>
       {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} onRemove={() => onLayout({ ...layout, map: false })} />}
       <TelemetryCard
+        lap={lap}
+        onNote={onNote}
         lapLabel={lapLabel}
         otherLabel={otherLabel}
         trace={trace}
@@ -398,8 +414,19 @@ function TrackMapCard({ trace, marks, cursor, onRemove }: { trace: LapChannelTra
   )
 }
 
-/** The charts, each with its ⋯ menu, and "Add chart" for what was removed. */
+/** An open layer over the charts: a note being written, one being read, or one being rewritten. */
+type NoteLayer =
+  | { kind: 'new'; position: number }
+  | { kind: 'read'; note: LapNote; lap: CorpusLap; position: number; other: boolean }
+  | { kind: 'edit'; note: LapNote; lap: CorpusLap; position: number }
+
+/**
+ * The charts, each with its ⋯ menu, and "Add chart" for what was removed. Over them, a row of pins
+ * per lap; a click on the charts (or Enter at the keyboard cursor) writes a note there.
+ */
 function TelemetryCard({
+  lap,
+  onNote,
   lapLabel,
   otherLabel,
   trace,
@@ -411,6 +438,8 @@ function TelemetryCard({
   canAddMap,
   onCursor,
 }: {
+  lap: CorpusLap
+  onNote: (command: SprintCommand) => Promise<boolean>
   lapLabel: string
   otherLabel: string | null
   trace: LapChannelTrace
@@ -422,13 +451,70 @@ function TelemetryCard({
   canAddMap: boolean
   onCursor: (position: number | null) => void
 }) {
-  const charts = buildLapCharts(layout, { trace, label: lapLabel }, compareWith && otherTrace && otherLabel ? { trace: otherTrace, label: otherLabel } : null)
+  const [layer, setLayer] = useState<NoteLayer | null>(null)
+  const compared = compareWith && otherTrace && otherLabel ? { lap: compareWith, trace: otherTrace, label: otherLabel } : null
+  const charts = buildLapCharts(layout, { trace, label: lapLabel }, compared ? { trace: compared.trace, label: compared.label } : null)
   const hidden = hiddenCharts(layout)
+  const meters = lapMeters(trace, lap)
+  const placeOf = (position: number) => placeLabel(position, meters, marks)
+
+  // Compared, each row is named (a friend by first name, to fit beside the axis); alone, the one
+  // row needs no name. A row with no pin is left out.
+  const rowLabel = (of: CorpusLap, label: string) => (of.sharedFrom ? (of.sharedFrom.trim().split(/\s+/)[0] ?? label) : label)
+  const rows: PinRow[] = [
+    { key: 'mine', label: compared ? rowLabel(lap, lapLabel) : null, other: false, pins: lapPins(settingChanges(trace), lap.notes, meters) },
+    ...(compared
+      ? [{ key: 'other', label: rowLabel(compared.lap, compared.label), other: true, pins: lapPins(settingChanges(compared.trace), compared.lap.notes, lapMeters(compared.trace, compared.lap)) }]
+      : []),
+  ].filter((row) => row.pins.length > 0)
+  const lines = pinLines(rows)
+
   // A split pedal chart is two panels of one chart: its menu sits on the first of them only.
   const menuFor = (index: number) => {
     const owner: LapPanelOf = charts.owners[index]
     if (owner === 'delta' || charts.owners.indexOf(owner) !== index) return null
     return <ChartMenu id={owner} layout={layout} onLayout={onLayout} comparing={compareWith !== null} />
+  }
+
+  // A click on the charts closes a note being read; with none open it starts one there. A note
+  // being written keeps its place until it is saved or cancelled.
+  const pick = (position: number) => {
+    if (layer?.kind === 'new' || layer?.kind === 'edit') return
+    setLayer(layer ? null : { kind: 'new', position })
+  }
+  const send = async (command: SprintCommand) => {
+    const sent = await onNote(command)
+    if (sent) setLayer(null)
+    return sent
+  }
+
+  const drawLayer = (width: number) => {
+    if (!layer) return null
+    const style = { left: popoverLeft(layer.position, width), top: pinRowsHeight(rows) + 4 }
+    return (
+      <div className="analysis-note-layer" style={style}>
+        {layer.kind === 'new' ? (
+          <NoteEditor title="New note" place={placeOf(layer.position)} initial="" onCancel={() => setLayer(null)} onSave={(text) => send(buildAddLapNote(lap, layer.position * meters, text))} />
+        ) : layer.kind === 'edit' ? (
+          <NoteEditor
+            title="Edit note"
+            place={placeOf(layer.position)}
+            initial={layer.note.text}
+            onCancel={() => setLayer(null)}
+            onSave={(text) => send(buildUpdateLapNote(layer.lap, layer.note.id, text))}
+          />
+        ) : (
+          <NoteBubble
+            note={layer.note}
+            place={placeOf(layer.position)}
+            lapName={layer.other ? (compared?.label ?? null) : null}
+            onClose={() => setLayer(null)}
+            onEdit={() => setLayer({ kind: 'edit', note: layer.note, lap: layer.lap, position: layer.position })}
+            onDelete={() => void send(buildDeleteLapNote(layer.lap, layer.note.id))}
+          />
+        )}
+      </div>
+    )
   }
 
   return (
@@ -446,6 +532,27 @@ function TelemetryCard({
           trackLengthMeters={trace.trackLengthMeters}
           emptyText="Not recorded for this lap."
           onCursor={onCursor}
+          lines={lines}
+          onPick={pick}
+          top={(width) => (
+            <div className="analysis-pins" style={{ height: pinRowsHeight(rows) }}>
+              <PinRows
+                rows={rows}
+                width={width}
+                placeOf={placeOf}
+                openNoteId={layer?.kind === 'read' ? layer.note.id : null}
+                onNote={(note, row, position) =>
+                  setLayer(layer?.kind === 'read' && layer.note.id === note.id ? null : { kind: 'read', note, lap: row.other && compared ? compared.lap : lap, position, other: row.other })
+                }
+              />
+              {drawLayer(width)}
+            </div>
+          )}
+          body={(index, width, cursorPosition) =>
+            charts.owners[index] === 'settings' && charts.settings ? (
+              <CarSettingsLanes chart={charts.settings} width={width} height={charts.heights[index]} cursorPosition={cursorPosition} lines={lines} compared={compared !== null} />
+            ) : null
+          }
         />
       ) : (
         <p className="muted analysis-chart-empty">No charts shown. Add one below.</p>
@@ -615,7 +722,7 @@ export function useStoredLapLayout(parse: (value: unknown) => LapLayout, initial
   })
   useEffect(() => {
     try {
-      window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
+      window.localStorage.setItem(LAYOUT_KEY, JSON.stringify(storedLapLayout(layout)))
     } catch {
       // Storage off (a private profile): the layout still works, it just is not remembered.
     }
