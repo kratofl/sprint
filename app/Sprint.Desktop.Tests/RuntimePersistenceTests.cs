@@ -46,6 +46,40 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
+    public void LegacyDashWithDefaultFlagLoadsUncategorised_AndTheFlagIsDroppedOnDisk()
+    {
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            string layoutsPath = Path.Combine(dataRoot, "dash-layouts");
+            Directory.CreateDirectory(layoutsPath);
+            string path = Path.Combine(layoutsPath, "old.json");
+            File.WriteAllText(path, """
+                {"id":"old","name":"Old","default":true,"gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+                """);
+            File.WriteAllText(Path.Combine(layoutsPath, "synced.json"), """
+                {"id":"synced","name":"Synced","category":" wet ","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+                """);
+
+            DesktopRuntime runtime = new(dataRoot, TestEnv.PresetRoot);
+
+            DashLayout old = runtime.DashLayouts.Single(layout => layout.Id == "old");
+            Assert.Null(old.Category);
+            Assert.DoesNotContain("\"default\"", File.ReadAllText(path), StringComparison.Ordinal);
+            // A category this PC does not know yet (synced, hand-edited) becomes a custom one.
+            Assert.Equal("wet", runtime.DashLayouts.Single(layout => layout.Id == "synced").Category);
+            Assert.Equal(["wet"], runtime.Settings.CustomDashCategories);
+            // Existing dashes mean the preset is not seeded on top of them.
+            Assert.DoesNotContain(runtime.DashLayouts, layout => layout.Id == "default");
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DashStyleSurvivesSaveAndReloadAsALowercaseName()
     {
         string dataRoot = TestEnv.NewTempDataRoot();
@@ -62,6 +96,31 @@ public sealed class RuntimePersistenceTests
 
             DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.Equal(DashStyle.Bars, reloaded.DashLayouts.Single(candidate => candidate.Id == "default").DashStyle);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResetToPresetKeepsTheDashScreenSize()
+    {
+        string dataRoot = TestEnv.NewTempDataRoot();
+
+        try
+        {
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            ScreenProfile portrait = ScreenProfileCatalog.Find("portrait-480x800") ?? throw new InvalidOperationException("Missing profile.");
+            DashLayout layout = runtime.CreateBlankDashLayout(portrait, name: "Portrait", category: null);
+
+            runtime.ResetDashLayout(layout);
+
+            Assert.Equal(portrait.Id, layout.ScreenProfileId);
+            Assert.Equal(portrait.GridCols, layout.GridCols);
+            Assert.Equal(portrait.GridRows, layout.GridRows);
+            Assert.NotEmpty(layout.Pages[0].Widgets);
+            Assert.True(DashLayoutValidator.IsValid(layout));
         }
         finally
         {
@@ -87,12 +146,10 @@ public sealed class RuntimePersistenceTests
             Assert.NotNull(idleName.Config);
             Assert.Equal("profile.driverName", idleName.Config["binding"].GetString());
 
-            var clone = runtime.CreateDashLayout();
-            Assert.NotNull(clone.IdlePage);
-            Assert.Equal(5, clone.Alerts.Count);
-            Assert.Equal(
-                "profile.driverName",
-                clone.IdlePage.Widgets.Single(widget => widget.Id == "idle-name").Config!["binding"].GetString());
+            // A blank dash starts without the preset's idle page but with its alerts.
+            DashLayout blank = runtime.CreateBlankDashLayout(ScreenProfileCatalog.Default, name: null, category: null);
+            Assert.Null(blank.IdlePage);
+            Assert.Equal(5, blank.Alerts.Count);
         }
         finally
         {
@@ -108,7 +165,7 @@ public sealed class RuntimePersistenceTests
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var layout = runtime.CreateDashLayout();
+            DashLayout layout = runtime.CreateBlankDashLayout(ScreenProfileCatalog.Default, name: null, category: null);
             var page = DashLayoutEditor.AddPage(layout, "Race");
             DashLayoutEditor.TryRenamePage(layout, page.Id, "Race 1");
 
@@ -797,7 +854,7 @@ public sealed class RuntimePersistenceTests
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var layout = runtime.CreateDashLayout();
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
             var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
 
             runtime.SetDashScreenProfile(layout, portrait);
@@ -831,10 +888,10 @@ public sealed class RuntimePersistenceTests
             var sourceProfile = source.ScreenProfileId;
             var square = ScreenProfileCatalog.Resolve("square-800x800");
 
-            var copy = runtime.DuplicateDashToProfile(source, square);
+            DashLayout copy = runtime.DuplicateDashToProfile(source, square, name: null, category: null);
 
             Assert.NotEqual(source.Id, copy.Id);
-            Assert.False(copy.IsDefault);
+            Assert.Equal($"{source.Name} copy", copy.Name);
             Assert.Equal("square-800x800", copy.ScreenProfileId);
             Assert.Equal(square.GridCols, copy.GridCols);
             Assert.Equal(square.GridRows, copy.GridRows);
@@ -860,7 +917,7 @@ public sealed class RuntimePersistenceTests
     }
 
     [Fact]
-    public void CreateDashLayoutWithProfileTargetsThatSize()
+    public void CreateBlankDashLayoutTargetsTheProfileWithOneEmptyPage()
     {
         var dataRoot = TestEnv.NewTempDataRoot();
 
@@ -869,11 +926,13 @@ public sealed class RuntimePersistenceTests
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             var wide = ScreenProfileCatalog.Resolve("landscape-1024x600");
 
-            var created = runtime.CreateDashLayout(wide);
+            DashLayout created = runtime.CreateBlankDashLayout(wide, "Wide", "Race");
 
             Assert.Equal("landscape-1024x600", created.ScreenProfileId);
             Assert.Equal(wide.GridCols, created.GridCols);
             Assert.Equal(wide.GridRows, created.GridRows);
+            Assert.Empty(Assert.Single(created.Pages).Widgets);
+            Assert.Equal(("Wide", "Race"), (created.Name, created.Category));
             Assert.True(DashLayoutValidator.IsValid(created));
         }
         finally
@@ -890,7 +949,7 @@ public sealed class RuntimePersistenceTests
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
-            var created = runtime.CreateDashLayout();
+            DashLayout created = runtime.CreateBlankDashLayout(ScreenProfileCatalog.Default, name: null, category: null);
 
             Assert.Equal(DashColorSystem.Functional, created.ColorSystem);
             Assert.Equal(DashColorSystem.Functional, created.EffectiveColorSystem);

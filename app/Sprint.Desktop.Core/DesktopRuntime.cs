@@ -227,7 +227,9 @@ public sealed class DesktopRuntime : IDesktopRuntime
                 OffsetY = catalog.OffsetY,
                 Margin = catalog.Margin,
                 Bindings = Clone(catalog.Bindings),
-                DashId = DashLayouts.FirstOrDefault(d => d.IsDefault)?.Id ?? "default"
+                // A new device shows the fallback dash until one is picked; with no dash at all it
+                // keeps an empty id and shows nothing until a dash exists.
+                DashId = DashLayoutOrder.First(this.DashLayouts)?.Id ?? ""
             };
 
             Devices.Add(saved);
@@ -343,39 +345,32 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _log.Info($"Device removed: id={device.Id} driver={device.Driver}.");
     }
 
-    public DashLayout CreateDashLayout()
-    {
-        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-        clone.Name = "New Dash";
-        clone.IsDefault = false;
-        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
-        clone.ColorSystem = DashColorSystem.Functional;
-        clone.Theme = null;
-        NormalizeLayoutProfile(clone);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash created: id={clone.Id} profile={clone.ScreenProfileId}.");
-        return clone;
-    }
-
-    public DashLayout CreateDashLayout(ScreenProfile profile)
+    /// <summary>
+    /// Creates a blank dash for <paramref name="profile"/>: one empty page, the functional colour
+    /// system and panel style, no idle page. The preset's alerts and alert settings come along so
+    /// alerts work out of the box. A blank <paramref name="name"/> becomes "New dash".
+    /// </summary>
+    public DashLayout CreateBlankDashLayout(ScreenProfile profile, string? name, string? category)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        var source = DashLayouts.FirstOrDefault() ?? CreateFallbackDashLayout();
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
-        clone.Name = "New Dash";
-        clone.IsDefault = false;
-        clone.Mode = NormalizeDashMode(Settings.NewDashDefaults.Mode);
-        clone.ColorSystem = DashColorSystem.Functional;
-        clone.Theme = null;
-        DashLayoutEditor.ApplyScreenProfile(clone, profile);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash created: id={clone.Id} profile={profile.Id}.");
-        return clone;
+        DashLayout preset = this.LoadPresetDashLayout();
+        DashLayout layout = new()
+        {
+            Id = this.NextDashId(),
+            Name = string.IsNullOrWhiteSpace(name) ? "New dash" : name.Trim(),
+            Category = category,
+            Mode = NormalizeDashMode(this.Settings.NewDashDefaults.Mode),
+            ColorSystem = DashColorSystem.Functional,
+            DashStyle = DashStyle.Panels,
+            Pages = [new DashPage { Id = "page-1", Name = "Page 1" }],
+            Alerts = Clone(preset.Alerts),
+            AlertConfig = Clone(preset.AlertConfig),
+        };
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
+        this.DashLayouts.Add(layout);
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash created: id={layout.Id} profile={profile.Id}.");
+        return layout;
     }
 
     /// <summary>Retarget an existing dash to a different screen size in place (US17), refitting its grid and persisting.</summary>
@@ -389,28 +384,29 @@ public sealed class DesktopRuntime : IDesktopRuntime
         }
 
         DashLayoutEditor.ApplyScreenProfile(layout, profile);
-        SaveDashLayout(layout);
-        _log.Info($"Dash screen profile changed: id={layout.Id} profile={profile.Id}.");
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash screen profile changed: id={layout.Id} profile={profile.Id}.");
     }
 
     /// <summary>
-    /// Duplicate a dash and retarget the copy to another screen size (US18): an
-    /// independent, retargeted-and-refit layout with its own id, leaving the source
-    /// untouched.
+    /// Duplicate a dash and retarget the copy to a screen size (US18): an independent,
+    /// refit layout with its own id, leaving the source untouched: the Dashes page's Duplicate
+    /// dialog and the designer's Duplicate. A blank <paramref name="name"/> becomes
+    /// "&lt;source&gt; copy"; <paramref name="category"/> is the copy's, already resolved.
     /// </summary>
-    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile)
+    public DashLayout DuplicateDashToProfile(DashLayout source, ScreenProfile profile, string? name, string? category)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(profile);
 
-        var clone = Clone(source);
-        clone.Id = $"layout-{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}";
-        clone.Name = $"{source.Name} · {profile.ResolutionLabel}";
-        clone.IsDefault = false;
+        DashLayout clone = Clone(source);
+        clone.Id = this.NextDashId();
+        clone.Name = string.IsNullOrWhiteSpace(name) ? $"{source.Name} copy" : name.Trim();
+        clone.Category = category;
         DashLayoutEditor.ApplyScreenProfile(clone, profile);
-        DashLayouts.Add(clone);
-        SaveDashLayout(clone);
-        _log.Info($"Dash duplicated: source={source.Id} copy={clone.Id} profile={profile.Id}.");
+        this.DashLayouts.Add(clone);
+        this.SaveDashLayout(clone);
+        this._log.Info($"Dash duplicated: source={source.Id} copy={clone.Id} profile={profile.Id}.");
         return clone;
     }
 
@@ -429,44 +425,138 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.ScreenProfileId = ScreenProfileCatalog.MatchGrid(layout.GridCols, layout.GridRows).Id;
     }
 
-    /// <summary>Make <paramref name="layout"/> the sole default, persisting the demoted one too.</summary>
-    public void SetDefaultDashLayout(DashLayout layout)
-    {
-        if (layout.IsDefault)
-        {
-            return;
-        }
-
-        foreach (var other in DashLayouts)
-        {
-            if (other.IsDefault && !ReferenceEquals(other, layout))
-            {
-                other.IsDefault = false;
-                SaveDashLayout(other);
-            }
-        }
-
-        layout.IsDefault = true;
-        SaveDashLayout(layout);
-        _log.Info($"Default dash changed: id={layout.Id}.");
-    }
-
+    /// <summary>Deletes any dash, even the last one. Devices that showed it fall back to <see cref="DashLayoutOrder.First"/>.</summary>
     public void DeleteDashLayout(DashLayout layout)
     {
-        if (DashLayouts.Count <= 1 || layout.IsDefault)
-        {
-            _log.Warn($"Dash delete ignored: id={layout.Id} isDefault={layout.IsDefault} count={DashLayouts.Count}.");
-            return;
-        }
-
-        DashLayouts.Remove(layout);
-        var path = Path.Combine(_layoutsPath, $"{layout.Id}.json");
+        this.DashLayouts.Remove(layout);
+        string path = Path.Combine(this._layoutsPath, $"{layout.Id}.json");
         if (File.Exists(path))
         {
             File.Delete(path);
         }
 
-        _log.Info($"Dash deleted: id={layout.Id}.");
+        this._log.Info($"Dash deleted: id={layout.Id}.");
+    }
+
+    /// <summary>Files a dash under <paramref name="category"/> (a known spelling, see <see cref="DashCategories.Find"/>), or under "Other" when null.</summary>
+    public void SetDashCategory(DashLayout layout, string? category)
+    {
+        if (string.Equals(layout.Category, category, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        layout.Category = category;
+        this.SaveDashLayout(layout);
+        this._log.Info($"Dash category changed: id={layout.Id} category={category ?? "(none)"}.");
+    }
+
+    // The category list is replaced, never changed in place, so a state snapshot being
+    // serialized on another thread never sees it mid-change.
+
+    /// <summary>Adds a custom category; <paramref name="name"/> is already validated (<see cref="DashCategories.TryValidateName"/>).</summary>
+    public void CreateDashCategory(string name)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.CustomDashCategories = [.. this.Settings.CustomDashCategories, name];
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        this._log.Info($"Dash category created: {name}.");
+    }
+
+    /// <summary>Renames a custom category and moves every dash in it along; <paramref name="newName"/> is already validated.</summary>
+    public void RenameDashCategory(string name, string newName)
+    {
+        lock (this.SettingsGate)
+        {
+            List<string> custom = [.. this.Settings.CustomDashCategories];
+            int index = custom.FindIndex(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                return;
+            }
+
+            custom[index] = newName;
+            this.Settings.CustomDashCategories = custom;
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        foreach (DashLayout layout in this.DashLayouts.Where(layout => string.Equals(layout.Category, name, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            layout.Category = newName;
+            this.SaveDashLayout(layout);
+        }
+
+        this._log.Info($"Dash category renamed: {name} -> {newName}.");
+    }
+
+    /// <summary>Removes a custom category; its dashes move to "Other".</summary>
+    public void DeleteDashCategory(string name)
+    {
+        lock (this.SettingsGate)
+        {
+            this.Settings.CustomDashCategories = this.Settings.CustomDashCategories
+                .Where(existing => !string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            SaveJson(this._settingsPath, this.Settings);
+        }
+
+        foreach (DashLayout layout in this.DashLayouts.Where(layout => string.Equals(layout.Category, name, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            layout.Category = null;
+            this.SaveDashLayout(layout);
+        }
+
+        this._log.Info($"Dash category deleted: {name}.");
+    }
+
+    /// <summary>
+    /// Makes a dash's category one this runtime knows: trims it, stores the known spelling, drops a
+    /// blank or reserved one, and adopts an unknown name as a custom category (a dash synced from
+    /// another PC, or hand-edited JSON). Returns whether the dash's category changed; the caller saves it.
+    /// </summary>
+    public bool AdoptDashCategory(DashLayout layout)
+    {
+        string? before = layout.Category;
+        string trimmed = before?.Trim() ?? "";
+        if (trimmed.Length == 0 || DashCategories.IsReserved(trimmed))
+        {
+            layout.Category = null;
+            return before is not null;
+        }
+
+        lock (this.SettingsGate)
+        {
+            string? known = DashCategories.Find(trimmed, this.Settings.CustomDashCategories);
+            if (known is null)
+            {
+                this.Settings.CustomDashCategories = [.. this.Settings.CustomDashCategories, trimmed];
+                SaveJson(this._settingsPath, this.Settings);
+                this._log.Info($"Dash category adopted from dash {layout.Id}: {trimmed}.");
+                known = trimmed;
+            }
+
+            layout.Category = known;
+        }
+
+        return !string.Equals(before, layout.Category, StringComparison.Ordinal);
+    }
+
+    /// <summary>A fresh, unused dash id.</summary>
+    private string NextDashId()
+    {
+        string stamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
+        string id = $"layout-{stamp}";
+        int index = 2;
+        while (this.DashLayouts.Any(layout => string.Equals(layout.Id, id, StringComparison.OrdinalIgnoreCase)))
+        {
+            id = $"layout-{stamp}-{index}";
+            index++;
+        }
+
+        return id;
     }
 
     public SetupProgram DuplicateSetup(SetupProgram source)
@@ -605,7 +695,27 @@ public sealed class DesktopRuntime : IDesktopRuntime
         var settings = LoadJson<AppSettings>(_settingsPath) ?? fallback;
         // Fold legacy three-channel values (beta/alpha) into the two-channel model.
         settings.UpdateChannel = AppSettings.NormalizeChannel(settings.UpdateChannel);
+        settings.CustomDashCategories = NormalizeCustomDashCategories(settings.CustomDashCategories);
         return settings;
+    }
+
+    /// <summary>Trimmed, unique (case-insensitive) custom category names; blanks, built-ins and reserved names dropped.</summary>
+    private static List<string> NormalizeCustomDashCategories(IEnumerable<string?>? names)
+    {
+        List<string> normalized = [];
+        foreach (string? name in names ?? [])
+        {
+            string trimmed = name?.Trim() ?? "";
+            if (trimmed.Length == 0 || DashCategories.IsBuiltIn(trimmed) || DashCategories.IsReserved(trimmed) ||
+                normalized.Contains(trimmed, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            normalized.Add(trimmed);
+        }
+
+        return normalized;
     }
 
     private AppSettings LoadDefaultSettings() =>
@@ -711,18 +821,21 @@ public sealed class DesktopRuntime : IDesktopRuntime
                     continue;
                 }
 
-                // Rewrite renamed widget types before validation, which would otherwise
-                // reject the whole layout for an unknown (legacy) type.
-                var typesMigrated = DashWidgetTypeMigration.Apply(layout);
+                // Turn old widget stacks into groups and rewrite renamed widget types before
+                // validation, which would otherwise reject the whole layout.
+                bool contentMigrated = DashWidgetStackMigration.Apply(layout) | DashWidgetTypeMigration.Apply(layout);
                 if (DashLayoutValidator.IsValid(layout))
                 {
-                    var migrated = typesMigrated;
+                    var migrated = contentMigrated;
                     if (layout.ColorSystem is null)
                     {
                         NormalizeLayoutColorSystem(layout);
                         migrated = true;
                     }
                     migrated |= layout.Theme?.NormalizeProtectedColors() == true;
+                    // Dashes saved before categories had a per-PC "default" flag; it is gone.
+                    migrated |= layout.ExtensionData?.Remove("default") == true;
+                    migrated |= this.AdoptDashCategory(layout);
                     if (migrated)
                     {
                         SaveJson(file, layout);
@@ -732,9 +845,21 @@ public sealed class DesktopRuntime : IDesktopRuntime
             }
         }
 
-        if (layouts.Count == 0)
+        // The preset dash is seeded once (first run, or the first run after an upgrade), marked by
+        // a file beside the dashes. After that an empty list is the user's choice (every dash can
+        // be deleted) and stays empty across restarts.
+        string seededMarker = Path.Combine(this._layoutsPath, ".preset-seeded");
+        if (!File.Exists(seededMarker))
         {
-            layouts.Add(LoadJson<DashLayout>(PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout());
+            if (layouts.Count == 0)
+            {
+                DashLayout preset = this.LoadPresetDashLayout();
+                NormalizeLayoutProfile(preset);
+                this.SaveDashLayout(preset);
+                layouts.Add(preset);
+            }
+
+            File.WriteAllText(seededMarker, "");
         }
 
         // Tag any layout missing a target screen profile (legacy saves) with the
@@ -745,7 +870,7 @@ public sealed class DesktopRuntime : IDesktopRuntime
             NormalizeLayoutColorSystem(layout);
         }
 
-        return layouts.OrderByDescending(layout => layout.IsDefault).ThenBy(layout => layout.Name);
+        return DashLayoutOrder.Sort(layouts);
     }
 
     private void MigrateLegacyDataIfNeeded()
@@ -826,8 +951,14 @@ public sealed class DesktopRuntime : IDesktopRuntime
         foreach (var layoutDir in Directory.EnumerateDirectories(legacyLayoutsDir))
         {
             var legacyConfig = Path.Combine(layoutDir, "config.json");
-            var layout = LoadJson<DashLayout>(legacyConfig);
-            if (layout is null || !DashLayoutValidator.IsValid(layout))
+            DashLayout? layout = LoadJson<DashLayout>(legacyConfig);
+            if (layout is null)
+            {
+                continue;
+            }
+
+            DashWidgetStackMigration.Apply(layout);
+            if (!DashLayoutValidator.IsValid(layout))
             {
                 continue;
             }
@@ -859,12 +990,17 @@ public sealed class DesktopRuntime : IDesktopRuntime
         _log.Debug($"Dash saved: id={layout.Id} pages={layout.Pages.Count}.");
     }
 
+    /// <summary>
+    /// Puts the preset's pages, alerts and look back into a dash. It keeps its id, name, category
+    /// and screen size: the preset is refitted to the dash's own screen profile.
+    /// </summary>
     public void ResetDashLayout(DashLayout layout)
     {
-        DashLayout preset = this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+        DashLayout preset = this.LoadPresetDashLayout();
         string id = layout.Id;
         string name = layout.Name;
-        bool isDefault = layout.IsDefault;
+        string? category = layout.Category;
+        ScreenProfile profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
 
         layout.GridCols = preset.GridCols;
         layout.GridRows = preset.GridRows;
@@ -879,7 +1015,8 @@ public sealed class DesktopRuntime : IDesktopRuntime
         layout.ExtensionData = preset.ExtensionData is null ? null : Clone(preset.ExtensionData);
         layout.Id = id;
         layout.Name = name;
-        layout.IsDefault = isDefault;
+        layout.Category = category;
+        DashLayoutEditor.ApplyScreenProfile(layout, profile);
 
         this.SaveDashLayout(layout);
         this._log.Info($"Dash reset to preset content: id={layout.Id}.");
@@ -1016,13 +1153,16 @@ public sealed class DesktopRuntime : IDesktopRuntime
         return Path.Combine([_presetRoot, .. segments]);
     }
 
+    /// <summary>The shipped preset dash (id "default"), or a minimal built-in one when the preset is missing.</summary>
+    private DashLayout LoadPresetDashLayout() =>
+        this.LoadJson<DashLayout>(this.PresetPath("dash", "default.json")) ?? CreateFallbackDashLayout();
+
     private static DashLayout CreateFallbackDashLayout()
     {
         return new DashLayout
         {
             Id = "default",
             Name = "Default",
-            IsDefault = true,
             Pages =
             [
                 new DashPage

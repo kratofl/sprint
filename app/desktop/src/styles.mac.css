@@ -415,12 +415,6 @@
   color: inherit;
 }
 
-/* Home's telemetry bar is informational and not actionable: the toolbar indicator says it
-   (HIG: an indicator, not a banner, as Mail's offline state). Help & diagnostics keeps it. */
-:where([data-platform="mac"]) .overview > .telemetry-infobar {
-  display: none;
-}
-
 /* ── Glass: menus, command palette, notifications, dialogs ───────────────── */
 
 :where([data-platform="mac"]) .menu-flyout,
@@ -507,4 +501,10 @@
 
 :where([data-platform="mac"]) .content-dialog-title {
   font: 700 17px/22px var(--font-display);
+}
+
+/* Dash designer window: the traffic lights sit at its top left (electron/main.ts
+   TRAFFIC_LIGHT_POSITION), so the name pill starts after them. */
+:where([data-platform="mac"]) .designer-pill {
+  left: 88px;
 }

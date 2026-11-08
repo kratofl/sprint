@@ -1,0 +1,265 @@
+/* The first-run setup (FirstRun.tsx): the whole window over the vivid light trails, one glass card
+   (the web sign-in card's glass) with the racing timeline across its top. */
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  isolation: isolate;
+  overflow: auto;
+  background: var(--window);
+  color: var(--label);
+}
+
+/* The window has no toolbar here, so this band drags it (the caption buttons sit over its right end). */
+.first-run-drag {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 48px;
+  -webkit-app-region: drag;
+}
+
+.first-run-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  min-height: 100%;
+  padding: max(56px, 9vh) 16px 32px;
+  box-sizing: border-box;
+}
+
+.first-run-mark {
+  width: 44px;
+  height: 44px;
+}
+
+.first-run-card {
+  width: min(680px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--glass-stroke);
+  border-radius: 16px;
+  background: var(--glass);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(22px) saturate(180%);
+  animation: onboarding-fade var(--motion-slow) var(--ease-out);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .first-run > .backdrop { display: none; }
+  .first-run-card { background: var(--surface); backdrop-filter: none; }
+}
+
+/* ── The racing timeline ── */
+
+.first-run-timeline {
+  padding: 22px 44px 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.first-run-track {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+}
+
+.first-run-track-done {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--brand-500);
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+.first-run-sector {
+  position: absolute;
+  top: -6px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--label-tertiary);
+}
+
+.first-run-sector.done {
+  background: var(--brand-500);
+}
+
+/* You: a dot on the line, moved along it as the steps are done. */
+.first-run-car {
+  position: absolute;
+  top: -6px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border: 3px solid var(--brand-500);
+  border-radius: 50%;
+  background: var(--surface);
+  box-sizing: border-box;
+  transition: left var(--motion-slow) var(--ease-out);
+}
+
+.first-run-labels {
+  position: relative;
+  height: 18px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first-run-labels li {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  gap: 4px;
+  transform: translateX(-50%);
+  color: var(--label-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.first-run-labels li:first-child { transform: translateX(-12px); }
+.first-run-labels li:last-child { transform: translateX(calc(-100% + 12px)); }
+.first-run-labels b { font-weight: 700; }
+.first-run-labels svg { align-self: center; }
+.first-run-labels li.done { color: var(--label-secondary); }
+.first-run-labels li.current { color: var(--label); }
+
+/* ── A step ── */
+
+.first-run-step {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 32px 26px;
+}
+
+.first-run-step .onboarding-done {
+  margin-bottom: 8px;
+}
+
+/* Done: the check, title and lead centred over the footer. */
+.first-run-step.centered {
+  align-items: center;
+  text-align: center;
+}
+
+.first-run-step.centered .first-run-footer {
+  align-self: stretch;
+}
+
+.first-run-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.first-run-footer-end {
+  display: flex;
+  gap: 8px;
+}
+
+.first-run-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.first-run .first-run-input {
+  height: 36px;
+  font-size: 15px;
+}
+
+.first-run-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+/* The install: what was found, where, and a way to point at another copy. */
+.first-run-game {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.first-run-game-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+}
+
+.first-run-game.missing .first-run-game-icon {
+  color: var(--label-tertiary);
+}
+
+.first-run-game-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 18px;
+}
+
+.first-run-path {
+  overflow: hidden;
+  color: var(--label-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.first-run-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.first-run-checks li {
+  display: grid;
+  grid-template-columns: 20px 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 12px;
+}
+
+.first-run-checks li > svg { color: var(--success-text); }
+.first-run-checks li.pending > svg { color: var(--label-tertiary); }
+.first-run-checks li > span { color: var(--label-secondary); }
+
+.first-run-options {
+  margin-top: 16px;
+}
+
+.first-run .onboarding-option {
+  background: var(--surface);
+}
+
+.first-run .onboarding-option.chosen {
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 1px var(--brand-500);
+}
+
+@media (max-width: 560px) {
+  .first-run-fields { grid-template-columns: minmax(0, 1fr); }
+  .first-run-step { padding: 20px 20px 22px; }
+  .first-run-timeline { padding: 22px 28px 14px; }
+}

@@ -50,6 +50,25 @@ export class NativeHost {
     return this.json(`/api/analysis/trace/${encodeURIComponent(sessionId)}/${encodeURIComponent(String(lapNumber))}`)
   }
 
+  /**
+   * The game's setups. The first call after launch reads every setup file the game stores —
+   * hundreds — so it gets a minute rather than the default bound; later calls read only changes.
+   */
+  async setups(): Promise<unknown> {
+    return this.json('/api/setups', undefined, 60_000)
+  }
+
+  /** One setup's values, as the file holds them now or as `version` held them. */
+  async setupSheet(id: string, version: string | null): Promise<unknown> {
+    const query = new URLSearchParams({ id })
+    if (version) query.set('version', version)
+    return this.json(`/api/setups/sheet?${query.toString()}`, undefined, 60_000)
+  }
+
+  async setupDriven(id: string): Promise<unknown> {
+    return this.json(`/api/setups/driven?${new URLSearchParams({ id }).toString()}`, undefined, 60_000)
+  }
+
   async diagnosticsLogs(minLevel: string, text: string): Promise<unknown> {
     const query = new URLSearchParams()
     if (minLevel) query.set('minLevel', minLevel)

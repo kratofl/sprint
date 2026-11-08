@@ -78,7 +78,7 @@ public sealed class ResultsImportsTests : IDisposable
     public async Task Import_ReportsAFailedWriteInsteadOfThrowing()
     {
         FakeImporter importer = new(("race.xml", ImportedSessionKind.Race));
-        ResultsImports imports = new(importer, new FailingStore(), new ResultsImportLedger(this._dataRoot));
+        ResultsImports imports = new(() => importer, new FailingStore(), new ResultsImportLedger(this._dataRoot));
 
         ResultsImportResult result = await imports.ImportAsync(["race.xml"], CancellationToken.None);
 
@@ -89,7 +89,7 @@ public sealed class ResultsImportsTests : IDisposable
     [Fact]
     public async Task AGameWithoutAnArchiveOffersNothingAndRefusesToImport()
     {
-        ResultsImports imports = new(null, new LocalLapHistoryStore(this._dataRoot), new ResultsImportLedger(this._dataRoot));
+        ResultsImports imports = new(() => null, new LocalLapHistoryStore(this._dataRoot), new ResultsImportLedger(this._dataRoot));
 
         Assert.False(imports.Available);
         Assert.Empty((await imports.ScanAsync(includeDeclined: true, CancellationToken.None)).Entries);
@@ -108,7 +108,7 @@ public sealed class ResultsImportsTests : IDisposable
     private ResultsImports NewImports(FakeImporter importer, out ILapHistoryStore history)
     {
         history = new LocalLapHistoryStore(Path.Combine(this._dataRoot, "lap-history"));
-        return new ResultsImports(importer, history, new ResultsImportLedger(this._dataRoot));
+        return new ResultsImports(() => importer, history, new ResultsImportLedger(this._dataRoot));
     }
 
     /// <summary>An archive of one-lap sessions, each at its own time so none share a natural key.</summary>

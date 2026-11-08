@@ -35,9 +35,10 @@ browser launched with `--allow-file-access-from-files`.
 | `palette=1` | Opens the command palette |
 | `update=1` | Reports an available update (Settings dot + notification) |
 | `frame=none` | Drops the live telemetry frame; dash previews render their no-data state |
-| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. The brand look also shows the Home InfoBar; with `platform=mac` it shows only in the toolbar indicator and on Help |
+| `telemetry=unsupported` | The LMU source reports `Unsupported` with no frame, as on a Mac. The Overview's game card reads "Not supported here", the sidebar's status row says so too, and Help's Checks give the reason |
 | `import=offer` | The startup results scan finds four sessions, so the import prompt opens; otherwise every scan finds nothing new |
 | `sprintWeb=1` | Turns the Sprint web feature flag on: the account row, the setup and the Sprint web group in Settings. Off by default, as the app ships. Any of `account`, `setup`, `servers`, `storage`, `live` or `discord` turns it on as well |
+| `firstRun=1` / `firstRun=missing` | The first-run setup instead of the app, with Le Mans Ultimate found (`1`) or not (`missing`); with `platform=mac` it has no game or laps step. Its laps step finds the four sessions of `import=offer`. `click=.first-run .button.primary` goes on a step (repeat it), so three of them reach the laps step |
 | `account=signed-in` | The desktop is signed in to Sprint; otherwise the account row reads "Sign in" |
 | `setup=first-run` | Sprint web setup has not run yet, so it opens on its welcome step. Any password signs in except `wrong` |
 | `servers=none` | The setup's network scan finds no server; otherwise it finds one at `192.168.1.20` |
@@ -46,9 +47,13 @@ browser launched with `--allow-file-access-from-files`.
 | `link=<phase>` | The live link's phase on the Live link page: `Off`, `Preparing`, `Inviting`, `Joining`, `Connecting`, `Connected`, `Interrupted`, `Failed`, `Ended`. `linkRole=Engineer` shows the engineer's side where both exist (default: the driver's) |
 | `found=<id,id>` | The USB scan finds these catalog ids plugged in and not added yet, so Add device shows them under "Plugged in now", e.g. `found=bavarian-omega-v2-pro`. Default: nothing new |
 | `discord=1` / `discord=fail` | The server offers Discord sign-in. "Continue with Discord" then waits for the browser until Cancel (`1`), or fails at once with a server error (`fail`) |
-| `training=on` / `training=none` | On track: the HUD is showing and locked (`on`), or no lap was ever recorded (`none`). Default: laps listed, the fastest of yours picked, HUD off. `fullscreen=1` adds the exclusive-fullscreen warning |
-| `hud=<windowId>` | Mounts one training HUD window instead of the app: `delta`, `throttle`, `brake` or `speed`, with a braking zone ahead of the car. `hudLocked=0` shows it unlocked. Screenshot it at its window size: `--size 240,92` for the delta, `--size 380,160` for a chart |
+| `training=on` / `training=arrange` / `training=none` | On track: training (`on`), the HUD up to arrange on the monitor (`arrange`), or no lap was ever recorded (`none`). Default: laps listed with two friends' laps, Ada's picked, HUD off; every lap with a line gets a made-up one, so `click=.ontrack-laps .list-row` opens a lap page and `click=.command-bar .button` opens compare. `chase=none` picks no lap. `fullscreen=1` adds the exclusive-fullscreen warning |
+| `hud=<windowId>` | Mounts one training HUD window instead of the app: `delta`, `throttle`, `brake`, `speed`, `steering` or `gear`, with a braking zone ahead of the car, or `arrange` for the palette shown while arranging. `hudArranging=1` shows a window being arranged (edge, ×, grip). Screenshot it at its window size: `--size 240,92` for the delta, `--size 380,160` for a chart, `--size 520,56` for the palette |
+| `setups=none` / `setups=unavailable` | Setups: an empty setup folder (`none`) or no game found (`unavailable`). Default: twelve made-up setups over four cars and tracks; `click=.setups-row` opens Race v3 (three versions, `click=.setups-version:nth-child(2)` opens an older one), `click=.command-bar .button` opens compare |
+| `analysis=list` | Analysis: the sessions list (seven sessions over four cars and tracks, with an imported race and a friend's shared lap). Without it the sample opens a Spa practice session in three runs (out of the garage and back) with tyres and fuel per lap; run 1 carries "Race v3", run 3 "Quali", run 2 none; every lap but lap 4 has a made-up line. `click=.analysis-lap-open` opens lap 1 on its own page (a made-up loop for the map, steering, gear and what the car got), and adding `click=.analysis-lap-actions [aria-haspopup=menu]` opens Compare with…; `click=[role=radio]:nth-child(2)` with `analysis=list` shows Shared; `focus=.analysis-times-dot` shows the chart's tooltip, `click=.analysis-run-setup.empty` opens the run setup picker (it opens upward near the window bottom); on Setups, Race v3 and Quali have made-up "On track" figures |
+| `designer=<dashId>` | Mounts the dash designer window for that dash instead of the app, as Electron opens it from the Dashes page (`state.sample.json` has `default`, `sprint-race`, `hotlap`, …). Screenshot it at a window size, e.g. the default `1440,900`; `click=` works in it, e.g. `click=.designer-node-main` selects the first row in the sidebar (on `default`'s Driving page, the Top bar group; its Right column is a stack, so selecting it shows the layer tabs), `click=.designer-dock .button.primary` opens the widget library |
 | `click=<css selector>` | After the view opens, clicks the first match (waits up to 2s for it). Repeat it to click several things in order, e.g. `click=.devices-tile&click=.command-bar .button.destructive` opens a device and then its remove dialog. URL-encode the selector if it contains `&`, `#` or `+` |
+| `focus=<css selector>` | After the clicks, focuses the first match and points at it (a `pointerover`), for what only focus or hover shows, e.g. a chart's tooltip. The hidden screenshot window never has focus, so focus events alone never fire there |
 
 ## How it works
 
@@ -73,8 +78,11 @@ browser launched with `--allow-file-access-from-files`.
 ## State payloads
 
 - `state.sample.json` (committed): synthetic but realistic — LMU telemetry,
-  two devices, the shipped "Driver Focus" dash, three session plans, lap history
-  and an analysis selection. Enough to fill every view.
+  two devices, the shipped "Driver Focus" dash plus six variants filed under every kind of category (built-in, your own, none), three session plans, lap history
+  and an analysis selection. Enough to fill every view. Its `dashRefitLosses`
+  (what each screen size would leave out of each dash; the host computes it, the stub
+  refits nothing) is empty, because no sample dash loses a widget on any size. To see
+  the "N widgets don't fit" warnings, put e.g. `{"default": {"portrait-480x800": 3}}` in.
 - `state.local.json` (gitignored — it is your own data): a real `/api/state`
   capture. `build-preview.mjs` prefers it when present. Capture it with
   `node scripts/preview/capture-state.mjs [path/to/dotnet]` after

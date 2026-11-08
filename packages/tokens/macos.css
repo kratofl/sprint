@@ -45,6 +45,7 @@
   --control-fill-disabled: rgba(0, 0, 0, 0.03);
   --segmented-selected: #ffffff;  /* mockup's selected segment on the --track trough */
   --control-stroke: transparent;
+  --slot-stroke: rgba(0, 0, 0, 0.12);
   --input-fill: rgba(0, 0, 0, 0.05);  /* text boxes and selects: the same borderless fill */
   --input-stroke: transparent;
 
@@ -54,6 +55,10 @@
   --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 12px 36px rgba(0, 0, 0, 0.16);
   --shadow-dialog: inset 0 0 0 1px rgba(255, 255, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 30px 80px rgba(28, 27, 26, 0.28), 0 2px 6px rgba(28, 27, 26, 0.12);
   --smoke: rgba(0, 0, 0, 0.2);
+  /* Glass over the light trails (first-run setup card): the web sign-in card's values */
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-stroke: rgba(0, 0, 0, 0.12);
+  --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 16px 48px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 
   /* Inline alerts (component sheet): the status -100 tints with -900 text; no icon disc is drawn
      (styles.mac.css), the -700 icon steps stay for parity */
@@ -68,6 +73,9 @@
   --avatar-text: #3d2fa3;
 
   /* macOS focus ring: a soft accent halo hugging the control (styles.mac.css). */
+  /* Telemetry channels: the same steps as desktop.css (shared scales) */
+  --channel-speed: var(--blue-500); --channel-throttle: var(--green-500); --channel-brake: var(--red-700);
+  --channel-steering: var(--yellow-700); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
   --focus-ring: rgba(255, 106, 0, 0.5);  /* brand-500 at 50% */
   color-scheme: light;
 
@@ -83,6 +91,12 @@
   --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
   --font-small: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+
+  /* The shell over the light trails: the Mac shell keeps native vibrancy and draws no trails
+     (styles.mac.css), so these only matter for parity */
+  --chrome-opacity: 72%;
+  --chrome-backdrop: blur(20px) saturate(180%);
+  --veil-opacity: 82%;
 
   --motion-fast: 100ms;
   --motion-normal: 200ms;
@@ -117,6 +131,7 @@
   --control-fill-disabled: rgba(255, 255, 255, 0.04);
   --segmented-selected: #636366;
   --control-stroke: transparent;
+  --slot-stroke: rgba(255, 255, 255, 0.14);
   --input-fill: rgba(255, 255, 255, 0.08);
   --input-stroke: transparent;
   --acrylic: rgba(58, 58, 60, 0.55);
@@ -124,6 +139,9 @@
   --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
   --shadow-dialog: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 30px 80px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
   --smoke: rgba(0, 0, 0, 0.4);
+  --glass: rgba(44, 44, 46, 0.55);
+  --glass-stroke: rgba(0, 0, 0, 0.6);
+  --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 16px 48px rgba(0, 0, 0, 0.5);
   /* Dark tints with the -300 steps as text: 6.2:1 or better */
   --infobar-warning: #3a3220;  --infobar-warning-icon: #eec766;  --infobar-warning-text: #eec766;
   --infobar-error: #3d2327;    --infobar-error-icon: #ff7a8a;    --infobar-error-text: #f78b9a;
@@ -132,6 +150,8 @@
   --on-status: #1d1d1f;
   --avatar-bg: #3a3366;
   --avatar-text: #d9d3ff;
+  --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
+  --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
   --focus-ring: rgba(255, 106, 0, 0.6);
   color-scheme: dark;
 }
@@ -144,16 +164,20 @@
     --on-brand: #1d1d1f; --link: #ff9a4d; --link-hover: #ffb57f; --success-text: #4ade80; --danger-text: #ff7a8a;
     --subtle-hover: rgba(255, 255, 255, 0.06); --subtle-selected: rgba(255, 255, 255, 0.1); --subtle-pressed: rgba(255, 255, 255, 0.14);
     --control-fill: rgba(255, 255, 255, 0.08); --control-fill-hover: rgba(255, 255, 255, 0.12); --control-fill-disabled: rgba(255, 255, 255, 0.04); --segmented-selected: #636366;
-    --control-stroke: transparent; --input-fill: rgba(255, 255, 255, 0.08); --input-stroke: transparent;
+    --control-stroke: transparent; --slot-stroke: rgba(255, 255, 255, 0.14); --input-fill: rgba(255, 255, 255, 0.08); --input-stroke: transparent;
     --acrylic: rgba(58, 58, 60, 0.55); --acrylic-stroke: rgba(0, 0, 0, 0.6);
     --shadow-flyout: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 36px rgba(0, 0, 0, 0.5);
     --shadow-dialog: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 30px 80px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
     --smoke: rgba(0, 0, 0, 0.4);
+    --glass: rgba(44, 44, 46, 0.55); --glass-stroke: rgba(0, 0, 0, 0.6);
+    --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 16px 48px rgba(0, 0, 0, 0.5);
     --infobar-warning: #3a3220; --infobar-warning-icon: #eec766; --infobar-error: #3d2327; --infobar-error-icon: #ff7a8a;
     --infobar-success: #1d3527; --infobar-success-icon: #4ade80; --infobar-info: #1c2b3d; --infobar-info-icon: #86b9f2;
     --infobar-warning-text: #eec766; --infobar-error-text: #f78b9a; --infobar-success-text: #7fd9ab; --infobar-info-text: #86b9f2;
     --on-status: #1d1d1f;
     --avatar-bg: #3a3366; --avatar-text: #d9d3ff; --focus-ring: rgba(255, 106, 0, 0.6);
+    --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
+    --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
     color-scheme: dark;
   }
 }

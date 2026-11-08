@@ -6,12 +6,14 @@ using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.Engineer;
+using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
+using Sprint.Games.LeMansUltimate;
 
 namespace Sprint.Desktop.Core;
 
@@ -36,6 +38,7 @@ public sealed class RuntimeCoordinator
     private readonly DashPageCycle _pageCycle;
     private readonly PeerLink? _link;
     private readonly LiveCompareService _liveCompare;
+    private readonly GameFolder _gameFolder;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -47,6 +50,8 @@ public sealed class RuntimeCoordinator
     /// reads, or a <c>dash.page.next</c> command would never be visible in <c>screens[]</c>.
     /// Without <paramref name="link"/> the <c>link.*</c> commands are refused. <paramref
     /// name="liveCompare"/> must be the instance the host's telemetry loop feeds and its HUD reads.
+    /// <paramref name="gameFolder"/> must wrap the provider the host reads setups and results
+    /// through; without it <c>game.setFolder</c> points a private provider nobody reads.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -55,7 +60,8 @@ public sealed class RuntimeCoordinator
         LiveLogStore? diagnosticsLog = null,
         DashPageCycle? pageCycle = null,
         PeerLink? link = null,
-        LiveCompareService? liveCompare = null)
+        LiveCompareService? liveCompare = null,
+        GameFolder? gameFolder = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -70,6 +76,7 @@ public sealed class RuntimeCoordinator
                 new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history")),
                 new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"))),
             () => null);
+        this._gameFolder = gameFolder ?? new GameFolder(new LeMansUltimateGameProvider());
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -83,6 +90,8 @@ public sealed class RuntimeCoordinator
             case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
             case "settings.update": return UpdateSettings(command, out error);
             case "cloud.configure": return ConfigureCloud(command, out error);
+            case "firstRun.complete": return this.CompleteFirstRun(command, out error);
+            case "game.setFolder": return this.SetGameFolder(command, out error);
             case "controls.save": _runtime.SaveControls(); return true;
             case "controls.update": return UpdateControls(command, out error);
             case "engineer.revert": _runtime.RevertEngineerChanges(); return true;
@@ -98,12 +107,14 @@ public sealed class RuntimeCoordinator
             case "devices.captureRegion": return UpdateDeviceCaptureRegion(command, out error);
             case "devices.refreshHz": return UpdateDeviceRefreshHz(command, out error);
             case "devices.save": return SaveDevice(command, out error);
-            case "dash.create": return CreateDash(command, out error);
-            case "dash.duplicate": return DuplicateDash(command, out error);
-            case "dash.save": return SaveDash(command, out error);
-            case "dash.reset": return ResetDash(command, out error);
-            case "dash.setDefault": return SetDefaultDash(command, out error);
-            case "dash.delete": return DeleteDash(command, out error);
+            case "dash.create": return this.CreateDash(command, out error);
+            case "dash.save": return this.SaveDash(command, out error);
+            case "dash.reset": return this.ResetDash(command, out error);
+            case "dash.delete": return this.DeleteDash(command, out error);
+            case "dash.setCategory": return this.SetDashCategory(command, out error);
+            case "dash.category.create": return this.CreateDashCategory(command, out error);
+            case "dash.category.rename": return this.RenameDashCategory(command, out error);
+            case "dash.category.delete": return this.DeleteDashCategory(command, out error);
             case "dash.setScreenProfile": return SetDashScreenProfile(command, out error);
             case SprintCommands.DashPageNext: return CycleDashPage(command, offset: 1, out error);
             case SprintCommands.DashPagePrev: return CycleDashPage(command, offset: -1, out error);
@@ -122,11 +133,12 @@ public sealed class RuntimeCoordinator
             case "analysis.selectSession": return SelectAnalysisSession(command, out error);
             case "analysis.filter": return FilterAnalysis(command, out error);
             case "analysis.selectLap": return SelectAnalysisLap(command, out error);
+            case "analysis.setRunSetup": return this.SetAnalysisRunSetup(command, out error);
             case "compare.course": return this.SelectCompareCourse(command, out error);
             case "compare.target.set": return this.SetCompareTarget(command, out error);
             case "compare.target.clear": this._liveCompare.ClearTarget(); return true;
             case SprintCommands.CompareHudToggle: return this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out error);
-            case "compare.hud.lock": return this.LockCompareHud(command, out error);
+            case "compare.hud.arrange": return this.ArrangeCompareHud(command, out error);
             case "compare.readings": return this.SetCompareReadings(command, out error);
             case "compare.hud.layout": return this.SaveCompareHudLayout(command, out error);
             case "diagnostics.setLogLevel": return SetLogLevel(command, out error);
@@ -165,17 +177,12 @@ public sealed class RuntimeCoordinator
         return this._liveCompare.SetTarget(sessionId, lapNumber, out error);
     }
 
-    /// <summary>Locked HUD windows let every click through to the game; unlocked they can be moved and sized.</summary>
-    private bool LockCompareHud(JsonElement command, out string error)
+    /// <summary>Opens the HUD windows unlocked to move, size, add or remove them on the monitor; false locks them again.</summary>
+    private bool ArrangeCompareHud(JsonElement command, out string error)
     {
         error = "";
-        if (!TryBool(command, "locked", out bool locked)) { error = "locked is required"; return false; }
-        lock (this._runtime.SettingsGate)
-        {
-            this._runtime.Settings.LiveCompare.Locked = locked;
-            this._runtime.SaveSettings();
-        }
-
+        if (!TryBool(command, "arranging", out bool arranging)) { error = "arranging is required"; return false; }
+        this._liveCompare.SetArranging(arranging);
         return true;
     }
 
@@ -318,13 +325,25 @@ public sealed class RuntimeCoordinator
 
             if (TryStringField(command, "devicesUiViewMode", out string devicesUiViewMode) && !string.IsNullOrWhiteSpace(devicesUiViewMode))
             {
-                if (!DevicesUiViewModes.Contains(devicesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
+                if (!OverviewViewModes.Contains(devicesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
                 {
                     error = $"unknown devices UI view mode: {devicesUiViewMode}";
                     return false;
                 }
 
-                _runtime.Settings.DevicesUI.ViewMode = devicesUiViewMode.Trim();
+                this._runtime.Settings.DevicesUI.ViewMode = devicesUiViewMode.Trim();
+                applied = true;
+            }
+
+            if (TryStringField(command, "dashesUiViewMode", out string dashesUiViewMode) && !string.IsNullOrWhiteSpace(dashesUiViewMode))
+            {
+                if (!OverviewViewModes.Contains(dashesUiViewMode.Trim(), StringComparer.OrdinalIgnoreCase))
+                {
+                    error = $"unknown dashes UI view mode: {dashesUiViewMode}";
+                    return false;
+                }
+
+                this._runtime.Settings.DashesUI.ViewMode = dashesUiViewMode.Trim();
                 applied = true;
             }
 
@@ -377,8 +396,80 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
-    /// <summary>The Devices overview's two list modes (<see cref="DevicesUiSettings.ViewMode"/>).</summary>
-    private static readonly string[] DevicesUiViewModes = ["gallery", "list"];
+    /// <summary>
+    /// Finishes the first-run setup: the driver's name (required, and not the placeholder) and
+    /// race number (optional; when given, 1 to 3 digits). A blank number keeps the current one.
+    /// </summary>
+    private bool CompleteFirstRun(JsonElement command, out string error)
+    {
+        error = "";
+        string name = TryStringField(command, "driverName", out string nameText) ? nameText.Trim() : "";
+        if (name.Length == 0 || name.Equals(AppSettings.DefaultDriverName, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Enter your driver name.";
+            return false;
+        }
+
+        string number = TryStringField(command, "driverNumber", out string numberText) ? numberText.Trim() : "";
+        if (number.Length > 3 || !number.All(char.IsAsciiDigit))
+        {
+            error = "Your race number is 1 to 3 digits.";
+            return false;
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.DriverName = name;
+            if (number.Length > 0)
+            {
+                this._runtime.Settings.DriverNumber = number;
+            }
+
+            this._runtime.Settings.FirstRunDone = true;
+            this._runtime.SaveSettings();
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Where Le Mans Ultimate is installed: a full path to an install (<see cref="LmuInstall.IsInstall"/>),
+    /// or null to find it in the Steam libraries again. Setups and results follow at once.
+    /// </summary>
+    private bool SetGameFolder(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryOptionalNullableString(command, "folder", out bool present, out string? folderText) || !present)
+        {
+            error = "folder is required (a path, or null to find the game automatically)";
+            return false;
+        }
+
+        string? folder = null;
+        if (folderText is not null)
+        {
+            string trimmed = folderText.Trim();
+            if (!Path.IsPathFullyQualified(trimmed) || !LmuInstall.IsInstall(trimmed))
+            {
+                error = "That folder isn't a Le Mans Ultimate install.";
+                return false;
+            }
+
+            folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(trimmed));
+        }
+
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.GameFolder = folder;
+            this._runtime.SaveSettings();
+            this._gameFolder.Apply(folder);
+        }
+
+        return true;
+    }
+
+    /// <summary>The Devices and Dashes overviews' two list modes (<see cref="DevicesUiSettings.ViewMode"/>, <see cref="DashesUiSettings.ViewMode"/>).</summary>
+    private static readonly string[] OverviewViewModes = ["gallery", "list"];
 
     private bool UpdateControls(JsonElement command, out string error)
     {
@@ -563,40 +654,60 @@ public sealed class RuntimeCoordinator
 
     // ── Dashes ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The New dash and Duplicate dialogs: <c>{ profileId?, sourceDashId?, name?, category? }</c>. Without
+    /// <c>sourceDashId</c> it starts blank; with one it duplicates that dash refitted to the
+    /// profile. <c>profileId</c> defaults to the source's own size, else the default profile.
+    /// <c>name</c> defaults per start ("New dash" / "&lt;source&gt; copy"). <c>category</c> is a
+    /// known category or null for "Other"; left out, a copy keeps the source's and a blank dash has none.
+    /// </summary>
     private bool CreateDash(JsonElement command, out string error)
     {
         error = "";
-        if (command.TryGetProperty("profileId", out JsonElement profileElement) && profileElement.ValueKind == JsonValueKind.String)
+        DashLayout? source = null;
+        if (command.TryGetProperty("sourceDashId", out JsonElement sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
         {
-            ScreenProfile? profile = ScreenProfileCatalog.Find(profileElement.GetString());
-            if (profile is null) { error = "unknown screen profile"; return false; }
-            _runtime.CreateDashLayout(profile);
-            return true;
+            string sourceId = sourceElement.ValueKind == JsonValueKind.String ? sourceElement.GetString() ?? "" : "";
+            source = this._runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase));
+            if (source is null) { error = "source dash not found"; return false; }
         }
 
-        _runtime.CreateDashLayout();
-        return true;
-    }
+        ScreenProfile profile = ScreenProfileCatalog.Resolve(source?.ScreenProfileId);
+        if (command.TryGetProperty("profileId", out JsonElement profileElement) && profileElement.ValueKind != JsonValueKind.Null)
+        {
+            ScreenProfile? requested = profileElement.ValueKind == JsonValueKind.String ? ScreenProfileCatalog.Find(profileElement.GetString()) : null;
+            if (requested is null) { error = "unknown screen profile"; return false; }
+            profile = requested;
+        }
 
-    private bool DuplicateDash(JsonElement command, out string error)
-    {
-        error = "";
-        if (!FindDash(command, out DashLayout source, out error)) return false;
-        if (!FindProfile(command, out ScreenProfile profile, out error)) return false;
-        _runtime.DuplicateDashToProfile(source, profile);
+        if (!TryOptionalNullableString(command, "name", out bool hasName, out string? name)) { error = "name must be a string"; return false; }
+        if (hasName && name is not null && string.IsNullOrWhiteSpace(name)) { error = "name must not be blank"; return false; }
+
+        if (!this.TryOptionalCategory(command, out bool hasCategory, out string? category, out error)) return false;
+        if (!hasCategory) category = source?.Category;
+
+        if (source is null)
+        {
+            this._runtime.CreateBlankDashLayout(profile, name, category);
+        }
+        else
+        {
+            this._runtime.DuplicateDashToProfile(source, profile, name, category);
+        }
+
         return true;
     }
 
     /// <summary>
-    /// Replaces a dash's content with a client-supplied layout. The dash's id and default
-    /// status are pinned to the existing record rather than trusted from the payload — id
-    /// identity and default assignment are this endpoint's boundary, not something a save
-    /// should be able to smuggle a change into.
+    /// Replaces a dash's content with a client-supplied layout. The dash's id and category are
+    /// pinned to the existing record rather than trusted from the payload — identity is this
+    /// endpoint's boundary, and the category has its own commands, so a save from a stale
+    /// editor copy can never undo a category change made elsewhere.
     /// </summary>
     private bool SaveDash(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDash(command, out DashLayout existing, out error)) return false;
+        if (!this.FindDash(command, out DashLayout existing, out error)) return false;
         if (!command.TryGetProperty("layout", out JsonElement layoutElement) || layoutElement.ValueKind != JsonValueKind.Object)
         {
             error = "layout is required";
@@ -616,36 +727,106 @@ public sealed class RuntimeCoordinator
         if (candidate is null) { error = "layout is not a valid dash layout"; return false; }
 
         candidate.Id = existing.Id;
-        candidate.IsDefault = existing.IsDefault;
+        candidate.Category = existing.Category;
+        // A client from before groups may still send widget stacks.
+        DashWidgetStackMigration.Apply(candidate);
 
         if (!DashLayoutValidator.IsValid(candidate)) { error = "layout is invalid"; return false; }
 
-        int index = _runtime.DashLayouts.IndexOf(existing);
-        _runtime.DashLayouts[index] = candidate;
-        _runtime.SaveDashLayout(candidate);
+        int index = this._runtime.DashLayouts.IndexOf(existing);
+        this._runtime.DashLayouts[index] = candidate;
+        this._runtime.SaveDashLayout(candidate);
         return true;
     }
 
     private bool ResetDash(JsonElement command, out string error)
     {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        _runtime.ResetDashLayout(layout);
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        this._runtime.ResetDashLayout(layout);
         return true;
     }
 
-    private bool SetDefaultDash(JsonElement command, out string error)
-    {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        _runtime.SetDefaultDashLayout(layout);
-        return true;
-    }
-
+    /// <summary>Any dash can be deleted, even the last one; devices fall back to another dash or show nothing.</summary>
     private bool DeleteDash(JsonElement command, out string error)
     {
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
-        if (layout.IsDefault) { error = "cannot delete the default dash"; return false; }
-        if (_runtime.DashLayouts.Count <= 1) { error = "cannot delete the only dash"; return false; }
-        _runtime.DeleteDashLayout(layout);
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        this._runtime.DeleteDashLayout(layout);
+        return true;
+    }
+
+    /// <summary><c>{ dashId, category }</c>: files a dash under a known category, or under "Other" when <c>category</c> is null.</summary>
+    private bool SetDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
+        if (!this.TryOptionalCategory(command, out bool hasCategory, out string? category, out error)) return false;
+        if (!hasCategory) { error = "category is required (null for none)"; return false; }
+        this._runtime.SetDashCategory(layout, category);
+        return true;
+    }
+
+    /// <summary><c>{ name, dashId? }</c>: adds a custom category and, with <c>dashId</c>, moves that dash into it.</summary>
+    private bool CreateDashCategory(JsonElement command, out string error)
+    {
+        error = "";
+        DashLayout? layout = null;
+        if (command.TryGetProperty("dashId", out JsonElement dashElement) && dashElement.ValueKind != JsonValueKind.Null)
+        {
+            if (!this.FindDash(command, out DashLayout found, out error)) return false;
+            layout = found;
+        }
+
+        if (!TryOptionalNullableString(command, "name", out _, out string? name)) { error = "name must be a string"; return false; }
+        if (!DashCategories.TryValidateName(name, this._runtime.Settings.CustomDashCategories, renaming: null, out string trimmed, out error)) return false;
+
+        this._runtime.CreateDashCategory(trimmed);
+        if (layout is not null) this._runtime.SetDashCategory(layout, trimmed);
+        return true;
+    }
+
+    /// <summary><c>{ name, newName }</c>: renames a custom category, and with it every dash filed under it.</summary>
+    private bool RenameDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindCustomCategory(command, out string name, out error)) return false;
+        if (!TryOptionalNullableString(command, "newName", out _, out string? newName)) { error = "newName must be a string"; return false; }
+        if (!DashCategories.TryValidateName(newName, this._runtime.Settings.CustomDashCategories, renaming: name, out string trimmed, out error)) return false;
+        this._runtime.RenameDashCategory(name, trimmed);
+        return true;
+    }
+
+    /// <summary><c>{ name }</c>: deletes a custom category; its dashes move to "Other".</summary>
+    private bool DeleteDashCategory(JsonElement command, out string error)
+    {
+        if (!this.FindCustomCategory(command, out string name, out error)) return false;
+        this._runtime.DeleteDashCategory(name);
+        return true;
+    }
+
+    /// <summary>Resolves <c>name</c> to an existing custom category (built-ins cannot be renamed or deleted).</summary>
+    private bool FindCustomCategory(JsonElement command, out string name, out string error)
+    {
+        name = "";
+        error = "";
+        if (!TryString(command, "name", out string requested)) { error = "name is required"; return false; }
+        if (DashCategories.IsBuiltIn(requested)) { error = "built-in categories cannot be changed"; return false; }
+        string? found = this._runtime.Settings.CustomDashCategories.FirstOrDefault(existing => string.Equals(existing, requested.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (found is null) { error = "category not found"; return false; }
+        name = found;
+        return true;
+    }
+
+    /// <summary>
+    /// An optional <c>category</c> field: absent leaves <paramref name="present"/> false, JSON null
+    /// means "Other", and a string must name a known category (resolved to its known spelling).
+    /// </summary>
+    private bool TryOptionalCategory(JsonElement command, out bool present, out string? category, out string error)
+    {
+        category = null;
+        error = "";
+        if (!TryOptionalNullableString(command, "category", out present, out string? requested)) { error = "category must be a string or null"; return false; }
+        if (requested is null) return true;
+
+        category = DashCategories.Find(requested, this._runtime.Settings.CustomDashCategories);
+        if (category is null) { error = "unknown category"; return false; }
         return true;
     }
 
@@ -1003,11 +1184,9 @@ public sealed class RuntimeCoordinator
 
         if (sessionIdElement.ValueKind != JsonValueKind.String) { error = "sessionId must be a string or null"; return false; }
         string sessionId = sessionIdElement.GetString() ?? "";
-        // Looked up against the currently narrowed list (not the whole corpus): selecting a
-        // session is the last step of the same narrowing cascade the filter commands drive, so a
-        // session the current filter has excluded is correctly "not found" rather than reachable
-        // by id alone.
-        CorpusSession? session = this._analysis.Filter.Sessions.FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
+        // Looked up in the whole corpus as it is now: the sessions list shows every session live,
+        // including one recorded since the filter was last rebuilt.
+        CorpusSession? session = this._analysis.FindSession(sessionId);
         if (session is null) { error = "session not found"; return false; }
         this._analysis.SelectSession(session);
         return true;
@@ -1088,6 +1267,22 @@ public sealed class RuntimeCoordinator
         if (primary) { this._analysis.SelectPrimary(lap); }
         else { this._analysis.SelectComparison(lap); }
         return true;
+    }
+
+    /// <summary>
+    /// Puts a setup (a Setups list id, or null to take it off) on one run of the open session.
+    /// Only ever the driver's pick: nothing proposes one.
+    /// </summary>
+    private bool SetAnalysisRunSetup(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryInt(command, "outing", out int outing)) { error = "outing must be a number"; return false; }
+        if (!command.TryGetProperty("setupId", out JsonElement setupElement)) { error = "setupId is required"; return false; }
+        if (setupElement.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) { error = "setupId must be a string or null"; return false; }
+
+        string? setupId = setupElement.ValueKind == JsonValueKind.String ? setupElement.GetString() : null;
+        if (setupId is { Length: 0 }) { error = "setupId must not be empty"; return false; }
+        return this._analysis.SetRunSetup(outing, setupId, out error);
     }
 
     // ── Diagnostics ─────────────────────────────────────────────────────────

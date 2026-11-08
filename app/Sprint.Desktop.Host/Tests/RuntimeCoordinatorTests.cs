@@ -5,9 +5,12 @@ using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Runtime;
+using Sprint.Games.LeMansUltimate;
+using Sprint.Games.LeMansUltimate.Setups;
 using Xunit;
 
 namespace Sprint.Desktop.Host.Tests;
@@ -69,6 +72,25 @@ public sealed class RuntimeCoordinatorTests
             DesktopRuntime reloaded = new(dataRoot, PresetRoot);
             Assert.Equal("Ada Lovelace", reloaded.Settings.DriverName);
             Assert.True(reloaded.Settings.SidebarCollapsed);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void SettingsUpdate_DashesViewMode_PersistsAndRejectsUnknownModes()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"settings.update","dashesUiViewMode":"list"}"""), out string error), error);
+            Assert.Equal("list", new DesktopRuntime(dataRoot, PresetRoot).Settings.DashesUI.ViewMode);
+
+            Assert.False(coordinator.Execute(Command("""{"type":"settings.update","dashesUiViewMode":"cards"}"""), out string rejected));
+            Assert.Contains("dashes UI view mode", rejected);
+            Assert.Equal("list", runtime.Settings.DashesUI.ViewMode);
         }
         finally
         {
@@ -346,26 +368,25 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void DashSave_PinsIdAndDefaultRegardlessOfPayload()
+    public void DashSave_PinsIdAndCategoryRegardlessOfPayload()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout created = runtime.CreateDashLayout();
-            Assert.False(created.IsDefault);
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.create","name":"Mine","category":"Race"}"""), out string error), error);
+            DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Mine");
 
-            string maliciousLayout = $$"""
-                {"id":"default","default":true,"name":"Hijacked","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
+            string staleLayout = """
+                {"id":"default","category":"Practice","name":"Renamed","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}]}
                 """;
-
             bool ok = coordinator.Execute(
-                Command($$"""{"type":"dash.save","dashId":"{{created.Id}}","layout":{{maliciousLayout}} }"""),
-                out string error);
+                Command($$"""{"type":"dash.save","dashId":"{{created.Id}}","layout":{{staleLayout}} }"""),
+                out error);
 
             Assert.True(ok, error);
-            DashLayout saved = runtime.DashLayouts.Single(layout => string.Equals(layout.Name, "Hijacked", StringComparison.Ordinal));
+            DashLayout saved = runtime.DashLayouts.Single(layout => layout.Name == "Renamed");
             Assert.Equal(created.Id, saved.Id);
-            Assert.False(saved.IsDefault);
+            Assert.Equal("Race", saved.Category);
         }
         finally
         {
@@ -374,18 +395,194 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
-    public void DashDelete_RefusesToDeleteTheDefaultDash()
+    public void DashSave_KeepsAnAlertsOwnDisplayMode_AcrossARestart()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
         try
         {
-            DashLayout defaultLayout = runtime.DashLayouts.Single(layout => layout.IsDefault);
+            DashLayout dash = runtime.DashLayouts.First();
+            string layout = """
+                {"name":"Boxed","gridCols":20,"gridRows":12,"pages":[{"id":"main","name":"Main","widgets":[]}],
+                 "alerts":[{"id":"tc_change","type":"tc_change","enabled":true,"col":6,"row":3,"colSpan":8,"rowSpan":6,"displayMode":"center","colorToken":"ice","durationSeconds":2,"invertColors":false}]}
+                """;
+            bool ok = coordinator.Execute(Command($$"""{"type":"dash.save","dashId":"{{dash.Id}}","layout":{{layout}} }"""), out string error);
 
-            bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{defaultLayout.Id}}"}"""), out string error);
+            Assert.True(ok, error);
+            DashAlert alert = Assert.Single(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single(saved => saved.Id == dash.Id).Alerts);
+            Assert.Equal("center", alert.DisplayMode);
+            Assert.False(alert.UsesGlobalSettings);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashDelete_DeletesEvenTheLastDash_AndItStaysGone()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout only = Assert.Single(runtime.DashLayouts);
+
+            bool ok = coordinator.Execute(Command($$"""{"type":"dash.delete","dashId":"{{only.Id}}"}"""), out string error);
+
+            Assert.True(ok, error);
+            Assert.Empty(runtime.DashLayouts);
+            Assert.Empty(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCreate_Blank_FitsTheProfileWithOneEmptyPage()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"dash.create","profileId":"portrait-480x800","name":"  Quali  ","category":"qualifying"}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            DashLayout created = runtime.DashLayouts.Single(layout => layout.Name == "Quali");
+            ScreenProfile profile = ScreenProfileCatalog.Resolve("portrait-480x800");
+            Assert.Equal(profile.Id, created.ScreenProfileId);
+            Assert.Equal((profile.GridCols, profile.GridRows), (created.GridCols, created.GridRows));
+            DashPage page = Assert.Single(created.Pages);
+            Assert.Empty(page.Widgets);
+            Assert.Equal("Qualifying", created.Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCreate_FromSource_CopiesRefittedAndKeepsTheSourceCategoryUnlessGiven()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout source = runtime.DashLayouts.Single();
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.setCategory","dashId":"{{source.Id}}","category":"Endurance"}"""), out string error), error);
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.create","sourceDashId":"{{source.Id}}","profileId":"square-800x800"}"""), out error), error);
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.create","sourceDashId":"{{source.Id}}","name":"Loose","category":null}"""), out error), error);
+
+            DashLayout copy = runtime.DashLayouts.Single(layout => layout.Name == $"{source.Name} copy");
+            Assert.NotEqual(source.Id, copy.Id);
+            Assert.Equal("square-800x800", copy.ScreenProfileId);
+            Assert.Equal(source.Pages.Count, copy.Pages.Count);
+            Assert.Equal("Endurance", copy.Category);
+
+            DashLayout loose = runtime.DashLayouts.Single(layout => layout.Name == "Loose");
+            Assert.Equal(source.ScreenProfileId, loose.ScreenProfileId);
+            Assert.Null(loose.Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"dash.create","sourceDashId":"missing"}""", "source dash not found")]
+    [InlineData("""{"type":"dash.create","name":"   "}""", "name must not be blank")]
+    [InlineData("""{"type":"dash.create","category":"Rally"}""", "unknown category")]
+    public void DashCreate_RejectsBadArguments(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(Command(json), out string error);
 
             Assert.False(ok);
-            Assert.Equal("cannot delete the default dash", error);
-            Assert.Contains(runtime.DashLayouts, layout => layout.Id == defaultLayout.Id);
+            Assert.Equal(expected, error);
+            Assert.Single(runtime.DashLayouts);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCategory_CreateMovesTheDash_RenameFollows_DeleteUncategorises()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            DashLayout dash = runtime.DashLayouts.Single();
+
+            Assert.True(coordinator.Execute(Command($$"""{"type":"dash.category.create","name":" Sprint races ","dashId":"{{dash.Id}}"}"""), out string error), error);
+            Assert.Equal(["Sprint races"], runtime.Settings.CustomDashCategories);
+            Assert.Equal("Sprint races", dash.Category);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.rename","name":"sprint RACES","newName":"Sprints"}"""), out error), error);
+            Assert.Equal(["Sprints"], runtime.Settings.CustomDashCategories);
+            Assert.Equal("Sprints", dash.Category);
+
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.Equal(["Sprints"], reloaded.Settings.CustomDashCategories);
+            Assert.Equal("Sprints", reloaded.DashLayouts.Single().Category);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.delete","name":"Sprints"}"""), out error), error);
+            Assert.Empty(runtime.Settings.CustomDashCategories);
+            Assert.Null(dash.Category);
+            Assert.Null(new DesktopRuntime(dataRoot, PresetRoot).DashLayouts.Single().Category);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"dash.category.create","name":"  "}""", "category name is required")]
+    [InlineData("""{"type":"dash.category.create","name":"race"}""", "\"race\" is a built-in category")]
+    [InlineData("""{"type":"dash.category.create","name":"Other"}""", "\"Other\" is reserved")]
+    [InlineData("""{"type":"dash.category.create","name":"MINE"}""", "a category named \"MINE\" already exists")]
+    [InlineData("""{"type":"dash.category.rename","name":"Mine","newName":"Theirs"}""", "a category named \"Theirs\" already exists")]
+    [InlineData("""{"type":"dash.category.rename","name":"Race","newName":"Races"}""", "built-in categories cannot be changed")]
+    [InlineData("""{"type":"dash.category.delete","name":"Nope"}""", "category not found")]
+    [InlineData("""{"type":"dash.setCategory","dashId":"default","category":"Nope"}""", "unknown category")]
+    public void DashCategory_RejectsInvalidNames(string json, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"Mine"}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"Theirs"}"""), out error), error);
+
+            bool ok = coordinator.Execute(Command(json), out error);
+
+            Assert.False(ok);
+            Assert.Equal(expected, error);
+            Assert.Equal(["Mine", "Theirs"], runtime.Settings.CustomDashCategories);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void DashCategory_RenameToADifferentCasingOfItself_IsAllowed()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.create","name":"wet"}"""), out string error), error);
+
+            Assert.True(coordinator.Execute(Command("""{"type":"dash.category.rename","name":"wet","newName":"Wet"}"""), out error), error);
+
+            Assert.Equal(["Wet"], runtime.Settings.CustomDashCategories);
         }
         finally
         {
@@ -747,6 +944,24 @@ public sealed class RuntimeCoordinatorTests
         }
     }
 
+    [Theory]
+    [InlineData("""{"type":"analysis.setRunSetup","outing":1,"setupId":5}""", "setupId must be a string or null")]
+    [InlineData("""{"type":"analysis.setRunSetup","setupId":"file-a"}""", "outing must be a number")]
+    [InlineData("""{"type":"analysis.setRunSetup","outing":1,"setupId":null}""", "no session is open")]
+    public void AnalysisSetRunSetup_RefusesWhatThePageCouldNeverSend(string command, string expected)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(command), out string error));
+            Assert.Equal(expected, error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
     [Fact]
     public void AnalysisSelectLap_InvalidRole_ReturnsError()
     {
@@ -878,6 +1093,118 @@ public sealed class RuntimeCoordinatorTests
         {
             Assert.False(coordinator.Execute(Command("""{"type":"compare.hud.toggle"}"""), out string error));
             Assert.Equal("Pick a lap to train against first.", error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void CompareHudArrange_NeedsToSayWhichWay()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.hud.arrange"}"""), out string missing));
+            Assert.Equal("arranging is required", missing);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.hud.arrange","arranging":true}"""), out string error), error);
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.hud.arrange","arranging":false}"""), out error), error);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{"type":"firstRun.complete","driverName":"   ","driverNumber":"7"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"your name","driverNumber":"7"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"Ada","driverNumber":"7a"}""")]
+    [InlineData("""{"type":"firstRun.complete","driverName":"Ada","driverNumber":"1234"}""")]
+    public void FirstRunComplete_RejectsAPlaceholderNameOrABadNumber(string json)
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.NotEmpty(error);
+            Assert.False(runtime.Settings.FirstRunDone);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void FirstRunComplete_SavesTheDriverAndIsDone()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            bool ok = coordinator.Execute(
+                Command("""{"type":"firstRun.complete","driverName":"  Ada Lovelace ","driverNumber":"07"}"""),
+                out string error);
+
+            Assert.True(ok, error);
+            DesktopRuntime reloaded = new(dataRoot, PresetRoot);
+            Assert.Equal("Ada Lovelace", reloaded.Settings.DriverName);
+            Assert.Equal("07", reloaded.Settings.DriverNumber);
+            Assert.True(reloaded.Settings.FirstRunDone);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GameSetFolder_RejectsAFolderThatIsNotAnInstall()
+    {
+        RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);
+        try
+        {
+            string json = JsonSerializer.Serialize(new { type = "game.setFolder", folder = dataRoot });
+            Assert.False(coordinator.Execute(Command(json), out string error));
+            Assert.Equal("That folder isn't a Le Mans Ultimate install.", error);
+            Assert.Null(runtime.Settings.GameFolder);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
+    public void GameSetFolder_PointsSetupsAtTheChosenInstallAndNullFindsItAgain()
+    {
+        string dataRoot = NewTempDataRoot();
+        try
+        {
+            DesktopRuntime runtime = new(dataRoot, PresetRoot);
+            LeMansUltimateGameProvider provider = new();
+            GameFolder gameFolder = new(provider);
+            RuntimeCoordinator coordinator = new(runtime, gameFolder: gameFolder);
+            string install = Path.Combine(dataRoot, "Le Mans Ultimate");
+            string track = Path.Combine(install, LmuSetupRepository.SetupsSubPath, "Spa");
+            Directory.CreateDirectory(track);
+            File.WriteAllText(Path.Combine(track, "Quali.svm"), "");
+
+            string chose = JsonSerializer.Serialize(new { type = "game.setFolder", folder = install });
+            Assert.True(coordinator.Execute(Command(chose), out string error), error);
+
+            Assert.Equal(install, new DesktopRuntime(dataRoot, PresetRoot).Settings.GameFolder);
+            Assert.Equal(Path.Combine(install, LmuSetupRepository.SetupsSubPath), provider.Setups?.WatchRoot);
+            if (gameFolder.Summary() is { } summary)
+            {
+                Assert.Equal(new GameFolderSummary(install, Chosen: true, Found: true, SetupCount: 1, ResultsCount: 0), summary);
+            }
+
+            Assert.True(coordinator.Execute(Command("""{"type":"game.setFolder","folder":null}"""), out error), error);
+            Assert.Null(runtime.Settings.GameFolder);
+            Assert.Null(provider.ChosenFolder);
+            Assert.NotEqual(Path.Combine(install, LmuSetupRepository.SetupsSubPath), provider.Setups?.WatchRoot);
         }
         finally
         {

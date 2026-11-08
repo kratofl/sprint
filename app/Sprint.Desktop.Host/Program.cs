@@ -8,6 +8,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Core;
 using Sprint.Desktop.Features.Analysis;
 using Sprint.Desktop.Features.Dashes;
+using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Diagnostics;
 using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
@@ -15,11 +16,13 @@ using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Sharing;
 using Sprint.Desktop.Features.Updates;
 using Sprint.Desktop.Host;
 using Sprint.Desktop.Runtime;
 using Sprint.Games;
+using Sprint.Games.Recording;
 
 const string token = "SPRINT_DESKTOP_TOKEN";
 string bearer = Environment.GetEnvironmentVariable(token) ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
@@ -65,9 +68,18 @@ ScreenOutputService screenOutputs = new(log);
 // RuntimeCoordinator command handlers advance it, and /api/state's screens[] below reads it back
 // -- a command's effect would never be visible otherwise.
 DashPageCycle dashPageCycle = new();
+// What a change of screen size would leave out of each dash, for /api/state's dashRefitLosses;
+// it refits a dash again only once its layout has changed, not on every poll.
+DashRefitLosses dashRefitLosses = new();
 // Enums cross the wire as names, not ordinals: the TypeScript client models them
 // as string unions, and a bare number is unreadable in a payload dump.
+// The dash document's own enums are the exception: a dash crosses the wire whole (and comes back
+// whole with dash.save), so they keep the spelling of the dash files and the renderer's unions.
+// A converter in the options outranks one on the type, so theirs go first.
 JsonSerializerOptions json = new(JsonSerializerDefaults.Web);
+json.Converters.Add(new DashStyleJsonConverter());
+json.Converters.Add(new DashColorSystemJsonConverter());
+json.Converters.Add(new DashGroupModeJsonConverter());
 json.Converters.Add(new JsonStringEnumConverter());
 
 // Session-planning/analysis persistence (WEB_DESKTOP_CUTOVER item 3) lives beside the
@@ -76,15 +88,37 @@ json.Converters.Add(new JsonStringEnumConverter());
 ISessionPlanStore planStore = new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans"), log);
 ILapHistoryStore lapHistoryStore = new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"), log);
 ILapTraceStore lapTraceStore = new LocalLapTraceStore(Path.Combine(runtime.DataRoot, "lap-traces"), log);
+// Where Le Mans Ultimate is installed. Applied before anything reads the game's files, and again
+// by game.setFolder: setups and results are read through the provider per use, so they follow.
+GameFolder gameFolder = new(GameProviders.LeMansUltimate);
+gameFolder.Apply(runtime.Settings.GameFolder);
+// The game's setups and every version of them Sprint has seen, for the Setups pages. Read-only
+// towards the game folder; versions are kept in Sprint's own data directory.
+SetupLibrary setupLibrary = new(GameProviders.Default, new LocalSetupSnapshotStore(Path.Combine(runtime.DataRoot, "setup-snapshots"), log), log);
+// Which setup each run was driven with, as the driver picked it in Analysis.
+RunSetups runSetups = new(Path.Combine(runtime.DataRoot, "run-setups.json"), log);
 
 // SessionPlannerService/AnalysisController own the write-side command surface (WEB_DESKTOP_CUTOVER
 // item 1/2); /api/state keeps reading the stores directly below so a write through the service is
 // visible on the next poll without the two paths needing to share one instance.
 SessionPlannerService plannerService = new(planStore, log);
-AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore));
+AnalysisController analysisController = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore), runSetups, setupLibrary);
 // Records every lap into the stores above; built here because Live Compare follows its open
 // session to know which course is being driven. Fed by the telemetry loop further down.
 LapHistoryRecorder lapHistoryRecorder = new(lapHistoryStore, lapTraceStore, log: log);
+// Leaving the garage fixes the setup for the run: keep the version the game just read, off the
+// telemetry thread, before the game can overwrite the file.
+lapHistoryRecorder.OutingStarted += () => ThreadPool.QueueUserWorkItem(_ =>
+{
+    try
+    {
+        setupLibrary.Look();
+    }
+    catch (Exception ex)
+    {
+        log.Warn("Could not look at the game's setups when the car left the garage", ex);
+    }
+});
 // Training against an older lap: the commands pick the target and open the HUD, the telemetry
 // loop feeds the live line, and /api/compare/frame is what the HUD windows draw.
 LiveCompareService liveCompare = new(new LapCorpusBrowser(lapHistoryStore, lapTraceStore), () => lapHistoryRecorder.OpenSession?.Context);
@@ -102,7 +136,7 @@ lock (runtime.SettingsGate)
 PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
 CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -112,7 +146,7 @@ SessionPlannerController planContext = new(plannerService, NoFuelHistorySource.I
 // The LMU results import (#185): the startup prompt and the manual "Import results" action both
 // go through these focused endpoints, never the polled state -- a scan can parse hundreds of files.
 ResultsImports resultsImports = new(
-    GameProviders.Default.Results,
+    () => GameProviders.Default.Results,
     lapHistoryStore,
     new ResultsImportLedger(runtime.DataRoot, log),
     log);
@@ -158,7 +192,7 @@ UpdateCheckSession updateSession = new(ct => releaseSource.FetchAsync(GitHubRele
 // live frames instead of the permanently-disconnected placeholder. TryRead/Connect never
 // throw (contracted on ITelemetrySource/TelemetryEngine), so "no game running" surfaces
 // as a clean disconnected/waiting status rather than an exception.
-ITelemetrySource telemetrySource = GameProviders.Default.CreateTelemetrySource();
+ITelemetrySource telemetrySource = CreateTelemetrySource(log);
 
 TelemetryEngine telemetryEngine = new(telemetrySource);
 telemetryEngine.Start();
@@ -181,12 +215,33 @@ TelemetryIngestionPipeline ingestion = new(
     liveUplink,
     peerLink);
 
+// Names history filed before cars were named by class and make (CarNames): a one-time rewrite,
+// which looks a stored livery up in the game's results archive only if one still needs naming.
+// Shared with the shared-lap import, which names a friend's lap from an older Sprint the same way.
+StoredCarNames storedCarNames = new(() => GameProviders.Default.Results?.ListCars() ?? []);
+
 // Bounds the trace tier's disk use (#194 parity). Off the request/ingest path, once at
 // startup rather than per lap -- mirrors the deleted client's ThreadPool.QueueUserWorkItem
-// call, just as a fire-and-forget Task instead.
+// call, just as a fire-and-forget Task instead. The renaming goes first, in the same task: both
+// rewrite sessions, and retention protects the fastest laps per car, so it should see the names.
 LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
 _ = Task.Run(() =>
 {
+    try
+    {
+        int renamed = storedCarNames.RenameAll(lapHistoryStore);
+        if (renamed > 0)
+        {
+            log.Info($"Named the car of {renamed} stored session(s)");
+            // The cars changed behind Analysis' session filter, which is only rebuilt on a load.
+            analysisController.Load();
+        }
+    }
+    catch (Exception ex)
+    {
+        log.Warn("Naming the cars of stored sessions failed", ex);
+    }
+
     try
     {
         lapTraceRetention.Prune(runtime.Settings.SessionPlanner.TraceBudget(), DateTimeOffset.UtcNow);
@@ -344,6 +399,14 @@ app.MapGet("/api/state", () =>
         // Catalog ids plugged in but not added yet, one per device (the Add device dialog).
         foundDevices = DeviceDetection.FindNew(runtime.Catalog, runtime.Devices, usbPresent),
         dashLayouts = runtime.DashLayouts,
+        // Dash id -> screen profile id -> widgets that size would leave out (only sizes that lose any).
+        dashRefitLosses = dashRefitLosses.For(runtime.DashLayouts),
+        // Built-ins in their fixed order, then the user's own, so the Dashes page hardcodes neither.
+        dashCategories = new
+        {
+            builtIn = DashCategories.BuiltIn,
+            custom = runtime.Settings.CustomDashCategories,
+        },
         setupTemplates = runtime.SetupTemplates,
         setupPrograms = runtime.SetupPrograms,
         setupParameters = DesktopRuntime.SetupParameters,
@@ -368,8 +431,11 @@ app.MapGet("/api/state", () =>
                 days = analysisController.Filter.Days,
                 sessions = analysisController.Filter.Sessions,
             },
+            sessions = analysis.Sessions,
             session = analysis.Session,
             laps = analysis.Laps,
+            runs = analysis.Runs,
+            courseLaps = analysis.CourseLaps,
             primary = analysis.Primary,
             comparison = analysis.Comparison,
             notice = analysis.Notice,
@@ -384,6 +450,13 @@ app.MapGet("/api/state", () =>
         {
             logLevel = liveLog.MinimumLevel,
             directory = diagnosticsPaths.Root,
+        },
+        // The first-run setup: whether it is finished, and the game folder its Game step shows
+        // (null where the game cannot run). The folder's file counts are cached, not counted per poll.
+        firstRun = new
+        {
+            done = runtime.Settings.FirstRunDone,
+            game = gameFolder.Summary(),
         },
         account = cloudAccount.State,
         cloud = new
@@ -439,6 +512,22 @@ app.MapGet("/api/analysis/trace/{sessionId}/{lapNumber:int}", (string sessionId,
     return trace is null ? Results.NotFound() : Results.Json(trace, json);
 });
 
+// Focused endpoints for the Setups pages: the game's setup folder is read on request (only the
+// files that changed since the last look), which is too slow and too large for /api/state.
+app.MapGet("/api/setups", () => Results.Json(new
+{
+    available = setupLibrary.Available,
+    folder = setupLibrary.Folder,
+    setups = setupLibrary.List(),
+}, json));
+app.MapGet("/api/setups/sheet", (string id, string? version) =>
+    setupLibrary.Sheet(id, version) is { } sheet ? Results.Json(sheet, json) : Results.NotFound());
+// How each version of one setup drove, over the runs the driver put it on in Analysis.
+app.MapGet("/api/setups/driven", (string id) =>
+    setupLibrary.Sheet(id) is { } sheet
+        ? Results.Json(SetupDriving.Summarize([.. sheet.Versions.Select(version => version.Id)], lapHistoryStore.LoadAll(), runSetups.All()), json)
+        : Results.NotFound());
+
 // The HUD's feed: Electron polls this while the HUD is open and hands each window its part.
 // A focused endpoint rather than /api/state, because it is resampled per request and wanted
 // several times faster than the state poll. 204 when there is no target to draw.
@@ -491,7 +580,7 @@ app.MapPost("/api/compare/hud/windows", (HudWindowsRequest body) =>
 // Lap files (#198): a lap with channels as a .sprintlap, and back. Electron owns the file
 // dialogs and the disk; these only turn a lap into bytes and bytes into a corpus entry.
 const long MaxLapFileBytes = 32 * 1024 * 1024;
-SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log);
+SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log, carNames: storedCarNames);
 app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int lapNumber, HttpContext context) =>
 {
     SharedLapExportResult export = SharedLapExport.Build(lapHistoryStore, lapTraceStore, sessionId, lapNumber, runtime.Settings.DriverName, DateTimeOffset.UtcNow);
@@ -815,7 +904,8 @@ object CompareState()
         lapCount = compare.LapCount,
         target = compare.Target,
         hudOpen = compare.HudOpen,
-        fullscreen = compare.HudOpen && HudInterop.IsExclusiveFullscreenActive(),
+        arranging = compare.Arranging,
+        fullscreen = (compare.HudOpen || compare.Arranging) && HudInterop.IsExclusiveFullscreenActive(),
     };
 }
 
@@ -823,6 +913,33 @@ PlanContext LastSeenContext()
 {
     LastSeenContext seen = runtime.Settings.LastSeenContext;
     return new PlanContext(seen.Game, seen.Car, seen.Track);
+}
+
+// The game's live source. Debug builds also honour two dev switches: SPRINT_TELEMETRY_REPLAY
+// plays a recording instead of the game (make replay-app), SPRINT_TELEMETRY_RECORD records
+// every frame of the game into a folder (make record-app). Release builds ignore both.
+static ITelemetrySource CreateTelemetrySource(ILog log)
+{
+#if DEBUG
+    string? replayFile = Environment.GetEnvironmentVariable("SPRINT_TELEMETRY_REPLAY");
+    if (!string.IsNullOrWhiteSpace(replayFile))
+    {
+        log.Info($"Telemetry: replaying {replayFile} instead of the game.");
+        return new ReplayTelemetrySource(replayFile);
+    }
+
+    string? recordFolder = Environment.GetEnvironmentVariable("SPRINT_TELEMETRY_RECORD");
+    if (!string.IsNullOrWhiteSpace(recordFolder))
+    {
+        log.Info($"Telemetry: recording every frame into {recordFolder}.");
+        return new RecordingTelemetrySource(
+            GameProviders.Default.CreateTelemetrySource(),
+            recordFolder,
+            ex => log.Error("Telemetry recording stopped: the file could not be written.", ex));
+    }
+#endif
+
+    return GameProviders.Default.CreateTelemetrySource();
 }
 
 try

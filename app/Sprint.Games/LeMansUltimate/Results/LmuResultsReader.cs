@@ -108,8 +108,8 @@ public sealed class LmuResultsReader
     }
 
     /// <summary>
-    /// A reader over the default install's results directory, or <c>null</c> when that directory
-    /// cannot be found (e.g. LMU is installed on another drive or not installed).
+    /// A reader over the found install's results directory, or <c>null</c> when that directory
+    /// cannot be found (e.g. LMU is not installed, or has never been run).
     /// </summary>
     public static LmuResultsReader? ForDefaultInstall()
     {
@@ -118,9 +118,8 @@ public sealed class LmuResultsReader
     }
 
     /// <summary>
-    /// Resolve the standard Steam install's results directory if it exists on disk, else null.
-    /// This is a best-effort convenience for the default Windows Steam library only; callers on
-    /// non-default libraries should construct the reader with an explicit path.
+    /// Resolve the found Steam install's results directory if it exists on disk, else null.
+    /// A best-effort convenience; a folder the driver chose is passed to the reader explicitly.
     /// </summary>
     public static string? DefaultResultsDirectory()
     {
@@ -129,22 +128,15 @@ public sealed class LmuResultsReader
     }
 
     /// <summary>
-    /// Where the default Steam install keeps its results, whether or not anything is there yet,
-    /// or an empty string on a platform with no such library. A caller that has to <em>say</em>
-    /// where it looked needs the path even when the folder is missing — a game that has never
-    /// been run is not an error.
+    /// Where Le Mans Ultimate keeps its results when the driver chose no install folder, whether
+    /// or not anything is there yet (<see cref="LmuInstall.DefaultFolder"/>), or an empty string
+    /// on a platform with no Steam library. A caller that has to <em>say</em> where it looked
+    /// needs the path even when the folder is missing — a game that has never been run is not
+    /// an error.
     /// </summary>
     public static string DefaultResultsPath()
     {
-        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        if (string.IsNullOrEmpty(programFilesX86))
-        {
-            return "";
-        }
-
-        return Path.Combine(
-            programFilesX86,
-            "Steam", "steamapps", "common", "Le Mans Ultimate",
-            ResultsSubPath);
+        string folder = LmuInstall.DefaultFolder();
+        return folder.Length == 0 ? "" : Path.Combine(folder, ResultsSubPath);
     }
 }

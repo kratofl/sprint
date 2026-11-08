@@ -7,6 +7,10 @@ import { ViewRouter, type NavigationTarget } from './shell/ViewRouter'
 import { CommandPalette } from './shell/CommandPalette'
 import { ToastHost } from './shell/ToastHost'
 import { ImportResultsDialog } from './shell/ImportResultsDialog'
+import { Backdrop } from './shell/Backdrop'
+import { FirstRun } from './firstRun/FirstRun'
+import type { FirstRunActions } from './firstRun/FirstRun'
+import { parseSettings } from './views/SettingsDomain'
 import { AccountDialog } from './shell/AccountDialog'
 import { Onboarding } from './onboarding/Onboarding'
 import { localCounts } from './onboarding/summary'
@@ -155,7 +159,10 @@ export function App() {
   // The startup import offer (old app: `OfferArchivedSessionsAsync`): prompts only when the
   // results archive holds sessions that are neither imported nor previously declined. Nothing is
   // imported without the driver's answer. A dialog the driver already opened by hand wins.
+  // Not during the first-run setup, which asks the same question as one of its steps.
+  const firstRunDone = runtime.kind === 'ready' && runtime.sprint.firstRun.done
   useEffect(() => {
+    if (!firstRunDone) return
     let live = true
     bridge
       .resultsImportScan(false)
@@ -166,7 +173,7 @@ export function App() {
     return () => {
       live = false
     }
-  }, [])
+  }, [firstRunDone])
 
   // The manual action re-offers declined sessions: "Not now" silenced a prompt, not the laps.
   const scanForImport = useCallback(() => bridge.resultsImportScan(true), [])
@@ -241,6 +248,7 @@ export function App() {
     send,
     toggleSidebar,
     checkForUpdates: () => void runUpdateCheck(true),
+    newDash: () => openItem({ view: 'Dashes', newDash: true }),
     importResults,
   })
 
@@ -254,18 +262,38 @@ export function App() {
   )
   const openDiagnostics = useCallback(() => navigate('Help'), [navigate])
 
-  const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : ''].filter(Boolean).join(' ')
+  // The light trails behind the shell on Windows/Linux; macOS keeps its native vibrancy.
+  const trails = platform !== 'mac'
+  const firstRunActions = useMemo<FirstRunActions>(
+    () => ({ send, pickFolder: bridge.pickFolder, scan: () => bridge.resultsImportScan(false), runImport: bridge.resultsImport, decline: bridge.resultsImportDecline }),
+    [send],
+  )
+
+  // Until the first-run setup is done it is the whole window: no shell behind it to reach.
+  if (runtime.kind === 'ready' && !runtime.sprint.firstRun.done) {
+    const settings = parseSettings(runtime.sprint.settings)
+    return (
+      <FirstRun
+        firstRun={runtime.sprint.firstRun}
+        importAvailable={runtime.sprint.resultsImport.available}
+        driverName={settings.driverName}
+        driverNumber={settings.driverNumber}
+        actions={firstRunActions}
+      />
+    )
+  }
+
+  const appClassName = ['app', collapsed === null ? 'pending' : 'ready', collapsed ? 'collapsed' : '', trails ? 'with-trails' : ''].filter(Boolean).join(' ')
 
   return (
     <div className={appClassName}>
+      {trails ? <Backdrop tone="ambient" /> : null}
       <TitleBar
-        runtime={runtime}
         onOpenPalette={() => setPaletteOpen(true)}
         title={viewLabel(view)}
         sidebarCollapsed={collapsed ?? false}
         onToggleSidebar={toggleSidebarFromButton}
         showSidebarRef={showSidebarRef}
-        onOpenDiagnostics={openDiagnostics}
         onActionsSlot={setActionsSlot}
         onActionsRoom={setActionsRoom}
       />
@@ -279,6 +307,8 @@ export function App() {
           accountRow={sprintWeb ? { account, onOpen: () => (account?.signedIn ? setAccountOpen(true) : openSetup()) } : null}
           updateAvailable={updateRelease !== null}
           build={build}
+          telemetry={runtime.kind === 'ready' ? runtime.sprint.telemetry : null}
+          onOpenDiagnostics={openDiagnostics}
         />
         <main className="content">
           <ToolbarActionsContext value={toolbarActions}>

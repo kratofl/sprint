@@ -49,6 +49,7 @@
   --control-fill-disabled: #f4f4f5;
   --segmented-selected: #ffffff;
   --control-stroke: #dcdce0;    /* quiet outlines (web border) */
+  --slot-stroke: #dcdce0;     /* dashed outline of an empty slot: a filter not set, a setup not picked */
   --input-fill: #e9e9ec;        /* text boxes and selects: flat, a step stronger than a button (web fill-strong) */
   --input-stroke: transparent;  /* no edge at rest; focus draws --focus-ring */
 
@@ -58,6 +59,10 @@
   --shadow-flyout: 0 2px 6px rgba(0, 0, 0, 0.06), 0 12px 32px -4px rgba(0, 0, 0, 0.14);
   --shadow-dialog: 0 8px 24px rgba(0, 0, 0, 0.08), 0 32px 64px -16px rgba(0, 0, 0, 0.28);
   --smoke: rgba(0, 0, 0, 0.3);  /* scrim behind a dialog */
+  /* Glass over the light trails (first-run setup card): the web sign-in card's values */
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-stroke: rgba(0, 0, 0, 0.12);
+  --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 16px 48px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 
   /* InfoBar: the status -100 tints, -900 text, a -700 icon disc */
   --infobar-warning: #faefd2;  --infobar-warning-icon: #8a6200;  --infobar-warning-text: #473300;
@@ -70,6 +75,10 @@
   --avatar-bg: #ece8ff;
   --avatar-text: #3d2fa3;
 
+  /* Telemetry channels: one colour per channel on every chart, the other lap of a comparison
+     in grey (dashed). Steps of the scales above, checked for colour-blind separation. */
+  --channel-speed: var(--blue-500); --channel-throttle: var(--green-500); --channel-brake: var(--red-700);
+  --channel-steering: var(--yellow-700); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
   --focus-ring: #b34a00;
   color-scheme: light;
 }
@@ -101,6 +110,7 @@
   --control-fill-disabled: #1b1b1e;
   --segmented-selected: #333338;
   --control-stroke: #2c2c31;
+  --slot-stroke: #2c2c31;
   --input-fill: #232327;
   --input-stroke: transparent;
   --acrylic: rgba(24, 24, 27, 0.85);
@@ -108,6 +118,9 @@
   --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5);
   --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.6);
   --smoke: rgba(0, 0, 0, 0.5);
+  --glass: rgba(44, 44, 46, 0.55);
+  --glass-stroke: rgba(0, 0, 0, 0.6);
+  --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 16px 48px rgba(0, 0, 0, 0.5);
   /* Dark tints: the -500 at 20 % with the -300 as text */
   --infobar-warning: rgba(224, 163, 12, 0.2);  --infobar-warning-icon: #e0a30c;  --infobar-warning-text: #eec766;
   --infobar-error: rgba(240, 39, 68, 0.2);     --infobar-error-icon: #f02744;    --infobar-error-text: #f78b9a;
@@ -116,6 +129,8 @@
   --on-status: #1d1d1f;
   --avatar-bg: #221a5c;
   --avatar-text: #c2b5ff;
+  --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
+  --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
   --focus-ring: #ff9a4d;
   color-scheme: dark;
 }
@@ -129,14 +144,18 @@
     --on-brand: #1d1d1f; --link: #ff9a4d; --link-hover: #ffb27f; --success-text: #4ade80; --danger-text: #ff7a8a;
     --subtle-hover: #1b1b1e; --subtle-selected: #232327; --subtle-pressed: #232327;
     --control-fill: #1b1b1e; --control-fill-hover: #232327; --control-fill-disabled: #1b1b1e; --segmented-selected: #333338;
-    --control-stroke: #2c2c31; --input-fill: #232327; --input-stroke: transparent;
+    --control-stroke: #2c2c31; --slot-stroke: #2c2c31; --input-fill: #232327; --input-stroke: transparent;
     --acrylic: rgba(24, 24, 27, 0.85); --acrylic-stroke: rgba(255, 255, 255, 0.08);
     --shadow-flyout: 0 12px 32px rgba(0, 0, 0, 0.5); --shadow-dialog: 0 24px 64px rgba(0, 0, 0, 0.6); --smoke: rgba(0, 0, 0, 0.5);
+    --glass: rgba(44, 44, 46, 0.55); --glass-stroke: rgba(0, 0, 0, 0.6);
+    --shadow-glass: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 16px 48px rgba(0, 0, 0, 0.5);
     --infobar-warning: rgba(224, 163, 12, 0.2); --infobar-warning-icon: #e0a30c; --infobar-warning-text: #eec766;
     --infobar-error: rgba(240, 39, 68, 0.2); --infobar-error-icon: #f02744; --infobar-error-text: #f78b9a;
     --infobar-success: rgba(22, 181, 102, 0.2); --infobar-success-icon: #16b566; --infobar-success-text: #7fd9ab;
     --infobar-info: rgba(31, 127, 230, 0.2); --infobar-info-icon: #1f7fe6; --infobar-info-text: #86b9f2;
     --on-status: #1d1d1f; --avatar-bg: #221a5c; --avatar-text: #c2b5ff; --focus-ring: #ff9a4d;
+    --channel-speed: var(--blue-500); --channel-throttle: var(--green-300); --channel-brake: var(--red-500);
+    --channel-steering: var(--yellow-500); --channel-gear: var(--label-secondary); --channel-other: var(--label-tertiary);
     color-scheme: dark;
   }
 }
@@ -154,6 +173,12 @@
   --font-text: Figtree, system-ui, sans-serif;
   --font-display: Figtree, system-ui, sans-serif;
   --font-small: Figtree, system-ui, sans-serif;
+
+  /* The shell over the light trails (shell/Backdrop.tsx): sidebar and toolbar fill opacity and
+     blur, and the content area's veil, as the web shell's */
+  --chrome-opacity: 72%;
+  --chrome-backdrop: blur(20px) saturate(180%);
+  --veil-opacity: 82%;
 
   --motion-fast: 120ms;
   --motion-normal: 160ms;

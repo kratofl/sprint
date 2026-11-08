@@ -11,6 +11,8 @@ import { hudRouteFor, TrainingHud } from './hud.js'
 import { HUD_CLOSED, readHudWanted } from './hudFeed.js'
 import { macMenuTemplate } from './appMenu.js'
 import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
+import { DashDesigners } from './designerWindows.js'
+import { readDashIds, readDesignerDashId } from './designerRoute.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -90,9 +92,11 @@ async function pollTick(): Promise<void> {
     // Dashboard output is driven from the same poll rather than from a renderer
     // subscription, so screens keep painting with the main window hidden.
     offscreen?.reconcile(readScreenOutputs(state))
-    // The HUD has no controls of its own and is click-through when locked; without the main
-    // window nothing could turn it off, so it only shows while that window exists.
+    // Click-through while driving and only stopped from the app; without the main window
+    // nothing could turn it off, so it only shows while that window exists.
     hud?.reconcile(mainWindow ? readHudWanted(state) : HUD_CLOSED)
+    // A deleted dash takes its designer window with it.
+    designers.reconcile(readDashIds(state))
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -117,6 +121,21 @@ ipcMain.handle('sprint:diagnostics-logs', (_event: IpcMainInvokeEvent, minLevel:
 })
 
 ipcMain.handle('sprint:plan-context', () => nativeHost.planContext())
+
+ipcMain.handle('sprint:setups', () => nativeHost.setups())
+
+/** Setup and version ids are opaque keys the host listed itself; it answers 404 for any other. */
+ipcMain.handle('sprint:setup-sheet', (_event: IpcMainInvokeEvent, id: unknown, version: unknown) => {
+  if (typeof id !== 'string' || id.length === 0 || (version !== null && typeof version !== 'string')) {
+    throw new Error('A setup id is required.')
+  }
+  return nativeHost.setupSheet(id, version)
+})
+
+ipcMain.handle('sprint:setup-driven', (_event: IpcMainInvokeEvent, id: unknown) => {
+  if (typeof id !== 'string' || id.length === 0) throw new Error('A setup id is required.')
+  return nativeHost.setupDriven(id)
+})
 
 /** Archive entry ids are opaque keys the host listed itself; the host re-checks them against its listing. */
 const readEntryIds = (ids: unknown): string[] => {
@@ -252,9 +271,22 @@ ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
   }
 })
 
+/** A folder picker (the first-run setup's game folder): the chosen path, or null when cancelled. */
+ipcMain.handle('sprint:pick-folder', async (event: IpcMainInvokeEvent, title: unknown) => {
+  const owner = BrowserWindow.fromWebContents(event.sender)
+  const options = { title: typeof title === 'string' ? title : undefined, properties: ['openDirectory' as const] }
+  const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+  return choice.canceled ? null : (choice.filePaths[0] ?? null)
+})
+
 ipcMain.handle('sprint:send-command', (_event: IpcMainInvokeEvent, command: unknown) => {
   if (!isRecord(command)) throw new Error('A command object is required.')
   return nativeHost.command(command)
+})
+
+/** The Dashes page opens a dash in its own designer window, or brings that window forward. */
+ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId: unknown) => {
+  designers.open(readDesignerDashId(dashId))
 })
 
 ipcMain.on('sprint:subscribe', (event: IpcMainEvent) => {
@@ -277,6 +309,8 @@ ipcMain.on('sprint:hud-resize', (event: IpcMainEvent, width: unknown, height: un
 })
 
 const isMac = process.platform === 'darwin'
+// SPRINT_DESKTOP_HIDDEN=1 (scripts/agent-app.mjs): a hidden run an agent drives over CDP. Never in a packaged build.
+const agentRun = !app.isPackaged && process.env.SPRINT_DESKTOP_HIDDEN === '1'
 /** The look the main window wears. Follows the OS, except after the dev toggle (`toggleLook`). */
 let look = windowLook(process.platform)
 let mainWindow: BrowserWindow | undefined
@@ -386,15 +420,29 @@ function applyChrome(window: BrowserWindow, chrome: WindowChrome): void {
   }
 }
 
-function createWindow(): BrowserWindow {
+/** What differs between the main window and a dash designer window; the chrome is the same. */
+type AppWindowOptions = {
+  size: { width: number; height: number; minWidth: number; minHeight: number }
+  title: string
+  /** The renderer query: `platform` always, plus what picks the surface. */
+  query: Record<string, string>
+}
+
+/**
+ * A window on the renderer, in the current look: frameless with the OS caption buttons (or traffic
+ * lights), the same preload, links to the system browser, and its backdrop following the OS theme.
+ */
+function createAppWindow({ size, title, query }: AppWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1040,
-    minHeight: 680,
+    ...size,
+    title,
     ...chromeOptions(currentChrome()),
     icon: path.join(desktopRoot, 'resources', 'icon.png'),
+    // An agent run never appears on screen; it is driven and captured over CDP. A merely hidden
+    // window paints nothing, so it renders offscreen instead, as the dash outputs do.
+    show: !agentRun,
     webPreferences: {
+      offscreen: agentRun,
       // Sandboxed preloads must be CommonJS (Electron rejects an ES-module preload
       // there), hence the .cts source compiled to preload.cjs.
       preload: path.join(__dirname, 'preload.cjs'),
@@ -403,22 +451,9 @@ function createWindow(): BrowserWindow {
       sandbox: true,
     },
   })
-  mainWindow = window
-  window.once('closed', () => {
-    if (mainWindow !== window) return
-    mainWindow = undefined
-    hud?.close()
-  })
   // The Windows look on a Mac (dev toggle): the traffic lights would sit on its title
   // and icon, so hide them. ⌘W and ⌘Q still close the window.
   if (isMac && look === 'windows') window.setWindowButtonVisibility(false)
-  if (!app.isPackaged) {
-    window.webContents.on('before-input-event', (event, input) => {
-      if (!isToggleLookKey(input)) return
-      event.preventDefault()
-      toggleLook()
-    })
-  }
   // Views link out with plain `target="_blank"` anchors (e.g. Settings/Help's "View
   // release"). Without a handler, Electron opens those in a second frameless Electron
   // window instead of the system browser. Deny every new-window request and hand
@@ -444,10 +479,6 @@ function createWindow(): BrowserWindow {
   window.once('closed', () => nativeTheme.off('updated', onThemeUpdated))
 
   const devServerUrl = process.env.SPRINT_DESKTOP_DEV_SERVER_URL
-  // `?backdrop=window` tells the renderer it is the main window, drawn over the
-  // backdrop above (the offscreen dash pages and the preview harness are not).
-  // `?platform=` picks the look the chrome above was built for.
-  const query = { backdrop: 'window', platform: look }
   if (devServerUrl) {
     const url = new URL(devServerUrl)
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
@@ -458,11 +489,53 @@ function createWindow(): BrowserWindow {
   return window
 }
 
+function createWindow(): BrowserWindow {
+  // `?backdrop=window` tells the renderer it is the main window, drawn over the
+  // backdrop above (the offscreen dash pages and the preview harness are not).
+  // `?platform=` picks the look the chrome above was built for.
+  const window = createAppWindow({
+    size: { width: 1440, height: 900, minWidth: 1040, minHeight: 680 },
+    title: 'Sprint',
+    query: { backdrop: 'window', platform: look },
+  })
+  mainWindow = window
+  window.once('closed', () => {
+    if (mainWindow !== window) return
+    mainWindow = undefined
+    hud?.close()
+    // The designers belong to the app, not to a window of their own: Sprint is done with them too.
+    void designers.closeAll()
+  })
+  if (!app.isPackaged) {
+    window.webContents.on('before-input-event', (event, input) => {
+      if (!isToggleLookKey(input)) return
+      event.preventDefault()
+      toggleLook()
+    })
+  }
+  return window
+}
+
+/**
+ * One dash's designer (`?designer=<dashId>`): the same renderer without the shell. The page sets
+ * its title to the dash name, which Electron shows as the window title.
+ */
+const designers = new DashDesigners((dashId) =>
+  createAppWindow({
+    size: { width: 1440, height: 900, minWidth: 960, minHeight: 640 },
+    title: 'Sprint',
+    query: { designer: dashId, platform: look },
+  }),
+)
+
 app.setName('Sprint')
 // A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
 // away from the installed app's. The host reads the same variable.
 const dataRoot = process.env.SPRINT_DESKTOP_DATA_ROOT
 if (dataRoot) app.setPath('userData', dataRoot)
+// An agent run (scripts/agent-app.mjs), dev builds only: every window stays hidden and Chromium
+// opens a DevTools port of its own choosing, written to <userData>/DevToolsActivePort.
+if (agentRun) app.commandLine.appendSwitch('remote-debugging-port', '0')
 // Windows groups taskbar entries and resolves their icon by this id; without it
 // a dev run is filed under Electron's own identity and icon.
 if (process.platform === 'win32') app.setAppUserModelId('com.sprint.desktop')
@@ -505,6 +578,15 @@ async function bootstrap(): Promise<void> {
 }
 
 app.on('window-all-closed', () => { void shutdown().finally(() => app.quit()) })
-app.on('before-quit', () => { void shutdown() })
+app.on('before-quit', (event) => {
+  // An open designer may still be saving its last edit, and the host must outlive that save:
+  // close the designers first, then quit for real.
+  if (designers.count > 0) {
+    event.preventDefault()
+    void designers.closeAll().then(() => app.quit())
+    return
+  }
+  void shutdown()
+})
 
 void bootstrap()

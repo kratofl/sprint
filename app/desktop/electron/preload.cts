@@ -11,8 +11,12 @@ contextBridge.exposeInMainWorld('sprint', {
   analysisTrace: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:analysis-trace', sessionId, lapNumber),
   exportLap: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:lap-export', sessionId, lapNumber),
   importLap: (): Promise<unknown> => ipcRenderer.invoke('sprint:lap-import'),
+  pickFolder: (title: string): Promise<unknown> => ipcRenderer.invoke('sprint:pick-folder', title),
   diagnosticsLogs: (minLevel: string, text: string): Promise<unknown> => ipcRenderer.invoke('sprint:diagnostics-logs', minLevel, text),
   planContext: (): Promise<unknown> => ipcRenderer.invoke('sprint:plan-context'),
+  setups: (): Promise<unknown> => ipcRenderer.invoke('sprint:setups'),
+  setupSheet: (id: string, version: string | null): Promise<unknown> => ipcRenderer.invoke('sprint:setup-sheet', id, version),
+  setupDriven: (id: string): Promise<unknown> => ipcRenderer.invoke('sprint:setup-driven', id),
   resultsImportScan: (includeDeclined: boolean): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-scan', includeDeclined),
   resultsImport: (ids: readonly string[]): Promise<unknown> => ipcRenderer.invoke('sprint:results-import', ids),
   resultsImportDecline: (ids: readonly string[]): Promise<unknown> => ipcRenderer.invoke('sprint:results-import-decline', ids),
@@ -27,6 +31,8 @@ contextBridge.exposeInMainWorld('sprint', {
   discoverServers: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-discover'),
   syncUp: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-push'),
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
+  /** Opens a dash in its own designer window, or brings that window forward (electron/designerWindows.ts). */
+  openDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-designer', dashId),
   /** A training HUD window's feed (electron/hud.ts): its own part of each frame. */
   subscribeHud: (listener: (message: unknown) => void): (() => void) => {
     const onMessage = (_event: Electron.IpcRendererEvent, message: unknown): void => listener(message)

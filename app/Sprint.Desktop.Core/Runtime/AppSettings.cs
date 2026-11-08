@@ -26,11 +26,28 @@ public sealed class AppSettings
             _ => "stable",
         };
 
+    /// <summary>The placeholder driver name a fresh install starts with; the first-run setup refuses to keep it.</summary>
+    public const string DefaultDriverName = "Your Name";
+
     [JsonPropertyName("driverName")]
-    public string DriverName { get; set; } = "Your Name";
+    public string DriverName { get; set; } = DefaultDriverName;
 
     [JsonPropertyName("driverNumber")]
     public string DriverNumber { get; set; } = "22";
+
+    /// <summary>
+    /// The first-run setup (driver, game folder, results import) was finished, so it is not
+    /// shown again. False by default, so an install from before the setup existed sees it once.
+    /// </summary>
+    [JsonPropertyName("firstRunDone")]
+    public bool FirstRunDone { get; set; }
+
+    /// <summary>
+    /// The Le Mans Ultimate install folder the driver chose, or null to find it in the Steam
+    /// libraries. Setups and results are read from it.
+    /// </summary>
+    [JsonPropertyName("gameFolder")]
+    public string? GameFolder { get; set; }
 
     [JsonPropertyName("dashEditorUI")]
     public DashEditorUiSettings DashEditorUI { get; set; } = new();
@@ -38,8 +55,18 @@ public sealed class AppSettings
     [JsonPropertyName("newDashDefaults")]
     public NewDashDefaults NewDashDefaults { get; set; } = new();
 
+    /// <summary>
+    /// The user's own dash categories, in creation order (the built-ins live in
+    /// <c>DashCategories.BuiltIn</c>). Kept here so a category exists before any dash is in it.
+    /// </summary>
+    [JsonPropertyName("customDashCategories")]
+    public List<string> CustomDashCategories { get; set; } = [];
+
     [JsonPropertyName("devicesUI")]
     public DevicesUiSettings DevicesUI { get; set; } = new();
+
+    [JsonPropertyName("dashesUI")]
+    public DashesUiSettings DashesUI { get; set; } = new();
 
     /// <summary>The most recent non-empty game/car/track telemetry reported. The Session
     /// Planner prefills new plans from this, because a plan is created before entering a
@@ -274,15 +301,6 @@ public sealed class LiveCompareSettings
     [JsonPropertyName("showDelta")]
     public bool ShowDelta { get; set; } = true;
 
-    /// <summary>
-    /// Whether the overlay windows are click-through. Persisted because a driver who locked
-    /// them wants them locked next time too — an overlay that silently became draggable would
-    /// be nudged out of place by the first stray click. One flag for the whole set: locking is
-    /// "I am done placing these and about to drive", which is never true of one window only.
-    /// </summary>
-    [JsonPropertyName("locked")]
-    public bool Locked { get; set; }
-
     [JsonPropertyName("layouts")]
     public List<HudWindowLayout> Layouts { get; set; } = [];
 
@@ -327,6 +345,13 @@ public sealed class DevicesUiSettings
     /// <summary>Whether the device detail preview subscribes to live telemetry frames (animates) or shows a single frozen frame.</summary>
     [JsonPropertyName("livePreview")]
     public bool LivePreview { get; set; } = true;
+}
+
+public sealed class DashesUiSettings
+{
+    /// <summary>How the Dashes overview lists dashes: "gallery" (tiles, default) or "list".</summary>
+    [JsonPropertyName("viewMode")]
+    public string ViewMode { get; set; } = "gallery";
 }
 
 public sealed class NewDashDefaults

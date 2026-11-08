@@ -2,6 +2,8 @@ import type { TelemetryFrame } from '@sprint/types'
 import { parseHostFrame } from './telemetryFrame'
 import { parseHudMessage } from './hud/hudModel'
 import type { HudMessage } from './hud/hudModel'
+import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/SetupsDomain'
+import type { SetupDriven, SetupLibrary, SetupSheet } from './views/SetupsDomain'
 
 export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
@@ -159,6 +161,15 @@ export type CloudState = {
 /** A Sprint server that answered on the local network. */
 export type DiscoveredServer = { url: string; version: string }
 
+/**
+ * Le Mans Ultimate's install as the first-run setup and Settings show it (host: `firstRun.game`).
+ * `folder` is the one in use, the driver's choice (`chosen`) or the one found; "" when none was found.
+ */
+export type GameFolder = { folder: string; chosen: boolean; found: boolean; setupCount: number; resultsCount: number }
+
+/** The first-run setup (host: `firstRun`). `game` is null where the game is not supported (macOS). */
+export type FirstRun = { done: boolean; game: GameFolder | null }
+
 export type SprintState = {
   /** `frame` is already converted from the host's C# shape to the dash renderer's (`telemetryFrame.ts`). */
   telemetry: { frame: TelemetryFrame | null; link: TelemetryLink; hz: number }
@@ -169,6 +180,7 @@ export type SprintState = {
   engineerControls: Array<Record<string, unknown>>; radioLog: Array<Record<string, unknown>>; engineerPushState: Record<string, unknown>
   plans: Array<Record<string, unknown>>; lapHistory: Array<Record<string, unknown>>
   resultsImport: ResultsImportSource
+  firstRun: FirstRun
   account: Account
   cloud: CloudState
   link: LiveLink
@@ -176,9 +188,19 @@ export type SprintState = {
   features: { sprintWeb: boolean }
   /** Catalog ids plugged into USB but not added yet, one per device (`DeviceDetection` on the host). */
   foundDevices: string[]
+  /** Dash categories (`DashCategories` on the host): the fixed built-ins in page order, then the user's own. */
+  dashCategories: DashCategoryLists
+  /** Dash id → screen profile id → how many widgets a change to that size would leave out (`DashRefitLosses` on the host); sizes that lose none are absent. */
+  dashRefitLosses: DashRefitLosses
   screens: Array<{ deviceId: string; width: number; height: number; refreshHz: number; layout: unknown; pageId?: string; idle?: boolean; status: string; performance?: { sequence: number; bytes: number } }>
 }
 export type SprintCommand = { type: string; [key: string]: unknown }
+
+/** Per dash, per screen profile id, the widgets a change to that size would leave out (only counts ≥ 1). */
+export type DashRefitLosses = Record<string, Record<string, number>>
+
+/** A dash's category is one of these names, or absent for "Other". */
+export type DashCategoryLists = { builtIn: string[]; custom: string[] }
 
 /** Saving a lap as a `.sprintlap` (`sprint:lap-export`). */
 export type LapExportResult =
@@ -214,9 +236,17 @@ export type SprintBridge = {
   exportLap(sessionId: string, lapNumber: number): Promise<LapExportResult>
   /** Opens a file dialog and files the chosen `.sprintlap` into the corpus. */
   importLap(): Promise<LapImportResult>
+  /** Opens a folder picker; null when the driver cancelled it (or there is no Electron). */
+  pickFolder(title: string): Promise<string | null>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   /** Fetched when the New plan dialog opens: building it reads every lap-history file. */
   planContext(): Promise<PlanContextChoices>
+  /** The game's setups, read from its folder on request: too slow and large for the polled state. */
+  setups(): Promise<SetupLibrary>
+  /** One setup's values as the file holds them now, or as `version` held them; null when there is no such setup. */
+  setupSheet(id: string, version: string | null): Promise<SetupSheet | null>
+  /** How each version of one setup drove, over the runs the driver put it on; null when there is no such setup. */
+  setupDriven(id: string): Promise<SetupDriven[] | null>
   /** `includeDeclined` is false for the startup prompt only, so "Not now" stays answered there. */
   resultsImportScan(includeDeclined: boolean): Promise<ResultsImportOffer>
   resultsImport(entries: readonly string[]): Promise<ResultsImportResult>
@@ -236,6 +266,8 @@ export type SprintBridge = {
   subscribeHud(listener: (message: HudMessage) => void): () => void
   /** A HUD window's corner grip: the size it wants, and whether the drag has ended. */
   resizeHud(width: number, height: number, done: boolean): void
+  /** Opens a dash in its own designer window, or brings that window forward. */
+  openDashDesigner(dashId: string): Promise<void>
 }
 
 type RawBridge = {
@@ -246,8 +278,13 @@ type RawBridge = {
   /** Both absent in the preview harness's stub. */
   exportLap?(sessionId: string, lapNumber: number): Promise<unknown>
   importLap?(): Promise<unknown>
+  /** Absent in the preview harness's stub. */
+  pickFolder?(title: string): Promise<unknown>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   planContext(): Promise<unknown>
+  setups(): Promise<unknown>
+  setupSheet(id: string, version: string | null): Promise<unknown>
+  setupDriven(id: string): Promise<unknown>
   resultsImportScan(includeDeclined: boolean): Promise<unknown>
   resultsImport(entries: readonly string[]): Promise<unknown>
   resultsImportDecline(entries: readonly string[]): Promise<unknown>
@@ -264,9 +301,11 @@ type RawBridge = {
   /** Both absent in the preview harness's stub. */
   subscribeHud?(listener: (message: unknown) => void): () => void
   resizeHud?(width: number, height: number, done: boolean): void
+  /** Absent in the preview harness's stub. */
+  openDashDesigner?(dashId: string): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, foundDevices: [], screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, foundDevices: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -295,6 +334,24 @@ const parseResultsImportSource = (value: unknown): ResultsImportSource =>
   isRecord(value) && value.available === true
     ? { available: true, sourceName: typeof value.sourceName === 'string' && value.sourceName.length > 0 ? value.sourceName : 'the results archive' }
     : { available: false }
+
+/** Narrows the host's `firstRun` once. Anything malformed reads as done, so a confused host never locks the app. */
+const parseFirstRun = (value: unknown): FirstRun => {
+  if (!isRecord(value) || value.done !== false) return { done: true, game: null }
+  const game = value.game
+  return {
+    done: false,
+    game: isRecord(game)
+      ? {
+          folder: typeof game.folder === 'string' ? game.folder : '',
+          chosen: game.chosen === true,
+          found: game.found === true,
+          setupCount: count(game.setupCount),
+          resultsCount: count(game.resultsCount),
+        }
+      : null,
+  }
+}
 
 /** Narrows the host's `ResultsImportOffer` once, here. Anything malformed reads as "nothing new". */
 const parseResultsImportOffer = (value: unknown): ResultsImportOffer => {
@@ -507,12 +564,30 @@ const parseState = (value: unknown): SprintState => {
     hz: typeof telemetry.hz === 'number' && Number.isFinite(telemetry.hz) ? telemetry.hz : 0,
   }
   parsed.resultsImport = parseResultsImportSource(value.resultsImport)
+  parsed.firstRun = parseFirstRun(value.firstRun)
   parsed.account = parseAccount(value.account)
   parsed.cloud = parseCloud(value.cloud)
   parsed.link = parseLiveLink(value.link)
   parsed.features = { sprintWeb: isRecord(value.features) && value.features.sprintWeb === true }
   parsed.foundDevices = stringList(value.foundDevices)
+  const categories = isRecord(value.dashCategories) ? value.dashCategories : {}
+  parsed.dashCategories = { builtIn: stringList(categories.builtIn), custom: stringList(categories.custom) }
+  parsed.dashRefitLosses = parseDashRefitLosses(value.dashRefitLosses)
   return parsed
+}
+/** Keeps only whole positive counts; anything else from the host is no loss to warn about. */
+const parseDashRefitLosses = (value: unknown): DashRefitLosses => {
+  if (!isRecord(value)) return {}
+  const losses: DashRefitLosses = {}
+  for (const [dashId, perProfile] of Object.entries(value)) {
+    if (!isRecord(perProfile)) continue
+    const counts: Record<string, number> = {}
+    for (const [profileId, count] of Object.entries(perProfile)) {
+      if (typeof count === 'number' && Number.isInteger(count) && count > 0) counts[profileId] = count
+    }
+    losses[dashId] = counts
+  }
+  return losses
 }
 /** Narrows the host's `UpdateInstallResult` once, here, so callers never re-interpret it. */
 const parseUpdateInstallResult = (value: unknown): UpdateInstallResult => {
@@ -571,8 +646,15 @@ export const bridge: SprintBridge = raw
       exportLap: async (sessionId, lapNumber) =>
         raw.exportLap ? parseLapExportResult(await raw.exportLap(sessionId, lapNumber).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
       importLap: async () => (raw.importLap ? parseLapImportResult(await raw.importLap().catch(() => null)) : { outcome: 'failed', error: noLapFiles }),
+      pickFolder: async (title) => {
+        const folder = raw.pickFolder ? await raw.pickFolder(title).catch(() => null) : null
+        return typeof folder === 'string' && folder.length > 0 ? folder : null
+      },
       diagnosticsLogs: (minLevel, text) => raw.diagnosticsLogs(minLevel, text),
       planContext: async () => parsePlanContext(await raw.planContext()),
+      setups: () => raw.setups().then(parseSetupLibrary, (): SetupLibrary => ({ kind: 'failed' })),
+      setupSheet: (id, version) => raw.setupSheet(id, version).then(parseSetupSheet, () => null),
+      setupDriven: (id) => raw.setupDriven(id).then(parseSetupDriven, () => null),
       resultsImportScan: async (includeDeclined) => parseResultsImportOffer(await raw.resultsImportScan(includeDeclined)),
       resultsImport: async (entries) => parseResultsImportResult(await raw.resultsImport(entries)),
       resultsImportDecline: async (entries) => { await raw.resultsImportDecline(entries) },
@@ -594,6 +676,7 @@ export const bridge: SprintBridge = raw
             })
           : () => undefined,
       resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
+      openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
@@ -603,8 +686,12 @@ export const bridge: SprintBridge = raw
       analysisTrace: async () => null,
       exportLap: async () => ({ outcome: 'failed', error: noLapFiles }),
       importLap: async () => ({ outcome: 'failed', error: noLapFiles }),
+      pickFolder: async () => null,
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),
+      setups: async () => ({ kind: 'unavailable' }),
+      setupSheet: async () => null,
+      setupDriven: async () => null,
       resultsImportScan: async () => ({ entries: [], counts: [] }),
       resultsImport: async () => ({ outcome: 'failed', error: 'There is no Sprint host to import into.' }),
       resultsImportDecline: async () => undefined,
@@ -620,4 +707,5 @@ export const bridge: SprintBridge = raw
       syncDown: async () => ({ uploaded: 0, downloaded: 0, conflicts: 0, removedLocally: 0, ok: false, error: 'There is no Sprint host to sync.' }),
       subscribeHud: () => () => undefined,
       resizeHud: () => undefined,
+      openDashDesigner: async () => undefined,
     }

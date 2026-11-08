@@ -47,6 +47,13 @@ body {
   overflow: hidden;
 }
 
+/* A dash designer window (designer/DashDesigner.tsx) lays out its own stage at any size. */
+[data-surface="designer"],
+[data-surface="designer"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* A training HUD window (hud/HudWindow.tsx) is as small as its reading and transparent around its panel. */
 [data-surface="hud"],
 [data-surface="hud"] body {
@@ -160,18 +167,75 @@ a:hover {
   background: var(--layer);
 }
 
+/* ── Light trails behind the shell (Windows/Linux) ───────────────────────────
+   The web shell's look (web/app/globals.css): the ambient trails (shell/Backdrop.tsx) fill the
+   window, the sidebar and toolbar are glass over them, and the content area is a veil, so the
+   trails glow faintly between the cards. Cards and every other content element stay opaque.
+   macOS keeps its native vibrancy instead and never gets `.with-trails` (App.tsx). */
+
+.app.with-trails {
+  position: relative;
+  isolation: isolate;
+}
+
+.app.with-trails .navview {
+  background: color-mix(in srgb, var(--sidebar) var(--chrome-opacity), transparent);
+  backdrop-filter: var(--chrome-backdrop);
+}
+
+.app.with-trails .titlebar {
+  background: color-mix(in srgb, var(--toolbar) var(--chrome-opacity), transparent);
+  backdrop-filter: var(--chrome-backdrop);
+}
+
+.app.with-trails .content {
+  background: color-mix(in srgb, var(--layer) var(--veil-opacity), transparent);
+}
+
+/* Reduced transparency: the plain opaque shell, no trails. */
+@media (prefers-reduced-transparency: reduce) {
+  .app.with-trails > .backdrop { display: none; }
+  .app.with-trails .navview { background: var(--sidebar); backdrop-filter: none; }
+  .app.with-trails .titlebar { background: var(--toolbar); backdrop-filter: none; }
+  .app.with-trails .content { background: var(--layer); }
+}
+
+/* The trails layer, painted once from plain strokes (no filters). The entrance only fades and
+   slides the finished layer and does not hold its end state, so it settles into a static paint. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  fill: none;
+  stroke-linecap: round;
+  animation: trails-in calc(var(--motion-slow) * 4) var(--ease-out);
+}
+
+/* A broken streak: a car on the brakes. */
+.backdrop-trail.broken {
+  stroke-dasharray: 0.06 0.025;
+}
+
+@keyframes trails-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4%);
+  }
+}
+
 /* ── Toolbar (48px) ──────────────────────────────────────────────────────────
-   Three zones as one grid: leading (sidebar toggle while hidden, back, page
-   title) | centre (the telemetry indicator) | trailing (the page's actions,
-   then search). The centre takes what is left; its 28px minimum is the
-   indicator shrunk to its dot, and TitleBar.tsx reads it when it works out the
-   actions' room. The bar is the window's title bar: it drags the window, and
-   every control opts back out. */
+   Two zones as one grid: leading (sidebar toggle while hidden, page title) |
+   trailing (the page's actions, then search), which takes what is left. The
+   bar is the window's title bar: it drags the window, and every control opts
+   back out. */
 
 .titlebar {
   grid-area: toolbar;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
   height: 48px;
@@ -184,8 +248,7 @@ a:hover {
 }
 
 .titlebar button,
-.titlebar a,
-.titlebar .telemetry-badge {
+.titlebar a {
   -webkit-app-region: no-drag;
 }
 
@@ -223,62 +286,6 @@ a:hover {
   flex: none;
   font: 600 17px/22px var(--font-display);
   white-space: nowrap;
-}
-
-/* Centre zone. A size container, so the indicator can fall back to its dot when the centre
-   gets narrow (below), before the actions are evicted to the content. */
-.titlebar-centre {
-  display: flex;
-  justify-content: center;
-  min-width: 28px;
-  container-type: inline-size;
-}
-
-/* The telemetry indicator: a capsule that opens Help & diagnostics (TelemetryBadge.tsx). */
-.telemetry-indicator {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--control-fill);
-  color: var(--label-secondary);
-}
-
-.telemetry-indicator:hover {
-  background: var(--control-fill-hover);
-  color: var(--label);
-}
-
-.telemetry-indicator:active {
-  background: var(--subtle-pressed);
-}
-
-/* The status may shrink (and ellipsize) inside the capsule. */
-.telemetry-indicator .telemetry-badge {
-  flex: 0 1 auto;
-  color: inherit;
-}
-
-@container (max-width: 180px) {
-  .telemetry-indicator {
-    justify-content: center;
-    width: 28px;
-    padding: 0;
-  }
-
-  /* The word stays for screen readers; the tooltip names it for everyone else. */
-  .telemetry-indicator .status-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
 }
 
 /* Trailing zone: the page's actions (PageHeader portals its CommandBar into the slot), then search. */
@@ -568,6 +575,35 @@ a:hover {
   margin-left: auto;
   border-radius: var(--radius-pill);
   background: var(--brand-500);
+}
+
+/* The game link first in the footer, under a hairline (TelemetryRow.tsx): a status dot in the
+   icon's place and the link in secondary text, so it reads as status, not as a page. */
+.navview-telemetry {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-bottom: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--divider);
+}
+
+.nav-item.nav-telemetry {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.nav-item.nav-telemetry:hover {
+  color: var(--label);
+}
+
+.nav-item.nav-telemetry:disabled {
+  background: transparent;
+}
+
+.nav-telemetry-dot {
+  justify-content: center;
+  width: 16px;
 }
 
 /* Account last, under a hairline, below Settings and Help (web sidebar footer). */
@@ -1100,6 +1136,45 @@ a:hover {
   color: var(--danger-text);
   font-size: 12px;
   line-height: 16px;
+}
+
+/* ── Inline name (shell/InlineName.tsx) ─────────────────────────────────────
+   A page heading renamed in place: the name and its pen, or the rename input and its save
+   button. One 32px line either way, so the header does not shift when it swaps. */
+
+.inline-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+}
+
+.inline-name-button {
+  color: var(--label-secondary);
+}
+
+.inline-name-text {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The heading's type in a text box; the border and padding sit outside the text so the name
+   stays where the heading had it. */
+.inline-name-input {
+  width: min(100%, 420px);
+  height: 32px;
+  margin-left: -9px;
+  padding: 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
 }
 
 /* ── Chips (tags and status labels) ───────────────────────────────────────── */
