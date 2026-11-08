@@ -6,9 +6,9 @@ internal static class LmuParser
     {
         _ = LmuBinary.Slice(buffer, 0, LmuBinary.TotalBufferSize);
 
-        var scoringInfo = ParseScoringInfo(LmuBinary.Slice(buffer, LmuBinary.ScoringStart, LmuBinary.ScoringInfoSize));
-        var playerIndex = LmuBinary.ReadByte(buffer, LmuBinary.PlayerIndexOffset);
-        var playerHasVehicle = LmuBinary.ReadBool(buffer, LmuBinary.PlayerHasVehicleOffset);
+        LmuScoringInfo scoringInfo = ParseScoringInfo(LmuBinary.Slice(buffer, LmuBinary.ScoringStart, LmuBinary.ScoringInfoSize));
+        byte playerIndex = LmuBinary.ReadByte(buffer, LmuBinary.PlayerIndexOffset);
+        bool playerHasVehicle = LmuBinary.ReadBool(buffer, LmuBinary.PlayerHasVehicleOffset);
 
         if (playerIndex >= LmuBinary.MaxVehicles)
         {
@@ -22,12 +22,13 @@ internal static class LmuParser
                 ScoringInfo = scoringInfo,
                 PlayerHasVehicle = playerHasVehicle,
                 PlayerIndex = playerIndex,
-                PlayerVehicle = FindPlayerVehicle(buffer, scoringInfo.NumVehicles)
+                PlayerVehicle = FindPlayerVehicle(buffer, scoringInfo.NumVehicles),
+                Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles)
             };
         }
 
-        var telemetryOffset = LmuBinary.TelemetryInfoBase + playerIndex * LmuBinary.VehicleTelemetrySize;
-        var scoringOffset = LmuBinary.VehicleScoringBase + playerIndex * LmuBinary.VehicleScoringSize;
+        int telemetryOffset = LmuBinary.TelemetryInfoBase + playerIndex * LmuBinary.VehicleTelemetrySize;
+        int scoringOffset = LmuBinary.VehicleScoringBase + playerIndex * LmuBinary.VehicleScoringSize;
 
         return new LmuParsedFrame
         {
@@ -35,8 +36,23 @@ internal static class LmuParser
             PlayerHasVehicle = playerHasVehicle,
             PlayerIndex = playerIndex,
             Telemetry = ParseVehicleTelemetry(LmuBinary.Slice(buffer, telemetryOffset, LmuBinary.VehicleTelemetrySize)),
-            Scoring = ParseVehicleScoring(LmuBinary.Slice(buffer, scoringOffset, LmuBinary.VehicleScoringSize))
+            Scoring = ParseVehicleScoring(LmuBinary.Slice(buffer, scoringOffset, LmuBinary.VehicleScoringSize)),
+            Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles)
         };
+    }
+
+    /// <summary>The first <paramref name="numVehicles"/> entries of the vehicle scoring array, the field the sim scored.</summary>
+    private static IReadOnlyList<LmuVehicleScoring> ParseVehicles(ReadOnlySpan<byte> buffer, int numVehicles)
+    {
+        int count = Math.Clamp(numVehicles, 0, LmuBinary.MaxVehicles);
+        LmuVehicleScoring[] vehicles = new LmuVehicleScoring[count];
+        for (int i = 0; i < count; i++)
+        {
+            int offset = LmuBinary.VehicleScoringBase + i * LmuBinary.VehicleScoringSize;
+            vehicles[i] = ParseVehicleScoring(LmuBinary.Slice(buffer, offset, LmuBinary.VehicleScoringSize));
+        }
+
+        return vehicles;
     }
 
     public static bool PlayerInCar(bool playerHasVehicle, LmuScoringInfo scoringInfo) =>
@@ -95,12 +111,12 @@ internal static class LmuParser
 
     private static LmuVehicleTelemetry ParseVehicleTelemetry(ReadOnlySpan<byte> bytes)
     {
-        var wheels = new List<LmuWheel>(capacity: 4);
+        List<LmuWheel> wheels = new(capacity: 4);
         const int wheelsBase = 848;
         const int wheelSize = 260;
-        for (var i = 0; i < 4; i++)
+        for (int i = 0; i < 4; i++)
         {
-            var wheel = LmuBinary.Slice(bytes, wheelsBase + i * wheelSize, wheelSize);
+            ReadOnlySpan<byte> wheel = LmuBinary.Slice(bytes, wheelsBase + i * wheelSize, wheelSize);
             wheels.Add(new LmuWheel
             {
                 PressureKPa = LmuBinary.ReadDouble(wheel, 120),
@@ -138,6 +154,7 @@ internal static class LmuParser
             FuelLiters = LmuBinary.ReadDouble(bytes, 524),
             EngineMaxRpm = LmuBinary.ReadDouble(bytes, 532),
             CurrentSectorRaw = LmuBinary.ReadInt32(bytes, 600),
+            SpeedLimiter = LmuBinary.ReadBool(bytes, 604),
             FrontCompoundName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 620, 18)),
             RearCompoundName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 638, 18)),
             RearBrakeBias = LmuBinary.ReadDouble(bytes, 664),
@@ -145,10 +162,20 @@ internal static class LmuParser
             TractionControlActive = LmuBinary.ReadBool(bytes, 747),
             TractionControl = LmuBinary.ReadByte(bytes, 750),
             TractionControlMax = LmuBinary.ReadByte(bytes, 751),
+            TractionControlSlip = LmuBinary.ReadByte(bytes, 752),
+            TractionControlSlipMax = LmuBinary.ReadByte(bytes, 753),
+            TractionControlCut = LmuBinary.ReadByte(bytes, 754),
+            TractionControlCutMax = LmuBinary.ReadByte(bytes, 755),
             Abs = LmuBinary.ReadByte(bytes, 756),
             AbsMax = LmuBinary.ReadByte(bytes, 757),
             MotorMap = LmuBinary.ReadByte(bytes, 758),
             MotorMapMax = LmuBinary.ReadByte(bytes, 759),
+            Migration = LmuBinary.ReadByte(bytes, 760),
+            MigrationMax = LmuBinary.ReadByte(bytes, 761),
+            FrontAntiSway = LmuBinary.ReadByte(bytes, 762),
+            FrontAntiSwayMax = LmuBinary.ReadByte(bytes, 763),
+            RearAntiSway = LmuBinary.ReadByte(bytes, 764),
+            RearAntiSwayMax = LmuBinary.ReadByte(bytes, 765),
             TrackLimitSteps = LmuBinary.ReadByte(bytes, 767),
             RegenPower = LmuBinary.ReadSingle(bytes, 768),
             StateOfCharge = LmuBinary.ReadSingle(bytes, 772),
@@ -168,6 +195,18 @@ internal static class LmuParser
     {
         return new LmuVehicleScoring
         {
+            Id = LmuBinary.ReadInt32(bytes, 0),
+            DriverName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 4, 32)),
+            TotalLaps = LmuBinary.ReadInt16(bytes, 100),
+            Sector = unchecked((sbyte)LmuBinary.ReadByte(bytes, 102)),
+            CurrentSector1 = LmuBinary.ReadDouble(bytes, 176),
+            CurrentSector2 = LmuBinary.ReadDouble(bytes, 184),
+            InPits = LmuBinary.ReadBool(bytes, 198),
+            TimeBehindNext = LmuBinary.ReadDouble(bytes, 232),
+            LapsBehindNext = LmuBinary.ReadInt32(bytes, 240),
+            TimeBehindLeader = LmuBinary.ReadDouble(bytes, 244),
+            LapsBehindLeader = LmuBinary.ReadInt32(bytes, 252),
+            Position = ParseVector3(bytes, 264),
             VehicleName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 36, 64)),
             VehicleClass = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 200, 32)),
             IsPlayer = LmuBinary.ReadBool(bytes, 196),

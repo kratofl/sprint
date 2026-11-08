@@ -31,6 +31,12 @@ public sealed record RecordedStatus(double Seconds, TelemetryStatus Status) : Re
 /// <see cref="TelemetryFrame"/>, not the game's raw memory (LMU's is ~325 KB per read), so a
 /// recording only carries the fields the contract had when it was made.
 /// </summary>
+/// <remarks>
+/// <see cref="TelemetryFrame.Field"/> is written only on the frames where it changed; every other
+/// frame stores null there, and the reader puts the last field back. A field that disappears is
+/// written as an empty one. Files from before the field existed simply read without one, and
+/// readers from before it ignore the property, so the format did not need a new version.
+/// </remarks>
 public static class TelemetryRecording
 {
     /// <summary>Bumped when a reader could no longer understand an older file.</summary>
@@ -57,6 +63,7 @@ public sealed class TelemetryRecordingWriter : IDisposable
 {
     private readonly StreamWriter _writer;
     private readonly GZipStream _gzip;
+    private IReadOnlyList<FieldCar>? _field;
 
     private TelemetryRecordingWriter(StreamWriter writer, GZipStream gzip)
     {
@@ -76,9 +83,34 @@ public sealed class TelemetryRecordingWriter : IDisposable
 
     public void Write(RecordedEvent recorded)
     {
+        RecordedEvent written = recorded is RecordedFrame frame ? this.WithFieldOnChange(frame) : recorded;
         // Serialized as the base type, so the "kind" discriminator is written.
-        this._writer.WriteLine(JsonSerializer.Serialize(recorded, TelemetryRecording.Json));
+        this._writer.WriteLine(JsonSerializer.Serialize(written, TelemetryRecording.Json));
     }
+
+    // The field changes a few times a second and is most of a frame's size, so it is written
+    // only when it differs from the last one written; the reader carries it forward.
+    private RecordedFrame WithFieldOnChange(RecordedFrame recorded)
+    {
+        // Null on disk means "unchanged", so a field that disappears is written as empty.
+        IReadOnlyList<FieldCar>? field = recorded.Frame.Field;
+        if (field is null && this._field is not null)
+        {
+            field = [];
+        }
+
+        if (SameField(field, this._field))
+        {
+            return recorded with { Frame = recorded.Frame with { Field = null } };
+        }
+
+        this._field = field;
+        return recorded with { Frame = recorded.Frame with { Field = field } };
+    }
+
+    private static bool SameField(IReadOnlyList<FieldCar>? field, IReadOnlyList<FieldCar>? last) =>
+        ReferenceEquals(field, last)
+        || (field is not null && last is not null && field.SequenceEqual(last));
 
     /// <summary>
     /// Pushes everything written so far to disk as a complete gzip block, so a process that is
@@ -97,6 +129,7 @@ public sealed class TelemetryRecordingWriter : IDisposable
 public sealed class TelemetryRecordingReader : IDisposable
 {
     private readonly StreamReader _reader;
+    private IReadOnlyList<FieldCar>? _field;
     private bool _ended;
 
     private TelemetryRecordingReader(StreamReader reader, RecordingHeader header)
@@ -141,8 +174,9 @@ public sealed class TelemetryRecordingReader : IDisposable
             string? line = this._reader.ReadLine();
             if (line is not null)
             {
-                return JsonSerializer.Deserialize<RecordedEvent>(line, TelemetryRecording.Json)
+                RecordedEvent recorded = JsonSerializer.Deserialize<RecordedEvent>(line, TelemetryRecording.Json)
                     ?? throw new JsonException("Empty event line.");
+                return recorded is RecordedFrame frame ? this.WithField(frame) : recorded;
             }
         }
         catch (Exception ex) when (ex is InvalidDataException or JsonException or EndOfStreamException)
@@ -156,6 +190,18 @@ public sealed class TelemetryRecordingReader : IDisposable
     }
 
     public void Dispose() => this._reader.Dispose();
+
+    // A frame stores its field only when it changed; the rest get the last one back.
+    private RecordedFrame WithField(RecordedFrame recorded)
+    {
+        if (recorded.Frame.Field is { } field)
+        {
+            this._field = field;
+            return recorded;
+        }
+
+        return this._field is null ? recorded : recorded with { Frame = recorded.Frame with { Field = this._field } };
+    }
 
     private static RecordingHeader ParseHeader(string? line)
     {

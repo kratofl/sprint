@@ -937,6 +937,158 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Null(frame.Car.Pose);
     }
 
+    [Fact]
+    public void Lmu_source_reads_the_cockpit_settings_and_the_pit_state()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 0);
+        int telemetry = LmuBinary.TelemetryInfoBase;
+        // TelemInfoV01 under pack(4): mSpeedLimiter@604, then the LMU block mTC@750 … mRearAntiSwayMax@765,
+        // the same walk that lands the struct on 1888 bytes.
+        buffer[telemetry + 604] = 1;
+        byte[] settings = [4, 12, 2, 6, 3, 8, 7, 12, 3, 8, 5, 10, 2, 9, 6, 9];
+        settings.CopyTo(buffer, telemetry + 750);
+        int scoring = LmuBinary.VehicleScoringBase;
+        // VehicleScoringInfoV01: mInPits@198, mPitState@457.
+        WriteBool(buffer, scoring + 198, true);
+        buffer[scoring + 457] = 2;
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        ElectronicsState electronics = frame.Electronics;
+        Assert.Equal((4, 12), (electronics.TractionControl, electronics.TractionControlMax));
+        Assert.Equal((2, 6), (electronics.TractionControlSlip, electronics.TractionControlSlipMax));
+        Assert.Equal((3, 8), (electronics.TractionControlCut, electronics.TractionControlCutMax));
+        Assert.Equal((7, 12), (electronics.Abs, electronics.AbsMax));
+        Assert.Equal((3, 8), (electronics.MotorMap, electronics.MotorMapMax));
+        Assert.Equal((5, 10), (electronics.Migration, electronics.MigrationMax));
+        Assert.Equal((2, 9), (electronics.FrontAntiRollBar, electronics.FrontAntiRollBarMax));
+        Assert.Equal((6, 9), (electronics.RearAntiRollBar, electronics.RearAntiRollBarMax));
+        Assert.True(frame.Car.PitLimiter);
+        Assert.True(frame.Car.InPitLane);
+        Assert.Equal(PitState.Entering, frame.Car.PitState);
+    }
+
+    [Fact]
+    public void Lmu_source_reports_every_scored_car_for_the_timing_table_and_map()
+    {
+        byte[] buffer = InCarBuffer(playerIndex: 1);
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, 3);
+        WriteVehicle(buffer, 0, id: 7, driver: "A. Leader", car: "Toyota #7", carClass: "Hyper", place: 1);
+        WriteVehicle(buffer, 1, id: 3, driver: "Luca", car: "Oreca #22", carClass: "LMP2", place: 2);
+        WriteVehicle(buffer, 2, id: 9, driver: "C. Third", car: "Oreca #30", carClass: "LMP2", place: 3);
+        int player = LmuBinary.VehicleScoringBase + LmuBinary.VehicleScoringSize;
+        WriteBool(buffer, player + 196, true);
+        // mTotalLaps@100, mSector@102 (2 = sector 2), mFinishStatus@103, mLapDist@104.
+        BitConverter.TryWriteBytes(buffer.AsSpan(player + 100, sizeof(short)), (short)12);
+        buffer[player + 102] = 2;
+        buffer[player + 103] = 2;
+        WriteDouble(buffer, player + 104, 1234.5);
+        // mBestLapTime@144, mLastSector1/2@152/160, mLastLapTime@168, mCurSector1/2@176/184.
+        WriteDouble(buffer, player + 144, 120.0);
+        WriteDouble(buffer, player + 152, 30.0);
+        WriteDouble(buffer, player + 160, 70.0);
+        WriteDouble(buffer, player + 168, 121.0);
+        WriteDouble(buffer, player + 176, 29.5);
+        WriteDouble(buffer, player + 184, 69.0);
+        // mNumPitstops@192, mInPits@198, mTimeBehindNext@232, mLapsBehindNext@240,
+        // mTimeBehindLeader@244, mLapsBehindLeader@252, mPos@264 (x, y, z).
+        BitConverter.TryWriteBytes(buffer.AsSpan(player + 192, sizeof(short)), (short)2);
+        WriteBool(buffer, player + 198, true);
+        WriteDouble(buffer, player + 232, 1.5);
+        WriteInt32(buffer, player + 240, 0);
+        WriteDouble(buffer, player + 244, 3.25);
+        WriteInt32(buffer, player + 252, 1);
+        WriteDouble(buffer, player + 264, 100.0);
+        WriteDouble(buffer, player + 280, -50.0);
+        // mPitState@457 (3 = stopped), mInGarageStall@507.
+        buffer[player + 457] = 3;
+        WriteBool(buffer, player + 507, true);
+        using LeMansUltimateTelemetrySource source = new(new InMemoryLmuSnapshotProvider(buffer));
+        source.Connect();
+
+        Assert.True(source.TryRead(out TelemetryFrame frame));
+
+        IReadOnlyList<FieldCar> field = Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(frame.Field);
+        Assert.Equal<int>([7, 3, 9], field.Select(car => car.Id));
+        Assert.Equal<int>([1, 1, 2], field.Select(car => car.ClassPlace));
+        Assert.Equal(
+            new FieldCar
+            {
+                Id = 3,
+                Driver = "Luca",
+                Car = "Oreca #22",
+                CarClass = "LMP2",
+                IsPlayer = true,
+                Place = 2,
+                ClassPlace = 1,
+                LapsCompleted = 12,
+                LapDistanceMeters = 1234.5,
+                Sector = 2,
+                BestLapTime = 120.0,
+                LastLapTime = 121.0,
+                LastLapSector1 = 30.0,
+                LastLapSector2 = 40.0,
+                LastLapSector3 = 51.0,
+                CurrentLapSector1 = 29.5,
+                // Still in sector 2, so its mark is the previous lap's and does not count yet.
+                CurrentLapSector2 = null,
+                GapToLeader = 3.25,
+                LapsToLeader = 1,
+                GapToNext = 1.5,
+                LapsToNext = 0,
+                InPitLane = true,
+                InGarage = true,
+                PitState = PitState.Stopped,
+                PitStops = 2,
+                FinishStatus = FinishStatus.Dnf,
+                // Mirrored on X like the player's pose, so the field shares the lap traces' map.
+                PositionX = -100f,
+                PositionZ = -50f
+            },
+            field[1]);
+    }
+
+    [Fact]
+    public void Lmu_mapper_hands_out_the_same_field_until_scoring_changes()
+    {
+        LmuTelemetryMapper mapper = new(() => DateTimeOffset.UnixEpoch);
+        LmuVehicleScoring car = new() { Id = 1, DriverName = "Luca", Place = 1, VehicleClass = "LMP2" };
+        LmuParsedFrame parsed = CreateInCarParsedFrame(lapNumber: 3) with { Vehicles = [car] };
+
+        IReadOnlyList<FieldCar>? first = mapper.Map(parsed).Field;
+        IReadOnlyList<FieldCar>? again = mapper.Map(parsed with { Vehicles = [car with { }] }).Field;
+        IReadOnlyList<FieldCar>? moved = mapper.Map(parsed with { Vehicles = [car with { LapDistance = 10 }] }).Field;
+
+        Assert.Same(first, again);
+        Assert.NotSame(first, moved);
+        Assert.Equal(10, Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(moved)).LapDistanceMeters);
+    }
+
+    /// <summary>A buffer with the player in the car at <paramref name="playerIndex"/>, on track at Spa.</summary>
+    private static byte[] InCarBuffer(int playerIndex)
+    {
+        byte[] buffer = EmptyLmuBuffer();
+        WriteString(buffer, LmuBinary.ScoringStart, 64, "Spa");
+        WriteInt32(buffer, LmuBinary.ScoringStart + 104, playerIndex + 1);
+        WriteBool(buffer, LmuBinary.ScoringStart + 115, true);
+        buffer[LmuBinary.PlayerIndexOffset] = (byte)playerIndex;
+        WriteBool(buffer, LmuBinary.PlayerHasVehicleOffset, true);
+        return buffer;
+    }
+
+    /// <summary>Writes a vehicle scoring entry's identity: mID@0, mDriverName@4, mVehicleName@36, mPlace@199, mVehicleClass@200.</summary>
+    private static void WriteVehicle(byte[] buffer, int index, int id, string driver, string car, string carClass, byte place)
+    {
+        int offset = LmuBinary.VehicleScoringBase + index * LmuBinary.VehicleScoringSize;
+        WriteInt32(buffer, offset, id);
+        WriteString(buffer, offset + 4, 32, driver);
+        WriteString(buffer, offset + 36, 64, car);
+        buffer[offset + 199] = place;
+        WriteString(buffer, offset + 200, 32, carClass);
+    }
+
     private static LmuParsedFrame CreateInCarParsedFrame(
         int lapNumber,
         double elapsedTime = 200.5,

@@ -1,4 +1,4 @@
-import { TirePosition, type SessionType, type TelemetryFrame, type TireState } from '@sprint/types'
+import { TirePosition, type FieldCar, type FinishStatus, type PitState, type SessionType, type TelemetryFrame, type TireState } from '@sprint/types'
 
 // The host serialises `Sprint.Desktop.Api.Telemetry.TelemetryFrame` (C# names, enums as
 // names, ISO timestamp). `@sprint/types` – what `packages/dashboard` reads – still carries the
@@ -22,6 +22,21 @@ const sessionTypes: Record<string, SessionType> = {
   Race: 'race',
   Warmup: 'warmup',
   Unknown: 'unknown',
+}
+
+const pitStates: Record<string, PitState> = {
+  None: 'none',
+  Requested: 'requested',
+  Entering: 'entering',
+  Stopped: 'stopped',
+  Exiting: 'exiting',
+}
+
+const finishStatuses: Record<string, FinishStatus> = {
+  None: 'none',
+  Finished: 'finished',
+  Dnf: 'dnf',
+  Disqualified: 'disqualified',
 }
 
 const tirePositions: Record<string, TirePosition> = {
@@ -63,6 +78,40 @@ const tires = (value: unknown): TelemetryFrame['tires'] => {
   ]
 }
 
+const fieldCar = (value: unknown): FieldCar => {
+  const c = bag(value)
+  return {
+    id: num(c.id),
+    driver: str(c.driver),
+    car: str(c.car),
+    carClass: str(c.carClass),
+    isPlayer: bool(c.isPlayer),
+    place: num(c.place),
+    classPlace: num(c.classPlace),
+    lapsCompleted: num(c.lapsCompleted),
+    lapDistanceMeters: num(c.lapDistanceMeters),
+    sector: num(c.sector),
+    bestLapTime: numOrNull(c.bestLapTime),
+    lastLapTime: numOrNull(c.lastLapTime),
+    lastLapSector1: numOrNull(c.lastLapSector1),
+    lastLapSector2: numOrNull(c.lastLapSector2),
+    lastLapSector3: numOrNull(c.lastLapSector3),
+    currentLapSector1: numOrNull(c.currentLapSector1),
+    currentLapSector2: numOrNull(c.currentLapSector2),
+    gapToLeader: num(c.gapToLeader),
+    lapsToLeader: num(c.lapsToLeader),
+    gapToNext: num(c.gapToNext),
+    lapsToNext: num(c.lapsToNext),
+    inPitLane: bool(c.inPitLane),
+    inGarage: bool(c.inGarage),
+    pitState: pitStates[str(c.pitState)] ?? 'none',
+    pitStops: num(c.pitStops),
+    finishStatus: finishStatuses[str(c.finishStatus)] ?? 'none',
+    positionX: num(c.positionX),
+    positionZ: num(c.positionZ),
+  }
+}
+
 /** Converts the host's telemetry frame JSON into the dash renderer's `TelemetryFrame`; `null` when there is no frame. */
 export function parseHostFrame(value: unknown): TelemetryFrame | null {
   if (!isBag(value)) return null
@@ -79,6 +128,8 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
   const tcMax = num(electronics.tractionControlMax)
   const absMax = num(electronics.absMax)
   const motorMapMax = num(electronics.motorMapMax)
+  const tcCutMax = num(electronics.tractionControlCutMax)
+  const tcSlipMax = num(electronics.tractionControlSlipMax)
 
   return {
     timestamp: Number.isFinite(timestamp) ? timestamp : 0,
@@ -111,6 +162,10 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       positionY: num(car.positionY),
       positionZ: num(car.positionZ),
       brakeBiasRear: num(car.brakeBiasRear),
+      inGarage: boolOrNull(car.inGarage),
+      inPitLane: boolOrNull(car.inPitLane),
+      pitState: pitStates[str(car.pitState)] ?? null,
+      pitLimiter: boolOrNull(car.pitLimiter),
     },
     tires: tires(value.tires),
     lap: {
@@ -138,26 +193,32 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       vsc: bool(flags.virtualSafetyCar),
       checkered: bool(flags.checkered),
     },
-    // The host publishes no TC cut/slip or ABS-active channels; a setting counts as
-    // available when the car reports a non-zero maximum for it.
+    // The host publishes no ABS-active channel; a setting counts as available when the car
+    // reports a non-zero maximum for it.
     electronics: {
       tcActive: bool(electronics.tractionControlActive),
       tc: num(electronics.tractionControl),
       tcMax,
-      tcCut: 0,
-      tcCutMax: 0,
-      tcSlip: 0,
-      tcSlipMax: 0,
+      tcCut: num(electronics.tractionControlCut),
+      tcCutMax,
+      tcSlip: num(electronics.tractionControlSlip),
+      tcSlipMax,
       absActive: false,
       abs: num(electronics.abs),
       absMax,
       motorMap: num(electronics.motorMap),
       motorMapMax,
+      migration: num(electronics.migration),
+      migrationMax: num(electronics.migrationMax),
+      frontAntiRollBar: num(electronics.frontAntiRollBar),
+      frontAntiRollBarMax: num(electronics.frontAntiRollBarMax),
+      rearAntiRollBar: num(electronics.rearAntiRollBar),
+      rearAntiRollBarMax: num(electronics.rearAntiRollBarMax),
       drsActive: bool(electronics.drsActive),
       absAvailable: absMax > 0,
       tcAvailable: tcMax > 0,
-      tcCutAvailable: false,
-      tcSlipAvailable: false,
+      tcCutAvailable: tcCutMax > 0,
+      tcSlipAvailable: tcSlipMax > 0,
       motorMapAvailable: motorMapMax > 0,
     },
     race: {
@@ -185,5 +246,6 @@ export function parseHostFrame(value: unknown): TelemetryFrame | null {
       tireMultiplier: numOrNull(conditions.tireMultiplier),
       fixedSetup: boolOrNull(conditions.fixedSetup),
     },
+    field: Array.isArray(value.field) ? value.field.map(fieldCar) : [],
   }
 }

@@ -17,15 +17,16 @@ const tire = (position: TirePosition, t: number, p: number) => ({
 const frame: TelemetryFrame = {
   timestamp: Date.now(),
   session: { game: 'LMU', track: 'Circuit de la Sarthe', trackLengthMeters: 13626, car: 'Porsche 963', carClass: 'Hypercar', sessionType: 'race', sessionTime: 3720, totalSessionTime: 21600, sessionTimeRemaining: 17880, bestLapTime: 208.44, maxLaps: 0, inCar: true },
-  car: { speedMS: 78.3, gear: 6, rpm: 7450, maxRPM: 9000, throttle: 0.92, brake: 0, clutch: 0, steering: -0.12, fuel: 62.4, fuelPerLap: 4.6, positionX: 0, positionY: 0, positionZ: 0, brakeBiasRear: 0.462 },
+  car: { speedMS: 78.3, gear: 6, rpm: 7450, maxRPM: 9000, throttle: 0.92, brake: 0, clutch: 0, steering: -0.12, fuel: 62.4, fuelPerLap: 4.6, positionX: 0, positionY: 0, positionZ: 0, brakeBiasRear: 0.462, inGarage: null, inPitLane: null, pitState: null, pitLimiter: null },
   tires: [tire(TirePosition.FrontLeft, 88, 172), tire(TirePosition.FrontRight, 94, 174), tire(TirePosition.RearLeft, 91, 168), tire(TirePosition.RearRight, 97, 170)],
   lap: { currentLap: 14, currentLapTime: 92.345, positionLapTime: 0, lastLapTime: 210.117, bestLapTime: 208.44, targetLapTime: 209.0, delta: -0.412, sector: 2, sector1Time: 68.2, sector2Time: 71.9, lastLapSectorsSeconds: [68.2, 71.9, 70.0], isInLap: false, isOutLap: false, isValid: true, trackPosition: 0.44 },
   flags: { yellow: false, doubleYellow: false, red: false, safetyCar: false, vsc: false, checkered: false },
-  electronics: { tcActive: true, tc: 4, tcMax: 9, tcCut: 3, tcCutMax: 9, tcSlip: 2, tcSlipMax: 9, absActive: false, abs: 3, absMax: 9, motorMap: 5, motorMapMax: 9, drsActive: false, absAvailable: true, tcAvailable: true, tcCutAvailable: true, tcSlipAvailable: true, motorMapAvailable: true },
+  electronics: { tcActive: true, tc: 4, tcMax: 9, tcCut: 3, tcCutMax: 9, tcSlip: 2, tcSlipMax: 9, absActive: false, abs: 3, absMax: 9, motorMap: 5, motorMapMax: 9, migration: 0, migrationMax: 0, frontAntiRollBar: 0, frontAntiRollBarMax: 0, rearAntiRollBar: 0, rearAntiRollBarMax: 0, drsActive: false, absAvailable: true, tcAvailable: true, tcCutAvailable: true, tcSlipAvailable: true, motorMapAvailable: true },
   race: { position: 4, totalPositions: 38, gapAhead: 2.41, gapBehind: 5.08 },
   energy: { virtualEnergy: 61.2, virtualEnergyPerLap: 4.4, soc: 0.58, regenPower: 120, deployPower: 340 },
   penalties: { incidents: 1, trackLimitSteps: 0, pitStops: 2 },
   conditions: { pathWetness: null, trackGripLevel: null, fuelMultiplier: null, tireMultiplier: null, fixedSetup: null },
+  field: [],
 }
 
 const preset = JSON.parse(readFileSync(process.argv[2], 'utf8'))

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.Json;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Games.Recording;
@@ -85,6 +86,34 @@ public sealed class TelemetryRecordingTests : IDisposable
         Assert.Contains("-Spa-Race", files[1]);
         using TelemetryRecordingReader practice = TelemetryRecordingReader.Open(files[0]);
         Assert.Equal(3, ReadAll(practice).OfType<RecordedFrame>().Count());
+    }
+
+    [Fact]
+    public void Writes_the_field_only_when_it_changes_and_reads_it_back_on_every_frame()
+    {
+        FieldCar leader = new() { Id = 7, Driver = "Luca", CarClass = "LMP2", Place = 1, LapDistanceMeters = 10 };
+        FieldCar[] moved = [leader with { LapDistanceMeters = 25 }];
+        TelemetryFrame frame = Frame("Spa", SessionType.Race, 1);
+        string file = this.WriteRecording(
+            new RecordedFrame(0, frame with { Field = [leader] }),
+            new RecordedFrame(0.1, frame with { Field = [leader with { }] }),
+            new RecordedFrame(0.2, frame with { Field = moved }),
+            new RecordedFrame(0.3, frame with { Field = null }));
+
+        // On disk: the field on the frames where it changed, null on the one where it did not,
+        // and an empty field once it is gone, since null already means unchanged.
+        Assert.Equal<int?>([1, null, 1, 0], ReadFieldLengthsOnDisk(file));
+
+        using TelemetryRecordingReader reader = TelemetryRecordingReader.Open(file);
+        List<IReadOnlyList<FieldCar>> fields = ReadAll(reader)
+            .OfType<RecordedFrame>()
+            .Select(recorded => Assert.IsAssignableFrom<IReadOnlyList<FieldCar>>(recorded.Frame.Field))
+            .ToList();
+        Assert.Equal(4, fields.Count);
+        Assert.Equal<FieldCar>([leader], fields[0]);
+        Assert.Equal<FieldCar>([leader], fields[1]);
+        Assert.Equal<FieldCar>(moved, fields[2]);
+        Assert.Empty(fields[3]);
     }
 
     [Fact]
@@ -200,6 +229,28 @@ public sealed class TelemetryRecordingTests : IDisposable
         Lap = new LapState { CurrentLap = lap, LastLapSectorsSeconds = [31.2, 44.9, 29.7] },
         Car = new CarState { SpeedMetersPerSecond = 71.5f, Gear = 5, FuelLiters = 42.25f },
     };
+
+    // The length of each recorded frame's field as the file stores it; null where it stores none.
+    private static List<int?> ReadFieldLengthsOnDisk(string file)
+    {
+        using GZipStream gzip = new(File.OpenRead(file), CompressionMode.Decompress);
+        using StreamReader lines = new(gzip);
+        List<int?> lengths = [];
+        lines.ReadLine();
+        for (string? line = lines.ReadLine(); line is not null; line = lines.ReadLine())
+        {
+            using JsonDocument recorded = JsonDocument.Parse(line);
+            if (recorded.RootElement.GetProperty("kind").GetString() != "frame")
+            {
+                continue;
+            }
+
+            JsonElement field = recorded.RootElement.GetProperty("frame").GetProperty("field");
+            lengths.Add(field.ValueKind == JsonValueKind.Null ? null : field.GetArrayLength());
+        }
+
+        return lengths;
+    }
 
     private static int ReadLap(ReplayTelemetrySource replay)
     {

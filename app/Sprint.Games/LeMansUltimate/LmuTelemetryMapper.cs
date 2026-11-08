@@ -33,6 +33,12 @@ internal sealed class LmuTelemetryMapper
     // them: without that the car's identity would flip every time the driver steps out of it.
     private LmuCarIdentity? _lastCar;
 
+    // The field last mapped and the scoring it came from. Scoring changes ~5 times a second while
+    // frames arrive ~60, so an unchanged vehicle array hands out the same list again: consumers
+    // and the recorder can then tell "scoring updated" from "same snapshot" cheaply.
+    private IReadOnlyList<LmuVehicleScoring> _fieldScoring = [];
+    private IReadOnlyList<FieldCar> _field = [];
+
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
     {
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
@@ -52,29 +58,31 @@ internal sealed class LmuTelemetryMapper
         _energyAtLapStart = null;
         _completedLapEnergyDeltas.Clear();
         this._lastCar = null;
+        this._fieldScoring = [];
+        this._field = [];
     }
 
     public TelemetryFrame Map(LmuParsedFrame parsed)
     {
-        var playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
+        bool playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
         if (!playerIsRealtime)
         {
-            return SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle);
+            return this.SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle, this.MapField(parsed.Vehicles));
         }
 
-        var telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
-        var scoring = parsed.Scoring ?? throw new LmuDecodeException("LMU parsed frame is in-car but scoring is missing");
+        LmuVehicleTelemetry telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
+        LmuVehicleScoring scoring = parsed.Scoring ?? throw new LmuDecodeException("LMU parsed frame is in-car but scoring is missing");
 
-        var frontCompound = telemetry.FrontCompoundName;
-        var rearCompound = telemetry.RearCompoundName;
-        var currentLapTime = MonotonicCurrentLapTime(
+        string frontCompound = telemetry.FrontCompoundName;
+        string rearCompound = telemetry.RearCompoundName;
+        double currentLapTime = this.MonotonicCurrentLapTime(
             scoring.TimeIntoLap,
             telemetry.ElapsedTime,
             telemetry.LapStartElapsedTime,
             telemetry.LapNumber,
             parsed.ScoringInfo);
-        var fuel = ToF32(telemetry.FuelLiters);
-        var virtualEnergy = Sanitize(telemetry.VirtualEnergy);
+        float fuel = ToF32(telemetry.FuelLiters);
+        float virtualEnergy = Sanitize(telemetry.VirtualEnergy);
         LmuCarIdentity car = new(
             telemetry.VehicleName,
             telemetry.VehicleModel,
@@ -83,7 +91,7 @@ internal sealed class LmuTelemetryMapper
 
         return new TelemetryFrame
         {
-            Timestamp = _clock(),
+            Timestamp = this._clock(),
             Session = new SessionInfo
             {
                 Game = GameName,
@@ -118,12 +126,15 @@ internal sealed class LmuTelemetryMapper
                 ThrottleApplied = Applied(telemetry.FilteredThrottle),
                 BrakeApplied = Applied(telemetry.FilteredBrake),
                 FuelLiters = fuel,
-                FuelPerLapLiters = FuelPerLap(telemetry.LapNumber, fuel),
+                FuelPerLapLiters = this.FuelPerLap(telemetry.LapNumber, fuel),
                 PositionX = ToF32(telemetry.Position.X),
                 PositionY = ToF32(telemetry.Position.Y),
                 PositionZ = ToF32(telemetry.Position.Z),
                 BrakeBiasRear = ToF32(telemetry.RearBrakeBias),
                 InGarage = scoring.InGarageStall,
+                InPitLane = scoring.InPits,
+                PitState = MapPitState(scoring.PitState),
+                PitLimiter = telemetry.SpeedLimiter,
                 Pose = MapPose(telemetry)
             },
             Tires = MapTires(telemetry.Wheels, frontCompound, rearCompound),
@@ -150,10 +161,20 @@ internal sealed class LmuTelemetryMapper
                 TractionControlActive = telemetry.TractionControlActive,
                 TractionControl = telemetry.TractionControl,
                 TractionControlMax = telemetry.TractionControlMax,
+                TractionControlSlip = telemetry.TractionControlSlip,
+                TractionControlSlipMax = telemetry.TractionControlSlipMax,
+                TractionControlCut = telemetry.TractionControlCut,
+                TractionControlCutMax = telemetry.TractionControlCutMax,
                 Abs = telemetry.Abs,
                 AbsMax = telemetry.AbsMax,
                 MotorMap = telemetry.MotorMap,
                 MotorMapMax = telemetry.MotorMapMax,
+                Migration = telemetry.Migration,
+                MigrationMax = telemetry.MigrationMax,
+                FrontAntiRollBar = telemetry.FrontAntiSway,
+                FrontAntiRollBarMax = telemetry.FrontAntiSwayMax,
+                RearAntiRollBar = telemetry.RearAntiSway,
+                RearAntiRollBarMax = telemetry.RearAntiSwayMax,
                 DrsActive = scoring.DrsState
             },
             Race = new RaceState
@@ -166,7 +187,7 @@ internal sealed class LmuTelemetryMapper
             Energy = new EnergyState
             {
                 VirtualEnergy = virtualEnergy,
-                VirtualEnergyPerLap = VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
+                VirtualEnergyPerLap = this.VirtualEnergyPerLap(telemetry.LapNumber, virtualEnergy),
                 StateOfCharge = Sanitize(telemetry.StateOfCharge),
                 RegenPower = Sanitize(telemetry.RegenPower)
             },
@@ -176,11 +197,12 @@ internal sealed class LmuTelemetryMapper
                 TrackLimitSteps = telemetry.TrackLimitSteps,
                 PitStops = scoring.PitStops
             },
-            Conditions = MapConditions(parsed.ScoringInfo)
+            Conditions = MapConditions(parsed.ScoringInfo),
+            Field = this.MapField(parsed.Vehicles)
         };
     }
 
-    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle)
+    private TelemetryFrame SessionOnlyFrame(LmuScoringInfo scoringInfo, LmuVehicleScoring? playerVehicle, IReadOnlyList<FieldCar> field)
     {
         string entry = playerVehicle?.VehicleName ?? "";
         LmuCarIdentity? car = this._lastCar is { } last && entry.Length > 0 && last.VehicleName == entry
@@ -188,7 +210,7 @@ internal sealed class LmuTelemetryMapper
             : null;
         return new TelemetryFrame
         {
-            Timestamp = _clock(),
+            Timestamp = this._clock(),
             Session = new SessionInfo
             {
                 Game = GameName,
@@ -207,9 +229,112 @@ internal sealed class LmuTelemetryMapper
                 MaxLaps = scoringInfo.MaxLaps,
                 InCar = false
             },
-            Conditions = MapConditions(scoringInfo)
+            Conditions = MapConditions(scoringInfo),
+            Field = field
         };
     }
+
+    /// <summary>The scored field, or the previous list unchanged when the vehicle array has not changed since.</summary>
+    private IReadOnlyList<FieldCar> MapField(IReadOnlyList<LmuVehicleScoring> vehicles)
+    {
+        if (this._fieldScoring.SequenceEqual(vehicles))
+        {
+            return this._field;
+        }
+
+        FieldCar[] field = new FieldCar[vehicles.Count];
+        for (int i = 0; i < vehicles.Count; i++)
+        {
+            field[i] = MapFieldCar(vehicles[i], ClassPlace(vehicles, vehicles[i]));
+        }
+
+        this._fieldScoring = vehicles;
+        this._field = field;
+        return field;
+    }
+
+    private static FieldCar MapFieldCar(LmuVehicleScoring vehicle, int classPlace)
+    {
+        IReadOnlyList<double> lastSectors = SectorDurations(vehicle);
+        // mSector: 0 is sector 3, then 1 and 2. A current-lap mark only counts once the car has
+        // left that sector, since the fields can still hold the previous lap's marks before then.
+        int sector = vehicle.Sector switch
+        {
+            1 => 1,
+            2 => 2,
+            0 => 3,
+            _ => 0
+        };
+        double firstMark = ToF64(vehicle.CurrentSector1);
+        double secondMark = ToF64(vehicle.CurrentSector2);
+        bool firstDone = sector >= 2 && firstMark > 0;
+        bool secondDone = sector == 3 && firstDone && secondMark > firstMark;
+
+        return new FieldCar
+        {
+            Id = vehicle.Id,
+            Driver = vehicle.DriverName,
+            Car = vehicle.VehicleName,
+            CarClass = vehicle.VehicleClass,
+            IsPlayer = vehicle.IsPlayer,
+            Place = vehicle.Place,
+            ClassPlace = classPlace,
+            LapsCompleted = Math.Max(0, (int)vehicle.TotalLaps),
+            LapDistanceMeters = ToF64(vehicle.LapDistance),
+            Sector = sector,
+            BestLapTime = PositiveOrNull(vehicle.BestLapTime),
+            LastLapTime = PositiveOrNull(vehicle.LastLapTime),
+            LastLapSector1 = lastSectors.Count == 3 ? lastSectors[0] : null,
+            LastLapSector2 = lastSectors.Count == 3 ? lastSectors[1] : null,
+            LastLapSector3 = lastSectors.Count == 3 ? lastSectors[2] : null,
+            CurrentLapSector1 = firstDone ? firstMark : null,
+            CurrentLapSector2 = secondDone ? secondMark - firstMark : null,
+            GapToLeader = ToF64(vehicle.TimeBehindLeader),
+            LapsToLeader = vehicle.LapsBehindLeader,
+            GapToNext = ToF64(vehicle.TimeBehindNext),
+            LapsToNext = vehicle.LapsBehindNext,
+            InPitLane = vehicle.InPits,
+            InGarage = vehicle.InGarageStall,
+            PitState = MapPitState(vehicle.PitState),
+            PitStops = vehicle.PitStops,
+            FinishStatus = vehicle.FinishStatus switch
+            {
+                1 => FinishStatus.Finished,
+                2 => FinishStatus.Dnf,
+                3 => FinishStatus.Disqualified,
+                _ => FinishStatus.None
+            },
+            // Mirrored like the player's pose, so the field and lap traces share one map.
+            PositionX = ToF32(-vehicle.Position.X),
+            PositionZ = ToF32(vehicle.Position.Z)
+        };
+    }
+
+    /// <summary>The car's place among its class, ranked by overall place; 0 when it has no place yet.</summary>
+    private static int ClassPlace(IReadOnlyList<LmuVehicleScoring> vehicles, LmuVehicleScoring vehicle)
+    {
+        if (vehicle.Place == 0)
+        {
+            return 0;
+        }
+
+        return 1 + vehicles.Count(other =>
+            other.Place > 0 && other.Place < vehicle.Place && other.VehicleClass == vehicle.VehicleClass);
+    }
+
+    /// <summary>mPitState: 0 none, 1 request, 2 entering, 3 stopped, 4 exiting.</summary>
+    private static PitState MapPitState(byte pitState) => pitState switch
+    {
+        1 => PitState.Requested,
+        2 => PitState.Entering,
+        3 => PitState.Stopped,
+        4 => PitState.Exiting,
+        _ => PitState.None
+    };
+
+    /// <summary>A lap time, or null for the sim's "none yet" (0 or negative).</summary>
+    private static double? PositiveOrNull(double seconds) =>
+        double.IsFinite(seconds) && seconds > 0 ? seconds : null;
 
     /// <summary>
     /// The conditions the sim publishes. Fuel and tyre multipliers are deliberately absent:

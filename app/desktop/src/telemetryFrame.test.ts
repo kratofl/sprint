@@ -43,6 +43,26 @@ test('tyres land at their TirePosition index, missing ones are zeroed', () => {
   assert.equal(frame.tires[TirePosition.RearLeft].position, TirePosition.RearLeft)
 })
 
+test('pit state, cockpit settings and the scored field cross over', () => {
+  const frame = parseHostFrame({
+    ...hostFrame,
+    car: { inPitLane: true, pitState: 'Stopped', pitLimiter: true },
+    electronics: { tractionControlCut: 2, tractionControlCutMax: 6, migration: 3, migrationMax: 5 },
+    field: [{ id: 7, driver: 'Luca', isPlayer: true, classPlace: 2, pitState: 'Exiting', finishStatus: 'Dnf', bestLapTime: null, lastLapTime: 121.5 }],
+  })
+  assert.ok(frame)
+  assert.deepEqual([frame.car.inPitLane, frame.car.pitState, frame.car.pitLimiter, frame.car.inGarage], [true, 'stopped', true, null])
+  assert.deepEqual([frame.electronics.tcCut, frame.electronics.tcCutAvailable, frame.electronics.tcSlipAvailable], [2, true, false])
+  assert.deepEqual([frame.electronics.migration, frame.electronics.migrationMax], [3, 5])
+  const [car] = frame.field
+  assert.ok(car)
+  assert.deepEqual(
+    [car.id, car.driver, car.isPlayer, car.classPlace, car.pitState, car.finishStatus, car.bestLapTime, car.lastLapTime],
+    [7, 'Luca', true, 2, 'exiting', 'dnf', null, 121.5],
+  )
+  assert.deepEqual(parseHostFrame(hostFrame)?.field, [])
+})
+
 test('no frame stays no frame', () => {
   assert.equal(parseHostFrame(null), null)
   assert.equal(parseHostFrame('frame'), null)

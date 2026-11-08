@@ -6,6 +6,9 @@ export type {
   TireState,
   LapState,
   Flags,
+  FieldCar,
+  PitState,
+  FinishStatus,
 } from './telemetry'
 export { TirePosition } from './telemetry'
 

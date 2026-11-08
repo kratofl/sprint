@@ -48,10 +48,23 @@ internal sealed record LmuVehicleTelemetry
     public bool TractionControlActive { get; init; }
     public byte TractionControl { get; init; }
     public byte TractionControlMax { get; init; }
+    public byte TractionControlSlip { get; init; }
+    public byte TractionControlSlipMax { get; init; }
+    public byte TractionControlCut { get; init; }
+    public byte TractionControlCutMax { get; init; }
     public byte Abs { get; init; }
     public byte AbsMax { get; init; }
     public byte MotorMap { get; init; }
     public byte MotorMapMax { get; init; }
+    public byte Migration { get; init; }
+    public byte MigrationMax { get; init; }
+    public byte FrontAntiSway { get; init; }
+    public byte FrontAntiSwayMax { get; init; }
+    public byte RearAntiSway { get; init; }
+    public byte RearAntiSwayMax { get; init; }
+
+    /// <summary>mSpeedLimiter: whether the pit limiter is switched on.</summary>
+    public bool SpeedLimiter { get; init; }
     public byte TrackLimitSteps { get; init; }
     public float RegenPower { get; init; }
     public float StateOfCharge { get; init; }
@@ -97,6 +110,10 @@ internal enum LmuVehicleChampionship : byte
 
 internal sealed record LmuVehicleScoring
 {
+    /// <summary>mID: the slot id.</summary>
+    public int Id { get; init; }
+    public string DriverName { get; init; } = "";
+
     /// <summary>mVehicleName: available from scoring, so it exists before the cockpit does.</summary>
     public string VehicleName { get; init; } = "";
 
@@ -121,6 +138,26 @@ internal sealed record LmuVehicleScoring
     public bool InGarageStall { get; init; }
     public bool DrsState { get; init; }
     public sbyte FinishStatus { get; init; }
+
+    /// <summary>mTotalLaps: laps completed.</summary>
+    public short TotalLaps { get; init; }
+
+    /// <summary>mSector: 0 is sector 3, 1 sector 1, 2 sector 2.</summary>
+    public sbyte Sector { get; init; }
+
+    /// <summary>mCurSector1/mCurSector2: the lap being driven's cumulative marks, when valid.</summary>
+    public double CurrentSector1 { get; init; }
+    public double CurrentSector2 { get; init; }
+
+    /// <summary>mInPits: between pit entrance and pit exit.</summary>
+    public bool InPits { get; init; }
+    public double TimeBehindNext { get; init; }
+    public int LapsBehindNext { get; init; }
+    public double TimeBehindLeader { get; init; }
+    public int LapsBehindLeader { get; init; }
+
+    /// <summary>mPos: world position in LMU's left-handed axes.</summary>
+    public LmuVector3 Position { get; init; }
 }
 
 internal sealed record LmuScoringInfo
@@ -164,5 +201,8 @@ internal sealed record LmuParsedFrame
     /// the cockpit — which is the only place the lobby car can come from.
     /// </summary>
     public LmuVehicleScoring? PlayerVehicle { get; init; }
+
+    /// <summary>Every entry of the vehicle scoring array, in array order (not by place).</summary>
+    public IReadOnlyList<LmuVehicleScoring> Vehicles { get; init; } = [];
     public bool PlayerInCar => PlayerHasVehicle && ScoringInfo.InRealtime && Telemetry is not null && Scoring is not null;
 }

@@ -10,15 +10,16 @@ function tire(position: TirePosition, tempSurface: number): TelemetryFrame['tire
 const baseFrame: TelemetryFrame = {
   timestamp: 0,
   session: { game: 'LMU', track: 'Le Mans', trackLengthMeters: 13626, car: 'Hypercar', carClass: 'Hypercar', sessionType: 'race', sessionTime: 0, totalSessionTime: null, sessionTimeRemaining: null, bestLapTime: 0, maxLaps: 0, inCar: true },
-  car: { speedMS: 50, gear: 4, rpm: 8000, maxRPM: 9000, throttle: 1, brake: 0, clutch: 0, steering: 0, fuel: 42.5, fuelPerLap: 2.75, positionX: 0, positionY: 0, positionZ: 0, brakeBiasRear: 0.5 },
+  car: { speedMS: 50, gear: 4, rpm: 8000, maxRPM: 9000, throttle: 1, brake: 0, clutch: 0, steering: 0, fuel: 42.5, fuelPerLap: 2.75, positionX: 0, positionY: 0, positionZ: 0, brakeBiasRear: 0.5, inGarage: null, inPitLane: null, pitState: null, pitLimiter: null },
   tires: [tire(TirePosition.FrontLeft, 85.4), tire(TirePosition.FrontRight, 86.1), tire(TirePosition.RearLeft, 90.6), tire(TirePosition.RearRight, 91.5)],
   lap: { currentLap: 3, currentLapTime: 92.345, positionLapTime: 0, lastLapTime: 91.2, bestLapTime: 90.8, targetLapTime: 90.8, delta: -0.5, sector: 2, sector1Time: 30.1, sector2Time: 30.2, lastLapSectorsSeconds: [], isInLap: false, isOutLap: false, isValid: true, trackPosition: 0.5 },
   flags: { yellow: false, doubleYellow: false, red: false, safetyCar: false, vsc: false, checkered: false },
-  electronics: { tcActive: true, tc: 3.9, tcMax: 9, tcCut: 0, tcCutMax: 0, tcSlip: 0, tcSlipMax: 0, absActive: false, abs: 2.9, absMax: 9, motorMap: 5.1, motorMapMax: 9, drsActive: false, absAvailable: true, tcAvailable: true, tcCutAvailable: false, tcSlipAvailable: false, motorMapAvailable: true },
+  electronics: { tcActive: true, tc: 3.9, tcMax: 9, tcCut: 0, tcCutMax: 0, tcSlip: 0, tcSlipMax: 0, absActive: false, abs: 2.9, absMax: 9, motorMap: 5.1, motorMapMax: 9, migration: 0, migrationMax: 0, frontAntiRollBar: 0, frontAntiRollBarMax: 0, rearAntiRollBar: 0, rearAntiRollBarMax: 0, drsActive: false, absAvailable: true, tcAvailable: true, tcCutAvailable: false, tcSlipAvailable: false, motorMapAvailable: true },
   race: { position: 4, totalPositions: 20, gapAhead: 1.234, gapBehind: 0.876 },
   energy: { virtualEnergy: 4500, virtualEnergyPerLap: 210, soc: 0.62, regenPower: 0, deployPower: 120 },
   penalties: { incidents: 0, trackLimitSteps: 0, pitStops: 0 },
   conditions: { pathWetness: null, trackGripLevel: null, fuelMultiplier: null, tireMultiplier: null, fixedSetup: null },
+  field: [],
 }
 
 function context(overrides: Partial<DashBindingContext> = {}): DashBindingContext {
