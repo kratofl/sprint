@@ -17,7 +17,7 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void WithNoTargetThereIsNothingToDraw()
     {
-        var controller = new LiveCompareController();
+        LiveCompareController controller = new LiveCompareController();
 
         controller.Ingest(Frame(position: 0.2));
 
@@ -29,7 +29,7 @@ public sealed class LiveCompareControllerTests
     public void ATargetWhoseTraceIsUnusableIsRefusedRatherThanHalfAccepted()
     {
         // Naming a lap the HUD cannot draw is worse than showing no target at all.
-        var controller = new LiveCompareController();
+        LiveCompareController controller = new LiveCompareController();
 
         controller.SetTarget(Target(), new LapChannelTrace());
 
@@ -40,13 +40,13 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void ATargetAloneDrawsTheReferenceBeforeTheDriverHasTurnedAWheel()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
-        var frame = controller.Snapshot();
+        LiveCompareFrame? frame = controller.Snapshot();
 
         Assert.NotNull(frame);
         Assert.False(frame!.HasLiveLine);
-        var speed = Speed(frame.Stack);
+        ChartPanel speed = Speed(frame.Stack);
         Assert.Single(speed.Series);
         Assert.Equal(ChartSeriesRole.Comparison, speed.Series[0].Role);
     }
@@ -56,7 +56,7 @@ public sealed class LiveCompareControllerTests
     {
         // Spec §2.4: the wheel delta and the HUD can legitimately chase different laps, and
         // that disagreement must never be silent.
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
         Assert.Equal("Practice · Lap 4 · 1:40.000", controller.Snapshot()!.TargetName);
     }
@@ -64,12 +64,12 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void TheWindowFollowsTheCar()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
         controller.Ingest(Frame(position: 0.5));
-        var mid = controller.Snapshot()!.Stack.Domain;
+        ChartDomain mid = controller.Snapshot()!.Stack.Domain;
         controller.Ingest(Frame(position: 0.6));
-        var later = controller.Snapshot()!.Stack.Domain;
+        ChartDomain later = controller.Snapshot()!.Stack.Domain;
 
         // 200 m behind, 600 m ahead of 2500 m.
         Assert.Equal(2300, mid.Min, 1);
@@ -80,15 +80,15 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void YourLineStopsAtTheCarAndTheTargetRunsOnAhead()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
         Drive(controller, from: 0.0, to: 0.5);
-        var frame = controller.Snapshot()!;
+        LiveCompareFrame frame = controller.Snapshot()!;
 
         Assert.True(frame.HasLiveLine);
-        var speed = Speed(frame.Stack);
-        var you = speed.Series.Single(series => series.Role == ChartSeriesRole.Current);
-        var target = speed.Series.Single(series => series.Role == ChartSeriesRole.Comparison);
+        ChartPanel speed = Speed(frame.Stack);
+        ChartSeries you = speed.Series.Single(series => series.Role == ChartSeriesRole.Current);
+        ChartSeries target = speed.Series.Single(series => series.Role == ChartSeriesRole.Comparison);
         Assert.True(you.Samples[^1].X <= 2500 + 1);
         Assert.True(target.Samples[^1].X >= 3090);
     }
@@ -96,7 +96,7 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void LeavingTheCarClearsTheLiveLineButKeepsTheTarget()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
         Drive(controller, from: 0.0, to: 0.5);
 
         controller.Ingest(Frame(position: 0.5, inCar: false));
@@ -108,12 +108,12 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void ANewLapStartsTheLiveLineOverRatherThanSplicingTwoLaps()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
         Drive(controller, from: 0.0, to: 0.9);
 
         // Across the line: position wraps and the lap number increments.
         controller.Ingest(Frame(position: 0.01, lap: 2));
-        var you = Speed(controller.Snapshot()!.Stack).Series
+        ChartSeries? you = Speed(controller.Snapshot()!.Stack).Series
             .SingleOrDefault(series => series.Role == ChartSeriesRole.Current);
 
         // One sample is not a line; the previous lap's shape must not survive the wrap.
@@ -125,7 +125,7 @@ public sealed class LiveCompareControllerTests
     {
         // The target lap is linear to 100 s, so at half distance it had taken 50 s. The driver
         // arrives at 47 s, three seconds up.
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
         controller.Ingest(Frame(position: 0.5, lapTime: 47));
 
@@ -141,13 +141,13 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void TheWindowSizesAreSettings()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
         controller.MetersBehind = 50;
         controller.MetersAhead = 100;
 
         controller.Ingest(Frame(position: 0.5));
 
-        var domain = controller.Snapshot()!.Stack.Domain;
+        ChartDomain domain = controller.Snapshot()!.Stack.Domain;
         Assert.Equal(2450, domain.Min, 1);
         Assert.Equal(2600, domain.Max, 1);
     }
@@ -155,7 +155,7 @@ public sealed class LiveCompareControllerTests
     [Fact]
     public void ThePanelSetIsConfigurable()
     {
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
         controller.Panels = [LapChartPanels.Gear];
 
         Assert.Equal("Gear", Assert.Single(controller.Snapshot()!.Stack.Charts).Title);
@@ -166,12 +166,12 @@ public sealed class LiveCompareControllerTests
     {
         // 100 m short of the line looking 600 ahead: the driver needs the corner after the
         // line, and the target has it.
-        var controller = Loaded();
+        LiveCompareController controller = Loaded();
 
         controller.Ingest(Frame(position: 0.98));
-        var frame = controller.Snapshot()!;
+        LiveCompareFrame frame = controller.Snapshot()!;
 
-        var target = Speed(frame.Stack).Series.Single(s => s.Role == ChartSeriesRole.Comparison);
+        ChartSeries target = Speed(frame.Stack).Series.Single(s => s.Role == ChartSeriesRole.Comparison);
         Assert.Contains(target.Samples, sample => sample.X > TrackLength);
     }
 
@@ -181,7 +181,7 @@ public sealed class LiveCompareControllerTests
 
     private static LiveCompareController Loaded()
     {
-        var controller = new LiveCompareController();
+        LiveCompareController controller = new LiveCompareController();
         controller.SetTarget(Target(), TargetTrace());
         return controller;
     }
@@ -201,7 +201,7 @@ public sealed class LiveCompareControllerTests
 
     private static void Drive(LiveCompareController controller, double from, double to)
     {
-        for (var position = from; position <= to + 1e-9; position += 0.002)
+        for (double position = from; position <= to + 1e-9; position += 0.002)
         {
             controller.Ingest(Frame(position: position, lapTime: position * 100));
         }
@@ -239,15 +239,15 @@ public sealed class LiveCompareControllerTests
     /// <summary>A whole reference lap on a 1 m grid, linear to 100 s.</summary>
     private static LapChannelTrace TargetTrace()
     {
-        const int Count = 5001;
-        var speed = new float[Count];
-        var brake = new float[Count];
-        var throttle = new float[Count];
-        var gear = new float[Count];
-        var elapsed = new float[Count];
-        for (var i = 0; i < Count; i++)
+        const int count = 5001;
+        float[] speed = new float[count];
+        float[] brake = new float[count];
+        float[] throttle = new float[count];
+        float[] gear = new float[count];
+        float[] elapsed = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             speed[i] = (float)(120 + (180 * t));
             brake[i] = (float)t;
             throttle[i] = (float)(1 - t);
@@ -257,7 +257,7 @@ public sealed class LiveCompareControllerTests
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
             {

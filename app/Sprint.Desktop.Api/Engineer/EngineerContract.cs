@@ -128,5 +128,5 @@ public sealed record StagedControlChange
 
     /// <summary>True when the staged value differs from what is on the car (epsilon-compared, matching the client's dirty check).</summary>
     [JsonIgnore]
-    public bool IsDirty => Math.Abs(StagedValue - CarValue) > 1e-6;
+    public bool IsDirty => Math.Abs(this.StagedValue - this.CarValue) > 1e-6;
 }

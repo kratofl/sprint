@@ -9,8 +9,8 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var baseName = string.IsNullOrWhiteSpace(name) ? "Page" : name.Trim();
-        var page = new DashPage
+        string baseName = string.IsNullOrWhiteSpace(name) ? "Page" : name.Trim();
+        DashPage page = new DashPage
         {
             Id = NextPageId(layout, Slug(baseName)),
             Name = NextPageName(layout, baseName)
@@ -24,7 +24,7 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
+        DashPage? page = FindPage(layout, pageId);
         if (page is null || string.IsNullOrWhiteSpace(name))
         {
             return false;
@@ -38,7 +38,7 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = layout.Pages.FirstOrDefault(item => string.Equals(item.Id, pageId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = layout.Pages.FirstOrDefault(item => string.Equals(item.Id, pageId, StringComparison.OrdinalIgnoreCase));
         if (page is null || layout.Pages.Count <= 1)
         {
             return false;
@@ -213,17 +213,17 @@ public static class DashLayoutEditor
         ArgumentNullException.ThrowIfNull(layout);
         widget = null;
 
-        var page = FindPage(layout, pageId);
+        DashPage? page = FindPage(layout, pageId);
         if (page is null || !DashWidgetCatalog.IsKnown(type) || !DashLayoutValidator.IsValid(layout))
         {
             return false;
         }
 
-        var colSpan = Math.Min(DefaultWidgetColSpan, layout.GridCols);
-        var rowSpan = Math.Min(DefaultWidgetRowSpan, layout.GridRows);
-        for (var row = 0; row <= layout.GridRows - rowSpan; row++)
+        int colSpan = Math.Min(DefaultWidgetColSpan, layout.GridCols);
+        int rowSpan = Math.Min(DefaultWidgetRowSpan, layout.GridRows);
+        for (int row = 0; row <= layout.GridRows - rowSpan; row++)
         {
-            for (var col = 0; col <= layout.GridCols - colSpan; col++)
+            for (int col = 0; col <= layout.GridCols - colSpan; col++)
             {
                 if (WouldOverlap(page, movingWidget: null, col, row, colSpan, rowSpan))
                 {
@@ -257,16 +257,16 @@ public static class DashLayoutEditor
         ArgumentNullException.ThrowIfNull(layout);
         widget = null;
 
-        var page = FindPage(layout, pageId);
+        DashPage? page = FindPage(layout, pageId);
         if (page is null || !DashWidgetCatalog.IsKnown(type) || !DashLayoutValidator.IsValid(layout))
         {
             return false;
         }
 
-        var colSpan = Math.Min(DefaultWidgetColSpan, layout.GridCols);
-        var rowSpan = Math.Min(DefaultWidgetRowSpan, layout.GridRows);
-        var c = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - colSpan));
-        var r = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - rowSpan));
+        int colSpan = Math.Min(DefaultWidgetColSpan, layout.GridCols);
+        int rowSpan = Math.Min(DefaultWidgetRowSpan, layout.GridRows);
+        int c = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - colSpan));
+        int r = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - rowSpan));
         if (WouldOverlap(page, movingWidget: null, c, r, colSpan, rowSpan))
         {
             return false;
@@ -290,7 +290,7 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
+        DashPage? page = FindPage(layout, pageId);
         if (page is null || col < 0 || row < 0 || colSpan < 1 || rowSpan < 1)
         {
             return false;
@@ -312,8 +312,8 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
-        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = FindPage(layout, pageId);
+        DashWidget? widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
         if (page is null || widget is null || !DashLayoutValidator.IsValid(layout))
         {
             return false;
@@ -341,15 +341,15 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
-        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = FindPage(layout, pageId);
+        DashWidget? widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
         if (page is null || widget is null || !DashLayoutValidator.IsValid(layout))
         {
             return false;
         }
 
-        var nextCol = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - widget.ColSpan));
-        var nextRow = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - widget.RowSpan));
+        int nextCol = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - widget.ColSpan));
+        int nextRow = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - widget.RowSpan));
         if (WouldOverlap(page, widget, nextCol, nextRow))
         {
             return false;
@@ -369,8 +369,8 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
-        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = FindPage(layout, pageId);
+        DashWidget? widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
         if (page is null || widget is null)
         {
             return false;
@@ -393,15 +393,15 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
-        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = FindPage(layout, pageId);
+        DashWidget? widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
         if (page is null || widget is null || !DashLayoutValidator.IsValid(layout))
         {
             return false;
         }
 
-        var nextColSpan = Math.Clamp(colSpan, 1, Math.Max(1, layout.GridCols - widget.Col));
-        var nextRowSpan = Math.Clamp(rowSpan, 1, Math.Max(1, layout.GridRows - widget.Row));
+        int nextColSpan = Math.Clamp(colSpan, 1, Math.Max(1, layout.GridCols - widget.Col));
+        int nextRowSpan = Math.Clamp(rowSpan, 1, Math.Max(1, layout.GridRows - widget.Row));
         if (WouldOverlap(page, widget, widget.Col, widget.Row, nextColSpan, nextRowSpan))
         {
             return false;
@@ -416,8 +416,8 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
-        var widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
+        DashPage? page = FindPage(layout, pageId);
+        DashWidget? widget = page?.Widgets.FirstOrDefault(item => string.Equals(item.Id, widgetId, StringComparison.OrdinalIgnoreCase));
         if (page is null || widget is null || !DashLayoutValidator.IsValid(layout))
         {
             return false;
@@ -431,7 +431,7 @@ public static class DashLayoutEditor
     {
         ArgumentNullException.ThrowIfNull(layout);
 
-        var page = FindPage(layout, pageId);
+        DashPage? page = FindPage(layout, pageId);
         if (page is null || !DashLayoutValidator.IsValid(layout))
         {
             return false;
@@ -461,9 +461,9 @@ public static class DashLayoutEditor
             return baseId;
         }
 
-        for (var index = 2; ; index++)
+        for (int index = 2; ; index++)
         {
-            var candidate = $"{baseId}-{index}";
+            string candidate = $"{baseId}-{index}";
             if (!PageIdExists(layout, candidate))
             {
                 return candidate;
@@ -484,9 +484,9 @@ public static class DashLayoutEditor
             return baseName;
         }
 
-        for (var index = 2; ; index++)
+        for (int index = 2; ; index++)
         {
-            var candidate = $"{baseName} {index}";
+            string candidate = $"{baseName} {index}";
             if (!PageNameExists(layout, candidate))
             {
                 return candidate;
@@ -502,12 +502,12 @@ public static class DashLayoutEditor
 
     private static string Slug(string value)
     {
-        var words = value
+        char[] words = value
             .Trim()
             .ToLowerInvariant()
             .Select(character => char.IsLetterOrDigit(character) ? character : '-')
             .ToArray();
-        var slug = string.Join("-", new string(words).Split('-', StringSplitOptions.RemoveEmptyEntries));
+        string slug = string.Join("-", new string(words).Split('-', StringSplitOptions.RemoveEmptyEntries));
         return string.IsNullOrWhiteSpace(slug) ? "page" : slug;
     }
 
@@ -550,9 +550,9 @@ public static class DashLayoutEditor
             return baseId;
         }
 
-        for (var index = 2; ; index++)
+        for (int index = 2; ; index++)
         {
-            var candidate = $"{baseId}-{index}";
+            string candidate = $"{baseId}-{index}";
             if (!WidgetIdExists(page, candidate))
             {
                 return candidate;

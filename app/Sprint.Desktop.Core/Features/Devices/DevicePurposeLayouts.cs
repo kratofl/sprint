@@ -73,7 +73,7 @@ public static class DevicePurposeLayouts
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(dashboards);
 
-        var purpose = DevicePurposes.Resolve(device.Purpose);
+        DevicePurpose purpose = DevicePurposes.Resolve(device.Purpose);
         return purpose.Output switch
         {
             DevicePurposeOutputKind.DashboardLayout => ResolveDashboard(device, dashboards),

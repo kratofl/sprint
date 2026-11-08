@@ -79,14 +79,14 @@ public static class Usbd480Protocol
             return false;
         }
 
-        var nameBytes = details[..NameLength];
-        var terminator = nameBytes.IndexOf((byte)0);
-        var name = System.Text.Encoding.ASCII
+        ReadOnlySpan<byte> nameBytes = details[..NameLength];
+        int terminator = nameBytes.IndexOf((byte)0);
+        string name = System.Text.Encoding.ASCII
             .GetString(terminator >= 0 ? nameBytes[..terminator] : nameBytes)
             .Trim();
 
-        var width = details[20] | details[21] << 8;
-        var height = details[22] | details[23] << 8;
+        int width = details[20] | details[21] << 8;
+        int height = details[22] | details[23] << 8;
         if (!IsRenderableSize(width, height))
         {
             // Keep the name: it can still identify a known model whose size we know.
@@ -128,7 +128,7 @@ public static class Usbd480Protocol
             return null;
         }
 
-        foreach (var (model, size) in KnownModels)
+        foreach ((string? model, ScreenNativeSize size) in KnownModels)
         {
             if (name.Contains(model, StringComparison.OrdinalIgnoreCase))
             {

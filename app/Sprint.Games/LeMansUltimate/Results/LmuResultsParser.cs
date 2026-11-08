@@ -37,7 +37,7 @@ public static class LmuResultsParser
 
         // Root is <rFactorXML><RaceResults>...; tolerate the RaceResults element appearing
         // either as the root itself or (normally) directly beneath rFactorXML.
-        var raceResults = doc.Root?.Name.LocalName == "RaceResults"
+        XElement? raceResults = doc.Root?.Name.LocalName == "RaceResults"
             ? doc.Root
             : doc.Root?.Element("RaceResults");
 
@@ -49,10 +49,10 @@ public static class LmuResultsParser
         // The session element is named after the session type (Race / Qualify / Practice1 / ...),
         // so identify it structurally as the child that actually holds <Driver> entries rather
         // than hard-coding every possible name.
-        var sessionElement = raceResults.Elements().FirstOrDefault(e => e.Element("Driver") is not null);
+        XElement? sessionElement = raceResults.Elements().FirstOrDefault(e => e.Element("Driver") is not null);
 
-        var rawSessionName = sessionElement?.Name.LocalName ?? "";
-        var drivers = sessionElement is null
+        string rawSessionName = sessionElement?.Name.LocalName ?? "";
+        List<LmuDriverResult> drivers = sessionElement is null
             ? []
             : sessionElement.Elements("Driver").Select(ParseDriver).ToList();
 
@@ -76,7 +76,7 @@ public static class LmuResultsParser
     {
         // Laps are direct <Lap> children of <Driver>. Note the sibling <Laps> element is a
         // scalar lap COUNT (e.g. <Laps>6</Laps>), not a wrapper, so it must not be descended into.
-        var laps = driver
+        List<LmuLapResult> laps = driver
             .Elements("Lap")
             .Select(ParseLap)
             .ToList();
@@ -134,7 +134,7 @@ public static class LmuResultsParser
     private static double? ParseNumber(string? raw)
     {
         if (IsBlankOrPlaceholder(raw)) return null;
-        return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+        return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
             ? value
             : null;
     }
@@ -145,14 +145,14 @@ public static class LmuResultsParser
     /// </summary>
     private static double? ParseTime(string? raw)
     {
-        var value = ParseNumber(raw);
+        double? value = ParseNumber(raw);
         return value is > 0 ? value : null;
     }
 
     private static int? ParseInt(string? raw)
     {
         if (IsBlankOrPlaceholder(raw)) return null;
-        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
             ? value
             : null;
     }
@@ -160,7 +160,7 @@ public static class LmuResultsParser
     private static DateTimeOffset? ParseUnixSeconds(string? raw)
     {
         if (IsBlankOrPlaceholder(raw)) return null;
-        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
             ? DateTimeOffset.FromUnixTimeSeconds(seconds)
             : null;
     }
@@ -169,8 +169,8 @@ public static class LmuResultsParser
     private static string? ParseCompound(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        var comma = raw.LastIndexOf(',');
-        var name = (comma >= 0 ? raw[(comma + 1)..] : raw).Trim();
+        int comma = raw.LastIndexOf(',');
+        string name = (comma >= 0 ? raw[(comma + 1)..] : raw).Trim();
         return name.Length == 0 ? null : name;
     }
 
@@ -178,7 +178,7 @@ public static class LmuResultsParser
     private static bool IsBlankOrPlaceholder(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return true;
-        foreach (var ch in raw)
+        foreach (char ch in raw)
         {
             if (ch != '-' && ch != '.' && !char.IsWhiteSpace(ch))
             {

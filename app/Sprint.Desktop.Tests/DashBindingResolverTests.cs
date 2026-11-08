@@ -10,7 +10,7 @@ public sealed class DashBindingResolverTests
     [Fact]
     public void ResolvesCriticalTelemetryBindings()
     {
-        var frame = new TelemetryFrame
+        TelemetryFrame frame = new TelemetryFrame
         {
             Session = new SessionInfo { Game = "LMU", Track = "Le Mans", Car = "Hypercar", InCar = true },
             Car = new CarState
@@ -53,8 +53,8 @@ public sealed class DashBindingResolverTests
             ]
         };
 
-        var settings = new AppSettings { DriverName = "Ada", DriverNumber = "77" };
-        var context = new DashBindingContext(frame, settings);
+        AppSettings settings = new AppSettings { DriverName = "Ada", DriverNumber = "77" };
+        DashBindingContext context = new DashBindingContext(frame, settings);
 
         Assert.Equal(288, DashBindingResolver.Resolve(context, "car.speed"));
         Assert.Equal(4, DashBindingResolver.Resolve(context, "car.gear"));
@@ -74,7 +74,7 @@ public sealed class DashBindingResolverTests
     [Fact]
     public void ResolvesPlannedTargetsFromTheThirdContextMember()
     {
-        var context = new DashBindingContext(
+        DashBindingContext context = new DashBindingContext(
             new TelemetryFrame(),
             new AppSettings(),
             new DashTargets { LapTimeSeconds = 100.5, FuelPerLapLiters = 3.4 });
@@ -88,7 +88,7 @@ public sealed class DashBindingResolverTests
     {
         // Zero would be a target the driver could try to hit. Absent is the honest answer,
         // and it is what puts a widget bound to it into its no-data state.
-        var context = new DashBindingContext(new TelemetryFrame(), new AppSettings());
+        DashBindingContext context = new DashBindingContext(new TelemetryFrame(), new AppSettings());
 
         Assert.Null(DashBindingResolver.Resolve(context, "target.lapTime"));
         Assert.Null(DashBindingResolver.Resolve(context, "target.fuelPerLapLiters"));
@@ -97,7 +97,7 @@ public sealed class DashBindingResolverTests
     [Fact]
     public void UnknownBindingReturnsNull()
     {
-        var context = new DashBindingContext(new TelemetryFrame(), new AppSettings());
+        DashBindingContext context = new DashBindingContext(new TelemetryFrame(), new AppSettings());
 
         Assert.Null(DashBindingResolver.Resolve(context, "unknown.path"));
     }

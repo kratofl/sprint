@@ -40,5 +40,5 @@ public interface ILapTraceStore
     IReadOnlyList<LapTraceInfo> List();
 
     /// <summary>Total bytes on disk, for the retention budget.</summary>
-    long TotalBytes() => List().Sum(info => info.SizeBytes);
+    long TotalBytes() => this.List().Sum(info => info.SizeBytes);
 }

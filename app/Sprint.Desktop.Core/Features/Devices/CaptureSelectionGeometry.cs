@@ -12,7 +12,7 @@ public static class CaptureSelectionGeometry
     public static CaptureSelectionSize EffectiveSize(SavedDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        var transform = DeviceOrientations.Transform(
+        DeviceOrientationTransform transform = DeviceOrientations.Transform(
             device.Width,
             device.Height,
             device.Orientation);
@@ -21,7 +21,7 @@ public static class CaptureSelectionGeometry
 
     public static double AspectRatio(SavedDevice device)
     {
-        var size = EffectiveSize(device);
+        CaptureSelectionSize size = EffectiveSize(device);
         if (size.Width <= 0 || size.Height <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(device), "A capture device needs a positive screen size.");
@@ -42,10 +42,10 @@ public static class CaptureSelectionGeometry
             throw new ArgumentOutOfRangeException(nameof(aspectRatio));
         }
 
-        var safePreviousWidth = Math.Max(1, previous.Width);
-        var safePreviousHeight = Math.Max(1, previous.Height);
-        var relativeWidthChange = Math.Abs(requested.Width - previous.Width) / safePreviousWidth;
-        var relativeHeightChange = Math.Abs(requested.Height - previous.Height) / safePreviousHeight;
+        double safePreviousWidth = Math.Max(1, previous.Width);
+        double safePreviousHeight = Math.Max(1, previous.Height);
+        double relativeWidthChange = Math.Abs(requested.Width - previous.Width) / safePreviousWidth;
+        double relativeHeightChange = Math.Abs(requested.Height - previous.Height) / safePreviousHeight;
 
         double width;
         double height;
@@ -81,8 +81,8 @@ public static class CaptureSelectionGeometry
         DeviceOrientation nextOrientation)
     {
         ArgumentNullException.ThrowIfNull(region);
-        var previousIsLandscape = DeviceOrientations.IsLandscape(previousOrientation);
-        var nextIsLandscape = DeviceOrientations.IsLandscape(nextOrientation);
+        bool previousIsLandscape = DeviceOrientations.IsLandscape(previousOrientation);
+        bool nextIsLandscape = DeviceOrientations.IsLandscape(nextOrientation);
         return previousIsLandscape == nextIsLandscape
             ? region
             : region with { Width = region.Height, Height = region.Width };
@@ -103,13 +103,13 @@ public static class CaptureSelectionGeometry
             throw new ArgumentOutOfRangeException(nameof(aspectRatio));
         }
 
-        var centerX = region.X + region.Width / 2d;
-        var centerY = region.Y + region.Height / 2d;
-        var area = (double)region.Width * region.Height;
-        var width = Math.Sqrt(area * aspectRatio);
-        var height = width / aspectRatio;
-        var normalizedWidth = Math.Max(1, (int)Math.Round(width));
-        var normalizedHeight = Math.Max(1, (int)Math.Round(height));
+        double centerX = region.X + region.Width / 2d;
+        double centerY = region.Y + region.Height / 2d;
+        double area = (double)region.Width * region.Height;
+        double width = Math.Sqrt(area * aspectRatio);
+        double height = width / aspectRatio;
+        int normalizedWidth = Math.Max(1, (int)Math.Round(width));
+        int normalizedHeight = Math.Max(1, (int)Math.Round(height));
 
         return new ScreenCaptureRegion(
             (int)Math.Round(centerX - normalizedWidth / 2d),
@@ -136,15 +136,15 @@ public static class CaptureSelectionGeometry
         }
 
         double width = Math.Min(region.Width, visibleBounds.Width);
-        var height = width / aspectRatio;
+        double height = width / aspectRatio;
         if (height > visibleBounds.Height)
         {
             height = visibleBounds.Height;
             width = height * aspectRatio;
         }
 
-        var recoveredWidth = Math.Max(1, (int)Math.Round(width));
-        var recoveredHeight = Math.Max(1, (int)Math.Round(height));
+        int recoveredWidth = Math.Max(1, (int)Math.Round(width));
+        int recoveredHeight = Math.Max(1, (int)Math.Round(height));
         return new ScreenCaptureRegion(
             visibleBounds.X + (visibleBounds.Width - recoveredWidth) / 2,
             visibleBounds.Y + (visibleBounds.Height - recoveredHeight) / 2,

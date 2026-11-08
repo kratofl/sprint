@@ -64,7 +64,7 @@ public sealed class AnalysisController
     }
 
     /// <summary>The narrowing cascade: game, track, class, car, optionally day.</summary>
-    public LapCorpusFilter Filter => _filter;
+    public LapCorpusFilter Filter => this._filter;
 
     public IReadOnlyList<LapChartPanelSpec> Panels { get; set; } = LapChartPanels.AnalysisDefaults;
 
@@ -76,29 +76,29 @@ public sealed class AnalysisController
     /// </summary>
     public AnalysisState Load()
     {
-        var sessions = _browser.Sessions();
-        var previousGame = _filter.Game;
-        var previousTrack = _filter.Track;
-        var previousSessionId = _session?.Id;
+        IReadOnlyList<CorpusSession> sessions = this._browser.Sessions();
+        string? previousGame = this._filter.Game;
+        string? previousTrack = this._filter.Track;
+        string? previousSessionId = this._session?.Id;
 
-        _filter = new LapCorpusFilter(sessions);
-        if (previousGame is not null && _filter.Games.Contains(previousGame, StringComparer.Ordinal))
+        this._filter = new LapCorpusFilter(sessions);
+        if (previousGame is not null && this._filter.Games.Contains(previousGame, StringComparer.Ordinal))
         {
-            _filter.SelectGame(previousGame);
+            this._filter.SelectGame(previousGame);
         }
 
-        if (previousTrack is not null && _filter.Tracks.Contains(previousTrack, StringComparer.Ordinal))
+        if (previousTrack is not null && this._filter.Tracks.Contains(previousTrack, StringComparer.Ordinal))
         {
-            _filter.SelectTrack(previousTrack);
+            this._filter.SelectTrack(previousTrack);
         }
 
         // Keep an opened session if it still exists. Null stays null: the central Open session
         // action owns the initial choice instead of a left rail silently making one.
-        _session = previousSessionId is null
+        this._session = previousSessionId is null
             ? null
             : sessions.FirstOrDefault(candidate => candidate.Id == previousSessionId);
 
-        return State();
+        return this.State();
     }
 
     /// <summary>
@@ -107,48 +107,48 @@ public sealed class AnalysisController
     /// </summary>
     public LapCorpusFilter CreateSessionFilter()
     {
-        var filter = new LapCorpusFilter(_browser.Sessions());
-        if (_session is null)
+        LapCorpusFilter filter = new LapCorpusFilter(this._browser.Sessions());
+        if (this._session is null)
         {
             return filter;
         }
 
-        filter.SelectGame(_session.Context.Game);
-        filter.SelectTrack(_session.Context.TrackCourse);
-        filter.SelectClass(LapCorpusFilter.ClassOf(_session));
-        filter.SelectCarModel(_session.Context.CarModel);
-        filter.SelectDay(_session.Day);
+        filter.SelectGame(this._session.Context.Game);
+        filter.SelectTrack(this._session.Context.TrackCourse);
+        filter.SelectClass(LapCorpusFilter.ClassOf(this._session));
+        filter.SelectCarModel(this._session.Context.CarModel);
+        filter.SelectDay(this._session.Day);
         return filter;
     }
 
     /// <summary>Narrows to a track. Lap choices do not survive: they belong to the old track.</summary>
     public void SelectTrack(string? track)
     {
-        _filter.SelectTrack(track);
-        ClearLaps();
-        SnapToNewestSession();
+        this._filter.SelectTrack(track);
+        this.ClearLaps();
+        this.SnapToNewestSession();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectClass(string? carClass)
     {
-        _filter.SelectClass(carClass);
-        SnapToNewestSession();
+        this._filter.SelectClass(carClass);
+        this.SnapToNewestSession();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SelectCarModel(string? carModel)
     {
-        _filter.SelectCarModel(carModel);
-        SnapToNewestSession();
+        this._filter.SelectCarModel(carModel);
+        this.SnapToNewestSession();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Sets or clears the optional day filter — "the run I did yesterday evening".</summary>
     public void SelectDay(DateOnly? day)
     {
-        _filter.SelectDay(day);
-        SnapToNewestSession();
+        this._filter.SelectDay(day);
+        this.SnapToNewestSession();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -162,25 +162,25 @@ public sealed class AnalysisController
     /// </summary>
     public void SelectSession(CorpusSession? session)
     {
-        if (_session is not null
+        if (this._session is not null
             && session is not null
-            && (!string.Equals(_session.Context.Game, session.Context.Game, StringComparison.Ordinal)
+            && (!string.Equals(this._session.Context.Game, session.Context.Game, StringComparison.Ordinal)
                 || !string.Equals(
-                    _session.Context.TrackCourse,
+                    this._session.Context.TrackCourse,
                     session.Context.TrackCourse,
                     StringComparison.Ordinal)))
         {
-            ClearLaps();
+            this.ClearLaps();
         }
 
-        _session = session;
+        this._session = session;
         if (session is not null)
         {
-            _filter.SelectGame(session.Context.Game);
-            _filter.SelectTrack(session.Context.TrackCourse);
-            _filter.SelectClass(LapCorpusFilter.ClassOf(session));
-            _filter.SelectCarModel(session.Context.CarModel);
-            _filter.SelectDay(null);
+            this._filter.SelectGame(session.Context.Game);
+            this._filter.SelectTrack(session.Context.TrackCourse);
+            this._filter.SelectClass(LapCorpusFilter.ClassOf(session));
+            this._filter.SelectCarModel(session.Context.CarModel);
+            this._filter.SelectDay(null);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -192,32 +192,32 @@ public sealed class AnalysisController
     /// </summary>
     public void SelectPrimary(CorpusLap? lap)
     {
-        if (lap is not null && Same(lap, _comparison))
+        if (lap is not null && Same(lap, this._comparison))
         {
-            _comparison = _primary;
-            _comparisonTrace = _primaryTrace;
+            this._comparison = this._primary;
+            this._comparisonTrace = this._primaryTrace;
         }
 
-        _primary = lap;
-        _primaryTrace = _browser.Trace(lap);
+        this._primary = lap;
+        this._primaryTrace = this._browser.Trace(lap);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Picks the blue lap, or clears it by passing the lap already selected.</summary>
     public void SelectComparison(CorpusLap? lap)
     {
-        if (lap is not null && Same(lap, _comparison))
+        if (lap is not null && Same(lap, this._comparison))
         {
             lap = null;
         }
-        else if (lap is not null && Same(lap, _primary))
+        else if (lap is not null && Same(lap, this._primary))
         {
-            _primary = null;
-            _primaryTrace = null;
+            this._primary = null;
+            this._primaryTrace = null;
         }
 
-        _comparison = lap;
-        _comparisonTrace = _browser.Trace(lap);
+        this._comparison = lap;
+        this._comparisonTrace = this._browser.Trace(lap);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -450,33 +450,33 @@ public sealed class AnalysisController
 
     private void ClearLaps()
     {
-        _primary = null;
-        _comparison = null;
-        _primaryTrace = null;
-        _comparisonTrace = null;
+        this._primary = null;
+        this._comparison = null;
+        this._primaryTrace = null;
+        this._comparisonTrace = null;
     }
 
     // After any narrowing, land on the newest session that still matches rather than leaving the
     // page pointed at one the filter has just excluded.
     private void SnapToNewestSession()
     {
-        if (_session is null || !_filter.Sessions.Any(candidate => candidate.Id == _session.Id))
+        if (this._session is null || !this._filter.Sessions.Any(candidate => candidate.Id == this._session.Id))
         {
-            _session = _filter.Sessions.FirstOrDefault();
+            this._session = this._filter.Sessions.FirstOrDefault();
         }
     }
 
     private ChartStack? BuildStack()
     {
-        var sources = new List<LapTraceSeriesSource>();
-        if (_primary is not null && _primaryTrace is { IsUsable: true })
+        List<LapTraceSeriesSource> sources = new List<LapTraceSeriesSource>();
+        if (this._primary is not null && this._primaryTrace is { IsUsable: true })
         {
-            sources.Add(Source(_primary, _primaryTrace, ChartSeriesRole.Current));
+            sources.Add(Source(this._primary, this._primaryTrace, ChartSeriesRole.Current));
         }
 
-        if (_comparison is not null && _comparisonTrace is { IsUsable: true })
+        if (this._comparison is not null && this._comparisonTrace is { IsUsable: true })
         {
-            sources.Add(Source(_comparison, _comparisonTrace, ChartSeriesRole.Comparison));
+            sources.Add(Source(this._comparison, this._comparisonTrace, ChartSeriesRole.Comparison));
         }
 
         if (sources.Count == 0)
@@ -487,7 +487,7 @@ public sealed class AnalysisController
         // A whole lap is read as a fraction of the track, not in metres: the question here is
         // "where in the lap", and the axis has to cover a whole one. Distance is the HUD's
         // local question, over a few hundred metres.
-        return LapTraceCharts.Build(Panels, ChartDomain.TrackPosition(), sources);
+        return LapTraceCharts.Build(this.Panels, ChartDomain.TrackPosition(), sources);
     }
 
     private static LapTraceSeriesSource Source(CorpusLap lap, LapChannelTrace trace, ChartSeriesRole role) =>
@@ -503,12 +503,12 @@ public sealed class AnalysisController
     /// </summary>
     private string? Notice(IReadOnlyList<CorpusLap> laps)
     {
-        if (_filter.IsEmpty)
+        if (this._filter.IsEmpty)
         {
             return "No laps recorded yet. Drive a session, or import one, and it will appear here.";
         }
 
-        if (_filter.Sessions.Count == 0)
+        if (this._filter.Sessions.Count == 0)
         {
             return "No sessions match this filter.";
         }
@@ -518,30 +518,30 @@ public sealed class AnalysisController
             return "That session has no valid laps.";
         }
 
-        if (_primary is null && _comparison is null)
+        if (this._primary is null && this._comparison is null)
         {
             return laps.Any(lap => lap.HasChannels)
                 ? "Pick a lap to see how it was driven, and a second to overlay it."
                 : "These laps carry lap times only. Laps recorded from now on will carry channels.";
         }
 
-        if (_primary is { HasChannels: false })
+        if (this._primary is { HasChannels: false })
         {
-            return _primary.UnavailableReason;
+            return this._primary.UnavailableReason;
         }
 
-        if (_comparison is { HasChannels: false })
+        if (this._comparison is { HasChannels: false })
         {
-            return _comparison.UnavailableReason;
+            return this._comparison.UnavailableReason;
         }
 
         // Both laps drawn, but not on the same set of channels — say which, rather than let a
         // panel look empty for a reason the driver has to guess.
-        if (_primaryTrace is not null && _comparisonTrace is not null)
+        if (this._primaryTrace is not null && this._comparisonTrace is not null)
         {
-            var missing = _primaryTrace.Channels.Keys
-                .Union(_comparisonTrace.Channels.Keys, StringComparer.Ordinal)
-                .Except(LapCorpusBrowser.SharedChannels(_primaryTrace, _comparisonTrace), StringComparer.Ordinal)
+            List<string> missing = this._primaryTrace.Channels.Keys
+                .Union(this._comparisonTrace.Channels.Keys, StringComparer.Ordinal)
+                .Except(LapCorpusBrowser.SharedChannels(this._primaryTrace, this._comparisonTrace), StringComparer.Ordinal)
                 .ToList();
 
             if (missing.Count > 0)

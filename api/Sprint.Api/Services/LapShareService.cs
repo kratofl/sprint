@@ -37,15 +37,15 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        var payload = DecodePayload(input.PayloadBase64);
+        byte[] payload = DecodePayload(input.PayloadBase64);
         if (string.IsNullOrWhiteSpace(input.TrackCourse) || string.IsNullOrWhiteSpace(input.CarModel))
         {
             throw new GraphQLException("A shared lap needs a track and a car.");
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
 
-        var entity = new LapTraceEntity
+        LapTraceEntity entity = new LapTraceEntity
         {
             Id = Ids.New(),
             OwnerId = ownerId,
@@ -71,9 +71,9 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     /// </summary>
     public async Task<SharedLapDto> FetchAsync(string code, CancellationToken ct = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
 
-        var entity = await db.LapTraces.FirstOrDefaultAsync(t => t.ShareCode == code, ct)
+        LapTraceEntity entity = await db.LapTraces.FirstOrDefaultAsync(t => t.ShareCode == code, ct)
             ?? throw new GraphQLException("No lap exists for that code.");
 
         if (entity.Revoked)
@@ -81,7 +81,7 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
             throw new GraphQLException("That share code has been revoked by its owner.");
         }
 
-        var owner = await db.Users.FindAsync([entity.OwnerId], ct);
+        UserEntity? owner = await db.Users.FindAsync([entity.OwnerId], ct);
 
         return new SharedLapDto
         {
@@ -101,9 +101,9 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     /// <summary>Withdraws a code. Only its owner can, and it stays listed to them as revoked.</summary>
     public async Task<SharedLapSummary> RevokeAsync(string ownerId, string code, CancellationToken ct = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
 
-        var entity = await db.LapTraces.FirstOrDefaultAsync(t => t.ShareCode == code, ct)
+        LapTraceEntity entity = await db.LapTraces.FirstOrDefaultAsync(t => t.ShareCode == code, ct)
             ?? throw new GraphQLException("No lap exists for that code.");
 
         if (!string.Equals(entity.OwnerId, ownerId, StringComparison.Ordinal))
@@ -121,8 +121,8 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     /// <summary>Everything this driver has shared, newest first.</summary>
     public async Task<IReadOnlyList<SharedLapSummary>> ListMineAsync(string ownerId, CancellationToken ct = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(ct);
-        var rows = await db.LapTraces
+        await using SprintDbContext db = await dbFactory.CreateDbContextAsync(ct);
+        List<LapTraceEntity> rows = await db.LapTraces
             .Where(t => t.OwnerId == ownerId)
             .OrderByDescending(t => t.CreatedAt)
             .ToListAsync(ct);
@@ -159,9 +159,9 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     {
         // 29^12 is far beyond collision territory, but a unique index would throw on the
         // astronomically unlikely clash and a retry is two lines.
-        for (var attempt = 0; attempt < 5; attempt++)
+        for (int attempt = 0; attempt < 5; attempt++)
         {
-            var code = NewCode();
+            string code = NewCode();
             if (!await db.LapTraces.AnyAsync(t => t.ShareCode == code, ct))
             {
                 return code;
@@ -174,7 +174,7 @@ public sealed class LapShareService(IDbContextFactory<SprintDbContext> dbFactory
     private static string NewCode()
     {
         Span<char> code = stackalloc char[CodeLength];
-        for (var i = 0; i < CodeLength; i++)
+        for (int i = 0; i < CodeLength; i++)
         {
             code[i] = CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)];
         }

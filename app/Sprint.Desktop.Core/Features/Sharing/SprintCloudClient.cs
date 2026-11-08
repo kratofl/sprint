@@ -31,7 +31,7 @@ public enum CloudFailure
 /// <summary>An answer, or the reason there is not one.</summary>
 public sealed record CloudResult<T>(T? Value, CloudFailure Failure, string Message)
 {
-    public bool Ok => Failure == CloudFailure.None && Value is not null;
+    public bool Ok => this.Failure == CloudFailure.None && this.Value is not null;
 
     public static CloudResult<T> Success(T value) => new(value, CloudFailure.None, "");
 

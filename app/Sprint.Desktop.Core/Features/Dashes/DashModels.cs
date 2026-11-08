@@ -80,8 +80,8 @@ public sealed class DashLayout
     public DashStyle DashStyle { get; set; } = DashStyle.Panels;
 
     [JsonIgnore]
-    public DashColorSystem EffectiveColorSystem => ColorSystem ??
-        (Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
+    public DashColorSystem EffectiveColorSystem => this.ColorSystem ??
+        (this.Theme is { IsEmpty: false } ? DashColorSystem.Styled : DashColorSystem.Functional);
 
     /// <summary>
     /// The target wheel-screen size this dash is designed for (PRD #122). Additive
@@ -176,47 +176,47 @@ public sealed class DashTheme
 
     [JsonIgnore]
     public bool IsEmpty =>
-        string.IsNullOrEmpty(Neutral) && string.IsNullOrEmpty(GoodOnTarget) &&
-        string.IsNullOrEmpty(ColdLow) && string.IsNullOrEmpty(AssistActive) &&
-        string.IsNullOrEmpty(Critical) && string.IsNullOrEmpty(Fault) &&
-        string.IsNullOrEmpty(TimingFastestOverall) && string.IsNullOrEmpty(TimingPersonalBest) &&
-        string.IsNullOrEmpty(Primary) && string.IsNullOrEmpty(Accent) &&
-        string.IsNullOrEmpty(Foreground) && string.IsNullOrEmpty(Surface) &&
-        string.IsNullOrEmpty(Border) && string.IsNullOrEmpty(Success) &&
-        string.IsNullOrEmpty(Warning) && string.IsNullOrEmpty(Danger);
+        string.IsNullOrEmpty(this.Neutral) && string.IsNullOrEmpty(this.GoodOnTarget) &&
+        string.IsNullOrEmpty(this.ColdLow) && string.IsNullOrEmpty(this.AssistActive) &&
+        string.IsNullOrEmpty(this.Critical) && string.IsNullOrEmpty(this.Fault) &&
+        string.IsNullOrEmpty(this.TimingFastestOverall) && string.IsNullOrEmpty(this.TimingPersonalBest) &&
+        string.IsNullOrEmpty(this.Primary) && string.IsNullOrEmpty(this.Accent) &&
+        string.IsNullOrEmpty(this.Foreground) && string.IsNullOrEmpty(this.Surface) &&
+        string.IsNullOrEmpty(this.Border) && string.IsNullOrEmpty(this.Success) &&
+        string.IsNullOrEmpty(this.Warning) && string.IsNullOrEmpty(this.Danger);
 
     public DashTheme Clone() => new()
     {
-        Neutral = Neutral,
-        GoodOnTarget = GoodOnTarget,
-        ColdLow = ColdLow,
-        AssistActive = AssistActive,
-        Critical = Critical,
-        Fault = Fault,
-        TimingFastestOverall = TimingFastestOverall,
-        TimingPersonalBest = TimingPersonalBest,
-        Primary = Primary,
-        Accent = Accent,
-        Foreground = Foreground,
-        Surface = Surface,
-        Border = Border,
-        Success = Success,
-        Warning = Warning,
-        Danger = Danger,
+        Neutral = this.Neutral,
+        GoodOnTarget = this.GoodOnTarget,
+        ColdLow = this.ColdLow,
+        AssistActive = this.AssistActive,
+        Critical = this.Critical,
+        Fault = this.Fault,
+        TimingFastestOverall = this.TimingFastestOverall,
+        TimingPersonalBest = this.TimingPersonalBest,
+        Primary = this.Primary,
+        Accent = this.Accent,
+        Foreground = this.Foreground,
+        Surface = this.Surface,
+        Border = this.Border,
+        Success = this.Success,
+        Warning = this.Warning,
+        Danger = this.Danger,
     };
 
     public bool NormalizeProtectedColors()
     {
-        var changed = false;
-        if (!string.IsNullOrWhiteSpace(Critical) && !string.Equals(Critical, "#F02744", StringComparison.OrdinalIgnoreCase))
+        bool changed = false;
+        if (!string.IsNullOrWhiteSpace(this.Critical) && !string.Equals(this.Critical, "#F02744", StringComparison.OrdinalIgnoreCase))
         {
-            Critical = "#F02744";
+            this.Critical = "#F02744";
             changed = true;
         }
 
-        if (!string.IsNullOrWhiteSpace(Fault) && !string.Equals(Fault, "#F02744", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(this.Fault) && !string.Equals(this.Fault, "#F02744", StringComparison.OrdinalIgnoreCase))
         {
-            Fault = "#F02744";
+            this.Fault = "#F02744";
             changed = true;
         }
 
@@ -243,19 +243,19 @@ public sealed class DashAlertConfig
 
     [JsonIgnore]
     public bool IsDefault =>
-        string.Equals(DisplayMode, "full", StringComparison.OrdinalIgnoreCase) &&
-        Math.Abs(DurationSeconds - 1.5) < 0.001 &&
-        !InvertColors &&
-        string.Equals(ColorToken, "auto", StringComparison.OrdinalIgnoreCase) &&
-        EnabledTypes.Count == 0;
+        string.Equals(this.DisplayMode, "full", StringComparison.OrdinalIgnoreCase) &&
+        Math.Abs(this.DurationSeconds - 1.5) < 0.001 &&
+        !this.InvertColors &&
+        string.Equals(this.ColorToken, "auto", StringComparison.OrdinalIgnoreCase) &&
+        this.EnabledTypes.Count == 0;
 
     public DashAlertConfig Clone() => new()
     {
-        DisplayMode = DisplayMode,
-        DurationSeconds = DurationSeconds,
-        InvertColors = InvertColors,
-        ColorToken = ColorToken,
-        EnabledTypes = EnabledTypes.ToList(),
+        DisplayMode = this.DisplayMode,
+        DurationSeconds = this.DurationSeconds,
+        InvertColors = this.InvertColors,
+        ColorToken = this.ColorToken,
+        EnabledTypes = this.EnabledTypes.ToList(),
     };
 }
 

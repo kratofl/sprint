@@ -48,9 +48,9 @@ public static class UpdateScript
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(exeName);
 
-        var revealStaging = revealStagingOnFailure ?? HostEffects.Enabled;
+        bool revealStaging = revealStagingOnFailure ?? HostEffects.Enabled;
 
-        var sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
         void Line(string text) => sb.Append(text).Append("\r\n");
 
         Line("@echo off");
@@ -134,7 +134,7 @@ public static class UpdateScript
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
         ArgumentException.ThrowIfNullOrWhiteSpace(exeName);
 
-        var sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
         void Line(string text) => sb.Append(text).Append("\r\n");
 
         Line("@echo off");

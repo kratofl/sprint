@@ -15,9 +15,9 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void NothingIsPrunedWhileTheCorpusIsInsideItsBudget()
     {
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5);
 
-        var result = Retention(traces, history).Prune(Budget(maxTotalBytes: 10_000), Now);
+        LapTracePruneResult result = Retention(traces, history).Prune(Budget(maxTotalBytes: 10_000), Now);
 
         Assert.Equal(0, result.Deleted);
         Assert.Equal(5, traces.All.Count);
@@ -27,9 +27,9 @@ public sealed class LapTraceRetentionTests
     public void TheOldestUnprotectedTracesGoUntilTheBudgetIsMet()
     {
         // Five traces of 100 bytes; a 250-byte budget leaves room for two.
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5);
 
-        var result = Retention(traces, history)
+        LapTracePruneResult result = Retention(traces, history)
             .Prune(Budget(maxTotalBytes: 250, protectedPerContext: 1), Now);
 
         // Through the interface: TotalBytes is a default interface member, so the fake's own
@@ -43,7 +43,7 @@ public sealed class LapTraceRetentionTests
     public void TheBestLapsPerContextAreNeverPruned()
     {
         // Lap 1 is both the fastest and the oldest, so oldest-first must not reach it.
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5);
 
         Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
 
@@ -53,8 +53,8 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void ProtectionIsPerContextSoASecondTrackKeepsItsOwnBest()
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
         history.Saved.Add(Session("hs-spa", "Spa-Francorchamps", traces, lapCount: 3));
         history.Saved.Add(Session("hs-lm", "Le Mans", traces, lapCount: 3));
 
@@ -67,9 +67,9 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void AnInvalidLapIsNeverWhatProtectionSpendsItselfOn()
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
-        var session = Session("hs-1", "Spa-Francorchamps", traces, lapCount: 3);
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
+        LapHistorySession session = Session("hs-1", "Spa-Francorchamps", traces, lapCount: 3);
         // The fastest of the three is invalid — a lap set by cutting a corner is not a
         // reference lap, and it must not occupy the one protection slot.
         session.Laps[0].IsValid = false;
@@ -84,11 +84,11 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void PruningALapClearsItsPointerSoTheStoredTierNeverLies()
     {
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5);
 
         Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
 
-        foreach (var lap in history.Saved.SelectMany(session => session.Laps))
+        foreach (LapHistoryRecord? lap in history.Saved.SelectMany(session => session.Laps))
         {
             Assert.Equal(
                 lap.HasChannelTrace,
@@ -99,11 +99,11 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void APrunedLapDegradesToTheReferenceCurveTierRatherThanVanishing()
     {
-        var (traces, history) = Corpus(lapCount: 5);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5);
 
         Retention(traces, history).Prune(Budget(maxTotalBytes: 100, protectedPerContext: 1), Now);
 
-        var pruned = history.Saved
+        List<LapHistoryRecord> pruned = history.Saved
             .SelectMany(session => session.Laps)
             .Where(lap => !lap.HasChannelTrace)
             .ToList();
@@ -115,7 +115,7 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void OrphanTracesAreDeletedBeforeAnyLapLosesItsOwn()
     {
-        var (traces, history) = Corpus(lapCount: 2);
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 2);
         // No lap points at this one, so no reader can ever reach it: pure cost.
         traces.All["hs-gone-9"] = 100;
 
@@ -128,7 +128,7 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void TracesPastTheAgeLimitGoEvenWhenTheBudgetHasRoom()
     {
-        var (traces, history) = Corpus(lapCount: 5, sessionStartedAt: Now.AddDays(-200));
+        (FakeTraceStore? traces, FakeHistoryStore? history) = Corpus(lapCount: 5, sessionStartedAt: Now.AddDays(-200));
 
         Retention(traces, history)
             .Prune(Budget(maxTotalBytes: long.MaxValue, protectedPerContext: 1, maxAgeDays: 90), Now);
@@ -141,7 +141,7 @@ public sealed class LapTraceRetentionTests
     [Fact]
     public void AnEmptyCorpusPrunesToNothingWithoutFailing()
     {
-        var result = Retention(new FakeTraceStore(), new FakeHistoryStore()).Prune(Budget(), Now);
+        LapTracePruneResult result = Retention(new FakeTraceStore(), new FakeHistoryStore()).Prune(Budget(), Now);
 
         Assert.Equal(0, result.Deleted);
         Assert.Equal(0, result.BytesFreed);
@@ -152,8 +152,8 @@ public sealed class LapTraceRetentionTests
     {
         // Pruning rewrites history documents to clear pointers; rewriting one that lost
         // nothing would be disk churn on every start.
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
         history.Saved.Add(Session("hs-1", "Spa-Francorchamps", traces, lapCount: 4));
         history.Saved.Add(Session("hs-2", "Le Mans", traces, lapCount: 1));
 
@@ -176,8 +176,8 @@ public sealed class LapTraceRetentionTests
         int lapCount,
         DateTimeOffset? sessionStartedAt = null)
     {
-        var traces = new FakeTraceStore();
-        var history = new FakeHistoryStore();
+        FakeTraceStore traces = new FakeTraceStore();
+        FakeHistoryStore history = new FakeHistoryStore();
         history.Saved.Add(Session("hs-1", "Spa-Francorchamps", traces, lapCount, sessionStartedAt));
         return (traces, history);
     }
@@ -194,7 +194,7 @@ public sealed class LapTraceRetentionTests
         int lapCount,
         DateTimeOffset? startedAt = null)
     {
-        var session = new LapHistorySession
+        LapHistorySession session = new LapHistorySession
         {
             Id = id,
             StartedAt = startedAt ?? Now.AddHours(-1),
@@ -206,9 +206,9 @@ public sealed class LapTraceRetentionTests
             },
         };
 
-        for (var lap = 1; lap <= lapCount; lap++)
+        for (int lap = 1; lap <= lapCount; lap++)
         {
-            var traceId = LapTraceId.For(id, lap);
+            string traceId = LapTraceId.For(id, lap);
             traces.All[traceId] = 100;
             session.Laps.Add(new LapHistoryRecord
             {
@@ -227,14 +227,14 @@ public sealed class LapTraceRetentionTests
     {
         public Dictionary<string, long> All { get; } = new(StringComparer.Ordinal);
 
-        public void Save(string traceId, LapChannelTrace trace) => All[traceId] = 100;
+        public void Save(string traceId, LapChannelTrace trace) => this.All[traceId] = 100;
 
         public LapChannelTrace? Load(string traceId) => null;
 
-        public void Delete(string traceId) => All.Remove(traceId);
+        public void Delete(string traceId) => this.All.Remove(traceId);
 
         public IReadOnlyList<LapTraceInfo> List() =>
-            [.. All.Select(pair => new LapTraceInfo(pair.Key, pair.Value, Now.AddHours(-1)))];
+            [.. this.All.Select(pair => new LapTraceInfo(pair.Key, pair.Value, Now.AddHours(-1)))];
     }
 
     private sealed class FakeHistoryStore : ILapHistoryStore
@@ -244,15 +244,15 @@ public sealed class LapTraceRetentionTests
         /// <summary>Ids of sessions written back, so churn is observable.</summary>
         public List<string> Rewritten { get; } = [];
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => Saved;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this.Saved;
 
         public void Save(LapHistorySession session)
         {
-            Rewritten.Add(session.Id);
-            Saved.RemoveAll(existing => existing.Id == session.Id);
-            Saved.Add(session);
+            this.Rewritten.Add(session.Id);
+            this.Saved.RemoveAll(existing => existing.Id == session.Id);
+            this.Saved.Add(session);
         }
 
-        public void Delete(string sessionId) => Saved.RemoveAll(session => session.Id == sessionId);
+        public void Delete(string sessionId) => this.Saved.RemoveAll(session => session.Id == sessionId);
     }
 }

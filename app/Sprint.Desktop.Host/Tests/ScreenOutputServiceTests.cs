@@ -410,7 +410,7 @@ public sealed class ScreenOutputServiceTests
 
         public IReadOnlyList<byte[]> Sent
         {
-            get { lock (_gate) { return _sent.ToArray(); } }
+            get { lock (this._gate) { return this._sent.ToArray(); } }
         }
 
         public void Configure(ScreenConfig config)
@@ -419,22 +419,22 @@ public sealed class ScreenOutputServiceTests
 
         public bool Connect()
         {
-            Status = new ScreenStatus { State = ScreenConnectionState.Connected };
+            this.Status = new ScreenStatus { State = ScreenConnectionState.Connected };
             return true;
         }
 
         public bool TrySendFrame(byte[] rgb565)
         {
-            lock (_gate)
+            lock (this._gate)
             {
-                _sent.Add((byte[])rgb565.Clone());
+                this._sent.Add((byte[])rgb565.Clone());
             }
 
             return true;
         }
 
-        public void Disconnect() => Status = ScreenStatus.Disconnected();
+        public void Disconnect() => this.Status = ScreenStatus.Disconnected();
 
-        public void Dispose() => Disconnect();
+        public void Dispose() => this.Disconnect();
     }
 }

@@ -181,19 +181,19 @@ public sealed class LiveCompareServiceTests
 
     private static LapChannelTrace Trace()
     {
-        const int Count = 201;
-        float[] speed = new float[Count];
-        float[] elapsed = new float[Count];
-        for (int i = 0; i < Count; i++)
+        const int count = 201;
+        float[] speed = new float[count];
+        float[] elapsed = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            double t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             speed[i] = (float)(100 + (200 * t));
             elapsed[i] = (float)(120 * t);
         }
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
             {

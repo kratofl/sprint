@@ -109,10 +109,10 @@ public sealed class ScreenOutputService : IDisposable
         DriverFactory? driverFactory = null,
         IDesktopRegionCapturer? desktopCapturer = null)
     {
-        _log = log ?? NullLog.Instance;
-        _driverFactory = driverFactory ?? ((_, driver, driverLog) => ScreenDriverFactory.Create(driver, driverLog));
-        _ownsDesktopCapturer = desktopCapturer is null;
-        _desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
+        this._log = log ?? NullLog.Instance;
+        this._driverFactory = driverFactory ?? ((_, driver, driverLog) => ScreenDriverFactory.Create(driver, driverLog));
+        this._ownsDesktopCapturer = desktopCapturer is null;
+        this._desktopCapturer = desktopCapturer ?? new WindowsDesktopRegionCapturer();
     }
 
     /// <summary>Device ids with an active output (for tests/diagnostics).</summary>
@@ -120,9 +120,9 @@ public sealed class ScreenOutputService : IDisposable
     {
         get
         {
-            lock (_sync)
+            lock (this._sync)
             {
-                return _outputs.Keys.ToArray();
+                return this._outputs.Keys.ToArray();
             }
         }
     }
@@ -162,7 +162,7 @@ public sealed class ScreenOutputService : IDisposable
     public void Reconcile(IEnumerable<SavedDevice> devices)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
@@ -198,27 +198,27 @@ public sealed class ScreenOutputService : IDisposable
 
         List<(string Id, Output Output)> stopping = [];
         List<SavedDevice> starting = [];
-        lock (_sync)
+        lock (this._sync)
         {
-            foreach (string id in _outputs.Keys.ToList())
+            foreach (string id in this._outputs.Keys.ToList())
             {
-                Output output = _outputs[id];
+                Output output = this._outputs[id];
                 if (!desired.TryGetValue(id, out SavedDevice? device) || output.Config != OutputConfig.From(device))
                 {
                     stopping.Add((id, output));
-                    _outputs.Remove(id);
+                    this._outputs.Remove(id);
                 }
             }
 
             foreach ((string id, SavedDevice device) in desired)
             {
-                if (_outputs.ContainsKey(id))
+                if (this._outputs.ContainsKey(id))
                 {
                     continue;
                 }
 
-                Output output = CreateOutput(device);
-                _outputs[id] = output;
+                Output output = this.CreateOutput(device);
+                this._outputs[id] = output;
                 starting.Add(device);
             }
 
@@ -231,7 +231,7 @@ public sealed class ScreenOutputService : IDisposable
 
         foreach ((string id, Output output) in stopping)
         {
-            _log.Info($"Screen output stopping: device={id}.");
+            this._log.Info($"Screen output stopping: device={id}.");
             output.Publisher.Dispose();
             output.ProducerGate?.Dispose();
         }
@@ -274,9 +274,9 @@ public sealed class ScreenOutputService : IDisposable
         ArgumentNullException.ThrowIfNull(devices);
 
         Dictionary<string, ScreenNativeSize> detected = new(StringComparer.OrdinalIgnoreCase);
-        lock (_sync)
+        lock (this._sync)
         {
-            foreach ((string id, Output output) in _outputs)
+            foreach ((string id, Output output) in this._outputs)
             {
                 if (output.Publisher.DetectedNativeSize is { IsValid: true } size)
                 {
@@ -294,7 +294,7 @@ public sealed class ScreenOutputService : IDisposable
                 continue;
             }
 
-            _log.Info(
+            this._log.Info(
                 $"Screen resolution adopted from hardware: device={device.Id} " +
                 $"saved={device.Width}x{device.Height} detected={size.Width}x{size.Height}.");
             device.Width = size.Width;
@@ -319,9 +319,9 @@ public sealed class ScreenOutputService : IDisposable
         CancellationToken cancellationToken)
     {
         Output? output;
-        lock (_sync)
+        lock (this._sync)
         {
-            _outputs.TryGetValue(deviceId, out output);
+            this._outputs.TryGetValue(deviceId, out output);
         }
 
         if (output is null || output.Exchange is null || output.ProducerGate is null)
@@ -366,15 +366,15 @@ public sealed class ScreenOutputService : IDisposable
             TargetFps = DeviceRefreshRates.Normalize(device.RefreshHz),
         };
 
-        IScreenDriver driver = _driverFactory(device.Id, device.Driver, _log);
+        IScreenDriver driver = this._driverFactory(device.Id, device.Driver, this._log);
         driver.Configure(config);
 
         DevicePurpose purpose = DevicePurposes.Resolve(device.Purpose);
         Output output = purpose.Output is DevicePurposeOutputKind.DesktopCaptureRegion
-            ? CreateCaptureOutput(device, config, driver)
-            : CreateBrowserOutput(device, config, driver);
+            ? this.CreateCaptureOutput(device, config, driver)
+            : this.CreateBrowserOutput(device, config, driver);
 
-        _log.Info(
+        this._log.Info(
             $"Screen output starting: device={device.Id} driver={device.Driver} purpose={purpose.Id} " +
             $"vid=0x{device.Vid:X4} pid=0x{device.Pid:X4} size={device.Width}x{device.Height}.");
         return output;
@@ -395,7 +395,7 @@ public sealed class ScreenOutputService : IDisposable
             source,
             () => UnusedFrame,
             new ScreenPublisherOptions { TargetFps = config.TargetFps },
-            _log,
+            this._log,
             device.Id);
         publisher.Start();
         return new Output(OutputConfig.From(device), exchange, new SemaphoreSlim(1, 1), publisher);
@@ -412,13 +412,13 @@ public sealed class ScreenOutputService : IDisposable
     {
         ScreenCaptureRegion region = device.CaptureRegion
             ?? throw new InvalidOperationException("Rear-view mirror capture area is not configured.");
-        DesktopCaptureFrameSource source = new(region, config, _desktopCapturer);
+        DesktopCaptureFrameSource source = new(region, config, this._desktopCapturer);
         ScreenPublisher publisher = new(
             driver,
             source,
             () => UnusedFrame,
             new ScreenPublisherOptions { TargetFps = config.TargetFps },
-            _log,
+            this._log,
             device.Id);
         publisher.Start();
         return new Output(OutputConfig.From(device), null, null, publisher);
@@ -427,17 +427,17 @@ public sealed class ScreenOutputService : IDisposable
     /// <summary>Stops every active output: disconnects and disposes each driver, and joins each publisher's threads.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        _disposed = true;
+        this._disposed = true;
         List<Output> outputs;
-        lock (_sync)
+        lock (this._sync)
         {
-            outputs = _outputs.Values.ToList();
-            _outputs.Clear();
+            outputs = this._outputs.Values.ToList();
+            this._outputs.Clear();
             this._conflicts.Clear();
         }
 
@@ -447,7 +447,7 @@ public sealed class ScreenOutputService : IDisposable
             output.ProducerGate?.Dispose();
         }
 
-        if (_ownsDesktopCapturer && _desktopCapturer is IDisposable disposableCapturer)
+        if (this._ownsDesktopCapturer && this._desktopCapturer is IDisposable disposableCapturer)
         {
             disposableCapturer.Dispose();
         }

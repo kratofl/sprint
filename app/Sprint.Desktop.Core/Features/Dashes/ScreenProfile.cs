@@ -10,13 +10,13 @@ namespace Sprint.Desktop.Features.Dashes;
 public sealed record ScreenProfile(string Id, string Name, int Width, int Height, int GridCols, int GridRows)
 {
     public string Orientation =>
-        Width > Height ? "Landscape" : Width < Height ? "Portrait" : "Square";
+        this.Width > this.Height ? "Landscape" : this.Width < this.Height ? "Portrait" : "Square";
 
     /// <summary>Width ÷ height — the shape the editor canvas takes so the design is what-you-see-is-what-runs.</summary>
-    public double AspectRatio => Height == 0 ? 1.0 : (double)Width / Height;
+    public double AspectRatio => this.Height == 0 ? 1.0 : (double)this.Width / this.Height;
 
     /// <summary>Short "800 × 480" resolution label for chips/selectors.</summary>
-    public string ResolutionLabel => $"{Width} × {Height}";
+    public string ResolutionLabel => $"{this.Width} × {this.Height}";
 }
 
 /// <summary>
@@ -52,7 +52,7 @@ public static class ScreenProfileCatalog
     /// <summary>The best-fit catalog profile for a raw grid, used when normalizing a legacy layout that has no stored profile.</summary>
     public static ScreenProfile MatchGrid(int cols, int rows)
     {
-        var exact = All.FirstOrDefault(profile => profile.GridCols == cols && profile.GridRows == rows);
+        ScreenProfile? exact = All.FirstOrDefault(profile => profile.GridCols == cols && profile.GridRows == rows);
         if (exact is not null)
         {
             return exact;
@@ -64,7 +64,7 @@ public static class ScreenProfileCatalog
         }
 
         // Otherwise pick the profile whose aspect is closest to the raw grid's aspect.
-        var gridAspect = (double)cols / rows;
+        double gridAspect = (double)cols / rows;
         return All.OrderBy(profile => Math.Abs(profile.AspectRatio - gridAspect)).First();
     }
 }

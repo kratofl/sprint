@@ -22,7 +22,7 @@ public sealed record InputCaptureState(
 {
     public static InputCaptureState Idle { get; } = new(InputCapturePhase.Idle, null, null, default);
 
-    public bool IsListening => Phase == InputCapturePhase.Listening;
+    public bool IsListening => this.Phase == InputCapturePhase.Listening;
 }
 
 /// <summary>

@@ -17,10 +17,10 @@ public sealed class PlanDialogCostTests
     [Fact]
     public void ReadingTheContextsDoesNotDeserialiseEveryReferenceCurve()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new LocalLapHistoryStore(root);
+            LocalLapHistoryStore store = new LocalLapHistoryStore(root);
             Seed(store);
 
             // Warm the file system and the serialiser so the comparison is about the work, not
@@ -28,8 +28,8 @@ public sealed class PlanDialogCostTests
             _ = store.LoadContexts();
             _ = store.LoadAll();
 
-            var contexts = Measure(() => store.LoadContexts());
-            var everything = Measure(() => store.LoadAll());
+            TimeSpan contexts = Measure(() => store.LoadContexts());
+            TimeSpan everything = Measure(() => store.LoadAll());
 
             Assert.Equal(Sessions, store.LoadContexts().Count);
             // The context read skips the laps entirely, so it must be a fraction of the full
@@ -48,13 +48,13 @@ public sealed class PlanDialogCostTests
     [Fact]
     public void TheSheetsOptionsComeFromTheCheapReadNotTheWholeCorpus()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var store = new CountingStore(new LocalLapHistoryStore(root));
+            CountingStore store = new CountingStore(new LocalLapHistoryStore(root));
             Seed(store.Inner);
 
-            var options = PlanContextOptions.From(store, PlanContext.Empty);
+            PlanContextOptions options = PlanContextOptions.From(store, PlanContext.Empty);
 
             Assert.NotEmpty(options.Tracks);
             // Loading every lap (and every curve) to list distinct track names is what made the
@@ -70,14 +70,14 @@ public sealed class PlanDialogCostTests
 
     private static TimeSpan Measure(Action work)
     {
-        var stopwatch = Stopwatch.StartNew();
+        Stopwatch stopwatch = Stopwatch.StartNew();
         work();
         return stopwatch.Elapsed;
     }
 
     private static void Seed(ILapHistoryStore store)
     {
-        for (var session = 0; session < Sessions; session++)
+        for (int session = 0; session < Sessions; session++)
         {
             store.Save(new LapHistorySession
             {
@@ -117,18 +117,18 @@ public sealed class PlanDialogCostTests
 
         public IReadOnlyList<LapHistorySession> LoadAll()
         {
-            FullReads++;
-            return Inner.LoadAll();
+            this.FullReads++;
+            return this.Inner.LoadAll();
         }
 
         public IReadOnlyList<LapHistoryContext> LoadContexts()
         {
-            ContextReads++;
-            return Inner.LoadContexts();
+            this.ContextReads++;
+            return this.Inner.LoadContexts();
         }
 
-        public void Save(LapHistorySession session) => Inner.Save(session);
+        public void Save(LapHistorySession session) => this.Inner.Save(session);
 
-        public void Delete(string sessionId) => Inner.Delete(sessionId);
+        public void Delete(string sessionId) => this.Inner.Delete(sessionId);
     }
 }

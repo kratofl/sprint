@@ -47,7 +47,7 @@ public static class Rgb565
                 "Orientation transform needs positive logical dimensions.");
         }
 
-        var sourceBytes = checked(transform.LogicalWidth * transform.LogicalHeight * 4);
+        int sourceBytes = checked(transform.LogicalWidth * transform.LogicalHeight * 4);
         if (bgra.Length < sourceBytes)
         {
             throw new ArgumentException(
@@ -55,7 +55,7 @@ public static class Rgb565
                 nameof(bgra));
         }
 
-        var destinationBytes = checked(nativeWidth * nativeHeight * 2);
+        int destinationBytes = checked(nativeWidth * nativeHeight * 2);
         if (destination.Length < destinationBytes)
         {
             throw new ArgumentException(
@@ -63,7 +63,7 @@ public static class Rgb565
                 nameof(destination));
         }
 
-        var outputSize = OutputSize(
+        (int Width, int Height) outputSize = OutputSize(
             transform.LogicalWidth,
             transform.LogicalHeight,
             (int)transform.PixelRotation);
@@ -81,23 +81,23 @@ public static class Rgb565
             transform.PixelRotation,
             offsetX,
             offsetY,
-            out var fromLeft,
-            out var fromRight,
-            out var fromTop,
-            out var fromBottom);
+            out int fromLeft,
+            out int fromRight,
+            out int fromTop,
+            out int fromBottom);
 
         margin = Math.Max(0, margin);
-        var innerWidth = nativeWidth - margin * 2;
-        var innerHeight = nativeHeight - margin * 2;
+        int innerWidth = nativeWidth - margin * 2;
+        int innerHeight = nativeHeight - margin * 2;
         if (innerWidth <= 0 || innerHeight <= 0)
         {
             destination[..destinationBytes].Clear();
             return;
         }
 
-        var shiftX = fromLeft - fromRight;
-        var shiftY = fromTop - fromBottom;
-        var pixels = destination[..destinationBytes];
+        int shiftX = fromLeft - fromRight;
+        int shiftY = fromTop - fromBottom;
+        Span<byte> pixels = destination[..destinationBytes];
         if (margin > 0 || shiftX != 0 || shiftY != 0)
         {
             pixels.Clear();
@@ -105,22 +105,22 @@ public static class Rgb565
 
         ResolveSourceMapping(
             transform,
-            out var sourceBase,
-            out var sourceXStep,
-            out var sourceYStep);
-        ref var source = ref MemoryMarshal.GetReference(bgra);
-        ref var destinationStart = ref MemoryMarshal.GetReference(pixels);
-        for (var composedY = margin; composedY < margin + innerHeight; composedY++)
+            out int sourceBase,
+            out int sourceXStep,
+            out int sourceYStep);
+        ref byte source = ref MemoryMarshal.GetReference(bgra);
+        ref byte destinationStart = ref MemoryMarshal.GetReference(pixels);
+        for (int composedY = margin; composedY < margin + innerHeight; composedY++)
         {
-            var destinationY = composedY + shiftY;
+            int destinationY = composedY + shiftY;
             if ((uint)destinationY >= (uint)nativeHeight)
             {
                 continue;
             }
 
-            for (var composedX = margin; composedX < margin + innerWidth; composedX++)
+            for (int composedX = margin; composedX < margin + innerWidth; composedX++)
             {
-                var destinationX = composedX + shiftX;
+                int destinationX = composedX + shiftX;
                 if ((uint)destinationX >= (uint)nativeWidth)
                 {
                     continue;
@@ -139,16 +139,16 @@ public static class Rgb565
                 }
                 else
                 {
-                    var innerX = composedX - margin;
-                    var innerY = composedY - margin;
-                    var sourceX0 = innerX * nativeWidth / innerWidth;
-                    var sourceX1 = Math.Min(
+                    int innerX = composedX - margin;
+                    int innerY = composedY - margin;
+                    int sourceX0 = innerX * nativeWidth / innerWidth;
+                    int sourceX1 = Math.Min(
                         nativeWidth,
                         Math.Max(
                             sourceX0 + 1,
                             ((innerX + 1) * nativeWidth + innerWidth - 1) / innerWidth));
-                    var sourceY0 = innerY * nativeHeight / innerHeight;
-                    var sourceY1 = Math.Min(
+                    int sourceY0 = innerY * nativeHeight / innerHeight;
+                    int sourceY1 = Math.Min(
                         nativeHeight,
                         Math.Max(
                             sourceY0 + 1,
@@ -164,7 +164,7 @@ public static class Rgb565
                         sourceY1);
                 }
 
-                var destinationIndex = (destinationY * nativeWidth + destinationX) * 2;
+                int destinationIndex = (destinationY * nativeWidth + destinationX) * 2;
                 Unsafe.Add(ref destinationStart, destinationIndex) = (byte)pixel;
                 Unsafe.Add(ref destinationStart, destinationIndex + 1) = (byte)(pixel >> 8);
             }
@@ -178,7 +178,7 @@ public static class Rgb565
     /// <summary>Converts a BGRA8888 buffer to RGB565 LE with the given rotation. <paramref name="dst"/> must be width*height*2 bytes.</summary>
     public static void FromBgra(ReadOnlySpan<byte> bgra, int width, int height, int rotation, Span<byte> dst)
     {
-        var expected = checked(width * height * 4);
+        int expected = checked(width * height * 4);
         if (bgra.Length < expected)
         {
             throw new ArgumentException($"Source buffer too small: need {expected}, got {bgra.Length}.", nameof(bgra));
@@ -189,25 +189,25 @@ public static class Rgb565
             throw new ArgumentException("Destination buffer too small for RGB565 output.", nameof(dst));
         }
 
-        var i = 0;
+        int i = 0;
         switch (Sanitize(rotation))
         {
             case 90:
-                for (var dy = 0; dy < width; dy++)
+                for (int dy = 0; dy < width; dy++)
                 {
-                    for (var dx = 0; dx < height; dx++)
+                    for (int dx = 0; dx < height; dx++)
                     {
-                        var sx = dy;
-                        var sy = height - 1 - dx;
+                        int sx = dy;
+                        int sy = height - 1 - dx;
                         Write(bgra, (sy * width + sx) * 4, dst, ref i);
                     }
                 }
 
                 break;
             case 180:
-                for (var y = height - 1; y >= 0; y--)
+                for (int y = height - 1; y >= 0; y--)
                 {
-                    for (var x = width - 1; x >= 0; x--)
+                    for (int x = width - 1; x >= 0; x--)
                     {
                         Write(bgra, (y * width + x) * 4, dst, ref i);
                     }
@@ -215,21 +215,21 @@ public static class Rgb565
 
                 break;
             case 270:
-                for (var dy = 0; dy < width; dy++)
+                for (int dy = 0; dy < width; dy++)
                 {
-                    for (var dx = 0; dx < height; dx++)
+                    for (int dx = 0; dx < height; dx++)
                     {
-                        var sx = width - 1 - dy;
-                        var sy = dx;
+                        int sx = width - 1 - dy;
+                        int sy = dx;
                         Write(bgra, (sy * width + sx) * 4, dst, ref i);
                     }
                 }
 
                 break;
             default: // 0
-                for (var y = 0; y < height; y++)
+                for (int y = 0; y < height; y++)
                 {
-                    for (var x = 0; x < width; x++)
+                    for (int x = 0; x < width; x++)
                     {
                         Write(bgra, (y * width + x) * 4, dst, ref i);
                     }
@@ -249,7 +249,7 @@ public static class Rgb565
     /// </summary>
     public static void ToBgra(ReadOnlySpan<byte> src, int width, int height, Span<byte> dst)
     {
-        var pixels = checked(width * height);
+        int pixels = checked(width * height);
         if (src.Length < pixels * 2)
         {
             throw new ArgumentException($"Source buffer too small: need {pixels * 2}, got {src.Length}.", nameof(src));
@@ -260,15 +260,15 @@ public static class Rgb565
             throw new ArgumentException("Destination buffer too small for BGRA output.", nameof(dst));
         }
 
-        for (var p = 0; p < pixels; p++)
+        for (int p = 0; p < pixels; p++)
         {
-            var px = (ushort)(src[p * 2] | (src[p * 2 + 1] << 8));
-            var r5 = (px >> 11) & 0x1f;
-            var g6 = (px >> 5) & 0x3f;
-            var b5 = px & 0x1f;
+            ushort px = (ushort)(src[p * 2] | (src[p * 2 + 1] << 8));
+            int r5 = (px >> 11) & 0x1f;
+            int g6 = (px >> 5) & 0x3f;
+            int b5 = px & 0x1f;
             // Expand to 8-bit by replicating the high bits into the low bits so
             // full-scale 565 maps to full-scale 888 (0x1f -> 0xff, 0x3f -> 0xff).
-            var j = p * 4;
+            int j = p * 4;
             dst[j] = (byte)((b5 << 3) | (b5 >> 2));
             dst[j + 1] = (byte)((g6 << 2) | (g6 >> 4));
             dst[j + 2] = (byte)((r5 << 3) | (r5 >> 2));
@@ -279,10 +279,10 @@ public static class Rgb565
     private static void Write(ReadOnlySpan<byte> bgra, int j, Span<byte> dst, ref int i)
     {
         // SkiaSharp Bgra8888 memory order: [B, G, R, A].
-        var b = (ushort)(bgra[j] >> 3);
-        var g = (ushort)(bgra[j + 1] >> 2);
-        var r = (ushort)(bgra[j + 2] >> 3);
-        var px = (ushort)((r << 11) | (g << 5) | b);
+        ushort b = (ushort)(bgra[j] >> 3);
+        ushort g = (ushort)(bgra[j + 1] >> 2);
+        ushort r = (ushort)(bgra[j + 2] >> 3);
+        ushort px = (ushort)((r << 11) | (g << 5) | b);
         dst[i] = (byte)px;
         dst[i + 1] = (byte)(px >> 8);
         i += 2;
@@ -298,26 +298,26 @@ public static class Rgb565
         int sourceY0,
         int sourceY1)
     {
-        var best = ReadRotatedPixel(
+        ushort best = ReadRotatedPixel(
             ref bgra,
             sourceBase,
             sourceXStep,
             sourceYStep,
             sourceX0,
             sourceY0);
-        var bestScore = Visibility(best);
-        for (var sourceY = sourceY0; sourceY < sourceY1; sourceY++)
+        int bestScore = Visibility(best);
+        for (int sourceY = sourceY0; sourceY < sourceY1; sourceY++)
         {
-            for (var sourceX = sourceX0; sourceX < sourceX1; sourceX++)
+            for (int sourceX = sourceX0; sourceX < sourceX1; sourceX++)
             {
-                var candidate = ReadRotatedPixel(
+                ushort candidate = ReadRotatedPixel(
                     ref bgra,
                     sourceBase,
                     sourceXStep,
                     sourceYStep,
                     sourceX,
                     sourceY);
-                var score = Visibility(candidate);
+                int score = Visibility(candidate);
                 if (score > bestScore)
                 {
                     best = candidate;
@@ -338,10 +338,10 @@ public static class Rgb565
         int nativeX,
         int nativeY)
     {
-        var sourceIndex = sourceBase + nativeX * sourceXStep + nativeY * sourceYStep;
-        var blue = (ushort)(Unsafe.Add(ref bgra, sourceIndex) >> 3);
-        var green = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 1) >> 2);
-        var red = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 2) >> 3);
+        int sourceIndex = sourceBase + nativeX * sourceXStep + nativeY * sourceYStep;
+        ushort blue = (ushort)(Unsafe.Add(ref bgra, sourceIndex) >> 3);
+        ushort green = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 1) >> 2);
+        ushort red = (ushort)(Unsafe.Add(ref bgra, sourceIndex + 2) >> 3);
         return (ushort)((red << 11) | (green << 5) | blue);
     }
 
@@ -424,24 +424,24 @@ public static class Rgb565
         }
 
         dst[..(nativeW * nativeH * 2)].Clear();
-        var innerW = nativeW - margin * 2;
-        var innerH = nativeH - margin * 2;
+        int innerW = nativeW - margin * 2;
+        int innerH = nativeH - margin * 2;
         if (innerW <= 0 || innerH <= 0)
         {
             return;
         }
 
-        for (var dy = 0; dy < innerH; dy++)
+        for (int dy = 0; dy < innerH; dy++)
         {
-            var dstRow = (dy + margin) * nativeW;
-            var sy0 = dy * nativeH / innerH;
-            var sy1 = Math.Min(nativeH, Math.Max(sy0 + 1, ((dy + 1) * nativeH + innerH - 1) / innerH));
-            for (var dx = 0; dx < innerW; dx++)
+            int dstRow = (dy + margin) * nativeW;
+            int sy0 = dy * nativeH / innerH;
+            int sy1 = Math.Min(nativeH, Math.Max(sy0 + 1, ((dy + 1) * nativeH + innerH - 1) / innerH));
+            for (int dx = 0; dx < innerW; dx++)
             {
-                var sx0 = dx * nativeW / innerW;
-                var sx1 = Math.Min(nativeW, Math.Max(sx0 + 1, ((dx + 1) * nativeW + innerW - 1) / innerW));
-                var srcIdx = MostVisible(src, nativeW, sx0, sx1, sy0, sy1);
-                var dstIdx = (dstRow + dx + margin) * 2;
+                int sx0 = dx * nativeW / innerW;
+                int sx1 = Math.Min(nativeW, Math.Max(sx0 + 1, ((dx + 1) * nativeW + innerW - 1) / innerW));
+                int srcIdx = MostVisible(src, nativeW, sx0, sx1, sy0, sy1);
+                int dstIdx = (dstRow + dx + margin) * 2;
                 dst[dstIdx] = src[srcIdx];
                 dst[dstIdx + 1] = src[srcIdx + 1];
             }
@@ -477,12 +477,12 @@ public static class Rgb565
             default: fromLeft = offsetX; fromTop = offsetY; break;
         }
 
-        var rowBytes = nativeW * 2;
+        int rowBytes = nativeW * 2;
 
         if (fromTop > 0)
         {
             if (fromTop >= nativeH) { buf[..(rowBytes * nativeH)].Clear(); return; }
-            for (var row = nativeH - 1; row >= fromTop; row--)
+            for (int row = nativeH - 1; row >= fromTop; row--)
             {
                 buf.Slice((row - fromTop) * rowBytes, rowBytes).CopyTo(buf.Slice(row * rowBytes, rowBytes));
             }
@@ -493,7 +493,7 @@ public static class Rgb565
         if (fromBottom > 0)
         {
             if (fromBottom >= nativeH) { buf[..(rowBytes * nativeH)].Clear(); return; }
-            for (var row = 0; row < nativeH - fromBottom; row++)
+            for (int row = 0; row < nativeH - fromBottom; row++)
             {
                 buf.Slice((row + fromBottom) * rowBytes, rowBytes).CopyTo(buf.Slice(row * rowBytes, rowBytes));
             }
@@ -503,11 +503,11 @@ public static class Rgb565
 
         if (fromLeft > 0)
         {
-            var shift = fromLeft * 2;
+            int shift = fromLeft * 2;
             if (shift >= rowBytes) { buf[..(rowBytes * nativeH)].Clear(); return; }
-            for (var row = 0; row < nativeH; row++)
+            for (int row = 0; row < nativeH; row++)
             {
-                var start = row * rowBytes;
+                int start = row * rowBytes;
                 buf.Slice(start, rowBytes - shift).CopyTo(buf.Slice(start + shift, rowBytes - shift));
                 buf.Slice(start, shift).Clear();
             }
@@ -515,11 +515,11 @@ public static class Rgb565
 
         if (fromRight > 0)
         {
-            var shift = fromRight * 2;
+            int shift = fromRight * 2;
             if (shift >= rowBytes) { buf[..(rowBytes * nativeH)].Clear(); return; }
-            for (var row = 0; row < nativeH; row++)
+            for (int row = 0; row < nativeH; row++)
             {
-                var start = row * rowBytes;
+                int start = row * rowBytes;
                 buf.Slice(start + shift, rowBytes - shift).CopyTo(buf.Slice(start, rowBytes - shift));
                 buf.Slice(start + rowBytes - shift, shift).Clear();
             }
@@ -528,14 +528,14 @@ public static class Rgb565
 
     private static int MostVisible(ReadOnlySpan<byte> src, int nativeW, int sx0, int sx1, int sy0, int sy1)
     {
-        var bestIdx = (sy0 * nativeW + sx0) * 2;
-        var bestScore = Visibility(src[bestIdx], src[bestIdx + 1]);
-        for (var sy = sy0; sy < sy1; sy++)
+        int bestIdx = (sy0 * nativeW + sx0) * 2;
+        int bestScore = Visibility(src[bestIdx], src[bestIdx + 1]);
+        for (int sy = sy0; sy < sy1; sy++)
         {
-            for (var sx = sx0; sx < sx1; sx++)
+            for (int sx = sx0; sx < sx1; sx++)
             {
-                var idx = (sy * nativeW + sx) * 2;
-                var score = Visibility(src[idx], src[idx + 1]);
+                int idx = (sy * nativeW + sx) * 2;
+                int score = Visibility(src[idx], src[idx + 1]);
                 if (score > bestScore)
                 {
                     bestIdx = idx;
@@ -549,22 +549,22 @@ public static class Rgb565
 
     private static int Visibility(byte lo, byte hi)
     {
-        var px = (ushort)(lo | (hi << 8));
+        ushort px = (ushort)(lo | (hi << 8));
         return Visibility(px);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int Visibility(ushort px)
     {
-        var r = (px >> 11) & 0x1f;
-        var g = (px >> 5) & 0x3f;
-        var b = px & 0x1f;
+        int r = (px >> 11) & 0x1f;
+        int g = (px >> 5) & 0x3f;
+        int b = px & 0x1f;
         return r * 299 + g * 587 / 2 + b * 114;
     }
 
     private static int Sanitize(int rotation)
     {
-        var r = ((rotation % 360) + 360) % 360;
+        int r = ((rotation % 360) + 360) % 360;
         return r switch { 90 => 90, 180 => 180, 270 => 270, _ => 0 };
     }
 }

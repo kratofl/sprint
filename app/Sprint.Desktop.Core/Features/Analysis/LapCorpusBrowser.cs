@@ -30,13 +30,13 @@ public sealed record CorpusLap(
     public IReadOnlyList<CorpusLapNote> Notes { get; init; } = [];
 
     /// <summary>Where this lap's channels live, when it has any.</summary>
-    public string TraceId => LapTraceId.For(SessionId, LapNumber);
+    public string TraceId => LapTraceId.For(this.SessionId, this.LapNumber);
 
     /// <summary>Whether this lap can be overlaid channel by channel, or only named.</summary>
-    public bool HasChannels => Tier == LapTargetTier.FullTrace;
+    public bool HasChannels => this.Tier == LapTargetTier.FullTrace;
 
     /// <summary>Why a lap cannot be overlaid, in the driver's words. Null when it can.</summary>
-    public string? UnavailableReason => Tier switch
+    public string? UnavailableReason => this.Tier switch
     {
         LapTargetTier.FullTrace => null,
         LapTargetTier.ReferenceCurve => "No channels — recorded before traces, or pruned to stay inside the disk budget.",
@@ -68,8 +68,8 @@ public sealed class LapCorpusBrowser
     /// <param name="notes">The driver's own lap notes. Without it laps carry only the notes they were shared with, and none can be written.</param>
     public LapCorpusBrowser(ILapHistoryStore history, ILapTraceStore traces, LapNotes? notes = null)
     {
-        _history = history ?? throw new ArgumentNullException(nameof(history));
-        _traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this._history = history ?? throw new ArgumentNullException(nameof(history));
+        this._traces = traces ?? throw new ArgumentNullException(nameof(traces));
         this.Notes = notes;
     }
 
@@ -137,7 +137,7 @@ public sealed class LapCorpusBrowser
             ? []
             : [.. stored.Laps
                 .Where(lap => Usable(stored, lap, all))
-                .Select(lap => Describe(stored, lap))
+                .Select(lap => this.Describe(stored, lap))
                 .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
@@ -149,7 +149,7 @@ public sealed class LapCorpusBrowser
             .FirstOrDefault(candidate => string.Equals(candidate.Id, sessionId, StringComparison.Ordinal));
         LapHistoryRecord? lap = session?.Laps
             .FirstOrDefault(candidate => candidate.LapNumber == lapNumber && Usable(session, candidate, stored));
-        return session is null || lap is null ? null : Describe(session, lap);
+        return session is null || lap is null ? null : this.Describe(session, lap);
     }
 
     /// <summary>
@@ -166,7 +166,7 @@ public sealed class LapCorpusBrowser
                 && !LapHistoryImportService.HasRecordedEquivalent(session, stored))
             .SelectMany(session => session.Laps
                 .Where(lap => Usable(session, lap, stored))
-                .Select(lap => Describe(session, lap)))
+                .Select(lap => this.Describe(session, lap)))
             .OrderBy(lap => lap.LapTimeSeconds)];
     }
 
@@ -183,7 +183,7 @@ public sealed class LapCorpusBrowser
     /// caller error.
     /// </summary>
     public LapChannelTrace? Trace(CorpusLap? lap) =>
-        lap is { HasChannels: true } ? _traces.Load(lap.TraceId) : null;
+        lap is { HasChannels: true } ? this._traces.Load(lap.TraceId) : null;
 
     /// <summary>
     /// The channels both laps carry. A comparison can only honestly draw a channel that exists
@@ -214,15 +214,15 @@ public sealed class LapCorpusBrowser
             .. lap.Notes.Select(note => new CorpusLapNote(note.Id, note.DistanceMeters, note.Text, note.Author, note.CreatedAt, Mine: false)),
         ];
 
-        var tier = (lap.HasReferenceCurve, lap.HasChannelTrace) switch
+        LapTargetTier tier = (lap.HasReferenceCurve, lap.HasChannelTrace) switch
         {
             (true, true) => LapTargetTier.FullTrace,
             (true, false) => LapTargetTier.ReferenceCurve,
             _ => LapTargetTier.TimeOnly,
         };
 
-        var when = session.StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
-        var origin = session.SharedFrom is { Length: > 0 } from
+        string when = session.StartedAt.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+        string origin = session.SharedFrom is { Length: > 0 } from
             ? $"Shared by {from}"
             : session.Kind.ToString();
 

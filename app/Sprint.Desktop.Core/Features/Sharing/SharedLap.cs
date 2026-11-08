@@ -88,5 +88,5 @@ public sealed record SharedLap(
     }
 
     /// <summary>Who to credit on screen when the sharer left no name.</summary>
-    public string Attribution => Provenance.SharedBy is { Length: > 0 } name ? name : "Unknown driver";
+    public string Attribution => this.Provenance.SharedBy is { Length: > 0 } name ? name : "Unknown driver";
 }

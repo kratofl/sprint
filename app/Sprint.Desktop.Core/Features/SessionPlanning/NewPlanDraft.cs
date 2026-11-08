@@ -61,9 +61,9 @@ public sealed class NewPlanDraft
     /// </summary>
     public PlanFormStep Step { get; set; } = PlanFormStep.Context;
 
-    public bool IsFirstStep => Step == Steps[0];
+    public bool IsFirstStep => this.Step == Steps[0];
 
-    public bool IsLastStep => Step == Steps[^1];
+    public bool IsLastStep => this.Step == Steps[^1];
 
     /// <summary>
     /// Validates just the current step and moves on. Checking here rather than only at Create
@@ -72,14 +72,14 @@ public sealed class NewPlanDraft
     public bool TryAdvance(out string error)
     {
         error = "";
-        if (!ValidateStep(Step, out error))
+        if (!this.ValidateStep(this.Step, out error))
         {
             return false;
         }
 
-        if (!IsLastStep)
+        if (!this.IsLastStep)
         {
-            Step = Steps[Array.IndexOf(Steps, Step) + 1];
+            this.Step = Steps[Array.IndexOf(Steps, this.Step) + 1];
         }
 
         return true;
@@ -88,9 +88,9 @@ public sealed class NewPlanDraft
     /// <summary>Steps back, staying put on the first step rather than dismissing the sheet.</summary>
     public void GoBack()
     {
-        if (!IsFirstStep)
+        if (!this.IsFirstStep)
         {
-            Step = Steps[Array.IndexOf(Steps, Step) - 1];
+            this.Step = Steps[Array.IndexOf(Steps, this.Step) - 1];
         }
     }
 
@@ -101,8 +101,8 @@ public sealed class NewPlanDraft
         {
             // Context requires nothing: a plan can precede ever driving the car.
             PlanFormStep.Context => true,
-            PlanFormStep.Sessions => TryRaceLength(out _, out error),
-            _ => TryReserve(out _, out error),
+            PlanFormStep.Sessions => this.TryRaceLength(out _, out error),
+            _ => this.TryReserve(out _, out error),
         };
     }
 
@@ -118,23 +118,23 @@ public sealed class NewPlanDraft
 
         // The same two rules the step gates use, so a value that passed on its own step cannot
         // be rejected by different wording at the end.
-        if (!TryRaceLength(out var raceLength, out error) || !TryReserve(out var reserve, out error))
+        if (!this.TryRaceLength(out double raceLength, out error) || !this.TryReserve(out int reserve, out error))
         {
             return false;
         }
 
         request = new CreatePlanRequest
         {
-            Name = ResolveName(),
-            Game = Game.Trim(),
-            Car = Car.Trim(),
-            Track = Track.Trim(),
-            QualifyingIncluded = QualifyingIncluded,
-            RaceLengthFormat = RaceLengthFormat,
+            Name = this.ResolveName(),
+            Game = this.Game.Trim(),
+            Car = this.Car.Trim(),
+            Track = this.Track.Trim(),
+            QualifyingIncluded = this.QualifyingIncluded,
+            RaceLengthFormat = this.RaceLengthFormat,
             RaceLengthValue = raceLength,
             FuelReserveLaps = reserve,
-            AvgLapTimeSeconds = ParseOptional(AvgLapTimeText),
-            FuelPerLapLiters = ParseOptional(FuelPerLapText),
+            AvgLapTimeSeconds = ParseOptional(this.AvgLapTimeText),
+            FuelPerLapLiters = ParseOptional(this.FuelPerLapText),
         };
         error = "";
         return true;
@@ -142,7 +142,7 @@ public sealed class NewPlanDraft
 
     private bool TryRaceLength(out double raceLength, out string error)
     {
-        if (!double.TryParse(RaceLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out raceLength))
+        if (!double.TryParse(this.RaceLengthText, NumberStyles.Float, CultureInfo.InvariantCulture, out raceLength))
         {
             error = "Race length must be a number.";
             return false;
@@ -160,7 +160,7 @@ public sealed class NewPlanDraft
 
     private bool TryReserve(out int reserve, out string error)
     {
-        if (!int.TryParse(FuelReserveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out reserve))
+        if (!int.TryParse(this.FuelReserveText, NumberStyles.Integer, CultureInfo.InvariantCulture, out reserve))
         {
             error = "Fuel reserve must be a whole number of laps.";
             return false;
@@ -185,7 +185,7 @@ public sealed class NewPlanDraft
     {
         get
         {
-            var parts = new[] { Track.Trim(), Car.Trim() }
+            string[] parts = new[] { this.Track.Trim(), this.Car.Trim() }
                 .Where(part => part.Length > 0)
                 .ToArray();
             return parts.Length == 0 ? "New Session Plan" : string.Join(" – ", parts);
@@ -193,10 +193,10 @@ public sealed class NewPlanDraft
     }
 
     private string ResolveName() =>
-        string.IsNullOrWhiteSpace(Name) ? DerivedName : Name.Trim();
+        string.IsNullOrWhiteSpace(this.Name) ? this.DerivedName : this.Name.Trim();
 
     private static double? ParseOptional(string text) =>
-        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value > 0
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) && value > 0
             ? value
             : null;
 }

@@ -8,13 +8,13 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void MoveWidgetClampsToGridBounds()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 });
 
-        var moved = DashLayoutEditor.TryMoveWidget(layout, "main", "speed", 18, 11);
+        bool moved = DashLayoutEditor.TryMoveWidget(layout, "main", "speed", 18, 11);
 
         Assert.True(moved);
-        var widget = layout.Pages[0].Widgets.Single();
+        DashWidget widget = layout.Pages[0].Widgets.Single();
         Assert.Equal(15, widget.Col);
         Assert.Equal(9, widget.Row);
         Assert.True(DashLayoutValidator.IsValid(layout));
@@ -23,14 +23,14 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void MoveWidgetRejectsOverlapsAndLeavesWidgetInPlace()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 },
             new DashWidget { Id = "rpm", Type = "rpm_bar", Col = 8, Row = 0, ColSpan = 5, RowSpan = 2 });
 
-        var moved = DashLayoutEditor.TryMoveWidget(layout, "main", "speed", 8, 0);
+        bool moved = DashLayoutEditor.TryMoveWidget(layout, "main", "speed", 8, 0);
 
         Assert.False(moved);
-        var widget = layout.Pages[0].Widgets.Single(item => item.Id == "speed");
+        DashWidget widget = layout.Pages[0].Widgets.Single(item => item.Id == "speed");
         Assert.Equal(0, widget.Col);
         Assert.Equal(0, widget.Row);
         Assert.True(DashLayoutValidator.IsValid(layout));
@@ -39,13 +39,13 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void ResizeWidgetClampsToGridBoundsAndMinimumSize()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 17, Row = 10, ColSpan = 2, RowSpan = 2 });
 
-        var resized = DashLayoutEditor.TryResizeWidget(layout, "main", "speed", 0, 8);
+        bool resized = DashLayoutEditor.TryResizeWidget(layout, "main", "speed", 0, 8);
 
         Assert.True(resized);
-        var widget = layout.Pages[0].Widgets.Single();
+        DashWidget widget = layout.Pages[0].Widgets.Single();
         Assert.Equal(1, widget.ColSpan);
         Assert.Equal(2, widget.RowSpan);
         Assert.True(DashLayoutValidator.IsValid(layout));
@@ -54,14 +54,14 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void ResizeWidgetRejectsOverlapsAndLeavesWidgetSizeInPlace()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 },
             new DashWidget { Id = "rpm", Type = "rpm_bar", Col = 6, Row = 0, ColSpan = 4, RowSpan = 2 });
 
-        var resized = DashLayoutEditor.TryResizeWidget(layout, "main", "speed", 7, 3);
+        bool resized = DashLayoutEditor.TryResizeWidget(layout, "main", "speed", 7, 3);
 
         Assert.False(resized);
-        var widget = layout.Pages[0].Widgets.Single(item => item.Id == "speed");
+        DashWidget widget = layout.Pages[0].Widgets.Single(item => item.Id == "speed");
         Assert.Equal(5, widget.ColSpan);
         Assert.Equal(3, widget.RowSpan);
         Assert.True(DashLayoutValidator.IsValid(layout));
@@ -70,14 +70,14 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void DeleteWidgetRemovesOnlyMatchingWidget()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 },
             new DashWidget { Id = "rpm", Type = "rpm_bar", Col = 8, Row = 0, ColSpan = 5, RowSpan = 2 });
 
-        var deleted = DashLayoutEditor.TryDeleteWidget(layout, "main", "speed");
+        bool deleted = DashLayoutEditor.TryDeleteWidget(layout, "main", "speed");
 
         Assert.True(deleted);
-        var widget = Assert.Single(layout.Pages[0].Widgets);
+        DashWidget widget = Assert.Single(layout.Pages[0].Widgets);
         Assert.Equal("rpm", widget.Id);
         Assert.True(DashLayoutValidator.IsValid(layout));
     }
@@ -85,10 +85,10 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void DeleteWidgetReturnsFalseForUnknownWidget()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 });
 
-        var deleted = DashLayoutEditor.TryDeleteWidget(layout, "main", "missing");
+        bool deleted = DashLayoutEditor.TryDeleteWidget(layout, "main", "missing");
 
         Assert.False(deleted);
         Assert.Single(layout.Pages[0].Widgets);
@@ -97,11 +97,11 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void ClearPageRemovesAllWidgetsFromPage()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 },
             new DashWidget { Id = "rpm", Type = "rpm_bar", Col = 8, Row = 0, ColSpan = 5, RowSpan = 2 });
 
-        var cleared = DashLayoutEditor.TryClearPage(layout, "main");
+        bool cleared = DashLayoutEditor.TryClearPage(layout, "main");
 
         Assert.True(cleared);
         Assert.Empty(layout.Pages[0].Widgets);
@@ -111,10 +111,10 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void ClearPageReturnsFalseForUnknownPage()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "speed", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 5, RowSpan = 3 });
 
-        var cleared = DashLayoutEditor.TryClearPage(layout, "missing");
+        bool cleared = DashLayoutEditor.TryClearPage(layout, "missing");
 
         Assert.False(cleared);
         Assert.Single(layout.Pages[0].Widgets);
@@ -123,9 +123,9 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void AddPageAppendsUniqueEmptyPage()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
 
-        var page = DashLayoutEditor.AddPage(layout, "Main");
+        DashPage page = DashLayoutEditor.AddPage(layout, "Main");
 
         Assert.Equal("main-2", page.Id);
         Assert.Equal("Main 2", page.Name);
@@ -138,9 +138,9 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void RenamePageUpdatesMatchingPageName()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
 
-        var renamed = DashLayoutEditor.TryRenamePage(layout, "main", "Race");
+        bool renamed = DashLayoutEditor.TryRenamePage(layout, "main", "Race");
 
         Assert.True(renamed);
         Assert.Equal("Race", layout.Pages[0].Name);
@@ -149,9 +149,9 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void RenamePageRejectsBlankName()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
 
-        var renamed = DashLayoutEditor.TryRenamePage(layout, "main", " ");
+        bool renamed = DashLayoutEditor.TryRenamePage(layout, "main", " ");
 
         Assert.False(renamed);
         Assert.Equal("Main", layout.Pages[0].Name);
@@ -160,13 +160,13 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void DeletePageRemovesMatchingPageWhenAnotherRegularPageExists()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
         layout.Pages.Add(new DashPage { Id = "qualifying", Name = "Qualifying" });
 
-        var deleted = DashLayoutEditor.TryDeletePage(layout, "main");
+        bool deleted = DashLayoutEditor.TryDeletePage(layout, "main");
 
         Assert.True(deleted);
-        var page = Assert.Single(layout.Pages);
+        DashPage page = Assert.Single(layout.Pages);
         Assert.Equal("qualifying", page.Id);
         Assert.True(DashLayoutValidator.IsValid(layout));
     }
@@ -174,9 +174,9 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void DeletePageRejectsLastRegularPage()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
 
-        var deleted = DashLayoutEditor.TryDeletePage(layout, "main");
+        bool deleted = DashLayoutEditor.TryDeletePage(layout, "main");
 
         Assert.False(deleted);
         Assert.Single(layout.Pages);
@@ -185,10 +185,10 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void AddWidgetPlacesKnownWidgetInFirstFreeSlot()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "existing", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 4, RowSpan = 2 });
 
-        var added = DashLayoutEditor.TryAddWidget(layout, "main", "gear_speed", out var widget);
+        bool added = DashLayoutEditor.TryAddWidget(layout, "main", "gear_speed", out DashWidget? widget);
 
         Assert.True(added);
         Assert.NotNull(widget);
@@ -204,9 +204,9 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void AddWidgetReturnsFalseForUnknownType()
     {
-        var layout = LayoutWithWidgets();
+        DashLayout layout = LayoutWithWidgets();
 
-        var added = DashLayoutEditor.TryAddWidget(layout, "main", "unknown-widget", out var widget);
+        bool added = DashLayoutEditor.TryAddWidget(layout, "main", "unknown-widget", out DashWidget? widget);
 
         Assert.False(added);
         Assert.Null(widget);
@@ -216,10 +216,10 @@ public sealed class DashLayoutEditorTests
     [Fact]
     public void AddWidgetReturnsFalseWhenNoSpaceIsAvailable()
     {
-        var layout = LayoutWithWidgets(
+        DashLayout layout = LayoutWithWidgets(
             new DashWidget { Id = "full", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 20, RowSpan = 12 });
 
-        var added = DashLayoutEditor.TryAddWidget(layout, "main", "gear_speed", out var widget);
+        bool added = DashLayoutEditor.TryAddWidget(layout, "main", "gear_speed", out DashWidget? widget);
 
         Assert.False(added);
         Assert.Null(widget);

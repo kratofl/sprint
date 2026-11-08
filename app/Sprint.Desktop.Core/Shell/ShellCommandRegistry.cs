@@ -13,13 +13,13 @@ public sealed class ShellCommandRegistry
 
     public ShellCommandRegistry(IEnumerable<ShellCommand> commands)
     {
-        _commands = commands.ToArray();
+        this._commands = commands.ToArray();
     }
 
     public IReadOnlyList<ShellCommand> Search(string? query)
     {
-        var needle = query?.Trim();
-        return _commands
+        string? needle = query?.Trim();
+        return this._commands
             .Where(command => string.IsNullOrEmpty(needle)
                 || command.Title.Contains(needle, StringComparison.OrdinalIgnoreCase)
                 || command.Keywords.Contains(needle, StringComparison.OrdinalIgnoreCase))
@@ -28,7 +28,7 @@ public sealed class ShellCommandRegistry
 
     public bool Execute(string id)
     {
-        var command = _commands.FirstOrDefault(candidate =>
+        ShellCommand? command = this._commands.FirstOrDefault(candidate =>
             string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
         if (command is null)
         {

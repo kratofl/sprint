@@ -40,19 +40,19 @@ public sealed class BrowserFrameSource : IDashFrameSource
         ArgumentNullException.ThrowIfNull(exchange);
         ArgumentNullException.ThrowIfNull(config);
 
-        _config = config;
-        Width = config.Width;
-        Height = config.Height;
-        _transform = DeviceOrientations.Transform(Width, Height, config.Orientation);
-        if (exchange.Width != _transform.LogicalWidth || exchange.Height != _transform.LogicalHeight)
+        this._config = config;
+        this.Width = config.Width;
+        this.Height = config.Height;
+        this._transform = DeviceOrientations.Transform(this.Width, this.Height, config.Orientation);
+        if (exchange.Width != this._transform.LogicalWidth || exchange.Height != this._transform.LogicalHeight)
         {
             throw new ArgumentException(
                 "Frame exchange dimensions must match the device's logical (pre-rotation) size.",
                 nameof(exchange));
         }
 
-        _exchange = exchange;
-        _bgra = new byte[checked(_transform.LogicalWidth * _transform.LogicalHeight * 4)];
+        this._exchange = exchange;
+        this._bgra = new byte[checked(this._transform.LogicalWidth * this._transform.LogicalHeight * 4)];
     }
 
     /// <summary>Native screen width in pixels (post-rotation).</summary>
@@ -64,29 +64,29 @@ public sealed class BrowserFrameSource : IDashFrameSource
     public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        if (rgb565.Length < Width * Height * 2)
+        if (rgb565.Length < this.Width * this.Height * 2)
         {
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
         }
 
-        var sourceStarted = Stopwatch.GetTimestamp();
+        long sourceStarted = Stopwatch.GetTimestamp();
         // Unavailable/Current both leave _bgra holding whatever it already held
         // (the last successfully copied frame, or all-zero/black before the
         // first one ever arrives); recomposing that is what keeps a slow or
         // momentarily quiet browser output showing its last known picture
         // instead of a torn or blank frame.
-        _exchange.TryCopyLatest(_bgra, ref _observedVersion, MaxFrameAge);
-        var sourceCompleted = Stopwatch.GetTimestamp();
+        this._exchange.TryCopyLatest(this._bgra, ref this._observedVersion, MaxFrameAge);
+        long sourceCompleted = Stopwatch.GetTimestamp();
         Rgb565.ComposeFromBgra(
-            _bgra,
-            Width,
-            Height,
-            _transform,
-            _config.Margin,
-            _config.OffsetX,
-            _config.OffsetY,
+            this._bgra,
+            this.Width,
+            this.Height,
+            this._transform,
+            this._config.Margin,
+            this._config.OffsetX,
+            this._config.OffsetY,
             rgb565);
-        var transformCompleted = Stopwatch.GetTimestamp();
+        long transformCompleted = Stopwatch.GetTimestamp();
         return new ScreenFrameTiming(
             Stopwatch.GetElapsedTime(sourceStarted, sourceCompleted),
             Stopwatch.GetElapsedTime(sourceCompleted, transformCompleted));

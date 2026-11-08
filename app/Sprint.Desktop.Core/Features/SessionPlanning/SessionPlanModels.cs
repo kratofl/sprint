@@ -168,7 +168,7 @@ public sealed class SessionPlan
 
     /// <summary>The target set for <paramref name="kind"/>, or null when none was chosen.</summary>
     public PlanTargets? TargetsFor(SegmentKind kind) =>
-        Targets.FirstOrDefault(targets => targets.Kind == kind);
+        this.Targets.FirstOrDefault(targets => targets.Kind == kind);
 }
 
 /// <summary>A qualifying or race segment of a plan, planned and/or actually tracked.</summary>

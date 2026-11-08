@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using Sprint.Contracts;
 using Sprint.Desktop.Features.Sharing;
 using Xunit;
 
@@ -16,9 +17,9 @@ public sealed class CloudSharingTests
     [Fact]
     public async Task AnUnreachableServerIsNotReportedAsARejection()
     {
-        var client = Client(_ => throw new HttpRequestException("No such host is known."));
+        SprintCloudClient client = Client(_ => throw new HttpRequestException("No such host is known."));
 
-        var result = await client.FetchLapAsync("ABC");
+        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
 
         Assert.Equal(CloudFailure.Unreachable, result.Failure);
         // The driver gets something actionable, not the socket layer's wording.
@@ -29,8 +30,8 @@ public sealed class CloudSharingTests
     [Fact]
     public async Task AnUnknownCodeAndARevokedCodeAreDifferentAnswers()
     {
-        var unknown = await Client(Errors("No lap exists for that code.")).FetchLapAsync("NOPE");
-        var revoked = await Client(Errors("That share code has been revoked by its owner.")).FetchLapAsync("OLD");
+        CloudResult<SharedLapDto> unknown = await Client(Errors("No lap exists for that code.")).FetchLapAsync("NOPE");
+        CloudResult<SharedLapDto> revoked = await Client(Errors("That share code has been revoked by its owner.")).FetchLapAsync("OLD");
 
         Assert.Equal(CloudFailure.UnknownCode, unknown.Failure);
         Assert.Equal(CloudFailure.Revoked, revoked.Failure);
@@ -39,12 +40,12 @@ public sealed class CloudSharingTests
     [Fact]
     public async Task BeingSignedOutIsItsOwnAnswer()
     {
-        var client = Client(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        SprintCloudClient client = Client(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
         {
             Content = new StringContent("{}"),
         });
 
-        var result = await client.FetchLapAsync("ABC");
+        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
 
         Assert.Equal(CloudFailure.NotSignedIn, result.Failure);
         Assert.Contains("Sign in", result.Message, StringComparison.Ordinal);
@@ -53,13 +54,13 @@ public sealed class CloudSharingTests
     [Fact]
     public async Task AFetchedLapCarriesItsPayloadAndAttribution()
     {
-        var client = Client(Data("""
+        SprintCloudClient client = Client(Data("""
             {"sharedLap":{"shareCode":"ABC","sharedBy":"Ada","game":"Le Mans Ultimate",
             "trackCourse":"Spa-Francorchamps","carModel":"Porsche 963","lapNumber":4,
             "lapTimeSeconds":101.5,"drivenAt":null,"payloadBase64":"AQID"}}
             """));
 
-        var result = await client.FetchLapAsync("ABC");
+        CloudResult<SharedLapDto> result = await client.FetchLapAsync("ABC");
 
         Assert.True(result.Ok);
         Assert.Equal("Ada", result.Value!.SharedBy);
@@ -70,7 +71,7 @@ public sealed class CloudSharingTests
     public async Task TheTokenIsSentAsABearerHeaderWhenThereIsOne()
     {
         HttpRequestMessage? seen = null;
-        var client = new SprintCloudClient(
+        SprintCloudClient client = new SprintCloudClient(
             Http(request =>
             {
                 seen = request;
@@ -88,7 +89,7 @@ public sealed class CloudSharingTests
     public async Task NoTokenMeansNoAuthorizationHeaderRatherThanAnEmptyOne()
     {
         HttpRequestMessage? seen = null;
-        var client = new SprintCloudClient(
+        SprintCloudClient client = new SprintCloudClient(
             Http(request =>
             {
                 seen = request;
@@ -104,14 +105,14 @@ public sealed class CloudSharingTests
     [Fact]
     public void ASessionRoundTripsAndSignOutForgetsTheToken()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var session = new CloudSession(root);
+            CloudSession session = new CloudSession(root);
             session.SignIn("https://sprint.example/", "tok", "a@b.c");
             session.SetDisplayName("Ada");
 
-            var reloaded = new CloudSession(root);
+            CloudSession reloaded = new CloudSession(root);
             Assert.True(reloaded.IsSignedIn);
             Assert.Equal("https://sprint.example", reloaded.State.ServerUrl);
             Assert.Equal("Ada", reloaded.Attribution);
@@ -128,10 +129,10 @@ public sealed class CloudSharingTests
     [Fact]
     public void ADriverWithNoDisplayNameIsCreditedNeutrallyNotByEmail()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var session = new CloudSession(root);
+            CloudSession session = new CloudSession(root);
             session.SignIn("https://sprint.example", "tok", "alex@example.com");
 
             Assert.Equal("Unknown driver", session.Attribution);
@@ -146,7 +147,7 @@ public sealed class CloudSharingTests
     [Fact]
     public void ACorruptSessionFileReadsAsSignedOutRatherThanFailingToStart()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             File.WriteAllText(Path.Combine(root, "cloud-session.json"), "{ not json");
@@ -164,9 +165,9 @@ public sealed class CloudSharingTests
     {
         // A stubbed transport answers whatever it is asked, so a wrong field name is invisible
         // in every other test here and only surfaces against a real server.
-        var schema = File.ReadAllText(Path.Combine(TestEnv.RepoRoot, "web", "schema.graphql"));
+        string schema = File.ReadAllText(Path.Combine(TestEnv.RepoRoot, "web", "schema.graphql"));
 
-        foreach (var field in SprintCloudClient.Operations.Keys)
+        foreach (string field in SprintCloudClient.Operations.Keys)
         {
             // An argument-less field is declared as "me: UserProfile", one with arguments as
             // "sharedLap(code: ...)".
@@ -182,11 +183,11 @@ public sealed class CloudSharingTests
     {
         // This is the check that catches "ShareLapInputInput" — HotChocolate names the input
         // type from the CLR type, and guessing that name wrong compiles and stubs fine.
-        var schema = File.ReadAllText(Path.Combine(TestEnv.RepoRoot, "web", "schema.graphql"));
+        string schema = File.ReadAllText(Path.Combine(TestEnv.RepoRoot, "web", "schema.graphql"));
 
-        foreach (var (field, query) in SprintCloudClient.Operations)
+        foreach ((string? field, string? query) in SprintCloudClient.Operations)
         {
-            foreach (var type in System.Text.RegularExpressions.Regex
+            foreach (string? type in System.Text.RegularExpressions.Regex
                 .Matches(query, @"\$\w+\s*:\s*(\w+)")
                 .Select(match => match.Groups[1].Value)
                 .Distinct(StringComparer.Ordinal))

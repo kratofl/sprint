@@ -275,7 +275,7 @@ public static class LapCompleteness
             return false;
         }
 
-        for (var i = 1; i < positions.Count; i++)
+        for (int i = 1; i < positions.Count; i++)
         {
             if (positions[i] - positions[i - 1] > MaxGap)
             {
@@ -351,12 +351,12 @@ public sealed class LapReferenceCurve
             return null;
         }
 
-        var count = (int)Math.Round(1.0 / PositionStepDefault) + 1;
-        var times = new List<double>(count);
-        var index = 0;
-        for (var i = 0; i < count; i++)
+        int count = (int)Math.Round(1.0 / PositionStepDefault) + 1;
+        List<double> times = new List<double>(count);
+        int index = 0;
+        for (int i = 0; i < count; i++)
         {
-            var position = i * PositionStepDefault;
+            double position = i * PositionStepDefault;
             if (position <= samples[0].Position)
             {
                 // Before the first sample nothing was observed; holding the first reading is
@@ -377,9 +377,9 @@ public sealed class LapReferenceCurve
                 index++;
             }
 
-            var (startPosition, startTime) = samples[index];
-            var (endPosition, endTime) = samples[index + 1];
-            var span = endPosition - startPosition;
+            (double startPosition, double startTime) = samples[index];
+            (double endPosition, double endTime) = samples[index + 1];
+            double span = endPosition - startPosition;
             times.Add(Round(span <= PositionEpsilon
                 ? startTime
                 : startTime + ((endTime - startTime) * ((position - startPosition) / span))));
@@ -473,7 +473,7 @@ public sealed class LapHistoryRecord
     /// above <see cref="HasReferenceCurve"/>.
     /// </summary>
     [JsonIgnore]
-    public bool HasChannelTrace => !string.IsNullOrEmpty(TraceId);
+    public bool HasChannelTrace => !string.IsNullOrEmpty(this.TraceId);
 
     /// <summary>
     /// Whether this lap can honestly drive a position-accurate delta. A reader has to be
@@ -482,7 +482,7 @@ public sealed class LapHistoryRecord
     /// </summary>
     [JsonIgnore]
     public bool HasReferenceCurve =>
-        ReferenceCurve is { PositionStep: > 0, TimesSeconds.Count: > 1 };
+        this.ReferenceCurve is { PositionStep: > 0, TimesSeconds.Count: > 1 };
 
     /// <summary>Practice-program tag. Written once practice programs exist; null until then.</summary>
     [JsonPropertyName("programType")]

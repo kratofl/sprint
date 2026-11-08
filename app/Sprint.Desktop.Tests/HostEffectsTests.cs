@@ -33,7 +33,7 @@ public sealed class HostEffectsTests
     [Fact]
     public void TheUpdateHelperDoesNotOpenExplorerDuringTests()
     {
-        var batch = UpdateScript.BuildWindowsBatch(4321, "C:/staging", "C:/install", "Sprint.exe");
+        string batch = UpdateScript.BuildWindowsBatch(4321, "C:/staging", "C:/install", "Sprint.exe");
 
         // UpdateScriptTests executes this batch for real, so a reveal line here opens a window
         // on the developer's desktop.
@@ -45,7 +45,7 @@ public sealed class HostEffectsTests
     {
         // The product does reveal the staging folder on a permanent failure; a test asserting
         // the script text has to be able to see it without the gate hiding it.
-        var batch = UpdateScript.BuildWindowsBatch(
+        string batch = UpdateScript.BuildWindowsBatch(
             4321,
             "C:/staging",
             "C:/install",

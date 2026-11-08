@@ -11,9 +11,9 @@ public sealed class DevelopmentGameStateTests
     [Fact]
     public void GlobalSimulationCombinesGameConditionsAndCanReturnToLiveTelemetry()
     {
-        var log = new LiveLogStore();
-        var simulation = new DevelopmentGameState(log);
-        var live = new TelemetryFrame
+        LiveLogStore log = new LiveLogStore();
+        DevelopmentGameState simulation = new DevelopmentGameState(log);
+        TelemetryFrame live = new TelemetryFrame
         {
             Session = new SessionInfo { Game = "LMU", InCar = true },
             Car = new CarState { SpeedMetersPerSecond = 12, Gear = 2, Rpm = 3200 },
@@ -29,7 +29,7 @@ public sealed class DevelopmentGameStateTests
             DeltaSeconds = -0.35,
         });
 
-        var simulated = simulation.Resolve(live);
+        TelemetryFrame simulated = simulation.Resolve(live);
         Assert.True(simulation.Enabled);
         Assert.Equal("Sprint Development Simulator", simulated.Session.Game);
         Assert.Equal(SessionType.Race, simulated.Session.SessionType);

@@ -44,16 +44,16 @@ public static class CustomWheelBuilder
         ArgumentNullException.ThrowIfNull(request);
         device = new CatalogDevice();
 
-        var name = request.Name?.Trim() ?? "";
+        string name = request.Name?.Trim() ?? "";
         if (name.Length == 0)
         {
             error = "Enter a name for the wheel.";
             return false;
         }
 
-        var driver = "";
-        var width = 0;
-        var height = 0;
+        string driver = "";
+        int width = 0;
+        int height = 0;
         if (request.HasScreen)
         {
             driver = request.Driver?.Trim().ToLowerInvariant() ?? "";
@@ -123,14 +123,14 @@ public static class CustomWheelBuilder
             return "Custom wheel — buttons and encoders only, no screen.";
         }
 
-        var resolution = width > 0 && height > 0 ? $"{width} × {height}" : "auto-detected resolution";
+        string resolution = width > 0 && height > 0 ? $"{width} × {height}" : "auto-detected resolution";
         return $"Custom wheel — {DriverLabel(driver)} screen, {resolution}.";
     }
 
     private static string Slug(string name)
     {
-        var slug = new StringBuilder(name.Length);
-        foreach (var c in name.ToLowerInvariant())
+        StringBuilder slug = new StringBuilder(name.Length);
+        foreach (char c in name.ToLowerInvariant())
         {
             if (char.IsAsciiLetterOrDigit(c))
             {

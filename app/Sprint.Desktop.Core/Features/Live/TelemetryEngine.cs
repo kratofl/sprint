@@ -79,26 +79,26 @@ public sealed class TelemetryEngine : IDisposable
 
     public TelemetryEngine(ITelemetrySource source, EngineOptions? options = null, Func<DateTimeOffset>? clock = null)
     {
-        _source = source ?? throw new ArgumentNullException(nameof(source));
-        _options = options ?? new EngineOptions();
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _rate = new RateMeter(_options.RateSmoothing);
-        _lastAugmented = source.Current;
-        _snapshot = new EngineSnapshot { Frame = _lastAugmented, Status = source.Status, Hz = 0 };
+        this._source = source ?? throw new ArgumentNullException(nameof(source));
+        this._options = options ?? new EngineOptions();
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._rate = new RateMeter(this._options.RateSmoothing);
+        this._lastAugmented = source.Current;
+        this._snapshot = new EngineSnapshot { Frame = this._lastAugmented, Status = source.Status, Hz = 0 };
     }
 
     /// <summary>The wrapped source's display name.</summary>
-    public string SourceName => _source.Name;
+    public string SourceName => this._source.Name;
 
     /// <summary>The latest consistent snapshot. Never null; safe to read from any thread.</summary>
-    public EngineSnapshot Snapshot => Volatile.Read(ref _snapshot);
+    public EngineSnapshot Snapshot => Volatile.Read(ref this._snapshot);
 
     /// <summary>
     /// Requests that the reader thread pin the currently adopted delta reference.
     /// Safe to call from UI/input threads; the tracker itself remains single-owner.
     /// </summary>
     public void RequestManualReference() =>
-        Interlocked.Exchange(ref _manualReferenceRequested, 1);
+        Interlocked.Exchange(ref this._manualReferenceRequested, 1);
 
     /// <summary>
     /// Requests that the reader thread measure against <paramref name="reference"/> — the lap
@@ -111,7 +111,7 @@ public sealed class TelemetryEngine : IDisposable
     /// </para>
     /// </summary>
     public void RequestPlanReference(DeltaReference? reference) =>
-        Interlocked.Exchange(ref _planReferenceRequest, new StrongBox<DeltaReference?>(reference));
+        Interlocked.Exchange(ref this._planReferenceRequest, new StrongBox<DeltaReference?>(reference));
 
     /// <summary>
     /// Connect synchronously (so the first paint reflects the real link state) and
@@ -120,38 +120,38 @@ public sealed class TelemetryEngine : IDisposable
     /// </summary>
     public void Start()
     {
-        if (Volatile.Read(ref _disposed) == 1)
+        if (Volatile.Read(ref this._disposed) == 1)
         {
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref this._started, 1, 0) != 0)
         {
             return;
         }
 
-        SafeConnect();
-        Publish(_lastAugmented, _source.Status, 0);
+        this.SafeConnect();
+        this.Publish(this._lastAugmented, this._source.Status, 0);
 
-        _thread = new Thread(RunLoop)
+        this._thread = new Thread(this.RunLoop)
         {
             IsBackground = true,
             Name = "Sprint.TelemetryEngine.Reader"
         };
-        _thread.Start();
+        this._thread.Start();
     }
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref this._disposed, 1, 0) != 0)
         {
             return;
         }
 
-        _cts.Cancel();
+        this._cts.Cancel();
 
-        var thread = _thread;
-        var joined = thread is null || !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(2));
+        Thread? thread = this._thread;
+        bool joined = thread is null || !thread.IsAlive || thread.Join(TimeSpan.FromSeconds(2));
 
         // Only dispose the source once the reader thread has actually exited, so the
         // source is never touched concurrently (the single-owner invariant). On a join
@@ -162,26 +162,26 @@ public sealed class TelemetryEngine : IDisposable
         {
             try
             {
-                _source.Dispose();
+                this._source.Dispose();
             }
             catch
             {
                 // Terminal cleanup must never throw.
             }
 
-            _cts.Dispose();
+            this._cts.Dispose();
         }
     }
 
     private void RunLoop()
     {
-        var token = _cts.Token;
+        CancellationToken token = this._cts.Token;
         while (!token.IsCancellationRequested)
         {
             // Step is contracted never-throw (it self-publishes Faulted on an
             // unexpected error), so a bad frame can never tear down this thread —
             // even one a ReadFrame/Connect throws past the adapter's narrow catch list.
-            var wait = WaitFor(Step(_clock()));
+            TimeSpan wait = this.WaitFor(this.Step(this._clock()));
 
             if (token.IsCancellationRequested)
             {
@@ -193,7 +193,7 @@ public sealed class TelemetryEngine : IDisposable
 
         try
         {
-            _source.Disconnect();
+            this._source.Disconnect();
         }
         catch
         {
@@ -205,7 +205,7 @@ public sealed class TelemetryEngine : IDisposable
     /// <see cref="EngineOptions.PollInterval"/> (never zero) so an always-ready source
     /// can't busy-spin a core; only an unestablished link idles for the reconnect interval.</summary>
     internal TimeSpan WaitFor(StepOutcome outcome) =>
-        outcome == StepOutcome.Reconnecting ? _options.ReconnectInterval : _options.PollInterval;
+        outcome == StepOutcome.Reconnecting ? this._options.ReconnectInterval : this._options.PollInterval;
 
     /// <summary>
     /// Performs exactly one acquisition iteration and publishes a fresh snapshot.
@@ -217,45 +217,45 @@ public sealed class TelemetryEngine : IDisposable
     {
         try
         {
-            return StepCore(now);
+            return this.StepCore(now);
         }
         catch (Exception ex)
         {
-            PublishFault(ex);
+            this.PublishFault(ex);
             return StepOutcome.Reconnecting;
         }
     }
 
     private StepOutcome StepCore(DateTimeOffset now)
     {
-        if (Interlocked.Exchange(ref _manualReferenceRequested, 0) != 0)
+        if (Interlocked.Exchange(ref this._manualReferenceRequested, 0) != 0)
         {
-            _delta.SetManualReference();
+            this._delta.SetManualReference();
         }
 
-        if (Interlocked.Exchange(ref _planReferenceRequest, null) is { } request)
+        if (Interlocked.Exchange(ref this._planReferenceRequest, null) is { } request)
         {
-            _delta.SetPlanReference(request.Value);
+            this._delta.SetPlanReference(request.Value);
         }
 
-        var status = _source.Status;
-        var state = status.State;
+        TelemetryStatus status = this._source.Status;
+        TelemetryConnectionState state = status.State;
 
         if (state == TelemetryConnectionState.Connected)
         {
-            _prevState = state;
-            if (_source.TryRead(out var frame))
+            this._prevState = state;
+            if (this._source.TryRead(out TelemetryFrame? frame))
             {
-                _rate.Sample(now);
-                _lastAugmented = _delta.Augment(frame);
-                Publish(_lastAugmented, _source.Status, _rate.Hz);
+                this._rate.Sample(now);
+                this._lastAugmented = this._delta.Augment(frame);
+                this.Publish(this._lastAugmented, this._source.Status, this._rate.Hz);
                 return StepOutcome.ReadFrame;
             }
 
             // Link is live but no new frame yet: hold the last good (augmented) frame, so
             // the computed delta survives the quiet tick. Do NOT reset the delta tracker —
             // the lap is continuous, just momentarily quiet.
-            Publish(_lastAugmented, _source.Status, _rate.Hz);
+            this.Publish(this._lastAugmented, this._source.Status, this._rate.Hz);
             return StepOutcome.NoFrame;
         }
 
@@ -264,46 +264,46 @@ public sealed class TelemetryEngine : IDisposable
         // delta tracker is intentionally NOT reset here — it self-resets on a real
         // session/track/lap discontinuity (see DeltaTracker), so a transient
         // Faulted-while-open hiccup does not discard the reference lap.
-        if (_prevState == TelemetryConnectionState.Connected)
+        if (this._prevState == TelemetryConnectionState.Connected)
         {
-            _rate.Reset();
+            this._rate.Reset();
         }
 
-        _prevState = state;
+        this._prevState = state;
 
         if (state == TelemetryConnectionState.Connecting)
         {
             // A connect is already in progress; don't re-enter it.
-            Publish(_lastAugmented, status, 0);
+            this.Publish(this._lastAugmented, status, 0);
             return StepOutcome.NoFrame;
         }
 
         // Disconnected / WaitingForGame / Unsupported / PermissionDenied / Faulted:
         // attempt a (re)connect. Connect is idempotent and never-throws for recoverable
         // failures (it reflects them in Status).
-        SafeConnect();
-        var after = _source.Status;
+        this.SafeConnect();
+        TelemetryStatus after = this._source.Status;
         if (after.State == TelemetryConnectionState.Connected)
         {
             // Reached a live link — read on the very next iteration (no reconnect idle).
-            Publish(_lastAugmented, after, _rate.Hz);
+            this.Publish(this._lastAugmented, after, this._rate.Hz);
             return StepOutcome.JustConnected;
         }
 
-        Publish(_lastAugmented, after, 0);
+        this.Publish(this._lastAugmented, after, 0);
         return StepOutcome.Reconnecting;
     }
 
     private void SafeConnect()
     {
-        if (Volatile.Read(ref _disposed) == 1)
+        if (Volatile.Read(ref this._disposed) == 1)
         {
             return;
         }
 
         try
         {
-            _source.Connect();
+            this._source.Connect();
         }
         catch (ObjectDisposedException)
         {
@@ -313,25 +313,25 @@ public sealed class TelemetryEngine : IDisposable
         {
             // Connect is contracted never-throw for recoverable failures; this is
             // defense-in-depth for US17 so a misbehaving adapter can't crash startup.
-            PublishFault(ex);
+            this.PublishFault(ex);
         }
     }
 
     private void Publish(TelemetryFrame frame, TelemetryStatus status, double hz) =>
-        Volatile.Write(ref _snapshot, new EngineSnapshot { Frame = frame, Status = status, Hz = hz });
+        Volatile.Write(ref this._snapshot, new EngineSnapshot { Frame = frame, Status = status, Hz = hz });
 
     private void PublishFault(Exception ex)
     {
-        var status = new TelemetryStatus
+        TelemetryStatus status = new TelemetryStatus
         {
             State = TelemetryConnectionState.Faulted,
-            SourceName = _source.Name,
+            SourceName = this._source.Name,
             Detail = ex.Message,
             LastFrameValid = false,
             InvalidReason = ex.Message
         };
 
-        Volatile.Write(ref _snapshot, new EngineSnapshot { Frame = _lastAugmented, Status = status, Hz = 0 });
+        Volatile.Write(ref this._snapshot, new EngineSnapshot { Frame = this._lastAugmented, Status = status, Hz = 0 });
     }
 }
 

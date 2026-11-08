@@ -14,10 +14,10 @@ public sealed class CachingLapHistoryStoreTests
     [Fact]
     public void RepeatedReadsHitTheDiskOnce()
     {
-        var inner = new CountingLapHistoryStore();
-        var store = new CachingLapHistoryStore(inner);
+        CountingLapHistoryStore inner = new CountingLapHistoryStore();
+        CachingLapHistoryStore store = new CachingLapHistoryStore(inner);
 
-        for (var i = 0; i < 10; i++)
+        for (int i = 0; i < 10; i++)
         {
             Assert.Empty(store.LoadAll());
         }
@@ -28,15 +28,15 @@ public sealed class CachingLapHistoryStoreTests
     [Fact]
     public void AWriteIsVisibleToTheNextRead()
     {
-        var inner = new CountingLapHistoryStore();
-        var store = new CachingLapHistoryStore(inner);
+        CountingLapHistoryStore inner = new CountingLapHistoryStore();
+        CachingLapHistoryStore store = new CachingLapHistoryStore(inner);
         Assert.Empty(store.LoadAll());
 
         // The always-on recorder writes through this same instance while the page is reading
         // it. A stale target list would be worse than a slow one.
         store.Save(new LapHistorySession { Id = "hs-1" });
 
-        var loaded = Assert.Single(store.LoadAll());
+        LapHistorySession loaded = Assert.Single(store.LoadAll());
         Assert.Equal("hs-1", loaded.Id);
         Assert.Equal(2, inner.Loads);
     }
@@ -44,8 +44,8 @@ public sealed class CachingLapHistoryStoreTests
     [Fact]
     public void ADeleteIsVisibleToTheNextRead()
     {
-        var inner = new CountingLapHistoryStore();
-        var store = new CachingLapHistoryStore(inner);
+        CountingLapHistoryStore inner = new CountingLapHistoryStore();
+        CachingLapHistoryStore store = new CachingLapHistoryStore(inner);
         store.Save(new LapHistorySession { Id = "hs-1" });
         Assert.Single(store.LoadAll());
 
@@ -57,23 +57,23 @@ public sealed class CachingLapHistoryStoreTests
     [Fact]
     public async Task ConcurrentReadsAndWritesNeverObserveATornCorpus()
     {
-        var inner = new CountingLapHistoryStore();
-        var store = new CachingLapHistoryStore(inner);
+        CountingLapHistoryStore inner = new CountingLapHistoryStore();
+        CachingLapHistoryStore store = new CachingLapHistoryStore(inner);
         // The recorder persists off the frame thread while the UI thread reads for a repaint.
-        var writer = Task.Run(() =>
+        Task writer = Task.Run(() =>
         {
-            for (var i = 0; i < 200; i++)
+            for (int i = 0; i < 200; i++)
             {
                 store.Save(new LapHistorySession { Id = $"hs-{i}" });
             }
         });
 
-        var reader = Task.Run(() =>
+        Task reader = Task.Run(() =>
         {
-            for (var i = 0; i < 200; i++)
+            for (int i = 0; i < 200; i++)
             {
                 // Enumerating a snapshot that another thread is replacing must not throw.
-                foreach (var session in store.LoadAll())
+                foreach (LapHistorySession session in store.LoadAll())
                 {
                     Assert.NotNull(session.Id);
                 }
@@ -92,26 +92,26 @@ public sealed class CachingLapHistoryStoreTests
 
         public IReadOnlyList<LapHistorySession> LoadAll()
         {
-            lock (_sessions)
+            lock (this._sessions)
             {
-                Loads++;
-                return [.. _sessions.Values];
+                this.Loads++;
+                return [.. this._sessions.Values];
             }
         }
 
         public void Save(LapHistorySession session)
         {
-            lock (_sessions)
+            lock (this._sessions)
             {
-                _sessions[session.Id] = session;
+                this._sessions[session.Id] = session;
             }
         }
 
         public void Delete(string sessionId)
         {
-            lock (_sessions)
+            lock (this._sessions)
             {
-                _sessions.Remove(sessionId);
+                this._sessions.Remove(sessionId);
             }
         }
     }

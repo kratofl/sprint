@@ -23,10 +23,10 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void TheToggleIsBindableFromAKeyboardAsWellAsAWheel()
     {
-        var bus = new CommandBus();
+        CommandBus bus = new CommandBus();
         SprintCommands.RegisterDefaults(bus);
 
-        var meta = bus.Catalog().Single(command => command.Id == SprintCommands.CompareHudToggle);
+        CommandMeta meta = bus.Catalog().Single(command => command.Id == SprintCommands.CompareHudToggle);
 
         Assert.Equal("Live Compare", meta.Category);
         Assert.True(meta.Capturable);
@@ -39,7 +39,7 @@ public sealed class LiveCompareHudTests
     {
         // Arranging and target selection start in the Sprint window: the HUD is click-through
         // while driving, so a binding that put them only on the overlay would be a dead end.
-        var bus = new CommandBus();
+        CommandBus bus = new CommandBus();
         SprintCommands.RegisterDefaults(bus);
 
         Assert.Single(bus.Catalog(), command => command.Category == "Live Compare");
@@ -50,7 +50,7 @@ public sealed class LiveCompareHudTests
     {
         // The driver asked for small windows they place and size one by one: throttle against
         // the target, brake against the target, speed against the target.
-        var specs = HudWindowPlan.Build(new LiveCompareSettings());
+        IReadOnlyList<HudWindowSpec> specs = HudWindowPlan.Build(new LiveCompareSettings());
 
         Assert.Equal(
             [HudWindowPlan.DeltaWindowId, "throttle", Brake, Speed],
@@ -62,7 +62,7 @@ public sealed class LiveCompareHudTests
     public void EveryChartWindowDrawsExactlyOneChart()
     {
         // A window holding two panels is the stack this replaced.
-        foreach (var spec in HudWindowPlan.Build(new LiveCompareSettings()))
+        foreach (HudWindowSpec spec in HudWindowPlan.Build(new LiveCompareSettings()))
         {
             if (spec.Panel is { } panel)
             {
@@ -74,7 +74,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void TheDeltaWindowCanBeTurnedOffWithoutTakingTheChartsWithIt()
     {
-        var specs = HudWindowPlan.Build(new LiveCompareSettings { ShowDelta = false });
+        IReadOnlyList<HudWindowSpec> specs = HudWindowPlan.Build(new LiveCompareSettings { ShowDelta = false });
 
         Assert.DoesNotContain(specs, spec => spec.Id == HudWindowPlan.DeltaWindowId);
         Assert.Equal(3, specs.Count);
@@ -101,12 +101,12 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void EachWindowComesBackWhereItWasLeft()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
 
         HudLayoutStore.Save(settings, Brake, Primary, 300, 200, 420, 180);
         HudLayoutStore.Save(settings, Speed, Primary, 300, 400, 420, 180);
 
-        var brake = HudLayoutStore.Restore(settings, Brake, [Primary]);
+        HudWindowLayout? brake = HudLayoutStore.Restore(settings, Brake, [Primary]);
         Assert.NotNull(brake);
         Assert.Equal(300, brake!.X);
         Assert.Equal(200, brake.Y);
@@ -119,7 +119,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void EachMonitorKeepsItsOwnPlacement()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
 
         HudLayoutStore.Save(settings, Brake, Primary, 100, 100, 380, 160);
         HudLayoutStore.Save(settings, Brake, Secondary, 2600, 50, 300, 140);
@@ -131,7 +131,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void SavingTwiceOnOneMonitorReplacesRatherThanAccumulates()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
 
         HudLayoutStore.Save(settings, Brake, Primary, 100, 100, 380, 160);
         HudLayoutStore.Save(settings, Brake, Primary, 140, 120, 400, 170);
@@ -143,7 +143,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void ALayoutForAMonitorThatIsGoneIsNotRestored()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
         HudLayoutStore.Save(settings, Brake, Secondary, 2600, 50, 380, 160);
 
         // The second monitor was unplugged; restoring 2600px across would put a click-through
@@ -154,7 +154,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void ALayoutThatNoLongerOverlapsItsScreenIsDiscarded()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
         HudLayoutStore.Save(settings, Brake, Primary, 100, 100, 380, 160);
         settings.Layouts[0].X = -4000;
 
@@ -164,11 +164,11 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void TheFirstPlacementIsAColumnWhereNoWindowLandsOnAnother()
     {
-        var specs = HudWindowPlan.Build(new LiveCompareSettings());
-        var column = HudLayoutStore.DefaultColumn(specs, Primary);
+        IReadOnlyList<HudWindowSpec> specs = HudWindowPlan.Build(new LiveCompareSettings());
+        IReadOnlyList<HudWindowLayout> column = HudLayoutStore.DefaultColumn(specs, Primary);
 
         Assert.Equal(specs.Count, column.Count);
-        for (var i = 1; i < column.Count; i++)
+        for (int i = 1; i < column.Count; i++)
         {
             Assert.True(
                 column[i].Y >= column[i - 1].Y + column[i - 1].Height,
@@ -204,7 +204,7 @@ public sealed class LiveCompareHudTests
         // A driver's eyes live on the racing line in the middle of the frame, so the column
         // hugs the left. Vertically it may run past the middle — a left column is out of the
         // way at any height.
-        foreach (var layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), Primary))
+        foreach (HudWindowLayout layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), Primary))
         {
             Assert.True(layout.X + layout.Width < Primary.Width / 2, "must not reach the centre");
             Assert.True(layout.Y >= Primary.Y);
@@ -217,7 +217,7 @@ public sealed class LiveCompareHudTests
     {
         // The first build sized this as a fraction, which on a 2560-wide monitor put an 870 px
         // window on top of the game. That is a second window, not a HUD.
-        foreach (var layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), Primary))
+        foreach (HudWindowLayout layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), Primary))
         {
             Assert.InRange(layout.Width, HudLayoutStore.MinWidth, 420);
             Assert.InRange(layout.Height, HudLayoutStore.MinHeight, 200);
@@ -227,9 +227,9 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void ASmallScreenStillGetsAColumnThatFitsOnIt()
     {
-        var screen = new HudScreen(0, 0, 1024, 600);
+        HudScreen screen = new HudScreen(0, 0, 1024, 600);
 
-        foreach (var layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), screen))
+        foreach (HudWindowLayout layout in HudLayoutStore.DefaultColumn(HudWindowPlan.Build(new LiveCompareSettings()), screen))
         {
             Assert.True(layout.X + layout.Width <= screen.Width);
             Assert.True(layout.Y + layout.Height <= screen.Height);
@@ -239,11 +239,11 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void ADegenerateSavedSizeIsClampedRatherThanRestoredAsASliver()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
 
         HudLayoutStore.Save(settings, Brake, Primary, 100, 100, 4, 4);
 
-        var restored = HudLayoutStore.Restore(settings, Brake, [Primary])!;
+        HudWindowLayout restored = HudLayoutStore.Restore(settings, Brake, [Primary])!;
         Assert.Equal(HudLayoutStore.MinWidth, restored.Width);
         Assert.Equal(HudLayoutStore.MinHeight, restored.Height);
     }
@@ -251,7 +251,7 @@ public sealed class LiveCompareHudTests
     [Fact]
     public void TheHudDefaultsMatchTheWindowsAndPanelsTheDriverAskedFor()
     {
-        var settings = new LiveCompareSettings();
+        LiveCompareSettings settings = new LiveCompareSettings();
 
         Assert.Equal(200, settings.MetersBehind);
         Assert.Equal(600, settings.MetersAhead);
@@ -278,7 +278,7 @@ public sealed class LiveCompareHudTests
         // A driver who opened the overlay already had the stacked panel set and a rectangle
         // sized for one big window persisted, so the fix has to reach their settings file, not
         // only new installs.
-        var settings = new LiveCompareSettings { Version = 2, PanelIds = ["pedals", Speed, "gear"] };
+        LiveCompareSettings settings = new LiveCompareSettings { Version = 2, PanelIds = ["pedals", Speed, "gear"] };
         HudLayoutStore.Save(settings, "hud", Primary, 100, 100, 460, 340);
 
         Assert.True(settings.Migrate());

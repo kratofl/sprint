@@ -12,6 +12,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Makes the .editorconfig style rules (this., no var, _ naming) build errors. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <Product>Sprint</Product>
     <Company>Sprint</Company>

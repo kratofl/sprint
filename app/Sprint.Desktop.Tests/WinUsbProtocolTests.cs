@@ -8,7 +8,7 @@ public sealed class WinUsbProtocolTests
     [Fact]
     public void ControlTimeoutReportsOnlyVerifiedOwnershipAndDriverFacts()
     {
-        var detail = ScreenTransferFailure.DescribeControlTimeout(
+        string detail = ScreenTransferFailure.DescribeControlTimeout(
             "control OUT 0xB0",
             @"\\?\usb#vid_c872&pid_1004#screen",
             timeoutMs: 2_000);
@@ -32,7 +32,7 @@ public sealed class WinUsbProtocolTests
         byte sizeMid,
         byte sizeHigh)
     {
-        var command = VoCoreProtocol.BuildDrawCommand(width * height * 2);
+        byte[] command = VoCoreProtocol.BuildDrawCommand(width * height * 2);
 
         Assert.Equal(
             new byte[] { 0x00, 0x2C, sizeLow, sizeMid, sizeHigh, 0x00 },

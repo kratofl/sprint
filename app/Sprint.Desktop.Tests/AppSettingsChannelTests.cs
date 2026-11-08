@@ -25,7 +25,7 @@ public sealed class AppSettingsChannelTests
         // #101's 60 Hz time grid was rejected: the corpus is position-gridded, and two laps
         // sampled by time never share an x-axis. What is configurable is how much disk the
         // trace tier may use, not how fast it samples.
-        var budget = new SessionPlannerSettings().TraceBudget();
+        LapTraceBudget budget = new SessionPlannerSettings().TraceBudget();
 
         Assert.True(budget.MaxTotalBytes > 0);
         Assert.True(budget.ProtectedPerContext > 0);
@@ -35,7 +35,7 @@ public sealed class AppSettingsChannelTests
     [Fact]
     public void TheTraceBudgetIsExpressedInBytesFromTheStoredMegabytes()
     {
-        var settings = new SessionPlannerSettings { TraceMaxTotalMegabytes = 2 };
+        SessionPlannerSettings settings = new SessionPlannerSettings { TraceMaxTotalMegabytes = 2 };
 
         Assert.Equal(2L * 1024 * 1024, settings.TraceBudget().MaxTotalBytes);
     }
@@ -43,7 +43,7 @@ public sealed class AppSettingsChannelTests
     [Fact]
     public void TurningRetentionDaysOffLeavesOnlyTheSizeCeiling()
     {
-        var settings = new SessionPlannerSettings { TraceRetentionDays = 0 };
+        SessionPlannerSettings settings = new SessionPlannerSettings { TraceRetentionDays = 0 };
 
         Assert.Null(settings.TraceBudget().MaxAgeDays);
     }

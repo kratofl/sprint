@@ -19,7 +19,7 @@ public static class ReleaseAssetSelector
     {
         ArgumentNullException.ThrowIfNull(assets);
 
-        var marker = PlatformMarker(runtimeIdentifier);
+        string? marker = PlatformMarker(runtimeIdentifier);
         if (marker is null)
         {
             return null;

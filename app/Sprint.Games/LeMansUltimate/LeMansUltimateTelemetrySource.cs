@@ -44,9 +44,9 @@ internal sealed class LeMansUltimateTelemetrySource : ITelemetrySource
 
     public string Name => SourceName;
 
-    public TelemetryStatus Status => Volatile.Read(ref _status);
+    public TelemetryStatus Status => Volatile.Read(ref this._status);
 
-    public TelemetryFrame Current => Volatile.Read(ref _current);
+    public TelemetryFrame Current => Volatile.Read(ref this._current);
 
     public void Connect()
     {
@@ -148,14 +148,14 @@ internal sealed class LeMansUltimateTelemetrySource : ITelemetrySource
 
     public void Disconnect()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        _provider.Close();
-        _mapper.Reset();
-        PublishStatus(TelemetryStatus.Disconnected(Name));
+        this._provider.Close();
+        this._mapper.Reset();
+        this.PublishStatus(TelemetryStatus.Disconnected(this.Name));
     }
 
     public bool TryRead(out TelemetryFrame frame)
@@ -243,15 +243,15 @@ internal sealed class LeMansUltimateTelemetrySource : ITelemetrySource
 
     public void Dispose()
     {
-        if (_disposed)
+        if (this._disposed)
         {
             return;
         }
 
-        _disposed = true;
-        _provider.Dispose();
-        _mapper.Reset();
-        PublishStatus(TelemetryStatus.Disconnected(Name));
+        this._disposed = true;
+        this._provider.Dispose();
+        this._mapper.Reset();
+        this.PublishStatus(TelemetryStatus.Disconnected(this.Name));
     }
 
     private bool IsUnchanged() => this._hasLastRead && this._buffer.AsSpan().SequenceEqual(this._lastRead);

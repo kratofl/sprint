@@ -17,8 +17,8 @@ public sealed class CustomWheelBuilderTests
     {
         Assert.True(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("  My GT Rim  ", HasScreen: true, Driver: "vocore"),
-            out var device,
-            out var error));
+            out CatalogDevice? device,
+            out string? error));
 
         Assert.Null(error);
         Assert.Equal("My GT Rim", device.Name);
@@ -38,7 +38,7 @@ public sealed class CustomWheelBuilderTests
     {
         Assert.True(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("NX50 rim", HasScreen: true, Driver: "USBD480", Width: 800, Height: 480),
-            out var device,
+            out CatalogDevice? device,
             out _));
 
         Assert.Equal("usbd480", device.Driver);
@@ -52,7 +52,7 @@ public sealed class CustomWheelBuilderTests
     {
         Assert.True(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("Button box rim", HasScreen: false, Driver: "vocore", Width: 800, Height: 480),
-            out var device,
+            out CatalogDevice? device,
             out _));
 
         // Screen fields are ignored when the wheel has no screen, so the saved device
@@ -69,7 +69,7 @@ public sealed class CustomWheelBuilderTests
     [InlineData("   ")]
     public void NameIsRequired(string? name)
     {
-        Assert.False(CustomWheelBuilder.TryBuild(new CustomWheelRequest(name, HasScreen: false), out _, out var error));
+        Assert.False(CustomWheelBuilder.TryBuild(new CustomWheelRequest(name, HasScreen: false), out _, out string? error));
         Assert.Equal("Enter a name for the wheel.", error);
     }
 
@@ -82,7 +82,7 @@ public sealed class CustomWheelBuilderTests
         Assert.False(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("Rim", HasScreen: true, Driver: driver),
             out _,
-            out var error));
+            out string? error));
 
         Assert.Equal("Choose the screen type for this wheel.", error);
     }
@@ -95,7 +95,7 @@ public sealed class CustomWheelBuilderTests
         Assert.False(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("Rim", HasScreen: true, Driver: "vocore", Width: width, Height: height),
             out _,
-            out var error));
+            out string? error));
 
         Assert.Equal("Enter both width and height, or use auto-detect.", error);
     }
@@ -108,7 +108,7 @@ public sealed class CustomWheelBuilderTests
         Assert.False(CustomWheelBuilder.TryBuild(
             new CustomWheelRequest("Rim", HasScreen: true, Driver: "vocore", Width: width, Height: height),
             out _,
-            out var error));
+            out string? error));
 
         Assert.Contains("Resolution must be between", error);
     }
@@ -116,23 +116,23 @@ public sealed class CustomWheelBuilderTests
     [Fact]
     public void NamesThatSlugToNothingStillProduceAnId()
     {
-        Assert.True(CustomWheelBuilder.TryBuild(new CustomWheelRequest("!!!", HasScreen: false), out var device, out _));
+        Assert.True(CustomWheelBuilder.TryBuild(new CustomWheelRequest("!!!", HasScreen: false), out CatalogDevice? device, out _));
         Assert.Equal("custom-wheel-wheel", device.Id);
     }
 
     [Fact]
     public void AddedCustomWheelsGetTheRightResolutionFromTheRuntime()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
-            CustomWheelBuilder.TryBuild(new CustomWheelRequest("Screened rim", HasScreen: true, Driver: "vocore"), out var screened, out _);
-            CustomWheelBuilder.TryBuild(new CustomWheelRequest("Bare rim", HasScreen: false), out var bare, out _);
+            CustomWheelBuilder.TryBuild(new CustomWheelRequest("Screened rim", HasScreen: true, Driver: "vocore"), out CatalogDevice? screened, out _);
+            CustomWheelBuilder.TryBuild(new CustomWheelRequest("Bare rim", HasScreen: false), out CatalogDevice? bare, out _);
 
-            var withScreen = runtime.AddDevice(screened);
-            var withoutScreen = runtime.AddDevice(bare);
+            SavedDevice withScreen = runtime.AddDevice(screened);
+            SavedDevice withoutScreen = runtime.AddDevice(bare);
 
             // Auto-detect resolves to the driver's stand-in size until hardware reports in.
             Assert.Equal(800, withScreen.Width);

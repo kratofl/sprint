@@ -12,14 +12,14 @@ public sealed class UpdateInstallerTests
     [Fact]
     public async Task RetryUsesFreshStagingWhenPreviousAttemptIsStillLocked()
     {
-        var version = $"retry-{Guid.NewGuid():N}";
-        var versionRoot = Path.Combine(Path.GetTempPath(), "Sprint", "updates", version);
-        var previousStaging = Path.Combine(versionRoot, "staged");
-        var previousExe = Path.Combine(previousStaging, "Sprint.exe");
+        string version = $"retry-{Guid.NewGuid():N}";
+        string versionRoot = Path.Combine(Path.GetTempPath(), "Sprint", "updates", version);
+        string previousStaging = Path.Combine(versionRoot, "staged");
+        string previousExe = Path.Combine(previousStaging, "Sprint.exe");
         Directory.CreateDirectory(previousStaging);
         File.WriteAllText(previousExe, "old");
 
-        await using var lockedPreviousExe = new FileStream(
+        await using FileStream lockedPreviousExe = new FileStream(
             previousExe,
             FileMode.Open,
             FileAccess.Read,
@@ -27,13 +27,13 @@ public sealed class UpdateInstallerTests
 
         try
         {
-            using var client = new HttpClient(new StaticResponseHandler(CreateUpdateZip()));
-            var installer = new UpdateInstaller(client);
-            var asset = new ReleaseAsset(
+            using HttpClient client = new HttpClient(new StaticResponseHandler(CreateUpdateZip()));
+            UpdateInstaller installer = new UpdateInstaller(client);
+            ReleaseAsset asset = new ReleaseAsset(
                 $"sprint-{version}-windows-amd64.zip",
                 "https://example.test/update.zip");
 
-            var staged = await installer.DownloadAsync(version, asset);
+            StagedUpdate staged = await installer.DownloadAsync(version, asset);
 
             Assert.NotEqual(previousStaging, staged.StagingDir);
             Assert.Equal(
@@ -51,7 +51,7 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void WritableInstallDirectoryDoesNotRequireElevationOrLeaveProbeFiles()
     {
-        var installDir = Path.Combine(Path.GetTempPath(), $"sprint-update-access-{Guid.NewGuid():N}");
+        string installDir = Path.Combine(Path.GetTempPath(), $"sprint-update-access-{Guid.NewGuid():N}");
         Directory.CreateDirectory(installDir);
 
         try
@@ -68,9 +68,9 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void BlockedInstallPathRequiresElevation()
     {
-        var root = Path.Combine(Path.GetTempPath(), $"sprint-update-access-{Guid.NewGuid():N}");
+        string root = Path.Combine(Path.GetTempPath(), $"sprint-update-access-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
-        var blockedPath = Path.Combine(root, "not-a-directory");
+        string blockedPath = Path.Combine(root, "not-a-directory");
         File.WriteAllText(blockedPath, "");
 
         try
@@ -86,7 +86,7 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void ProtectedInstallUsesWindowsElevationForTheHelper()
     {
-        var startInfo = UpdateInstaller.CreateWindowsHelperStartInfo(
+        ProcessStartInfo startInfo = UpdateInstaller.CreateWindowsHelperStartInfo(
             @"C:\Temp\Sprint\apply-update-123.bat",
             requiresElevation: true);
 
@@ -98,7 +98,7 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void CancelledElevationHasSpecificFailureMessage()
     {
-        var message = UpdateInstaller.DescribeFailure(
+        string message = UpdateInstaller.DescribeFailure(
             new Win32Exception(1223, "The operation was canceled by the user."));
 
         Assert.Equal(
@@ -109,7 +109,7 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void FailureMessageExplainsBusyLocalUpdateFile()
     {
-        var message = UpdateInstaller.DescribeFailure(
+        string message = UpdateInstaller.DescribeFailure(
             new IOException(
                 "The process cannot access the file because it is in use.",
                 unchecked((int)0x80070020)));
@@ -122,7 +122,7 @@ public sealed class UpdateInstallerTests
     [Fact]
     public void GenericIoFailureDoesNotClaimTheFileIsBusy()
     {
-        var message = UpdateInstaller.DescribeFailure(
+        string message = UpdateInstaller.DescribeFailure(
             new IOException("There is not enough space on the disk."));
 
         Assert.Equal(
@@ -132,11 +132,11 @@ public sealed class UpdateInstallerTests
 
     private static byte[] CreateUpdateZip()
     {
-        using var bytes = new MemoryStream();
-        using (var archive = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
+        using MemoryStream bytes = new MemoryStream();
+        using (ZipArchive archive = new ZipArchive(bytes, ZipArchiveMode.Create, leaveOpen: true))
         {
-            var entry = archive.CreateEntry("Sprint.exe");
-            using var writer = new StreamWriter(entry.Open());
+            ZipArchiveEntry entry = archive.CreateEntry("Sprint.exe");
+            using StreamWriter writer = new StreamWriter(entry.Open());
             writer.Write("new");
         }
 

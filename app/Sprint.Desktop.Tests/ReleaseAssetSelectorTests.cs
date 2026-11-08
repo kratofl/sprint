@@ -14,14 +14,14 @@ public sealed class ReleaseAssetSelectorTests
     [Fact]
     public void SelectsWindowsArchiveForWinRid()
     {
-        var asset = ReleaseAssetSelector.Select(Assets, "win-x64");
+        ReleaseAsset? asset = ReleaseAssetSelector.Select(Assets, "win-x64");
         Assert.Equal("sprint-v1.2.3-windows-amd64.zip", asset!.Name);
     }
 
     [Fact]
     public void SelectsLinuxArchiveForLinuxRid()
     {
-        var asset = ReleaseAssetSelector.Select(Assets, "linux-x64");
+        ReleaseAsset? asset = ReleaseAssetSelector.Select(Assets, "linux-x64");
         Assert.Equal("sprint-v1.2.3-linux-amd64.tar.gz", asset!.Name);
     }
 
@@ -34,7 +34,7 @@ public sealed class ReleaseAssetSelectorTests
     [Fact]
     public void ReturnsNullWhenNoMatchingAsset()
     {
-        var onlyLinux = new[] { Assets[1] };
+        ReleaseAsset[] onlyLinux = new[] { Assets[1] };
         Assert.Null(ReleaseAssetSelector.Select(onlyLinux, "win-x64"));
     }
 

@@ -57,7 +57,7 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
         new(ChartDomainKind.TrackDistance, fromMeters, Math.Max(fromMeters, toMeters));
 
     /// <summary>The descriptive name of the axis, for a host's heading or selector.</summary>
-    public string Label => Kind switch
+    public string Label => this.Kind switch
     {
         ChartDomainKind.TrackPosition => "Track position",
         ChartDomainKind.LapNumber => "Lap number",
@@ -70,7 +70,7 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     /// the value labels, and a title long enough to be clipped there says less than one that
     /// fits beside ticks already carrying the unit.
     /// </summary>
-    public string AxisLabel => Kind switch
+    public string AxisLabel => this.Kind switch
     {
         ChartDomainKind.TrackPosition => "Position",
         ChartDomainKind.LapNumber => "Lap",
@@ -79,14 +79,14 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     };
 
     /// <summary>The span the axis covers. Zero for a degenerate single-coordinate domain.</summary>
-    public double Span => Max - Min;
+    public double Span => this.Max - this.Min;
 
     /// <summary>
     /// The coordinate a raw pointer position reads as. A lap number is whole by
     /// construction, so a cursor between two laps has to resolve to one of them rather than
     /// report a lap 3.4 that never existed.
     /// </summary>
-    public double Snap(double value) => Kind == ChartDomainKind.LapNumber
+    public double Snap(double value) => this.Kind == ChartDomainKind.LapNumber
         ? Math.Round(value, MidpointRounding.AwayFromZero)
         : value;
 
@@ -97,17 +97,17 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     /// </summary>
     public IReadOnlyList<double> Ticks(int max)
     {
-        if (max < 2 || Span <= 0)
+        if (max < 2 || this.Span <= 0)
         {
-            return [Min];
+            return [this.Min];
         }
 
-        if (Kind == ChartDomainKind.LapNumber)
+        if (this.Kind == ChartDomainKind.LapNumber)
         {
-            var laps = (int)Math.Round(Span) + 1;
-            var stride = Math.Max(1, (int)Math.Ceiling((double)laps / max));
-            var ticks = new List<double>();
-            for (var lap = Min; lap <= Max + 1e-9; lap += stride)
+            int laps = (int)Math.Round(this.Span) + 1;
+            int stride = Math.Max(1, (int)Math.Ceiling((double)laps / max));
+            List<double> ticks = new List<double>();
+            for (double lap = this.Min; lap <= this.Max + 1e-9; lap += stride)
             {
                 ticks.Add(lap);
             }
@@ -115,11 +115,11 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
             return ticks;
         }
 
-        return [.. Enumerable.Range(0, max).Select(i => Min + (Span * i / (max - 1)))];
+        return [.. Enumerable.Range(0, max).Select(i => this.Min + (this.Span * i / (max - 1)))];
     }
 
     /// <summary>The cursor/tick label for a coordinate on this axis.</summary>
-    public string Format(double value) => Kind switch
+    public string Format(double value) => this.Kind switch
     {
         ChartDomainKind.TrackPosition => string.Create(Inv, $"{value * 100:0.0}%"),
         ChartDomainKind.LapNumber => string.Create(Inv, $"Lap {value:0}"),
@@ -133,10 +133,10 @@ public sealed record ChartDomain(ChartDomainKind Kind, double Min, double Max)
     // three onto hour one. The hour field only appears once there is one.
     private static string FormatSessionTime(double seconds)
     {
-        var total = (long)Math.Round(Math.Max(0, seconds), MidpointRounding.AwayFromZero);
-        var hours = total / 3600;
-        var minutes = total % 3600 / 60;
-        var secs = total % 60;
+        long total = (long)Math.Round(Math.Max(0, seconds), MidpointRounding.AwayFromZero);
+        long hours = total / 3600;
+        long minutes = total % 3600 / 60;
+        long secs = total % 60;
         return hours > 0
             ? string.Create(Inv, $"{hours}:{minutes:00}:{secs:00}")
             : string.Create(Inv, $"{minutes}:{secs:00}");

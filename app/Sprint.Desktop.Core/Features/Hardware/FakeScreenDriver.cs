@@ -13,11 +13,11 @@ public sealed class FakeScreenDriver : IScreenDriver
 
     public string Name => "Fake Screen";
 
-    public ScreenStatus Status => _status;
+    public ScreenStatus Status => this._status;
 
     public ScreenNativeSize? NativeSize =>
-        NativeSizeOverride
-        ?? (LastConfig is { } config ? new ScreenNativeSize(config.Width, config.Height) : null);
+        this.NativeSizeOverride
+        ?? (this.LastConfig is { } config ? new ScreenNativeSize(config.Width, config.Height) : null);
 
     public ScreenNativeSize? NativeSizeOverride { get; set; }
 
@@ -34,13 +34,13 @@ public sealed class FakeScreenDriver : IScreenDriver
 
     public string? ConnectDetail { get; set; }
 
-    public void Configure(ScreenConfig config) => LastConfig = config;
+    public void Configure(ScreenConfig config) => this.LastConfig = config;
 
     public bool Connect()
     {
-        ConnectAttempts++;
-        _status = new ScreenStatus { State = ConnectResult, Detail = ConnectDetail };
-        return _status.IsConnected;
+        this.ConnectAttempts++;
+        this._status = new ScreenStatus { State = this.ConnectResult, Detail = this.ConnectDetail };
+        return this._status.IsConnected;
     }
 
     /// <summary>Pulls the cable: every send fails and drops the link, as a real panel's transfer does.</summary>
@@ -48,7 +48,7 @@ public sealed class FakeScreenDriver : IScreenDriver
 
     public bool TrySendFrame(byte[] rgb565)
     {
-        if (!_status.IsConnected)
+        if (!this._status.IsConnected)
         {
             return false;
         }
@@ -59,12 +59,12 @@ public sealed class FakeScreenDriver : IScreenDriver
             return false;
         }
 
-        FramesSent++;
-        LastFrame = rgb565.ToArray();
+        this.FramesSent++;
+        this.LastFrame = rgb565.ToArray();
         return true;
     }
 
-    public void Disconnect() => _status = ScreenStatus.Disconnected();
+    public void Disconnect() => this._status = ScreenStatus.Disconnected();
 
-    public void Dispose() => Disconnect();
+    public void Dispose() => this.Disconnect();
 }

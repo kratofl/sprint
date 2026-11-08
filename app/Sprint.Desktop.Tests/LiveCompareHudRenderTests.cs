@@ -19,7 +19,7 @@ public sealed class LiveCompareHudRenderTests
     public void EveryHudPanelHasSomethingToDraw()
     {
         // A panel that resolves to Empty is a window of wasted space over the game.
-        foreach (var chart in HudStack().Charts)
+        foreach (ChartPanel chart in HudStack().Charts)
         {
             Assert.Equal(ChartPanelState.Ready, chart.State);
         }
@@ -30,7 +30,7 @@ public sealed class LiveCompareHudRenderTests
     {
         // Throttle · You against Throttle · Target, per window. Identity never rests on colour
         // alone, and split into separate windows there is no shared legend to fall back on.
-        foreach (var chart in HudStack().Charts)
+        foreach (ChartPanel chart in HudStack().Charts)
         {
             Assert.Equal(2, chart.Series.Count);
             Assert.Contains(chart.Series, series => series.Name.EndsWith("You", StringComparison.Ordinal));
@@ -47,7 +47,7 @@ public sealed class LiveCompareHudRenderTests
     /// <summary>The HUD as it actually runs: throttle, brake, speed over a rolling distance window.</summary>
     private static ChartStack HudStack()
     {
-        var controller = new LiveCompareController();
+        LiveCompareController controller = new LiveCompareController();
         controller.SetTarget(
             new LiveCompareTarget(
                 "hs-1",
@@ -63,7 +63,7 @@ public sealed class LiveCompareHudRenderTests
                 }),
             Trace(braking: true));
 
-        for (var position = 0.0; position <= 0.5; position += 0.002)
+        for (double position = 0.0; position <= 0.5; position += 0.002)
         {
             controller.Ingest(Frame(position));
         }
@@ -99,18 +99,18 @@ public sealed class LiveCompareHudRenderTests
 
     private static LapChannelTrace Trace(bool braking)
     {
-        const int Count = 2501;
-        var speed = new float[Count];
-        var brake = new float[Count];
-        var throttle = new float[Count];
-        var gear = new float[Count];
-        var elapsed = new float[Count];
-        for (var i = 0; i < Count; i++)
+        const int count = 2501;
+        float[] speed = new float[count];
+        float[] brake = new float[count];
+        float[] throttle = new float[count];
+        float[] gear = new float[count];
+        float[] elapsed = new float[count];
+        for (int i = 0; i < count; i++)
         {
-            var t = i / (double)(Count - 1);
+            double t = i / (double)(count - 1);
             // The target brakes slightly later and carries more speed — the whole point of
             // having it on screen.
-            var zone = braking ? Math.Exp(-Math.Pow((t - 0.52) * 30, 2)) : 0;
+            double zone = braking ? Math.Exp(-Math.Pow((t - 0.52) * 30, 2)) : 0;
             speed[i] = (float)((80 - (45 * zone)) * 3.6);
             brake[i] = (float)Math.Clamp(zone, 0, 1);
             throttle[i] = (float)Math.Clamp(1 - (zone * 1.2), 0, 1);
@@ -120,7 +120,7 @@ public sealed class LiveCompareHudRenderTests
 
         return new LapChannelTrace
         {
-            PositionStep = 1.0 / (Count - 1),
+            PositionStep = 1.0 / (count - 1),
             TrackLengthMeters = TrackLength,
             Channels = new Dictionary<string, float[]>(StringComparer.Ordinal)
             {

@@ -10,7 +10,7 @@ public sealed class RearViewPreviewSessionTests
     private sealed class IncrementingCapturer : IDesktopRegionCapturer
     {
         private int _frames;
-        public int Frames => Volatile.Read(ref _frames);
+        public int Frames => Volatile.Read(ref this._frames);
 
         public bool TryCapture(
             ScreenCaptureRegion region,
@@ -18,7 +18,7 @@ public sealed class RearViewPreviewSessionTests
             int destinationHeight,
             byte[] bgra)
         {
-            var value = (byte)Interlocked.Increment(ref _frames);
+            byte value = (byte)Interlocked.Increment(ref this._frames);
             bgra.AsSpan().Fill(value);
             return true;
         }
@@ -27,11 +27,11 @@ public sealed class RearViewPreviewSessionTests
     [Fact]
     public void SessionUsesFreshHardwareFrameWithoutCapturingTheDesktopAgain()
     {
-        var sharedFrames = new LatestBgraFrameExchange(16, 9);
+        LatestBgraFrameExchange sharedFrames = new LatestBgraFrameExchange(16, 9);
         sharedFrames.ProducerBuffer.AsSpan().Fill(0xA5);
         sharedFrames.Publish();
-        var fallbackCapturer = new IncrementingCapturer();
-        using var session = new RearViewPreviewSession(
+        IncrementingCapturer fallbackCapturer = new IncrementingCapturer();
+        using RearViewPreviewSession session = new RearViewPreviewSession(
             new ScreenCaptureRegion(0, 0, 160, 90),
             16,
             9,
@@ -41,8 +41,8 @@ public sealed class RearViewPreviewSessionTests
             sharedFrameMaxAge: TimeSpan.FromSeconds(1));
         session.Start();
 
-        var destination = new byte[16 * 9 * 4];
-        var timeout = Stopwatch.StartNew();
+        byte[] destination = new byte[16 * 9 * 4];
+        Stopwatch timeout = Stopwatch.StartNew();
         long version = 0;
         while (timeout.Elapsed < TimeSpan.FromSeconds(2)
                && !session.TryCopyLatest(destination, ref version, out _))
@@ -58,7 +58,7 @@ public sealed class RearViewPreviewSessionTests
     [Fact]
     public void SessionCapturesOffThreadAndPublishesFramesWithTimingStatistics()
     {
-        using var session = new RearViewPreviewSession(
+        using RearViewPreviewSession session = new RearViewPreviewSession(
             new ScreenCaptureRegion(10, 20, 320, 180),
             64,
             32,
@@ -66,8 +66,8 @@ public sealed class RearViewPreviewSessionTests
             targetFps: 30);
         session.Start();
 
-        var destination = new byte[64 * 32 * 4];
-        var timeout = Stopwatch.StartNew();
+        byte[] destination = new byte[64 * 32 * 4];
+        Stopwatch timeout = Stopwatch.StartNew();
         long version = 0;
         while (timeout.Elapsed < TimeSpan.FromSeconds(2)
                && !session.TryCopyLatest(destination, ref version, out _))
@@ -77,7 +77,7 @@ public sealed class RearViewPreviewSessionTests
 
         Assert.True(version > 0);
         Assert.NotEqual(0, destination[0]);
-        var stats = session.Statistics;
+        RearViewPreviewStatistics stats = session.Statistics;
         Assert.True(stats.FramesPerSecond > 0);
         Assert.True(stats.FrameTime.TotalMilliseconds >= 0);
     }
@@ -85,14 +85,14 @@ public sealed class RearViewPreviewSessionTests
     [Fact]
     public void CopyReturnsFalseUntilANewerFrameIsAvailable()
     {
-        using var session = new RearViewPreviewSession(
+        using RearViewPreviewSession session = new RearViewPreviewSession(
             new ScreenCaptureRegion(0, 0, 16, 9),
             16,
             9,
             new IncrementingCapturer(),
             targetFps: 15);
 
-        var destination = new byte[16 * 9 * 4];
+        byte[] destination = new byte[16 * 9 * 4];
         long version = 0;
         Assert.False(session.TryCopyLatest(destination, ref version, out _));
     }

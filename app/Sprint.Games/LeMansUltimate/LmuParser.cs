@@ -66,10 +66,10 @@ internal static class LmuParser
     /// </summary>
     private static LmuVehicleScoring? FindPlayerVehicle(ReadOnlySpan<byte> buffer, int numVehicles)
     {
-        var count = Math.Clamp(numVehicles, 0, LmuBinary.MaxVehicles);
-        for (var i = 0; i < count; i++)
+        int count = Math.Clamp(numVehicles, 0, LmuBinary.MaxVehicles);
+        for (int i = 0; i < count; i++)
         {
-            var offset = LmuBinary.VehicleScoringBase + i * LmuBinary.VehicleScoringSize;
+            int offset = LmuBinary.VehicleScoringBase + i * LmuBinary.VehicleScoringSize;
             if (LmuBinary.ReadBool(buffer, offset + PlayerVehicleFlagOffset))
             {
                 return ParseVehicleScoring(LmuBinary.Slice(buffer, offset, LmuBinary.VehicleScoringSize));

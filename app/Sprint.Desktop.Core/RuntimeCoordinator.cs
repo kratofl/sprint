@@ -87,27 +87,27 @@ public sealed class RuntimeCoordinator
         string type = typeElement.GetString() ?? "";
         switch (type)
         {
-            case "settings.save": _runtime.SaveSettings(); return true;
-            case "settings.reset": _runtime.ResetSettingsToDefaults(); return true;
-            case "settings.update": return UpdateSettings(command, out error);
-            case "cloud.configure": return ConfigureCloud(command, out error);
+            case "settings.save": this._runtime.SaveSettings(); return true;
+            case "settings.reset": this._runtime.ResetSettingsToDefaults(); return true;
+            case "settings.update": return this.UpdateSettings(command, out error);
+            case "cloud.configure": return this.ConfigureCloud(command, out error);
             case "firstRun.complete": return this.CompleteFirstRun(command, out error);
             case "game.setFolder": return this.SetGameFolder(command, out error);
-            case "controls.save": _runtime.SaveControls(); return true;
-            case "controls.update": return UpdateControls(command, out error);
-            case "engineer.revert": _runtime.RevertEngineerChanges(); return true;
-            case "engineer.push": _runtime.PushEngineerChanges(); return true;
-            case "engineer.acknowledge": return AcknowledgeEngineer(command, out error);
-            case "engineer.stage": return StageEngineerControl(command, out error);
-            case "engineer.message": if (!TryString(command, "message", out string message)) { error = "message is required"; return false; } _runtime.SendQuickMessage(message); return true;
-            case "devices.remove": return RemoveDevice(command, out error);
-            case "devices.add": return AddDevice(command, out error);
-            case "devices.addCustom": return AddCustomDevice(command, out error);
-            case "devices.update": return UpdateDevice(command, out error);
-            case "devices.purpose": return UpdateDevicePurpose(command, out error);
-            case "devices.captureRegion": return UpdateDeviceCaptureRegion(command, out error);
-            case "devices.refreshHz": return UpdateDeviceRefreshHz(command, out error);
-            case "devices.save": return SaveDevice(command, out error);
+            case "controls.save": this._runtime.SaveControls(); return true;
+            case "controls.update": return this.UpdateControls(command, out error);
+            case "engineer.revert": this._runtime.RevertEngineerChanges(); return true;
+            case "engineer.push": this._runtime.PushEngineerChanges(); return true;
+            case "engineer.acknowledge": return this.AcknowledgeEngineer(command, out error);
+            case "engineer.stage": return this.StageEngineerControl(command, out error);
+            case "engineer.message": if (!TryString(command, "message", out string message)) { error = "message is required"; return false; } this._runtime.SendQuickMessage(message); return true;
+            case "devices.remove": return this.RemoveDevice(command, out error);
+            case "devices.add": return this.AddDevice(command, out error);
+            case "devices.addCustom": return this.AddCustomDevice(command, out error);
+            case "devices.update": return this.UpdateDevice(command, out error);
+            case "devices.purpose": return this.UpdateDevicePurpose(command, out error);
+            case "devices.captureRegion": return this.UpdateDeviceCaptureRegion(command, out error);
+            case "devices.refreshHz": return this.UpdateDeviceRefreshHz(command, out error);
+            case "devices.save": return this.SaveDevice(command, out error);
             case "dash.create": return this.CreateDash(command, out error);
             case "dash.save": return this.SaveDash(command, out error);
             case "dash.reset": return this.ResetDash(command, out error);
@@ -116,24 +116,24 @@ public sealed class RuntimeCoordinator
             case "dash.category.create": return this.CreateDashCategory(command, out error);
             case "dash.category.rename": return this.RenameDashCategory(command, out error);
             case "dash.category.delete": return this.DeleteDashCategory(command, out error);
-            case "dash.setScreenProfile": return SetDashScreenProfile(command, out error);
-            case SprintCommands.DashPageNext: return CycleDashPage(command, offset: 1, out error);
-            case SprintCommands.DashPagePrev: return CycleDashPage(command, offset: -1, out error);
-            case "setup.duplicate": return DuplicateSetup(command, out error);
-            case "setup.save": return SaveSetup(command, out error);
-            case "setup.delete": return DeleteSetup(command, out error);
-            case "plan.create": return CreatePlan(command, out error);
-            case "plan.update": return UpdatePlan(command, out error);
-            case "plan.delete": return DeletePlan(command, out error);
-            case "plan.arm": return ArmPlan(command, out error);
-            case "plan.disarm": return DisarmPlan(command, out error);
-            case "plan.start": return StartPlanSegment(command, out error);
-            case "plan.stop": return StopPlanSegment(command, out error);
-            case "plan.releaseActive": return ReleaseActivePlan(out error);
+            case "dash.setScreenProfile": return this.SetDashScreenProfile(command, out error);
+            case SprintCommands.DashPageNext: return this.CycleDashPage(command, offset: 1, out error);
+            case SprintCommands.DashPagePrev: return this.CycleDashPage(command, offset: -1, out error);
+            case "setup.duplicate": return this.DuplicateSetup(command, out error);
+            case "setup.save": return this.SaveSetup(command, out error);
+            case "setup.delete": return this.DeleteSetup(command, out error);
+            case "plan.create": return this.CreatePlan(command, out error);
+            case "plan.update": return this.UpdatePlan(command, out error);
+            case "plan.delete": return this.DeletePlan(command, out error);
+            case "plan.arm": return this.ArmPlan(command, out error);
+            case "plan.disarm": return this.DisarmPlan(command, out error);
+            case "plan.start": return this.StartPlanSegment(command, out error);
+            case "plan.stop": return this.StopPlanSegment(command, out error);
+            case "plan.releaseActive": return this.ReleaseActivePlan(out error);
             case "analysis.refresh": this._analysis.Load(); return true;
-            case "analysis.selectSession": return SelectAnalysisSession(command, out error);
-            case "analysis.filter": return FilterAnalysis(command, out error);
-            case "analysis.selectLap": return SelectAnalysisLap(command, out error);
+            case "analysis.selectSession": return this.SelectAnalysisSession(command, out error);
+            case "analysis.filter": return this.FilterAnalysis(command, out error);
+            case "analysis.selectLap": return this.SelectAnalysisLap(command, out error);
             case "analysis.setRunSetup": return this.SetAnalysisRunSetup(command, out error);
             case "lap.note.add": return this.AddLapNote(command, out error);
             case "lap.note.update": return this.UpdateLapNote(command, out error);
@@ -145,7 +145,7 @@ public sealed class RuntimeCoordinator
             case "compare.hud.arrange": return this.ArrangeCompareHud(command, out error);
             case "compare.readings": return this.SetCompareReadings(command, out error);
             case "compare.hud.layout": return this.SaveCompareHudLayout(command, out error);
-            case "diagnostics.setLogLevel": return SetLogLevel(command, out error);
+            case "diagnostics.setLogLevel": return this.SetLogLevel(command, out error);
             case "link.invite": return this.LinkInvite(out error);
             case "link.join": return this.LinkJoin(command, out error);
             case "link.complete": return this.LinkComplete(command, out error);
@@ -301,29 +301,29 @@ public sealed class RuntimeCoordinator
         // Mutation and save happen under the same lock the background telemetry-ingest loop's
         // last-seen-context capture also takes (DesktopRuntime.SettingsGate), so a Kestrel
         // request thread here can never race that loop's own Settings mutate-then-save.
-        lock (_runtime.SettingsGate)
+        lock (this._runtime.SettingsGate)
         {
             if (TryBool(command, "sidebarCollapsed", out bool sidebarCollapsed))
             {
-                _runtime.Settings.SidebarCollapsed = sidebarCollapsed;
+                this._runtime.Settings.SidebarCollapsed = sidebarCollapsed;
                 applied = true;
             }
 
             if (TryStringField(command, "updateChannel", out string updateChannel))
             {
-                _runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
+                this._runtime.Settings.UpdateChannel = AppSettings.NormalizeChannel(updateChannel);
                 applied = true;
             }
 
             if (TryStringField(command, "driverName", out string driverName) && !string.IsNullOrWhiteSpace(driverName))
             {
-                _runtime.Settings.DriverName = driverName.Trim();
+                this._runtime.Settings.DriverName = driverName.Trim();
                 applied = true;
             }
 
             if (TryStringField(command, "driverNumber", out string driverNumber) && !string.IsNullOrWhiteSpace(driverNumber))
             {
-                _runtime.Settings.DriverNumber = driverNumber.Trim();
+                this._runtime.Settings.DriverNumber = driverNumber.Trim();
                 applied = true;
             }
 
@@ -353,7 +353,7 @@ public sealed class RuntimeCoordinator
 
             if (!applied) { error = "no recognized settings fields were provided"; return false; }
 
-            _runtime.SaveSettings();
+            this._runtime.SaveSettings();
         }
 
         return true;
@@ -498,8 +498,8 @@ public sealed class RuntimeCoordinator
             bindings.Add(new InputBinding { Input = input, Command = commandName });
         }
 
-        _runtime.Controls.Bindings = bindings;
-        _runtime.SaveControls();
+        this._runtime.Controls.Bindings = bindings;
+        this._runtime.SaveControls();
         return true;
     }
 
@@ -507,8 +507,8 @@ public sealed class RuntimeCoordinator
 
     private bool RemoveDevice(JsonElement command, out string error)
     {
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
-        _runtime.RemoveDevice(device);
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
+        this._runtime.RemoveDevice(device);
         return true;
     }
 
@@ -516,9 +516,9 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "catalogId", out string catalogId)) { error = "catalogId is required"; return false; }
-        CatalogDevice? catalog = _runtime.Catalog.FirstOrDefault(item => string.Equals(item.Id, catalogId, StringComparison.OrdinalIgnoreCase));
+        CatalogDevice? catalog = this._runtime.Catalog.FirstOrDefault(item => string.Equals(item.Id, catalogId, StringComparison.OrdinalIgnoreCase));
         if (catalog is null) { error = "catalog device not found"; return false; }
-        _runtime.AddDevice(catalog);
+        this._runtime.AddDevice(catalog);
         return true;
     }
 
@@ -559,7 +559,7 @@ public sealed class RuntimeCoordinator
     private bool UpdateDevice(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryStringField(command, "name", out string name)) { error = "name is required"; return false; }
         if (!TryInt(command, "rotation", out int rotation)) { error = "rotation is required"; return false; }
         if (!TryInt(command, "offsetX", out int offsetX)) { error = "offsetX is required"; return false; }
@@ -590,16 +590,16 @@ public sealed class RuntimeCoordinator
     private bool UpdateDevicePurpose(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryString(command, "purpose", out string purpose)) { error = "purpose is required"; return false; }
-        _runtime.UpdateDevicePurpose(device, purpose);
+        this._runtime.UpdateDevicePurpose(device, purpose);
         return true;
     }
 
     private bool UpdateDeviceCaptureRegion(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryInt(command, "x", out int x) || !TryInt(command, "y", out int y) ||
             !TryInt(command, "width", out int width) || !TryInt(command, "height", out int height))
         {
@@ -609,16 +609,16 @@ public sealed class RuntimeCoordinator
 
         if (width <= 0 || height <= 0) { error = "a capture region needs a positive size"; return false; }
 
-        _runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(x, y, width, height));
+        this._runtime.UpdateDeviceCaptureRegion(device, new ScreenCaptureRegion(x, y, width, height));
         return true;
     }
 
     private bool UpdateDeviceRefreshHz(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryInt(command, "refreshHz", out int refreshHz)) { error = "refreshHz is required"; return false; }
-        _runtime.UpdateDeviceRefreshHz(device, refreshHz);
+        this._runtime.UpdateDeviceRefreshHz(device, refreshHz);
         return true;
     }
 
@@ -630,16 +630,16 @@ public sealed class RuntimeCoordinator
     private bool SaveDevice(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
         if (!TryBool(command, "disabled", out bool disabled)) { error = "disabled is required"; return false; }
 
         // Same gate DesktopRuntime's own device-mutating methods hold around their
         // mutate-then-save sequence (see DesktopRuntime.DevicesGate) -- this command mutates the
         // device directly rather than through one of those methods.
-        lock (_runtime.DevicesGate)
+        lock (this._runtime.DevicesGate)
         {
             device.Disabled = disabled;
-            _runtime.SaveDevices();
+            this._runtime.SaveDevices();
         }
 
         return true;
@@ -650,7 +650,7 @@ public sealed class RuntimeCoordinator
         device = null!;
         error = "";
         if (!TryString(command, "deviceId", out string id)) { error = "deviceId is required"; return false; }
-        SavedDevice? found = _runtime.Devices.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        SavedDevice? found = this._runtime.Devices.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
         if (found is null) { error = "device not found"; return false; }
         device = found;
         return true;
@@ -837,9 +837,9 @@ public sealed class RuntimeCoordinator
     private bool SetDashScreenProfile(JsonElement command, out string error)
     {
         error = "";
-        if (!FindDash(command, out DashLayout layout, out error)) return false;
+        if (!this.FindDash(command, out DashLayout layout, out error)) return false;
         if (!FindProfile(command, out ScreenProfile profile, out error)) return false;
-        _runtime.SetDashScreenProfile(layout, profile);
+        this._runtime.SetDashScreenProfile(layout, profile);
         return true;
     }
 
@@ -855,16 +855,16 @@ public sealed class RuntimeCoordinator
     private bool CycleDashPage(JsonElement command, int offset, out string error)
     {
         error = "";
-        if (!FindDevice(command, out SavedDevice device, out error)) return false;
+        if (!this.FindDevice(command, out SavedDevice device, out error)) return false;
 
-        DashLayout? layout = DevicePurposeLayouts.Resolve(device, _runtime.DashLayouts);
+        DashLayout? layout = DevicePurposeLayouts.Resolve(device, this._runtime.DashLayouts);
         if (layout is null)
         {
             error = "device has no telemetry-backed screen layout to page through";
             return false;
         }
 
-        _pageCycle.Move(device.Id, layout, offset);
+        this._pageCycle.Move(device.Id, layout, offset);
         return true;
     }
 
@@ -873,7 +873,7 @@ public sealed class RuntimeCoordinator
         layout = null!;
         error = "";
         if (!TryString(command, "dashId", out string id)) { error = "dashId is required"; return false; }
-        DashLayout? found = _runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        DashLayout? found = this._runtime.DashLayouts.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
         if (found is null) { error = "dash not found"; return false; }
         layout = found;
         return true;
@@ -896,10 +896,10 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "setupId", out string id)) { error = "setupId is required"; return false; }
-        SetupProgram? source = _runtime.SetupPrograms.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase))
-            ?? _runtime.SetupTemplates.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase));
+        SetupProgram? source = this._runtime.SetupPrograms.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase))
+            ?? this._runtime.SetupTemplates.FirstOrDefault(program => string.Equals(program.Id, id, StringComparison.OrdinalIgnoreCase));
         if (source is null) { error = "setup not found"; return false; }
-        _runtime.DuplicateSetup(source);
+        this._runtime.DuplicateSetup(source);
         return true;
     }
 
@@ -907,7 +907,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "setupId", out string id)) { error = "setupId is required"; return false; }
-        SetupProgram? program = _runtime.SetupPrograms.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+        SetupProgram? program = this._runtime.SetupPrograms.FirstOrDefault(candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
         if (program is null) { error = "setup not found"; return false; }
 
         if (!command.TryGetProperty("values", out JsonElement valuesElement) || valuesElement.ValueKind != JsonValueKind.Object)
@@ -950,7 +950,7 @@ public sealed class RuntimeCoordinator
             program.Values[pair.Key] = pair.Value;
         }
 
-        _runtime.SaveSetupPrograms();
+        this._runtime.SaveSetupPrograms();
         return true;
     }
 
@@ -1039,7 +1039,7 @@ public sealed class RuntimeCoordinator
     /// </summary>
     private bool UpdatePlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         bool applied = false;
 
         if (TryStringField(command, "name", out string name) && !string.IsNullOrWhiteSpace(name))
@@ -1103,14 +1103,14 @@ public sealed class RuntimeCoordinator
 
     private bool DeletePlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.DeletePlan(plan.Id);
         return true;
     }
 
     private bool ArmPlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         try
         {
             this._planner.Arm(plan.Id);
@@ -1125,14 +1125,14 @@ public sealed class RuntimeCoordinator
 
     private bool DisarmPlan(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.Disarm(plan.Id);
         return true;
     }
 
     private bool StartPlanSegment(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         if (!TryString(command, "kind", out string kindText)) { error = "kind is required"; return false; }
         if (!Enum.TryParse(kindText, ignoreCase: true, out SegmentKind kind)) { error = $"unknown segment kind: {kindText}"; return false; }
 
@@ -1150,7 +1150,7 @@ public sealed class RuntimeCoordinator
 
     private bool StopPlanSegment(JsonElement command, out string error)
     {
-        if (!TryPlan(command, out SessionPlan plan, out error)) return false;
+        if (!this.TryPlan(command, out SessionPlan plan, out error)) return false;
         this._planner.StopTracking(plan.Id);
         return true;
     }
@@ -1348,7 +1348,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryBool(command, "succeeded", out bool succeeded)) { error = "succeeded is required"; return false; }
-        _runtime.AcknowledgeEngineerChanges(succeeded);
+        this._runtime.AcknowledgeEngineerChanges(succeeded);
         return true;
     }
 
@@ -1362,7 +1362,7 @@ public sealed class RuntimeCoordinator
     {
         error = "";
         if (!TryString(command, "key", out string key)) { error = "key is required"; return false; }
-        EngineerControl? control = _runtime.EngineerControls.FirstOrDefault(candidate => string.Equals(candidate.Key, key, StringComparison.OrdinalIgnoreCase));
+        EngineerControl? control = this._runtime.EngineerControls.FirstOrDefault(candidate => string.Equals(candidate.Key, key, StringComparison.OrdinalIgnoreCase));
         if (control is null) { error = "engineer control not found"; return false; }
         if (!TryDouble(command, "value", out double value)) { error = "value is required"; return false; }
         control.StagedValue = Math.Clamp(value, control.Min, control.Max);

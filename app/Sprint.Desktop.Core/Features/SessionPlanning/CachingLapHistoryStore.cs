@@ -22,15 +22,15 @@ public sealed class CachingLapHistoryStore : ILapHistoryStore
     private IReadOnlyList<LapHistoryContext>? _cachedContexts;
 
     public CachingLapHistoryStore(ILapHistoryStore inner) =>
-        _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+        this._inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
     public IReadOnlyList<LapHistorySession> LoadAll()
     {
-        lock (_gate)
+        lock (this._gate)
         {
             // Held under the lock and only ever replaced wholesale, so a caller always
             // enumerates a complete snapshot even while the recorder is writing.
-            return _cached ??= _inner.LoadAll();
+            return this._cached ??= this._inner.LoadAll();
         }
     }
 
@@ -40,29 +40,29 @@ public sealed class CachingLapHistoryStore : ILapHistoryStore
     /// </summary>
     public IReadOnlyList<LapHistoryContext> LoadContexts()
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            return _cachedContexts ??= _inner.LoadContexts();
+            return this._cachedContexts ??= this._inner.LoadContexts();
         }
     }
 
     public void Save(LapHistorySession session)
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            _inner.Save(session);
-            _cached = null;
-            _cachedContexts = null;
+            this._inner.Save(session);
+            this._cached = null;
+            this._cachedContexts = null;
         }
     }
 
     public void Delete(string sessionId)
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            _inner.Delete(sessionId);
-            _cached = null;
-            _cachedContexts = null;
+            this._inner.Delete(sessionId);
+            this._cached = null;
+            this._cachedContexts = null;
         }
     }
 }

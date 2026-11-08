@@ -55,13 +55,13 @@ public sealed class ImportResultsController
         Func<ResultsImportProposal, Task<int>> import,
         Action<IReadOnlyList<ResultsArchiveEntry>> decline)
     {
-        SourceName = sourceName;
-        _search = search ?? throw new ArgumentNullException(nameof(search));
-        _import = import ?? throw new ArgumentNullException(nameof(import));
-        _decline = decline ?? throw new ArgumentNullException(nameof(decline));
+        this.SourceName = sourceName;
+        this._search = search ?? throw new ArgumentNullException(nameof(search));
+        this._import = import ?? throw new ArgumentNullException(nameof(import));
+        this._decline = decline ?? throw new ArgumentNullException(nameof(decline));
 
-        Proposal = offered ?? ResultsImportProposal.Empty;
-        Phase = offered is null ? ImportResultsPhase.Searching : ImportResultsPhase.Ready;
+        this.Proposal = offered ?? ResultsImportProposal.Empty;
+        this.Phase = offered is null ? ImportResultsPhase.Searching : ImportResultsPhase.Ready;
     }
 
     public event EventHandler? Changed;
@@ -78,42 +78,42 @@ public sealed class ImportResultsController
     public string Error { get; private set; } = "";
 
     /// <summary>Whether the primary action can be pressed — false while it is already running.</summary>
-    public bool CanImport => Phase == ImportResultsPhase.Ready;
+    public bool CanImport => this.Phase == ImportResultsPhase.Ready;
 
     /// <summary>Whether the work is done and the dialog only needs a way out.</summary>
-    public bool IsFinished => Phase is ImportResultsPhase.NothingNew or ImportResultsPhase.Imported;
+    public bool IsFinished => this.Phase is ImportResultsPhase.NothingNew or ImportResultsPhase.Imported;
 
     public async Task SearchAsync()
     {
-        Proposal = await _search();
-        Phase = Proposal.IsEmpty ? ImportResultsPhase.NothingNew : ImportResultsPhase.Ready;
-        Raise();
+        this.Proposal = await this._search();
+        this.Phase = this.Proposal.IsEmpty ? ImportResultsPhase.NothingNew : ImportResultsPhase.Ready;
+        this.Raise();
     }
 
     public async Task ImportAsync()
     {
-        if (Phase != ImportResultsPhase.Ready)
+        if (this.Phase != ImportResultsPhase.Ready)
         {
             return;
         }
 
         // Announced before awaiting, so the button can show it is working from the first frame
         // and cannot be pressed a second time.
-        Phase = ImportResultsPhase.Importing;
-        Raise();
+        this.Phase = ImportResultsPhase.Importing;
+        this.Raise();
 
         try
         {
-            ImportedCount = await _import(Proposal);
-            Phase = ImportResultsPhase.Imported;
+            this.ImportedCount = await this._import(this.Proposal);
+            this.Phase = ImportResultsPhase.Imported;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            Error = ex.Message;
-            Phase = ImportResultsPhase.Failed;
+            this.Error = ex.Message;
+            this.Phase = ImportResultsPhase.Failed;
         }
 
-        Raise();
+        this.Raise();
     }
 
     /// <summary>
@@ -123,9 +123,9 @@ public sealed class ImportResultsController
     /// </summary>
     public void Decline()
     {
-        if (Phase == ImportResultsPhase.Ready && !Proposal.IsEmpty)
+        if (this.Phase == ImportResultsPhase.Ready && !this.Proposal.IsEmpty)
         {
-            _decline(Proposal.Entries);
+            this._decline(this.Proposal.Entries);
         }
     }
 

@@ -41,22 +41,22 @@ internal sealed class LmuTelemetryMapper
 
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
     {
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     public void Reset()
     {
-        _lapTimeValid = false;
-        _lapTimeSession = 0;
-        _lapTimeLap = 0;
-        _lapTimeMax = 0;
-        _lapTimeSessionElapsed = 0;
-        _fuelLap = null;
-        _fuelAtLapStart = null;
-        _completedLapFuelDeltas.Clear();
-        _energyLap = null;
-        _energyAtLapStart = null;
-        _completedLapEnergyDeltas.Clear();
+        this._lapTimeValid = false;
+        this._lapTimeSession = 0;
+        this._lapTimeLap = 0;
+        this._lapTimeMax = 0;
+        this._lapTimeSessionElapsed = 0;
+        this._fuelLap = null;
+        this._fuelAtLapStart = null;
+        this._completedLapFuelDeltas.Clear();
+        this._energyLap = null;
+        this._energyAtLapStart = null;
+        this._completedLapEnergyDeltas.Clear();
         this._lastCar = null;
         this._fieldScoring = [];
         this._field = [];
@@ -390,71 +390,71 @@ internal sealed class LmuTelemetryMapper
         int lapNumber,
         LmuScoringInfo scoringInfo)
     {
-        var scoringLapTime = ClampNonNegative(ToF64(scoringRaw));
-        var telemetryLapTime = ClampNonNegative(ToF64(telemetryElapsed - telemetryLapStart));
-        var sessionElapsed = ClampNonNegative(ToF64(scoringInfo.CurrentElapsedTime));
+        double scoringLapTime = ClampNonNegative(ToF64(scoringRaw));
+        double telemetryLapTime = ClampNonNegative(ToF64(telemetryElapsed - telemetryLapStart));
+        double sessionElapsed = ClampNonNegative(ToF64(scoringInfo.CurrentElapsedTime));
 
-        var sessionChanged = _lapTimeValid && scoringInfo.Session != _lapTimeSession;
-        var lapWentBack = _lapTimeValid && lapNumber < _lapTimeLap;
-        var sessionReset = _lapTimeValid && sessionElapsed + SessionTimeResetThreshold < _lapTimeSessionElapsed;
-        var newLap = _lapTimeValid && lapNumber != _lapTimeLap;
+        bool sessionChanged = this._lapTimeValid && scoringInfo.Session != this._lapTimeSession;
+        bool lapWentBack = this._lapTimeValid && lapNumber < this._lapTimeLap;
+        bool sessionReset = this._lapTimeValid && sessionElapsed + SessionTimeResetThreshold < this._lapTimeSessionElapsed;
+        bool newLap = this._lapTimeValid && lapNumber != this._lapTimeLap;
 
-        if (!_lapTimeValid)
+        if (!this._lapTimeValid)
         {
-            var lapTime = telemetryLapTime;
+            double lapTime = telemetryLapTime;
             if (lapTime <= 0)
             {
                 lapTime = scoringLapTime;
             }
 
-            SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
+            this.SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
             return lapTime;
         }
 
         if (sessionChanged || lapWentBack || sessionReset || newLap)
         {
-            var lapTime = TransitionLapTimeSeed(scoringLapTime, telemetryLapTime);
-            SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
+            double lapTime = TransitionLapTimeSeed(scoringLapTime, telemetryLapTime);
+            this.SetLapTimeState(scoringInfo.Session, lapNumber, lapTime, sessionElapsed);
             return lapTime;
         }
 
-        var candidate = telemetryLapTime;
+        double candidate = telemetryLapTime;
         if (candidate <= 0)
         {
             candidate = scoringLapTime;
         }
 
-        var sessionDelta = sessionElapsed - _lapTimeSessionElapsed;
+        double sessionDelta = sessionElapsed - this._lapTimeSessionElapsed;
         if (sessionDelta < 0)
         {
             sessionDelta = 0;
         }
 
-        var maxAdvance = LapTimeSpikeThreshold + sessionDelta;
-        if (telemetryLapTime > 0 && telemetryLapTime > _lapTimeMax + maxAdvance)
+        double maxAdvance = LapTimeSpikeThreshold + sessionDelta;
+        if (telemetryLapTime > 0 && telemetryLapTime > this._lapTimeMax + maxAdvance)
         {
-            if (scoringLapTime > _lapTimeMax && scoringLapTime <= _lapTimeMax + maxAdvance)
+            if (scoringLapTime > this._lapTimeMax && scoringLapTime <= this._lapTimeMax + maxAdvance)
             {
                 candidate = scoringLapTime;
             }
             else
             {
-                candidate = _lapTimeMax;
+                candidate = this._lapTimeMax;
             }
         }
 
-        if (candidate < _lapTimeMax)
+        if (candidate < this._lapTimeMax)
         {
-            candidate = _lapTimeMax;
+            candidate = this._lapTimeMax;
         }
         else
         {
-            _lapTimeMax = candidate;
+            this._lapTimeMax = candidate;
         }
 
-        if (sessionElapsed > _lapTimeSessionElapsed)
+        if (sessionElapsed > this._lapTimeSessionElapsed)
         {
-            _lapTimeSessionElapsed = sessionElapsed;
+            this._lapTimeSessionElapsed = sessionElapsed;
         }
 
         return candidate;
@@ -462,11 +462,11 @@ internal sealed class LmuTelemetryMapper
 
     private void SetLapTimeState(int session, int lapNumber, double lapTime, double sessionElapsed)
     {
-        _lapTimeValid = true;
-        _lapTimeSession = session;
-        _lapTimeLap = lapNumber;
-        _lapTimeMax = lapTime;
-        _lapTimeSessionElapsed = sessionElapsed;
+        this._lapTimeValid = true;
+        this._lapTimeSession = session;
+        this._lapTimeLap = lapNumber;
+        this._lapTimeMax = lapTime;
+        this._lapTimeSessionElapsed = sessionElapsed;
     }
 
     private static double TransitionLapTimeSeed(double scoringLapTime, double telemetryLapTime)
@@ -488,46 +488,46 @@ internal sealed class LmuTelemetryMapper
     {
         if (fuel <= 0)
         {
-            return AverageFuelDelta();
+            return this.AverageFuelDelta();
         }
 
-        if (_fuelLap is null)
+        if (this._fuelLap is null)
         {
-            _fuelLap = lapNumber;
-            _fuelAtLapStart = fuel;
-            return AverageFuelDelta();
+            this._fuelLap = lapNumber;
+            this._fuelAtLapStart = fuel;
+            return this.AverageFuelDelta();
         }
 
-        if (lapNumber != _fuelLap)
+        if (lapNumber != this._fuelLap)
         {
-            if (lapNumber > _fuelLap && _fuelAtLapStart is { } startFuel)
+            if (lapNumber > this._fuelLap && this._fuelAtLapStart is { } startFuel)
             {
-                var delta = startFuel - fuel;
+                float delta = startFuel - fuel;
                 if (delta > 0)
                 {
-                    _completedLapFuelDeltas.Enqueue(delta);
-                    while (_completedLapFuelDeltas.Count > FuelDeltaWindow)
+                    this._completedLapFuelDeltas.Enqueue(delta);
+                    while (this._completedLapFuelDeltas.Count > FuelDeltaWindow)
                     {
-                        _completedLapFuelDeltas.Dequeue();
+                        this._completedLapFuelDeltas.Dequeue();
                     }
                 }
             }
 
-            _fuelLap = lapNumber;
-            _fuelAtLapStart = fuel;
+            this._fuelLap = lapNumber;
+            this._fuelAtLapStart = fuel;
         }
 
-        return AverageFuelDelta();
+        return this.AverageFuelDelta();
     }
 
     private float AverageFuelDelta()
     {
-        if (_completedLapFuelDeltas.Count == 0)
+        if (this._completedLapFuelDeltas.Count == 0)
         {
             return 0;
         }
 
-        return _completedLapFuelDeltas.Sum() / _completedLapFuelDeltas.Count;
+        return this._completedLapFuelDeltas.Sum() / this._completedLapFuelDeltas.Count;
     }
 
     // Rolling virtual-energy burn per completed lap, mirroring FuelPerLap: track the
@@ -538,46 +538,46 @@ internal sealed class LmuTelemetryMapper
     {
         if (energy <= 0)
         {
-            return AverageEnergyDelta();
+            return this.AverageEnergyDelta();
         }
 
-        if (_energyLap is null)
+        if (this._energyLap is null)
         {
-            _energyLap = lapNumber;
-            _energyAtLapStart = energy;
-            return AverageEnergyDelta();
+            this._energyLap = lapNumber;
+            this._energyAtLapStart = energy;
+            return this.AverageEnergyDelta();
         }
 
-        if (lapNumber != _energyLap)
+        if (lapNumber != this._energyLap)
         {
-            if (lapNumber > _energyLap && _energyAtLapStart is { } startEnergy)
+            if (lapNumber > this._energyLap && this._energyAtLapStart is { } startEnergy)
             {
-                var delta = startEnergy - energy;
+                float delta = startEnergy - energy;
                 if (delta > 0)
                 {
-                    _completedLapEnergyDeltas.Enqueue(delta);
-                    while (_completedLapEnergyDeltas.Count > FuelDeltaWindow)
+                    this._completedLapEnergyDeltas.Enqueue(delta);
+                    while (this._completedLapEnergyDeltas.Count > FuelDeltaWindow)
                     {
-                        _completedLapEnergyDeltas.Dequeue();
+                        this._completedLapEnergyDeltas.Dequeue();
                     }
                 }
             }
 
-            _energyLap = lapNumber;
-            _energyAtLapStart = energy;
+            this._energyLap = lapNumber;
+            this._energyAtLapStart = energy;
         }
 
-        return AverageEnergyDelta();
+        return this.AverageEnergyDelta();
     }
 
     private float AverageEnergyDelta()
     {
-        if (_completedLapEnergyDeltas.Count == 0)
+        if (this._completedLapEnergyDeltas.Count == 0)
         {
             return 0;
         }
 
-        return _completedLapEnergyDeltas.Sum() / _completedLapEnergyDeltas.Count;
+        return this._completedLapEnergyDeltas.Sum() / this._completedLapEnergyDeltas.Count;
     }
 
     private static IReadOnlyList<TireState> MapTires(IReadOnlyList<LmuWheel> wheels, string frontCompound, string rearCompound)
@@ -598,9 +598,9 @@ internal sealed class LmuTelemetryMapper
 
     private static TireState MapTire(TirePosition position, LmuWheel wheel, string compound)
     {
-        var inner = TemperatureCelsius(wheel.TempInnerKelvin);
-        var middle = TemperatureCelsius(wheel.TempMiddleKelvin);
-        var outer = TemperatureCelsius(wheel.TempOuterKelvin);
+        float inner = TemperatureCelsius(wheel.TempInnerKelvin);
+        float middle = TemperatureCelsius(wheel.TempMiddleKelvin);
+        float outer = TemperatureCelsius(wheel.TempOuterKelvin);
 
         return new TireState
         {
@@ -629,9 +629,9 @@ internal sealed class LmuTelemetryMapper
 
     private static float SurfaceAverage(float inner, float middle, float outer)
     {
-        var sum = 0f;
-        var count = 0;
-        foreach (var reading in new[] { inner, middle, outer })
+        float sum = 0f;
+        int count = 0;
+        foreach (float reading in new[] { inner, middle, outer })
         {
             if (reading > 0)
             {
@@ -658,7 +658,7 @@ internal sealed class LmuTelemetryMapper
 
     private static float Speed(LmuVector3 velocity)
     {
-        var speed = Math.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y + velocity.Z * velocity.Z);
+        double speed = Math.Sqrt(velocity.X * velocity.X + velocity.Y * velocity.Y + velocity.Z * velocity.Z);
         return ToF32(speed);
     }
 
@@ -816,7 +816,7 @@ internal sealed class LmuTelemetryMapper
             return null;
         }
 
-        var remaining = scoringInfo.SessionTimeRemaining;
+        float remaining = scoringInfo.SessionTimeRemaining;
         return float.IsFinite(remaining) && remaining >= 0 && remaining <= total ? remaining : null;
     }
 
@@ -836,9 +836,9 @@ internal sealed class LmuTelemetryMapper
     /// </summary>
     private static IReadOnlyList<double> SectorDurations(LmuVehicleScoring scoring)
     {
-        var firstMark = ToF64(scoring.LastSector1);
-        var secondMark = ToF64(scoring.LastSector2);
-        var lapTime = ToF64(scoring.LastLapTime);
+        double firstMark = ToF64(scoring.LastSector1);
+        double secondMark = ToF64(scoring.LastSector2);
+        double lapTime = ToF64(scoring.LastLapTime);
 
         if (firstMark <= 0 || secondMark <= firstMark || lapTime <= secondMark)
         {
@@ -859,7 +859,7 @@ internal sealed class LmuTelemetryMapper
             return 0;
         }
 
-        var converted = (float)value;
+        float converted = (float)value;
         return float.IsFinite(converted) ? converted : 0;
     }
 

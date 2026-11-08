@@ -24,10 +24,10 @@ public enum SharedLapReadError
 /// <summary>The outcome of reading a lap file.</summary>
 public sealed record SharedLapReadResult(SharedLap? Lap, SharedLapReadError Error)
 {
-    public bool Ok => Lap is not null;
+    public bool Ok => this.Lap is not null;
 
     /// <summary>What to put in front of the driver. Names which of the failures it was.</summary>
-    public string Message => Error switch
+    public string Message => this.Error switch
     {
         SharedLapReadError.None => "",
         SharedLapReadError.NotALapFile => "That is not a Sprint lap file.",
@@ -70,9 +70,9 @@ public static class SharedLapFile
     {
         ArgumentNullException.ThrowIfNull(lap);
 
-        var stem = $"{lap.Context.TrackCourse}-{lap.Context.CarModel}-lap{lap.LapNumber}";
-        var safe = new StringBuilder(stem.Length);
-        foreach (var c in stem)
+        string stem = $"{lap.Context.TrackCourse}-{lap.Context.CarModel}-lap{lap.LapNumber}";
+        StringBuilder safe = new StringBuilder(stem.Length);
+        foreach (char c in stem)
         {
             safe.Append(Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 || c == ' ' ? '-' : c);
         }
@@ -85,8 +85,8 @@ public static class SharedLapFile
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(lap);
 
-        using var deflate = new DeflateStream(stream, CompressionLevel.Optimal, leaveOpen: true);
-        using var writer = new BinaryWriter(deflate, Encoding.UTF8, leaveOpen: true);
+        using DeflateStream deflate = new DeflateStream(stream, CompressionLevel.Optimal, leaveOpen: true);
+        using BinaryWriter writer = new BinaryWriter(deflate, Encoding.UTF8, leaveOpen: true);
 
         writer.Write(Magic);
         writer.Write(FormatVersion);
@@ -106,27 +106,27 @@ public static class SharedLapFile
 
         try
         {
-            using var deflate = new DeflateStream(stream, CompressionMode.Decompress, leaveOpen: true);
-            using var reader = new BinaryReader(deflate, Encoding.UTF8, leaveOpen: true);
+            using DeflateStream deflate = new DeflateStream(stream, CompressionMode.Decompress, leaveOpen: true);
+            using BinaryReader reader = new BinaryReader(deflate, Encoding.UTF8, leaveOpen: true);
 
             if (!reader.ReadBytes(Magic.Length).AsSpan().SequenceEqual(Magic))
             {
                 return new SharedLapReadResult(null, SharedLapReadError.NotALapFile);
             }
 
-            var version = reader.ReadInt32();
+            int version = reader.ReadInt32();
             if (version > FormatVersion)
             {
                 return new SharedLapReadResult(null, SharedLapReadError.UnsupportedVersion);
             }
 
-            var header = JsonSerializer.Deserialize<Header>(reader.ReadString(), JsonOptions);
+            Header? header = JsonSerializer.Deserialize<Header>(reader.ReadString(), JsonOptions);
             if (header is null)
             {
                 return new SharedLapReadResult(null, SharedLapReadError.Damaged);
             }
 
-            var trace = LapTraceCodec.Read(deflate);
+            LapChannelTrace? trace = LapTraceCodec.Read(deflate);
             return trace is null
                 ? new SharedLapReadResult(null, SharedLapReadError.Damaged)
                 : new SharedLapReadResult(header.ToLap(trace), SharedLapReadError.None);
@@ -146,11 +146,11 @@ public static class SharedLapFile
 
         public Header(SharedLap lap)
         {
-            Provenance = lap.Provenance;
-            Context = lap.Context;
-            LapNumber = lap.LapNumber;
-            LapTimeSeconds = lap.LapTimeSeconds;
-            Notes = [.. lap.Notes];
+            this.Provenance = lap.Provenance;
+            this.Context = lap.Context;
+            this.LapNumber = lap.LapNumber;
+            this.LapTimeSeconds = lap.LapTimeSeconds;
+            this.Notes = [.. lap.Notes];
         }
 
         [JsonPropertyName("provenance")]
@@ -173,13 +173,13 @@ public static class SharedLapFile
         public List<LapNote>? Notes { get; init; }
 
         public SharedLap ToLap(LapChannelTrace trace) =>
-            new(Provenance, Context, LapNumber, LapTimeSeconds, trace)
+            new(this.Provenance, this.Context, this.LapNumber, this.LapTimeSeconds, trace)
             {
                 // The JSON is somebody else's: a note with no id, no text or no place is damage,
                 // dropped rather than shown, and a missing author reads as nobody named.
                 Notes =
                 [
-                    .. (Notes ?? [])
+                    .. (this.Notes ?? [])
                         .Where(note => note is not null
                             && !string.IsNullOrEmpty(note.Id)
                             && !string.IsNullOrWhiteSpace(note.Text)

@@ -29,7 +29,7 @@ public static class LapTraceCodec
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(trace);
 
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        using BinaryWriter writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
 
         writer.Write(Magic);
         writer.Write(trace.Version);
@@ -39,11 +39,11 @@ public static class LapTraceCodec
         writer.Write(trace.SampleCount);
         writer.Write(trace.Channels.Count);
 
-        foreach (var (name, values) in trace.Channels)
+        foreach ((string? name, float[]? values) in trace.Channels)
         {
             writer.Write(name);
             writer.Write(values.Length);
-            foreach (var value in values)
+            foreach (float value in values)
             {
                 writer.Write(value);
             }
@@ -60,19 +60,19 @@ public static class LapTraceCodec
 
         try
         {
-            using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
 
             if (!reader.ReadBytes(Magic.Length).AsSpan().SequenceEqual(Magic))
             {
                 return null;
             }
 
-            var trace = new LapChannelTrace { Version = reader.ReadInt32() };
+            LapChannelTrace trace = new LapChannelTrace { Version = reader.ReadInt32() };
             trace.PositionStep = reader.ReadDouble();
-            var length = reader.ReadDouble();
+            double length = reader.ReadDouble();
             trace.TrackLengthMeters = double.IsNaN(length) ? null : length;
             _ = reader.ReadInt32(); // Sample count: each channel carries its own length.
-            var channelCount = reader.ReadInt32();
+            int channelCount = reader.ReadInt32();
 
             // A corrupt length prefix would otherwise ask for an arbitrary allocation before
             // anything has a chance to notice the file is nonsense.
@@ -81,17 +81,17 @@ public static class LapTraceCodec
                 return null;
             }
 
-            for (var i = 0; i < channelCount; i++)
+            for (int i = 0; i < channelCount; i++)
             {
-                var name = reader.ReadString();
-                var count = reader.ReadInt32();
+                string name = reader.ReadString();
+                int count = reader.ReadInt32();
                 if (count is < 0 or > (LapChannelTrace.MaxSamples * 2))
                 {
                     return null;
                 }
 
-                var values = new float[count];
-                for (var j = 0; j < count; j++)
+                float[] values = new float[count];
+                for (int j = 0; j < count; j++)
                 {
                     values[j] = reader.ReadSingle();
                 }

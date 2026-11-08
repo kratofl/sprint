@@ -19,7 +19,7 @@ public static class DashLayoutValidator
             yield return layout.IdlePage;
         }
 
-        foreach (var page in layout.Pages)
+        foreach (DashPage page in layout.Pages)
         {
             yield return page;
         }

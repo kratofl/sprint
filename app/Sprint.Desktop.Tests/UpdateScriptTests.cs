@@ -21,7 +21,7 @@ public sealed class UpdateScriptTests
     [Fact]
     public void WaitsForTheRunningProcessToExit()
     {
-        var batch = Build();
+        string batch = Build();
         Assert.Contains("set \"PID=4321\"", batch);
         Assert.Contains(":waitloop", batch);
         Assert.Contains("tasklist /FI \"PID eq %PID%\"", batch);
@@ -31,18 +31,18 @@ public sealed class UpdateScriptTests
     [Fact]
     public void CopiesStagedBuildOverInstallDirWithQuotedPaths()
     {
-        var batch = Build();
+        string batch = Build();
         Assert.Contains($"robocopy \"{Staging}\" \"{Install}\" /E", batch);
     }
 
     [Fact]
     public void CreatesUpdateLogDirectoryBeforeStartingRobocopy()
     {
-        var batch = Build();
-        var createLogDirectory = batch.IndexOf(
+        string batch = Build();
+        int createLogDirectory = batch.IndexOf(
             "if not exist \"%TEMP%\\Sprint\" mkdir \"%TEMP%\\Sprint\"",
             StringComparison.Ordinal);
-        var firstRobocopy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
+        int firstRobocopy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
 
         Assert.True(createLogDirectory >= 0 && firstRobocopy > createLogDirectory);
     }
@@ -50,7 +50,7 @@ public sealed class UpdateScriptTests
     [Fact]
     public void RelaunchesTheExeAndSelfDeletes()
     {
-        var batch = Build();
+        string batch = Build();
         Assert.Contains($"start \"\" \"{Install}\\{Exe}\"", batch);
         Assert.Contains("del \"%~f0\"", batch);
     }
@@ -58,12 +58,12 @@ public sealed class UpdateScriptTests
     [Fact]
     public void SurfacesAPersistentCopyFailureBeforeRelaunchingTheOldBuild()
     {
-        var batch = Build();
-        var copy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
-        var failureGuard = batch.IndexOf("if errorlevel 8 goto updatefailed", StringComparison.Ordinal);
-        var failureLabel = batch.IndexOf(":updatefailed", StringComparison.Ordinal);
-        var reveal = batch.IndexOf("start \"\" explorer.exe", failureLabel, StringComparison.Ordinal);
-        var relaunch = batch.IndexOf(
+        string batch = Build();
+        int copy = batch.IndexOf("robocopy ", StringComparison.Ordinal);
+        int failureGuard = batch.IndexOf("if errorlevel 8 goto updatefailed", StringComparison.Ordinal);
+        int failureLabel = batch.IndexOf(":updatefailed", StringComparison.Ordinal);
+        int reveal = batch.IndexOf("start \"\" explorer.exe", failureLabel, StringComparison.Ordinal);
+        int relaunch = batch.IndexOf(
             $"start \"\" \"{Install}\\{Exe}\"",
             failureLabel,
             StringComparison.Ordinal);
@@ -81,8 +81,8 @@ public sealed class UpdateScriptTests
     [Fact]
     public void TheStagingRevealCanBeSuppressedWithoutChangingTheRestOfTheScript()
     {
-        var withReveal = Build();
-        var withoutReveal = UpdateScript.BuildWindowsBatch(
+        string withReveal = Build();
+        string withoutReveal = UpdateScript.BuildWindowsBatch(
             Pid,
             Staging,
             Install,
@@ -105,25 +105,25 @@ public sealed class UpdateScriptTests
     [Fact]
     public void CopiesThePrimaryExecutableLast()
     {
-        var batch = Build();
-        var supportCopy = batch.IndexOf($"/XF \"{Exe}\"", StringComparison.Ordinal);
-        var supportGuard = batch.IndexOf(
+        string batch = Build();
+        int supportCopy = batch.IndexOf($"/XF \"{Exe}\"", StringComparison.Ordinal);
+        int supportGuard = batch.IndexOf(
             "if errorlevel 8 goto updatefailed",
             supportCopy,
             StringComparison.Ordinal);
-        var executableCopy = batch.IndexOf(
+        int executableCopy = batch.IndexOf(
             $"copy /Y \"{Staging}\\{Exe}\" \"{Install}\\{Exe}\"",
             supportGuard,
             StringComparison.Ordinal);
-        var executableVerification = batch.IndexOf(
+        int executableVerification = batch.IndexOf(
             $"fc /B \"{Staging}\\{Exe}\" \"{Install}\\{Exe}\"",
             executableCopy,
             StringComparison.Ordinal);
-        var executableGuard = batch.IndexOf(
+        int executableGuard = batch.IndexOf(
             "if %EXE_COPY_ATTEMPTS% GEQ 30 goto updatefailed",
             executableVerification,
             StringComparison.Ordinal);
-        var successRelaunch = batch.IndexOf(
+        int successRelaunch = batch.IndexOf(
             $"start \"\" \"{Install}\\{Exe}\"",
             executableGuard,
             StringComparison.Ordinal);
@@ -142,7 +142,7 @@ public sealed class UpdateScriptTests
     {
         const string completion = @"C:\Temp\Sprint\apply-update-4321.done";
 
-        var batch = UpdateScript.BuildWindowsBatch(
+        string batch = UpdateScript.BuildWindowsBatch(
             Pid,
             Staging,
             Install,
@@ -159,7 +159,7 @@ public sealed class UpdateScriptTests
     {
         const string completion = @"C:\Temp\Sprint\apply-update-4321.done";
 
-        var batch = UpdateScript.BuildWindowsRelaunchBatch(completion, Install, Exe);
+        string batch = UpdateScript.BuildWindowsRelaunchBatch(completion, Install, Exe);
 
         Assert.Contains($"set \"RESULT={completion}\"", batch);
         Assert.Contains("if exist \"%RESULT%\" goto relaunch", batch);
@@ -288,8 +288,8 @@ public sealed class UpdateScriptTests
 
     private static async Task StopProcessesFromPathAsync(string executablePath)
     {
-        var processName = Path.GetFileNameWithoutExtension(executablePath);
-        foreach (var process in Process.GetProcessesByName(processName))
+        string processName = Path.GetFileNameWithoutExtension(executablePath);
+        foreach (Process process in Process.GetProcessesByName(processName))
         {
             try
             {
@@ -340,7 +340,7 @@ public sealed class UpdateScriptTests
 
     private static async Task DeleteDirectoryEventuallyAsync(string path)
     {
-        for (var attempt = 0; attempt < 50 && Directory.Exists(path); attempt++)
+        for (int attempt = 0; attempt < 50 && Directory.Exists(path); attempt++)
         {
             try
             {

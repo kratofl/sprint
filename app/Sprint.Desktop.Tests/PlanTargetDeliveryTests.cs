@@ -1,4 +1,5 @@
 using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.SessionPlanning;
 using Xunit;
 
@@ -23,13 +24,13 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_curve_backed_target_delivers_both_the_reference_and_the_scalar()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(RaceTarget()), Corpus());
 
-        var latched = delivery.Observe(RaceFrame(lap: 1));
+        bool latched = delivery.Observe(RaceFrame(lap: 1));
 
         Assert.True(latched);
         Assert.Equal(100, delivery.Targets.LapTimeSeconds);
-        var reference = Assert.IsType<Sprint.Desktop.Features.Live.DeltaReference>(delivery.Reference);
+        DeltaReference reference = Assert.IsType<Sprint.Desktop.Features.Live.DeltaReference>(delivery.Reference);
         Assert.Equal(100, reference.LapTimeSeconds);
         Assert.Equal(0.01, reference.PositionStep);
         Assert.Equal(50, reference.TimesSeconds[50], precision: 6); // half a lap ⇒ half the time
@@ -39,8 +40,8 @@ public sealed class PlanTargetDeliveryTests
     public void A_scalar_only_target_delivers_a_time_and_no_reference()
     {
         // An imported lap: a real target time, but nothing describing how it was driven.
-        var manual = new PlanTarget { Scope = PlanTargetScope.Manual, LapTimeSeconds = 100 };
-        var delivery = new PlanTargetDelivery(() => PlanWith(manual), Corpus());
+        PlanTarget manual = new PlanTarget { Scope = PlanTargetScope.Manual, LapTimeSeconds = 100 };
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(manual), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -55,7 +56,7 @@ public sealed class PlanTargetDeliveryTests
     {
         // The stored target says the lap had a curve; the corpus no longer holds that lap.
         // The claim on the target is not evidence — only the lap itself is.
-        var delivery = new PlanTargetDelivery(
+        PlanTargetDelivery delivery = new PlanTargetDelivery(
             () => PlanWith(RaceTarget()),
             new FakeLapHistoryStore([]));
 
@@ -68,8 +69,8 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_target_changed_mid_lap_takes_effect_only_at_the_next_line()
     {
-        var target = RaceTarget();
-        var delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        PlanTarget target = RaceTarget();
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
 
         // No lap was in progress, so the first frame in the car applies at once.
         Assert.True(delivery.Observe(RaceFrame(lap: 4)));
@@ -94,7 +95,7 @@ public sealed class PlanTargetDeliveryTests
     public void Clearing_the_target_takes_the_reference_away_at_the_next_line()
     {
         PlanTarget? target = RaceTarget();
-        var delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(target), Corpus());
 
         delivery.Observe(RaceFrame(lap: 4));
         Assert.NotNull(delivery.Reference);
@@ -113,7 +114,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_plan_with_no_target_delivers_nothing_at_all()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null), Corpus());
 
         Assert.True(delivery.Observe(RaceFrame(lap: 1)));
 
@@ -124,7 +125,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void No_active_plan_delivers_nothing_at_all()
     {
-        var delivery = new PlanTargetDelivery(() => null, Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => null, Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 
@@ -135,7 +136,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void A_qualifying_target_is_not_delivered_into_the_race()
     {
-        var plan = new SessionPlan
+        SessionPlan plan = new SessionPlan
         {
             Id = "plan-1",
             Game = Game,
@@ -143,7 +144,7 @@ public sealed class PlanTargetDeliveryTests
             Car = Car,
             Targets = [new PlanTargets { Kind = SegmentKind.Qualifying, LapTime = RaceTarget() }],
         };
-        var delivery = new PlanTargetDelivery(() => plan, Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => plan, Corpus());
 
         delivery.Observe(RaceFrame(lap: 1, sessionType: SessionType.Race));
         Assert.True(delivery.Targets.IsEmpty);
@@ -155,7 +156,7 @@ public sealed class PlanTargetDeliveryTests
     [Fact]
     public void The_planned_fuel_per_lap_is_delivered_as_a_target()
     {
-        var delivery = new PlanTargetDelivery(() => PlanWith(null, fuelPerLapLiters: 3.4), Corpus());
+        PlanTargetDelivery delivery = new PlanTargetDelivery(() => PlanWith(null, fuelPerLapLiters: 3.4), Corpus());
 
         delivery.Observe(RaceFrame(lap: 1));
 

@@ -176,10 +176,10 @@ public sealed class LapChannelTrace
     /// <summary>Channel values by name, every array the same length.</summary>
     public Dictionary<string, float[]> Channels { get; set; } = new(StringComparer.Ordinal);
 
-    public int SampleCount => Channels.Count == 0 ? 0 : Channels.Values.First().Length;
+    public int SampleCount => this.Channels.Count == 0 ? 0 : this.Channels.Values.First().Length;
 
     /// <summary>Whether this trace can honestly drive a comparison.</summary>
-    public bool IsUsable => PositionStep > 0 && Channels.Count > 0 && SampleCount > 1;
+    public bool IsUsable => this.PositionStep > 0 && this.Channels.Count > 0 && this.SampleCount > 1;
 
     /// <summary>
     /// The grid step for a track, as a fraction of a lap, sized to land near
@@ -187,17 +187,17 @@ public sealed class LapChannelTrace
     /// </summary>
     public static double StepForTrackLength(double? trackLengthMeters)
     {
-        var length = trackLengthMeters is { } reported && double.IsFinite(reported) && reported > 0
+        double length = trackLengthMeters is { } reported && double.IsFinite(reported) && reported > 0
             ? reported
             : FallbackTrackLengthMeters;
 
-        var intervals = (int)Math.Round(length / TargetSampleMeters);
+        int intervals = (int)Math.Round(length / TargetSampleMeters);
         return 1.0 / Math.Clamp(intervals, MinSamples - 1, MaxSamples - 1);
     }
 
     public bool TryGetChannel(string name, out float[] values)
     {
-        if (Channels.TryGetValue(name, out var stored) && stored.Length > 0)
+        if (this.Channels.TryGetValue(name, out float[]? stored) && stored.Length > 0)
         {
             values = stored;
             return true;
@@ -214,13 +214,13 @@ public sealed class LapChannelTrace
     /// </summary>
     public double? ValueAt(string name, double position)
     {
-        if (!TryGetChannel(name, out var values) || PositionStep <= 0)
+        if (!this.TryGetChannel(name, out float[]? values) || this.PositionStep <= 0)
         {
             return null;
         }
 
-        var exact = Math.Clamp(position, 0, 1) / PositionStep;
-        var index = (int)Math.Floor(exact);
+        double exact = Math.Clamp(position, 0, 1) / this.PositionStep;
+        int index = (int)Math.Floor(exact);
         if (index >= values.Length - 1)
         {
             return values[^1];
@@ -284,15 +284,15 @@ public sealed class LapChannelTrace
         double? trackLengthMeters,
         double tailElapsedSeconds)
     {
-        var step = StepForTrackLength(trackLengthMeters);
-        var count = (int)Math.Round(1.0 / step) + 1;
+        double step = StepForTrackLength(trackLengthMeters);
+        int count = (int)Math.Round(1.0 / step) + 1;
 
-        var speed = new float[count];
-        var throttle = new float[count];
-        var brake = new float[count];
-        var steering = new float[count];
-        var gear = new float[count];
-        var elapsed = new float[count];
+        float[] speed = new float[count];
+        float[] throttle = new float[count];
+        float[] brake = new float[count];
+        float[] steering = new float[count];
+        float[] gear = new float[count];
+        float[] elapsed = new float[count];
         bool hasWorld = samples.All(sample => sample.World is not null);
         float[] worldX = hasWorld ? new float[count] : [];
         float[] worldY = hasWorld ? new float[count] : [];
@@ -308,10 +308,10 @@ public sealed class LapChannelTrace
                 .Select(setting => (setting.Channel, setting.Read, new float[count])),
         ];
 
-        var index = 0;
-        for (var i = 0; i < count; i++)
+        int index = 0;
+        for (int i = 0; i < count; i++)
         {
-            var position = Math.Min(i * step, 1.0);
+            double position = Math.Min(i * step, 1.0);
 
             // Before the first observation nothing was seen; holding the first reading is what
             // the reference curve does at the same edge.
@@ -335,10 +335,10 @@ public sealed class LapChannelTrace
                 index++;
             }
 
-            var start = samples[index];
-            var end = samples[index + 1];
-            var span = end.Position - start.Position;
-            var t = span <= PositionEpsilon ? 0 : (position - start.Position) / span;
+            LapTraceSample start = samples[index];
+            LapTraceSample end = samples[index + 1];
+            double span = end.Position - start.Position;
+            double t = span <= PositionEpsilon ? 0 : (position - start.Position) / span;
 
             speed[i] = Lerp(start.SpeedKph, end.SpeedKph, t);
             throttle[i] = Lerp(start.Throttle, end.Throttle, t);

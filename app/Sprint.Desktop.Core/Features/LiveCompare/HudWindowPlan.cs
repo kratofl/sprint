@@ -70,7 +70,7 @@ public static class HudWindowPlan
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var specs = new List<HudWindowSpec>();
+        List<HudWindowSpec> specs = new List<HudWindowSpec>();
         if (settings.ShowDelta)
         {
             specs.Add(new HudWindowSpec(
@@ -83,7 +83,7 @@ public static class HudWindowPlan
                 DeltaMinHeight));
         }
 
-        foreach (var panel in LapChartPanels.Resolve(settings.PanelIds, LapChartPanels.HudDefaults))
+        foreach (LapChartPanelSpec panel in LapChartPanels.Resolve(settings.PanelIds, LapChartPanels.HudDefaults))
         {
             specs.Add(new HudWindowSpec(
                 panel.Id,

@@ -77,50 +77,50 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
 
         // A different venue or session type is a different set of targets and a different
         // lap in progress; nothing is being protected across that boundary.
-        if (!string.Equals(frame.Session.Track, _track, StringComparison.Ordinal)
-            || frame.Session.SessionType != _sessionType
+        if (!string.Equals(frame.Session.Track, this._track, StringComparison.Ordinal)
+            || frame.Session.SessionType != this._sessionType
             || !frame.Session.InCar)
         {
-            _lap = null;
+            this._lap = null;
         }
 
-        _track = frame.Session.Track;
-        _sessionType = frame.Session.SessionType;
+        this._track = frame.Session.Track;
+        this._sessionType = frame.Session.SessionType;
 
         if (!frame.Session.InCar)
         {
             // Out of the car there is no lap to spoil, so a pending change lands now and the
             // driver rejoins already on the new target.
-            Apply(frame);
+            this.Apply(frame);
             return true;
         }
 
         // Still on the lap the latch is waiting out.
-        if (_lap is { } previous && frame.Lap.CurrentLap == previous)
+        if (this._lap is { } previous && frame.Lap.CurrentLap == previous)
         {
             return false;
         }
 
         // Any other lap number is a new lap to measure: an increment at the line, or a
         // restart/teleport going backwards, which also ended the lap that was in progress.
-        _lap = frame.Lap.CurrentLap;
-        Apply(frame);
+        this._lap = frame.Lap.CurrentLap;
+        this.Apply(frame);
         return true;
     }
 
     private void Apply(TelemetryFrame frame)
     {
-        var plan = _activePlan();
-        var target = KindFor(frame.Session.SessionType) is { } kind
+        SessionPlan? plan = this._activePlan();
+        PlanTarget? target = KindFor(frame.Session.SessionType) is { } kind
             ? plan?.TargetsFor(kind)?.LapTime
             : null;
 
-        Targets = new DashTargets
+        this.Targets = new DashTargets
         {
             LapTimeSeconds = target?.LapTimeSeconds,
             FuelPerLapLiters = plan?.FuelPerLapLiters,
         };
-        Reference = ReferenceFor(target);
+        this.Reference = this.ReferenceFor(target);
     }
 
     // The tier is read off the lap in the corpus, never off the flag stored on the target: the
@@ -133,7 +133,7 @@ public sealed class PlanTargetDelivery(Func<SessionPlan?> activePlan, ILapHistor
             return null;
         }
 
-        var lap = _history.LoadAll()
+        LapHistoryRecord? lap = this._history.LoadAll()
             .FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal))
             ?.Laps.FirstOrDefault(record => record.LapNumber == lapNumber);
 

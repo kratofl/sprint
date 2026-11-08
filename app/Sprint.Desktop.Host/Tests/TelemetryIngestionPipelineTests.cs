@@ -241,7 +241,7 @@ public sealed class TelemetryIngestionPipelineTests
 
         public void Save(SessionPlan plan)
         {
-            if (ThrowOnSave)
+            if (this.ThrowOnSave)
             {
                 throw new InvalidOperationException("Simulated session-plan store failure.");
             }

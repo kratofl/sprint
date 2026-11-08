@@ -48,7 +48,7 @@ public sealed class SessionPlannerPageTests
         Run((controller, _) =>
         {
             controller.CreatePlan(NewRequest("First"));
-            var second = controller.CreatePlan(NewRequest("Second"));
+            SessionPlan second = controller.CreatePlan(NewRequest("Second"));
 
             Assert.Equal(second.Id, controller.PlanInView?.Id);
 
@@ -65,7 +65,7 @@ public sealed class SessionPlannerPageTests
         {
             // Armed/tracking is prominent on the overview via its status — it does not hijack
             // the page the way the old "active plan takes precedence" rule did.
-            var first = service.CreatePlan(NewRequest("First"));
+            SessionPlan first = service.CreatePlan(NewRequest("First"));
             service.CreatePlan(NewRequest("Second"));
             controller.Arm(first.Id);
 
@@ -78,9 +78,9 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var first = controller.CreatePlan(NewRequest("First"));
-            var second = controller.CreatePlan(NewRequest("Second"));
-            var third = controller.CreatePlan(NewRequest("Third"));
+            SessionPlan first = controller.CreatePlan(NewRequest("First"));
+            SessionPlan second = controller.CreatePlan(NewRequest("Second"));
+            SessionPlan third = controller.CreatePlan(NewRequest("Third"));
             controller.StartNow(first.Id, SegmentKind.Race);
             controller.Stop(first.Id);
 
@@ -94,7 +94,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var first = controller.CreatePlan(NewRequest("First"));
+            SessionPlan first = controller.CreatePlan(NewRequest("First"));
             controller.CreatePlan(NewRequest("Second"));
 
             controller.SelectPlan(first.Id);
@@ -108,8 +108,8 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var first = controller.CreatePlan(NewRequest("First"));
-            var second = controller.CreatePlan(NewRequest("Second"));
+            SessionPlan first = controller.CreatePlan(NewRequest("First"));
+            SessionPlan second = controller.CreatePlan(NewRequest("Second"));
             controller.StartNow(first.Id, SegmentKind.Race);
             controller.Stop(first.Id);
 
@@ -166,7 +166,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Weekend"));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Weekend"));
 
             // The page draws exactly one primary start action: the next step. Starting the
             // race while qualifying is planned but has not run is a skip and needs a confirm.
@@ -185,7 +185,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Race only", qualifyingIncluded: false));
 
             Assert.Equal(SegmentKind.Race, controller.NextSegment(plan));
             Assert.False(controller.StartingRaceSkipsQualifying(plan));
@@ -197,7 +197,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, service) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Doomed"));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Doomed"));
             Assert.Equal(plan.Id, controller.PlanInView?.Id);
 
             controller.DeletePlan(plan.Id);
@@ -248,7 +248,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var raised = 0;
+            int raised = 0;
             controller.Changed += (_, _) => raised++;
 
             controller.CreatePlan(NewRequest("One"));
@@ -267,7 +267,7 @@ public sealed class SessionPlannerPageTests
             {
                 controller.CreatePlan(NewRequest("Older", game: "Old game", track: "Monza"));
 
-                var prefill = controller.Prefill();
+                PlanContext prefill = controller.Prefill();
 
                 Assert.Equal("Le Mans Ultimate", prefill.Game);
                 Assert.Equal("Porsche 963", prefill.Car);
@@ -282,7 +282,7 @@ public sealed class SessionPlannerPageTests
         {
             controller.CreatePlan(NewRequest("Recent", game: "Le Mans Ultimate", track: "Monza"));
 
-            var prefill = controller.Prefill();
+            PlanContext prefill = controller.Prefill();
 
             Assert.Equal("Le Mans Ultimate", prefill.Game);
             Assert.Equal("Monza", prefill.Track);
@@ -305,14 +305,14 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void TheCreationFlowSkipsTheManualFuelQuestionWhenHistoryExists()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var service = new SessionPlannerService(
+            SessionPlannerService service = new SessionPlannerService(
                 new LocalSessionPlanStore(root),
                 clock: () => Now,
                 idFactory: () => "id-1");
-            var controller = new SessionPlannerController(
+            SessionPlannerController controller = new SessionPlannerController(
                 service,
                 new StubFuelHistory(hasHistory: true),
                 () => PlanContext.Empty);
@@ -330,11 +330,11 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var active = controller.CreatePlan(NewRequest("Active"));
-            var other = controller.CreatePlan(NewRequest("Other"));
+            SessionPlan active = controller.CreatePlan(NewRequest("Active"));
+            SessionPlan other = controller.CreatePlan(NewRequest("Other"));
             controller.Arm(active.Id);
 
-            var availability = controller.CanActivate(other.Id);
+            PlanActivation availability = controller.CanActivate(other.Id);
 
             Assert.False(availability.CanActivate);
             Assert.Contains("Active", availability.Reason, StringComparison.Ordinal);
@@ -347,7 +347,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Free"));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Free"));
 
             Assert.True(controller.CanActivate(plan.Id).CanActivate);
             Assert.Equal("", controller.CanActivate(plan.Id).Reason);
@@ -359,8 +359,8 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var holder = controller.CreatePlan(NewRequest("Holder"));
-            var next = controller.CreatePlan(NewRequest("Next"));
+            SessionPlan holder = controller.CreatePlan(NewRequest("Holder"));
+            SessionPlan next = controller.CreatePlan(NewRequest("Next"));
             controller.Arm(holder.Id);
 
             controller.TakeOver(next.Id);
@@ -376,8 +376,8 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var holder = controller.CreatePlan(NewRequest("Holder"));
-            var next = controller.CreatePlan(NewRequest("Next"));
+            SessionPlan holder = controller.CreatePlan(NewRequest("Holder"));
+            SessionPlan next = controller.CreatePlan(NewRequest("Next"));
             controller.StartNow(holder.Id, SegmentKind.Race);
 
             controller.TakeOver(next.Id);
@@ -392,7 +392,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Only"));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Only"));
 
             controller.TakeOver(plan.Id);
 
@@ -405,7 +405,7 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, service) =>
         {
-            var plan = controller.CreatePlan(NewRequest("Timed"));
+            SessionPlan plan = controller.CreatePlan(NewRequest("Timed"));
             controller.StartNow(plan.Id, SegmentKind.Race);
             Assert.Null(controller.RaceFormatWarning);
 
@@ -426,11 +426,11 @@ public sealed class SessionPlannerPageTests
     {
         Run((controller, _) =>
         {
-            var timed = controller.CreatePlan(NewRequest("Timed"));
+            SessionPlan timed = controller.CreatePlan(NewRequest("Timed"));
             Assert.Equal(RaceLengthFormat.TimeBased, timed.RaceLengthFormat);
             Assert.Equal(60, timed.RaceLengthValue);
 
-            var lapped = controller.CreatePlan(new CreatePlanRequest
+            SessionPlan lapped = controller.CreatePlan(new CreatePlanRequest
             {
                 Name = "Lapped",
                 RaceLengthFormat = RaceLengthFormat.LapBased,
@@ -444,7 +444,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void ADraftWithAPositiveRaceLengthAndReserveIsValid()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "Spa",
             RaceLengthFormat = RaceLengthFormat.TimeBased,
@@ -452,7 +452,7 @@ public sealed class SessionPlannerPageTests
             FuelReserveText = "1",
         };
 
-        Assert.True(draft.TryBuild(out var request, out var error));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out string? error));
         Assert.Equal("", error);
         Assert.Equal(60, request!.RaceLengthValue);
         Assert.Equal(1, request.FuelReserveLaps);
@@ -469,7 +469,7 @@ public sealed class SessionPlannerPageTests
         string reserve,
         string expectedError)
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "Spa",
             RaceLengthFormat = RaceLengthFormat.TimeBased,
@@ -477,7 +477,7 @@ public sealed class SessionPlannerPageTests
             FuelReserveText = reserve,
         };
 
-        Assert.False(draft.TryBuild(out var request, out var error));
+        Assert.False(draft.TryBuild(out CreatePlanRequest? request, out string? error));
         Assert.Null(request);
         Assert.Equal(expectedError, error);
     }
@@ -485,7 +485,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void AnEmptyContextIsAllowedBecauseAPlanMayPrecedeDrivingTheCar()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "Unknown car",
             RaceLengthFormat = RaceLengthFormat.LapBased,
@@ -493,7 +493,7 @@ public sealed class SessionPlannerPageTests
             FuelReserveText = "1",
         };
 
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Equal("", request!.Game);
         Assert.Equal("", request.Car);
         Assert.Equal("", request.Track);
@@ -502,7 +502,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void BlankManualFuelValuesStayUnsetRatherThanBecomingZero()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "Spa",
             RaceLengthFormat = RaceLengthFormat.TimeBased,
@@ -512,7 +512,7 @@ public sealed class SessionPlannerPageTests
             FuelPerLapText = "   ",
         };
 
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Null(request!.AvgLapTimeSeconds);
         Assert.Null(request.FuelPerLapLiters);
     }
@@ -520,7 +520,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void NonNumericManualFuelValuesStayUnsetRatherThanWritingABogusEstimate()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "Spa",
             RaceLengthFormat = RaceLengthFormat.TimeBased,
@@ -530,7 +530,7 @@ public sealed class SessionPlannerPageTests
             FuelPerLapText = "lots",
         };
 
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Null(request!.AvgLapTimeSeconds);
         Assert.Null(request.FuelPerLapLiters);
     }
@@ -538,7 +538,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void AnUnnamedDraftFallsBackToTheTrackAndCarForItsName()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "",
             Car = "Porsche 963",
@@ -548,7 +548,7 @@ public sealed class SessionPlannerPageTests
             FuelReserveText = "1",
         };
 
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Equal("Spa-Francorchamps – Porsche 963", request!.Name);
     }
 
@@ -558,9 +558,9 @@ public sealed class SessionPlannerPageTests
         // The modal is torn down and rebuilt on every segmented and step change, so both the
         // validation message and the current step have to live on the draft — held by the
         // dialog, either would vanish mid-edit.
-        var draft = new NewPlanDraft { Name = "Spa", RaceLengthText = "", FuelReserveText = "1" };
+        NewPlanDraft draft = new NewPlanDraft { Name = "Spa", RaceLengthText = "", FuelReserveText = "1" };
 
-        Assert.False(draft.TryBuild(out _, out var error));
+        Assert.False(draft.TryBuild(out _, out string? error));
         draft.Error = error;
         draft.Step = PlanFormStep.Sessions;
 
@@ -581,18 +581,18 @@ public sealed class SessionPlannerPageTests
     {
         // The modal shows this as the name placeholder, so it has to be the same string the
         // plan really ends up with — not a lookalike built in the view.
-        var draft = new NewPlanDraft { Track = track, Car = car, RaceLengthText = "60" };
+        NewPlanDraft draft = new NewPlanDraft { Track = track, Car = car, RaceLengthText = "60" };
 
         Assert.Equal(expected, draft.DerivedName);
 
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Equal(expected, request!.Name);
     }
 
     [Fact]
     public void ATypedNameWinsOverTheDerivedOne()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Name = "  Sunday race  ",
             Track = "Spa-Francorchamps",
@@ -601,7 +601,7 @@ public sealed class SessionPlannerPageTests
         };
 
         Assert.Equal("Spa-Francorchamps – Porsche 963", draft.DerivedName);
-        Assert.True(draft.TryBuild(out var request, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? request, out _));
         Assert.Equal("Sunday race", request!.Name);
     }
 
@@ -609,7 +609,7 @@ public sealed class SessionPlannerPageTests
     public void QuickModeIsASummaryPlusCreateWhenEverythingIsDetected()
     {
         // The best case in the issue: in the car, lap-based session, history present.
-        var detection = Detect(
+        PlanDetection detection = Detect(
             new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
             hasFuelHistory: true);
 
@@ -625,7 +625,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void ATimedRaceHasItsDurationDetectedInMinutes()
     {
-        var detection = Detect(
+        PlanDetection detection = Detect(
             new SessionInfo
             {
                 Game = "Le Mans Ultimate",
@@ -646,7 +646,7 @@ public sealed class SessionPlannerPageTests
     {
         // No lap count and no plausible total: the sim has not said how long this is, and a
         // garbage number here becomes a garbage fuel estimate.
-        var detection = Detect(
+        PlanDetection detection = Detect(
             new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", InCar = true },
             hasFuelHistory: true);
 
@@ -658,7 +658,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void QuickModeAsksForTheFuelValuesOnlyWhenThereIsNoHistory()
     {
-        var detection = Detect(
+        PlanDetection detection = Detect(
             new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", MaxLaps = 31, InCar = true },
             hasFuelHistory: false);
 
@@ -669,7 +669,7 @@ public sealed class SessionPlannerPageTests
     public void QuickModeAsksForTheContextItCouldNotDetect()
     {
         // Not in the car and the sim reports nothing: everything is a gap.
-        var detection = Detect(new SessionInfo(), hasFuelHistory: false);
+        PlanDetection detection = Detect(new SessionInfo(), hasFuelHistory: false);
 
         Assert.False(detection.ContextComplete);
         Assert.Equal(
@@ -682,7 +682,7 @@ public sealed class SessionPlannerPageTests
     {
         // The sim knows the track but not yet the car; the remembered context fills the gap
         // so the form shrinks instead of asking again.
-        var detection = Detect(
+        PlanDetection detection = Detect(
             new SessionInfo { Game = "Le Mans Ultimate", Track = "Spa", MaxLaps = 31 },
             hasFuelHistory: true,
             remembered: new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"));
@@ -706,7 +706,7 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void TheFullSheetWalksThreeStepsSoNothingHasToBeScrolled()
     {
-        var draft = new NewPlanDraft();
+        NewPlanDraft draft = new NewPlanDraft();
 
         Assert.Equal(PlanFormStep.Context, draft.Step);
         Assert.False(draft.IsLastStep);
@@ -731,11 +731,11 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void AStepWillNotBeLeftWithAValueItsOwnFieldsCannotSatisfy()
     {
-        var draft = new NewPlanDraft { Step = PlanFormStep.Sessions, RaceLengthText = "" };
+        NewPlanDraft draft = new NewPlanDraft { Step = PlanFormStep.Sessions, RaceLengthText = "" };
 
         // Catching this here rather than at Create means the message sits beside the field it
         // is about, instead of three steps away.
-        Assert.False(draft.TryAdvance(out var error));
+        Assert.False(draft.TryAdvance(out string? error));
         Assert.Equal("Race length must be a number.", error);
         Assert.Equal(PlanFormStep.Sessions, draft.Step);
 
@@ -747,30 +747,30 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void TheLastStepStillValidatesEverythingBeforeCreating()
     {
-        var draft = new NewPlanDraft
+        NewPlanDraft draft = new NewPlanDraft
         {
             Step = PlanFormStep.Fuel,
             RaceLengthText = "60",
             FuelReserveText = "not a number",
         };
 
-        Assert.False(draft.TryBuild(out _, out var error));
+        Assert.False(draft.TryBuild(out _, out string? error));
         Assert.Equal("Fuel reserve must be a whole number of laps.", error);
     }
 
     [Fact]
     public void ANewDraftInheritsTheGlobalPlannerDefaultsAndCanStillBeOverriddenPerPlan()
     {
-        var draft = NewPlanDraft.FromDefaults(new SessionPlannerSettings { FuelReserveLaps = 3 });
+        NewPlanDraft draft = NewPlanDraft.FromDefaults(new SessionPlannerSettings { FuelReserveLaps = 3 });
         draft.RaceLengthText = "60";
 
         Assert.Equal("3", draft.FuelReserveText);
-        Assert.True(draft.TryBuild(out var inherited, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? inherited, out _));
         Assert.Equal(3, inherited!.FuelReserveLaps);
 
         // Per-plan override: the global default seeds the field, it does not lock it.
         draft.FuelReserveText = "0";
-        Assert.True(draft.TryBuild(out var overridden, out _));
+        Assert.True(draft.TryBuild(out CreatePlanRequest? overridden, out _));
         Assert.Equal(0, overridden!.FuelReserveLaps);
     }
 
@@ -784,10 +784,10 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void PrefillResolvesTheCarWhileTheDriverIsStillInTheLobby()
     {
-        var remembered = new LastSeenContext();
+        LastSeenContext remembered = new LastSeenContext();
         // The pre-cockpit frame: scoring knows the game, track and selected car, and says
         // the driver is not in the car yet.
-        var lobby = new SessionInfo
+        SessionInfo lobby = new SessionInfo
         {
             Game = "Le Mans Ultimate",
             Track = "Spa",
@@ -795,7 +795,7 @@ public sealed class SessionPlannerPageTests
             InCar = false,
         };
 
-        var changed = PlanContextCapture.Remember(remembered, lobby);
+        bool changed = PlanContextCapture.Remember(remembered, lobby);
 
         Assert.True(changed);
         Assert.Equal("Le Mans Ultimate", remembered.Game);
@@ -806,9 +806,9 @@ public sealed class SessionPlannerPageTests
     [Fact]
     public void AFrameThatReportsNoCarCannotEraseTheRememberedOne()
     {
-        var remembered = new LastSeenContext { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963" };
+        LastSeenContext remembered = new LastSeenContext { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963" };
 
-        var changed = PlanContextCapture.Remember(remembered, new SessionInfo { Game = "Le Mans Ultimate" });
+        bool changed = PlanContextCapture.Remember(remembered, new SessionInfo { Game = "Le Mans Ultimate" });
 
         Assert.False(changed);
         Assert.Equal("Porsche 963", remembered.Car);
@@ -838,15 +838,15 @@ public sealed class SessionPlannerPageTests
 
     private static void Run(Action<SessionPlannerController, SessionPlannerService> body)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var counter = 0;
-            var service = new SessionPlannerService(
+            int counter = 0;
+            SessionPlannerService service = new SessionPlannerService(
                 new LocalSessionPlanStore(root),
                 clock: () => Now,
                 idFactory: () => $"id-{++counter}");
-            var controller = new SessionPlannerController(
+            SessionPlannerController controller = new SessionPlannerController(
                 service,
                 NoFuelHistorySource.Instance,
                 () => new PlanContext("", "", ""));
@@ -863,15 +863,15 @@ public sealed class SessionPlannerPageTests
         Action<SessionPlannerController, SessionPlannerService> body,
         bool hasFuelHistory = false)
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var counter = 0;
-            var service = new SessionPlannerService(
+            int counter = 0;
+            SessionPlannerService service = new SessionPlannerService(
                 new LocalSessionPlanStore(root),
                 clock: () => Now,
                 idFactory: () => $"id-{++counter}");
-            var controller = new SessionPlannerController(
+            SessionPlannerController controller = new SessionPlannerController(
                 service,
                 hasFuelHistory ? new StubFuelHistory(true) : NoFuelHistorySource.Instance,
                 () => context);

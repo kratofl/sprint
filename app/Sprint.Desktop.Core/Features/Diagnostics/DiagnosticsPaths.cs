@@ -10,11 +10,11 @@ public sealed class DiagnosticsPaths
 {
     public DiagnosticsPaths(string root)
     {
-        Root = root;
-        LogDirectory = Path.Combine(root, "logs");
-        CrashDirectory = Path.Combine(root, "crashes");
-        Directory.CreateDirectory(LogDirectory);
-        Directory.CreateDirectory(CrashDirectory);
+        this.Root = root;
+        this.LogDirectory = Path.Combine(root, "logs");
+        this.CrashDirectory = Path.Combine(root, "crashes");
+        Directory.CreateDirectory(this.LogDirectory);
+        Directory.CreateDirectory(this.CrashDirectory);
     }
 
     public string Root { get; }
@@ -31,9 +31,9 @@ public sealed class DiagnosticsPaths
 
     /// <summary>Daily-rolled log file for <paramref name="date"/> (one file per UTC day).</summary>
     public string LogFileFor(DateTimeOffset date) =>
-        Path.Combine(LogDirectory, $"sprint-{date.ToUniversalTime():yyyyMMdd}.log");
+        Path.Combine(this.LogDirectory, $"sprint-{date.ToUniversalTime():yyyyMMdd}.log");
 
     /// <summary>A unique crash-report path stamped to the millisecond.</summary>
     public string CrashFileFor(DateTimeOffset timestamp) =>
-        Path.Combine(CrashDirectory, $"crash-{timestamp.ToUniversalTime():yyyyMMdd-HHmmss-fff}.log");
+        Path.Combine(this.CrashDirectory, $"crash-{timestamp.ToUniversalTime():yyyyMMdd-HHmmss-fff}.log");
 }

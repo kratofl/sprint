@@ -26,7 +26,7 @@ public sealed class UpdateCheckerTests
     [Fact]
     public void StableChannelOnlySeesStableReleases()
     {
-        var result = UpdateChecker.Check("0.1.0", "stable", Feed);
+        UpdateCheckResult result = UpdateChecker.Check("0.1.0", "stable", Feed);
         Assert.True(result.UpdateAvailable);
         Assert.Equal("v0.2.0", result.Latest!.Version);
     }
@@ -34,7 +34,7 @@ public sealed class UpdateCheckerTests
     [Fact]
     public void PreReleaseChannelSeesPreReleases()
     {
-        var result = UpdateChecker.Check("0.1.0", "pre-release", Feed);
+        UpdateCheckResult result = UpdateChecker.Check("0.1.0", "pre-release", Feed);
         Assert.True(result.UpdateAvailable);
         Assert.Equal("v0.4.0-alpha.1", result.Latest!.Version);
     }
@@ -44,7 +44,7 @@ public sealed class UpdateCheckerTests
     [InlineData("alpha")]
     public void LegacyChannelAliasesBehaveLikePreRelease(string legacyChannel)
     {
-        var result = UpdateChecker.Check("0.1.0", legacyChannel, Feed);
+        UpdateCheckResult result = UpdateChecker.Check("0.1.0", legacyChannel, Feed);
         Assert.True(result.UpdateAvailable);
         Assert.Equal("v0.4.0-alpha.1", result.Latest!.Version);
     }
@@ -52,7 +52,7 @@ public sealed class UpdateCheckerTests
     [Fact]
     public void NoUpdateWhenCurrentIsNewest()
     {
-        var result = UpdateChecker.Check("9.9.9", "pre-release", Feed);
+        UpdateCheckResult result = UpdateChecker.Check("9.9.9", "pre-release", Feed);
         Assert.False(result.UpdateAvailable);
         Assert.Null(result.Latest);
     }

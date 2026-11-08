@@ -53,7 +53,7 @@ public sealed class DevelopmentGameState
 
     public DevelopmentGameState(ILog? log = null)
     {
-        _log = log ?? NullLog.Instance;
+        this._log = log ?? NullLog.Instance;
     }
 
     public event EventHandler? Changed;
@@ -62,9 +62,9 @@ public sealed class DevelopmentGameState
     {
         get
         {
-            lock (_gate)
+            lock (this._gate)
             {
-                return _enabled;
+                return this._enabled;
             }
         }
     }
@@ -73,44 +73,44 @@ public sealed class DevelopmentGameState
     {
         get
         {
-            lock (_gate)
+            lock (this._gate)
             {
-                return _values;
+                return this._values;
             }
         }
     }
 
     public void SetEnabled(bool enabled)
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            _enabled = enabled;
+            this._enabled = enabled;
         }
 
-        _log.Info($"Development game simulation {(enabled ? "enabled" : "disabled")}.");
+        this._log.Info($"Development game simulation {(enabled ? "enabled" : "disabled")}.");
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ApplyPreset(DevelopmentGamePreset preset)
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            _values = PresetValues(preset);
-            _enabled = true;
+            this._values = PresetValues(preset);
+            this._enabled = true;
         }
 
-        _log.Info($"Development game preset applied: preset={preset}.");
+        this._log.Info($"Development game preset applied: preset={preset}.");
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void Update(DevelopmentGameValues values)
     {
-        lock (_gate)
+        lock (this._gate)
         {
-            _values = values;
+            this._values = values;
         }
 
-        _log.Debug(
+        this._log.Debug(
             $"Development game state updated: speedKph={values.SpeedKph:0} rpm={values.Rpm:0} " +
             $"gear={values.Gear} lap={values.CurrentLap}.");
         Changed?.Invoke(this, EventArgs.Empty);
@@ -119,14 +119,14 @@ public sealed class DevelopmentGameState
     public TelemetryFrame Resolve(TelemetryFrame liveFrame)
     {
         DevelopmentGameValues values;
-        lock (_gate)
+        lock (this._gate)
         {
-            if (!_enabled)
+            if (!this._enabled)
             {
                 return liveFrame;
             }
 
-            values = _values;
+            values = this._values;
         }
 
         return ToFrame(values);

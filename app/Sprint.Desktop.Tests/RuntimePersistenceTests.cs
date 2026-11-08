@@ -1,8 +1,10 @@
+using System.Reflection;
 using System.Text.Json;
 using Sprint.Desktop;
 using Sprint.Desktop.Core;
 using Sprint.Desktop.Features.Dashes;
 using Sprint.Desktop.Features.Devices;
+using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
 using Xunit;
 
@@ -15,10 +17,10 @@ public sealed class RuntimePersistenceTests
     {
         // RuntimeCoordinator is the real production consumer (the headless host's command
         // dispatcher): it depends on IDesktopRuntime, not the concrete DesktopRuntime class.
-        var constructor = typeof(RuntimeCoordinator).GetConstructors().Single();
+        ConstructorInfo constructor = typeof(RuntimeCoordinator).GetConstructors().Single();
         Assert.Equal(typeof(IDesktopRuntime), constructor.GetParameters()[0].ParameterType);
 
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -30,11 +32,11 @@ public sealed class RuntimePersistenceTests
             Assert.NotEmpty(runtime.SetupTemplates);
             Assert.Empty(runtime.SetupPrograms);
 
-            var setup = runtime.DuplicateSetup(runtime.SetupTemplates.Single(program => program.Id == "setup-baseline"));
+            SetupProgram setup = runtime.DuplicateSetup(runtime.SetupTemplates.Single(program => program.Id == "setup-baseline"));
             setup.Values["fuelLoad"] = 54;
             runtime.SaveSetupPrograms();
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.NotEmpty(reloaded.SetupTemplates);
             Assert.Equal(54, reloaded.SetupPrograms.Single(program => program.Id == setup.Id).Values["fuelLoad"]);
             Assert.DoesNotContain(reloaded.SetupTemplates, program => program.Id == setup.Id);
@@ -131,18 +133,18 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DashLayoutPresetKeepsIdlePageAlertsAndWidgetConfig()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
-            var layout = runtime.DashLayouts.Single(layout => layout.Id == "default");
+            DashLayout layout = runtime.DashLayouts.Single(layout => layout.Id == "default");
             Assert.NotNull(layout.IdlePage);
             Assert.Equal("idle-default", layout.IdlePage.Id);
             Assert.Equal(5, layout.Alerts.Count);
 
-            var idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
+            DashWidget idleName = layout.IdlePage.Widgets.Single(widget => widget.Id == "idle-name");
             Assert.NotNull(idleName.Config);
             Assert.Equal("profile.driverName", idleName.Config["binding"].GetString());
 
@@ -160,20 +162,20 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SaveDashLayoutPersistsEditorChangesAcrossRuntimeReload()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             DashLayout layout = runtime.CreateBlankDashLayout(ScreenProfileCatalog.Default, name: null, category: null);
-            var page = DashLayoutEditor.AddPage(layout, "Race");
+            DashPage page = DashLayoutEditor.AddPage(layout, "Race");
             DashLayoutEditor.TryRenamePage(layout, page.Id, "Race 1");
 
             runtime.SaveDashLayout(layout);
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.DashLayouts.Single(item => item.Id == layout.Id);
-            var persistedPage = persisted.Pages.Single(item => item.Id == page.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout persisted = reloaded.DashLayouts.Single(item => item.Id == layout.Id);
+            DashPage persistedPage = persisted.Pages.Single(item => item.Id == page.Id);
             Assert.Equal("Race 1", persistedPage.Name);
         }
         finally
@@ -185,11 +187,11 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SettingsPresetKeepsDashEditorUiPreferences()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             Assert.True(runtime.Settings.DashEditorUI.Palette.Open);
             Assert.True(runtime.Settings.DashEditorUI.Palette.Pinned);
@@ -197,8 +199,8 @@ public sealed class RuntimePersistenceTests
             Assert.True(runtime.Settings.DashEditorUI.Inspector.Pinned);
 
             runtime.SaveSettings();
-            var savedJson = File.ReadAllText(Path.Combine(dataRoot, "settings.json"));
-            using var saved = JsonDocument.Parse(savedJson);
+            string savedJson = File.ReadAllText(Path.Combine(dataRoot, "settings.json"));
+            using JsonDocument saved = JsonDocument.Parse(savedJson);
 
             Assert.True(saved.RootElement.GetProperty("dashEditorUI").GetProperty("palette").GetProperty("open").GetBoolean());
             Assert.True(saved.RootElement.GetProperty("dashEditorUI").GetProperty("inspector").GetProperty("pinned").GetBoolean());
@@ -212,17 +214,17 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SettingsPersistTheUsersSidebarPreference()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.False(runtime.Settings.SidebarCollapsed);
 
             runtime.Settings.SidebarCollapsed = true;
             runtime.SaveSettings();
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.True(reloaded.Settings.SidebarCollapsed);
         }
         finally
@@ -234,7 +236,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void ResetSettingsToDefaultsRestoresAndPersistsTheBundledPreferences()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -258,7 +260,7 @@ public sealed class RuntimePersistenceTests
             Assert.True(runtime.Settings.DashEditorUI.Inspector.Pinned);
             Assert.Equal("basic", runtime.Settings.NewDashDefaults.Mode);
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             Assert.False(reloaded.Settings.SidebarCollapsed);
             Assert.Equal("Your Name", reloaded.Settings.DriverName);
             Assert.True(reloaded.Settings.DashEditorUI.Palette.Open);
@@ -273,7 +275,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SaveSettingsPublishesRenderProfile()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -300,26 +302,26 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void CatalogGeometryAndBindingsCarryIntoSavedDevices()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var wheel = runtime.Catalog.Single(device => device.Id == "bavarian-omega-v2-pro");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            CatalogDevice wheel = runtime.Catalog.Single(device => device.Id == "bavarian-omega-v2-pro");
 
             Assert.Equal(0, wheel.OffsetX);
             Assert.Equal(0, wheel.OffsetY);
             Assert.Equal(5, wheel.Margin);
             Assert.Empty(wheel.Bindings);
 
-            var saved = runtime.AddDevice(wheel);
+            SavedDevice saved = runtime.AddDevice(wheel);
             Assert.Equal(0, saved.OffsetX);
             Assert.Equal(0, saved.OffsetY);
             Assert.Equal(5, saved.Margin);
             Assert.Empty(saved.Bindings);
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.Devices.Single();
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice persisted = reloaded.Devices.Single();
             Assert.Equal(5, persisted.Margin);
             Assert.Empty(persisted.Bindings);
         }
@@ -332,15 +334,15 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SavedDevicesUseCompositeIdsAndPersistDeviceUpdates()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var wheel = runtime.Catalog.Single(device => device.Id == "bavarian-omega-v2-pro");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            CatalogDevice wheel = runtime.Catalog.Single(device => device.Id == "bavarian-omega-v2-pro");
 
-            var first = runtime.AddDevice(wheel);
-            var second = runtime.AddDevice(wheel);
+            SavedDevice first = runtime.AddDevice(wheel);
+            SavedDevice second = runtime.AddDevice(wheel);
 
             Assert.NotEqual(first.Id, second.Id);
             Assert.Contains("c872-1004", first.Id);
@@ -348,8 +350,8 @@ public sealed class RuntimePersistenceTests
 
             runtime.UpdateDevice(first, name: "Main Wheel", orientation: DeviceOrientation.PortraitInverted, offsetX: 12, offsetY: 8, margin: 3, dashId: "legacy-main");
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.Devices.Single(device => device.Id == first.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice persisted = reloaded.Devices.Single(device => device.Id == first.Id);
             Assert.Equal("Main Wheel", persisted.Name);
             Assert.Equal(180, persisted.Rotation);
             Assert.Equal(12, persisted.OffsetX);
@@ -366,7 +368,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void UnsupportedPersistedRotationIsNormalizedAtTheSerializationBoundary()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -386,14 +388,14 @@ public sealed class RuntimePersistenceTests
                 ]
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var device = Assert.Single(runtime.Devices);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SavedDevice device = Assert.Single(runtime.Devices);
 
             Assert.Equal(DeviceOrientation.Portrait, device.Orientation);
             Assert.Equal(0, device.Rotation);
 
             runtime.SaveDevices();
-            using var persisted = JsonDocument.Parse(
+            using JsonDocument persisted = JsonDocument.Parse(
                 File.ReadAllText(Path.Combine(dataRoot, "devices.json")));
             Assert.Equal(
                 0,
@@ -408,17 +410,17 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SetupTemplatesAreReadOnlyAndUserDuplicatesPersistAcrossRuntimeReload()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
 
             Assert.True(baseline.IsTemplate);
             Assert.Empty(runtime.SetupPrograms);
 
-            var copy = runtime.DuplicateSetup(baseline);
+            SetupProgram copy = runtime.DuplicateSetup(baseline);
             Assert.False(copy.IsTemplate);
             Assert.NotEqual(baseline.Id, copy.Id);
             Assert.Equal(baseline.Values["fuelLoad"], copy.Values["fuelLoad"]);
@@ -427,8 +429,8 @@ public sealed class RuntimePersistenceTests
 
             runtime.SaveSetupPrograms();
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.SetupPrograms.Single(program => program.Id == copy.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram persisted = reloaded.SetupPrograms.Single(program => program.Id == copy.Id);
             Assert.Equal(55, persisted.Values["fuelLoad"]);
             Assert.True(reloaded.SetupTemplates.Single(program => program.Id == "setup-baseline").IsTemplate);
             Assert.Equal(baseline.Values["fuelLoad"], reloaded.SetupTemplates.Single(program => program.Id == "setup-baseline").Values["fuelLoad"]);
@@ -442,15 +444,15 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DuplicateSetupCreatesUniqueNamesForRepeatedTemplateCopies()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
 
-            var firstCopy = runtime.DuplicateSetup(baseline);
-            var secondCopy = runtime.DuplicateSetup(baseline);
+            SetupProgram firstCopy = runtime.DuplicateSetup(baseline);
+            SetupProgram secondCopy = runtime.DuplicateSetup(baseline);
 
             Assert.NotEqual(firstCopy.Name, secondCopy.Name);
             Assert.Equal(2, runtime.SetupPrograms.Select(program => program.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
@@ -464,19 +466,19 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void MutatingPublicTemplateObjectDoesNotContaminateDuplicateCopies()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
-            var shippedFuelLoad = baseline.Values["fuelLoad"];
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram baseline = runtime.SetupTemplates.Single(program => program.Id == "setup-baseline");
+            double shippedFuelLoad = baseline.Values["fuelLoad"];
 
             baseline.Values["fuelLoad"] = 1;
             baseline.Name = "Mutated template";
             baseline.Id = "mutated-template-id";
 
-            var copy = runtime.DuplicateSetup(baseline);
+            SetupProgram copy = runtime.DuplicateSetup(baseline);
 
             Assert.Equal(shippedFuelLoad, copy.Values["fuelLoad"]);
             Assert.Equal("Baseline | Race copy", copy.Name);
@@ -490,7 +492,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DuplicateSetupUsesSelectedUserSetupWhenUserIdCollidesWithTemplateId()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -506,10 +508,10 @@ public sealed class RuntimePersistenceTests
                 ]
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var userSetup = runtime.SetupPrograms.Single(program => program.Id == "setup-baseline");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram userSetup = runtime.SetupPrograms.Single(program => program.Id == "setup-baseline");
 
-            var copy = runtime.DuplicateSetup(userSetup);
+            SetupProgram copy = runtime.DuplicateSetup(userSetup);
 
             Assert.Equal("User Collision copy", copy.Name);
             Assert.Equal(12, copy.Values["fuelLoad"]);
@@ -523,7 +525,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LoadedSetupProgramsSkipBlankIdsAndRepairNullValues()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -544,14 +546,14 @@ public sealed class RuntimePersistenceTests
                 ]
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var setup = runtime.SetupPrograms.Single();
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            SetupProgram setup = runtime.SetupPrograms.Single();
 
             Assert.Equal("valid-user-setup", setup.Id);
             Assert.Equal("valid-user-setup", setup.Name);
             Assert.Empty(setup.Values);
 
-            var copy = runtime.DuplicateSetup(setup);
+            SetupProgram copy = runtime.DuplicateSetup(setup);
 
             Assert.Equal("valid-user-setup copy", copy.Name);
             Assert.Empty(copy.Values);
@@ -569,14 +571,14 @@ public sealed class RuntimePersistenceTests
     [InlineData("controls.json")]
     public void MalformedRuntimeJsonFallsBackToDefaultsWithoutDeletingFile(string fileName)
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var path = Path.Combine(dataRoot, fileName);
+            string path = Path.Combine(dataRoot, fileName);
             File.WriteAllText(path, "{ definitely not json");
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             Assert.NotNull(runtime.Settings);
             Assert.Empty(runtime.Devices);
@@ -594,16 +596,16 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void MalformedDashLayoutJsonFallsBackToPresetWithoutDeletingFile()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var layoutsPath = Path.Combine(dataRoot, "dash-layouts");
+            string layoutsPath = Path.Combine(dataRoot, "dash-layouts");
             Directory.CreateDirectory(layoutsPath);
-            var path = Path.Combine(layoutsPath, "broken.json");
+            string path = Path.Combine(layoutsPath, "broken.json");
             File.WriteAllText(path, "{ definitely not json");
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             Assert.Contains(runtime.DashLayouts, layout => layout.Id == "default");
             Assert.Equal("{ definitely not json", File.ReadAllText(path));
@@ -617,8 +619,8 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LegacyPortableDataMigratesIntoNewRuntimeStoreOnce()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        var legacyRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
+        string legacyRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -643,7 +645,7 @@ public sealed class RuntimePersistenceTests
             File.WriteAllText(Path.Combine(legacyRoot, "devices", "screens.json"), "[]");
             File.WriteAllText(Path.Combine(legacyRoot, "devices", "buttonboxes.json"), "[]");
 
-            var legacyLayoutDir = Path.Combine(legacyRoot, "layouts", "legacy-main");
+            string legacyLayoutDir = Path.Combine(legacyRoot, "layouts", "legacy-main");
             Directory.CreateDirectory(legacyLayoutDir);
             File.WriteAllText(
                 Path.Combine(legacyLayoutDir, "config.json"),
@@ -683,16 +685,16 @@ public sealed class RuntimePersistenceTests
                 }
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
 
-            var device = runtime.Devices.Single();
+            SavedDevice device = runtime.Devices.Single();
             Assert.Equal("Migrated Omega", device.Name);
             Assert.Equal("wheel", device.Type);
             Assert.Equal(51314, device.Vid);
             Assert.Equal(4100, device.Pid);
             Assert.Equal(5, device.Margin);
 
-            var layout = runtime.DashLayouts.Single(layout => layout.Id == "legacy-main");
+            DashLayout layout = runtime.DashLayouts.Single(layout => layout.Id == "legacy-main");
             Assert.Equal("Legacy Main", layout.Name);
             Assert.Single(layout.Alerts);
             Assert.NotNull(layout.AlertConfig);
@@ -708,7 +710,7 @@ public sealed class RuntimePersistenceTests
             Assert.NotNull(layout.Pages[0].Widgets[0].ExtensionData);
             Assert.True(layout.Pages[0].Widgets[0].ExtensionData!.ContainsKey("legacyWidgetField"));
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
             Assert.Single(reloaded.Devices);
             Assert.Single(reloaded.DashLayouts);
             Assert.Equal("legacy-main", reloaded.DashLayouts[0].Id);
@@ -723,12 +725,12 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void InvalidLegacyDashLayoutIsNotMigrated()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        var legacyRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
+        string legacyRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var invalidLayoutDir = Path.Combine(legacyRoot, "layouts", "invalid");
+            string invalidLayoutDir = Path.Combine(legacyRoot, "layouts", "invalid");
             Directory.CreateDirectory(invalidLayoutDir);
             File.WriteAllText(
                 Path.Combine(invalidLayoutDir, "config.json"),
@@ -750,7 +752,7 @@ public sealed class RuntimePersistenceTests
                 }
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
 
             Assert.DoesNotContain(runtime.DashLayouts, layout => layout.Id == "invalid");
             Assert.False(File.Exists(Path.Combine(dataRoot, "dash-layouts", "invalid.json")));
@@ -765,8 +767,8 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LegacySettingsMigrateWithNewDashDefaults()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
-        var legacyRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
+        string legacyRoot = TestEnv.NewTempDataRoot();
 
         try
         {
@@ -790,7 +792,7 @@ public sealed class RuntimePersistenceTests
                 }
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
 
             Assert.Equal("pre-release", runtime.Settings.UpdateChannel);
             Assert.Equal("Legacy Driver", runtime.Settings.DriverName);
@@ -802,15 +804,15 @@ public sealed class RuntimePersistenceTests
             Assert.False(runtime.Settings.DashEditorUI.Palette.Open);
             Assert.False(runtime.Settings.DashEditorUI.Inspector.Pinned);
 
-            var savedJson = File.ReadAllText(Path.Combine(dataRoot, "settings.json"));
-            using var saved = JsonDocument.Parse(savedJson);
+            string savedJson = File.ReadAllText(Path.Combine(dataRoot, "settings.json"));
+            using JsonDocument saved = JsonDocument.Parse(savedJson);
             Assert.Equal("advanced", saved.RootElement.GetProperty("newDashDefaults").GetProperty("mode").GetString());
 
             File.WriteAllText(
                 Path.Combine(legacyRoot, "settings.json"),
                 """{"driverName":"Ignored After First Migration"}""");
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot, legacyRoot);
             Assert.Equal("Legacy Driver", reloaded.Settings.DriverName);
         }
         finally
@@ -823,18 +825,18 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DashLayoutsNormalizeToATargetScreenProfileOnLoad()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var layout = runtime.DashLayouts.Single(item => item.Id == "default");
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
 
             // Legacy preset has no stored profile, so it is tagged with the best-fit
             // catalog profile (its 20×12 grid maps to landscape 800×480) without any
             // change to its grid or widget placement.
             Assert.False(string.IsNullOrWhiteSpace(layout.ScreenProfileId));
-            var profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
+            ScreenProfile profile = ScreenProfileCatalog.Resolve(layout.ScreenProfileId);
             Assert.Equal("landscape-800x480", profile.Id);
             Assert.Equal(20, layout.GridCols);
             Assert.Equal(12, layout.GridRows);
@@ -849,13 +851,13 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void ChangingDashTargetSizeRefitsGridAndPersistsAcrossReload()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             DashLayout layout = runtime.DashLayouts.Single(item => item.Id == "default");
-            var portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
+            ScreenProfile portrait = ScreenProfileCatalog.Resolve("portrait-480x854");
 
             runtime.SetDashScreenProfile(layout, portrait);
 
@@ -864,8 +866,8 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(portrait.GridRows, layout.GridRows);
             Assert.True(DashLayoutValidator.IsValid(layout), "Refit layout must stay valid.");
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.DashLayouts.Single(item => item.Id == layout.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout persisted = reloaded.DashLayouts.Single(item => item.Id == layout.Id);
             Assert.Equal("portrait-480x854", persisted.ScreenProfileId);
             Assert.Equal(portrait.GridCols, persisted.GridCols);
             Assert.Equal(portrait.GridRows, persisted.GridRows);
@@ -879,14 +881,14 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void DuplicateDashToProfileProducesIndependentRetargetedCopy()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var source = runtime.DashLayouts.Single(item => item.Id == "default");
-            var sourceProfile = source.ScreenProfileId;
-            var square = ScreenProfileCatalog.Resolve("square-800x800");
+            DashLayout source = runtime.DashLayouts.Single(item => item.Id == "default");
+            string? sourceProfile = source.ScreenProfileId;
+            ScreenProfile square = ScreenProfileCatalog.Resolve("square-800x800");
 
             DashLayout copy = runtime.DuplicateDashToProfile(source, square, name: null, category: null);
 
@@ -905,8 +907,8 @@ public sealed class RuntimePersistenceTests
             copy.Pages[0].Name = "Retargeted page";
             Assert.NotEqual("Retargeted page", source.Pages[0].Name);
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var persisted = reloaded.DashLayouts.Single(item => item.Id == copy.Id);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout persisted = reloaded.DashLayouts.Single(item => item.Id == copy.Id);
             Assert.Equal("square-800x800", persisted.ScreenProfileId);
             Assert.Equal(square.GridCols, persisted.GridCols);
         }
@@ -919,12 +921,12 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void CreateBlankDashLayoutTargetsTheProfileWithOneEmptyPage()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var wide = ScreenProfileCatalog.Resolve("landscape-1024x600");
+            ScreenProfile wide = ScreenProfileCatalog.Resolve("landscape-1024x600");
 
             DashLayout created = runtime.CreateBlankDashLayout(wide, "Wide", "Race");
 
@@ -944,7 +946,7 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void NewDashboardsDefaultToFunctionalColorSystemAndPersistItExplicitly()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
             IDesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
@@ -954,7 +956,7 @@ public sealed class RuntimePersistenceTests
             Assert.Equal(DashColorSystem.Functional, created.ColorSystem);
             Assert.Equal(DashColorSystem.Functional, created.EffectiveColorSystem);
             Assert.Null(created.Theme);
-            var json = File.ReadAllText(Path.Combine(dataRoot, "dash-layouts", $"{created.Id}.json"));
+            string json = File.ReadAllText(Path.Combine(dataRoot, "dash-layouts", $"{created.Id}.json"));
             Assert.Contains("\"colorSystem\": \"functional\"", json, StringComparison.Ordinal);
         }
         finally
@@ -966,10 +968,10 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LegacyDashboardColorSystemsMigrateWithoutChangingAuthoredThemeValues()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var layouts = Path.Combine(dataRoot, "dash-layouts");
+            string layouts = Path.Combine(dataRoot, "dash-layouts");
             Directory.CreateDirectory(layouts);
             File.WriteAllText(Path.Combine(layouts, "plain.json"),
                 """
@@ -983,10 +985,10 @@ public sealed class RuntimePersistenceTests
                 }
                 """);
 
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
-            var plain = runtime.DashLayouts.Single(layout => layout.Id == "plain");
-            var authored = runtime.DashLayouts.Single(layout => layout.Id == "authored");
+            DashLayout plain = runtime.DashLayouts.Single(layout => layout.Id == "plain");
+            DashLayout authored = runtime.DashLayouts.Single(layout => layout.Id == "authored");
             Assert.Equal(DashColorSystem.Functional, plain.ColorSystem);
             Assert.Equal(DashColorSystem.Styled, authored.ColorSystem);
             Assert.Equal("#123456", authored.Theme!.Primary);
@@ -1003,11 +1005,11 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SavingStyledDashboardCoercesProtectedConditionColors()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var layout = runtime.DashLayouts.First();
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DashLayout layout = runtime.DashLayouts.First();
             layout.ColorSystem = DashColorSystem.Styled;
             layout.Theme = new DashTheme { Critical = "#123456", Fault = "#654321", Warning = "#AABBCC" };
 
@@ -1016,7 +1018,7 @@ public sealed class RuntimePersistenceTests
             Assert.Equal("#F02744", layout.Theme.Critical);
             Assert.Equal("#F02744", layout.Theme.Fault);
             Assert.Equal("#AABBCC", layout.Theme.Warning);
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot)
+            DashLayout reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot)
                 .DashLayouts.Single(candidate => candidate.Id == layout.Id);
             Assert.Equal("#F02744", reloaded.Theme!.Critical);
             Assert.Equal("#F02744", reloaded.Theme.Fault);
@@ -1030,10 +1032,10 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void RuntimeExposesTheResolvedDataRoot()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
 
             Assert.Equal(root, runtime.DataRoot);
         }
@@ -1046,10 +1048,10 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SessionPlannerSettingsCarryTheDefaultsTheSpecRequires()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var planner = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+            SessionPlannerSettings planner = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
 
             // #103: every default is stated in the issue, so they are asserted as literals.
             Assert.Equal(1, planner.FuelReserveLaps);
@@ -1072,10 +1074,10 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void SessionPlannerSettingsRoundTripAndOldFilesKeepTheDefaults()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
             runtime.Settings.SessionPlanner.FuelReserveLaps = 2;
             runtime.Settings.SessionPlanner.FuelHistorySource = FuelHistorySource.MatchingSessionType;
             runtime.Settings.SessionPlanner.AutoDetect = AutoDetectMode.CreateAndArm;
@@ -1083,7 +1085,7 @@ public sealed class RuntimePersistenceTests
             runtime.Settings.SessionPlanner.WarnOnRaceFormatMismatch = false;
             runtime.SaveSettings();
 
-            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
+            SessionPlannerSettings reloaded = new DesktopRuntime(root, TestEnv.PresetRoot).Settings.SessionPlanner;
 
             Assert.Equal(2, reloaded.FuelReserveLaps);
             Assert.Equal(FuelHistorySource.MatchingSessionType, reloaded.FuelHistorySource);
@@ -1092,11 +1094,11 @@ public sealed class RuntimePersistenceTests
             Assert.False(reloaded.WarnOnRaceFormatMismatch);
 
             // A settings file written before this section existed keeps the documented defaults.
-            var older = TestEnv.NewTempDataRoot();
+            string older = TestEnv.NewTempDataRoot();
             try
             {
                 File.WriteAllText(Path.Combine(older, "settings.json"), """{"driverName":"Ada"}""");
-                var upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
+                SessionPlannerSettings upgraded = new DesktopRuntime(older, TestEnv.PresetRoot).Settings.SessionPlanner;
 
                 Assert.Equal(1, upgraded.FuelReserveLaps);
                 Assert.Equal(AutoDetectMode.DraftSuggestion, upgraded.AutoDetect);
@@ -1117,7 +1119,7 @@ public sealed class RuntimePersistenceTests
     {
         // #103 offered a capture rate; #194 rejected the 60 Hz time grid that setting served
         // (docs/internals/live-compare.md "Traces"). What a driver chooses now is a disk budget.
-        var budgets = SessionPlannerSettings.TraceStorageBudgets;
+        int[] budgets = SessionPlannerSettings.TraceStorageBudgets;
 
         Assert.True(budgets.Length > 1, "a single option is not a choice");
         Assert.Equal(budgets.OrderBy(megabytes => megabytes), budgets);
@@ -1128,16 +1130,16 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LastSeenContextRoundTripsThroughSettings()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
             runtime.Settings.LastSeenContext.Game = "Le Mans Ultimate";
             runtime.Settings.LastSeenContext.Car = "Porsche 963";
             runtime.Settings.LastSeenContext.Track = "Spa-Francorchamps";
             runtime.SaveSettings();
 
-            var reloaded = new DesktopRuntime(root, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(root, TestEnv.PresetRoot);
 
             Assert.Equal("Le Mans Ultimate", reloaded.Settings.LastSeenContext.Game);
             Assert.Equal("Porsche 963", reloaded.Settings.LastSeenContext.Car);
@@ -1152,13 +1154,13 @@ public sealed class RuntimePersistenceTests
     [Fact]
     public void LastSeenContextDefaultsToEmptyForOldSettingsFiles()
     {
-        var root = TestEnv.NewTempDataRoot();
+        string root = TestEnv.NewTempDataRoot();
         try
         {
             // A settings file written before this feature existed has no lastSeenContext.
             File.WriteAllText(Path.Combine(root, "settings.json"), """{"driverName":"Ada"}""");
 
-            var runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(root, TestEnv.PresetRoot);
 
             Assert.Equal("Ada", runtime.Settings.DriverName);
             Assert.Equal("", runtime.Settings.LastSeenContext.Game);

@@ -1,3 +1,4 @@
+using System.Text;
 using Sprint.Games;
 
 namespace Sprint.Desktop.Features.Analysis;
@@ -8,7 +9,7 @@ internal sealed record AnalysisCarArtwork(
     string? AssetFileName,
     string MissingMessage)
 {
-    public bool IsMissing => AssetFileName is null;
+    public bool IsMissing => this.AssetFileName is null;
 }
 
 /// <summary>A real circuit layout and the asset that draws it.</summary>
@@ -55,7 +56,7 @@ internal static class AnalysisArtworkCatalog
     public static AnalysisCarArtwork ResolveCar(string? game, string? carModel)
     {
         _ = game;
-        var normalized = Normalize(carModel);
+        string normalized = Normalize(carModel);
         return normalized switch
         {
             "porsche963" => Real("porsche-963", "car-porsche-963.jpg"),
@@ -82,8 +83,8 @@ internal static class AnalysisArtworkCatalog
             return string.Empty;
         }
 
-        var builder = new System.Text.StringBuilder(value.Length);
-        foreach (var character in value.Trim().ToLowerInvariant())
+        StringBuilder builder = new System.Text.StringBuilder(value.Length);
+        foreach (char character in value.Trim().ToLowerInvariant())
         {
             if (char.IsLetterOrDigit(character))
             {

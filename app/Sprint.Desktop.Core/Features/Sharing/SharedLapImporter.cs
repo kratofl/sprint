@@ -40,10 +40,10 @@ public sealed class SharedLapImporter
         ILog? log = null,
         StoredCarNames? carNames = null)
     {
-        _history = history ?? throw new ArgumentNullException(nameof(history));
-        _traces = traces ?? throw new ArgumentNullException(nameof(traces));
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
-        _log = log ?? NullLog.Instance;
+        this._history = history ?? throw new ArgumentNullException(nameof(history));
+        this._traces = traces ?? throw new ArgumentNullException(nameof(traces));
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._log = log ?? NullLog.Instance;
         this._carNames = carNames;
     }
 
@@ -66,15 +66,15 @@ public sealed class SharedLapImporter
             return SharedLapImportResult.Duplicate(existing.Id);
         }
 
-        var sessionId = $"shared-{fingerprint}";
-        var traceId = LapTraceId.For(sessionId, lap.LapNumber);
+        string sessionId = $"shared-{fingerprint}";
+        string traceId = LapTraceId.For(sessionId, lap.LapNumber);
 
         // The trace goes down first. A record pointing at a trace that is not there yet would
         // advertise a tier the store cannot deliver — the lie the corpus works to avoid — and
         // the reverse (an orphan trace) is something retention already cleans up.
-        _traces.Save(traceId, lap.Trace);
+        this._traces.Save(traceId, lap.Trace);
 
-        var session = new LapHistorySession
+        LapHistorySession session = new LapHistorySession
         {
             Id = sessionId,
             Context = lap.Context,
@@ -85,7 +85,7 @@ public sealed class SharedLapImporter
             StartedAt = lap.Provenance.DrivenAt ?? lap.Provenance.SharedAt,
             EndedAt = lap.Provenance.DrivenAt ?? lap.Provenance.SharedAt,
             SharedFrom = lap.Attribution,
-            SharedAt = _clock(),
+            SharedAt = this._clock(),
             ShareCode = lap.Provenance.ShareCode,
             SharedFingerprint = fingerprint,
             Laps =
@@ -109,8 +109,8 @@ public sealed class SharedLapImporter
         // After the fingerprint: it was taken over the name the lap arrived with, and has to stay
         // that so the same file imported again is still recognised.
         this._carNames?.Rename(session.Context, LapHistoryOrigin.Shared);
-        _history.Save(session);
-        _log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
+        this._history.Save(session);
+        this._log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
         return new SharedLapImportResult(true, false, sessionId);
     }
 
@@ -121,16 +121,16 @@ public sealed class SharedLapImporter
     /// </summary>
     private static LapReferenceCurve? CurveFrom(LapChannelTrace trace)
     {
-        if (!trace.TryGetChannel(LapTraceChannels.ElapsedSeconds, out var elapsed) || elapsed.Length < 2)
+        if (!trace.TryGetChannel(LapTraceChannels.ElapsedSeconds, out float[]? elapsed) || elapsed.Length < 2)
         {
             return null;
         }
 
-        var count = (int)Math.Round(1.0 / LapReferenceCurve.PositionStepDefault) + 1;
-        var times = new List<double>(count);
-        for (var i = 0; i < count; i++)
+        int count = (int)Math.Round(1.0 / LapReferenceCurve.PositionStepDefault) + 1;
+        List<double> times = new List<double>(count);
+        for (int i = 0; i < count; i++)
         {
-            var position = i * LapReferenceCurve.PositionStepDefault;
+            double position = i * LapReferenceCurve.PositionStepDefault;
             times.Add(Math.Round(trace.ValueAt(LapTraceChannels.ElapsedSeconds, position) ?? 0, 3));
         }
 

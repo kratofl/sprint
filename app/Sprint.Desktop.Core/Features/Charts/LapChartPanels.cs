@@ -129,7 +129,7 @@ public static class LapChartPanels
         IEnumerable<string>? ids,
         IReadOnlyList<LapChartPanelSpec> fallback)
     {
-        var resolved = (ids ?? []).Select(ById).OfType<LapChartPanelSpec>().ToList();
+        List<LapChartPanelSpec> resolved = (ids ?? []).Select(ById).OfType<LapChartPanelSpec>().ToList();
         return resolved.Count > 0 ? resolved : fallback;
     }
 }

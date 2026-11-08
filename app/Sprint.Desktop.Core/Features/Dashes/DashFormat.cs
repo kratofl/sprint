@@ -22,10 +22,10 @@ public static class DashFormat
         // Round to whole milliseconds FIRST, then split — otherwise truncating
         // minutes and rounding the seconds remainder can yield ":60.000" for a
         // value a fraction of a millisecond below a whole minute.
-        var totalMs = (long)Math.Round(seconds * 1000.0, MidpointRounding.AwayFromZero);
-        var minutes = totalMs / 60_000;
-        var secs = totalMs % 60_000 / 1000;
-        var millis = totalMs % 1000;
+        long totalMs = (long)Math.Round(seconds * 1000.0, MidpointRounding.AwayFromZero);
+        long minutes = totalMs / 60_000;
+        long secs = totalMs % 60_000 / 1000;
+        long millis = totalMs % 1000;
         return string.Create(Inv, $"{minutes}:{secs:00}.{millis:000}");
     }
 
@@ -37,7 +37,7 @@ public static class DashFormat
             return "0.000";
         }
 
-        var rounded = Math.Round(seconds, 3, MidpointRounding.AwayFromZero);
+        double rounded = Math.Round(seconds, 3, MidpointRounding.AwayFromZero);
         if (Math.Abs(rounded) < 0.001)
         {
             return "0.000";

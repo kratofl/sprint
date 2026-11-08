@@ -204,5 +204,5 @@ internal sealed record LmuParsedFrame
 
     /// <summary>Every entry of the vehicle scoring array, in array order (not by place).</summary>
     public IReadOnlyList<LmuVehicleScoring> Vehicles { get; init; } = [];
-    public bool PlayerInCar => PlayerHasVehicle && ScoringInfo.InRealtime && Telemetry is not null && Scoring is not null;
+    public bool PlayerInCar => this.PlayerHasVehicle && this.ScoringInfo.InRealtime && this.Telemetry is not null && this.Scoring is not null;
 }

@@ -8,7 +8,7 @@ public sealed class DesktopState
 {
     private DesktopTelemetryState _telemetry = new(new TelemetryFrame(), TelemetryStatus.Disconnected("Sprint Demo"), 0);
 
-    public DesktopTelemetryState Telemetry => Volatile.Read(ref _telemetry);
+    public DesktopTelemetryState Telemetry => Volatile.Read(ref this._telemetry);
 
-    public void Publish(DesktopTelemetryState state) => Volatile.Write(ref _telemetry, state);
+    public void Publish(DesktopTelemetryState state) => Volatile.Write(ref this._telemetry, state);
 }

@@ -30,8 +30,8 @@ public static class LapReferenceCurveSeries
 
         // The corpus stores times only: the position of index i is i * PositionStep, by
         // construction (LapHistoryModels).
-        var samples = new ChartSample[curve.TimesSeconds.Count];
-        for (var i = 0; i < samples.Length; i++)
+        ChartSample[] samples = new ChartSample[curve.TimesSeconds.Count];
+        for (int i = 0; i < samples.Length; i++)
         {
             samples[i] = new ChartSample(i * curve.PositionStep, curve.TimesSeconds[i]);
         }

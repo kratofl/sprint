@@ -15,11 +15,11 @@ public sealed class UpdateCheckSession(
 
     public bool HasCheck(string currentVersion, string channel)
     {
-        var key = CacheKey(currentVersion, channel);
-        lock (_gate)
+        (string CurrentVersion, string Channel) key = CacheKey(currentVersion, channel);
+        lock (this._gate)
         {
-            return _cachedKey == key
-                && _cachedCheck is not null;
+            return this._cachedKey == key
+                && this._cachedCheck is not null;
         }
     }
 
@@ -29,21 +29,21 @@ public sealed class UpdateCheckSession(
         bool forceRefresh = false,
         CancellationToken ct = default)
     {
-        var key = CacheKey(currentVersion, channel);
+        (string CurrentVersion, string Channel) key = CacheKey(currentVersion, channel);
 
-        lock (_gate)
+        lock (this._gate)
         {
             if (!forceRefresh
-                && _cachedKey == key
-                && _cachedCheck is { } cached)
+                && this._cachedKey == key
+                && this._cachedCheck is { } cached)
             {
                 return cached;
             }
 
-            var generation = ++_generation;
-            var check = FetchAndCheckAsync(currentVersion, channel, generation, ct);
-            _cachedKey = key;
-            _cachedCheck = check;
+            int generation = ++this._generation;
+            Task<UpdateCheckResult> check = this.FetchAndCheckAsync(currentVersion, channel, generation, ct);
+            this._cachedKey = key;
+            this._cachedCheck = check;
             return check;
         }
     }
@@ -56,17 +56,17 @@ public sealed class UpdateCheckSession(
     {
         try
         {
-            var releases = await fetchReleases(ct).ConfigureAwait(false);
+            IReadOnlyList<ReleaseInfo> releases = await fetchReleases(ct).ConfigureAwait(false);
             return UpdateChecker.Check(currentVersion, channel, releases);
         }
         catch
         {
-            lock (_gate)
+            lock (this._gate)
             {
-                if (_generation == generation)
+                if (this._generation == generation)
                 {
-                    _cachedKey = null;
-                    _cachedCheck = null;
+                    this._cachedKey = null;
+                    this._cachedCheck = null;
                 }
             }
 

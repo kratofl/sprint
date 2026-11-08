@@ -45,28 +45,28 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
             throw new ArgumentOutOfRangeException(nameof(region));
         }
 
-        _region = region;
-        _config = config;
-        _capturer = capturer;
-        Width = config.Width;
-        Height = config.Height;
-        _transform = DeviceOrientations.Transform(
-            Width,
-            Height,
+        this._region = region;
+        this._config = config;
+        this._capturer = capturer;
+        this.Width = config.Width;
+        this.Height = config.Height;
+        this._transform = DeviceOrientations.Transform(
+            this.Width,
+            this.Height,
             config.Orientation);
-        _logicalWidth = _transform.LogicalWidth;
-        _logicalHeight = _transform.LogicalHeight;
+        this._logicalWidth = this._transform.LogicalWidth;
+        this._logicalHeight = this._transform.LogicalHeight;
         if (sharedFrames is not null
-            && (sharedFrames.Width != _logicalWidth || sharedFrames.Height != _logicalHeight))
+            && (sharedFrames.Width != this._logicalWidth || sharedFrames.Height != this._logicalHeight))
         {
             throw new ArgumentException(
                 "Shared capture dimensions must match the frame source's logical size.",
                 nameof(sharedFrames));
         }
 
-        _sharedFrames = sharedFrames;
-        _bgra = sharedFrames is null
-            ? new byte[checked(_logicalWidth * _logicalHeight * 4)]
+        this._sharedFrames = sharedFrames;
+        this._bgra = sharedFrames is null
+            ? new byte[checked(this._logicalWidth * this._logicalHeight * 4)]
             : null;
     }
 
@@ -77,31 +77,31 @@ public sealed class DesktopCaptureFrameSource : IDashFrameSource
     public ScreenFrameTiming Render(TelemetryFrame frame, Span<byte> rgb565)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        if (rgb565.Length < Width * Height * 2)
+        if (rgb565.Length < this.Width * this.Height * 2)
         {
             throw new ArgumentException("Destination buffer too small for the native screen.", nameof(rgb565));
         }
 
-        var sourceStarted = Stopwatch.GetTimestamp();
-        var bgra = _sharedFrames?.ProducerBuffer ?? _bgra!;
-        if (!_capturer.TryCapture(_region, _logicalWidth, _logicalHeight, bgra))
+        long sourceStarted = Stopwatch.GetTimestamp();
+        byte[] bgra = this._sharedFrames?.ProducerBuffer ?? this._bgra!;
+        if (!this._capturer.TryCapture(this._region, this._logicalWidth, this._logicalHeight, bgra))
         {
             throw new InvalidOperationException("Windows could not capture the selected desktop area.");
         }
 
-        var sourceCompleted = Stopwatch.GetTimestamp();
-        _sharedFrames?.Publish();
-        var transformStarted = sourceCompleted;
+        long sourceCompleted = Stopwatch.GetTimestamp();
+        this._sharedFrames?.Publish();
+        long transformStarted = sourceCompleted;
         Rgb565.ComposeFromBgra(
             bgra,
-            Width,
-            Height,
-            _transform,
-            _config.Margin,
-            _config.OffsetX,
-            _config.OffsetY,
+            this.Width,
+            this.Height,
+            this._transform,
+            this._config.Margin,
+            this._config.OffsetX,
+            this._config.OffsetY,
             rgb565);
-        var transformCompleted = Stopwatch.GetTimestamp();
+        long transformCompleted = Stopwatch.GetTimestamp();
         return new ScreenFrameTiming(
             Stopwatch.GetElapsedTime(sourceStarted, sourceCompleted),
             Stopwatch.GetElapsedTime(transformStarted, transformCompleted));

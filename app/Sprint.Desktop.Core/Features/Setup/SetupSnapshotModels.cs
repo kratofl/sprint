@@ -88,7 +88,7 @@ public sealed class SetupSnapshot
 
     /// <summary>Whether the user has promoted this version into the curated vault.</summary>
     [JsonIgnore]
-    public bool IsInVault => PromotedAt is not null;
+    public bool IsInVault => this.PromotedAt is not null;
 
     /// <summary>
     /// The first value stored under <paramref name="key"/> in any section, or null when the
@@ -96,7 +96,7 @@ public sealed class SetupSnapshot
     /// caller knows the key but not which section the sim filed it in — a per-corner key
     /// repeats across sections and has to be read from <see cref="Values"/> with its section.
     /// </summary>
-    public string? Value(string key) => Values
+    public string? Value(string key) => this.Values
         .FirstOrDefault(value => string.Equals(value.Key, key, StringComparison.OrdinalIgnoreCase))
         ?.RawValue;
 }

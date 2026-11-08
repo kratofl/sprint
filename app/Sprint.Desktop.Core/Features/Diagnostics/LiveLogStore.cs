@@ -20,8 +20,8 @@ public sealed class LiveLogStore : ILog
 
     public LiveLogStore(int capacity = 2_000, Func<DateTimeOffset>? clock = null)
     {
-        _capacity = Math.Max(1, capacity);
-        _clock = clock ?? (() => DateTimeOffset.UtcNow);
+        this._capacity = Math.Max(1, capacity);
+        this._clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     public event EventHandler<LiveLogEntry>? EntryWritten;
@@ -30,9 +30,9 @@ public sealed class LiveLogStore : ILog
     {
         get
         {
-            lock (_gate)
+            lock (this._gate)
             {
-                return _entries.ToArray();
+                return this._entries.ToArray();
             }
         }
     }
@@ -53,13 +53,13 @@ public sealed class LiveLogStore : ILog
             return;
         }
 
-        var entry = new LiveLogEntry(_clock(), level, message, exception?.ToString());
-        lock (_gate)
+        LiveLogEntry entry = new LiveLogEntry(this._clock(), level, message, exception?.ToString());
+        lock (this._gate)
         {
-            _entries.Enqueue(entry);
-            while (_entries.Count > _capacity)
+            this._entries.Enqueue(entry);
+            while (this._entries.Count > this._capacity)
             {
-                _entries.Dequeue();
+                this._entries.Dequeue();
             }
         }
 
@@ -68,10 +68,10 @@ public sealed class LiveLogStore : ILog
 
     public IReadOnlyList<LiveLogEntry> Filter(LogLevel minimumLevel, string? text = null)
     {
-        var needle = text?.Trim();
-        lock (_gate)
+        string? needle = text?.Trim();
+        lock (this._gate)
         {
-            return _entries
+            return this._entries
                 .Where(entry => entry.Level >= minimumLevel
                     && (string.IsNullOrEmpty(needle)
                         || entry.Message.Contains(needle, StringComparison.OrdinalIgnoreCase)
@@ -88,7 +88,7 @@ public sealed class CompositeLog(params ILog[] sinks) : ILog
 
     public void Write(LogLevel level, string message, Exception? exception = null)
     {
-        foreach (var sink in _sinks)
+        foreach (ILog sink in this._sinks)
         {
             sink.Write(level, message, exception);
         }

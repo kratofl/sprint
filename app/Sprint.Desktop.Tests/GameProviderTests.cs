@@ -16,7 +16,7 @@ public sealed class GameProviderTests
     [Fact]
     public void Registers_a_provider_for_every_supported_game()
     {
-        var ids = GameProviders.All.Select(provider => provider.Descriptor.Id).ToArray();
+        string[] ids = GameProviders.All.Select(provider => provider.Descriptor.Id).ToArray();
 
         Assert.Equal(new[] { "lemansultimate", "demo" }, ids);
     }
@@ -24,7 +24,7 @@ public sealed class GameProviderTests
     [Fact]
     public void Finds_a_registered_provider_by_game_id()
     {
-        var provider = GameProviders.Find("lemansultimate");
+        IGameProvider? provider = GameProviders.Find("lemansultimate");
 
         Assert.NotNull(provider);
         Assert.Equal("Le Mans Ultimate", provider.Descriptor.Name);
@@ -41,10 +41,10 @@ public sealed class GameProviderTests
     [InlineData("lemansultimate", "Le Mans Ultimate")]
     public void Creates_the_telemetry_source_of_the_game_it_speaks_for(string gameId, string expectedSourceName)
     {
-        var provider = GameProviders.Find(gameId);
+        IGameProvider? provider = GameProviders.Find(gameId);
         Assert.NotNull(provider);
 
-        using var source = provider.CreateTelemetrySource();
+        using ITelemetrySource source = provider.CreateTelemetrySource();
 
         Assert.Equal(expectedSourceName, source.Name);
     }
@@ -58,7 +58,7 @@ public sealed class GameProviderTests
     [Fact]
     public void Demo_game_has_none_of_the_optional_capabilities()
     {
-        var demo = GameProviders.Find("demo");
+        IGameProvider? demo = GameProviders.Find("demo");
         Assert.NotNull(demo);
 
         // A simulation archives no results, stores no setups and publishes no schedule, so
@@ -82,11 +82,11 @@ public sealed class GameProviderTests
     public void A_capability_hands_the_caller_sprint_records_without_naming_the_game()
     {
         IGameProvider archiveOnlyGame = new ArchiveOnlyGameProvider();
-        var importer = archiveOnlyGame.Results;
+        IResultsImporter? importer = archiveOnlyGame.Results;
         Assert.NotNull(importer);
 
-        var entry = Assert.Single(importer.ListEntries());
-        var session = importer.Read(entry);
+        ResultsArchiveEntry entry = Assert.Single(importer.ListEntries());
+        ImportedSession? session = importer.Read(entry);
 
         // A consumer discovers, reads and buckets a session through the shared records only —
         // nothing game-native reaches it, which is what lets one importer path serve any game.

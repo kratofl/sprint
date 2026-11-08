@@ -30,14 +30,14 @@ public sealed class LmuResultsReader
     public LmuResultsReader(string directory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
-        _directory = directory;
+        this._directory = directory;
     }
 
     /// <summary>The directory this reader scans.</summary>
-    public string Directory => _directory;
+    public string Directory => this._directory;
 
     /// <summary>True when the scanned directory currently exists.</summary>
-    public bool DirectoryExists => System.IO.Directory.Exists(_directory);
+    public bool DirectoryExists => System.IO.Directory.Exists(this._directory);
 
     /// <summary>
     /// List result XML files newest-first by last-write time. Returns an empty list when the
@@ -46,12 +46,12 @@ public sealed class LmuResultsReader
     /// </summary>
     public IReadOnlyList<FileInfo> ListResultFiles()
     {
-        if (!DirectoryExists)
+        if (!this.DirectoryExists)
         {
             return [];
         }
 
-        return new DirectoryInfo(_directory)
+        return new DirectoryInfo(this._directory)
             .EnumerateFiles("*.xml", SearchOption.TopDirectoryOnly)
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .ToList();
@@ -62,7 +62,7 @@ public sealed class LmuResultsReader
     /// <exception cref="IOException">The file could not be read.</exception>
     public LmuSessionResult ReadFile(string path)
     {
-        var xml = File.ReadAllText(path);
+        string xml = File.ReadAllText(path);
         return LmuResultsParser.Parse(xml);
     }
 
@@ -71,7 +71,7 @@ public sealed class LmuResultsReader
     {
         try
         {
-            session = ReadFile(path);
+            session = this.ReadFile(path);
             error = null;
             return true;
         }
@@ -89,12 +89,12 @@ public sealed class LmuResultsReader
     /// </summary>
     public LmuResultsScan ReadAll()
     {
-        var sessions = new List<LmuSessionResult>();
-        var errors = new List<LmuResultReadError>();
+        List<LmuSessionResult> sessions = new List<LmuSessionResult>();
+        List<LmuResultReadError> errors = new List<LmuResultReadError>();
 
-        foreach (var file in ListResultFiles())
+        foreach (FileInfo file in this.ListResultFiles())
         {
-            if (TryReadFile(file.FullName, out var session, out var error))
+            if (this.TryReadFile(file.FullName, out LmuSessionResult? session, out LmuResultReadError? error))
             {
                 sessions.Add(session!);
             }
@@ -113,7 +113,7 @@ public sealed class LmuResultsReader
     /// </summary>
     public static LmuResultsReader? ForDefaultInstall()
     {
-        var directory = DefaultResultsDirectory();
+        string? directory = DefaultResultsDirectory();
         return directory is null ? null : new LmuResultsReader(directory);
     }
 
@@ -123,7 +123,7 @@ public sealed class LmuResultsReader
     /// </summary>
     public static string? DefaultResultsDirectory()
     {
-        var candidate = DefaultResultsPath();
+        string candidate = DefaultResultsPath();
         return candidate.Length > 0 && System.IO.Directory.Exists(candidate) ? candidate : null;
     }
 

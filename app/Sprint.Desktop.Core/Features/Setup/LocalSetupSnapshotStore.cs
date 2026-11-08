@@ -28,20 +28,20 @@ public sealed class LocalSetupSnapshotStore : ISetupSnapshotStore
 
     public LocalSetupSnapshotStore(string? dataRoot = null, ILog? log = null)
     {
-        _root = dataRoot ?? Path.Combine(
+        this._root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint",
             "setup-snapshots");
-        _log = log ?? NullLog.Instance;
-        Directory.CreateDirectory(_root);
+        this._log = log ?? NullLog.Instance;
+        Directory.CreateDirectory(this._root);
     }
 
     public IReadOnlyList<SetupSnapshot> LoadAll()
     {
-        var snapshots = new List<SetupSnapshot>();
-        foreach (var file in Directory.EnumerateFiles(_root, "*.json"))
+        List<SetupSnapshot> snapshots = new List<SetupSnapshot>();
+        foreach (string file in Directory.EnumerateFiles(this._root, "*.json"))
         {
-            if (Load(file) is { Id.Length: > 0 } snapshot)
+            if (this.Load(file) is { Id.Length: > 0 } snapshot)
             {
                 snapshots.Add(snapshot);
             }
@@ -60,14 +60,14 @@ public sealed class LocalSetupSnapshotStore : ISetupSnapshotStore
                 nameof(snapshot));
         }
 
-        var path = Path.Combine(_root, SafeFileName(snapshot.Id) + ".json");
+        string path = Path.Combine(this._root, SafeFileName(snapshot.Id) + ".json");
         try
         {
             AtomicFile.Write(path, stream => JsonSerializer.Serialize(stream, snapshot, JsonOptions));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Error($"Failed to persist setup snapshot at {path}", ex);
+            this._log.Error($"Failed to persist setup snapshot at {path}", ex);
         }
     }
 
@@ -75,14 +75,14 @@ public sealed class LocalSetupSnapshotStore : ISetupSnapshotStore
     {
         try
         {
-            using var stream = File.OpenRead(path);
+            using FileStream stream = File.OpenRead(path);
             return JsonSerializer.Deserialize<SetupSnapshot>(stream, JsonOptions);
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
             // One unreadable file must not cost the driver the rest of the vault; skip it and
             // leave a breadcrumb.
-            _log.Warn($"Ignoring unreadable setup snapshot at {path}", ex);
+            this._log.Warn($"Ignoring unreadable setup snapshot at {path}", ex);
             return null;
         }
     }
@@ -91,9 +91,9 @@ public sealed class LocalSetupSnapshotStore : ISetupSnapshotStore
     private static string SafeFileName(string id)
     {
         Span<char> buffer = stackalloc char[id.Length];
-        for (var i = 0; i < id.Length; i++)
+        for (int i = 0; i < id.Length; i++)
         {
-            var c = id[i];
+            char c = id[i];
             buffer[i] = Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c;
         }
 

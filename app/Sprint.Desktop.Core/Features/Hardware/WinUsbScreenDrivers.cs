@@ -25,119 +25,119 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
 
     protected WinUsbScreenDriverBase(ILog? log = null)
     {
-        _log = log ?? NullLog.Instance;
+        this._log = log ?? NullLog.Instance;
     }
 
     public abstract string Name { get; }
 
     protected abstract Guid InterfaceGuid { get; }
 
-    public ScreenStatus Status => _status;
+    public ScreenStatus Status => this._status;
 
-    public ScreenNativeSize? NativeSize => _nativeSize;
+    public ScreenNativeSize? NativeSize => this._nativeSize;
 
-    protected ILog Log => _log;
+    protected ILog Log => this._log;
 
     public void Configure(ScreenConfig config)
     {
-        _config = config;
-        _nativeSize = new ScreenNativeSize(config.Width, config.Height);
+        this._config = config;
+        this._nativeSize = new ScreenNativeSize(config.Width, config.Height);
     }
 
     public bool Connect()
     {
-        var identity = ScreenUsbIdentity.ForDriver(_config.Driver, _config.Vid, _config.Pid);
+        ScreenUsbIdentity identity = ScreenUsbIdentity.ForDriver(this._config.Driver, this._config.Vid, this._config.Pid);
         if (identity.Vid == 0)
         {
-            _status = new ScreenStatus
+            this._status = new ScreenStatus
             {
                 State = ScreenConnectionState.ConfigurationRequired,
                 Detail = "The saved screen has no USB vendor identity and its driver cannot infer one.",
             };
-            _log.Warn($"{Name} connection blocked: USB vendor identity is not configured.");
+            this._log.Warn($"{this.Name} connection blocked: USB vendor identity is not configured.");
             return false;
         }
 
         if (!OperatingSystem.IsWindows())
         {
-            _status = new ScreenStatus { State = ScreenConnectionState.Unsupported, Detail = "WinUSB screens are Windows-only." };
+            this._status = new ScreenStatus { State = ScreenConnectionState.Unsupported, Detail = "WinUSB screens are Windows-only." };
             return false;
         }
 
         try
         {
-            _status = new ScreenStatus { State = ScreenConnectionState.Connecting };
-            var pid = identity.Pid == 0 ? "any" : $"0x{identity.Pid:X4}";
-            _log.Debug(
-                $"{Name} enumeration started: configured=0x{_config.Vid:X4}:0x{_config.Pid:X4} " +
+            this._status = new ScreenStatus { State = ScreenConnectionState.Connecting };
+            string pid = identity.Pid == 0 ? "any" : $"0x{identity.Pid:X4}";
+            this._log.Debug(
+                $"{this.Name} enumeration started: configured=0x{this._config.Vid:X4}:0x{this._config.Pid:X4} " +
                 $"search=0x{identity.Vid:X4}:{pid}.");
-            var transport = WinUsbScreenTransport.TryOpen(
-                InterfaceGuid,
+            WinUsbScreenTransport? transport = WinUsbScreenTransport.TryOpen(
+                this.InterfaceGuid,
                 identity.Vid,
                 identity.Pid,
-                _log,
-                out var failureStatus);
+                this._log,
+                out ScreenStatus? failureStatus);
             if (transport is null)
             {
-                _status = failureStatus;
-                _log.Warn($"{Name} open failed: {_status.Detail}");
+                this._status = failureStatus;
+                this._log.Warn($"{this.Name} open failed: {this._status.Detail}");
                 return false;
             }
 
-            _transport = transport;
-            Initialize(transport, _config);
-            _status = new ScreenStatus { State = ScreenConnectionState.Connected };
-            _log.Info($"{Name} connected: search=0x{identity.Vid:X4}:{pid}.");
+            this._transport = transport;
+            this.Initialize(transport, this._config);
+            this._status = new ScreenStatus { State = ScreenConnectionState.Connected };
+            this._log.Info($"{this.Name} connected: search=0x{identity.Vid:X4}:{pid}.");
             return true;
         }
         catch (Exception ex)
         {
-            _status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
-            _log.Error($"{Name} connection failed.", ex);
-            DisposeTransport();
+            this._status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
+            this._log.Error($"{this.Name} connection failed.", ex);
+            this.DisposeTransport();
             return false;
         }
     }
 
     public bool TrySendFrame(byte[] rgb565)
     {
-        if (_transport is null || !_status.IsConnected)
+        if (this._transport is null || !this._status.IsConnected)
         {
             return false;
         }
 
         try
         {
-            if (WriteFrame(_transport, rgb565))
+            if (this.WriteFrame(this._transport, rgb565))
             {
                 return true;
             }
 
-            _status = new ScreenStatus
+            this._status = new ScreenStatus
             {
                 State = ScreenConnectionState.Faulted,
-                Detail = _transport.LastFailure ?? "The screen rejected the frame transfer.",
+                Detail = this._transport.LastFailure ?? "The screen rejected the frame transfer.",
             };
-            _log.Warn($"{Name} frame transfer failed: {_status.Detail}");
-            DisposeTransport();
+            this._log.Warn($"{this.Name} frame transfer failed: {this._status.Detail}");
+            this.DisposeTransport();
             return false;
         }
         catch (Exception ex)
         {
-            _status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
-            _log.Error($"{Name} frame transfer threw.", ex);
-            DisposeTransport();
+            this._status = new ScreenStatus { State = ScreenConnectionState.Faulted, Detail = ex.Message };
+            this._log.Error($"{this.Name} frame transfer threw.", ex);
+            this.DisposeTransport();
             return false;
         }
     }
 
     public void Disconnect()
     {
-        DisposeTransport();
-        _status = ScreenStatus.Disconnected();
+        this.DisposeTransport();
+        this._status = ScreenStatus.Disconnected();
     }
 
-    public void Dispose() => Disconnect();
+    public void Dispose() => this.Disconnect();
 
     protected abstract void Initialize(WinUsbScreenTransport transport, ScreenConfig config);
 
@@ -145,7 +145,7 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
 
     protected void SetNativeSize(int width, int height)
     {
-        var size = new ScreenNativeSize(width, height);
+        ScreenNativeSize size = new ScreenNativeSize(width, height);
         if (!size.IsValid
             || width > 4096
             || height > 4096
@@ -156,7 +156,7 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
                 $"Native screen size {width}x{height} is outside the supported RGB565 range.");
         }
 
-        _nativeSize = size;
+        this._nativeSize = size;
     }
 
     protected virtual void Shutdown(WinUsbScreenTransport transport)
@@ -174,21 +174,21 @@ internal abstract class WinUsbScreenDriverBase : IScreenDriver
 
     private void DisposeTransport()
     {
-        if (_transport is { } transport)
+        if (this._transport is { } transport)
         {
             try
             {
-                Shutdown(transport);
+                this.Shutdown(transport);
             }
             catch (Exception ex)
             {
-                _log.Warn($"{Name} shutdown transfer failed.", ex);
+                this._log.Warn($"{this.Name} shutdown transfer failed.", ex);
             }
 
             transport.Dispose();
         }
 
-        _transport = null;
+        this._transport = null;
     }
 }
 
@@ -214,12 +214,12 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
         // Clear any stale bulk state a previous owner left mid-frame (Go parity).
         if (!transport.ResetPipe(VoCoreProtocol.BulkEndpoint))
         {
-            Log.Warn($"VoCore bulk pipe reset failed (non-fatal): {transport.LastFailure}");
+            this.Log.Warn($"VoCore bulk pipe reset failed (non-fatal): {transport.LastFailure}");
         }
 
-        var native = ResolveNativeSize(transport, config);
-        SetNativeSize(native.Width, native.Height);
-        Log.Info(
+        ScreenNativeSize native = this.ResolveNativeSize(transport, config);
+        this.SetNativeSize(native.Width, native.Height);
+        this.Log.Info(
             $"VoCore dimensions resolved: pid=0x{transport.MatchedPid:X4} " +
             $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
@@ -235,7 +235,7 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
                 index: 0,
                 VoCoreProtocol.WakeCommand))
         {
-            Log.Warn($"VoCore wake command failed (non-fatal): {transport.LastFailure}");
+            this.Log.Warn($"VoCore wake command failed (non-fatal): {transport.LastFailure}");
         }
         else if (!transport.ControlOut(
                 VoCoreProtocol.RequestTypeOut,
@@ -244,11 +244,11 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
                 index: 0,
                 VoCoreProtocol.BrightnessFullCommand))
         {
-            Log.Warn($"VoCore brightness restore failed (non-fatal): {transport.LastFailure}");
+            this.Log.Warn($"VoCore brightness restore failed (non-fatal): {transport.LastFailure}");
         }
         else
         {
-            Log.Debug("VoCore initialization complete: wake (0x29) and full brightness (0x51) acknowledged.");
+            this.Log.Debug("VoCore initialization complete: wake (0x29) and full brightness (0x51) acknowledged.");
         }
     }
 
@@ -262,7 +262,7 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
     /// </summary>
     private ScreenNativeSize ResolveNativeSize(WinUsbScreenTransport transport, ScreenConfig config)
     {
-        var data = new byte[5];
+        byte[] data = new byte[5];
         if (transport.ControlOut(
                 VoCoreProtocol.RequestTypeOut,
                 VoCoreProtocol.ModelCommandRequest,
@@ -278,29 +278,29 @@ internal sealed class VoCoreScreenDriver : WinUsbScreenDriverBase
                 VoCoreProtocol.RequestTypeIn,
                 VoCoreProtocol.ModelDataRequest,
                 data,
-                out var transferred)
+                out int transferred)
             && transferred >= data.Length)
         {
-            var model = VoCoreProtocol.ParseModelResponse(data);
-            var (width, height) = VoCoreProtocol.NativeDimensions(model);
-            Log.Info($"VoCore screen model detected: model=0x{model:X8} native={width}x{height}.");
+            uint model = VoCoreProtocol.ParseModelResponse(data);
+            (int width, int height) = VoCoreProtocol.NativeDimensions(model);
+            this.Log.Info($"VoCore screen model detected: model=0x{model:X8} native={width}x{height}.");
             return new ScreenNativeSize(width, height);
         }
 
         // Firmware without a working model query: clear a possible control-pipe
         // stall the unsupported request left behind, then fall back (Go parity).
-        Log.Warn($"VoCore model query failed; using PID/config dimensions. {transport.LastFailure}");
+        this.Log.Warn($"VoCore model query failed; using PID/config dimensions. {transport.LastFailure}");
         transport.ResetPipe(0x00);
         return VoCoreProtocol.NativeDimensionsForPid(transport.MatchedPid, config.Width, config.Height);
     }
 
     protected override bool WriteFrame(WinUsbScreenTransport transport, byte[] rgb565)
     {
-        var drawCommand = VoCoreProtocol.BuildDrawCommand(rgb565.Length);
-        if (!_loggedFirstWrite)
+        byte[] drawCommand = VoCoreProtocol.BuildDrawCommand(rgb565.Length);
+        if (!this._loggedFirstWrite)
         {
-            _loggedFirstWrite = true;
-            Log.Debug(
+            this._loggedFirstWrite = true;
+            this.Log.Debug(
                 $"VoCore first frame transfer starting: control=0xB0 " +
                 $"drawBytes={drawCommand.Length} bulkBytes={rgb565.Length} endpoint=0x02.");
         }
@@ -339,15 +339,15 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
 
     protected override void Initialize(WinUsbScreenTransport transport, ScreenConfig config)
     {
-        Log.Debug("USBD480 initialization: disabling WinUSB AUTO_SUSPEND.");
+        this.Log.Debug("USBD480 initialization: disabling WinUSB AUTO_SUSPEND.");
         Require(transport.DisableAutoSuspend(), transport, "USBD480 wake");
 
-        Log.Debug("USBD480 initialization: querying device details with request 0x80.");
-        var details = new byte[Usbd480Protocol.DetailsBlockSize];
+        this.Log.Debug("USBD480 initialization: querying device details with request 0x80.");
+        byte[] details = new byte[Usbd480Protocol.DetailsBlockSize];
         Usbd480Details? reported = null;
-        if (transport.ControlIn(Usbd480Protocol.RequestTypeIn, Usbd480Protocol.RequestGetDetails, details, out var transferred))
+        if (transport.ControlIn(Usbd480Protocol.RequestTypeIn, Usbd480Protocol.RequestGetDetails, details, out int transferred))
         {
-            if (Usbd480Protocol.TryParseDetails(details.AsSpan(0, transferred), out var parsed))
+            if (Usbd480Protocol.TryParseDetails(details.AsSpan(0, transferred), out Usbd480Details? parsed))
             {
                 reported = parsed;
             }
@@ -356,27 +356,27 @@ internal sealed class Usbd480ScreenDriver : WinUsbScreenDriverBase
                 // The panel named itself but its size fields were unusable; the name
                 // alone can still identify a known model.
                 reported = parsed;
-                Log.Warn(
+                this.Log.Warn(
                     $"USBD480 reported an unusable size for '{parsed.Name}'; " +
                     "falling back to the known model size or the configured dimensions.");
             }
             else
             {
-                Log.Warn($"USBD480 details block was unreadable ({transferred} bytes); using configured dimensions.");
+                this.Log.Warn($"USBD480 details block was unreadable ({transferred} bytes); using configured dimensions.");
             }
         }
         else
         {
-            Log.Warn($"USBD480 details query failed; using configured dimensions. {transport.LastFailure}");
+            this.Log.Warn($"USBD480 details query failed; using configured dimensions. {transport.LastFailure}");
         }
 
-        var native = Usbd480Protocol.ResolveNativeSize(reported, config.Width, config.Height);
-        SetNativeSize(native.Width, native.Height);
-        Log.Info(
+        ScreenNativeSize native = Usbd480Protocol.ResolveNativeSize(reported, config.Width, config.Height);
+        this.SetNativeSize(native.Width, native.Height);
+        this.Log.Info(
             $"USBD480 identified: name={(string.IsNullOrWhiteSpace(reported?.Name) ? "unknown" : reported!.Name)} " +
             $"native={native.Width}x{native.Height} configured={config.Width}x{config.Height}.");
 
-        Log.Debug("USBD480 initialization: restoring brightness with request 0x81.");
+        this.Log.Debug("USBD480 initialization: restoring brightness with request 0x81.");
         Require(
             transport.ControlOut(
                 Usbd480Protocol.RequestTypeOut,

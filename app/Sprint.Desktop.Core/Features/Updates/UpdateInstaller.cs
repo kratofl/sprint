@@ -43,16 +43,16 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
     {
         ArgumentNullException.ThrowIfNull(asset);
 
-        var root = Path.Combine(Path.GetTempPath(), "Sprint", "updates", Sanitize(version));
+        string root = Path.Combine(Path.GetTempPath(), "Sprint", "updates", Sanitize(version));
         Directory.CreateDirectory(root);
-        var archivePath = Path.Combine(root, asset.Name);
+        string archivePath = Path.Combine(root, asset.Name);
 
-        await DownloadToFileAsync(asset.DownloadUrl, archivePath, progress, ct).ConfigureAwait(false);
+        await this.DownloadToFileAsync(asset.DownloadUrl, archivePath, progress, ct).ConfigureAwait(false);
 
         // A previous failed/self-replace attempt can leave its staged executable
         // temporarily locked by Explorer or an image scanner. Never make a retry
         // depend on deleting that directory; isolate every extraction instead.
-        var stagingDir = Path.Combine(root, $"staged-{Guid.NewGuid():N}");
+        string stagingDir = Path.Combine(root, $"staged-{Guid.NewGuid():N}");
         Directory.CreateDirectory(stagingDir);
         if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
@@ -154,11 +154,11 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
     internal static bool IsInstallDirectoryWritable(string installDir)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installDir);
-        var probePath = Path.Combine(installDir, $".sprint-update-access-{Guid.NewGuid():N}.tmp");
+        string probePath = Path.Combine(installDir, $".sprint-update-access-{Guid.NewGuid():N}.tmp");
 
         try
         {
-            using var _ = new FileStream(
+            using FileStream _ = new FileStream(
                 probePath,
                 FileMode.CreateNew,
                 FileAccess.Write,
@@ -268,22 +268,22 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
     /// </summary>
     public static void RevealInFolder(string path)
     {
-        var folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
+        string folder = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? path;
         HostEffects.TryRevealInFileManager(folder);
     }
 
     private async Task DownloadToFileAsync(string url, string destination, IProgress<double>? progress, CancellationToken ct)
     {
-        using var response = await _http
+        using HttpResponseMessage response = await this._http
             .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var total = response.Content.Headers.ContentLength ?? -1L;
-        await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        await using var target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+        long total = response.Content.Headers.ContentLength ?? -1L;
+        await using Stream source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using FileStream target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
 
-        var buffer = new byte[81920];
+        byte[] buffer = new byte[81920];
         long read = 0;
         int n;
         while ((n = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
@@ -301,14 +301,14 @@ public sealed class UpdateInstaller(HttpClient? httpClient = null)
 
     private static string Sanitize(string version)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(version.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim();
+        char[] invalid = Path.GetInvalidFileNameChars();
+        string cleaned = new string(version.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim();
         return string.IsNullOrWhiteSpace(cleaned) ? "latest" : cleaned;
     }
 
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        HttpClient client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Sprint-Desktop-Updater");
         return client;
     }

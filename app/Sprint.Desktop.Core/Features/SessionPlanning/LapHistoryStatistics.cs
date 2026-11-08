@@ -48,7 +48,7 @@ public static class LapHistoryStatistics
     /// </summary>
     public static LapHistoryStatisticsResult? Resolve(ILapHistoryStore store, LapHistoryContext context)
     {
-        var candidates = store.LoadAll()
+        List<LapHistoryStatistic> candidates = store.LoadAll()
             .Where(session => SameContext(session.Context, context))
             .SelectMany(session => session.Laps
                 // The corpus rule (#103): invalid laps and laps with no recorded time never
@@ -65,7 +65,7 @@ public static class LapHistoryStatistics
 
         // Lower median: never interpolated between two laps, always the lap actually driven
         // at that position, so a delta always has a real per-corner curve behind it.
-        var medianIndex = (candidates.Count - 1) / 2;
+        int medianIndex = (candidates.Count - 1) / 2;
 
         return new LapHistoryStatisticsResult
         {

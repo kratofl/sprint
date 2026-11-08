@@ -45,15 +45,15 @@ public sealed class CatalogDevice
     [JsonPropertyName("rotation")]
     public int Rotation
     {
-        get => (int)_orientation;
-        set => _orientation = DeviceOrientations.Resolve(value);
+        get => (int)this._orientation;
+        set => this._orientation = DeviceOrientations.Resolve(value);
     }
 
     [JsonIgnore]
     public DeviceOrientation Orientation
     {
-        get => _orientation;
-        set => _orientation = value;
+        get => this._orientation;
+        set => this._orientation = value;
     }
 
     [JsonPropertyName("offset_x")]
@@ -95,15 +95,15 @@ public sealed class SavedDevice
     public int Height { get; set; }
     public int Rotation
     {
-        get => (int)_orientation;
-        set => _orientation = DeviceOrientations.Resolve(value);
+        get => (int)this._orientation;
+        set => this._orientation = DeviceOrientations.Resolve(value);
     }
 
     [JsonIgnore]
     public DeviceOrientation Orientation
     {
-        get => _orientation;
-        set => _orientation = value;
+        get => this._orientation;
+        set => this._orientation = value;
     }
     public int OffsetX { get; set; }
     public int OffsetY { get; set; }
@@ -131,7 +131,7 @@ public sealed class SavedDevice
 
 public sealed record ScreenCaptureRegion(int X, int Y, int Width, int Height)
 {
-    public bool IsValid => Width > 0 && Height > 0;
+    public bool IsValid => this.Width > 0 && this.Height > 0;
 }
 
 public sealed class DeviceBinding

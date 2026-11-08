@@ -1,3 +1,4 @@
+using System.Text;
 using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Diagnostics;
@@ -37,21 +38,21 @@ public sealed class LapHistoryImportReport
 {
     public required IReadOnlyList<LapHistoryImportOutcome> Outcomes { get; init; }
 
-    public int ImportedCount => Count(LapHistoryImportStatus.Imported);
+    public int ImportedCount => this.Count(LapHistoryImportStatus.Imported);
 
-    public int AlreadyImportedCount => Count(LapHistoryImportStatus.AlreadyImported);
+    public int AlreadyImportedCount => this.Count(LapHistoryImportStatus.AlreadyImported);
 
-    public int UnreadableCount => Count(LapHistoryImportStatus.Unreadable);
+    public int UnreadableCount => this.Count(LapHistoryImportStatus.Unreadable);
 
     /// <summary>How many sessions of each kind this pass added to the corpus.</summary>
     public IReadOnlyDictionary<HistorySessionKind, int> ImportedByKind =>
-        Outcomes
+        this.Outcomes
             .Where(outcome => outcome.Session is not null)
             .GroupBy(outcome => outcome.Session!.Kind)
             .ToDictionary(group => group.Key, group => group.Count());
 
     private int Count(LapHistoryImportStatus status) =>
-        Outcomes.Count(outcome => outcome.Status == status);
+        this.Outcomes.Count(outcome => outcome.Status == status);
 }
 
 /// <summary>
@@ -72,8 +73,8 @@ public sealed class LapHistoryImportService
 
     public LapHistoryImportService(ILapHistoryStore store, ILog? log = null)
     {
-        _store = store ?? throw new ArgumentNullException(nameof(store));
-        _log = log ?? NullLog.Instance;
+        this._store = store ?? throw new ArgumentNullException(nameof(store));
+        this._log = log ?? NullLog.Instance;
     }
 
     /// <summary>
@@ -111,7 +112,7 @@ public sealed class LapHistoryImportService
         {
             // One file the sim left half-written, or a session with no context to file it under,
             // must never cost the driver the rest of the archive; leave a breadcrumb instead.
-            _log.Warn($"Skipping results archive entry '{entry.Id}': it could not be read or bucketed");
+            this._log.Warn($"Skipping results archive entry '{entry.Id}': it could not be read or bucketed");
             return new LapHistoryImportOutcome(entry, LapHistoryImportStatus.Unreadable);
         }
 
@@ -345,7 +346,7 @@ public sealed class LapHistoryImportService
     {
         // A history record cannot say "no time", and an out lap filed as a zero-second lap
         // would poison every median the corpus is read for.
-        var laps = imported.Laps
+        List<LapHistoryRecord> laps = imported.Laps
             .Where(lap => lap.LapTimeSeconds is > 0)
             .Select(MapLap)
             .ToList();
@@ -440,8 +441,8 @@ public sealed class LapHistoryImportService
     /// </summary>
     private static string Slug(string value)
     {
-        var slug = new System.Text.StringBuilder(value.Length);
-        foreach (var c in value)
+        StringBuilder slug = new System.Text.StringBuilder(value.Length);
+        foreach (char c in value)
         {
             // Letters of any script survive: mangling them would make two courses that differ
             // only outside ASCII share a key, and a shared key means a dropped session.

@@ -25,7 +25,7 @@ public sealed class LmuResultsImporter : IResultsImporter
 
     internal LmuResultsImporter(LmuResultsReader reader)
     {
-        _reader = reader;
+        this._reader = reader;
     }
 
     /// <summary>
@@ -37,7 +37,7 @@ public sealed class LmuResultsImporter : IResultsImporter
     public string SourceDescription => "the Le Mans Ultimate results folder";
 
     public IReadOnlyList<ResultsArchiveEntry> ListEntries() =>
-        [.. _reader.ListResultFiles().Select(file => new ResultsArchiveEntry(
+        [.. this._reader.ListResultFiles().Select(file => new ResultsArchiveEntry(
             file.FullName,
             file.Length,
             file.LastWriteTimeUtc))];
@@ -50,7 +50,7 @@ public sealed class LmuResultsImporter : IResultsImporter
         // anywhere else names no file here — and File.Exists answers that without throwing on an
         // id that is not a path at all.
         if (!File.Exists(entry.Id)
-            || !_reader.TryReadFile(entry.Id, out var result, out _)
+            || !this._reader.TryReadFile(entry.Id, out LmuSessionResult? result, out _)
             || result is null)
         {
             return null;
@@ -153,8 +153,8 @@ public sealed class LmuResultsImporter : IResultsImporter
     private static IReadOnlyList<double> Sectors(LmuLapResult lap)
     {
         double?[] stated = [lap.Sector1Seconds, lap.Sector2Seconds, lap.Sector3Seconds];
-        var sectors = new List<double>(stated.Length);
-        foreach (var sector in stated)
+        List<double> sectors = new List<double>(stated.Length);
+        foreach (double? sector in stated)
         {
             if (sector is not { } seconds)
             {

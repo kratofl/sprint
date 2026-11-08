@@ -19,7 +19,7 @@ public static class SystemAnimationPreferences
             return SystemParametersInfo(
                 SpiGetClientAreaAnimation,
                 0,
-                out var enabled,
+                out bool enabled,
                 0)
                 ? enabled
                 : true;

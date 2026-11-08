@@ -33,9 +33,9 @@ public static class BindingResolver
 {
     public static string? Resolve(string input, params IEnumerable<InputBinding>[] layers)
     {
-        foreach (var layer in layers)
+        foreach (IEnumerable<InputBinding> layer in layers)
         {
-            foreach (var binding in layer)
+            foreach (InputBinding binding in layer)
             {
                 if (string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase))
                 {
@@ -64,7 +64,7 @@ public static class HardwareBindingResolver
         IEnumerable<SavedDevice> devices,
         IEnumerable<InputBinding> globalBindings)
     {
-        foreach (var device in devices.Where(device => !device.Disabled))
+        foreach (SavedDevice? device in devices.Where(device => !device.Disabled))
         {
             if (ResolveDevice(input.Input, device) is { } resolved)
             {
@@ -79,7 +79,7 @@ public static class HardwareBindingResolver
 
     private static ResolvedHardwareBinding? ResolveDevice(string input, SavedDevice device)
     {
-        var command = device.Bindings
+        string? command = device.Bindings
             .FirstOrDefault(binding => string.Equals(binding.Input, input, StringComparison.OrdinalIgnoreCase))
             ?.Command;
         return string.IsNullOrWhiteSpace(command)

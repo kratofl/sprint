@@ -16,8 +16,8 @@ public sealed class Usbd480ProtocolTests
 {
     private static byte[] DetailsBlock(string name, int width, int height)
     {
-        var block = new byte[Usbd480Protocol.DetailsBlockSize];
-        var nameBytes = System.Text.Encoding.ASCII.GetBytes(name);
+        byte[] block = new byte[Usbd480Protocol.DetailsBlockSize];
+        byte[] nameBytes = System.Text.Encoding.ASCII.GetBytes(name);
         nameBytes.AsSpan(0, Math.Min(nameBytes.Length, Usbd480Protocol.NameLength)).CopyTo(block);
         block[20] = (byte)(width & 0xFF);
         block[21] = (byte)(width >> 8);
@@ -43,7 +43,7 @@ public sealed class Usbd480ProtocolTests
     [Fact]
     public void DetailsBlockDecodesNameAndLittleEndianSize()
     {
-        Assert.True(Usbd480Protocol.TryParseDetails(DetailsBlock("USBD480-NX50", 800, 480), out var parsed));
+        Assert.True(Usbd480Protocol.TryParseDetails(DetailsBlock("USBD480-NX50", 800, 480), out Usbd480Details? parsed));
 
         Assert.Equal("USBD480-NX50", parsed.Name);
         Assert.Equal(800, parsed.Width);
@@ -53,9 +53,9 @@ public sealed class Usbd480ProtocolTests
     [Fact]
     public void DetailsBlockWithoutATerminatorUsesTheFullNameField()
     {
-        var block = DetailsBlock(new string('A', Usbd480Protocol.NameLength), 480, 272);
+        byte[] block = DetailsBlock(new string('A', Usbd480Protocol.NameLength), 480, 272);
 
-        Assert.True(Usbd480Protocol.TryParseDetails(block, out var parsed));
+        Assert.True(Usbd480Protocol.TryParseDetails(block, out Usbd480Details? parsed));
         Assert.Equal(new string('A', Usbd480Protocol.NameLength), parsed.Name);
         Assert.Equal(480, parsed.Width);
         Assert.Equal(272, parsed.Height);
@@ -73,7 +73,7 @@ public sealed class Usbd480ProtocolTests
     [InlineData(65535, 65535)]
     public void UnusableSizeIsRejectedButTheNameSurvives(int width, int height)
     {
-        Assert.False(Usbd480Protocol.TryParseDetails(DetailsBlock("USBD480-NX43", width, height), out var parsed));
+        Assert.False(Usbd480Protocol.TryParseDetails(DetailsBlock("USBD480-NX43", width, height), out Usbd480Details? parsed));
 
         // The name is kept so a known model can still supply the size.
         Assert.Equal("USBD480-NX43", parsed.Name);
@@ -127,18 +127,18 @@ public sealed class Usbd480ProtocolTests
     [Fact]
     public void GenericUsbd480EntryResolvesToItsDocumentedIdentityAndSize()
     {
-        var identity = ScreenUsbIdentity.ForDriver("usbd480", 0, 0);
+        ScreenUsbIdentity identity = ScreenUsbIdentity.ForDriver("usbd480", 0, 0);
         Assert.Equal(0x16C0, identity.Vid);
         Assert.Equal(0x08A7, identity.Pid);
 
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
-            var catalog = runtime.Catalog.Single(entry =>
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            CatalogDevice catalog = runtime.Catalog.Single(entry =>
                 string.Equals(entry.Id, "generic-usbd480", StringComparison.Ordinal));
 
-            var saved = runtime.AddDevice(catalog);
+            SavedDevice saved = runtime.AddDevice(catalog);
 
             // The stand-in matches the driver's own fallback rather than a second guess.
             Assert.Equal(Usbd480Protocol.DefaultNativeSize.Width, saved.Width);

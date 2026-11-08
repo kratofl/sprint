@@ -23,8 +23,8 @@ public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
     {
         try
         {
-            var url = $"https://api.github.com/repos/{ownerRepo}/releases";
-            var releases = await _http.GetFromJsonAsync<GitHubRelease[]>(url, ct).ConfigureAwait(false);
+            string url = $"https://api.github.com/repos/{ownerRepo}/releases";
+            GitHubRelease[]? releases = await this._http.GetFromJsonAsync<GitHubRelease[]>(url, ct).ConfigureAwait(false);
             if (releases is null)
             {
                 return [];
@@ -55,7 +55,7 @@ public sealed class GitHubReleaseSource(HttpClient? httpClient = null)
 
     private static HttpClient CreateClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Sprint-Desktop-Updater");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return client;

@@ -38,8 +38,8 @@ public static class EngineerStageService
     /// <summary>Applies staged values onto the car (car ← staged) and returns the changes that were applied.</summary>
     public static IReadOnlyList<StagedControlChange> Push(IEnumerable<EngineerControl> controls)
     {
-        var applied = DirtyChanges(controls);
-        foreach (var control in controls)
+        IReadOnlyList<StagedControlChange> applied = DirtyChanges(controls);
+        foreach (EngineerControl control in controls)
         {
             control.CarValue = control.StagedValue;
         }
@@ -50,7 +50,7 @@ public static class EngineerStageService
     /// <summary>Discards staged edits (staged ← car).</summary>
     public static void Revert(IEnumerable<EngineerControl> controls)
     {
-        foreach (var control in controls)
+        foreach (EngineerControl control in controls)
         {
             control.StagedValue = control.CarValue;
         }

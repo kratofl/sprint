@@ -28,7 +28,7 @@ public static class LiveTelemetryPresenter
 
     private static int TireTemp(TelemetryFrame frame, TirePosition position)
     {
-        var tire = frame.Tires.FirstOrDefault(t => t.Position == position);
+        TireState? tire = frame.Tires.FirstOrDefault(t => t.Position == position);
         return (int)Math.Round(tire?.TempSurfaceCelsius ?? 0);
     }
 
@@ -39,8 +39,8 @@ public static class LiveTelemetryPresenter
             return "--:--.---";
         }
 
-        var minutes = (int)(seconds / 60);
-        var remainder = seconds - minutes * 60;
+        int minutes = (int)(seconds / 60);
+        double remainder = seconds - minutes * 60;
         return $"{minutes}:{remainder:00.000}";
     }
 }

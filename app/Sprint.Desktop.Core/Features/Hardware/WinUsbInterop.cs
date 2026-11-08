@@ -210,7 +210,7 @@ internal static class WinUsbInterop
     {
         failureStage = ScreenOpenFailureStage.None;
         nativeError = 0;
-        var file = CreateFile(
+        nint file = CreateFile(
             devicePath,
             GenericRead | GenericWrite,
             // WinUSB does not support two applications driving the same interface.
@@ -229,7 +229,7 @@ internal static class WinUsbInterop
             return null;
         }
 
-        if (!WinUsb_Initialize(file, out var winusb))
+        if (!WinUsb_Initialize(file, out nint winusb))
         {
             failureStage = ScreenOpenFailureStage.WinUsbInitialize;
             nativeError = Marshal.GetLastWin32Error();

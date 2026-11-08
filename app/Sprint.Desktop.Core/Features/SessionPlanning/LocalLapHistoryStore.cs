@@ -25,20 +25,20 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
 
     public LocalLapHistoryStore(string? dataRoot = null, ILog? log = null)
     {
-        _root = dataRoot ?? Path.Combine(
+        this._root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint",
             "lap-history");
-        _log = log ?? NullLog.Instance;
-        Directory.CreateDirectory(_root);
+        this._log = log ?? NullLog.Instance;
+        Directory.CreateDirectory(this._root);
     }
 
     public IReadOnlyList<LapHistorySession> LoadAll()
     {
-        var sessions = new List<LapHistorySession>();
-        foreach (var file in Directory.EnumerateFiles(_root, "*.json"))
+        List<LapHistorySession> sessions = new List<LapHistorySession>();
+        foreach (string file in Directory.EnumerateFiles(this._root, "*.json"))
         {
-            if (Load(file) is { Id.Length: > 0 } session)
+            if (this.Load(file) is { Id.Length: > 0 } session)
             {
                 sessions.Add(session);
             }
@@ -54,10 +54,10 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
     /// </summary>
     public IReadOnlyList<LapHistoryContext> LoadContexts()
     {
-        var contexts = new List<LapHistoryContext>();
-        foreach (var file in Directory.EnumerateFiles(_root, "*.json"))
+        List<LapHistoryContext> contexts = new List<LapHistoryContext>();
+        foreach (string file in Directory.EnumerateFiles(this._root, "*.json"))
         {
-            if (ReadContext(file) is { } context)
+            if (this.ReadContext(file) is { } context)
             {
                 contexts.Add(context);
             }
@@ -82,7 +82,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
                     continue;
                 }
 
-                var isContext = reader.ValueTextEquals("context");
+                bool isContext = reader.ValueTextEquals("context");
                 reader.Read();
                 if (isContext)
                 {
@@ -96,7 +96,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            _log.Warn($"Ignoring unreadable lap-history file at {path}", ex);
+            this._log.Warn($"Ignoring unreadable lap-history file at {path}", ex);
             return null;
         }
     }
@@ -111,7 +111,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
                 nameof(session));
         }
 
-        WriteJson(SessionPath(session.Id), session);
+        this.WriteJson(this.SessionPath(session.Id), session);
     }
 
     public void Delete(string sessionId)
@@ -123,7 +123,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
 
         try
         {
-            var path = SessionPath(sessionId);
+            string path = this.SessionPath(sessionId);
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -131,7 +131,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
         }
         catch (Exception ex)
         {
-            _log.Warn($"Failed to delete lap-history session '{sessionId}'", ex);
+            this._log.Warn($"Failed to delete lap-history session '{sessionId}'", ex);
         }
     }
 
@@ -146,13 +146,13 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
         {
             // One unreadable file must not cost the driver the rest of the corpus every
             // estimate rests on; skip it and leave a breadcrumb.
-            _log.Warn($"Ignoring unreadable lap-history file at {path}", ex);
+            this._log.Warn($"Ignoring unreadable lap-history file at {path}", ex);
             return null;
         }
     }
 
     private string SessionPath(string sessionId) =>
-        Path.Combine(_root, SafeFileName(sessionId) + ".json");
+        Path.Combine(this._root, SafeFileName(sessionId) + ".json");
 
     private void WriteJson<T>(string path, T value)
     {
@@ -162,7 +162,7 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Error($"Failed to persist lap-history file at {path}", ex);
+            this._log.Error($"Failed to persist lap-history file at {path}", ex);
         }
     }
 
@@ -170,9 +170,9 @@ public sealed class LocalLapHistoryStore : ILapHistoryStore
     private static string SafeFileName(string sessionId)
     {
         Span<char> buffer = stackalloc char[sessionId.Length];
-        for (var i = 0; i < sessionId.Length; i++)
+        for (int i = 0; i < sessionId.Length; i++)
         {
-            var c = sessionId[i];
+            char c = sessionId[i];
             buffer[i] = Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c;
         }
 

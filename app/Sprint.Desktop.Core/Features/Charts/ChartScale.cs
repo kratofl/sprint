@@ -28,27 +28,27 @@ public sealed record ChartScale(double Min, double Max, double Step)
         {
             // A flat series still has to sit somewhere. Ten percent of its own magnitude keeps
             // the line off the frame without implying a range it never covered.
-            var reach = Math.Max(Math.Abs(max) * 0.1, 1.0) / 2;
+            double reach = Math.Max(Math.Abs(max) * 0.1, 1.0) / 2;
             min -= reach;
             max += reach;
         }
 
         // Two intervals is the target: three grid lines is as much chrome as a stacked chart
         // can carry before the grid competes with the data.
-        var step = NiceStep((max - min) / 2);
+        double step = NiceStep((max - min) / 2);
         return new ChartScale(
             Math.Floor((min / step) + 1e-9) * step,
             Math.Ceiling((max / step) - 1e-9) * step,
             step);
     }
 
-    public double Span => Max - Min;
+    public double Span => this.Max - this.Min;
 
     /// <summary>An axis label for a value on this scale, at the resolution the step supports.</summary>
     public string Format(double value) =>
-        value.ToString("F" + Decimals().ToString(Inv), Inv);
+        value.ToString("F" + this.Decimals().ToString(Inv), Inv);
 
-    private int Decimals() => Step switch
+    private int Decimals() => this.Step switch
     {
         >= 1 => 0,
         >= 0.1 => 1,
@@ -63,9 +63,9 @@ public sealed record ChartScale(double Min, double Max, double Step)
             return 1;
         }
 
-        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(raw)));
-        var normalized = raw / magnitude;
-        var nice = normalized switch
+        double magnitude = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        double normalized = raw / magnitude;
+        int nice = normalized switch
         {
             <= 1 => 1,
             <= 2 => 2,

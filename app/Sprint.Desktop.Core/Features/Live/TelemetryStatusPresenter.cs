@@ -50,9 +50,9 @@ public static class TelemetryStatusPresenter
     {
         ArgumentNullException.ThrowIfNull(status);
 
-        var state = TelemetryFreshness.Evaluate(status, now);
-        var titlebar = ToTitlebarView(status, measuredHz, state);
-        var surface = ToSurfaceState(status, state);
+        TelemetryConnectionState state = TelemetryFreshness.Evaluate(status, now);
+        TelemetryStatusView titlebar = ToTitlebarView(status, measuredHz, state);
+        SurfaceState? surface = ToSurfaceState(status, state);
         return new TelemetryHealthView(titlebar, surface);
     }
 
@@ -65,7 +65,7 @@ public static class TelemetryStatusPresenter
     {
         ArgumentNullException.ThrowIfNull(status);
 
-        var source = string.IsNullOrWhiteSpace(status.SourceName) ? "TELEMETRY" : status.SourceName.ToUpperInvariant();
+        string source = string.IsNullOrWhiteSpace(status.SourceName) ? "TELEMETRY" : status.SourceName.ToUpperInvariant();
 
         // A connected link whose latest frame failed validation: live, but flag it.
         if (state == TelemetryConnectionState.Connected && !status.LastFrameValid)

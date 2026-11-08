@@ -1,3 +1,4 @@
+using Sprint.Desktop.Api.Games;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Games;
 using Xunit;
@@ -14,10 +15,10 @@ public sealed class GameSourceFactoryTests
     [Fact]
     public void Creates_the_lmu_adapter_which_idles_non_fatally_without_a_running_game()
     {
-        var lmu = GameProviders.Find("lemansultimate");
+        IGameProvider? lmu = GameProviders.Find("lemansultimate");
         Assert.NotNull(lmu);
 
-        using var source = lmu.CreateTelemetrySource();
+        using ITelemetrySource source = lmu.CreateTelemetrySource();
         Assert.Equal("Le Mans Ultimate", source.Name);
 
         // No LMU_Data shared memory exists in the test environment, so connecting must

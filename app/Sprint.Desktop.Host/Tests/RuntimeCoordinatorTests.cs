@@ -1338,17 +1338,17 @@ public sealed class RuntimeCoordinatorTests
     {
         private readonly List<LapHistorySession> _sessions = [];
 
-        public void Add(LapHistorySession session) => _sessions.Add(session);
+        public void Add(LapHistorySession session) => this._sessions.Add(session);
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => _sessions;
+        public IReadOnlyList<LapHistorySession> LoadAll() => this._sessions;
 
         public void Save(LapHistorySession session)
         {
-            _sessions.RemoveAll(existing => existing.Id == session.Id);
-            _sessions.Add(session);
+            this._sessions.RemoveAll(existing => existing.Id == session.Id);
+            this._sessions.Add(session);
         }
 
-        public void Delete(string sessionId) => _sessions.RemoveAll(session => session.Id == sessionId);
+        public void Delete(string sessionId) => this._sessions.RemoveAll(session => session.Id == sessionId);
 
         public static LapHistorySession Session(string id, string game, string track, string car, int lapNumber, double lapTimeSeconds) => new()
         {

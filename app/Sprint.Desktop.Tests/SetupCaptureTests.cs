@@ -19,15 +19,15 @@ public sealed class SetupCaptureTests : IDisposable
 
     public SetupCaptureTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "sprint-setup-capture-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_root);
+        this._root = Path.Combine(Path.GetTempPath(), "sprint-setup-capture-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(this._root);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(_root, recursive: true);
+            Directory.Delete(this._root, recursive: true);
         }
         catch (IOException)
         {
@@ -64,9 +64,9 @@ public sealed class SetupCaptureTests : IDisposable
 
     private string WriteSetup(string track, string name, string content, DateTime lastWriteUtc)
     {
-        var directory = Path.Combine(_root, track);
+        string directory = Path.Combine(this._root, track);
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, name + ".svm");
+        string path = Path.Combine(directory, name + ".svm");
         File.WriteAllText(path, content);
         File.SetLastWriteTimeUtc(path, lastWriteUtc);
         return path;
@@ -96,11 +96,11 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Reads_a_setup_into_sections_values_and_the_vehicle_header()
     {
-        WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
-        var repository = new LmuSetupRepository(_root);
+        this.WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
+        LmuSetupRepository repository = new LmuSetupRepository(this._root);
 
-        var info = Assert.Single(repository.ListSetups());
-        var snapshot = repository.Read(info);
+        GameSetupInfo info = Assert.Single(repository.ListSetups());
+        GameSetupSnapshot? snapshot = repository.Read(info);
 
         Assert.Equal("Quali", info.Name);
         Assert.Equal("Le Mans", info.Track);
@@ -133,22 +133,22 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Saving_the_same_setup_twice_captures_one_snapshot()
     {
-        var path = WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
-        var game = new SetupOnlyGameProvider(new LmuSetupRepository(_root));
-        var store = new LocalSetupSnapshotStore(Path.Combine(_root, "vault"));
-        var capture = new SetupCaptureService(store);
+        string path = this.WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
+        SetupOnlyGameProvider game = new SetupOnlyGameProvider(new LmuSetupRepository(this._root));
+        LocalSetupSnapshotStore store = new LocalSetupSnapshotStore(Path.Combine(this._root, "vault"));
+        SetupCaptureService capture = new SetupCaptureService(store);
 
-        var first = capture.Capture(game);
+        IReadOnlyList<SetupSnapshot> first = capture.Capture(game);
 
         // The driver saves again from the sim without changing anything: a new file on disk
         // with a new timestamp, but the same setup.
         File.WriteAllText(path, Porsche963Svm);
         File.SetLastWriteTimeUtc(path, new DateTime(2026, 7, 30, 9, 5, 0, DateTimeKind.Utc));
-        var second = capture.Capture(game);
+        IReadOnlyList<SetupSnapshot> second = capture.Capture(game);
 
         Assert.Single(first);
         Assert.Empty(second);
-        var snapshot = Assert.Single(store.LoadAll());
+        SetupSnapshot snapshot = Assert.Single(store.LoadAll());
         Assert.Equal("Quali", snapshot.Name);
         Assert.Equal("Hypercar Porsche_963 WEC2025", snapshot.VehicleDescriptor);
     }
@@ -156,28 +156,28 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Editing_a_setup_captures_a_second_version_that_can_be_diffed()
     {
-        var path = WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
-        var game = new SetupOnlyGameProvider(new LmuSetupRepository(_root));
-        var store = new LocalSetupSnapshotStore(Path.Combine(_root, "vault"));
-        var capture = new SetupCaptureService(store);
+        string path = this.WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
+        SetupOnlyGameProvider game = new SetupOnlyGameProvider(new LmuSetupRepository(this._root));
+        LocalSetupSnapshotStore store = new LocalSetupSnapshotStore(Path.Combine(this._root, "vault"));
+        SetupCaptureService capture = new SetupCaptureService(store);
         capture.Capture(game);
 
         // One click of brake bias: the same setup, a different version of it.
         File.WriteAllText(path, Porsche963Svm.Replace("BrakeBiasSetting=34", "BrakeBiasSetting=36", StringComparison.Ordinal));
         File.SetLastWriteTimeUtc(path, new DateTime(2026, 7, 30, 9, 5, 0, DateTimeKind.Utc));
 
-        var edited = Assert.Single(capture.Capture(game));
+        SetupSnapshot edited = Assert.Single(capture.Capture(game));
 
-        var stored = store.LoadAll();
+        IReadOnlyList<SetupSnapshot> stored = store.LoadAll();
         Assert.Equal(2, stored.Count);
         Assert.Equal("36", edited.Value("BrakeBiasSetting"));
 
-        var original = Assert.Single(stored, snapshot => snapshot.Id != edited.Id);
+        SetupSnapshot original = Assert.Single(stored, snapshot => snapshot.Id != edited.Id);
         Assert.Equal("34", original.Value("BrakeBiasSetting"));
 
         // Both versions keep the whole file, so the diff between them is exactly the one
         // value the driver changed.
-        var differences = original.Values
+        List<(string Key, string, string)> differences = original.Values
             .Zip(edited.Values, (before, after) => (before.Key, before.RawValue, after.RawValue))
             .Where(pair => pair.Item2 != pair.Item3)
             .ToList();
@@ -187,16 +187,16 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void A_captured_version_enters_the_vault_only_when_the_user_promotes_it()
     {
-        var path = WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
-        var game = new SetupOnlyGameProvider(new LmuSetupRepository(_root));
-        var store = new LocalSetupSnapshotStore(Path.Combine(_root, "vault"));
-        var promotedAt = new DateTimeOffset(2026, 7, 30, 10, 0, 0, TimeSpan.Zero);
-        var capture = new SetupCaptureService(store, clock: () => promotedAt);
+        string path = this.WriteSetup("Le Mans", "Quali", Porsche963Svm, new DateTime(2026, 7, 30, 9, 0, 0, DateTimeKind.Utc));
+        SetupOnlyGameProvider game = new SetupOnlyGameProvider(new LmuSetupRepository(this._root));
+        LocalSetupSnapshotStore store = new LocalSetupSnapshotStore(Path.Combine(this._root, "vault"));
+        DateTimeOffset promotedAt = new DateTimeOffset(2026, 7, 30, 10, 0, 0, TimeSpan.Zero);
+        SetupCaptureService capture = new SetupCaptureService(store, clock: () => promotedAt);
 
-        var captured = Assert.Single(capture.Capture(game));
+        SetupSnapshot captured = Assert.Single(capture.Capture(game));
         Assert.False(captured.IsInVault);
 
-        var promoted = capture.Promote(captured.Id);
+        SetupSnapshot? promoted = capture.Promote(captured.Id);
 
         Assert.NotNull(promoted);
         Assert.Equal(promotedAt, promoted.PromotedAt);
@@ -205,7 +205,7 @@ public sealed class SetupCaptureTests : IDisposable
         // A later capture pass records the new version and promotes nothing: the vault is a
         // curated set, so every entry in it was put there on purpose.
         File.WriteAllText(path, Porsche963Svm.Replace("FuelSetting=63", "FuelSetting=40", StringComparison.Ordinal));
-        var edited = Assert.Single(capture.Capture(game));
+        SetupSnapshot edited = Assert.Single(capture.Capture(game));
         Assert.False(edited.IsInVault);
         Assert.Single(store.LoadAll(), snapshot => snapshot.IsInVault);
     }
@@ -216,14 +216,14 @@ public sealed class SetupCaptureTests : IDisposable
     /// </summary>
     private ISetupSnapshotStore CapturedFolder()
     {
-        var day = new DateTime(2026, 7, 30, 0, 0, 0, DateTimeKind.Utc);
-        WriteSetup("Le Mans", "Quali", Svm("Hypercar Porsche_963 WEC2025", 34), day.AddHours(9));
-        WriteSetup("Le Mans", "Race", Svm("Hypercar Porsche_963 WEC2025", 31), day.AddHours(11));
-        WriteSetup("Le Mans", "Ferrari Race", Svm("Hypercar Ferrari_499P WEC2025", 30), day.AddHours(12));
-        WriteSetup("Monza", "Race", Svm("Hypercar Porsche_963 WEC2025", 29), day.AddHours(13));
+        DateTime day = new DateTime(2026, 7, 30, 0, 0, 0, DateTimeKind.Utc);
+        this.WriteSetup("Le Mans", "Quali", Svm("Hypercar Porsche_963 WEC2025", 34), day.AddHours(9));
+        this.WriteSetup("Le Mans", "Race", Svm("Hypercar Porsche_963 WEC2025", 31), day.AddHours(11));
+        this.WriteSetup("Le Mans", "Ferrari Race", Svm("Hypercar Ferrari_499P WEC2025", 30), day.AddHours(12));
+        this.WriteSetup("Monza", "Race", Svm("Hypercar Porsche_963 WEC2025", 29), day.AddHours(13));
 
-        var store = new LocalSetupSnapshotStore(Path.Combine(_root, "vault"));
-        new SetupCaptureService(store).Capture(new SetupOnlyGameProvider(new LmuSetupRepository(_root)));
+        LocalSetupSnapshotStore store = new LocalSetupSnapshotStore(Path.Combine(this._root, "vault"));
+        new SetupCaptureService(store).Capture(new SetupOnlyGameProvider(new LmuSetupRepository(this._root)));
         return store;
     }
 
@@ -238,9 +238,9 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Proposes_the_most_recently_saved_setup_for_the_car_and_track_driven()
     {
-        var association = new SetupAssociationService(CapturedFolder(), new InMemoryLapHistoryStore());
+        SetupAssociationService association = new SetupAssociationService(this.CapturedFolder(), new InMemoryLapHistoryStore());
 
-        var proposal = association.Propose(Session("Le Mans", "Porsche 963"));
+        SetupAssociationProposal proposal = association.Propose(Session("Le Mans", "Porsche 963"));
 
         // "Ferrari Race" and the Monza setup were saved later, but neither is a setup this
         // session could have been driven with.
@@ -258,9 +258,9 @@ public sealed class SetupCaptureTests : IDisposable
     [InlineData("Spa-Francorchamps", "Porsche 963")]
     public void Reports_an_unidentified_setup_as_unknown_instead_of_the_nearest_one(string track, string car)
     {
-        var association = new SetupAssociationService(CapturedFolder(), new InMemoryLapHistoryStore());
+        SetupAssociationService association = new SetupAssociationService(this.CapturedFolder(), new InMemoryLapHistoryStore());
 
-        var proposal = association.Propose(Session(track, car));
+        SetupAssociationProposal proposal = association.Propose(Session(track, car));
 
         Assert.True(proposal.IsUnknown);
         Assert.Null(proposal.Candidate);
@@ -270,9 +270,9 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Carries_the_observed_and_the_stated_brake_bias_for_the_driver_to_check()
     {
-        var association = new SetupAssociationService(CapturedFolder(), new InMemoryLapHistoryStore());
+        SetupAssociationService association = new SetupAssociationService(this.CapturedFolder(), new InMemoryLapHistoryStore());
 
-        var proposal = association.Propose(Session("Le Mans", "Porsche 963"), observedBrakeBiasRear: 0.462);
+        SetupAssociationProposal proposal = association.Propose(Session("Le Mans", "Porsche 963"), observedBrakeBiasRear: 0.462);
 
         // The file states a click, telemetry states a fraction, and Sprint has no vehicle data
         // to convert between them: both are carried verbatim for the driver to judge, and
@@ -284,20 +284,20 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Confirming_the_proposal_records_it_on_the_session_and_its_lap_records()
     {
-        var history = new InMemoryLapHistoryStore();
-        var association = new SetupAssociationService(CapturedFolder(), history);
-        var session = Session("Le Mans", "Porsche 963");
-        var segment = new PlanSegment
+        InMemoryLapHistoryStore history = new InMemoryLapHistoryStore();
+        SetupAssociationService association = new SetupAssociationService(this.CapturedFolder(), history);
+        LapHistorySession session = Session("Le Mans", "Porsche 963");
+        PlanSegment segment = new PlanSegment
         {
             Id = "segment-1",
             Kind = SegmentKind.Race,
             Laps = [new LapSummary { LapNumber = 1, LapTimeSeconds = 210.5 }],
         };
 
-        var proposal = association.Propose(session);
+        SetupAssociationProposal proposal = association.Propose(session);
         association.Confirm(session, proposal.Reference, segment);
 
-        var stored = Assert.Single(history.LoadAll());
+        LapHistorySession stored = Assert.Single(history.LoadAll());
         Assert.Equal(proposal.Candidate?.Id, stored.SetupReference);
         Assert.Equal(proposal.Candidate?.Id, Assert.Single(segment.Laps).SetupReference);
         Assert.False(SetupAssociation.IsUnknown(stored.SetupReference));
@@ -306,15 +306,15 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Confirming_an_unidentified_setup_records_unknown_rather_than_nothing()
     {
-        var history = new InMemoryLapHistoryStore();
-        var association = new SetupAssociationService(CapturedFolder(), history);
-        var session = Session("Spa-Francorchamps", "Porsche 963");
+        InMemoryLapHistoryStore history = new InMemoryLapHistoryStore();
+        SetupAssociationService association = new SetupAssociationService(this.CapturedFolder(), history);
+        LapHistorySession session = Session("Spa-Francorchamps", "Porsche 963");
 
         association.Confirm(session, association.Propose(session).Reference);
 
         // Marked, not left blank: an unanswered session can be asked about again, while this
         // one has been answered and must never turn into a guess.
-        var stored = Assert.Single(history.LoadAll());
+        LapHistorySession stored = Assert.Single(history.LoadAll());
         Assert.Equal(SetupAssociation.Unknown, stored.SetupReference);
         Assert.True(SetupAssociation.IsUnknown(stored.SetupReference));
     }
@@ -322,15 +322,15 @@ public sealed class SetupCaptureTests : IDisposable
     [Fact]
     public void Le_mans_ultimate_exposes_its_setups_as_a_provider_capability()
     {
-        var provider = GameProviders.Find("lemansultimate");
+        IGameProvider? provider = GameProviders.Find("lemansultimate");
         Assert.NotNull(provider);
 
-        var setups = provider.Setups;
+        ISetupRepository? setups = provider.Setups;
 
         // The sim always stores setups, so the capability exists wherever the default library
         // does; whether this machine has saved any yet is ListSetups' answer, not a reason to
         // hide the capability. Nothing here reads that folder.
-        var defaultPath = LmuSetupRepository.DefaultSetupsPath();
+        string defaultPath = LmuSetupRepository.DefaultSetupsPath();
         Assert.Equal(defaultPath.Length == 0, setups is null);
         if (setups is null)
         {
@@ -347,10 +347,10 @@ public sealed class SetupCaptureTests : IDisposable
     {
         private readonly Dictionary<string, LapHistorySession> _sessions = [];
 
-        public IReadOnlyList<LapHistorySession> LoadAll() => [.. _sessions.Values];
+        public IReadOnlyList<LapHistorySession> LoadAll() => [.. this._sessions.Values];
 
-        public void Save(LapHistorySession session) => _sessions[session.Id] = session;
+        public void Save(LapHistorySession session) => this._sessions[session.Id] = session;
 
-        public void Delete(string sessionId) => _sessions.Remove(sessionId);
+        public void Delete(string sessionId) => this._sessions.Remove(sessionId);
     }
 }

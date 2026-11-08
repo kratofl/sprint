@@ -34,7 +34,7 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer, IDisp
 
     internal WindowsDesktopRegionCapturer(IDesktopCaptureSurfaceFactory surfaceFactory)
     {
-        _surfaceFactory = surfaceFactory ?? throw new ArgumentNullException(nameof(surfaceFactory));
+        this._surfaceFactory = surfaceFactory ?? throw new ArgumentNullException(nameof(surfaceFactory));
     }
 
     public bool TryCapture(
@@ -45,7 +45,7 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer, IDisp
     {
         ArgumentNullException.ThrowIfNull(region);
         ArgumentNullException.ThrowIfNull(bgra);
-        if (!_surfaceFactory.IsSupported
+        if (!this._surfaceFactory.IsSupported
             || !region.IsValid
             || destinationWidth <= 0
             || destinationHeight <= 0
@@ -54,37 +54,37 @@ public sealed class WindowsDesktopRegionCapturer : IDesktopRegionCapturer, IDisp
             return false;
         }
 
-        lock (_sync)
+        lock (this._sync)
         {
-            if (_disposed)
+            if (this._disposed)
             {
                 return false;
             }
 
-            if (_surface is null
-                || _surface.Width != destinationWidth
-                || _surface.Height != destinationHeight)
+            if (this._surface is null
+                || this._surface.Width != destinationWidth
+                || this._surface.Height != destinationHeight)
             {
-                _surface?.Dispose();
-                _surface = _surfaceFactory.Create(destinationWidth, destinationHeight);
+                this._surface?.Dispose();
+                this._surface = this._surfaceFactory.Create(destinationWidth, destinationHeight);
             }
 
-            return _surface?.TryCapture(region, bgra) == true;
+            return this._surface?.TryCapture(region, bgra) == true;
         }
     }
 
     public void Dispose()
     {
-        lock (_sync)
+        lock (this._sync)
         {
-            if (_disposed)
+            if (this._disposed)
             {
                 return;
             }
 
-            _disposed = true;
-            _surface?.Dispose();
-            _surface = null;
+            this._disposed = true;
+            this._surface?.Dispose();
+            this._surface = null;
         }
     }
 }
@@ -119,12 +119,12 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
         IntPtr previousBitmap,
         IntPtr pixels)
     {
-        Width = width;
-        Height = height;
-        _memoryDc = memoryDc;
-        _bitmap = bitmap;
-        _previousBitmap = previousBitmap;
-        _pixels = pixels;
+        this.Width = width;
+        this.Height = height;
+        this._memoryDc = memoryDc;
+        this._bitmap = bitmap;
+        this._previousBitmap = previousBitmap;
+        this._pixels = pixels;
     }
 
     public int Width { get; }
@@ -132,7 +132,7 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
 
     public static GdiDesktopCaptureSurface? TryCreate(int width, int height)
     {
-        var screenDc = GetDC(IntPtr.Zero);
+        nint screenDc = GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero)
         {
             return null;
@@ -140,7 +140,7 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
 
         try
         {
-            using var resources = new PendingSurfaceResources();
+            using PendingSurfaceResources resources = new PendingSurfaceResources();
             if (!resources.TryInitialize(screenDc, width, height))
             {
                 return null;
@@ -156,12 +156,12 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
 
     public bool TryCapture(ScreenCaptureRegion region, byte[] bgra)
     {
-        if (Volatile.Read(ref _disposed) == 1)
+        if (Volatile.Read(ref this._disposed) == 1)
         {
             return false;
         }
 
-        var screenDc = GetDC(IntPtr.Zero);
+        nint screenDc = GetDC(IntPtr.Zero);
         if (screenDc == IntPtr.Zero)
         {
             return false;
@@ -170,11 +170,11 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
         try
         {
             if (!StretchBlt(
-                    _memoryDc,
+                    this._memoryDc,
                     0,
                     0,
-                    Width,
-                    Height,
+                    this.Width,
+                    this.Height,
                     screenDc,
                     region.X,
                     region.Y,
@@ -185,7 +185,7 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
                 return false;
             }
 
-            Marshal.Copy(_pixels, bgra, 0, Width * Height * 4);
+            Marshal.Copy(this._pixels, bgra, 0, this.Width * this.Height * 4);
             return true;
         }
         finally
@@ -196,14 +196,14 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        if (Interlocked.Exchange(ref this._disposed, 1) == 1)
         {
             return;
         }
 
-        _ = SelectObject(_memoryDc, _previousBitmap);
-        _ = DeleteObject(_bitmap);
-        _ = DeleteDC(_memoryDc);
+        _ = SelectObject(this._memoryDc, this._previousBitmap);
+        _ = DeleteObject(this._bitmap);
+        _ = DeleteDC(this._memoryDc);
     }
 
     private sealed class PendingSurfaceResources : IDisposable
@@ -217,69 +217,69 @@ internal sealed class GdiDesktopCaptureSurface : IDesktopCaptureSurface
 
         public bool TryInitialize(IntPtr screenDc, int width, int height)
         {
-            MemoryDc = CreateCompatibleDC(screenDc);
-            if (MemoryDc == IntPtr.Zero)
+            this.MemoryDc = CreateCompatibleDC(screenDc);
+            if (this.MemoryDc == IntPtr.Zero)
             {
                 return false;
             }
 
-            var bitmapInfo = CreateBitmapInfo(width, height);
-            Bitmap = CreateDIBSection(
-                MemoryDc,
+            BitmapInfo bitmapInfo = CreateBitmapInfo(width, height);
+            this.Bitmap = CreateDIBSection(
+                this.MemoryDc,
                 ref bitmapInfo,
                 DibRgbColors,
-                out var pixels,
+                out nint pixels,
                 IntPtr.Zero,
                 0);
-            Pixels = pixels;
-            if (Bitmap == IntPtr.Zero || Pixels == IntPtr.Zero)
+            this.Pixels = pixels;
+            if (this.Bitmap == IntPtr.Zero || this.Pixels == IntPtr.Zero)
             {
                 return false;
             }
 
-            PreviousBitmap = SelectObject(MemoryDc, Bitmap);
-            if (PreviousBitmap == IntPtr.Zero || PreviousBitmap == new IntPtr(-1))
+            this.PreviousBitmap = SelectObject(this.MemoryDc, this.Bitmap);
+            if (this.PreviousBitmap == IntPtr.Zero || this.PreviousBitmap == new IntPtr(-1))
             {
-                PreviousBitmap = IntPtr.Zero;
+                this.PreviousBitmap = IntPtr.Zero;
                 return false;
             }
 
-            _ = SetStretchBltMode(MemoryDc, ColorOnColor);
+            _ = SetStretchBltMode(this.MemoryDc, ColorOnColor);
             return true;
         }
 
         public GdiDesktopCaptureSurface Transfer(int width, int height)
         {
-            _transferred = true;
+            this._transferred = true;
             return new GdiDesktopCaptureSurface(
                 width,
                 height,
-                MemoryDc,
-                Bitmap,
-                PreviousBitmap,
-                Pixels);
+                this.MemoryDc,
+                this.Bitmap,
+                this.PreviousBitmap,
+                this.Pixels);
         }
 
         public void Dispose()
         {
-            if (_transferred)
+            if (this._transferred)
             {
                 return;
             }
 
-            if (PreviousBitmap != IntPtr.Zero && MemoryDc != IntPtr.Zero)
+            if (this.PreviousBitmap != IntPtr.Zero && this.MemoryDc != IntPtr.Zero)
             {
-                _ = SelectObject(MemoryDc, PreviousBitmap);
+                _ = SelectObject(this.MemoryDc, this.PreviousBitmap);
             }
 
-            if (Bitmap != IntPtr.Zero)
+            if (this.Bitmap != IntPtr.Zero)
             {
-                _ = DeleteObject(Bitmap);
+                _ = DeleteObject(this.Bitmap);
             }
 
-            if (MemoryDc != IntPtr.Zero)
+            if (this.MemoryDc != IntPtr.Zero)
             {
-                _ = DeleteDC(MemoryDc);
+                _ = DeleteDC(this.MemoryDc);
             }
         }
     }

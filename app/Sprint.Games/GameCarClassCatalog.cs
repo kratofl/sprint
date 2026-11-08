@@ -40,9 +40,9 @@ public static partial class GameCarClassCatalog
     public static IReadOnlyList<GameCarClass> Classes(string? game, IEnumerable<string> observedRawClasses)
     {
         ArgumentNullException.ThrowIfNull(observedRawClasses);
-        var known = KnownClasses(game);
-        var result = new List<GameCarClass>(known);
-        foreach (var raw in observedRawClasses
+        IReadOnlyList<GameCarClass> known = KnownClasses(game);
+        List<GameCarClass> result = new List<GameCarClass>(known);
+        foreach (string? raw in observedRawClasses
                      .Where(value => !string.IsNullOrWhiteSpace(value))
                      .Distinct(StringComparer.Ordinal)
                      .Order(StringComparer.Ordinal))
@@ -79,7 +79,7 @@ public static partial class GameCarClassCatalog
 
     private static string Humanize(string raw)
     {
-        var separated = SeparatorRegex().Replace(raw.Trim(), " ");
+        string separated = SeparatorRegex().Replace(raw.Trim(), " ");
         return string.Join(
             ' ',
             separated.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(word =>

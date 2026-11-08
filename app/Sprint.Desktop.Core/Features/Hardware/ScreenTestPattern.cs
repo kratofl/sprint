@@ -21,7 +21,7 @@ internal static class ScreenTestPatternRenderer
             return;
         }
 
-        var color = pattern switch
+        ushort color = pattern switch
         {
             ScreenTestPattern.White => (ushort)0xFFFF,
             ScreenTestPattern.Red => (ushort)0xF800,
@@ -35,11 +35,11 @@ internal static class ScreenTestPatternRenderer
     private static void FillColorBars(Span<byte> rgb565, int width, int height)
     {
         ushort[] colors = [0xFFFF, 0xFFE0, 0x07FF, 0x07E0, 0xF81F, 0xF800, 0x001F, 0x0000];
-        for (var y = 0; y < height; y++)
+        for (int y = 0; y < height; y++)
         {
-            for (var x = 0; x < width; x++)
+            for (int x = 0; x < width; x++)
             {
-                var color = colors[Math.Min(colors.Length - 1, x * colors.Length / Math.Max(1, width))];
+                ushort color = colors[Math.Min(colors.Length - 1, x * colors.Length / Math.Max(1, width))];
                 WritePixel(rgb565, (y * width + x) * 2, color);
             }
         }
@@ -47,7 +47,7 @@ internal static class ScreenTestPatternRenderer
 
     private static void FillSolid(Span<byte> rgb565, ushort color)
     {
-        for (var offset = 0; offset < rgb565.Length; offset += 2)
+        for (int offset = 0; offset < rgb565.Length; offset += 2)
         {
             WritePixel(rgb565, offset, color);
         }

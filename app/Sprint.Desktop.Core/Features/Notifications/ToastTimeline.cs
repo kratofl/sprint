@@ -18,12 +18,12 @@ public static class ToastTimeline
 
     public static ToastAnimationFrame Sample(TimeSpan elapsed, bool spatialMotion = true)
     {
-        var total = Math.Clamp(elapsed.TotalMilliseconds / Lifetime.TotalMilliseconds, 0, 1);
-        var progress = 100 * (1 - total);
+        double total = Math.Clamp(elapsed.TotalMilliseconds / Lifetime.TotalMilliseconds, 0, 1);
+        double progress = 100 * (1 - total);
 
         if (elapsed <= EnterDuration)
         {
-            var entered = EaseOutCubic(elapsed.TotalMilliseconds / EnterDuration.TotalMilliseconds);
+            double entered = EaseOutCubic(elapsed.TotalMilliseconds / EnterDuration.TotalMilliseconds);
             return new ToastAnimationFrame(
                 Opacity: entered,
                 TranslateX: spatialMotion ? 18 * (1 - entered) : 0,
@@ -31,10 +31,10 @@ public static class ToastTimeline
                 Complete: false);
         }
 
-        var exitStartsAt = Lifetime - ExitDuration;
+        TimeSpan exitStartsAt = Lifetime - ExitDuration;
         if (elapsed >= exitStartsAt)
         {
-            var exited = EaseOutCubic(
+            double exited = EaseOutCubic(
                 (elapsed - exitStartsAt).TotalMilliseconds / ExitDuration.TotalMilliseconds);
             return new ToastAnimationFrame(
                 Opacity: 1 - exited,
@@ -52,7 +52,7 @@ public static class ToastTimeline
 
     private static double EaseOutCubic(double value)
     {
-        var t = Math.Clamp(value, 0, 1);
+        double t = Math.Clamp(value, 0, 1);
         return 1 - Math.Pow(1 - t, 3);
     }
 }

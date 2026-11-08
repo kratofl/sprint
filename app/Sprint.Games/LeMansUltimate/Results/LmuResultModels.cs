@@ -55,7 +55,7 @@ public sealed class LmuSessionResult
     public IReadOnlyList<LmuDriverResult> Drivers { get; init; } = [];
 
     /// <summary>The local player's entry, if the file marks one (<c>isPlayer=1</c>).</summary>
-    public LmuDriverResult? Player => Drivers.FirstOrDefault(d => d.IsPlayer);
+    public LmuDriverResult? Player => this.Drivers.FirstOrDefault(d => d.IsPlayer);
 }
 
 /// <summary>One driver's entry within a session result: identity, standings, and laps.</summary>
@@ -123,7 +123,7 @@ public sealed class LmuLapResult
     public double? LapTimeSeconds { get; init; }
 
     /// <summary>True when this lap has a numeric completed time.</summary>
-    public bool HasLapTime => LapTimeSeconds.HasValue;
+    public bool HasLapTime => this.LapTimeSeconds.HasValue;
 
     /// <summary>Session elapsed time at lap completion in seconds (<c>et</c>), or null when absent.</summary>
     public double? ElapsedTimeSeconds { get; init; }

@@ -16,11 +16,11 @@ internal sealed class WindowsLmuSharedMemoryProvider : ILmuSnapshotProvider
     private MemoryMappedFile? _file;
     private MemoryMappedViewAccessor? _accessor;
 
-    public bool IsOpen => _accessor is not null;
+    public bool IsOpen => this._accessor is not null;
 
     public void Open()
     {
-        if (IsOpen)
+        if (this.IsOpen)
         {
             return;
         }
@@ -32,32 +32,32 @@ internal sealed class WindowsLmuSharedMemoryProvider : ILmuSnapshotProvider
 
         try
         {
-            _file = MemoryMappedFile.OpenExisting(
+            this._file = MemoryMappedFile.OpenExisting(
                 LeMansUltimateGameData.SharedMemoryName,
                 MemoryMappedFileRights.Read);
-            _accessor = _file.CreateViewAccessor(
+            this._accessor = this._file.CreateViewAccessor(
                 0,
                 LmuBinary.TotalBufferSize,
                 MemoryMappedFileAccess.Read);
         }
         catch
         {
-            Close();
+            this.Close();
             throw;
         }
     }
 
     public void Close()
     {
-        _accessor?.Dispose();
-        _accessor = null;
-        _file?.Dispose();
-        _file = null;
+        this._accessor?.Dispose();
+        this._accessor = null;
+        this._file?.Dispose();
+        this._file = null;
     }
 
     public void CopySnapshot(Span<byte> destination)
     {
-        if (_accessor is null)
+        if (this._accessor is null)
         {
             throw new InvalidOperationException("LMU shared memory provider is not open.");
         }
@@ -67,10 +67,10 @@ internal sealed class WindowsLmuSharedMemoryProvider : ILmuSnapshotProvider
             throw new ArgumentException("Destination must fit a complete LMU shared memory snapshot.", nameof(destination));
         }
 
-        var rented = ArrayPool<byte>.Shared.Rent(LmuBinary.TotalBufferSize);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(LmuBinary.TotalBufferSize);
         try
         {
-            _accessor.ReadArray(0, rented, 0, LmuBinary.TotalBufferSize);
+            this._accessor.ReadArray(0, rented, 0, LmuBinary.TotalBufferSize);
             rented.AsSpan(0, LmuBinary.TotalBufferSize).CopyTo(destination);
         }
         finally
@@ -79,7 +79,7 @@ internal sealed class WindowsLmuSharedMemoryProvider : ILmuSnapshotProvider
         }
     }
 
-    public void Dispose() => Close();
+    public void Dispose() => this.Close();
 }
 
 internal sealed class InMemoryLmuSnapshotProvider : ILmuSnapshotProvider
@@ -95,24 +95,24 @@ internal sealed class InMemoryLmuSnapshotProvider : ILmuSnapshotProvider
             throw new ArgumentException("Snapshot must be exactly the LMU shared memory size.", nameof(snapshot));
         }
 
-        _snapshot = snapshot;
+        this._snapshot = snapshot;
     }
 
     public bool IsOpen { get; private set; }
 
-    public void Open() => IsOpen = true;
+    public void Open() => this.IsOpen = true;
 
-    public void Close() => IsOpen = false;
+    public void Close() => this.IsOpen = false;
 
     public void CopySnapshot(Span<byte> destination)
     {
-        if (!IsOpen)
+        if (!this.IsOpen)
         {
             throw new InvalidOperationException("LMU snapshot provider is not open.");
         }
 
-        _snapshot.CopyTo(destination);
+        this._snapshot.CopyTo(destination);
     }
 
-    public void Dispose() => Close();
+    public void Dispose() => this.Close();
 }

@@ -16,13 +16,13 @@ public static class DashWidgetTypeMigration
 
     public static bool Apply(DashLayout layout)
     {
-        var changed = false;
+        bool changed = false;
         if (layout.IdlePage is not null)
         {
             changed |= ApplyToPage(layout.IdlePage);
         }
 
-        foreach (var page in layout.Pages)
+        foreach (DashPage page in layout.Pages)
         {
             changed |= ApplyToPage(page);
         }
@@ -44,7 +44,7 @@ public static class DashWidgetTypeMigration
 
     private static bool ApplyToWidget(DashWidget widget)
     {
-        if (!string.IsNullOrWhiteSpace(widget.Type) && Renames.TryGetValue(widget.Type, out var renamed))
+        if (!string.IsNullOrWhiteSpace(widget.Type) && Renames.TryGetValue(widget.Type, out string? renamed))
         {
             widget.Type = renamed;
             return true;

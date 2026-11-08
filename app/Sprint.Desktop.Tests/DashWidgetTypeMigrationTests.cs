@@ -8,7 +8,7 @@ public class DashWidgetTypeMigrationTests
     [Fact]
     public void Rewrites_legacy_ers_widgets_on_every_page()
     {
-        var layout = new DashLayout
+        DashLayout layout = new DashLayout
         {
             IdlePage = new DashPage
             {
@@ -23,7 +23,7 @@ public class DashWidgetTypeMigrationTests
             ],
         };
 
-        var changed = DashWidgetTypeMigration.Apply(layout);
+        bool changed = DashWidgetTypeMigration.Apply(layout);
 
         Assert.True(changed);
         Assert.Equal("virtual_energy", layout.IdlePage!.Widgets[0].Type);
@@ -33,7 +33,7 @@ public class DashWidgetTypeMigrationTests
     [Fact]
     public void Leaves_layouts_without_legacy_types_untouched()
     {
-        var layout = new DashLayout
+        DashLayout layout = new DashLayout
         {
             Pages = [new DashPage { Widgets = [new DashWidget { Id = "ve", Type = "virtual_energy" }] }],
         };

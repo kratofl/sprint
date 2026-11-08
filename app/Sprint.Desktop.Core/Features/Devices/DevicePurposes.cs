@@ -18,7 +18,7 @@ public sealed record DevicePurpose(
     string Description,
     DevicePurposeOutputKind Output)
 {
-    public bool Available => Output is
+    public bool Available => this.Output is
         DevicePurposeOutputKind.DashboardLayout
         or DevicePurposeOutputKind.BuiltInFlagLayout
         or DevicePurposeOutputKind.BuiltInLapTimerLayout

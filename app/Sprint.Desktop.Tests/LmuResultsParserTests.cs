@@ -112,7 +112,7 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Parses_race_session_metadata()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
 
         Assert.Equal("Sample Raceway", result.TrackVenue);
         Assert.Equal("Sample Raceway", result.TrackCourse);
@@ -128,7 +128,7 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Parses_datetime_as_unix_seconds_utc()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
 
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1782240911), result.SessionTimeUtc);
     }
@@ -136,10 +136,10 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Identifies_player_and_field()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
 
         Assert.Equal(2, result.Drivers.Count);
-        var player = Assert.Single(result.Drivers, d => d.IsPlayer);
+        LmuDriverResult player = Assert.Single(result.Drivers, d => d.IsPlayer);
         Assert.Same(player, result.Player);
         Assert.Equal("Alpha Tester", player.Name);
         Assert.Equal("Sample Team Purple", player.TeamName);
@@ -159,9 +159,9 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Parses_dnf_status_and_missing_optional_fields()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
 
-        var dnf = Assert.Single(result.Drivers, d => !d.IsPlayer);
+        LmuDriverResult dnf = Assert.Single(result.Drivers, d => !d.IsPlayer);
         Assert.Equal("DNF", dnf.FinishStatus);
         Assert.Equal(34, dnf.FinishPosition);
         Assert.Null(dnf.ClassGridPosition); // absent in the XML
@@ -171,11 +171,11 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Parses_timed_lap_with_sectors_and_compound()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
-        var laps = result.Player!.Laps;
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
+        IReadOnlyList<LmuLapResult> laps = result.Player!.Laps;
 
         Assert.Equal(3, laps.Count);
-        var lap3 = laps[2];
+        LmuLapResult lap3 = laps[2];
         Assert.Equal(3, lap3.LapNumber);
         Assert.Equal(2, lap3.Position);
         Assert.True(lap3.HasLapTime);
@@ -192,8 +192,8 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Treats_dash_placeholders_as_no_time()
     {
-        var result = LmuResultsParser.Parse(RaceXml);
-        var outLap = result.Player!.Laps[0];
+        LmuSessionResult result = LmuResultsParser.Parse(RaceXml);
+        LmuLapResult outLap = result.Player!.Laps[0];
 
         Assert.Equal(1, outLap.LapNumber);
         Assert.False(outLap.HasLapTime);
@@ -207,14 +207,14 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Classifies_qualifying_and_leaves_absent_grid_null()
     {
-        var result = LmuResultsParser.Parse(QualifyXml);
+        LmuSessionResult result = LmuResultsParser.Parse(QualifyXml);
 
         Assert.Equal(LmuSessionType.Qualifying, result.SessionType);
         Assert.Equal("Qualify", result.RawSessionName);
-        var player = result.Player!;
+        LmuDriverResult player = result.Player!;
         Assert.Null(player.GridPosition);
         Assert.Equal(5, player.FinishPosition);
-        var lap = Assert.Single(player.Laps);
+        LmuLapResult lap = Assert.Single(player.Laps);
         Assert.False(lap.HasLapTime);
         Assert.Null(lap.Sector1Seconds);
         Assert.Equal(232.88, lap.TopSpeedKph);
@@ -223,11 +223,11 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Classifies_practice_and_reads_laps_without_wrapper()
     {
-        var result = LmuResultsParser.Parse(PracticeXml);
+        LmuSessionResult result = LmuResultsParser.Parse(PracticeXml);
 
         Assert.Equal(LmuSessionType.Practice, result.SessionType);
         Assert.Equal("Practice1", result.RawSessionName);
-        var lap = Assert.Single(result.Player!.Laps); // <Lap> directly under <Driver>
+        LmuLapResult lap = Assert.Single(result.Player!.Laps); // <Lap> directly under <Driver>
         Assert.Equal(1, lap.LapNumber);
         Assert.Null(lap.LapTimeSeconds);
     }
@@ -255,7 +255,7 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Accepts_race_results_as_root_element()
     {
-        var result = LmuResultsParser.Parse("<RaceResults><TrackVenue>Root Course</TrackVenue><Race><Driver><Name>A</Name><isPlayer>1</isPlayer></Driver></Race></RaceResults>");
+        LmuSessionResult result = LmuResultsParser.Parse("<RaceResults><TrackVenue>Root Course</TrackVenue><Race><Driver><Name>A</Name><isPlayer>1</isPlayer></Driver></Race></RaceResults>");
 
         Assert.Equal("Root Course", result.TrackVenue);
         Assert.Equal(LmuSessionType.Race, result.SessionType);
@@ -265,7 +265,7 @@ public sealed class LmuResultsParserTests
     [Fact]
     public void Returns_empty_field_when_no_session_element_present()
     {
-        var result = LmuResultsParser.Parse("<rFactorXML><RaceResults><TrackVenue>Empty</TrackVenue></RaceResults></rFactorXML>");
+        LmuSessionResult result = LmuResultsParser.Parse("<rFactorXML><RaceResults><TrackVenue>Empty</TrackVenue></RaceResults></rFactorXML>");
 
         Assert.Equal("Empty", result.TrackVenue);
         Assert.Empty(result.Drivers);

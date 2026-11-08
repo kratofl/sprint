@@ -49,10 +49,10 @@ public sealed class DeviceRefreshRateTests
     [Fact]
     public void UnsetRateLoadsAsTheDefault()
     {
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string dataRoot = TestEnv.NewTempDataRoot();
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
             // A devices.json written before the setting existed has no rate at all.
             runtime.Devices.Add(new SavedDevice
             {
@@ -66,7 +66,7 @@ public sealed class DeviceRefreshRateTests
             });
             runtime.SaveDevices();
 
-            var reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, TestEnv.PresetRoot);
 
             Assert.Equal(DeviceRefreshRates.Default, reloaded.Devices.Single().RefreshHz);
         }

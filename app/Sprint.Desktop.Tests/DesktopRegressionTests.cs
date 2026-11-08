@@ -1,4 +1,6 @@
 using Sprint.Desktop;
+using Sprint.Desktop.Api.Telemetry;
+using Sprint.Desktop.Features.Devices;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Shell;
 using Sprint.Games;
@@ -31,12 +33,12 @@ public class DesktopRegressionTests
     [Fact]
     public void GamesPackageEmitsSharedTelemetryFormat()
     {
-        using var source = GameTelemetryPackage.CreateDemoSource();
-        var first = LiveTelemetryPresenter.ToSnapshot(source.Current);
+        using ITelemetrySource source = GameTelemetryPackage.CreateDemoSource();
+        TelemetrySnapshot first = LiveTelemetryPresenter.ToSnapshot(source.Current);
 
         source.Connect();
-        Assert.True(source.TryRead(out var frame), "A connected demo source should yield a fresh frame.");
-        var second = LiveTelemetryPresenter.ToSnapshot(frame);
+        Assert.True(source.TryRead(out TelemetryFrame? frame), "A connected demo source should yield a fresh frame.");
+        TelemetrySnapshot second = LiveTelemetryPresenter.ToSnapshot(frame);
 
         Assert.True(second.SpeedKph != first.SpeedKph, "Telemetry simulator should advance speed.");
         Assert.True(second.Rpm > 0, "Telemetry simulator should produce RPM.");
@@ -46,20 +48,20 @@ public class DesktopRegressionTests
     [Fact]
     public void DesktopRuntimePersistsDevices()
     {
-        var presetRoot = TestEnv.PresetRoot;
-        var dataRoot = TestEnv.NewTempDataRoot();
+        string presetRoot = TestEnv.PresetRoot;
+        string dataRoot = TestEnv.NewTempDataRoot();
 
         try
         {
-            var runtime = new DesktopRuntime(dataRoot, presetRoot);
+            DesktopRuntime runtime = new DesktopRuntime(dataRoot, presetRoot);
             Assert.True(runtime.Catalog.Count > 0, "Device catalog should load from presets.");
             Assert.True(runtime.DashLayouts.Count > 0, "Dash layouts should load from presets.");
 
-            var saved = runtime.AddDevice(runtime.Catalog[0]);
+            SavedDevice saved = runtime.AddDevice(runtime.Catalog[0]);
             Assert.Single(runtime.Devices);
             Assert.True(saved.Width > 0 && saved.Height > 0, "Saved device should get concrete display dimensions.");
 
-            var reloaded = new DesktopRuntime(dataRoot, presetRoot);
+            DesktopRuntime reloaded = new DesktopRuntime(dataRoot, presetRoot);
             Assert.Single(reloaded.Devices);
             Assert.Equal(saved.Id, reloaded.Devices[0].Id);
         }

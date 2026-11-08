@@ -12,7 +12,7 @@ public static class CrashReportFormat
 {
     public static string Build(DateTimeOffset timestamp, string appVersion, string source, Exception exception)
     {
-        var builder = new StringBuilder();
+        StringBuilder builder = new StringBuilder();
         builder.AppendLine("Sprint Desktop crash report");
         builder.AppendLine("===========================");
         builder.Append("Time (UTC): ").AppendLine(timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ"));

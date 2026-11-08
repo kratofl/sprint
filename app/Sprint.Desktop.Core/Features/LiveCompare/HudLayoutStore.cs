@@ -71,10 +71,10 @@ public static class HudLayoutStore
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(screens);
 
-        foreach (var screen in screens)
+        foreach (HudScreen screen in screens)
         {
-            var key = KeyFor(windowId, screen);
-            var stored = settings.Layouts.FirstOrDefault(layout =>
+            string key = KeyFor(windowId, screen);
+            HudWindowLayout? stored = settings.Layouts.FirstOrDefault(layout =>
                 string.Equals(layout.Key, key, StringComparison.Ordinal));
 
             if (stored is not null && Overlaps(stored, screen))
@@ -98,7 +98,7 @@ public static class HudLayoutStore
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var key = KeyFor(windowId, screen);
+        string key = KeyFor(windowId, screen);
         settings.Layouts.RemoveAll(layout => string.Equals(layout.Key, key, StringComparison.Ordinal));
         settings.Layouts.Add(new HudWindowLayout
         {

@@ -27,12 +27,12 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
     public LocalLapTraceStore(string? dataRoot = null, ILog? log = null)
     {
-        _root = dataRoot ?? Path.Combine(
+        this._root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint",
             "lap-traces");
-        _log = log ?? NullLog.Instance;
-        Directory.CreateDirectory(_root);
+        this._log = log ?? NullLog.Instance;
+        Directory.CreateDirectory(this._root);
     }
 
     public void Save(string traceId, LapChannelTrace trace)
@@ -47,7 +47,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            AtomicFile.Write(TracePath(traceId), stream =>
+            AtomicFile.Write(this.TracePath(traceId), stream =>
             {
                 // leaveOpen: true -- AtomicFile.Write owns the temp FileStream's lifetime (it
                 // flushes and closes it after this delegate returns); DeflateStream must not
@@ -59,13 +59,13 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Losing one lap's trace must never take the lap record with it.
-            _log.Error($"Failed to persist lap trace '{traceId}'", ex);
+            this._log.Error($"Failed to persist lap trace '{traceId}'", ex);
         }
     }
 
     public LapChannelTrace? Load(string traceId)
     {
-        var path = TracePath(traceId);
+        string path = this.TracePath(traceId);
         if (!File.Exists(path))
         {
             return null;
@@ -73,12 +73,12 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            using var file = File.OpenRead(path);
-            using var deflate = new DeflateStream(file, CompressionMode.Decompress);
-            var trace = LapTraceCodec.Read(deflate);
+            using FileStream file = File.OpenRead(path);
+            using DeflateStream deflate = new DeflateStream(file, CompressionMode.Decompress);
+            LapChannelTrace? trace = LapTraceCodec.Read(deflate);
             if (trace is null)
             {
-                _log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace payload");
+                this._log.Warn($"Ignoring lap trace '{traceId}': not a Sprint trace payload");
             }
 
             return trace;
@@ -86,7 +86,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
             // One unreadable trace must not cost the driver every other lap they have driven.
-            _log.Warn($"Ignoring unreadable lap trace at {path}", ex);
+            this._log.Warn($"Ignoring unreadable lap trace at {path}", ex);
             return null;
         }
     }
@@ -100,7 +100,7 @@ public sealed class LocalLapTraceStore : ILapTraceStore
 
         try
         {
-            var path = TracePath(traceId);
+            string path = this.TracePath(traceId);
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -108,16 +108,16 @@ public sealed class LocalLapTraceStore : ILapTraceStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Warn($"Failed to delete lap trace '{traceId}'", ex);
+            this._log.Warn($"Failed to delete lap trace '{traceId}'", ex);
         }
     }
 
     public IReadOnlyList<LapTraceInfo> List()
     {
-        var traces = new List<LapTraceInfo>();
-        foreach (var path in Directory.EnumerateFiles(_root, "*" + Extension))
+        List<LapTraceInfo> traces = new List<LapTraceInfo>();
+        foreach (string path in Directory.EnumerateFiles(this._root, "*" + Extension))
         {
-            var info = new FileInfo(path);
+            FileInfo info = new FileInfo(path);
             traces.Add(new LapTraceInfo(
                 Path.GetFileNameWithoutExtension(path),
                 info.Length,
@@ -132,10 +132,10 @@ public sealed class LocalLapTraceStore : ILapTraceStore
     /// only reachable through the interface, so a caller holding a concrete store could not
     /// call it at all.
     /// </summary>
-    public long TotalBytes() => List().Sum(info => info.SizeBytes);
+    public long TotalBytes() => this.List().Sum(info => info.SizeBytes);
 
     private string TracePath(string traceId) =>
-        Path.Combine(_root, SafeFileName(traceId) + Extension);
+        Path.Combine(this._root, SafeFileName(traceId) + Extension);
 
     // Ids are derived from a session id, which could carry separators from an import or a sync.
     // '.' is replaced as well as the platform's invalid characters: it is legal in a file name,
@@ -143,10 +143,10 @@ public sealed class LocalLapTraceStore : ILapTraceStore
     private static string SafeFileName(string traceId)
     {
         Span<char> buffer = stackalloc char[traceId.Length];
-        for (var i = 0; i < traceId.Length; i++)
+        for (int i = 0; i < traceId.Length; i++)
         {
-            var c = traceId[i];
-            var unsafeChar = c is '.' or '/' or '\\'
+            char c = traceId[i];
+            bool unsafeChar = c is '.' or '/' or '\\'
                 || Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0;
             buffer[i] = unsafeChar ? '_' : c;
         }

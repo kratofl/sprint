@@ -16,7 +16,7 @@ public sealed class DiagnosticsTests
     [Fact]
     public void LogLineHasSortableUtcTimestampLevelAndMessage()
     {
-        var line = LogFormat.Line(FixedTime, LogLevel.Info, "engine started", null);
+        string line = LogFormat.Line(FixedTime, LogLevel.Info, "engine started", null);
 
         Assert.Equal("2026-07-13T09:41:02.123Z [INFO ] engine started", line);
     }
@@ -24,7 +24,7 @@ public sealed class DiagnosticsTests
     [Fact]
     public void LogLineCollapsesEmbeddedNewlinesInMessage()
     {
-        var line = LogFormat.Line(FixedTime, LogLevel.Warn, "line one\nline two", null);
+        string line = LogFormat.Line(FixedTime, LogLevel.Warn, "line one\nline two", null);
 
         // The message stays on a single physical line so read-back never mistakes
         // a wrapped message for a second record.
@@ -35,8 +35,8 @@ public sealed class DiagnosticsTests
     [Fact]
     public void LogLineAppendsExceptionOnIndentedContinuationLines()
     {
-        var line = LogFormat.Line(FixedTime, LogLevel.Error, "boom", new InvalidOperationException("nope"));
-        var physical = line.Split('\n');
+        string line = LogFormat.Line(FixedTime, LogLevel.Error, "boom", new InvalidOperationException("nope"));
+        string[] physical = line.Split('\n');
 
         Assert.StartsWith("2026-07-13T09:41:02.123Z [ERROR] boom", physical[0]);
         Assert.Contains(physical, l => l.StartsWith("    ") && l.Contains("InvalidOperationException"));
@@ -45,16 +45,16 @@ public sealed class DiagnosticsTests
     [Fact]
     public void FileLoggerWritesRecordsAtOrAboveMinimumLevelOnly()
     {
-        var root = NewRoot();
+        string root = NewRoot();
         try
         {
-            var paths = new DiagnosticsPaths(root);
-            var logger = new FileLogger(paths, LogLevel.Warn, () => FixedTime);
+            DiagnosticsPaths paths = new DiagnosticsPaths(root);
+            FileLogger logger = new FileLogger(paths, LogLevel.Warn, () => FixedTime);
 
             logger.Info("skipped");
             logger.Warn("kept");
 
-            var contents = File.ReadAllText(paths.LogFileFor(FixedTime));
+            string contents = File.ReadAllText(paths.LogFileFor(FixedTime));
             Assert.DoesNotContain("skipped", contents);
             Assert.Contains("kept", contents);
         }
@@ -67,15 +67,15 @@ public sealed class DiagnosticsTests
     [Fact]
     public void FileLoggerRollsToADailyFile()
     {
-        var root = NewRoot();
+        string root = NewRoot();
         try
         {
-            var day1 = FixedTime;
-            var day2 = FixedTime.AddDays(1);
-            var clockTime = day1;
+            DateTimeOffset day1 = FixedTime;
+            DateTimeOffset day2 = FixedTime.AddDays(1);
+            DateTimeOffset clockTime = day1;
 
-            var paths = new DiagnosticsPaths(root);
-            var logger = new FileLogger(paths, LogLevel.Info, () => clockTime);
+            DiagnosticsPaths paths = new DiagnosticsPaths(root);
+            FileLogger logger = new FileLogger(paths, LogLevel.Info, () => clockTime);
 
             logger.Info("first day");
             clockTime = day2;
@@ -94,9 +94,9 @@ public sealed class DiagnosticsTests
     [Fact]
     public void RetentionKeepsOnlyTheMostRecentFiles()
     {
-        var files = new[] { "sprint-20260101.log", "sprint-20260103.log", "sprint-20260102.log" };
+        string[] files = new[] { "sprint-20260101.log", "sprint-20260103.log", "sprint-20260102.log" };
 
-        var deleted = FileRetention.SelectForDeletion(files, keep: 2);
+        IReadOnlyList<string> deleted = FileRetention.SelectForDeletion(files, keep: 2);
 
         Assert.Equal(new[] { "sprint-20260101.log" }, deleted);
     }
@@ -104,20 +104,20 @@ public sealed class DiagnosticsTests
     [Fact]
     public void FileLoggerPrunesOldDayFilesOnConstruction()
     {
-        var root = NewRoot();
+        string root = NewRoot();
         try
         {
-            var logDir = Path.Combine(root, "logs");
+            string logDir = Path.Combine(root, "logs");
             Directory.CreateDirectory(logDir);
-            foreach (var day in new[] { "20260101", "20260102", "20260103" })
+            foreach (string? day in new[] { "20260101", "20260102", "20260103" })
             {
                 File.WriteAllText(Path.Combine(logDir, $"sprint-{day}.log"), "old");
             }
 
-            var paths = new DiagnosticsPaths(root);
+            DiagnosticsPaths paths = new DiagnosticsPaths(root);
             _ = new FileLogger(paths, retainDays: 2);
 
-            var remaining = Directory.GetFiles(logDir, "sprint-*.log").Select(Path.GetFileName).OrderBy(n => n).ToArray();
+            string?[] remaining = Directory.GetFiles(logDir, "sprint-*.log").Select(Path.GetFileName).OrderBy(n => n).ToArray();
             Assert.Equal(new[] { "sprint-20260102.log", "sprint-20260103.log" }, remaining);
         }
         finally
@@ -129,8 +129,8 @@ public sealed class DiagnosticsTests
     [Fact]
     public void LiveLogStoreRetainsRecentEntriesAndFiltersByLevelAndText()
     {
-        var clock = FixedTime;
-        var store = new LiveLogStore(capacity: 3, () => clock);
+        DateTimeOffset clock = FixedTime;
+        LiveLogStore store = new LiveLogStore(capacity: 3, () => clock);
 
         store.Debug("USB enumeration started");
         clock = clock.AddMilliseconds(1);
@@ -151,17 +151,17 @@ public sealed class DiagnosticsTests
     [Fact]
     public void CrashReporterWritesReportWithContextAndLogsFatal()
     {
-        var root = NewRoot();
+        string root = NewRoot();
         try
         {
-            var paths = new DiagnosticsPaths(root);
-            var log = new FileLogger(paths, LogLevel.Info, () => FixedTime);
-            var reporter = new CrashReporter(paths, log, "9.9.9", () => FixedTime);
+            DiagnosticsPaths paths = new DiagnosticsPaths(root);
+            FileLogger log = new FileLogger(paths, LogLevel.Info, () => FixedTime);
+            CrashReporter reporter = new CrashReporter(paths, log, "9.9.9", () => FixedTime);
 
-            var path = reporter.Report("UI", new InvalidOperationException("kaboom"));
+            string? path = reporter.Report("UI", new InvalidOperationException("kaboom"));
 
             Assert.NotNull(path);
-            var report = File.ReadAllText(path!);
+            string report = File.ReadAllText(path!);
             Assert.Contains("Sprint Desktop crash report", report);
             Assert.Contains("App version: 9.9.9", report);
             Assert.Contains("Source: UI", report);
@@ -180,7 +180,7 @@ public sealed class DiagnosticsTests
     [Fact]
     public void InstallWiresLoggerAndCrashReporterAndUninstallCleansUp()
     {
-        var root = NewRoot();
+        string root = NewRoot();
         try
         {
             using (AppDiagnostics.Install(new DiagnosticsPaths(root)))
@@ -197,7 +197,7 @@ public sealed class DiagnosticsTests
                     entry => entry.Message == "visible in diagnostics window");
                 Assert.Contains("verbose action detail", File.ReadAllText(AppDiagnostics.Paths!.LogFileFor(DateTimeOffset.UtcNow)));
 
-                var path = AppDiagnostics.Crash!.Report("UI", new InvalidOperationException("wired"));
+                string? path = AppDiagnostics.Crash!.Report("UI", new InvalidOperationException("wired"));
                 Assert.NotNull(path);
                 Assert.True(File.Exists(path!));
             }

@@ -18,5 +18,5 @@ public sealed class SetupProgram
     public bool IsTemplate { get; set; }
     public Dictionary<string, double> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public override string ToString() => Name;
+    public override string ToString() => this.Name;
 }

@@ -209,9 +209,9 @@ public sealed class SessionPlannerSettings
 
     /// <summary>These settings as the retention service's budget (#194).</summary>
     public LapTraceBudget TraceBudget() => new(
-        Math.Max(1, TraceMaxTotalMegabytes) * 1024L * 1024L,
-        Math.Max(0, TraceProtectedLapsPerContext),
-        TraceRetentionDays > 0 ? TraceRetentionDays : null);
+        Math.Max(1, this.TraceMaxTotalMegabytes) * 1024L * 1024L,
+        Math.Max(0, this.TraceProtectedLapsPerContext),
+        this.TraceRetentionDays > 0 ? this.TraceRetentionDays : null);
 
     /// <summary>Warn when live telemetry disagrees with the planned race-length format.</summary>
     [JsonPropertyName("warnOnRaceFormatMismatch")]
@@ -311,15 +311,15 @@ public sealed class LiveCompareSettings
     /// </summary>
     public bool Migrate()
     {
-        if (Version >= CurrentVersion)
+        if (this.Version >= CurrentVersion)
         {
             return false;
         }
 
-        Version = CurrentVersion;
-        PanelIds = ["throttle", "brake", "speed"];
-        ShowDelta = true;
-        Layouts.Clear();
+        this.Version = CurrentVersion;
+        this.PanelIds = ["throttle", "brake", "speed"];
+        this.ShowDelta = true;
+        this.Layouts.Clear();
         return true;
     }
 }

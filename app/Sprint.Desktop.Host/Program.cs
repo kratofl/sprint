@@ -601,7 +601,7 @@ app.MapPost("/api/compare/hud/windows", (HudWindowsRequest body) =>
 // much work for the 4 Hz state poll, so the New plan dialog fetches it once when it opens.
 // Lap files (#198): a lap with channels as a .sprintlap, and back. Electron owns the file
 // dialogs and the disk; these only turn a lap into bytes and bytes into a corpus entry.
-const long MaxLapFileBytes = 32 * 1024 * 1024;
+const long maxLapFileBytes = 32 * 1024 * 1024;
 SharedLapImporter sharedLapImporter = new(lapHistoryStore, lapTraceStore, log: log, carNames: storedCarNames);
 app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int lapNumber, HttpContext context) =>
 {
@@ -619,7 +619,7 @@ app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int 
 });
 app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct) =>
 {
-    if (request.ContentLength is > MaxLapFileBytes)
+    if (request.ContentLength is > maxLapFileBytes)
     {
         return Results.Json(new { outcome = "Failed", error = "That file is far too large to be a Sprint lap file." }, json);
     }

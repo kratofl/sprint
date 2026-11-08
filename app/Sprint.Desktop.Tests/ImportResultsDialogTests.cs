@@ -17,7 +17,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task AManualImportSearchesFirstAndSaysWhenThereIsNothingNew()
     {
-        var controller = Controller(search: () => ResultsImportProposal.Empty);
+        ImportResultsController controller = Controller(search: () => ResultsImportProposal.Empty);
 
         Assert.Equal(ImportResultsPhase.Searching, controller.Phase);
 
@@ -31,7 +31,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task AManualImportOffersWhatItFound()
     {
-        var controller = Controller(search: () => Proposal(practice: 9, qualifying: 3, race: 2));
+        ImportResultsController controller = Controller(search: () => Proposal(practice: 9, qualifying: 3, race: 2));
 
         await controller.SearchAsync();
 
@@ -43,7 +43,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task TheStartupOfferSkipsTheSearchBecauseTheScanAlreadyRan()
     {
-        var controller = Controller(offered: Proposal(race: 2));
+        ImportResultsController controller = Controller(offered: Proposal(race: 2));
 
         Assert.Equal(ImportResultsPhase.Ready, controller.Phase);
         Assert.True(controller.CanImport);
@@ -52,9 +52,9 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task ImportingReportsItsProgressAndThenItsResultInTheDialog()
     {
-        using var release = new ManualResetEventSlim(false);
-        var phaseWhileRunning = ImportResultsPhase.Ready;
-        var controller = Controller(
+        using ManualResetEventSlim release = new ManualResetEventSlim(false);
+        ImportResultsPhase phaseWhileRunning = ImportResultsPhase.Ready;
+        ImportResultsController controller = Controller(
             offered: Proposal(race: 2),
             import: _ =>
             {
@@ -63,7 +63,7 @@ public sealed class ImportResultsDialogTests
             });
         controller.Changed += (_, _) => phaseWhileRunning = controller.Phase;
 
-        var importing = controller.ImportAsync();
+        Task importing = controller.ImportAsync();
         // The button has to be able to show it is working, and must not be pressable twice.
         Assert.Equal(ImportResultsPhase.Importing, controller.Phase);
         Assert.False(controller.CanImport);
@@ -78,7 +78,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task AnImportThatAlreadyHadEverythingSaysSoRatherThanClaimingSuccess()
     {
-        var controller = Controller(offered: Proposal(race: 2), import: _ => 0);
+        ImportResultsController controller = Controller(offered: Proposal(race: 2), import: _ => 0);
 
         await controller.ImportAsync();
 
@@ -89,7 +89,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task AFailedImportStaysInTheDialogInsteadOfVanishing()
     {
-        var controller = Controller(
+        ImportResultsController controller = Controller(
             offered: Proposal(race: 2),
             import: _ => throw new IOException("the disk went away"));
 
@@ -104,7 +104,7 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task ASuccessfulImportIsFinishedSoTheDialogCanOfferOnlyAWayOut()
     {
-        var controller = Controller(offered: Proposal(race: 2), import: _ => 2);
+        ImportResultsController controller = Controller(offered: Proposal(race: 2), import: _ => 2);
 
         await controller.ImportAsync();
 
@@ -115,14 +115,14 @@ public sealed class ImportResultsDialogTests
     [Fact]
     public async Task DecliningOnlyCountsWhileThereIsSomethingToDecline()
     {
-        var declined = new List<ResultsArchiveEntry>();
-        var controller = Controller(offered: Proposal(race: 2), decline: declined.AddRange);
+        List<ResultsArchiveEntry> declined = new List<ResultsArchiveEntry>();
+        ImportResultsController controller = Controller(offered: Proposal(race: 2), decline: declined.AddRange);
 
         controller.Decline();
         Assert.Single(declined);
 
         // Closing after the import is done must not mark anything declined.
-        var imported = Controller(offered: Proposal(race: 2), import: _ => 2, decline: declined.AddRange);
+        ImportResultsController imported = Controller(offered: Proposal(race: 2), import: _ => 2, decline: declined.AddRange);
         await imported.ImportAsync();
         imported.Decline();
 
@@ -146,7 +146,7 @@ public sealed class ImportResultsDialogTests
 
     private static ResultsImportProposal Proposal(int practice = 0, int qualifying = 0, int race = 0)
     {
-        var counts = new Dictionary<HistorySessionKind, int>();
+        Dictionary<HistorySessionKind, int> counts = new Dictionary<HistorySessionKind, int>();
         if (practice > 0)
         {
             counts[HistorySessionKind.Practice] = practice;

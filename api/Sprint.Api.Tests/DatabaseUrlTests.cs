@@ -8,7 +8,7 @@ public class DatabaseUrlTests
     [Fact]
     public void Parses_libpq_url_into_npgsql_keywords()
     {
-        var conn = DatabaseUrl.ToNpgsql("postgres://sprint:changeme@db:5432/sprint?sslmode=disable");
+        string conn = DatabaseUrl.ToNpgsql("postgres://sprint:changeme@db:5432/sprint?sslmode=disable");
         Assert.Contains("Host=db", conn);
         Assert.Contains("Port=5432", conn);
         Assert.Contains("Database=sprint", conn);

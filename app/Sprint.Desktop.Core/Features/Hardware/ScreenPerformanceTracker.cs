@@ -29,7 +29,7 @@ internal sealed class ScreenPerformanceTracker
     private TimeSpan _usbTransferTime;
     private TimeSpan _totalFrameTime;
 
-    public ScreenPerformanceSnapshot Snapshot => Volatile.Read(ref _snapshot);
+    public ScreenPerformanceSnapshot Snapshot => Volatile.Read(ref this._snapshot);
 
     public void RecordFrame(
         long completedAt,
@@ -38,55 +38,55 @@ internal sealed class ScreenPerformanceTracker
         TimeSpan totalFrameTime,
         ScreenFrameDisposition disposition)
     {
-        _framesRendered++;
+        this._framesRendered++;
         if (disposition == ScreenFrameDisposition.Sent)
         {
-            _framesSent++;
-            _sourceTime = renderTiming.SourceTime;
-            _pixelTransformTime = renderTiming.PixelTransformTime;
-            _renderTime = renderTiming.FrameTime;
-            _usbTransferTime = usbTransferTime;
-            _totalFrameTime = totalFrameTime;
-            if (_lastSentTimestamp != 0)
+            this._framesSent++;
+            this._sourceTime = renderTiming.SourceTime;
+            this._pixelTransformTime = renderTiming.PixelTransformTime;
+            this._renderTime = renderTiming.FrameTime;
+            this._usbTransferTime = usbTransferTime;
+            this._totalFrameTime = totalFrameTime;
+            if (this._lastSentTimestamp != 0)
             {
-                var interval = Stopwatch.GetElapsedTime(_lastSentTimestamp, completedAt);
+                TimeSpan interval = Stopwatch.GetElapsedTime(this._lastSentTimestamp, completedAt);
                 if (interval > TimeSpan.Zero)
                 {
-                    var instantaneousFps = 1d / interval.TotalSeconds;
-                    _renderFps = _renderFps <= 0
+                    double instantaneousFps = 1d / interval.TotalSeconds;
+                    this._renderFps = this._renderFps <= 0
                         ? instantaneousFps
-                        : _renderFps * 0.8 + instantaneousFps * 0.2;
+                        : this._renderFps * 0.8 + instantaneousFps * 0.2;
                 }
             }
 
-            _lastSentTimestamp = completedAt;
+            this._lastSentTimestamp = completedAt;
         }
         else if (disposition == ScreenFrameDisposition.Skipped)
         {
-            _framesSkipped++;
+            this._framesSkipped++;
         }
 
         if (disposition != ScreenFrameDisposition.Sent
-            && _lastSentTimestamp != 0
-            && Stopwatch.GetElapsedTime(_lastSentTimestamp, completedAt) >= OutputFpsIdleAfter)
+            && this._lastSentTimestamp != 0
+            && Stopwatch.GetElapsedTime(this._lastSentTimestamp, completedAt) >= OutputFpsIdleAfter)
         {
-            _renderFps = 0;
+            this._renderFps = 0;
         }
 
-        Publish();
+        this.Publish();
     }
 
     private void Publish() =>
         Volatile.Write(
-            ref _snapshot,
+            ref this._snapshot,
             new ScreenPerformanceSnapshot(
-                _renderFps,
-                _sourceTime,
-                _pixelTransformTime,
-                _renderTime,
-                _usbTransferTime,
-                _totalFrameTime,
-                _framesRendered,
-                _framesSent,
-                _framesSkipped));
+                this._renderFps,
+                this._sourceTime,
+                this._pixelTransformTime,
+                this._renderTime,
+                this._usbTransferTime,
+                this._totalFrameTime,
+                this._framesRendered,
+                this._framesSent,
+                this._framesSkipped));
 }

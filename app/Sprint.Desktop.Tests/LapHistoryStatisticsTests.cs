@@ -23,9 +23,9 @@ public sealed class LapHistoryStatisticsTests
     {
         // Hand-worked: sorted [130, 131, 132, 140, 999] -> the middle position holds the lap
         // timed 132. Never computed with the same expression the implementation uses.
-        var store = StoreWith(Session("hs-1", 130, 131, 132, 140, 999));
+        ILapHistoryStore store = StoreWith(Session("hs-1", 130, 131, 132, 140, 999));
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(132, result!.Median.Lap.LapTimeSeconds);
@@ -38,9 +38,9 @@ public sealed class LapHistoryStatisticsTests
         // Hand-worked: sorted [130, 131, 132, 140] has no single middle lap, and the design
         // is explicit that the LOWER of the two middle laps wins (131), never an interpolated
         // 131.5 that no one actually drove.
-        var store = StoreWith(Session("hs-1", 130, 131, 132, 140));
+        ILapHistoryStore store = StoreWith(Session("hs-1", 130, 131, 132, 140));
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(131, result!.Median.Lap.LapTimeSeconds);
@@ -53,12 +53,12 @@ public sealed class LapHistoryStatisticsTests
         // Hand-worked: only [130, 140] are valid, so the median is the lower of those two
         // (130), not anything a naive full-list median (which would land on 132, the invalid
         // lap) would give.
-        var session = Session("hs-1", 130, 131, 132, 140);
+        LapHistorySession session = Session("hs-1", 130, 131, 132, 140);
         session.Laps[1].IsValid = false; // 131
         session.Laps[2].IsValid = false; // 132
-        var store = StoreWith(session);
+        ILapHistoryStore store = StoreWith(session);
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(2, result!.SampleSize);
@@ -71,10 +71,10 @@ public sealed class LapHistoryStatisticsTests
         // A lap with no time (0) or a bogus negative value is not a real driven lap timed at
         // zero seconds — it means the recorder never got a time for it — so it must not sort
         // to the front and become "fastest".
-        var session = Session("hs-1", 0, -5, 131, 140);
-        var store = StoreWith(session);
+        LapHistorySession session = Session("hs-1", 0, -5, 131, 140);
+        ILapHistoryStore store = StoreWith(session);
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(2, result!.SampleSize);
@@ -86,16 +86,16 @@ public sealed class LapHistoryStatisticsTests
     {
         // A different car at the same track, and the same car at a different track/game, must
         // not contribute laps: only Game + TrackCourse + CarModel together form the key.
-        var wrongCar = Session("hs-car", 50, 51);
+        LapHistorySession wrongCar = Session("hs-car", 50, 51);
         wrongCar.Context.CarModel = "Peugeot 9X8";
-        var wrongTrack = Session("hs-track", 60, 61);
+        LapHistorySession wrongTrack = Session("hs-track", 60, 61);
         wrongTrack.Context.TrackCourse = "Spa-Francorchamps Endurance";
-        var wrongGame = Session("hs-game", 70, 71);
+        LapHistorySession wrongGame = Session("hs-game", 70, 71);
         wrongGame.Context.Game = "Assetto Corsa";
-        var matching = Session("hs-match", 130, 131);
-        var store = StoreWith(wrongCar, wrongTrack, wrongGame, matching);
+        LapHistorySession matching = Session("hs-match", 130, 131);
+        ILapHistoryStore store = StoreWith(wrongCar, wrongTrack, wrongGame, matching);
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(2, result!.SampleSize);
@@ -105,9 +105,9 @@ public sealed class LapHistoryStatisticsTests
     [Fact]
     public void ASingleLapIsFastestMedianAndSlowestAtOnce()
     {
-        var store = StoreWith(Session("hs-1", 145));
+        ILapHistoryStore store = StoreWith(Session("hs-1", 145));
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(1, result!.SampleSize);
@@ -119,9 +119,9 @@ public sealed class LapHistoryStatisticsTests
     [Fact]
     public void AnEmptyCorpusHasNoStatisticRatherThanAZeroOrDefault()
     {
-        var store = StoreWith();
+        ILapHistoryStore store = StoreWith();
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.Null(result);
     }
@@ -132,19 +132,19 @@ public sealed class LapHistoryStatisticsTests
         // #103's corpus rule is explicit: all session types feed the same context bucket. A
         // practice lap can be the fastest, a race lap the median, a qualifying lap the
         // slowest — the statistic does not care which tab produced them.
-        var practice = Session("hs-practice", 128);
+        LapHistorySession practice = Session("hs-practice", 128);
         practice.Kind = HistorySessionKind.Practice;
-        var qualifying = Session("hs-qualifying", 999);
+        LapHistorySession qualifying = Session("hs-qualifying", 999);
         qualifying.Kind = HistorySessionKind.Qualifying;
-        var race = Session("hs-race", 131);
+        LapHistorySession race = Session("hs-race", 131);
         race.Kind = HistorySessionKind.Race;
-        var warmup = Session("hs-warmup", 132);
+        LapHistorySession warmup = Session("hs-warmup", 132);
         warmup.Kind = HistorySessionKind.Warmup;
-        var testDay = Session("hs-testday", 133);
+        LapHistorySession testDay = Session("hs-testday", 133);
         testDay.Kind = HistorySessionKind.TestDay;
-        var store = StoreWith(practice, qualifying, race, warmup, testDay);
+        ILapHistoryStore store = StoreWith(practice, qualifying, race, warmup, testDay);
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(5, result!.SampleSize);
@@ -155,12 +155,12 @@ public sealed class LapHistoryStatisticsTests
     [Fact]
     public void EachPresetPointsAtALapThatActuallyExistsInTheCorpus()
     {
-        var store = StoreWith(Session("hs-1", 130, 131, 132, 140, 999));
+        ILapHistoryStore store = StoreWith(Session("hs-1", 130, 131, 132, 140, 999));
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
-        var allLapTimes = result!.Candidates.Select(candidate => candidate.Lap.LapTimeSeconds).ToList();
+        List<double> allLapTimes = result!.Candidates.Select(candidate => candidate.Lap.LapTimeSeconds).ToList();
         Assert.Contains(result.Fastest.Lap, result.Candidates.Select(candidate => candidate.Lap));
         Assert.Contains(result.Median.Lap, result.Candidates.Select(candidate => candidate.Lap));
         Assert.Contains(result.Slowest.Lap, result.Candidates.Select(candidate => candidate.Lap));
@@ -174,11 +174,11 @@ public sealed class LapHistoryStatisticsTests
         // degrade to a scalar target. Until the curve accessor lands on LapHistoryRecord
         // itself, LapHistorySession.Origin is the caller's only way to tell the two tiers
         // apart, so a statistic must keep pointing at the owning session, not just the lap.
-        var imported = Session("hs-imported", 120);
+        LapHistorySession imported = Session("hs-imported", 120);
         imported.Origin = LapHistoryOrigin.Imported;
-        var store = StoreWith(imported);
+        ILapHistoryStore store = StoreWith(imported);
 
-        var result = LapHistoryStatistics.Resolve(store, Context);
+        LapHistoryStatisticsResult? result = LapHistoryStatistics.Resolve(store, Context);
 
         Assert.NotNull(result);
         Assert.Equal(LapHistoryOrigin.Imported, result!.Fastest.Session.Origin);

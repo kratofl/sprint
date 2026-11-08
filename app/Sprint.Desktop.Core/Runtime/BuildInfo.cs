@@ -20,12 +20,12 @@ public static class BuildInfo
 
     private static string ResolveVersion()
     {
-        var assembly = typeof(BuildInfo).Assembly;
-        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        Assembly assembly = typeof(BuildInfo).Assembly;
+        string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrWhiteSpace(informational))
         {
             // Strip the "+<sourceRevisionId>" suffix the SDK appends when SourceLink is on.
-            var plus = informational.IndexOf('+');
+            int plus = informational.IndexOf('+');
             return plus > 0 ? informational[..plus] : informational;
         }
 

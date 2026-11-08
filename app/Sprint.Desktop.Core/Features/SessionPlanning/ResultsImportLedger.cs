@@ -39,43 +39,43 @@ public sealed class ResultsImportLedger
 
     public ResultsImportLedger(string? dataRoot = null, ILog? log = null)
     {
-        var root = dataRoot ?? Path.Combine(
+        string root = dataRoot ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Sprint");
         Directory.CreateDirectory(root);
-        _path = Path.Combine(root, FileName);
-        _log = log ?? NullLog.Instance;
-        _records = Load();
+        this._path = Path.Combine(root, FileName);
+        this._log = log ?? NullLog.Instance;
+        this._records = this.Load();
     }
 
     /// <summary>Whether this exact entry has already been answered, either way.</summary>
     public bool IsSettled(ResultsArchiveEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return _records.TryGetValue(entry.Id, out var record) && record.Matches(entry);
+        return this._records.TryGetValue(entry.Id, out LedgerRecord? record) && record.Matches(entry);
     }
 
     /// <summary>Whether this exact entry was imported (as opposed to declined).</summary>
     public bool WasImported(ResultsArchiveEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return _records.TryGetValue(entry.Id, out var record)
+        return this._records.TryGetValue(entry.Id, out LedgerRecord? record)
             && record.Matches(entry)
             && record.Outcome == LedgerOutcome.Imported;
     }
 
     public void MarkImported(IEnumerable<ResultsArchiveEntry> entries) =>
-        Mark(entries, LedgerOutcome.Imported);
+        this.Mark(entries, LedgerOutcome.Imported);
 
     public void MarkDeclined(IEnumerable<ResultsArchiveEntry> entries) =>
-        Mark(entries, LedgerOutcome.Declined);
+        this.Mark(entries, LedgerOutcome.Declined);
 
     private void Mark(IEnumerable<ResultsArchiveEntry> entries, LedgerOutcome outcome)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        foreach (var entry in entries)
+        foreach (ResultsArchiveEntry entry in entries)
         {
-            _records[entry.Id] = new LedgerRecord
+            this._records[entry.Id] = new LedgerRecord
             {
                 SizeBytes = entry.SizeBytes,
                 LastWriteUtc = entry.LastWriteUtc,
@@ -83,20 +83,20 @@ public sealed class ResultsImportLedger
             };
         }
 
-        Save();
+        this.Save();
     }
 
     private Dictionary<string, LedgerRecord> Load()
     {
-        if (!File.Exists(_path))
+        if (!File.Exists(this._path))
         {
             return new Dictionary<string, LedgerRecord>(StringComparer.Ordinal);
         }
 
         try
         {
-            using var stream = File.OpenRead(_path);
-            var loaded = JsonSerializer.Deserialize<Dictionary<string, LedgerRecord>>(stream, JsonOptions);
+            using FileStream stream = File.OpenRead(this._path);
+            Dictionary<string, LedgerRecord>? loaded = JsonSerializer.Deserialize<Dictionary<string, LedgerRecord>>(stream, JsonOptions);
             return loaded is null
                 ? new Dictionary<string, LedgerRecord>(StringComparer.Ordinal)
                 : new Dictionary<string, LedgerRecord>(loaded, StringComparer.Ordinal);
@@ -105,7 +105,7 @@ public sealed class ResultsImportLedger
         {
             // An unreadable ledger costs one re-parse pass and no duplicates; refusing to
             // start, or silently treating everything as imported, would both be worse.
-            _log.Warn($"Ignoring unreadable results-import ledger at {_path}", ex);
+            this._log.Warn($"Ignoring unreadable results-import ledger at {this._path}", ex);
             return new Dictionary<string, LedgerRecord>(StringComparer.Ordinal);
         }
     }
@@ -114,11 +114,11 @@ public sealed class ResultsImportLedger
     {
         try
         {
-            AtomicFile.Write(_path, stream => JsonSerializer.Serialize(stream, _records, JsonOptions));
+            AtomicFile.Write(this._path, stream => JsonSerializer.Serialize(stream, this._records, JsonOptions));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.Error($"Failed to persist results-import ledger at {_path}", ex);
+            this._log.Error($"Failed to persist results-import ledger at {this._path}", ex);
         }
     }
 
@@ -144,6 +144,6 @@ public sealed class ResultsImportLedger
         /// new archive to import, not the one that was already answered for.
         /// </summary>
         public bool Matches(ResultsArchiveEntry entry) =>
-            SizeBytes == entry.SizeBytes && LastWriteUtc == entry.LastWriteUtc;
+            this.SizeBytes == entry.SizeBytes && this.LastWriteUtc == entry.LastWriteUtc;
     }
 }

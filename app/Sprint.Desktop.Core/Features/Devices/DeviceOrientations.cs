@@ -41,7 +41,7 @@ public static class DeviceOrientations
 
     public static DeviceOrientation Resolve(int rotation)
     {
-        var normalized = ((rotation % 360) + 360) % 360;
+        int normalized = ((rotation % 360) + 360) % 360;
         return Enum.IsDefined(typeof(DeviceOrientation), normalized)
             ? (DeviceOrientation)normalized
             : DeviceOrientation.Portrait;
@@ -62,14 +62,14 @@ public static class DeviceOrientations
                 "A screen device needs a positive native size.");
         }
 
-        var shortEdge = Math.Min(nativeWidth, nativeHeight);
-        var longEdge = Math.Max(nativeWidth, nativeHeight);
-        var landscape = IsLandscape(orientation);
-        var logicalWidth = landscape ? longEdge : shortEdge;
-        var logicalHeight = landscape ? shortEdge : longEdge;
-        var nativeIsLandscape = nativeWidth >= nativeHeight;
-        var baseRotation = nativeIsLandscape == landscape ? 0 : 90;
-        var inverted = orientation is DeviceOrientation.PortraitInverted
+        int shortEdge = Math.Min(nativeWidth, nativeHeight);
+        int longEdge = Math.Max(nativeWidth, nativeHeight);
+        bool landscape = IsLandscape(orientation);
+        int logicalWidth = landscape ? longEdge : shortEdge;
+        int logicalHeight = landscape ? shortEdge : longEdge;
+        bool nativeIsLandscape = nativeWidth >= nativeHeight;
+        int baseRotation = nativeIsLandscape == landscape ? 0 : 90;
+        bool inverted = orientation is DeviceOrientation.PortraitInverted
             or DeviceOrientation.LandscapeInverted;
 
         return new DeviceOrientationTransform(

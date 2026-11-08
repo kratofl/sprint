@@ -32,10 +32,10 @@ public static class UpdateChecker
     public static UpdateCheckResult Check(string currentVersion, string channel, IEnumerable<ReleaseInfo> releases)
     {
         ArgumentNullException.ThrowIfNull(releases);
-        var maxRank = ChannelRank(channel);
+        int maxRank = ChannelRank(channel);
 
         ReleaseInfo? best = null;
-        foreach (var release in releases)
+        foreach (ReleaseInfo release in releases)
         {
             if (ChannelRank(release.Channel) > maxRank)
             {
@@ -48,7 +48,7 @@ public static class UpdateChecker
             }
         }
 
-        var available = best is not null && Compare(best.Version, currentVersion) > 0;
+        bool available = best is not null && Compare(best.Version, currentVersion) > 0;
         return new UpdateCheckResult(available, available ? best : null, Normalize(currentVersion));
     }
 
@@ -62,12 +62,12 @@ public static class UpdateChecker
     /// <summary>SemVer-ish compare of two versions. Returns &gt;0 if <paramref name="a"/> is newer, &lt;0 if older, 0 if equal.</summary>
     public static int Compare(string a, string b)
     {
-        var (coreA, preA) = Split(a);
-        var (coreB, preB) = Split(b);
+        (int[]? coreA, string? preA) = Split(a);
+        (int[]? coreB, string? preB) = Split(b);
 
-        for (var i = 0; i < 3; i++)
+        for (int i = 0; i < 3; i++)
         {
-            var cmp = coreA[i].CompareTo(coreB[i]);
+            int cmp = coreA[i].CompareTo(coreB[i]);
             if (cmp != 0)
             {
                 return cmp;
@@ -83,16 +83,16 @@ public static class UpdateChecker
 
     private static (int[] Core, string Pre) Split(string version)
     {
-        var v = Normalize(version);
-        var dash = v.IndexOf('-');
-        var pre = dash >= 0 ? v[(dash + 1)..] : "";
-        var core = dash >= 0 ? v[..dash] : v;
+        string v = Normalize(version);
+        int dash = v.IndexOf('-');
+        string pre = dash >= 0 ? v[(dash + 1)..] : "";
+        string core = dash >= 0 ? v[..dash] : v;
 
-        var parts = core.Split('.');
-        var numbers = new int[3];
-        for (var i = 0; i < 3 && i < parts.Length; i++)
+        string[] parts = core.Split('.');
+        int[] numbers = new int[3];
+        for (int i = 0; i < 3 && i < parts.Length; i++)
         {
-            numbers[i] = int.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0;
+            numbers[i] = int.TryParse(parts[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 0;
         }
 
         return (numbers, pre);
@@ -100,13 +100,13 @@ public static class UpdateChecker
 
     private static string Normalize(string version)
     {
-        var v = (version ?? "").Trim();
+        string v = (version ?? "").Trim();
         if (v.StartsWith('v') || v.StartsWith('V'))
         {
             v = v[1..];
         }
 
-        var plus = v.IndexOf('+');
+        int plus = v.IndexOf('+');
         return plus >= 0 ? v[..plus] : v;
     }
 }
