@@ -154,7 +154,7 @@ public sealed class SetupAssociationService
     private static bool Matches(SetupSnapshot snapshot, LapHistoryContext context) =>
         string.Equals(snapshot.Game, context.Game, StringComparison.OrdinalIgnoreCase)
         && NamesTrack(snapshot.Track, context.TrackCourse)
-        && DescribesCar(snapshot.VehicleDescriptor, context.CarModel);
+        && DescribesCar(snapshot.VehicleDescriptor, context.CarType ?? context.CarModel);
 
     /// <summary>
     /// Whether the folder the game filed a setup under names the course that was driven. The
@@ -178,8 +178,9 @@ public sealed class SetupAssociationService
     /// <summary>
     /// Whether a setup's declared class names the car that was driven. The declaration is a
     /// class string ("Hypercar Porsche_963 WEC2025") and the driven car is a model
-    /// ("Porsche 963"), so every word of the model must appear in it — which one car's class
-    /// string does and another's does not.
+    /// ("Porsche 963", the context's car type; its name where no type was recorded), so every
+    /// word of the model must appear in it — which one car's class string does and another's
+    /// does not.
     /// </summary>
     private static bool DescribesCar(string? vehicleDescriptor, string carModel)
     {
