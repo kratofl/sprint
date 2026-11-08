@@ -13,12 +13,25 @@ export const dashStyles: readonly DashStyle[] = ['panels', 'grid', 'bars']
 export const isDashStyle = (value: unknown): value is DashStyle => value === 'panels' || value === 'grid' || value === 'bars'
 export interface DashTheme { [key: string]: string | undefined }
 export interface DashWidgetStyle { textColor?: string; labelColor?: string }
-export interface DashWidget { id: string; type: string; col: number; row: number; colSpan: number; rowSpan: number; config?: Record<string, unknown>; style?: DashWidgetStyle }
-export interface DashWidgetStackLayer { id: string; name: string; widgets: DashWidget[] }
-export interface DashWidgetStack { id: string; name: string; col: number; row: number; colSpan: number; rowSpan: number; defaultLayerId?: string; layers: DashWidgetStackLayer[] }
-export interface DashPage { id: string; name: string; widgets: DashWidget[]; widgetStacks?: DashWidgetStack[] }
-export interface DashAlert { id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number; colorToken?: string; durationSeconds?: number; invertColors?: boolean }
-export interface DashLayout { id: string; name: string; default: boolean; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown> }
+/** One widget, in page grid coordinates. `group` is the group it sits in; `hidden` keeps it off the wheel (it still holds its cells). */
+export interface DashWidget { id: string; type: string; col: number; row: number; colSpan: number; rowSpan: number; config?: Record<string, unknown>; style?: DashWidgetStyle; group?: string; hidden?: boolean }
+/** How a group shows its direct children: all of them, or one at a time (a widget stack: each child is a layer). */
+export type DashGroupMode = 'together' | 'oneAtATime'
+export const isDashGroupMode = (value: unknown): value is DashGroupMode => value === 'together' || value === 'oneAtATime'
+/**
+ * A named group of widgets and groups on a page (see `groups.ts` for the tree and the drawing
+ * rule). `parent` is the group it sits in; `shownFirst` is the child a one-at-a-time group shows.
+ */
+export interface DashWidgetGroup { id: string; name: string; parent?: string; mode: DashGroupMode; shownFirst?: string; hidden?: boolean }
+export interface DashPage { id: string; name: string; widgets: DashWidget[]; groups?: DashWidgetGroup[] }
+/**
+ * One alert on a dash. The look fields (`displayMode`, `colorToken`, `durationSeconds`,
+ * `invertColors`) are the alert's own look; all absent means it uses the layout's `alertConfig`.
+ * `displayMode` "center" shows the popup in the alert's grid rect, "full" over the whole dash.
+ */
+export interface DashAlert { id: string; type: string; enabled: boolean; col: number; row: number; colSpan: number; rowSpan: number; displayMode?: 'full' | 'center'; colorToken?: string; durationSeconds?: number; invertColors?: boolean }
+/** `category` is the Dashes page grouping (host `DashLayout.Category`); absent means "Other". The renderer ignores it. */
+export interface DashLayout { id: string; name: string; category?: string; mode: string; colorSystem?: DashColorSystem; dashStyle?: DashStyle; screenProfile?: string; gridCols: number; gridRows: number; pages: DashPage[]; idlePage?: DashPage | null; alerts: DashAlert[]; theme?: DashTheme; alertConfig?: Record<string, unknown> }
 export interface DashRenderInput { layout: DashLayout; frame?: TelemetryFrame | null; width?: number; height?: number; pageId?: string; idle?: boolean; settings?: Record<string, unknown>; targets?: Record<string, unknown> }
 
 export { DashRenderer, type DashRendererProps }
@@ -31,17 +44,21 @@ export {
   resolveTyreColor, dimColor, withAlpha, dashThemePresets, presetSwatchColor, dashSettingColors,
   canonicalAlertColorToken, matchLayoutThemeName, type DashPaletteColors, type DashThemePreset,
 } from './palette'
-export { DashAlertTracker, isAttentionInverted, dashAlertTypes, LAP_SUMMARY_SECONDS, type DashCondition, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
+export { DashAlertTracker, isAttentionInverted, dashAlertTypes, previewAlertBanner, alertColorSwatch, LAP_SUMMARY_SECONDS, type DashCondition, type DashAlertBanner, type DashAlertType, type DashSettingPopup, type DashLapSummaryPopup } from './alerts'
 export { narrowDashTargets, type DashTargets } from './bindings'
 // Grid pixel math is part of the public contract too: the desktop editor's direct-manipulation
 // overlay (drag/resize handles) positions itself with the exact same math `DashRenderer` uses to
 // place widgets, so the overlay can never drift a pixel out of alignment with what's rendered.
 export { gridRect, type PixelRect, type GridSpan } from './grid'
+export { pageTree, shownChild, nodeWidgets, drawnWidgets, groupParents, stackLayers, mayOverlap, type DashNode, type DashGroupNode } from './groups'
 export { dashPreviewStates, previewFrame, resolvePreviewFrame, type DashPreviewState } from './previewFrames'
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
-const isWidget = (value: unknown): value is DashWidget => isRecord(value) && typeof value.id === 'string' && typeof value.type === 'string' && typeof value.col === 'number' && typeof value.row === 'number' && typeof value.colSpan === 'number' && typeof value.rowSpan === 'number'
-const isPage = (value: unknown): value is DashPage => isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && Array.isArray(value.widgets) && value.widgets.every(isWidget)
+const isOptional = (value: unknown, type: 'string' | 'boolean'): boolean => value === undefined || typeof value === type
+const isWidget = (value: unknown): value is DashWidget => isRecord(value) && typeof value.id === 'string' && typeof value.type === 'string' && typeof value.col === 'number' && typeof value.row === 'number' && typeof value.colSpan === 'number' && typeof value.rowSpan === 'number' && isOptional(value.group, 'string') && isOptional(value.hidden, 'boolean')
+/** A group as the host writes it: absent fields are omitted, never null. */
+export const isDashWidgetGroup = (value: unknown): value is DashWidgetGroup => isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && isDashGroupMode(value.mode) && isOptional(value.parent, 'string') && isOptional(value.shownFirst, 'string') && isOptional(value.hidden, 'boolean')
+const isPage = (value: unknown): value is DashPage => isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string' && Array.isArray(value.widgets) && value.widgets.every(isWidget) && (value.groups === undefined || (Array.isArray(value.groups) && value.groups.every(isDashWidgetGroup)))
 const isTelemetryFrame = (value: unknown): value is TelemetryFrame => isRecord(value) && isRecord(value.session) && isRecord(value.car) && isRecord(value.lap) && isRecord(value.flags) && isRecord(value.electronics) && isRecord(value.race) && isRecord(value.energy)
 export function parseDashRenderInput(value: unknown): DashRenderInput {
   if (!isRecord(value) || !isRecord(value.layout)) throw new TypeError('Invalid dashboard render input')
@@ -51,7 +68,7 @@ export function parseDashRenderInput(value: unknown): DashRenderInput {
   const pages = raw.pages
   if (!Array.isArray(pages) || !pages.every(isPage)) throw new TypeError('Invalid dashboard render input')
   if (typeof raw.id !== 'string' || typeof raw.name !== 'string' || typeof raw.gridCols !== 'number' || typeof raw.gridRows !== 'number') throw new TypeError('Invalid dashboard layout')
-  const layout: DashLayout = { id: raw.id, name: raw.name, default: raw.default === true, mode: typeof raw.mode === 'string' ? raw.mode : 'basic', gridCols: raw.gridCols, gridRows: raw.gridRows, pages, alerts: Array.isArray(raw.alerts) ? raw.alerts.filter((alert): alert is DashAlert => isRecord(alert) && typeof alert.id === 'string' && typeof alert.type === 'string') : [] }
+  const layout: DashLayout = { id: raw.id, name: raw.name, mode: typeof raw.mode === 'string' ? raw.mode : 'basic', gridCols: raw.gridCols, gridRows: raw.gridRows, pages, alerts: Array.isArray(raw.alerts) ? raw.alerts.filter((alert): alert is DashAlert => isRecord(alert) && typeof alert.id === 'string' && typeof alert.type === 'string') : [] }
   if (isPage(raw.idlePage)) layout.idlePage = raw.idlePage
   if (isRecord(raw.theme)) layout.theme = Object.fromEntries(Object.entries(raw.theme).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
   if (isRecord(raw.alertConfig)) layout.alertConfig = raw.alertConfig

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { TirePosition, type TelemetryFrame } from '@sprint/types'
 import { DashRenderer } from './DashRenderer'
 import type { DashAlertBanner } from './alerts'
-import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
+import type { DashLayout, DashPage, DashWidget } from './index'
 import { formatLap } from './format'
 
 function tire(position: TirePosition): TelemetryFrame['tires'][number] {
@@ -36,7 +36,7 @@ function page(overrides: Partial<DashPage> = {}): DashPage {
 }
 
 function layout(overrides: Partial<DashLayout> = {}): DashLayout {
-  return { id: 'l1', name: 'Layout', default: true, mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [], ...overrides }
+  return { id: 'l1', name: 'Layout', mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [], ...overrides }
 }
 
 test('a widget renders the value bound to its telemetry channel', () => {
@@ -46,23 +46,28 @@ test('a widget renders the value bound to its telemetry channel', () => {
   assert.ok(html.includes(formatLap(92.345)), html)
 })
 
-test('a widget stack renders its defaultLayerId layer, not the others', () => {
-  const stack: DashWidgetStack = {
-    id: 's1',
-    name: 'Stack',
-    col: 0,
-    row: 0,
-    colSpan: 20,
-    rowSpan: 12,
-    defaultLayerId: 'layer-b',
-    layers: [
-      { id: 'layer-a', name: 'A', widgets: [widget({ id: 'a', type: 'text', config: { content: 'LAYER A TEXT' } })] },
-      { id: 'layer-b', name: 'B', widgets: [widget({ id: 'b', type: 'text', config: { content: 'LAYER B TEXT' } })] },
+test('groups draw their widgets, a one-at-a-time group only its shown layer, and hidden widgets not at all', () => {
+  const text = (id: string, content: string, rest: Partial<DashWidget> = {}): DashWidget => widget({ id, colSpan: 4, rowSpan: 2, config: { content }, ...rest })
+  const dash = layout({
+    pages: [
+      page({
+        widgets: [
+          text('a', 'TOGETHER A', { group: 'bar' }),
+          text('b', 'TOGETHER B', { group: 'bar', col: 4 }),
+          text('c', 'LAYER ONE', { group: 'stack', row: 4 }),
+          text('d', 'LAYER TWO', { group: 'stack', row: 4 }),
+          text('e', 'HIDDEN ONE', { col: 8, hidden: true }),
+        ],
+        groups: [
+          { id: 'bar', name: 'Bar', mode: 'together' },
+          { id: 'stack', name: 'Stack', mode: 'oneAtATime', shownFirst: 'd' },
+        ],
+      }),
     ],
-  }
-  const html = renderToStaticMarkup(<DashRenderer layout={layout({ pages: [page({ widgetStacks: [stack] })] })} frame={frame()} width={800} height={480} />)
-  assert.ok(html.includes('LAYER B TEXT'), html)
-  assert.ok(!html.includes('LAYER A TEXT'), html)
+  })
+  const html = renderToStaticMarkup(<DashRenderer layout={dash} frame={frame()} width={800} height={480} />)
+  for (const shown of ['TOGETHER A', 'TOGETHER B', 'LAYER TWO']) assert.ok(html.includes(shown), shown)
+  for (const notShown of ['LAYER ONE', 'HIDDEN ONE']) assert.ok(!html.includes(notShown), notShown)
 })
 
 test('an alert banner renders its title and value when one is supplied', () => {

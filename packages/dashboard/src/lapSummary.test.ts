@@ -71,7 +71,7 @@ test('an invalid lap is reported but never becomes the best', () => {
 })
 
 test('the tracker shows the lap summary for five seconds when the layout enables it', () => {
-  const layout = (enabled: boolean): DashLayout => ({ id: 'l', name: 'l', default: true, mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [{ id: 'sum', type: 'lap_summary', enabled, col: 0, row: 0, colSpan: 1, rowSpan: 1 }] })
+  const layout = (enabled: boolean): DashLayout => ({ id: 'l', name: 'l', mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [{ id: 'sum', type: 'lap_summary', enabled, col: 0, row: 0, colSpan: 1, rowSpan: 1 }] })
   for (const enabled of [true, false]) {
     const tracker = new DashAlertTracker()
     tracker.advanceTo(0)

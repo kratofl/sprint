@@ -22,7 +22,7 @@ public sealed class ScreenOutputsTests
 
         IReadOnlyList<ScreenOutputDescription> outputs = ScreenOutputs.Describe(
             [disabled, notDash, buttonBox, enabled],
-            [DefaultLayout("layout-1")],
+            [Layout("layout-1")],
             new FrameStore(),
             telemetryLive: true);
 
@@ -31,26 +31,37 @@ public sealed class ScreenOutputsTests
     }
 
     [Fact]
-    public void Describe_FallsBackToDefaultLayoutWhenDashIdIsUnknown()
+    public void Describe_FallsBackToTheFirstDashByNameWhenDashIdIsUnknown()
     {
         SavedDevice device = Device("d1", dashId: "does-not-exist");
-        DashLayout defaultLayout = DefaultLayout("default-layout");
+        DashLayout zeta = Layout("zeta-layout", "Zeta");
+        DashLayout alpha = Layout("alpha-layout", "Alpha");
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [defaultLayout],
+            [zeta, alpha],
             new FrameStore(),
             telemetryLive: true));
 
-        Assert.Same(defaultLayout, output.Layout);
+        Assert.Same(alpha, output.Layout);
+    }
+
+    [Fact]
+    public void Describe_HasNoOutputForADashDeviceWhenThereAreNoDashes()
+    {
+        Assert.Empty(ScreenOutputs.Describe(
+            [Device("d1", dashId: "deleted")],
+            [],
+            new FrameStore(),
+            telemetryLive: true));
     }
 
     [Fact]
     public void Describe_ResolvesTheAssignedLayoutWhenItExists()
     {
         SavedDevice device = Device("d1", dashId: "assigned");
-        DashLayout assigned = DefaultLayout("assigned", isDefault: false);
-        DashLayout fallback = DefaultLayout("default-layout");
+        DashLayout assigned = Layout("assigned");
+        DashLayout fallback = Layout("another-layout", "A first by name");
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
@@ -65,7 +76,7 @@ public sealed class ScreenOutputsTests
     public void Describe_UsesIdlePageWhenTelemetryIsNotLive()
     {
         SavedDevice device = Device("d1", dashId: "layout-1");
-        DashLayout layout = DefaultLayout("layout-1");
+        DashLayout layout = Layout("layout-1");
         layout.IdlePage = new DashPage { Id = "idle-page", Name = "Idle" };
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
@@ -82,7 +93,7 @@ public sealed class ScreenOutputsTests
     public void Describe_UsesMainPageWhenTelemetryIsLive()
     {
         SavedDevice device = Device("d1", dashId: "layout-1");
-        DashLayout layout = DefaultLayout("layout-1");
+        DashLayout layout = Layout("layout-1");
         layout.IdlePage = new DashPage { Id = "idle-page", Name = "Idle" };
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
@@ -103,7 +114,7 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
+            [Layout("layout-1")],
             new FrameStore(),
             telemetryLive: true));
 
@@ -119,7 +130,7 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription beforeFrame = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
+            [Layout("layout-1")],
             frames,
             telemetryLive: true));
         Assert.Null(beforeFrame.Performance);
@@ -128,7 +139,7 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription afterFrame = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
+            [Layout("layout-1")],
             frames,
             telemetryLive: true));
         Assert.NotNull(afterFrame.Performance);
@@ -144,7 +155,7 @@ public sealed class ScreenOutputsTests
 
         ScreenOutputDescription output = Assert.Single(ScreenOutputs.Describe(
             [device],
-            [DefaultLayout("layout-1")],
+            [Layout("layout-1")],
             new FrameStore(),
             telemetryLive: true));
 
@@ -173,11 +184,10 @@ public sealed class ScreenOutputsTests
         };
     }
 
-    private static DashLayout DefaultLayout(string id, bool isDefault = true) => new()
+    private static DashLayout Layout(string id, string? name = null) => new()
     {
         Id = id,
-        Name = id,
-        IsDefault = isDefault,
+        Name = name ?? id,
         Pages = [new DashPage { Id = "main-page", Name = "Main" }],
     };
 }

@@ -227,61 +227,77 @@ public sealed class DashLayoutEditorTests
     }
 
     [Fact]
-    public void AddWidgetStackPlacesRegionWithOneDefaultLayer()
+    public void CountRefitLossesMatchesWhatApplyScreenProfileDropsWithoutTouchingTheLayout()
     {
-        var layout = LayoutWithWidgets();
+        ScreenProfile portrait = ScreenProfileCatalog.Find("portrait-480x800") ?? throw new InvalidOperationException("No portrait profile.");
+        DashLayout counted = CrowdedLandscapeLayout();
+        DashLayout applied = CrowdedLandscapeLayout();
+        int before = WidgetCount(applied);
 
-        Assert.True(DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack));
-        Assert.NotNull(stack);
-        Assert.Single(layout.Pages[0].WidgetStacks);
-        var layer = Assert.Single(stack!.Layers);
-        Assert.Equal(layer.Id, stack.DefaultLayerId);
-        Assert.True(stack.ColSpan is > 0 and <= 20 && stack.RowSpan is > 0 and <= 12);
+        int lost = DashLayoutEditor.CountRefitLosses(counted, portrait);
+        DashLayoutEditor.ApplyScreenProfile(applied, portrait);
+
+        Assert.True(lost > 0);
+        Assert.Equal(before - WidgetCount(applied), lost);
+        Assert.Equal(before, WidgetCount(counted));
+        Assert.Equal((20, 12, 19), (counted.GridCols, counted.GridRows, counted.Pages[0].Widgets[19].Col));
+        Assert.Equal(0, DashLayoutEditor.CountRefitLosses(counted, ScreenProfileCatalog.Default));
     }
 
     [Fact]
-    public void AddWidgetStackAvoidsExistingContent()
+    public void RefitLossesListOnlyLosingSizesAndFollowALayoutChange()
     {
-        // Fill the top-left region so the stack must land elsewhere without overlapping.
-        var layout = LayoutWithWidgets(
-            new DashWidget { Id = "big", Type = "gear_speed", Col = 0, Row = 0, ColSpan = 6, RowSpan = 4 });
+        DashRefitLosses losses = new();
+        DashLayout layout = CrowdedLandscapeLayout();
 
-        Assert.True(DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack));
-        var overlapsWidget =
-            stack!.Col < 6 && stack.Col + stack.ColSpan > 0 &&
-            stack.Row < 4 && stack.Row + stack.RowSpan > 0;
-        Assert.False(overlapsWidget, "Stack should not be placed over the existing widget.");
+        IReadOnlyDictionary<string, int> crowded = losses.For([layout])["layout"];
+        layout.IdlePage = null;
+        layout.Pages[0].Widgets.RemoveRange(1, layout.Pages[0].Widgets.Count - 1);
+
+        Assert.DoesNotContain(ScreenProfileCatalog.DefaultId, crowded.Keys);
+        Assert.Contains("portrait-480x800", crowded.Keys);
+        Assert.Empty(losses.For([layout]));
     }
 
     [Fact]
-    public void AddWidgetToStackLayerStaysInsideSubGrid()
+    public void RefitToABiggerGridKeepsEveryWidgetAndKeepsNeighboursTouching()
     {
-        var layout = LayoutWithWidgets();
-        DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack);
+        ScreenProfile bigger = ScreenProfileCatalog.Find("landscape-1024x600") ?? throw new InvalidOperationException("No 1024 × 600 profile.");
+        // Rows of 1-, 2- and 3-cell widgets packed edge to edge: the old origin + span rounding
+        // pushed neighbours into each other on the 24 × 14 grid and dropped some of them.
+        DashLayout layout = LayoutWithWidgets(
+            Enumerable.Range(0, 20).Select(col => new DashWidget { Id = $"a{col}", Type = "gear_speed", Col = col, Row = 0, ColSpan = 1, RowSpan = 1 })
+                .Concat(Enumerable.Range(0, 10).Select(index => new DashWidget { Id = $"b{index}", Type = "gear_speed", Col = index * 2, Row = 1, ColSpan = 2, RowSpan = 3 }))
+                .Concat(Enumerable.Range(0, 6).Select(index => new DashWidget { Id = $"c{index}", Type = "gear_speed", Col = index * 3, Row = 4, ColSpan = 3, RowSpan = 8 }))
+                .ToArray());
+        layout.ScreenProfileId = ScreenProfileCatalog.DefaultId;
+        int before = WidgetCount(layout);
 
-        Assert.True(DashLayoutEditor.TryAddWidgetToStackLayer(stack!, stack!.DefaultLayerId!, "gear_speed", out var widget));
-        Assert.NotNull(widget);
-        Assert.True(widget!.Col + widget.ColSpan <= stack.ColSpan);
-        Assert.True(widget.Row + widget.RowSpan <= stack.RowSpan);
-        Assert.Single(stack.Layers[0].Widgets);
+        Assert.Equal(0, DashLayoutEditor.CountRefitLosses(layout, bigger));
+        DashLayoutEditor.ApplyScreenProfile(layout, bigger);
+
+        Assert.Equal(before, WidgetCount(layout));
+        Assert.True(DashLayoutValidator.IsValid(layout));
+        List<DashWidget> second = layout.Pages[0].Widgets.Where(widget => widget.Id.StartsWith('b')).ToList();
+        for (int index = 1; index < second.Count; index++)
+        {
+            Assert.Equal(second[index - 1].Col + second[index - 1].ColSpan, second[index].Col);
+        }
+
+        Assert.Equal(24, second[^1].Col + second[^1].ColSpan);
     }
 
-    [Fact]
-    public void DeleteStackLayerKeepsOneAndReassignsDefault()
+    // A landscape 800 × 480 dash with a row of twenty 1×1 widgets on its page and its idle page:
+    // twelve columns cannot hold them all.
+    private static DashLayout CrowdedLandscapeLayout()
     {
-        var layout = LayoutWithWidgets();
-        DashLayoutEditor.TryAddWidgetStack(layout, "main", out var stack);
-        DashLayoutEditor.TryAddStackLayer(stack!, out var second);
-        Assert.True(DashLayoutEditor.TrySetDefaultStackLayer(stack!, second!.Id));
-
-        // Deleting the default layer reassigns the default to a surviving layer.
-        Assert.True(DashLayoutEditor.TryDeleteStackLayer(stack!, second.Id));
-        Assert.Single(stack!.Layers);
-        Assert.Equal(stack.Layers[0].Id, stack.DefaultLayerId);
-
-        // The last remaining layer cannot be deleted.
-        Assert.False(DashLayoutEditor.TryDeleteStackLayer(stack, stack.Layers[0].Id));
+        DashLayout layout = LayoutWithWidgets(Enumerable.Range(0, 20).Select(col => new DashWidget { Id = $"w{col}", Type = "speed", Col = col, Row = 0, ColSpan = 1, RowSpan = 1 }).ToArray());
+        layout.ScreenProfileId = ScreenProfileCatalog.DefaultId;
+        layout.IdlePage = new DashPage { Id = "idle", Name = "Idle", Widgets = Enumerable.Range(0, 20).Select(col => new DashWidget { Id = $"i{col}", Type = "speed", Col = col, Row = 0, ColSpan = 1, RowSpan = 1 }).ToList() };
+        return layout;
     }
+
+    private static int WidgetCount(DashLayout layout) => layout.Pages.Sum(page => page.Widgets.Count) + (layout.IdlePage?.Widgets.Count ?? 0);
 
     private static DashLayout LayoutWithWidgets(params DashWidget[] widgets)
     {

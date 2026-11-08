@@ -71,7 +71,6 @@ public sealed class DevicePurposeTests
         {
             Id = "assigned",
             Name = "Assigned dashboard",
-            IsDefault = true,
             Pages = [new DashPage { Id = "assigned-page", Name = "Driving" }],
         };
         var dashboards = new[] { assigned };

@@ -196,6 +196,12 @@ export const parseDevice = (row: Record<string, unknown>): Device | null => {
 export const parseDevices = (rows: ReadonlyArray<Record<string, unknown>>): Device[] =>
   rows.map(parseDevice).filter((device): device is Device => device !== null)
 
+/** The user's screens at their logical (rotated) size, by name: what a dash screen size "Fits". */
+export const deviceScreenSizes = (rows: ReadonlyArray<Record<string, unknown>>): Array<{ name: string; width: number; height: number }> =>
+  parseDevices(rows)
+    .filter(deviceHasScreen)
+    .map((device) => ({ name: device.name, ...logicalSize(device) }))
+
 /** Parses one raw `catalog[]` row. Returns `null` for a row with no id. */
 export const parseCatalogEntry = (row: Record<string, unknown>): CatalogEntry | null => {
   const id = str(row, 'id')

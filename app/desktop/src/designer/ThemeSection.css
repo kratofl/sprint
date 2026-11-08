@@ -1,0 +1,123 @@
+/* The Theme section (ThemeSection.tsx): dash styles and colour presets on the left panel, the
+   preview situations as chips on the right one. */
+
+.theme-body {
+  gap: 16px;
+}
+
+.theme-styles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.theme-style {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.theme-style:hover {
+  background: var(--subtle-hover);
+}
+
+.theme-style[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
+}
+
+.theme-style-well {
+  display: grid;
+  place-items: center;
+  height: 62px;
+  overflow: hidden;
+  border-radius: var(--radius-control-small);
+}
+
+.theme-style-name {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.theme-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.theme-preset {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.theme-preset:hover {
+  background: var(--subtle-hover);
+}
+
+.theme-preset[aria-checked='true'] {
+  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
+}
+
+.theme-dots {
+  display: inline-flex;
+  flex: none;
+}
+
+.theme-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  box-shadow:
+    inset 0 0 0 1px var(--control-stroke),
+    0 0 0 1.5px var(--layer);
+}
+
+.theme-dot + .theme-dot {
+  margin-left: -4px;
+}
+
+.theme-check {
+  flex: none;
+  color: var(--brand-500);
+}
+
+.theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.theme-chip {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label);
+  font: inherit;
+}
+
+.theme-chip:hover {
+  background: var(--control-fill-hover);
+}
+
+.theme-chip[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 16%, transparent);
+}

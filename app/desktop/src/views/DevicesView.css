@@ -202,43 +202,6 @@
   min-width: 0;
 }
 
-/* The name and its pen, or the rename input and its save button: one 32px line either way, so
-   the header does not shift when it swaps. */
-.device-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  min-height: 32px;
-}
-
-.device-name-button {
-  color: var(--label-secondary);
-}
-
-.device-head-name {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The heading's type in a text box; the border and padding sit outside the text so the name
-   stays where the heading had it. */
-.device-name-input {
-  width: min(100%, 420px);
-  height: 32px;
-  margin-left: -9px;
-  padding: 0 8px;
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-}
-
 .device-head-line {
   display: flex;
   align-items: center;

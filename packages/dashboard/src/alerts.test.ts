@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { TirePosition, type TelemetryFrame } from '@sprint/types'
-import { DashAlertTracker, isAttentionInverted, type DashAlertBanner, type DashSettingPopup } from './alerts'
+import { DashAlertTracker, alertColorSwatch, isAttentionInverted, previewAlertBanner, type DashAlertBanner, type DashSettingPopup } from './alerts'
 import { dashSettingColors, defaultDashPalette, findPresetByAlertColorToken, presetSwatchColor } from './palette'
 import type { DashAlert, DashLayout } from './index'
 
@@ -39,7 +39,7 @@ function alert(overrides: Partial<DashAlert> = {}): DashAlert {
 }
 
 function layout(alerts: DashAlert[], overrides: Partial<DashLayout> = {}): DashLayout {
-  return { id: 'l1', name: 'Layout', default: true, mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts, ...overrides }
+  return { id: 'l1', name: 'Layout', mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts, ...overrides }
 }
 
 test('no banner on the first frame — there is nothing to diff against yet', () => {
@@ -153,4 +153,35 @@ test('isAttentionInverted alternates every 250ms (two cycles per second)', () =>
   assert.equal(isAttentionInverted('critical', true, 250), true)
   assert.equal(isAttentionInverted('critical', true, 499), true)
   assert.equal(isAttentionInverted('critical', true, 500), false)
+})
+
+test("an alert's own displayMode wins over the layout's", () => {
+  const tracker = new DashAlertTracker()
+  const boxed = layout([alert({ displayMode: 'center' })], { alertConfig: { displayMode: 'full' } })
+  tracker.evaluate(boxed, frame({ tc: 0 }), defaultDashPalette)
+  assert.equal(settingPopup(tracker.evaluate(boxed, frame({ tc: 5 }), defaultDashPalette)).fullScreen, false)
+
+  const full = layout([alert({ displayMode: 'full' })], { alertConfig: { displayMode: 'center' } })
+  assert.equal(settingPopup(previewAlertBanner(full, alert({ displayMode: 'full' }), defaultDashPalette)).fullScreen, true)
+})
+
+test('the designer preview wears the same look a real change would', () => {
+  const own = alert({ colorToken: 'ember', invertColors: true })
+  const banner = settingPopup(previewAlertBanner(layout([own], { alertConfig: { displayMode: 'center' } }), own, defaultDashPalette))
+  assert.equal(banner.title, 'TC')
+  assert.equal(banner.fullScreen, false, "the layout's display mode when the alert has none")
+  assert.equal(banner.invertColors, true)
+  const ember = findPresetByAlertColorToken('ember')
+  assertDefined(ember)
+  assert.equal(banner.color, presetSwatchColor(ember))
+  assert.equal(previewAlertBanner(layout([]), alert({ type: 'lap_summary' }), defaultDashPalette)?.kind, 'lapSummary')
+  assert.equal(previewAlertBanner(layout([]), alert({ type: 'unknown' }), defaultDashPalette), null)
+})
+
+test('alert colour swatches: presets paint their swatch, yellow the warning colour, auto nothing', () => {
+  assert.equal(alertColorSwatch('auto', defaultDashPalette), null)
+  assert.equal(alertColorSwatch('yellow', defaultDashPalette), defaultDashPalette.warning)
+  const ice = findPresetByAlertColorToken('ice')
+  assertDefined(ice)
+  assert.equal(alertColorSwatch('blue', defaultDashPalette), presetSwatchColor(ice), 'old spellings resolve too')
 })

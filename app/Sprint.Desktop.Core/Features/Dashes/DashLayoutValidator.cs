@@ -25,10 +25,13 @@ public static class DashLayoutValidator
         }
     }
 
+    /// <summary>
+    /// Every widget is a known type inside the grid, the groups form a tree, and no two widgets
+    /// share a cell unless they sit in different layers of one stack (<see cref="DashWidgetGroups"/>).
+    /// </summary>
     private static bool PageIsValid(DashPage page, int cols, int rows)
     {
-        var occupied = new HashSet<(int Col, int Row)>();
-        foreach (var widget in page.Widgets)
+        foreach (DashWidget widget in page.Widgets)
         {
             if (string.IsNullOrWhiteSpace(widget.Id) ||
                 string.IsNullOrWhiteSpace(widget.Type) ||
@@ -42,15 +45,21 @@ public static class DashLayoutValidator
             {
                 return false;
             }
+        }
 
-            for (var col = widget.Col; col < widget.Col + widget.ColSpan; col++)
+        if (!DashWidgetGroups.IsWellFormed(page))
+        {
+            return false;
+        }
+
+        List<Dictionary<string, string>> layers = page.Widgets.Select(widget => DashWidgetGroups.StackLayers(page, widget)).ToList();
+        for (int first = 0; first < page.Widgets.Count; first++)
+        {
+            for (int second = first + 1; second < page.Widgets.Count; second++)
             {
-                for (var row = widget.Row; row < widget.Row + widget.RowSpan; row++)
+                if (DashLayoutEditor.Intersects(page.Widgets[first], page.Widgets[second]) && !DashWidgetGroups.MayOverlap(layers[first], layers[second]))
                 {
-                    if (!occupied.Add((col, row)))
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
         }

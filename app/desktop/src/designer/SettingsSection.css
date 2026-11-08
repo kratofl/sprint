@@ -1,0 +1,114 @@
+/* The Settings section (SettingsSection.tsx): one calm column of setting rows under the dash's
+   own heading, like a device's page. The rows are the app's setting cards (SettingsLayout.tsx). */
+
+.designer-settings {
+  position: absolute;
+  inset: 60px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 12px 24px 32px;
+  overflow-y: auto;
+}
+
+.designer-settings > * {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.designer-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.designer-settings-still {
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 90px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 1px var(--card-stroke);
+}
+
+.designer-settings-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.designer-settings-meta {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Wide enough for two sizes side by side; more wrap, so the row's text keeps its room. */
+.designer-settings-sizes {
+  display: flex;
+  max-width: 560px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.designer-settings-size {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.designer-settings-size:hover {
+  background: var(--control-fill-hover);
+}
+
+.designer-settings-size[aria-checked='true'] {
+  border-color: var(--brand-500);
+  background: color-mix(in srgb, var(--brand-500) 14%, transparent);
+}
+
+.designer-settings-shape {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 20px;
+  flex: none;
+}
+
+.designer-settings-shape > span {
+  border: 1.5px solid var(--label-secondary);
+  border-radius: 2px;
+}
+
+.designer-settings-size-text {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.designer-settings-size-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.designer-settings-sizes .designer-settings-more {
+  align-self: center;
+}
+
+/* A size too small for every widget says how many it would leave out. */
+.designer-settings-size-loss {
+  color: var(--infobar-warning-icon);
+}

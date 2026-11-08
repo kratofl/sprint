@@ -30,23 +30,13 @@ public static class DashWidgetTypeMigration
         return changed;
     }
 
+    /// <summary>Runs after <see cref="DashWidgetStackMigration"/>, so every widget is in the page's own list.</summary>
     private static bool ApplyToPage(DashPage page)
     {
-        var changed = false;
-        foreach (var widget in page.Widgets)
+        bool changed = false;
+        foreach (DashWidget widget in page.Widgets)
         {
             changed |= ApplyToWidget(widget);
-        }
-
-        foreach (var stack in page.WidgetStacks)
-        {
-            foreach (var layer in stack.Layers)
-            {
-                foreach (var widget in layer.Widgets)
-                {
-                    changed |= ApplyToWidget(widget);
-                }
-            }
         }
 
         return changed;

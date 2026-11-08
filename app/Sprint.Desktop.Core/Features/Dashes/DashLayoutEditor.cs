@@ -50,10 +50,12 @@ public static class DashLayoutEditor
 
     /// <summary>
     /// Retargets a layout to a new fixed grid (PRD #122 change-size / duplicate-to-size).
-    /// Widget positions and spans are scaled proportionally from the old grid to the new
-    /// one, clamped into bounds, and greedily kept in order — a widget that would fall out
+    /// Each widget's edges are scaled proportionally from the old grid to the new one, so
+    /// widgets that touched still touch and a grid that grows in both directions keeps every
+    /// widget; the rest are clamped into bounds and greedily kept in order — a widget that would fall out
     /// of bounds or overlap a kept one is shrunk to 1×1 and, failing that, dropped. This
-    /// guarantees the result is a valid, non-overlapping layout for the new aspect.
+    /// guarantees the result is a valid layout for the new aspect (layers of a stack still
+    /// overlap only each other).
     /// </summary>
     public static void RefitLayoutToGrid(DashLayout layout, int newCols, int newRows)
     {
@@ -63,8 +65,8 @@ public static class DashLayoutEditor
             return;
         }
 
-        var oldCols = Math.Max(1, layout.GridCols);
-        var oldRows = Math.Max(1, layout.GridRows);
+        int oldCols = Math.Max(1, layout.GridCols);
+        int oldRows = Math.Max(1, layout.GridRows);
         layout.GridCols = newCols;
         layout.GridRows = newRows;
 
@@ -73,10 +75,36 @@ public static class DashLayoutEditor
             RefitPage(idle, oldCols, oldRows, newCols, newRows);
         }
 
-        foreach (var page in layout.Pages)
+        foreach (DashPage page in layout.Pages)
         {
             RefitPage(page, oldCols, oldRows, newCols, newRows);
         }
+    }
+
+    /// <summary>
+    /// How many widgets <see cref="ApplyScreenProfile"/> would leave out of the layout, over
+    /// every page including the idle page, without touching it. Zero when the layout already
+    /// targets the profile (retargeting it is a no-op). Runs the same refit plan, so it never
+    /// disagrees with what a change of size or a duplicate to that size actually drops.
+    /// </summary>
+    public static int CountRefitLosses(DashLayout layout, ScreenProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(profile);
+        if (TargetsProfile(layout, profile) || profile.GridCols <= 0 || profile.GridRows <= 0)
+        {
+            return 0;
+        }
+
+        int oldCols = Math.Max(1, layout.GridCols);
+        int oldRows = Math.Max(1, layout.GridRows);
+        int lost = 0;
+        foreach (DashPage page in layout.IdlePage is { } idle ? layout.Pages.Prepend(idle) : layout.Pages)
+        {
+            lost += page.Widgets.Count - PlanRefit(page, oldCols, oldRows, profile.GridCols, profile.GridRows).Count;
+        }
+
+        return lost;
     }
 
     /// <summary>
@@ -103,83 +131,82 @@ public static class DashLayoutEditor
 
     private static void RefitPage(DashPage page, int oldCols, int oldRows, int newCols, int newRows)
     {
-        var occupied = new bool[newCols, newRows];
-        var kept = new List<DashWidget>(page.Widgets.Count);
-
-        foreach (var widget in page.Widgets)
+        List<RefitPlacement> plan = PlanRefit(page, oldCols, oldRows, newCols, newRows);
+        foreach (RefitPlacement placement in plan)
         {
-            var col = ScaleClampOrigin(widget.Col, oldCols, newCols);
-            var row = ScaleClampOrigin(widget.Row, oldRows, newRows);
-            var colSpan = Math.Clamp(ScaleSpan(widget.ColSpan, oldCols, newCols), 1, newCols - col);
-            var rowSpan = Math.Clamp(ScaleSpan(widget.RowSpan, oldRows, newRows), 1, newRows - row);
-
-            if (!Occupies(occupied, col, row, colSpan, rowSpan))
-            {
-                Fill(occupied, col, row, colSpan, rowSpan);
-                widget.Col = col;
-                widget.Row = row;
-                widget.ColSpan = colSpan;
-                widget.RowSpan = rowSpan;
-                kept.Add(widget);
-            }
-            else if (!Occupies(occupied, col, row, 1, 1))
-            {
-                Fill(occupied, col, row, 1, 1);
-                widget.Col = col;
-                widget.Row = row;
-                widget.ColSpan = 1;
-                widget.RowSpan = 1;
-                kept.Add(widget);
-            }
+            placement.Widget.Col = placement.Col;
+            placement.Widget.Row = placement.Row;
+            placement.Widget.ColSpan = placement.ColSpan;
+            placement.Widget.RowSpan = placement.RowSpan;
         }
 
-        page.Widgets = kept;
-
-        // Widget stacks are self-contained regions (not validity-checked against the page
-        // grid), so scale + clamp their geometry for visual continuity without dropping any.
-        foreach (var stack in page.WidgetStacks)
-        {
-            var col = ScaleClampOrigin(stack.Col, oldCols, newCols);
-            var row = ScaleClampOrigin(stack.Row, oldRows, newRows);
-            stack.Col = col;
-            stack.Row = row;
-            stack.ColSpan = Math.Clamp(ScaleSpan(stack.ColSpan, oldCols, newCols), 1, newCols - col);
-            stack.RowSpan = Math.Clamp(ScaleSpan(stack.RowSpan, oldRows, newRows), 1, newRows - row);
-        }
+        page.Widgets = plan.Select(placement => placement.Widget).ToList();
     }
 
-    private static int ScaleClampOrigin(int value, int oldMax, int newMax) =>
-        Math.Clamp((int)Math.Round((double)value * newMax / oldMax), 0, newMax - 1);
+    /// <summary>Where a kept widget lands in a refit.</summary>
+    private readonly record struct RefitPlacement(DashWidget Widget, int Col, int Row, int ColSpan, int RowSpan, Dictionary<string, string> Layers);
 
-    private static int ScaleSpan(int span, int oldMax, int newMax) =>
-        Math.Max(1, (int)Math.Round((double)span * newMax / oldMax));
-
-    private static bool Occupies(bool[,] grid, int col, int row, int colSpan, int rowSpan)
+    /// <summary>
+    /// The refit of one page, in page order, without touching it: each widget scaled and clamped
+    /// into the new grid, shrunk to 1×1 if it would overlap a kept one, and left out (absent from
+    /// the result) if even that overlaps. Layers of one stack may share cells, as the validator allows.
+    /// </summary>
+    private static List<RefitPlacement> PlanRefit(DashPage page, int oldCols, int oldRows, int newCols, int newRows)
     {
-        for (var c = col; c < col + colSpan; c++)
+        List<RefitPlacement> kept = new(page.Widgets.Count);
+
+        foreach (DashWidget widget in page.Widgets)
         {
-            for (var r = row; r < row + rowSpan; r++)
+            (int col, int colSpan) = ScaleCells(widget.Col, widget.ColSpan, oldCols, newCols);
+            (int row, int rowSpan) = ScaleCells(widget.Row, widget.RowSpan, oldRows, newRows);
+            Dictionary<string, string> layers = DashWidgetGroups.StackLayers(page, widget);
+
+            bool Blocked(int width, int height)
             {
-                if (grid[c, r])
+                foreach (RefitPlacement other in kept)
                 {
-                    return true;
+                    if (Intersects(col, row, width, height, other.Col, other.Row, other.ColSpan, other.RowSpan) &&
+                        !DashWidgetGroups.MayOverlap(layers, other.Layers))
+                    {
+                        return true;
+                    }
                 }
+
+                return false;
             }
-        }
 
-        return false;
-    }
-
-    private static void Fill(bool[,] grid, int col, int row, int colSpan, int rowSpan)
-    {
-        for (var c = col; c < col + colSpan; c++)
-        {
-            for (var r = row; r < row + rowSpan; r++)
+            if (Blocked(colSpan, rowSpan))
             {
-                grid[c, r] = true;
+                if (Blocked(1, 1))
+                {
+                    continue;
+                }
+
+                colSpan = 1;
+                rowSpan = 1;
             }
+
+            kept.Add(new RefitPlacement(widget, col, row, colSpan, rowSpan, layers));
         }
+
+        return kept;
     }
+
+    /// <summary>
+    /// Scales one axis of a widget by its two edges rather than its origin and span apart: the
+    /// edge scaling is monotonic, so two widgets that did not overlap still don't, and on a
+    /// larger axis every span stays at least one cell. Scaling origin and span separately
+    /// rounded neighbours into each other and dropped widgets even on bigger screens.
+    /// </summary>
+    private static (int Start, int Span) ScaleCells(int start, int span, int oldMax, int newMax)
+    {
+        int scaledStart = Math.Clamp(ScaleEdge(start, oldMax, newMax), 0, newMax - 1);
+        int scaledEnd = Math.Clamp(ScaleEdge(start + span, oldMax, newMax), scaledStart + 1, newMax);
+        return (scaledStart, scaledEnd - scaledStart);
+    }
+
+    private static int ScaleEdge(int edge, int oldMax, int newMax) =>
+        (int)Math.Round((double)edge * newMax / oldMax, MidpointRounding.AwayFromZero);
 
     public static bool TryAddWidget(DashLayout layout, string pageId, string type, out DashWidget? widget)
     {
@@ -411,311 +438,8 @@ public static class DashLayoutEditor
         }
 
         page.Widgets.Clear();
-        page.WidgetStacks.Clear();
+        page.Groups.Clear();
         return true;
-    }
-
-    // ── Widget stacks (multi-function regions) ────────────────────────────────
-
-    public const int DefaultStackColSpan = 6;
-    public const int DefaultStackRowSpan = 4;
-
-    public static DashWidgetStack? FindStack(DashPage page, string stackId)
-    {
-        ArgumentNullException.ThrowIfNull(page);
-        return page.WidgetStacks.FirstOrDefault(stack => string.Equals(stack.Id, stackId, StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>Adds a stack (with one empty layer) at the first free region of the page.</summary>
-    public static bool TryAddWidgetStack(DashLayout layout, string pageId, out DashWidgetStack? stack)
-    {
-        ArgumentNullException.ThrowIfNull(layout);
-        stack = null;
-
-        var page = FindPage(layout, pageId);
-        if (page is null || !DashLayoutValidator.IsValid(layout))
-        {
-            return false;
-        }
-
-        var colSpan = Math.Min(DefaultStackColSpan, layout.GridCols);
-        var rowSpan = Math.Min(DefaultStackRowSpan, layout.GridRows);
-        for (var row = 0; row <= layout.GridRows - rowSpan; row++)
-        {
-            for (var col = 0; col <= layout.GridCols - colSpan; col++)
-            {
-                if (RegionOccupied(page, col, row, colSpan, rowSpan))
-                {
-                    continue;
-                }
-
-                var layerId = "layer-1";
-                stack = new DashWidgetStack
-                {
-                    Id = NextStackId(page, "stack"),
-                    Name = NextStackName(page),
-                    Col = col,
-                    Row = row,
-                    ColSpan = colSpan,
-                    RowSpan = rowSpan,
-                    DefaultLayerId = layerId,
-                    Layers = [new DashWidgetStackLayer { Id = layerId, Name = "Layer 1" }],
-                };
-                page.WidgetStacks.Add(stack);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static bool TryDeleteStack(DashPage page, string stackId)
-    {
-        ArgumentNullException.ThrowIfNull(page);
-        var stack = FindStack(page, stackId);
-        if (stack is null)
-        {
-            return false;
-        }
-
-        page.WidgetStacks.Remove(stack);
-        return true;
-    }
-
-    public static bool TryRenameStack(DashPage page, string stackId, string name)
-    {
-        var stack = FindStack(page, stackId);
-        if (stack is null || string.IsNullOrWhiteSpace(name))
-        {
-            return false;
-        }
-
-        stack.Name = name.Trim();
-        return true;
-    }
-
-    public static bool TryMoveStack(DashLayout layout, string pageId, string stackId, int col, int row)
-    {
-        var page = FindPage(layout, pageId);
-        var stack = page is null ? null : FindStack(page, stackId);
-        if (stack is null)
-        {
-            return false;
-        }
-
-        stack.Col = Math.Clamp(col, 0, Math.Max(0, layout.GridCols - stack.ColSpan));
-        stack.Row = Math.Clamp(row, 0, Math.Max(0, layout.GridRows - stack.RowSpan));
-        return true;
-    }
-
-    public static bool TryResizeStack(DashLayout layout, string pageId, string stackId, int colSpan, int rowSpan)
-    {
-        var page = FindPage(layout, pageId);
-        var stack = page is null ? null : FindStack(page, stackId);
-        if (stack is null)
-        {
-            return false;
-        }
-
-        stack.ColSpan = Math.Clamp(colSpan, 1, Math.Max(1, layout.GridCols - stack.Col));
-        stack.RowSpan = Math.Clamp(rowSpan, 1, Math.Max(1, layout.GridRows - stack.Row));
-        return true;
-    }
-
-    public static bool TryAddStackLayer(DashWidgetStack stack, out DashWidgetStackLayer? layer)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        var id = NextLayerId(stack);
-        layer = new DashWidgetStackLayer { Id = id, Name = NextLayerName(stack) };
-        stack.Layers.Add(layer);
-        stack.DefaultLayerId ??= id;
-        return true;
-    }
-
-    public static bool TrySetDefaultStackLayer(DashWidgetStack stack, string layerId)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        if (stack.Layers.All(l => !string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase)))
-        {
-            return false;
-        }
-
-        stack.DefaultLayerId = layerId;
-        return true;
-    }
-
-    public static bool TryRenameStackLayer(DashWidgetStack stack, string layerId, string name)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
-        if (layer is null || string.IsNullOrWhiteSpace(name))
-        {
-            return false;
-        }
-
-        layer.Name = name.Trim();
-        return true;
-    }
-
-    public static bool TryDeleteStackLayer(DashWidgetStack stack, string layerId)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        if (stack.Layers.Count <= 1)
-        {
-            return false;
-        }
-
-        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
-        if (layer is null)
-        {
-            return false;
-        }
-
-        stack.Layers.Remove(layer);
-        if (string.Equals(stack.DefaultLayerId, layerId, StringComparison.OrdinalIgnoreCase))
-        {
-            stack.DefaultLayerId = stack.Layers.FirstOrDefault()?.Id;
-        }
-
-        return true;
-    }
-
-    /// <summary>Adds a widget to a stack layer at the first free cell of the stack's local sub-grid.</summary>
-    public static bool TryAddWidgetToStackLayer(DashWidgetStack stack, string layerId, string type, out DashWidget? widget)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        widget = null;
-
-        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
-        if (layer is null || !DashWidgetCatalog.IsKnown(type))
-        {
-            return false;
-        }
-
-        var colSpan = Math.Min(DefaultWidgetColSpan, stack.ColSpan);
-        var rowSpan = Math.Min(DefaultWidgetRowSpan, stack.RowSpan);
-        for (var row = 0; row <= stack.RowSpan - rowSpan; row++)
-        {
-            for (var col = 0; col <= stack.ColSpan - colSpan; col++)
-            {
-                if (LayerOccupied(layer, col, row, colSpan, rowSpan))
-                {
-                    continue;
-                }
-
-                widget = new DashWidget
-                {
-                    Id = NextLayerWidgetId(layer, Slug(type.Replace('_', '-'))),
-                    Type = type,
-                    Col = col,
-                    Row = row,
-                    ColSpan = colSpan,
-                    RowSpan = rowSpan,
-                };
-                layer.Widgets.Add(widget);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public static bool TryDeleteStackLayerWidget(DashWidgetStack stack, string layerId, string widgetId)
-    {
-        ArgumentNullException.ThrowIfNull(stack);
-        var layer = stack.Layers.FirstOrDefault(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase));
-        var widget = layer?.Widgets.FirstOrDefault(w => string.Equals(w.Id, widgetId, StringComparison.OrdinalIgnoreCase));
-        if (layer is null || widget is null)
-        {
-            return false;
-        }
-
-        layer.Widgets.Remove(widget);
-        return true;
-    }
-
-    private static bool RegionOccupied(DashPage page, int col, int row, int colSpan, int rowSpan)
-    {
-        foreach (var widget in page.Widgets)
-        {
-            if (Intersects(col, row, colSpan, rowSpan, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan))
-            {
-                return true;
-            }
-        }
-
-        foreach (var stack in page.WidgetStacks)
-        {
-            if (Intersects(col, row, colSpan, rowSpan, stack.Col, stack.Row, stack.ColSpan, stack.RowSpan))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool LayerOccupied(DashWidgetStackLayer layer, int col, int row, int colSpan, int rowSpan)
-    {
-        foreach (var widget in layer.Widgets)
-        {
-            if (Intersects(col, row, colSpan, rowSpan, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string NextStackId(DashPage page, string baseId)
-    {
-        if (page.WidgetStacks.All(s => !string.Equals(s.Id, baseId, StringComparison.OrdinalIgnoreCase)))
-        {
-            return baseId;
-        }
-
-        for (var index = 2; ; index++)
-        {
-            var candidate = $"{baseId}-{index}";
-            if (page.WidgetStacks.All(s => !string.Equals(s.Id, candidate, StringComparison.OrdinalIgnoreCase)))
-            {
-                return candidate;
-            }
-        }
-    }
-
-    private static string NextStackName(DashPage page) => $"Widget Stack {page.WidgetStacks.Count + 1}";
-
-    private static string NextLayerId(DashWidgetStack stack)
-    {
-        for (var index = 1; ; index++)
-        {
-            var candidate = $"layer-{index}";
-            if (stack.Layers.All(l => !string.Equals(l.Id, candidate, StringComparison.OrdinalIgnoreCase)))
-            {
-                return candidate;
-            }
-        }
-    }
-
-    private static string NextLayerName(DashWidgetStack stack) => $"Layer {stack.Layers.Count + 1}";
-
-    private static string NextLayerWidgetId(DashWidgetStackLayer layer, string baseId)
-    {
-        if (layer.Widgets.All(w => !string.Equals(w.Id, baseId, StringComparison.OrdinalIgnoreCase)))
-        {
-            return baseId;
-        }
-
-        for (var index = 2; ; index++)
-        {
-            var candidate = $"{baseId}-{index}";
-            if (layer.Widgets.All(w => !string.Equals(w.Id, candidate, StringComparison.OrdinalIgnoreCase)))
-            {
-                return candidate;
-            }
-        }
     }
 
     public static DashPage? FindPage(DashLayout layout, string pageId)
@@ -800,22 +524,17 @@ public static class DashLayoutEditor
         int colSpan,
         int rowSpan)
     {
-        foreach (var widget in page.Widgets)
+        // A new widget sits on the page, where it may share no cell; a moving one keeps its layers.
+        Dictionary<string, string> layers = movingWidget is null ? new Dictionary<string, string>() : DashWidgetGroups.StackLayers(page, movingWidget);
+        foreach (DashWidget widget in page.Widgets)
         {
             if (movingWidget is not null && ReferenceEquals(widget, movingWidget))
             {
                 continue;
             }
 
-            if (Intersects(
-                col,
-                row,
-                colSpan,
-                rowSpan,
-                widget.Col,
-                widget.Row,
-                widget.ColSpan,
-                widget.RowSpan))
+            if (Intersects(col, row, colSpan, rowSpan, widget.Col, widget.Row, widget.ColSpan, widget.RowSpan) &&
+                !DashWidgetGroups.MayOverlap(layers, DashWidgetGroups.StackLayers(page, widget)))
             {
                 return true;
             }
@@ -845,6 +564,10 @@ public static class DashLayoutEditor
     {
         return page.Widgets.Any(widget => string.Equals(widget.Id, widgetId, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>Whether two widgets share at least one grid cell.</summary>
+    public static bool Intersects(DashWidget first, DashWidget second) =>
+        Intersects(first.Col, first.Row, first.ColSpan, first.RowSpan, second.Col, second.Row, second.ColSpan, second.RowSpan);
 
     private static bool Intersects(
         int left,

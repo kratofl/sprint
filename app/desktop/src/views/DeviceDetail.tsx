@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Activity, Check, ChevronLeft, LayoutDashboard, Monitor, Move, Pencil, Power, RotateCw, ScanLine, Square, Trash2 } from 'lucide-react'
+import { Activity, ChevronLeft, LayoutDashboard, Monitor, Move, Power, RotateCw, ScanLine, Square, Trash2 } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { PageHeader } from '../shell/PageHeader'
+import { InlineName } from '../shell/InlineName'
 import { SettingRow, SettingsGroup, blurOnEnter } from './SettingsLayout'
 import {
   MARGIN_MAX,
@@ -35,7 +36,7 @@ const TABS: ReadonlyArray<{ id: DetailTab; label: string }> = [
 /**
  * One device, a level below the overview: its picture and status, Turn off / Remove in the
  * toolbar, then the Screen (how the panel is driven and mounted) and Output (what it shows) tabs.
- * The name is the heading itself, renamed in place (DeviceName). A device without a screen has
+ * The name is the heading itself, renamed in place (InlineName). A device without a screen has
  * no tabs.
  */
 export function DeviceDetail({
@@ -81,7 +82,7 @@ export function DeviceDetail({
       <header className="device-head">
         <DeviceImage image={image} dim={device.disabled} className="device-head-image" />
         <div className="device-head-text">
-          <DeviceName key={device.id} device={device} send={send} />
+          <InlineName key={device.id} name={device.name} label="Device name" onRename={(name) => void send(buildDeviceUpdate(device, { name }))} />
           <DeviceStatusLine device={device} screen={screen} />
           <span className="muted device-head-line">
             {deviceSummary(device)} · {deviceKind(device) === 'wheel' ? 'Wheel' : 'Screen'}
@@ -264,60 +265,6 @@ function OutputTab({ device, dashOptions, send }: { device: Device; dashOptions:
       )}
       {purpose.needsCaptureRegion && <CaptureAreaRow key={device.id} device={device} send={send} />}
     </>
-  )
-}
-
-/**
- * The name as the page's heading. The pen swaps it for an input in the same type with a save
- * button beside it: Enter or the button saves, Escape puts the name back, and so does saving it
- * empty or unchanged.
- */
-function DeviceName({ device, send }: { device: Device; send: (command: SprintCommand) => Promise<void> }) {
-  const [draft, setDraft] = useState<string | null>(null)
-
-  if (draft === null) {
-    return (
-      <div className="device-name">
-        <h2 className="device-head-name">{device.name}</h2>
-        <button type="button" className="icon-button device-name-button" aria-label="Rename" title="Rename" onClick={() => setDraft(device.name)}>
-          <Pencil size={16} />
-        </button>
-      </div>
-    )
-  }
-
-  const save = () => {
-    const trimmed = draft.trim()
-    if (trimmed.length > 0 && trimmed !== device.name) void send(buildDeviceUpdate(device, { name: trimmed }))
-    setDraft(null)
-  }
-
-  return (
-    <form
-      className="device-name"
-      onSubmit={(event) => {
-        event.preventDefault()
-        save()
-      }}
-    >
-      <input
-        className="device-name-input"
-        aria-label="Device name"
-        value={draft}
-        autoFocus
-        onFocus={(event) => event.target.select()}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault()
-            setDraft(null)
-          }
-        }}
-      />
-      <button type="submit" className="icon-button device-name-button" aria-label="Save name" title="Save">
-        <Check size={16} />
-      </button>
-    </form>
   )
 }
 

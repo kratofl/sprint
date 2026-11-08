@@ -1,0 +1,152 @@
+/* The Alerts section (AlertsSection.tsx): the alert list on the left panel, the picked alert's
+   look on the right one, its box on the dash, and Play again in the dock. */
+
+.alerts-all,
+.alerts-row {
+  border-radius: var(--radius-control);
+}
+
+.alerts-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  flex: none;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+}
+
+.alerts-all > svg {
+  flex: none;
+  color: var(--label-secondary);
+}
+
+.alerts-all .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.alerts-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--divider);
+  list-style: none;
+}
+
+.alerts-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding-right: 8px;
+}
+
+.alerts-all:hover,
+.alerts-row:hover {
+  background: var(--subtle-hover);
+}
+
+.alerts-all.selected,
+.alerts-row.selected {
+  background: color-mix(in srgb, var(--brand-500) 22%, transparent);
+}
+
+.alerts-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.alerts-row-main .designer-row-label {
+  width: 100%;
+}
+
+.alerts-row-note {
+  color: var(--label-secondary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* The look card on the right. */
+.alerts-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alerts-field-label {
+  color: var(--label-secondary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.alerts-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.alerts-field-row .designer-numberbox {
+  width: 120px;
+}
+
+.alerts-swatches {
+  gap: 8px;
+}
+
+.alerts-swatches .designer-swatch {
+  width: 22px;
+  height: 22px;
+}
+
+/* The dash and, for an alert shown in a box, its box on top. */
+.alerts-canvas {
+  position: relative;
+}
+
+.alerts-box {
+  position: absolute;
+  border: 2px dashed var(--brand-500);
+  border-radius: 2px;
+  cursor: move;
+  touch-action: none;
+}
+
+.alerts-box:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+.alerts-box-resize {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--brand-500);
+  border-radius: 2px;
+  background: var(--surface);
+  cursor: nwse-resize;
+}
+
+.alerts-dock-note {
+  padding: 0 10px 0 4px;
+  white-space: nowrap;
+}

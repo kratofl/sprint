@@ -260,46 +260,6 @@ public sealed class DashEditorControllerTests
     }
 
     [Fact]
-    public void AddWidgetStackSelectsItAndClearsWidgetSelection()
-    {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        controller.AddWidget("fuel");
-        Assert.NotNull(controller.SelectedWidgetId);
-
-        Assert.True(controller.AddWidgetStack());
-        Assert.NotNull(controller.SelectedStackId);
-        Assert.Null(controller.SelectedWidgetId);       // mutually exclusive
-        Assert.NotNull(controller.ActiveLayer);          // active layer defaults to the stack's layer
-
-        // Selecting a widget clears the stack selection.
-        controller.SelectWidget(controller.ActivePage!.Widgets[0].Id);
-        Assert.Null(controller.SelectedStackId);
-    }
-
-    [Fact]
-    public void StackLayerEditingAddsWidgetsAndSwitchesActiveLayer()
-    {
-        var controller = new DashEditorController(NewLayout(), _ => { });
-        Assert.True(controller.AddWidgetStack());
-        var stack = controller.SelectedStack!;
-
-        Assert.True(controller.AddWidgetToActiveLayer("gear_speed"));
-        Assert.Single(controller.ActiveLayer!.Widgets);
-
-        // A new layer becomes the active edit target; widgets land there.
-        Assert.True(controller.AddStackLayer());
-        Assert.Equal(2, stack.Layers.Count);
-        Assert.Equal(stack.Layers[1].Id, controller.ActiveLayer!.Id);
-        Assert.True(controller.AddWidgetToActiveLayer("fuel"));
-        Assert.DoesNotContain(stack.Layers[0].Widgets, w => w.Type == "fuel"); // went to layer 2, not layer 1
-        Assert.Single(stack.Layers[1].Widgets);
-
-        Assert.True(controller.DeleteSelectedStack());
-        Assert.Null(controller.SelectedStackId);
-        Assert.Empty(controller.ActivePage!.WidgetStacks);
-    }
-
-    [Fact]
     public void MoveOntoAnotherWidgetIsRejected()
     {
         var controller = new DashEditorController(NewLayout(), _ => { });

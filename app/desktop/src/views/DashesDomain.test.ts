@@ -1,20 +1,37 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from '@sprint/dashboard'
+import type { DashLayout, DashPage, DashWidget } from '@sprint/dashboard'
 import {
+  ALL_DASHES,
+  SCREEN_PROFILES,
   addWidgetAt,
+  alertLook,
+  alertToPlay,
   applyThemePreset,
+  buildDashCreate,
   canPlaceNewWidget,
-  canPlaceWidgetAt,
-  editorShouldLoad,
+  dashCategoryNameProblem,
+  dashSummary,
+  dashesFilterOptions,
   fitScreenSize,
+  groupDashes,
+  initialScreenProfile,
+  newDashCategory,
   parseDashLayout,
   previewMoveRect,
   previewResizeRect,
+  refitLoss,
+  refitLossHint,
+  refitLossNote,
+  refitLossWarning,
+  resolveDashesFilter,
+  screenChoices,
+  setAlertEnabled,
+  setAlertUseGlobal,
   setDashStyle,
+  setGlobalAlertConfig,
   type GridRect,
   type ResizeHandle,
-  type WidgetLocation,
 } from './DashesDomain'
 
 // ── Test fixtures ────────────────────────────────────────────────────────
@@ -26,24 +43,12 @@ function widget(id: string, col: number, row: number, colSpan: number, rowSpan: 
 }
 
 function layout(page: DashPage, overrides: Partial<DashLayout> = {}): DashLayout {
-  return { id: 'dash-1', name: 'Dash', default: false, mode: 'basic', gridCols: 20, gridRows: 12, pages: [page], alerts: [], ...overrides }
+  return { id: 'dash-1', name: 'Dash', mode: 'basic', gridCols: 20, gridRows: 12, pages: [page], alerts: [], ...overrides }
 }
 
 function pageWithWidgets(...widgets: DashWidget[]): DashPage {
   return { id: 'page-1', name: 'Page 1', widgets }
 }
-
-// ── editorShouldLoad ─────────────────────────────────────────────────────
-
-test('editorShouldLoad picks up a reset of the open dash once its new content arrives', () => {
-  const before = layout(pageWithWidgets(widget('rpm', 0, 0, 20, 1)))
-  const preset = layout(pageWithWidgets(widget('gear', 8, 4, 4, 4)))
-
-  assert.equal(editorShouldLoad('dash-1', null, preset), false, 'a state update alone never replaces the draft')
-  assert.equal(editorShouldLoad('dash-1', JSON.stringify(before), before), false, 'the reset has not arrived yet')
-  assert.equal(editorShouldLoad('dash-1', JSON.stringify(before), preset), true)
-  assert.equal(editorShouldLoad('dash-2', null, before), true, 'another dash opened')
-})
 
 // ── canPlaceNewWidget ────────────────────────────────────────────────────
 
@@ -105,52 +110,20 @@ test('addWidgetAt de-duplicates ids against existing widgets on the page', () =>
   assert.equal(result.widget.id, 'text-2')
 })
 
-// ── canPlaceWidgetAt ─────────────────────────────────────────────────────
+// ── Overlap inside groups ────────────────────────────────────────────────
 
-test('canPlaceWidgetAt (page widget) excludes the widget itself from its own overlap check', () => {
-  const moving = widget('a', 0, 0, 4, 2)
-  const dash = layout(pageWithWidgets(moving, widget('b', 4, 0, 4, 2)))
-  const location: WidgetLocation = { kind: 'page', pageId: 'page-1' }
+test('a new widget may share cells only with the other layers of the stack it goes into', () => {
+  const dash = layout({
+    id: 'page-1',
+    name: 'Page 1',
+    widgets: [{ ...widget('timing', 0, 0, 4, 2), group: 'stack' }],
+    groups: [{ id: 'stack', name: 'Right column', mode: 'oneAtATime' }],
+  })
+  const spot = { col: 0, row: 0, colSpan: 4, rowSpan: 2 }
 
-  // Staying put (or moving within free space) is fine.
-  assert.equal(canPlaceWidgetAt(dash, location, 'a', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), true)
-  // Moving onto "b" is not.
-  assert.equal(canPlaceWidgetAt(dash, location, 'a', { col: 4, row: 0, colSpan: 4, rowSpan: 2 }), false)
-})
-
-test('canPlaceWidgetAt (page widget) rejects out-of-bounds rects and unknown widget ids', () => {
-  const dash = layout(pageWithWidgets(widget('a', 0, 0, 4, 2)))
-  const location: WidgetLocation = { kind: 'page', pageId: 'page-1' }
-
-  assert.equal(canPlaceWidgetAt(dash, location, 'a', { col: 18, row: 0, colSpan: 4, rowSpan: 2 }), false)
-  assert.equal(canPlaceWidgetAt(dash, location, 'ghost', { col: 0, row: 0, colSpan: 4, rowSpan: 2 }), false)
-})
-
-function pageWithStack(stack: DashWidgetStack): DashPage {
-  return { id: 'page-1', name: 'Page 1', widgets: [], widgetStacks: [stack] }
-}
-
-test('canPlaceWidgetAt (stack-layer widget) is bounded by the stack\'s own sub-grid, not the page grid', () => {
-  const layerWidget = widget('inner', 0, 0, 2, 2)
-  const stack: DashWidgetStack = {
-    id: 'stack-1',
-    name: 'Stack',
-    col: 0,
-    row: 0,
-    colSpan: 6,
-    rowSpan: 4,
-    defaultLayerId: 'layer-1',
-    layers: [{ id: 'layer-1', name: 'Layer 1', widgets: [layerWidget, widget('other', 2, 0, 2, 2)] }],
-  }
-  const dash = layout(pageWithStack(stack))
-  const location: WidgetLocation = { kind: 'stackLayer', pageId: 'page-1', stackId: 'stack-1', layerId: 'layer-1' }
-
-  // Within the stack's 6x4 sub-grid and clear of "other": fine.
-  assert.equal(canPlaceWidgetAt(dash, location, 'inner', { col: 4, row: 0, colSpan: 2, rowSpan: 2 }), true)
-  // Runs past the stack's own colSpan (6), even though the page itself is 20 wide.
-  assert.equal(canPlaceWidgetAt(dash, location, 'inner', { col: 5, row: 0, colSpan: 2, rowSpan: 2 }), false)
-  // Overlaps "other" inside the layer.
-  assert.equal(canPlaceWidgetAt(dash, location, 'inner', { col: 2, row: 0, colSpan: 2, rowSpan: 2 }), false)
+  assert.equal(canPlaceNewWidget(dash, 'page-1', spot), false, 'on the page')
+  assert.equal(canPlaceNewWidget(dash, 'page-1', spot, 'stack'), true, 'as a new layer of the stack')
+  assert.equal(addWidgetAt(dash, 'page-1', 'text', 0, 0, 'stack')?.widget.group, 'stack')
 })
 
 // ── previewMoveRect ──────────────────────────────────────────────────────
@@ -235,6 +208,27 @@ test('a stored dash style survives parsing; a missing or unknown one is left uns
   assert.equal(parseDashLayout(row)?.dashStyle, undefined)
 })
 
+// ── Categories and New dash ──────────────────────────────────────────────
+
+test('a stored category survives parsing; null, blank and the retired default flag leave none', () => {
+  const row = { id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [] }
+  assert.equal(parseDashLayout({ ...row, category: 'Race' })?.category, 'Race')
+  assert.equal(parseDashLayout({ ...row, category: null })?.category, undefined)
+  assert.equal(parseDashLayout({ ...row, category: '' })?.category, undefined)
+  assert.equal('default' in (parseDashLayout({ ...row, default: true }) ?? {}), false)
+})
+
+test('buildDashCreate sends a blank start without a source, a copy with one, and only the fields given', () => {
+  assert.deepEqual(buildDashCreate(), { type: 'dash.create' })
+  assert.deepEqual(buildDashCreate({ start: { kind: 'blank' }, profileId: 'square-800x800', name: 'Quali', category: null }), {
+    type: 'dash.create',
+    profileId: 'square-800x800',
+    name: 'Quali',
+    category: null,
+  })
+  assert.deepEqual(buildDashCreate({ start: { kind: 'copy', dashId: 'd1' }, category: 'Race' }), { type: 'dash.create', sourceDashId: 'd1', category: 'Race' })
+})
+
 test('setDashStyle changes only the style, and is a no-op for the style already in effect', () => {
   const dash = layout(pageWithWidgets(widget('a', 0, 0, 4, 2)))
   const grid = setDashStyle(dash, 'grid')
@@ -249,4 +243,132 @@ test('fitScreenSize keeps the aspect ratio and is bound by whichever side runs o
   assert.deepEqual(fitScreenSize({ width: 800, height: 480 }, 640, 384), { width: 640, height: 384 }, 'landscape fills the box')
   assert.deepEqual(fitScreenSize({ width: 800, height: 800 }, 640, 384), { width: 384, height: 384 }, 'square is height-bound')
   assert.deepEqual(fitScreenSize({ width: 480, height: 854 }, 640, 384), { width: 216, height: 384 }, 'portrait stays inside the box')
+})
+
+// ── Dashes overview ──────────────────────────────────────────────────────
+
+const CATEGORIES = { builtIn: ['Race', 'Qualifying', 'Practice', 'Endurance'], custom: ['League'] }
+const filed = (id: string, category?: string): DashLayout => layout(pageWithWidgets(), category === undefined ? { id } : { id, category })
+
+test('groupDashes orders built-ins, then custom, then Other, and leaves empty categories out', () => {
+  const groups = groupDashes([filed('a'), filed('b', 'Endurance'), filed('c', 'League'), filed('d', 'Race'), filed('e', 'Gone'), filed('f', 'Race')], CATEGORIES)
+  assert.deepEqual(
+    groups.map((group) => [group.title, group.custom, group.dashes.map((dash) => dash.id)]),
+    [
+      ['Race', false, ['d', 'f']],
+      ['Endurance', false, ['b']],
+      ['League', true, ['c']],
+      ['Other', false, ['a', 'e']],
+    ],
+    'a category the host no longer knows counts as Other',
+  )
+})
+
+test('the filter bar counts each group, keeps an emptied filter, and is left out when everything is in one group', () => {
+  const groups = groupDashes([filed('a', 'Race'), filed('b', 'Race'), filed('c')], CATEGORIES)
+  assert.deepEqual(
+    dashesFilterOptions(groups, ALL_DASHES)?.map((option) => [option.label, option.count]),
+    [
+      ['All', 3],
+      ['Race', 2],
+      ['Other', 1],
+    ],
+  )
+  assert.deepEqual(dashesFilterOptions(groups, { kind: 'category', name: 'Endurance' })?.at(-1), { filter: { kind: 'category', name: 'Endurance' }, label: 'Endurance', count: 0 })
+  assert.equal(dashesFilterOptions(groupDashes([filed('a', 'Race')], CATEGORIES), ALL_DASHES), null)
+})
+
+test('a filter on a deleted category falls back to All; a new dash starts in the category being looked at', () => {
+  assert.deepEqual(resolveDashesFilter({ kind: 'category', name: 'Gone' }, CATEGORIES), ALL_DASHES)
+  assert.deepEqual(resolveDashesFilter({ kind: 'category', name: 'League' }, CATEGORIES), { kind: 'category', name: 'League' })
+  assert.equal(newDashCategory({ kind: 'category', name: 'Race' }), 'Race')
+  assert.equal(newDashCategory({ kind: 'other' }), null)
+  assert.equal(newDashCategory(ALL_DASHES), null)
+})
+
+test('screenChoices puts the sizes of your screens first, naming each screen once', () => {
+  const { fitting, other } = screenChoices([
+    { name: 'Omega', width: 800, height: 480 },
+    { name: 'USBD480', width: 480, height: 800 },
+    { name: 'Omega', width: 800, height: 480 },
+    { name: 'Odd', width: 320, height: 240 },
+  ])
+  assert.deepEqual(
+    fitting.map((choice) => [choice.profile.id, choice.fits]),
+    [
+      ['landscape-800x480', ['Omega']],
+      ['portrait-480x800', ['USBD480']],
+    ],
+  )
+  assert.equal(other.length, SCREEN_PROFILES.length - 2)
+  assert.equal(initialScreenProfile(null, fitting).id, 'landscape-800x480')
+  assert.equal(initialScreenProfile(null, []).id, SCREEN_PROFILES[0].id)
+  assert.equal(initialScreenProfile(filed('x'), []).id, 'landscape-800x480', 'a copy keeps its own size')
+})
+
+test('refit losses are looked up per dash and size, and worded with the right number', () => {
+  const portrait = SCREEN_PROFILES.find((profile) => profile.id === 'portrait-480x800')
+  assert.ok(portrait)
+  const losses = { d1: { 'portrait-480x800': 4 } }
+  assert.equal(refitLoss(losses, 'd1', 'portrait-480x800'), 4)
+  assert.equal(refitLoss(losses, 'd1', 'square-800x800'), 0)
+  assert.equal(refitLoss(losses, 'd2', 'portrait-480x800'), 0)
+  assert.equal(refitLossWarning(4, portrait), "4 widgets don't fit on Portrait 480 × 800 and will be left out.")
+  assert.equal(refitLossWarning(1, portrait), "1 widget doesn't fit on Portrait 480 × 800 and will be left out.")
+  assert.equal(refitLossNote(1, portrait), "1 widget didn't fit on Portrait 480 × 800 and was left out. Undo brings it back.")
+  assert.equal(refitLossNote(3, portrait), "3 widgets didn't fit on Portrait 480 × 800 and were left out. Undo brings them back.")
+  assert.equal(refitLossHint(2), "2 widgets don't fit")
+})
+
+test('dashCategoryNameProblem mirrors the host: blank, reserved, built-in and taken names are refused', () => {
+  assert.equal(dashCategoryNameProblem('Side screens', CATEGORIES), null)
+  assert.notEqual(dashCategoryNameProblem('  ', CATEGORIES), null)
+  assert.notEqual(dashCategoryNameProblem('other', CATEGORIES), null)
+  assert.notEqual(dashCategoryNameProblem('race', CATEGORIES), null)
+  assert.notEqual(dashCategoryNameProblem('league', CATEGORIES), null)
+  assert.equal(dashCategoryNameProblem('LEAGUE', CATEGORIES, 'League'), null, 'renaming may change only the casing')
+})
+
+test('a dash summary names its screen and counts the idle page', () => {
+  const dash = layout(pageWithWidgets(), { screenProfile: 'portrait-480x800', idlePage: { id: 'idle', name: 'Idle', widgets: [] } })
+  assert.equal(dashSummary(dash), 'Portrait 480 × 800 · 2 pages')
+  assert.equal(dashSummary(layout(pageWithWidgets())), 'Landscape 800 × 480 · 1 page')
+})
+
+// ── Alerts ───────────────────────────────────────────────────────────────
+
+test('alert rows: absent look fields arrive as null from the host and are dropped', () => {
+  const alert = { id: 'tc_change', type: 'tc_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6, displayMode: null, colorToken: null, durationSeconds: null, invertColors: null }
+  const parsed = parseDashLayout({ id: 'd', gridCols: 20, gridRows: 12, pages: [], alerts: [alert, { id: 'broken' }] })
+  assert.deepEqual(parsed?.alerts, [{ id: 'tc_change', type: 'tc_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 }])
+  assert.equal(parsed && alertLook(parsed, 'tc_change').own, false)
+})
+
+test("an alert's own look starts from the defaults, where included, and Same as all clears it", () => {
+  const boxed = setGlobalAlertConfig(setAlertEnabled(layout(pageWithWidgets()), 'abs_change', true), { displayMode: 'center', colorToken: 'ice' })
+  assert.deepEqual(alertLook(boxed, 'abs_change'), { displayMode: 'center', colorToken: 'ice', durationSeconds: 1.5, invertColors: false, own: false })
+
+  const own = setAlertUseGlobal(boxed, 'abs_change', false)
+  assert.ok(own)
+  const switched = setGlobalAlertConfig(own, { displayMode: 'full' })
+  assert.equal(alertLook(switched, 'abs_change').displayMode, 'center', 'its own look no longer follows the defaults')
+  assert.equal(alertLook(switched, 'abs_change').own, true)
+
+  const shared = setAlertUseGlobal(switched, 'abs_change', true)
+  assert.ok(shared)
+  assert.deepEqual(alertLook(shared, 'abs_change'), { displayMode: 'full', colorToken: 'ice', durationSeconds: 1.5, invertColors: false, own: false })
+})
+
+test('the lap summary fills the screen and keeps its own longer duration', () => {
+  const look = alertLook(setGlobalAlertConfig(layout(pageWithWidgets()), { displayMode: 'center', durationSeconds: 2 }), 'lap_summary')
+  assert.equal(look.displayMode, 'full')
+  assert.equal(look.durationSeconds, 5)
+})
+
+test('All alerts plays the first setting alert that is on, in the defaults', () => {
+  const own = setAlertUseGlobal(setAlertEnabled(setAlertEnabled(layout(pageWithWidgets()), 'lap_summary', true), 'abs_change', true), 'abs_change', false)
+  assert.ok(own)
+  assert.deepEqual(alertToPlay(own, null), { id: 'abs_change', type: 'abs_change', enabled: true, col: 6, row: 3, colSpan: 8, rowSpan: 6 })
+  assert.equal(alertToPlay(layout(pageWithWidgets()), null).type, 'tc_change', 'none on: a TC change')
+  assert.equal(alertToPlay(own, 'abs_change').colorToken, 'auto', 'one alert plays with its own look')
 })

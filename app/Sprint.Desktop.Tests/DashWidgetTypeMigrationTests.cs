@@ -6,7 +6,7 @@ namespace Sprint.Desktop.Tests;
 public class DashWidgetTypeMigrationTests
 {
     [Fact]
-    public void Rewrites_legacy_ers_widgets_across_pages_and_stacks()
+    public void Rewrites_legacy_ers_widgets_on_every_page()
     {
         var layout = new DashLayout
         {
@@ -19,19 +19,6 @@ public class DashWidgetTypeMigrationTests
                 new DashPage
                 {
                     Widgets = [new DashWidget { Id = "page-ers", Type = "ers" }],
-                    WidgetStacks =
-                    [
-                        new DashWidgetStack
-                        {
-                            Layers =
-                            [
-                                new DashWidgetStackLayer
-                                {
-                                    Widgets = [new DashWidget { Id = "stack-ers", Type = "ERS" }],
-                                },
-                            ],
-                        },
-                    ],
                 },
             ],
         };
@@ -41,7 +28,6 @@ public class DashWidgetTypeMigrationTests
         Assert.True(changed);
         Assert.Equal("virtual_energy", layout.IdlePage!.Widgets[0].Type);
         Assert.Equal("virtual_energy", layout.Pages[0].Widgets[0].Type);
-        Assert.Equal("virtual_energy", layout.Pages[0].WidgetStacks[0].Layers[0].Widgets[0].Type);
     }
 
     [Fact]

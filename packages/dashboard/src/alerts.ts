@@ -115,6 +115,41 @@ const SETTINGS: Record<SettingAlertType, { title: string; color: string; value: 
 
 const isSettingAlertType = (type: string): type is SettingAlertType => type in SETTINGS
 
+/** Whether an alert shows full screen: its own choice when it has one, otherwise the layout's. */
+function alertFullScreen(alert: DashAlert, config: ResolvedAlertConfig): boolean {
+  if (alert.displayMode === 'center') return false
+  if (alert.displayMode === 'full') return true
+  return config.fullScreen
+}
+
+/** A setting's change as the popup shows it. */
+interface SettingChange {
+  value: string
+  previous: string
+  max: number | null
+}
+
+/** The popup for one setting change, in the alert's look (its own, or the layout's). */
+function settingPopup(alert: DashAlert, type: SettingAlertType, change: SettingChange, config: ResolvedAlertConfig, layout: DashLayout, palette: DashPaletteColors): DashSettingPopup {
+  const setting = SETTINGS[type]
+  return {
+    kind: 'setting',
+    title: setting.title,
+    value: change.value,
+    previous: change.previous,
+    max: change.max,
+    color: resolveAlertColor(alert.colorToken ?? config.colorToken, setting.color, palette),
+    fullScreen: alertFullScreen(alert, config),
+    col: alert.col,
+    row: alert.row,
+    colSpan: alert.colSpan,
+    rowSpan: alert.rowSpan,
+    gridCols: layout.gridCols,
+    gridRows: layout.gridRows,
+    invertColors: alert.invertColors ?? config.invertColors,
+  }
+}
+
 function detectCandidate(
   alert: DashAlert,
   frame: TelemetryFrame,
@@ -130,22 +165,39 @@ function detectCandidate(
   if (value === previous) return null
 
   const max = setting.max(frame)
-  return {
-    kind: 'setting',
-    title: setting.title,
-    value,
-    previous,
-    max: max > 0 ? max : null,
-    color: resolveAlertColor(alert.colorToken ?? config.colorToken, setting.color, palette),
-    fullScreen: config.fullScreen,
-    col: alert.col,
-    row: alert.row,
-    colSpan: alert.colSpan,
-    rowSpan: alert.rowSpan,
-    gridCols: layout.gridCols,
-    gridRows: layout.gridRows,
-    invertColors: alert.invertColors ?? config.invertColors,
-  }
+  return settingPopup(alert, alert.type, { value, previous, max: max > 0 ? max : null }, config, layout, palette)
+}
+
+// The made-up changes the designer plays an alert with.
+const SAMPLE_CHANGES: Record<SettingAlertType, SettingChange> = {
+  tc_change: { value: '5', previous: '4', max: 9 },
+  abs_change: { value: '3', previous: '4', max: 9 },
+  bias_change: { value: '56.5', previous: '56.0', max: null },
+  enginemap_change: { value: '3', previous: '2', max: 9 },
+}
+
+const SAMPLE_LAP: LapSummary = { lap: 12, lapTime: 124.912, valid: true, lapDelta: -0.214, fuelUsed: 2.41, fuelDelta: -0.09 }
+
+/**
+ * The popup `alert` would show, with made-up values, for the designer to play on the dash so its
+ * look can be set without turning a knob in the car. Built exactly as a real change builds it,
+ * so it honours the alert's own look and the layout's. Null for a type the tracker does not know.
+ */
+export function previewAlertBanner(layout: DashLayout, alert: DashAlert, palette: DashPaletteColors): DashAlertBanner | null {
+  if (alert.type === 'lap_summary') return { kind: 'lapSummary', ...SAMPLE_LAP }
+  if (!isSettingAlertType(alert.type)) return null
+  return settingPopup(alert, alert.type, SAMPLE_CHANGES[alert.type], readAlertConfig(layout.alertConfig), layout, palette)
+}
+
+/**
+ * The colour an alert colour token paints a popup, for a colour picker: a theme preset's
+ * swatch, or the palette's warning yellow. Null for "auto" (each setting's own colour) and for
+ * a token nothing knows.
+ */
+export function alertColorSwatch(token: string, palette: DashPaletteColors): string | null {
+  const preset = findPresetByAlertColorToken(token)
+  if (preset) return preset.alertColorToken.toLowerCase() === 'auto' ? null : presetSwatchColor(preset)
+  return canonicalAlertColorToken(token) === 'yellow' ? palette.warning : null
 }
 
 /**

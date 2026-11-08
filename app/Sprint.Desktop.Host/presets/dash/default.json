@@ -1,7 +1,6 @@
 {
   "id": "default",
   "name": "Driver Focus",
-  "default": true,
   "mode": "basic",
   "dashStyle": "panels",
   "gridCols": 20,

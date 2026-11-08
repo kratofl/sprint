@@ -5,15 +5,14 @@
 
 import React, { useRef } from 'react'
 import { TirePosition, type AppSettings, type TelemetryFrame } from '@sprint/types'
-import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
+import type { DashLayout, DashPage, DashWidget } from './index'
+import { drawnWidgets } from './groups'
 import {
   alertPanelRect,
   gridRect,
   pageHasRaceLogicLapTimer,
   raceLogicPanelBounds,
-  selectLayer,
   selectPage,
-  subRect,
   type PixelRect,
 } from './grid'
 import { bareContent, CHROME_CELL_PX, GridOuterFrame, WidgetFrame, type ChromeContext } from './chrome'
@@ -146,55 +145,6 @@ function WidgetTile({ widget, rect, frame, settings, targets, palette, chrome, s
     >
       {body}
     </div>
-  )
-}
-
-interface WidgetStackTileProps {
-  stack: DashWidgetStack
-  cols: number
-  rows: number
-  canvasWidth: number
-  canvasHeight: number
-  frame: TelemetryFrame
-  settings?: Pick<AppSettings, 'driverName' | 'driverNumber'>
-  targets: DashTargets | null
-  palette: DashPaletteColors
-  chrome: ChromeContext
-  selectedId?: string
-  onWidgetSelect?: (widget: DashWidget) => void
-}
-
-/** Renders a widget stack's selected layer, laid out in the stack's own local sub-grid. */
-function WidgetStackTile({ stack, cols, rows, canvasWidth, canvasHeight, frame, settings, targets, palette, chrome, selectedId, onWidgetSelect }: WidgetStackTileProps): React.ReactElement | null {
-  const outerRect = gridRect(canvasWidth, canvasHeight, cols, rows, { col: stack.col, row: stack.row, colSpan: Math.max(1, stack.colSpan), rowSpan: Math.max(1, stack.rowSpan) })
-  if (outerRect.width < 1 || outerRect.height < 1) {
-    return null
-  }
-
-  const layer = selectLayer(stack)
-  if (!layer) {
-    return null
-  }
-
-  const subCols = Math.max(1, stack.colSpan)
-  const subRows = Math.max(1, stack.rowSpan)
-  return (
-    <>
-      {layer.widgets.map((widget) => (
-        <WidgetTile
-          key={widget.id}
-          widget={widget}
-          rect={subRect(outerRect, subCols, subRows, widget)}
-          frame={frame}
-          settings={settings}
-          targets={targets}
-          palette={palette}
-          chrome={chrome}
-          selected={selectedId === widget.id}
-          onSelect={onWidgetSelect}
-        />
-      ))}
-    </>
   )
 }
 
@@ -431,7 +381,8 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
   return (
     <div className={`dash-canvas ${className ?? ''}`} style={{ position: 'relative', width, height, background, overflow: 'hidden', boxSizing: 'border-box' }}>
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: ruled ? 14 * chrome.scale : undefined }}>
-      {page?.widgets.map((widget) => (
+      {/* Drawn widgets never overlap (only layers of one stack may, and a stack draws one), so their order never shows. */}
+      {(page ? drawnWidgets(page) : []).map((widget) => (
         <WidgetTile
           key={widget.id}
           widget={widget}
@@ -443,23 +394,6 @@ export function DashRenderer({ layout, frame, width, height, pageId, idle, setti
           chrome={chrome}
           selected={selectedId === widget.id}
           onSelect={onWidgetSelect}
-        />
-      ))}
-      {page?.widgetStacks?.map((stack) => (
-        <WidgetStackTile
-          key={stack.id}
-          stack={stack}
-          cols={cols}
-          rows={rows}
-          canvasWidth={width}
-          canvasHeight={height}
-          frame={telemetry}
-          settings={resolvedSettings}
-          targets={resolvedTargets}
-          palette={palette}
-          chrome={chrome}
-          selectedId={selectedId}
-          onWidgetSelect={onWidgetSelect}
         />
       ))}
       </div>

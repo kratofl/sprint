@@ -71,20 +71,12 @@ public sealed class DashEditorController
         }
 
         Layout.Mode = normalized;
-        SelectedStackId = null;
-        ActiveLayerId = null;
         Persist();
     }
 
     public string ActivePageId { get; private set; }
 
     public string? SelectedWidgetId { get; private set; }
-
-    /// <summary>The selected widget stack (region), mutually exclusive with <see cref="SelectedWidgetId"/>.</summary>
-    public string? SelectedStackId { get; private set; }
-
-    /// <summary>The layer being edited within the selected stack (falls back to its default/first layer).</summary>
-    public string? ActiveLayerId { get; private set; }
 
     /// <summary>Raised after any mutation that changed the layout or selection, so the view can rebuild.</summary>
     public event EventHandler? Changed;
@@ -116,8 +108,6 @@ public sealed class DashEditorController
 
         DashLayoutEditor.ApplyScreenProfile(Layout, profile);
         SelectedWidgetId = null;
-        SelectedStackId = null;
-        ActiveLayerId = null;
         Persist();
         return true;
     }
@@ -195,22 +185,18 @@ public sealed class DashEditorController
 
         ActivePageId = pageId;
         SelectedWidgetId = null;
-        SelectedStackId = null;
-        ActiveLayerId = null;
         RaiseChanged();
         return true;
     }
 
     public void SelectWidget(string? widgetId)
     {
-        if (string.Equals(widgetId, SelectedWidgetId, StringComparison.OrdinalIgnoreCase) && SelectedStackId is null)
+        if (string.Equals(widgetId, SelectedWidgetId, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         SelectedWidgetId = widgetId;
-        SelectedStackId = null; // widget and stack selection are mutually exclusive
-        ActiveLayerId = null;
         RaiseChanged();
     }
 
@@ -350,8 +336,6 @@ public sealed class DashEditorController
         }
 
         SelectedWidgetId = null;
-        SelectedStackId = null;
-        ActiveLayerId = null;
         Persist();
         return true;
     }
@@ -443,9 +427,10 @@ public sealed class DashEditorController
 
     public DashAlertConfig EffectiveAlertConfig(string type)
     {
-        var result = AlertConfig.Clone();
-        if (GetAlert(type) is { } alert)
+        DashAlertConfig result = this.AlertConfig.Clone();
+        if (this.GetAlert(type) is { } alert)
         {
+            result.DisplayMode = alert.DisplayMode ?? result.DisplayMode;
             result.ColorToken = alert.ColorToken ?? result.ColorToken;
             result.DurationSeconds = alert.DurationSeconds ?? result.DurationSeconds;
             result.InvertColors = alert.InvertColors ?? result.InvertColors;
@@ -480,26 +465,28 @@ public sealed class DashEditorController
 
     public void SetAlertUseGlobal(string type, bool useGlobal)
     {
-        if (GetAlert(type) is not { } alert)
+        if (this.GetAlert(type) is not { } alert)
         {
             return;
         }
 
         if (useGlobal)
         {
+            alert.DisplayMode = null;
             alert.ColorToken = null;
             alert.DurationSeconds = null;
             alert.InvertColors = null;
         }
         else if (alert.UsesGlobalSettings)
         {
-            var global = AlertConfig;
+            DashAlertConfig global = this.AlertConfig;
+            alert.DisplayMode = global.DisplayMode;
             alert.ColorToken = global.ColorToken;
             alert.DurationSeconds = global.DurationSeconds;
             alert.InvertColors = global.InvertColors;
         }
 
-        Persist();
+        this.Persist();
     }
 
     public void SetAlertColorToken(string type, string? token)
@@ -592,142 +579,6 @@ public sealed class DashEditorController
         return true;
     }
 
-    // ── Widget stacks ─────────────────────────────────────────────────────────
-
-    public DashWidgetStack? SelectedStack =>
-        SelectedStackId is null ? null : ActivePage is { } page ? DashLayoutEditor.FindStack(page, SelectedStackId) : null;
-
-    /// <summary>The layer currently targeted for editing in the selected stack.</summary>
-    public DashWidgetStackLayer? ActiveLayer
-    {
-        get
-        {
-            if (SelectedStack is not { } stack)
-            {
-                return null;
-            }
-
-            var id = ActiveLayerId ?? stack.DefaultLayerId;
-            return stack.Layers.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.OrdinalIgnoreCase))
-                ?? stack.Layers.FirstOrDefault();
-        }
-    }
-
-    public void SelectStack(string? stackId)
-    {
-        SelectedStackId = stackId;
-        SelectedWidgetId = null;
-        ActiveLayerId = stackId is null ? null : SelectedStack?.DefaultLayerId ?? SelectedStack?.Layers.FirstOrDefault()?.Id;
-        RaiseChanged();
-    }
-
-    public bool AddWidgetStack()
-    {
-        if (!DashLayoutEditor.TryAddWidgetStack(Layout, ActivePageId, out var stack) || stack is null)
-        {
-            return false;
-        }
-
-        SelectedWidgetId = null;
-        SelectedStackId = stack.Id;
-        ActiveLayerId = stack.DefaultLayerId;
-        Persist();
-        return true;
-    }
-
-    public bool DeleteSelectedStack()
-    {
-        if (SelectedStackId is not { } id || ActivePage is not { } page || !DashLayoutEditor.TryDeleteStack(page, id))
-        {
-            return false;
-        }
-
-        SelectedStackId = null;
-        ActiveLayerId = null;
-        Persist();
-        return true;
-    }
-
-    public bool RenameStack(string name) => WithStack(stack => DashLayoutEditor.TryRenameStack(ActivePage!, stack.Id, name));
-
-    public bool MoveStack(int col, int row) => WithStack(stack => DashLayoutEditor.TryMoveStack(Layout, ActivePageId, stack.Id, col, row));
-
-    public bool ResizeStack(int colSpan, int rowSpan) => WithStack(stack => DashLayoutEditor.TryResizeStack(Layout, ActivePageId, stack.Id, colSpan, rowSpan));
-
-    public bool AddStackLayer()
-    {
-        return WithStack(stack =>
-        {
-            if (!DashLayoutEditor.TryAddStackLayer(stack, out var layer) || layer is null)
-            {
-                return false;
-            }
-
-            ActiveLayerId = layer.Id;
-            return true;
-        });
-    }
-
-    public void SelectStackLayer(string layerId)
-    {
-        if (SelectedStack?.Layers.Any(l => string.Equals(l.Id, layerId, StringComparison.OrdinalIgnoreCase)) == true)
-        {
-            ActiveLayerId = layerId;
-            RaiseChanged();
-        }
-    }
-
-    public bool SetDefaultStackLayer(string layerId) => WithStack(stack => DashLayoutEditor.TrySetDefaultStackLayer(stack, layerId));
-
-    public bool RenameStackLayer(string layerId, string name) => WithStack(stack => DashLayoutEditor.TryRenameStackLayer(stack, layerId, name));
-
-    public bool DeleteStackLayer(string layerId)
-    {
-        return WithStack(stack =>
-        {
-            if (!DashLayoutEditor.TryDeleteStackLayer(stack, layerId))
-            {
-                return false;
-            }
-
-            if (string.Equals(ActiveLayerId, layerId, StringComparison.OrdinalIgnoreCase))
-            {
-                ActiveLayerId = stack.DefaultLayerId ?? stack.Layers.FirstOrDefault()?.Id;
-            }
-
-            return true;
-        });
-    }
-
-    public bool AddWidgetToActiveLayer(string type)
-    {
-        return WithStack(stack =>
-        {
-            var layerId = ActiveLayer?.Id;
-            return layerId is not null && DashLayoutEditor.TryAddWidgetToStackLayer(stack, layerId, type, out _);
-        });
-    }
-
-    public bool DeleteLayerWidget(string widgetId)
-    {
-        return WithStack(stack =>
-        {
-            var layerId = ActiveLayer?.Id;
-            return layerId is not null && DashLayoutEditor.TryDeleteStackLayerWidget(stack, layerId, widgetId);
-        });
-    }
-
-    private bool WithStack(Func<DashWidgetStack, bool> op)
-    {
-        if (SelectedStack is not { } stack || !op(stack))
-        {
-            return false;
-        }
-
-        Persist();
-        return true;
-    }
-
     public bool DeletePage(string pageId)
     {
         if (!DashLayoutEditor.TryDeletePage(Layout, pageId))
@@ -739,8 +590,6 @@ public sealed class DashEditorController
         {
             ActivePageId = Layout.Pages.FirstOrDefault()?.Id ?? Layout.IdlePage?.Id ?? "";
             SelectedWidgetId = null;
-            SelectedStackId = null;
-            ActiveLayerId = null;
         }
 
         Persist();

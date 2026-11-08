@@ -62,8 +62,13 @@ public sealed class DashLayout
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 
-    [JsonPropertyName("default")]
-    public bool IsDefault { get; set; }
+    /// <summary>
+    /// The one category the Dashes page files this dash under: a <see cref="DashCategories.BuiltIn"/>
+    /// name or one of the user's custom ones, in its known spelling. Null means "Other". Changed
+    /// only through the <c>dash.setCategory</c>/<c>dash.category.*</c> commands, never by a save.
+    /// </summary>
+    [JsonPropertyName("category")]
+    public string? Category { get; set; }
 
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "basic";
@@ -262,20 +267,84 @@ public sealed class DashPage
     [JsonPropertyName("name")]
     public string Name { get; set; } = "";
 
+    /// <summary>Every widget on the page, grouped or not, in page grid coordinates and in draw order.</summary>
     [JsonPropertyName("widgets")]
     public List<DashWidget> Widgets { get; set; } = [];
 
+    /// <summary>
+    /// The page's widget groups. Flat: a widget names its group (<see cref="DashWidget.Group"/>),
+    /// a group its parent. The tree and the drawing rule live in <c>groups.ts</c> in
+    /// <c>packages/dashboard</c>; <see cref="DashLayoutValidator"/> enforces the shape.
+    /// </summary>
+    [JsonPropertyName("groups")]
+    public List<DashWidgetGroup> Groups { get; set; } = [];
+
+    /// <summary>
+    /// Widget stacks as dashes saved them before groups replaced them. Read only so
+    /// <see cref="DashWidgetStackMigration"/> can turn them into groups; never written.
+    /// </summary>
     [JsonPropertyName("widgetStacks")]
-    public List<DashWidgetStack> WidgetStacks { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<LegacyDashWidgetStack>? LegacyWidgetStacks { get; set; }
 }
 
 /// <summary>
-/// A multi-function region on a page (WS6 widget stacks): a grid rectangle holding
-/// several <see cref="DashWidgetStackLayer"/>s, each a self-contained set of widgets
-/// laid out in the stack's local sub-grid. One layer shows at a time — the painter
-/// renders <see cref="DefaultLayerId"/> (runtime layer cycling is a documented deferral).
+/// How a group shows its direct children. <see cref="Together"/> is a plain folder;
+/// <see cref="OneAtATime"/> is a widget stack: each child (a widget or a group) is a layer and the
+/// wheel shows <see cref="DashWidgetGroup.ShownFirst"/>, else the first. Runtime layer switching
+/// (a button binding) is a documented deferral, so today a stack always shows that layer.
 /// </summary>
-public sealed class DashWidgetStack
+[JsonConverter(typeof(DashGroupModeJsonConverter))]
+public enum DashGroupMode
+{
+    Together,
+    OneAtATime,
+}
+
+/// <summary>Reads leniently: an unknown or missing mode is a plain folder.</summary>
+public sealed class DashGroupModeJsonConverter : JsonConverter<DashGroupMode>
+{
+    public override DashGroupMode Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        string.Equals(reader.GetString(), "oneAtATime", StringComparison.OrdinalIgnoreCase) ? DashGroupMode.OneAtATime : DashGroupMode.Together;
+
+    public override void Write(Utf8JsonWriter writer, DashGroupMode value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value == DashGroupMode.OneAtATime ? "oneAtATime" : "together");
+}
+
+/// <summary>
+/// A named group of widgets and groups on a page. Groups and widgets share one id space per page,
+/// because <see cref="ShownFirst"/> names either. Optional fields are omitted when empty, so the
+/// designer's copy and the host's compare equal.
+/// </summary>
+public sealed class DashWidgetGroup
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = "";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    /// <summary>The group this one sits in; null on the page.</summary>
+    [JsonPropertyName("parent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Parent { get; set; }
+
+    [JsonPropertyName("mode")]
+    public DashGroupMode Mode { get; set; } = DashGroupMode.Together;
+
+    /// <summary>The child a one-at-a-time group shows; kept while the group is together so switching back restores it.</summary>
+    [JsonPropertyName("shownFirst")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ShownFirst { get; set; }
+
+    /// <summary>Not drawn on the wheel, with everything in it; the widgets still hold their cells.</summary>
+    [JsonPropertyName("hidden")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Hidden { get; set; }
+}
+
+/// <summary>A pre-groups widget stack: a grid region whose layers lay widgets out in its own local grid.</summary>
+public sealed class LegacyDashWidgetStack
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
@@ -299,13 +368,10 @@ public sealed class DashWidgetStack
     public string? DefaultLayerId { get; set; }
 
     [JsonPropertyName("layers")]
-    public List<DashWidgetStackLayer> Layers { get; set; } = [];
-
-    [JsonExtensionData]
-    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+    public List<LegacyDashWidgetStackLayer> Layers { get; set; } = [];
 }
 
-public sealed class DashWidgetStackLayer
+public sealed class LegacyDashWidgetStackLayer
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = "";
@@ -342,6 +408,16 @@ public sealed class DashWidget
 
     [JsonPropertyName("style")]
     public DashWidgetStyle? Style { get; set; }
+
+    /// <summary>The <see cref="DashWidgetGroup"/> this widget sits in; null on the page.</summary>
+    [JsonPropertyName("group")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Group { get; set; }
+
+    /// <summary>Not drawn on the wheel; the widget still holds its cells.</summary>
+    [JsonPropertyName("hidden")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Hidden { get; set; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -389,6 +465,10 @@ public sealed class DashAlert
     [JsonPropertyName("rowSpan")]
     public int RowSpan { get; set; } = 6;
 
+    /// <summary>The alert's own "full" or "center" (in its grid rect); null uses <see cref="DashAlertConfig.DisplayMode"/>.</summary>
+    [JsonPropertyName("displayMode")]
+    public string? DisplayMode { get; set; }
+
     [JsonPropertyName("colorToken")]
     public string? ColorToken { get; set; }
 
@@ -399,5 +479,5 @@ public sealed class DashAlert
     public bool? InvertColors { get; set; }
 
     [JsonIgnore]
-    public bool UsesGlobalSettings => ColorToken is null && DurationSeconds is null && InvertColors is null;
+    public bool UsesGlobalSettings => this.DisplayMode is null && this.ColorToken is null && this.DurationSeconds is null && this.InvertColors is null;
 }

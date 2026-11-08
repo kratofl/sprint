@@ -5,11 +5,9 @@ import {
   gridRect,
   pageHasRaceLogicLapTimer,
   raceLogicPanelBounds,
-  selectLayer,
   selectPage,
-  subRect,
 } from './grid'
-import type { DashLayout, DashPage, DashWidget, DashWidgetStack } from './index'
+import type { DashLayout, DashPage, DashWidget } from './index'
 
 function widget(overrides: Partial<DashWidget> = {}): DashWidget {
   return { id: 'w1', type: 'text', col: 0, row: 0, colSpan: 1, rowSpan: 1, ...overrides }
@@ -20,7 +18,7 @@ function page(overrides: Partial<DashPage> = {}): DashPage {
 }
 
 function layout(overrides: Partial<DashLayout> = {}): DashLayout {
-  return { id: 'l1', name: 'Layout', default: true, mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [], ...overrides }
+  return { id: 'l1', name: 'Layout', mode: 'basic', gridCols: 20, gridRows: 12, pages: [], alerts: [], ...overrides }
 }
 
 test('gridRect divides the canvas evenly for a widget spanning the whole grid', () => {
@@ -43,13 +41,6 @@ test('gridRect never emits a negative or inverted span, even for a zero-span wid
   assert.ok(rect.top + rect.height <= 480)
 })
 
-test('subRect maps a widget stack layer widget into pixels inside the stack rect', () => {
-  const outer = { left: 100, top: 50, width: 400, height: 200 }
-  // A 2x2 sub-grid inside the stack; the widget at (1,0) spanning 1x1 should be the right half, top row.
-  const rect = subRect(outer, 2, 2, widget({ col: 1, row: 0, colSpan: 1, rowSpan: 1 }))
-  assert.deepEqual(rect, { left: 300, top: 50, width: 200, height: 100 })
-})
-
 test('selectPage prefers the idle page when idle is requested, falling back to the first page', () => {
   const idlePage = page({ id: 'idle' })
   const firstPage = page({ id: 'p1' })
@@ -64,21 +55,15 @@ test('selectPage matches an explicit pageId case-insensitively, else falls back 
   assert.equal(selectPage(layout({ pages: [first, target] }), 'not-a-page', false), first)
 })
 
-test('selectLayer honors defaultLayerId when it matches, else falls back to the first layer', () => {
-  const stack: DashWidgetStack = {
-    id: 's1', name: 'Stack', col: 0, row: 0, colSpan: 4, rowSpan: 4, defaultLayerId: 'b',
-    layers: [{ id: 'a', name: 'A', widgets: [] }, { id: 'b', name: 'B', widgets: [] }],
-  }
-  assert.equal(selectLayer(stack)?.id, 'b')
-  assert.equal(selectLayer({ ...stack, defaultLayerId: 'missing' })?.id, 'a')
-})
-
-test('pageHasRaceLogicLapTimer finds the widget at the top level and inside a stack layer', () => {
+test('pageHasRaceLogicLapTimer counts the lap timer only where it is drawn', () => {
+  const timer = widget({ id: 't', type: 'racelogic_lap_timer', group: 'stack' })
+  const fuel = widget({ id: 'f', type: 'fuel', group: 'stack' })
+  const groups: DashPage['groups'] = [{ id: 'stack', name: 'Stack', mode: 'oneAtATime' }]
   assert.equal(pageHasRaceLogicLapTimer(null), false)
   assert.equal(pageHasRaceLogicLapTimer(page({ widgets: [widget({ type: 'racelogic_lap_timer' })] })), true)
-  const stack: DashWidgetStack = { id: 's1', name: 'Stack', col: 0, row: 0, colSpan: 4, rowSpan: 4, layers: [{ id: 'a', name: 'A', widgets: [widget({ type: 'racelogic_lap_timer' })] }] }
-  assert.equal(pageHasRaceLogicLapTimer(page({ widgetStacks: [stack] })), true)
-  assert.equal(pageHasRaceLogicLapTimer(page({ widgets: [widget({ type: 'fuel' })] })), false)
+  assert.equal(pageHasRaceLogicLapTimer(page({ widgets: [timer, fuel], groups })), true)
+  assert.equal(pageHasRaceLogicLapTimer(page({ widgets: [fuel, timer], groups })), false, 'a layer the stack does not show')
+  assert.equal(pageHasRaceLogicLapTimer(page({ widgets: [widget({ type: 'racelogic_lap_timer', hidden: true })] })), false)
 })
 
 test('raceLogicPanelBounds is always exactly 4:1 and centered on the canvas', () => {
