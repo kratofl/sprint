@@ -11,6 +11,7 @@ using Sprint.Desktop.Features.Diagnostics;
 using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
+using Sprint.Desktop.Runtime;
 
 namespace Sprint.Desktop.Features.Peer;
 
@@ -81,7 +82,7 @@ public sealed record PeerLinkHealth(PeerPath Path, int? RoundTripMs, double Samp
 /// <summary>
 /// The live link as Settings and the Live link page show it. Which fields are set depends on
 /// <see cref="Phase"/>: <see cref="Code"/> while inviting or joining, <see cref="Health"/> and
-/// <see cref="Session"/> while connected or interrupted, <see cref="Latest"/> and
+/// <see cref="Session"/> while connected or interrupted (<see cref="Peer"/> too, once heard), <see cref="Latest"/> and
 /// <see cref="PitWall"/> on the engineer's side only, <see cref="SharedPlan"/> on the driver's,
 /// <see cref="Detail"/> once failed or ended.
 /// </summary>
@@ -108,6 +109,9 @@ public sealed record PeerLinkState
     /// <summary>The newest telemetry sample from the driver.</summary>
     public LiveSample? Latest { get; init; }
 
+    /// <summary>The other side's Sprint while connected; null until its first ping arrives.</summary>
+    public PeerBuild? Peer { get; init; }
+
     /// <summary>Whether the driver shares the session plan with the engineer (the setting, whatever the phase).</summary>
     public bool SharingPlan { get; init; }
 
@@ -118,9 +122,50 @@ public sealed record PeerLinkState
     public PitWallState? PitWall { get; init; }
 }
 
+/// <summary>How the other side's build compares with this one's, by what their links carry. Crosses the wire by name.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<PeerBuildMatch>))]
+public enum PeerBuildMatch
+{
+    Same,
+
+    /// <summary>The peer's link carries less: it needs to update Sprint for all of it.</summary>
+    PeerOlder,
+
+    /// <summary>The peer's link carries more: this PC needs to update Sprint for all of it.</summary>
+    PeerNewer,
+}
+
+/// <summary>The other side's Sprint, as its pings tell it. <see cref="App"/> is null for builds that do not say.</summary>
+public sealed record PeerBuild(string? App, PeerBuildMatch Match)
+{
+    private const int MaxApp = 32;
+
+    /// <summary>
+    /// From a ping's fields, which the peer controls: a ping without a level is from a build before
+    /// levels (1); the version is shown only when short and printable, without its "+sha" part.
+    /// </summary>
+    public static PeerBuild Of(int? level, string? app)
+    {
+        int theirs = Math.Max(1, level ?? 1);
+        string? shown = app?.Split('+')[0].Trim();
+        if (string.IsNullOrEmpty(shown) || shown.Length > MaxApp || shown.Any(char.IsControl))
+            shown = null;
+        PeerBuildMatch match = theirs == PeerLinkRules.Level ? PeerBuildMatch.Same
+            : theirs < PeerLinkRules.Level ? PeerBuildMatch.PeerOlder
+            : PeerBuildMatch.PeerNewer;
+        return new PeerBuild(shown, match);
+    }
+}
+
 /// <summary>The link's timings, apart from any socket or clock.</summary>
 public static class PeerLinkRules
 {
+    /// <summary>
+    /// What this build's link carries. Raise it when one side starts needing something an older
+    /// peer does not send: 1 the telemetry (builds that put no level in their pings), 2 the pit wall.
+    /// </summary>
+    public const int Level = 2;
+
     /// <summary>How often the worker steps; also the most a sample waits before it is sent.</summary>
     public static readonly TimeSpan Step = TimeSpan.FromMilliseconds(50);
 
@@ -514,6 +559,7 @@ public sealed class PeerLink(
         switch (message)
         {
             case PeerPing ping:
+                link.Peer = PeerBuild.Of(ping.Level, ping.App);
                 long held = Math.Max(0, (long)(now - datagram.ReceivedAt).TotalMilliseconds);
                 this.Send(link, new PeerPong(ping.Sent, held), datagram.From);
                 break;
@@ -645,7 +691,7 @@ public sealed class PeerLink(
             return;
         link.LastProbe = now;
         foreach (IPEndPoint to in link.Targets())
-            this.Send(link, new PeerPing(now.ToUnixTimeMilliseconds()), to);
+            this.Send(link, Ping(now), to);
     }
 
     /// <summary>Connected: keepalive and stats every second, and on the driver's side the session and the buffered samples.</summary>
@@ -659,7 +705,7 @@ public sealed class PeerLink(
         if (second)
         {
             link.LastPing = now;
-            this.Send(link, new PeerPing(now.ToUnixTimeMilliseconds()), remote);
+            this.Send(link, Ping(now), remote);
             link.CloseWindow(now);
         }
 
@@ -801,6 +847,9 @@ public sealed class PeerLink(
         return now - lastFrame <= LiveUplinkRules.Idle ? this._target : null;
     }
 
+    /// <summary>Every ping says what this build's link carries, so the other side can tell when one of them needs an update.</summary>
+    private static PeerPing Ping(DateTimeOffset now) => new(now.ToUnixTimeMilliseconds(), PeerLinkRules.Level, BuildInfo.Version);
+
     private void Send(Link link, PeerMessage message, IPEndPoint to)
     {
         if (link.Channel is { } channel)
@@ -825,6 +874,7 @@ public sealed class PeerLink(
                 : null,
             Session = up ? link.Session : null,
             Latest = up ? link.Latest : null,
+            Peer = up ? link.Peer : null,
             SharingPlan = this._sharePlan,
             SharedPlan = link.Role == PeerRole.Driver && link.Offer is { } offer ? new PeerSharedPlan(offer.PlanId, offer.PlanName) : null,
             PitWall = up ? link.PitWall?.State(this._stepAt) : null,
@@ -906,6 +956,9 @@ public sealed class PeerLink(
         public long Samples { get; set; }
 
         public int? RoundTripMs { get; set; }
+
+        /// <summary>The other side's build, from its newest ping; null before the first.</summary>
+        public PeerBuild? Peer { get; set; }
 
         public double SampleRate { get; private set; }
 

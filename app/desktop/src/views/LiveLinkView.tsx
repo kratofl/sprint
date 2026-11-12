@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Copy } from 'lucide-react'
-import type { AppView, LinkReachability, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
+import type { AppView, LinkPeer, LinkReachability, LinkRole, LinkSample, LinkSession, LiveLink, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { PageHeader } from '../shell/PageHeader'
 import { EngineerTabs } from './EngineerTabs'
 import { Status } from '../shell/Status'
 import { commandErrorMessage } from './DevicesDomain'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
-import { formatGear, healthParts, linkStatus, reachabilityWarning } from './LiveLinkDomain'
+import { formatGear, healthParts, linkStatus, reachabilityWarning, versionNotice } from './LiveLinkDomain'
 import { Switch } from './SettingsLayout'
 import './LiveLinkView.css'
 
@@ -117,6 +117,7 @@ function LinkBody({ link, send }: { link: LiveLink; send: (command: SprintComman
               <span className="infobar-message">Trying to get it back. The link ends after a minute without contact.</span>
             </div>
           )}
+          <VersionNotice role={link.role} peer={link.peer} />
           <div className="live-link-health">
             {healthParts(link.health).map((part) => (
               <span key={part} className="chip tabular">
@@ -273,6 +274,21 @@ function Reachability({ reachability }: { reachability: LinkReachability }) {
       </span>
       <strong className="infobar-title">{warning.title}</strong>
       <span className="infobar-message">{warning.message}</span>
+    </div>
+  )
+}
+
+/** Shown on both sides when one of them runs a Sprint whose link carries less. */
+function VersionNotice({ role, peer }: { role: LinkRole; peer: LinkPeer | null }) {
+  const notice = versionNotice(role, peer)
+  if (!notice) return null
+  return (
+    <div className="infobar warning" role="status">
+      <span className="infobar-icon" aria-hidden="true">
+        !
+      </span>
+      <strong className="infobar-title">{notice.title}</strong>
+      <span className="infobar-message">{notice.message}</span>
     </div>
   )
 }

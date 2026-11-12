@@ -144,6 +144,8 @@ export type LinkSample = {
 
 /** How a connected link is doing over the last second (host: `PeerLinkHealth`). */
 export type LinkHealth = { path: LinkPath; roundTripMs: number | null; sampleRate: number; lossPercent: number | null }
+/** The other side's Sprint (host `PeerBuild`): its version when it says, and whether either side needs an update. */
+export type LinkPeer = { app: string | null; match: 'Same' | 'PeerOlder' | 'PeerNewer' }
 
 /**
  * The live link to an engineer's or a driver's desktop (host: `PeerLinkState`), one shape per
@@ -162,6 +164,8 @@ export type LiveLink =
       health: LinkHealth
       session: LinkSession | null
       latest: LinkSample | null
+      /** Null until the other side's first ping arrives. */
+      peer: LinkPeer | null
       /** The engineer's pit wall data; null on the driver's side and until the first board arrives. */
       pitWall: PitWall | null
       /** The driver's side: whether the session plan goes over the link, and which plan that is. */
@@ -535,6 +539,12 @@ const parseLinkSample = (value: unknown): LinkSample | null => {
 const optionalNumber = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 
 /** Narrows the host's `PeerLinkState` once, here. A phase missing what it needs reads as off. */
+const parseLinkPeer = (value: unknown): LinkPeer | null => {
+  if (!isRecord(value)) return null
+  const match = value.match === 'Same' || value.match === 'PeerOlder' || value.match === 'PeerNewer' ? value.match : null
+  return match ? { app: optionalString(value.app), match } : null
+}
+
 const parseLiveLink = (value: unknown): LiveLink => {
   if (!isRecord(value)) return { phase: 'Off' }
   const role: LinkRole | null = value.role === 'Driver' || value.role === 'Engineer' ? value.role : null
@@ -560,6 +570,7 @@ const parseLiveLink = (value: unknown): LiveLink => {
         health: { path: health.path, roundTripMs: optionalNumber(health.roundTripMs), sampleRate: finite(health.sampleRate), lossPercent: optionalNumber(health.lossPercent) },
         session: parseLinkSession(value.session),
         latest: parseLinkSample(value.latest),
+        peer: parseLinkPeer(value.peer),
         pitWall: parsePitWall(value.pitWall),
         sharingPlan: value.sharingPlan === true,
         sharedPlan: isRecord(value.sharedPlan) && typeof value.sharedPlan.id === 'string' ? { id: value.sharedPlan.id, name: text(value.sharedPlan.name) } : null,

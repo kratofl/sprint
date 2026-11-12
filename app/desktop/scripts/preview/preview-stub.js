@@ -24,7 +24,9 @@
 //                         default: WaitingForGame when signed in with storage Both/Remote, otherwise Off
 //   link=<phase>          the live link's phase (Off, Preparing, Inviting, Joining, Connecting, Connected,
 //                         Interrupted, Failed, Ended); linkRole=Engineer shows the engineer's side of
-//                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off
+//                         Connected/Interrupted/Failed/Ended (default: Driver). Default: Off.
+//                         linkPeer=older|newer: the other side runs an older (on the engineer's side:
+//                         no pit wall arrives) or newer Sprint 0.4.2
 //   found=<id,id>         the USB scan finds these catalog ids plugged in and not added yet (Add device's
 //                         "Plugged in now"); default: nothing new
 //   discord=1|fail        the server offers Discord sign-in; "Continue with Discord" then waits until
@@ -76,7 +78,8 @@
           health: { path: 'Ipv4', roundTripMs: phase === 'Connected' ? 38 : null, sampleRate: phase === 'Connected' ? 20 : 0, lossPercent: phase === 'Connected' ? 0.5 : null },
           session,
           latest: role === 'Engineer' ? latest : null,
-          pitWall: role === 'Engineer' ? samplePitWall(params.get('plan') !== 'none') : null,
+          peer: { app: '0.4.2', match: params.get('linkPeer') === 'older' ? 'PeerOlder' : params.get('linkPeer') === 'newer' ? 'PeerNewer' : 'Same' },
+          pitWall: role === 'Engineer' && params.get('linkPeer') !== 'older' ? samplePitWall(params.get('plan') !== 'none') : null,
           sharingPlan: params.get('plan') !== 'none',
           sharedPlan: role === 'Driver' && params.get('plan') !== 'none' ? { id: 'plan-spa-6h', name: 'Spa 6h · Stint 2' } : null,
         }

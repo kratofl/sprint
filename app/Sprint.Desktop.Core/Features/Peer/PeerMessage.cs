@@ -44,8 +44,13 @@ public abstract record PeerMessage
     }
 }
 
-/// <summary>Probe while connecting, keepalive once connected. <c>sent</c> (Unix ms) comes back in the pong, for the round trip.</summary>
-public sealed record PeerPing(long Sent) : PeerMessage;
+/// <summary>
+/// Probe while connecting, keepalive once connected. <c>sent</c> (Unix ms) comes back in the pong,
+/// for the round trip. <c>level</c> and <c>app</c> say what the sender's build carries
+/// (<see cref="PeerLinkRules.Level"/>) and its Sprint version; builds before them leave both out,
+/// and an older build reading them skips the fields it does not know.
+/// </summary>
+public sealed record PeerPing(long Sent, int? Level = null, string? App = null) : PeerMessage;
 
 /// <summary>Answers a ping. <c>held</c> is how many ms the ping waited on this side before the answer, which the round trip leaves out.</summary>
 public sealed record PeerPong(long Sent, long Held) : PeerMessage;

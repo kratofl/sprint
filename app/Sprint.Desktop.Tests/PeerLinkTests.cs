@@ -5,6 +5,7 @@ using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Peer;
 using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
+using Sprint.Desktop.Runtime;
 using Xunit;
 
 namespace Sprint.Desktop.Tests;
@@ -45,6 +46,30 @@ public sealed class PeerLinkTests
         Assert.Equal(PeerPath.Ipv4, this._engineer.State.Health?.Path);
         Assert.Equal(PeerReachability.Open, this._driver.State.Reachability);
         Assert.Null(this._driver.State.Code);
+    }
+
+    [Fact]
+    public void EachSideKnowsTheOthersSprintOnceConnected()
+    {
+        this.Connect();
+        this.Run(TimeSpan.FromSeconds(1));
+
+        PeerBuild same = PeerBuild.Of(PeerLinkRules.Level, BuildInfo.Version);
+        Assert.Equal(PeerBuildMatch.Same, same.Match);
+        Assert.Equal(same, this._driver.State.Peer);
+        Assert.Equal(same, this._engineer.State.Peer);
+    }
+
+    [Fact]
+    public void APingFromABuildBeforeLevelsReadsAsAnOlderSprint()
+    {
+        PeerPing old = Assert.IsType<PeerPing>(PeerMessage.Deserialize("""{"type":"ping","sent":5}"""u8));
+
+        Assert.Equal(new PeerBuild(null, PeerBuildMatch.PeerOlder), PeerBuild.Of(old.Level, old.App));
+        Assert.Equal(new PeerBuild("0.9.0", PeerBuildMatch.PeerNewer), PeerBuild.Of(PeerLinkRules.Level + 1, "0.9.0+abc123"));
+        // The peer writes the version: one that is long or holds control characters is not shown.
+        Assert.Null(PeerBuild.Of(PeerLinkRules.Level, new string('9', 40)).App);
+        Assert.Null(PeerBuild.Of(PeerLinkRules.Level, "1.0\u001b[2J").App);
     }
 
     [Fact]

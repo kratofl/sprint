@@ -9,7 +9,7 @@ import { KIND_LABEL } from './tileFrame'
 import { PitWallBar, RenameDialog, type PageAction } from './PitWallBar'
 import { PitWallGrid } from './PitWallGrid'
 import { PitWallSlot } from './PitWallSlot'
-import { waitingReason } from './waiting'
+import { waiting } from './waiting'
 import './PitWall.css'
 
 /** How long a saved layout is shown before the host's copy is trusted again, if the two never match. */
@@ -340,15 +340,15 @@ function TileWindow({ layout, tileId, link, data, change }: WindowProps & { tile
 
 /** Said once for the whole wall while there is no board; the tiles below stay empty. */
 function WaitingBar({ link }: { link: LiveLink }) {
-  const reason = waitingReason(link)
-  if (!reason) return null
+  const notice = waiting(link)
+  if (!notice) return null
   return (
-    <div className="infobar info pw-notice" role="status">
+    <div className={`infobar ${notice.tone} pw-notice`} role="status">
       <span className="infobar-icon" aria-hidden="true">
-        i
+        {notice.tone === 'warning' ? '!' : 'i'}
       </span>
-      <strong className="infobar-title">Waiting for the driver</strong>
-      <span className="infobar-message">{reason}</span>
+      <strong className="infobar-title">{notice.title}</strong>
+      <span className="infobar-message">{notice.reason}</span>
     </div>
   )
 }

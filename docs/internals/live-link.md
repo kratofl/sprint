@@ -54,6 +54,11 @@ twice a second, radar ten times a second, and the shared plan and its target lap
   and the receiver keeps the parts it has; a board is not repeated, the next one replaces it.
 - **A newer version drops the one being collected.** Versions are the sender's clock in ms (or one
   more), so they keep rising across a restart of the driver's desktop.
+- **Every ping says what its build's link carries**: `PeerLinkRules.Level`, not the version string,
+  which dev builds share. Raise the level when one side starts needing something an older peer does
+  not send; a ping without one is level 1. Both sides then say who should update, and the pit wall
+  says why it stays empty. The codes keep their own version byte, for changes that break the
+  exchange itself.
 - **Unknown message types read as null.** That is how an older build ignores `blob` and `radar`; keep
   `PeerMessage.Deserialize` that way when adding types.
 - **The plan travels as `state.plans` writes it** and the engineer passes the JSON through unparsed,

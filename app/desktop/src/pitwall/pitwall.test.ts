@@ -3,8 +3,8 @@ import { test } from 'node:test'
 import type { FieldEntry, PitWallCar, PitWallLayout, PitWallPage, PitWallTile, PitWallTrace } from './pitWallData'
 import { parsePitWall, parsePitWallLayout, parsePitWallTrace } from './pitWallData'
 import { addPage, addTile, deletePage, duplicatePage, freeSpot, moveLayer, moveTile, overDraft, removeLayer, resizeTile, setDetached, setStackOptions, shownPage, stackOnto, unstack } from './layoutOps'
-import { waitingReason } from './waiting'
-import type { LinkHealth, LiveLink } from '../bridge'
+import { waiting } from './waiting'
+import type { LinkHealth, LinkPeer, LiveLink } from '../bridge'
 import { pickLayer, shownLayer, startStack, stepStack } from './stack'
 import { carNumber, gapCell, lapClock, placesGained, relativeRows, sectorMarks, sectorStarts, timingSummary } from './timing'
 import { fullStintLaps, planStints, range, stintRows, strategy } from './fuel'
@@ -273,13 +273,24 @@ test('a duplicated page name is cut to 40 characters without a trailing space', 
 
 test('with no board the wall says why once, by the link phase', () => {
   const health: LinkHealth = { path: 'Ipv4', roundTripMs: 30, sampleRate: 20, lossPercent: 0 }
-  const linked = (role: 'Driver' | 'Engineer', withBoard: boolean): LiveLink => ({
-    phase: 'Connected', role, reachability: 'Open', health, session: null, latest: null, sharingPlan: true, sharedPlan: null,
+  const linked = (role: 'Driver' | 'Engineer', withBoard: boolean, peer: LinkPeer | null = null): LiveLink => ({
+    phase: 'Connected', role, reachability: 'Open', health, session: null, latest: null, peer, sharingPlan: true, sharedPlan: null,
     pitWall: withBoard ? parsePitWall({ session: {}, field: [], car: {}, plan: null }) : null,
   })
-  assert.equal(waitingReason({ phase: 'Off' }), 'Not linked: link from the Live link page.')
-  assert.equal(waitingReason({ phase: 'Ended', role: 'Engineer', detail: 'The driver ended the link.' }), 'The link ended: link again from the Live link page.')
-  assert.equal(waitingReason(linked('Engineer', false)), 'Linked: the board shows once the driver is in a session.')
-  assert.equal(waitingReason(linked('Engineer', true)), null)
-  assert.match(waitingReason(linked('Driver', false)) ?? '', /engineer’s PC/)
+  assert.equal(waiting({ phase: 'Off' })?.reason, 'Not linked: link from the Live link page.')
+  assert.equal(waiting({ phase: 'Ended', role: 'Engineer', detail: 'The driver ended the link.' })?.reason, 'The link ended: link again from the Live link page.')
+  assert.equal(waiting(linked('Engineer', false))?.reason, 'Linked: the board shows once the driver is in a session.')
+  assert.equal(waiting(linked('Engineer', true)), null)
+  assert.match(waiting(linked('Driver', false))?.reason ?? '', /engineer’s PC/)
+})
+
+test('a driver on a Sprint from before the pit wall is told apart from one not in a session', () => {
+  const health: LinkHealth = { path: 'Ipv4', roundTripMs: 30, sampleRate: 20, lossPercent: 0 }
+  const engineer = (peer: LinkPeer | null): LiveLink => ({
+    phase: 'Connected', role: 'Engineer', reachability: 'Open', health, session: null, latest: null, peer, sharingPlan: true, sharedPlan: null, pitWall: null,
+  })
+  assert.equal(waiting(engineer({ app: null, match: 'PeerOlder' }))?.tone, 'warning')
+  assert.equal(waiting(engineer({ app: '0.5.0', match: 'Same' }))?.tone, 'info')
+  // Before the driver's first ping nothing is known yet: no warning.
+  assert.equal(waiting(engineer(null))?.tone, 'info')
 })
