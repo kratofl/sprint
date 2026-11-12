@@ -174,6 +174,11 @@ export class NativeHost {
       5 * 60_000,
     )
   }
+
+  /** A lap of the linked driver's, gathered on this (the engineer's) PC; too large for the polled state. */
+  async pitWallTrace(lap: 'current' | 'last' | 'best' | 'target'): Promise<unknown> {
+    return this.json(`/api/pitwall/trace?lap=${lap}`)
+  }
   async telemetry(): Promise<unknown> { return this.json('/api/telemetry') }
 
   /** The training HUD's newest snapshot, or null when there is no lap to train against. */

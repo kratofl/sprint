@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('sprint', {
   syncDown: (): Promise<unknown> => ipcRenderer.invoke('sprint:cloud-pull'),
   /** Opens a dash in its own designer window, or brings that window forward (electron/designerWindows.ts). */
   openDashDesigner: (dashId: string): Promise<unknown> => ipcRenderer.invoke('sprint:open-dash-designer', dashId),
+  /** Opens the pit wall, or brings it (or a page's or tile's own window) forward (electron/pitWallWindows.ts). */
+  openPitWall: (target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown> => ipcRenderer.invoke('sprint:open-pit-wall', target),
+  /** A lap of the linked driver's for the pit wall's traces: current, last, best or target. */
+  pitWallTrace: (lap: string): Promise<unknown> => ipcRenderer.invoke('sprint:pitwall-trace', lap),
   /** A training HUD window's feed (electron/hud.ts): its own part of each frame. */
   subscribeHud: (listener: (message: unknown) => void): (() => void) => {
     const onMessage = (_event: Electron.IpcRendererEvent, message: unknown): void => listener(message)

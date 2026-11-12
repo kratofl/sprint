@@ -23,7 +23,8 @@ internal static class LmuParser
                 PlayerHasVehicle = playerHasVehicle,
                 PlayerIndex = playerIndex,
                 PlayerVehicle = FindPlayerVehicle(buffer, scoringInfo.NumVehicles),
-                Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles)
+                Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles),
+                FrontCompounds = ParseFrontCompounds(buffer)
             };
         }
 
@@ -37,7 +38,8 @@ internal static class LmuParser
             PlayerIndex = playerIndex,
             Telemetry = ParseVehicleTelemetry(LmuBinary.Slice(buffer, telemetryOffset, LmuBinary.VehicleTelemetrySize)),
             Scoring = ParseVehicleScoring(LmuBinary.Slice(buffer, scoringOffset, LmuBinary.VehicleScoringSize)),
-            Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles)
+            Vehicles = ParseVehicles(buffer, scoringInfo.NumVehicles),
+            FrontCompounds = ParseFrontCompounds(buffer)
         };
     }
 
@@ -54,6 +56,31 @@ internal static class LmuParser
 
         return vehicles;
     }
+
+    /// <summary>
+    /// Each active car's front compound by mID. SharedMemoryTelemetryData opens with
+    /// activeVehicles (one byte) before the player index; the telemetry entries are not in scoring
+    /// order, so they are matched by slot id. Only mID and the 18-byte name are read per car.
+    /// </summary>
+    private static IReadOnlyDictionary<int, string> ParseFrontCompounds(ReadOnlySpan<byte> buffer)
+    {
+        int count = Math.Min((int)LmuBinary.ReadByte(buffer, LmuBinary.TelemetryStart), LmuBinary.MaxVehicles);
+        Dictionary<int, string> compounds = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            int offset = LmuBinary.TelemetryInfoBase + i * LmuBinary.VehicleTelemetrySize;
+            string name = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(buffer, offset + FrontCompoundNameOffset, 18)).Trim();
+            if (name.Length > 0)
+            {
+                compounds[LmuBinary.ReadInt32(buffer, offset)] = name;
+            }
+        }
+
+        return compounds;
+    }
+
+    /// <summary>mFrontTireCompoundName, relative to a TelemInfoV01 entry.</summary>
+    private const int FrontCompoundNameOffset = 620;
 
     public static bool PlayerInCar(bool playerHasVehicle, LmuScoringInfo scoringInfo) =>
         playerHasVehicle && scoringInfo.InRealtime;
@@ -102,6 +129,10 @@ internal static class LmuParser
             GamePhase = LmuBinary.ReadByte(bytes, 108),
             SessionTimeRemaining = LmuBinary.ReadSingle(bytes, 340),
             AveragePathWetness = LmuBinary.ReadDouble(bytes, 332),
+            // Weather, after mPlrFileName ends at 212: mDarkCloud@212, then these three.
+            Raining = LmuBinary.ReadDouble(bytes, 220),
+            AmbientTemperature = LmuBinary.ReadDouble(bytes, 228),
+            TrackTemperature = LmuBinary.ReadDouble(bytes, 236),
             IsFixedSetup = LmuBinary.ReadBool(bytes, 348),
             TrackGripLevel = LmuBinary.ReadByte(bytes, 349),
             // mInRealtime sits at 115, after mStartLight@113 and mNumRedLights@114.
@@ -119,6 +150,7 @@ internal static class LmuParser
             ReadOnlySpan<byte> wheel = LmuBinary.Slice(bytes, wheelsBase + i * wheelSize, wheelSize);
             wheels.Add(new LmuWheel
             {
+                BrakeTempCelsius = LmuBinary.ReadDouble(wheel, 24),
                 PressureKPa = LmuBinary.ReadDouble(wheel, 120),
                 TempInnerKelvin = LmuBinary.ReadDouble(wheel, 128),
                 TempMiddleKelvin = LmuBinary.ReadDouble(wheel, 136),
@@ -153,6 +185,14 @@ internal static class LmuParser
             FilteredClutch = LmuBinary.ReadDouble(bytes, 444),
             FuelLiters = LmuBinary.ReadDouble(bytes, 524),
             EngineMaxRpm = LmuBinary.ReadDouble(bytes, 532),
+            // State/damage: mScheduledStops@540, then these; mLastImpactPos@568 runs to mEngineTorque@592.
+            Overheating = LmuBinary.ReadBool(bytes, 541),
+            DetachedParts = LmuBinary.ReadBool(bytes, 542),
+            DentSeverity = LmuBinary.Slice(bytes, 544, 8).ToArray(),
+            LastImpactElapsedTime = LmuBinary.ReadDouble(bytes, 552),
+            LastImpactMagnitude = LmuBinary.ReadDouble(bytes, 560),
+            // After the four bytes mSpeedLimiter@604 .. mRearTireCompoundIndex@607.
+            FuelCapacityLiters = LmuBinary.ReadDouble(bytes, 608),
             CurrentSectorRaw = LmuBinary.ReadInt32(bytes, 600),
             SpeedLimiter = LmuBinary.ReadBool(bytes, 604),
             FrontCompoundName = LmuBinary.ReadNullTerminatedString(LmuBinary.Slice(bytes, 620, 18)),

@@ -15,6 +15,7 @@ using DiagnosticsLogLevel = Sprint.Desktop.Features.Diagnostics.LogLevel;
 using Sprint.Desktop.Features.Live;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Features.Sharing;
@@ -135,10 +136,15 @@ lock (runtime.SettingsGate)
 }
 // The live link: this PC's telemetry straight to an engineer's desktop, no server in between.
 // The link.* commands drive it, the telemetry loop below feeds it, its own worker owns the socket.
-PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log);
+// The driver's side shares the planner's active plan and its target lap with the engineer's pit wall.
+PitWallPlanShare pitWallShare = new(plannerService, lapTraceStore);
+PeerLink peerLink = new(UdpPeerSocket.Open, PeerNetwork.ResolveStunAsync, PeerNetwork.LocalAddresses, log, pitWallShare.Snapshot);
+peerLink.SetSharePlan(runtime.Settings.LiveLink.SharePlan);
 CancellationTokenSource peerLinkCts = new();
 Task peerLinkLoop = peerLink.RunAsync(peerLinkCts.Token);
-coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore);
+// The engineer's pit wall arrangement on this PC (pitwall.* commands, state.pitWallLayout).
+PitWallLayoutStore pitWallLayouts = new(runtime.DataRoot, log);
+coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts);
 
 // The New plan dialog's prefill and recorded game/car/track choices (GET /api/planner/context).
 // Only Prefill() and ContextOptions() are used: those rules live on the planner controller, so
@@ -496,6 +502,7 @@ app.MapGet("/api/state", () =>
             },
         },
         link = peerLink.State,
+        pitWallLayout = pitWallLayouts.Layout,
         compare = CompareState(),
         features = new { sprintWeb },
         updates = new
@@ -508,6 +515,13 @@ app.MapGet("/api/state", () =>
 });
 
 app.MapGet("/api/telemetry", () => Results.Json(state.Telemetry, json));
+
+// The pit wall's lap traces (engineer side): the lap being driven, the last, the best, or the
+// target the driver shares. Polled once a second while the Traces tile shows, so not in /api/state.
+app.MapGet("/api/pitwall/trace", (string? lap) =>
+    Enum.TryParse(lap, ignoreCase: true, out PitWallTraceLap which) && Enum.IsDefined(which)
+        ? Results.Json(peerLink.Trace(which), json)
+        : Results.BadRequest(new { error = "lap must be current, last, best or target" }));
 app.MapPost("/api/shutdown", () =>
 {
     app.Lifetime.StopApplication();

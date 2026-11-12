@@ -4,6 +4,8 @@ import { parseHudMessage } from './hud/hudModel'
 import type { HudMessage } from './hud/hudModel'
 import { parseSetupDriven, parseSetupLibrary, parseSetupSheet } from './views/SetupsDomain'
 import type { SetupDriven, SetupLibrary, SetupSheet } from './views/SetupsDomain'
+import { EMPTY_TRACE, parsePitWall, parsePitWallLayout, parsePitWallTrace } from './pitwall/pitWallData'
+import type { PitWall, PitWallLayout, PitWallTrace, TraceLap } from './pitwall/pitWallData'
 
 export type AppView = 'Home' | 'SessionPlanner' | 'OnTrack' | 'Analysis' | 'Dashes' | 'Devices' | 'Setups' | 'RaceEngineer' | 'LiveLink' | 'Settings' | 'Help'
 /** Mirrors `TelemetryConnectionState` in Sprint.Desktop.Api; the host sends enum names. */
@@ -160,6 +162,11 @@ export type LiveLink =
       health: LinkHealth
       session: LinkSession | null
       latest: LinkSample | null
+      /** The engineer's pit wall data; null on the driver's side and until the first board arrives. */
+      pitWall: PitWall | null
+      /** The driver's side: whether the session plan goes over the link, and which plan that is. */
+      sharingPlan: boolean
+      sharedPlan: { id: string; name: string } | null
     }
   | { phase: 'Failed' | 'Ended'; role: LinkRole; detail: string }
 
@@ -210,6 +217,8 @@ export type SprintState = {
   account: Account
   cloud: CloudState
   link: LiveLink
+  /** The engineer's pit wall pages and tiles, kept per PC (`pitwall-layout.json` on the host); null from an older host. */
+  pitWallLayout: PitWallLayout | null
   /** Feature flags from the host's appsettings.json. `sprintWeb` off hides every account, sync and setup surface. */
   features: { sprintWeb: boolean }
   /** Catalog ids plugged into USB but not added yet, one per device (`DeviceDetection` on the host). */
@@ -296,6 +305,10 @@ export type SprintBridge = {
   resizeHud(width: number, height: number, done: boolean): void
   /** Opens a dash in its own designer window, or brings that window forward. */
   openDashDesigner(dashId: string): Promise<void>
+  /** Opens the pit wall, or brings it forward; with a target, brings that page's or tile's own window forward. */
+  openPitWall(target?: { kind: 'page' | 'tile'; id: string }): Promise<void>
+  /** A lap of the linked driver's, for the pit wall's traces; an empty trace when there is none. */
+  pitWallTrace(lap: TraceLap): Promise<PitWallTrace>
 }
 
 type RawBridge = {
@@ -332,9 +345,12 @@ type RawBridge = {
   resizeHud?(width: number, height: number, done: boolean): void
   /** Absent in the preview harness's stub. */
   openDashDesigner?(dashId: string): Promise<unknown>
+  /** Both absent in an older preview stub. */
+  openPitWall?(target?: { kind: 'page' | 'tile'; id: string }): Promise<unknown>
+  pitWallTrace?(lap: string): Promise<unknown>
 }
 declare global { interface Window { sprint?: RawBridge } }
-const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, features: { sprintWeb: false }, foundDevices: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
+const emptyState = (): SprintState => ({ telemetry: { frame: null, link: noLink(), hz: 0 }, targets: null, settings: {}, controls: {}, catalog: {}, devices: [], dashLayouts: [], setupTemplates: [], setupPrograms: [], engineerControls: [], radioLog: [], engineerPushState: {}, plans: [], lapHistory: [], resultsImport: { available: false }, firstRun: { done: true, game: null }, account: { signedIn: false, serverUrl: '' }, cloud: emptyCloud(), link: { phase: 'Off' }, pitWallLayout: null, features: { sprintWeb: false }, foundDevices: [], dashCategories: { builtIn: [], custom: [] }, dashRefitLosses: {}, screens: [] })
 const emptyCloud = (): CloudState => ({ setupDone: true, server: 'None', storage: 'Local', officialServerUrl: null, progress: null, lastSync: null, live: liveOff() })
 const liveOff = (): LiveUplink => ({ status: 'Off', detail: null })
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
@@ -544,6 +560,9 @@ const parseLiveLink = (value: unknown): LiveLink => {
         health: { path: health.path, roundTripMs: optionalNumber(health.roundTripMs), sampleRate: finite(health.sampleRate), lossPercent: optionalNumber(health.lossPercent) },
         session: parseLinkSession(value.session),
         latest: parseLinkSample(value.latest),
+        pitWall: parsePitWall(value.pitWall),
+        sharingPlan: value.sharingPlan === true,
+        sharedPlan: isRecord(value.sharedPlan) && typeof value.sharedPlan.id === 'string' ? { id: value.sharedPlan.id, name: text(value.sharedPlan.name) } : null,
       }
     }
     case 'Failed':
@@ -642,6 +661,7 @@ const parseState = (value: unknown): SprintState => {
   parsed.account = parseAccount(value.account)
   parsed.cloud = parseCloud(value.cloud)
   parsed.link = parseLiveLink(value.link)
+  parsed.pitWallLayout = parsePitWallLayout(value.pitWallLayout)
   parsed.features = { sprintWeb: isRecord(value.features) && value.features.sprintWeb === true }
   parsed.foundDevices = stringList(value.foundDevices)
   const categories = isRecord(value.dashCategories) ? value.dashCategories : {}
@@ -752,6 +772,8 @@ export const bridge: SprintBridge = raw
           : () => undefined,
       resizeHud: (width, height, done) => raw.resizeHud?.(width, height, done),
       openDashDesigner: async (dashId) => { await raw.openDashDesigner?.(dashId) },
+      openPitWall: async (target) => { await raw.openPitWall?.(target) },
+      pitWallTrace: async (lap) => (raw.pitWallTrace ? parsePitWallTrace(await raw.pitWallTrace(lap).catch(() => null)) : EMPTY_TRACE),
     }
   : {
       // Outside Electron (plain `vite dev` in a browser) there is no host to talk to.
@@ -784,4 +806,6 @@ export const bridge: SprintBridge = raw
       subscribeHud: () => () => undefined,
       resizeHud: () => undefined,
       openDashDesigner: async () => undefined,
+      openPitWall: async () => undefined,
+      pitWallTrace: async () => EMPTY_TRACE,
     }

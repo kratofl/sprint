@@ -37,6 +37,7 @@ internal sealed class LmuTelemetryMapper
     // frames arrive ~60, so an unchanged vehicle array hands out the same list again: consumers
     // and the recorder can then tell "scoring updated" from "same snapshot" cheaply.
     private IReadOnlyList<LmuVehicleScoring> _fieldScoring = [];
+    private IReadOnlyDictionary<int, string> _fieldCompounds = new Dictionary<int, string>();
     private IReadOnlyList<FieldCar> _field = [];
 
     public LmuTelemetryMapper(Func<DateTimeOffset>? clock = null)
@@ -59,6 +60,7 @@ internal sealed class LmuTelemetryMapper
         this._completedLapEnergyDeltas.Clear();
         this._lastCar = null;
         this._fieldScoring = [];
+        this._fieldCompounds = new Dictionary<int, string>();
         this._field = [];
     }
 
@@ -67,7 +69,7 @@ internal sealed class LmuTelemetryMapper
         bool playerIsRealtime = parsed.PlayerHasVehicle && parsed.ScoringInfo.InRealtime;
         if (!playerIsRealtime)
         {
-            return this.SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle, this.MapField(parsed.Vehicles));
+            return this.SessionOnlyFrame(parsed.ScoringInfo, parsed.PlayerVehicle, this.MapField(parsed.Vehicles, parsed.FrontCompounds));
         }
 
         LmuVehicleTelemetry telemetry = parsed.Telemetry ?? throw new LmuDecodeException("LMU parsed frame is in-car but telemetry is missing");
@@ -127,6 +129,9 @@ internal sealed class LmuTelemetryMapper
                 BrakeApplied = Applied(telemetry.FilteredBrake),
                 FuelLiters = fuel,
                 FuelPerLapLiters = this.FuelPerLap(telemetry.LapNumber, fuel),
+                FuelCapacityLiters = double.IsFinite(telemetry.FuelCapacityLiters) && telemetry.FuelCapacityLiters > 0
+                    ? (float)telemetry.FuelCapacityLiters
+                    : null,
                 PositionX = ToF32(telemetry.Position.X),
                 PositionY = ToF32(telemetry.Position.Y),
                 PositionZ = ToF32(telemetry.Position.Z),
@@ -198,7 +203,8 @@ internal sealed class LmuTelemetryMapper
                 PitStops = scoring.PitStops
             },
             Conditions = MapConditions(parsed.ScoringInfo),
-            Field = this.MapField(parsed.Vehicles)
+            Damage = MapDamage(telemetry),
+            Field = this.MapField(parsed.Vehicles, parsed.FrontCompounds)
         };
     }
 
@@ -234,10 +240,10 @@ internal sealed class LmuTelemetryMapper
         };
     }
 
-    /// <summary>The scored field, or the previous list unchanged when the vehicle array has not changed since.</summary>
-    private IReadOnlyList<FieldCar> MapField(IReadOnlyList<LmuVehicleScoring> vehicles)
+    /// <summary>The scored field, or the previous list unchanged when neither the vehicle array nor any compound has changed since.</summary>
+    private IReadOnlyList<FieldCar> MapField(IReadOnlyList<LmuVehicleScoring> vehicles, IReadOnlyDictionary<int, string> compounds)
     {
-        if (this._fieldScoring.SequenceEqual(vehicles))
+        if (this._fieldScoring.SequenceEqual(vehicles) && SameCompounds(this._fieldCompounds, compounds))
         {
             return this._field;
         }
@@ -245,15 +251,20 @@ internal sealed class LmuTelemetryMapper
         FieldCar[] field = new FieldCar[vehicles.Count];
         for (int i = 0; i < vehicles.Count; i++)
         {
-            field[i] = MapFieldCar(vehicles[i], ClassPlace(vehicles, vehicles[i]));
+            field[i] = MapFieldCar(vehicles[i], ClassPlace(vehicles, vehicles[i]), compounds.GetValueOrDefault(vehicles[i].Id));
         }
 
         this._fieldScoring = vehicles;
+        this._fieldCompounds = compounds;
         this._field = field;
         return field;
     }
 
-    private static FieldCar MapFieldCar(LmuVehicleScoring vehicle, int classPlace)
+    private static bool SameCompounds(IReadOnlyDictionary<int, string> last, IReadOnlyDictionary<int, string> next) =>
+        last.Count == next.Count
+        && next.All(entry => last.TryGetValue(entry.Key, out string? held) && string.Equals(held, entry.Value, StringComparison.Ordinal));
+
+    private static FieldCar MapFieldCar(LmuVehicleScoring vehicle, int classPlace, string? compound)
     {
         IReadOnlyList<double> lastSectors = SectorDurations(vehicle);
         // mSector: 0 is sector 3, then 1 and 2. A current-lap mark only counts once the car has
@@ -297,6 +308,7 @@ internal sealed class LmuTelemetryMapper
             InGarage = vehicle.InGarageStall,
             PitState = MapPitState(vehicle.PitState),
             PitStops = vehicle.PitStops,
+            Compound = compound,
             FinishStatus = vehicle.FinishStatus switch
             {
                 1 => FinishStatus.Finished,
@@ -341,11 +353,35 @@ internal sealed class LmuTelemetryMapper
     /// they live in PhysicsOptionsV01, which the shared-memory layout does not expose, so
     /// claiming a value would be inventing one.
     /// </summary>
-    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo) => new()
+    private static SessionConditions MapConditions(LmuScoringInfo scoringInfo)
     {
-        PathWetness = Fraction(scoringInfo.AveragePathWetness),
-        TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
-        FixedSetup = scoringInfo.IsFixedSetup,
+        // Both temperatures exactly zero is the empty block before a track is loaded, not weather.
+        bool temperatures = scoringInfo.AmbientTemperature != 0 || scoringInfo.TrackTemperature != 0;
+        return new SessionConditions
+        {
+            PathWetness = Fraction(scoringInfo.AveragePathWetness),
+            TrackGripLevel = scoringInfo.TrackGripLevel > 0 ? scoringInfo.TrackGripLevel : null,
+            FixedSetup = scoringInfo.IsFixedSetup,
+            AirTemperatureCelsius = temperatures ? Temperature(scoringInfo.AmbientTemperature) : null,
+            TrackTemperatureCelsius = temperatures ? Temperature(scoringInfo.TrackTemperature) : null,
+            Raining = Fraction(scoringInfo.Raining),
+        };
+    }
+
+    /// <summary>A plausible weather temperature in °C, or null.</summary>
+    private static double? Temperature(double celsius) =>
+        double.IsFinite(celsius) && celsius is > -60 and < 100 ? celsius : null;
+
+    /// <summary>The body's state from the telemetry block: dents, the last impact and the warnings.</summary>
+    private static DamageState MapDamage(LmuVehicleTelemetry telemetry) => new()
+    {
+        Dents = [.. telemetry.DentSeverity.Take(8).Select(dent => Math.Min((int)dent, 2))],
+        LastImpactSessionTime = double.IsFinite(telemetry.LastImpactElapsedTime) && telemetry.LastImpactElapsedTime > 0
+            ? telemetry.LastImpactElapsedTime
+            : null,
+        LastImpactMagnitude = ToF64(telemetry.LastImpactMagnitude),
+        Overheating = telemetry.Overheating,
+        DetachedParts = telemetry.DetachedParts,
     };
 
     /// <summary>A 0–1 reading, or null when it is not a usable fraction.</summary>
@@ -615,7 +651,8 @@ internal sealed class LmuTelemetryMapper
             TempCoreCelsius = TemperatureCelsius(wheel.CarcassTempKelvin),
             PressureKPa = ToF32(wheel.PressureKPa),
             WearPercent = ToF32(wheel.WearFraction * 100),
-            Compound = compound
+            Compound = compound,
+            BrakeTempCelsius = ToF32(wheel.BrakeTempCelsius)
         };
     }
 

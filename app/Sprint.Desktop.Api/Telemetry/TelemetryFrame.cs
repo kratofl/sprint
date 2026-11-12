@@ -20,6 +20,9 @@ public sealed record TelemetryFrame
     public PenaltiesState Penalties { get; init; } = new();
     public SessionConditions Conditions { get; init; } = new();
 
+    /// <summary>The car's bodywork and impact state; null when the game does not report it or the driver is not in the car.</summary>
+    public DamageState? Damage { get; init; }
+
     /// <summary>
     /// Every car in the session, the player's included, as the game last scored them; null when
     /// the game does not report other cars. Scoring updates far less often than telemetry (LMU:
@@ -83,6 +86,9 @@ public sealed record FieldCar
     public int PitStops { get; init; }
     public FinishStatus FinishStatus { get; init; }
 
+    /// <summary>The front tyre compound as the game names it (e.g. "Medium"); null when the game does not say for this car.</summary>
+    public string? Compound { get; init; }
+
     /// <summary>World position in metres, in <see cref="CarPose"/>'s convention (right-handed, +Y up), seen from above.</summary>
     public float PositionX { get; init; }
     public float PositionZ { get; init; }
@@ -131,6 +137,40 @@ public sealed record SessionConditions
 
     /// <summary>Whether the session forces a fixed setup.</summary>
     public bool? FixedSetup { get; init; }
+
+    /// <summary>Air temperature, °C.</summary>
+    public double? AirTemperatureCelsius { get; init; }
+
+    /// <summary>Track surface temperature, °C.</summary>
+    public double? TrackTemperatureCelsius { get; init; }
+
+    /// <summary>How hard it is raining, 0–1.</summary>
+    public double? Raining { get; init; }
+}
+
+/// <summary>
+/// What has happened to the car's body. Read beside the tyres' own <see cref="TireState.Flat"/>
+/// and <see cref="TireState.Detached"/>, which cover the wheels.
+/// </summary>
+public sealed record DamageState
+{
+    /// <summary>
+    /// Dent severity at eight places around the car, 0 none, 1 some, 2 more, in the game's order
+    /// (LMU mDentSeverity). Always eight entries.
+    /// </summary>
+    public IReadOnlyList<int> Dents { get; init; } = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    /// <summary>Session time of the last impact, seconds; null before the first one.</summary>
+    public double? LastImpactSessionTime { get; init; }
+
+    /// <summary>How hard the last impact was, as the game measures it.</summary>
+    public double LastImpactMagnitude { get; init; }
+
+    /// <summary>Whether the game shows the overheating warning.</summary>
+    public bool Overheating { get; init; }
+
+    /// <summary>Whether any part other than a wheel has come off.</summary>
+    public bool DetachedParts { get; init; }
 }
 
 public sealed record SessionInfo
@@ -229,6 +269,9 @@ public sealed record CarState
     public float? BrakeApplied { get; init; }
     public float FuelLiters { get; init; }
     public float FuelPerLapLiters { get; init; }
+
+    /// <summary>How much fuel the tank holds, litres. Null when the game does not say.</summary>
+    public float? FuelCapacityLiters { get; init; }
     /// <summary>World position in the game's own frame, for track maps. <see cref="Pose"/> is the frame-neutral one.</summary>
     public float PositionX { get; init; }
     public float PositionY { get; init; }
@@ -303,6 +346,8 @@ public sealed record TireState
     public float PressureKPa { get; init; }
     public float WearPercent { get; init; }
     public string Compound { get; init; } = "";
+
+    public float BrakeTempCelsius { get; init; }
 }
 
 public sealed record LapState

@@ -26,8 +26,10 @@ const port = /^\d+$/.test(where) ? Number(where) : existsSync(runFile) ? JSON.pa
 if (!port) fail(`no CDP port for ${where} (is the run up yet?)`)
 
 const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json(), () => fail(`nothing listens on ${port}`))
-const main = targets.find((target) => target.type === 'page' && target.url.includes('backdrop=window'))
-if (!main) fail('the main window is not open')
+// SPRINT_CDP_PAGE=<text> drives another window instead, the first whose URL holds that text (e.g. pitwall=main).
+const pick = process.env.SPRINT_CDP_PAGE ?? 'backdrop=window'
+const main = targets.find((target) => target.type === 'page' && target.url.includes(pick))
+if (!main) fail(`no open window matches ${pick}`)
 
 const socket = new WebSocket(main.webSocketDebuggerUrl)
 await new Promise((resolve, reject) => {

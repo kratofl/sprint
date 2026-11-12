@@ -10,6 +10,7 @@ using Sprint.Desktop.Features.FirstRun;
 using Sprint.Desktop.Features.Input;
 using Sprint.Desktop.Features.LiveCompare;
 using Sprint.Desktop.Features.Peer;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Setup;
 using Sprint.Desktop.Runtime;
@@ -40,6 +41,7 @@ public sealed class RuntimeCoordinator
     private readonly LiveCompareService _liveCompare;
     private readonly GameFolder _gameFolder;
     private readonly ILapHistoryStore _lapHistory;
+    private readonly PitWallLayoutStore _pitWall;
 
     /// <summary>
     /// <paramref name="planner"/>/<paramref name="analysis"/>/<paramref name="diagnosticsLog"/> default
@@ -54,7 +56,8 @@ public sealed class RuntimeCoordinator
     /// <paramref name="gameFolder"/> must wrap the provider the host reads setups and results
     /// through; without it <c>game.setFolder</c> points a private provider nobody reads.
     /// <paramref name="lapHistory"/> is the corpus <c>plan.setTarget</c> resolves a pick against;
-    /// the host passes its one shared store.
+    /// the host passes its one shared store. <paramref name="pitWall"/> must be the store
+    /// <c>/api/state</c> reads <c>pitWallLayout</c> from.
     /// </summary>
     public RuntimeCoordinator(
         IDesktopRuntime runtime,
@@ -65,7 +68,8 @@ public sealed class RuntimeCoordinator
         PeerLink? link = null,
         LiveCompareService? liveCompare = null,
         GameFolder? gameFolder = null,
-        ILapHistoryStore? lapHistory = null)
+        ILapHistoryStore? lapHistory = null,
+        PitWallLayoutStore? pitWall = null)
     {
         this._runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         this._planner = planner ?? new SessionPlannerService(new LocalSessionPlanStore(Path.Combine(runtime.DataRoot, "session-plans")));
@@ -83,6 +87,7 @@ public sealed class RuntimeCoordinator
             () => null);
         this._gameFolder = gameFolder ?? new GameFolder(new LeMansUltimateGameProvider());
         this._lapHistory = lapHistory ?? new LocalLapHistoryStore(Path.Combine(runtime.DataRoot, "lap-history"));
+        this._pitWall = pitWall ?? new PitWallLayoutStore(runtime.DataRoot);
     }
 
     public bool Execute(JsonElement command, out string error)
@@ -157,6 +162,10 @@ public sealed class RuntimeCoordinator
             case "link.join": return this.LinkJoin(command, out error);
             case "link.complete": return this.LinkComplete(command, out error);
             case "link.close": return this.LinkClose(out error);
+            case "link.sharePlan": return this.LinkSharePlan(command, out error);
+            case "pitwall.saveLayout": return this.SavePitWallLayout(command, out error);
+            case "pitwall.placeWindow": return this.PlacePitWallWindow(command, out error);
+            case "pitwall.resetLayout": this._pitWall.Reset(); return true;
             default: error = $"unknown command type: {type}"; return false;
         }
     }
@@ -296,7 +305,62 @@ public sealed class RuntimeCoordinator
         return true;
     }
 
+    /// <summary>Whether the driver shares the session plan and its target lap. Remembered, and applied to the link at once.</summary>
+    private bool LinkSharePlan(JsonElement command, out string error)
+    {
+        error = "";
+        if (!TryBool(command, "share", out bool share)) { error = "share is required"; return false; }
+        lock (this._runtime.SettingsGate)
+        {
+            this._runtime.Settings.LiveLink.SharePlan = share;
+            this._runtime.SaveSettings();
+        }
+
+        this._link?.SetSharePlan(share);
+        return true;
+    }
+
     private const string LinkUnavailable = "the live link is not available";
+
+    // ── Pit wall layout (engineer side, per PC) ───────────────────────────────
+
+    /// <summary>Replaces the whole layout; the store validates it (pages, ids, kinds, the grid, overlaps, stack timing).</summary>
+    private bool SavePitWallLayout(JsonElement command, out string error)
+    {
+        if (!command.TryGetProperty("layout", out JsonElement layout)) { error = "layout is required"; return false; }
+        return this._pitWall.TrySave(layout, out error);
+    }
+
+    /// <summary>Remembers where Electron left a pit wall window: <c>main</c>, or a <c>page</c> or <c>tile</c> by id.</summary>
+    private bool PlacePitWallWindow(JsonElement command, out string error)
+    {
+        TryString(command, "kind", out string kindText);
+        PitWallWindow? window = kindText switch
+        {
+            "main" => PitWallWindow.Main,
+            "page" => PitWallWindow.Page,
+            "tile" => PitWallWindow.Tile,
+            _ => null,
+        };
+        if (window is not { } kind) { error = "kind must be main, page or tile"; return false; }
+
+        string? id = null;
+        if (kind != PitWallWindow.Main)
+        {
+            if (!TryString(command, "id", out string named)) { error = "id is required for a page or tile window"; return false; }
+            id = named;
+        }
+
+        if (!command.TryGetProperty("bounds", out JsonElement boundsJson)
+            || !PitWallLayouts.TryBounds(boundsJson, out PitWallBounds? bounds, out error)
+            || bounds is null)
+        {
+            error = "bounds must carry x, y and a positive width and height";
+            return false;
+        }
+
+        return this._pitWall.TryPlace(kind, id, bounds, out error);
+    }
 
     // ── Settings / controls (validated patch, never a whole-object overwrite) ──
 

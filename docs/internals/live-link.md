@@ -40,3 +40,21 @@ The server path ([live-telemetry.md](live-telemetry.md)) is separate and untouch
 - **Windows asks for firewall access** the first time the host opens the UDP socket. Denying it
   usually still works, because replies to our own outgoing packets pass, but it is the first thing
   to check when a link never connects.
+
+## The pit wall over the link
+
+The engineer's pit wall (`Features/PitWall/`) gets more than samples: a board (session, field, car)
+twice a second, radar ten times a second, and the shared plan and its target lap.
+
+- **Anything bigger than a datagram is a blob** (`PeerBlobs`): deflated, base64url (JSON escapes
+  nothing in it), cut into numbered parts of one `version`. Base64 with `+` and `/` would be escaped
+  to six bytes each by System.Text.Json and break the 1200-byte budget.
+- **The replay rule drops a part that arrives behind a newer packet**, and a lost part loses the
+  version. So the plan and target are repeated (5 s, 10 s) under the same version until they change,
+  and the receiver keeps the parts it has; a board is not repeated, the next one replaces it.
+- **A newer version drops the one being collected.** Versions are the sender's clock in ms (or one
+  more), so they keep rising across a restart of the driver's desktop.
+- **Unknown message types read as null.** That is how an older build ignores `blob` and `radar`; keep
+  `PeerMessage.Deserialize` that way when adding types.
+- **The plan travels as `state.plans` writes it** and the engineer passes the JSON through unparsed,
+  so the pit wall reads the same shape the planner does, whatever build the driver runs.

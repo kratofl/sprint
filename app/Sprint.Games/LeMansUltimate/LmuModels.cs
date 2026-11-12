@@ -10,6 +10,7 @@ internal sealed record LmuWheel
     public double TempOuterKelvin { get; init; }
     public double WearFraction { get; init; }
     public double CarcassTempKelvin { get; init; }
+    public double BrakeTempCelsius { get; init; }
 }
 
 internal sealed record LmuVehicleTelemetry
@@ -40,6 +41,24 @@ internal sealed record LmuVehicleTelemetry
     public double FilteredSteering { get; init; }
     public double FilteredClutch { get; init; }
     public double FuelLiters { get; init; }
+
+    /// <summary>mFuelCapacity: the tank's size, litres.</summary>
+    public double FuelCapacityLiters { get; init; }
+
+    /// <summary>mOverheating: whether the overheating warning shows.</summary>
+    public bool Overheating { get; init; }
+
+    /// <summary>mDetached: whether any part other than a wheel has come off.</summary>
+    public bool DetachedParts { get; init; }
+
+    /// <summary>mDentSeverity[8]: 0 none, 1 some, 2 more, at eight places around the car.</summary>
+    public IReadOnlyList<byte> DentSeverity { get; init; } = new byte[8];
+
+    /// <summary>mLastImpactET: session time of the last impact; 0 before the first.</summary>
+    public double LastImpactElapsedTime { get; init; }
+
+    /// <summary>mLastImpactMagnitude.</summary>
+    public double LastImpactMagnitude { get; init; }
     public int CurrentSectorRaw { get; init; }
     public string FrontCompoundName { get; init; } = "";
     public string RearCompoundName { get; init; } = "";
@@ -185,6 +204,15 @@ internal sealed record LmuScoringInfo
 
     /// <summary>mTrackGripLevel: the sim's own grip grade.</summary>
     public byte TrackGripLevel { get; init; }
+
+    /// <summary>mRaining: how hard it rains, 0–1.</summary>
+    public double Raining { get; init; }
+
+    /// <summary>mAmbientTemp, °C.</summary>
+    public double AmbientTemperature { get; init; }
+
+    /// <summary>mTrackTemp, °C.</summary>
+    public double TrackTemperature { get; init; }
 }
 
 internal sealed record LmuParsedFrame
@@ -204,5 +232,11 @@ internal sealed record LmuParsedFrame
 
     /// <summary>Every entry of the vehicle scoring array, in array order (not by place).</summary>
     public IReadOnlyList<LmuVehicleScoring> Vehicles { get; init; } = [];
+
+    /// <summary>
+    /// Each car's front tyre compound by slot id (mID), from the telemetry array, which holds
+    /// every active car, not just the player's. Cars whose telemetry names no compound are absent.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> FrontCompounds { get; init; } = new Dictionary<int, string>();
     public bool PlayerInCar => this.PlayerHasVehicle && this.ScoringInfo.InRealtime && this.Telemetry is not null && this.Scoring is not null;
 }

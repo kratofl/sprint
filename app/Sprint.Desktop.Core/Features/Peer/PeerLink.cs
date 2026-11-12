@@ -3,10 +3,12 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Contracts;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Diagnostics;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Sprint.Desktop.Features.Sharing;
 
@@ -79,8 +81,9 @@ public sealed record PeerLinkHealth(PeerPath Path, int? RoundTripMs, double Samp
 /// <summary>
 /// The live link as Settings and the Live link page show it. Which fields are set depends on
 /// <see cref="Phase"/>: <see cref="Code"/> while inviting or joining, <see cref="Health"/> and
-/// <see cref="Session"/> while connected or interrupted, <see cref="Latest"/> on the engineer's
-/// side only, <see cref="Detail"/> once failed or ended.
+/// <see cref="Session"/> while connected or interrupted, <see cref="Latest"/> and
+/// <see cref="PitWall"/> on the engineer's side only, <see cref="SharedPlan"/> on the driver's,
+/// <see cref="Detail"/> once failed or ended.
 /// </summary>
 public sealed record PeerLinkState
 {
@@ -104,6 +107,15 @@ public sealed record PeerLinkState
 
     /// <summary>The newest telemetry sample from the driver.</summary>
     public LiveSample? Latest { get; init; }
+
+    /// <summary>Whether the driver shares the session plan with the engineer (the setting, whatever the phase).</summary>
+    public bool SharingPlan { get; init; }
+
+    /// <summary>Driver: the plan the session planner holds active, which sharing sends; null without one.</summary>
+    public PeerSharedPlan? SharedPlan { get; init; }
+
+    /// <summary>Engineer: the pit wall, once the driver's first board arrived.</summary>
+    public PitWallState? PitWall { get; init; }
 }
 
 /// <summary>The link's timings, apart from any socket or clock.</summary>
@@ -117,6 +129,17 @@ public static class PeerLinkRules
 
     /// <summary>Keepalive and round trip once connected; also how often the driver repeats the session.</summary>
     public static readonly TimeSpan Ping = TimeSpan.FromSeconds(1);
+
+    /// <summary>How often the driver sends the pit wall board (session, field and car).</summary>
+    public static readonly TimeSpan Board = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>How often the driver sends the cars around it.</summary>
+    public static readonly TimeSpan Radar = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>How often the driver repeats the shared plan, and the target lap, when they did not change.</summary>
+    public static readonly TimeSpan PlanRepeat = TimeSpan.FromSeconds(5);
+
+    public static readonly TimeSpan TargetRepeat = TimeSpan.FromSeconds(10);
 
     public static readonly TimeSpan StunRetry = TimeSpan.FromMilliseconds(500);
 
@@ -183,8 +206,19 @@ public static class PeerLinkRules
 /// All of them only queue or set fields. One worker calls <see cref="Step"/>, which owns the
 /// socket and every per-link field, and publishes <see cref="State"/>.
 /// </para>
+/// <para>
+/// Beside the samples the driver sends the engineer's pit wall: a board twice a second, radar ten
+/// times a second and, while <see cref="SetSharePlan"/> allows it, the plan <paramref name="share"/>
+/// offers and its target lap. Those exceed a datagram, so they travel as <see cref="PeerBlobs"/>.
+/// </para>
 /// </summary>
-public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun, LocalAddresses localAddresses, ILog? log = null)
+/// <param name="share">What the session planner offers to share for a session type; null shares no plan.</param>
+public sealed class PeerLink(
+    OpenPeerSocket open,
+    ResolveStunServers resolveStun,
+    LocalAddresses localAddresses,
+    ILog? log = null,
+    Func<SessionType, PitWallShare?>? share = null)
 {
     private const int MaxBufferedSamples = 40;
 
@@ -196,17 +230,23 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
 
     // Written by the telemetry loop, read by the worker.
     private volatile LiveTarget? _target;
+    private volatile TelemetryFrame? _frame;
     private long _lastFrameTicks;
+
+    // Written by a command, read by the worker.
+    private volatile bool _sharePlan = true;
 
     // Written by the worker, read by the other threads.
     private volatile PeerLinkState _state = PeerLinkState.Off;
     private volatile bool _sharing;
+    private volatile PitWallAccumulator? _pitWall;
     private long _inviteLinkId;
 
     // Worker only. A link exists while it holds a socket; once it failed or ended, only the
     // state it ended in remains, for the page to show until the next start or close.
     private Link? _link;
     private PeerLinkState? _over;
+    private DateTimeOffset _stepAt;
 
     public PeerLinkState State => this._state;
 
@@ -258,6 +298,12 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
     /// <summary>Ends the link, telling the peer, or clears a failed or ended one.</summary>
     public void Close() => this._requests.Enqueue(new CloseRequest());
 
+    /// <summary>Whether the driver shares the session plan and its target lap. On until switched off.</summary>
+    public void SetSharePlan(bool share) => this._sharePlan = share;
+
+    /// <summary>Engineer: one lap's traces for the pit wall; empty when there is no such lap or no link.</summary>
+    public PitWallTrace Trace(PitWallTraceLap lap) => this._pitWall?.Trace(lap) ?? PitWallTrace.Empty;
+
     /// <summary>The recorder's open session, every telemetry tick: what the driver is sharing.</summary>
     public void Update(LapHistorySession? openSession)
     {
@@ -271,6 +317,7 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
     /// <summary>A new telemetry frame. Cheap: notes the time and, while sharing, keeps a sample at up to 20 Hz.</summary>
     public void Observe(TelemetryFrame frame)
     {
+        this._frame = frame;
         Interlocked.Exchange(ref this._lastFrameTicks, frame.Timestamp.UtcTicks);
         if (!this._sharing || this._target is null || !this._gate.Admit(frame.Timestamp))
             return;
@@ -287,11 +334,14 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
     /// <summary>One worker step at <paramref name="now"/>: applies requests, reads the socket, sends what is due and publishes the state.</summary>
     public void Step(DateTimeOffset now)
     {
+        this._stepAt = now;
         while (this._requests.TryDequeue(out Request? request))
             this.Apply(request, now);
 
         if (this._link is { } link)
         {
+            if (link.Role == PeerRole.Driver)
+                this.LookAtPlan(link, now);
             this.Receive(link, now);
             if (this._link == link)
                 this.Advance(link, now);
@@ -378,6 +428,7 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
         }
 
         this._link = link;
+        this._pitWall = link.PitWall;
     }
 
     /// <summary>Closes the current link: a bye to the peer if one could be reached, then the socket goes.</summary>
@@ -396,6 +447,7 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
         this._link?.Release();
         this._link = null;
         this._over = null;
+        this._pitWall = null;
     }
 
     /// <summary>Fails or ends the link: the socket and keys go, the state it ended in stays.</summary>
@@ -408,10 +460,13 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
             Health = null,
             Session = null,
             Latest = null,
+            SharedPlan = null,
+            PitWall = null,
             Detail = detail,
         };
         link.Release();
         this._link = null;
+        this._pitWall = null;
     }
 
     private void Receive(Link link, DateTimeOffset now)
@@ -475,6 +530,14 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
             case PeerSampleMessage sample when link.Role == PeerRole.Engineer:
                 link.Latest = sample.Sample;
                 link.Samples++;
+                link.PitWall?.Sample(sample.Sample);
+                break;
+            case PeerBlobMessage blob when link is { Role: PeerRole.Engineer, PitWall: { } wall }:
+                if (link.Blobs.Accept(blob) is { } payload)
+                    Unpack(wall, blob.Kind, payload, now);
+                break;
+            case PeerRadarMessage radar when link is { Role: PeerRole.Engineer, PitWall: { } wall }:
+                wall.Radar(PitWallWire.Clean(radar.Cars), now);
                 break;
             case PeerBye:
                 this.End(
@@ -621,6 +684,114 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
             this.Send(link, new PeerSampleMessage(sample), remote);
             link.Samples++;
         }
+
+        this.SendPitWall(link, now, remote);
+    }
+
+    /// <summary>
+    /// Driver: the pit wall's share of the stream. Board and radar only while frames arrive; the
+    /// plan and target whenever they change and again every few seconds, so parts lost on the way
+    /// are filled in and an engineer who joined late catches up. Not sharing sends null instead.
+    /// </summary>
+    private void SendPitWall(Link link, DateTimeOffset now, IPEndPoint remote)
+    {
+        DateTimeOffset lastFrame = new(Interlocked.Read(ref this._lastFrameTicks), TimeSpan.Zero);
+        if (this._frame is { } frame && now - lastFrame <= LiveUplinkRules.Idle)
+        {
+            if (now - link.LastBoard >= PeerLinkRules.Board)
+            {
+                link.LastBoard = now;
+                this.SendBlob(link, "board", link.NextVersion(now), JsonSerializer.SerializeToUtf8Bytes(link.Board.Build(frame), PitWallWire.Json), remote);
+            }
+
+            if (now - link.LastRadar >= PeerLinkRules.Radar)
+            {
+                link.LastRadar = now;
+                this.Send(link, PeerRadarMessage.Fitting(frame.Session.InCar ? PitWallBoardBuilder.Radar(frame) : []), remote);
+            }
+        }
+
+        PitWallShare? offer = this._sharePlan ? link.Offer : null;
+        string plan = offer?.PlanJson ?? "null";
+        if (plan != link.PlanJson)
+        {
+            link.PlanJson = plan;
+            link.PlanVersion = link.NextVersion(now);
+            link.LastPlan = DateTimeOffset.MinValue;
+        }
+
+        if (now - link.LastPlan >= PeerLinkRules.PlanRepeat)
+        {
+            link.LastPlan = now;
+            this.SendBlob(link, "plan", link.PlanVersion, System.Text.Encoding.UTF8.GetBytes(link.PlanJson), remote);
+        }
+
+        // The share hands out the same trace instance until its target changes.
+        PitWallTrace? target = offer?.Target;
+        if (!ReferenceEquals(target, link.Target) || link.TargetVersion == 0)
+        {
+            link.Target = target;
+            link.TargetVersion = link.NextVersion(now);
+            link.LastTarget = DateTimeOffset.MinValue;
+        }
+
+        if (now - link.LastTarget >= PeerLinkRules.TargetRepeat)
+        {
+            link.LastTarget = now;
+            this.SendBlob(link, "target", link.TargetVersion, JsonSerializer.SerializeToUtf8Bytes(link.Target, PitWallWire.Json), remote);
+        }
+    }
+
+    private void SendBlob(Link link, string kind, long version, byte[] payload, IPEndPoint remote)
+    {
+        foreach (PeerBlobMessage part in PeerBlobs.Split(kind, version, payload))
+            this.Send(link, part, remote);
+    }
+
+    /// <summary>Driver, about once a second in any phase: what the planner offers, for the Live link page and the next send.</summary>
+    private void LookAtPlan(Link link, DateTimeOffset now)
+    {
+        if (share is null || now - link.LastPlanLook < PeerLinkRules.Ping)
+            return;
+        link.LastPlanLook = now;
+        try
+        {
+            link.Offer = share(this._frame?.Session.SessionType ?? SessionType.Unknown);
+        }
+        catch (Exception ex)
+        {
+            link.Offer = null;
+            this._log.Warn("Live link could not read the session plan to share", ex);
+        }
+    }
+
+    /// <summary>Engineer: a completed blob into the pit wall. A payload that does not read is dropped; the next copy replaces it.</summary>
+    private static void Unpack(PitWallAccumulator wall, string kind, byte[] payload, DateTimeOffset now)
+    {
+        try
+        {
+            switch (kind)
+            {
+                case "board" when PitWallWire.ReadBoard(payload) is { } board:
+                    wall.Board(board, now);
+                    break;
+                case "plan":
+                    using (JsonDocument plan = JsonDocument.Parse(payload))
+                    {
+                        if (plan.RootElement.ValueKind is JsonValueKind.Object or JsonValueKind.Null)
+                            wall.Plan(plan.RootElement.ValueKind == JsonValueKind.Object ? plan.RootElement.Clone() : null);
+                    }
+
+                    break;
+                case "target":
+                    wall.Target(PitWallWire.ReadTrace(payload));
+                    break;
+            }
+        }
+        catch (JsonException)
+        {
+            // A newer or broken peer; the board, plan or target stays as it was.
+        }
     }
 
     /// <summary>The session being driven: the recorder's open session while frames still arrive.</summary>
@@ -636,7 +807,9 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
             link.Socket.Send(channel.Seal(PeerMessage.Serialize(message)), to);
     }
 
-    private void Publish() => this._state = this._link is { } link ? this.Snapshot(link) : this._over ?? PeerLinkState.Off;
+    private void Publish() => this._state = this._link is { } link
+        ? this.Snapshot(link)
+        : (this._over ?? PeerLinkState.Off) with { SharingPlan = this._sharePlan };
 
     private PeerLinkState Snapshot(Link link)
     {
@@ -652,6 +825,9 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
                 : null,
             Session = up ? link.Session : null,
             Latest = up ? link.Latest : null,
+            SharingPlan = this._sharePlan,
+            SharedPlan = link.Role == PeerRole.Driver && link.Offer is { } offer ? new PeerSharedPlan(offer.PlanId, offer.PlanName) : null,
+            PitWall = up ? link.PitWall?.State(this._stepAt) : null,
         };
     }
 
@@ -676,6 +852,7 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
         private ulong _windowCounter;
         private long _windowReceived;
         private long _windowSamples;
+        private long _version;
 
         public Link(PeerRole role, ulong id, IPeerSocket socket, DateTimeOffset now)
         {
@@ -683,6 +860,7 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
             this.Id = id;
             this.Socket = socket;
             this.PhaseSince = now;
+            this.PitWall = role == PeerRole.Engineer ? new PitWallAccumulator() : null;
         }
 
         public PeerRole Role { get; }
@@ -736,6 +914,43 @@ public sealed class PeerLink(OpenPeerSocket open, ResolveStunServers resolveStun
         public LiveTarget? Session { get; set; }
 
         public LiveSample? Latest { get; set; }
+
+        /// <summary>Engineer: the pit wall this link fills.</summary>
+        public PitWallAccumulator? PitWall { get; }
+
+        public PeerBlobAssembler Blobs { get; } = new();
+
+        /// <summary>Driver: builds the boards, remembering start places and the impact lap.</summary>
+        public PitWallBoardBuilder Board { get; } = new();
+
+        /// <summary>Driver: what the planner offered at the last look.</summary>
+        public PitWallShare? Offer { get; set; }
+
+        public DateTimeOffset LastPlanLook { get; set; } = DateTimeOffset.MinValue;
+
+        public DateTimeOffset LastBoard { get; set; } = DateTimeOffset.MinValue;
+
+        public DateTimeOffset LastRadar { get; set; } = DateTimeOffset.MinValue;
+
+        /// <summary>Driver: the plan payload last sent ("null" while not sharing), its version and when.</summary>
+        public string PlanJson { get; set; } = "";
+
+        public long PlanVersion { get; set; }
+
+        public DateTimeOffset LastPlan { get; set; } = DateTimeOffset.MinValue;
+
+        public PitWallTrace? Target { get; set; }
+
+        public long TargetVersion { get; set; }
+
+        public DateTimeOffset LastTarget { get; set; } = DateTimeOffset.MinValue;
+
+        /// <summary>A blob version above every earlier one, also across a restart of this desktop: the clock in ms, or one more.</summary>
+        public long NextVersion(DateTimeOffset now)
+        {
+            this._version = Math.Max(this._version + 1, now.ToUnixTimeMilliseconds());
+            return this._version;
+        }
 
         public void Enter(PeerLinkPhase phase, DateTimeOffset now)
         {

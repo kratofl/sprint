@@ -83,3 +83,25 @@
   flex-direction: column;
   gap: 2px;
 }
+
+/* The driver's switch for sharing the session plan, between hairlines. */
+.live-link-share {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+}
+
+.live-link-share-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.live-link-share-title {
+  font-weight: 600;
+}

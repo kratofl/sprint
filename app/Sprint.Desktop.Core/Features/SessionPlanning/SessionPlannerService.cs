@@ -95,6 +95,19 @@ public sealed class SessionPlannerService
         }
     }
 
+    /// <summary>
+    /// Reads the active plan under the planner's lock, so a reader on another thread (the live
+    /// link sharing it) never sees it half-updated by the ingest loop. Null without an active plan.
+    /// </summary>
+    public T? ReadActive<T>(Func<SessionPlan, T> read)
+        where T : class
+    {
+        lock (this._gate)
+        {
+            return this.ActivePlan is { } plan ? read(plan) : null;
+        }
+    }
+
     public SessionPlan? Find(string planId)
     {
         lock (this._gate)

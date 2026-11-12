@@ -147,3 +147,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── Linked as the engineer: the way into the pit wall ───────────────────── */
+
+.engineer-pitwall {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.engineer-pitwall-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.engineer-pitwall-text p {
+  margin: 0;
+}

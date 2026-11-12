@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Minus, Plus, RotateCcw, Send, X } from 'lucide-react'
-import type { AppView, SprintCommand } from '../bridge'
+import { Maximize2, Minus, Plus, RotateCcw, Send, X } from 'lucide-react'
+import { bridge, type AppView, type LiveLink, type SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
@@ -8,6 +8,8 @@ import { EngineerTabs } from './EngineerTabs'
 import { Status } from '../shell/Status'
 import type { StatusTone } from '../shell/Status'
 import { describeTelemetry, type TelemetryTone } from '../shell/telemetry'
+import { healthParts, linkStatus } from './LiveLinkDomain'
+import { carName, carNumber, playerOf } from '../pitwall/timing'
 import './RaceEngineerView.css'
 
 // ── Wire shapes, narrowed once at the edge ──────────────────────────────────
@@ -199,13 +201,16 @@ export function RaceEngineerView({
   }
 
   const telemetry = runtime.kind === 'ready' ? describeTelemetry(runtime.sprint.telemetry) : null
+  const link: LiveLink = runtime.kind === 'ready' ? runtime.sprint.link : { phase: 'Off' }
+  // Linked as the engineer, the pit wall is this page's one primary action.
+  const engineerLink = (link.phase === 'Connected' || link.phase === 'Interrupted') && link.role === 'Engineer' ? link : null
   const telemetryBar = telemetry ? TELEMETRY_INFOBAR[telemetry.tone] : null
 
   const commands = (
     <>
       <button
         type="button"
-        className="button primary"
+        className={engineerLink ? 'button' : 'button primary'}
         onClick={push}
         disabled={dirty.length === 0 || isPushPending}
         title={isPushPending ? 'Waiting for car acknowledgement.' : dirty.length === 0 ? 'Stage a change before pushing.' : undefined}
@@ -258,6 +263,7 @@ export function RaceEngineerView({
       <EngineerTabs current="RaceEngineer" onNavigate={onNavigate} />
 
       <div className="engineer-body">
+        {engineerLink && <PitWallCard link={engineerLink} />}
         {telemetry && telemetryBar && (
           <div className={`infobar ${telemetryBar}`} role={telemetryBar === 'info' ? 'status' : 'alert'}>
             <span className="infobar-icon" aria-hidden="true">
@@ -426,5 +432,28 @@ export function RaceEngineerView({
         />
       )}
     </div>
+  )
+}
+
+/** Linked as the engineer: who is driving, the link, and the way into the pit wall (its own window). */
+function PitWallCard({ link }: { link: Extract<LiveLink, { phase: 'Connected' | 'Interrupted' }> }) {
+  const player = link.pitWall ? playerOf(link.pitWall.field) : null
+  const status = linkStatus(link)
+  const session = link.session ? [link.session.track, link.session.sessionType].filter((part) => part.length > 0).join(' · ') : 'Not on track'
+  return (
+    <section className="card engineer-pitwall">
+      <div className="engineer-pitwall-text">
+        <h2 className="card-title">{player ? `Watching #${carNumber(player)} · ${player.driver}` : 'Linked to the driver'}</h2>
+        <p className="engineer-secondary">
+          {player ? `${carName(player)} · ${session} · lap ${player.lapsCompleted + 1}` : session}
+        </p>
+        <Status tone={status.tone} quiet>
+          {[status.label, ...healthParts(link.health).slice(1)].join(' · ')}
+        </Status>
+      </div>
+      <button type="button" className="button primary" onClick={() => void bridge.openPitWall()}>
+        <Maximize2 /> Open the pit wall
+      </button>
+    </section>
   )
 }

@@ -1,0 +1,1569 @@
+/* The pit wall (pitwall/PitWallRoot.tsx): a bar that is the window's title bar, then a 12 × 8 grid
+   of tiles. Tokens only; the brand orange marks our car, the shown stint, selection and the one
+   primary (Done). Nothing animates continuously. */
+
+[data-surface="pitwall"],
+[data-surface="pitwall"] body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pw-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--window);
+  color: var(--label);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* ── Bar ─────────────────────────────────────────────────────────────────── */
+
+.pw-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  flex: none;
+  min-width: 0;
+  padding: 0 12px 0 16px;
+  /* The OS caption buttons overlay the right edge (as `.titlebar-trail` in styles.css). */
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 12px);
+  border-bottom: 1px solid var(--layer-stroke);
+  background: var(--toolbar);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.pw-bar button,
+.pw-bar .pw-menu {
+  -webkit-app-region: no-drag;
+}
+
+.pw-bar-title {
+  flex: none;
+  font: 600 15px/22px var(--font-display);
+  white-space: nowrap;
+}
+
+.pw-own-hint {
+  margin-left: -8px;
+  font-size: 12px;
+}
+
+.pw-pages {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--track);
+}
+
+.pw-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--label-secondary);
+  white-space: nowrap;
+}
+
+.pw-page.icon {
+  padding: 0 6px;
+}
+
+.pw-page:hover:not(:disabled) {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.pw-page[aria-selected='true'] {
+  background: var(--segmented-selected);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.pw-page.away {
+  color: var(--label-tertiary);
+}
+
+.pw-page:disabled {
+  color: var(--label-disabled);
+}
+
+.pw-who {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pw-bar-hint {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pw-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: none;
+}
+
+.pw-linkpill {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+}
+
+.pw-menu {
+  position: fixed;
+  z-index: 20;
+}
+
+.pw-notice {
+  margin: 8px 10px 0;
+}
+
+/* ── Grid and tiles ──────────────────────────────────────────────────────── */
+
+.pw-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.pw-grid-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Padding and gap are mirrored in PitWallGrid.tsx (GRID_PAD, GRID_GAP) for dragging. */
+.pw-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 0;
+  padding: 10px;
+}
+
+.pw-cell {
+  border: 1px dashed var(--divider);
+  border-radius: var(--radius-control);
+}
+
+.pw-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.pw-tile.editing {
+  outline: 1px dashed var(--label-tertiary);
+  outline-offset: -1px;
+}
+
+.pw-tile.editing:focus-visible,
+.pw-tile.selected {
+  outline: 2px solid var(--brand-500);
+  outline-offset: -2px;
+}
+
+.pw-tile.drop-target {
+  outline: 2px solid var(--brand-500);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--brand-500) 8%, var(--surface));
+}
+
+.pw-tile.dragging {
+  opacity: 0.7;
+}
+
+.pw-tile.invalid {
+  outline: 2px solid var(--danger-text);
+  outline-offset: -2px;
+}
+
+.pw-slot-inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pw-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  flex: none;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--divider);
+  container-type: inline-size;
+}
+
+.pw-tile-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pw-tile-extra {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  font-size: 12px;
+}
+
+.pw-tile-tools {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+}
+
+.pw-tile-tool {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: var(--control-fill);
+  color: var(--label-secondary);
+}
+
+.pw-tile-tool:hover {
+  background: var(--control-fill-hover);
+  color: var(--label);
+}
+
+.pw-tile-tool.grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.pw-tile-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.pw-tile-body.pw-flush {
+  padding: 0;
+}
+
+.pw-tile-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 12px;
+  height: 12px;
+  border-right: 2px solid var(--label-secondary);
+  border-bottom: 2px solid var(--label-secondary);
+  border-radius: 0 0 3px 0;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.pw-seg .segmented-item {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.pw-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  max-width: 380px;
+  height: 100%;
+  padding: 0 12px;
+}
+
+.pw-empty span {
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.pw-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pw-away {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 16px;
+}
+
+.pw-away-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pw-page-empty {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+}
+
+.pw-all-out {
+  flex: 1;
+}
+
+.pw-single {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  padding: 10px;
+}
+
+.pw-single .pw-tile {
+  flex: 1;
+}
+
+/* ── A stack's header ────────────────────────────────────────────────────── */
+
+.pw-stack-icon {
+  display: inline-flex;
+  color: var(--label-secondary);
+}
+
+.pw-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.pw-stack-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+}
+
+.pw-stack-nav {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control-small);
+  background: transparent;
+  color: var(--label-secondary);
+}
+
+.pw-stack-nav:hover {
+  background: var(--subtle-hover);
+  color: var(--label);
+}
+
+.pw-stack-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* A 6px dot in a 12px target. */
+.pw-stack-dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  background: var(--label-tertiary);
+  background-clip: content-box;
+  opacity: 0.6;
+}
+
+.pw-stack-dot[aria-checked='true'] {
+  background-color: var(--label);
+  opacity: 1;
+}
+
+/* A narrow tile keeps its title: the countdown goes first, then the dots (the arrows stay). */
+@container (max-width: 300px) {
+  .pw-stack-hint {
+    display: none;
+  }
+}
+
+@container (max-width: 240px) {
+  .pw-stack-dots {
+    display: none;
+  }
+}
+
+/* ── Session ─────────────────────────────────────────────────────────────── */
+
+.pw-session-body {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 0 16px;
+}
+
+.pw-session-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.pw-session-fact {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pw-session-fact .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pw-session-fact b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+/* ── Timing ──────────────────────────────────────────────────────────────── */
+
+.pw-timing {
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-summary {
+  display: grid;
+  grid-template-columns: repeat(6, auto);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.pw-summary > div {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.pw-summary b {
+  font-size: 15px;
+  line-height: 22px;
+  white-space: nowrap;
+}
+
+.pw-table {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pw-trow {
+  display: grid;
+  grid-template-columns: 22px 30px 4px 28px minmax(0, 1fr) 30px 34px 56px 48px 58px 42px 42px 42px 56px 36px;
+  gap: 7px;
+  align-items: center;
+  min-height: 29px;
+  padding: 0 12px;
+  border-top: 1px solid var(--divider);
+}
+
+.pw-trow.head {
+  min-height: 26px;
+  border-top: 0;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pw-trow.you {
+  background: var(--control-fill);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--brand-500);
+}
+
+.pw-trow .r {
+  text-align: right;
+}
+
+.pw-trow .c {
+  display: flex;
+  justify-content: center;
+}
+
+.pw-gain {
+  color: var(--label-tertiary);
+  font-size: 11px;
+}
+
+.pw-gain.up {
+  color: var(--success-text);
+}
+
+.pw-gain.down {
+  color: var(--danger-text);
+}
+
+.pw-classbar {
+  align-self: stretch;
+  margin: 6px 0;
+  border-radius: 2px;
+  background: var(--label);
+}
+
+.pw-classbar.c1 {
+  background: var(--label-tertiary);
+}
+
+.pw-classbar.c2 {
+  background: var(--label-secondary);
+}
+
+.pw-tyre {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--label);
+  border-radius: 50%;
+  color: var(--label);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pw-tyre.t-s {
+  border-color: var(--red-500);
+  color: var(--red-500);
+}
+
+.pw-tyre.t-m {
+  border-color: var(--yellow-500);
+  color: var(--yellow-500);
+}
+
+.pw-tyre.t-w {
+  border-color: var(--blue-500);
+  color: var(--blue-500);
+}
+
+.pw-tyre.t-i {
+  border-color: var(--green-500);
+  color: var(--green-500);
+}
+
+.pw-sec.purple {
+  color: var(--purple-500);
+  font-weight: 600;
+}
+
+.pw-sec.green {
+  color: var(--success-text);
+  font-weight: 600;
+}
+
+.pw-pitchip {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--infobar-warning);
+  color: var(--infobar-warning-text);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+/* ── Track ───────────────────────────────────────────────────────────────── */
+
+.pw-ringrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 100%;
+}
+
+.pw-ring {
+  height: 100%;
+  max-width: 70%;
+  flex: none;
+}
+
+.pw-ring-arc {
+  fill: none;
+  stroke-width: 10;
+}
+
+.pw-ring-arc.s0 {
+  stroke: var(--track);
+}
+
+.pw-ring-arc.s1 {
+  stroke: color-mix(in srgb, var(--track) 70%, var(--label-tertiary));
+}
+
+.pw-ring-label {
+  fill: var(--label-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.pw-ring-line {
+  stroke: var(--label);
+  stroke-width: 3;
+}
+
+.pw-ring-track {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 6;
+  stroke-linejoin: round;
+}
+
+.pw-car {
+  fill: var(--label);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.pw-car.c1 {
+  fill: var(--label-tertiary);
+}
+
+.pw-car.c2 {
+  fill: var(--label-secondary);
+}
+
+.pw-car.you {
+  fill: var(--brand-500);
+}
+
+.pw-car.pitted {
+  stroke-dasharray: 2 2;
+}
+
+.pw-ring-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.pw-ring-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pw-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--label);
+}
+
+.pw-dot.you {
+  background: var(--brand-500);
+}
+
+.pw-dot.c1 {
+  background: var(--label-tertiary);
+}
+
+.pw-dot.c2 {
+  background: var(--label-secondary);
+}
+
+/* ── Stints, relative, fuel, target ──────────────────────────────────────── */
+
+.pw-stint-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-bottom: 8px;
+}
+
+.pw-stint-bar span {
+  border-radius: 2px;
+  background: var(--track);
+}
+
+.pw-stint-bar .done {
+  background: var(--label-tertiary);
+}
+
+.pw-stint-bar .current {
+  background: var(--brand-500);
+}
+
+.pw-stints {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pw-stint {
+  display: grid;
+  grid-template-columns: 34px 80px 1fr;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-stint.done {
+  color: var(--label-secondary);
+}
+
+.pw-stint.current {
+  font-weight: 600;
+}
+
+.pw-right {
+  text-align: right;
+}
+
+.pw-rel {
+  margin: 0;
+  padding: 4px 12px;
+  list-style: none;
+}
+
+.pw-rel-row {
+  display: grid;
+  grid-template-columns: 40px 4px 26px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-rel-row:first-child {
+  border-top: 0;
+}
+
+.pw-rel-row.you {
+  margin: 0 -12px;
+  padding: 0 12px;
+  background: var(--control-fill);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--brand-500);
+}
+
+.pw-num {
+  text-align: right;
+}
+
+.pw-note {
+  font-size: 11px;
+}
+
+.pw-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.pw-meter {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  background: var(--control-fill);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pw-meter b {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.pw-meter .meter {
+  margin-top: 4px;
+}
+
+.pw-meter-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.pw-meter .meter > span {
+  background: var(--label-secondary);
+}
+
+.pw-meter-note {
+  margin-top: 4px;
+  color: var(--infobar-warning-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pw-facts {
+  margin: 4px 0 0;
+}
+
+.pw-facts > div {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  gap: 8px;
+  padding: 2px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-facts dt {
+  color: var(--label-secondary);
+}
+
+.pw-facts dd {
+  margin: 0;
+}
+
+.pw-target {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  container-type: size;
+}
+
+/* Fuel and target fit their default two rows: a short tile drops the meter bars (the value says
+   it); a shorter one (Edit layout's tray) leaves out the target's last lap and fuel per lap. */
+.pw-fuel {
+  container-type: size;
+}
+
+@container (max-height: 175px) {
+  .pw-meter .meter {
+    display: none;
+  }
+}
+
+@container (max-height: 140px) {
+  .pw-target > .pw-target-last,
+  .pw-facts > .pw-fuel-per-lap {
+    display: none;
+  }
+}
+
+.pw-target-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 20px;
+}
+
+.pw-target-top > div,
+.pw-target-secs > div,
+.pw-target-last {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.pw-big {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 30px;
+}
+
+.pw-target-secs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pw-target-secs b,
+.pw-target-last b {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.good {
+  color: var(--success-text);
+}
+
+.bad {
+  color: var(--danger-text);
+}
+
+/* ── Tyres and the car ───────────────────────────────────────────────────── */
+
+.pw-tyres-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-tyres {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 8px;
+  align-items: center;
+  min-height: 0;
+}
+
+.pw-tyres-car {
+  display: grid;
+  grid-column: 2;
+  grid-row: 1 / 3;
+  place-items: center;
+  height: 100%;
+  min-height: 0;
+}
+
+.pw-tyres-car svg {
+  max-height: 100%;
+}
+
+.pw-tyres > .pw-corner:nth-child(3) {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.pw-tyres > .pw-corner:nth-child(4) {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.pw-tyres > .pw-corner:nth-child(5) {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.pw-corner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+}
+
+.pw-corner-name {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pw-corner svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pw-band {
+  opacity: 0.9;
+}
+
+.pw-band.cold,
+.pw-key.cold {
+  fill: var(--blue-500);
+  background: var(--blue-500);
+}
+
+.pw-band.ok,
+.pw-key.ok {
+  fill: var(--green-500);
+  background: var(--green-500);
+}
+
+.pw-band.warm,
+.pw-key.warm {
+  fill: var(--yellow-500);
+  background: var(--yellow-500);
+}
+
+.pw-band.hot,
+.pw-key.hot {
+  fill: var(--red-500);
+  background: var(--red-500);
+}
+
+.pw-groove {
+  stroke: var(--window);
+  stroke-width: 2;
+  opacity: 0.5;
+}
+
+.pw-t-out {
+  fill: none;
+  stroke: var(--label-tertiary);
+  stroke-width: 1.5;
+}
+
+.pw-t-core {
+  fill: var(--window);
+  stroke-width: 2;
+}
+
+.pw-t-core.cold { stroke: var(--blue-500); }
+.pw-t-core.ok { stroke: var(--green-500); }
+.pw-t-core.warm { stroke: var(--yellow-500); }
+.pw-t-core.hot { stroke: var(--red-500); }
+
+.pw-t-brake.cold { fill: var(--blue-500); }
+.pw-t-brake.ok { fill: var(--yellow-500); }
+.pw-t-brake.hot { fill: var(--red-500); }
+
+.pw-t-lab {
+  fill: var(--label-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+.pw-t-val {
+  fill: var(--label);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+
+.pw-t-core-val {
+  fill: var(--label);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.pw-t-small {
+  fill: var(--label-tertiary);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.pw-t-side {
+  fill: var(--label-tertiary);
+  font-size: 9px;
+}
+
+.pw-t-big {
+  fill: var(--label);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-t-tread {
+  fill: var(--control-fill);
+}
+
+.pw-t-tread-fill {
+  fill: var(--label-secondary);
+}
+
+.pw-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding-top: 6px;
+  font-size: 12px;
+}
+
+.pw-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pw-key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.pw-line-key {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.pw-line-key.fl { background: var(--blue-500); }
+.pw-line-key.fr { background: var(--purple-500); }
+.pw-line-key.rl { background: var(--green-500); }
+.pw-line-key.rr { background: var(--yellow-500); }
+.pw-line-key.speed { background: var(--channel-speed); }
+.pw-line-key.throttle { background: var(--channel-throttle); }
+.pw-line-key.brake { background: var(--channel-brake); }
+.pw-line-key.steering { background: var(--channel-steering); }
+
+.pw-line-key.dashed {
+  height: 0;
+  border-top: 2px dashed var(--channel-other);
+  border-radius: 0;
+}
+
+.pw-carsvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pw-car-part {
+  fill: color-mix(in srgb, var(--label) 6%, var(--layer));
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+}
+
+.pw-car-part.hi {
+  fill: color-mix(in srgb, var(--label) 12%, var(--layer));
+}
+
+.pw-car-wheel {
+  fill: var(--label-tertiary);
+}
+
+.pw-car-shade {
+  fill: var(--window);
+  opacity: 0.8;
+}
+
+.pw-car-line {
+  fill: none;
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.pw-car-light {
+  stroke: var(--label-secondary);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.pw-car-canopy,
+.pw-car-wing {
+  fill: var(--control-fill);
+  stroke: var(--label-tertiary);
+  stroke-width: 1;
+}
+
+.pw-car-fin {
+  fill: var(--label-tertiary);
+}
+
+/* ── Damage ──────────────────────────────────────────────────────────────── */
+
+.pw-damage {
+  display: flex;
+  gap: 20px;
+}
+
+.pw-damage-car {
+  height: 100%;
+  flex: none;
+  aspect-ratio: 200 / 424;
+}
+
+.pw-dent.l1 {
+  fill: color-mix(in srgb, var(--yellow-500) 22%, transparent);
+}
+
+.pw-dent.l2 {
+  fill: color-mix(in srgb, var(--yellow-500) 50%, transparent);
+}
+
+.pw-hit {
+  fill: var(--label);
+}
+
+.pw-hit-num {
+  fill: var(--window);
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.pw-damage-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pw-damage-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+}
+
+.pw-sev {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--success-text);
+}
+
+.pw-sev.s1 {
+  background: var(--yellow-500);
+}
+
+.pw-sev.s2 {
+  background: var(--red-500);
+}
+
+.pw-damage-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  color: var(--label-secondary);
+  font-size: 12px;
+}
+
+.pw-hit-badge {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--label);
+  color: var(--window);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Radar ───────────────────────────────────────────────────────────────── */
+
+.pw-radar-body {
+  display: grid;
+  place-items: center;
+}
+
+.pw-radar {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+}
+
+.pw-radar-ring {
+  fill: none;
+  stroke: var(--divider);
+}
+
+.pw-radar-you {
+  fill: var(--brand-500);
+}
+
+.pw-radar-car {
+  fill: var(--label-tertiary);
+}
+
+.pw-radar-car.near {
+  fill: var(--yellow-500);
+}
+
+.pw-radar-warn {
+  fill: none;
+  stroke: var(--yellow-500);
+  stroke-width: 4;
+  stroke-linecap: round;
+  opacity: 0.8;
+}
+
+.pw-radar-label {
+  fill: var(--label);
+  font-size: 9px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+
+/* ── Charts: tyre pressure and traces ────────────────────────────────────── */
+
+.pw-chart-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-chart {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.pw-chart svg {
+  position: absolute;
+  inset: 0;
+}
+
+.pw-chart-note {
+  position: absolute;
+  top: 45%;
+  right: 0;
+  left: 0;
+  margin: 0;
+  text-align: center;
+}
+
+.pw-axis {
+  fill: var(--label-tertiary);
+  font-size: 10px;
+}
+
+.pw-press-band {
+  fill: color-mix(in srgb, var(--success-text) 12%, transparent);
+}
+
+.pw-press-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.pw-press-line.fl { stroke: var(--blue-500); }
+.pw-press-line.fr { stroke: var(--purple-500); }
+.pw-press-line.rl { stroke: var(--green-500); }
+.pw-press-line.rr { stroke: var(--yellow-500); }
+
+.pw-trace {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.pw-trace.speed { stroke: var(--channel-speed); }
+.pw-trace.throttle { stroke: var(--channel-throttle); }
+.pw-trace.brake { stroke: var(--channel-brake); }
+.pw-trace.steering { stroke: var(--channel-steering); }
+
+.pw-trace.other {
+  stroke: var(--channel-other);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.pw-trace-rule {
+  stroke: var(--divider);
+}
+
+.pw-trace-car {
+  stroke: var(--label);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.pw-trace-label {
+  fill: var(--label-secondary);
+  font-size: 12px;
+}
+
+/* ── Edit layout: tray and inspector ─────────────────────────────────────── */
+
+.pw-tray {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.pw-tray > .muted {
+  margin-right: 4px;
+}
+
+.pw-tray-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--control-stroke);
+  border-radius: var(--radius-pill);
+  background: var(--control-fill);
+  color: var(--label);
+  font-size: 12px;
+}
+
+.pw-tray-item:hover:not(:disabled) {
+  background: var(--control-fill-hover);
+}
+
+.pw-tray-item:disabled {
+  color: var(--label-disabled);
+}
+
+.pw-inspector {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  margin: 10px 10px 10px 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--card-stroke);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.pw-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pw-inspector h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pw-inspector h4 {
+  margin: 8px 0 0;
+  color: var(--label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pw-layers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pw-layer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 2px 0 10px;
+  border-radius: var(--radius-control-small);
+  background: var(--control-fill);
+}
+
+.pw-layer-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.pw-layer-first {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--label-secondary);
+  font-size: 11px;
+}
+
+.pw-layer-tools {
+  display: inline-flex;
+}
+
+.pw-layer-tools .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.pw-add-layer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pw-inspector > .button {
+  align-self: flex-start;
+}
+
+.pw-seg-full {
+  width: 100%;
+}
+
+.pw-seg-full .segmented-item {
+  flex: 1;
+}
+
+.pw-seconds input {
+  width: 96px;
+}
+
+.pw-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pw-sep {
+  margin: 4px 0;
+}

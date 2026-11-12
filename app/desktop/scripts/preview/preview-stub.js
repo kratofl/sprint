@@ -42,6 +42,10 @@
 //                         steering, gear, or arrange (the palette); hudArranging=1 shows a window being
 //                         arranged (edge, ×, grip). Screenshot it at its window size
 //   designer=<dashId>     mount the dash designer window for that dash instead of the app (click= works in it)
+//   pitwall=main|page:<id>|tile:<id>  mount a pit wall window instead of the app, linked as the engineer
+//                         to a made-up Spa race (pages race, car, traces; click= works in it). plan=none:
+//                         the driver shares no plan. pitwallAway=car: the Car page is in its own window.
+//                         pitwallStack=1: Relative, Radar and Damage stacked on the Race page
 ;(() => {
   const params = new URLSearchParams(window.location.search)
 
@@ -72,6 +76,9 @@
           health: { path: 'Ipv4', roundTripMs: phase === 'Connected' ? 38 : null, sampleRate: phase === 'Connected' ? 20 : 0, lossPercent: phase === 'Connected' ? 0.5 : null },
           session,
           latest: role === 'Engineer' ? latest : null,
+          pitWall: role === 'Engineer' ? samplePitWall(params.get('plan') !== 'none') : null,
+          sharingPlan: params.get('plan') !== 'none',
+          sharedPlan: role === 'Driver' && params.get('plan') !== 'none' ? { id: 'plan-spa-6h', name: 'Spa 6h · Stint 2' } : null,
         }
       case 'Failed':
         return { phase, role, reachability: 'Strict', detail: 'No direct path between your PCs. One of your networks blocks it, or the reply went stale. Try again with fresh codes.' }
@@ -84,6 +91,115 @@
 
   const theme = params.get('theme')
   if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme
+
+  // The pit wall's sample (state.link.pitWall): a made-up Spa 6 Hours race at lap 34, our car #63
+  // third. The field and numbers follow the approved mockups in .dev/mockups.
+  const SPA_LOOP = [[60, 200], [40, 160], [70, 120], [130, 110], [170, 70], [230, 40], [300, 50], [340, 90], [330, 140], [360, 180],
+    [420, 190], [470, 230], [450, 280], [390, 290], [330, 270], [270, 290], [200, 300], [130, 280], [80, 250]]
+  const alongLoop = (t) => {
+    const next = (index) => SPA_LOOP[(index + 1) % SPA_LOOP.length]
+    const lengths = SPA_LOOP.map((point, index) => Math.hypot(next(index)[0] - point[0], next(index)[1] - point[1]))
+    let left = (t % 1) * lengths.reduce((a, b) => a + b, 0)
+    for (let index = 0; index < SPA_LOOP.length; index++) {
+      const [a, b] = [SPA_LOOP[index], next(index)]
+      if (left <= lengths[index]) return { x: a[0] + ((b[0] - a[0]) * left) / lengths[index], z: a[1] + ((b[1] - a[1]) * left) / lengths[index] }
+      left -= lengths[index]
+    }
+    return { x: SPA_LOOP[0][0], z: SPA_LOOP[0][1] }
+  }
+  const samplePitWall = (withPlan) => {
+    // place, class, number, driver, compound, gap [s, laps], interval [s, laps], last lap, last sectors
+    // [time, class best?], best lap, pit (stops, PIT or OUT), start place, lap fraction, sector
+    const rows = [
+      [1, 'Hypercar', 12, 'D. Novak', 'Medium', [0, 0], [0, 0], 124.9, [[35.9, 1], [53.6, 1], [35.4, 0]], 124.3, 1, 3, 0.31, 2],
+      [2, 'Hypercar', 41, 'R. Lindqvist', 'Medium', [4.2, 0], [4.2, 0], 125.3, [[36.1, 0], [53.9, 0], [35.3, 1]], 124.6, 1, 1, 0.27, 1],
+      [3, 'Hypercar', 63, 'E. Varga', 'Medium', [9.8, 0], [5.6, 0], 125.1, [[35.8, 1], [54.0, 0], [35.3, 1]], 124.8, 1, 7, 0.22, 1],
+      [4, 'Hypercar', 17, 'T. Okafor', 'Hard', [10.6, 0], [0.8, 0], 125.0, [[36.0, 0], [53.7, 1], [35.3, 0]], 124.7, 1, 4, 0.214, 1],
+      [5, 'Hypercar', 28, 'J. Marchetti', 'Soft', [21.4, 0], [10.8, 0], null, [[36.4, 0], [null, 0], [null, 0]], 124.9, 'PIT', 2, 0.035, 1],
+      [6, 'Hypercar', 35, 'A. Duval', 'Medium', [0, 1], [0, 1], 126.2, [[36.3, 0], [54.4, 0], [35.5, 0]], 125.4, 2, 6, 0.62, 2],
+      [7, 'LMGT3', 88, 'S. Brandt', 'Medium', [0, 3], [0, 2], 140.4, [[40.2, 1], [60.1, 0], [40.1, 0]], 139.8, 1, 10, 0.48, 2],
+      [8, 'LMGT3', 21, 'M. Haas', 'Medium', [0, 3], [6.1, 0], 140.9, [[40.4, 0], [60.0, 1], [40.5, 0]], 140.1, 1, 8, 0.47, 2],
+      [9, 'LMGT3', 46, 'L. Ferreira', 'Soft', [0, 3], [2.8, 0], 141.3, [[40.9, 0], [60.4, 0], [40.0, 1]], 140.6, 'OUT', 9, 0.2, 1],
+      [10, 'LMGT3', 70, 'K. Sato', 'Hard', [0, 4], [0, 1], 141.0, [[40.6, 0], [60.2, 0], [40.2, 0]], 140.5, 1, 11, 0.78, 3],
+      [11, 'LMGT3', 33, 'P. Ivanova', 'Medium', [0, 4], [3.4, 0], 141.4, [[40.7, 0], [60.5, 0], [40.2, 0]], 140.9, 1, 7, 0.9, 3],
+      [12, 'LMGT3', 59, 'B. Coleman', 'Medium', [0, 4], [0.9, 0], 141.2, [[40.5, 0], [60.3, 0], [40.4, 0]], 141.0, 1, 12, 0.55, 2],
+    ]
+    const field = rows.map(([place, carClass, number, driver, compound, gap, interval, last, sectors, best, pit, start, fraction, sector]) => {
+      const at = alongLoop(fraction)
+      const model = number === 63 ? 'Porsche 963' : carClass === 'Hypercar' ? 'Hypercar' : 'GT3'
+      return {
+        id: number, driver, car: `${model} #${number}`, carClass, isPlayer: number === 63,
+        place, classPlace: carClass === 'Hypercar' ? place : place - 6, startPlace: start,
+        lapsCompleted: carClass === 'Hypercar' ? 33 - gap[1] : 33 - gap[1], lapFraction: fraction, sector,
+        lastLap: last, bestLap: best,
+        lastSectors: sectors.map(([time]) => time),
+        // A class-best sector is the car's best too; the others beat the last lap by a little.
+        bestSectors: sectors.map(([time, classBest]) => (time === null ? null : classBest ? time : Math.round((time - 0.1) * 1000) / 1000)),
+        gapToLeader: gap[0], lapsToLeader: gap[1], gapToNext: interval[0], lapsToNext: interval[1],
+        inPit: pit === 'PIT' || pit === 'OUT', pitState: pit === 'PIT' ? 'Stopped' : pit === 'OUT' ? 'Exiting' : 'None',
+        pitStops: typeof pit === 'number' ? pit : 1, compound, x: at.x, z: at.z,
+      }
+    })
+    const tyre = (position, [inner, middle, outer], core, brake, wearPercent, pressureKPa) => ({ position, inner, middle, outer, core, brake, pressureKPa, wearPercent, compound: 'Medium' })
+    const plan = (state.plans ?? []).find((candidate) => candidate.id === 'plan-spa-6h')
+    return {
+      session: {
+        track: 'Circuit de Spa-Francorchamps', trackLengthMeters: 7004, sessionType: 'Race', timeRemaining: 13140, totalTime: 21600,
+        maxLaps: 2147483647, airTemp: 22, trackTemp: 31, wetness: 0, raining: 0, grip: null, gripLevel: 1,
+      },
+      field,
+      car: {
+        tyres: [tyre('FrontLeft', [92, 88, 84], 95, 610, 82, 171), tyre('FrontRight', [99, 95, 90], 101, 640, 76, 173),
+          tyre('RearLeft', [88, 85, 82], 90, 480, 85, 170), tyre('RearRight', [89, 87, 84], 91, 495, 83, 171)],
+        fuelLiters: 38.6, fuelPerLapLiters: 3.51, fuelCapacityLiters: 90, virtualEnergy: 0.42, virtualEnergyPerLap: 0.039, battery: 0.63,
+        damage: { dents: [1, 2, 1, 0, 0, 0, 1, 0], lastImpact: { sessionTime: 7900, magnitude: 14, lap: 29 }, overheating: false, detachedParts: false },
+      },
+      radar: [{ id: 17, driver: 'T. Okafor', right: 3.4, ahead: -2.6 }, { id: 41, driver: 'R. Lindqvist', right: -1.5, ahead: 13 }],
+      outline: Array.from({ length: 160 }, (_, index) => alongLoop(index / 160)),
+      pressures: [[163, 164, 162, 163], [166, 168, 165, 166], [168, 170, 167, 168], [169, 171, 168, 169], [170, 172, 169, 170],
+        [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171], [171, 173, 170, 171]].map(([fl, fr, rl, rr], index) => ({ lap: 26 + index, fl, fr, rl, rr })),
+      plan: withPlan && plan ? { ...plan, status: 'Tracking' } : null,
+      receivedAt: Date.now(),
+    }
+  }
+  // The host's default pit wall layout (PitWallLayouts.Default), with the preview's variations.
+  const pitWallTile = (id, layers, x, y, w, h) => ({ id, layers, x, y, w, h, cycleSeconds: null, pauseOnHover: true, jumpRadar: false, jumpDamage: false, detached: false, bounds: null })
+  const samplePitWallLayout = () => ({
+    mainBounds: null,
+    pages: [
+      { id: 'race', name: 'Race', detached: false, bounds: null, tiles: [
+        pitWallTile('race-session', ['session'], 0, 0, 12, 1), pitWallTile('race-timing', ['timing'], 0, 1, 7, 5),
+        pitWallTile('race-track', ['track'], 7, 1, 5, 4), pitWallTile('race-stint', ['stint'], 7, 5, 3, 3),
+        params.get('pitwallStack') === '1'
+          ? { ...pitWallTile('race-relative', ['relative', 'radar', 'damage'], 10, 5, 2, 3), cycleSeconds: 10, jumpRadar: true, jumpDamage: true }
+          : pitWallTile('race-relative', ['relative'], 10, 5, 2, 3),
+        pitWallTile('race-target', ['target'], 0, 6, 3, 2), pitWallTile('race-fuel', ['fuel'], 3, 6, 4, 2),
+      ] },
+      { id: 'car', name: 'Car', detached: params.get('pitwallAway') === 'car', bounds: null, tiles: [
+        pitWallTile('car-tyres', ['tyres'], 0, 0, 7, 4), pitWallTile('car-pressure', ['pressure'], 7, 0, 5, 4),
+        pitWallTile('car-damage', ['damage'], 0, 4, 5, 4), pitWallTile('car-radar', ['radar'], 5, 4, 3, 4), pitWallTile('car-relative', ['relative'], 8, 4, 4, 4),
+      ] },
+      { id: 'traces', name: 'Traces', detached: false, bounds: null, tiles: [
+        pitWallTile('traces-traces', ['traces'], 0, 0, 8, 8), pitWallTile('traces-pressure', ['pressure'], 8, 0, 4, 4), pitWallTile('traces-track', ['track'], 8, 4, 4, 4),
+      ] },
+    ],
+  })
+  // One lap's channels (GET /api/pitwall/trace): smooth made-up waves; the current lap stops where the car is.
+  const samplePitWallTrace = (lap) => {
+    const shift = { current: 0, last: 0.006, best: -0.004, target: 0.008 }[lap] ?? 0
+    const count = lap === 'current' ? 372 : 600
+    const distance = Array.from({ length: count }, (_, index) => index / 599)
+    const wave = (cycles, phase) => distance.map((d) => Math.max(-1, Math.min(1, Math.sin((d + shift) * cycles * 2 * Math.PI + phase) * 1.6)))
+    return {
+      lap: { current: 34, last: 33, best: 21, target: null }[lap] ?? null,
+      lapTime: { last: 125.1, best: 124.8, target: 124.9 }[lap] ?? null,
+      distance,
+      speed: wave(7, 0).map((v) => 200 + v * 95),
+      throttle: wave(7, 0.4).map((v) => (v + 1) / 2),
+      brake: wave(7, 2.6).map((v) => Math.max(0, v)),
+      steering: wave(5, 1).map((v) => v * 0.6),
+    }
+  }
 
   const state = structuredClone(window.__SPRINT_PREVIEW_STATE__ ?? {})
   if (params.get('collapsed') === '1') state.settings = { ...state.settings, sidebarCollapsed: true }
@@ -136,7 +252,10 @@
     status: live,
     detail: live === 'Reconnecting' ? 'Could not reach Sprint web.' : null,
   }
-  state.link = previewLink(params.get('link'), params.get('linkRole') === 'Engineer' ? 'Engineer' : 'Driver')
+  state.link = params.has('pitwall') && !params.has('link')
+    ? previewLink('Connected', 'Engineer')
+    : previewLink(params.get('link'), params.get('linkRole') === 'Engineer' ? 'Engineer' : 'Driver')
+  state.pitWallLayout = samplePitWallLayout()
   const sprintWebParams = ['sprintWeb', 'account', 'setup', 'servers', 'storage', 'live', 'discord']
   state.features = { sprintWeb: sprintWebParams.some((name) => params.has(name)) && params.get('sprintWeb') !== '0' }
   const discord = params.get('discord')
@@ -562,6 +681,11 @@
       console.info('[preview] open dash designer', dashId)
       return null
     },
+    openPitWall: async (target) => {
+      console.info('[preview] open pit wall', target)
+      return null
+    },
+    pitWallTrace: async (lap) => samplePitWallTrace(lap),
   }
 
   // Pages are reached through the app's own input paths, so the preview adds
@@ -598,8 +722,8 @@
 
   const whenShellReady = (run) => {
     const timer = setInterval(() => {
-      // The app shell, a designer window (designer=<dashId>) or the first-run setup, once its state has loaded.
-      if (!document.querySelector('.app.ready, .designer.ready, .first-run')) return
+      // The app shell, a designer window (designer=<dashId>), a pit wall window or the first-run setup, once its state has loaded.
+      if (!document.querySelector('.app.ready, .designer.ready, .first-run, .pw-bar')) return
       clearInterval(timer)
       run()
     }, 20)

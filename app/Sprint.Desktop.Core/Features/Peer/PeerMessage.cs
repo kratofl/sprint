@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Sprint.Contracts;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.Sharing;
 
 namespace Sprint.Desktop.Features.Peer;
@@ -18,13 +19,18 @@ namespace Sprint.Desktop.Features.Peer;
 [JsonDerivedType(typeof(PeerSessionMessage), "session")]
 [JsonDerivedType(typeof(PeerSampleMessage), "sample")]
 [JsonDerivedType(typeof(PeerBye), "bye")]
+[JsonDerivedType(typeof(PeerBlobMessage), "blob")]
+[JsonDerivedType(typeof(PeerRadarMessage), "radar")]
 public abstract record PeerMessage
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
     public static byte[] Serialize(PeerMessage message) => JsonSerializer.SerializeToUtf8Bytes(message, Options);
 
-    /// <summary>Reads a message the peer sealed. The peer runs code we do not control, so a bad one is null, not an exception.</summary>
+    /// <summary>
+    /// Reads a message the peer sealed. The peer runs code we do not control, so a bad one is null,
+    /// not an exception; so is a type this build does not know, which a newer peer may send.
+    /// </summary>
     public static PeerMessage? Deserialize(ReadOnlySpan<byte> json)
     {
         try
@@ -52,3 +58,33 @@ public sealed record PeerSampleMessage(LiveSample Sample) : PeerMessage;
 
 /// <summary>The sender closed the link.</summary>
 public sealed record PeerBye : PeerMessage;
+
+/// <summary>
+/// Driver to engineer: one part of something too big for a datagram (<see cref="PeerBlobs"/>).
+/// <c>kind</c> names what it is, <c>version</c> which copy; the parts of one version are
+/// <c>index</c> 0..<c>count</c>-1 of a deflated, base64url payload.
+/// </summary>
+public sealed record PeerBlobMessage(string Kind, long Version, int Index, int Count, string Part) : PeerMessage;
+
+/// <summary>Driver to engineer, ten times a second while in the car: the cars close around the driver's, nearest first.</summary>
+public sealed record PeerRadarMessage(IReadOnlyList<PitWallRadarCar> Cars) : PeerMessage
+{
+    /// <summary>The most a sealed message may be, so it is never fragmented.</summary>
+    public const int MaxSealedBytes = 1200;
+
+    /// <summary>
+    /// A radar message that fits one datagram: names are escaped when not ASCII, so a set of long
+    /// ones can overflow, and then the farthest cars are left out until it fits.
+    /// </summary>
+    public static PeerRadarMessage Fitting(IReadOnlyList<PitWallRadarCar> nearestFirst)
+    {
+        for (int count = nearestFirst.Count; count > 0; count--)
+        {
+            PeerRadarMessage message = new(count == nearestFirst.Count ? nearestFirst : [.. nearestFirst.Take(count)]);
+            if (Serialize(message).Length + PeerChannel.Overhead <= MaxSealedBytes)
+                return message;
+        }
+
+        return new PeerRadarMessage([]);
+    }
+}

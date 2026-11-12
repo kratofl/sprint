@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, screen, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
@@ -13,6 +13,8 @@ import { macMenuTemplate } from './appMenu.js'
 import { TRANSPARENT, windowChrome, windowLook, type WindowChrome } from './windowChrome.js'
 import { DashDesigners } from './designerWindows.js'
 import { readDashIds, readDesignerDashId } from './designerRoute.js'
+import { PitWallWindows } from './pitWallWindows.js'
+import { pitWallQuery, readPitWallTarget, readPitWallWindows, readTraceLap } from './pitWallRoute.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const desktopRoot = path.resolve(__dirname, '..')
@@ -97,6 +99,8 @@ async function pollTick(): Promise<void> {
     hud?.reconcile(mainWindow ? readHudWanted(state) : HUD_CLOSED)
     // A deleted dash takes its designer window with it.
     designers.reconcile(readDashIds(state))
+    // Pages and tiles the engineer put in their own windows open and close with the layout.
+    pitWall.reconcile(readPitWallWindows(state))
   } catch (error) {
     console.error('[sprint] state poll failed:', error)
   }
@@ -289,6 +293,14 @@ ipcMain.handle('sprint:send-command', (_event: IpcMainInvokeEvent, command: unkn
 ipcMain.handle('sprint:open-dash-designer', (_event: IpcMainInvokeEvent, dashId: unknown) => {
   designers.open(readDesignerDashId(dashId))
 })
+
+/** The Race engineer page opens the pit wall; a page tab marked ↗ brings that page's window forward. */
+ipcMain.handle('sprint:open-pit-wall', (_event: IpcMainInvokeEvent, target: unknown) => {
+  pitWall.open(readPitWallTarget(target))
+})
+
+/** A lap of the linked driver's, for the pit wall's traces (too large for the polled state). */
+ipcMain.handle('sprint:pitwall-trace', (_event: IpcMainInvokeEvent, lap: unknown) => nativeHost.pitWallTrace(readTraceLap(lap)))
 
 ipcMain.on('sprint:subscribe', (event: IpcMainEvent) => {
   subscribers.add(event.sender)
@@ -506,6 +518,7 @@ function createWindow(): BrowserWindow {
     hud?.close()
     // The designers belong to the app, not to a window of their own: Sprint is done with them too.
     void designers.closeAll()
+    pitWall.closeAll()
   })
   if (!app.isPackaged) {
     window.webContents.on('before-input-event', (event, input) => {
@@ -528,6 +541,27 @@ const designers = new DashDesigners((dashId) =>
     query: { designer: dashId, platform: look },
   }),
 )
+
+/**
+ * The engineer's pit wall (`?pitwall=main|page:<id>|tile:<id>`): the wall maximised, and each page
+ * or tile in its own window where the layout puts one. Each window's place goes back to the host.
+ */
+const pitWall = new PitWallWindows({
+  create: (key, bounds) => {
+    const window = createAppWindow({
+      size: { width: key.kind === 'tile' ? 720 : 1440, height: key.kind === 'tile' ? 480 : 900, minWidth: key.kind === 'tile' ? 320 : 960, minHeight: key.kind === 'tile' ? 240 : 600 },
+      title: 'Pit wall',
+      query: { pitwall: pitWallQuery(key), platform: look },
+    })
+    if (bounds) window.setBounds(bounds)
+    return window
+  },
+  place: (key, bounds) => {
+    const command = key.kind === 'main' ? { type: 'pitwall.placeWindow', kind: 'main', bounds } : { type: 'pitwall.placeWindow', kind: key.kind, id: key.id, bounds }
+    nativeHost.command(command).catch((error: unknown) => console.error('[sprint] saving a pit wall window place failed:', error))
+  },
+  displays: () => screen.getAllDisplays().map((display) => display.workArea),
+})
 
 app.setName('Sprint')
 // A dev run (scripts/dev.mjs) keeps the browser profile with the host's data in its own checkout,
@@ -580,6 +614,8 @@ async function bootstrap(): Promise<void> {
 
 app.on('window-all-closed', () => { void shutdown().finally(() => app.quit()) })
 app.on('before-quit', (event) => {
+  // Destroyed rather than closed: a page window would otherwise put itself back on the wall.
+  pitWall.closeAll()
   // An open designer may still be saving its last edit, and the host must outlive that save:
   // close the designers first, then quit for real.
   if (designers.count > 0) {

@@ -8,6 +8,7 @@ import { Status } from '../shell/Status'
 import { commandErrorMessage } from './DevicesDomain'
 import { formatGap, formatLapSeconds } from './AnalysisDomain'
 import { formatGear, healthParts, linkStatus, reachabilityWarning } from './LiveLinkDomain'
+import { Switch } from './SettingsLayout'
 import './LiveLinkView.css'
 
 /**
@@ -123,7 +124,11 @@ function LinkBody({ link, send }: { link: LiveLink; send: (command: SprintComman
               </span>
             ))}
           </div>
-          {link.role === 'Driver' ? <Sharing session={link.session} /> : <Watching session={link.session} latest={link.latest} />}
+          {link.role === 'Driver' ? (
+            <Sharing session={link.session} sharingPlan={link.sharingPlan} sharedPlan={link.sharedPlan} send={send} />
+          ) : (
+            <Watching session={link.session} latest={link.latest} />
+          )}
         </>
       )
     case 'Failed':
@@ -274,8 +279,24 @@ function Reachability({ reachability }: { reachability: LinkReachability }) {
 
 const describeSession = (session: LinkSession): string => [session.track, session.car, session.sessionType].filter((part) => part.length > 0).join(' · ')
 
-/** The driver's side: what the engineer is getting. */
-function Sharing({ session }: { session: LinkSession | null }) {
+/**
+ * The driver's side: what the engineer is getting, and the one switch the driver decides on —
+ * whether the session plan goes too (the plan the planner tracks or has armed). Off, the engineer
+ * gets the live data only.
+ */
+function Sharing({
+  session,
+  sharingPlan,
+  sharedPlan,
+  send,
+}: {
+  session: LinkSession | null
+  sharingPlan: boolean
+  sharedPlan: { id: string; name: string } | null
+  send: (command: SprintCommand) => Promise<void>
+}) {
+  const titleId = useId()
+  const hintId = useId()
   return (
     <section className="card live-link-card">
       <h2 className="card-title">Sharing with your engineer</h2>
@@ -284,6 +305,19 @@ function Sharing({ session }: { session: LinkSession | null }) {
       ) : (
         <p className="live-link-text">You are not on track. Your engineer sees your telemetry as soon as you drive.</p>
       )}
+      <div className="live-link-share">
+        <div className="live-link-share-text">
+          <span id={titleId} className="live-link-share-title">
+            Share the session plan
+          </span>
+          <span id={hintId} className="live-link-text">
+            {sharedPlan
+              ? `${sharedPlan.name} — stints, targets, practice laps. Follows practice, qualifying and race.`
+              : 'No plan is armed. Arm one in the Session planner and it goes to your engineer with its stints and targets.'}
+          </span>
+        </div>
+        <Switch checked={sharingPlan} onChange={(share) => void send({ type: 'link.sharePlan', share })} aria-labelledby={titleId} aria-describedby={hintId} />
+      </div>
     </section>
   )
 }

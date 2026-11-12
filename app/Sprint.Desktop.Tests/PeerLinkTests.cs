@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
 using System.Net;
+using System.Text.Json;
 using Sprint.Desktop.Api.Telemetry;
 using Sprint.Desktop.Features.Peer;
+using Sprint.Desktop.Features.PitWall;
 using Sprint.Desktop.Features.SessionPlanning;
 using Xunit;
 
@@ -22,11 +24,12 @@ public sealed class PeerLinkTests
     private readonly PeerLink _driver;
     private readonly PeerLink _engineer;
     private DateTimeOffset _now = T0;
+    private PitWallShare? _offer;
 
     public PeerLinkTests()
     {
         this._net = new FakeNet(() => this._now);
-        this._driver = new PeerLink(() => this._net.Open(DriverPublic), this._net.ResolveStun, () => []);
+        this._driver = new PeerLink(() => this._net.Open(DriverPublic), this._net.ResolveStun, () => [], share: _ => this._offer);
         this._engineer = new PeerLink(() => this._net.Open(EngineerPublic), this._net.ResolveStun, () => []);
     }
 
@@ -64,6 +67,53 @@ public sealed class PeerLinkTests
         Assert.Equal("Spa", this._driver.State.Session?.Track);
         // The fake network is instant: what remains of the round trip is nothing, not the steps' waiting.
         Assert.Equal(0, engineer.Health?.RoundTripMs);
+    }
+
+    [Fact]
+    public void TheEngineersPitWallFillsFromTheDriversBoardRadarPlanAndTarget()
+    {
+        PitWallTrace target = new(7, 124.5, [0, 0.5, 1], [80, 250, 90], [0, 1, 0.2], [1, 0, 0], [0, 0.1, 0]);
+        this._offer = new PitWallShare("p1", "Spa 6 Hours", """{"id":"p1","name":"Spa 6 Hours","status":"Tracking"}""", target);
+        this.Connect();
+        this._driver.Update(Session("s1"));
+        for (int index = 0; index < 40; index++)
+        {
+            this._driver.Observe(BoardFrame(this._now));
+            this.Run(TimeSpan.FromMilliseconds(50));
+        }
+
+        PitWallState wall = this._engineer.State.PitWall ?? throw new InvalidOperationException("no board arrived");
+
+        Assert.Equal("Spa", wall.Session.Track);
+        Assert.Equal(new[] { 1, 2 }, wall.Field.Select(car => car.Place));
+        Assert.Equal("Medium", wall.Field[0].Compound);
+        Assert.Equal(2, Assert.Single(wall.Radar).Id);
+        Assert.Equal("Spa 6 Hours", wall.Plan?.GetProperty("name").GetString());
+        PitWallTrace shared = this._engineer.Trace(PitWallTraceLap.Target);
+        Assert.Equal(7, shared.Lap);
+        Assert.Equal(124.5, shared.LapTime);
+        Assert.Equal(new double[] { 80, 250, 90 }, shared.Speed);
+        Assert.Equal(new PeerSharedPlan("p1", "Spa 6 Hours"), this._driver.State.SharedPlan);
+        Assert.True(this._driver.State.SharingPlan);
+        Assert.Null(this._driver.State.PitWall);
+    }
+
+    [Fact]
+    public void ADriverWhoStopsSharingTakesThePlanOffThePitWall()
+    {
+        this._offer = new PitWallShare("p1", "Spa 6 Hours", """{"id":"p1"}""", null);
+        this.Connect();
+        this._driver.Observe(BoardFrame(this._now));
+        this.Run(TimeSpan.FromSeconds(2));
+        Assert.Equal(JsonValueKind.Object, this._engineer.State.PitWall?.Plan?.ValueKind);
+
+        this._driver.SetSharePlan(false);
+        this._driver.Observe(BoardFrame(this._now));
+        this.Run(TimeSpan.FromSeconds(1));
+
+        Assert.Null(this._engineer.State.PitWall?.Plan);
+        Assert.False(this._driver.State.SharingPlan);
+        Assert.Equal(PitWallTrace.Empty, this._engineer.Trace(PitWallTraceLap.Target));
     }
 
     [Fact]
@@ -266,6 +316,19 @@ public sealed class PeerLinkTests
         Timestamp = at,
         Lap = new LapState { CurrentLap = lap },
         Car = new CarState { SpeedMetersPerSecond = 50 },
+    };
+
+    /// <summary>The driver in a race at Spa with one car alongside.</summary>
+    private static TelemetryFrame BoardFrame(DateTimeOffset at) => new()
+    {
+        Timestamp = at,
+        Session = new SessionInfo { Track = "Spa", SessionType = SessionType.Race, TrackLengthMeters = 7004, InCar = true },
+        Car = new CarState { Pose = new CarPose() },
+        Field =
+        [
+            new FieldCar { Id = 2, Driver = "R. Lindqvist", Place = 2, PositionX = 3, PositionZ = -1, Compound = "Medium" },
+            new FieldCar { Id = 1, Driver = "E. Varga", Place = 1, IsPlayer = true, Compound = "Medium" },
+        ],
     };
 
     private static LapHistorySession Session(string id) => new()

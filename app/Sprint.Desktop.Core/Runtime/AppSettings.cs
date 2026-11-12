@@ -85,6 +85,18 @@ public sealed class AppSettings
     /// <summary>Where this Sprint's cloud lives (#197).</summary>
     [JsonPropertyName("cloud")]
     public CloudSettings Cloud { get; set; } = new();
+
+    /// <summary>The live link to an engineer's desktop.</summary>
+    [JsonPropertyName("liveLink")]
+    public LiveLinkSettings LiveLink { get; set; } = new();
+}
+
+/// <summary>The live link's choices on the driver's side.</summary>
+public sealed class LiveLinkSettings
+{
+    /// <summary>Whether the engineer's pit wall gets the active session plan and its target lap.</summary>
+    [JsonPropertyName("sharePlan")]
+    public bool SharePlan { get; set; } = true;
 }
 
 /// <summary>
