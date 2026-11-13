@@ -31,8 +31,8 @@ public enum QuickPlanField
     RaceLength,
 
     /// <summary>
-    /// No lap history with both a lap time and fuel for this context. Quick plan says so rather
-    /// than asking: those are measured values, never typed, so its estimate waits for laps.
+    /// No lap history with both a lap time and fuel for this context, so Quick plan's lap time and
+    /// fuel fields start empty rather than filled from the driver's laps.
     /// </summary>
     Fuel,
 }
@@ -351,10 +351,28 @@ public sealed class SessionPlannerController
     public PlanContextOptions ContextOptions() =>
         PlanContextOptions.From(this._lapHistory, this._lastSeenContext());
 
-    /// <summary>Whether the creation flow can skip asking for manual average lap time and
-    /// fuel per lap: the lap history has both for this context's race (#50).</summary>
+    /// <summary>Whether the lap history has both a lap time and fuel per lap for this context's
+    /// race (#50), so the plan dialogs' fuel fields start filled.</summary>
     public bool HasFuelHistory(PlanContext context) =>
         this._fuelHistory.ForRace(context).IsComplete;
+
+    /// <summary>
+    /// The plan dialogs' fuel calculator: the lap history for the inputs' car and track, which
+    /// the dialogs pre-fill from, and the race worked out from the inputs. The tank of the car in
+    /// the game (<paramref name="liveTankLiters"/>) stands in for a recorded one only when the
+    /// inputs name the car and track <paramref name="session"/> reports — the session about to be
+    /// driven; another car may hold a different tank.
+    /// </summary>
+    public PlanFuelPreview PreviewFuel(PlanFuelInputs inputs, SessionInfo session, double? liveTankLiters)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(session);
+
+        FuelHistoryFigures history = this._fuelHistory.ForRace(inputs.Context);
+        PlanContext driven = new PlanContext(session.Game, CarNames.Of(session), session.Track);
+        double? tank = inputs.Context == driven ? liveTankLiters : null;
+        return new PlanFuelPreview(history, RaceFuelEstimate.ForInputs(inputs, history, tank));
+    }
 
     /// <summary>
     /// Whether <paramref name="planId"/> may claim the active slot. The UI disables the

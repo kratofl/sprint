@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('sprint', {
   diagnosticsLogs: (minLevel: string, text: string): Promise<unknown> => ipcRenderer.invoke('sprint:diagnostics-logs', minLevel, text),
   planContext: (): Promise<unknown> => ipcRenderer.invoke('sprint:plan-context'),
   planTargets: (planId: string): Promise<unknown> => ipcRenderer.invoke('sprint:plan-targets', planId),
+  planFuelEstimate: (request: unknown): Promise<unknown> => ipcRenderer.invoke('sprint:plan-fuel-estimate', request),
   setups: (): Promise<unknown> => ipcRenderer.invoke('sprint:setups'),
   setupSheet: (id: string, version: string | null): Promise<unknown> => ipcRenderer.invoke('sprint:setup-sheet', id, version),
   setupDriven: (id: string): Promise<unknown> => ipcRenderer.invoke('sprint:setup-driven', id),

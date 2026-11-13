@@ -24,11 +24,11 @@ capture. Code: `app/Sprint.Desktop.Core/Features/SessionPlanning/` and `Features
   modes existed keep their meaning.
 - Two ways in, two header actions: **Quick plan** (the list's one primary) for the session about to be
   driven, **New plan…** (neutral) for the full three-step sheet. No mode switch inside a dialog.
-- Quick plan shows what the host detected read-only and asks only for `PlanDetection.MissingFields`;
-  with context, a race length and fuel history all known it is a summary and Create. Detection
-  (`SessionPlannerController.Detect`) runs on the host and rides on `GET /api/planner/context`, taken
-  once when the dialog opens so a field never vanishes mid-edit. It never asks for a lap time or fuel
-  per lap: those are measured, so without history it says the estimate fills in from the first laps.
+- Quick plan is quick enough for a daily race: what the host detected shows as summary rows, it asks
+  only for the context and race length it could not detect, and the rest is a fuel calculator — lap
+  time, fuel per lap and reserve in, the race's laps, litres and stints out, live (see Race fuel).
+  Detection (`SessionPlannerController.Detect`) runs on the host and rides on
+  `GET /api/planner/context`, taken once when the dialog opens so a field never vanishes mid-edit.
   Practice programs are not offered as a quick plan's targets.
 - Name is optional; the derived name (`Track – Car`, `SessionPlannerService.DerivedName`) is shown as
   the placeholder and is exactly what a plan created with a blank name gets.
@@ -135,6 +135,15 @@ setting changes on the next poll.
   each with its sample size. `FuelHistorySource` chooses every valid lap or only race laps.
 - History wins per figure; the plan's typed values fill in only where history has none. Imports carry
   times but never fuel, so one figure can come from each.
+- The plan dialogs keep typed lap time and fuel per lap (a car not driven yet, a number known by
+  heart) but fill them from the history of their car and track, asked again when either changes, say
+  "From your N laps" under the field, and never overwrite what the driver typed. A plan stores the
+  figures as confirmed.
+- Quick plan's calculator is `POST /api/planner/fuel-estimate` (`RaceFuelEstimate.ForInputs`), asked
+  as its inputs change; the renderer never works a figure out. There the typed figure wins and history
+  fills only an empty field — the reverse of a stored plan, whose history follows every new lap.
+  Inputs are held to `PlanLimits` and a refused one answers with the reason. The live car's tank stands
+  in only when the inputs name the car and track the game reports.
 - A timed race is its minutes over the lap time, the running lap driven out (ceiling). No lap time,
   no lap count — never a guess.
 - Litres per stint need the tank, the largest the recorder saw on the car, else the tank of the car in

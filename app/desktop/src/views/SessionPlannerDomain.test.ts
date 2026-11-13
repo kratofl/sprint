@@ -13,6 +13,12 @@ import {
   positiveOrNull,
   practiceSummary,
   quickPlanInput,
+  EMPTY_FIGURE,
+  figureNote,
+  figureText,
+  figureValue,
+  prefillFigure,
+  storedFigure,
   readPlannerSettings,
   recentLapTimes,
   reserveNote,
@@ -21,7 +27,7 @@ import {
   stintsLabel,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { QuickPlanAnswers } from './SessionPlannerDomain'
+import type { FigureField, QuickPlanAnswers } from './SessionPlannerDomain'
 import type { PlanDetection, PlanTargetOption } from '../bridge'
 import type { SessionPlan } from './SessionPlannerDomain'
 
@@ -160,25 +166,55 @@ const detection = (overrides: Partial<PlanDetection> = {}): PlanDetection => ({
   ...overrides,
 })
 
-const answers: QuickPlanAnswers = { game: 'Typed game', car: 'Typed car', track: 'Typed track', raceLengthFormat: 'LapBased', raceLength: '24' }
+const answers: QuickPlanAnswers = {
+  game: 'Typed game',
+  car: 'Typed car',
+  track: 'Typed track',
+  raceLengthFormat: 'LapBased',
+  raceLength: '24',
+  lapTime: { source: 'history', value: 125.4, laps: 11 },
+  fuelPerLap: { source: 'typed', text: '3.2' },
+  fuelReserveLaps: 2,
+}
 
-test('a quick plan takes what was detected and only the answers it asked for', () => {
-  const everything = quickPlanInput(detection(), answers, 2)
+test('a quick plan takes what was detected, the answers it asked for and the figures as confirmed', () => {
+  const everything = quickPlanInput(detection(), answers)
   assert.deepEqual(
     [everything.name, everything.mode, everything.game, everything.car, everything.track, everything.raceLengthFormat, everything.raceLengthValue, everything.fuelReserveLaps, everything.avgLapTimeSeconds, everything.fuelPerLapLiters],
-    ['', 'Quick', 'Le Mans Ultimate', 'Hypercar Porsche', 'Spa', 'TimeBased', 60, 2, null, null],
+    ['', 'Quick', 'Le Mans Ultimate', 'Hypercar Porsche', 'Spa', 'TimeBased', 60, 2, 125.4, 3.2],
   )
 
-  const gaps = quickPlanInput(detection({ raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }), answers, 1)
-  // No laps here: still no typed fuel figures; the estimate fills in from the first laps driven.
+  // Nothing detected and nothing typed: the typed context, the typed length, no figures.
+  const gaps = quickPlanInput(detection({ raceLength: null, hasFuelHistory: false, missing: ['Context', 'RaceLength', 'Fuel'] }), { ...answers, lapTime: EMPTY_FIGURE, fuelPerLap: { source: 'typed', text: '' } })
   assert.deepEqual(
     [gaps.game, gaps.car, gaps.track, gaps.raceLengthFormat, gaps.raceLengthValue, gaps.avgLapTimeSeconds, gaps.fuelPerLapLiters],
     ['Typed game', 'Typed car', 'Typed track', 'LapBased', 24, null, null],
   )
 
   // A length left blank stays unset rather than becoming a zero-lap race.
-  const blank = quickPlanInput(detection({ raceLength: null, missing: ['RaceLength'] }), { ...answers, raceLength: '' }, 1)
+  const blank = quickPlanInput(detection({ raceLength: null, missing: ['RaceLength'] }), { ...answers, raceLength: '' })
   assert.equal(blank.raceLengthFormat, 'Unknown')
+})
+
+test('laps fill a figure until the driver types into it', () => {
+  // Rounded to what the field shows, and named under it.
+  const filled = prefillFigure(EMPTY_FIGURE, 125.43219, 11, 3)
+  assert.deepEqual(filled, { source: 'history', value: 125.432, laps: 11 })
+  assert.equal(figureText(filled), '125.432')
+  assert.equal(figureValue(filled), 125.432)
+  assert.equal(figureNote(filled), 'From your 11 laps')
+  // The same answer again changes nothing; another car's laps replace it, a car without laps empties it.
+  assert.equal(prefillFigure(filled, 125.43219, 11, 3), filled)
+  assert.deepEqual(prefillFigure(filled, 98.2, 4, 3), { source: 'history', value: 98.2, laps: 4 })
+  assert.equal(prefillFigure(filled, null, 0, 3), EMPTY_FIGURE)
+
+  // What the driver typed is never overwritten, not even an emptied field, and carries no note.
+  const typed: FigureField = { source: 'typed', text: '' }
+  assert.equal(prefillFigure(typed, 125.4, 11, 3), typed)
+  assert.equal(figureNote(typed), null)
+  assert.equal(figureValue(typed), null)
+  assert.deepEqual(storedFigure(3.1), { source: 'typed', text: '3.1' })
+  assert.equal(storedFigure(null), EMPTY_FIGURE)
 })
 
 test('planner settings fall back to the host defaults', () => {

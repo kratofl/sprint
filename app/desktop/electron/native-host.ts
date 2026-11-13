@@ -87,6 +87,11 @@ export class NativeHost {
     return this.json(`/api/planner/targets?planId=${encodeURIComponent(planId)}`, undefined, 30_000)
   }
 
+  /** The plan dialogs' fuel calculator: the lap history for a car and track, and the race from what is typed. */
+  async planFuelEstimate(request: Record<string, unknown>): Promise<unknown> {
+    return this.json('/api/planner/fuel-estimate', { method: 'POST', body: JSON.stringify(request), headers: { 'content-type': 'application/json' } }, 30_000)
+  }
+
   /**
    * Scans the game's results archive. A first run parses every file in it — hundreds of
    * XMLs — so this gets minutes rather than the default 5s request bound.

@@ -745,6 +745,43 @@
         }),
       }
     },
+    // The plan dialogs' fuel calculator (POST /api/planner/fuel-estimate) over the payload's own lap
+    // history, the way the host's RaceFuelEstimate.ForInputs works it out: medians of the valid laps,
+    // a typed figure over the history's, the race cut into tanks. `detect=partial` has no laps here.
+    planFuelEstimate: async (request) => {
+      if (request.avgLapTimeSeconds !== null && (request.avgLapTimeSeconds < 10 || request.avgLapTimeSeconds > 1800)) {
+        return { outcome: 'Invalid', error: 'avgLapTimeSeconds must be from 10 to 1800 seconds' }
+      }
+      const median = (values) => {
+        const sorted = [...values].sort((a, b) => a - b)
+        const middle = Math.floor(sorted.length / 2)
+        return sorted.length === 0 ? null : sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+      }
+      const sessions = params.get('detect') === 'partial'
+        ? []
+        : (state.lapHistory ?? []).filter((session) => session.context?.trackCourse === request.track && session.context?.carModel === request.car)
+      const laps = sessions.flatMap((session) => (session.laps ?? []).filter((lap) => lap.isValid && lap.lapTimeSeconds > 0))
+      const times = laps.map((lap) => lap.lapTimeSeconds)
+      const used = laps.map((lap) => lap.fuelUsedLiters).filter((liters) => typeof liters === 'number' && liters > 0)
+      const tanks = sessions.map((session) => session.context?.fuelCapacityLiters).filter((liters) => typeof liters === 'number' && liters > 0)
+      const history = { lapTimeSeconds: median(times), lapTimeLaps: times.length, fuelPerLapLiters: median(used), fuelLaps: used.length, tankLiters: tanks.length > 0 ? Math.max(...tanks) : null }
+      const figure = (typed, value, count) => (typed > 0 ? { value: typed, source: 'Plan', laps: 0 } : value !== null ? { value, source: 'History', laps: count } : null)
+      const lapTime = figure(request.avgLapTimeSeconds, history.lapTimeSeconds, history.lapTimeLaps)
+      const fuelPerLap = figure(request.fuelPerLapLiters, history.fuelPerLapLiters, history.fuelLaps)
+      const reserveLaps = request.fuelReserveLaps
+      const length = request.raceLengthValue
+      const raceLaps = request.raceLengthFormat === 'LapBased' && length > 0 ? Math.round(length)
+        : request.raceLengthFormat === 'TimeBased' && length > 0 && lapTime ? Math.ceil((length * 60) / lapTime.value) : null
+      const totalLiters = raceLaps !== null && fuelPerLap ? (raceLaps + reserveLaps) * fuelPerLap.value : null
+      let stints = null
+      if (totalLiters !== null && history.tankLiters !== null) {
+        const perStint = Math.max(1, Math.floor(history.tankLiters / fuelPerLap.value))
+        const liters = []
+        for (let left = raceLaps + reserveLaps; left > 0; left -= perStint) liters.push(Math.min(perStint, left) * fuelPerLap.value)
+        stints = { lapsPerStint: perStint, liters }
+      }
+      return { outcome: 'Ready', history, estimate: { laps: raceLaps, lapTime, fuelPerLap, reserveLaps, totalLiters, tankLiters: history.tankLiters, stints } }
+    },
     resultsImportScan: async (includeDeclined) =>
       (params.get('import') === 'offer' || firstRun !== null) && !includeDeclined
         ? {

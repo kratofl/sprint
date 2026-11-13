@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Check, ChevronLeft, ChevronRight, CircleDot, CircleOff, Download, Flag, ListChecks, NotebookPen, Pencil, Play, Plus, Route, Settings, Square, Timer, Trash2, Zap } from 'lucide-react'
 import { bridge } from '../bridge'
-import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanTargetOption, PlanTargetScopeGroup, RaceFuelEstimate, SprintCommand } from '../bridge'
+import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanFuelPreview, PlanFuelRequest, PlanTargetOption, PlanTargetScopeGroup, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { ConfirmDialog, ContentDialog } from '../shell/ContentDialog'
 import { CommandDivider, PageHeader } from '../shell/PageHeader'
@@ -27,6 +27,16 @@ import {
   choicesForGame,
   derivedPlanName,
   detectedFormatLabel,
+  EMPTY_FIGURE,
+  figureNote,
+  figureText,
+  figureValue,
+  fuelGap,
+  historyRequest,
+  planFuelRequest,
+  prefillFigures,
+  sameContext,
+  storedFigure,
   detectedRaceFormat,
   figureSource,
   formatLapTime,
@@ -38,7 +48,6 @@ import {
   openSegment,
   parsePlans,
   planLapStats,
-  positiveOrNull,
   practiceSummary,
   formatRaceLength,
   maxRaceLength,
@@ -60,7 +69,7 @@ import {
   upNextPlan,
   weekendTimeline,
 } from './SessionPlannerDomain'
-import type { CreatePlanInput, FuelHistoryChoice, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
+import type { CreatePlanInput, FigureField, FuelHistoryChoice, PlanFigures, PlanSegment, PlanStatus, PlanTarget, PlannerSettings, PracticeSummary, QuickPlanAnswers, RaceLengthFormat, SegmentKind, SessionPlan } from './SessionPlannerDomain'
 import { presetChoices } from './choices'
 import { commandErrorMessage } from './DevicesDomain'
 import './SessionPlannerView.css'
@@ -1065,13 +1074,13 @@ function NewPlanDialog({
 }
 
 /**
- * Quick plan (#183): a plan for the session about to be driven. Only what Sprint could not detect
- * is asked for; what it did detect shows read-only underneath — with the car known, a race length
- * from the game and fuel history here, it is that summary and Create. Fuel and lap time are never
- * typed: without laps here the plan says so, and its estimate fills in from the first laps driven.
- * The plan is marked Quick, named after its track and car (the host's rule, previewed while they
- * are typed) and starts with the planner's default reserve; practice programs are not offered as
- * its targets (the host leaves them out).
+ * Quick plan (#183): a plan for the session about to be driven, quick enough for a daily race. What
+ * Sprint detected shows as summary rows; it asks only for what it could not detect (the context, the
+ * race length outside a race), then the fuel calculator: lap time and fuel per lap, filled from the
+ * driver's laps here and editable, and the reserve (the planner's default). The race's laps, fuel and
+ * stints follow the inputs live — worked out by the host (`usePlanFuel`), never here. The plan keeps
+ * the figures as confirmed, is marked Quick, named after its track and car (the host's rule, previewed
+ * while they are typed); practice programs are not offered as its targets (the host leaves them out).
  */
 function QuickPlanDialog({
   choices,
@@ -1091,9 +1100,14 @@ function QuickPlanDialog({
     ...detection.context,
     raceLengthFormat: 'TimeBased',
     raceLength: '',
+    lapTime: EMPTY_FIGURE,
+    fuelPerLap: EMPTY_FIGURE,
+    fuelReserveLaps: reserve,
   })
   const set = (patch: Partial<QuickPlanAnswers>) => setAnswers((current) => ({ ...current, ...patch }))
-  const plan = quickPlanInput(detection, answers, reserve)
+  const plan = quickPlanInput(detection, answers)
+  const fuel = usePlanFuel(planFuelRequest(plan))
+  usePrefillFigures(fuel, plan, setAnswers)
   const narrowed = choicesForGame(choices, answers.game)
   const asking = asks('Context') || asks('RaceLength')
 
@@ -1140,6 +1154,18 @@ function QuickPlanDialog({
         </div>
       )}
 
+      <dl className="planner-facts planner-quick-detected" aria-label="Plan">
+        {asks('Context') ? (
+          <Fact label="Name">{derivedPlanName(plan.track, plan.car)}</Fact>
+        ) : (
+          <Fact label="Car · Track">
+            {plan.car}
+            <span className="planner-sub">{plan.track}</span>
+          </Fact>
+        )}
+        {detection.raceLength && <Fact label="Race">{formatRaceLength(detection.raceLength.format, detection.raceLength.value)}</Fact>}
+      </dl>
+
       {asks('RaceLength') && (
         <div className="field">
           <span id="planner-quick-length-label">Race length</span>
@@ -1174,22 +1200,146 @@ function QuickPlanDialog({
         </div>
       )}
 
-      <dl className="planner-facts planner-quick-summary" aria-label="Plan">
-        {asks('Context') && <Fact label="Name">{derivedPlanName(plan.track, plan.car)}</Fact>}
-        {!asks('Context') && (
-          <Fact label="Car · Track">
-            {plan.car}
-            <span className="planner-sub">{plan.track}</span>
-          </Fact>
-        )}
-        {detection.raceLength && <Fact label="Race">{formatRaceLength(detection.raceLength.format, detection.raceLength.value)}</Fact>}
-        <Fact label="Fuel and lap time">
-          {detection.hasFuelHistory ? 'From your laps here' : <span className="muted">From your first laps here</span>}
-        </Fact>
-        <Fact label="Reserve">{reserveLabel(reserve)}</Fact>
-      </dl>
+      <div className="planner-quick-figures">
+        <FigureInput label="Lap time (s)" field={answers.lapTime} kind="lapTime" onChange={(lapTime) => set({ lapTime })} />
+        <FigureInput label="Fuel per lap (L)" field={answers.fuelPerLap} kind="fuel" onChange={(fuelPerLap) => set({ fuelPerLap })} />
+        <label className="field">
+          <span>Reserve</span>
+          <select value={answers.fuelReserveLaps} onChange={(event) => set({ fuelReserveLaps: Number(event.target.value) })}>
+            {presetChoices(RESERVE_CHOICES, answers.fuelReserveLaps).map((laps) => (
+              <option key={laps} value={laps}>
+                {reserveLabel(laps)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <QuickPlanFuel plan={plan} preview={fuel?.preview ?? null} />
     </ContentDialog>
   )
+}
+
+/**
+ * The calculator's result under Quick plan's inputs: the race's laps, its fuel with the reserve,
+ * and that fuel per stint once the tank is known — the host's answer, or what it still needs.
+ */
+function QuickPlanFuel({ plan, preview }: { plan: CreatePlanInput; preview: PlanFuelPreview | null }) {
+  const estimate = preview?.outcome === 'ready' ? preview.estimate : null
+  const gap = estimate ? fuelGap(plan, estimate) : null
+  return (
+    <dl className="planner-facts planner-quick-result" aria-label="Race fuel" aria-live="polite">
+      <Fact label="Laps">{estimate?.laps != null ? (plan.raceLengthFormat === 'TimeBased' ? `≈${estimate.laps}` : estimate.laps) : '—'}</Fact>
+      <Fact label="Fuel for the race">
+        {estimate?.totalLiters != null ? (
+          <>
+            ≈{Math.ceil(estimate.totalLiters)} L<span className="planner-sub">{reserveNote(estimate.reserveLaps)}</span>
+          </>
+        ) : (
+          <>
+            —
+            {preview?.outcome === 'invalid' ? <span className="planner-sub field-error">{preview.error}</span> : gap && <span className="planner-sub">{gap}</span>}
+          </>
+        )}
+      </Fact>
+      {estimate?.totalLiters != null && (
+        <Fact label="Per stint">
+          {estimate.stints ? (
+            <>
+              {stintsLabel(estimate.stints.liters)}
+              <span className="planner-sub">{estimate.stints.lapsPerStint} laps on a full tank</span>
+            </>
+          ) : (
+            <span className="muted">Needs the tank size, from a lap in this car</span>
+          )}
+        </Fact>
+      )}
+    </dl>
+  )
+}
+
+/**
+ * A plan dialog's lap time or fuel per lap: what the driver's laps filled in, named under it ("From
+ * your 11 laps", the lap time also read as m:ss.d), until the driver types — then it is theirs.
+ */
+function FigureInput({
+  label,
+  field,
+  kind,
+  onChange,
+}: {
+  label: string
+  field: FigureField
+  kind: 'lapTime' | 'fuel'
+  onChange: (field: FigureField) => void
+}) {
+  const value = figureValue(field)
+  const hint = [kind === 'lapTime' && value !== null ? formatLapTime(value) : null, figureNote(field)].filter((part): part is string => part !== null).join(' · ')
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={kind === 'lapTime' ? PLAN_LIMITS.minLapTimeSeconds : 0}
+        max={kind === 'lapTime' ? PLAN_LIMITS.maxLapTimeSeconds : PLAN_LIMITS.maxFuelPerLapLiters}
+        step="any"
+        value={figureText(field)}
+        onChange={(event) => onChange({ source: 'typed', text: event.target.value })}
+        placeholder="Optional"
+      />
+      {hint && <span className="field-hint tabular">{hint}</span>}
+    </label>
+  )
+}
+
+/** How long the calculator waits after the inputs last changed before asking: typing a figure is several changes. */
+const FUEL_ESTIMATE_DELAY_MS = 250
+
+type PlanFuelAnswer = { request: PlanFuelRequest; preview: PlanFuelPreview }
+
+/**
+ * The host's fuel calculator for `request` (`POST /api/planner/fuel-estimate`): asked at once, then a
+ * moment after the request last changed, keeping only the latest answer. The previous answer stays
+ * while the next is on its way, so the dialog does not flicker. Null until the first answer.
+ */
+function usePlanFuel(request: PlanFuelRequest): PlanFuelAnswer | null {
+  const key = JSON.stringify(request)
+  const [answer, setAnswer] = useState<PlanFuelAnswer | null>(null)
+  useEffect(() => {
+    let live = true
+    const timer = setTimeout(
+      () => {
+        void bridge.planFuelEstimate(request).then((preview) => {
+          if (live) setAnswer({ request, preview })
+        })
+      },
+      answer === null ? 0 : FUEL_ESTIMATE_DELAY_MS,
+    )
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+    // Keyed on the request's content: a new object asking the same is the same question.
+  }, [key])
+  return answer
+}
+
+/**
+ * Fills a dialog's lap time and fuel per lap from the driver's laps whenever an answer arrives for
+ * the car and track the dialog names now (`prefillFigures`): never over a typed value, and never
+ * from an answer about a car or track the driver has since changed.
+ */
+function usePrefillFigures<T extends PlanFigures>(
+  fuel: PlanFuelAnswer | null,
+  context: { game: string; car: string; track: string },
+  update: (apply: (current: T) => T) => void,
+) {
+  useEffect(() => {
+    if (fuel?.preview.outcome !== 'ready' || !sameContext(fuel.request, context)) return
+    const { history } = fuel.preview
+    update((current) => prefillFigures(current, history))
+    // Only a new answer fills; the context is read as it stands when that answer arrives.
+  }, [fuel])
 }
 
 /**
@@ -1203,6 +1353,10 @@ function QuickPlanDialog({
  * corpus already holds, while typing a car or track never driven stays possible. Cars and tracks
  * narrow to the typed game. A new plan starts from `choices.prefill` — the last game/car/track the
  * sim reported, else the most recent plan's.
+ *
+ * Average lap time and fuel per lap stay typeable (a car not driven yet, a number known by heart) but
+ * fill from the driver's laps with the car at the track, asked again whenever those change, and say
+ * so under the field. A value the driver typed is never overwritten (`FigureField`).
  */
 function PlanFormDialog({
   initial,
@@ -1231,12 +1385,19 @@ function PlanFormDialog({
   const [raceLengthFormat, setRaceLengthFormat] = useState<RaceLengthFormat>(initial?.raceLengthFormat ?? 'Unknown')
   const [raceLengthValue, setRaceLengthValue] = useState(String(initial?.raceLengthValue ?? ''))
   const [fuelReserveLaps, setFuelReserveLaps] = useState(String(initial?.fuelReserveLaps ?? reserve))
-  // Plans stored before the host refused 0 kept it for "not typed": it shows, and saves, as empty.
-  const [avgLapTimeSeconds, setAvgLapTimeSeconds] = useState(initial?.avgLapTimeSeconds ? String(initial.avgLapTimeSeconds) : '')
-  const [fuelPerLapLiters, setFuelPerLapLiters] = useState(initial?.fuelPerLapLiters ? String(initial.fuelPerLapLiters) : '')
+  // A stored plan's own figures are the driver's; plans stored before the host refused 0 kept it
+  // for "not typed", which shows as empty. Empty figures fill from the driver's laps here.
+  const [figures, setFigures] = useState<PlanFigures>({
+    lapTime: storedFigure(initial?.avgLapTimeSeconds ?? null),
+    fuelPerLap: storedFigure(initial?.fuelPerLapLiters ?? null),
+  })
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const context = { game: game.trim(), car: car.trim(), track: track.trim() }
+  usePrefillFigures(usePlanFuel(historyRequest(context)), context, setFigures)
 
-  const snapshot = JSON.stringify([name, game, car, track, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, avgLapTimeSeconds, fuelPerLapLiters, notes])
+  // What the driver's laps filled in is not a change of theirs: only typed figures count.
+  const typed = (field: FigureField) => (field.source === 'typed' ? field.text : '')
+  const snapshot = JSON.stringify([name, game, car, track, qualifyingIncluded, raceLengthFormat, raceLengthValue, fuelReserveLaps, typed(figures.lapTime), typed(figures.fuelPerLap), notes])
   const [initialSnapshot] = useState(snapshot)
   const dirty = snapshot !== initialSnapshot
 
@@ -1260,8 +1421,8 @@ function PlanFormDialog({
       raceLengthFormat,
       raceLengthValue: Number.isFinite(parsedRaceLengthValue) ? parsedRaceLengthValue : 0,
       fuelReserveLaps: Number.isFinite(parsedFuelReserveLaps) ? Math.max(0, parsedFuelReserveLaps) : reserve,
-      avgLapTimeSeconds: positiveOrNull(avgLapTimeSeconds),
-      fuelPerLapLiters: positiveOrNull(fuelPerLapLiters),
+      avgLapTimeSeconds: figureValue(figures.lapTime),
+      fuelPerLapLiters: figureValue(figures.fuelPerLap),
       notes,
     })
   }
@@ -1402,14 +1563,8 @@ function PlanFormDialog({
             <input type="number" min={0} max={PLAN_LIMITS.maxFuelReserveLaps} value={fuelReserveLaps} onChange={(event) => setFuelReserveLaps(event.target.value)} autoFocus />
           </label>
           <span />
-          <label className="field">
-            <span>Avg lap time (s)</span>
-            <input type="number" min={PLAN_LIMITS.minLapTimeSeconds} max={PLAN_LIMITS.maxLapTimeSeconds} step="any" value={avgLapTimeSeconds} onChange={(event) => setAvgLapTimeSeconds(event.target.value)} placeholder="Optional" />
-          </label>
-          <label className="field">
-            <span>Fuel per lap (L)</span>
-            <input type="number" min={0} max={PLAN_LIMITS.maxFuelPerLapLiters} step="any" value={fuelPerLapLiters} onChange={(event) => setFuelPerLapLiters(event.target.value)} placeholder="Optional" />
-          </label>
+          <FigureInput label="Avg lap time (s)" field={figures.lapTime} kind="lapTime" onChange={(lapTime) => setFigures((current) => ({ ...current, lapTime }))} />
+          <FigureInput label="Fuel per lap (L)" field={figures.fuelPerLap} kind="fuel" onChange={(fuelPerLap) => setFigures((current) => ({ ...current, fuelPerLap }))} />
           <label className="field planner-form-wide">
             <span>Notes</span>
             <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Optional" />

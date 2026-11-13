@@ -92,6 +92,26 @@ public sealed record EstimateFigure(double Value, EstimateSource Source, int Lap
 public sealed record RaceStints(int LapsPerStint, IReadOnlyList<double> Liters);
 
 /// <summary>
+/// What the plan dialogs' fuel calculator works from (<c>POST /api/planner/fuel-estimate</c>): the
+/// plan's car and track, its race length and reserve, and the lap time and fuel per lap as typed.
+/// Null means the field is empty, and the lap history stands in (<see cref="RaceFuelEstimate.ForInputs"/>).
+/// The host builds it inside <see cref="PlanLimits"/>.
+/// </summary>
+public sealed record PlanFuelInputs(
+    PlanContext Context,
+    RaceLengthFormat RaceLengthFormat,
+    double RaceLengthValue,
+    int FuelReserveLaps,
+    double? AvgLapTimeSeconds,
+    double? FuelPerLapLiters);
+
+/// <summary>
+/// The calculator's answer: what the lap history says about the context, which the dialogs
+/// pre-fill their fields from and name under them, and the race worked out from the inputs.
+/// </summary>
+public sealed record PlanFuelPreview(FuelHistoryFigures History, RaceFuelEstimate Estimate);
+
+/// <summary>
 /// The race's fuel (#50, #9): its length in laps, the lap time and fuel per lap it rests on, the
 /// litres to finish with the plan's reserve on top, and those litres per stint. Built on the host
 /// for every plan; the Race card only renders it. Anything that cannot be worked out is null rather
@@ -154,34 +174,67 @@ public sealed record RaceFuelEstimate(
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(history);
 
-        EstimateFigure? lapTime = Figure(history.LapTimeSeconds, history.LapTimeLaps, plan.AvgLapTimeSeconds);
-        EstimateFigure? fuelPerLap = Figure(history.FuelPerLapLiters, history.FuelLaps, plan.FuelPerLapLiters);
-        int reserve = Math.Clamp(plan.FuelReserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
-        double? tankLiters = history.TankLiters ?? (liveTankLiters is { } live && double.IsFinite(live) && live > 0 ? live : null);
+        return Build(
+            plan.RaceLengthFormat,
+            plan.RaceLengthValue,
+            FromHistory(history.LapTimeSeconds, history.LapTimeLaps) ?? Typed(plan.AvgLapTimeSeconds),
+            FromHistory(history.FuelPerLapLiters, history.FuelLaps) ?? Typed(plan.FuelPerLapLiters),
+            plan.FuelReserveLaps,
+            history.TankLiters ?? liveTankLiters);
+    }
 
-        double? raceLaps = plan switch
+    /// <summary>
+    /// The plan dialogs' calculator (<c>POST /api/planner/fuel-estimate</c>): the other way round
+    /// from <see cref="For"/>, a typed figure wins — the dialogs pre-fill it from the history, so a
+    /// different value is one the driver changed — and the history fills only a field left empty.
+    /// Tank, limits and rounding are the plan's.
+    /// </summary>
+    public static RaceFuelEstimate ForInputs(PlanFuelInputs inputs, FuelHistoryFigures history, double? liveTankLiters = null)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(history);
+
+        return Build(
+            inputs.RaceLengthFormat,
+            inputs.RaceLengthValue,
+            Typed(inputs.AvgLapTimeSeconds) ?? FromHistory(history.LapTimeSeconds, history.LapTimeLaps),
+            Typed(inputs.FuelPerLapLiters) ?? FromHistory(history.FuelPerLapLiters, history.FuelLaps),
+            inputs.FuelReserveLaps,
+            history.TankLiters ?? liveTankLiters);
+    }
+
+    private static RaceFuelEstimate Build(
+        RaceLengthFormat format,
+        double length,
+        EstimateFigure? lapTime,
+        EstimateFigure? fuelPerLap,
+        int reserveLaps,
+        double? tank)
+    {
+        int reserve = Math.Clamp(reserveLaps, 0, SessionPlannerSettings.MaxFuelReserveLaps);
+        double? tankLiters = tank is { } liters && double.IsFinite(liters) && liters > 0 ? liters : null;
+
+        double? raceLaps = format switch
         {
-            { RaceLengthFormat: RaceLengthFormat.LapBased, RaceLengthValue: > 0 } => Math.Round(plan.RaceLengthValue),
-            { RaceLengthFormat: RaceLengthFormat.TimeBased, RaceLengthValue: > 0 } when lapTime is not null =>
-                Math.Ceiling(plan.RaceLengthValue * 60 / lapTime.Value),
+            RaceLengthFormat.LapBased when length > 0 => Math.Round(length),
+            RaceLengthFormat.TimeBased when length > 0 && lapTime is not null => Math.Ceiling(length * 60 / lapTime.Value),
             _ => null,
         };
         int? laps = raceLaps is { } count && count <= MaxLaps ? (int)count : null;
 
         double? total = laps is { } totalLaps && fuelPerLap is not null ? (totalLaps + reserve) * fuelPerLap.Value : null;
-        RaceStints? stints = laps is { } stintRaceLaps && fuelPerLap is not null && tankLiters is { } tank
-            ? CutIntoStints(stintRaceLaps + reserve, fuelPerLap.Value, tank)
+        RaceStints? stints = laps is { } stintRaceLaps && fuelPerLap is not null && tankLiters is { } fullTank
+            ? CutIntoStints(stintRaceLaps + reserve, fuelPerLap.Value, fullTank)
             : null;
 
         return new RaceFuelEstimate(laps, lapTime, fuelPerLap, reserve, total, tankLiters, stints);
     }
 
-    private static EstimateFigure? Figure(double? fromHistory, int historyLaps, double? fromPlan) =>
-        fromHistory is { } value
-            ? new EstimateFigure(value, EstimateSource.History, historyLaps)
-            : fromPlan is { } typed && typed > 0
-                ? new EstimateFigure(typed, EstimateSource.Plan, 0)
-                : null;
+    private static EstimateFigure? FromHistory(double? value, int laps) =>
+        value is { } median ? new EstimateFigure(median, EstimateSource.History, laps) : null;
+
+    private static EstimateFigure? Typed(double? value) =>
+        value is { } typed && typed > 0 ? new EstimateFigure(typed, EstimateSource.Plan, 0) : null;
 
     /// <summary>Null past <see cref="MaxStints"/>: a list that long only describes figures that are wrong.</summary>
     private static RaceStints? CutIntoStints(int fuelLaps, double perLap, double tank)

@@ -132,6 +132,11 @@ ipcMain.handle('sprint:diagnostics-logs', (_event: IpcMainInvokeEvent, minLevel:
 
 ipcMain.handle('sprint:plan-context', () => nativeHost.planContext())
 ipcMain.handle('sprint:plan-targets', (_event, planId: unknown) => (typeof planId === 'string' ? nativeHost.planTargets(planId) : null))
+/** The host validates the figures (PlanLimits); this only makes sure an object goes through. */
+ipcMain.handle('sprint:plan-fuel-estimate', (_event: IpcMainInvokeEvent, request: unknown) => {
+  if (!isRecord(request)) throw new Error('A fuel estimate request is required.')
+  return nativeHost.planFuelEstimate(request)
+})
 
 ipcMain.handle('sprint:setups', () => nativeHost.setups())
 

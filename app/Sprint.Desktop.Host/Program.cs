@@ -155,7 +155,8 @@ LapTraceRetention lapTraceRetention = new(lapTraceStore, lapHistoryStore, log);
 coordinator = new RuntimeCoordinator(runtime, plannerService, analysisController, liveLog, dashPageCycle, peerLink, liveCompare, gameFolder, lapHistoryStore, pitWallLayouts, lapTraceRetention);
 
 // The plan dialogs' prefill, recorded game/car/track choices and Quick plan detection
-// (GET /api/planner/context). Only Prefill(), ContextOptions() and Detect() are used: those rules
+// (GET /api/planner/context), and their fuel calculator (POST /api/planner/fuel-estimate). Only
+// Prefill(), ContextOptions(), Detect() and PreviewFuel() are used: those rules
 // live on the planner controller, so the dialogs cannot drift from the spellings the lap-history
 // buckets are keyed on, and the renderer never works out what was detected.
 SessionPlannerController planContext = new(plannerService, fuelHistory, LastSeenContext, lapHistoryStore);
@@ -761,6 +762,21 @@ app.MapGet("/api/planner/context", async (CancellationToken ct) =>
         () => PlanContextChoices.From(planContext.Prefill(), planContext.ContextOptions(), planContext.Detect(state.Telemetry.Frame.Session)),
         ct);
     return Results.Json(choices, json);
+});
+
+// The plan dialogs' fuel calculator, asked as their fields change: the lap history for a car and
+// track (the dialogs pre-fill from it) and the race worked out from what is typed. Refused inputs
+// answer 200 with the reason, like plan.create's, so the dialog can say it beside its fields.
+app.MapPost("/api/planner/fuel-estimate", async (PlanFuelEstimateRequest body, CancellationToken ct) =>
+{
+    if (!body.TryGetInputs(runtime.Settings.SessionPlanner.FuelReserveLaps, out PlanFuelInputs inputs, out string error))
+    {
+        return Results.Json(new { outcome = "Invalid", error }, json);
+    }
+
+    TelemetryFrame frame = state.Telemetry.Frame;
+    PlanFuelPreview preview = await Task.Run(() => planContext.PreviewFuel(inputs, frame.Session, frame.Car.FuelCapacityLiters), ct);
+    return Results.Json(new { outcome = "Ready", preview.History, preview.Estimate }, json);
 });
 
 // What a plan's targets can be: per scope (this qualifying, qualifying, practice, programs) the

@@ -2799,7 +2799,8 @@
         "trackCourse": "Circuit de Spa-Francorchamps",
         "carModel": "Porsche 963",
         "trackLengthMeters": 6981.6,
-        "carClass": "Hypercar"
+        "carClass": "Hypercar",
+        "fuelCapacityLiters": 90
       },
       "kind": "Practice",
       "origin": "Recorded",

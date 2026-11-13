@@ -126,6 +126,26 @@ public sealed class RaceFuelEstimateTests
     }
 
     [Fact]
+    public void TheDialogsCalculatorTakesWhatIsTypedAndTheHistoryOnlyForAnEmptyField()
+    {
+        FuelHistoryFigures history = new(128, 20, 3.4, 18, 90);
+        PlanFuelInputs inputs = new(Spa, RaceLengthFormat.TimeBased, 60, FuelReserveLaps: 1, AvgLapTimeSeconds: 120, FuelPerLapLiters: null);
+
+        RaceFuelEstimate estimate = RaceFuelEstimate.ForInputs(inputs, history);
+
+        // The driver's 2:00 wins over the 2:08 median: 30 laps. The empty fuel field takes the
+        // median, and 31 laps of fuel at 3.4 L on a 90 L tank are 26 laps, then 5.
+        Assert.Equal(new EstimateFigure(120, EstimateSource.Plan, 0), estimate.LapTime);
+        Assert.Equal(new EstimateFigure(3.4, EstimateSource.History, 18), estimate.FuelPerLap);
+        Assert.Equal(30, estimate.Laps);
+        Assert.Equal(31 * 3.4, estimate.TotalLiters!.Value, precision: 6);
+        Assert.Equal(26, estimate.Stints!.LapsPerStint);
+        Assert.Equal(2, estimate.Stints.Liters.Count);
+        // A stored plan's estimate goes the other way: its history follows every new lap.
+        Assert.Equal(128, RaceFuelEstimate.For(Plan(RaceLengthFormat.TimeBased, 60, reserve: 1, avgLapTime: 120), history).LapTime!.Value);
+    }
+
+    [Fact]
     public void ATimedRaceIsItsMinutesOverTheLapTimeCutIntoTanks()
     {
         // 60 min at 125 s: 28.8 laps, the running lap driven out -> 29, +1 reserve = 30 laps of

@@ -3,8 +3,9 @@ using Sprint.Desktop.Runtime;
 namespace Sprint.Desktop.Features.SessionPlanning;
 
 /// <summary>
-/// The plausible range of a plan's race figures. <c>plan.create</c> and <c>plan.update</c> refuse
-/// anything outside it, Quick plan's detection asks rather than take a length outside it, and the
+/// The plausible range of a plan's race figures. <c>plan.create</c>, <c>plan.update</c> and the plan
+/// dialogs' fuel calculator (<c>POST /api/planner/fuel-estimate</c>) refuse anything outside it,
+/// Quick plan's detection asks rather than take a length outside it, and the
 /// New plan dialog mirrors it as its inputs' <c>max</c> (<c>PLAN_LIMITS</c> in
 /// <c>SessionPlannerDomain.ts</c>). A typo of 10 000 laps would otherwise become a fuel estimate,
 /// and a stint list built on every state poll.

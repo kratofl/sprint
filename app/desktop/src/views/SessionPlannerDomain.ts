@@ -1,4 +1,4 @@
-import type { EstimateFigure, PlanContextChoices, PlanDetection, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, RaceFuelEstimate, SprintCommand } from '../bridge'
+import type { EstimateFigure, FuelHistory, PlanContextChoices, PlanDetection, PlanFuelRequest, PlanTargetOption, PlanTargetScope, PlanTargetScopeGroup, PlanTargetStatistic, RaceFuelEstimate, SprintCommand } from '../bridge'
 import type { StatusTone } from '../shell/Status'
 
 /**
@@ -327,9 +327,99 @@ export function derivedPlanName(track: string, car: string): string {
   return parts.length === 0 ? 'New Session Plan' : parts.join(' – ')
 }
 
+/** A typed figure, or null for "not typed": empty, 0 and anything that is not a positive number alike. */
+export const positiveOrNull = (text: string): number | null => {
+  const value = Number(text)
+  return text.trim().length > 0 && Number.isFinite(value) && value > 0 ? value : null
+}
+
+// ── A plan's lap time and fuel per lap (the plan dialogs' fields) ───────────
+
 /**
- * What Quick plan asks for when it could not detect it. Never a lap time or fuel figure: those are
- * measured, so without laps here the plan's estimate fills in from the first laps driven.
+ * A plan dialog's lap time or fuel per lap. Filled from the driver's laps with this car at this
+ * track (`history`, with the laps the median rests on) until the driver types into it; from then
+ * on it is theirs (`typed`), emptied too, and a new car or track never overwrites it.
+ */
+export type FigureField = { source: 'empty' } | { source: 'history'; value: number; laps: number } | { source: 'typed'; text: string }
+
+export const EMPTY_FIGURE: FigureField = { source: 'empty' }
+
+/** What the field shows. */
+export const figureText = (field: FigureField): string => (field.source === 'typed' ? field.text : field.source === 'history' ? String(field.value) : '')
+
+/** What the field sends and saves: exactly what it shows, or null when it is empty. */
+export const figureValue = (field: FigureField): number | null => positiveOrNull(figureText(field))
+
+/** A stored plan's own value is the driver's; a plan without one starts empty, ready for its history. */
+export const storedFigure = (value: number | null): FigureField => (value ? { source: 'typed', text: String(value) } : EMPTY_FIGURE)
+
+/**
+ * The field once the history for its car and track has arrived: the driver's own value stays;
+ * otherwise the median, rounded to what the field shows (`decimals`), or empty when the laps have
+ * none. Returns the field itself when nothing changed, so a repeat answer does not re-render.
+ */
+export function prefillFigure(field: FigureField, median: number | null, laps: number, decimals: number): FigureField {
+  if (field.source === 'typed') return field
+  if (median === null || laps === 0) return field.source === 'empty' ? field : EMPTY_FIGURE
+  const value = Number(median.toFixed(decimals))
+  return field.source === 'history' && field.value === value && field.laps === laps ? field : { source: 'history', value, laps }
+}
+
+/** "From your 11 laps" under a field the driver's laps filled; null under any other. */
+export const figureNote = (field: FigureField): string | null =>
+  field.source === 'history' ? `From your ${field.laps} ${field.laps === 1 ? 'lap' : 'laps'}` : null
+
+/** How many decimals a pre-filled figure keeps: a lap time to the thousandth, litres to the hundredth. */
+const LAP_TIME_DECIMALS = 3
+const FUEL_DECIMALS = 2
+
+/** A plan dialog's two figures. */
+export type PlanFigures = { lapTime: FigureField; fuelPerLap: FigureField }
+
+/** Both figures once the history for the dialog's car and track has arrived (`prefillFigure`); the same object when neither changed. */
+export function prefillFigures<T extends PlanFigures>(current: T, history: FuelHistory): T {
+  const lapTime = prefillFigure(current.lapTime, history.lapTimeSeconds, history.lapTimeLaps, LAP_TIME_DECIMALS)
+  const fuelPerLap = prefillFigure(current.fuelPerLap, history.fuelPerLapLiters, history.fuelLaps, FUEL_DECIMALS)
+  return lapTime === current.lapTime && fuelPerLap === current.fuelPerLap ? current : { ...current, lapTime, fuelPerLap }
+}
+
+/** Whether a calculator answer was for this plan's car and track, so its history may fill this plan's fields. */
+export const sameContext = (a: { game: string; car: string; track: string }, b: { game: string; car: string; track: string }): boolean =>
+  a.game === b.game && a.car === b.car && a.track === b.track
+
+/** What the race fuel still needs before it can be worked out, as Quick plan says it under the dash; null once it has a figure. */
+export function fuelGap(plan: CreatePlanInput, estimate: RaceFuelEstimate): string | null {
+  if (estimate.totalLiters !== null) return null
+  if (plan.raceLengthFormat === 'Unknown') return 'Needs the race length'
+  if (estimate.laps === null) return 'Needs a lap time'
+  return 'Needs the fuel per lap'
+}
+
+/** The calculator's question (`POST /api/planner/fuel-estimate`) for the plan a dialog would save. */
+export const planFuelRequest = (plan: CreatePlanInput): PlanFuelRequest => ({
+  game: plan.game,
+  car: plan.car,
+  track: plan.track,
+  raceLengthFormat: plan.raceLengthFormat,
+  raceLengthValue: plan.raceLengthValue,
+  fuelReserveLaps: plan.fuelReserveLaps,
+  avgLapTimeSeconds: plan.avgLapTimeSeconds,
+  fuelPerLapLiters: plan.fuelPerLapLiters,
+})
+
+/** The calculator asked only for the history of a car at a track: a plan dialog filling its figures. */
+export const historyRequest = (context: { game: string; car: string; track: string }): PlanFuelRequest => ({
+  ...context,
+  raceLengthFormat: 'Unknown',
+  raceLengthValue: 0,
+  fuelReserveLaps: 0,
+  avgLapTimeSeconds: null,
+  fuelPerLapLiters: null,
+})
+
+/**
+ * What Quick plan asks for: the context and race length where they were not detected, and always
+ * the lap time, fuel per lap (pre-filled from the driver's laps here) and the reserve.
  */
 export type QuickPlanAnswers = {
   game: string
@@ -337,20 +427,17 @@ export type QuickPlanAnswers = {
   track: string
   raceLengthFormat: 'TimeBased' | 'LapBased'
   raceLength: string
-}
-
-/** A typed figure, or null for "not typed": empty, 0 and anything that is not a positive number alike. */
-export const positiveOrNull = (text: string): number | null => {
-  const value = Number(text)
-  return text.trim().length > 0 && Number.isFinite(value) && value > 0 ? value : null
+  lapTime: FigureField
+  fuelPerLap: FigureField
+  fuelReserveLaps: number
 }
 
 /**
  * The plan Quick plan creates: what was detected, and the driver's answers only where it was not.
- * Named by the host (blank name), the reserve from the planner's default, qualifying included as in
- * every new plan, and no typed fuel figures: the estimate takes them from the lap history.
+ * Named by the host (blank name), qualifying included as in every new plan, and the lap time, fuel
+ * per lap and reserve the driver confirmed (an empty figure leaves the estimate to the lap history).
  */
-export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswers, fuelReserveLaps: number): CreatePlanInput {
+export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswers): CreatePlanInput {
   const asked = (field: PlanDetection['missing'][number]) => detection.missing.includes(field)
   const context = asked('Context') ? { game: answers.game.trim(), car: answers.car.trim(), track: answers.track.trim() } : detection.context
   const typedLength = positiveOrNull(answers.raceLength)
@@ -362,9 +449,9 @@ export function quickPlanInput(detection: PlanDetection, answers: QuickPlanAnswe
     qualifyingIncluded: true,
     raceLengthFormat: length?.format ?? 'Unknown',
     raceLengthValue: length?.value ?? 0,
-    fuelReserveLaps,
-    avgLapTimeSeconds: null,
-    fuelPerLapLiters: null,
+    fuelReserveLaps: answers.fuelReserveLaps,
+    avgLapTimeSeconds: figureValue(answers.lapTime),
+    fuelPerLapLiters: figureValue(answers.fuelPerLap),
     notes: '',
   }
 }

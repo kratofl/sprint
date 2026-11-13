@@ -372,9 +372,19 @@
   display: block;
 }
 
-/* Quick plan's summary of what was detected sits under whatever it asks for. */
-.planner-quick-summary {
-  margin: 4px 0 0;
+/* Quick plan: the plan's name or detected car and track (and race) as summary rows, then the
+   calculator's three inputs on one row,
+   then its result. The facts' own top rule separates each block. */
+.planner-quick-detected,
+.planner-quick-result {
+  margin: 0;
+}
+
+.planner-quick-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
 }
 
 /* The planner's settings (the header's gear): grouped-list rows, flush with the dialog's title. */

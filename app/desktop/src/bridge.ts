@@ -97,6 +97,39 @@ export type RaceFuelEstimate = {
   stints: { lapsPerStint: number; liters: number[] } | null
 }
 
+/**
+ * What the driver's laps say about a car at a track (host: `FuelHistoryFigures`): the median lap time
+ * and fuel per lap, each with the laps it rests on, and the largest tank recorded. Null without laps.
+ */
+export type FuelHistory = {
+  lapTimeSeconds: number | null
+  lapTimeLaps: number
+  fuelPerLapLiters: number | null
+  fuelLaps: number
+  tankLiters: number | null
+}
+
+/** What the plan dialogs' fuel calculator works from (host: `PlanFuelEstimateRequest`); a null figure is an empty field. */
+export type PlanFuelRequest = {
+  game: string
+  car: string
+  track: string
+  raceLengthFormat: 'Unknown' | 'TimeBased' | 'LapBased'
+  raceLengthValue: number
+  fuelReserveLaps: number
+  avgLapTimeSeconds: number | null
+  fuelPerLapLiters: number | null
+}
+
+/**
+ * The calculator's answer (`POST /api/planner/fuel-estimate`): the history for the car and track and
+ * the race worked out from the inputs, the host's reason it refused them, or no answer at all.
+ */
+export type PlanFuelPreview =
+  | { outcome: 'ready'; history: FuelHistory; estimate: RaceFuelEstimate }
+  | { outcome: 'invalid'; error: string }
+  | { outcome: 'failed' }
+
 export type PlanTargetScope = 'CurrentQualifying' | 'Qualifying' | 'Practice' | 'PracticeProgram' | 'Manual'
 export type PlanTargetStatistic = 'Fastest' | 'Median' | 'Slowest' | 'Custom'
 
@@ -374,6 +407,8 @@ export type SprintBridge = {
   planContext(): Promise<PlanContextChoices>
   /** The plan's target choices per scope; empty when nothing was driven or imported for its car and track. */
   planTargets(planId: string): Promise<PlanTargetScopeGroup[]>
+  /** The plan dialogs' fuel calculator: the history for the car and track, and the race from what is typed. */
+  planFuelEstimate(request: PlanFuelRequest): Promise<PlanFuelPreview>
   /** The game's setups, read from its folder on request: too slow and large for the polled state. */
   setups(): Promise<SetupLibrary>
   /** One setup's values as the file holds them now, or as `version` held them; null when there is no such setup. */
@@ -427,6 +462,7 @@ type RawBridge = {
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
   planContext(): Promise<unknown>
   planTargets(planId: string): Promise<unknown>
+  planFuelEstimate(request: PlanFuelRequest): Promise<unknown>
   setups(): Promise<unknown>
   setupSheet(id: string, version: string | null): Promise<unknown>
   setupDriven(id: string): Promise<unknown>
@@ -730,6 +766,28 @@ const parsePlanFuel = (value: unknown): Record<string, RaceFuelEstimate> => {
   return fuel
 }
 
+const countOrZero = (value: unknown): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0)
+
+/** Narrows the calculator's answer; an answer it cannot read is no answer rather than a made-up one. */
+const parsePlanFuelPreview = (value: unknown): PlanFuelPreview => {
+  if (!isRecord(value)) return { outcome: 'failed' }
+  if (value.outcome === 'Invalid' && typeof value.error === 'string') return { outcome: 'invalid', error: value.error }
+  const estimate = value.outcome === 'Ready' && isRecord(value.history) ? parseRaceFuelEstimate(value.estimate) : null
+  if (!estimate || !isRecord(value.history)) return { outcome: 'failed' }
+  const history = value.history
+  return {
+    outcome: 'ready',
+    history: {
+      lapTimeSeconds: finiteOrNull(history.lapTimeSeconds),
+      lapTimeLaps: countOrZero(history.lapTimeLaps),
+      fuelPerLapLiters: finiteOrNull(history.fuelPerLapLiters),
+      fuelLaps: countOrZero(history.fuelLaps),
+      tankLiters: finiteOrNull(history.tankLiters),
+    },
+    estimate,
+  }
+}
+
 /** Narrows the host's `PlanContextChoices` once, here. */
 const parsePlanContext = (value: unknown): PlanContextChoices => {
   if (!isRecord(value)) return emptyPlanContext()
@@ -920,6 +978,7 @@ export const bridge: SprintBridge = raw
       diagnosticsLogs: (minLevel, text) => raw.diagnosticsLogs(minLevel, text),
       planContext: async () => parsePlanContext(await raw.planContext()),
       planTargets: (planId) => raw.planTargets(planId).then(parsePlanTargets, (): PlanTargetScopeGroup[] => []),
+      planFuelEstimate: (request) => raw.planFuelEstimate(request).then(parsePlanFuelPreview, (): PlanFuelPreview => ({ outcome: 'failed' })),
       setups: () => raw.setups().then(parseSetupLibrary, (): SetupLibrary => ({ kind: 'failed' })),
       setupSheet: (id, version) => raw.setupSheet(id, version).then(parseSetupSheet, () => null),
       setupDriven: (id) => raw.setupDriven(id).then(parseSetupDriven, () => null),
@@ -970,6 +1029,7 @@ export const bridge: SprintBridge = raw
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),
       planTargets: async () => [],
+      planFuelEstimate: async () => ({ outcome: 'failed' }),
       setups: async () => ({ kind: 'unavailable' }),
       setupSheet: async () => null,
       setupDriven: async () => null,

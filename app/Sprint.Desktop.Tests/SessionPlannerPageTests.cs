@@ -710,6 +710,27 @@ public sealed class SessionPlannerPageTests
         Assert.Empty(detection.MissingFields);
     }
 
+    [Fact]
+    public void TheFuelCalculatorTakesTheLiveTankOnlyForTheCarAndTrackBeingDriven()
+    {
+        PlanFuelInputs atSpa = new(new PlanContext("Le Mans Ultimate", "Porsche 963", "Spa"), RaceLengthFormat.LapBased, 30, FuelReserveLaps: 1, null, null);
+        SessionInfo driving = new() { Game = "Le Mans Ultimate", Track = "Spa", Car = "Porsche 963", InCar = true };
+
+        RunWithContext(PlanContext.Empty, (controller, _) =>
+        {
+            PlanFuelPreview here = controller.PreviewFuel(atSpa, driving, liveTankLiters: 90);
+            PlanFuelPreview monza = controller.PreviewFuel(atSpa with { Context = atSpa.Context with { Track = "Monza" } }, driving, liveTankLiters: 90);
+
+            // The history the dialogs pre-fill from rides along with the estimate.
+            Assert.Equal(125.0, here.History.LapTimeSeconds);
+            Assert.Equal(90, here.Estimate.TankLiters);
+            Assert.NotNull(here.Estimate.Stints);
+            // A race elsewhere is not the session about to be driven, and its balance of performance may set another tank.
+            Assert.Null(monza.Estimate.TankLiters);
+            Assert.Null(monza.Estimate.Stints);
+        }, hasFuelHistory: true);
+    }
+
     private static PlanDetection Detect(
         SessionInfo session,
         bool hasFuelHistory,
