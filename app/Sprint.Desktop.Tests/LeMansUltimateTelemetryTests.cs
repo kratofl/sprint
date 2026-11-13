@@ -572,6 +572,23 @@ public sealed class LeMansUltimateTelemetryTests
 
         int wheel4 = telemetry + 848 + 3 * 260;
         WriteDouble(buffer, wheel4 + 120, 193.0);
+        // The corner channels, at the offsets TelemWheelV01 walks to under pack(4).
+        WriteDouble(buffer, wheel4 + 0, 0.031);
+        WriteDouble(buffer, wheel4 + 8, 0.045);
+        WriteDouble(buffer, wheel4 + 24, 612.0);
+        WriteDouble(buffer, wheel4 + 40, 180.5);
+        WriteDouble(buffer, wheel4 + 48, 1.5);
+        WriteDouble(buffer, wheel4 + 56, 9.25);
+        WriteDouble(buffer, wheel4 + 64, -2.0);
+        WriteDouble(buffer, wheel4 + 72, 60.0);
+        WriteDouble(buffer, wheel4 + 80, -0.035);
+        WriteDouble(buffer, wheel4 + 88, -3100.0);
+        WriteDouble(buffer, wheel4 + 96, 2800.0);
+        WriteDouble(buffer, wheel4 + 104, 5100.0);
+        WriteDouble(buffer, wheel4 + 112, 0.3);
+        buffer[wheel4 + 176] = 5;
+        WriteBool(buffer, wheel4 + 178, true);
+        buffer[wheel4 + 179] = 35;
 
         int vehicleScoring = LmuBinary.VehicleScoringBase + 2 * LmuBinary.VehicleScoringSize;
         buffer[vehicleScoring + 103] = unchecked((byte)1);
@@ -609,6 +626,25 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(4, parsed.Telemetry.Wheels.Count);
         Assert.Equal(190.0, parsed.Telemetry.Wheels[0].PressureKPa);
         Assert.Equal(193.0, parsed.Telemetry.Wheels[3].PressureKPa);
+        LmuWheel rearRight = parsed.Telemetry.Wheels[3];
+        Assert.Equal(0.031, rearRight.SuspensionDeflectionMeters);
+        Assert.Equal(0.045, rearRight.RideHeightMeters);
+        Assert.Equal(612.0, rearRight.BrakeTempCelsius);
+        Assert.Equal(180.5, rearRight.RotationRadiansPerSecond);
+        Assert.Equal(1.5, rearRight.LateralPatchVelocity);
+        Assert.Equal(9.25, rearRight.LongitudinalPatchVelocity);
+        Assert.Equal(-2.0, rearRight.LateralGroundVelocity);
+        Assert.Equal(60.0, rearRight.LongitudinalGroundVelocity);
+        Assert.Equal(-0.035, rearRight.CamberRadians);
+        Assert.Equal(-3100.0, rearRight.LateralForceNewtons);
+        Assert.Equal(2800.0, rearRight.LongitudinalForceNewtons);
+        Assert.Equal(5100.0, rearRight.LoadNewtons);
+        Assert.Equal(0.3, rearRight.GripFraction);
+        Assert.Equal(5, rearRight.SurfaceType);
+        Assert.False(rearRight.Flat);
+        Assert.True(rearRight.Detached);
+        Assert.Equal(35, rearRight.RadiusCentimeters);
+        Assert.Equal(193.0, rearRight.PressureKPa);
         Assert.True(parsed.Scoring.DrsState);
     }
 
@@ -699,7 +735,12 @@ public sealed class LeMansUltimateTelemetryTests
                 GapBehind = 0.9f,
                 Wheels =
                 [
-                    new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12 },
+                    new LmuWheel
+                    {
+                        TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 190, WearFraction = .12,
+                        RotationRadiansPerSecond = 2.5, LongitudinalPatchVelocity = -61.0, GripFraction = 0.75, LoadNewtons = 4200,
+                        SurfaceType = 4, Flat = true, RadiusCentimeters = 34
+                    },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 191, WearFraction = .13 },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 192, WearFraction = .14 },
                     new LmuWheel { TempInnerKelvin = 363.15, TempMiddleKelvin = 365.15, TempOuterKelvin = 367.15, CarcassTempKelvin = 360.15, PressureKPa = 193, WearFraction = .15 }
@@ -746,6 +787,15 @@ public sealed class LeMansUltimateTelemetryTests
         Assert.Equal(12, frame.Tires[0].WearPercent, precision: 1);
         Assert.Equal("Medium", frame.Tires[0].Compound);
         Assert.Equal("Soft", frame.Tires[2].Compound);
+        // A locked front-left: barely turning while the patch slides 61 m/s backwards, beached in gravel.
+        Assert.Equal(2.5f, frame.Tires[0].RotationRadiansPerSecond);
+        Assert.Equal(-61f, frame.Tires[0].LongitudinalPatchVelocity);
+        Assert.Equal(0.75f, frame.Tires[0].PatchSlidingFraction);
+        Assert.Equal(4200f, frame.Tires[0].LoadNewtons);
+        Assert.Equal(TireSurface.Gravel, frame.Tires[0].Surface);
+        Assert.True(frame.Tires[0].Flat);
+        Assert.Equal(0.34f, frame.Tires[0].RadiusMeters, precision: 3);
+        Assert.Equal(TireSurface.Dry, frame.Tires[1].Surface);
         // Surface is the tread average (90/92/94 °C) and must be populated: consumers
         // that read it were previously getting 0 and falling back to the carcass value.
         Assert.Equal(92, frame.Tires[0].TempSurfaceCelsius, precision: 1);

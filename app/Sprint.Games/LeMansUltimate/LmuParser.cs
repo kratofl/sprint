@@ -147,10 +147,27 @@ internal static class LmuParser
         const int wheelSize = 260;
         for (int i = 0; i < 4; i++)
         {
+            // TelemWheelV01 (InternalsPlugin.hpp, #pragma pack 4): the walk ends at 260 bytes.
             ReadOnlySpan<byte> wheel = LmuBinary.Slice(bytes, wheelsBase + i * wheelSize, wheelSize);
             wheels.Add(new LmuWheel
             {
+                SuspensionDeflectionMeters = LmuBinary.ReadDouble(wheel, 0),
+                RideHeightMeters = LmuBinary.ReadDouble(wheel, 8),
                 BrakeTempCelsius = LmuBinary.ReadDouble(wheel, 24),
+                RotationRadiansPerSecond = LmuBinary.ReadDouble(wheel, 40),
+                LateralPatchVelocity = LmuBinary.ReadDouble(wheel, 48),
+                LongitudinalPatchVelocity = LmuBinary.ReadDouble(wheel, 56),
+                LateralGroundVelocity = LmuBinary.ReadDouble(wheel, 64),
+                LongitudinalGroundVelocity = LmuBinary.ReadDouble(wheel, 72),
+                CamberRadians = LmuBinary.ReadDouble(wheel, 80),
+                LateralForceNewtons = LmuBinary.ReadDouble(wheel, 88),
+                LongitudinalForceNewtons = LmuBinary.ReadDouble(wheel, 96),
+                LoadNewtons = LmuBinary.ReadDouble(wheel, 104),
+                GripFraction = LmuBinary.ReadDouble(wheel, 112),
+                SurfaceType = LmuBinary.ReadByte(wheel, 176),
+                Flat = LmuBinary.ReadBool(wheel, 177),
+                Detached = LmuBinary.ReadBool(wheel, 178),
+                RadiusCentimeters = LmuBinary.ReadByte(wheel, 179),
                 PressureKPa = LmuBinary.ReadDouble(wheel, 120),
                 TempInnerKelvin = LmuBinary.ReadDouble(wheel, 128),
                 TempMiddleKelvin = LmuBinary.ReadDouble(wheel, 136),

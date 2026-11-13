@@ -652,9 +652,37 @@ internal sealed class LmuTelemetryMapper
             PressureKPa = ToF32(wheel.PressureKPa),
             WearPercent = ToF32(wheel.WearFraction * 100),
             Compound = compound,
-            BrakeTempCelsius = ToF32(wheel.BrakeTempCelsius)
+            RotationRadiansPerSecond = ToF32(wheel.RotationRadiansPerSecond),
+            LongitudinalPatchVelocity = ToF32(wheel.LongitudinalPatchVelocity),
+            LateralPatchVelocity = ToF32(wheel.LateralPatchVelocity),
+            LongitudinalGroundVelocity = ToF32(wheel.LongitudinalGroundVelocity),
+            LateralGroundVelocity = ToF32(wheel.LateralGroundVelocity),
+            PatchSlidingFraction = ToF32(wheel.GripFraction),
+            LoadNewtons = ToF32(wheel.LoadNewtons),
+            LateralForceNewtons = ToF32(wheel.LateralForceNewtons),
+            LongitudinalForceNewtons = ToF32(wheel.LongitudinalForceNewtons),
+            CamberRadians = ToF32(wheel.CamberRadians),
+            RadiusMeters = wheel.RadiusCentimeters / 100f,
+            BrakeTempCelsius = ToF32(wheel.BrakeTempCelsius),
+            SuspensionDeflectionMeters = ToF32(wheel.SuspensionDeflectionMeters),
+            RideHeightMeters = ToF32(wheel.RideHeightMeters),
+            Surface = SurfaceOf(wheel.SurfaceType),
+            Flat = wheel.Flat,
+            Detached = wheel.Detached
         };
     }
+
+    private static TireSurface SurfaceOf(byte surfaceType) => surfaceType switch
+    {
+        0 => TireSurface.Dry,
+        1 => TireSurface.Wet,
+        2 => TireSurface.Grass,
+        3 => TireSurface.Dirt,
+        4 => TireSurface.Gravel,
+        5 => TireSurface.RumbleStrip,
+        6 => TireSurface.Special,
+        _ => TireSurface.Unknown
+    };
 
     /// <summary>
     /// Kelvin → Celsius for a channel that reports 0 K when it has no reading (out of

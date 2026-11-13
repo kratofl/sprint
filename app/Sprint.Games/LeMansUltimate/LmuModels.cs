@@ -10,7 +10,25 @@ internal sealed record LmuWheel
     public double TempOuterKelvin { get; init; }
     public double WearFraction { get; init; }
     public double CarcassTempKelvin { get; init; }
+    public double SuspensionDeflectionMeters { get; init; }
+    public double RideHeightMeters { get; init; }
     public double BrakeTempCelsius { get; init; }
+    public double RotationRadiansPerSecond { get; init; }
+    public double LateralPatchVelocity { get; init; }
+    public double LongitudinalPatchVelocity { get; init; }
+    public double LateralGroundVelocity { get; init; }
+    public double LongitudinalGroundVelocity { get; init; }
+    public double CamberRadians { get; init; }
+    public double LateralForceNewtons { get; init; }
+    public double LongitudinalForceNewtons { get; init; }
+    public double LoadNewtons { get; init; }
+    public double GripFraction { get; init; }
+
+    /// <summary>mSurfaceType: 0 dry, 1 wet, 2 grass, 3 dirt, 4 gravel, 5 rumble strip, 6 special.</summary>
+    public byte SurfaceType { get; init; }
+    public bool Flat { get; init; }
+    public bool Detached { get; init; }
+    public byte RadiusCentimeters { get; init; }
 }
 
 internal sealed record LmuVehicleTelemetry

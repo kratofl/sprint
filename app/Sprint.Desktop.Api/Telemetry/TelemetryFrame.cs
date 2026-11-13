@@ -347,7 +347,70 @@ public sealed record TireState
     public float WearPercent { get; init; }
     public string Compound { get; init; } = "";
 
+    // The wheel corner around the tyre: what slip, lockups, offs and damage are read from.
+    // 0 (or Unknown) means the game reported nothing, as for every other tyre channel.
+
+    /// <summary>Wheel speed, rad/s. Near 0 while the car still moves is a lockup.</summary>
+    public float RotationRadiansPerSecond { get; init; }
+
+    /// <summary>
+    /// How fast the contact patch slides along the tyre, m/s, against the road. Large under
+    /// braking is a lockup, large under throttle is wheelspin; no tyre radius needed.
+    /// </summary>
+    public float LongitudinalPatchVelocity { get; init; }
+
+    /// <summary>How fast the contact patch slides sideways, m/s: the slide in a corner.</summary>
+    public float LateralPatchVelocity { get; init; }
+
+    /// <summary>The road's speed under the contact patch along the tyre, m/s. Slip ratio is patch over ground velocity.</summary>
+    public float LongitudinalGroundVelocity { get; init; }
+
+    /// <summary>The road's speed under the contact patch across the tyre, m/s. Slip angle comes from it with the longitudinal one.</summary>
+    public float LateralGroundVelocity { get; init; }
+
+    /// <summary>The game's estimate of what fraction of the contact patch is sliding, 0–1.</summary>
+    public float PatchSlidingFraction { get; init; }
+
+    /// <summary>Vertical load on the tyre, N.</summary>
+    public float LoadNewtons { get; init; }
+
+    public float LateralForceNewtons { get; init; }
+
+    public float LongitudinalForceNewtons { get; init; }
+
+    /// <summary>Radians; positive leans the top of the wheel outward.</summary>
+    public float CamberRadians { get; init; }
+
+    /// <summary>Unloaded tyre radius, metres (the game reports whole centimetres).</summary>
+    public float RadiusMeters { get; init; }
+
     public float BrakeTempCelsius { get; init; }
+
+    public float SuspensionDeflectionMeters { get; init; }
+
+    public float RideHeightMeters { get; init; }
+
+    /// <summary>
+    /// What the tyre is on: grass or gravel marks an off, a rumble strip a kerb. LMU reports
+    /// Dry also when it has no reading, so read it beside a non-zero load.
+    /// </summary>
+    public TireSurface Surface { get; init; } = TireSurface.Unknown;
+
+    public bool Flat { get; init; }
+
+    public bool Detached { get; init; }
+}
+
+public enum TireSurface
+{
+    Unknown,
+    Dry,
+    Wet,
+    Grass,
+    Dirt,
+    Gravel,
+    RumbleStrip,
+    Special
 }
 
 public sealed record LapState
