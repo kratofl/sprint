@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { carLine, formatGap, formatLapSeconds, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
+import { carLine, formatGap, formatLapSeconds, importNotice, lapFileFacts, lapTimeStats, lapsByRun, runLine, runTitle, tyreText } from './AnalysisDomain'
 import type { CorpusLap, CorpusRun } from './AnalysisDomain'
 
 function lap(lapNumber: number, lapTimeSeconds: number, hasChannels = false, outing = 0): CorpusLap {
@@ -78,4 +78,16 @@ test('a car reads as its name, then its model when the name does not already say
   assert.equal(carLine(context), 'LMP2 ELMS · Oreca 07')
   assert.equal(carLine({ ...context, carType: null }), 'LMP2 ELMS')
   assert.equal(carLine({ ...context, carModel: 'Oreca 07' }), 'Oreca 07')
+})
+
+test('an opened lap file lists who, what, where, how fast and when before it is added, and says what the file leaves out', () => {
+  const offer = { token: 't', sharedBy: 'Ada Brandt', track: 'Spa', car: 'Porsche 963', lapTimeSeconds: 124.88, drivenAt: '2026-10-02T19:10:00Z', alreadyPresent: false }
+  const when = (iso: string) => `at ${iso}`
+
+  assert.deepEqual(
+    lapFileFacts(offer, when).map((fact) => [fact.label, fact.value]),
+    [['Driver', 'Ada Brandt'], ['Car', 'Porsche 963'], ['Track', 'Spa'], ['Lap time', formatLapSeconds(124.88)], ['Driven', 'at 2026-10-02T19:10:00Z']],
+  )
+  assert.equal(lapFileFacts({ ...offer, drivenAt: null }, when)[4].value, 'Not in the file')
+  assert.equal(importNotice({ outcome: 'failed', error: 'nope' }).title, 'Lap not added')
 })

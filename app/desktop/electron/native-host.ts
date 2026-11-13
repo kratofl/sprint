@@ -198,6 +198,11 @@ export class NativeHost {
     }
   }
 
+  /** Reads a `.sprintlap` without filing it: what it holds and whether it is already here, or why it cannot be read. */
+  async previewLap(bytes: Uint8Array<ArrayBuffer>): Promise<unknown> {
+    return this.json('/api/laps/import/preview', { method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' } }, 60_000)
+  }
+
   /** Files a `.sprintlap` into the corpus; the host answers with what it was, or why not. */
   async importLap(bytes: Uint8Array<ArrayBuffer>): Promise<unknown> {
     return this.json('/api/laps/import', { method: 'POST', body: bytes, headers: { 'content-type': 'application/octet-stream' } }, 60_000)

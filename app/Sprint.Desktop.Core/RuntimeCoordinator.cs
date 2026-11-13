@@ -165,6 +165,7 @@ public sealed class RuntimeCoordinator
             case SprintCommands.CompareHudToggle: return this._liveCompare.SetHudOpen(!this._liveCompare.HudOpen, out error);
             case "compare.hud.arrange": return this.ArrangeCompareHud(command, out error);
             case "compare.readings": return this.SetCompareReadings(command, out error);
+            case "compare.range": return this.SetCompareRange(command, out error);
             case "compare.hud.layout": return this.SaveCompareHudLayout(command, out error);
             case "diagnostics.setLogLevel": return this.SetLogLevel(command, out error);
             case "link.invite": return this.LinkInvite(out error);
@@ -241,6 +242,29 @@ public sealed class RuntimeCoordinator
             LiveCompareSettings settings = this._runtime.Settings.LiveCompare;
             settings.PanelIds = panelIds;
             settings.ShowDelta = showDelta;
+            this._runtime.SaveSettings();
+            this._liveCompare.Configure(settings);
+        }
+
+        return true;
+    }
+
+    /// <summary>How much track the HUD's rolling window shows behind and ahead of the car. The HUD draws the new range from its next frame.</summary>
+    private bool SetCompareRange(JsonElement command, out string error)
+    {
+        if (!TryDouble(command, "metersBehind", out double behind) || !TryDouble(command, "metersAhead", out double ahead))
+        {
+            error = "metersBehind and metersAhead are required";
+            return false;
+        }
+
+        if (!LiveCompareSettings.IsRange(behind, ahead, out error)) return false;
+
+        lock (this._runtime.SettingsGate)
+        {
+            LiveCompareSettings settings = this._runtime.Settings.LiveCompare;
+            settings.MetersBehind = behind;
+            settings.MetersAhead = ahead;
             this._runtime.SaveSettings();
             this._liveCompare.Configure(settings);
         }

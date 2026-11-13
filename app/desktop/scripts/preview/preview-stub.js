@@ -42,6 +42,10 @@
 //   focus=<css selector>  after the clicks, focus the first match and point at it: what only focus or
 //                         hover shows (the hidden screenshot window never has focus, so it does both);
 //                         `selector@0.46` points that far across it, e.g. a place along the lap charts
+//   key=<key>             after the focus, press that key on the focused element (KeyboardEvent.key,
+//                         URL-encoded: %2B for +); repeat it to press several, e.g. zooming the lap charts
+//   lapFile=duplicate|damaged  the lap file a friend sent, opened from Import…: already in your laps
+//                         (duplicate) or unreadable (damaged); default: Ada's new lap at Spa
 //   detect=partial|none   Quick plan: the game names the car and track but not the race length and
 //                         there are no laps here (partial), or nothing is detected (none); default:
 //                         everything, so Quick plan is a summary and Create
@@ -335,6 +339,8 @@
           hudOpen: training === 'on',
           arranging: training === 'arrange',
           fullscreen: params.get('fullscreen') === '1',
+          metersBehind: 200,
+          metersAhead: 600,
         }
   state.settings = { ...state.settings, liveCompare: { version: 3, panelIds: ['throttle', 'brake', 'speed'], showDelta: true, layouts: [] } }
 
@@ -656,6 +662,16 @@
     },
     subscribe: () => () => undefined,
     analysisTrace: async (sessionId, lapNumber) => sampleTrace(sessionId, lapNumber),
+    // A friend's lap file (electron/main.ts sprint:lap-open): read by the host, nothing filed yet.
+    openLapFile: async () =>
+      params.get('lapFile') === 'damaged'
+        ? { outcome: 'Failed', error: 'That lap file is damaged and could not be read.' }
+        : {
+            outcome: 'Ready', token: 'preview-lap-file', sharedBy: 'Ada Brandt', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963',
+            lapTimeSeconds: 124.88, drivenAt: '2026-10-02T19:10:00+00:00', alreadyPresent: params.get('lapFile') === 'duplicate',
+          },
+    importLapFile: async () => ({ outcome: 'Imported', sharedBy: 'Ada Brandt', track: 'Circuit de Spa-Francorchamps', car: 'Porsche 963', lapTimeSeconds: 124.88 }),
+    discardLapFile: async () => null,
     setups: async () => (setupsMode === 'unavailable' ? { available: false, folder: null, setups: [] } : { available: true, folder: 'C:\\Games\\Le Mans Ultimate\\UserData\\player\\Settings', setups: sampleSetups }),
     setupSheet: async (id, version) => sampleSheet(id, version),
     // How each version drove: "Race v3" on runs in two sessions (its older version too), "Quali" on one.
@@ -883,6 +899,17 @@
     }, 20)
   }
 
+  // Presses each `key=` on whatever has focus once the focus step ran, through the app's own
+  // keyboard handling (React listens at the root, so a bubbling keydown reaches it).
+  const pressKeys = (keys) => {
+    keys.forEach((key, index) =>
+      setTimeout(() => {
+        const target = document.activeElement ?? document.body
+        target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+      }, 100 * index),
+    )
+  }
+
   whenShellReady(() => {
     const view = params.get('view')
     if (view && view !== 'Home') openView(view)
@@ -890,6 +917,9 @@
       window.dispatchEvent(new KeyboardEvent('keydown', { [mac ? 'metaKey' : 'ctrlKey']: true, key: 'k', code: 'KeyK', bubbles: true }))
     }
     clickInOrder(params.getAll('click'))
-    setTimeout(() => focusLater(params.get('focus')), 50 * (params.getAll('click').length + 1))
+    const focusAt = 50 * (params.getAll('click').length + 1)
+    setTimeout(() => focusLater(params.get('focus')), focusAt)
+    // The focus step waits up to 2.5s for its element; keys go after it has had time to land.
+    if (params.getAll('key').length > 0) setTimeout(() => pressKeys(params.getAll('key')), focusAt + 1500)
   })
 })()

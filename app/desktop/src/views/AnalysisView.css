@@ -723,6 +723,16 @@
   stroke: var(--label-tertiary);
 }
 
+/* The stretch of the lap the charts are zoomed to: a quiet band under the line. */
+.analysis-map-window {
+  fill: none;
+  stroke: var(--brand-500);
+  stroke-opacity: 0.4;
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .analysis-map-start {
   fill: var(--label);
 }
@@ -882,6 +892,12 @@
   gap: 8px;
   border-radius: var(--radius-control);
   cursor: crosshair;
+}
+
+/* Zoomed, a drag moves along the lap: the hand shows while it does. */
+.analysis-chart-stack.panning {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .analysis-chart-panel {

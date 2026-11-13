@@ -1,24 +1,30 @@
 import { useRef, useState } from 'react'
 import { Check, ChevronRight, Crosshair, FolderOpen, GitCompareArrows, Move, Play, Route, Square, X } from 'lucide-react'
-import { bridge } from '../bridge'
 import type { SprintCommand } from '../bridge'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
 import type { RuntimeState } from '../shell/runtime'
-import { formatGap, formatLapSeconds, importNotice } from './AnalysisDomain'
+import { formatGap, formatLapSeconds } from './AnalysisDomain'
 import type { CorpusLap, LapFileNotice } from './AnalysisDomain'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
+import { useLapFileImport } from './LapImportDialog'
+import { ListRow, SettingsList } from './SettingsLayout'
 import {
+  HUD_METERS_AHEAD,
+  HUD_METERS_BEHIND,
   buildHudArrange,
+  buildHudRange,
   buildHudToggle,
   buildSelectCourse,
   buildSetTarget,
   chasingFacts,
   courseKey,
+  formatRange,
   isTarget,
   listedLaps,
   ownLapCount,
   parseCompareState,
+  rangeChoices,
 } from './OnTrackDomain'
 import type { CompareCourse, CompareState } from './OnTrackDomain'
 import { LIST_PAGE, comparePair, drawableLaps, findLap, lapKeyOf, resolvePage } from './OnTrackLaps'
@@ -40,6 +46,7 @@ type Send = (command: SprintCommand) => Promise<void>
 export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Send }) {
   const [actionError, setActionError] = useState<string | null>(null)
   const [notice, setNotice] = useState<LapFileNotice | null>(null)
+  const lapFileImport = useLapFileImport(setNotice)
   const [opened, setOpened] = useState<OnTrackPage>(LIST_PAGE)
   const compare: CompareState | null = runtime.kind === 'ready' ? parseCompareState(runtime.sprint) : null
   const page = compare ? resolvePage(compare, opened) : LIST_PAGE
@@ -62,9 +69,6 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'That change could not be applied.')
     }
-  }
-  const importLap = async () => {
-    setNotice(importNotice(await bridge.importLap()))
   }
   const toList = () => setOpened(LIST_PAGE)
   const openCompare = (from: LapKey | null) => {
@@ -161,7 +165,7 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
             <Route size={28} strokeWidth={1.5} />
             <h2>No laps to chase yet</h2>
             <p>Drive a lap and it appears here, or open a lap a friend sent you.</p>
-            <button type="button" className="button" onClick={() => void importLap()}>
+            <button type="button" className="button" onClick={lapFileImport.open}>
               <FolderOpen /> Import a friend’s lap…
             </button>
           </div>
@@ -179,9 +183,11 @@ export function OnTrackView({ runtime, send }: { runtime: RuntimeState; send: Se
       ) : (
         <>
           <ChasingCard compare={compare} onCourse={(course) => void run(buildSelectCourse(course))} />
-          <LapsCard compare={compare} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={() => void importLap()} />
+          <LapsCard compare={compare} onOpen={(open) => setOpened({ kind: 'lap', lap: lapKeyOf(open) })} onImport={lapFileImport.open} />
+          <HudRange compare={compare} onRange={(behind, ahead) => void run(buildHudRange(behind, ahead))} />
         </>
       )}
+      {lapFileImport.dialog}
     </div>
   )
 }
@@ -342,6 +348,39 @@ function LapsCard({ compare, onOpen, onImport }: { compare: CompareState; onOpen
         </p>
       )}
     </section>
+  )
+}
+
+/**
+ * How much track each HUD chart shows around the car. A change reaches the HUD from its next
+ * frame, while training too; the presets stay inside the host's limits.
+ */
+function HudRange({ compare, onRange }: { compare: CompareState; onRange: (metersBehind: number, metersAhead: number) => void }) {
+  return (
+    <SettingsList title="HUD">
+      <ListRow id="ontrack-hud-ahead" label="Track ahead of the car" detail="How early the target’s next braking zone slides into view.">
+        {(labels) => (
+          <select {...labels} value={compare.metersAhead} onChange={(event) => onRange(compare.metersBehind, Number(event.target.value))}>
+            {rangeChoices(HUD_METERS_AHEAD, compare.metersAhead).map((meters) => (
+              <option key={meters} value={meters}>
+                {formatRange(meters)}
+              </option>
+            ))}
+          </select>
+        )}
+      </ListRow>
+      <ListRow id="ontrack-hud-behind" label="Track behind the car" detail="How much of the stretch you just drove stays in view.">
+        {(labels) => (
+          <select {...labels} value={compare.metersBehind} onChange={(event) => onRange(Number(event.target.value), compare.metersAhead)}>
+            {rangeChoices(HUD_METERS_BEHIND, compare.metersBehind).map((meters) => (
+              <option key={meters} value={meters}>
+                {formatRange(meters)}
+              </option>
+            ))}
+          </select>
+        )}
+      </ListRow>
+    </SettingsList>
   )
 }
 

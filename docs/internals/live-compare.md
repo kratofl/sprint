@@ -50,6 +50,9 @@ against a real server.
 
 - One stack, one shared x-domain, one crosshair. Lap comparison uses track position (two laps drift
   apart in time, so a time axis puts the same corner at different x); stint trends use lap number.
+- The lap page zooms and pans the stack as one window over the lap (`AnalysisPlot.ts`), and the map
+  marks that stretch. The value axis stays the whole lap's while zoomed, so panning never rescales a
+  line under the eye.
 - A series reports `null` where it has nothing, including out of range — never a held edge value.
   Continuous telemetry interpolates linearly; per-lap figures are stepped.
 - Empty and insufficient-data panels say so; an axis drawn around nothing reads as zero.
@@ -77,8 +80,10 @@ against a real server.
   The delta says whether you gained or lost over the last 200 m.
 - Electron polls `/api/compare/frame` (~20 Hz) only while the HUD is open and sends each window its own
   panel, and only when it changed — a car standing still costs no repaint.
-- A rolling distance window around the car (proposed 200 m behind / 600 m ahead). It needs no corner
-  detection. Your own line stops at the car; the target extends ahead.
+- A rolling distance window around the car, 200 m behind / 600 m ahead by default; the driver picks
+  both on the On track page (`compare.range`, limits in `LiveCompareSettings.IsRange`) and the HUD
+  draws the new range from its next frame. It needs no corner detection. Your own line stops at the
+  car; the target extends ahead.
 - `LiveCompareController` keeps its own sample buffer rather than reading the recorder's: "comparing"
   and "being recorded" are different states.
 
@@ -142,6 +147,10 @@ and the primary/comparison laps in state; no page sends or reads them any more.
 
 - Both a lap file and cloud. The file works with no account and is how sim communities already trade
   artifacts.
+- Opening a lap file never imports it. The host reads it without filing it
+  (`/api/laps/import/preview`: the lap, or which way the file is unreadable, and whether it is already
+  here), the page shows that, and only Add files it. Electron keeps the file's bytes until then, so what
+  is added is exactly what was shown.
 - Per-lap share codes, no friend graph: an unguessable code pulls one lap and the owner can revoke it.
   A friend graph can layer on later without touching traces or the HUD.
 - A share code is its own entity, not an engineer invite link: an invite links two accounts once, a lap
@@ -154,7 +163,7 @@ and the primary/comparison laps in state; no page sends or reads them any more.
 
 ## Deliberately open
 
-Exact step (2–5 m is the defensible band), disk-budget default, rolling-window sizes, whether steering
+Exact step (2–5 m is the defensible band), disk-budget default, whether steering
 and gear become default panels, corner anchoring from the speed channel, a friend graph, and the HUD's
 visual design — semi-transparency over a moving game image is a legibility problem the app has not
 solved yet.

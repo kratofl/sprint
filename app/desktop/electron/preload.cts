@@ -10,7 +10,10 @@ contextBridge.exposeInMainWorld('sprint', {
   sendCommand: (command: unknown): Promise<unknown> => ipcRenderer.invoke('sprint:send-command', command),
   analysisTrace: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:analysis-trace', sessionId, lapNumber),
   exportLap: (sessionId: string, lapNumber: number): Promise<unknown> => ipcRenderer.invoke('sprint:lap-export', sessionId, lapNumber),
-  importLap: (): Promise<unknown> => ipcRenderer.invoke('sprint:lap-import'),
+  /** A lap file in two steps: open it (the host reads it, nothing is filed), then import or discard it. */
+  openLapFile: (): Promise<unknown> => ipcRenderer.invoke('sprint:lap-open'),
+  importLapFile: (token: string): Promise<unknown> => ipcRenderer.invoke('sprint:lap-import', token),
+  discardLapFile: (token: string): Promise<unknown> => ipcRenderer.invoke('sprint:lap-discard', token),
   pickFolder: (title: string): Promise<unknown> => ipcRenderer.invoke('sprint:pick-folder', title),
   diagnosticsLogs: (minLevel: string, text: string): Promise<unknown> => ipcRenderer.invoke('sprint:diagnostics-logs', minLevel, text),
   planContext: (): Promise<unknown> => ipcRenderer.invoke('sprint:plan-context'),

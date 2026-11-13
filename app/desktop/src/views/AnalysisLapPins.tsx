@@ -7,6 +7,8 @@ import type { LapNote } from './AnalysisDomain'
 import { SETTINGS_LANE } from './AnalysisLapCharts'
 import { formatSettingValue, pinWidth, placePins, settingPinText } from './AnalysisLapMarks'
 import type { CarSettingsChart, LapPin, SettingRun } from './AnalysisLapMarks'
+import { acrossWindow, inWindow } from './AnalysisPlot'
+import type { LapWindow } from './AnalysisPlot'
 import { FriendBadge } from './OnTrackPages'
 
 /**
@@ -39,17 +41,20 @@ export const pinLines = (rows: readonly PinRow[]): ChartLine[] =>
 
 /**
  * The pins over the charts, one row per lap, each pin over its place and nudged aside when two
- * would overlap. A setting pin says what it changed to; a note pin opens the note.
+ * would overlap. A setting pin says what it changed to; a note pin opens the note. Only the pins
+ * in the charts' `view` are drawn.
  */
 export function PinRows({
   rows,
   width,
+  view,
   openNoteId,
   placeOf,
   onNote,
 }: {
   rows: readonly PinRow[]
   width: number
+  view: LapWindow
   openNoteId: string | null
   /** Where a pin is, in words ("3.2 km · C3"), for its tooltip. */
   placeOf: (position: number) => string
@@ -59,8 +64,9 @@ export function PinRows({
   return (
     <>
       {rows.map((row) => {
+        const pins = row.pins.filter((pin) => inWindow(view, pin.position))
         const lefts = placePins(
-          row.pins.map((pin) => ({ position: pin.position, width: pinWidth(pin) })),
+          pins.map((pin) => ({ position: acrossWindow(view, pin.position), width: pinWidth(pin) })),
           plot,
         )
         return (
@@ -70,7 +76,7 @@ export function PinRows({
                 {row.label}
               </span>
             )}
-            {row.pins.map((pin, index) => {
+            {pins.map((pin, index) => {
               const left = CHART_MARGIN.left + lefts[index]
               const dashed = row.other ? ' other' : ''
               if (pin.kind === 'setting') {
@@ -112,6 +118,7 @@ export function CarSettingsLanes({
   chart,
   width,
   height,
+  view,
   cursorPosition,
   lines,
   compared,
@@ -119,20 +126,25 @@ export function CarSettingsLanes({
   chart: CarSettingsChart
   width: number
   height: number
+  /** The stretch of the lap the charts show: a step reaching past it is cut at the plot's edge. */
+  view: LapWindow
   cursorPosition: number | null
   lines: readonly ChartLine[]
   compared: boolean
 }) {
   if (chart.lanes.length === 0) return null
-  const scaleX = scaleXFor(width)
+  const scaleX = scaleXFor(width, view)
+  const plotLeft = CHART_MARGIN.left
+  const plotRight = width - CHART_MARGIN.right
   const laneHeight = SETTINGS_LANE.label + SETTINGS_LANE.bar + (compared ? SETTINGS_LANE.between + SETTINGS_LANE.bar : 0) + SETTINGS_LANE.after
   const cursorX = cursorPosition !== null ? scaleX(cursorPosition) : null
 
   const bar = (runs: SettingRun[] | null, channel: string, y: number, other: boolean) =>
     (runs ?? []).map((run, index) => {
+      if (run.to < view.from || run.from > view.to) return null
       // A hairline between steps, so a change reads even where the two values look alike.
-      const x = scaleX(run.from) + (index > 0 ? 1 : 0)
-      const runWidth = Math.max(1, scaleX(run.to) - x - (index < (runs ?? []).length - 1 ? 1 : 0))
+      const x = Math.max(plotLeft, scaleX(run.from) + (index > 0 ? 1 : 0))
+      const runWidth = Math.max(1, Math.min(plotRight, scaleX(run.to) - (index < (runs ?? []).length - 1 ? 1 : 0)) - x)
       return (
         <g key={`${run.from}`}>
           <rect x={x} y={y} width={runWidth} height={SETTINGS_LANE.bar} rx={3} className={other ? 'analysis-lane-run other' : 'analysis-lane-run'} />
@@ -147,7 +159,7 @@ export function CarSettingsLanes({
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="analysis-chart-svg" style={{ height }} role="img" aria-label="Car settings along the lap">
-      <PinLines lines={lines} scaleX={scaleX} top={0} bottom={height - SETTINGS_LANE.after} />
+      <PinLines lines={lines.filter((line) => inWindow(view, line.position))} scaleX={scaleX} top={0} bottom={height - SETTINGS_LANE.after} />
       {chart.lanes.map((lane, index) => {
         const top = index * laneHeight
         const mineY = top + SETTINGS_LANE.label
@@ -168,9 +180,9 @@ export function CarSettingsLanes({
 
 const POPOVER_WIDTH = 300
 
-/** Where a popover over the charts starts: by its place on the lap, kept inside the plot. */
-export function popoverLeft(position: number, width: number): number {
-  const x = scaleXFor(width)(position)
+/** Where a popover over the charts starts: by its place on the lap in the charts' `view`, kept inside the plot. */
+export function popoverLeft(position: number, width: number, view: LapWindow): number {
+  const x = scaleXFor(width, view)(position)
   return Math.max(CHART_MARGIN.left, Math.min(x - 24, width - CHART_MARGIN.right - POPOVER_WIDTH))
 }
 

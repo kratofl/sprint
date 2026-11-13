@@ -1,4 +1,4 @@
-import type { LapImportResult, SprintCommand, SprintState } from '../bridge'
+import type { LapFileOffer, LapImportResult, SprintCommand, SprintState } from '../bridge'
 
 /**
  * Analysis domain model, parsing, chart math, and command builders.
@@ -472,25 +472,14 @@ export function formatScaleValue(value: number, step: number): string {
   return value.toFixed(chartScaleDecimals(step))
 }
 
-/** Mirrors `ChartDomain.TrackPosition().Format`: a whole lap as a percentage. */
-export const formatTrackPosition = (fraction: number): string => `${(fraction * 100).toFixed(0)}%`
-
 // ── Chart cursor & readout (mirrors ChartStackController / ChartStackView),
-//    scoped to the track-position domain (0..1) buildLapTraceChartPanels draws on ─
+//    scoped to the track-position domain (0..1) buildLapTraceChartPanels draws on.
+//    The keyboard's ←/→ step and the zoomed window are `AnalysisPlot.ts`'s ─
 
 /** No cursor, or a cursor resting at a domain coordinate (0..1, track position). */
 export type ChartCursorState = { kind: 'none' } | { kind: 'at'; position: number }
 
 export const CHART_CURSOR_NONE: ChartCursorState = { kind: 'none' }
-
-/** Left/Right keyboard nudge, a fraction of the domain span. Mirrors `ContinuousKeyStepFraction`. */
-const CURSOR_KEY_STEP = 0.01
-
-/** Mirrors `ChartStackView.OnKeyDown`'s Left/Right handling: nudges the cursor, clamped to the domain (0..1). */
-export function moveChartCursorByKey(cursor: ChartCursorState, direction: -1 | 1): ChartCursorState {
-  const from = cursor.kind === 'at' ? cursor.position : 0
-  return { kind: 'at', position: Math.min(1, Math.max(0, from + direction * CURSOR_KEY_STEP)) }
-}
 
 export type ChartSeriesReadout = { name: string; role: ChartSeriesRole; tone: SeriesTone; stroke: SeriesStroke; value: number | null }
 export type ChartPanelReadout = { title: string; series: ChartSeriesReadout[] }
@@ -546,8 +535,8 @@ export const formatChartReadoutValue = (value: number, decimals: number): string
 
 /**
  * Mirrors `ChartDomain.Format` for `TrackPosition` (one decimal place) — used for the cursor's
- * own domain label, which carries more resolution than the fixed 0/25/50/75/100% axis ticks
- * `formatTrackPosition` draws (`ChartStackPainter.DrawDomainCursorLabel` vs `DrawAxis`).
+ * own domain label, which carries more resolution than the axis ticks `AnalysisPlot.windowTicks`
+ * draws (`ChartStackPainter.DrawDomainCursorLabel` vs `DrawAxis`).
  */
 export const formatTrackPositionCursor = (fraction: number): string => `${(fraction * 100).toFixed(1)}%`
 
@@ -667,13 +656,14 @@ export const buildDeleteLapNote = (lap: CorpusLap, noteId: string): SprintComman
 /** What a page says after a lap file was saved or opened. */
 export type LapFileNotice = { tone: 'success' | 'info' | 'error'; title: string; message: string }
 
-/** What opening a friend's `.sprintlap` said, for Analysis and On track alike. Null when cancelled. */
-export const importNotice = (result: LapImportResult): LapFileNotice | null => {
+/** A lap file that could not be opened or added, for Analysis and On track alike. */
+export const lapFileFailed = (error: string): LapFileNotice => ({ tone: 'error', title: 'Lap file not opened', message: error })
+
+/** What filing a friend's confirmed `.sprintlap` said, for Analysis and On track alike. */
+export const importNotice = (result: LapImportResult): LapFileNotice => {
   switch (result.outcome) {
-    case 'cancelled':
-      return null
     case 'failed':
-      return { tone: 'error', title: 'Lap file not opened', message: result.error }
+      return { tone: 'error', title: 'Lap not added', message: result.error }
     case 'alreadyPresent':
       return { tone: 'info', title: 'Already added', message: `${result.sharedBy}'s ${formatLapSeconds(result.lapTimeSeconds)} at ${result.track} is already in your laps.` }
     case 'imported': {
@@ -682,3 +672,15 @@ export const importNotice = (result: LapImportResult): LapFileNotice | null => {
     }
   }
 }
+
+/**
+ * What the import dialog lists about an opened lap file before the driver adds it: who drove
+ * it, the car, the track, the time and when it was driven. `when` formats a timestamp.
+ */
+export const lapFileFacts = (offer: LapFileOffer, when: (iso: string) => string): { label: string; value: string; tabular: boolean }[] => [
+  { label: 'Driver', value: offer.sharedBy, tabular: false },
+  { label: 'Car', value: offer.car || 'Not in the file', tabular: false },
+  { label: 'Track', value: offer.track || 'Not in the file', tabular: false },
+  { label: 'Lap time', value: formatLapSeconds(offer.lapTimeSeconds), tabular: true },
+  { label: 'Driven', value: offer.drivenAt ? when(offer.drivenAt) : 'Not in the file', tabular: false },
+]

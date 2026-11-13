@@ -320,6 +320,36 @@ public sealed class LiveCompareSettings
     [JsonPropertyName("metersAhead")]
     public double MetersAhead { get; set; } = 600;
 
+    /// <summary>The fewest and most metres the HUD may keep behind the car.</summary>
+    public const double MinMetersBehind = 50;
+    public const double MaxMetersBehind = 1000;
+
+    /// <summary>
+    /// The fewest and most metres the HUD may look ahead. Under 100 m a braking zone arrives with
+    /// no warning; past 2 km a chart a few hundred pixels wide no longer shows a corner's shape.
+    /// </summary>
+    public const double MinMetersAhead = 100;
+    public const double MaxMetersAhead = 2000;
+
+    /// <summary>Whether a rolling window of <paramref name="behind"/> and <paramref name="ahead"/> metres is one the HUD draws; the reason when not.</summary>
+    public static bool IsRange(double behind, double ahead, out string error)
+    {
+        error = "";
+        if (!double.IsFinite(behind) || behind < MinMetersBehind || behind > MaxMetersBehind)
+        {
+            error = $"metersBehind must be between {MinMetersBehind} and {MaxMetersBehind}";
+            return false;
+        }
+
+        if (!double.IsFinite(ahead) || ahead < MinMetersAhead || ahead > MaxMetersAhead)
+        {
+            error = $"metersAhead must be between {MinMetersAhead} and {MaxMetersAhead}";
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Panel ids from the chart catalogue. One overlay window each, in this order down the
     /// screen on first open.

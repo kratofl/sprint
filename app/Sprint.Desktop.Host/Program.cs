@@ -691,20 +691,50 @@ app.MapGet("/api/laps/{sessionId}/{lapNumber:int}/file", (string sessionId, int 
     context.Response.Headers["x-lap-has-positions"] = export.HasPositions ? "true" : "false";
     return Results.Bytes(buffer.ToArray(), "application/octet-stream");
 });
-app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct) =>
+
+// Reads a posted .sprintlap without filing it: the lap, or which of the failures it was.
+async Task<SharedLapOffer> ReadLapFileAsync(HttpRequest request, CancellationToken ct)
 {
     if (request.ContentLength is > maxLapFileBytes)
     {
-        return Results.Json(new { outcome = "Failed", error = "That file is far too large to be a Sprint lap file." }, json);
+        return new SharedLapOffer(null, "That file is far too large to be a Sprint lap file.");
     }
 
     using MemoryStream body = new();
     await request.Body.CopyToAsync(body, ct);
     body.Position = 0;
     SharedLapReadResult read = SharedLapFile.Read(body);
-    if (read.Lap is not { } lap)
+    return new SharedLapOffer(read.Lap, read.Message);
+}
+
+// What a lap file holds, read but not filed: the driver sees it and confirms before
+// /api/laps/import adds it (#198: import never happens silently).
+app.MapPost("/api/laps/import/preview", async (HttpRequest request, CancellationToken ct) =>
+{
+    SharedLapOffer offer = await ReadLapFileAsync(request, ct);
+    if (offer.Lap is not { } lap)
     {
-        return Results.Json(new { outcome = "Failed", error = read.Message }, json);
+        return Results.Json(new { outcome = "Failed", error = offer.Message }, json);
+    }
+
+    return Results.Json(new
+    {
+        outcome = "Ready",
+        sharedBy = lap.Attribution,
+        track = lap.Context.TrackCourse,
+        car = lap.Context.CarModel,
+        lapTimeSeconds = lap.LapTimeSeconds,
+        drivenAt = lap.Provenance.DrivenAt,
+        alreadyPresent = sharedLapImporter.IsPresent(lap),
+    }, json);
+});
+
+app.MapPost("/api/laps/import", async (HttpRequest request, CancellationToken ct) =>
+{
+    SharedLapOffer offer = await ReadLapFileAsync(request, ct);
+    if (offer.Lap is not { } lap)
+    {
+        return Results.Json(new { outcome = "Failed", error = offer.Message }, json);
     }
 
     SharedLapImportResult imported = sharedLapImporter.Import(lap);
@@ -888,6 +918,9 @@ object CompareState()
         target = compare.Target,
         hudOpen = compare.HudOpen,
         arranging = compare.Arranging,
+        // The HUD's rolling window as it is drawn now (compare.range).
+        metersBehind = liveCompare.Controller.MetersBehind,
+        metersAhead = liveCompare.Controller.MetersAhead,
         fullscreen = (compare.HudOpen || compare.Arranging) && HudInterop.IsExclusiveFullscreenActive(),
     };
 }

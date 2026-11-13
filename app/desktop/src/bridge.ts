@@ -313,10 +313,28 @@ export type LapExportResult =
   | { outcome: 'cancelled' }
   | { outcome: 'failed'; error: string }
 
-/** Opening a `.sprintlap` (`sprint:lap-import`, host `POST /api/laps/import`). */
+/**
+ * A `.sprintlap` opened to be imported, read by the host but not filed yet (`sprint:lap-open`,
+ * host `POST /api/laps/import/preview`): who drove it, where, in what, how fast and when, and
+ * whether it is already in the driver's laps. `token` names it to `importLapFile`/`discardLapFile`.
+ */
+export type LapFileOffer = {
+  token: string
+  sharedBy: string
+  track: string
+  car: string
+  lapTimeSeconds: number
+  /** Null when the file does not say. */
+  drivenAt: string | null
+  alreadyPresent: boolean
+}
+
+/** Opening a `.sprintlap`: what it holds, or that the driver cancelled the picker, or which way the file is unreadable. */
+export type LapFileOpenResult = { outcome: 'opened'; offer: LapFileOffer } | { outcome: 'cancelled' } | { outcome: 'failed'; error: string }
+
+/** Filing an opened `.sprintlap` once the driver confirmed it (`sprint:lap-import`, host `POST /api/laps/import`). */
 export type LapImportResult =
   | { outcome: 'imported' | 'alreadyPresent'; sharedBy: string; track: string; car: string; lapTimeSeconds: number }
-  | { outcome: 'cancelled' }
   | { outcome: 'failed'; error: string }
 
 /**
@@ -342,8 +360,12 @@ export type SprintBridge = {
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
   /** Opens a save dialog and writes the lap as a `.sprintlap`. */
   exportLap(sessionId: string, lapNumber: number): Promise<LapExportResult>
-  /** Opens a file dialog and files the chosen `.sprintlap` into the corpus. */
-  importLap(): Promise<LapImportResult>
+  /** Opens a file dialog and has the host read the chosen `.sprintlap`; nothing is filed until `importLapFile`. */
+  openLapFile(): Promise<LapFileOpenResult>
+  /** Files the opened lap file into the corpus: the driver confirmed what `openLapFile` showed. */
+  importLapFile(token: string): Promise<LapImportResult>
+  /** Forgets the opened lap file: the driver cancelled. */
+  discardLapFile(token: string): Promise<void>
   /** Opens a folder picker; null when the driver cancelled it (or there is no Electron). */
   pickFolder(title: string): Promise<string | null>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
@@ -394,9 +416,11 @@ type RawBridge = {
   sendCommand(command: unknown): Promise<unknown>
   subscribe(listener: (state: unknown) => void): () => void
   analysisTrace(sessionId: string, lapNumber: number): Promise<unknown>
-  /** Both absent in the preview harness's stub. */
+  /** Absent in an older preview stub. */
   exportLap?(sessionId: string, lapNumber: number): Promise<unknown>
-  importLap?(): Promise<unknown>
+  openLapFile?(): Promise<unknown>
+  importLapFile?(token: string): Promise<unknown>
+  discardLapFile?(token: string): Promise<unknown>
   /** Absent in the preview harness's stub. */
   pickFolder?(title: string): Promise<unknown>
   diagnosticsLogs(minLevel: string, text: string): Promise<unknown>
@@ -864,6 +888,26 @@ const parseLapExportResult = (value: unknown): LapExportResult => {
   return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
 }
 
+/** Narrows what opening a lap file said, once. A preview missing what the dialog shows reads as unreadable. */
+const parseLapFileOpenResult = (value: unknown): LapFileOpenResult => {
+  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
+  if (isRecord(value) && value.outcome === 'Ready' && typeof value.token === 'string' && typeof value.lapTimeSeconds === 'number') {
+    return {
+      outcome: 'opened',
+      offer: {
+        token: value.token,
+        sharedBy: typeof value.sharedBy === 'string' && value.sharedBy.length > 0 ? value.sharedBy : 'Unknown driver',
+        track: text(value.track),
+        car: text(value.car),
+        lapTimeSeconds: value.lapTimeSeconds,
+        drivenAt: optionalString(value.drivenAt),
+        alreadyPresent: value.alreadyPresent === true,
+      },
+    }
+  }
+  return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
+}
+
 const parseLapImportResult = (value: unknown): LapImportResult => {
   if (isRecord(value) && (value.outcome === 'Imported' || value.outcome === 'AlreadyPresent') && typeof value.lapTimeSeconds === 'number') {
     return {
@@ -874,7 +918,6 @@ const parseLapImportResult = (value: unknown): LapImportResult => {
       lapTimeSeconds: value.lapTimeSeconds,
     }
   }
-  if (isRecord(value) && value.outcome === 'cancelled') return { outcome: 'cancelled' }
   return { outcome: 'failed', error: isRecord(value) && typeof value.error === 'string' && value.error.length > 0 ? value.error : unexpected }
 }
 
@@ -889,7 +932,10 @@ export const bridge: SprintBridge = raw
       analysisTrace: (sessionId, lapNumber) => raw.analysisTrace(sessionId, lapNumber),
       exportLap: async (sessionId, lapNumber) =>
         raw.exportLap ? parseLapExportResult(await raw.exportLap(sessionId, lapNumber).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
-      importLap: async () => (raw.importLap ? parseLapImportResult(await raw.importLap().catch(() => null)) : { outcome: 'failed', error: noLapFiles }),
+      openLapFile: async () => (raw.openLapFile ? parseLapFileOpenResult(await raw.openLapFile().catch(() => null)) : { outcome: 'failed', error: noLapFiles }),
+      importLapFile: async (token) =>
+        raw.importLapFile ? parseLapImportResult(await raw.importLapFile(token).catch(() => null)) : { outcome: 'failed', error: noLapFiles },
+      discardLapFile: async (token) => { await raw.discardLapFile?.(token).catch(() => null) },
       pickFolder: async (title) => {
         const folder = raw.pickFolder ? await raw.pickFolder(title).catch(() => null) : null
         return typeof folder === 'string' && folder.length > 0 ? folder : null
@@ -940,7 +986,9 @@ export const bridge: SprintBridge = raw
       subscribe: () => () => undefined,
       analysisTrace: async () => null,
       exportLap: async () => ({ outcome: 'failed', error: noLapFiles }),
-      importLap: async () => ({ outcome: 'failed', error: noLapFiles }),
+      openLapFile: async () => ({ outcome: 'failed', error: noLapFiles }),
+      importLapFile: async () => ({ outcome: 'failed', error: noLapFiles }),
+      discardLapFile: async () => undefined,
       pickFolder: async () => null,
       diagnosticsLogs: async () => null,
       planContext: async () => emptyPlanContext(),

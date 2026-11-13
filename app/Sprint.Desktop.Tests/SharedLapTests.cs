@@ -155,6 +155,21 @@ public sealed class SharedLapTests
     }
 
     [Fact]
+    public void ALapCanBeCheckedForBeingAlreadyHereWithoutFilingIt()
+    {
+        // The import dialog says "already in your laps" before the driver confirms anything.
+        (FakeHistory history, FakeTraces _, SharedLapImporter importer) = Corpus();
+
+        Assert.False(importer.IsPresent(Lap()));
+        Assert.Empty(history.Saved);
+
+        importer.Import(Lap());
+
+        Assert.True(importer.IsPresent(Lap()));
+        Assert.False(importer.IsPresent(Lap() with { LapNumber = 7, LapTimeSeconds = 99.2 }));
+    }
+
+    [Fact]
     public void TwoDifferentLapsFromTheSameDriverAreBothKept()
     {
         (FakeHistory? history, FakeTraces _, SharedLapImporter? importer) = Corpus();

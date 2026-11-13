@@ -1429,6 +1429,35 @@ public sealed class RuntimeCoordinatorTests
     }
 
     [Fact]
+    public void CompareRange_IsSavedAndReachesTheHudAtOnce_AndAnOutOfRangeWindowIsRefused()
+    {
+        string dataRoot = NewTempDataRoot();
+        DesktopRuntime runtime = new DesktopRuntime(dataRoot, PresetRoot);
+        LiveCompareService liveCompare = new LiveCompareService(
+            new LapCorpusBrowser(new LocalLapHistoryStore(Path.Combine(dataRoot, "lap-history")), new LocalLapTraceStore(Path.Combine(dataRoot, "lap-traces"))),
+            () => null);
+        RuntimeCoordinator coordinator = new RuntimeCoordinator(runtime, liveCompare: liveCompare);
+        try
+        {
+            Assert.True(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":100,"metersAhead":1000}"""), out string error), error);
+            Assert.Equal((100d, 1000d), (runtime.Settings.LiveCompare.MetersBehind, runtime.Settings.LiveCompare.MetersAhead));
+            Assert.Equal((100d, 1000d), (liveCompare.Controller.MetersBehind, liveCompare.Controller.MetersAhead));
+
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":100,"metersAhead":50000}"""), out string tooFar));
+            Assert.Equal("metersAhead must be between 100 and 2000", tooFar);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersBehind":-5,"metersAhead":600}"""), out string negative));
+            Assert.Equal("metersBehind must be between 50 and 1000", negative);
+            Assert.False(coordinator.Execute(Command("""{"type":"compare.range","metersAhead":600}"""), out string missing));
+            Assert.Equal("metersBehind and metersAhead are required", missing);
+            Assert.Equal(1000d, liveCompare.Controller.MetersAhead);
+        }
+        finally
+        {
+            Cleanup(dataRoot);
+        }
+    }
+
+    [Fact]
     public void CompareHudLayout_RemembersAWindowPerMonitor()
     {
         RuntimeCoordinator coordinator = NewCoordinator(out DesktopRuntime runtime, out string dataRoot);

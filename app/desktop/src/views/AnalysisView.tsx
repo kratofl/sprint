@@ -5,11 +5,12 @@ import type { LapExportResult, SprintCommand } from '../bridge'
 import type { RuntimeState } from '../shell/runtime'
 import { PageHeader } from '../shell/PageHeader'
 import { usePageUp } from '../shell/pageUp'
-import { EMPTY_ANALYSIS_STATE, buildAnalysisSelectSession, buildSetRunSetup, importNotice, parseAnalysisState } from './AnalysisDomain'
+import { EMPTY_ANALYSIS_STATE, buildAnalysisSelectSession, buildSetRunSetup, parseAnalysisState } from './AnalysisDomain'
 import type { AnalysisState, CorpusLap, LapFileNotice } from './AnalysisDomain'
 import { DEFAULT_LAP_LAYOUT, parseLapLayout } from './AnalysisLapLayout'
 import { LapPage, useStoredLapLayout } from './AnalysisLapPage'
 import { SessionList } from './AnalysisSessionList'
+import { useLapFileImport } from './LapImportDialog'
 import { LapList, LapTimesCard, SessionHead } from './AnalysisSessionPage'
 import type { LapOrder } from './AnalysisSessionPage'
 import { sessionsIn } from './AnalysisSessions'
@@ -55,6 +56,7 @@ export function AnalysisView({
   const [layout, setLayout] = useStoredLapLayout(parseLapLayout, DEFAULT_LAP_LAYOUT)
   const [actionError, setActionError] = useState<string | null>(null)
   const [lapFileNotice, setLapFileNotice] = useState<LapFileNotice | null>(null)
+  const lapFileImport = useLapFileImport(setLapFileNotice)
 
   const runAction = async (command: SprintCommand) => {
     setActionError(null)
@@ -118,9 +120,6 @@ export function AnalysisView({
   const exportLap = async (target: CorpusLap) => {
     setLapFileNotice(exportNotice(await bridge.exportLap(target.sessionId, target.lapNumber)))
   }
-  const importLap = async () => {
-    setLapFileNotice(importNotice(await bridge.importLap()))
-  }
   const trainAgainst = async (target: CorpusLap) => {
     setActionError(null)
     try {
@@ -137,7 +136,7 @@ export function AnalysisView({
         {page === 'list' && (
           <>
             <ScopeSwitch scope={scope} sharedCount={sharedCount} onScope={setScope} />
-            <ImportButton onLapFile={() => void importLap()} onResults={onImportResults} />
+            <ImportButton onLapFile={lapFileImport.open} onResults={onImportResults} />
           </>
         )}
       </PageHeader>
@@ -215,6 +214,7 @@ export function AnalysisView({
       ) : (
         <SessionList sessions={analysis.sessions} scope={scope} onOpen={(id) => openSession(id)} />
       )}
+      {lapFileImport.dialog}
     </div>
   )
 }

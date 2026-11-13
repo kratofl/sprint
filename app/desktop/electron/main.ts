@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, type BrowserWindowConstructorOptions, Menu, nativeTheme, screen, shell, type IpcMainInvokeEvent, type IpcMainEvent, type WebContents } from 'electron'
 import { spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -246,8 +247,16 @@ ipcMain.handle('sprint:lap-export', async (event: IpcMainInvokeEvent, sessionId:
   return { outcome: 'saved', fileName: path.basename(choice.filePath) }
 })
 
-/** Opens a .sprintlap a friend sent and files it into the corpus. */
-ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
+/**
+ * A lap file opened to be imported, waiting for the driver to confirm it (#198: never silently).
+ * Its bytes stay here, where the disk was read, so Add files exactly what the dialog showed.
+ * One at a time: opening another forgets it.
+ */
+let openedLapFile: { token: string; bytes: Uint8Array<ArrayBuffer> } | undefined
+
+/** Opens a .sprintlap a friend sent and has the host read it, without filing it yet. */
+ipcMain.handle('sprint:lap-open', async (event: IpcMainInvokeEvent) => {
+  openedLapFile = undefined
   const owner = BrowserWindow.fromWebContents(event.sender)
   const options = { properties: ['openFile' as const], filters: LAP_FILE_FILTERS }
   const choice = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
@@ -255,10 +264,32 @@ ipcMain.handle('sprint:lap-import', async (event: IpcMainInvokeEvent) => {
   if (choice.canceled || !filePath) return { outcome: 'cancelled' }
   try {
     if ((await stat(filePath)).size > MAX_LAP_FILE_BYTES) return { outcome: 'failed', error: 'That file is far too large to be a Sprint lap file.' }
-    return await nativeHost.importLap(Uint8Array.from(await readFile(filePath)))
+    const bytes = Uint8Array.from(await readFile(filePath))
+    const preview = await nativeHost.previewLap(bytes)
+    if (!isRecord(preview) || preview.outcome !== 'Ready') return preview
+    const token = randomUUID()
+    openedLapFile = { token, bytes }
+    return { ...preview, token }
   } catch (error) {
     return { outcome: 'failed', error: error instanceof Error ? error.message : 'The file could not be read.' }
   }
+})
+
+/** The driver confirmed: files the opened lap into the corpus. */
+ipcMain.handle('sprint:lap-import', async (_event: IpcMainInvokeEvent, token: unknown) => {
+  const opened = openedLapFile
+  if (!opened || opened.token !== token) return { outcome: 'failed', error: 'That lap file is no longer open. Open it again.' }
+  openedLapFile = undefined
+  try {
+    return await nativeHost.importLap(opened.bytes)
+  } catch (error) {
+    return { outcome: 'failed', error: error instanceof Error ? error.message : 'The lap could not be added.' }
+  }
+})
+
+/** The driver cancelled: forgets the opened lap file. */
+ipcMain.handle('sprint:lap-discard', (_event: IpcMainInvokeEvent, token: unknown) => {
+  if (openedLapFile?.token === token) openedLapFile = undefined
 })
 
 /** A folder picker (the first-run setup's game folder): the chosen path, or null when cancelled. */

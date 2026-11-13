@@ -56,16 +56,12 @@ public sealed class SharedLapImporter
     {
         ArgumentNullException.ThrowIfNull(lap);
 
-        string fingerprint = lap.Fingerprint;
-        string classNameFingerprint = lap.ClassNameFingerprint;
-        if (this._history.LoadAll().FirstOrDefault(session =>
-                string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal)
-                || string.Equals(session.SharedFingerprint, classNameFingerprint, StringComparison.Ordinal))
-            is { } existing)
+        if (this.Existing(lap) is { } existing)
         {
             return SharedLapImportResult.Duplicate(existing.Id);
         }
 
+        string fingerprint = lap.Fingerprint;
         string sessionId = $"shared-{fingerprint}";
         string traceId = LapTraceId.For(sessionId, lap.LapNumber);
 
@@ -112,6 +108,29 @@ public sealed class SharedLapImporter
         this._history.Save(session);
         this._log.Info($"Imported a shared lap from {lap.Attribution} at {lap.Context.TrackCourse}");
         return new SharedLapImportResult(true, false, sessionId);
+    }
+
+    /// <summary>
+    /// Whether the lap is already in the corpus, so the driver is told before they confirm an
+    /// import that adding it would change nothing.
+    /// </summary>
+    public bool IsPresent(SharedLap lap)
+    {
+        ArgumentNullException.ThrowIfNull(lap);
+        return this.Existing(lap) is not null;
+    }
+
+    /// <summary>
+    /// The session this lap was filed as before, if any. Matched on either fingerprint: a lap sent
+    /// by an older Sprint was filed under its livery, a newer one under the car's name.
+    /// </summary>
+    private LapHistorySession? Existing(SharedLap lap)
+    {
+        string fingerprint = lap.Fingerprint;
+        string classNameFingerprint = lap.ClassNameFingerprint;
+        return this._history.LoadAll().FirstOrDefault(session =>
+            string.Equals(session.SharedFingerprint, fingerprint, StringComparison.Ordinal)
+            || string.Equals(session.SharedFingerprint, classNameFingerprint, StringComparison.Ordinal));
     }
 
     /// <summary>

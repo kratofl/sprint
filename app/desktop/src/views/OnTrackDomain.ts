@@ -25,9 +25,29 @@ export type CompareState = {
   arranging: boolean
   /** A game holds the screen in exclusive fullscreen, where no HUD window can show. */
   fullscreen: boolean
+  /** How much track the HUD shows behind and ahead of the car, in metres (`compare.range`). */
+  metersBehind: number
+  metersAhead: number
 }
 
-export const EMPTY_COMPARE_STATE: CompareState = { courses: [], course: null, laps: [], lapCount: 0, target: null, hudOpen: false, arranging: false, fullscreen: false }
+/** The host's defaults (`LiveCompareSettings`), for a host that does not say. */
+const DEFAULT_METERS_BEHIND = 200
+const DEFAULT_METERS_AHEAD = 600
+
+export const EMPTY_COMPARE_STATE: CompareState = {
+  courses: [],
+  course: null,
+  laps: [],
+  lapCount: 0,
+  target: null,
+  hudOpen: false,
+  arranging: false,
+  fullscreen: false,
+  metersBehind: DEFAULT_METERS_BEHIND,
+  metersAhead: DEFAULT_METERS_AHEAD,
+}
+
+const positiveOr = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback)
 
 function parseCourse(value: unknown): CompareCourse | null {
   if (!isRecord(value) || typeof value.game !== 'string' || typeof value.trackCourse !== 'string' || typeof value.carModel !== 'string') return null
@@ -58,8 +78,23 @@ export function parseCompareState(sprint: SprintState): CompareState {
     hudOpen: compare.hudOpen === true,
     arranging: compare.arranging === true,
     fullscreen: compare.fullscreen === true,
+    metersBehind: positiveOr(compare.metersBehind, DEFAULT_METERS_BEHIND),
+    metersAhead: positiveOr(compare.metersAhead, DEFAULT_METERS_AHEAD),
   }
 }
+
+/** The HUD's range choices, in metres, inside the host's limits (`LiveCompareSettings.IsRange`). */
+export const HUD_METERS_BEHIND = [100, 200, 300, 500] as const
+export const HUD_METERS_AHEAD = [300, 400, 600, 800, 1000, 1500] as const
+
+/** A range picker's choices: the presets, plus the value in force when settings.json holds another one, in order. */
+export const rangeChoices = (presets: readonly number[], current: number): number[] =>
+  presets.includes(current) ? [...presets] : [...presets, current].sort((a, b) => a - b)
+
+/** "600 m", "1.5 km": a range choice as the picker says it. */
+export const formatRange = (meters: number): string => (meters >= 1000 ? `${Number((meters / 1000).toFixed(2))} km` : `${Math.round(meters)} m`)
+
+export const buildHudRange = (metersBehind: number, metersAhead: number): SprintCommand => ({ type: 'compare.range', metersBehind, metersAhead })
 
 /** The readings a HUD window can show, in the order the windows stack on a first open. */
 export const HUD_CHART_ORDER = ['throttle', 'brake', 'speed', 'steering', 'gear'] as const

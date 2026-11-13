@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, MoreHorizontal, Plus, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, Crosshair, GitCompareArrows, Maximize2, MoreHorizontal, Plus, X } from 'lucide-react'
 import type { SprintCommand } from '../bridge'
 import { tyreHeat } from '../pitwall/carDomain'
 import { CarSvg } from '../pitwall/tiles/CarSvg'
@@ -16,6 +16,8 @@ import type { LapChartId, LapLayout } from './AnalysisLapLayout'
 import { lapMeters, lapPins, placeLabel, settingChanges } from './AnalysisLapMarks'
 import { CarSettingsLanes, NoteBubble, NoteEditor, PinRows, pinLines, pinRowsHeight, popoverLeft } from './AnalysisLapPins'
 import type { PinRow } from './AnalysisLapPins'
+import { WHOLE_LAP, isZoomed } from './AnalysisPlot'
+import type { LapWindow } from './AnalysisPlot'
 import { MenuLayer, type MenuAnchor } from '../shell/Menu'
 import { FriendBadge, shortDay } from './OnTrackPages'
 import { sameLap } from './OnTrackLaps'
@@ -28,7 +30,8 @@ import { useLapTrace } from './useLapTrace'
  * "Compare with…" picks another lap with this car on this track — yours first, then shared ones —
  * and it joins every chart grey and dashed until "Stop comparing". Pins over the charts mark where
  * a car setting changed or a note was left (both laps' when comparing); a click on the charts
- * leaves a note there (`onNote` sends it and says whether the host took it).
+ * leaves a note there (`onNote` sends it and says whether the host took it). The charts zoom and
+ * pan together over one stretch of the lap, which the map marks; it is local to the page.
  */
 export function LapPage({
   lap,
@@ -283,7 +286,7 @@ function ComparePicker({
   )
 }
 
-/** The map and the car beside the charts, or the charts alone when both are off. */
+/** The map and the car beside the charts, or the charts alone when both are off. Holds the stretch of the lap the charts show. */
 function LapBody({
   lap,
   onNote,
@@ -311,6 +314,7 @@ function LapBody({
 }) {
   // The car card keeps showing the last place the cursor was once the pointer leaves the charts.
   const [here, setHere] = useState(0)
+  const [view, setView] = useState<LapWindow>(WHOLE_LAP)
   const marks = lapCorners(trace)
   const hasMap = 'worldX' in trace.channels && 'worldZ' in trace.channels
   const showMap = layout.map && hasMap
@@ -319,7 +323,7 @@ function LapBody({
     <div className={showMap || layout.car ? 'analysis-lap-body with-side' : 'analysis-lap-body'}>
       {(showMap || layout.car) && (
         <div className="analysis-lap-side">
-          {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} onRemove={() => onLayout({ ...layout, map: false })} />}
+          {showMap && <TrackMapCard trace={trace} marks={marks} cursor={cursor} view={view} onRemove={() => onLayout({ ...layout, map: false })} />}
           {layout.car && <CarCard car={trace.car} position={carAt} place={placeLabel(carAt, lapMeters(trace, lap), marks)} layout={layout} onLayout={onLayout} />}
         </div>
       )}
@@ -335,6 +339,8 @@ function LapBody({
         layout={layout}
         onLayout={onLayout}
         hasMap={hasMap}
+        view={view}
+        onView={setView}
         onCursor={(position) => {
           onCursor(position)
           if (position !== null) setHere(position)
@@ -350,9 +356,22 @@ const MAP_PAD = 28
 
 /**
  * The lap drawn on the track from the car's recorded position, seen from above: green where the
- * throttle was flat, red under braking, grey in between. The dot follows the charts' cursor.
+ * throttle was flat, red under braking, grey in between. The dot follows the charts' cursor; while
+ * the charts are zoomed, a quiet band under the line marks the stretch they show.
  */
-function TrackMapCard({ trace, marks, cursor, onRemove }: { trace: LapChannelTrace; marks: readonly ChartMark[]; cursor: number | null; onRemove: () => void }) {
+function TrackMapCard({
+  trace,
+  marks,
+  cursor,
+  view,
+  onRemove,
+}: {
+  trace: LapChannelTrace
+  marks: readonly ChartMark[]
+  cursor: number | null
+  view: LapWindow
+  onRemove: () => void
+}) {
   const xs = trace.channels.worldX
   const zs = trace.channels.worldZ
   const throttle = trace.channels.throttle ?? []
@@ -387,6 +406,15 @@ function TrackMapCard({ trace, marks, cursor, onRemove }: { trace: LapChannelTra
   }
   const [startX, startY] = point(0)
   const dot = cursor !== null ? point(at(cursor)) : null
+  let shown = ''
+  if (isZoomed(view)) {
+    const last = at(view.to)
+    for (let index = at(view.from); index <= last; index += Math.min(step, Math.max(1, last - index))) {
+      const [x, y] = point(index)
+      shown += `${shown ? ' L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`
+      if (index === last) break
+    }
+  }
 
   return (
     <section className="card analysis-map-card" aria-label="On the track">
@@ -394,7 +422,8 @@ function TrackMapCard({ trace, marks, cursor, onRemove }: { trace: LapChannelTra
         <h2 className="card-title">On the track</h2>
         <WidgetMenu label="Track map" onRemove={onRemove} removeLabel="Remove map" />
       </div>
-      <svg viewBox={`0 0 ${MAP_WIDTH} ${height}`} className="analysis-map-svg" role="img" aria-label="The lap's line on the track">
+      <svg viewBox={`0 0 ${MAP_WIDTH} ${height}`} className="analysis-map-svg" role="img" aria-label={shown ? 'The lap’s line on the track, the stretch the charts show marked' : 'The lap’s line on the track'}>
+        {shown && <path d={shown} className="analysis-map-window" />}
         {runs.map((run, index) => (
           <path key={index} d={run.d} className={`analysis-map-line ${run.state}`} />
         ))}
@@ -578,6 +607,8 @@ function TelemetryCard({
   layout,
   onLayout,
   hasMap,
+  view,
+  onView,
   onCursor,
 }: {
   lap: CorpusLap
@@ -591,6 +622,9 @@ function TelemetryCard({
   layout: LapLayout
   onLayout: (layout: LapLayout) => void
   hasMap: boolean
+  /** The stretch of the lap every chart shows, and a change to it (zoom, pan, Whole lap). */
+  view: LapWindow
+  onView: (view: LapWindow) => void
   onCursor: (position: number | null) => void
 }) {
   const [layer, setLayer] = useState<NoteLayer | null>(null)
@@ -637,7 +671,7 @@ function TelemetryCard({
 
   const drawLayer = (width: number) => {
     if (!layer) return null
-    const style = { left: popoverLeft(layer.position, width), top: pinRowsHeight(rows) + 4 }
+    const style = { left: popoverLeft(layer.position, width, view), top: pinRowsHeight(rows) + 4 }
     return (
       <div className="analysis-note-layer" style={style}>
         {layer.kind === 'new' ? (
@@ -668,6 +702,20 @@ function TelemetryCard({
     <section className="card analysis-telemetry-card" aria-label="Telemetry">
       <div className="card-header">
         <h2 className="card-title">Telemetry</h2>
+        {isZoomed(view) && (
+          <button
+            type="button"
+            className="button subtle"
+            title="Or double-click the charts"
+            onClick={(event) => {
+              onView(WHOLE_LAP)
+              // The button goes with the zoom; the charts keep the keyboard rather than the page losing it.
+              event.currentTarget.closest('.analysis-telemetry-card')?.querySelector<HTMLElement>('.analysis-chart-stack')?.focus()
+            }}
+          >
+            <Maximize2 /> Whole lap
+          </button>
+        )}
       </div>
       {charts.panels.length > 0 ? (
         <LapTraceChartStack
@@ -681,11 +729,14 @@ function TelemetryCard({
           onCursor={onCursor}
           lines={lines}
           onPick={pick}
+          view={view}
+          onView={onView}
           top={(width) => (
             <div className="analysis-pins" style={{ height: pinRowsHeight(rows) }}>
               <PinRows
                 rows={rows}
                 width={width}
+                view={view}
                 placeOf={placeOf}
                 openNoteId={layer?.kind === 'read' ? layer.note.id : null}
                 onNote={(note, row, position) =>
@@ -697,7 +748,7 @@ function TelemetryCard({
           )}
           body={(index, width, cursorPosition) =>
             charts.owners[index] === 'settings' && charts.settings ? (
-              <CarSettingsLanes chart={charts.settings} width={width} height={charts.heights[index]} cursorPosition={cursorPosition} lines={lines} compared={compared !== null} />
+              <CarSettingsLanes chart={charts.settings} width={width} height={charts.heights[index]} view={view} cursorPosition={cursorPosition} lines={lines} compared={compared !== null} />
             ) : null
           }
         />
